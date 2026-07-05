@@ -1,0 +1,172 @@
+:root {
+  --bg: #0d1117;
+  --card: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --accent: #58a6ff;
+  --green: #3fb950;
+  --orange: #d29922;
+  --red: #f85149;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+
+main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 1rem 1rem 4rem;
+}
+
+header.app {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 1rem 0;
+}
+
+header.app h1 {
+  font-size: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+header.app span {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+section {
+  margin-top: 1.5rem;
+}
+
+section > h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 0.6rem;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+
+.card h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.card .meta {
+  color: var(--muted);
+  font-size: 0.8rem;
+  margin-top: 0.15rem;
+  overflow-wrap: anywhere;
+}
+
+.card pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: inherit;
+  font-size: 0.9rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem;
+  margin-top: 0.6rem;
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+button,
+a.btn {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-block;
+}
+
+button:active,
+a.btn:active {
+  transform: scale(0.97);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04141f;
+  font-weight: 600;
+}
+
+button.good {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+button.warn {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.55rem;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.tag.age {
+  background: rgba(210, 153, 34, 0.15);
+  color: var(--orange);
+}
+
+.empty {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 0.5rem 0;
+}
+
+.error {
+  border: 1px solid var(--red);
+  border-radius: 10px;
+  padding: 1rem;
+  margin-top: 1.5rem;
+}
+
+.error code {
+  color: var(--orange);
+}
