@@ -111,8 +111,37 @@ if $IS_MAC; then
 </dict>
 </plist>
 PLIST
-  launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
-  launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load -w "$PLIST"
+  UID_N="$(id -u)"
+  # Tear down any previous instance. bootout returns before the job is
+  # actually gone; bootstrapping too early fails with "Input/output error"
+  # (error 5), so wait for the label to disappear.
+  launchctl bootout "gui/$UID_N/$LABEL" 2>/dev/null || true
+  for _ in $(seq 1 10); do
+    launchctl print "gui/$UID_N/$LABEL" >/dev/null 2>&1 || break
+    sleep 1
+  done
+  # A leftover server (e.g. from a killed install) would keep holding the
+  # port and make the health check below pass no matter what the new job
+  # does. Clear it so a 200 can only come from the instance we start.
+  ORPHANS="$( (lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true) )"
+  if [ -n "$ORPHANS" ]; then
+    say "Stopping orphaned process(es) still holding port $PORT..."
+    kill $ORPHANS 2>/dev/null || true
+    sleep 2
+    kill -9 $( (lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true) ) 2>/dev/null || true
+  fi
+  # Clear a disabled flag left behind by an old `launchctl unload -w`
+  # or a crash-looped job — a disabled label makes bootstrap fail.
+  launchctl enable "gui/$UID_N/$LABEL" 2>/dev/null || true
+  BOOTSTRAPPED=false
+  for _ in $(seq 1 3); do
+    if launchctl bootstrap "gui/$UID_N" "$PLIST" 2>/dev/null; then BOOTSTRAPPED=true; break; fi
+    sleep 2
+  done
+  if ! $BOOTSTRAPPED; then
+    say "bootstrap kept failing — falling back to legacy launchctl load"
+    launchctl load -w "$PLIST" || fail "Could not load $LABEL. Inspect with: launchctl print gui/$UID_N/$LABEL"
+  fi
   say "Installed background service ($LABEL) — starts at login, restarts if it dies."
 
   say "Waiting for the app to come up..."
@@ -121,17 +150,35 @@ PLIST
     if curl -sf "http://localhost:$PORT" >/dev/null 2>&1; then UP=true; break; fi
     sleep 1
   done
-  echo
+  # The port was free before bootstrap, so a response means OUR instance —
+  # but double-check the listener is a descendant of the launchd job to
+  # rule out something else grabbing the port in the meantime.
+  MANAGED=false
   if $UP; then
+    JOB_PID="$( (launchctl print "gui/$UID_N/$LABEL" 2>/dev/null || true) | awk '$1=="pid"{print $3; exit}')"
+    P="$( (lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true) | head -n 1)"
+    while [ -n "$P" ] && [ "$P" != "0" ] && [ "$P" != "1" ]; do
+      if [ "$P" = "$JOB_PID" ]; then MANAGED=true; break; fi
+      P="$( (ps -o ppid= -p "$P" 2>/dev/null || true) | tr -d ' ')"
+    done
+  fi
+  echo
+  if $UP && $MANAGED; then
     open "http://localhost:$PORT" || true
     say "Done. extra is running at http://localhost:$PORT"
     echo "   Tip: in Safari, File → Add to Dock to make it a standalone app."
     echo "   Logs: ~/Library/Logs/extra.log"
     echo "   Next: Microsoft Graph setup → $DIR/docs/GRAPH_SETUP.md"
+  elif $UP; then
+    printf '\033[1;31m✗ Port %s answers, but not from the %s service — another instance is in the way.\033[0m\n' "$PORT" "$LABEL"
+    echo "   Find it with: lsof -nP -iTCP:$PORT -sTCP:LISTEN"
+    echo "   Kill it, then restart the service: launchctl kickstart -k gui/\$(id -u)/$LABEL"
+    exit 1
   else
     printf '\033[1;31m✗ The service did not come up within 30s.\033[0m\n'
     echo "   Last log lines (~/Library/Logs/extra.log):"
     tail -n 8 "$HOME/Library/Logs/extra.log" 2>/dev/null | sed 's/^/   | /' || true
+    echo "   Inspect with: launchctl print gui/\$(id -u)/$LABEL"
     echo "   Restart it with: launchctl kickstart -k gui/\$(id -u)/$LABEL"
     echo "   Then open: http://localhost:$PORT"
     exit 1
