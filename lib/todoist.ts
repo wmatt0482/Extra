@@ -1,8 +1,12 @@
 // Todoist is extra's backend: tasks + labels + comments ARE the state machine.
 // The morning-brief and draft-worker routines write this state; extra reads it
 // and flips labels. See routines/README.md in the blender_mcp repo.
+//
+// Uses Todoist's unified v1 API (api.todoist.com/api/v1). REST v2 and Sync v9
+// were retired (they now return 410). v1 paginates list responses as
+// { results, next_cursor }; we normalize defensively in unwrap().
 
-const API = "https://api.todoist.com/rest/v2";
+const API = "https://api.todoist.com/api/v1";
 
 // The draft pipeline, as written by the routines:
 //   draftable    → routine says "a draft is feasible here"
@@ -17,17 +21,14 @@ export interface TodoistTask {
   content: string;
   description: string;
   labels: string[];
-  priority: number;
   created_at: string;
   url: string;
-  due?: { date: string } | null;
+  dueDate: string | null;
 }
 
 export interface TodoistComment {
   id: string;
-  task_id: string;
   content: string;
-  posted_at: string;
 }
 
 export interface TaskMeta {
@@ -82,9 +83,48 @@ async function todoist<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok) {
     throw new Error(`Todoist ${init?.method ?? "GET"} ${path} → ${res.status}`);
   }
-  // 204 on close/update endpoints
   if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  const text = await res.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
+/** v1 list responses are { results|items, next_cursor }; tolerate bare arrays. */
+function unwrap(json: unknown): { items: any[]; cursor: string | null } {
+  if (Array.isArray(json)) return { items: json, cursor: null };
+  const o = json as any;
+  return {
+    items: o?.results ?? o?.items ?? [],
+    cursor: o?.next_cursor ?? null,
+  };
+}
+
+/** Field names drifted between API generations — normalize what we use. */
+function normalizeTask(t: any): TodoistTask {
+  return {
+    id: String(t.id),
+    content: t.content ?? "",
+    description: t.description ?? "",
+    labels: t.labels ?? [],
+    created_at: t.added_at ?? t.created_at ?? "",
+    url: t.url ?? `https://app.todoist.com/app/task/${t.id}`,
+    dueDate: t.due?.date?.slice(0, 10) ?? null,
+  };
+}
+
+async function todoistList(path: string, maxPages = 5): Promise<any[]> {
+  const all: any[] = [];
+  let cursor: string | null = null;
+  for (let page = 0; page < maxPages; page++) {
+    const sep = path.includes("?") ? "&" : "?";
+    const url = cursor
+      ? `${path}${sep}cursor=${encodeURIComponent(cursor)}`
+      : path;
+    const { items, cursor: next } = unwrap(await todoist<unknown>(url));
+    all.push(...items);
+    if (!next) break;
+    cursor = next;
+  }
+  return all;
 }
 
 export function parseMeta(description: string): TaskMeta {
@@ -125,15 +165,18 @@ function sectionFor(labels: string[]): Section | null {
 }
 
 function ageDays(createdAt: string): number {
-  return Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000);
+  const t = new Date(createdAt).getTime();
+  if (Number.isNaN(t)) return 0;
+  return Math.floor((Date.now() - t) / 86_400_000);
 }
 
 export async function getTask(id: string): Promise<TodoistTask> {
-  return todoist<TodoistTask>(`/tasks/${id}`);
+  return normalizeTask(await todoist<any>(`/tasks/${id}`));
 }
 
 export async function getComments(taskId: string): Promise<TodoistComment[]> {
-  return todoist<TodoistComment[]>(`/comments?task_id=${taskId}`);
+  const items = await todoistList(`/comments?task_id=${taskId}&limit=100`);
+  return items.map((c: any) => ({ id: String(c.id), content: c.content ?? "" }));
 }
 
 export async function updateLabels(id: string, labels: string[]): Promise<void> {
@@ -168,39 +211,32 @@ export interface CompletedItem {
 }
 
 /**
- * Completed-task history via the Sync API (REST v2 has no completed
- * endpoint). Callers must tolerate failure — Todoist has been migrating
- * API surfaces, so metrics degrade gracefully rather than crash.
+ * Completed-task history for metrics. Callers must tolerate failure —
+ * metrics degrade gracefully rather than crash.
  */
 export async function getCompletedHistory(days: number): Promise<CompletedItem[]> {
-  const since = new Date(Date.now() - days * 86_400_000)
-    .toISOString()
-    .slice(0, 19);
-  const res = await fetch(
-    `https://api.todoist.com/sync/v9/completed/get_all?since=${encodeURIComponent(
-      since
-    )}&limit=200&annotate_items=true`,
-    { headers: { Authorization: `Bearer ${token()}` }, cache: "no-store" }
+  const until = new Date();
+  const since = new Date(until.getTime() - days * 86_400_000);
+  const iso = (d: Date) => d.toISOString().slice(0, 19) + "Z";
+  const items = await todoistList(
+    `/tasks/completed/by_completion_date?since=${encodeURIComponent(
+      iso(since)
+    )}&until=${encodeURIComponent(iso(until))}&limit=200`,
+    3
   );
-  if (!res.ok) throw new Error(`Sync completed/get_all → ${res.status}`);
-  const json = (await res.json()) as {
-    items: {
-      content: string;
-      completed_at: string;
-      item_object?: { labels?: string[] };
-    }[];
-  };
-  return (json.items ?? []).map((i) => ({
-    content: i.content,
-    completed_at: i.completed_at,
-    labels: i.item_object?.labels ?? [],
+  return items.map((i: any) => ({
+    content: i.content ?? i.item_object?.content ?? "",
+    completed_at: i.completed_at ?? "",
+    labels: i.labels ?? i.item_object?.labels ?? [],
   }));
 }
 
 export async function getPipeline(): Promise<PipelineTask[]> {
-  const raw = await todoist<TodoistTask[]>(
-    `/tasks?filter=${encodeURIComponent(PIPELINE_FILTER)}`
-  );
+  const raw = (
+    await todoistList(
+      `/tasks/filter?query=${encodeURIComponent(PIPELINE_FILTER)}&limit=200`
+    )
+  ).map(normalizeTask);
 
   const today = new Date().toISOString().slice(0, 10);
   const tasks: PipelineTask[] = [];
@@ -208,7 +244,7 @@ export async function getPipeline(): Promise<PipelineTask[]> {
     const section = sectionFor(t.labels);
     if (!section) continue;
     // Snoozed by extra: hidden until the snooze due date arrives.
-    if (t.labels.includes("snoozed") && t.due?.date && t.due.date > today)
+    if (t.labels.includes("snoozed") && t.dueDate && t.dueDate > today)
       continue;
     const item: PipelineTask = {
       id: t.id,
