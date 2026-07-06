@@ -46,6 +46,19 @@ README documents the full label state machine (`draftable`, `draft-me`,
 
 ## Setup
 
+### macOS — one command
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wmatt0482/extra/claude/extra-v0/scripts/install-mac.sh | bash
+```
+
+Checks/installs Node, clones to `~/extra`, prompts once for your Todoist
+token, builds, installs a launchd service (starts at login, auto-restarts),
+and opens http://localhost:3000. Re-running updates in place. Uninstall
+instructions are at the top of `scripts/install-mac.sh`.
+
+### Manual
+
 ```bash
 npm install
 cp .env.example .env.local   # add your TODOIST_API_TOKEN

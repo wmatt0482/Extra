@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# extra — one-command installer for macOS
+#
+#   curl -fsSL https://raw.githubusercontent.com/wmatt0482/extra/claude/extra-v0/scripts/install-mac.sh | bash
+#
+# What it does: checks Node, clones/updates the repo to ~/extra, installs
+# deps, asks for your Todoist token (once), builds, installs a launchd
+# service so the app runs at http://localhost:3000 and survives reboots,
+# then opens it. Re-running is safe — it updates in place.
+#
+# Uninstall:
+#   launchctl bootout gui/$(id -u)/com.wmatt.extra 2>/dev/null
+#   rm -f ~/Library/LaunchAgents/com.wmatt.extra.plist && rm -rf ~/extra
+
+set -euo pipefail
+
+REPO="${EXTRA_REPO:-https://github.com/wmatt0482/extra.git}"
+BRANCH="${EXTRA_BRANCH:-claude/extra-v0}"
+DIR="${EXTRA_DIR:-$HOME/extra}"
+PORT="${EXTRA_PORT:-3000}"
+LABEL="com.wmatt.extra"
+
+say()  { printf '\033[1;36m▸ %s\033[0m\n' "$*"; }
+fail() { printf '\033[1;31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
+
+IS_MAC=false
+[ "$(uname -s)" = "Darwin" ] && IS_MAC=true
+
+# ── 1. Node ────────────────────────────────────────────────────────────────
+if command -v node >/dev/null 2>&1; then
+  NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
+  [ "$NODE_MAJOR" -ge 18 ] || fail "Node $NODE_MAJOR is too old (need 18+). Update via https://nodejs.org or 'brew upgrade node'."
+  say "Node $(node -v) ✓"
+elif $IS_MAC && command -v brew >/dev/null 2>&1; then
+  say "Installing Node via Homebrew…"
+  brew install node
+else
+  fail "Node.js not found. Install the LTS from https://nodejs.org then re-run this script."
+fi
+
+# ── 2. Get / update the code ───────────────────────────────────────────────
+if [ -d "$DIR/.git" ]; then
+  say "Updating existing install in $DIR…"
+  git -C "$DIR" fetch origin "$BRANCH"
+  git -C "$DIR" checkout "$BRANCH"
+  git -C "$DIR" pull --ff-only origin "$BRANCH"
+else
+  say "Cloning to $DIR…"
+  git clone --branch "$BRANCH" "$REPO" "$DIR"
+fi
+
+cd "$DIR"
+
+# ── 3. Dependencies ────────────────────────────────────────────────────────
+say "Installing dependencies…"
+npm install --no-fund --no-audit
+
+# ── 4. Todoist token ───────────────────────────────────────────────────────
+if [ ! -f .env.local ] || ! grep -q '^TODOIST_API_TOKEN=.\+' .env.local; then
+  TOKEN="${TODOIST_API_TOKEN:-}"
+  if [ -z "$TOKEN" ]; then
+    echo
+    echo "  Get your token: Todoist → Settings → Integrations → Developer → API token"
+    # `curl | bash` leaves stdin on the pipe — read from the terminal instead.
+    printf '  Paste your Todoist API token: '
+    read -r TOKEN < /dev/tty
+    [ -n "$TOKEN" ] || fail "No token entered."
+  fi
+  {
+    echo "TODOIST_API_TOKEN=$TOKEN"
+    echo
+    echo "# Microsoft Graph (optional) — see docs/GRAPH_SETUP.md"
+    echo "MS_TENANT_ID="
+    echo "MS_CLIENT_ID="
+    echo "MS_REFRESH_TOKEN="
+  } > .env.local
+  say "Saved token to $DIR/.env.local"
+else
+  say "Existing .env.local kept ✓"
+fi
+
+# ── 5. Build ───────────────────────────────────────────────────────────────
+say "Building…"
+npm run build
+
+# ── 6. Run at login via launchd (macOS only) ──────────────────────────────
+if $IS_MAC; then
+  PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+  mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
+  NPM_BIN="$(command -v npm)"
+  cat > "$PLIST" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>cd "$DIR" && PORT=$PORT exec "$NPM_BIN" start</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>$HOME/Library/Logs/extra.log</string>
+  <key>StandardErrorPath</key><string>$HOME/Library/Logs/extra.log</string>
+</dict>
+</plist>
+PLIST
+  launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null || true
+  launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load -w "$PLIST"
+  say "Installed background service ($LABEL) — starts at login, restarts if it dies."
+
+  say "Waiting for the app to come up…"
+  for _ in $(seq 1 30); do
+    curl -sf "http://localhost:$PORT" >/dev/null 2>&1 && break
+    sleep 1
+  done
+  open "http://localhost:$PORT" || true
+  echo
+  say "Done. extra is running at http://localhost:$PORT"
+  echo "   Tip: in Safari, File → Add to Dock to make it a standalone app."
+  echo "   Logs: ~/Library/Logs/extra.log"
+  echo "   Next: Microsoft Graph setup → $DIR/docs/GRAPH_SETUP.md"
+else
+  say "Non-macOS host detected — skipping launchd. Start manually with: cd $DIR && npm start"
+fi
