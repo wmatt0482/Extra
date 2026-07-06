@@ -88,6 +88,10 @@ if $IS_MAC; then
   PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
   mkdir -p "$HOME/Library/LaunchAgents" "$HOME/Library/Logs"
   NPM_BIN="$(command -v npm)"
+  # launchd jobs get a minimal PATH that lacks /usr/local/bin — and npm's
+  # shebang is `#!/usr/bin/env node`, so without node's dir on PATH the job
+  # crash-loops. Bake the real node dir into the job's PATH.
+  NODE_DIR="$(dirname "$(command -v node)")"
   cat > "$PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -98,7 +102,7 @@ if $IS_MAC; then
   <array>
     <string>/bin/sh</string>
     <string>-c</string>
-    <string>cd "$DIR" && PORT=$PORT exec "$NPM_BIN" start</string>
+    <string>cd "$DIR" &amp;&amp; export PATH="$NODE_DIR:/usr/local/bin:/usr/bin:/bin" &amp;&amp; PORT=$PORT exec "$NPM_BIN" start</string>
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -112,16 +116,26 @@ PLIST
   say "Installed background service ($LABEL) — starts at login, restarts if it dies."
 
   say "Waiting for the app to come up..."
+  UP=false
   for _ in $(seq 1 30); do
-    curl -sf "http://localhost:$PORT" >/dev/null 2>&1 && break
+    if curl -sf "http://localhost:$PORT" >/dev/null 2>&1; then UP=true; break; fi
     sleep 1
   done
-  open "http://localhost:$PORT" || true
   echo
-  say "Done. extra is running at http://localhost:$PORT"
-  echo "   Tip: in Safari, File → Add to Dock to make it a standalone app."
-  echo "   Logs: ~/Library/Logs/extra.log"
-  echo "   Next: Microsoft Graph setup → $DIR/docs/GRAPH_SETUP.md"
+  if $UP; then
+    open "http://localhost:$PORT" || true
+    say "Done. extra is running at http://localhost:$PORT"
+    echo "   Tip: in Safari, File → Add to Dock to make it a standalone app."
+    echo "   Logs: ~/Library/Logs/extra.log"
+    echo "   Next: Microsoft Graph setup → $DIR/docs/GRAPH_SETUP.md"
+  else
+    printf '\033[1;31m✗ The service did not come up within 30s.\033[0m\n'
+    echo "   Last log lines (~/Library/Logs/extra.log):"
+    tail -n 8 "$HOME/Library/Logs/extra.log" 2>/dev/null | sed 's/^/   | /' || true
+    echo "   Restart it with: launchctl kickstart -k gui/\$(id -u)/$LABEL"
+    echo "   Then open: http://localhost:$PORT"
+    exit 1
+  fi
 else
   say "Non-macOS host detected — skipping launchd. Start manually with: cd $DIR && npm start"
 fi
