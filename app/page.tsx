@@ -1,3 +1,4 @@
+import Link from "next/link";
 import TaskCard from "@/components/TaskCard";
 import { getPipeline, type PipelineTask, type Section } from "@/lib/todoist";
 import { graphEnabled } from "@/lib/graph";
@@ -69,7 +70,10 @@ function Header() {
   return (
     <header className="app">
       <h1>extra</h1>
-      <span>pick it → it gets drafted → you send it</span>
+      <nav>
+        <span className="active">Triage</span>
+        <Link href="/metrics">Metrics</Link>
+      </nav>
     </header>
   );
 }

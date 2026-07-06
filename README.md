@@ -66,7 +66,11 @@ it locally / on a Tailscale node) rather than leaving it on a public URL.
 
 ## Roadmap
 
-- [ ] Inline draft editing before copy / push to Drafts
+- [x] Inline draft editing before copy / push to Drafts — edits are saved as
+      ✏️ comments in Todoist, so the draft-worker routine can study your
+      original-vs-edited pairs and calibrate its voice over time
+- [x] Metrics (`/metrics`): live pipeline tiles, waiting-ons by counterparty
+      with aging flags, closed-per-week throughput, drafts edited-before-send
+- [x] Snooze (1 day / 1 week) from the triage screen — hides the card until
+      the date arrives and surfaces it in Todoist's Today view
 - [ ] One-tap LinkedIn publish for post ideas
-- [ ] Metrics: aging waiting-ons by counterparty, drafts accepted vs rewritten
-- [ ] Snooze (reschedule task) from the triage screen

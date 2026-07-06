@@ -20,6 +20,7 @@ export interface TodoistTask {
   priority: number;
   created_at: string;
   url: string;
+  due?: { date: string } | null;
 }
 
 export interface TodoistComment {
@@ -55,8 +56,10 @@ export interface PipelineTask {
   todoistUrl: string;
   meta: TaskMeta;
   section: Section;
-  /** Latest ✉️/⏰ draft comment (ready/failed) or the post body (thought-leadership). */
+  /** Latest ✏️/✉️/⏰ draft comment (ready/failed) or the post body (thought-leadership). */
   draft?: string;
+  /** True when the latest draft is Matt's edited version (✏️). */
+  edited?: boolean;
   ageDays: number;
 }
 
@@ -101,9 +104,13 @@ export function parseMeta(description: string): TaskMeta {
   };
 }
 
-/** The routines mark drafts with these prefixes — see morning-brief-v8.md. */
+/** The routines mark drafts ✉️/⏰; extra marks Matt's edits ✏️. */
 export function isDraftComment(content: string): boolean {
-  return content.startsWith("✉️") || content.startsWith("⏰");
+  return (
+    content.startsWith("✉️") ||
+    content.startsWith("⏰") ||
+    content.startsWith("✏️")
+  );
 }
 
 function sectionFor(labels: string[]): Section | null {
@@ -136,8 +143,58 @@ export async function updateLabels(id: string, labels: string[]): Promise<void> 
   });
 }
 
+export async function updateTask(
+  id: string,
+  fields: { labels?: string[]; due_string?: string }
+): Promise<void> {
+  await todoist(`/tasks/${id}`, { method: "POST", body: JSON.stringify(fields) });
+}
+
+export async function postComment(taskId: string, content: string): Promise<void> {
+  await todoist(`/comments`, {
+    method: "POST",
+    body: JSON.stringify({ task_id: taskId, content }),
+  });
+}
+
 export async function closeTask(id: string): Promise<void> {
   await todoist(`/tasks/${id}/close`, { method: "POST" });
+}
+
+export interface CompletedItem {
+  content: string;
+  completed_at: string;
+  labels: string[];
+}
+
+/**
+ * Completed-task history via the Sync API (REST v2 has no completed
+ * endpoint). Callers must tolerate failure — Todoist has been migrating
+ * API surfaces, so metrics degrade gracefully rather than crash.
+ */
+export async function getCompletedHistory(days: number): Promise<CompletedItem[]> {
+  const since = new Date(Date.now() - days * 86_400_000)
+    .toISOString()
+    .slice(0, 19);
+  const res = await fetch(
+    `https://api.todoist.com/sync/v9/completed/get_all?since=${encodeURIComponent(
+      since
+    )}&limit=200&annotate_items=true`,
+    { headers: { Authorization: `Bearer ${token()}` }, cache: "no-store" }
+  );
+  if (!res.ok) throw new Error(`Sync completed/get_all → ${res.status}`);
+  const json = (await res.json()) as {
+    items: {
+      content: string;
+      completed_at: string;
+      item_object?: { labels?: string[] };
+    }[];
+  };
+  return (json.items ?? []).map((i) => ({
+    content: i.content,
+    completed_at: i.completed_at,
+    labels: i.item_object?.labels ?? [],
+  }));
 }
 
 export async function getPipeline(): Promise<PipelineTask[]> {
@@ -145,10 +202,14 @@ export async function getPipeline(): Promise<PipelineTask[]> {
     `/tasks?filter=${encodeURIComponent(PIPELINE_FILTER)}`
   );
 
+  const today = new Date().toISOString().slice(0, 10);
   const tasks: PipelineTask[] = [];
   for (const t of raw) {
     const section = sectionFor(t.labels);
     if (!section) continue;
+    // Snoozed by extra: hidden until the snooze due date arrives.
+    if (t.labels.includes("snoozed") && t.due?.date && t.due.date > today)
+      continue;
     const item: PipelineTask = {
       id: t.id,
       title: t.content,
@@ -178,6 +239,7 @@ export async function getPipeline(): Promise<PipelineTask[]> {
             (c) => t.section === "failed" || isDraftComment(c.content)
           );
         t.draft = draft?.content;
+        t.edited = draft?.content.startsWith("✏️") ?? false;
       })
   );
 
