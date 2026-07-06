@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # extra — one-command installer for macOS
 #
-#   curl -fsSL https://raw.githubusercontent.com/wmatt0482/extra/claude/extra-v0/scripts/install-mac.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/wmatt0482/Extra/claude/extra-v0/scripts/install-mac.sh | bash
 #
 # What it does: checks Node, clones/updates the repo to ~/extra, installs
 # deps, asks for your Todoist token (once), builds, installs a launchd
@@ -14,7 +14,7 @@
 
 set -euo pipefail
 
-REPO="${EXTRA_REPO:-https://github.com/wmatt0482/extra.git}"
+REPO="${EXTRA_REPO:-https://github.com/wmatt0482/Extra.git}"
 BRANCH="${EXTRA_BRANCH:-claude/extra-v0}"
 DIR="${EXTRA_DIR:-$HOME/extra}"
 PORT="${EXTRA_PORT:-3000}"
@@ -32,7 +32,7 @@ if command -v node >/dev/null 2>&1; then
   [ "$NODE_MAJOR" -ge 18 ] || fail "Node $NODE_MAJOR is too old (need 18+). Update via https://nodejs.org or 'brew upgrade node'."
   say "Node $(node -v) ✓"
 elif $IS_MAC && command -v brew >/dev/null 2>&1; then
-  say "Installing Node via Homebrew…"
+  say "Installing Node via Homebrew..."
   brew install node
 else
   fail "Node.js not found. Install the LTS from https://nodejs.org then re-run this script."
@@ -40,19 +40,19 @@ fi
 
 # ── 2. Get / update the code ───────────────────────────────────────────────
 if [ -d "$DIR/.git" ]; then
-  say "Updating existing install in $DIR…"
+  say "Updating existing install in $DIR..."
   git -C "$DIR" fetch origin "$BRANCH"
   git -C "$DIR" checkout "$BRANCH"
   git -C "$DIR" pull --ff-only origin "$BRANCH"
 else
-  say "Cloning to $DIR…"
+  say "Cloning to $DIR..."
   git clone --branch "$BRANCH" "$REPO" "$DIR"
 fi
 
 cd "$DIR"
 
 # ── 3. Dependencies ────────────────────────────────────────────────────────
-say "Installing dependencies…"
+say "Installing dependencies..."
 npm install --no-fund --no-audit
 
 # ── 4. Todoist token ───────────────────────────────────────────────────────
@@ -80,7 +80,7 @@ else
 fi
 
 # ── 5. Build ───────────────────────────────────────────────────────────────
-say "Building…"
+say "Building..."
 npm run build
 
 # ── 6. Run at login via launchd (macOS only) ──────────────────────────────
@@ -111,7 +111,7 @@ PLIST
   launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || launchctl load -w "$PLIST"
   say "Installed background service ($LABEL) — starts at login, restarts if it dies."
 
-  say "Waiting for the app to come up…"
+  say "Waiting for the app to come up..."
   for _ in $(seq 1 30); do
     curl -sf "http://localhost:$PORT" >/dev/null 2>&1 && break
     sleep 1

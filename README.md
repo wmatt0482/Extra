@@ -49,7 +49,7 @@ README documents the full label state machine (`draftable`, `draft-me`,
 ### macOS — one command
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wmatt0482/extra/claude/extra-v0/scripts/install-mac.sh | bash
+curl -fsSL https://raw.githubusercontent.com/wmatt0482/Extra/claude/extra-v0/scripts/install-mac.sh | bash
 ```
 
 Checks/installs Node, clones to `~/extra`, prompts once for your Todoist
