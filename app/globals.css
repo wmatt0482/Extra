@@ -159,6 +159,11 @@ button:disabled {
   color: var(--accent);
 }
 
+.tag.suggested {
+  background: rgba(63, 185, 80, 0.15);
+  color: var(--green);
+}
+
 header.app nav {
   display: flex;
   gap: 0.9rem;

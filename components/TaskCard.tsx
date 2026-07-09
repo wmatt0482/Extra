@@ -82,6 +82,9 @@ export default function TaskCard({
     <div className="card">
       <h3>
         {task.title}
+        {task.suggested && task.section === "pick" && (
+          <span className="tag suggested">suggested</span>
+        )}
         {task.edited && <span className="tag edited">✏️ edited</span>}
         {task.ageDays > 5 && task.section !== "posts" && (
           <span className="tag age">{task.ageDays}d</span>

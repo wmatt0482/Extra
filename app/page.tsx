@@ -9,7 +9,7 @@ export const revalidate = 0;
 
 const SECTIONS: { key: Section; title: string; empty: string }[] = [
   { key: "ready", title: "✍️ Ready to send", empty: "No drafts waiting on you." },
-  { key: "pick", title: "🏷 Pick what to draft", empty: "Nothing draftable right now." },
+  { key: "pick", title: "🏷 Open items — tap Draft it on any", empty: "No open email or meeting items." },
   { key: "queued", title: "⏳ Drafting (next worker run)", empty: "Queue is empty." },
   { key: "failed", title: "⚠️ Needs your input", empty: "No failures." },
   { key: "posts", title: "💡 Post ideas", empty: "No post drafts this week." },

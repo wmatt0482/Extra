@@ -8,13 +8,17 @@
 
 const API = "https://api.todoist.com/api/v1";
 
-// The draft pipeline, as written by the routines:
-//   draftable    → routine says "a draft is feasible here"
+// What extra shows: the full body of the routine's work — every active
+// email/meeting task — plus post ideas. The draft-pipeline labels
+// (draftable/draft-me/draft-ready/draft-failed) sort a task into a section;
+// an untagged email/meeting task is still shown (you can draft/act on any of
+// them), so nothing the routine surfaces is ever hidden.
+//   draftable    → routine says "a draft is feasible here" (a suggestion)
 //   draft-me     → Matt's selection: "write this one" (extra sets this)
 //   draft-ready  → draft posted as a task comment
 //   draft-failed → drafting blocked; comment explains why
 export const PIPELINE_FILTER =
-  "@draftable | @draft-me | @draft-ready | @draft-failed | @thought-leadership | @action-for-matt";
+  "@email | @meeting | @draftable | @draft-me | @draft-ready | @draft-failed | @thought-leadership | @action-for-matt";
 
 export interface TodoistTask {
   id: string;
@@ -57,6 +61,8 @@ export interface PipelineTask {
   todoistUrl: string;
   meta: TaskMeta;
   section: Section;
+  /** Routine flagged this as a good draft candidate (`draftable`). */
+  suggested: boolean;
   /** Latest ✏️/✉️/⏰ draft comment (ready/failed) or the post body (thought-leadership). */
   draft?: string;
   /** True when the latest draft is Matt's edited version (✏️). */
@@ -155,13 +161,22 @@ export function isDraftComment(content: string): boolean {
 
 function sectionFor(labels: string[]): Section | null {
   const has = (l: string) => labels.includes(l);
+  // Pipeline state wins first, most-actionable to least.
   if (has("thought-leadership")) return "posts";
   if (has("draft-ready")) return "ready";
   if (has("draft-failed")) return "failed";
   if (has("draft-me")) return "queued";
-  if (has("draftable")) return "pick";
   if (has("action-for-matt")) return "decide";
+  // Everything else that's real work — tagged draftable or just a plain
+  // email/meeting task the routine pushed — is pickable: you can draft or
+  // act on it. This is why nothing stays hidden.
+  if (has("draftable") || has("email") || has("meeting")) return "pick";
   return null;
+}
+
+/** The routine explicitly suggested this one as a good draft candidate. */
+export function isSuggested(labels: string[]): boolean {
+  return labels.includes("draftable");
 }
 
 function ageDays(createdAt: string): number {
@@ -254,6 +269,7 @@ export async function getPipeline(): Promise<PipelineTask[]> {
       todoistUrl: t.url,
       meta: parseMeta(t.description),
       section,
+      suggested: isSuggested(t.labels),
       ageDays: ageDays(t.created_at),
     };
     if (section === "posts") {
@@ -283,6 +299,8 @@ export async function getPipeline(): Promise<PipelineTask[]> {
   return tasks.sort(
     (a, b) =>
       order.indexOf(a.section) - order.indexOf(b.section) ||
+      // within a section, routine-suggested first, then oldest first
+      Number(b.suggested) - Number(a.suggested) ||
       b.ageDays - a.ageDays
   );
 }
