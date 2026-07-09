@@ -206,16 +206,21 @@ PLIST
 
   echo
   if $APP_OK; then
-    open "$APPS_DIR/extra.app" || true
-    say "Done — extra.app is installed in ~/Applications and opening now."
-    echo "   It's a real app: Dock icon, Cmd-Tab, its own window. Keep it in your Dock."
-    echo "   (The background service keeps its data live; logs: ~/Library/Logs/extra.log)"
-    echo "   Next: Microsoft Graph setup → $DIR/docs/GRAPH_SETUP.md"
+    open "$APPS_DIR/extra.app" || true      # launch it
+    open -R "$APPS_DIR/extra.app" || true   # AND reveal it in Finder so it's findable
+    printf '\033[1;32m════════════════════════════════════════════════════════\033[0m\n'
+    printf '\033[1;32m ✓ extra.app is installed and opening now.\033[0m\n'
+    printf '\033[1;32m════════════════════════════════════════════════════════\033[0m\n'
+    echo "   Location: $APPS_DIR/extra.app"
+    echo "   A Finder window just opened with it selected. Drag its icon to"
+    echo "   your Dock to keep it. Or find it anytime with Spotlight (Cmd-Space,"
+    echo "   type 'extra'). Note: this is ~/Applications, not the main /Applications."
+    echo "   (Background service keeps data live; logs: ~/Library/Logs/extra.log)"
   else
     open "http://localhost:$PORT" || true
-    printf '\033[1;33m▸ Native app build skipped/failed — the web app is running instead.\033[0m\n'
-    say "extra is at http://localhost:$PORT (Safari → File → Add to Dock for an app-like window)."
-    echo "   Re-run this installer to retry the native build."
+    printf '\033[1;33m▸ Native app build did not complete — the web app is running at http://localhost:%s instead.\033[0m\n' "$PORT"
+    echo "   The Electron build step failed (often a network hiccup downloading Electron)."
+    echo "   Just re-run this installer to retry — the rest is already set up."
   fi
 else
   say "Non-macOS host detected — skipping launchd. Start manually with: cd $DIR && npm start"
