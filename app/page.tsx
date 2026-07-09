@@ -1,9 +1,11 @@
 import Link from "next/link";
 import TaskCard from "@/components/TaskCard";
+import AutoRefresh from "@/components/AutoRefresh";
 import { getPipeline, type PipelineTask, type Section } from "@/lib/todoist";
 import { graphEnabled } from "@/lib/graph";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const SECTIONS: { key: Section; title: string; empty: string }[] = [
   { key: "ready", title: "✍️ Ready to send", empty: "No drafts waiting on you." },
@@ -73,6 +75,7 @@ function Header() {
       <nav>
         <span className="active">Triage</span>
         <Link href="/metrics">Metrics</Link>
+        <AutoRefresh />
       </nav>
     </header>
   );

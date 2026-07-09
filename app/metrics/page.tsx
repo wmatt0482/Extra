@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AutoRefresh from "@/components/AutoRefresh";
 import {
   getCompletedHistory,
   getPipeline,
@@ -7,6 +8,7 @@ import {
 } from "@/lib/todoist";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 interface Counterparty {
   name: string;
@@ -172,6 +174,7 @@ function Header() {
       <nav>
         <Link href="/">Triage</Link>
         <span className="active">Metrics</span>
+        <AutoRefresh />
       </nav>
     </header>
   );

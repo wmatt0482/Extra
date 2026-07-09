@@ -175,6 +175,36 @@ header.app nav .active {
   font-weight: 600;
 }
 
+button.refresh {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--muted);
+  border-radius: 8px;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+button.refresh .ic {
+  display: inline-block;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+button.refresh.spin .ic {
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 textarea.editor {
   width: 100%;
   margin-top: 0.6rem;
