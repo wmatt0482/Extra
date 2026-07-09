@@ -10,7 +10,8 @@
 #
 # Uninstall:
 #   launchctl bootout gui/$(id -u)/com.wmatt.extra 2>/dev/null
-#   rm -f ~/Library/LaunchAgents/com.wmatt.extra.plist && rm -rf ~/extra
+#   rm -f ~/Library/LaunchAgents/com.wmatt.extra.plist
+#   rm -rf ~/extra ~/Applications/extra.app
 
 set -euo pipefail
 
@@ -162,26 +163,59 @@ PLIST
       P="$( (ps -o ppid= -p "$P" 2>/dev/null || true) | tr -d ' ')"
     done
   fi
-  echo
-  if $UP && $MANAGED; then
-    open "http://localhost:$PORT" || true
-    say "Done. extra is running at http://localhost:$PORT"
-    echo "   Tip: in Safari, File → Add to Dock to make it a standalone app."
-    echo "   Logs: ~/Library/Logs/extra.log"
-    echo "   Next: Microsoft Graph setup → $DIR/docs/GRAPH_SETUP.md"
-  elif $UP; then
+  if $UP && ! $MANAGED; then
+    echo
     printf '\033[1;31m✗ Port %s answers, but not from the %s service — another instance is in the way.\033[0m\n' "$PORT" "$LABEL"
     echo "   Find it with: lsof -nP -iTCP:$PORT -sTCP:LISTEN"
     echo "   Kill it, then restart the service: launchctl kickstart -k gui/\$(id -u)/$LABEL"
     exit 1
-  else
-    printf '\033[1;31m✗ The service did not come up within 30s.\033[0m\n'
+  fi
+  if ! $UP; then
+    echo
+    printf '\033[1;31m✗ The background service did not come up within 30s.\033[0m\n'
     echo "   Last log lines (~/Library/Logs/extra.log):"
     tail -n 8 "$HOME/Library/Logs/extra.log" 2>/dev/null | sed 's/^/   | /' || true
     echo "   Inspect with: launchctl print gui/\$(id -u)/$LABEL"
     echo "   Restart it with: launchctl kickstart -k gui/\$(id -u)/$LABEL"
-    echo "   Then open: http://localhost:$PORT"
     exit 1
+  fi
+
+  # ── 7. Build the native macOS app (Electron) ─────────────────────────────
+  # Wraps the local server in a real .app: own Dock icon, own window, no
+  # browser. Built locally so it needs no Apple code-signing. If anything
+  # here fails (network, arch), the web app is already running as a fallback.
+  say "Building the native app (downloads Electron once, ~1-2 min)..."
+  APP_OK=false
+  APPS_DIR="$HOME/Applications"
+  ARCH="x64"; [ "$(uname -m)" = "arm64" ] && ARCH="arm64"
+  if ( cd "$DIR/desktop" \
+        && npm install --no-fund --no-audit \
+        && rm -rf "$DIR/desktop/dist" \
+        && npx --yes @electron/packager . extra \
+             --platform=darwin --arch="$ARCH" \
+             --app-bundle-id=com.wmatt.extra.app \
+             --out "$DIR/desktop/dist" --overwrite ); then
+    mkdir -p "$APPS_DIR"
+    rm -rf "$APPS_DIR/extra.app"
+    if cp -R "$DIR/desktop/dist/extra-darwin-$ARCH/extra.app" "$APPS_DIR/extra.app"; then
+      # Strip any quarantine flag so Gatekeeper opens it without a warning.
+      xattr -dr com.apple.quarantine "$APPS_DIR/extra.app" 2>/dev/null || true
+      APP_OK=true
+    fi
+  fi
+
+  echo
+  if $APP_OK; then
+    open "$APPS_DIR/extra.app" || true
+    say "Done — extra.app is installed in ~/Applications and opening now."
+    echo "   It's a real app: Dock icon, Cmd-Tab, its own window. Keep it in your Dock."
+    echo "   (The background service keeps its data live; logs: ~/Library/Logs/extra.log)"
+    echo "   Next: Microsoft Graph setup → $DIR/docs/GRAPH_SETUP.md"
+  else
+    open "http://localhost:$PORT" || true
+    printf '\033[1;33m▸ Native app build skipped/failed — the web app is running instead.\033[0m\n'
+    say "extra is at http://localhost:$PORT (Safari → File → Add to Dock for an app-like window)."
+    echo "   Re-run this installer to retry the native build."
   fi
 else
   say "Non-macOS host detected — skipping launchd. Start manually with: cd $DIR && npm start"

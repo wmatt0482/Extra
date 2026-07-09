@@ -54,8 +54,14 @@ curl -fsSL https://raw.githubusercontent.com/wmatt0482/Extra/claude/extra-v0/scr
 
 Checks/installs Node, clones to `~/extra`, prompts once for your Todoist
 token, builds, installs a launchd service (starts at login, auto-restarts),
-and opens http://localhost:3000. Re-running updates in place. Uninstall
-instructions are at the top of `scripts/install-mac.sh`.
+then **builds a native `extra.app` into `~/Applications`** and opens it. The
+`.app` is a real desktop app — own Dock icon, own window, no browser — built
+locally so it needs no Apple code-signing. Re-running updates in place.
+Uninstall instructions are at the top of `scripts/install-mac.sh`.
+
+Architecture: the launchd service runs the Next.js server on localhost; the
+`.app` (an Electron shell in [`desktop/`](desktop/)) is the native window
+around it and starts the service if it isn't already up.
 
 ### Manual
 
