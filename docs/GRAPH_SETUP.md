@@ -1,5 +1,13 @@
 # Microsoft Graph setup — drafts in your real Outlook Drafts folder
 
+> **This is now optional.** The morning-brief and draft-worker routines place
+> drafts directly into your Outlook Drafts folder using the Microsoft 365
+> connector (no Azure setup needed) — see `routines/README.md`. Set up Graph
+> here only if you also want extra's **To Outlook Drafts** button to push a
+> draft you've *edited inside the app* to Outlook on demand. For the normal
+> flow (routine drafts a selection → it appears in Outlook Drafts), you don't
+> need any of this.
+
 With these three env vars set, extra's **To Outlook Drafts** button creates a
 properly threaded reply draft in your mailbox (visible in Outlook desktop,
 web, and mobile). Creating a draft never sends anything.
