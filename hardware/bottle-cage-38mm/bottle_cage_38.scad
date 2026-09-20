@@ -1,6 +1,9 @@
 // =====================================================================
-//  Clamp-on bicycle water-bottle cage for a 38 mm round tube
-//  Designed for FDM printing in PETG, no supports, Z = tube axis.
+//  Clamp-on bicycle bottle cage for a 38 mm round tube
+//  Sized for big insulated bottles (Owala FreeSip 40 oz and down to a
+//  standard bike bottle) via a terraced floor + an adjustable strap.
+//
+//  FDM, PETG, no supports, printed exactly as exported (Z = tube axis).
 //
 //  Parts (select with -D part="..."):
 //     "cage"      main body: front clamp half + cage        (print 1)
@@ -11,8 +14,12 @@
 //                 10-minute fit check before the long print
 //     "all"       everything laid out for viewing
 //
-//  Everything is parametric. The two numbers worth checking are
-//  tube_d (measure it) and bottle_d (measure your bottle).
+//  HOW IT FITS DIFFERENT BOTTLES
+//    - The floor is terraced. A bottle base up to Ø76 drops into the
+//      inner pocket, up to Ø90 sits on the middle step, up to Ø95 on
+//      the outer step. All three are centred on the same axis.
+//    - The sprung top collar grips the largest bottle directly.
+//    - A 25 mm strap through the slots holds everything smaller.
 // =====================================================================
 
 part = "all";
@@ -24,45 +31,60 @@ $fs = 1.2;
 tube_d       = 38.0;   // measured tube outside diameter
 tube_fit     = 0.8;    // diametral clearance. A rubber shim takes up the rest.
 clamp_wall   = 5.0;    // clamp shell thickness
-clamp_h      = 40.0;   // height of the clamp band along the tube
+clamp_h      = 50.0;   // height of the clamp band along the tube
 part_gap     = 2.0;    // gap from parting plane to each half (4 mm total)
 
 bolt_clear   = 5.6;    // M5 clearance hole
 nut_af       = 8.4;    // M5 hex nut across flats + clearance
-nut_depth    = 4.6;    // M5 nut is 4.0 thick
+nut_depth    = 4.6;    // M5 nut is 4.0 thick, nyloc 5.0 (sits proud, fine)
 bolt_y       = 28.5;   // bolt centres, either side of the tube
 lug_w        = 13.0;   // lug width along Y
 lug_t_rear   = 7.0;    // rear (bolt-head) lug thickness
 lug_t_front  = 8.0;    // front (nut) lug thickness
-bolt_z       = [10, 30];   // bolt heights up the clamp band
+bolt_z       = [12, 38];   // bolt heights up the clamp band
 
-/* --------------------------- bottle ----------------------------- */
-bottle_d     = 74.0;   // standard bike bottle. Measure yours.
-cage_slop    = 3.0;    // cage bore = bottle_d + this; ribs close the gap
+/* --------------------------- bottles ---------------------------- */
+// Largest bottle the cage is built around.
+//   Owala FreeSip 40 oz  91.4 mm     Owala FreeSip 32 oz  87.1 mm
+//   Nalgene 32 oz        90 mm       standard bike bottle 73-74 mm
+bottle_d     = 93.5;   // Owala 40 oz is 91.4 -> ~2 mm total clearance
+cage_slop    = 3.0;    // bore = bottle_d + this; ribs close it back up
 cage_wall    = 3.2;
 wing_wall    = 2.6;    // thinner at the sprung collar so it flexes
-cage_h       = 122.0;
+cage_h       = 132.0;
+
+// Two-level floor. Each terr entry is [locating radius, top-of-step Z];
+// the stepped bore in bottle_bore() leaves the steps behind as material.
+//   inner pocket  Ø78  - standard bike bottle, positively located
+//   main floor         - everything bigger, located by the ribs above it
+drain_r      = 24.0;
+terr         = [[39.0, 5.0]];
+terr_top     = 12.0;
 
 wrap_mid     = 176;    // wrap angle of the main barrel (deg)
-wrap_wing    = 240;    // wrap angle at the bottom cup and the top collar
-cup_z_in     = 18;     // cup height at the barrel edge
-cup_z_out    = 8;      // cup height at the wing tip
-collar_z_in  = 86;     // collar starts here at the barrel edge
-collar_z_out = 112;    //             ... and here at the wing tip
-shelf_h      = 6.0;    // floor the bottle base sits on
-shelf_lip    = 6.25;   // how far the floor reaches under the bottle
-wing_steps   = 32;     // stair steps used to build the sloped wings
+wrap_cup     = 240;    // wrap at the bottom cup
+wrap_collar  = 232;    // wrap at the sprung top collar
+cup_z_in     = 30;     // cup height at the barrel edge
+cup_z_out    = 14;     // cup height at the wing tip
+collar_z_in  = 96;     // collar starts here at the barrel edge
+collar_z_out = 124;    //             ... and here at the wing tip
+wing_steps   = 36;     // stair steps used to build the sloped wings
 
-rib_zmin     = 6;
-rib_zmax     = 104;
+rib_zmin     = 12;
+rib_zmax     = 118;
 rib_r        = 2.2;
-rib_phi      = [0, 77, -77];   // deg from the back of the cage
+rib_phi      = [0, 70, -70];   // deg from the back of the cage
 
 win_phi      = 46;     // window centre, deg from the back
 win_ang      = 24;     // window angular width, deg
-win_zc       = 52;     // window centre height
-win_h        = 54;     // window height
-win_point    = 10;     // 45-deg self-supporting point top and bottom
+win_zc       = 63;     // window centre height
+win_h        = 66;     // window height
+win_point    = 12;     // 45-deg self-supporting point top and bottom
+
+strap_phi    = 80;     // strap slots, deg from the back
+strap_w      = 27;     // slot height in Z, for 25 mm webbing
+strap_t      = 3.6;    // slot width along the arc
+strap_z      = [48, 92];
 
 /* ----------------------- boss adapter pad ----------------------- */
 pad_t        = 12.0;   // pad thickness (blind M5 bosses 11 mm deep)
@@ -152,17 +174,17 @@ module arc_wall(a0, a1, z0, z1, ri, t) {
 module cage_shell() {
     a_mid0 = 180 - wrap_mid/2;
     a_mid1 = 180 + wrap_mid/2;
-    dphi   = (wrap_wing - wrap_mid) / 2;    // extra wrap per side
+    a_cup0 = 180 - wrap_cup/2;
+    a_cup1 = 180 + wrap_cup/2;
+    d_cup  = (wrap_cup    - wrap_mid) / 2;   // extra wrap per side, cup
+    d_col  = (wrap_collar - wrap_mid) / 2;   // extra wrap per side, collar
 
     // main barrel
     arc_wall(a_mid0, a_mid1, 0, cage_h, cage_ir, cage_wall);
 
-    // floor the bottle base sits on
-    arc_wall(180 - wrap_wing/2, 180 + wrap_wing/2, 0, shelf_h,
-             cage_ir - shelf_lip, shelf_lip + cage_wall);
+    // terraced floor blank — the stepped bore in bottle_bore() cuts the steps
+    arc_wall(a_cup0, a_cup1, 0, terr_top, drain_r - 3, cage_or - drain_r + 3);
 
-    // bottom cup wings (top face slopes down and out: no overhang)
-    // and top collar wings (underside slopes up and out at ~50 deg)
     // Each step is a wedge that starts inside the barrel and reaches a
     // little further round than the last, so every piece shares real
     // volume with its neighbours (face-only contact = non-manifold STL).
@@ -172,15 +194,15 @@ module cage_shell() {
         tm = (i + 0.5) / wing_steps;
         zc = lerp(cup_z_in,    cup_z_out,    tm);
         zk = lerp(collar_z_in, collar_z_out, tm);
-        for (a = [[a_mid1 - ov,        a_mid1 + dphi*t1],
-                  [a_mid0 - dphi*t1,   a_mid0 + ov]]) {
-            arc_wall(a[0], a[1], 0,  zc,     cage_ir, cage_wall);
-            arc_wall(a[0], a[1], zk, cage_h, cage_ir, wing_wall);
-        }
+        arc_wall(a_mid1 - ov,          a_mid1 + d_cup*t1, 0,  zc,     cage_ir, cage_wall);
+        arc_wall(a_mid0 - d_cup*t1,    a_mid0 + ov,       0,  zc,     cage_ir, cage_wall);
+        arc_wall(a_mid1 - ov,          a_mid1 + d_col*t1, zk, cage_h, cage_ir, wing_wall);
+        arc_wall(a_mid0 - d_col*t1,    a_mid0 + ov,       zk, cage_h, cage_ir, wing_wall);
     }
 }
 
 // Self-supporting hex window, cut radially through the barrel.
+function win_w() = 2 * cage_ir * sin(win_ang / 2);
 module window_cut(phi) {
     rotate([0, 0, 180 + phi])
         translate([cage_ir - 3, 0, win_zc])
@@ -193,7 +215,16 @@ module window_cut(phi) {
                              [-win_h/2 + win_point, -win_w()/2],
                              [ win_h/2 - win_point, -win_w()/2]]);
 }
-function win_w() = 2 * cage_ir * sin(win_ang / 2);
+
+// Slots for a 25 mm strap. Short horizontal bridge at the top, no support.
+module strap_cuts() {
+    for (z = strap_z) for (s = [1, -1])
+        rotate([0, 0, 180 + s * strap_phi])
+            translate([cage_ir - 3, 0, z])
+                rotate([0, 90, 0])
+                    linear_extrude(height = cage_wall + 8)
+                        square([strap_w, strap_t], center = true);
+}
 
 module cage_ribs() {
     for (phi = rib_phi)
@@ -210,12 +241,12 @@ module cage_ribs() {
 // bore, so the clamp and the cage merge with a full-thickness fillet.
 module web() {
     hull() {
-        translate([15, -14, 0])  cube([60, 28, clamp_h]);
-        translate([22,  -6, clamp_h]) cube([53, 12, 30]);
+        translate([15, -16, 0])  cube([75, 32, clamp_h]);
+        translate([22,  -7, clamp_h]) cube([68, 14, 32]);
     }
     hull() {
-        translate([22, -6, clamp_h]) cube([53, 12, 30]);
-        translate([25, -4, clamp_h + 30]) cube([50, 8, 34]);
+        translate([22, -7, clamp_h]) cube([68, 14, 32]);
+        translate([26, -5, clamp_h + 32]) cube([64, 10, 36]);
     }
 }
 
@@ -223,11 +254,14 @@ module web() {
 module tube_bore() {
     translate([0, 0, -10]) cylinder(h = cage_h + 40, r = clamp_ir);
 }
+
+// Stepped bore: nested cylinders, each starting higher than the last,
+// leave the terraces behind as material.
 module bottle_bore() {
-    // above the floor: full bottle bore
-    translate([cage_x, 0, shelf_h]) cylinder(h = cage_h + 40, r = cage_ir);
-    // at and below the floor: only the drain, so the shelf survives
-    translate([cage_x, 0, -10]) cylinder(h = shelf_h + 10 + eps, r = cage_ir - shelf_lip);
+    translate([cage_x, 0, terr_top]) cylinder(h = cage_h + 40, r = cage_ir);
+    for (t = terr)
+        translate([cage_x, 0, t[1]]) cylinder(h = cage_h + 40, r = t[0]);
+    translate([cage_x, 0, -10]) cylinder(h = cage_h + 40, r = drain_r);
 }
 
 module part_cage() {
@@ -242,7 +276,10 @@ module part_cage() {
             bottle_bore();
             bolt_holes();
             nut_pockets();
-            for (s = [1, -1]) translate([cage_x, 0, 0]) window_cut(s * win_phi);
+            translate([cage_x, 0, 0]) {
+                for (s = [1, -1]) window_cut(s * win_phi);
+                strap_cuts();
+            }
             // keep the parting plane clean
             translate([-200, -200, -10]) cube([200 + part_gap, 400, cage_h + 40]);
         }
@@ -283,7 +320,7 @@ module part_testring() {
                 linear_extrude(height = clamp_h) clamp_front2d();
                 tube_bore(); bolt_holes(); nut_pockets();
             }
-            translate([0, 0, 0]) difference() {
+            difference() {
                 linear_extrude(height = clamp_h) clamp_rear2d();
                 tube_bore(); bolt_holes();
             }
@@ -304,5 +341,5 @@ else if (part == "testring")  part_testring_flat();
 else {
     part_cage();
     part_backplate();
-    translate([0, 130, 0]) part_adapter();
+    translate([0, 150, 0]) part_adapter();
 }
