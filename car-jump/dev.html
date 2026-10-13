@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Ramp Rage Engine Harness</title>
+<style>
+  :root { --panel: rgba(20,18,30,0.78); --fg: #f4f1ff; --accent: #ffd23f; --btn: rgba(255,255,255,0.18); }
+  html, body { margin: 0; height: 100%; background: #111; color: var(--fg); overflow: hidden;
+    font: 12px/1.35 system-ui, -apple-system, sans-serif; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; overscroll-behavior: none; }
+  #stage { position: fixed; inset: 0; touch-action: none; }
+  #panel { position: fixed; top: max(6px, env(safe-area-inset-top)); left: max(6px, env(safe-area-inset-left));
+    background: var(--panel); border-radius: 10px; padding: 8px; max-width: 250px; z-index: 5; }
+  #panel.collapsed .body { display: none; }
+  #panel label { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 3px 0; }
+  #panel select, #panel input[type=number] { font-size: 12px; max-width: 120px; }
+  #panel input[type=range] { width: 100px; }
+  #panel button, #results button { font: 700 12px system-ui; padding: 5px 10px; border-radius: 6px; border: 0;
+    background: var(--accent); color: #222; margin-top: 4px; }
+  #toggle { background: #444 !important; color: #fff !important; margin: 0 !important; }
+  #state, #log { position: fixed; z-index: 4; background: var(--panel); border-radius: 8px; padding: 6px 8px; margin: 0;
+    font: 11px/1.3 ui-monospace, Menlo, monospace; white-space: pre; pointer-events: none; }
+  #state { top: max(6px, env(safe-area-inset-top)); right: max(6px, env(safe-area-inset-right)); }
+  #log { top: 160px; right: max(6px, env(safe-area-inset-right)); max-height: 30vh; overflow: hidden; opacity: 0.85; }
+  .ctl { position: fixed; z-index: 6; width: 86px; height: 86px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.7);
+    background: var(--btn); color: #fff; font: 900 14px system-ui; display: flex; align-items: center; justify-content: center;
+    touch-action: none; text-shadow: 0 1px 2px #000; }
+  .ctl.on { background: rgba(255,210,63,0.55); }
+  #brake { left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom)); }
+  #gas { right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); }
+  #nitro { right: max(26px, env(safe-area-inset-right)); bottom: calc(max(16px, env(safe-area-inset-bottom)) + 100px); width: 66px; height: 66px; }
+  #results { position: fixed; z-index: 7; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(20,18,30,0.9);
+    border: 3px solid var(--accent); border-radius: 14px; padding: 12px 18px; min-width: 220px; display: none; }
+  #results h2 { margin: 0 0 6px; color: var(--accent); font: 900 20px system-ui; }
+  #results pre { margin: 0; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+  body.noui #panel, body.noui #log, body.noui #state { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<div id="panel">
+  <button id="toggle">Harness</button>
+  <div class="body">
+    <label>Car <select id="car"></select></label>
+    <label>Track <select id="track"></select></label>
+    <label>Seed <input id="seed" type="number" value="42"></label>
+    <label>Engine <input id="lv-engine" type="range" min="0" max="10" value="0"><span id="v-engine">0</span></label>
+    <label>Nitro <input id="lv-nitro" type="range" min="0" max="10" value="0"><span id="v-nitro">0</span></label>
+    <label>Suspension <input id="lv-suspension" type="range" min="0" max="10" value="0"><span id="v-suspension">0</span></label>
+    <label>Bonus <input id="lv-bonus" type="range" min="0" max="10" value="0"><span id="v-bonus">0</span></label>
+    <button id="startBtn">Start run</button> <button id="stopBtn">Stop</button>
+  </div>
+</div>
+<pre id="state"></pre>
+<pre id="log"></pre>
+<div id="brake" class="ctl">BRAKE</div>
+<div id="nitro" class="ctl">NITRO</div>
+<div id="gas" class="ctl">GAS</div>
+<div id="results"><h2>Run over</h2><pre id="resText"></pre><button id="retry">Retry</button></div>
+
+<script src="vendor/matter.min.js"></script>
+<script type="module">
+import { createGame } from './src/game/engine.js';
+import { CARS, CAR_BY_ID } from './src/data/cars.js';
+import { TRACKS, TRACK_BY_ID } from './src/data/tracks.js';
+import { resolveStats } from './src/data/upgrades.js';
+
+const q = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+if (q.get('ui') === '0') document.body.classList.add('noui');
+for (const c of CARS) $('car').add(new Option(c.name + ' (' + c.id + ')', c.id));
+for (const t of TRACKS) $('track').add(new Option(t.name + ' (' + t.id + ')', t.id));
+$('car').value = q.get('car') || 'beater';
+$('track').value = q.get('track') || 'canyon';
+$('seed').value = q.get('seed') || '42';
+const UPS = ['engine', 'nitro', 'suspension', 'bonus'];
+for (const u of UPS) {
+  const v = q.get(u) ?? q.get('lvl') ?? '0';
+  $('lv-' + u).value = v; $('v-' + u).textContent = v;
+  $('lv-' + u).addEventListener('input', (e) => { $('v-' + u).textContent = e.target.value; });
+}
+$('toggle').onclick = () => $('panel').classList.toggle('collapsed');
+if (q.get('panel') === '0') $('panel').classList.add('collapsed');
+
+const rr = (window.__rr = { events: [], finished: null, launch: null, game: null });
+const logLines = [];
+function onEvent(evt) {
+  rr.events.push(evt);
+  if (evt.type === 'launch') rr.launch = evt;
+  if (evt.type === 'finish') {
+    rr.finished = evt.summary;
+    const s = evt.summary;
+    $('resText').textContent =
+      `distance   ${s.distance} m\nair time   ${s.airTime} s\nflips      ${s.flips} (F${s.frontFlips} / B${s.backFlips})\n` +
+      `smashed    ${s.smashed}\nmax speed  ${s.maxSpeedKmh} km/h\nlanding    ${s.landing}\nfinish     ${s.finishCrossed}\n` +
+      `cash       dist ${s.cash.distance} + stunts ${s.cash.stunts}\n           + smash ${s.cash.smash} + landing ${s.cash.landing}\n` +
+      `           = $${s.cash.total}\nduration   ${s.durationSec} s`;
+    $('results').style.display = 'block';
+  }
+  if (evt.type !== 'speed' || evt.kmh % 50 < 10) {
+    const { type, ...rest } = evt;
+    logLines.unshift(type + ' ' + (type === 'finish' ? '' : JSON.stringify(rest)));
+    logLines.length = Math.min(logLines.length, 10);
+    $('log').textContent = logLines.join('\n');
+  }
+}
+
+const game = (rr.game = createGame($('c'), { onEvent, reducedMotion: q.get('rm') === '1', simSpeed: Number(q.get('sim')) || 1 }));
+
+function startRun() {
+  const car = CAR_BY_ID[$('car').value];
+  const track = TRACK_BY_ID[$('track').value];
+  const levels = Object.fromEntries(UPS.map((u) => [u, Number($('lv-' + u).value)]));
+  rr.events.length = 0; rr.finished = null; rr.launch = null;
+  $('results').style.display = 'none';
+  game.start({ car, stats: resolveStats(car, levels), track, seed: Number($('seed').value) | 0 });
+}
+$('startBtn').onclick = startRun;
+$('retry').onclick = startRun;
+$('stopBtn').onclick = () => game.stop();
+
+// input: keyboard + multi-touch-safe pointer buttons
+const keys = { gas: false, brake: false, nitro: false };
+const ptr = { gas: new Set(), brake: new Set(), nitro: new Set() };
+function sync() {
+  const s = { gas: keys.gas || ptr.gas.size > 0, brake: keys.brake || ptr.brake.size > 0, nitro: keys.nitro || ptr.nitro.size > 0 };
+  for (const k in s) $(k).classList.toggle('on', s[k]);
+  game.setInput(s);
+}
+const KEYMAP = { ArrowLeft: 'brake', ArrowRight: 'gas', ' ': 'gas', Space: 'gas', Shift: 'nitro', ShiftLeft: 'nitro', ShiftRight: 'nitro' };
+addEventListener('keydown', (e) => { const k = KEYMAP[e.key] || KEYMAP[e.code]; if (k) { keys[k] = true; sync(); e.preventDefault(); } });
+addEventListener('keyup', (e) => { const k = KEYMAP[e.key] || KEYMAP[e.code]; if (k) { keys[k] = false; sync(); e.preventDefault(); } });
+addEventListener('blur', () => { keys.gas = keys.brake = keys.nitro = false; sync(); });
+for (const k of ['gas', 'brake', 'nitro']) {
+  const el = $(k);
+  el.addEventListener('pointerdown', (e) => { el.setPointerCapture(e.pointerId); ptr[k].add(e.pointerId); sync(); e.preventDefault(); });
+  const up = (e) => { ptr[k].delete(e.pointerId); sync(); };
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('lostpointercapture', up);
+}
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+
+setInterval(() => {
+  const s = game.getState();
+  $('state').textContent = Object.entries(s).map(([k, v]) => `${k.padEnd(13)} ${typeof v === 'number' ? Math.round(v * 100) / 100 : v}`).join('\n');
+}, 100);
+
+if (q.get('autostart') !== '0') startRun();
+</script>
+</body>
+</html>
