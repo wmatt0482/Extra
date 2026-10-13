@@ -1,0 +1,81 @@
+// Vehicle definitions. Units: meters (world), kilograms (mass scale is relative).
+// `body` is a polygon in car-local meters, origin at the chassis center, +x forward, +y UP
+// (the engine flips y for canvas/Matter as needed). `wheels` are offsets from the same origin.
+// `base` stats are the level-0 stats; see upgrades.js for how levels scale them.
+
+export const CARS = [
+  {
+    id: 'beater',
+    name: 'Rusty',
+    tagline: 'It starts. Usually.',
+    price: 0,
+    tier: 1,
+    color: '#d9823b',
+    accent: '#7a3f12',
+    body: [[-1.9, -0.35], [1.9, -0.35], [1.95, 0.15], [1.2, 0.3], [0.7, 0.85], [-0.9, 0.9], [-1.6, 0.4], [-1.95, 0.2]],
+    wheels: [{ x: -1.25, y: -0.45, r: 0.36 }, { x: 1.25, y: -0.45, r: 0.36 }],
+    base: { power: 1.0, launchBoost: 1.0, nitroPower: 1.0, nitroCapacity: 1.0, suspension: 1.0, coinMult: 1.0, mass: 1.0, grip: 1.0 },
+  },
+  {
+    id: 'rally',
+    name: 'Gravel Fox',
+    tagline: 'Light, grippy, loves a jump.',
+    price: 1500,
+    tier: 2,
+    color: '#3b7dd9',
+    accent: '#f2f2f2',
+    body: [[-1.95, -0.3], [1.95, -0.3], [2.0, 0.2], [1.3, 0.35], [0.8, 0.9], [-0.8, 0.95], [-1.5, 0.45], [-2.0, 0.25]],
+    wheels: [{ x: -1.3, y: -0.45, r: 0.38 }, { x: 1.3, y: -0.45, r: 0.38 }],
+    base: { power: 1.25, launchBoost: 1.15, nitroPower: 1.1, nitroCapacity: 1.2, suspension: 1.3, coinMult: 1.1, mass: 0.95, grip: 1.3 },
+  },
+  {
+    id: 'muscle',
+    name: 'Thunderline',
+    tagline: 'Big block, bigger air.',
+    price: 6000,
+    tier: 3,
+    color: '#1f1f24',
+    accent: '#e8c547',
+    body: [[-2.3, -0.3], [2.3, -0.3], [2.35, 0.15], [1.6, 0.3], [0.9, 0.8], [-0.9, 0.85], [-1.8, 0.4], [-2.35, 0.25]],
+    wheels: [{ x: -1.5, y: -0.45, r: 0.4 }, { x: 1.5, y: -0.45, r: 0.4 }],
+    base: { power: 1.6, launchBoost: 1.4, nitroPower: 1.4, nitroCapacity: 1.3, suspension: 1.2, coinMult: 1.25, mass: 1.25, grip: 1.1 },
+  },
+  {
+    id: 'monster',
+    name: 'Bigfoot Jr.',
+    tagline: 'Lands on anything. Crushes most of it.',
+    price: 15000,
+    tier: 4,
+    color: '#2faa4f',
+    accent: '#0d4d20',
+    body: [[-2.1, 0.0], [2.1, 0.0], [2.15, 0.5], [1.2, 0.6], [0.6, 1.25], [-1.0, 1.3], [-1.6, 0.7], [-2.15, 0.55]],
+    wheels: [{ x: -1.35, y: -0.3, r: 0.7 }, { x: 1.35, y: -0.3, r: 0.7 }],
+    base: { power: 1.7, launchBoost: 1.5, nitroPower: 1.5, nitroCapacity: 1.5, suspension: 2.2, coinMult: 1.4, mass: 1.6, grip: 1.6 },
+  },
+  {
+    id: 'super',
+    name: 'Vantablack GT',
+    tagline: 'Aerodynamic enough to cheat gravity.',
+    price: 40000,
+    tier: 5,
+    color: '#111114',
+    accent: '#ff3d3d',
+    body: [[-2.3, -0.3], [2.3, -0.3], [2.4, 0.05], [1.7, 0.2], [0.8, 0.65], [-0.7, 0.7], [-1.9, 0.35], [-2.4, 0.2]],
+    wheels: [{ x: -1.5, y: -0.42, r: 0.38 }, { x: 1.5, y: -0.42, r: 0.38 }],
+    base: { power: 2.3, launchBoost: 2.0, nitroPower: 2.1, nitroCapacity: 1.9, suspension: 1.3, coinMult: 1.6, mass: 1.1, grip: 1.4 },
+  },
+  {
+    id: 'tank',
+    name: 'Warthog',
+    tagline: 'Armored. Airborne. Unreasonable.',
+    price: 100000,
+    tier: 6,
+    color: '#6b705c',
+    accent: '#2b2d22',
+    body: [[-2.6, -0.2], [2.6, -0.2], [2.4, 0.5], [1.2, 0.6], [0.9, 1.2], [-0.9, 1.2], [-1.2, 0.6], [-2.4, 0.5]],
+    wheels: [{ x: -1.7, y: -0.4, r: 0.5 }, { x: 0.0, y: -0.4, r: 0.5 }, { x: 1.7, y: -0.4, r: 0.5 }],
+    base: { power: 2.6, launchBoost: 2.3, nitroPower: 2.6, nitroCapacity: 2.4, suspension: 3.0, coinMult: 2.0, mass: 2.4, grip: 2.0 },
+  },
+];
+
+export const CAR_BY_ID = Object.fromEntries(CARS.map((c) => [c.id, c]));
