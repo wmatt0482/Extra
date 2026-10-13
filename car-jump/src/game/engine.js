@@ -30,11 +30,21 @@ export const TUNING = {
   brake: 7.5,
   rollRestore: 0.9, // fraction of solver speed loss given back while rolling on wheels
   airDrag: 0.0005, // * v^2
-  rollBase: 2.1, rollGrav: 1.8, rollLin: 0.005, // ground rolling resistance (m/s^2)
+  rollBase: 3.0, rollGrav: 1.8, rollLin: 0.005, // ground rolling resistance (m/s^2)
   nitroAcc: 14, // m/s^2 * sqrt(nitroPower), fading toward nitroVMax
   nitroVMax: 60, nitroVMaxPer: 12, // m/s + per nitroPower
   nitroSeconds: 1.2, // tank = nitroCapacity * 1.2 s of burn
-  flipAlpha: 26, flipMax: 10, airAngDamp: 0.9,
+  // Air control. BRAKE = back flip at full torque; GAS = front flip at gasTorque (milder), with a
+  // landing-timing assist so a held GAS still comes down wheels-first; no flip input = auto-level.
+  // Every hold ramps its torque in over holdRamp s so a lingering thumb doesn't snap the car round.
+  flipAlpha: 26, flipMax: 10,
+  gasTorque: 0.6, gasFlipMax: 7, holdRamp: 0.25, holdRampMin: 0.3,
+  levelKp: 9, levelKd: 5, levelMaxAcc: 16, levelLead: 0.25,
+  stickWindow: 0.85, stickMinW: 2.2, stickClear: 1.2,
+  flipGrace: 1.0, // rad short of 360° that still counts as a flip when landed wheels-down
+  // Stunt cash: flipCash per flip, + flipCombo per extra consecutive flip in one flight, capped.
+  flipCash: 150, flipCombo: 50, flipComboCap: 250,
+  suspImpact: 12, // landing impact threshold = suspImpact * suspension (perfect < thr, good < 1.5 thr)
   launchKick: 0.12, // speed * (1 + launchKick * launchBoost) at the lip
   smashMin: 2.0,
   slowSpeed: 0.6, slowTime: 1.2, maxRun: 120,
@@ -187,8 +197,11 @@ export function createGame(canvas, opts = {}) {
       const b = Bodies.rectangle((p.x + nx * d) * S, -(gy + ny * d) * S, def.w * S, sh * S, {
         isStatic: true, angle: -ang,
         collisionFilter: { category: CAT_PROP, mask: CAT_CAR },
-        label: 'prop', plugin: { rr: { t: 'prop', prop: rec, seg: j } },
+        label: 'prop',
       });
+      // set after create: Matter deep-copies `plugin` options, which would give every segment its own
+      // clone of `rec` (multi-segment walls then paid out once per segment and never stopped drawing)
+      b.plugin.rr = { t: 'prop', prop: rec, seg: j };
       rec.bodies.push(b);
     }
     return rec;
@@ -314,7 +327,7 @@ export function createGame(canvas, opts = {}) {
       nitroTank: Math.max(0.1, stats.nitroCapacity * T.nitroSeconds), nitroFuel: 0, nitroOn: false,
       slowT: 0, upsideT: 0, noContactT: 0, groundT: 0, started: false,
       timeScale: 1, slowmoT: 0, shake: 0,
-      contacts: [], wheelAgo: [], assistT: 0, wheelsDown: 0, chassisDown: false, touchTerrain: false, touchRamp: false, nrm: null,
+      contacts: [], wheelAgo: [], assistT: 0, airDir: 0, holdT: 0, wheelsDown: 0, chassisDown: false, touchTerrain: false, touchRamp: false, nrm: null,
       chunks: new Map(), props: [], smashedIds: new Set(),
       debris: [], particles: [], popups: [], pendingRemove: [], pendingSpawn: [], slowFactor: 1,
       summary: null, endReason: null,
@@ -564,7 +577,13 @@ export function createGame(canvas, opts = {}) {
     // ground: keep the car settling onto its wheels; right after a wheels-down landing the
     // "suspension" soaks the hit (no bounce, quick levelling)
     // Small hops over bumps (no player rotation in this phase) also get a gentle self-levelling.
-    if (r.phase === 'ground' && !r.chassisDown) {
+    if (r.phase === 'ground' && !wheelsDown && !r.chassisDown && r.noContactT > 0.06) {
+      // airborne off a crest but not a real flight: same auto-level as a released flip, so a big
+      // car pitching over a bump comes down on its wheels instead of nosing in
+      const imp = predictImpact(r, 2);
+      const w = levelStep(r, r.omega, Math.atan(r.course.groundSlope(imp ? imp.x : r.com.x + r.com.vx * 0.3)), dt, 1);
+      setOmegaAll(r, w);
+    } else if (r.phase === 'ground' && !r.chassisDown) {
       const sl = r.course.groundSlope(r.com.x + 1);
       let diff = r.ang - Math.atan(sl);
       diff = ((((diff + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
@@ -579,14 +598,7 @@ export function createGame(canvas, opts = {}) {
         if (vn > 0.5) addVelAll(r, -(vn - 0.5) * nx, -(vn - 0.5) * ny);
       }
     }
-    if (r.phase === 'air') {
-      const dir = (input.brake ? 1 : 0) - (input.gas ? 1 : 0); // brake = nose up = backflip (CCW)
-      let w = r.omega;
-      if (dir) w += dir * T.flipAlpha * dt;
-      else w *= Math.max(0, 1 - T.airAngDamp * dt);
-      w = clamp(w, -T.flipMax, T.flipMax);
-      if (w !== r.omega) setOmegaAll(r, w);
-    }
+    if (r.phase === 'air') airControl(r, dt);
     r.nitroOn = false;
     if (input.nitro && r.nitroFuel > 0) {
       r.nitroFuel = Math.max(0, r.nitroFuel - dt);
@@ -615,6 +627,74 @@ export function createGame(canvas, opts = {}) {
     }
   }
 
+  // Seconds until the car's centre reaches wheel height above the surface on a ballistic path, and
+  // the x where that happens. null if it is not coming down within `maxT`.
+  function predictImpact(r, maxT, clear = 0.2) {
+    const g = 9.81 * r.gMul, h = 0.03;
+    let x = r.com.x, y = r.com.y, vx = r.com.vx, vy = r.com.vy;
+    for (let t = 0; t <= maxT; t += h) {
+      if (y - r.course.surfaceY(x) <= r.restAlt + clear && vy < 0) return { t, x };
+      x += vx * h; y += vy * h - 0.5 * g * h * h; vy -= g * h;
+    }
+    return null;
+  }
+  const wrapPi = (a) => ((((a + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+
+  // PD step toward the upright attitude nearest to where the current spin is heading.
+  function levelStep(r, w, target, dt, gain) {
+    const lead = r.ang + w * T.levelLead;
+    const goal = lead - wrapPi(lead - target);
+    const a = clamp(-(r.ang - goal) * T.levelKp * gain - w * T.levelKd * Math.sqrt(gain), -T.levelMaxAcc * gain, T.levelMaxAcc * gain);
+    return w + a * dt;
+  }
+
+  function airControl(r, dt) {
+    const dir = (input.brake ? 1 : 0) - (input.gas ? 1 : 0); // brake = nose up = backflip (CCW)
+    if (dir !== r.airDir) { r.airDir = dir; r.holdT = 0; } else r.holdT += dt;
+    const ramp = Math.min(1, T.holdRampMin + (1 - T.holdRampMin) * (r.holdT / T.holdRamp));
+    // integrate from the spin we commanded last tick: the soft wheel joints bleed a little spin every
+    // solver step, which otherwise caps a held flip far below flipMax
+    let w = r.airW != null && Math.abs(r.airW - r.omega) < 2 ? r.airW : r.omega;
+    if (dir > 0) {
+      w += T.flipAlpha * ramp * dt;
+      w = clamp(w, -T.flipMax, T.flipMax);
+    } else if (dir < 0) {
+      // front flip: milder torque and spin cap; near touchdown, time the spin to land wheels-down
+      const imp = predictImpact(r, T.stickWindow, T.stickClear); // aim to be level a bit early
+      let stick = false;
+      if (imp && imp.t > 0.04) {
+        const target = Math.atan(r.course.groundSlope(imp.x));
+        const err = wrapPi(r.ang - target);
+        if (Math.abs(err) < 0.6 && imp.t < 0.3) {
+          w = levelStep(r, w, target, dt, 1.6); // last moment and nearly flush: plant it
+          stick = true;
+        } else {
+          const need = err < 0 ? err + TAU : err; // CW rotation still to go to reach upright
+          const cands = [need, need + TAU].map((d) => d / imp.t).filter((v) => v >= T.stickMinW && v <= T.flipMax);
+          if (cands.length) {
+            const want = Math.min(...cands); // slowest spin that still lands it: most forgiving
+            const cur = -w;
+            const acc = T.flipAlpha * 1.6 * dt;
+            w = -(cur + clamp(want - cur, -acc, acc));
+            stick = true;
+          }
+        }
+      }
+      if (!stick) {
+        w -= T.flipAlpha * T.gasTorque * ramp * dt;
+        if (w < -T.gasFlipMax) w = Math.min(-T.gasFlipMax, w + T.flipAlpha * dt);
+      }
+      w = clamp(w, -T.flipMax, T.flipMax);
+    } else {
+      // no flip input: settle toward the nearest wheels-down attitude for where it will land
+      const imp = predictImpact(r, 3);
+      const target = Math.atan(r.course.groundSlope(imp ? imp.x : r.com.x + r.com.vx * 0.5));
+      w = levelStep(r, w, target, dt, 1);
+    }
+    r.airW = w;
+    if (w !== r.omega) setOmegaAll(r, w);
+  }
+
   function logic(r, dt, pre) {
     // wheels skip on fast slopes; treat a wheel as down if it touched in the last 0.12 s
     let wd = 0;
@@ -639,7 +719,7 @@ export function createGame(canvas, opts = {}) {
         emit({ type: 'speed', kmh: Math.round(kmh) });
         if (r.launched && kmh > r.launchKmh + 4 && r.realT - r.lastSpeedPopup > 1.5 && !r.popups.some((p) => p.slot === 'cash' || p.slot === 'speed')) {
           r.lastSpeedPopup = r.realT;
-          popup(r, `NEW MAX ${Math.round(kmh)} km/h`, 0.5, 0.31, '#7cf2ff', 0.62, false, 1.2, 'speed');
+          popup(r, `NEW MAX ${Math.round(kmh)} km/h`, 0.5, 0.46, '#7cf2ff', 0.62, false, 1.2, 'speed');
         }
       }
     }
@@ -703,7 +783,7 @@ export function createGame(canvas, opts = {}) {
     if (!r.finishCrossed && r.com.x >= r.course.finish) {
       r.finishCrossed = true;
       emit({ type: 'finishLine' });
-      popup(r, 'FINISH LINE!', 0.5, 0.2, '#ffd23f', 1.2, false, 1.8, 'big');
+      popup(r, 'FINISH LINE!', 0.5, 0.36, '#ffd23f', 1.2, false, 1.8, 'big');
       if (r.phase !== 'done') slowmo(r);
     }
 
@@ -728,6 +808,9 @@ export function createGame(canvas, opts = {}) {
     r.flightRot = 0;
     r.flipMark = 0;
     r.flightFlips = 0;
+    r.airDir = null; // a hold carried into the flight ramps in from launch
+    r.holdT = 0;
+    r.airW = null;
   }
 
   function launch(r) {
@@ -738,7 +821,7 @@ export function createGame(canvas, opts = {}) {
     r.launched = true;
     r.launchKmh = r.speed * 3.6;
     emit({ type: 'launch', speedKmh: Math.round(r.launchKmh) });
-    popup(r, `LAUNCH! ${Math.round(r.launchKmh)} km/h`, 0.5, 0.2, '#ffffff', 0.9, false, 1.3, 'big');
+    popup(r, `LAUNCH! ${Math.round(r.launchKmh)} km/h`, 0.5, 0.36, '#ffffff', 0.9, false, 1.3, 'big');
     for (let k2 = 0; k2 < 10; k2++) {
       particle(r, 'dust', r.com.x - 2 + Math.random() * 2, r.course.rampY(0) - 0.2, -2 + Math.random() * 4, Math.random() * 2,
         0.5 + Math.random() * 0.5, '#ffffff', 0.6 + Math.random() * 0.4, 0.6);
@@ -752,13 +835,13 @@ export function createGame(canvas, opts = {}) {
     r.flightFlips++;
     r.flips++;
     if (dir === 'front') r.frontFlips++; else r.backFlips++;
-    const cash = 150 + 50 * (r.flightFlips - 1);
+    const cash = T.flipCash + Math.min(T.flipComboCap, T.flipCombo * (r.flightFlips - 1));
     r.flipCash += cash;
     emit({ type: 'flip', dir, count: r.flightFlips });
     const n = r.flightFlips;
     const word = n < FLIP_WORDS.length ? FLIP_WORDS[n] : `${n}x `;
-    popup(r, `${word}${dir === 'front' ? 'FRONTFLIP' : 'BACKFLIP'}!`, 0.5, 0.2, dir === 'front' ? '#ffb13d' : '#ff5ec4', 1.05, false, 1.3, 'big');
-    popup(r, `+$${Math.round(cash * r.stats.coinMult)}`, 0.5, 0.3, '#ffe14a', 0.7, false, 1.3, 'cash');
+    popup(r, `${word}${dir === 'front' ? 'FRONTFLIP' : 'BACKFLIP'}!`, 0.5, 0.36, dir === 'front' ? '#ffb13d' : '#ff5ec4', 1.05, false, 1.3, 'big');
+    popup(r, `+$${Math.round(cash * r.stats.coinMult)}`, 0.5, 0.46, '#ffe14a', 0.7, false, 1.3, 'cash');
   }
 
   function land(r, pre) {
@@ -767,13 +850,20 @@ export function createGame(canvas, opts = {}) {
     const impact = Math.max(0, -(pre.vx * n.nx + pre.vy * n.ny));
     const ux = -Math.sin(r.ang), uy = Math.cos(r.ang);
     const ang = (Math.acos(clamp(ux * n.nx + uy * n.ny, -1, 1)) * 180) / Math.PI;
-    const thr = 6 + 4 * st.suspension;
+    const thr = T.suspImpact * st.suspension; // m/s into the ground the springs soak up cleanly
     const wheelsDown = r.wheelsDown > 0;
+    r.lastLand = { ang: Math.round(ang), impact: Math.round(impact * 10) / 10, thr, wheelsDown, omega: Math.round(r.omega * 10) / 10 };
     let q;
     if (ang > 100 || (!wheelsDown && ang > 70)) q = 'crash';
     else if (ang < 20 && impact < thr) q = 'perfect';
     else if (ang < 35 && impact < thr * 1.5) q = 'good';
     else q = 'rough';
+    // a flip that is landed wheels-down counts even if the slope saved the last few degrees
+    // (lip kicks up ~15°, landings are often downhill: a flush backflip is only ~310° of rotation)
+    if (q !== 'crash') {
+      const rem = r.flightRot - r.flipMark;
+      if (Math.abs(rem) >= TAU - T.flipGrace) { r.flipMark += Math.sign(rem) * TAU; flip(r, rem > 0 ? 'front' : 'back'); }
+    }
     r.phase = 'ground';
     r.noContactT = 0;
     r.landing = q;
@@ -783,24 +873,28 @@ export function createGame(canvas, opts = {}) {
       redirectAlongGround(r, pre, q === 'perfect' ? 1 : q === 'good' ? 0.96 : 0.85);
       setOmegaAll(r, clamp(r.omega, -1.5, 1.5)); // wheels down: the spin dies in the springs
     }
-    if (!r.firstLanding) { r.firstLanding = q; r.groundT = 0; }
-    const bonus = q === 'perfect' ? 300 : q === 'good' ? 100 : 0;
+    const jump = !r.firstLanding; // the landing bonus is paid for the big jump only, not for later hops
+    if (jump) { r.firstLanding = q; r.groundT = 0; }
+    const bonus = !jump ? 0 : q === 'perfect' ? 300 : q === 'good' ? 100 : 0;
     r.landingRaw += bonus;
     emit({ type: 'land', quality: q, impact: Math.round(impact * 10) / 10 });
     const cx = r.com.x, cy = r.com.y;
     const pay = Math.round(bonus * st.coinMult);
-    if (q === 'perfect') {
-      popup(r, 'PERFECT LANDING!', 0.5, 0.2, '#7dff6b', 1.1, false, 1.6, 'big');
-      popup(r, `+$${pay}`, 0.5, 0.3, '#ffe14a', 0.75, false, 1.3, 'cash');
+    if (!jump && (q === 'perfect' || q === 'good')) {
+      // a hop over a crest: acknowledge it, no bonus and no slow-mo
+      if (r.airTime > 0.8) popup(r, q === 'perfect' ? 'CLEAN HOP' : 'NICE HOP', 0.5, 0.36, '#c6ff8a', 0.8, false, 1.1, 'big');
+    } else if (q === 'perfect') {
+      popup(r, 'PERFECT LANDING!', 0.5, 0.36, '#7dff6b', 1.1, false, 1.6, 'big');
+      popup(r, `+$${pay}`, 0.5, 0.46, '#ffe14a', 0.75, false, 1.3, 'cash');
       slowmo(r);
     } else if (q === 'good') {
-      popup(r, 'GOOD LANDING', 0.5, 0.2, '#c6ff8a', 0.95, false, 1.3, 'big');
-      popup(r, `+$${pay}`, 0.5, 0.3, '#ffe14a', 0.7, false, 1.3, 'cash');
+      popup(r, 'GOOD LANDING', 0.5, 0.36, '#c6ff8a', 0.95, false, 1.3, 'big');
+      popup(r, `+$${pay}`, 0.5, 0.46, '#ffe14a', 0.7, false, 1.3, 'cash');
     } else if (q === 'rough') {
-      popup(r, 'ROUGH LANDING', 0.5, 0.2, '#ffb36b', 0.9, false, 1.3, 'big');
+      popup(r, 'ROUGH LANDING', 0.5, 0.36, '#ffb36b', 0.9, false, 1.3, 'big');
       sparks(r, cx, cy - 0.6, 14);
     } else {
-      popup(r, 'CRASH!', 0.5, 0.2, '#ff4d4d', 1.3, false, 1.6, 'big');
+      popup(r, 'CRASH!', 0.5, 0.36, '#ff4d4d', 1.3, false, 1.6, 'big');
       r.slowFactor *= 0.62;
       sparks(r, cx, cy, 24);
       const g = r.geom;
@@ -1099,7 +1193,7 @@ export function createGame(canvas, opts = {}) {
       if (!r) return null;
       return { x: r.com.x, y: r.com.y, vx: r.com.vx, vy: r.com.vy, ang: r.ang, omega: r.omega, phase: r.phase, bodies: Composite.allBodies(r.world).length,
         debris: r.debris.length, particles: r.particles.length, props: r.props.length, chunks: r.chunks.size, endReason: r.endReason, launchKmh: r.launchKmh, wd: r.wheelsDown, cd: r.chassisDown,
-        timeScale: r.timeScale, cam: { ...cam }, perf: { ...perf } };
+        timeScale: r.timeScale, lastLand: r.lastLand || null, cam: { ...cam }, perf: { ...perf } };
     },
   };
 }

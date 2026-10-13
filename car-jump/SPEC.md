@@ -10,9 +10,13 @@ this game must match.
 Core run loop
 1. Each run starts at the top of a giant ramp. Hold GAS to roll down and build speed. At the lip the car launches; the
    engine stat adds a launch kick ("boost at the end of the ramp").
-2. In the air: hold GAS = rotate forward (front flip), hold BRAKE = rotate backward (back flip), hold NITRO = thrust along
-   the car's nose (limited tank, refills a bit each run from the nitro stat). Flips are counted per full 360° and
-   award points. Brief slow-motion (0.35x for ~0.4s) at the lip and at a perfect landing for drama.
+2. In the air: hold BRAKE = back flip (full torque), hold GAS = front flip (~60% torque, lower spin cap, and a
+   landing-timing assist near touchdown so a GAS held all run still comes down wheels-first), no flip input = the car
+   auto-levels toward the slope it will land on. Every hold ramps its torque in over 0.25 s so a thumb still on GAS
+   from the ramp doesn't snap the car round. Hold NITRO = thrust along the car's nose (limited tank, refills a bit
+   each run from the nitro stat). Flips are counted per full 360° (a flip landed wheels-down within ~57° of 360°
+   also counts, since the lip kicks up and landings are downhill) and award points. Brief slow-motion (0.35x for
+   ~0.4s) at the lip and at a perfect landing for drama.
 3. Landing: if the car lands wheels-down with low angle and the impact is below the suspension threshold → "Perfect
    landing" (bonus) or "Good landing". Otherwise the car tumbles (it keeps going but loses speed, parts/sparks fly).
    A landing on the roof is a crash: the run keeps going as a tumble until the car stops.
@@ -120,9 +124,11 @@ Events delivered to `onEvent(evt)` (all objects have `type`):
 
 Cash formula (engine computes it; keep these numbers so the economy agent can balance against them):
 - distance: `2 × meters`
-- stunts: `150` per flip, +`50` per extra consecutive flip in the same flight, air time `10/s`
-- smash: per-prop `cash` from `OBSTACLE_KINDS`
-- landing: perfect `300`, good `100`, rough `0`, crash `0`
+- stunts: `150` per flip, +`50` per extra consecutive flip in the same flight capped at +`250` (flip k pays
+  `150 + min(250, 50·(k−1))`), air time `10/s`
+- smash: per-prop `cash` from `OBSTACLE_KINDS` (a multi-segment wall/billboard pays once)
+- landing: for the jump's landing only (the run's first landing, = `summary.landing`): perfect `300`, good `100`,
+  rough `0`, crash `0`. Later hops over crests pay nothing.
 - all × `stats.coinMult`, rounded.
 
 Rendering is entirely the engine's job (background parallax, terrain, ramp, props, car, particles, popups, slow-mo
@@ -144,8 +150,9 @@ tint). The UI layers HTML on top for HUD and buttons. The engine must not add it
   `segments` splits walls/billboards into stacked pieces. A prop is "smashed" when hit above a speed threshold; it
   then becomes debris (scattered small bodies with a short lifetime) and pays cash.
 - Flip counting: integrate chassis rotation while airborne; each ±2π completes a flip; sign gives front/back.
-- Landing quality: at first contact after `phase==='air'`, read impact (vertical speed) and angle: angle < 20° and
-  impact < suspension threshold → perfect; angle < 35° → good; upright but hard → rough; upside-down → crash.
+- Landing quality: at first contact after `phase==='air'`, read impact (speed into the ground) and angle against the
+  ground normal. Threshold `thr = 12 m/s × stats.suspension`: angle < 20° and impact < thr → perfect; angle < 35° and
+  impact < 1.5·thr → good; upright but hard → rough; upside-down (or > 70° without wheels down) → crash.
 - Run end: speed < 0.6 m/s for 1.2 s, or airborne but upside-down & resting, or fell out of world. Also a hard cap
   at 120 s.
 - Camera: follows car with lookahead in the velocity direction; zoom out with speed and altitude so the ground is
@@ -162,6 +169,10 @@ tint). The UI layers HTML on top for HUD and buttons. The engine must not add it
   done flag), active goals, settings. A corrupt save must not break boot (fall back to defaults).
 - Starting cash: 0. Economy target: the first track's finish (400 m) should be reachable after ~6-10 runs of upgrades
   on the starter car; the last car should take a few hours of play, not days. Tune costs in upgrades.js if needed.
+  Tuned with `tools/economy-sim.mjs` (real engine, scripted player): upgrade cost = `200 × 2.15^(tier−1) × 1.55^level`
+  (rounded), car prices 7.5k / 18k / 24k / 75k / 280k → first 400 m finish ≈ run 6-10, Gravel Fox ≈ 12, Thunderline
+  ≈ 30, Bigfoot ≈ 60, Vantablack ≈ 120, Warthog ≈ 240.
+- First run: a one-time coach overlay (three tips) holds the run until tapped; `save.seen.coach` remembers it.
 - Until the real engine lands, build against `src/meta/mockEngine.js` that implements the contract with a fake
   run (emits plausible events over ~6 s) so every screen can be exercised. `src/main.js` must import the real
   `./game/engine.js`, with the mock only used when `?mock=1` is in the URL.

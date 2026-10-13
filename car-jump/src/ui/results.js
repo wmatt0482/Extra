@@ -7,13 +7,13 @@ import { $, h, money, fmt1 } from './dom.js';
 
 const LANDING = { perfect: 'Perfect', good: 'Good', rough: 'Rough', crash: 'Crash' };
 
-// The bonus is paid for the first landing of the run, while summary.landing is the last one; label the
-// row from the cash actually paid so "Crash · $100" never shows up.
-function landingHint(cash, mult, last) {
+// The landing bonus is paid for the jump's landing (summary.landing); label the row from the cash
+// actually paid so a mismatched engine can never show "Crash · $100".
+function landingHint(cash, mult, first) {
   const base = Math.round((cash || 0) / mult);
   if (base >= 250) return 'Perfect';
   if (base >= 80) return 'Good';
-  return LANDING[last] || 'none';
+  return LANDING[first] || 'none';
 }
 
 export function createResults(app) {

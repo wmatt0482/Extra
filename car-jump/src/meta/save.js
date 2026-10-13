@@ -35,6 +35,7 @@ export function defaultSave() {
     daily: { date: '', done: false, attempts: 0 },
     goals: { list: [], rolled: 0 },
     settings: { sound: true, music: true, reducedMotion: false },
+    seen: { coach: false },  // one-time UI hints already shown
   };
 }
 
@@ -95,6 +96,9 @@ export function normalize(raw) {
     s.settings.music = bool(raw.settings.music, true);
     s.settings.reducedMotion = bool(raw.settings.reducedMotion, false);
   }
+  // players who already have runs on the clock don't need the first-run coach
+  const seen = raw.seen && typeof raw.seen === 'object' ? raw.seen : {};
+  s.seen.coach = bool(seen.coach, s.records.runs > 0);
   return s;
 }
 

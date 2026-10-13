@@ -1,0 +1,6 @@
+{
+  "name": "ramp-rage",
+  "private": true,
+  "type": "module",
+  "description": "Static web app; no build step. package.json only marks src/ as ES modules for the Node tools."
+}

@@ -53,6 +53,8 @@ async function boot() {
   let input = { gas: false, brake: false, nitro: false };
   let screen = 'title';
   let paused = false, stopFallback = 0;
+  let coaching = false;    // first-run coach overlay is up (run is held until it is dismissed)
+  let lastResult = null;   // for smoke tests
 
   const app = {
     save,
@@ -112,6 +114,7 @@ async function boot() {
     $('#hud').hidden = !inRun;
     $('#controls').hidden = !inRun;
     $('#backdrop').hidden = inRun || name === 'results';
+    if (!inRun) hideCoach();
     if (screens[name]) screens[name].show(arg);
     refreshCash();
   }
@@ -186,7 +189,33 @@ async function boot() {
     }
     cancelAnimationFrame(hudRaf);
     hudRaf = requestAnimationFrame(hudLoop);
+    if (!daily && !save.seen.coach) showCoach();
   }
+
+  // ---------- first-run coach ----------
+  function showCoach() {
+    coaching = true;
+    try { game.pause(); } catch (_) {}
+    controls.enable(false);
+    $('#coach').hidden = false;
+  }
+  function hideCoach() {
+    if (!coaching) return;
+    coaching = false;
+    $('#coach').hidden = true;
+  }
+  function dismissCoach(e) {
+    if (!coaching) return;
+    if (e) e.preventDefault();
+    hideCoach();
+    save.seen.coach = true;
+    app.persist();
+    if (run && !paused) {
+      controls.enable(true);
+      try { game.resume(); } catch (_) {}
+    }
+  }
+  $('#coach').addEventListener('pointerdown', dismissCoach);
 
   function hudLoop() {
     if (!run) return;
@@ -234,7 +263,7 @@ async function boot() {
       else if (r.def.check(summary)) { save.daily.done = true; dailyReward = earn(save, r.def.reward); }
     }
     app.persist();
-    const result = {
+    const result = lastResult = {
       trackId: r.trackId, daily: r.daily, carId: r.carId, stats: r.stats, summary, bank, goals,
       dailyReward, dailyAlreadyDone, dailyGoalText: r.def && r.def.goal.text, dailyValue: r.def && r.def.value(summary),
     };
@@ -247,7 +276,7 @@ async function boot() {
 
   // ---------- pause ----------
   function pause() {
-    if (!run || paused) return;
+    if (!run || paused || coaching) return;   // the coach already holds the run
     paused = true;
     try { game.pause(); } catch (_) {}
     controls.enable(false);
@@ -285,10 +314,14 @@ async function boot() {
     }, 600);
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { pause(); Audio.suspend(); } else Audio.resume();
+    if (document.hidden) { pause(); Audio.suspend(); app.persist(); } else Audio.resume();
   });
+  // iOS may kill a backgrounded Home Screen app without another event: pause and save on pagehide too
+  window.addEventListener('pagehide', () => { pause(); app.persist(); });
   window.addEventListener('keydown', (e) => {
+    if (coaching && (e.code === 'Enter' || e.code === 'Space')) { dismissCoach(e); return; }
     if (e.code === 'Escape' || e.code === 'KeyP') {
+      if (coaching) { dismissCoach(e); return; }
       if (run) { paused ? resume() : pause(); e.preventDefault(); }
       else if (!$$('.modal').every((m) => m.hidden)) closePanel();
     }
@@ -324,7 +357,7 @@ async function boot() {
   document.documentElement.classList.toggle('reduced-motion', save.settings.reducedMotion);
   go('title');
   app.persist();
-  window.__rampRage = { app, get game() { return game; }, get run() { return run; } }; // debugging / smoke tests
+  window.__rampRage = { app, get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; } }; // debugging / smoke tests
   registerSW();
 }
 

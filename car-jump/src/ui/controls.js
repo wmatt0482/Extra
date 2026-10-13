@@ -34,9 +34,10 @@ export function createControls(root, onChange) {
     for (const n of names) if (held[n].delete(id)) changed = true;
     if (changed) update();
   }
-  const onUp = (e) => release(e.pointerId);
-  window.addEventListener('pointerup', onUp, true);
-  window.addEventListener('pointercancel', onUp, true);
+  window.addEventListener('pointerup', (e) => release(e.pointerId), true);
+  // a cancelled pointer means the system took the touch (edge swipe, Control Centre, palm rejection);
+  // don't leave GAS/NITRO stuck on: release everything and let the player press again
+  window.addEventListener('pointercancel', () => clearPointers(), true);
   // iOS can cancel every touch at once (notification banner, system gesture)
   window.addEventListener('touchcancel', () => clearPointers(), true);
   window.addEventListener('blur', () => reset());

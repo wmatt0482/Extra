@@ -56,9 +56,10 @@ export function createGame(canvas, opts = {}) {
   }
 
   function stuntCash(r) {
-    // Flip k of a flight pays 150 + 50·(k-1) (same reading as the real engine); one flight in the mock; 10/s air.
-    const f = r.flips;
-    return f * 150 + 25 * f * Math.max(0, f - 1) + r.airTime * 10;
+    // Flip k of a flight pays 150 + min(250, 50·(k-1)) (same as the real engine); one flight in the mock; 10/s air.
+    let flips = 0;
+    for (let k = 1; k <= r.flips; k++) flips += 150 + Math.min(250, 50 * (k - 1));
+    return flips + r.airTime * 10;
   }
   function cashParts(r) {
     const m = r.stats.coinMult;

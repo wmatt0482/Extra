@@ -1,7 +1,7 @@
 // Ramp Rage service worker: cache-first app shell so the game works offline after the first load.
 // Same-origin files are served from cache and refreshed in the background (stale-while-revalidate),
 // so a deploy shows up on the next launch. Bump VERSION to force a clean cache.
-const VERSION = 'ramp-rage-v1.0.0';
+const VERSION = 'ramp-rage-v1.1.0';
 const SHELL = [
   './',
   'index.html',

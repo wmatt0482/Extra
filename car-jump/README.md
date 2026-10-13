@@ -21,8 +21,21 @@ Open <http://localhost:8080/>. Useful URL flags:
 | `?mock=1` | Use the scripted mock engine (`src/meta/mockEngine.js`) instead of the real physics engine. |
 | `?nosw=1` | Do not register the service worker (handy while editing files). |
 
+### Controls
+
+| Button | On the ramp / ground | In the air |
+| --- | --- | --- |
+| **GAS** (bottom right) | accelerate | front flip (milder; times the spin so a held GAS still lands on the wheels) |
+| **BRAKE** (bottom left) | brake | back flip (full torque, crisp) |
+| **NITRO** (above GAS) | thrust | thrust along the nose |
+| *nothing held* | coast | the car levels out for the landing |
+
+Each flip input ramps in over a quarter second, so a thumb left on GAS from the ramp doesn't flip the car
+instantly. Release a flip early and the auto-level finishes it wheels-down. GAS and NITRO can be held at the same
+time (separate touches). The first run shows a one-time "How to jump" coach; tap to start.
+
 Keyboard for desktop testing: **←** brake / back flip, **→** or **Space** gas / front flip,
-**Shift** nitro, **Esc** or **P** pause.
+**Shift** nitro, **Esc** or **P** pause (**Enter**/**Space** also dismisses the coach).
 
 If `src/game/engine.js` is missing or fails to load, the shell logs a console warning and falls back
 to the mock engine, so the menus always work.
@@ -30,9 +43,16 @@ to the mock engine, so the menus always work.
 ### Tests and tools
 
 ```sh
-node tools/ui-smoke.mjs     # walks every screen at 844×390 and 390×844, checks cash math + layout
-node tools/make-icons.mjs   # re-renders icons/*.png from the inline SVG
+node tools/ui-smoke.mjs      # walks every screen at 844×390 and 390×844 (mock engine), checks cash math + layout
+node tools/engine-smoke.mjs  # real engine in dev.html: hold-GAS first run, back flip, pause/stop, maxed moon run
+node tools/economy-sim.mjs   # plays the real engine headlessly (Node, no browser) through the whole meta game
+node tools/make-icons.mjs    # re-renders icons/*.png from the inline SVG
 ```
+
+`economy-sim.mjs` options: `--runs N`, `--verbose` (one line per run: distance, landing, cash, purchases),
+`--seed-jitter S` (random start delay for human-like variance), `--policy flip|hold` (scripted back flip + release,
+or GAS held the whole run). It reports runs-to-first-finish per track and runs-to-own per car; re-run it after
+changing prices in `src/data/*.js` or cash/physics tuning in `src/game/engine.js` (`TUNING`).
 
 Both use the globally installed Playwright (Chromium in `/opt/pw-browsers`). The smoke test starts
 `python3 -m http.server 8080` itself if nothing is listening, and writes screenshots to
@@ -80,8 +100,12 @@ car-jump/
       rng.js              FNV hash + mulberry32
       mockEngine.js       contract-compatible fake engine (~6 s scripted run)
     ui/                   garage, tracks, results, panels, HUD, controls, icons, car preview drawing
+  dev.html                engine harness (keyboard + on-screen buttons, no meta)
+  package.json            marks the ES modules for the Node tools only (no dependencies, no build)
   tools/
     ui-smoke.mjs          Playwright UI walk-through + layout audit
+    engine-smoke.mjs      Playwright run of the real engine through dev.html
+    economy-sim.mjs       headless real-engine economy simulation (Node)
     make-icons.mjs        icon renderer
 ```
 

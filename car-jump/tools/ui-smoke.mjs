@@ -1,7 +1,7 @@
 // UI smoke test for the Ramp Rage shell (meta screens + mock engine).
 //   cd car-jump && python3 -m http.server 8080 &      (the script starts one itself if needed)
 //   SHOTS_DIR=/some/dir node tools/ui-smoke.mjs
-// Walks title → garage → buy upgrade → track select → run → results (checks the cash math) → retry
+// Walks title → garage → buy upgrade → track select → first-run coach → run → results (checks the cash math) → retry
 // → pause/end run → daily → goals/records/settings → reset, at 844×390 and 390×844 (DPR 2) with
 // simulated iPhone safe-area insets. Fails on console errors, horizontal overflow, controls under
 // the home indicator, or tiny tap targets. Screenshots every screen.
@@ -192,6 +192,12 @@ async function runLayout(browser, layout) {
   save = await readSave(page);
   await page.click('[data-track="canyon"]');
   await page.waitForSelector(visibleSel('#hud'));
+  // first-run coach: shown once, holds the run until tapped, remembered in the save
+  await page.waitForSelector(visibleSel('#coach'));
+  await shot(page, layout, '05b-coach');
+  await layoutAudit(page, layout.insets, 'coach');
+  await page.click('#coach');
+  check(await page.$eval('#coach', (e) => e.hidden) && (await readSave(page)).seen.coach === true, 'first-run coach dismissed by tap and saved');
   // multi-touch: hold GAS and NITRO with two different pointers
   await page.evaluate(() => {
     const fire = (sel, type, id) => document.querySelector(sel).dispatchEvent(new PointerEvent(type, { pointerId: id, bubbles: true, isPrimary: id === 11, pointerType: 'touch' }));
@@ -223,6 +229,7 @@ async function runLayout(browser, layout) {
   save = await readSave(page);
   await page.click('#res-retry');
   await page.waitForSelector(visibleSel('#hud'));
+  check(await page.$eval('#coach', (e) => e.hidden), 'coach not shown again');
   await page.waitForTimeout(1500);
   await page.click('#btn-pause');
   await page.waitForSelector(visibleSel('#panel-pause'));

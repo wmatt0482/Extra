@@ -70,7 +70,10 @@ try {
     await page.screenshot({ path: path.join(SHOTS, '3-results.png') });
     const res = await rr(page, () => ({ s: window.__rr.finished, launch: window.__rr.launch, types: [...new Set(window.__rr.events.map((e) => e.type))] }));
     console.log('starter/canyon/L0:', JSON.stringify({ launchKmh: res.launch.speedKmh, ...res.s }));
-    check(res.s.distance > 80, `starter canyon distance ${res.s.distance} m > 80 m`);
+    // first-run feel: a new player holds GAS the whole time; GAS in the air is a milder front flip with a
+    // landing-timing assist, so this should come down wheels-first and roll on (target 150-220 m)
+    check(res.s.distance >= 150 && res.s.distance <= 270, `starter canyon hold-GAS distance ${res.s.distance} m in 150..270`);
+    check(['perfect', 'good'].includes(res.s.landing), `starter canyon hold-GAS landing is good/perfect (${res.s.landing})`);
     check(res.launch.speedKmh >= 80 && res.launch.speedKmh <= 120, `starter launch speed ${res.launch.speedKmh} km/h in 80..120`);
     check(['launch', 'land', 'finish', 'speed'].every((t) => res.types.includes(t)), `events seen: ${res.types.join(',')}`);
     const c = res.s.cash;
@@ -93,6 +96,10 @@ try {
     const flips = await rr(page, () => window.__rr.events.filter((e) => e.type === 'flip'));
     console.log('brake-in-air flips:', JSON.stringify(flips));
     check(flips.length > 0 && flips[0].dir === 'back', 'holding BRAKE in the air fires a back flip');
+    // released right after the flip: auto-level should bring it down on its wheels
+    await page.waitForFunction(() => window.__rr.events.some((e) => e.type === 'land'), null, { timeout: 15000 });
+    const land = await rr(page, () => window.__rr.events.find((e) => e.type === 'land'));
+    check(land.quality !== 'crash', `released back flip lands wheels-down (${land.quality})`);
     // pause / resume / stop contract
     const api = await page.evaluate(async () => {
       const g = window.__rr.game;

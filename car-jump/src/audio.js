@@ -122,8 +122,11 @@ function createAudio() {
     unlock() {
       if (!AC) return;
       if (!init()) return;
+      // called on every pointerdown: cheap once running; also recovers iOS's 'interrupted' state
+      // (call, Siri, app switch), which can only be resumed from inside a gesture
+      if (unlocked && ctx.state === 'running') return;
       try {
-        if (ctx.state !== 'running') ctx.resume();
+        if (ctx.state !== 'running') { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); }
         // a 1-sample silent buffer started inside the gesture fully unlocks iOS
         const s = ctx.createBufferSource(); s.buffer = ctx.createBuffer(1, 1, 22050); s.connect(ctx.destination); s.start(0);
       } catch (_) { /* ignore */ }
