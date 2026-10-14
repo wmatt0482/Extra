@@ -280,8 +280,8 @@ export function createParentZone(app) {
 
     return [
       h('div', { class: 'pz-active' },
-        h('div', { class: 'label' }, list.sample ? 'Sample list' : list.name, list.sample ? h('span', { class: 'tag' }, 'sample') : null),
-        h('div', { class: 'sub' }, list.sample ? 'Playable right away. Save this week\'s words below to replace it.' : `${list.words.length} words${list.pattern ? ` · pattern of the week: ${list.pattern}` : ''} · saved ${fmtDate(list.createdAt)}`)),
+        h('div', { class: 'label' }, list.name, list.sample ? h('span', { class: 'tag' }, 'built in') : null),
+        h('div', { class: 'sub' }, list.sample ? `${list.words.length} long-o words, ready to play. Paste next week's words below when they arrive; this list moves to the archive.` : `${list.words.length} words${list.pattern ? ` · pattern of the week: ${list.pattern}` : ''} · saved ${fmtDate(list.createdAt)}`)),
       h('label', { class: 'pz-label', for: 'pz-words' }, 'Words of the week, one per line', count),
       h('div', { class: 'pz-help' }, 'Optional extras after a word, separated by " | ": syllables with slashes, then a sentence. Example: neighbor | neigh/bor | My neighbor has a dog. Letters, apostrophes, hyphens and spaces only; up to 40 words.'),
       h('div', { class: 'pz-help', id: 'pz-help-sayas' }, 'If the voice says a word wrong, add a 4th part: how to say it. Example: read | | I read a book yesterday. | red. Your child never sees it; the tiles still show "read". Letters, apostrophes, hyphens and spaces, up to 40 characters.'),

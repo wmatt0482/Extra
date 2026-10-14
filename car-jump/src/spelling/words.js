@@ -187,22 +187,25 @@ export function letterName(ch) {
   return String(ch).toUpperCase();
 }
 
-// The sample list ships so the game is playable before a parent adds a list (SPEC v3). Sentences make
-// homophones (weather / whether) unambiguous when spoken.
+// The built-in list ships so the game is playable before a parent adds a list (SPEC v3). This is the
+// week of Oct 13, 2026: long-o words (o, o_e, oa, ow). Sentences make homophones unambiguous when spoken.
+export const SAMPLE_LIST_NAME = 'Week of Oct 13 (built in)';
+export const SAMPLE_PATTERN = 'o';
+export const SAMPLE_VERSION = 2;
 export const SAMPLE_WORDS = [
-  { word: 'because', syllables: ['be', 'cause'], sentence: 'I wore a coat because it was cold.' },
-  { word: 'beautiful', syllables: ['beau', 'ti', 'ful'], sentence: 'The sunset was beautiful.' },
-  { word: 'favorite', syllables: ['fa', 'vor', 'ite'], sentence: 'Pizza is my favorite food.' },
-  { word: 'friend', syllables: null, sentence: 'My friend sits next to me at lunch.' },
-  { word: 'neighbor', syllables: ['neigh', 'bor'], sentence: 'My neighbor has a dog.' },
-  { word: 'enough', syllables: ['e', 'nough'], sentence: 'Do we have enough chairs?' },
-  { word: 'through', syllables: null, sentence: 'The car drove through the tunnel.' },
-  { word: 'thought', syllables: null, sentence: 'I thought about the question.' },
-  { word: 'weather', syllables: ['weath', 'er'], sentence: 'The weather is sunny today.' },
-  { word: 'whether', syllables: ['wheth', 'er'], sentence: 'I do not know whether it will rain.' },
-  { word: 'library', syllables: ['li', 'brar', 'y'], sentence: 'We borrowed books from the library.' },
-  { word: 'different', syllables: ['dif', 'fer', 'ent'], sentence: 'Each snowflake is different.' },
-  { word: 'question', syllables: ['ques', 'tion'], sentence: 'Raise your hand to ask a question.' },
-  { word: 'straight', syllables: null, sentence: 'Draw a straight line.' },
-  { word: 'especially', syllables: ['es', 'pe', 'cial', 'ly'], sentence: 'I like fruit, especially apples.' },
+  { word: 'bolt', syllables: null, sentence: 'The bolt holds the wheel on the car.' },
+  { word: 'mold', syllables: null, sentence: 'There was green mold on the old bread.' },
+  { word: 'shadow', syllables: ['shad', 'ow'], sentence: 'My shadow follows me on a sunny day.' },
+  { word: 'flow', syllables: null, sentence: 'Water will flow down the hill.' },
+  { word: 'lower', syllables: ['low', 'er'], sentence: 'Please lower the window.' },
+  { word: 'blown', syllables: null, sentence: 'The leaves were blown across the yard.' },
+  { word: 'quote', syllables: null, sentence: 'She read a quote from the book.' },
+  { word: 'mole', syllables: null, sentence: 'A mole dug a tunnel under the garden.' },
+  { word: 'stone', syllables: null, sentence: 'I skipped a stone across the pond.' },
+  { word: 'stove', syllables: null, sentence: 'Dad cooked soup on the stove.' },
+  { word: 'goal', syllables: null, sentence: 'He kicked the ball into the goal.' },
+  { word: 'groan', syllables: null, sentence: 'I heard him groan when he stubbed his toe.' },
+  { word: 'load', syllables: null, sentence: 'We will load the boxes into the truck.' },
+  { word: 'roast', syllables: null, sentence: 'We will roast marshmallows at the campfire.' },
+  { word: 'chose', syllables: null, sentence: 'She chose the red crayon.' },
 ];

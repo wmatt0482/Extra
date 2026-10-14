@@ -32,7 +32,7 @@ import { createTitleHero } from './ui/titleHero.js';
 import { createPlayers, drawAvatar } from './ui/players.js';
 import { createParentZone } from './ui/parentZone.js';
 
-const VERSION = '3.1.0';
+const VERSION = '3.1.1';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;

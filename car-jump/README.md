@@ -65,7 +65,7 @@ puts it all on the clipboard for a teacher. **Why this works** lists the researc
 4. **Friday Test** (title button, any day): all words, no hints. Then one **Mega Run** with launch power
    `60 % + 40 % × score` and $150 per correct word. The parent **Report** shows pretest vs test.
 
-Until a parent saves a list, a 15-word **Sample list** (with syllables and sentences) is active and labeled on the
+Until a parent saves a list, a 15-word **built-in list** (this week's long-o words, with sentences) is active and labeled on the
 title and in the Parent Zone.
 
 ## The spell panel ("Spell to Launch")

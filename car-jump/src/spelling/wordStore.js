@@ -5,7 +5,7 @@ import {
   MISSION_SIZE, applyQualifier, applyResult, applyReview, applyTest, buildMission, dayKey, isMastered, isNew,
   needsLook, newRecord, noteSpelled, pickNext, status,
 } from './scheduler.js';
-import { SAMPLE_WORDS, cleanSayAs, normalizePattern, normalizeWord, isValidWord } from './words.js';
+import { SAMPLE_WORDS, SAMPLE_LIST_NAME, SAMPLE_PATTERN, SAMPLE_VERSION, cleanSayAs, normalizePattern, normalizeWord, isValidWord } from './words.js';
 
 export const WORDS_VERSION = 1;
 export const SAMPLE_ID = 'sample';
@@ -15,7 +15,7 @@ export const DEFAULT_OPTIONS = { rate: 'normal', newPerDay: 5, includeReview: tr
 export const WORDS_PER_RACE = [1, 2, 3, 4];
 
 function sampleList(now) {
-  return { id: SAMPLE_ID, name: 'Sample list', createdAt: now, archivedAt: 0, pattern: '', sample: true, words: SAMPLE_WORDS.map((w) => ({ ...w })) };
+  return { id: SAMPLE_ID, name: SAMPLE_LIST_NAME, createdAt: now, archivedAt: 0, pattern: SAMPLE_PATTERN, sample: true, sampleVersion: SAMPLE_VERSION, words: SAMPLE_WORDS.map((w) => ({ ...w })) };
 }
 
 export function defaultWords(now = Date.now()) {
@@ -58,6 +58,8 @@ export function normalizeWordsData(raw, now = Date.now()) {
     if (!l || typeof l !== 'object' || typeof l.id !== 'string' || !Array.isArray(l.words)) return null;
     const words = l.words.map(cleanWordEntry).filter(Boolean);
     if (!words.length) return null;
+    // the built-in list follows the shipped version (a new week's words replace a stored older copy)
+    if (l.sample) return { ...sampleList(num(l.createdAt, now)), archivedAt: num(l.archivedAt, 0) };
     return { id: l.id, name: str(l.name, 'Word list'), createdAt: num(l.createdAt, now), archivedAt: num(l.archivedAt, 0), pattern: normalizePattern(l.pattern), sample: !!l.sample, words };
   }).filter(Boolean);
   if (!d.lists.length) d.lists = [sampleList(now)];
