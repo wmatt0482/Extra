@@ -95,7 +95,8 @@ function onEvent(evt) {
       `distance   ${s.distance} m\nair time   ${s.airTime} s\nflips      ${s.flips} (F${s.frontFlips} / B${s.backFlips})\n` +
       `smashed    ${s.smashed}\nmax speed  ${s.maxSpeedKmh} km/h\nlanding    ${s.landing}\nfinish     ${s.finishCrossed}\n` +
       `cash       dist ${s.cash.distance} + stunts ${s.cash.stunts}\n           + smash ${s.cash.smash} + landing ${s.cash.landing}\n` +
-      `           = $${s.cash.total}\nduration   ${s.durationSec} s`;
+      `           + combo ${s.cash.combo} + air ${s.cash.air}\n           = $${s.cash.total}   rating ${s.rating}\n` +
+      `combo ${s.bestCombo}  booms ${s.explosions}  rings ${s.rings}  coins ${s.coins}  kickers ${s.rejumps}  alt ${s.maxAltitude} m\nduration   ${s.durationSec} s`;
     $('results').style.display = 'block';
   }
   if (evt.type !== 'speed' || evt.kmh % 50 < 10) {
@@ -114,8 +115,11 @@ function startRun() {
   const levels = Object.fromEntries(UPS.map((u) => [u, Number($('lv-' + u).value)]));
   rr.events.length = 0; rr.finished = null; rr.launch = null;
   $('results').style.display = 'none';
-  game.start({ car, stats: resolveStats(car, levels), track, seed: Number($('seed').value) | 0 });
+  const best = q.get('best') != null ? Number(q.get('best')) : null;
+  const shake = q.get('shake') != null ? Number(q.get('shake')) : 1;
+  game.start({ car, stats: resolveStats(car, levels), track, seed: Number($('seed').value) | 0, bestDistance: best, shake });
 }
+rr.restart = startRun; // tests: restart + pause in the same task for deterministic stepping
 $('startBtn').onclick = startRun;
 $('retry').onclick = startRun;
 $('stopBtn').onclick = () => game.stop();
@@ -144,7 +148,7 @@ document.addEventListener('contextmenu', (e) => e.preventDefault());
 
 setInterval(() => {
   const s = game.getState();
-  $('state').textContent = Object.entries(s).map(([k, v]) => `${k.padEnd(13)} ${typeof v === 'number' ? Math.round(v * 100) / 100 : v}`).join('\n');
+  $('state').textContent = Object.entries(s).map(([k, v]) => `${k.padEnd(13)} ${typeof v === 'number' ? Math.round(v * 100) / 100 : v && typeof v === 'object' ? JSON.stringify(v) : v}`).join('\n');
 }, 100);
 
 if (q.get('autostart') !== '0') startRun();

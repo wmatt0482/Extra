@@ -102,7 +102,7 @@ function pathPoly(ctx, pts) {
 
 // Draw the chassis in its local frame. Caller sets transform so that data coords map to world.
 // lw = outline width in world units.
-export function drawChassis(ctx, g, lw, t, nitroOn) {
+export function drawChassis(ctx, g, lw, t, nitroOn, lost = null) {
   // nitro flame (behind body)
   if (nitroOn) {
     const [ex, ey] = g.exhaust;
@@ -164,6 +164,28 @@ export function drawChassis(ctx, g, lw, t, nitroOn) {
   ctx.moveTo(dx, g.beltY);
   ctx.lineTo(dx + 0.05, g.minY + h * 0.12);
   ctx.stroke();
+  // v2 damage: missing door panel / bumper show the dark shell underneath
+  if (lost) {
+    ctx.lineWidth = lw * 0.6;
+    ctx.strokeStyle = '#111';
+    if (lost.door) {
+      const x0 = g.winBox[0] + 0.05, x1 = dx;
+      ctx.fillStyle = '#3a3640';
+      ctx.beginPath();
+      ctx.moveTo(x0, g.beltY - 0.02); ctx.lineTo(x1, g.beltY - 0.02); ctx.lineTo(x1 + 0.04, g.minY + h * 0.14);
+      ctx.lineTo(x0 + 0.12, g.minY + h * 0.1); ctx.lineTo(x0 - 0.04, g.minY + h * 0.3);
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#5c5662';
+      ctx.fillRect(x0 + 0.1, g.minY + h * 0.3, x1 - x0 - 0.2, 0.06);
+    }
+    if (lost.bumper) {
+      ctx.fillStyle = '#2b2830';
+      ctx.beginPath();
+      ctx.moveTo(g.maxX + 0.1, g.minY - 0.1); ctx.lineTo(g.maxX - 0.75, g.minY - 0.1); ctx.lineTo(g.maxX - 0.6, g.minY + 0.14);
+      ctx.lineTo(g.maxX - 0.35, g.minY + 0.08); ctx.lineTo(g.maxX - 0.15, g.minY + 0.22); ctx.lineTo(g.maxX + 0.1, g.minY + 0.18);
+      ctx.closePath(); ctx.fill();
+    }
+  }
   ctx.restore();
 
   // window + driver
@@ -226,7 +248,7 @@ export function drawChassis(ctx, g, lw, t, nitroOn) {
 }
 
 // Wheel at origin, rotation handled by caller. r in meters.
-export function drawWheel(ctx, r, lw, accent) {
+export function drawWheel(ctx, r, lw, accent, noHub = false) {
   ctx.beginPath();
   ctx.arc(0, 0, r, 0, Math.PI * 2);
   ctx.fillStyle = '#23222b';
@@ -240,6 +262,22 @@ export function drawWheel(ctx, r, lw, accent) {
   ctx.strokeStyle = '#3a3946';
   ctx.lineWidth = lw * 0.5;
   ctx.stroke();
+  if (noHub) {
+    // hubcap knocked off: bare dark rim and lug nuts
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#4a4752';
+    ctx.fill();
+    ctx.lineWidth = lw * 0.6;
+    ctx.strokeStyle = '#2a2830';
+    ctx.stroke();
+    ctx.fillStyle = '#8a8f9c';
+    for (let i = 0; i < 5; i++) {
+      const a = (i / 5) * Math.PI * 2;
+      ctx.fillRect(Math.cos(a) * r * 0.24 - 0.03, Math.sin(a) * r * 0.24 - 0.03, 0.06, 0.06);
+    }
+    return;
+  }
   // hub
   ctx.beginPath();
   ctx.arc(0, 0, r * 0.56, 0, Math.PI * 2);

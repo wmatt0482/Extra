@@ -12,7 +12,7 @@ export const TRACKS = [
     gravity: 1.0,
     ramp: { height: 60, length: 110 },      // ramp drop (m) and horizontal run (m); lip ends at x=0
     terrain: { amplitude: 2.5, wavelength: 60, roughness: 0.3 },
-    obstacles: { density: 0.9, start: 20, kinds: ['crate', 'barrel', 'wall', 'cactus'] },
+    obstacles: { density: 0.9, start: 20, kinds: ['crate', 'barrel', 'wall', 'cactus', 'fuel', 'tnt'] },
     theme: { sky: ['#9fd8ff', '#f6e3b4'], far: '#c97a4a', mid: '#a85a35', ground: '#c98c4e', groundDark: '#8f5a2c', accent: '#ff7a3d' },
     unlockedBy: null,
   },
@@ -24,7 +24,7 @@ export const TRACKS = [
     gravity: 1.0,
     ramp: { height: 75, length: 130 },
     terrain: { amplitude: 1.5, wavelength: 80, roughness: 0.15 },
-    obstacles: { density: 1.2, start: 15, kinds: ['crate', 'glass', 'car', 'wall', 'billboard'] },
+    obstacles: { density: 1.2, start: 15, kinds: ['crate', 'glass', 'car', 'wall', 'billboard', 'fuel', 'tnt'] },
     theme: { sky: ['#6fb3f2', '#d6ecff'], far: '#5c6f8a', mid: '#8495ad', ground: '#8a8f99', groundDark: '#5b5f66', accent: '#ffd23f' },
     unlockedBy: 'canyon',
   },
@@ -36,7 +36,7 @@ export const TRACKS = [
     gravity: 1.0,
     ramp: { height: 90, length: 150 },
     terrain: { amplitude: 5, wavelength: 45, roughness: 0.5 },
-    obstacles: { density: 1.0, start: 25, kinds: ['barrel', 'crate', 'cactus', 'wall', 'car'] },
+    obstacles: { density: 1.0, start: 25, kinds: ['barrel', 'crate', 'cactus', 'wall', 'car', 'fuel'] },
     theme: { sky: ['#ffb36b', '#ffe8c2'], far: '#e39a5c', mid: '#f2b56f', ground: '#f0c276', groundDark: '#c48e45', accent: '#ff5e3a' },
     unlockedBy: 'city',
   },
@@ -48,7 +48,7 @@ export const TRACKS = [
     gravity: 1.0,
     ramp: { height: 110, length: 170 },
     terrain: { amplitude: 3, wavelength: 70, roughness: 0.25 },
-    obstacles: { density: 1.3, start: 20, kinds: ['crate', 'glass', 'wall', 'snowman', 'barrel'] },
+    obstacles: { density: 1.3, start: 20, kinds: ['crate', 'glass', 'wall', 'snowman', 'barrel', 'tnt', 'fuel'] },
     theme: { sky: ['#5f86c7', '#dff1ff'], far: '#aac5e3', mid: '#cfe3f5', ground: '#eef7ff', groundDark: '#a9c3dc', accent: '#52d6ff' },
     grip: 0.55, // ground friction multiplier
     unlockedBy: 'desert',
@@ -61,7 +61,7 @@ export const TRACKS = [
     gravity: 0.3,
     ramp: { height: 120, length: 180 },
     terrain: { amplitude: 6, wavelength: 90, roughness: 0.4 },
-    obstacles: { density: 1.1, start: 30, kinds: ['crate', 'barrel', 'dome', 'wall', 'rover'] },
+    obstacles: { density: 1.1, start: 30, kinds: ['crate', 'barrel', 'dome', 'wall', 'rover', 'fuel'] },
     theme: { sky: ['#07070f', '#1d1b3a'], far: '#2d2b4a', mid: '#55536e', ground: '#b9b7c4', groundDark: '#6e6c7a', accent: '#c8ff5e' },
     unlockedBy: 'arctic',
   },
@@ -81,4 +81,9 @@ export const OBSTACLE_KINDS = {
   snowman:   { w: 1.2, h: 2.0, mass: 0.1,  cash: 50,  color: '#ffffff', label: 'Snowman' },
   dome:      { w: 2.5, h: 1.8, mass: 0.3,  cash: 180, color: '#a9d7ff', label: 'Habitat dome' },
   rover:     { w: 2.6, h: 1.2, mass: 0.7,  cash: 300, color: '#d9d9d9', label: 'Rover' },
+  // v2 explosives: detonate when smashed (6 m blast, chain reaction to other explosives)
+  fuel:      { w: 0.95, h: 1.35, mass: 0.2, cash: 150, color: '#e0322b', label: 'Fuel drum', explosive: true },
+  tnt:       { w: 1.2, h: 1.2, mass: 0.15,  cash: 200, color: '#c9302c', label: 'TNT crate', explosive: true },
+  // v2 formation-only piece (scaffold bridge uprights + deck); not in any track's random `kinds`
+  scaffold:  { w: 0.5, h: 3.4, mass: 0.2,  cash: 60,  color: '#f0a020', label: 'Scaffold' },
 };
