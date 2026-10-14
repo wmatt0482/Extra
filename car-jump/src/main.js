@@ -7,7 +7,8 @@ import { TRACK_BY_ID } from './data/tracks.js';
 import { resolveStats } from './data/upgrades.js';
 import { Audio } from './audio.js';
 import { loadSave, writeSave, wipeSave } from './meta/save.js';
-import { bankRun, earn, statsFor } from './meta/economy.js';
+import { bankRun, earn, ratingFor, statsFor } from './meta/economy.js';
+import { ACHIEVEMENTS, createAchievements } from './meta/achievements.js';
 import { claimGoals, ensureGoals, goalEvent, goalSummary, goalText } from './meta/goals.js';
 import { dailyFor, refreshDaily, todayKey } from './meta/daily.js';
 import { hashString } from './meta/rng.js';
@@ -19,8 +20,9 @@ import { createGarage } from './ui/garage.js';
 import { createTracks } from './ui/tracks.js';
 import { createResults } from './ui/results.js';
 import { createPanels } from './ui/panels.js';
+import { createTitleHero } from './ui/titleHero.js';
 
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 const params = new URLSearchParams(location.search);
 
 async function loadEngine() {
@@ -55,6 +57,7 @@ async function boot() {
   let paused = false, stopFallback = 0;
   let coaching = false;    // first-run coach overlay is up (run is held until it is dismissed)
   let lastResult = null;   // for smoke tests
+  let runEarned = null;    // achievements earned during the current run (+ its summary), for the results callouts
 
   const app = {
     save,
@@ -68,8 +71,21 @@ async function boot() {
     startRun,
     closePanel,
     setSetting,
+    setShake,
     resetProgress,
+    checkAchievements: () => { achievements.checkSave(); },
   };
+
+  // ---------- achievements ----------
+  const achievements = app.achievements = createAchievements(save, {
+    onEarn(a) {
+      app.persist();
+      if (runEarned) runEarned.push(a);
+      hud.achievement(a);
+      setTimeout(() => Audio.ring(), 40);
+      refreshAchBadge();
+    },
+  });
 
   // ---------- engine ----------
   function makeGame() {
@@ -96,6 +112,19 @@ async function boot() {
   });
   const screens = { garage: createGarage(app), tracks: createTracks(app), results: createResults(app) };
   const panels = createPanels(app);
+  const hero = createTitleHero($('#hero'), () => CAR_BY_ID[save.selectedCar]);
+
+  function refreshAchBadge() {
+    const n = ACHIEVEMENTS.filter((a) => save.achievements[a.id]).length;
+    const fresh = Math.max(0, n - (save.seen.ach || 0));
+    const b = $('#badge-ach');
+    b.hidden = fresh === 0;
+    b.textContent = String(fresh);
+  }
+  function heroMode() {
+    if (screen === 'title') return save.settings.reducedMotion ? 'static' : 'anim';
+    return screen === 'garage' || screen === 'tracks' ? 'static' : 'off';
+  }
 
   function refreshCash() {
     const html = `${COIN}<span>${money(save.cash)}</span>`;
@@ -110,18 +139,25 @@ async function boot() {
     screen = name;
     const inRun = name === 'run';
     document.documentElement.classList.toggle('in-run', inRun);
-    if (name === 'results') $('#toasts').textContent = '';
+    if (name === 'results') { $('#toasts').textContent = ''; hud.flushAchievements(); }
+    if (!inRun) hud.clearBanners();
     $('#hud').hidden = !inRun;
     $('#controls').hidden = !inRun;
     $('#backdrop').hidden = inRun || name === 'results';
     if (!inRun) hideCoach();
     if (screens[name]) screens[name].show(arg);
+    hero.setMode(heroMode());
     refreshCash();
   }
 
   function openPanel(name) {
     for (const el of $$('.modal')) el.hidden = el.dataset.panel !== name;
     panels.render(name);
+    if (name === 'achievements') {
+      save.seen.ach = ACHIEVEMENTS.filter((a) => save.achievements[a.id]).length;
+      app.persist();
+      refreshAchBadge();
+    }
   }
   function closePanel() {
     for (const el of $$('.modal')) el.hidden = true;
@@ -139,8 +175,20 @@ async function boot() {
     if (key === 'reducedMotion') {
       document.documentElement.classList.toggle('reduced-motion', !!value);
       if (!run) { try { game && game.destroy(); } catch (_) {} makeGame(); }
+      hero.setMode(heroMode());
     }
     renderPauseToggles();
+  }
+
+  // screen shake 0-100 (saved); passed to game.start as shake 0..1. preview = wiggle the panel once.
+  function setShake(value, preview) {
+    const v = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
+    if (save.settings.shake !== v) { save.settings.shake = v; app.persist(); }
+    if (preview && v > 0 && !save.settings.reducedMotion) {
+      const sheet = $('#panel-settings .sheet');
+      sheet.style.setProperty('--amp', `${(v / 100) * 7}px`);
+      sheet.classList.remove('shake-preview'); void sheet.offsetWidth; sheet.classList.add('shake-preview');
+    }
   }
 
   function resetProgress() {
@@ -151,6 +199,8 @@ async function boot() {
     refreshDaily(save); ensureGoals(save);
     app.persist();
     refreshCash();
+    refreshAchBadge();
+    hero.redraw();
   }
 
   // ---------- run lifecycle ----------
@@ -173,14 +223,20 @@ async function boot() {
       stats = statsFor(save, car.id);
       seed = hashString('track:' + trackId);   // fixed layout per track so it can be learned
     }
-    run = { trackId, daily, def, carId: car.id, stats, ended: false, goalToasts: [] };
+    runEarned = [];
+    run = { trackId, daily, def, carId: car.id, stats, ended: false, goalToasts: [], earned: runEarned, flight: false, bigAir: false, rampage: false, rings: 0 };
+    achievements.beginRun();
     go('run');
     hud.reset(track);
     controls.reset();
     controls.enable(true);
     Audio.duck(true);
     try {
-      game.start({ car, stats, track, seed });
+      game.start({
+        car, stats, track, seed,
+        shake: save.settings.reducedMotion ? 0 : save.settings.shake / 100,
+        bestDistance: daily ? null : (save.best[trackId] || null),
+      });
       game.setInput({ gas: false, brake: false, nitro: false });
     } catch (e) {
       console.error('[RampRage] game.start threw', e);
@@ -224,6 +280,12 @@ async function boot() {
     try { s = game.getState(); } catch (_) { /* engine between runs */ }
     if (!s) return;
     hud.update(s);
+    // BIG AIR: once per flight, when the current flight passes 3 s
+    if (s.phase === 'air') {
+      if (!run.flight) { run.flight = true; run.bigAir = false; }
+      if (!run.bigAir && (s.airTime || 0) >= 3) { run.bigAir = true; hud.banner('bigair', 'Big air!'); }
+    } else run.flight = false;
+    achievements.state(s);
     if (!paused) {
       Audio.engine(s.phase === 'done' ? -1 : Math.min(1, (s.speedKmh || 0) / 180));
       Audio.nitro(!!(input.nitro && s.nitro > 0.01 && s.phase !== 'done'));
@@ -235,12 +297,36 @@ async function boot() {
     switch (evt.type) {
       case 'launch': Audio.whoosh(); break;
       case 'flip': Audio.flip(); break;
-      case 'land': Audio.land(evt.quality); break;
+      case 'land':
+        Audio.land(evt.quality);
+        if (evt.quality === 'perfect') setTimeout(() => Audio.cheer(0.6), 120);
+        break;
       case 'smash': Audio.smash(); setTimeout(() => Audio.coin(), 60); break;
-      case 'finishLine': Audio.fanfare(); hud.toast(run.daily ? 'Finish line!' : 'Finish line! Next track unlocked'); break;
+      case 'finishLine':
+        Audio.cheer(1.2); Audio.fireworks();
+        hud.toast(run.daily ? 'Finish line!' : 'Finish line! Next track unlocked');
+        break;
+      // ----- v2 -----
+      case 'combo':
+        Audio.comboUp(evt.count);
+        hud.combo(evt);
+        if ((evt.mult || 0) >= 4 && !run.rampage) { run.rampage = true; hud.banner('rampage', 'Rampage ×4'); }
+        break;
+      case 'comboEnd': hud.comboEnd(evt); run.rampage = false; break;
+      case 'explosion': Audio.explosion(evt.chain || 0); break;
+      case 'airTarget':
+        if (evt.kind === 'ring') { Audio.ring(); run.rings += 1; }
+        else if (evt.kind === 'coin') Audio.coin();
+        else Audio.pop();                            // balloon / blimp
+        break;
+      case 'orbit': Audio.orbit(); hud.banner('orbit', 'Orbit!'); break;
+      case 'rejump': Audio.rejump(); Audio.whoosh(); hud.banner('rejump', 'Rejump!'); break;
+      case 'record': Audio.fanfare(); hud.banner('record', 'New record'); break;
+      case 'damage': Audio.clank(); break;
       case 'finish': endRun(evt.summary); return;
       default: break;
     }
+    achievements.event(evt);
     for (const g of goalEvent(save, evt)) hud.toast(`Goal done: ${goalText(g)}`);
   }
 
@@ -253,7 +339,11 @@ async function boot() {
     controls.enable(false);
     Audio.engine(-1); Audio.nitro(false); Audio.duck(false);
     summary = summary || {};
+    if (summary.rings == null && r.rings) summary = { ...summary, rings: r.rings };   // engine without v2 summary fields
     const bank = bankRun(save, r.trackId, summary, { ranked: !r.daily });
+    const rating = summary.rating || ratingFor(summary.cash && summary.cash.total, TRACK_BY_ID[r.trackId].finish);
+    achievements.summary(summary, rating);
+    achievements.endRun();
     for (const g of goalSummary(save, summary)) hud.toast(`Goal done: ${goalText(g)}`);
     const goals = claimGoals(save);
     let dailyReward = 0, dailyAlreadyDone = false;
@@ -266,6 +356,7 @@ async function boot() {
     const result = lastResult = {
       trackId: r.trackId, daily: r.daily, carId: r.carId, stats: r.stats, summary, bank, goals,
       dailyReward, dailyAlreadyDone, dailyGoalText: r.def && r.def.goal.text, dailyValue: r.def && r.def.value(summary),
+      rating, achievements: r.earned,
     };
     setTimeout(() => {
       go('results', result);
@@ -310,11 +401,11 @@ async function boot() {
       const s = snap || {};
       endRun({ distance: s.distance || 0, airTime: s.airTime || 0, flips: s.flips || 0, frontFlips: 0, backFlips: 0, smashed: s.smashed || 0,
         maxSpeedKmh: s.speedKmh || 0, landing: s.landing, finishCrossed: !!s.finishCrossed,
-        cash: { distance: 0, stunts: 0, smash: 0, landing: 0, total: Math.round(s.cash || 0) }, durationSec: 0 });
+        cash: { distance: 0, stunts: 0, smash: 0, landing: 0, combo: 0, air: 0, total: Math.round(s.cash || 0) }, durationSec: 0 });
     }, 600);
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { pause(); Audio.suspend(); app.persist(); } else Audio.resume();
+    if (document.hidden) { pause(); Audio.suspend(); app.persist(); hero.setMode('off'); } else { Audio.resume(); hero.setMode(heroMode()); }
   });
   // iOS may kill a backgrounded Home Screen app without another event: pause and save on pagehide too
   window.addEventListener('pagehide', () => { pause(); app.persist(); });
@@ -355,9 +446,11 @@ async function boot() {
   }, { passive: false });
 
   document.documentElement.classList.toggle('reduced-motion', save.settings.reducedMotion);
+  achievements.checkSave();
+  refreshAchBadge();
   go('title');
   app.persist();
-  window.__rampRage = { app, get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; } }; // debugging / smoke tests
+  window.__rampRage = { app, hud, hero, get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; } }; // debugging / smoke tests
   registerSW();
 }
 

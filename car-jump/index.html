@@ -319,6 +319,196 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .pause-toggles .btn { flex: 1; }
 .ver { margin-top: 10px; font-size: 11px; color: var(--dim); text-align: center; }
 
+/* ================= v2: epic update ================= */
+/* title hero canvas sits over the backdrop SVG (under its vignette) */
+#hero { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+
+/* HUD: run-cash bump, altitude chip, combo badge, banners */
+#hud-cash-box.bump { animation: cashBump .28s ease-out; }
+@keyframes cashBump { 35% { transform: scale(1.09); border-color: rgba(255,207,26,.7); } }
+.hud-alt { position: absolute; right: calc(var(--pad-r) + 58px); top: calc(var(--pad-t) + 72px); min-width: 120px; align-items: flex-end; }
+.hud-alt .hud-num { font-size: 24px; }
+.hud-alt.orbit { border-color: #c9a8ff; box-shadow: 0 0 18px rgba(143,107,255,.65); }
+.hud-alt.orbit .hud-num { color: #e4d8ff; }
+.hud-alt.orbit .hud-label { color: #c9a8ff; }
+
+.combo { position: absolute; left: var(--pad-l); top: calc(var(--pad-t) + 76px); display: flex; align-items: center; gap: 9px; padding: 5px 16px 5px 5px;
+  border-radius: 999px; background: rgba(13,18,48,.8); border: 2px solid rgba(255,207,26,.55); box-shadow: 0 4px 0 rgba(0,0,0,.35); transform-origin: 34px 50%; }
+.combo-dial { position: relative; width: 58px; height: 58px; flex: none; }
+.combo-dial svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
+.combo-track { fill: var(--ink); stroke: rgba(255,255,255,.14); stroke-width: 7; }
+.combo-ring { fill: none; stroke: var(--accent); stroke-width: 7; stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: 0; transition: stroke-dashoffset .1s linear; }
+.combo-dial b { position: absolute; inset: 0; display: grid; place-items: center; padding-top: 2px; font: 400 25px/1 var(--font-display); color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
+.combo-text { display: flex; flex-direction: column; line-height: 1; min-width: 92px; }
+.combo-mult { font: 400 28px/1 var(--font-display); color: var(--accent); text-shadow: 0 3px 0 var(--ink); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.combo-label { font: 800 10px/1 var(--font-body); letter-spacing: .12em; color: var(--muted); margin-top: 4px; text-transform: uppercase; }
+.combo.pulse { animation: comboPulse .34s cubic-bezier(.2,1.6,.4,1); }
+@keyframes comboPulse { 0% { transform: scale(1.4) rotate(-5deg); } 100% { transform: none; } }
+.combo.rampage { animation: rampFlash .32s steps(1) infinite; }
+.combo.rampage.pulse { animation: comboPulse .34s cubic-bezier(.2,1.6,.4,1), rampFlash .32s steps(1) infinite; }
+.combo.rampage .combo-mult, .combo.rampage .combo-label { color: #fff; }
+.combo.rampage .combo-ring { stroke: #fff; }
+@keyframes rampFlash {
+  0% { background: linear-gradient(120deg, #ff3b5c, #a8173a); border-color: #ffcf1a; }
+  50% { background: linear-gradient(120deg, #ffb000, #ff5a1f); border-color: #ff3b5c; }
+}
+.combo.ended { animation: comboEnd 1.1s ease forwards; border-color: var(--go); }
+.combo.ended .combo-mult { color: var(--go); }
+@keyframes comboEnd { 0% { transform: scale(1.15); } 15% { transform: none; } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
+
+.banner { position: absolute; left: 0; right: 0; top: 25%; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
+.banner > span { display: inline-block; max-width: calc(100vw - 24px); padding: 8px 30px 11px; white-space: nowrap; text-transform: uppercase;
+  font: 400 clamp(30px, 4vmin + 2.6vw, 60px)/1 var(--font-display); letter-spacing: .01em; color: var(--accent);
+  background: linear-gradient(rgba(13,18,48,.9), rgba(27,35,87,.9)); border-top: 5px solid currentColor; border-bottom: 5px solid currentColor;
+  transform: skewX(-12deg) rotate(-3deg); box-shadow: 0 8px 0 rgba(5,7,25,.45);
+  text-shadow: 0 4px 0 var(--sh, #e0532a), 0 7px 0 var(--ink); }
+.banner.b-bigair > span { color: var(--cyan); --sh: var(--cyan-edge); }
+.banner.b-orbit > span { color: #d6c6ff; --sh: var(--violet-edge);
+  background: radial-gradient(2px 2px at 12% 30%, #fff 50%, transparent 51%), radial-gradient(2px 2px at 32% 75%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 58% 22%, #fff 50%, transparent 51%), radial-gradient(2px 2px at 83% 64%, #fff 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 93% 26%, #fff 50%, transparent 51%), linear-gradient(#0a0624, #2b1a6b); }
+.banner.b-rampage > span { color: #fff; --sh: var(--hot-edge); border-color: var(--accent); background: linear-gradient(100deg, #ff3b5c, #ff8a1f 60%, #ffcf1a); animation: rampText .3s steps(1) infinite; }
+@keyframes rampText { 50% { color: var(--accent); --sh: var(--ink); background: linear-gradient(100deg, #a8173a, #ff3b5c); } }
+.banner.b-rejump > span { color: var(--go); --sh: var(--go-edge); }
+.banner.b-record > span { color: #fff; --sh: var(--hot-edge); border-color: var(--accent); background: linear-gradient(var(--hot), #c81e45); }
+.banner.show { animation: bannerSlide 1.55s cubic-bezier(.3,.9,.4,1) forwards; }
+@keyframes bannerSlide {
+  0% { transform: translateX(-110vw) skewX(-30deg); }
+  13% { transform: translateX(4vw) skewX(10deg); }
+  19% { transform: translateX(-1vw) scale(1.07); }
+  25% { transform: none; }
+  82% { transform: none; opacity: 1; }
+  100% { transform: translateX(110vw) skewX(-30deg); opacity: .8; }
+}
+.reduced-motion .banner.show { animation: bannerFade 1.55s ease forwards; }
+@keyframes bannerFade { 0% { opacity: 0; } 12%, 85% { opacity: 1; } 100% { opacity: 0; } }
+
+/* achievement toast (shares the #toasts column, one at a time) */
+.toast.ach { display: flex; align-items: center; gap: 10px; padding: 6px 16px 6px 6px; border-radius: 16px; color: #fff;
+  background: linear-gradient(var(--panel-2), var(--panel)); border-color: var(--m2, var(--accent)); animation: achIn 2.9s cubic-bezier(.2,1.3,.4,1) forwards; }
+@keyframes achIn { 0% { opacity: 0; transform: translateY(-16px) scale(.8); } 9%, 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-8px); } }
+.ach-medal { width: 40px; height: 40px; flex: none; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 35% 30%, var(--m1), var(--m2) 50%, var(--m3)); color: var(--mi); box-shadow: 0 3px 0 var(--m3); }
+.ach-medal svg { width: 22px; height: 22px; }
+.ach-text { display: flex; flex-direction: column; gap: 4px; text-align: left; }
+.ach-text small { font: 800 10px/1 var(--font-body); letter-spacing: .1em; color: var(--muted); }
+.ach-text b { font: 400 16px/1 var(--font-display); }
+.reduced-motion .toast.ach { animation: bannerFade 2.9s ease forwards; }
+.tone-gold { --m1: #fff6b0; --m2: #ffcf1a; --m3: #b98200; --mi: #2a1a00; }
+.tone-cyan { --m1: #d2f7ff; --m2: #22d3ff; --m3: #0a7fa6; --mi: #032634; }
+.tone-go { --m1: #d4ffe3; --m2: #2fd36b; --m3: #13803c; --mi: #062a12; }
+.tone-hot { --m1: #ffd0d9; --m2: #ff3b5c; --m3: #a8173a; --mi: #fff; }
+.tone-violet { --m1: #e6dcff; --m2: #8f6bff; --m3: #4f33b5; --mi: #fff; }
+
+/* results: rating stamp, fireworks, count-up, extra tiles */
+.res-main { position: relative; }
+.res-dist, .res-sub { padding-right: 80px; }
+.stamp { position: absolute; top: 4px; right: 12px; width: 80px; height: 80px; z-index: 2; pointer-events: none; }
+.stamp b { position: absolute; inset: 6px; display: grid; place-items: center; padding-bottom: 8px; border-radius: 50%;
+  font: 400 40px/1 var(--font-display); color: #fff; background: var(--st1); border: 4px solid var(--st2);
+  box-shadow: 0 5px 0 rgba(0,0,0,.45), inset 0 0 0 3px rgba(0,0,0,.16), inset 0 -6px 0 rgba(0,0,0,.14); transform: rotate(-12deg); text-shadow: 0 3px 0 rgba(0,0,0,.3); }
+.stamp small { position: absolute; left: 50%; bottom: 4px; transform: translateX(-50%) rotate(-12deg); padding: 3px 7px; border-radius: 6px; background: var(--ink);
+  font: 400 10px/1 var(--font-display); letter-spacing: .08em; color: var(--st2); text-transform: uppercase; white-space: nowrap; }
+.stamp.r-S { --st1: linear-gradient(#ffe066, #ffb000); --st2: #fff6b0; }
+.stamp.r-S b { color: var(--accent-ink); text-shadow: 0 3px 0 rgba(255,255,255,.5); }
+.stamp.r-A { --st1: linear-gradient(#5fe3ff, #0aa6d6); --st2: #d2f7ff; }
+.stamp.r-B { --st1: linear-gradient(#5ee88f, #1ea653); --st2: #d4ffe3; }
+.stamp.r-C { --st1: linear-gradient(#a98cff, #6a48e0); --st2: #e6dcff; }
+.stamp.r-D { --st1: linear-gradient(#7d86b8, #4a527f); --st2: #c3c9ea; }
+.stamp .rays { position: absolute; inset: -16px; border-radius: 50%; display: none; overflow: hidden;
+  -webkit-mask: radial-gradient(circle, #000 28%, transparent 70%); mask: radial-gradient(circle, #000 28%, transparent 70%); }
+.stamp .rays::before { content: ''; position: absolute; inset: 0; background: repeating-conic-gradient(rgba(255,207,26,.7) 0 9deg, transparent 9deg 22.5deg);
+  animation: spin 9s linear infinite; }
+.stamp.r-S .rays { display: block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.stamp.slam b, .stamp.slam small { animation: slam .5s cubic-bezier(.3,1.5,.5,1) both; }
+.stamp.slam .rays { animation: raysIn .6s .35s ease both; }
+.stamp.slam::after { content: ''; position: absolute; inset: 6px; border-radius: 50%; border: 4px solid var(--st2); animation: shock .55s .22s ease-out both; }
+@keyframes slam { 0% { opacity: 0; transform: scale(3.4) rotate(30deg); } 50% { opacity: 1; transform: scale(.88) rotate(-16deg); } 72% { transform: scale(1.07) rotate(-10deg); } 100% { transform: scale(1) rotate(-12deg); } }
+.stamp.slam small { animation-name: slamTag; }
+@keyframes slamTag { 0%, 40% { opacity: 0; transform: translateX(-50%) scale(2) rotate(-12deg); } 100% { opacity: 1; transform: translateX(-50%) rotate(-12deg); } }
+@keyframes raysIn { from { opacity: 0; } }
+@keyframes shock { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.9); } }
+.reduced-motion .stamp.slam b, .reduced-motion .stamp.slam small, .reduced-motion .stamp .rays, .reduced-motion .stamp .rays::before { animation: none; }
+.reduced-motion .stamp.slam::after { display: none; }
+#res-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 8; }
+.pay tr.total td.landed { animation: pop .3s cubic-bezier(.2,1.6,.5,1); }
+.callout.ach-callout { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 4px; background: var(--m2); color: var(--mi); box-shadow: 0 3px 0 var(--m3); }
+.callout.ach-callout .medals { display: inline-flex; }
+.callout.ach-callout i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; margin-right: -5px; border: 2px solid var(--m2, #fff);
+  background: radial-gradient(circle at 35% 30%, var(--m1), var(--m2) 55%, var(--m3)); color: var(--mi); animation: pop .35s cubic-bezier(.2,1.6,.5,1) both; }
+.callout.ach-callout i:last-child { margin-right: 0; }
+.callout.ach-callout svg { width: 12px; height: 12px; }
+.stat-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.stat-grid.cols-4 .stat { padding: 6px 7px; }
+.stat-grid.cols-4 .stat b { font-size: 15px; }
+.stat-grid.cols-4 .stat span { font-size: 10px; letter-spacing: .02em; }
+.stat span { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* achievements panel */
+.sheet-wide { width: min(780px, 100%); }
+.ach-count { font: 400 16px/1 var(--font-display); color: var(--accent); white-space: nowrap; }
+.ach-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; padding: 2px 0 4px; }
+.ach-card { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px; min-width: 0; padding: 10px 6px 9px;
+  border-radius: 14px; background: var(--ink-2); border: 2px solid var(--line); }
+.ach-badge { position: relative; width: 52px; height: 52px; flex: none; margin-bottom: 4px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 35% 30%, var(--m1), var(--m2) 50%, var(--m3)); color: var(--mi); box-shadow: 0 4px 0 var(--m3), inset 0 -3px 0 rgba(0,0,0,.15); }
+.ach-badge > svg { width: 27px; height: 27px; }
+.ach-name { font: 400 12px/1.1 var(--font-display); text-transform: uppercase; }
+.ach-hint { font-size: 11px; font-weight: 700; color: var(--muted); line-height: 1.25; }
+.ach-date { font-size: 10.5px; font-weight: 800; color: var(--accent); letter-spacing: .03em; margin-top: auto; padding-top: 2px; }
+.ach-card .progress { width: 78%; height: 6px; margin-top: auto; }
+.ach-card.earned { border-color: var(--m3); background: radial-gradient(120% 70% at 50% 0%, rgba(255,255,255,.1), transparent 60%), var(--ink-2); }
+.ach-card.locked .ach-badge { background: radial-gradient(circle at 35% 30%, #4a5390, #2a3170 55%, #1a2050); color: #7d88c9; box-shadow: 0 4px 0 #0b0f2c; }
+.ach-card.locked .ach-name { color: var(--muted); }
+.ach-card.locked .ach-hint { color: var(--dim); }
+.ach-card.locked .ach-date { color: var(--muted); }
+.ach-lock { position: absolute; right: -5px; bottom: -5px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--ink); border: 2px solid var(--line); color: var(--muted); }
+.ach-lock svg { width: 13px; height: 13px; }
+
+/* settings: screen-shake slider */
+.slider { display: flex; align-items: center; gap: 10px; flex: 0 1 240px; min-width: 150px; }
+.slider input { flex: 1; min-width: 0; height: 44px; margin: 0; background: transparent; -webkit-appearance: none; appearance: none; touch-action: none; cursor: pointer; --pct: 100%; }
+.slider input:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; border-radius: 8px; }
+.slider input::-webkit-slider-runnable-track { height: 14px; border-radius: 7px; border: 2px solid var(--line); background: linear-gradient(90deg, var(--go) var(--pct), var(--ink-2) var(--pct)); }
+.slider input::-webkit-slider-thumb { -webkit-appearance: none; width: 30px; height: 30px; margin-top: -10px; border-radius: 50%; background: #fff; border: 4px solid var(--go-edge); box-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.slider input::-moz-range-track { height: 10px; border-radius: 7px; border: 2px solid var(--line); background: var(--ink-2); }
+.slider input::-moz-range-progress { height: 10px; border-radius: 7px; background: var(--go); }
+.slider input::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 4px solid var(--go-edge); }
+.slider-val { width: 52px; text-align: right; font: 400 15px/1 var(--font-display); color: var(--accent); }
+.slider-row.is-disabled .slider { opacity: .45; }
+.sheet.shake-preview { animation: shakePrev .4s linear; }
+@keyframes shakePrev { 15% { transform: translate(calc(var(--amp) * -1), calc(var(--amp) * .6)); } 35% { transform: translate(var(--amp), calc(var(--amp) * -.5)); }
+  55% { transform: translate(calc(var(--amp) * -.6), calc(var(--amp) * .3)); } 75% { transform: translate(calc(var(--amp) * .35), 0); } }
+
+@media (orientation: portrait) {
+  .menu-row .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  .hud-alt { top: calc(var(--pad-t) + 70px); }
+  .combo { left: auto; right: var(--pad-r); top: calc(var(--pad-t) + 132px); transform-origin: calc(100% - 34px) 50%; }
+  .banner { top: 41%; }
+  .ach-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+/* short landscape: the stamp sits on the card's corner and the tiles tighten so 2 rows always fit */
+@media (orientation: landscape) and (max-height: 500px) {
+  .stamp { top: -14px; right: -12px; width: 72px; height: 72px; }
+  .stamp b { font-size: 34px; border-width: 3px; }
+  .res-dist, .res-sub { padding-right: 46px; }
+  .res-main { gap: 8px; }
+  .stat-grid { gap: 6px; }
+  .stat-grid .stat { padding: 5px 8px; }
+  .stat-grid.cols-4 .stat { padding: 5px 7px; }
+  .stat-grid .stat b { font-size: 15px; }
+}
+@media (max-width: 520px) {
+  .slider-row { flex-wrap: wrap; row-gap: 8px; }
+  .slider-row .grow { flex: 1 1 100%; }
+  .slider { flex: 1 1 100%; }
+}
+@media (orientation: landscape) and (max-width: 700px) {
+  .ach-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
 /* ---------- portrait: same flow, stacked ---------- */
 @media (orientation: portrait) {
   .title-actions { width: min(100%, 360px); }
@@ -344,7 +534,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
   .finish-bar { width: 120px; }
   .daily-hero { grid-template-columns: 1fr; }
   .daily-hero canvas { width: 100%; height: 110px; }
-  .in-run #toasts { top: calc(var(--pad-t) + 150px); }
+  .in-run #toasts { top: calc(var(--pad-t) + 206px); }
 }
 /* short landscape phones (iPhone SE/mini): tighten vertical rhythm */
 @media (orientation: landscape) and (max-height: 400px) {
@@ -389,14 +579,9 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
       <g stroke="#1b2357" stroke-width="10"><line x1="80" y1="330" x2="80" y2="900"/><line x1="220" y1="410" x2="220" y2="900"/><line x1="360" y1="540" x2="360" y2="900"/><line x1="480" y1="650" x2="480" y2="900"/></g>
       <!-- landing ground -->
       <path d="M760 820 C 1000 790, 1250 800, 1600 780 L 1600 900 L 760 900 Z" fill="#0d1230"/>
-      <!-- car coming in to land -->
-      <g transform="translate(1300 650) rotate(10)">
-        <path d="M-95 18 L95 18 L98 -6 L60 -14 L36 -46 L-44 -48 L-80 -22 L-98 -12 Z" fill="#0d1230"/>
-        <path d="M30 -16 L18 -40 L-36 -42 L-58 -18 Z" fill="#3a2a8f"/>
-        <circle cx="-62" cy="22" r="20" fill="#0d1230"/><circle cx="62" cy="22" r="20" fill="#0d1230"/>
-      </g>
-      <g stroke="#fff" stroke-width="5" stroke-linecap="round" opacity=".5"><line x1="1170" y1="590" x2="1080" y2="572"/><line x1="1160" y1="630" x2="1090" y2="616"/><line x1="1180" y1="550" x2="1110" y2="536"/></g>
     </svg>
+    <!-- hero car: animated on the title (src/ui/titleHero.js), one static pose on other menus -->
+    <canvas id="hero"></canvas>
   </div>
 
   <!-- ===== Title ===== -->
@@ -410,6 +595,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
         <button class="btn" data-open="daily" data-sfx><span data-icon="calendar"></span>Daily<span class="badge" id="badge-daily" hidden>!</span></button>
         <button class="btn" data-open="goals" data-sfx><span data-icon="target"></span>Goals<span class="badge" id="badge-goals" hidden></span></button>
         <button class="btn" data-open="records" data-sfx><span data-icon="trophy"></span>Records</button>
+        <button class="btn" data-open="achievements" data-sfx><span data-icon="medal"></span>Badges<span class="badge" id="badge-ach" hidden></span></button>
         <button class="btn" data-open="settings" data-sfx><span data-icon="gear"></span>Settings</button>
       </div>
     </div>
@@ -460,7 +646,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
         <div class="hud-num"><span id="hud-distance">0</span><small>m</small></div>
         <div class="finish-bar" aria-hidden="true"><i id="hud-finish"></i><b></b></div>
       </div>
-      <div class="hud-mid hud-box"><div class="hud-label">RUN CASH</div><div class="hud-num">$<span id="hud-cash">0</span></div></div>
+      <div class="hud-mid hud-box" id="hud-cash-box"><div class="hud-label">RUN CASH</div><div class="hud-num">$<span id="hud-cash">0</span></div></div>
       <div class="hud-right">
         <div class="hud-box">
           <div class="hud-num"><span id="hud-speed">0</span><small>km/h</small></div>
@@ -469,6 +655,15 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
         <button class="btn icon-btn" id="btn-pause" aria-label="Pause"><span data-icon="pause"></span></button>
       </div>
     </div>
+    <div class="hud-alt hud-box" id="hud-alt" hidden><div class="hud-label">ALTITUDE</div><div class="hud-num"><span id="hud-alt-v">0</span><small>m</small></div></div>
+    <div class="combo" id="hud-combo" hidden>
+      <div class="combo-dial">
+        <svg viewBox="0 0 72 72" aria-hidden="true"><circle class="combo-track" cx="36" cy="36" r="31"/><circle class="combo-ring" id="hud-combo-ring" cx="36" cy="36" r="31" pathLength="100"/></svg>
+        <b id="hud-combo-count">2</b>
+      </div>
+      <div class="combo-text"><span class="combo-mult" id="hud-combo-mult">×1.25</span><span class="combo-label" id="hud-combo-label">Hit combo</span></div>
+    </div>
+    <div class="banner" id="banner" hidden aria-live="polite"><span id="banner-text"></span></div>
     <div id="toasts"></div>
   </div>
   <div id="controls" hidden>
@@ -494,6 +689,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
     <div class="results-head"><h2 id="res-title">Run over</h2><div class="res-callouts" id="res-callouts"></div></div>
     <div class="results-body">
       <div class="card res-main">
+        <div class="stamp" id="res-stamp" hidden role="img"><span class="rays" aria-hidden="true"></span><b id="res-stamp-letter">A</b><small>rank</small></div>
         <div class="res-dist"><div class="big"><span id="res-distance">0</span><small>m</small></div><span class="record" id="res-record" hidden>New record!</span></div>
         <div class="res-sub" id="res-sub"></div>
         <div class="stat-grid" id="res-stats"></div>
@@ -502,6 +698,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
         <table class="pay" id="res-pay"></table>
       </div>
     </div>
+    <canvas id="res-fx" hidden aria-hidden="true"></canvas>
     <div class="results-foot">
       <button class="btn" id="res-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
       <button class="btn btn-yellow" id="res-retry" data-sfx><span data-icon="retry"></span>Retry</button>
@@ -526,6 +723,12 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
     <div class="card sheet" role="dialog" aria-labelledby="records-h">
       <div class="sheet-head"><h3 id="records-h"><span data-icon="trophy"></span>Records</h3><button class="btn icon-btn" data-close aria-label="Close" data-sfx><span data-icon="close"></span></button></div>
       <div class="sheet-body scroll" id="records-body"></div>
+    </div>
+  </div>
+  <div class="modal" id="panel-achievements" data-panel="achievements" hidden>
+    <div class="card sheet sheet-wide" role="dialog" aria-labelledby="ach-h">
+      <div class="sheet-head"><h3 id="ach-h"><span data-icon="medal"></span>Achievements</h3><span class="ach-count" id="ach-count"></span><button class="btn icon-btn" data-close aria-label="Close" data-sfx><span data-icon="close"></span></button></div>
+      <div class="sheet-body scroll" id="achievements-body"></div>
     </div>
   </div>
   <div class="modal" id="panel-settings" data-panel="settings" hidden>

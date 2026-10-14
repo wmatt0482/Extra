@@ -1,7 +1,7 @@
 // Ramp Rage service worker: cache-first app shell so the game works offline after the first load.
 // Same-origin files are served from cache and refreshed in the background (stale-while-revalidate),
 // so a deploy shows up on the next launch. Bump VERSION to force a clean cache.
-const VERSION = 'ramp-rage-v1.1.0';
+const VERSION = 'ramp-rage-v2.0.0';
 const SHELL = [
   './',
   'index.html',
@@ -22,6 +22,7 @@ const SHELL = [
   'src/meta/daily.js',
   'src/meta/rng.js',
   'src/meta/mockEngine.js',
+  'src/meta/achievements.js',
   'src/ui/dom.js',
   'src/ui/icons.js',
   'src/ui/controls.js',
@@ -31,6 +32,8 @@ const SHELL = [
   'src/ui/results.js',
   'src/ui/panels.js',
   'src/ui/carPreview.js',
+  'src/ui/fireworks.js',
+  'src/ui/titleHero.js',
 ];
 // The engine is built separately and may be split into several modules: cache the entry if present;
 // the page also posts every module it actually loaded (see 'cache-urls' below).

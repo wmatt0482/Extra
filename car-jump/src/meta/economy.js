@@ -83,6 +83,12 @@ export function bankRun(save, trackId, summary, { ranked = true } = {}) {
   r.maxSpeedKmh = Math.max(r.maxSpeedKmh, Math.round(summary.maxSpeedKmh || 0));
   r.longestAir = Math.max(r.longestAir, Math.round((summary.airTime || 0) * 10) / 10);
   if (summary.landing === 'perfect') r.perfectLandings += 1;
+  // v2 summary fields (absent on a v1 engine: they just stay 0)
+  r.bestCombo = Math.max(r.bestCombo, Math.floor(summary.bestCombo || 0));
+  r.maxAltitude = Math.max(r.maxAltitude, Math.round(summary.maxAltitude || 0));
+  r.rings += Math.max(0, Math.floor(summary.rings || 0));
+  r.explosions += Math.max(0, Math.floor(summary.explosions || 0));
+  r.rejumps += Math.max(0, Math.floor(summary.rejumps || 0));
   const score = (summary.cash && summary.cash.total) || 0;
   if (score > r.bestScore) { r.bestScore = score; out.newBestScore = true; }
   if (ranked) {
@@ -98,6 +104,13 @@ export function bankRun(save, trackId, summary, { ranked = true } = {}) {
     }
   }
   return out;
+}
+
+// Run rating (SPEC v2): cash.total / (track.finish × 4) → S ≥ 1.5, A ≥ 1.0, B ≥ 0.6, C ≥ 0.3, else D.
+// The engine reports summary.rating; this is the same formula for engines that don't.
+export function ratingFor(total, finish) {
+  const x = (total || 0) / Math.max(1, (finish || 400) * 4);
+  return x >= 1.5 ? 'S' : x >= 1.0 ? 'A' : x >= 0.6 ? 'B' : x >= 0.3 ? 'C' : 'D';
 }
 
 export function trackFinish(trackId) {

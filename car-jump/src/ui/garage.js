@@ -41,7 +41,7 @@ export function createGarage(app) {
     const s = app.save;
     if (!isOwned(s, car.id)) {
       const r = buyCar(s, car.id);
-      if (r.ok) { app.audio.cash(); app.persist(); app.toast(`${car.name} is yours!`); }
+      if (r.ok) { app.audio.cash(); app.persist(); app.toast(`${car.name} is yours!`); app.checkAchievements(); }
       else { app.audio.error(); app.toast(`Need $${money(car.price - s.cash)} more`); }
     } else if (s.selectedCar !== car.id) {
       selectCar(s, car.id); app.persist();

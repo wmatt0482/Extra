@@ -12,9 +12,12 @@ function createAudio() {
     if (ctx || !AC) return !!ctx;
     try { ctx = new AC({ latencyHint: 'interactive' }); } catch (_) { try { ctx = new AC(); } catch (e) { return false; } }
     master = ctx.createGain(); master.gain.value = 0.9;
+    // master bus: a gentle glue compressor, then a fast limiter so stacked explosions never clip
     const comp = ctx.createDynamicsCompressor();
-    comp.threshold.value = -14; comp.ratio.value = 4;
-    master.connect(comp).connect(ctx.destination);
+    comp.threshold.value = -14; comp.ratio.value = 4; comp.knee.value = 12; comp.attack.value = 0.004; comp.release.value = 0.2;
+    const limit = ctx.createDynamicsCompressor();
+    limit.threshold.value = -3; limit.knee.value = 0; limit.ratio.value = 20; limit.attack.value = 0.001; limit.release.value = 0.1;
+    master.connect(comp).connect(limit).connect(ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.gain.value = soundOn ? 1 : 0; sfxBus.connect(master);
     musicBus = ctx.createGain(); musicBus.gain.value = 0; musicBus.connect(master);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
@@ -41,16 +44,39 @@ function createAudio() {
     env(g, t, peak, 0.005, dur);
     o.connect(g).connect(dest); o.start(t); o.stop(t + dur + 0.05);
   }
-  function noise(filterType, f0, f1, q, dur, peak, at = 0) {
+  function noise(filterType, f0, f1, q, dur, peak, at = 0, attack = Math.min(0.04, dur * 0.3)) {
     const t = now() + at;
     const s = ctx.createBufferSource(); s.buffer = noiseBuf;
     s.playbackRate.value = 0.8 + Math.random() * 0.4;
     const f = ctx.createBiquadFilter(); f.type = filterType; f.Q.value = q;
     f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(Math.max(30, f1), t + dur);
-    const g = ctx.createGain(); env(g, t, peak, Math.min(0.04, dur * 0.3), dur);
+    const g = ctx.createGain(); env(g, t, peak, attack, dur);
     s.connect(f).connect(g).connect(sfxBus);
     s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.05);
   }
+  // crowd: three bandpassed noise layers with a slow swell and a jittery "voices" tremolo
+  function crowd(dur, peak, at = 0) {
+    const t = now() + at;
+    const out = ctx.createGain();
+    out.gain.setValueAtTime(0.0001, t);
+    out.gain.exponentialRampToValueAtTime(peak, t + dur * 0.35);
+    out.gain.setTargetAtTime(0.0001, t + dur * 0.55, dur * 0.18);
+    const trem = ctx.createGain(); trem.gain.value = 0.75;
+    const lfo = ctx.createOscillator(); lfo.type = 'triangle'; lfo.frequency.value = 6 + Math.random() * 3;
+    const lfoAmt = ctx.createGain(); lfoAmt.gain.value = 0.25;
+    lfo.connect(lfoAmt).connect(trem.gain);
+    trem.connect(out).connect(sfxBus);
+    for (const [f, q, g] of [[650, 0.9, 1], [1300, 1.2, 0.7], [2600, 1.6, 0.35]]) {
+      const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true; s.playbackRate.value = 0.9 + Math.random() * 0.2;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = q; bp.frequency.value = f;
+      bp.frequency.setValueAtTime(f * 0.8, t); bp.frequency.linearRampToValueAtTime(f * 1.1, t + dur);
+      const lg = ctx.createGain(); lg.gain.value = g;
+      s.connect(bp).connect(lg).connect(trem);
+      s.start(t, Math.random()); s.stop(t + dur * 1.6 + 0.1);
+    }
+    lfo.start(t); lfo.stop(t + dur * 1.6 + 0.1);
+  }
+  let lastBoomAt = -1;
 
   // ---------- music: two persistent oscillators, a 4-bar loop in A minor (Am F C G) ----------
   const N = (m) => 440 * Math.pow(2, (m - 69) / 12);
@@ -179,20 +205,78 @@ function createAudio() {
       if (quality === 'crash') { noise('bandpass', 2400, 600, 2, 0.35, 0.6, 0.03); tone('sawtooth', 160, 60, 0.3, 0.2, sfxBus, 0.02); }
       if (quality === 'perfect') { tone('triangle', 784, 784, 0.12, 0.14, sfxBus, 0.08); tone('triangle', 1175, 1175, 0.25, 0.14, sfxBus, 0.18); }
     },
+    // nitro: a hiss layer plus an afterburner roar (noise through a bandpass that opens up while held)
     nitro(on) {
       if (!ready()) return;
       if (on && !nitroNode) {
+        const t = now();
         const s = ctx.createBufferSource(); s.buffer = noiseBuf; s.loop = true;
         const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = 2500;
-        const g = ctx.createGain(); g.gain.value = 0; g.gain.setTargetAtTime(0.22, now(), 0.04);
+        const g = ctx.createGain(); g.gain.value = 0; g.gain.setTargetAtTime(0.16, t, 0.04);
         s.connect(f).connect(g).connect(sfxBus); s.start();
-        nitroNode = { s, g };
+        const ab = ctx.createBufferSource(); ab.buffer = noiseBuf; ab.loop = true; ab.playbackRate.value = 0.6;
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 1.4;
+        bp.frequency.setValueAtTime(220, t); bp.frequency.setTargetAtTime(1400, t, 0.35);
+        const ag = ctx.createGain(); ag.gain.value = 0; ag.gain.setTargetAtTime(0.3, t, 0.06);
+        ab.connect(bp).connect(ag).connect(sfxBus); ab.start();
+        nitroNode = { s, g, ab, bp, ag };
       } else if (!on && nitroNode) {
         const n = nitroNode; nitroNode = null;
-        n.g.gain.setTargetAtTime(0, now(), 0.05);
-        setTimeout(() => { try { n.s.stop(); } catch (_) {} }, 300);
+        const t = now();
+        n.g.gain.setTargetAtTime(0, t, 0.05);
+        n.bp.frequency.setTargetAtTime(200, t, 0.08);
+        n.ag.gain.setTargetAtTime(0, t, 0.09);
+        setTimeout(() => { try { n.s.stop(); n.ab.stop(); } catch (_) {} }, 500);
       }
     },
+    // low boom + noise burst + sub thump; chained blasts are attenuated so a fuel depot doesn't pile up
+    explosion(chain = 0) {
+      if (!ready()) return;
+      const t = now();
+      const close = t - lastBoomAt < 0.35;
+      lastBoomAt = t;
+      const k = close ? 0.6 : 1;
+      tone('sine', 95 - Math.min(3, chain) * 6, 32, 0.9, 0.55 * k);
+      tone('sine', 58, 26, 0.45, 0.6 * k, sfxBus, 0.01);
+      noise('lowpass', 2400, 140, 0.8, 0.95, 0.6 * k);
+      noise('bandpass', 900, 220, 1.4, 0.4, 0.35 * k, 0.03);
+      noise('highpass', 3000, 1200, 0.7, 0.25, 0.12 * k, 0.12);
+    },
+    ring() { if (ready()) { tone('triangle', 1568, 1568, 0.12, 0.13); tone('sine', 2093, 2093, 0.4, 0.13, sfxBus, 0.09); tone('sine', 3136, 3136, 0.25, 0.04, sfxBus, 0.09); } },
+    pop() { if (ready()) { noise('highpass', 2600, 900, 0.8, 0.1, 0.22); tone('sine', 620, 180, 0.12, 0.12); } },
+    comboUp(count = 2) {
+      if (!ready()) return;
+      const n = Math.max(0, Math.min(14, count - 2));
+      const f = 330 * Math.pow(2, n / 12 * 1.5);
+      tone('sawtooth', f, f * 1.5, 0.13, 0.05);
+      tone('triangle', f * 2, f * 3, 0.13, 0.07);
+    },
+    cheer(dur = 1.2) { if (ready()) crowd(dur, dur < 0.9 ? 0.16 : 0.24); },
+    fireworks() {
+      if (!ready()) return;
+      for (let r = 0; r < 3; r++) {
+        const at = r * 0.32;
+        tone('sine', 1300 + r * 200, 2500 + r * 300, 0.5, 0.035, sfxBus, at);          // whistle
+        tone('sine', 120, 42, 0.35, 0.3, sfxBus, at + 0.52);                             // pop
+        noise('lowpass', 2600, 300, 0.7, 0.3, 0.25, at + 0.52);
+        for (let i = 0; i < 9; i++) noise('highpass', 5000, 3000, 0.7, 0.03, 0.07 + Math.random() * 0.06, at + 0.6 + Math.random() * 0.6, 0.002); // crackle
+      }
+    },
+    orbit() {
+      if (!ready()) return;
+      const t = now();
+      const out = ctx.createGain(); out.gain.setValueAtTime(0.0001, t);
+      out.gain.exponentialRampToValueAtTime(0.05, t + 0.9); out.gain.setTargetAtTime(0.0001, t + 1.4, 0.5);
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(500, t); lp.frequency.exponentialRampToValueAtTime(2800, t + 1.2);
+      lp.connect(out).connect(sfxBus);
+      for (const [m, d] of [[57, -6], [64, 5], [69, -4], [73, 7], [76, 0]]) {
+        const o = ctx.createOscillator(); o.type = 'triangle'; o.frequency.value = N(m); o.detune.value = d;
+        o.connect(lp); o.start(t); o.stop(t + 3.6);
+      }
+      noise('bandpass', 800, 3200, 0.6, 2.2, 0.06, 0, 0.9);
+    },
+    rejump() { if (ready()) { tone('square', 196, 784, 0.22, 0.05); tone('triangle', 392, 1568, 0.25, 0.09, sfxBus, 0.03); } },
+    clank() { if (ready()) { tone('square', 820, 610, 0.06, 0.04); noise('bandpass', 3200, 1800, 6, 0.12, 0.18); } },
     click() { if (ready()) tone('square', 660, 520, 0.05, 0.06); },
     cash() { if (ready()) { [0, 0.06, 0.12].forEach((at, i) => tone('square', 988 * (1 + i * 0.26), 988 * (1 + i * 0.26), 0.08, 0.1, sfxBus, at)); } },
     error() { if (ready()) tone('square', 180, 140, 0.15, 0.08); },

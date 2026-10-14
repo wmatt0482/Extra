@@ -5,8 +5,12 @@ import { CARS, CAR_BY_ID } from '../data/cars.js';
 import { TRACKS, TRACK_BY_ID } from '../data/tracks.js';
 import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
 
+// The key keeps its v1 name so existing saves load in place; `v` inside the object is the schema
+// version. v2 (epic update) added: records.bestCombo/maxAltitude/rings/explosions/rejumps,
+// settings.shake (0-100), and achievements ({id: earned timestamp ms}). Older saves are upgraded by
+// normalize() with defaults for the new fields; nothing else changes shape.
 export const SAVE_KEY = 'rampRage.save.v1';
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 function emptyLevels() {
   return Object.fromEntries(UPGRADES.map((u) => [u.id, 0]));
@@ -31,11 +35,17 @@ export function defaultSave() {
       maxSpeedKmh: 0,
       longestAir: 0,
       perfectLandings: 0,
+      bestCombo: 0,          // longest smash chain
+      maxAltitude: 0,        // m above terrain
+      rings: 0,              // gold rings flown through (lifetime)
+      explosions: 0,
+      rejumps: 0,
     },
     daily: { date: '', done: false, attempts: 0 },
     goals: { list: [], rolled: 0 },
-    settings: { sound: true, music: true, reducedMotion: false },
-    seen: { coach: false },  // one-time UI hints already shown
+    settings: { sound: true, music: true, reducedMotion: false, shake: 100 },
+    seen: { coach: false, ach: 0 },  // one-time UI hints already shown
+    achievements: {},        // achievement id -> earned timestamp (ms)
   };
 }
 
@@ -95,10 +105,17 @@ export function normalize(raw) {
     s.settings.sound = bool(raw.settings.sound, true);
     s.settings.music = bool(raw.settings.music, true);
     s.settings.reducedMotion = bool(raw.settings.reducedMotion, false);
+    s.settings.shake = Math.max(0, Math.min(100, Math.round(num(raw.settings.shake, 100))));
+  }
+  if (raw.achievements && typeof raw.achievements === 'object' && !Array.isArray(raw.achievements)) {
+    for (const [id, t] of Object.entries(raw.achievements)) {
+      if (typeof id === 'string' && id.length < 40 && num(t) > 0) s.achievements[id] = num(t);
+    }
   }
   // players who already have runs on the clock don't need the first-run coach
   const seen = raw.seen && typeof raw.seen === 'object' ? raw.seen : {};
   s.seen.coach = bool(seen.coach, s.records.runs > 0);
+  s.seen.ach = Math.max(0, Math.floor(num(seen.ach)));   // achievements already seen in the panel (title badge)
   return s;
 }
 

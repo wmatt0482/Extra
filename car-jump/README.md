@@ -5,6 +5,60 @@ Roll down a giant ramp, launch off the lip, flip in the air, stick the landing, 
 cash. Spend it in the garage on 6 cars × 4 upgrade tracks, unlock 5 stages, chase the daily
 challenge and three rotating goals. No ads, no IAP, no energy timer.
 
+## v2 "epic update" features (UI / meta)
+
+- **Combo badge**: chained smashes (each within 1.5 s) show a badge with the hit count in a ring that drains
+  with the combo timer and the multiplier (`×1.25` … `×4`). It pulses on every hit, flashes red-gold at ×4
+  ("RAMPAGE"), and shows the combo bonus (`+$235`) for a moment when the chain ends.
+- **Altitude** readout while airborne (glows violet above 45 m, the "orbit" height).
+- **Banners**: big centered BIG AIR (a flight longer than 3 s), ORBIT!, RAMPAGE ×4, REJUMP! and NEW RECORD
+  slide in for ~1.2 s. Only one is ever on screen; a newer one replaces the current one after 0.65 s.
+- **Run-cash ticker** counts up smoothly instead of jumping.
+- **Results**: rating stamp (S/A/B/C/D, `cash.total / (finish × 4)`: S ≥ 1.5, A ≥ 1, B ≥ 0.6, C ≥ 0.3) slams in,
+  S in gold with spinning rays; the run total counts up over 1.2 s; Combo and Air rows join the breakdown (hidden
+  when they paid nothing; rows always add up to the total); extra stat tiles for best combo, altitude, air
+  targets and rejumps (only when non-zero, 6 or 8 tiles); fireworks on a NEW RECORD.
+- **Title hero**: the selected car rolls down the backdrop's ramp, launches, back-flips across the title with
+  a speed trail, lands in a dust puff and loops (portrait: it arcs over the logo). Static pose with Reduced motion.
+- **Audio**: explosion (boom + noise + sub thump, chained blasts attenuated), ring chime, balloon pop, combo
+  riser pitched by count, crowd cheer (finish line; short one on a perfect landing), fireworks, orbit pad swell,
+  rejump zap, part-knocked-off clank, and a nitro afterburner layer. A limiter on the master bus keeps stacked
+  explosions from clipping.
+
+### Achievements
+
+Twelve badges, shown in the **Badges** panel on the title (locked ones are dimmed with a hint; counted ones
+show progress). Earning one pops a toast during the run (queued, one at a time, never over a banner) and the
+results screen lists the run's new badges. The title button shows how many are unseen.
+
+| Badge | How |
+| --- | --- |
+| Head Over Wheels | land your first flip |
+| Butter | a perfect landing |
+| Triple Threat | 3 flips in one flight |
+| Rampage | reach the ×4 combo multiplier |
+| Kaboom | blow up a fuel drum or TNT crate |
+| Chain Reaction | 3 explosions in one chain |
+| Ring Collector | fly through 10 gold rings (lifetime) |
+| Orbit | fly 45 m above the ground |
+| Checkered Flag | cross a finish line |
+| Kilometer Club | 1,000 m in one run |
+| Full Garage | own all 6 cars |
+| S Rank | an S rating on a run |
+
+### Settings
+
+Sound effects, Music, Reduced motion (no shake, no slow-mo, static title hero, no fireworks), **Screen shake**
+slider (0-100 %, passed to the engine as `shake` 0..1; Reduced motion forces 0), and Reset progress.
+
+### Save format
+
+`localStorage['rampRage.save.v1']` (the key name is historical), schema `v: 2`. v2 added `achievements`
+(`{id: earned timestamp ms}`), `settings.shake` (0-100, default 100), `seen.ach` (badges already seen), and
+`records.bestCombo / maxAltitude / rings / explosions / rejumps`. v1 saves load in place: missing fields get
+defaults, nothing else changes shape. A corrupt save is backed up to `rampRage.save.v1.corrupt` and the game
+starts fresh.
+
 ## Run locally
 
 All code is ES modules, so it has to be served over HTTP (opening the file directly will not work):
@@ -20,6 +74,11 @@ Open <http://localhost:8080/>. Useful URL flags:
 | --- | --- |
 | `?mock=1` | Use the scripted mock engine (`src/meta/mockEngine.js`) instead of the real physics engine. |
 | `?nosw=1` | Do not register the service worker (handy while editing files). |
+
+The mock engine plays a scripted ~9 s run that emits every v2 event: launch, flips, a ring, a coin arc and a
+balloon (a blimp on city/moon), a 4-hit combo that includes a fuel → TNT explosion chain, a knocked-off part, a
+kicker rejump with a second flip and landing, orbit on the moon, and `record` when it passes `bestDistance`. Its
+summary/getState carry the v2 fields and its cash follows the SPEC formula, so the results math checks out.
 
 ### Controls
 
@@ -43,7 +102,8 @@ to the mock engine, so the menus always work.
 ### Tests and tools
 
 ```sh
-node tools/ui-smoke.mjs      # walks every screen at 844×390 and 390×844 (mock engine), checks cash math + layout
+node tools/ui-smoke.mjs      # walks every screen at 844×390 and 390×844 (mock engine), checks cash math + layout,
+                             # v2 HUD/banners/toasts, results rows + stamp + fireworks, achievements, shake slider
 node tools/engine-smoke.mjs  # real engine in dev.html: hold-GAS first run, back flip, pause/stop, maxed moon run
 node tools/economy-sim.mjs   # plays the real engine headlessly (Node, no browser) through the whole meta game
 node tools/make-icons.mjs    # re-renders icons/*.png from the inline SVG
@@ -89,17 +149,20 @@ car-jump/
   vendor/matter.min.js    Matter.js 0.20.0 (physics, used by the engine)
   src/
     main.js               boot: save, audio, engine loading (real or mock), navigation, run lifecycle
-    audio.js              WebAudio synth: engine hum, whoosh, smash, coin, flip, landing, nitro, music loop
+    audio.js              WebAudio synth: engine hum, whoosh, smash, coin, flip, landing, nitro + afterburner, music
+                          loop, explosion, ring, pop, combo riser, cheer, fireworks, orbit pad, rejump, clank
     data/                 cars, tracks, upgrades (shared tuning data)
     game/                 the physics engine (createGame contract in SPEC.md)
     meta/
       save.js             localStorage save (rampRage.save.v1), schema version, corrupt-save fallback
       economy.js          buy car / upgrade, stats, banking a run (records, unlocks)
       goals.js            3 rotating goals, progress from live events and run summaries
+      achievements.js     12 badges from live events, per-frame state, run summaries and the save
       daily.js            date-seeded daily challenge
       rng.js              FNV hash + mulberry32
-      mockEngine.js       contract-compatible fake engine (~6 s scripted run)
-    ui/                   garage, tracks, results, panels, HUD, controls, icons, car preview drawing
+      mockEngine.js       contract-compatible fake engine (~9 s scripted run, full v2 event set)
+    ui/                   garage, tracks, results, panels, HUD, controls, icons, car preview drawing,
+                          titleHero.js (animated title car), fireworks.js (results overlay)
   dev.html                engine harness (keyboard + on-screen buttons, no meta)
   package.json            marks the ES modules for the Node tools only (no dependencies, no build)
   tools/

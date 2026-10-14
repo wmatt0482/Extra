@@ -31,6 +31,10 @@ export const ICONS = {
   check: S('<path d="M4.5 12.5l5 5 10-11"/>'),
   star: F('<path d="M12 2.8l2.8 5.8 6.3.9-4.6 4.4 1.1 6.3L12 17.2l-5.6 3 1.1-6.3L2.9 9.5l6.3-.9z"/>'),
   sound: S('<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/>'),
+  boom: F('<path d="M12 1.8l2 5.4 4.6-3.2-1.4 5.5 5.6.3-4.4 3.6 4.1 3.9-5.6-.3.6 5.6L13 19l-3 4-.7-5.6-5.5 1.6 3-4.8L1.6 12l5.4-1.6L4.6 5.4l5.2 2.2z"/>'),
+  ring: S('<ellipse cx="12" cy="12" rx="6" ry="9"/><ellipse cx="12" cy="12" rx="2.6" ry="5.4" stroke-width="2"/>'),
+  rocket: S('<path d="M12 2.5c3.5 2.5 5 6.5 4 11.5H8c-1-5 .5-9 4-11.5z"/><circle cx="12" cy="9" r="1.6"/><path d="M8 14l-3 3.5 3.2.3M16 14l3 3.5-3.2.3M10.5 17.5L12 21.5l1.5-4"/>'),
+  medal: S('<path d="M8 2.5l4 6 4-6M5.5 2.5h5M13.5 2.5h5"/><circle cx="12" cy="15" r="6"/><path d="M12 12l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z" fill="currentColor" stroke-width="1"/>'),
   music: S('<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="16.5" cy="16" r="2.5" fill="currentColor"/>'),
 };
 

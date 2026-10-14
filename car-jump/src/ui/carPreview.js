@@ -36,6 +36,16 @@ export function drawCar(canvas, car, { spin = 0, bob = 0, floor = true, dx = 0, 
   ctx.scale(s, -s);
   const lw = 2.4 / s;
 
+  paintCar(ctx, car, lw, spin);
+  ctx.restore();
+}
+
+// Paint a car in car space (meters, +y up) on an already-transformed context. lw = 1 px in car units.
+export function paintCar(ctx, car, lw, spin = 0) {
+  let maxY = -Infinity;
+  for (const [, y] of car.body) maxY = Math.max(maxY, y);
+  for (const w of car.wheels) maxY = Math.max(maxY, w.y + w.r);
+  const minY = Math.min(...car.body.map((p) => p[1]), ...car.wheels.map((w) => w.y - w.r));
   // body
   const body = new Path2D();
   car.body.forEach(([x, y], i) => (i ? body.lineTo(x, y) : body.moveTo(x, y)));
@@ -93,7 +103,6 @@ export function drawCar(canvas, car, { spin = 0, bob = 0, floor = true, dx = 0, 
     ctx.fillStyle = '#14151c'; ctx.beginPath(); ctx.arc(0, 0, w.r * 0.14, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
-  ctx.restore();
 }
 
 const minYBody = (c) => Math.min(...c.body.map((p) => p[1]));
