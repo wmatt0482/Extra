@@ -167,7 +167,7 @@ try {
     console.log('api:', JSON.stringify(api));
     check(api.frozen, 'pause() freezes the simulation');
     check(api.finishEmitted && api.after === 'done', 'stop() emits finish and ends the run');
-    check(api.summaryKeys === 'airTargets,airTime,backFlips,bestCombo,cash,coins,distance,durationSec,explosions,finishCrossed,flips,frontFlips,landing,maxAltitude,maxSpeedKmh,rating,rejumps,rings,smashed', `summary keys: ${api.summaryKeys}`);
+    check(api.summaryKeys === 'airTargets,airTime,backFlips,bestCombo,cash,coins,distance,durationSec,explosions,finishCrossed,flips,frontFlips,landing,maxAltitude,maxSpeedKmh,rating,ratingScore,rejumps,rings,smashed', `summary keys: ${api.summaryKeys}`);
     check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
     await context.close();
   }
@@ -300,12 +300,18 @@ try {
     p = await stepUntil(page, 'nitro');
     const rec = await evs(page, 'record');
     const s = p.finished;
-    const k = s.cash.total / (400 * 4);
-    const want = k >= 1.5 ? 'S' : k >= 1.0 ? 'A' : k >= 0.6 ? 'B' : k >= 0.3 ? 'C' : 'D';
+    // rating = src/data/rating.js over the summary; cleanFlips (flips not ended in a crash) is engine-internal,
+    // so the reported score must sit between "no flip counted" and "every flip counted"
+    const rt = await page.evaluate(async (s) => {
+      const m = await import('/src/data/rating.js');
+      return { lo: m.ratingScore({ ...s, cleanFlips: 0 }, 400), hi: m.ratingScore({ ...s, cleanFlips: s.flips }, 400), letter: m.ratingLetter(s.ratingScore) };
+    }, s);
+    const k = s.ratingScore;
+    const want = s.ratingScore >= rt.lo && s.ratingScore <= rt.hi ? rt.letter : 'mismatch';
     console.log('v2 muscle/canyon/L8 seed 5:', JSON.stringify({ record: rec.length, finish: s.finishCrossed, rating: s.rating, cash: s.cash }));
     check(rec.length === 1 && s.distance >= best, `(6) record fires once when passing bestDistance ${best} (${rec.length})`);
-    check(s.rating === want, `(6) rating ${s.rating} matches cash.total / (finish x 4) = ${k.toFixed(2)}`);
-    check(['rating', 'maxAltitude', 'bestCombo', 'explosions', 'rings', 'coins', 'airTargets', 'rejumps'].every((x) => x in s) && 'combo' in s.cash && 'air' in s.cash, '(6) summary has all v2 fields');
+    check(s.rating === want, `(6) rating ${s.rating} matches the src/data/rating.js score ${k} (${rt.lo}..${rt.hi})`);
+    check(['rating', 'ratingScore', 'maxAltitude', 'bestCombo', 'explosions', 'rings', 'coins', 'airTargets', 'rejumps'].every((x) => x in s) && 'combo' in s.cash && 'air' in s.cash, '(6) summary has all v2 fields');
     check(sumOK(s), '(6) cash adds up');
     check(!p.bad && errors.length === 0, `(7) no NaN / console errors (${p.bad || ''} ${errors.join(' | ')})`);
     await context.close();

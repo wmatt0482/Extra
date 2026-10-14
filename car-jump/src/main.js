@@ -7,7 +7,7 @@ import { TRACK_BY_ID } from './data/tracks.js';
 import { resolveStats } from './data/upgrades.js';
 import { Audio } from './audio.js';
 import { loadSave, writeSave, wipeSave } from './meta/save.js';
-import { bankRun, earn, ratingFor, statsFor } from './meta/economy.js';
+import { bankRun, earn, isUnlocked, nextTrackId, ratingFor, statsFor } from './meta/economy.js';
 import { ACHIEVEMENTS, createAchievements } from './meta/achievements.js';
 import { claimGoals, ensureGoals, goalEvent, goalSummary, goalText } from './meta/goals.js';
 import { dailyFor, refreshDaily, todayKey } from './meta/daily.js';
@@ -22,7 +22,7 @@ import { createResults } from './ui/results.js';
 import { createPanels } from './ui/panels.js';
 import { createTitleHero } from './ui/titleHero.js';
 
-const VERSION = '2.0.0';
+const VERSION = '2.0.1';
 const params = new URLSearchParams(location.search);
 
 async function loadEngine() {
@@ -295,7 +295,7 @@ async function boot() {
   function onEvent(evt) {
     if (!run || !evt) return;
     switch (evt.type) {
-      case 'launch': Audio.whoosh(); break;
+      case 'launch': Audio.whoosh(); hud.banner('launch', `Launch! ${Math.round(evt.speedKmh || 0)} km/h`); break;
       case 'flip': Audio.flip(); break;
       case 'land':
         Audio.land(evt.quality);
@@ -303,8 +303,12 @@ async function boot() {
         break;
       case 'smash': Audio.smash(); setTimeout(() => Audio.coin(), 60); break;
       case 'finishLine':
+        // the engine draws FINISH LINE! itself; the HUD only adds what is new (an unlock)
         Audio.cheer(1.2); Audio.fireworks();
-        hud.toast(run.daily ? 'Finish line!' : 'Finish line! Next track unlocked');
+        if (!run.daily) {
+          const n = nextTrackId(run.trackId);
+          if (n && !isUnlocked(save, n)) hud.note(`Unlocked: ${TRACK_BY_ID[n].name}`);
+        }
         break;
       // ----- v2 -----
       case 'combo':
@@ -320,14 +324,14 @@ async function boot() {
         else Audio.pop();                            // balloon / blimp
         break;
       case 'orbit': Audio.orbit(); hud.banner('orbit', 'Orbit!'); break;
-      case 'rejump': Audio.rejump(); Audio.whoosh(); hud.banner('rejump', 'Rejump!'); break;
-      case 'record': Audio.fanfare(); hud.banner('record', 'New record'); break;
+      case 'rejump': Audio.rejump(); Audio.whoosh(); hud.banner('rejump', (evt.count || 1) > 1 ? `Rejump ×${evt.count}` : 'Rejump!'); break;
+      case 'record': Audio.fanfare(); break;    // the engine's in-world NEW RECORD flag banner owns this moment
       case 'damage': Audio.clank(); break;
       case 'finish': endRun(evt.summary); return;
       default: break;
     }
     achievements.event(evt);
-    for (const g of goalEvent(save, evt)) hud.toast(`Goal done: ${goalText(g)}`);
+    for (const g of goalEvent(save, evt)) hud.note(`Goal done: ${goalText(g)}`);
   }
 
   function endRun(summary) {
@@ -341,10 +345,10 @@ async function boot() {
     summary = summary || {};
     if (summary.rings == null && r.rings) summary = { ...summary, rings: r.rings };   // engine without v2 summary fields
     const bank = bankRun(save, r.trackId, summary, { ranked: !r.daily });
-    const rating = summary.rating || ratingFor(summary.cash && summary.cash.total, TRACK_BY_ID[r.trackId].finish);
+    const rating = summary.rating || ratingFor(summary, TRACK_BY_ID[r.trackId].finish);
     achievements.summary(summary, rating);
     achievements.endRun();
-    for (const g of goalSummary(save, summary)) hud.toast(`Goal done: ${goalText(g)}`);
+    for (const g of goalSummary(save, summary)) hud.note(`Goal done: ${goalText(g)}`);
     const goals = claimGoals(save);
     let dailyReward = 0, dailyAlreadyDone = false;
     if (r.daily) {

@@ -56,14 +56,15 @@ export function createResults(app) {
     countRaf = requestAnimationFrame(tick);
   }
 
-  function stamp(rating) {
+  function stamp(rating, score) {
     clearTimeout(stampTimer);
     el.stamp.hidden = true;
     if (!rating) return;
     el.stamp.className = 'stamp r-' + rating;
     el.stamp.dataset.rating = rating;
     el.stampLetter.textContent = rating;
-    el.stamp.setAttribute('aria-label', `Rating ${rating}`);
+    el.stamp.setAttribute('aria-label', `Rating ${rating}${score != null ? `, score ${score} of 110` : ''}`);
+    el.stamp.title = score != null ? `Score ${score} · S 88+ · A 60+ · B 40+ · C 10+` : '';
     // slam in once the panel has landed
     stampTimer = setTimeout(() => {
       el.stamp.hidden = false;
@@ -143,6 +144,8 @@ export function createResults(app) {
     countUp(totalTd, Math.round(c.total || 0));
     for (const g of r.goals) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'goal' }, h('td', {}, 'Goal ', h('span', { class: 'hint' }, g.text)), h('td', { 'data-value': String(g.reward) }, '+$' + money(g.reward))));
     if (r.dailyReward) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'daily' }, h('td', {}, 'Daily ', h('span', { class: 'hint' }, 'challenge complete')), h('td', { 'data-value': String(r.dailyReward) }, '+$' + money(r.dailyReward))));
+    // a long breakdown (combo + air + goals) tightens so it still fits the card without scrolling
+    el.pay.classList.toggle('dense', el.pay.rows.length > 8);
 
     el.callouts.innerHTML = '';
     if (bank.unlocked) el.callouts.append(h('span', { class: 'callout' }, `Unlocked: ${TRACK_BY_ID[bank.unlocked].name}!`));
@@ -160,7 +163,7 @@ export function createResults(app) {
       else el.callouts.append(h('span', { class: 'callout cyan' }, `Daily: ${r.dailyGoalText} (got ${r.dailyValue})`));
     }
 
-    stamp(s.rating || ratingFor(c.total, track.finish));
+    stamp(s.rating || ratingFor(s, track.finish), s.ratingScore);
     fx.stop();
     if (record) {
       if (!app.save.settings.reducedMotion) fx.start(2800);

@@ -1,6 +1,9 @@
 // Run HUD: distance (+ progress to the finish flag), run cash (eased ticker), speed, nitro, plus the
 // v2 pieces: combo badge (drains with getState().combo.timer01), altitude chip while airborne,
-// big centered banners (one at a time, queued), and the achievement toast queue (waits for banners).
+// big centered banners (one at a time, queued), and the in-run message queue (achievement toasts and
+// notes such as "Goal done"): one message at a time, only while no banner is up. Banners and messages share
+// the band under the top bar, so a banner that arrives cuts the current message (it comes back afterwards
+// if it was cut early). The engine draws its own big texts (flips, landings, finish) in a lower band.
 // Writes the DOM only when a displayed value changes, so calling update() every frame is cheap.
 import { $, h, money } from './dom.js';
 import { icon } from './icons.js';
@@ -8,6 +11,7 @@ import { icon } from './icons.js';
 const BANNER_MS = 1550;      // in (~.25 s) + hold (~1.2 s) + out
 const BANNER_MIN_MS = 650;   // a newer banner may cut the current one short after this long (stay timely)
 const ACH_MS = 2900;
+const NOTE_MS = 2600;
 const COMBO_WINDOW = 1.5;    // fallback drain when an engine doesn't report combo.timer01
 
 export function createHud() {
@@ -23,7 +27,7 @@ export function createHud() {
   let evCombo = null;          // {count, mult, at} from events (fallback / instant pulse)
   let comboEndUntil = 0;
   let bannerQ = [], bannerCur = null, bannerTimer = 0, bannerAt = 0, bannerCut = 0;
-  let achQ = [], achBusy = false, achTimer = 0;
+  let achQ = [], achBusy = null, achTimer = 0;   // achBusy = {item, node, at} while a message shows
 
   function set(key, value, fn) {
     if (last[key] === value) return;
@@ -43,6 +47,7 @@ export function createHud() {
     bannerCur = bannerQ.shift() || null;
     bannerAt = performance.now();
     if (!bannerCur) { el.banner.hidden = true; pumpAch(); return; }
+    cutMessage();
     el.banner.className = 'banner b-' + bannerCur.kind;
     el.bannerText.textContent = bannerCur.text;
     el.banner.dataset.kind = bannerCur.kind;
@@ -54,13 +59,27 @@ export function createHud() {
   // ---------- achievement toasts (one at a time, after any banner) ----------
   function pumpAch() {
     if (achBusy || !achQ.length || bannerCur || bannerQ.length) return;
-    achBusy = true;
-    const a = achQ.shift();
-    const t = h('div', { class: `toast ach tone-${a.tone || 'gold'}`, 'data-ach': a.id, role: 'status' },
-      h('span', { class: 'ach-medal', html: icon(a.icon) }),
-      h('span', { class: 'ach-text' }, h('small', {}, 'Achievement unlocked'), h('b', {}, a.name)));
+    const item = achQ.shift();
+    let t;
+    if (item.ach) {
+      const a = item.ach;
+      t = h('div', { class: `toast ach tone-${a.tone || 'gold'}`, 'data-ach': a.id, role: 'status' },
+        h('span', { class: 'ach-medal', html: icon(a.icon) }),
+        h('span', { class: 'ach-text' }, h('small', {}, 'Achievement unlocked'), h('b', {}, a.name)));
+    } else {
+      t = h('div', { class: 'toast note', role: 'status' }, item.text);
+    }
     el.toasts.prepend(t);
-    achTimer = setTimeout(() => { t.remove(); achBusy = false; pumpAch(); }, ACH_MS);
+    achBusy = { item, node: t, at: performance.now() };
+    achTimer = setTimeout(() => { t.remove(); achBusy = null; pumpAch(); }, item.ach ? ACH_MS : NOTE_MS);
+  }
+  // a banner is starting: take the current message down; if it had little screen time, show it again later
+  function cutMessage() {
+    if (!achBusy) return;
+    clearTimeout(achTimer);
+    achBusy.node.remove();
+    if (performance.now() - achBusy.at < 1400) achQ.unshift(achBusy.item);
+    achBusy = null;
   }
 
   function showCombo(count, mult, timer01) {
@@ -78,7 +97,7 @@ export function createHud() {
       finishM = track ? track.finish : 400;
       cashShown = cashTarget = 0; lastT = 0;
       evCombo = null; comboEndUntil = 0;
-      el.toasts.querySelectorAll('.toast:not(.ach)').forEach((t) => t.remove());
+      el.toasts.querySelectorAll('.toast:not(.ach):not(.note)').forEach((t) => t.remove());
       this.clearBanners();
       el.alt.hidden = true; el.combo.hidden = true; el.combo.classList.remove('rampage', 'ended');
       this.update({ distance: 0, cash: 0, speedKmh: 0, nitro: 1 });
@@ -156,19 +175,24 @@ export function createHud() {
       el.banner.hidden = true;
       pumpAch();
     },
-    achievement(a) { achQ.push(a); pumpAch(); },
-    // drop queued / showing achievement toasts (the results screen lists the run's badges itself)
+    achievement(a) { achQ.push({ ach: a }); pumpAch(); },
+    // in-run note ("Goal done: …"): same one-at-a-time lane as the achievement toasts, never over a banner
+    note(text) {
+      if (achQ.some((m) => m.text === text) || (achBusy && achBusy.item.text === text)) return;
+      achQ.push({ text }); pumpAch();
+    },
+    // drop queued / showing messages (the results screen lists the run's badges and goals itself)
     flushAchievements() {
       clearTimeout(achTimer);
-      achQ = []; achBusy = false;
-      el.toasts.querySelectorAll('.toast.ach').forEach((t) => t.remove());
+      achQ = []; achBusy = null;
+      el.toasts.querySelectorAll('.toast.ach, .toast.note').forEach((t) => t.remove());
     },
     toast(text) {
       const t = document.createElement('div');
       t.className = 'toast';
       t.textContent = text;
       el.toasts.append(t);
-      const plain = el.toasts.querySelectorAll('.toast:not(.ach)');
+      const plain = el.toasts.querySelectorAll('.toast:not(.ach):not(.note)');
       if (plain.length > 3) plain[0].remove();
       setTimeout(() => t.remove(), 2700);
     },

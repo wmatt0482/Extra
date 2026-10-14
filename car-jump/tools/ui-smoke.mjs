@@ -312,8 +312,9 @@ async function runLayout(browser, layout) {
   await page.keyboard.up('ArrowRight');
 
   // v2 HUD moments, in mock-timeline order
+  // (the launch banner may already be gone by now: the monitor below checks it was shown)
+  await page.waitForSelector('#banner[data-kind="launch"]:not([hidden])', { timeout: 2500 }).then(() => shot(page, layout, '06b-banner-launch')).catch(() => {});
   await waitShot(page, layout, '#hud-alt:not([hidden])', '06a-altitude');
-  await waitShot(page, layout, '#banner[data-kind="record"]:not([hidden])', '06b-banner-record');
   await waitShot(page, layout, '#banner[data-kind="bigair"]:not([hidden])', '06c-banner-bigair');
   await page.waitForFunction(() => document.querySelector('#hud-combo-count').textContent === '4' && !document.querySelector('#hud-combo').hidden, null, { timeout: 8000 }).catch(() => {});
   await shot(page, layout, '06d-combo');
@@ -325,7 +326,8 @@ async function runLayout(browser, layout) {
   await page.waitForSelector(visibleSel('#screen-results'), { timeout: 20000 });
   const m1 = await mon(page);
   check(m1.altSeen > 0, 'altitude readout shown while airborne');
-  check(['record', 'bigair', 'rejump'].every((k) => m1.banners.includes(k)), `banners shown: ${m1.banners.join(', ')} (record, bigair, rejump)`);
+  check(['launch', 'bigair', 'rejump'].every((k) => m1.banners.includes(k)) && !m1.banners.includes('record'),
+    `banners shown: ${m1.banners.join(', ')} (launch, bigair, rejump; NEW RECORD belongs to the engine's in-world flag)`);
   check(m1.comboSeen > 0 && m1.comboMaxCount === 4 && m1.ringDrain, `combo badge shown (max count ${m1.comboMaxCount}), ring drains`);
   check(m1.achIds.length > 0 && m1.achMax === 1 && m1.achOverBanner === 0,
     `achievement toasts ${m1.achIds.join(', ')}: one at a time (max ${m1.achMax}), none started over a banner (${m1.achOverBanner})`);

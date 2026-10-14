@@ -6,7 +6,55 @@ import { drawChassis, drawWheel } from './car.js';
 
 export const OUT = '#1d1b26';
 const FONT = '900 {S}px "Arial Black", "Helvetica Neue", system-ui, -apple-system, sans-serif';
-const font = (s) => FONT.replace('{S}', Math.round(s));
+// world-space labels use sub-pixel sizes (0.42 m): only round screen-space sizes
+const font = (s) => FONT.replace('{S}', s >= 6 ? Math.round(s) : Math.round(s * 100) / 100);
+
+// ---------- text sprites ----------
+// Text is the most expensive thing this renderer draws on a software-rasterised canvas, and every new
+// on-screen size (zoom changes, popups popping in) misses the glyph cache. So each label is rendered once
+// into a small bitmap at a fixed size and drawn with drawImage, scaled by the current transform.
+const sprites = new Map();
+let probe = null;
+function mkCanvas(w, h) {
+  // a plain <canvas> (same backing as the game canvas): an OffscreenCanvas can be GPU-backed while the
+  // game canvas is not, and then every drawImage from it is a readback
+  if (typeof document !== 'undefined') { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+  return new OffscreenCanvas(w, h);
+}
+// px: sprite font size; lw: outline width in sprite px (0 = no outline)
+function textSprite(text, fill, px, lw, scale) {
+  const key = `${px}|${lw}|${scale}|${fill}|${text}`;
+  let sp = sprites.get(key);
+  if (sp) return sp;
+  if (sprites.size > 160) sprites.clear();
+  if (!probe) probe = mkCanvas(4, 4).getContext('2d');
+  probe.font = font(px);
+  const w = Math.ceil(probe.measureText(text).width + lw * 2 + 6), h = Math.ceil(px * 1.3 + lw * 2 + 4);
+  const cv = mkCanvas(Math.ceil(w * scale), Math.ceil(h * scale));
+  const c = cv.getContext('2d');
+  c.scale(scale, scale);
+  c.font = font(px);
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  if (lw > 0) { c.lineJoin = 'round'; c.lineWidth = lw; c.strokeStyle = OUT; c.strokeText(text, w / 2, h / 2); }
+  c.fillStyle = fill;
+  c.fillText(text, w / 2, h / 2);
+  sp = { cv, w, h, px };
+  sprites.set(key, sp);
+  return sp;
+}
+// draw `text` centred at (x, y) with font size `size` in the current units (outline `lw` in the same units)
+function spriteText(ctx, text, size, x, y, fill, lw = 0) {
+  try {
+    const PX = 64, k = size / PX;
+    const sp = textSprite(text, fill, PX, lw > 0 ? Math.max(1, Math.round(lw / k)) : 0, 1);
+    ctx.drawImage(sp.cv, x - (sp.w * k) / 2, y - (sp.h * k) / 2, sp.w * k, sp.h * k);
+  } catch (_) {
+    ctx.font = font(size); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    if (lw > 0) { ctx.lineWidth = lw; ctx.strokeStyle = OUT; ctx.strokeText(text, x, y); }
+    ctx.fillStyle = fill; ctx.fillText(text, x, y);
+  }
+}
 
 const STYLE_BY_TRACK = { canyon: 'mesa', city: 'city', desert: 'dunes', arctic: 'peaks', moon: 'lunar' };
 
@@ -68,7 +116,7 @@ function periodicHeight(u, waves, P) {
   return s;
 }
 
-function drawLayer(ctx, W, H, bd, shapes, waves, baseY, scale, off, fill, line, lw, isMid, t) {
+function drawLayer(ctx, W, H, bd, shapes, waves, baseY, scale, off, fill, line, lw, isMid, t, fillTo = H + 2) {
   const P = bd.P * scale;
   const start = -(((off % P) + P) % P);
   ctx.fillStyle = fill;
@@ -90,8 +138,9 @@ function drawLayer(ctx, W, H, bd, shapes, waves, baseY, scale, off, fill, line, 
     ctx.stroke();
     return;
   }
-  // flat ground under shapes
-  ctx.fillRect(0, baseY, W, H - baseY + 2);
+  // flat ground under shapes (only down to where the next layer's ground takes over: the canvas is
+  // rasterised in software on many devices, so every full-height fill costs)
+  ctx.fillRect(0, baseY, W, Math.max(0, fillTo - baseY));
   for (let k = start; k < W; k += P) {
     for (const s of shapes) {
       const x = k + s.x * scale, w = s.w * scale, h = s.h * scale;
@@ -131,15 +180,15 @@ function drawLayer(ctx, W, H, bd, shapes, waves, baseY, scale, off, fill, line, 
         ctx.restore();
       } else if (style === 'mesa') {
         ctx.save();
-        ctx.strokeStyle = withAlpha('#000000', 0.12);
+        ctx.strokeStyle = 'rgba(0,0,0,0.12)';
         ctx.lineWidth = 3 * scale;
+        ctx.beginPath();
         for (let j = 1; j < 3; j++) {
           const yy = baseY - h + (h * j) / 3.2;
-          ctx.beginPath();
           ctx.moveTo(x + w * 0.14, yy);
           ctx.lineTo(x + w * 0.88, yy);
-          ctx.stroke();
         }
+        ctx.stroke();
         ctx.restore();
       } else if (style === 'city') {
         ctx.save();
@@ -176,6 +225,26 @@ function drawLayer(ctx, W, H, bd, shapes, waves, baseY, scale, off, fill, line, 
 }
 
 let spaceCache = { H: 0, g: null };
+function drawSun(ctx, W, H, space) {
+  const sx = W * 0.78, sy = H * 0.2, sr = Math.min(W, H) * 0.085;
+  const glow = 1 - space;
+  if (glow > 0.02) {
+    ctx.fillStyle = `rgba(255,250,200,${(0.35 * glow).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(sx, sy, sr * 1.7, 0, TAU); ctx.fill();
+    ctx.fillStyle = `rgba(255,250,200,${(0.45 * glow).toFixed(3)})`;
+    ctx.beginPath(); ctx.arc(sx, sy, sr * 1.3, 0, TAU); ctx.fill();
+  }
+  // in space the sun is a hard white disc with a thin corona
+  ctx.fillStyle = space > 0.02 ? mix('#fff4a3', '#ffffff', space) : '#fff4a3';
+  ctx.beginPath(); ctx.arc(sx, sy, sr * (1 - 0.25 * space), 0, TAU); ctx.fill();
+  ctx.lineWidth = 3; ctx.strokeStyle = space > 0.02 ? mix('#f2b13a', '#cfe0ff', space) : '#f2b13a'; ctx.stroke();
+  if (space > 0.05) {
+    ctx.strokeStyle = `rgba(200,220,255,${(0.35 * space).toFixed(3)})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(sx, sy, sr * 1.15, 0, TAU); ctx.stroke();
+  }
+}
+
 export function drawBackground(ctx, view, cam, bd, t, space = 0) {
   const { W, H } = view;
   const theme = bd.theme;
@@ -229,23 +298,7 @@ export function drawBackground(ctx, view, cam, bd, t, space = 0) {
     ctx.lineWidth = 3; ctx.strokeStyle = OUT;
     ctx.beginPath(); ctx.arc(ex, ey, er, 0, TAU); ctx.stroke();
   } else {
-    const sx = W * 0.78, sy = H * 0.2, sr = Math.min(W, H) * 0.085;
-    const glow = 1 - space;
-    if (glow > 0.02) {
-      ctx.fillStyle = `rgba(255,250,200,${(0.35 * glow).toFixed(3)})`;
-      ctx.beginPath(); ctx.arc(sx, sy, sr * 1.7, 0, TAU); ctx.fill();
-      ctx.fillStyle = `rgba(255,250,200,${(0.45 * glow).toFixed(3)})`;
-      ctx.beginPath(); ctx.arc(sx, sy, sr * 1.3, 0, TAU); ctx.fill();
-    }
-    // in space the sun is a hard white disc with a thin corona
-    ctx.fillStyle = space > 0.02 ? mix('#fff4a3', '#ffffff', space) : '#fff4a3';
-    ctx.beginPath(); ctx.arc(sx, sy, sr * (1 - 0.25 * space), 0, TAU); ctx.fill();
-    ctx.lineWidth = 3; ctx.strokeStyle = space > 0.02 ? mix('#f2b13a', '#cfe0ff', space) : '#f2b13a'; ctx.stroke();
-    if (space > 0.05) {
-      ctx.strokeStyle = `rgba(200,220,255,${(0.35 * space).toFixed(3)})`;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(sx, sy, sr * 1.15, 0, TAU); ctx.stroke();
-    }
+    drawSun(ctx, W, H, space);
     // clouds
     ctx.lineWidth = 3;
     ctx.globalAlpha = Math.max(0, 1 - 1.7 * space);
@@ -264,15 +317,19 @@ export function drawBackground(ctx, view, cam, bd, t, space = 0) {
 
   // seen from orbit the landscape sinks into a deep blue haze
   const hz = bd.night ? 0 : space * 0.55;
-  const farFill = hz > 0.01 ? mix(theme.far, '#101a40', hz) : theme.far;
-  const midFill = hz > 0.01 ? mix(theme.mid, '#101a40', hz * 0.8) : theme.mid;
-  drawLayer(ctx, W, H, bd, bd.far, bd.farW, horizon, zs, cam.x * cam.z * 0.05, farFill, mix(theme.far, '#05081a', 0.25 + hz * 0.5), 2.5, false, t);
+  // colours only change in orbit: cache the ground-level ones on the backdrop (no strings per frame)
+  const hzOn = hz > 0.01;
+  const cc = bd.layerCols || (bd.layerCols = { farLine: mix(theme.far, '#05081a', 0.25), midLine: mix(theme.mid, '#05081a', 0.35), haze: withAlpha(theme.sky[1], 0.25) });
+  const farFill = hzOn ? mix(theme.far, '#101a40', hz) : theme.far;
+  const midFill = hzOn ? mix(theme.mid, '#101a40', hz * 0.8) : theme.mid;
+  const midBase = horizon + 34 * zs;
+  drawLayer(ctx, W, H, bd, bd.far, bd.farW, horizon, zs, cam.x * cam.z * 0.05, farFill, hzOn ? mix(theme.far, '#05081a', 0.25 + hz * 0.5) : cc.farLine, 2.5, false, t, midBase + 4);
   // atmospheric haze between layers
   if (!bd.night && space < 0.98) {
-    ctx.fillStyle = withAlpha(theme.sky[1], 0.25 * (1 - space));
-    ctx.fillRect(0, horizon - 40, W, H);
+    ctx.fillStyle = space > 0.005 ? withAlpha(theme.sky[1], 0.25 * (1 - space)) : cc.haze;
+    ctx.fillRect(0, horizon - 40, W, bd.style === 'dunes' || bd.style === 'hills' ? H : midBase + 4 - (horizon - 40));
   }
-  drawLayer(ctx, W, H, bd, bd.mid, bd.midW, horizon + 34 * zs, zs * 1.15, cam.x * cam.z * 0.16, midFill, mix(theme.mid, '#05081a', 0.35 + hz * 0.4), 3, true, t);
+  drawLayer(ctx, W, H, bd, bd.mid, bd.midW, midBase, zs * 1.15, cam.x * cam.z * 0.16, midFill, hzOn ? mix(theme.mid, '#05081a', 0.35 + hz * 0.4) : cc.midLine, 3, true, t);
 }
 
 // ---------- world ----------
@@ -281,19 +338,24 @@ export function worldTransform(ctx, view, cam) {
   ctx.setTransform(d * z, 0, 0, -d * z, d * (view.W / 2 - cam.x * z + cam.sx), d * (view.H / 2 + cam.y * z + cam.sy));
 }
 
+let terrainBuf = new Float64Array(1024);
 export function drawTerrain(ctx, course, bd, vis, lw, cam) {
   const theme = bd.theme;
   const x0 = Math.max(vis.x0 - 2, course.rampStart - 400), x1 = vis.x1 + 2;
   const bottom = vis.y0 - 5;
   const step = Math.max(0.25, 5 / cam.z);
   const g = course.baseY || course.groundY;
-  const pts = [];
-  for (let x = x0; x <= x1 + step; x += step) pts.push(x, g(x));
+  // reused buffer: no per-frame garbage (the explosion-heavy frames are the ones a GC pause hurts most)
+  const need = 2 * (Math.ceil((x1 + step - x0) / step) + 2);
+  if (terrainBuf.length < need) terrainBuf = new Float64Array(need * 2);
+  const pts = terrainBuf;
+  let np = 0;
+  for (let x = x0; x <= x1 + step; x += step) { pts[np++] = x; pts[np++] = g(x); }
   // body
   ctx.beginPath();
   ctx.moveTo(x0, bottom);
-  for (let i = 0; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
-  ctx.lineTo(pts[pts.length - 2], bottom);
+  for (let i = 0; i < np; i += 2) ctx.lineTo(pts[i], pts[i + 1]);
+  ctx.lineTo(pts[np - 2], bottom);
   ctx.closePath();
   ctx.fillStyle = theme.ground;
   ctx.fill();
@@ -305,15 +367,15 @@ export function drawTerrain(ctx, course, bd, vis, lw, cam) {
   ctx.fillStyle = theme.groundDark;
   ctx.beginPath();
   ctx.moveTo(x0, bottom);
-  for (let i = 0; i < pts.length; i += 2) ctx.lineTo(pts[i], pts[i + 1] - 2.2 - 0.4 * Math.sin(pts[i] * 0.31));
-  ctx.lineTo(pts[pts.length - 2], bottom);
+  for (let i = 0; i < np; i += 2) ctx.lineTo(pts[i], pts[i + 1] - 2.2 - 0.4 * Math.sin(pts[i] * 0.31));
+  ctx.lineTo(pts[np - 2], bottom);
   ctx.closePath();
   ctx.fill();
-  ctx.strokeStyle = withAlpha('#000000', 0.12);
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
   ctx.lineWidth = 0.35;
   for (let k = 0; k < 3; k++) {
     ctx.beginPath();
-    for (let i = 0; i < pts.length; i += 2) {
+    for (let i = 0; i < np; i += 2) {
       const y = pts[i + 1] - 4.2 - k * 3.1 - 0.7 * Math.sin(pts[i] * (0.11 + k * 0.05) + k);
       if (i === 0) ctx.moveTo(pts[i], y); else ctx.lineTo(pts[i], y);
     }
@@ -325,7 +387,7 @@ export function drawTerrain(ctx, course, bd, vis, lw, cam) {
     ctx.strokeStyle = '#4b4f57';
     ctx.lineWidth = 1.6;
     ctx.beginPath();
-    for (let i = 0; i < pts.length; i += 2) {
+    for (let i = 0; i < np; i += 2) {
       if (i === 0) ctx.moveTo(pts[i], pts[i + 1] - 0.8); else ctx.lineTo(pts[i], pts[i + 1] - 0.8);
     }
     ctx.stroke();
@@ -336,7 +398,7 @@ export function drawTerrain(ctx, course, bd, vis, lw, cam) {
     ctx.stroke();
     ctx.setLineDash([]);
   } else if (style === 'lunar') {
-    ctx.fillStyle = withAlpha('#000000', 0.16);
+    ctx.fillStyle = 'rgba(0,0,0,0.16)';
     const s0 = Math.floor(x0 / 9);
     for (let s = s0; s * 9 < x1; s++) {
       const h = Math.sin(s * 12.9898) * 43758.5453;
@@ -352,14 +414,14 @@ export function drawTerrain(ctx, course, bd, vis, lw, cam) {
 
   // highlight lip + bold outline
   ctx.beginPath();
-  for (let i = 0; i < pts.length; i += 2) {
+  for (let i = 0; i < np; i += 2) {
     if (i === 0) ctx.moveTo(pts[i], pts[i + 1] - lw * 1.6); else ctx.lineTo(pts[i], pts[i + 1] - lw * 1.6);
   }
-  ctx.strokeStyle = shade(theme.ground, 0.3);
+  ctx.strokeStyle = bd.groundLip || (bd.groundLip = shade(theme.ground, 0.3));
   ctx.lineWidth = lw * 1.6;
   ctx.stroke();
   ctx.beginPath();
-  for (let i = 0; i < pts.length; i += 2) {
+  for (let i = 0; i < np; i += 2) {
     if (i === 0) ctx.moveTo(pts[i], pts[i + 1]); else ctx.lineTo(pts[i], pts[i + 1]);
   }
   ctx.lineJoin = 'round';
@@ -377,7 +439,7 @@ export function drawTerrain(ctx, course, bd, vis, lw, cam) {
       const x = s * 3.7 + r * 2;
       const y = g(x);
       if (style === 'city' || style === 'lunar') continue;
-      ctx.fillStyle = style === 'peaks' ? '#ffffff' : shade(theme.groundDark, -0.1);
+      ctx.fillStyle = style === 'peaks' ? '#ffffff' : bd.tuftCol || (bd.tuftCol = shade(theme.groundDark, -0.1));
       ctx.beginPath();
       ctx.ellipse(x, y + 0.08, 0.25 + r * 0.3, 0.16 + r * 0.12, 0, 0, Math.PI);
       ctx.fill();
@@ -536,14 +598,7 @@ export function drawFinish(ctx, course, vis, lw) {
   ctx.save();
   ctx.translate(F, top + 0.75);
   ctx.scale(1, -1);
-  ctx.font = font(0.95);
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.lineWidth = 0.22;
-  ctx.strokeStyle = OUT;
-  ctx.strokeText('FINISH', 0, 0);
-  ctx.fillStyle = '#ffd23f';
-  ctx.fillText('FINISH', 0, 0);
+  spriteText(ctx, 'FINISH', 0.95, 0, 0, '#ffd23f', 0.22);
   ctx.restore();
 }
 
@@ -671,10 +726,7 @@ export function drawPropPiece(ctx, kind, def, w, h, seg, segs, lw, role) {
         ctx.save();
         ctx.translate(0, -h / 2 + h * 0.65);
         ctx.scale(1, -1);
-        ctx.font = font(0.6);
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillStyle = OUT;
-        ctx.fillText('JUMP!', 0, 0);
+        spriteText(ctx, 'JUMP!', 0.6, 0, 0, OUT);
         ctx.restore();
       }
       break;
@@ -761,10 +813,7 @@ export function drawPropPiece(ctx, kind, def, w, h, seg, segs, lw, role) {
       ctx.fillRect(-w / 2, -0.24, w, 0.48);
       ctx.save();
       ctx.scale(1, -1);
-      ctx.font = font(0.42);
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#c9302c';
-      ctx.fillText('TNT', 0, 0.02);
+      spriteText(ctx, 'TNT', 0.42, 0, 0.02, '#c9302c');
       ctx.restore();
       ctx.strokeStyle = shade('#b5482c', -0.4);
       ctx.lineWidth = lw * 0.7;
@@ -862,10 +911,7 @@ export function drawFormationBase(ctx, f, lw, t) {
     ctx.beginPath(); ctx.moveTo(0, 0.55); ctx.lineTo(0.55, 0); ctx.lineTo(0, -0.55); ctx.lineTo(-0.55, 0); ctx.closePath();
     ctx.fillStyle = '#ffd23f'; ctx.fill(); ctx.stroke();
     ctx.scale(1, -1);
-    ctx.font = font(0.5);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = OUT;
-    ctx.fillText('!', 0, 0.03);
+    spriteText(ctx, '!', 0.5, 0, 0.03, OUT);
     ctx.restore();
   } else if (f.type === 'pyramid') {
     ctx.fillStyle = '#a77b47';
@@ -1055,17 +1101,14 @@ export function drawBlimp(ctx, a, lw, t, k, label) {
   ctx.stroke();
   if (k < 0.5) {
     ctx.scale(1, -1);
-    ctx.font = font(Hh * 0.42);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(label, 0, 0.04);
+    spriteText(ctx, label, Hh * 0.42, 0, 0.04, '#ffffff');
   }
   ctx.restore();
   ctx.globalAlpha = 1;
 }
 
 // BEST flag at the player's record distance; waves harder (and turns gold) once passed.
-export function drawBestFlag(ctx, course, x, t, passed, popK, lw) {
+export function drawBestFlag(ctx, course, x, t, passed, popK, lw, z = 10) {
   const gy = course.groundY(x);
   const top = gy + 6.2;
   ctx.fillStyle = '#e8e8ee';
@@ -1089,16 +1132,15 @@ export function drawBestFlag(ctx, course, x, t, passed, popK, lw) {
   ctx.save();
   ctx.translate(x + 0.1 + L * 0.48, top - Hc / 2 + Math.sin(2 - t * sp) * amp * 0.5);
   ctx.scale(1, -1);
-  ctx.font = font(0.8);
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillStyle = passed ? OUT : '#ffffff';
-  ctx.fillText('BEST', 0, 0.02);
+  spriteText(ctx, 'BEST', 0.8, 0, 0.02, passed ? OUT : '#ffffff');
   ctx.restore();
   if (popK > 0) {
     // the in-world NEW RECORD banner pops in above the flag
-    const s = popK < 0.6 ? (popK / 0.6) * 1.15 : 1.15 - Math.min(0.15, (popK - 0.6) * 0.75);
+    // this banner is the record moment's one big text: keep it at least ~200 px wide however far the camera pulls out
+    const s = (popK < 0.6 ? (popK / 0.6) * 1.15 : 1.15 - Math.min(0.15, (popK - 0.6) * 0.75)) * Math.max(1, 200 / (10.4 * z));
     ctx.save();
-    ctx.translate(x + 1.6, top + 2.6 + Math.sin(t * 2) * 0.15);
+    // it grows to the right of the pole, over the road the car is driving on, not back off-screen
+    ctx.translate(x + 0.2 + 5.2 * s, top + 1.6 + s + Math.sin(t * 2) * 0.15);
     ctx.scale(s, s);
     ctx.fillStyle = '#ff3d6e';
     ctx.beginPath();
@@ -1106,12 +1148,7 @@ export function drawBestFlag(ctx, course, x, t, passed, popK, lw) {
     ctx.fill();
     ctx.lineWidth = 0.14; ctx.strokeStyle = OUT; ctx.stroke();
     ctx.scale(1, -1);
-    ctx.font = font(1.05);
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.lineWidth = 0.25; ctx.strokeStyle = OUT; ctx.lineJoin = 'round';
-    ctx.strokeText('NEW RECORD!', 0, 0.05);
-    ctx.fillStyle = '#ffe14a';
-    ctx.fillText('NEW RECORD!', 0, 0.05);
+    spriteText(ctx, 'NEW RECORD!', 1.05, 0, 0.05, '#ffe14a', 0.25);
     ctx.restore();
   }
 }
@@ -1125,7 +1162,7 @@ export function drawLetterbox(ctx, view, k) {
   ctx.fillRect(0, view.H - h, view.W, h);
 }
 export function drawFlash(ctx, view, a, col) {
-  if (a < 0.01) return;
+  if (a < 0.03) return; // a full-screen blend: skip the invisible tail
   ctx.fillStyle = `rgba(${col},${Math.min(0.85, a).toFixed(3)})`;
   ctx.fillRect(0, 0, view.W, view.H);
 }
@@ -1164,10 +1201,12 @@ export function drawParticles(ctx, parts, vis) {
       ctx.arc(p.x, p.y, rad, 0, TAU);
       ctx.fill();
     } else if (p.type === 'smoke') {
-      ctx.globalAlpha = Math.min(1, k * 1.4) * (p.alpha || 0.6);
+      const a = Math.min(1, k * 1.4) * (p.alpha || 0.6);
+      if (a < 0.03) continue;
+      ctx.globalAlpha = a;
       ctx.fillStyle = p.color;
       ctx.beginPath();
-      ctx.arc(p.x, p.y, p.size * (1 + (1 - k) * 1.8), 0, TAU);
+      ctx.arc(p.x, p.y, p.size * (1 + (1 - k) * 1.4), 0, TAU);
       ctx.fill();
     } else if (p.type === 'ring') {
       const u = 1 - k;
@@ -1218,21 +1257,23 @@ export function drawParticles(ctx, parts, vis) {
 
 export function drawPopups(ctx, popups, toScreen, view) {
   const base = Math.max(16, Math.min(34, Math.min(view.W, view.H) * 0.065));
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = OUT;
   for (const p of popups) {
     const k = p.t / p.life;
     let x, y;
     if (p.world) { const s = toScreen(p.x, p.y); x = s[0]; y = s[1]; } else { x = p.x * view.W; y = p.y * view.H; }
-    y -= k * 46;
+    y -= k * (p.world ? 46 : 24); // screen-lane texts drift less so they stay in their band
     const pop = k < 0.12 ? 0.6 + (k / 0.12) * 0.55 : k < 0.2 ? 1.15 - ((k - 0.12) / 0.08) * 0.15 : 1;
     const a = k > 0.75 ? 1 - (k - 0.75) / 0.25 : 1;
-    const size = base * (p.scale || 1) * pop;
+    // the pop-in steps through a few sizes (3 px apart) instead of a new size every frame: each new
+    // size is a glyph-cache miss, and a combo re-pops its text on every hit
+    const size = Math.max(6, Math.round((base * (p.scale || 1) * pop) / 3) * 3);
     ctx.globalAlpha = a;
     ctx.font = font(size);
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.lineJoin = 'round';
     ctx.lineWidth = Math.max(3, size * 0.2);
-    ctx.strokeStyle = OUT;
     ctx.strokeText(p.text, x, y);
     ctx.fillStyle = p.color || '#ffffff';
     ctx.fillText(p.text, x, y);

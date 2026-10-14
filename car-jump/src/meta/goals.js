@@ -49,7 +49,8 @@ const TEMPLATES = {
     make: (r, p) => ({ target: pick(r, [2, 3]) + Math.floor(p / 2) }),
     text: (g) => `Do ${g.target} flips in one run`, reward: (g) => 220 * g.target },
   runCash: { scope: 'run', icon: 'cash',
-    make: (r, p) => ({ target: Math.round((pick(r, [800, 1000, 1300]) * (1 + p * 0.9)) / 50) * 50 }),
+    // v2 runs pay ~2.5x v1 (combos, air targets): targets scaled to match so the goal still asks for a good run
+    make: (r, p) => ({ target: Math.round((pick(r, [2000, 2500, 3200]) * (1 + p * 0.9)) / 100) * 100 }),
     text: (g) => `Earn $${g.target.toLocaleString('en-US')} in one run`, reward: (g) => Math.round(g.target * 0.4) },
 };
 

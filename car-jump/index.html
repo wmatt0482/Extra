@@ -270,6 +270,11 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .pay tr.total td:last-child { font-size: 24px; color: var(--accent); }
 .pay tr.extra td:last-child { color: var(--go); }
 .pay .hint { font-size: 12px; color: var(--muted); font-weight: 700; }
+.pay.dense { font-size: 14px; }
+.pay.dense td { padding: 2px 0; }
+.pay.dense td:last-child { font-size: 15px; }
+.pay.dense tr.total td { padding-top: 5px; }
+.pay.dense .hint { font-size: 11px; }
 .res-callouts { display: flex; flex-wrap: wrap; gap: 6px; }
 .res-callouts:empty { display: none; }
 .callout { padding: 6px 10px; border-radius: 10px; background: var(--go); color: #062a12; font: 400 12px/1.1 var(--font-display); box-shadow: 0 3px 0 var(--go-edge); }
@@ -356,7 +361,9 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .combo.ended .combo-mult { color: var(--go); }
 @keyframes comboEnd { 0% { transform: scale(1.15); } 15% { transform: none; } 75% { opacity: 1; } 100% { opacity: 0; transform: translateY(-10px); } }
 
-.banner { position: absolute; left: 0; right: 0; top: 25%; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
+/* banners live in the band under the top bar (the car rides at ~43-51% of the height, the engine's own
+   big texts at ~60%), so a banner never covers the car, not even during the launch letterbox */
+.banner { position: absolute; left: 0; right: 0; top: 18%; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
 .banner > span { display: inline-block; max-width: calc(100vw - 24px); padding: 8px 30px 11px; white-space: nowrap; text-transform: uppercase;
   font: 400 clamp(30px, 4vmin + 2.6vw, 60px)/1 var(--font-display); letter-spacing: .01em; color: var(--accent);
   background: linear-gradient(rgba(13,18,48,.9), rgba(27,35,87,.9)); border-top: 5px solid currentColor; border-bottom: 5px solid currentColor;
@@ -370,6 +377,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .banner.b-rampage > span { color: #fff; --sh: var(--hot-edge); border-color: var(--accent); background: linear-gradient(100deg, #ff3b5c, #ff8a1f 60%, #ffcf1a); animation: rampText .3s steps(1) infinite; }
 @keyframes rampText { 50% { color: var(--accent); --sh: var(--ink); background: linear-gradient(100deg, #a8173a, #ff3b5c); } }
 .banner.b-rejump > span { color: var(--go); --sh: var(--go-edge); }
+.banner.b-launch > span { color: #fff; --sh: var(--cyan-edge); font-size: clamp(22px, 2.8vmin + 1.9vw, 44px); padding: 6px 24px 8px; }
 .banner.b-record > span { color: #fff; --sh: var(--hot-edge); border-color: var(--accent); background: linear-gradient(var(--hot), #c81e45); }
 .banner.show { animation: bannerSlide 1.55s cubic-bezier(.3,.9,.4,1) forwards; }
 @keyframes bannerSlide {
@@ -486,7 +494,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
   .menu-row .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
   .hud-alt { top: calc(var(--pad-t) + 70px); }
   .combo { left: auto; right: var(--pad-r); top: calc(var(--pad-t) + 132px); transform-origin: calc(100% - 34px) 50%; }
-  .banner { top: 41%; }
+  .banner { top: 30%; }
   .ach-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 /* short landscape: the stamp sits on the card's corner and the tiles tighten so 2 rows always fit */

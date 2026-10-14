@@ -6,6 +6,7 @@ import { createCourse, CHUNK, SEG } from './course.js';
 import { carGeometry } from './car.js';
 import * as R from './render.js';
 import { OBSTACLE_KINDS } from '../data/tracks.js';
+import { ratingLetter, ratingScore } from '../data/rating.js';
 import { TAU, clamp, shade, luminance, mulberry32, smoothstep } from './util.js';
 
 const S = 30; // px per meter (physics space)
@@ -16,7 +17,7 @@ const MAX_STEPS_PER_FRAME = 4;
 const U = S / 60; // m/s -> Matter velocity units (px per 16.67 ms)
 const CAT_TERRAIN = 0x1, CAT_CAR = 0x2, CAT_PROP = 0x4, CAT_DEBRIS = 0x8;
 const MAX_DEBRIS = 60;
-const MAX_PARTICLES = 460;
+const MAX_PARTICLES = 380;
 
 // Gameplay tuning (meters, seconds).
 export const TUNING = {
@@ -51,6 +52,7 @@ export const TUNING = {
   slowmo: 0.35, slowmoDur: 0.4,
   // ---- v2 ----
   comboWindow: 1.5, comboStep: 0.25, comboMax: 4,
+  comboCap: 1.0, // per run, the multiplier extra (cash.combo) can at most match the base smash cash (cash.smash)
   blastR: 6, chainDelay: 0.12, blastKick: 6, blastLift: 4,
   collapseDelay: 0.08, deckHold: 0.3,
   launchSlowmo: 0.3, launchSlowDur: 0.5, landSlowDur: 0.4,
@@ -59,6 +61,10 @@ export const TUNING = {
   kickMinSpeed: 6, kickerBonus: 0.5,
 };
 const T = TUNING;
+// Screen-space popup lanes (fractions of the view height). The HUD's banners and toasts own the band
+// under the top bar (~19-36%), the camera keeps the car around 43-51%, so the engine's own big texts
+// (flips, landings, finish line) sit in the lower band and never share pixels with a HUD banner.
+const LANE_BIG = 0.6, LANE_SUB = 0.7;
 const BALLOON_COLS = ['#ff4d6d', '#ffd23f', '#4dd2ff', '#7dff6b', '#c77dff'];
 const CONFETTI = ['#ff4d6d', '#ffd23f', '#4dd2ff', '#7dff6b', '#c77dff', '#ffffff', '#ff9b2e'];
 const FW_COLS = [['#ff4d6d', '#ffd1dc'], ['#4dd2ff', '#e0f8ff'], ['#ffd23f', '#fff6c9'], ['#7dff6b', '#e6ffe0']];
@@ -340,7 +346,7 @@ export function createGame(canvas, opts = {}) {
       com: { x: 0, y: 0, vx: 0, vy: 0 }, speed: 0, ang: 0, omega: 0, speedNow: 0,
       maxX: 0, distance: 0,
       airTime: 0, totalAir: 0, flightRot: 0, flipMark: 0, flightFlips: 0, prevAngle: 0,
-      flips: 0, frontFlips: 0, backFlips: 0, flipCash: 0,
+      flips: 0, frontFlips: 0, backFlips: 0, flipCash: 0, cleanFlips: 0,
       smashed: 0, smashRaw: 0, landingRaw: 0, landing: null, firstLanding: null,
       maxKmh: 0, speedBucket: 0, launchKmh: 0, launched: false, lastSpeedPopup: -9,
       finishCrossed: false,
@@ -352,7 +358,7 @@ export function createGame(canvas, opts = {}) {
       debris: [], particles: [], popups: [], pendingRemove: [], pendingSpawn: [], slowFactor: 1,
       summary: null, endReason: null,
       // v2
-      propById: new Map(), timers: [], pool: [], fxRand: mulberry32((seed ^ 0xdeb715) >>> 0),
+      propById: new Map(), timers: [], pool: [], boomLoad: 0, boomLoadT: 0, fxRand: mulberry32((seed ^ 0xdeb715) >>> 0),
       combo: { count: 0, mult: 1, timer: 0, extra: 0, paid: 0 }, comboRaw: 0, bestCombo: 0, airRaw: 0,
       explosions: 0, maxChain: 0, kick: { x: 0, y: 0 }, wantDamage: 0, damageT: -9, lost: {}, damage: 0,
       air: course.airTargets.map((a) => ({ ...a, hit: false, hitT: 0, ox: 0, oy: 0, vx: 0, vy: 0, rot: 0, spin: 0 })), airLo: 0,
@@ -449,20 +455,23 @@ export function createGame(canvas, opts = {}) {
     cb.mult = mult;
     const cash = Math.round(def.cash * m);
     const cx = pr.x + pr.nx * pr.h * 0.5, cy = pr.y + pr.ny * pr.h * 0.5;
+    let extra = 0;
     if (live) {
-      cb.extra += def.cash * (mult - 1);
-      r.comboRaw += def.cash * (mult - 1);
+      // the multiplier extra, within the per-run cap (a long depot chain can't outpay the rest of the run)
+      extra = Math.max(0, Math.min(def.cash * (mult - 1), T.comboCap * (r.smashRaw + def.cash) - r.comboRaw));
+      cb.extra += extra;
+      r.comboRaw += extra;
       if (cb.count > r.bestCombo) r.bestCombo = cb.count;
       r.smashRaw += def.cash;
       r.smashed++;
       emit({ type: 'smash', kind: pr.kind, cash, x: Math.round(cx * 10) / 10, y: Math.round(cy * 10) / 10 });
       if (cb.count >= 2) emit({ type: 'combo', count: cb.count, mult });
-      const shown = Math.round(def.cash * mult * m);
+      const shown = Math.round((def.cash + extra) * m);
       cb.paid += shown;
       const col = mult >= 3 ? '#ff5a3c' : mult >= 2 ? '#ff9b2e' : mult > 1 ? '#ffd23f' : '#ffe14a';
-      // one running popup per chain (it re-pops on every hit) instead of a stack of numbers
-      if (cb.count >= 2) popup(r, `+$${cb.paid} ×${mult}`, cx, cy + pr.h * 0.5 + 1.2, col, 0.8 + 0.07 * mult, true, 1.3, 'combo');
-      else popup(r, `+$${shown}`, cx, cy + pr.h * 0.5 + 0.8, col, 0.85, true);
+      // a chain's running total and multiplier belong to the HUD combo badge (it can't drift into the HUD
+      // band from here); the world only shows the first hit's cash
+      if (cb.count < 2) popup(r, `+$${shown}`, cx, cy + pr.h * 0.5 + 0.8, col, 0.85, true);
     }
     if (how === 'hit' && !def.explosive) r.slowFactor *= 1 - clamp((def.mass * 0.12) / r.stats.mass, 0.01, 0.3); // explosives: the car blasts through
     r.shake = Math.max(r.shake, how === 'hit' ? 4 + def.mass * 6 : 3);
@@ -561,20 +570,27 @@ export function createGame(canvas, opts = {}) {
     }
     // fx
     r.shake = Math.max(r.shake, 12 + Math.min(8, chain * 2));
-    if (chain === 0 || r.flash < 0.08) { r.flash = Math.max(r.flash, reducedMotion ? 0.14 : 0.26); r.flashCol = '255,232,170'; }
+    // one flash per chain (the full-screen blend is the priciest thing a blast draws); later links just shake
+    if (chain === 0) { r.flash = Math.max(r.flash, reducedMotion ? 0.14 : 0.26); r.flashCol = '255,232,170'; }
+    // fx budget: a depot going up sets off a dozen blasts within a few frames. The first couple get the
+    // full burst; while the load (decaying 4/s) stays high, later ones get a light burst and no shockwave
+    // ring, so the worst frame of a chain stays cheap to draw (the blasts overlap on screen anyway).
+    r.boomLoad = Math.max(0, r.boomLoad - (r.t - r.boomLoadT) * 4) + 1;
+    r.boomLoadT = r.t;
+    const full = r.boomLoad <= 2.2;
     // smoke first so the fireball draws over it
-    for (let k = 0; k < 7; k++) {
+    for (let k = 0, n = full ? 5 : 2; k < n; k++) {
       particle(r, 'smoke', x + (Math.random() - 0.5) * 2.4, y + 0.5 + Math.random() * 1.5, (Math.random() - 0.5) * 3, 2 + Math.random() * 2.5,
-        1.1 + Math.random() * 0.9, k % 2 ? '#3b3640' : '#5e5761', 1.8 + Math.random() * 1.4, 0.8);
+        1.1 + Math.random() * 0.7, k % 2 ? '#3b3640' : '#5e5761', 1.6 + Math.random() * 1.2, 0.8);
     }
-    particle(r, 'ring', x, y + 0.4, 0, 0, 0.8, '#fff6dc', 0.42, chain ? 0.45 : 0.8, 9.5);
+    if (full) particle(r, 'ring', x, y + 0.4, 0, 0, 0.8, '#fff6dc', 0.42, chain ? 0.45 : 0.8, 9.5);
     particle(r, 'fire', x, y + 0.6, 0, 1.5, 2.3, '#fff7c2', 0.2, 1); // the white-hot flashball
-    for (let k = 0; k < 10; k++) {
+    for (let k = 0, n = full ? 9 : 4; k < n; k++) {
       const a = Math.random() * TAU, sp = 2 + Math.random() * 5;
       particle(r, 'fire', x + Math.cos(a) * 0.7, y + Math.sin(a) * 0.7 + 0.8, Math.cos(a) * sp, Math.sin(a) * sp * 0.6 + 3,
         1.0 + Math.random() * 1.0, null, 0.5 + Math.random() * 0.45, 1);
     }
-    for (let k = 0; k < 14; k++) {
+    for (let k = 0, n = full ? 12 : 5; k < n; k++) {
       const a = Math.random() * Math.PI, sp = 8 + Math.random() * 14;
       particle(r, 'spark', x, y + 0.3, Math.cos(a) * sp, Math.sin(a) * sp, 0.09 + Math.random() * 0.06,
         Math.random() < 0.5 ? '#ffd23f' : '#ff7a1a', 0.5 + Math.random() * 0.5);
@@ -628,7 +644,7 @@ export function createGame(canvas, opts = {}) {
   }
   // slot: a new popup replaces the live one in the same slot so texts never pile up
   function popup(r, text, x, y, color, scale = 1, world = false, life = 1.3, slot = null) {
-    if (slot) r.popups = r.popups.filter((p) => p.slot !== slot);
+    if (slot) r.popups = r.popups.filter((p) => p.slot !== slot && !(slot === 'cash' && p.slot === 'speed')); // cash and speed share a line
     if (slot === 'combo') r.popups = r.popups.filter((p) => !(p.world && !p.slot && p.t < 0.6 && Math.abs(p.x - x) < 8));
     if (world && !slot) {
       // stack over a fresh popup at the same spot instead of overprinting it
@@ -917,7 +933,6 @@ export function createGame(canvas, opts = {}) {
         r.orbitPaid = 0;
         r.orbits++;
         emit({ type: 'orbit', altitude: Math.round(r.alt) });
-        popup(r, 'ORBIT!', 0.5, 0.25, '#c9b8ff', 1.25, false, 1.8, 'orbit');
       }
       // $5 x peak altitude for an orbit flight, paid as the peak grows
       if (r.orbitFlight && r.alt > r.orbitPaid) { r.airRaw += T.orbitCash * (r.alt - r.orbitPaid); r.orbitPaid = r.alt; }
@@ -947,7 +962,7 @@ export function createGame(canvas, opts = {}) {
         emit({ type: 'speed', kmh: Math.round(kmh) });
         if (r.launched && kmh > r.launchKmh + 4 && r.realT - r.lastSpeedPopup > 1.5 && !r.popups.some((p) => p.slot === 'cash' || p.slot === 'speed')) {
           r.lastSpeedPopup = r.realT;
-          popup(r, `NEW MAX ${Math.round(kmh)} km/h`, 0.5, 0.46, '#7cf2ff', 0.62, false, 1.2, 'speed');
+          popup(r, `NEW MAX ${Math.round(kmh)} km/h`, 0.5, LANE_SUB, '#7cf2ff', 0.62, false, 1.2, 'speed');
         }
       }
     }
@@ -1015,7 +1030,7 @@ export function createGame(canvas, opts = {}) {
     if (!r.finishCrossed && r.com.x >= r.course.finish) {
       r.finishCrossed = true;
       emit({ type: 'finishLine' });
-      popup(r, 'FINISH LINE!', 0.5, 0.36, '#ffd23f', 1.2, false, 1.8, 'big');
+      popup(r, 'FINISH LINE!', 0.5, LANE_BIG, '#ffd23f', 1.2, false, 1.8, 'big');
       if (r.phase !== 'done') slowmo(r);
       celebrate(r);
     }
@@ -1056,7 +1071,7 @@ export function createGame(canvas, opts = {}) {
     r.rejumps++;
     const kmh = Math.round(r.speed * 3.6);
     emit({ type: 'rejump', count: r.rejumps, speedKmh: kmh });
-    popup(r, r.rejumps > 1 ? `KICKER ×${r.rejumps}!` : 'KICKER!', 0.5, 0.36, '#7cf2ff', 1.05, false, 1.3, 'big');
+    r.popups = r.popups.filter((p) => p.world); // the HUD's REJUMP banner owns this moment: clear the landing text
     const ly = r.course.groundY(k.x1);
     particle(r, 'ring', k.x1, ly + 0.8, 0, 0, 0.4, '#ffffff', 0.45, 0.8, 7);
     for (let i = 0; i < 8; i++) {
@@ -1147,7 +1162,7 @@ export function createGame(canvas, opts = {}) {
       raw = T.blimpCash;
       a.vx = r.com.vx * 0.3; a.vy = r.com.vy * 0.3 + 1.5; a.spin = (r.com.vy > 0 ? 0.25 : -0.25);
       r.shake = Math.max(r.shake, 8);
-      popup(r, 'BLIMP!', 0.5, 0.25, '#ffe14a', 1.1, false, 1.4, 'orbit');
+      popup(r, 'BLIMP!', 0.5, LANE_BIG, '#ffe14a', 1.1, false, 1.4, 'big');
     }
     r.airRaw += raw;
     r.airHits++;
@@ -1188,7 +1203,6 @@ export function createGame(canvas, opts = {}) {
     r.flightKind = 'jump';
     r.launchKmh = r.speed * 3.6;
     emit({ type: 'launch', speedKmh: Math.round(r.launchKmh) });
-    popup(r, `LAUNCH! ${Math.round(r.launchKmh)} km/h`, 0.5, 0.36, '#ffffff', 0.9, false, 1.3, 'big');
     for (let k2 = 0; k2 < 10; k2++) {
       particle(r, 'dust', r.com.x - 2 + Math.random() * 2, r.course.rampY(0) - 0.2, -2 + Math.random() * 4, Math.random() * 2,
         0.5 + Math.random() * 0.5, '#ffffff', 0.6 + Math.random() * 0.4, 0.6);
@@ -1217,8 +1231,8 @@ export function createGame(canvas, opts = {}) {
     emit({ type: 'flip', dir, count: r.flightFlips });
     const n = r.flightFlips;
     const word = n < FLIP_WORDS.length ? FLIP_WORDS[n] : `${n}x `;
-    popup(r, `${word}${dir === 'front' ? 'FRONTFLIP' : 'BACKFLIP'}!`, 0.5, 0.36, dir === 'front' ? '#ffb13d' : '#ff5ec4', 1.05, false, 1.3, 'big');
-    popup(r, `+$${Math.round(cash * r.stats.coinMult)}`, 0.5, 0.46, '#ffe14a', 0.7, false, 1.3, 'cash');
+    popup(r, `${word}${dir === 'front' ? 'FRONTFLIP' : 'BACKFLIP'}!`, 0.5, LANE_BIG, dir === 'front' ? '#ffb13d' : '#ff5ec4', 1.05, false, 1.3, 'big');
+    popup(r, `+$${Math.round(cash * r.stats.coinMult)}`, 0.5, LANE_SUB, '#ffe14a', 0.7, false, 1.3, 'cash');
   }
 
   function land(r, pre) {
@@ -1244,6 +1258,7 @@ export function createGame(canvas, opts = {}) {
     r.phase = 'ground';
     r.noContactT = 0;
     r.landing = q;
+    if (q !== 'crash') r.cleanFlips += r.flightFlips; // rating: only flips the car came down from count
     if (q !== 'crash') {
       // the suspension soaks the hit: no bounce, speed kept along the ground
       r.assistT = 0.45;
@@ -1263,20 +1278,20 @@ export function createGame(canvas, opts = {}) {
     const pay = Math.round(bonus * st.coinMult);
     if (!scale && (q === 'perfect' || q === 'good')) {
       // a hop over a crest: acknowledge it, no bonus and no slow-mo
-      if (r.airTime > 0.8) popup(r, q === 'perfect' ? 'CLEAN HOP' : 'NICE HOP', 0.5, 0.36, '#c6ff8a', 0.8, false, 1.1, 'big');
+      if (r.airTime > 0.8) popup(r, q === 'perfect' ? 'CLEAN HOP' : 'NICE HOP', 0.5, LANE_BIG, '#c6ff8a', 0.8, false, 1.1, 'big');
     } else if (q === 'perfect') {
-      popup(r, 'PERFECT LANDING!', 0.5, 0.36, '#7dff6b', 1.1, false, 1.6, 'big');
-      popup(r, `+$${pay}`, 0.5, 0.46, '#ffe14a', 0.75, false, 1.3, 'cash');
+      popup(r, 'PERFECT LANDING!', 0.5, LANE_BIG, '#7dff6b', 1.1, false, 1.6, 'big');
+      popup(r, `+$${pay}`, 0.5, LANE_SUB, '#ffe14a', 0.75, false, 1.3, 'cash');
       slowmo(r, T.slowmo, T.landSlowDur);
       r.radial = reducedMotion ? 0.35 : 0.7;
     } else if (q === 'good') {
-      popup(r, 'GOOD LANDING', 0.5, 0.36, '#c6ff8a', 0.95, false, 1.3, 'big');
-      popup(r, `+$${pay}`, 0.5, 0.46, '#ffe14a', 0.7, false, 1.3, 'cash');
+      popup(r, 'GOOD LANDING', 0.5, LANE_BIG, '#c6ff8a', 0.95, false, 1.3, 'big');
+      popup(r, `+$${pay}`, 0.5, LANE_SUB, '#ffe14a', 0.7, false, 1.3, 'cash');
     } else if (q === 'rough') {
-      popup(r, 'ROUGH LANDING', 0.5, 0.36, '#ffb36b', 0.9, false, 1.3, 'big');
+      popup(r, 'ROUGH LANDING', 0.5, LANE_BIG, '#ffb36b', 0.9, false, 1.3, 'big');
       sparks(r, cx, cy - 0.6, 14);
     } else {
-      popup(r, 'CRASH!', 0.5, 0.36, '#ff4d4d', 1.3, false, 1.6, 'big');
+      popup(r, 'CRASH!', 0.5, LANE_BIG, '#ff4d4d', 1.3, false, 1.6, 'big');
       r.slowFactor *= 0.62;
       knockPart(r, impact > thr ? 2 : 1);
       sparks(r, cx, cy, 24);
@@ -1310,11 +1325,6 @@ export function createGame(canvas, opts = {}) {
     cb.count = 0; cb.mult = 1; cb.extra = 0; cb.timer = 0;
   }
 
-  function rating(total, finish) {
-    const k = total / (finish * 4);
-    return k >= 1.5 ? 'S' : k >= 1.0 ? 'A' : k >= 0.6 ? 'B' : k >= 0.3 ? 'C' : 'D';
-  }
-
   function endRun(r, reason) {
     if (r.phase === 'done') return;
     endCombo(r); // a chain still running when the run ends is closed (and reported) first
@@ -1333,7 +1343,7 @@ export function createGame(canvas, opts = {}) {
       cash,
       durationSec: Math.round(r.t * 10) / 10,
       // v2
-      rating: rating(cash.total, r.course.finish),
+      rating: 'D', ratingScore: 0, // set below (src/data/rating.js)
       maxAltitude: Math.round(r.maxAlt * 10) / 10,
       bestCombo: r.bestCombo,
       explosions: r.explosions,
@@ -1342,6 +1352,8 @@ export function createGame(canvas, opts = {}) {
       airTargets: r.airHits,
       rejumps: r.rejumps,
     };
+    summary.ratingScore = ratingScore({ ...summary, cleanFlips: r.cleanFlips }, r.course.finish);
+    summary.rating = ratingLetter(summary.ratingScore);
     r.summary = summary;
     emit({ type: 'finish', summary });
   }
@@ -1523,10 +1535,10 @@ export function createGame(canvas, opts = {}) {
     if (run) {
       const r = run;
       if (r.best > 0 && r.best > vis.x0 - 8 && r.best < vis.x1 + 4) {
-        R.drawBestFlag(ctx, course, r.best, t, r.recordHit, r.recordHit ? Math.min(1, (t - r.recordT) / 0.5) : 0, lw);
+        R.drawBestFlag(ctx, course, r.best, t, r.recordHit, r.recordHit ? Math.min(1, (t - r.recordT) / 0.5) : 0, lw, z);
       }
       for (const pr of r.props) {
-        if (pr.smashed || pr.x < vis.x0 - 9 || pr.x > vis.x1 + 9) continue;
+        if (pr.smashed || pr.x < vis.x0 - 9 || pr.x > vis.x1 + 9 || pr.y - 4 > vis.y1 || pr.y + (pr.h || 4) + 4 < vis.y0) continue;
         for (let j = 0; j < pr.bodies.length; j++) {
           const b = pr.bodies[j];
           ctx.save();
@@ -1595,6 +1607,18 @@ export function createGame(canvas, opts = {}) {
       R.drawLetterbox(ctx, view, r.letterbox);
       R.drawPopups(ctx, r.popups, toScreen, view);
     }
+  }
+
+  const debrisCols = [];
+  function debrisPath(d, x, y) {
+    if (d.round) { const rr = d.w / 2; ctx.moveTo(x + rr, y); ctx.arc(x, y, rr, 0, TAU); return; }
+    const a = d.body.angle, c = Math.cos(a), sn = Math.sin(a), hw = d.w / 2, hh = d.h / 2;
+    // world y is flipped relative to Matter: a corner (u, v) lands at (x + u c + v s, y - u s + v c)
+    ctx.moveTo(x - hw * c - hh * sn, y + hw * sn - hh * c);
+    ctx.lineTo(x + hw * c - hh * sn, y - hw * sn - hh * c);
+    ctx.lineTo(x + hw * c + hh * sn, y - hw * sn + hh * c);
+    ctx.lineTo(x - hw * c + hh * sn, y + hw * sn + hh * c);
+    ctx.closePath();
   }
 
   function drawCar(r, lw) {
@@ -1738,7 +1762,9 @@ export function createGame(canvas, opts = {}) {
       if (!r) return null;
       return { x: r.com.x, y: r.com.y, vx: r.com.vx, vy: r.com.vy, ang: r.ang, omega: r.omega, phase: r.phase, bodies: Composite.allBodies(r.world).length,
         debris: r.debris.length, particles: r.particles.length, props: r.props.length, chunks: r.chunks.size, endReason: r.endReason, launchKmh: r.launchKmh, wd: r.wheelsDown, cd: r.chassisDown,
-        timeScale: r.timeScale, lastLand: r.lastLand || null, cam: { ...cam }, perf: { ...perf } };
+        timeScale: r.timeScale, lastLand: r.lastLand || null, cam: { ...cam }, perf: { ...perf },
+        letterbox: r.letterbox, popups: r.popups.map((p) => ({ text: p.text, slot: p.slot, world: p.world, t: p.t, life: p.life, x: p.x, y: p.y, scale: p.scale })),
+        view: { W: view.W, H: view.H }, carHalf: Math.max(r.geom.maxX - r.geom.minX, r.geom.maxY - r.geom.minY) / 2 * Math.pow(clamp(10 / cam.z, 1, 3), 0.85) };
     },
   };
 }

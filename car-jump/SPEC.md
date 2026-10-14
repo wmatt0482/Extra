@@ -171,7 +171,7 @@ tint). The UI layers HTML on top for HUD and buttons. The engine must not add it
   on the starter car; the last car should take a few hours of play, not days. Tune costs in upgrades.js if needed.
   Tuned with `tools/economy-sim.mjs` (real engine, scripted player): upgrade cost = `200 × 2.15^(tier−1) × 1.55^level`
   (rounded), car prices 7.5k / 18k / 24k / 75k / 280k → first 400 m finish ≈ run 6-10, Gravel Fox ≈ 12, Thunderline
-  ≈ 30, Bigfoot ≈ 60, Vantablack ≈ 120, Warthog ≈ 240.
+  ≈ 30, Bigfoot ≈ 60, Vantablack ≈ 120, Warthog ≈ 240. (v1 numbers; v2 re-tuned them, see "v2 economy" below.)
 - First run: a one-time coach overlay (three tips) holds the run until tapped; `save.seen.coach` remembers it.
 - Until the real engine lands, build against `src/meta/mockEngine.js` that implements the contract with a fake
   run (emits plausible events over ~6 s) so every screen can be exercised. `src/main.js` must import the real
@@ -197,6 +197,9 @@ camera moments, and celebrations. Everything below is additive; nothing in the v
 1. **Combo chain.** Each smash within 1.5 s of the previous one extends a chain. Multiplier
    `mult = min(4, 1 + 0.25 × (count − 1))` applies to that smash's cash. Breaking the chain (timer runs out, run
    ends) emits `comboEnd`. The extra cash earned from multipliers is tracked separately as `cash.combo`.
+   **Cap (tuning pass):** per run, `cash.combo ≤ cash.smash` (`TUNING.comboCap = 1`): the multiplier extra can at
+   most match what the props themselves paid, so one 30-hit depot chain can never outpay the rest of the run.
+   `smash.cash` stays base × coinMult; the in-world running popup and `comboEnd.cash` show what was actually paid.
 2. **Explosive props.** New kinds in `OBSTACLE_KINDS`: `fuel` (red drum with a flame decal, cash 150) and `tnt`
    (crate with TNT label, cash 200). On smash they explode: radial impulse on everything within 6 m (props,
    debris, and the car, which gets a modest kick), a flash, a shockwave ring, fire/smoke particles, and any
@@ -221,8 +224,25 @@ camera moments, and celebrations. Everything below is additive; nothing in the v
    then snapping to the chase. Perfect landing: 0.4 s slow-mo with a radial flash. Finish line: confetti burst and
    3-4 fireworks over the banner; the camera eases out so the banner and the car are both in frame. New record:
    when the car passes the BEST flag the flag waves and a "NEW RECORD" banner pops in the world.
-9. **Rating.** `summary.rating` ∈ `S|A|B|C|D` from `cash.total / (track.finish × 4)`: S ≥ 1.5, A ≥ 1.0, B ≥ 0.6,
-   C ≥ 0.3, else D. The results screen stamps it.
+9. **Rating.** `summary.rating` ∈ `S|A|B|C|D`, computed in the engine from a 0-110 score
+   (`summary.ratingScore`, formula in `src/data/rating.js`, shared with the mock engine and the meta fallback).
+   It scores what the player did on this track, not what the upgrades pay (v2's first draft used
+   `cash.total / (finish × 4)`, which rated almost every mid-tier run S and rose with the Bonus upgrade):
+
+   | part | points |
+   | --- | --- |
+   | reach | `35 × min(1, distance / track.finish)` |
+   | finish line crossed | +10 |
+   | the jump's landing (`summary.landing`) | perfect 20 · good 12 · rough 4 · crash 0 |
+   | flips landed (flights that ended in a crash don't count), max 3 | 6 each (18) |
+   | best combo multiplier `min(4, 1 + 0.25 × (bestCombo − 1))` | `6 × (mult − 1)`: ×3 → 12, ×4 → 18 |
+   | gold rings, max 3 | 3 each (9) |
+
+   **S ≥ 88 · A ≥ 60 · B ≥ 40 · C ≥ 10 · D below.** Anchors (measured with the previous-tier car on each track):
+   S is a near-max run, e.g. finish crossed + perfect landing + 2 flips + a ×3 combo = 89 (or the equivalent
+   from more flips, a longer chain, rings); a clean run (good landing, a flip, most of the way) is B; a clean run
+   with a combo chain and a couple of rings is A; a sloppy one (crash or rough landing, part of the way) is C;
+   D is a crash that barely gets going. The results screen stamps it (the stamp's tooltip shows the score).
 
 ### New events
 - `{type:'combo', count, mult}` on every smash with `count ≥ 2`.
@@ -235,16 +255,54 @@ camera moments, and celebrations. Everything below is additive; nothing in the v
 - `{type:'damage', part}` when a part is knocked off.
 
 ### Summary additions
-`summary` gains `rating`, `maxAltitude`, `bestCombo`, `explosions`, `rings`, `coins`, `airTargets`, `rejumps`,
+`summary` gains `rating`, `ratingScore`, `maxAltitude`, `bestCombo`, `explosions`, `rings`, `coins`, `airTargets`, `rejumps`,
 and `cash` gains `combo` and `air` (so `cash = {distance, stunts, smash, landing, combo, air, total}`).
 `getState()` gains `altitude`, `combo: {count, mult, timer01}`, `rejumps`.
+
+### Who draws which big text (one per moment)
+The engine draws its own texts on the canvas; the HUD layers banners and toasts in the DOM. Each moment has
+exactly one big text, and the two layers use different bands of the screen so they never overlap (the camera
+keeps the car at ~43-51 % of the height):
+- **HUD banners** (band under the top bar: top 18 % landscape / 30 % portrait): `LAUNCH! 141 KM/H` (launch),
+  `BIG AIR!` (a flight passes 3 s), `ORBIT!`, `REJUMP!` / `REJUMP ×2` (kicker), `RAMPAGE ×4`. One at a time.
+- **HUD message lane** (same band, never while a banner is up; a banner cuts a message and it comes back
+  later if it was cut early): achievement toasts, `Goal done: …`, `Unlocked: <next track>`.
+- **HUD combo badge:** the running chain (hit count, `×3.25`, drain ring, `+$N combo bonus` when it ends). The
+  engine no longer draws a running combo popup in the world (it could drift up under the badge).
+- **Engine, in the world, next to the action:** `+$150` cash popups (a single smash / air target),
+  `+25% NITRO`, and the waving NEW RECORD flag banner (drawn at least ~200 px wide).
+- **Engine, screen lane at ~60 % (cash line at ~70 %):** flip names (`DOUBLE BACKFLIP!` + `+$350`), landing
+  quality (`PERFECT LANDING!` + bonus, `CRASH!`, `CLEAN HOP`), `FINISH LINE!`, `BLIMP!`, `NEW MAX 150 km/h`.
+- Gone (duplicates): the engine's `LAUNCH!`, `KICKER!` and `ORBIT!` texts, the HUD's NEW RECORD banner, and the
+  HUD's "Finish line!" toast (the engine already says it; the HUD only adds the unlock).
+
+### v2 economy (tuning pass)
+v2 runs pay ~2.5× v1 early on (combos, air targets, kickers), so prices were scaled to put progression back on
+the v1 curve (`node tools/economy-sim.mjs`, three runs: `--seed-jitter 0 / 0.4 / 0.8`, averaged):
+upgrade cost = `480 × 2.15^(tier−1) × 1.5^level` (rounded; `COST` in `src/data/upgrades.js`), car prices
+13k / 25k / 42k / 100k / 400k (`src/data/cars.js`), the per-run combo cap above, and the "Earn $N in one run"
+goal targets ×2.5 (`src/meta/goals.js`). Daily-challenge and other goal rewards are unchanged.
+
+| milestone (runs) | v1 target | v2 before tuning | v2 tuned, avg of 3 | v2 tuned, jitter 0 |
+| --- | --- | --- | --- | --- |
+| first 400 m finish | 6-12 | 5 | 7 | 10 |
+| Gravel Fox | ~12 | 6 | 12 | 14 |
+| Thunderline | ~30 | 13 | 30 | 32 |
+| Bigfoot Jr. | ~60 | 20 | 63 | 64 |
+| Vantablack GT | ~120 | 53 | 121 | 140 |
+| Warthog | ~240 | 126 | 241 | 262 |
+
+(The jitter-0 run is pinned to one deterministic outcome; there Bigfoot Jr. at Engine 6 / Nitro 6 flips onto its
+roof on a crate pyramid at 281 m on Glacier Gap twenty-odd runs in a row, which delays Vantablack. Any start
+variance avoids it.)
 
 ### UI/meta additions (meta agent)
 - HUD: combo badge (count + multiplier, pulses on each hit, drains with `timer01`), altitude readout during
   flight, "BIG AIR" / "ORBIT" / "RAMPAGE ×4" banners, cash ticker that counts up.
 - Results: rating stamp animation (S in gold with rays), fireworks on NEW RECORD, cash count-up, new rows for
   Combo and Air.
-- Achievements panel: 12 badges (first flip, first perfect landing, 3-flip flight, combo ×4, first explosion,
+- Achievements panel: 12 badges (first flip, first perfect landing, 3-flip flight, combo ×4 (kept at ×4: a
+  Thunderline-level player reaches it in ~60 % of runs, see README), first explosion,
   chain of 3 explosions, ring collector ×10, orbit, first finish, 1 km run, own all cars, S rating) with toasts
   when earned, stored in the save.
 - Title screen: an animated hero (a car launching off a ramp and arcing across, looping) instead of a static car.

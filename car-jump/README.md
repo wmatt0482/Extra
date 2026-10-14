@@ -11,10 +11,15 @@ challenge and three rotating goals. No ads, no IAP, no energy timer.
   with the combo timer and the multiplier (`×1.25` … `×4`). It pulses on every hit, flashes red-gold at ×4
   ("RAMPAGE"), and shows the combo bonus (`+$235`) for a moment when the chain ends.
 - **Altitude** readout while airborne (glows violet above 45 m, the "orbit" height).
-- **Banners**: big centered BIG AIR (a flight longer than 3 s), ORBIT!, RAMPAGE ×4, REJUMP! and NEW RECORD
-  slide in for ~1.2 s. Only one is ever on screen; a newer one replaces the current one after 0.65 s.
+- **Banners**: big centered LAUNCH! 141 KM/H, BIG AIR (a flight longer than 3 s), ORBIT!, REJUMP! and RAMPAGE ×4
+  slide in for ~1.2 s in the band under the top bar (above the car, even during the launch letterbox). Only one is
+  ever on screen; a newer one replaces the current one after 0.65 s. Achievement toasts and "Goal done" notes
+  share that band one at a time and never while a banner is up. The engine draws the other moments itself, lower
+  on the screen or in the world (flips, landings, FINISH LINE!, cash popups, the NEW RECORD flag); the running
+  combo multiplier lives only on the HUD badge: every moment gets exactly one big text (SPEC "Who draws which big text").
 - **Run-cash ticker** counts up smoothly instead of jumping.
-- **Results**: rating stamp (S/A/B/C/D, `cash.total / (finish × 4)`: S ≥ 1.5, A ≥ 1, B ≥ 0.6, C ≥ 0.3) slams in,
+- **Results**: rating stamp (S/A/B/C/D from the engine's 0-110 run score: reach, finish, landing, landed flips,
+  best combo multiplier, rings; S ≥ 88, A ≥ 60, B ≥ 40, C ≥ 10, see SPEC / `src/data/rating.js`) slams in,
   S in gold with spinning rays; the run total counts up over 1.2 s; Combo and Air rows join the breakdown (hidden
   when they paid nothing; rows always add up to the total); extra stat tiles for best combo, altitude, air
   targets and rejumps (only when non-zero, 6 or 8 tiles); fireworks on a NEW RECORD.
@@ -105,6 +110,10 @@ to the mock engine, so the menus always work.
 node tools/ui-smoke.mjs      # walks every screen at 844×390 and 390×844 (mock engine), checks cash math + layout,
                              # v2 HUD/banners/toasts, results rows + stamp + fireworks, achievements, shake slider
 node tools/engine-smoke.mjs  # real engine in dev.html: hold-GAS first run, back flip, pause/stop, maxed moon run
+node tools/integration-smoke.mjs  # the full app on the REAL engine with real touches, 844×390 + 390×844: v1 save,
+                             # garage → tracks → run → results → retry (pause, visibility pause) → next track, daily
+                             # pays once, every panel + shake slider, rows = summary total, stamp = summary.rating,
+                             # badges persist, title hero draws the selected car, one big text per moment
 node tools/economy-sim.mjs   # plays the real engine headlessly (Node, no browser) through the whole meta game
 node tools/make-icons.mjs    # re-renders icons/*.png from the inline SVG
 ```
@@ -114,8 +123,14 @@ node tools/make-icons.mjs    # re-renders icons/*.png from the inline SVG
 or GAS held the whole run). It reports runs-to-first-finish per track and runs-to-own per car; re-run it after
 changing prices in `src/data/*.js` or cash/physics tuning in `src/game/engine.js` (`TUNING`).
 
-Both use the globally installed Playwright (Chromium in `/opt/pw-browsers`). The smoke test starts
-`python3 -m http.server 8080` itself if nothing is listening, and writes screenshots to
+v2 economy (current numbers): upgrade cost `480 × 2.15^(tier−1) × 1.5^level`, cars 13k / 25k / 42k / 100k / 400k,
+combo extra capped per run at the base smash cash. Averaged over `--seed-jitter 0, 0.4, 0.8` the sim reaches the
+first 400 m finish at run ~7, Gravel Fox ~12, Thunderline ~30, Bigfoot Jr. ~63, Vantablack GT ~121, Warthog ~241
+(the v1 targets). The "Rampage" badge (×4 multiplier = 13-hit chain) stays at ×4: with the sim's policy a
+Thunderline (Lv 2-8) reaches it in ~61 of 100 runs on Downtown Drop / Dune Rocket, Gravel Fox in 33/100.
+
+The Playwright tools use the globally installed Playwright (Chromium in `/opt/pw-browsers`). They start
+`python3 -m http.server 8080` themselves if nothing is listening, and write screenshots to
 `$SHOTS_DIR` (default: a temp folder).
 
 ## Add to the iPhone Home Screen
@@ -151,11 +166,11 @@ car-jump/
     main.js               boot: save, audio, engine loading (real or mock), navigation, run lifecycle
     audio.js              WebAudio synth: engine hum, whoosh, smash, coin, flip, landing, nitro + afterburner, music
                           loop, explosion, ring, pop, combo riser, cheer, fireworks, orbit pad, rejump, clank
-    data/                 cars, tracks, upgrades (shared tuning data)
+    data/                 cars, tracks, upgrades, rating (shared tuning data + the run-rating formula)
     game/                 the physics engine (createGame contract in SPEC.md)
     meta/
       save.js             localStorage save (rampRage.save.v1), schema version, corrupt-save fallback
-      economy.js          buy car / upgrade, stats, banking a run (records, unlocks)
+      economy.js          buy car / upgrade, stats, banking a run (records, unlocks), rating fallback
       goals.js            3 rotating goals, progress from live events and run summaries
       achievements.js     12 badges from live events, per-frame state, run summaries and the save
       daily.js            date-seeded daily challenge
@@ -168,6 +183,7 @@ car-jump/
   tools/
     ui-smoke.mjs          Playwright UI walk-through + layout audit
     engine-smoke.mjs      Playwright run of the real engine through dev.html
+    integration-smoke.mjs Playwright run of the whole app on the real engine (touch input, both orientations)
     economy-sim.mjs       headless real-engine economy simulation (Node)
     make-icons.mjs        icon renderer
 ```

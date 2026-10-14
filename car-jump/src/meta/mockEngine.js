@@ -4,6 +4,7 @@
 
 import { OBSTACLE_KINDS } from '../data/tracks.js';
 import { mulberry32 } from './rng.js';
+import { ratingLetter, ratingScore } from '../data/rating.js';
 
 // Scripted timeline (seconds). v2: first flight with air targets (ring, coin arc, balloon), a smash
 // chain of 4 that includes a 2-blast explosion chain, a kicker rejump with a second flip + landing,
@@ -110,11 +111,6 @@ export function createGame(canvas, opts = {}) {
     parts.total = parts.distance + parts.stunts + parts.smash + parts.landing + parts.combo + parts.air;
     return parts;
   }
-  function rating(total, finish) {
-    const x = total / (finish * 4);
-    return x >= 1.5 ? 'S' : x >= 1.0 ? 'A' : x >= 0.6 ? 'B' : x >= 0.3 ? 'C' : 'D';
-  }
-
   function endCombo(r) {
     const c = r.combo;
     if (c.count >= 3) emit({ type: 'comboEnd', count: c.count, mult: c.mult, cash: c.extra });
@@ -131,9 +127,11 @@ export function createGame(canvas, opts = {}) {
       distance: Math.floor(r.distance), airTime: Math.round(r.airTime * 100) / 100, flips: r.flips,
       frontFlips: r.front, backFlips: r.back, smashed: r.smashed, maxSpeedKmh: Math.round(r.maxSpeed),
       landing: r.landing, finishCrossed: r.finishCrossed, cash, durationSec: Math.round(r.t * 10) / 10,
-      rating: rating(cash.total, r.track.finish), maxAltitude: Math.round(r.maxAltitude * 10) / 10, bestCombo: r.bestCombo,
+      rating: 'D', maxAltitude: Math.round(r.maxAltitude * 10) / 10, bestCombo: r.bestCombo,
       explosions: r.explosions, rings: r.rings, coins: r.coins, airTargets: r.airTargets, rejumps: r.rejumps,
     };
+    summary.ratingScore = ratingScore(summary, r.track.finish);
+    summary.rating = ratingLetter(summary.ratingScore);
     emit({ type: 'finish', summary });
   }
 

@@ -5,6 +5,7 @@ import { CAR_BY_ID } from '../data/cars.js';
 import { TRACKS, TRACK_BY_ID } from '../data/tracks.js';
 import { MAX_LEVEL, UPGRADE_BY_ID, resolveStats, upgradeCost } from '../data/upgrades.js';
 import { carLevels } from './save.js';
+import { rateRun } from '../data/rating.js';
 
 export function canAfford(save, amount) {
   return save.cash >= amount;
@@ -106,11 +107,11 @@ export function bankRun(save, trackId, summary, { ranked = true } = {}) {
   return out;
 }
 
-// Run rating (SPEC v2): cash.total / (track.finish × 4) → S ≥ 1.5, A ≥ 1.0, B ≥ 0.6, C ≥ 0.3, else D.
-// The engine reports summary.rating; this is the same formula for engines that don't.
-export function ratingFor(total, finish) {
-  const x = (total || 0) / Math.max(1, (finish || 400) * 4);
-  return x >= 1.5 ? 'S' : x >= 1.0 ? 'A' : x >= 0.6 ? 'B' : x >= 0.3 ? 'C' : 'D';
+// Run rating (SPEC v2, src/data/rating.js): a 0-110 score from reach, finish, landing, landed flips, best
+// combo multiplier and rings → S ≥ 88, A ≥ 60, B ≥ 40, C ≥ 10, else D. The engine reports summary.rating;
+// this is the same formula for engines that don't.
+export function ratingFor(summary, finish) {
+  return rateRun(summary || {}, finish);
 }
 
 export function trackFinish(trackId) {
