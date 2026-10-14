@@ -183,3 +183,71 @@ tint). The UI layers HTML on top for HUD and buttons. The engine must not add it
   Design tokens in `:root`; the game is single-theme (bright arcade) by choice, with explicit backgrounds.
 - Icons: generate `icons/icon-192.png`, `icons/icon-512.png`, `icons/apple-touch-icon.png` (180) with Playwright
   (render an inline SVG/canvas and screenshot it) — no binary assets checked in by hand.
+
+## Epic update (v2): contract additions
+
+The goal of v2 is spectacle: chained destruction, things to hit in the air, second jumps, cinematic
+camera moments, and celebrations. Everything below is additive; nothing in the v1 contract changes.
+
+### New `game.start` fields
+- `bestDistance` (number|null): the player's best on this track. The engine draws a "BEST" flag at that x.
+- `shake` (0..1, default 1): screen-shake intensity from settings (0 disables; `reducedMotion` still wins).
+
+### New gameplay
+1. **Combo chain.** Each smash within 1.5 s of the previous one extends a chain. Multiplier
+   `mult = min(4, 1 + 0.25 × (count − 1))` applies to that smash's cash. Breaking the chain (timer runs out, run
+   ends) emits `comboEnd`. The extra cash earned from multipliers is tracked separately as `cash.combo`.
+2. **Explosive props.** New kinds in `OBSTACLE_KINDS`: `fuel` (red drum with a flame decal, cash 150) and `tnt`
+   (crate with TNT label, cash 200). On smash they explode: radial impulse on everything within 6 m (props,
+   debris, and the car, which gets a modest kick), a flash, a shockwave ring, fire/smoke particles, and any
+   explosive prop in the radius detonates 120 ms later (chain reaction). Explosions count as smashes for the
+   combo and emit `explosion`.
+3. **Formations.** Props are placed as structures, not only singles: crate pyramids (3-6 wide), glass towers
+   (3-5 panes stacked), scaffold bridges (two uprights plus a deck the car can land on and collapse), barrel
+   rows, and a fuel depot (4-8 fuel drums tight together). At least one formation per 60 m after
+   `obstacles.start`; density still scales with `obstacles.density`.
+4. **Air targets.** Placed along the expected flight arc for the track (seeded): gold `ring` (pass through:
+   $150 and +25% nitro), `coin` arcs (5-9 coins, $20 each), `balloon` ($200, pops), and on city/moon a `blimp`
+   ($500, deflates). Rings/coins are sensors (no physics); balloons/blimps are light bodies the car bats aside.
+   Emit `airTarget` per hit. Cash goes to `cash.air`.
+5. **Kicker ramps.** 1-3 seeded kickers in the landing zone (after 40 m) sized to relaunch a car at speed.
+   A kicker launch starts a new flight: flips count again, landing quality is scored again (bonus pays half),
+   and `rejump` is emitted. Air targets are also placed over kickers.
+6. **Altitude.** `getState().altitude` = meters above terrain. Above 45 m emit `orbit` once per flight: the sky
+   darkens toward space, stars fade in, and an "ORBIT!" popup shows. Cash: `$5 × peak altitude` into `cash.air`.
+7. **Car damage.** A crash landing or an explosion kick knocks parts off (bumper, a door panel, a hubcap as
+   debris bodies) and starts a smoke trail. Cosmetic only; the run continues.
+8. **Cinematics.** Launch: 0.5 s slow-mo at 0.3x with letterbox bars sliding in and the camera pulling back,
+   then snapping to the chase. Perfect landing: 0.4 s slow-mo with a radial flash. Finish line: confetti burst and
+   3-4 fireworks over the banner; the camera eases out so the banner and the car are both in frame. New record:
+   when the car passes the BEST flag the flag waves and a "NEW RECORD" banner pops in the world.
+9. **Rating.** `summary.rating` ∈ `S|A|B|C|D` from `cash.total / (track.finish × 4)`: S ≥ 1.5, A ≥ 1.0, B ≥ 0.6,
+   C ≥ 0.3, else D. The results screen stamps it.
+
+### New events
+- `{type:'combo', count, mult}` on every smash with `count ≥ 2`.
+- `{type:'comboEnd', count, mult, cash}` when a chain of `count ≥ 3` ends (`cash` = extra from multipliers).
+- `{type:'explosion', x, y, cash, chain}` (`chain` = index in a chain reaction, 0 for the first).
+- `{type:'airTarget', kind:'ring'|'coin'|'balloon'|'blimp', cash, nitroRefill}`.
+- `{type:'rejump', count, speedKmh}` on a kicker launch (count = secondary flights this run).
+- `{type:'orbit', altitude}` once per flight above 45 m.
+- `{type:'record'}` when the car passes `bestDistance` (only if `bestDistance > 0`).
+- `{type:'damage', part}` when a part is knocked off.
+
+### Summary additions
+`summary` gains `rating`, `maxAltitude`, `bestCombo`, `explosions`, `rings`, `coins`, `airTargets`, `rejumps`,
+and `cash` gains `combo` and `air` (so `cash = {distance, stunts, smash, landing, combo, air, total}`).
+`getState()` gains `altitude`, `combo: {count, mult, timer01}`, `rejumps`.
+
+### UI/meta additions (meta agent)
+- HUD: combo badge (count + multiplier, pulses on each hit, drains with `timer01`), altitude readout during
+  flight, "BIG AIR" / "ORBIT" / "RAMPAGE ×4" banners, cash ticker that counts up.
+- Results: rating stamp animation (S in gold with rays), fireworks on NEW RECORD, cash count-up, new rows for
+  Combo and Air.
+- Achievements panel: 12 badges (first flip, first perfect landing, 3-flip flight, combo ×4, first explosion,
+  chain of 3 explosions, ring collector ×10, orbit, first finish, 1 km run, own all cars, S rating) with toasts
+  when earned, stored in the save.
+- Title screen: an animated hero (a car launching off a ramp and arcing across, looping) instead of a static car.
+- Settings: screen shake slider (0-100).
+- Audio additions: `explosion()`, `ring()`, `comboUp(count)`, `cheer()` (filtered-noise crowd swell at finish
+  line and perfect landing), `fireworks()`, `orbit()` (airy pad swell), `rejump()`, nitro afterburner layer.
