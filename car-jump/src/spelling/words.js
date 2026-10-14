@@ -4,6 +4,7 @@
 export const MAX_WORDS = 40;
 export const MAX_WORD_LEN = 24;
 export const MAX_SENTENCE_LEN = 200;
+export const MAX_SAY_AS_LEN = 40;
 
 // Curly quotes, modifier apostrophes and dash variants are folded to ' and -; case-insensitive; trimmed;
 // inner whitespace collapsed to one space.
@@ -28,6 +29,15 @@ export function isValidWord(w) {
 
 export const sameWord = (a, b) => normalizeWord(a) === normalizeWord(b);
 
+// "Say as" (pronunciation override, never shown to the child): same folding as a word but case is kept.
+// Returns the cleaned text, '' when empty, or null when invalid (letters, apostrophes, hyphens, spaces; ≤ 40).
+export function cleanSayAs(s) {
+  const t = String(s == null ? '' : s).normalize('NFC').replace(/[‘’ʼ`´]/g, "'").replace(/[‐-—−]/g, '-').trim().replace(/\s+/g, ' ');
+  if (!t) return '';
+  if (t.length > MAX_SAY_AS_LEN || !/^[A-Za-z' -]+$/.test(t) || !/[A-Za-z]/.test(t)) return null;
+  return t;
+}
+
 // Letters only (what the engine's letter rings carry).
 export const ringLetters = (word) => normalizeWord(word).replace(/[^a-z]/g, '').split('');
 
@@ -39,8 +49,10 @@ export function normalizePattern(p) {
 /**
  * Parse the Words-of-the-week text area. One word per line, optional parts after ` | `:
  *   neighbor | neigh/bor | My neighbor has a dog.
+ *   read | | I read a book yesterday. | red          ← 4th part: "say as" (how the voice pronounces it)
  * A line without `|` may also hold several comma-separated words (pasted lists).
- * Returns { ok, words: [{word, syllables|null, sentence|null}], errors: [], warnings: [], duplicates: [] }.
+ * Returns { ok, words: [{word, syllables|null, sentence|null, sayAs?}], errors: [], warnings: [], duplicates: [] }
+ * (`sayAs` is present only when given).
  */
 export function parseList(text) {
   const out = { ok: false, words: [], errors: [], warnings: [], duplicates: [] };
@@ -55,6 +67,12 @@ export function parseList(text) {
       const parts = entry.split('|').map((x) => x.trim());
       const word = normalizeWord(parts[0]);
       if (!word) { out.errors.push(`Line ${n}: the word is missing before "|"`); continue; }
+      if (parts.length > 4) { out.errors.push(`Line ${n}: too many "|" parts. Use word | syllables | sentence | say as`); continue; }
+      const sayAs = cleanSayAs(parts[3]);
+      if (sayAs === null) {
+        out.errors.push(`Line ${n}: "say as" text "${parts[3]}" can only use letters, apostrophes ('), hyphens (-) and spaces, up to ${MAX_SAY_AS_LEN} characters`);
+        continue;
+      }
       if (!isValidWord(word)) {
         out.errors.push(word.length > MAX_WORD_LEN
           ? `Line ${n}: "${parts[0]}" is too long (max ${MAX_WORD_LEN} letters)`
@@ -71,12 +89,14 @@ export function parseList(text) {
         if (flat(syl.join('')) === flat(word)) syllables = syl.length > 1 ? syl : null;
         else out.warnings.push(`Line ${n}: syllables "${sylRaw}" don't spell "${word}", so they were left out`);
       }
-      let sentence = parts.slice(2).join(' | ').replace(/\s+/g, ' ').trim() || null;
+      let sentence = (parts[2] || '').replace(/\s+/g, ' ').trim() || null;
       if (sentence && sentence.length > MAX_SENTENCE_LEN) {
         sentence = sentence.slice(0, MAX_SENTENCE_LEN);
         out.warnings.push(`Line ${n}: the sentence was shortened to ${MAX_SENTENCE_LEN} characters`);
       }
-      out.words.push({ word, syllables, sentence });
+      const entryOut = { word, syllables, sentence };
+      if (sayAs) entryOut.sayAs = sayAs;
+      out.words.push(entryOut);
     }
   });
   if (out.duplicates.length) out.warnings.push(`Removed duplicates: ${Array.from(new Set(out.duplicates)).join(', ')}`);
@@ -90,8 +110,9 @@ export function parseList(text) {
 export function formatList(words) {
   return (words || []).map((w) => {
     const parts = [w.word];
-    if (w.syllables || w.sentence) parts.push(w.syllables ? w.syllables.join('/') : '');
-    if (w.sentence) parts.push(w.sentence);
+    if (w.syllables || w.sentence || w.sayAs) parts.push(w.syllables ? w.syllables.join('/') : '');
+    if (w.sentence || w.sayAs) parts.push(w.sentence || '');
+    if (w.sayAs) parts.push(w.sayAs);
     return parts.join(' | ');
   }).join('\n');
 }

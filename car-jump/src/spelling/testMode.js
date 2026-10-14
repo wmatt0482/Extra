@@ -4,6 +4,8 @@
 // spelled aloud letter by letter) and moves on; there is no copy step, to keep the test quick.
 // Speech fallback (same rule as the spell panel): when speech is missing / lists no voices / never starts within
 // 1.5 s, each word is shown for 3 s ("Look, then spell it") and covered before the child spells it.
+// Each word is presented like a spelling test (tts.present: "The word is, <word>." → sentence → "<word>."), using
+// the parent's "say as" text when given; "Hear it" cancels any speech and presents it again.
 // run() resolves { results: [{word, correct}], cancelled } after the end card's button is pressed.
 import { createKeyboard } from './keyboard.js';
 import { renderTiles, COMPARE_MS, FALLBACK_LOOK_MS, NO_SPEECH_HINT } from './spellPanel.js';
@@ -105,8 +107,9 @@ export function createTestScreen(root, { tts, audio }) {
   }
   const waitCheck = () => new Promise((resolve) => { S.waiter = resolve; });
 
-  hear.addEventListener('click', () => { if (S && S.word) tts.say(S.word); });
-  sent.addEventListener('click', () => { if (S && S.sentence) tts.say(S.sentence); });
+  const speechInfo = (st) => ({ word: st.word, sentence: st.sentence, sayAs: st.sayAs });
+  hear.addEventListener('click', () => { if (S && S.word) { tts.cancel(); tts.present(speechInfo(S)); } });
+  sent.addEventListener('click', () => { if (S && S.sentence) { tts.cancel(); tts.say(S.sentence); } });
   exit.addEventListener('click', () => {
     if (!S) return;
     const st = S; st.dead = true; tts.cancel();
@@ -151,7 +154,7 @@ export function createTestScreen(root, { tts, audio }) {
     st.speech = await tts.ready(); guard(st);
     if (!st.speech) hint();
     for (const w of st.words) {
-      st.word = w.word; st.sentence = w.sentence || null;
+      st.word = w.word; st.sentence = w.sentence || null; st.sayAs = w.sayAs || '';
       progress(st);
       sent.hidden = !st.sentence || !tts.available;
       model.hidden = true; model.replaceChildren();
@@ -163,7 +166,7 @@ export function createTestScreen(root, { tts, audio }) {
       setTyping(true);
       if (st.speech) {
         const word = w.word;
-        tts.say(word).then((ok) => {
+        tts.present(speechInfo(st)).then((ok) => {
           // speech never started: show this word for 3 s instead, and stay silent for the rest of the test
           if (ok !== false || S !== st || st.dead || st.word !== word || root.dataset.mode !== 'ask') return;
           st.speech = false; hint();
@@ -212,7 +215,7 @@ export function createTestScreen(root, { tts, audio }) {
   return {
     get mode() { return root.dataset.mode || null; },
     get word() { return S ? S.word : null; },
-    /** opts: { kind: 'qualifier'|'friday', title, words: [{word, sentence}], upper, intro: {heading, lines, button},
+    /** opts: { kind: 'qualifier'|'friday', title, words: [{word, sentence, sayAs}], upper, intro: {heading, lines, button},
      *          summary(results) → {heading, lines, button} } */
     run(opts) {
       const st = S = { ...opts, words: shuffle(opts.words), results: [], attempt: '', typing: false, dead: false };

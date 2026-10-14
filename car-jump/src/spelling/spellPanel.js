@@ -10,20 +10,31 @@
 // Speech fallback: when speech is missing, lists no voices within 1.5 s, or the spoken word never starts
 // (no onstart within 1.5 s: iOS before a tap, an iframe without audio, a paused synth), the word is shown for
 // 3 s ("Look, then spell it") and then covered, with a one-time hint. The child never waits on a silent panel.
+// Speech clarity (v3.1): the word is presented like a spelling test ("The word is, <word>." → sentence →
+// "<word>.", tts.present) once per presentation: in Look for a new word, else when Write opens. "Hear it" cancels
+// whatever is playing and presents it again; "Say it again" says "<word>. <word>." slowly; "Syllables" (only when
+// the parent gave them) says "neigh, bor." slowly. The parent's "say as" text replaces the word in all of these.
+// Word sets ("Words before each race"): the caller runs several words back to back with ctx.set = {index, count}
+// ("Word 1 of 2" on the chip) and ctx.keepOpen (the panel stays up after the word), beat('Next word!') between
+// words, and close() after the last one. The car stays parked behind the panel the whole time.
 // Resolves { word, firstTry, fixed, bonus, powerScale, nitroScale, misses } or { cancelled: true }.
 import { diffAttempt, letterName, normalizeWord, patternRanges, syllableBreaks } from './words.js';
 import { createKeyboard } from './keyboard.js';
 import { spellBonus } from './wordStore.js';
+import { VOICE_TIP } from './tts.js';
 
 export const LOOK_MS = 4000;
 export const FALLBACK_LOOK_MS = 3000;
 export const NO_SPEECH_HINT = "Speech isn't available on this device, so you'll see each word first.";
+// shown under the one-time no-speech hint on the spell panel only (a grown-up is usually nearby)
+export const NO_SPEECH_TIP = VOICE_TIP.replace('then pick it here.', 'then pick it in Parents → Options.');
 export const COMPARE_MS = 2800;          // the child's wrong attempt is gone before 3 s (R2)
 export const MAX_ATTEMPT = 24;
 export const POWER = { perfect: [1, 1.25], fixed: [0.65, 1], anyway: [0.65, 1] };
 
 const SPEAKER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg>';
 const BUBBLE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5h16v10H10l-4.5 4v-4H4z"/><path d="M8 9.5h8M8 12.5h5"/></svg>';
+const SPLIT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="7" width="8" height="10" rx="2"/><rect x="13.5" y="7" width="8" height="10" rx="2"/></svg>';
 const BACK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>';
 
 const CANCEL = Symbol('cancel');
@@ -67,9 +78,10 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
   const hear = el('button', 'btn btn-cyan sp-hear', `${SPEAKER}<span>Hear it</span>`); hear.id = 'sp-hear';
   const again = el('button', 'btn sp-again', 'Say it again'); again.id = 'sp-again';
   const sent = el('button', 'btn sp-sentence', `${BUBBLE}<span>Sentence</span>`); sent.id = 'sp-sentence';
+  const syl = el('button', 'btn sp-syl', `${SPLIT}<span>Syllables</span>`); syl.id = 'sp-syllables';
   const msg = el('div', 'sp-msg'); msg.id = 'sp-msg';
   const chip = el('div', 'sp-chip'); chip.id = 'sp-chip';
-  top.append(exit, hear, again, sent, chip);
+  top.append(exit, hear, again, sent, syl, chip);
   const tiles = el('div', 'sp-tiles');
   tiles.append(msg);
   const model = el('div', 'sp-row sp-model'); model.id = 'sp-model'; model.hidden = true;
@@ -86,7 +98,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
   kbWrap.append(kb.el);
 
   const upper = () => !!(S && S.upper);
-  const isOpen = () => !!S;
+  const isOpen = () => !!S || (!root.hidden && root.dataset.mode === 'between');   // between: a set's next word follows
 
   function setMode(m) {
     S.mode = m;
@@ -163,10 +175,17 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
   }
   function guard(state) { if (S !== state || state.dead) throw CANCEL; }
 
-  hear.addEventListener('click', () => { if (S) tts.say(S.word); });
-  again.addEventListener('click', () => { if (S) { const r = tts.rate; tts.setRate('slow'); tts.say(S.word); tts.setRate(r); } });
-  sent.addEventListener('click', () => { if (S && S.info.sentence) tts.say(S.info.sentence); });
-  exit.addEventListener('click', () => { if (S) { cancel(); onCancel(); } });
+  // what the voice needs about the current word (the parent's "say as" replaces the word when spoken)
+  const speechInfo = (st, withSentence = true) => ({ word: st.word, sentence: withSentence ? st.info.sentence : null, sayAs: st.info.sayAs });
+  hear.addEventListener('click', () => { if (S) { tts.cancel(); S.hearing = tts.present(speechInfo(S)); } });
+  again.addEventListener('click', () => { if (S) { tts.cancel(); tts.sayAgain(speechInfo(S)); } });
+  sent.addEventListener('click', () => { if (S && S.info.sentence) { tts.cancel(); tts.say(S.info.sentence); } });
+  syl.addEventListener('click', () => { if (S && S.syllables) { tts.cancel(); tts.saySyllables(S.syllables); } });
+  exit.addEventListener('click', () => {
+    if (S) { cancel(); onCancel(); return; }
+    if (beatState) { beatState.cancelled = true; beatState.wake(); close(); onCancel(); }
+  });
+  let beatState = null;            // the "Next word!" pause between the words of a set
 
   function cancel() {
     if (!S) return;
@@ -177,7 +196,15 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     finishUI();
     if (st.resolve) st.resolve({ cancelled: true, word: st.word });
   }
-  function finishUI() {
+  function finishUI(keepOpen = false) {
+    if (keepOpen) {               // more words follow in this set: the panel stays up (tiles cleared, keys off)
+      kb.setEnabled(false);
+      root.dataset.mode = 'between';
+      hideModel();
+      attemptRow.replaceChildren();
+      S = null;
+      return;
+    }
     tts.cancel();               // the panel closing stops any speech it started
     kb.setActive(false);
     kb.setEnabled(false);
@@ -196,7 +223,10 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     showModel(st.word.length);
     const t0 = performance.now();
     if (!silent && tts.available) {
-      const ok = await tts.say(st.word); guard(st);
+      st.presented = true;              // the full presentation plays once per word: here, not again in Write
+      let ok = await tts.present(speechInfo(st)); guard(st);
+      // "Hear it" tapped mid-way: let that presentation finish before the letters are spelled
+      if (ok === null && st.hearing) { ok = await st.hearing; guard(st); }
       if (ok === false) setMsg('Look, then spell it', 'cyan');   // the word is on screen anyway
       else {
         await sleep(200); guard(st);
@@ -212,7 +242,8 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     if (tts.hintShown) return;
     tts.hintShown = true;
     note.hidden = false;
-    note.textContent = NO_SPEECH_HINT;
+    note.replaceChildren(document.createTextNode(NO_SPEECH_HINT), el('small', 'sp-tip'));
+    note.lastChild.textContent = NO_SPEECH_TIP;
   }
   // speech failed while the child was waiting to hear the word: show it for 3 s, cover it, then spell (R1 holds
   // again from the moment it is covered; any letters typed meanwhile are cleared)
@@ -261,7 +292,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     setMsg(round ? 'One more time, from memory!' : 'Now cover it. Spell it from memory!', 'cyan');
     clearAttempt();
     setTyping(true);
-    tts.say(st.word);
+    tts.present(speechInfo(st, false));   // "The word is, <word>." … "<word>." (no sentence: keep it quick)
     const a = await waitLaunch(); guard(st);
     return a;
   }
@@ -281,7 +312,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
       setMsg(st.streak >= 2 ? `${st.streak} in a row!` : 'First try!', 'go');
       audio.correct && audio.correct();
       await sleep(380); guard(st);
-      tts.say(st.word);
+      tts.sayWord(speechInfo(st));
       await sleep(1250); guard(st);
     } else if (kind === 'fixed') {
       banner.innerHTML = '<b>You fixed it!</b><small>Good power</small>';
@@ -316,8 +347,9 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     setMsg(st.info.look || silentLook ? 'Now spell it from memory!' : 'Listen, then spell it!', 'cyan');
     clearAttempt();
     setTyping(true);
-    if (!st.info.look && !silentLook) {
-      tts.say(st.word).then((ok) => { if (ok === false) lookInstead(st).catch(() => {}); });
+    if (!st.info.look && !silentLook && !st.presented) {
+      st.presented = true;
+      tts.present(speechInfo(st)).then((ok) => { if (ok === false) lookInstead(st).catch(() => {}); });
     }
     let attempt = await waitLaunch(); guard(st);
     if (attempt === st.word) {
@@ -349,7 +381,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     get mode() { return S ? S.mode : null; },
     get word() { return S ? S.word : null; },
     /**
-     * info: { word, syllables, sentence, pattern, isNew, look }; ctx: { coinMult, streakBefore, mission: {count,size}, upper }
+     * info: { word, syllables, sentence, sayAs, pattern, isNew, look }; ctx: { coinMult, streakBefore, mission: {count,size}, upper }
      */
     run(info, ctx = {}) {
       if (S) cancel();
@@ -357,13 +389,20 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
       const st = S = {
         info, ctx, word, attempt: '', mode: 'init', typing: false, upper: !!ctx.upper, misses: 0, bonus: 0, streak: 0,
         ranges: info.pattern ? patternRanges(word, info.pattern) : [], breaks: syllableBreaks(word, info.syllables), dead: false,
+        syllables: Array.isArray(info.syllables) && info.syllables.length > 1 ? info.syllables.slice() : null, presented: false,
       };
       root.hidden = false;
       root.dataset.word = '';
       sent.hidden = !info.sentence || !tts.available;
+      syl.hidden = !st.syllables || !tts.available;
       hear.hidden = again.hidden = !tts.available;
-      chip.textContent = ctx.mission ? `Today ${Math.min(ctx.mission.count, ctx.mission.size)} / ${ctx.mission.size}` : '';
-      chip.hidden = !ctx.mission;
+      const set = ctx.set && ctx.set.count > 1 ? ctx.set : null;
+      const today = ctx.mission ? `Today ${Math.min(ctx.mission.count, ctx.mission.size)} / ${ctx.mission.size}` : '';
+      chip.replaceChildren();
+      if (set) { const c = el('span', 'sp-set'); c.id = 'sp-set'; c.textContent = `Word ${set.index + 1} of ${set.count}`; chip.append(c); }
+      if (today) { const c = el('span', 'sp-today'); c.textContent = today; chip.append(c); }
+      chip.classList.toggle('two', !!(set && today));
+      chip.hidden = !set && !ctx.mission;
       kb.setUpper(!!ctx.upper);
       kb.setEnterLabel('Launch');
       kb.setActive(true);
@@ -376,7 +415,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
           const [powerScale, nitroScale] = st.result.power;
           const out = { word, firstTry: st.result.firstTry, fixed: st.result.fixed, bonus: st.result.firstTry ? st.bonus : 0, powerScale, nitroScale, misses: st.misses };
           st.resolve = null;
-          finishUI();
+          finishUI(!!ctx.keepOpen);
           resolve(out);
         }).catch((e) => {
           if (e !== CANCEL) { console.error('[spellPanel]', e); if (S === st) { finishUI(); resolve({ cancelled: true, word, error: true }); } }
@@ -384,6 +423,20 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
       });
     },
     cancel,
+    /** Between two words of a set: a short message on the still-open panel. Resolves true, or false when the
+     *  child left with the back button meanwhile (onCancel has run). */
+    beat(text = 'Next word!', ms = 800) {
+      if (S || root.hidden) return Promise.resolve(!root.hidden);
+      setMsg(text, 'go');
+      banner.hidden = true;
+      return new Promise((resolve) => {
+        const bs = beatState = { cancelled: false, wake: () => {} };
+        const t = setTimeout(() => bs.wake(), ms);
+        bs.wake = () => { clearTimeout(t); if (beatState === bs) beatState = null; resolve(!bs.cancelled); };
+      });
+    },
+    /** Close the panel after the last word of a set (or when no further word could be picked). */
+    close() { if (S) return; beatState = null; finishUI(); },
     letterName,
   };
 }

@@ -20,15 +20,23 @@ the build contract is the "Spelling edition (v3)" section of `SPEC.md`. The pure
    neighbor | neigh/bor | My neighbor has a dog.
    enough | e/nough
    through | | We walked through the park.
+   read | | I read a book yesterday. | red
    ```
 
-   That is word | syllables (slash-separated, shown as breaks on the tiles) | a sentence (read aloud when your child
-   taps "Sentence"). Add a **Pattern of the week** if the list has one (`ough`, `-tion`): it is highlighted when a
+   That is word | syllables (slash-separated, shown as breaks on the tiles and read aloud by the **Syllables**
+   button) | a sentence (read aloud with the word and when your child taps "Sentence") | **say as**: how the voice
+   should pronounce the word, for when it says it wrong (`read | | I read a book yesterday. | red`). The say-as text
+   is never shown to your child (the tiles still show "read"); letters, apostrophes, hyphens and spaces, up to 40
+   characters. Add a **Pattern of the week** if the list has one (`ough`, `-tion`): it is highlighted when a
    word is first shown. Up to 40 words; letters, apostrophes, hyphens and spaces. Tap **Save**. The old list is
    archived and comes back for review 2 and 4 weeks later.
 3. **Check speech.** In **Options**, the Speech line says **Speech on** (with the voice it found) or **Speech off**.
    Tap **Test voice** to hear it. If it stays off (mute switch on, no voices installed, or a browser frame without
    sound), the game still works: each word is shown for 3 s and then covered before your child spells it.
+   **Pick a clear voice** under **Voice**: every English voice on the device is listed, clearest first; tap
+   **▶ Test** to hear "The word is, neighbor. My neighbor has a dog. Neighbor." in that voice, tap the row to use it.
+   On iPhone or iPad, much clearer voices can be downloaded in Settings → Accessibility → Spoken Content → Voices →
+   English (choose an Enhanced or Premium voice), then picked here. **Speech rate** is Very slow / Slow / Normal.
 4. **Hand it over.** Your child just plays. About 8 words a day (8 to 10 minutes) is the daily mission.
 
 **The weekly cycle.** Day 1: the first **Play** after you save a list is a quick **Qualifier** (pretest): every word
@@ -51,7 +59,8 @@ puts it all on the clipboard for a teacher. **Why this works** lists the researc
    `neighbor | neigh/bor | My neighbor has a dog.`) and an optional pattern of the week (`ough`, `-tion`).
 2. The next **Play** starts with the **Qualifier** (pretest): every word once, audio only, $100 per known word.
    Known words skip ahead (box 2), missed words become **Focus Words**.
-3. Every run starts with the **Spell panel**. The title shows the daily mission, **Today: n / 8 words**; the 8th
+3. Every run starts with the **Spell panel**: 2 words back to back by default (**Words before each race** in
+   Parents → Options: 1, 2, 3 or 4). The title shows the daily mission, **Today: n / 8 words**; the 8th
    word pays $500 and a "Mission complete" banner, then play continues as free practice.
 4. **Friday Test** (title button, any day): all words, no hints. Then one **Mega Run** with launch power
    `60 % + 40 % × score` and $150 per correct word. The parent **Report** shows pretest vs test.
@@ -75,12 +84,32 @@ the panel over it, the scene dimmed and blurred behind:
   session after at least 2 other words.
 - Each typed letter is spoken by name; the letter rings say their letter when hit and a whole word in order is
   "WORD COMPLETE". Results gain a **Spelling** row and "Today n / 8".
+- **Words before each race** (Parents → Options, per player: 1 / 2 / 3 / 4, default 2, existing players too): the
+  panel runs that many words back to back ("Word 1 of 2" on the chip, a short "Next word!" between them) while the
+  car stays parked. Each word is recorded on its own (scheduler, mission counter, bonus, streak, re-queue) and a
+  missed one still goes through Compare → Copy → Cover. The launch comes from the whole set: with c words right on
+  the first try out of n, power = `0.65 + 0.35 × c/n` and nitro = `1 + 0.25 × c/n` (`setLaunch` in
+  `wordStore.js`; 1 word gives the 100 % / 125 % vs 65 % / 100 % above), set once after the last word. The letter
+  rings carry the missed word (the last missed one if several), else the last word asked; the run is restarted
+  while still parked when that differs from the word it was started with. The results **Spelling** row lists every
+  word with ✓ (first try) or ↻ (practiced again) and the total bonus. The Qualifier, Friday Test and Mega Run are
+  unchanged.
 
-Speech uses the device's `speechSynthesis` (en-US, a natural voice when present, slow / normal rate). Speech counts
+Speech uses the device's `speechSynthesis`. Browser voices clip a short word said on its own, so a word is presented
+like a spelling test, as separate utterances with a short pause between them: `"The word is, neighbor."` → the
+sentence (if any) → `"neighbor."` (once per word: in Look for a new word, else when Write opens; again on **Hear
+it**, which first stops any speech in progress). **Say it again** says `"neighbor. neighbor."` at the slow rate;
+**Syllables** (only when the list gives them) says `"neigh, bor."` slowly. A parent's "say as" text replaces the word
+in all of these. Rates: normal 0.85, slow 0.6, very slow 0.5; pitch 1.0. The voice is the one picked in Parents →
+Options (stored by name + language in that player's options; a device without it uses the default), else the best
+ranked English voice: Apple Premium / Enhanced (and Ava, Zoe, Evan, Allison, Samantha, Tom) → Microsoft Natural →
+Google US English → other en-US → other English; novelty voices (Fred, Zarvox, Bad News, …, compact, eSpeak) last.
+Speech counts
 as unavailable for an attempt when the API is missing, when `getVoices()` is still empty 1.5 s after asking
 (`voiceschanged` or polling), or when the spoken word has not fired `onstart` 1.5 s after `speak()` (iOS before a
 tap, a muted browser frame, a stuck synth). Then the word is shown for 3 s ("Look, then spell it") and covered, with a
-one-time hint "Speech isn't available on this device, so you'll see each word first"; the Qualifier and Friday Test
+one-time hint "Speech isn't available on this device, so you'll see each word first" (on the spell panel only, with
+the tip about downloading Enhanced / Premium voices on iPhone or iPad); the Qualifier and Friday Test
 do the same per word. The child never waits on a silent panel with no word. Every tap resumes an iOS synth left
 `paused`; speech is cancelled when the panel or test closes and when the app is hidden. Parents → Options shows
 **Speech on / off** with the number of voices found.
@@ -104,9 +133,9 @@ without touching other players):
 
 | Key | Contents |
 | --- | --- |
-| `spellJump.family` | `{ v, players: [{id, name, color, createdAt}], pinHash, options: {playerId: {rate, newPerDay, includeReview, tileCase}}, migrated, lastPlayer }` (rebuilt from the per-player keys if corrupt) |
+| `spellJump.family` | `{ v, players: [{id, name, color, createdAt}], pinHash, options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace, voiceName, voiceLang}}, migrated, lastPlayer }` (rebuilt from the per-player keys if corrupt) |
 | `spellJump.<id>.save` | the full game save (`src/meta/save.js`, schema v2: cash, cars, upgrades, records, goals, settings incl. sound / music / reduced motion / shake, achievements) |
-| `spellJump.<id>.words` | `{ v, lists: [{id, name, createdAt, archivedAt, pattern, sample, words: [{word, syllables, sentence}]}], activeId, records: {word: {box, due, attempts, firstTry, seenCount, lastSeen, daysCorrect, daysSeen, focus, studied, reviewsDone, misses, listId}}, tests: [{kind, listId, at, correct, total, missed}], qualifierPending, today: {date, count, newCount, missionPaid}, streak, bestStreak, perfectTotal }` |
+| `spellJump.<id>.words` | `{ v, lists: [{id, name, createdAt, archivedAt, pattern, sample, words: [{word, syllables, sentence, sayAs?}]}], activeId, records: {word: {box, due, attempts, firstTry, seenCount, lastSeen, daysCorrect, daysSeen, focus, studied, reviewsDone, misses, listId}}, tests: [{kind, listId, at, correct, total, missed}], qualifierPending, today: {date, count, newCount, missionPaid}, streak, bestStreak, perfectTotal }` |
 
 An existing single-player `rampRage.save.v1` is copied into the first player created (the old key is left alone).
 
@@ -124,8 +153,10 @@ Per player:
 - **Report**: Qualifier vs latest Friday Test, a per-word table (status New / Focus / Learning / Almost / Mastered,
   attempts, first-try %, last practiced, days practiced), test history, **Copy report** (clipboard, or the text shown
   selected when the clipboard is unavailable), and **Why this works** (the LEARNING-DESIGN table, in the app).
-- **Options**: speech rate, new words per day (3 / 5 / 8), past-list review words, tile case (abc / ABC), sound,
-  music, reduced motion, screen shake, reset spelling data, reset game save, remove player, change PIN.
+- **Options**: speech rate (very slow / slow / normal), voice (ranked list with ▶ Test), words before each race
+  (1-4, default 2), new words per day
+  (3 / 5 / 8), past-list review words, tile case (abc / ABC), sound, music, reduced motion, screen shake, reset
+  spelling data, reset game save, remove player, change PIN.
 
 Kid-proofing: no external links, no `window.open`, no `alert` / `confirm` / `prompt`; the only native inputs (the
 word text area, the pattern field, the shake slider in Options) are inside the PIN-gated Parent Zone. The pause menu

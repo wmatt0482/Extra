@@ -10,16 +10,25 @@
 //    fired onstart 1.5 s after speak() counts as a failure. say() resolves true only when speech really started,
 //    so the spell panel / test screen can fall back to "Look, then spell it" (never a silent panel with no word).
 //  - iOS can leave the synth `paused` after an interruption → resume() before speaking and on every tap (unlock)
+// Clarity (v3.1): browser voices clip a short word spoken on its own, so a word is presented the way a teacher
+// gives a spelling test: "The word is, neighbor." → the sentence → "neighbor." (buildPresentation), as separate
+// utterances with a short pause between them. Commas / periods make the pauses (no SSML in browsers). A parent can
+// give a pronunciation override ("say as") that replaces the word wherever it is spoken. The voice is the best
+// English voice on the device (rankVoices: Premium / Enhanced > Microsoft Natural > Google US > en-US > en-*,
+// novelty voices last) unless the Parent Zone picked one (setVoice; absent on this device → the ranked default).
 // Test hook: if `window.__ttsBackend` is set before boot (an object with speak/cancel/getVoices, like
 // speechSynthesis), it is used instead of the real one; `tts.useBackend(b)` swaps it at runtime.
 import { letterName } from './words.js';
 
-const RATES = { slow: 0.68, normal: 0.9 };
-const LETTER_RATE = { slow: 0.75, normal: 0.95 };
-const PREFERRED = /(Samantha|Ava|Allison|Susan|Nicky|Natural|Enhanced|Premium|Google US English|Aria|Jenny|Zira)/i;
+export const RATES = { veryslow: 0.5, slow: 0.6, normal: 0.85 };
+const LETTER_RATE = { veryslow: 0.7, slow: 0.75, normal: 0.95 };
+export const PITCH = 1.0;
+export const PHRASE_GAP_MS = 280;        // silence between the carrier, the sentence and the repeated word
 const CHUNK = 140;
 export const START_TIMEOUT_MS = 1500;   // no onstart within this → speech is treated as unavailable for this attempt
 export const VOICES_TIMEOUT_MS = 1500;  // getVoices() still empty this long after asking → no voices
+export const VOICE_TIP = 'On iPhone or iPad, clearer voices can be downloaded in Settings → Accessibility → Spoken Content → Voices → English (choose an Enhanced or Premium voice), then pick it here.';
+export const SAMPLE_PRESENTATION = { word: 'neighbor', sentence: 'My neighbor has a dog.' };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -38,26 +47,97 @@ function splitChunks(text) {
   return out;
 }
 
+// ---------- phrases (pure: unit-tested in tools/spelling-tests.mjs) ----------
+const clean = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+/** What the voice says for the word: the parent's "say as" text when given, else the word itself. */
+export const spokenForm = ({ word, sayAs } = {}) => clean(sayAs) || clean(word);
+const withStop = (s) => (/[.!?]$/.test(s) ? s : s + '.');
+
+/** The utterances that present a word, in order: carrier, sentence (if any), the word again. */
+export function buildPresentation({ word, sentence, sayAs } = {}) {
+  const w = spokenForm({ word, sayAs });
+  if (!w) return [];
+  const out = [`The word is, ${w}.`];
+  const s = clean(sentence);
+  if (s) out.push(withStop(s));
+  out.push(`${w}.`);
+  return out;
+}
+/** "Say it again": the word twice in a short carrier (spoken at the slow rate). */
+export function buildRepeat({ word, sayAs } = {}) {
+  const w = spokenForm({ word, sayAs });
+  return w ? `${w}. ${w}.` : '';
+}
+/** "Syllables": the parent's syllables with a pause after each ("neigh, bor."). */
+export function buildSyllables(syllables) {
+  const parts = (Array.isArray(syllables) ? syllables : []).map(clean).filter(Boolean);
+  return parts.length ? parts.join(', ') + '.' : '';
+}
+
+// ---------- voices ----------
+const NOVELTY = /\b(Fred|Zarvox|Albert|Bad News|Bahh|Bells|Boing|Bubbles|Cellos|Deranged|Good News|Hysterical|Jester|Organ|Trinoids|Whisper|Wobble|Junior|Ralph|Kathy|Flo|Grandma|Grandpa|Rocko|Sandy|Shelley|Eddy|Reed)\b|compact|e-?speak/i;
+const APPLE_QUALITY = /\b(Premium|Enhanced)\b/i;
+const APPLE_NAMES = /^(Ava|Zoe|Evan|Allison|Samantha|Tom)\b/i;
+const MS_NATURAL = /\bNatural\b|^Microsoft (Aria|Jenny|Guy|Ana|Michelle|Emma|Brian|Andrew|Christopher|Eric|Roger|Steffan|Libby|Sonia|Ryan|Natasha|William)\b/i;
+const GOOGLE_US = /^Google US English/i;
+const isEnglish = (v) => !!v && /^en([-_]|$)/i.test(String(v.lang || ''));
+const isUS = (v) => /^en[-_]US$/i.test(String(v.lang || ''));
+
+/** Likely quality of one voice: { score, label }. Higher is clearer; novelty voices score 0. */
+export function voiceQuality(v) {
+  const name = String((v && v.name) || '');
+  const uri = String((v && v.voiceURI) || '');
+  const us = isUS(v || {});
+  if (NOVELTY.test(name) || /compact|espeak/i.test(uri)) return { score: 0, label: 'Novelty' };
+  if (/\bPremium\b/i.test(name) || /\.premium\./i.test(uri)) return { score: 56 + (us ? 3 : 0), label: 'Premium' };
+  if (APPLE_QUALITY.test(name) || /\.enhanced\./i.test(uri)) return { score: 53 + (us ? 3 : 0), label: 'Enhanced' };
+  if (!/Microsoft|Google/i.test(name) && APPLE_NAMES.test(name)) return { score: 50 + (us ? 3 : 0), label: 'Clear' };
+  if (MS_NATURAL.test(name)) return { score: 40 + (us ? 3 : 0), label: 'Natural' };
+  if (GOOGLE_US.test(name)) return { score: 30, label: 'Google' };
+  if (us) return { score: 20, label: '' };
+  return { score: 10, label: '' };
+}
+
+/** English voices only, best first (Premium / Enhanced > Natural > Google US > other en-US > other en-*;
+ *  novelty / compact / eSpeak voices last). Ties: en-US, then the system default, then the original order. */
+export function rankVoices(list) {
+  const en = (Array.isArray(list) ? list : []).map((v, i) => ({ v, i })).filter(({ v }) => isEnglish(v));
+  const key = ({ v, i }) => ({ q: voiceQuality(v).score, us: isUS(v) ? 1 : 0, d: v.default ? 1 : 0, i });
+  return en.map((x) => ({ ...x, k: key(x) }))
+    .sort((a, b) => b.k.q - a.k.q || b.k.us - a.k.us || b.k.d - a.k.d || a.k.i - b.k.i)
+    .map((x) => x.v);
+}
+
 export function createTTS() {
   const g = typeof window !== 'undefined' ? window : globalThis;
   let synth = g.__ttsBackend || g.speechSynthesis || null;
   const Utter = g.SpeechSynthesisUtterance || function FakeUtterance(text) { this.text = text; };
-  let voice = null, voiceCount = 0, rate = 'normal', unlocked = false, gen = 0, busy = 0, idleTimer = 0;
+  let voice = null, voiceCount = 0, rate = 'normal', unlocked = false, gen = 0, busy = 0, idleTimer = 0, lastCancelAt = 0;
+  let pref = null;                 // { name, lang } picked in the Parent Zone (null: the ranked default)
   let onSpeaking = () => {};
   // health: 'unknown' until something was tried; 'ok' after an utterance really started; 'no-voices' / 'no-start' /
   // 'error' after a failed attempt (the next attempt tries again, and one success clears it)
   let health = 'unknown', lastOkAt = 0, failures = 0;
   const voiceWaiters = new Set();
 
+  function listVoices() {
+    if (!synth || typeof synth.getVoices !== 'function') return [];
+    try { return synth.getVoices() || []; } catch (_) { return []; }
+  }
+  // the voice for a preference: that exact voice when this device has it, else the best-ranked English voice
+  function resolve(p, ranked) {
+    if (p && p.name) {
+      const same = ranked.filter((v) => v.name === p.name);
+      const hit = same.find((v) => !p.lang || String(v.lang).toLowerCase() === String(p.lang).toLowerCase()) || same[0];
+      if (hit) return hit;
+    }
+    return ranked[0] || null;
+  }
   function pickVoice() {
     if (!synth || typeof synth.getVoices !== 'function') return;
-    let voices = [];
-    try { voices = synth.getVoices() || []; } catch (_) { voices = []; }
-    const us = voices.filter((v) => /^en[-_]US$/i.test(v.lang || ''));
-    const en = voices.filter((v) => /^en/i.test(v.lang || ''));
-    const pool = us.length ? us : en;
+    const voices = listVoices();
     voiceCount = voices.length;
-    voice = pool.find((v) => PREFERRED.test(v.name) && v.localService !== false) || pool.find((v) => PREFERRED.test(v.name)) || pool.find((v) => v.default) || pool[0] || null;
+    voice = resolve(pref, rankVoices(voices));
     if (voiceCount) for (const w of [...voiceWaiters]) w();
   }
   // resolves true once getVoices() lists at least one voice (voiceschanged or polling), false after `ms`
@@ -96,8 +176,9 @@ export function createTTS() {
 
   // speak one chunk; resolves 'ok' when it started (onstart) and then ended / timed out, 'fail' when it never
   // started within START_TIMEOUT_MS or errored before starting, 'cancel' when newer speech replaced it
-  // (iOS sometimes drops onend: estimated-duration timer)
-  function speakChunk(text, r, myGen) {
+  // (iOS sometimes drops onend: estimated-duration timer). The watchdog is on onstart only, so a longer phrase
+  // (the carrier, a sentence) is never cut short by it.
+  function speakChunk(text, r, myGen, v = voice) {
     return new Promise((resolve) => {
       if (myGen !== gen || !synth) { resolve(synth ? 'cancel' : 'fail'); return; }
       let done = false, started = false, tEnd = 0;
@@ -111,9 +192,9 @@ export function createTTS() {
       let u;
       try {
         u = new Utter(text);
-        u.lang = 'en-US';
-        try { if (voice) u.voice = voice; } catch (_) { /* a voice from another backend: keep the default */ }
-        u.rate = r; u.pitch = 1.05; u.volume = 1;
+        u.lang = (v && v.lang) || 'en-US';
+        try { if (v) u.voice = v; } catch (_) { /* a voice from another backend: keep the default */ }
+        u.rate = r; u.pitch = PITCH; u.volume = 1;
         u.onstart = () => {
           if (started || done) return;
           started = true; health = 'ok'; lastOkAt = Date.now();
@@ -136,22 +217,34 @@ export function createTTS() {
     });
   }
 
-  async function speak(text, r) {
-    const chunks = splitChunks(text);
+  /** Speak phrases one after another (each its own utterance, PHRASE_GAP_MS of silence between them). Always
+   *  cancels whatever was speaking first. true: everything started and ended; false: speech never started;
+   *  null: newer speech or cancel() cut it off. */
+  async function speakSeq(phrases, r, { gap = PHRASE_GAP_MS, voice: v } = {}) {
+    const groups = (phrases || []).map(splitChunks).filter((c) => c.length);
     if (!synth) return false;
-    if (!chunks.length) return true;
+    if (!groups.length) return true;
     const myGen = ++gen;
-    let wasSpeaking = false;
-    try { wasSpeaking = !!(synth.speaking || synth.pending); synth.cancel(); } catch (_) { /* ignore */ }
+    let wasSpeaking = busy > 0 || Date.now() - lastCancelAt < 80;
+    try { wasSpeaking = wasSpeaking || !!(synth.speaking || synth.pending); synth.cancel(); } catch (_) { /* ignore */ }
     if (wasSpeaking) await sleep(60);
-    for (const c of chunks) {
-      if (myGen !== gen) return null;
-      const res = await speakChunk(c, r, myGen);
-      if (res === 'fail') return false;
-      if (res === 'cancel') return null;
+    for (let gi = 0; gi < groups.length; gi++) {
+      if (gi > 0) {
+        setBusy(1);                       // keep the music ducked through the pause
+        await sleep(gap);
+        setBusy(-1);
+      }
+      for (const c of groups[gi]) {
+        if (myGen !== gen) return null;
+        const res = await speakChunk(c, r, myGen, v || voice);
+        if (res === 'fail') return false;
+        if (res === 'cancel') return null;
+      }
     }
     return true;
   }
+  const speak = (text, r) => speakSeq([text], r);
+  const slowRate = () => Math.min(RATES.slow, RATES[rate]);
 
   const available = () => !!synth && (typeof g.SpeechSynthesisUtterance === 'function' || !!g.__ttsBackend || synth !== g.speechSynthesis);
   const api = {
@@ -166,6 +259,17 @@ export function createTTS() {
     hintShown: false,
     get unlocked() { return unlocked; },
     get voiceName() { return voice ? voice.name : ''; },
+    get voice() { return voice; },
+    get voicePref() { return pref ? { ...pref } : null; },
+    /** English voices on this device, best first (see rankVoices). */
+    voices() { return rankVoices(listVoices()); },
+    /** The voice a preference would use here ({name, lang} or null → the ranked default). */
+    resolveVoice(p) { return resolve(p, rankVoices(listVoices())); },
+    /** Use this voice when the device has it (by name, lang preferred), else the ranked default. null: default. */
+    setVoice(p) {
+      pref = p && typeof p.name === 'string' && p.name ? { name: p.name, lang: typeof p.lang === 'string' ? p.lang : '' } : null;
+      pickVoice();
+    },
     /** Before an attempt that needs speech: true when the API exists and voices are listed (waits ≤ 1.5 s). */
     async ready() {
       if (!available()) return false;
@@ -174,6 +278,7 @@ export function createTTS() {
     },
     voicesReady,
     get rate() { return rate; },
+    get rateValue() { return RATES[rate]; },
     setRate(r) { rate = RATES[r] ? r : 'normal'; },
     // duck music / hold sound effects while the voice talks: fn(true) when speech starts, fn(false) when idle
     setOnSpeaking(fn) { onSpeaking = typeof fn === 'function' ? fn : () => {}; },
@@ -190,6 +295,15 @@ export function createTTS() {
     /** Resolves true when the speech really started (onstart), false when it is unavailable or never started
      *  (no onstart within 1.5 s / an error), null when newer speech or cancel() cut it off first. */
     say(text) { return speak(text, RATES[rate]); },
+    /** Present a word like a spelling test: "The word is, <word>." → sentence → "<word>." (same result values
+     *  as say). info: { word, sentence, sayAs }; opts.voice: speak in this voice instead (Parent Zone ▶ Test). */
+    present(info, { voice: v } = {}) { return speakSeq(buildPresentation(info), RATES[rate], { voice: v }); },
+    /** "Say it again": "<word>. <word>." at the slow rate. */
+    sayAgain(info) { return speakSeq([buildRepeat(info)], slowRate()); },
+    /** "Syllables": "neigh, bor." at the slow rate. */
+    saySyllables(syllables) { return speakSeq([buildSyllables(syllables)], slowRate()); },
+    /** The word once on its own, with a full stop so the voice finishes it (praise after a perfect spell). */
+    sayWord(info) { const w = spokenForm(info); return speak(w ? `${w}.` : '', RATES[rate]); },
     sayLetter(ch) { return speak(letterName(ch), LETTER_RATE[rate]); },
     // Spell a word letter by letter (SOS). onLetter(i, ch) fires as each letter starts, so tiles can light in sync.
     async spell(word, onLetter, { gap = 260 } = {}) {
@@ -209,6 +323,7 @@ export function createTTS() {
     },
     cancel() {
       gen++;
+      lastCancelAt = Date.now();
       try { synth && synth.cancel(); } catch (_) { /* ignore */ }
     },
     useBackend(b) { synth = b || g.speechSynthesis || null; voice = null; voiceCount = 0; health = 'unknown'; watchVoices(); },

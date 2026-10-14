@@ -12,7 +12,11 @@
 //   (a 41-word list is refused), enter PIN (wrong then right), forgot PIN (hold 3 s + multiplication) →
 //   Qualifier (pays $100 a word, Focus words) → Friday Test → Mega Run (power 0.6 + 0.4 × score, $150 a word) →
 //   Report (pretest vs test, per-word table, Copy report via clipboard or the select-text fallback,
-//   "Why this works") → Options (tile case) → reload persistence.
+//   "Why this works") → Options (tile case, voice picker, rate, words before each race) → a 2-word set (first
+//   right, second missed and fixed → setLaunchPower(0.825, 1.125), rings carry the missed word, mission +2, both
+//   words on the results row) → reload persistence (incl. the chosen voice). Earlier paths use 1 word per race.
+// Speech: a word is presented as exactly ["The word is, <word>.", <sentence>, "<word>."] once (Look), again on
+// "Hear it"; "Say it again" → "<word>. <word>."; "Syllables" → "neigh, bor.".
 // Asserts R1 (no visible element spells the target word while the child spells from memory), R2 (a wrong attempt
 // is cleared within 3 s), R6 (each typed letter is spoken by name), keyboard keys ≥ 7 % (landscape) / 9 %
 // (portrait) of the viewport width, no console errors, no horizontal overflow, tap targets ≥ 44 px.
@@ -136,6 +140,11 @@ async function readWords(page) {
 }
 const spoken = (page) => J(page, () => window.__spoken.slice());
 const panelMode = (page) => J(page, () => window.__spellJump.spellPanel.mode);
+// "Words before each race" defaults to 2 (v3.1): the single-word paths set it to 1 (what the Options control does)
+const wordsPerRace = (page, n) => J(page, async (k) => {
+  const S = window.__spellJump, P = await import('/src/spelling/profiles.js');
+  P.setPlayerOption(S.app.family, S.app.currentPlayerId, 'wordsPerRace', k); S.app.persistFamily(); S.app.onOptionsChanged(S.app.currentPlayerId);
+}, n);
 const waitMode = (page, mode, timeout = 9000) => page.waitForFunction((m) => window.__spellJump.spellPanel.mode === m, mode, { timeout });
 
 // Visible text, concatenated in DOM order (letter tiles side by side spell the word).
@@ -299,7 +308,9 @@ async function runLayout(browser, layout) {
     window.__spoken = [];
     window.__ttsBackend = {
       speaking: false, pending: false,
-      getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      // several voices so the Parent Zone voice picker has a choice (ranked: Enhanced first, novelty last, no French)
+      getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }, { name: 'Samantha (Enhanced)', lang: 'en-US', localService: true, default: false },
+        { name: 'Fred', lang: 'en-US', localService: true, default: false }, { name: 'Thomas', lang: 'fr-FR', localService: true, default: false }],
       speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
       cancel() {}, addEventListener() {},
     };
@@ -335,6 +346,7 @@ async function runLayout(browser, layout) {
   const migrated = await readSave(page);
   check(migrated && migrated.cash === 5000 && migrated.best.canyon === 120, `rampRage.save.v1 migrated into spellJump.${pid}.save (cash ${migrated && migrated.cash})`);
   await instrument(page);
+  await wordsPerRace(page, 1);
 
   // ---------- title ----------
   await shot(page, layout, '03-title');
@@ -360,12 +372,37 @@ async function runLayout(browser, layout) {
   await layoutAudit(page, layout.insets, 'spell panel (look)');
   await waitMode(page, 'write', 9000);
   const sp1 = await spoken(page);
-  check(sp1.includes(w1) && w1.split('').every((c) => sp1.includes(c.toUpperCase())), 'Look: the word is said, then spelled letter by letter');
+  check(sp1.includes(`The word is, ${w1}.`) && sp1.includes(`${w1}.`) && w1.split('').every((c) => sp1.includes(c.toUpperCase())), 'Look: the word is presented, then spelled letter by letter');
+  // the presentation protocol: exactly [carrier, sentence, word], once (Write does not replay it)
+  const info1 = await J(page, (w) => { for (const l of window.__spellJump.words.lists) { const e = l.words.find((x) => x.word === w); if (e) return e; } return null; }, w1);
+  const want1 = [`The word is, ${w1}.`, info1.sentence, `${w1}.`];
+  const at1 = sp1.indexOf(want1[0]);
+  check(at1 >= 0 && JSON.stringify(sp1.slice(at1, at1 + 3)) === JSON.stringify(want1) && sp1.filter((x) => x === want1[0]).length === 1,
+    `Look presents "${w1}" as ${JSON.stringify(sp1.slice(at1, at1 + 3))}`);
   check(!(await visibleTextHas(page, w1)) && await J(page, () => document.querySelector('#sp-model').children.length === 0), `R1: "${w1}" is nowhere on screen (nor in the DOM's model row) during Write`);
   await keySizes(page, '#sp-keyboard', layout, 'spell panel');
   await shot(page, layout, '05-spell-write', 0);
   await layoutAudit(page, layout.insets, 'spell panel (write)');
   check(await J(page, () => document.querySelector('#sp-keyboard [data-key="enter"]').disabled), 'LAUNCH disabled while the attempt is empty');
+  check((await spoken(page)).filter((x) => x === want1[0]).length === 1, 'Write after Look: the presentation is not replayed');
+  // Hear it → the full presentation again; Say it again → "<word>. <word>."; Syllables only when given
+  let n0 = (await spoken(page)).length;
+  await page.tap('#sp-hear');
+  await page.waitForTimeout(1400);
+  const heard = (await spoken(page)).slice(n0);
+  check(JSON.stringify(heard) === JSON.stringify(want1), `Hear it: exactly ${JSON.stringify(heard)}`);
+  n0 = (await spoken(page)).length;
+  await page.tap('#sp-again');
+  await page.waitForTimeout(500);
+  check(JSON.stringify((await spoken(page)).slice(n0)) === JSON.stringify([`${w1}. ${w1}.`]), `Say it again: "${w1}. ${w1}."`);
+  const sylBtn = await J(page, () => !document.querySelector('#sp-syllables').hidden);
+  check(sylBtn === !!info1.syllables, `Syllables button ${sylBtn ? 'shown' : 'hidden'} (syllables ${info1.syllables ? info1.syllables.join('/') : 'none'})`);
+  if (sylBtn) {
+    n0 = (await spoken(page)).length;
+    await page.tap('#sp-syllables');
+    await page.waitForTimeout(500);
+    check((await spoken(page)).slice(n0).join('|') === info1.syllables.join(', ') + '.', `Syllables: "${info1.syllables.join(', ')}."`);
+  }
   const before6 = (await spoken(page)).length;
   await tapKeys(page, '#sp-keyboard', w1);
   const typedSpoken = (await spoken(page)).slice(before6);
@@ -719,7 +756,70 @@ async function runLayout(browser, layout) {
   await layoutAudit(page, layout.insets, 'parent zone (options)');
   await page.click('#opt-case [data-value="upper"]');
   check((await family(page)).options[pid].tileCase === 'upper', 'option saved: tile case ABC');
+  // voice picker: English voices ranked (Enhanced first, novelty last, French left out), ▶ Test, choose one
+  const vp = await J(page, () => ({ rows: [...document.querySelectorAll('#opt-voices [data-voice-row]')].map((r) => r.dataset.voiceRow), now: document.querySelector('#opt-voice-now').textContent, tip: (document.querySelector('#opt-voice-tip') || {}).textContent || '' }));
+  check(vp.rows.join('|') === '|Samantha (Enhanced)|Fake US|Fred' && /Samantha \(Enhanced\)/.test(vp.now), `voice list: Automatic, ${vp.rows.slice(1).join(', ')} (${vp.now})`);
+  check(/Spoken Content/.test(vp.tip), 'voice tip under the list');
+  await page.click('#opt-voices [data-voice-row="Fake US"] [data-voice-test]');
+  await page.waitForTimeout(1400);
+  check(JSON.stringify((await spoken(page)).slice(-3)) === JSON.stringify(['The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.']), '▶ Test speaks the sample presentation');
+  await page.click('#opt-voices [data-voice="Fake US"]');
+  const fo = (await family(page)).options[pid];
+  check(fo.voiceName === 'Fake US' && fo.voiceLang === 'en-US' && await J(page, () => window.__spellJump.tts.voiceName === 'Fake US' && /Now using: Fake US/.test(document.querySelector('#opt-voice-now').textContent)),
+    `voice chosen and stored: ${fo.voiceName} (${fo.voiceLang})`);
+  await page.click('#opt-rate [data-value="veryslow"]');
+  check((await family(page)).options[pid].rate === 'veryslow' && await J(page, () => window.__spellJump.tts.rateValue === 0.5), 'speech rate: very slow (0.5)');
+  await shot(page, layout, '36b-pz-voices');
+  await layoutAudit(page, layout.insets, 'parent zone (voices)');
+  await page.click('#opt-rate [data-value="normal"]');
+  // "Words before each race": back to the default 2 through the Options control
+  await page.click('#opt-race-words [data-value="2"]');
+  check((await family(page)).options[pid].wordsPerRace === 2, 'option saved: 2 words before each race');
   await page.click('#pz-close');
+
+  // ---------- a 2-word set: first right, second missed → Compare / Copy / Cover → power 0.825 ----------
+  const wc0 = (await readWords(page)).today.count;
+  const [pw0, st0] = await J(page, () => [window.__power.length, window.__starts.length]);
+  await page.click('#btn-play');
+  await page.waitForSelector(visibleSel('#screen-garage'));
+  await page.click('#btn-race');
+  await page.click('[data-track="canyon"]');
+  await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen && window.__spellJump.spellPanel.word, null, { timeout: 5000 });
+  const a1 = await J(page, () => window.__spellJump.spellPanel.word);
+  check(await J(page, () => (document.querySelector('#sp-set') || {}).textContent) === 'Word 1 of 2', 'set: "Word 1 of 2" on the chip');
+  await layoutAudit(page, layout.insets, 'spell panel (set chip)');
+  if (await panelMode(page) === 'look') await waitMode(page, 'write', 9000);
+  await tapKeys(page, '#sp-keyboard', a1);
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await page.waitForFunction(() => /next word/i.test(document.querySelector('#sp-msg').textContent) && window.__spellJump.spellPanel.isOpen, null, { timeout: 4000 });
+  check(await J(page, (n) => window.__power.length === n && window.__spellJump.game.getState().phase === 'ramp', pw0), 'set: "Next word!" beat, panel still open, car parked, no launch power yet');
+  await shot(page, layout, '36c-set-next', 0);
+  await page.waitForFunction((w) => { const p = window.__spellJump.spellPanel; return p.word && p.word !== w && /Word 2 of 2/.test((document.querySelector('#sp-set') || {}).textContent || ''); }, a1, { timeout: 5000 });
+  const a2 = await J(page, () => window.__spellJump.spellPanel.word);
+  if (await panelMode(page) === 'look') await waitMode(page, 'write', 9000);
+  check(!(await visibleTextHas(page, a2)), `R1: "${a2}" hidden during Write of word 2`);
+  await tapKeys(page, '#sp-keyboard', a2.slice(0, -1));
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await waitMode(page, 'copy', 4000);
+  await tapKeys(page, '#sp-keyboard', a2);
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await waitMode(page, 'cover', 3000);
+  await tapKeys(page, '#sp-keyboard', a2);
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await page.waitForFunction(() => !window.__spellJump.spellPanel.isOpen, null, { timeout: 6000 });
+  const setOut = await J(page, ([p0, s0]) => ({ power: window.__power.slice(p0), starts: window.__starts.slice(s0), letters: window.__spellJump.run.letters.join('') }), [pw0, st0]);
+  check(setOut.power.length === 1 && setOut.power[0][0] === 0.825 && setOut.power[0][1] === 1.125, `set (1 of 2 first try): setLaunchPower(${setOut.power.map((x) => x.join(', ')).join(' | ')}) once`);
+  check(setOut.letters === a2.replace(/[^a-z]/g, '') && setOut.starts.at(-1).letters.join('') === setOut.letters, `rings carry the missed word "${setOut.letters}"`);
+  check((await readWords(page)).today.count === wc0 + 2, `mission counter +2 (${wc0} → ${(await readWords(page)).today.count})`);
+  await driveToResults(page, { end: true });
+  const setRow = await J(page, () => ({ hint: (document.querySelector('#res-pay tr[data-pay="spelling"] .hint') || {}).textContent || '', n: (document.querySelector('#res-pay tr[data-pay="spelling"]') || {}).dataset.words, spell: window.__spellJump.lastResult.spell }));
+  check(setRow.n === '2' && setRow.hint.includes(`${a1} ✓`) && setRow.hint.includes(`${a2} ↻`) && setRow.spell.bonus === setRow.spell.words[0].bonus && setRow.spell.words[0].bonus > 0, `results Spelling row lists both words: "${setRow.hint}" (+$${setRow.spell.bonus})`);
+  await page.waitForTimeout(1500);            // the rating stamp animates in
+  await shot(page, layout, '36d-results-set');
+  await layoutAudit(page, layout.insets, 'results (2-word set)');
+  await page.click('#res-garage');
+  await page.click('#screen-garage [data-back]');
+  await page.waitForSelector(visibleSel('#screen-title'));
 
   // ---------- persistence across reload ----------
   const beforeReload = { save: await readSave(page), words: await readWords(page), mission: await page.textContent('#title-mission-text') };
@@ -729,6 +829,7 @@ async function runLayout(browser, layout) {
   await page.click(`[data-player="${pid}"]`);
   await page.waitForSelector(visibleSel('#screen-title'));
   const afterReload = { save: await readSave(page), words: await readWords(page), mission: await page.textContent('#title-mission-text') };
+  check((await family(page)).options[pid].voiceName === 'Fake US' && await J(page, () => window.__spellJump.tts.voiceName === 'Fake US'), 'reload: the chosen voice is kept and used');
   check(afterReload.save.cash === beforeReload.save.cash && afterReload.words.tests.length === beforeReload.words.tests.length
     && afterReload.mission === beforeReload.mission && Object.keys(afterReload.words.records).length === Object.keys(beforeReload.words.records).length,
     `reload: cash $${afterReload.save.cash}, ${afterReload.words.tests.length} tests, "${afterReload.mission}" all kept`);

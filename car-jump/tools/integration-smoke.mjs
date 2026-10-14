@@ -15,7 +15,8 @@
 // "speech" part: speechSynthesis deleted / voices never listed / utterances never start → the word is shown
 // for 3 s ("Look, then spell it") with a one-time hint, in the spell panel and the tests; the whole app still
 // plays. "perf" part: city run with a 9-letter word at 4x CPU throttle; game code per frame avg and p95.
-// No console errors, no horizontal overflow, a screenshot of every state.
+// "Words before each race" (default 2) is set to 1 for these players: the paths above are single-word paths
+// (the 2-word set is covered by ui-smoke). No console errors, no horizontal overflow, a screenshot of every state.
 import { execSync, spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import os from 'node:os';
@@ -80,6 +81,12 @@ const readSave = (page) => J(page, () => { const id = window.__spellJump.app.cur
 const readWords = (page) => J(page, () => { const id = window.__spellJump.app.currentPlayerId; return JSON.parse(localStorage.getItem(`spellJump.${id}.words`)); });
 const family = (page) => J(page, () => JSON.parse(localStorage.getItem('spellJump.family')));
 const spoken = (page) => J(page, () => window.__spoken.slice());
+// "Words before each race" defaults to 2 (v3.1); the single-word paths below set it to 1 for the current player
+// (the same call the Parent Zone's Options control makes)
+const wordsPerRace = (page, n) => J(page, async (k) => {
+  const S = window.__spellJump, P = await import('/src/spelling/profiles.js');
+  P.setPlayerOption(S.app.family, S.app.currentPlayerId, 'wordsPerRace', k); S.app.persistFamily(); S.app.onOptionsChanged(S.app.currentPlayerId);
+}, n);
 const panelMode = (page) => J(page, () => window.__spellJump.spellPanel.mode);
 const waitMode = (page, mode, timeout = 10000) => page.waitForFunction((m) => window.__spellJump.spellPanel.mode === m, mode, { timeout });
 const testMode = (page) => J(page, () => document.querySelector('#screen-test').dataset.mode);
@@ -356,6 +363,7 @@ async function runLayout(browser, layout) {
   await tap(page, '#np-keyboard [data-key="enter"]');
   await page.waitForSelector(vis('#screen-title'));
   check(await J(page, () => window.__ttsCalls.resume > 0), 'iOS paused synth: a tap called speechSynthesis.resume()');
+  await wordsPerRace(page, 1);
   const pid = (await family(page)).players[0].id;
   await instrument(page);
   await shot(page, layout, 'title');
@@ -374,7 +382,7 @@ async function runLayout(browser, layout) {
   await shot(page, layout, 'A-look', 0);
   await waitMode(page, 'write', 12000);
   const spA = await spoken(page);
-  check(spA.includes(wA) && [...wA].every((c) => spA.includes(c.toUpperCase())), 'C: Look says the word and spells it letter by letter');
+  check(spA.includes(`The word is, ${wA}.`) && spA.includes(`${wA}.`) && [...wA].every((c) => spA.includes(c.toUpperCase())), 'C: Look presents the word ("The word is, …") and spells it letter by letter');
   await r1Check(page, wA, 'A Write');
   await shot(page, layout, 'A-write', 0);
   const before6 = (await spoken(page)).length;
@@ -608,10 +616,36 @@ async function runLayout(browser, layout) {
   await instrument(page);
   const leo = { save: await readSave(page), words: await readWords(page), id: await J(page, () => window.__spellJump.app.currentPlayerId) };
   check(leo.id !== pid && leo.save.cash === 0 && leo.words.lists.some((l) => l.sample) && !leo.words.tests.length, `second player Leo: $${leo.save.cash}, sample list, no tests (Mia has $${mia.save.cash})`);
+  // Leo keeps the default of 2 words before each race, on the real engine: first right, second missed and fixed
   await startFromTitle(page, layout);
   const lw = await panelWord(page);
-  await spellRight(page, lw.word);
-  await drive(page, cdp, { stopAt: 'launch' });
+  const setA = await J(page, () => (document.querySelector('#sp-set') || {}).textContent || '');
+  check(setA === 'Word 1 of 2', `set: the chip says "${setA}"`);
+  const [starts0, power0] = await J(page, () => [window.__starts.length, window.__power.length]);
+  await tapKeys(page, '#sp-keyboard', lw.word);
+  await tap(page, '#sp-keyboard [data-key="enter"]');
+  await page.waitForFunction((w) => { const p = window.__spellJump.spellPanel; return p.isOpen && p.word && p.word !== w && /Word 2 of 2/.test((document.querySelector('#sp-set') || {}).textContent || ''); }, lw.word, { timeout: 8000 });
+  check(await J(page, (n) => window.__spellJump.game.getState().phase === 'ramp' && window.__power.length === n && document.documentElement.classList.contains('spelling'), power0), 'set: the car stays parked between the words, no launch power yet');
+  const lw2 = await J(page, () => window.__spellJump.spellPanel.word);
+  if (await panelMode(page) === 'look') await waitMode(page, 'write', 12000); else await waitMode(page, 'write', 5000);
+  await r1Check(page, lw2, 'set word 2 Write');
+  await tapKeys(page, '#sp-keyboard', lw2.slice(0, -1));
+  await tap(page, '#sp-keyboard [data-key="enter"]');
+  await waitMode(page, 'copy', 6000);
+  await tapKeys(page, '#sp-keyboard', lw2);
+  await tap(page, '#sp-keyboard [data-key="enter"]');
+  await waitMode(page, 'cover', 4000);
+  await tapKeys(page, '#sp-keyboard', lw2);
+  await tap(page, '#sp-keyboard [data-key="enter"]');
+  await page.waitForFunction(() => !window.__spellJump.spellPanel.isOpen, null, { timeout: 8000 });
+  const setRes = await J(page, (n) => ({ power: window.__power.slice(n), starts: window.__starts.slice(), ps: window.__spellJump.game.debugInfo().powerScale, letters: window.__spellJump.run.letters.join('') }), power0);
+  const lastStart = setRes.starts.at(-1);
+  check(setRes.power.length === 1 && setRes.power[0][0] === 0.825 && setRes.power[0][1] === 1.125 && setRes.ps === 0.825, `set 1 of 2 first try: setLaunchPower(${setRes.power.map((x) => x.join(', ')).join(' | ')}) once, engine powerScale ${setRes.ps}`);
+  check(setRes.starts.length === starts0 + 1 && lastStart.letters.join('') === lw2.replace(/[^a-z]/g, '') && setRes.letters === lastStart.letters.join(''), `rings: the parked run restarted with the missed word "${lastStart.letters.join('')}"`);
+  const dv = await drive(page, cdp, { stopAt: 'launch' });
+  check(dv.preLaunchOk, 'set: R1 holds on the restarted run until launch');
+  const setRow = await J(page, () => ({ hint: (document.querySelector('#res-pay tr[data-pay="spelling"] .hint') || {}).textContent || '', spell: window.__spellJump.lastResult.spell }));
+  check(setRow.hint.includes(`${lw.word} ✓`) && setRow.hint.includes(`${lw2} ↻`) && setRow.spell.total === 2 && setRow.spell.correct === 1, `results Spelling row: "${setRow.hint}"`);
   const miaNow = await J(page, (id) => JSON.parse(localStorage.getItem(`spellJump.${id}.save`)).cash, pid);
   check(miaNow === mia.save.cash, `Leo's run left Mia's cash alone ($${miaNow})`);
   await shot(page, layout, 'leo-results', 900);
@@ -654,6 +688,7 @@ async function runSpeech(browser) {
     await tapKeys(page, '#np-keyboard', 'zoe');
     await tap(page, '#np-keyboard [data-key="enter"]');
     await page.waitForSelector(vis('#screen-title'));
+    await wordsPerRace(page, 1);
     await instrument(page);
     // a word that is not new (no Look step of its own): the panel must show it for 3 s first
     await J(page, async () => {

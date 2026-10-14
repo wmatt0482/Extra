@@ -5,13 +5,14 @@ import {
   MISSION_SIZE, applyQualifier, applyResult, applyReview, applyTest, buildMission, dayKey, isMastered, isNew,
   needsLook, newRecord, noteSpelled, pickNext, status,
 } from './scheduler.js';
-import { SAMPLE_WORDS, normalizePattern, normalizeWord, isValidWord } from './words.js';
+import { SAMPLE_WORDS, cleanSayAs, normalizePattern, normalizeWord, isValidWord } from './words.js';
 
 export const WORDS_VERSION = 1;
 export const SAMPLE_ID = 'sample';
 export const STREAK_CAP = 10;
 
-export const DEFAULT_OPTIONS = { rate: 'normal', newPerDay: 5, includeReview: true, tileCase: 'lower' };
+export const DEFAULT_OPTIONS = { rate: 'normal', newPerDay: 5, includeReview: true, tileCase: 'lower', wordsPerRace: 2 };
+export const WORDS_PER_RACE = [1, 2, 3, 4];
 
 function sampleList(now) {
   return { id: SAMPLE_ID, name: 'Sample list', createdAt: now, archivedAt: 0, pattern: '', sample: true, words: SAMPLE_WORDS.map((w) => ({ ...w })) };
@@ -43,7 +44,10 @@ function cleanWordEntry(w) {
   const word = normalizeWord(w.word);
   if (!isValidWord(word)) return null;
   const syl = Array.isArray(w.syllables) ? w.syllables.filter((x) => typeof x === 'string' && x) : null;
-  return { word, syllables: syl && syl.length > 1 ? syl : null, sentence: typeof w.sentence === 'string' && w.sentence.trim() ? w.sentence.trim().slice(0, 200) : null };
+  const out = { word, syllables: syl && syl.length > 1 ? syl : null, sentence: typeof w.sentence === 'string' && w.sentence.trim() ? w.sentence.trim().slice(0, 200) : null };
+  const sayAs = cleanSayAs(w.sayAs);           // optional pronunciation override (kept only when valid)
+  if (sayAs) out.sayAs = sayAs;
+  return out;
 }
 
 // Coerce whatever was read into valid data; a corrupt store falls back to defaults (the caller keeps a backup).
@@ -206,6 +210,17 @@ export function recordSpell(d, word, { firstTry }, now, session) {
   let missionJustDone = false;
   if (!t.missionPaid && t.count >= MISSION_SIZE) { t.missionPaid = true; missionJustDone = true; }
   return { rec, streakBefore, streak: d.streak, missionJustDone, newlyMastered: !wasMastered && isMastered(rec), mission: missionState(d, now) };
+}
+
+/**
+ * Launch power for a race's word set (Parents → Options "Words before each race"): c = words right on the first
+ * try, n = words asked. powerScale = 0.65 + 0.35 × c/n, nitroScale = 1 + 0.25 × c/n (n = 1 gives the old
+ * 100 % / 125 % for a first try and 65 % / 100 % otherwise).
+ */
+export function setLaunch(c, n) {
+  const k = n > 0 ? Math.max(0, Math.min(1, c / n)) : 0;
+  const r = (x) => Math.round(x * 1e9) / 1e9;
+  return { powerScale: r(0.65 + 0.35 * k), nitroScale: r(1 + 0.25 * k) };
 }
 
 // Spelling bonus (SPEC step 3): $400 × (1 + 0.1 × streak) × coinMult, streak = previous consecutive

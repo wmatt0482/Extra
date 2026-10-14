@@ -3,7 +3,8 @@
 // Covers the Leitner intervals, mastery (needs 2 distinct days), mission ordering, the new-word cap,
 // re-queue distance, never-twice-in-a-row, archived review at 2 and 4 weeks, the list parser's edge cases,
 // the attempt/word alignment, the word store (save list → archive → restore → delete, qualifier, Friday) and the
-// speech fallbacks in tts.js (no API, no voices within 1.5 s, no onstart within 1.5 s, iOS paused synth).
+// speech fallbacks in tts.js (no API, no voices within 1.5 s, no onstart within 1.5 s, iOS paused synth), the
+// "say as" list field, the spoken presentation (buildPresentation / sayAgain / syllables) and voice ranking / choice.
 import assert from 'node:assert/strict';
 import { mulberry32 } from '../src/meta/rng.js';
 import {
@@ -13,7 +14,7 @@ import {
 import { diffAttempt, formatList, normalizeWord, parseList, patternRanges, ringLetters, syllableBreaks, SAMPLE_WORDS } from '../src/spelling/words.js';
 import {
   activeList, archivedLists, defaultWords, deleteList, missionState, nextWord, normalizeWordsData, qualifierDue, recordFriday,
-  recordQualifier, recordSpell, report, reportText, restoreList, saveNewList, spellBonus, wordInfo,
+  recordQualifier, recordSpell, report, reportText, restoreList, saveNewList, setLaunch, spellBonus, wordInfo, DEFAULT_OPTIONS, WORDS_PER_RACE,
 } from '../src/spelling/wordStore.js';
 
 let passed = 0;
@@ -211,6 +212,40 @@ test('syllables that do not spell the word are dropped with a warning', () => {
   const p = parseList('neighbor | nay/bor');
   assert.equal(p.ok, true); assert.equal(p.words[0].syllables, null); assert.ok(p.warnings.length === 1);
 });
+test('4th part "say as": kept for the voice only, the word itself unchanged', () => {
+  const p = parseList("read | | I read a book. | reed\nlive | | | lihv\ncolonel | col/o/nel | The colonel waved. | Kernel\nfriend | | | ");
+  assert.equal(p.ok, true, p.errors.join('; '));
+  assert.deepEqual(p.words[0], { word: 'read', syllables: null, sentence: 'I read a book.', sayAs: 'reed' });
+  assert.deepEqual(p.words[1], { word: 'live', syllables: null, sentence: null, sayAs: 'lihv' });
+  assert.deepEqual(p.words[2], { word: 'colonel', syllables: ['col', 'o', 'nel'], sentence: 'The colonel waved.', sayAs: 'Kernel' });
+  assert.deepEqual(p.words[3], { word: 'friend', syllables: null, sentence: null }, 'an empty 4th part adds no sayAs');
+  assert.deepEqual(parseList(formatList(p.words)).words, p.words, 'round-trips through formatList');
+});
+test('say-as: syllables / sentence stay optional; curly apostrophes, hyphens and spaces allowed', () => {
+  const p = parseList("cant | | | can’t\nice cream | | | eyes-cream\nneighbor | neigh/bor");
+  assert.equal(p.ok, true, p.errors.join('; '));
+  assert.equal(p.words[0].sayAs, "can't"); assert.equal(p.words[1].sayAs, 'eyes-cream');
+  assert.deepEqual(p.words[2], { word: 'neighbor', syllables: ['neigh', 'bor'], sentence: null });
+});
+test('invalid say-as is rejected with the line number and a clear reason', () => {
+  const bad = parseList('friend\nread | | I read. | r33d');
+  assert.equal(bad.ok, false);
+  assert.equal(bad.errors.length, 1);
+  assert.ok(/Line 2/.test(bad.errors[0]) && /say as/i.test(bad.errors[0]) && /r33d/.test(bad.errors[0]) && /letters/.test(bad.errors[0]), bad.errors[0]);
+  const long = parseList('read | | | ' + 'a'.repeat(41));
+  assert.equal(long.ok, false); assert.ok(/40 characters/.test(long.errors[0]), long.errors[0]);
+  assert.equal(parseList('read | | | ' + 'a'.repeat(40)).ok, true, '40 characters are fine');
+  const many = parseList('read | | I read. | reed | extra');
+  assert.equal(many.ok, false); assert.ok(/too many/i.test(many.errors[0]), many.errors[0]);
+});
+test('the word store keeps a valid say-as and drops an invalid one', () => {
+  const d = defaultWords(T0);
+  saveNewList(d, [{ word: 'read', sayAs: 'reed' }, { word: 'live', sayAs: '<b>' }], '', T0);
+  assert.equal(activeList(d).words[0].sayAs, 'reed'); assert.equal('sayAs' in activeList(d).words[1], false);
+  const n = normalizeWordsData(JSON.parse(JSON.stringify(d)), T0);
+  assert.equal(activeList(n).words[0].sayAs, 'reed');
+  assert.equal(wordInfo(n, 'read').sayAs, 'reed');
+});
 test('41 words are rejected, 40 accepted', () => {
   const w = Array.from({ length: 41 }, (_, i) => 'word' + String.fromCharCode(97 + (i % 26)) + String.fromCharCode(97 + Math.floor(i / 26)));
   assert.equal(parseList(w.join('\n')).ok, false);
@@ -285,6 +320,18 @@ test('report: pretest vs latest Friday, statuses, copy text', () => {
   assert.equal(r.rows.find((w) => w.word === 'gamma').status, 'Focus');
   const txt = reportText(d, 'Sam');
   assert.ok(/Pretest \(Qualifier\): 1\/3/.test(txt) && /Latest Friday Test: 2\/3/.test(txt) && /missed: gamma/.test(txt), txt);
+});
+test('set launch power: 0.65 + 0.35 × c/n, nitro 1 + 0.25 × c/n (n = 1 reproduces 100/125 vs 65/100)', () => {
+  assert.deepEqual(setLaunch(1, 1), { powerScale: 1, nitroScale: 1.25 });
+  assert.deepEqual(setLaunch(0, 1), { powerScale: 0.65, nitroScale: 1 });
+  assert.deepEqual(setLaunch(1, 2), { powerScale: 0.825, nitroScale: 1.125 });
+  assert.deepEqual(setLaunch(3, 4), { powerScale: 0.9125, nitroScale: 1.1875 });
+  assert.deepEqual(setLaunch(0, 3), { powerScale: 0.65, nitroScale: 1 });
+  assert.ok(Math.abs(setLaunch(1, 3).powerScale - (0.65 + 0.35 / 3)) < 1e-9);
+  assert.deepEqual(setLaunch(0, 0), { powerScale: 0.65, nitroScale: 1 }, 'no words: the miss power');
+});
+test('"Words before each race" option: 1-4, default 2', () => {
+  assert.equal(DEFAULT_OPTIONS.wordsPerRace, 2); assert.deepEqual(WORDS_PER_RACE, [1, 2, 3, 4]);
 });
 test('spelling bonus = $400 × (1 + 0.1 × streak, cap 10) × coinMult', () => {
   assert.equal(spellBonus(0), 400); assert.equal(spellBonus(3), 520); assert.equal(spellBonus(25), 800); assert.equal(spellBonus(0, 1.25), 500);
@@ -362,6 +409,100 @@ await atest('after a failed start, spell() lights the letters on a timer instead
   await t.say('x');
   const lit = []; const [, ms] = await timed(t.spell('abc', (i) => lit.push(i), { gap: 10 }));
   assert.deepEqual(lit, [0, 1, 2]); assert.ok(ms < 1600, `spell took ${ms} ms`);
+});
+
+
+console.log('speech: phrases and voices');
+const { buildPresentation, buildRepeat, buildSyllables, rankVoices, voiceQuality, RATES, PITCH } = await import('../src/spelling/tts.js');
+test('buildPresentation: carrier, sentence, word — exact texts', () => {
+  assert.deepEqual(buildPresentation({ word: 'neighbor', sentence: 'My neighbor has a dog.' }), ['The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.']);
+  assert.deepEqual(buildPresentation({ word: 'friend' }), ['The word is, friend.', 'friend.'], 'no sentence: carrier + word');
+  assert.deepEqual(buildPresentation({ word: 'friend', sentence: '  My  friend waved ' }), ['The word is, friend.', 'My friend waved.', 'friend.'], 'a sentence gets a full stop');
+  assert.deepEqual(buildPresentation({ word: '' }), []);
+});
+test('buildPresentation / buildRepeat use the say-as text wherever the word is spoken', () => {
+  assert.deepEqual(buildPresentation({ word: 'read', sentence: 'I read a book.', sayAs: 'reed' }), ['The word is, reed.', 'I read a book.', 'reed.']);
+  assert.equal(buildRepeat({ word: 'read', sayAs: 'reed' }), 'reed. reed.');
+  assert.equal(buildRepeat({ word: 'friend' }), 'friend. friend.');
+});
+test('buildSyllables: "neigh, bor."', () => {
+  assert.equal(buildSyllables(['neigh', 'bor']), 'neigh, bor.');
+  assert.equal(buildSyllables(['es', 'pe', 'cial', 'ly']), 'es, pe, cial, ly.');
+  assert.equal(buildSyllables(null), '');
+});
+test('rates 0.5 / 0.6 / 0.85 and pitch 1.0', () => {
+  assert.deepEqual(RATES, { veryslow: 0.5, slow: 0.6, normal: 0.85 }); assert.equal(PITCH, 1);
+});
+const V = (name, lang = 'en-US', extra = {}) => ({ name, lang, localService: true, default: false, ...extra });
+test('rankVoices: Premium > Natural > Google > plain, novelty last, non-English dropped', () => {
+  const list = [
+    V('Fred'), V('Thomas', 'fr-FR'), V('Alex'), V('Google US English', 'en-US', { localService: false }), V('Daniel', 'en-GB'),
+    V('Microsoft Aria Online (Natural) - English (United States)', 'en-US', { localService: false }), V('Zarvox'), V('Ava (Premium)'),
+    V('Samantha (Enhanced)'), V('eSpeak English', 'en'), V('Bad News'), V('Kathy'), V('Microsoft Zira - English (United States)'),
+  ];
+  const names = rankVoices(list).map((v) => v.name);
+  assert.ok(!names.includes('Thomas'), 'French voice left out');
+  const at = (n) => names.indexOf(n);
+  assert.ok(at('Ava (Premium)') < at('Samantha (Enhanced)'), 'Premium before Enhanced');
+  assert.ok(at('Samantha (Enhanced)') < at('Microsoft Aria Online (Natural) - English (United States)'), 'Enhanced before Natural');
+  assert.ok(at('Microsoft Aria Online (Natural) - English (United States)') < at('Google US English'), 'Natural before Google');
+  assert.ok(at('Google US English') < at('Alex') && at('Google US English') < at('Microsoft Zira - English (United States)'), 'Google before plain en-US');
+  assert.ok(at('Alex') < at('Daniel'), 'en-US before other en-*');
+  const novelty = ['Fred', 'Zarvox', 'eSpeak English', 'Bad News', 'Kathy'];
+  const firstNovelty = Math.min(...novelty.map(at));
+  assert.equal(firstNovelty, names.length - novelty.length, `novelty voices last: ${names.join(', ')}`);
+  assert.equal(names[0], 'Ava (Premium)');
+});
+test('voiceQuality: Apple names count as clear, compact / novelty as 0, empty list ranks to nothing', () => {
+  assert.ok(voiceQuality(V('Samantha')).score > voiceQuality(V('Google US English')).score);
+  assert.equal(voiceQuality(V('Samantha', 'en-US', { voiceURI: 'com.apple.speech.synthesis.voice.samantha.compact' })).score, 0);
+  assert.equal(voiceQuality(V('Grandma (English (US))')).score, 0);
+  assert.equal(voiceQuality(V('Sandy')).label, 'Novelty');
+  assert.deepEqual(rankVoices([]), []); assert.deepEqual(rankVoices(null), []);
+});
+
+console.log('speech: presentation, voice choice');
+function recSynth(voices) {
+  const b = { said: [], voices: [], rates: [], pitches: [], speaking: false, pending: false, getVoices: () => voices,
+    speak(u) { b.said.push(u.text); b.voices.push(u.voice ? u.voice.name : null); b.rates.push(u.rate); b.pitches.push(u.pitch); setTimeout(() => u.onstart && u.onstart(), 5); setTimeout(() => u.onend && u.onend(), 20); },
+    cancel() {}, resume() {}, addEventListener() {} };
+  return b;
+}
+const VOICES = [V('Fake US', 'en-US', { default: true }), V('Ava (Premium)'), V('Fred'), V('Amélie', 'fr-CA')];
+await atest('present() speaks exactly [carrier, sentence, word] at 0.85, pitch 1.0, in the best voice', async () => {
+  const t = createTTS(); const b = recSynth(VOICES); t.useBackend(b);
+  assert.equal(await t.present({ word: 'neighbor', sentence: 'My neighbor has a dog.' }), true);
+  assert.deepEqual(b.said, ['The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.']);
+  assert.ok(b.rates.every((r) => r === 0.85) && b.pitches.every((p) => p === 1));
+  assert.ok(b.voices.every((v) => v === 'Ava (Premium)'), b.voices.join());
+});
+await atest('sayAgain / saySyllables use the slow rate (very slow stays very slow)', async () => {
+  const t = createTTS(); const b = recSynth(VOICES); t.useBackend(b);
+  await t.sayAgain({ word: 'read', sayAs: 'reed' }); await t.saySyllables(['neigh', 'bor']);
+  assert.deepEqual(b.said, ['reed. reed.', 'neigh, bor.']); assert.deepEqual(b.rates, [0.6, 0.6]);
+  t.setRate('veryslow'); await t.sayAgain({ word: 'friend' }); assert.equal(b.rates.at(-1), 0.5);
+});
+await atest('a picked voice is used when present; a voice missing on this device falls back to the ranked default', async () => {
+  const t = createTTS(); const b = recSynth(VOICES); t.useBackend(b);
+  t.setVoice({ name: 'Fake US', lang: 'en-US' }); assert.equal(t.voiceName, 'Fake US');
+  await t.say('x'); assert.equal(b.voices.at(-1), 'Fake US');
+  t.setVoice({ name: 'Some Other Phone Voice', lang: 'en-US' }); assert.equal(t.voiceName, 'Ava (Premium)');
+  t.setVoice(null); assert.equal(t.voiceName, 'Ava (Premium)');
+  await t.present({ word: 'x' }, { voice: VOICES[0] }); assert.equal(b.voices.at(-1), 'Fake US', 'Test button voice override');
+});
+await atest('a new presentation cancels the one in progress (no leftover phrases)', async () => {
+  const t = createTTS(); const b = recSynth(VOICES); t.useBackend(b);
+  const first = t.present({ word: 'neighbor', sentence: 'My neighbor has a dog.' });
+  await new Promise((r) => setTimeout(r, 10));
+  const second = t.present({ word: 'friend' });
+  assert.equal(await first, null); assert.equal(await second, true);
+  assert.deepEqual(b.said, ['The word is, neighbor.', 'The word is, friend.', 'friend.']);
+});
+await atest(`a long carrier phrase that starts slowly but within ${START_TIMEOUT_MS} ms still plays`, async () => {
+  const t = createTTS(); const b = recSynth(VOICES);
+  b.speak = (u) => { b.said.push(u.text); setTimeout(() => u.onstart && u.onstart(), 900); setTimeout(() => u.onend && u.onend(), 2600); };
+  t.useBackend(b);
+  assert.equal(await t.present({ word: 'neighbor' }), true); assert.equal(t.health, 'ok');
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

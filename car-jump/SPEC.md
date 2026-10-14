@@ -342,7 +342,10 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
   2-digit × 2-digit multiplication; correct → set a new PIN.
 - Per player tabs:
   - **Words of the week**: a text area, one word per line. Optional parts after the word, separated by ` | `:
-    `neighbor | neigh/bor | My neighbor has a dog.` = word | syllables (slash-separated) | sentence. A separate
+    `neighbor | neigh/bor | My neighbor has a dog.` = word | syllables (slash-separated) | sentence, plus an
+    optional 4th part **say as** (v3.1): `read | | I read a book. | reed` makes the voice say "reed" wherever it
+    would say the word; never shown to the child (tiles still show "read"); letters, apostrophes, hyphens, spaces,
+    ≤ 40 characters, an invalid one is refused with the line number; more than 4 parts is refused. A separate
     "Pattern of the week" field (e.g. `ough` or `-tion`), optional. Save creates a dated list and makes it
     active; the previous list goes to the archive (view / restore / delete). "Copy to <other player>". Max 40
     words; letters, apostrophes, hyphens, spaces allowed; case-insensitive; trimmed; duplicates removed.
@@ -351,8 +354,10 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
     practiced; test history (date, score, missed words); "Copy report" (clipboard with select-text fallback).
     A "Why this works" link opens an in-app page with the table from `docs/LEARNING-DESIGN.md` (plain text,
     no external links).
-  - **Options**: speech rate (slow / normal), new words per day (3 / 5 / 8), include past-list review words
-    (on), tile case (lowercase default), reset this player's spelling data, reset this player's game save.
+  - **Options**: speech rate (very slow 0.5 / slow 0.6 / normal 0.85), voice (see "Speech clarity"), words before
+    each race (1-4, default 2, see "Spell to Launch" 8), new words
+    per day (3 / 5 / 8), include past-list review words (on), tile case (lowercase default), reset this player's
+    spelling data, reset this player's game save.
 - A sample list ships so the game is playable immediately, labeled "Sample list" in the Parent Zone and on the
   title until replaced: `because, beautiful, favorite, friend, neighbor, enough, through, thought, weather,
   whether, library, different, question, straight, especially`. Pattern: none. Include syllables for each.
@@ -373,8 +378,9 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
 
 ### Spell to Launch (every run)
 1. The run begins with the car parked at the top of the ramp (phase 'ramp', no input). A **Spell panel**
-   overlays the scene: speaker button (says the word; Web Speech API `speechSynthesis`, en-US voice, rate per
-   option; the first `speak` call happens inside a tap), "Say it again", "Sentence" (if provided), a row of
+   overlays the scene: speaker button "Hear it" (presents the word, see "Speech clarity" below; Web Speech API
+   `speechSynthesis`, English voice, rate per option; the first `speak` call happens inside a tap), "Say it
+   again", "Sentence" (if provided), "Syllables" (if provided), a row of
    letter tiles that fills as the child types, and a big on-screen QWERTY keyboard with apostrophe, hyphen,
    space, backspace and a wide LAUNCH key. Each typed letter is spoken by name (R6). Never the native keyboard.
    If `speechSynthesis` is unavailable, the panel says so once and uses a "Look for 3 s, then spell" fallback.
@@ -385,6 +391,28 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
    use the same per-word fallback. Every tap calls `speechSynthesis.resume()` if the synth is `paused` (iOS);
    speech is cancelled when the panel / test closes and when the app is hidden. Parents → Options shows
    "Speech on / off" with the number of voices detected and a "Test voice" button.
+   **Speech clarity (v3.1).** A parent reported that the bare word was not enunciated enough to understand: browser
+   TTS clips a short word spoken on its own. So a word is *presented* like a spelling test, as separate utterances
+   with ~280 ms of silence between them (no SSML in browsers; commas / periods make the pauses):
+   `"The word is, <word>."` → the sentence if there is one → `"<word>."` (`tts.buildPresentation`, pure). This
+   is used in Look (new word), when Write opens for a word without Look (once per presentation, never on a
+   re-render), in Cover (carrier + word, no sentence), in the Qualifier / Friday Test, and by **Hear it**, which
+   cancels any speech in progress first. **Say it again** says `"<word>. <word>."` at the slow rate. **Syllables**
+   (shown next to "Sentence" only when the list gives syllables) says them slowly with pauses: `"neigh, bor."`
+   (the syllables as written; the say-as text is not split). The say-as text replaces the word in every one of
+   these; letters are still spelled by name. Rates: normal 0.85, slow 0.6, very slow 0.5 (the slow buttons use
+   min(slow, current)); pitch 1.0. The 1.5 s watchdog applies to `onstart` of each utterance, not its duration.
+   **Voice**: Parents → Options lists every English voice ranked by likely quality (`tts.rankVoices`, pure):
+   Apple Premium / Enhanced (also Ava, Zoe, Evan, Allison, Samantha, Tom) → Microsoft Natural (Aria, Jenny, Guy,
+   Ana, Michelle, …) → Google US English → other en-US → other English; novelty / low-quality voices (Fred,
+   Zarvox, Albert, Bad News, Bahh, Bells, Boing, Bubbles, Cellos, Deranged, Good News, Hysterical, Jester, Organ,
+   Trinoids, Whisper, Wobble, Junior, Ralph, Kathy, Flo, Grandma, Grandpa, Rocko, Sandy, Shelley, Eddy, Reed,
+   compact, eSpeak) last. Each row has ▶ Test ("The word is, neighbor. My neighbor has a dog. Neighbor." in that
+   voice) and can be chosen; "Automatic" = the top-ranked voice. The choice is stored as `voiceName` + `voiceLang`
+   in that player's options; a device without that voice uses the ranked default. The voice in use is shown. A tip
+   under the list: "On iPhone or iPad, clearer voices can be downloaded in Settings → Accessibility → Spoken
+   Content → Voices → English (choose an Enhanced or Premium voice), then pick it here." The same tip appears on
+   the child's spell panel only inside the one-time no-speech hint.
 2. **New word** (first encounter ever for this player): Look-Say-Cover-Write-Check. Look: the word is shown
    for 4 s in tiles with the pattern chunk highlighted (if a pattern is set) and syllable breaks marked (if
    given), while the audio says the word and then spells it. Cover: tiles hide. Write: the child spells it.
@@ -405,6 +433,18 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
    `letters: [...]`). Passing through one says the letter name and pays $40; all in order pays a
    "WORD COMPLETE" $200. Extra rings stay plain.
 7. Results gains a **Spelling** row (word, first try or fixed, bonus, streak) and "Today: n / 8".
+8. **Words before each race** (v3.1, Parents → Options, per player: 1 / 2 / 3 / 4, default 2, also for existing
+   players; `wordsPerRace` in the family options). The panel runs that many words back to back before the car
+   launches: "Word 1 of 2" on the chip, each word drawn from the scheduler as before (mission counter, scheduler
+   update, spelling bonus and streak per word; a missed word still goes through Compare → Copy → Cover and can be
+   re-queued later in the session). Between words the panel stays open with a ~0.8 s "Next word!" beat; the car
+   stays parked. Launch from the set (`setLaunch(c, n)` in `wordStore.js`, c = first-try words, n = words
+   asked): powerScale = 0.65 + 0.35 × c/n, nitroScale = 1 + 0.25 × c/n; `game.setLaunchPower` is called once after
+   the last word. Letter rings: the missed word if exactly one was missed, the last missed word if several, else
+   the last word asked (the engine takes letters only in `start()`, so the still-parked run is restarted with the
+   same seed and the ring word's letters when it differs from the first word). Results: the Spelling row lists every
+   word with ✓ (first try) or ↻ (fixed / practiced again) and the total bonus; the HUD letter strip shows the ring
+   word. The Qualifier, Friday Test and Mega Run are unchanged.
 
 ### Scheduler (per player, in `src/spelling/scheduler.js`, pure functions, unit-testable in Node)
 - Per word: `box` 0..3, `due` (timestamp), `attempts`, `firstTry`, `seenCount`, `lastSeen`, `daysCorrect`

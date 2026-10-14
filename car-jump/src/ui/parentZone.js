@@ -3,11 +3,13 @@
 // Per-player tabs: Words of the week (text area: the one place a native keyboard is used, since parents type
 // here; pattern of the week; dated lists with an archive: view / restore / delete; copy to another player),
 // Report (pretest vs latest Friday Test, per-word table, test history, Copy report, "Why this works"),
-// Options (speech, new words per day, review words, tile case, sound / music / motion / shake, resets).
+// Options (speech, speech rate, voice picker, words before each race, new words per day, review words, tile case,
+// sound / music / motion / shake, resets).
 // Only this zone deletes anything. The whole zone is one scrollable sheet sized to the visual viewport so the
 // iOS keyboard never hides the text area.
 import { PLAYER_COLORS, checkPin, hasPin, playerById, playerOptions, setPin, setPlayerOption } from '../spelling/profiles.js';
 import { formatList, parseList, MAX_WORDS } from '../spelling/words.js';
+import { SAMPLE_PRESENTATION, VOICE_TIP, voiceQuality } from '../spelling/tts.js';
 import {
   activeList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList,
 } from '../spelling/wordStore.js';
@@ -59,6 +61,7 @@ export function createParentZone(app) {
   let view = 'pin', tab = 'words', playerId = null, unlockedUntil = 0;
   let pinMode = 'enter', pinFirst = '', pinEntry = '', mathQ = null, mathEntry = '';
   let holdTimer = 0, holdRaf = 0;
+  let voiceShowAll = false;            // Options → Voice: "Show all N voices" stays open across re-renders
   // the finger that finished the 3 s hold is still down when the math pad appears under it: the click its release
   // synthesizes must not type a digit, so a pad key only acts on a click whose press started on that key
   // (keyboard activation, detail 0, still works)
@@ -281,6 +284,7 @@ export function createParentZone(app) {
         h('div', { class: 'sub' }, list.sample ? 'Playable right away. Save this week\'s words below to replace it.' : `${list.words.length} words${list.pattern ? ` · pattern of the week: ${list.pattern}` : ''} · saved ${fmtDate(list.createdAt)}`)),
       h('label', { class: 'pz-label', for: 'pz-words' }, 'Words of the week, one per line', count),
       h('div', { class: 'pz-help' }, 'Optional extras after a word, separated by " | ": syllables with slashes, then a sentence. Example: neighbor | neigh/bor | My neighbor has a dog. Letters, apostrophes, hyphens and spaces only; up to 40 words.'),
+      h('div', { class: 'pz-help', id: 'pz-help-sayas' }, 'If the voice says a word wrong, add a 4th part: how to say it. Example: read | | I read a book yesterday. | red. Your child never sees it; the tiles still show "read". Letters, apostrophes, hyphens and spaces, up to 40 characters.'),
       ta,
       h('label', { class: 'pz-label', for: 'pz-pattern' }, 'Pattern of the week (optional)'),
       pat,
@@ -361,6 +365,61 @@ export function createParentZone(app) {
     return h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Speech ', pill), sub), test);
   }
 
+  // Voice picker: every English voice the device reports, best first (tts.rankVoices). Each row can be tested
+  // (▶ speaks the sample presentation in that voice) and chosen; the choice is stored by name + lang in this
+  // player's options. "Automatic" = the best-ranked voice. A stored voice this device lacks falls back to it.
+  function voicePicker(p, o, set) {
+    const t = app.tts;
+    if (!t.available) return [];
+    const LIMIT = 12;
+    const now = h('div', { class: 'sub', id: 'opt-voice-now' });
+    const list = h('div', { class: 'pz-voices', id: 'opt-voices', role: 'radiogroup', 'aria-label': 'Voice' });
+    const more = h('button', { class: 'btn btn-sm pz-voice-more', id: 'opt-voice-more', 'data-sfx': '' });
+    more.addEventListener('click', () => { voiceShowAll = !voiceShowAll; paint(); });
+    const current = () => { const q = playerOptions(app.family, p.id); return q.voiceName ? { name: q.voiceName, lang: q.voiceLang } : null; };
+    const choose = (v) => {
+      set(v ? { voiceName: v.name, voiceLang: v.lang || '' } : { voiceName: '', voiceLang: '' });
+      render();                          // the Speech row ("using …") and this list both show the new voice
+    };
+    const test = (v) => { const vv = v || t.voices()[0]; t.unlock(); t.cancel(); t.present(SAMPLE_PRESENTATION, vv ? { voice: vv } : {}); };
+    function row(v, picked, label, sub) {
+      const pick = h('button', { class: 'pz-voice-pick' + (picked ? ' on' : ''), role: 'radio', 'aria-checked': String(picked), 'data-voice': v ? v.name : '' },
+        h('span', { class: 'pz-voice-dot', 'aria-hidden': 'true' }),
+        h('span', { class: 'grow' }, h('span', { class: 'label' }, label), h('span', { class: 'sub' }, sub)));
+      pick.addEventListener('click', () => choose(v));
+      const play = h('button', { class: 'btn btn-sm pz-voice-test', 'aria-label': `Test ${label}`, 'data-voice-test': v ? v.name : '' }, '\u25B6\uFE0E Test');
+      play.addEventListener('click', () => test(v));
+      return h('div', { class: 'pz-voice', 'data-voice-row': v ? v.name : '' }, pick, play);
+    }
+    function paint() {
+      const voices = t.voices();
+      const pref = current();
+      const used = t.resolveVoice(pref);
+      const missing = pref && (!used || used.name !== pref.name);
+      now.textContent = !voices.length ? 'No English voices found yet.'
+        : `Now using: ${used ? used.name : 'the system voice'}${missing ? ` (${pref.name} isn't on this device)` : ''}`;
+      const best = voices[0];
+      const rows = [row(null, !pref, 'Automatic', best ? `Best on this device: ${best.name}` : 'The system voice')];
+      // the short list always includes the picked voice, even when it ranks below the first LIMIT
+      const shown = voiceShowAll ? voices : voices.filter((v, i) => i < LIMIT || (pref && !missing && used && v.name === used.name && v.lang === used.lang));
+      for (const v of shown) {
+        const q = voiceQuality(v);
+        rows.push(row(v, !!pref && !missing && !!used && v.name === used.name && v.lang === used.lang, v.name, [v.lang, q.label, v.localService === false ? 'online' : ''].filter(Boolean).join(' · ')));
+      }
+      list.replaceChildren(...rows);
+      more.hidden = voices.length <= LIMIT;
+      more.textContent = voiceShowAll ? 'Show fewer voices' : `Show all ${voices.length} voices`;
+    }
+    paint();
+    if (!t.voiceCount) t.voicesReady().then(() => { if (list.isConnected) paint(); });
+    return [
+      h('div', { class: 'row pz-voice-head' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Voice'), now)),
+      list,
+      more,
+      h('div', { class: 'pz-help pz-voice-tip', id: 'opt-voice-tip' }, VOICE_TIP),
+    ];
+  }
+
   function optionsTab(p) {
     const o = playerOptions(app.family, p.id);
     const set = (k, v) => { setPlayerOption(app.family, p.id, k, v); app.persistFamily(); app.onOptionsChanged(p.id); };
@@ -374,7 +433,9 @@ export function createParentZone(app) {
     return [
       h('div', { class: 'hud-label pz-sec' }, 'SPELLING'),
       speechRow(),
-      segmented('Speech rate', 'How fast words are read aloud', [['slow', 'Slow'], ['normal', 'Normal']], o.rate, (v) => set('rate', v), 'opt-rate'),
+      segmented('Speech rate', 'How fast words are read aloud', [['veryslow', 'Very slow'], ['slow', 'Slow'], ['normal', 'Normal']], o.rate, (v) => set('rate', v), 'opt-rate'),
+      ...voicePicker(p, o, set),
+      segmented('Words before each race', 'Spelled back to back before the car launches; more right on the first try = more power', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], o.wordsPerRace, (v) => set('wordsPerRace', v), 'opt-race-words'),
       segmented('New words per day', 'Most kids do best with a few at a time', [[3, '3'], [5, '5'], [8, '8']], o.newPerDay, (v) => set('newPerDay', v), 'opt-new'),
       toggle('Past-list review words', 'Old lists come back 2 and 4 weeks later', o.includeReview, (v) => set('includeReview', v), 'opt-review'),
       segmented('Letter tiles', 'How letters look on the tiles and keys', [['lower', 'abc'], ['upper', 'ABC']], o.tileCase, (v) => set('tileCase', v), 'opt-case'),

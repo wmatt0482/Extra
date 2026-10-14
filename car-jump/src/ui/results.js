@@ -148,8 +148,12 @@ export function createResults(app) {
     if (r.spell) {
       const sp = r.spell;
       const how = sp.firstTry ? 'first try' : sp.fixed ? 'fixed it' : 'comes back soon';
-      el.pay.append(h('tr', { class: 'extra spell', 'data-pay': 'spelling' },
-        h('td', {}, 'Spelling ', h('span', { class: 'hint' }, `${sp.word} · ${how}${sp.firstTry && sp.streak > 1 ? ` · streak ${sp.streak}` : ''}`)),
+      // a set of words: every word with ✓ (first try) or ↻ (practiced again), then the total bonus
+      const list = sp.words && sp.words.length > 1
+        ? sp.words.map((w) => `${w.word} ${w.firstTry ? '✓' : '↻'}`).join(' · ') + (sp.streak > 1 && sp.words[sp.words.length - 1].firstTry ? ` · streak ${sp.streak}` : '')
+        : `${sp.word} · ${how}${sp.firstTry && sp.streak > 1 ? ` · streak ${sp.streak}` : ''}`;
+      el.pay.append(h('tr', { class: 'extra spell', 'data-pay': 'spelling', 'data-words': String(sp.words ? sp.words.length : 1) },
+        h('td', {}, 'Spelling ', h('span', { class: 'hint' }, list)),
         h('td', { 'data-value': String(sp.bonus || 0) }, sp.bonus ? '+$' + money(sp.bonus) : '$0')));
     }
     if (r.missionReward) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'mission' }, h('td', {}, 'Mission ', h('span', { class: 'hint' }, '8 words today')), h('td', { 'data-value': String(r.missionReward) }, '+$' + money(r.missionReward))));

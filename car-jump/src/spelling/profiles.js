@@ -1,5 +1,7 @@
 // Players and the family record (SPEC v3 "Players"). Storage layout:
-//   spellJump.family              { v, players: [{id, name, color, createdAt}], pinHash, options: {playerId: {...}},
+//   spellJump.family              { v, players: [{id, name, color, createdAt}], pinHash,
+//                                   options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace,
+//                                   voiceName, voiceLang}},
 //                                   migrated, lastPlayer }
 //   spellJump.<playerId>.save     the player's full game save (src/meta/save.js schema)
 //   spellJump.<playerId>.words    the player's spelling data (src/spelling/wordStore.js schema)
@@ -60,10 +62,15 @@ function normalizeFamily(raw) {
 
 function cleanOptions(o) {
   const d = { ...DEFAULT_OPTIONS };
-  if (o.rate === 'slow' || o.rate === 'normal') d.rate = o.rate;
+  if (o.rate === 'veryslow' || o.rate === 'slow' || o.rate === 'normal') d.rate = o.rate;
+  // the voice picked in Parent Zone → Options ('' = the best English voice on the device). Stored by name (+ lang)
+  // because voice objects differ per device; tts.js falls back to the ranked default when the name is absent.
+  d.voiceName = typeof o.voiceName === 'string' ? o.voiceName.slice(0, 120) : '';
+  d.voiceLang = d.voiceName && typeof o.voiceLang === 'string' && /^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(o.voiceLang) ? o.voiceLang : '';
   if ([3, 5, 8].includes(o.newPerDay)) d.newPerDay = o.newPerDay;
   if (typeof o.includeReview === 'boolean') d.includeReview = o.includeReview;
   if (o.tileCase === 'lower' || o.tileCase === 'upper') d.tileCase = o.tileCase;
+  if ([1, 2, 3, 4].includes(o.wordsPerRace)) d.wordsPerRace = o.wordsPerRace;
   return d;
 }
 
@@ -99,7 +106,7 @@ export const writeFamily = (f) => write(FAMILY_KEY, JSON.stringify(f));
 export const playerById = (f, id) => f.players.find((p) => p.id === id) || null;
 export const playerOptions = (f, id) => ({ ...DEFAULT_OPTIONS, ...(f.options[id] || {}) });
 export function setPlayerOption(f, id, key, value) {
-  f.options[id] = cleanOptions({ ...playerOptions(f, id), [key]: value });
+  f.options[id] = cleanOptions({ ...playerOptions(f, id), ...(key && typeof key === 'object' ? key : { [key]: value }) });
   return f.options[id];
 }
 

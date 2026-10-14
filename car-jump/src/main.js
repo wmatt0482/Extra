@@ -32,7 +32,7 @@ import { createTitleHero } from './ui/titleHero.js';
 import { createPlayers, drawAvatar } from './ui/players.js';
 import { createParentZone } from './ui/parentZone.js';
 
-const VERSION = '3.0.1';
+const VERSION = '3.1.0';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;
@@ -202,6 +202,7 @@ async function boot() {
   function applyPlayerOptions() {
     const o = opts();
     tts.setRate(o.rate);
+    tts.setVoice(o.voiceName ? { name: o.voiceName, lang: o.voiceLang } : null);
     document.documentElement.classList.toggle('tiles-upper', o.tileCase === 'upper');
   }
   function selectPlayer(id) {
@@ -325,7 +326,7 @@ async function boot() {
     const q = kind === 'qualifier';
     testScreen.run({
       kind, title: q ? 'Qualifier' : 'Friday Test', upper,
-      words: list.words.map((w) => ({ word: w.word, sentence: w.sentence })),
+      words: list.words.map((w) => ({ word: w.word, sentence: w.sentence, sayAs: w.sayAs || '' })),
       intro: q
         ? { heading: 'New words!', lines: [`A quick check of this week's ${n} words: listen, then spell each one once.`, `Words you already know skip ahead. $${QUALIFIER_PAY} for each one you get right.`], button: 'Start' }
         : { heading: 'Friday Test', lines: [`All ${n} words. Listen and spell. No hints!`, 'Your score powers the MEGA RUN.'], button: 'Start' },
@@ -387,15 +388,18 @@ async function boot() {
       stats = statsFor(save, car.id);
       seed = hashString('track:' + trackId);   // fixed layout per track so it can be learned
     }
-    // every normal run starts with a word spelled from memory (the Mega Run's power comes from the test)
+    // every normal run starts with a set of words spelled from memory ("Words before each race", 1-4; the Mega
+    // Run's power comes from the test). The rings get the first word's letters for now; spelledSet() restarts the
+    // parked run with the ring word's letters if the set picks another one.
     const pick = !daily && !mega && words ? WS.nextWord(words, Date.now(), session, opts()) : null;
     const letters = pick ? ringLetters(pick.word) : null;
+    const setSize = WS.WORDS_PER_RACE.includes(opts().wordsPerRace) ? opts().wordsPerRace : 2;
     const powerScale = mega ? 0.6 + 0.4 * mega.score : 1;
     clearTimeout(stopFallback);
     runEarned = [];
     run = {
       trackId, daily, def, carId: car.id, stats, ended: false, goalToasts: [], earned: runEarned, flight: false, bigAir: false, rampage: false, rings: 0,
-      spelling: !!pick, pick, letters: letters || [], spell: null, mega, missionReward: 0,
+      spelling: !!pick, pick, letters: letters || [], spell: null, mega, missionReward: 0, setSize, startCfg: null,
     };
     achievements.beginRun();
     go('run');
@@ -406,12 +410,13 @@ async function boot() {
     Audio.duck(true);
     try {
       // start first so the parked car is on screen behind the spell panel; the launch power is set after
-      game.start({
+      run.startCfg = {
         car, stats, track, seed,
         shake: save.settings.reducedMotion ? 0 : save.settings.shake / 100,
         bestDistance: daily ? null : (save.best[trackId] || null),
         letters, powerScale, nitroScale: 1,
-      });
+      };
+      game.start(run.startCfg);
       game.setInput({ gas: false, brake: false, nitro: false });
     } catch (e) {
       console.error('[SpellJump] game.start threw', e);
@@ -423,33 +428,81 @@ async function boot() {
     if (pick) {
       const r = run;
       setSpelling(true);
-      spellPanel.run(pick, {
-        coinMult: stats.coinMult || 1, streakBefore: Math.min(WS.STREAK_CAP, words.streak),
-        mission: WS.missionState(words, Date.now()), upper: opts().tileCase === 'upper',
-      }).then((res) => spelled(r, res));
+      spellSet(r, pick).catch((e) => console.error('[SpellJump] spelling set', e));
     } else if (mega) {
       hud.banner('mega', `Mega run ${Math.round(powerScale * 100)}%`);
       if (!save.seen.coach) showCoach();
     } else if (!daily && !save.seen.coach) showCoach();
   }
 
-  // the spell panel resolved: record it, pay the bonus, set the launch power, hand the car to the child
-  function spelled(r, res) {
-    if (run !== r || r.ended) return;
-    if (!res || res.cancelled) return;      // quitRun already ran (back button)
+  // the words of one race, back to back in the spell panel (the car stays parked behind it). Each word is recorded
+  // as it is spelled (scheduler, mission counter, bonus, streak, badges); the launch power comes from the whole set.
+  async function spellSet(r, first) {
+    const n = r.setSize;
+    const done = [];
+    let pick = first;
+    for (let i = 0; i < n && pick; i++) {
+      if (i > 0) {
+        const ok = await spellPanel.beat('Next word!', 800);
+        if (!ok || run !== r || r.ended) return;
+      }
+      r.pick = pick;
+      const res = await spellPanel.run(pick, {
+        coinMult: r.stats.coinMult || 1, streakBefore: Math.min(WS.STREAK_CAP, words.streak),
+        mission: WS.missionState(words, Date.now()), upper: opts().tileCase === 'upper',
+        set: { index: i, count: n }, keepOpen: i < n - 1,
+      });
+      if (run !== r || r.ended) return;
+      if (!res || res.cancelled) return;      // quitRun already ran (back button)
+      done.push(recordWord(r, pick, res));
+      if (i < n - 1) pick = WS.nextWord(words, Date.now(), session, opts());
+    }
+    spellPanel.close();
+    spelled(r, done);
+  }
+
+  // one word of the set: record it, pay its bonus (and the mission reward when it completes the mission)
+  function recordWord(r, pick, res) {
     const now = Date.now();
-    const rec = WS.recordSpell(words, r.pick.word, { firstTry: res.firstTry }, now, session);
+    const rec = WS.recordSpell(words, pick.word, { firstTry: res.firstTry }, now, session);
     const bonus = res.firstTry ? earn(save, res.bonus) : 0;
     const missionReward = rec.missionJustDone ? earn(save, MISSION_REWARD) : 0;
-    r.missionReward = missionReward;
-    r.spell = { word: r.pick.word, firstTry: res.firstTry, fixed: res.fixed, misses: res.misses, bonus, streak: rec.streak, powerScale: res.powerScale };
+    r.missionReward += missionReward;
     app.persist(); app.persistWords();
     achievements.spell({ firstTry: res.firstTry, streak: rec.streak, newlyMastered: rec.newlyMastered });
-    try { if (typeof game.setLaunchPower === 'function') game.setLaunchPower(res.powerScale, res.nitroScale); } catch (e) { console.warn('[SpellJump] setLaunchPower failed', e); }
+    return { word: pick.word, firstTry: res.firstTry, fixed: res.fixed, misses: res.misses, bonus, streak: rec.streak };
+  }
+
+  // the set is done: power from the set, the ring word, hand the car to the child
+  function spelled(r, done) {
+    if (run !== r || r.ended || !done.length) return;
+    const n = done.length;
+    const c = done.filter((w) => w.firstTry).length;
+    const { powerScale, nitroScale } = WS.setLaunch(c, n);
+    // letter rings: the missed word (the last one if several were missed), else the last word asked
+    const missed = done.filter((w) => !w.firstTry);
+    const ringWord = (missed.length ? missed[missed.length - 1] : done[n - 1]).word;
+    const letters = ringLetters(ringWord);
+    if (letters.join('') !== r.letters.join('') && r.startCfg) {
+      // the engine takes the ring letters in start(): restart the still-parked run (same seed, same layout)
+      try {
+        r.startCfg = { ...r.startCfg, letters, powerScale, nitroScale };
+        game.start(r.startCfg);
+        game.setInput({ gas: false, brake: false, nitro: false });
+      } catch (e) { console.warn('[SpellJump] restart with the ring word failed', e); }
+    }
+    r.letters = letters;
+    const last = done[n - 1];
+    r.spell = {
+      words: done, word: ringWord, correct: c, total: n,
+      firstTry: c === n, fixed: c < n && done.every((w) => w.firstTry || w.fixed), misses: done.reduce((a, w) => a + (w.misses || 0), 0),
+      bonus: done.reduce((a, w) => a + w.bonus, 0), streak: last.streak, powerScale, nitroScale,
+    };
+    try { if (typeof game.setLaunchPower === 'function') game.setLaunchPower(powerScale, nitroScale); } catch (e) { console.warn('[SpellJump] setLaunchPower failed', e); }
     r.spelling = false;
     setSpelling(false);
     hud.word(null);           // R1: the HUD letter strip appears only once the car is airborne (launch event)
-    if (missionReward) { hud.banner('mission', 'Mission complete!'); setTimeout(() => Audio.missionComplete(), 200); }
+    if (r.missionReward) { hud.banner('mission', 'Mission complete!'); setTimeout(() => Audio.missionComplete(), 200); }
     if (!save.seen.coach) showCoach();
     else if (!paused) controls.enable(true);
   }
