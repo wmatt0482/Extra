@@ -1,137 +1,145 @@
-# Ramp Rage
+# Spell Jump
 
-A one-thumb car-jumping game for iPhone, built as a static web app (PWA) with no build step.
-Roll down a giant ramp, launch off the lip, flip in the air, stick the landing, and smash props for
-cash. Spend it in the garage on 6 cars × 4 upgrade tracks, unlock 5 stages, chase the daily
-challenge and three rotating goals. No ads, no IAP, no energy timer.
+A 4th-grade spelling trainer that is a car-jumping game, built as a static web app (PWA) for iPhone Safari with
+no build step. Every jump starts with a word spoken aloud and spelled from memory on a big on-screen keyboard;
+spelling it right is what gives the car full launch power. Then the car rolls down a giant ramp, flies through
+rings that carry the word's letters, flips, lands and smashes props for cash to spend on 6 cars × 4 upgrades
+across 5 stages. No ads, no IAP, no energy timer, no external links.
 
-## v2 "epic update" features (UI / meta)
+The learning design (and the evidence behind each mechanic) is in [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md);
+the build contract is the "Spelling edition (v3)" section of `SPEC.md`. The pure car game is tagged `ramp-rage-v2`.
 
-- **Combo badge**: chained smashes (each within 1.5 s) show a badge with the hit count in a ring that drains
-  with the combo timer and the multiplier (`×1.25` … `×4`). It pulses on every hit, flashes red-gold at ×4
-  ("RAMPAGE"), and shows the combo bonus (`+$235`) for a moment when the chain ends.
-- **Altitude** readout while airborne (glows violet above 45 m, the "orbit" height).
-- **Banners**: big centered LAUNCH! 141 KM/H, BIG AIR (a flight longer than 3 s), ORBIT!, REJUMP! and RAMPAGE ×4
-  slide in for ~1.2 s in the band under the top bar (above the car, even during the launch letterbox). Only one is
-  ever on screen; a newer one replaces the current one after 0.65 s. Achievement toasts and "Goal done" notes
-  share that band one at a time and never while a banner is up. The engine draws the other moments itself, lower
-  on the screen or in the world (flips, landings, FINISH LINE!, cash popups, the NEW RECORD flag); the running
-  combo multiplier lives only on the HUD badge: every moment gets exactly one big text (SPEC "Who draws which big text").
-- **Run-cash ticker** counts up smoothly instead of jumping.
-- **Results**: rating stamp (S/A/B/C/D from the engine's 0-110 run score: reach, finish, landing, landed flips,
-  best combo multiplier, rings; S ≥ 88, A ≥ 60, B ≥ 40, C ≥ 10, see SPEC / `src/data/rating.js`) slams in,
-  S in gold with spinning rays; the run total counts up over 1.2 s; Combo and Air rows join the breakdown (hidden
-  when they paid nothing; rows always add up to the total); extra stat tiles for best combo, altitude, air
-  targets and rejumps (only when non-zero, 6 or 8 tiles); fireworks on a NEW RECORD.
-- **Title hero**: the selected car rolls down the backdrop's ramp, launches, back-flips across the title with
-  a speed trail, lands in a dust puff and loops (portrait: it arcs over the logo). Static pose with Reduced motion.
-- **Audio**: explosion (boom + noise + sub thump, chained blasts attenuated), ring chime, balloon pop, combo
-  riser pitched by count, crowd cheer (finish line; short one on a perfect landing), fireworks, orbit pad swell,
-  rejump zap, part-knocked-off clank, and a nitro afterburner layer. A limiter on the master bus keeps stacked
-  explosions from clipping.
+## How a week works
 
-### Achievements
+1. A parent opens **Parents** (PIN), types this week's words (one per line, optionally
+   `neighbor | neigh/bor | My neighbor has a dog.`) and an optional pattern of the week (`ough`, `-tion`).
+2. The next **Play** starts with the **Qualifier** (pretest): every word once, audio only, $100 per known word.
+   Known words skip ahead (box 2), missed words become **Focus Words**.
+3. Every run starts with the **Spell panel**. The title shows the daily mission, **Today: n / 8 words**; the 8th
+   word pays $500 and a "Mission complete" banner, then play continues as free practice.
+4. **Friday Test** (title button, any day): all words, no hints. Then one **Mega Run** with launch power
+   `60 % + 40 % × score` and $150 per correct word. The parent **Report** shows pretest vs test.
 
-Twelve badges, shown in the **Badges** panel on the title (locked ones are dimmed with a hint; counted ones
-show progress). Earning one pops a toast during the run (queued, one at a time, never over a banner) and the
-results screen lists the run's new badges. The title button shows how many are unseen.
+Until a parent saves a list, a 15-word **Sample list** (with syllables and sentences) is active and labeled on the
+title and in the Parent Zone.
+
+## The spell panel ("Spell to Launch")
+
+The run starts with the car parked at the top of the ramp (`game.start` with the word's `letters` and power 1),
+the panel over it, the scene dimmed and blurred behind:
+
+- **New word** (or a Focus word not yet studied): Look (4 s: tiles with the pattern chunk highlighted and syllable
+  breaks marked while the word is said and spelled) → Cover → Write → Check.
+- **First try right**: PERFECT SPELL, bonus `$400 × (1 + 0.1 × streak)` × coinMult (streak = previous consecutive
+  first-try words, cap 10), launch power 100 %, nitro 125 %.
+- **A miss** → Cover-Copy-Compare: Compare (the attempt with differing positions in red and a gap where a letter is
+  missing, the word above in green spelled aloud letter by letter with each tile lighting; the attempt is cleared
+  after 2.8 s) → Copy (only the matching next letter is accepted, LAUNCH only on a match) → Cover (from memory).
+  Right → 65 % power. Wrong → once more; a second miss goes at 65 % anyway and the word comes back later in the
+  session after at least 2 other words.
+- Each typed letter is spoken by name; the letter rings say their letter when hit and a whole word in order is
+  "WORD COMPLETE". Results gain a **Spelling** row and "Today n / 8".
+
+Speech uses the device's `speechSynthesis` (en-US, a natural voice when present, slow / normal rate). If a device
+has none, the panel says so once and shows each word for 3 s before the child spells it.
+
+### The learning rules in code
+
+| Rule | Where it is enforced |
+| --- | --- |
+| R1 word never visible while spelling from memory | `spellPanel.js` removes the model tiles from the DOM (`hideModel`) in Write and Cover; the HUD word strip is only filled after the panel closes; the scene behind the panel is blurred; tests check the visible text |
+| R2 only the child's own misspelling, ≤ 3 s, marked | `diffAttempt` (words.js) marks the attempt; `COMPARE_MS = 2800` then the row is cleared; Copy refuses wrong letters; no multiple choice anywhere |
+| R3 every miss corrected by the child | the Cover-Copy-Compare loop in `spellPanel.js` |
+| R4 spacing, re-queue, mastery | `scheduler.js`: intervals 0 / 1 / 2 / 4 days, `REQUEUE_GAP = 2`, `isMastered` needs box 3, 3 first-try successes and 2 distinct days |
+| R5 ≤ N new words a day, mission ≈ 8 | `buildMission` / `pickNext` cap new words with `today.newCount` (3 / 5 / 8 option), `MISSION_SIZE = 8` |
+| R6 letters spoken by name, on device | `keyboard.js` → `tts.sayLetter` on every letter; `tts.spell` for SOS; letter rings call `sayLetter` |
+
+## Players and saves
+
+The first screen is the player picker (up to 4 players, "+ New player" with the on-screen keyboard and a car-color
+avatar). Storage (every access in try/catch; a corrupt key is backed up to `<key>.corrupt` and replaced by defaults
+without touching other players):
+
+| Key | Contents |
+| --- | --- |
+| `spellJump.family` | `{ v, players: [{id, name, color, createdAt}], pinHash, options: {playerId: {rate, newPerDay, includeReview, tileCase}}, migrated, lastPlayer }` (rebuilt from the per-player keys if corrupt) |
+| `spellJump.<id>.save` | the full game save (`src/meta/save.js`, schema v2: cash, cars, upgrades, records, goals, settings incl. sound / music / reduced motion / shake, achievements) |
+| `spellJump.<id>.words` | `{ v, lists: [{id, name, createdAt, archivedAt, pattern, sample, words: [{word, syllables, sentence}]}], activeId, records: {word: {box, due, attempts, firstTry, seenCount, lastSeen, daysCorrect, daysSeen, focus, studied, reviewsDone, misses, listId}}, tests: [{kind, listId, at, correct, total, missed}], qualifierPending, today: {date, count, newCount, missionPaid}, streak, bestStreak, perfectTotal }` |
+
+An existing single-player `rampRage.save.v1` is copied into the first player created (the old key is left alone).
+
+## Parent Zone
+
+Title → **Parents**. First open sets a 4-digit PIN (twice, stored hashed); later it asks for it (it stays open for
+5 minutes). **Forgot PIN?**: press and hold for 3 s, answer a 2-digit × 2-digit multiplication, set a new PIN.
+Per player:
+
+- **Words of the week**: the text area (the one place a native keyboard is used: parents type there; the sheet is
+  sized to the visual viewport so the iOS keyboard never hides it), pattern of the week, validation (letters,
+  apostrophes, hyphens, spaces; case-insensitive; duplicates removed; max 40 words; syllables that don't spell the
+  word are dropped with a note). Save makes a dated list active and archives the previous one (view / restore /
+  delete), "Copy this list to <player>".
+- **Report**: Qualifier vs latest Friday Test, a per-word table (status New / Focus / Learning / Almost / Mastered,
+  attempts, first-try %, last practiced, days practiced), test history, **Copy report** (clipboard, or the text shown
+  selected when the clipboard is unavailable), and **Why this works** (the LEARNING-DESIGN table, in the app).
+- **Options**: speech rate, new words per day (3 / 5 / 8), past-list review words, tile case (abc / ABC), sound,
+  music, reduced motion, screen shake, reset spelling data, reset game save, remove player, change PIN.
+
+Kid-proofing: no external links, no native text inputs in the kid-facing UI, the pause menu (sound, music, motion,
+shake) has no reset, and only the Parent Zone deletes anything.
+
+## Game features (from v2)
+
+Combo chains with a HUD badge, explosions, formations, air targets, kickers, cinematics, a results rating stamp,
+fireworks on a new record, and 12 badges. v3 replaced three badges with spelling ones:
 
 | Badge | How |
 | --- | --- |
 | Head Over Wheels | land your first flip |
 | Butter | a perfect landing |
 | Triple Threat | 3 flips in one flight |
-| Rampage | reach the ×4 combo multiplier |
+| **Perfect Speller** | spell a word right on the first try |
 | Kaboom | blow up a fuel drum or TNT crate |
-| Chain Reaction | 3 explosions in one chain |
+| **On a Roll** | 10 words in a row on the first try |
 | Ring Collector | fly through 10 gold rings (lifetime) |
 | Orbit | fly 45 m above the ground |
 | Checkered Flag | cross a finish line |
-| Kilometer Club | 1,000 m in one run |
-| Full Garage | own all 6 cars |
+| **Word Master** | your first Mastered word |
+| Full Garage | own all 6 cars (the last one is the **Rhino**) |
 | S Rank | an S rating on a run |
 
-### Settings
-
-Sound effects, Music, Reduced motion (no shake, no slow-mo, static title hero, no fireworks), **Screen shake**
-slider (0-100 %, passed to the engine as `shake` 0..1; Reduced motion forces 0), and Reset progress.
-
-### Save format
-
-`localStorage['rampRage.save.v1']` (the key name is historical), schema `v: 2`. v2 added `achievements`
-(`{id: earned timestamp ms}`), `settings.shake` (0-100, default 100), `seen.ach` (badges already seen), and
-`records.bestCombo / maxAltitude / rings / explosions / rejumps`. v1 saves load in place: missing fields get
-defaults, nothing else changes shape. A corrupt save is backed up to `rampRage.save.v1.corrupt` and the game
-starts fresh.
+Audio is synthesized (WebAudio): v3 adds a soft key click, a bright rising triad for a correct word, a gentle
+(not punishing) "oops", and a mission fanfare; music ducks hard and effects soften while the voice speaks.
 
 ## Run locally
-
-All code is ES modules, so it has to be served over HTTP (opening the file directly will not work):
 
 ```sh
 cd car-jump
 python3 -m http.server 8080      # or: npx serve
 ```
 
-Open <http://localhost:8080/>. Useful URL flags:
-
-| Flag | Effect |
-| --- | --- |
-| `?mock=1` | Use the scripted mock engine (`src/meta/mockEngine.js`) instead of the real physics engine. |
-| `?nosw=1` | Do not register the service worker (handy while editing files). |
-
-The mock engine plays a scripted ~9 s run that emits every v2 event: launch, flips, a ring, a coin arc and a
-balloon (a blimp on city/moon), a 4-hit combo that includes a fuel → TNT explosion chain, a knocked-off part, a
-kicker rejump with a second flip and landing, orbit on the moon, and `record` when it passes `bestDistance`. Its
-summary/getState carry the v2 fields and its cash follows the SPEC formula, so the results math checks out.
-
-### Controls
-
-| Button | On the ramp / ground | In the air |
-| --- | --- | --- |
-| **GAS** (bottom right) | accelerate | front flip (milder; times the spin so a held GAS still lands on the wheels) |
-| **BRAKE** (bottom left) | brake | back flip (full torque, crisp) |
-| **NITRO** (above GAS) | thrust | thrust along the nose |
-| *nothing held* | coast | the car levels out for the landing |
-
-Each flip input ramps in over a quarter second, so a thumb left on GAS from the ramp doesn't flip the car
-instantly. Release a flip early and the auto-level finishes it wheels-down. GAS and NITRO can be held at the same
-time (separate touches). The first run shows a one-time "How to jump" coach; tap to start.
-
-Keyboard for desktop testing: **←** brake / back flip, **→** or **Space** gas / front flip,
-**Shift** nitro, **Esc** or **P** pause (**Enter**/**Space** also dismisses the coach).
-
-If `src/game/engine.js` is missing or fails to load, the shell logs a console warning and falls back
-to the mock engine, so the menus always work.
+Open <http://localhost:8080/>. URL flags: `?mock=1` (scripted mock engine, `src/meta/mockEngine.js`: parks until
+GAS, flies through one letter ring per letter in order, emits `letterRing` / `wordComplete`), `?nosw=1` (no service
+worker). Keyboard on desktop: letters, `'`, `-`, Space, Backspace and Enter (LAUNCH) on the spell keyboard;
+← brake, → / Space gas, Shift nitro, Esc / P pause while driving.
 
 ### Tests and tools
 
 ```sh
-node tools/ui-smoke.mjs      # walks every screen at 844×390 and 390×844 (mock engine), checks cash math + layout,
-                             # v2 HUD/banners/toasts, results rows + stamp + fireworks, achievements, shake slider
-node tools/engine-smoke.mjs  # real engine in dev.html: hold-GAS first run, back flip, pause/stop, maxed moon run
-node tools/integration-smoke.mjs  # the full app on the REAL engine with real touches, 844×390 + 390×844: v1 save,
-                             # garage → tracks → run → results → retry (pause, visibility pause) → next track, daily
-                             # pays once, every panel + shake slider, rows = summary total, stamp = summary.rating,
-                             # badges persist, title hero draws the selected car, one big text per moment
-node tools/economy-sim.mjs   # plays the real engine headlessly (Node, no browser) through the whole meta game
-node tools/make-icons.mjs    # re-renders icons/*.png from the inline SVG
+node tools/spelling-tests.mjs   # Node unit tests: intervals, mastery (2 distinct days), mission order, new-word cap,
+                                # re-queue distance, never twice in a row, archived review at 2 / 4 weeks, parser
+                                # edge cases, attempt alignment, word store, report
+node tools/ui-smoke.mjs         # Playwright, 844×390 + 390×844, mock engine + fake speechSynthesis: players, PIN,
+                                # word list, Qualifier, every spell-panel path, mission, Friday Test + Mega Run,
+                                # report, persistence; asserts R1 / R2 / R6, key sizes, layout, no console errors
+node tools/engine-smoke.mjs     # real engine in dev.html
+node tools/integration-smoke.mjs  # the full app on the real engine
+node tools/economy-sim.mjs      # headless economy simulation
+node tools/make-icons.mjs       # re-renders icons/*.png (a car jumping over letter tiles)
 ```
 
-`economy-sim.mjs` options: `--runs N`, `--verbose` (one line per run: distance, landing, cash, purchases),
-`--seed-jitter S` (random start delay for human-like variance), `--policy flip|hold` (scripted back flip + release,
-or GAS held the whole run). It reports runs-to-first-finish per track and runs-to-own per car; re-run it after
-changing prices in `src/data/*.js` or cash/physics tuning in `src/game/engine.js` (`TUNING`).
-
-v2 economy (current numbers): upgrade cost `480 × 2.15^(tier−1) × 1.5^level`, cars 13k / 25k / 42k / 100k / 400k,
-combo extra capped per run at the base smash cash. Averaged over `--seed-jitter 0, 0.4, 0.8` the sim reaches the
-first 400 m finish at run ~7, Gravel Fox ~12, Thunderline ~30, Bigfoot Jr. ~63, Vantablack GT ~121, Warthog ~241
-(the v1 targets). The "Rampage" badge (×4 multiplier = 13-hit chain) stays at ×4: with the sim's policy a
-Thunderline (Lv 2-8) reaches it in ~61 of 100 runs on Downtown Drop / Dune Rocket, Gravel Fox in 33/100.
-
-The Playwright tools use the globally installed Playwright (Chromium in `/opt/pw-browsers`). They start
-`python3 -m http.server 8080` themselves if nothing is listening, and write screenshots to
-`$SHOTS_DIR` (default: a temp folder).
+`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt` runs one
+part of `ui-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it.
 
 ## Add to the iPhone Home Screen
 
@@ -159,40 +167,37 @@ background, so changes show up on the following launch.
 car-jump/
   index.html              PWA document: meta tags, inline CSS (design tokens in :root), all screens as DOM
   manifest.webmanifest    name, standalone, landscape, icons
-  sw.js                   cache-first app shell (+ background refresh), versioned
+  sw.js                   cache-first app shell (+ background refresh), versioned (spell-jump-v3.x)
   icons/                  icon-192/512, apple-touch-icon (180), favicon (64), generated by tools/make-icons.mjs
+  docs/LEARNING-DESIGN.md the evidence behind every learning mechanic
   vendor/matter.min.js    Matter.js 0.20.0 (physics, used by the engine)
   src/
-    main.js               boot: save, audio, engine loading (real or mock), navigation, run lifecycle
-    audio.js              WebAudio synth: engine hum, whoosh, smash, coin, flip, landing, nitro + afterburner, music
-                          loop, explosion, ring, pop, combo riser, cheer, fireworks, orbit pad, rejump, clank
-    data/                 cars, tracks, upgrades, rating (shared tuning data + the run-rating formula)
+    main.js               boot: players, saves, audio + speech, engine loading, navigation, spelling flow, runs
+    audio.js              WebAudio synth (engine, smashes, music, …, v3: letter click, correct, oops, mission, ducking)
+    data/                 cars, tracks, upgrades, rating
     game/                 the physics engine (createGame contract in SPEC.md)
-    meta/
-      save.js             localStorage save (rampRage.save.v1), schema version, corrupt-save fallback
-      economy.js          buy car / upgrade, stats, banking a run (records, unlocks), rating fallback
-      goals.js            3 rotating goals, progress from live events and run summaries
-      achievements.js     12 badges from live events, per-frame state, run summaries and the save
-      daily.js            date-seeded daily challenge
-      rng.js              FNV hash + mulberry32
-      mockEngine.js       contract-compatible fake engine (~9 s scripted run, full v2 event set)
-    ui/                   garage, tracks, results, panels, HUD, controls, icons, car preview drawing,
-                          titleHero.js (animated title car), fireworks.js (results overlay)
+    spelling/
+      words.js            list parser, normalizing, pattern / syllable helpers, attempt alignment, sample list
+      scheduler.js        Leitner boxes, mastery, mission, free-play pick, re-queue (pure, `now` passed in)
+      wordStore.js        per-player spelling data: lists + archive, records, tests, mission, report text
+      profiles.js         players, family record, per-player storage keys, PIN, legacy-save migration
+      tts.js              speechSynthesis wrapper (voice pick, chunking, unlock, letter names, test hook)
+      keyboard.js         on-screen QWERTY keyboard
+      spellPanel.js       Spell to Launch panel (Look-Say-Cover-Write-Check, Cover-Copy-Compare)
+      testMode.js         Qualifier / Friday Test screen
+      why.js              "Why this works" table (copy of docs/LEARNING-DESIGN.md)
+    meta/                 save, economy, goals, achievements, daily, rng, mockEngine
+    ui/                   players (picker + new player), parentZone, garage, tracks, results, panels (badges),
+                          HUD, controls, icons, car preview, title hero, fireworks
   dev.html                engine harness (keyboard + on-screen buttons, no meta)
-  package.json            marks the ES modules for the Node tools only (no dependencies, no build)
-  tools/
-    ui-smoke.mjs          Playwright UI walk-through + layout audit
-    engine-smoke.mjs      Playwright run of the real engine through dev.html
-    integration-smoke.mjs Playwright run of the whole app on the real engine (touch input, both orientations)
-    economy-sim.mjs       headless real-engine economy simulation (Node)
-    make-icons.mjs        icon renderer
+  tools/                  spelling-tests, ui-smoke, engine-smoke, integration-smoke, economy-sim, make-icons
 ```
 
 ## Wrap as a native App Store build (Capacitor)
 
 1. Install Node and Xcode, plus an Apple Developer account.
 2. In a new folder: `npm init -y && npm i @capacitor/core @capacitor/cli @capacitor/ios`.
-3. `npx cap init "Ramp Rage" com.yourname.ramprage --web-dir=www`, then copy the contents of
+3. `npx cap init "Spell Jump" com.yourname.spelljump --web-dir=www`, then copy the contents of
    `car-jump/` into `www/`.
 4. `npx cap add ios`, then `npx cap open ios` to open the project in Xcode.
 5. In Xcode: set your team and bundle id, set orientation to Landscape Left/Right (portrait

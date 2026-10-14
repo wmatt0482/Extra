@@ -20,7 +20,7 @@ export function createHud() {
     nitro: $('#hud-nitro'), nitroFill: $('#ctl-nitro-fill'), nitroBtn: $('#ctl-nitro'), toasts: $('#toasts'),
     alt: $('#hud-alt'), altV: $('#hud-alt-v'),
     combo: $('#hud-combo'), comboRing: $('#hud-combo-ring'), comboMult: $('#hud-combo-mult'), comboCount: $('#hud-combo-count'), comboLabel: $('#hud-combo-label'),
-    banner: $('#banner'), bannerText: $('#banner-text'),
+    banner: $('#banner'), bannerText: $('#banner-text'), word: $('#hud-word'),
   };
   let last = {}, finishM = 400;
   let cashShown = 0, cashTarget = 0, lastT = 0;
@@ -86,7 +86,7 @@ export function createHud() {
     const on = count >= 2 && timer01 > 0;
     set('co', on, (v) => { el.combo.hidden = !v; if (!v) el.combo.classList.remove('rampage'); });
     if (!on) return;
-    set('cc', count, (v) => { el.comboCount.textContent = v; el.comboLabel.textContent = v >= 13 ? 'Rampage!' : 'Hit combo'; });
+    set('cc', count, (v) => { el.comboCount.textContent = v; el.comboLabel.textContent = v >= 13 ? 'Super combo!' : 'Hit combo'; });
     set('cm', mult, (v) => { el.comboMult.textContent = fmtMult(v); el.combo.classList.toggle('rampage', v >= 4); });
     set('ct', Math.round(timer01 * 100), (v) => { el.comboRing.style.strokeDashoffset = String(100 - v); });
   }
@@ -176,6 +176,16 @@ export function createHud() {
       pumpAch();
     },
     achievement(a) { achQ.push({ ach: a }); pumpAch(); },
+    // v3: the spelled word's letters (shown only after the spell panel closes, R1); each lights as its ring is hit
+    word(letters) {
+      el.word.classList.remove('complete');
+      if (!letters || !letters.length) { el.word.hidden = true; el.word.replaceChildren(); return; }
+      const upper = document.documentElement.classList.contains('tiles-upper');
+      el.word.replaceChildren(...letters.map((l) => h('i', {}, upper ? l.toUpperCase() : l)));
+      el.word.hidden = false;
+    },
+    letterHit(i) { const t = el.word.children[i]; if (t) t.classList.add('on'); },
+    wordComplete() { el.word.classList.add('complete'); },
     // in-run note ("Goal done: …"): same one-at-a-time lane as the achievement toasts, never over a banner
     note(text) {
       if (achQ.some((m) => m.text === text) || (achBusy && achBusy.item.text === text)) return;

@@ -1,6 +1,9 @@
 // Results: distance + NEW RECORD (with fireworks), rating stamp (S/A/B/C/D), stat tiles, a cash
 // breakdown that always adds up to the total (v2 adds Combo and Air rows), a count-up on the total,
 // plus goal / daily / unlock / achievement callouts. Buttons: Garage / Retry / Next track.
+// v3: a Spelling row (word, first try / fixed, bonus, streak), the daily-mission reward and the Friday Test
+// (Mega Run) pay as extra rows under the run total (they were credited when they happened), plus a
+// "Today n / 8" chip and a big "Mission complete" callout.
 import { CAR_BY_ID } from '../data/cars.js';
 import { TRACK_BY_ID } from '../data/tracks.js';
 import { isUnlocked, nextTrackId, ratingFor } from '../meta/economy.js';
@@ -108,7 +111,7 @@ export function createResults(app) {
     const track = TRACK_BY_ID[trackId];
     const car = CAR_BY_ID[r.carId];
     const mult = r.stats.coinMult || 1;
-    el.title.textContent = r.daily ? 'Daily challenge' : s.finishCrossed ? 'Finish line!' : s.landing === 'crash' ? 'Wrecked!' : 'Run over';
+    el.title.textContent = r.mega ? 'Mega run!' : r.daily ? 'Daily challenge' : s.finishCrossed ? 'Finish line!' : s.landing === 'crash' ? 'Wrecked!' : 'Run over';
     el.dist.textContent = money(Math.floor(s.distance || 0));
     const record = !!(bank.newBest && !r.daily);
     el.record.hidden = !record;
@@ -143,11 +146,23 @@ export function createResults(app) {
     el.pay.append(h('tr', { class: 'total', 'data-pay': 'total' }, h('td', { class: 'display' }, 'Run total', ' ', h('span', { class: 'hint' }, `incl. ×${mult.toFixed(2)}`)), totalTd));
     countUp(totalTd, Math.round(c.total || 0));
     for (const g of r.goals) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'goal' }, h('td', {}, 'Goal ', h('span', { class: 'hint' }, g.text)), h('td', { 'data-value': String(g.reward) }, '+$' + money(g.reward))));
+    if (r.spell) {
+      const sp = r.spell;
+      const how = sp.firstTry ? 'first try' : sp.fixed ? 'fixed it' : 'comes back soon';
+      el.pay.append(h('tr', { class: 'extra spell', 'data-pay': 'spelling' },
+        h('td', {}, 'Spelling ', h('span', { class: 'hint' }, `${sp.word} · ${how}${sp.firstTry && sp.streak > 1 ? ` · streak ${sp.streak}` : ''}`)),
+        h('td', { 'data-value': String(sp.bonus || 0) }, sp.bonus ? '+$' + money(sp.bonus) : '$0')));
+    }
+    if (r.missionReward) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'mission' }, h('td', {}, 'Mission ', h('span', { class: 'hint' }, '8 words today')), h('td', { 'data-value': String(r.missionReward) }, '+$' + money(r.missionReward))));
+    if (r.mega) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'friday' }, h('td', {}, 'Friday Test ', h('span', { class: 'hint' }, `${r.mega.correct}/${r.mega.total} words · power ${Math.round((0.6 + 0.4 * r.mega.score) * 100)}%`)), h('td', { 'data-value': String(r.mega.paid || 0) }, '+$' + money(r.mega.paid || 0))));
     if (r.dailyReward) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'daily' }, h('td', {}, 'Daily ', h('span', { class: 'hint' }, 'challenge complete')), h('td', { 'data-value': String(r.dailyReward) }, '+$' + money(r.dailyReward))));
     // a long breakdown (combo + air + goals) tightens so it still fits the card without scrolling
     el.pay.classList.toggle('dense', el.pay.rows.length > 8);
 
     el.callouts.innerHTML = '';
+    if (r.missionReward) el.callouts.append(h('span', { class: 'callout mission', id: 'res-mission' }, 'Mission complete!'));
+    if (r.mission && !r.daily) el.callouts.append(h('span', { class: 'callout today', id: 'res-today' }, r.mission.done && !r.missionReward ? 'Free play' : `Today ${r.mission.count} / ${r.mission.size}`));
+    if (r.summary.letters && r.summary.letters.total && r.summary.letters.inOrder) el.callouts.append(h('span', { class: 'callout cyan' }, 'Word complete!'));
     if (bank.unlocked) el.callouts.append(h('span', { class: 'callout' }, `Unlocked: ${TRACK_BY_ID[bank.unlocked].name}!`));
     if (bank.newBestScore) el.callouts.append(h('span', { class: 'callout cyan' }, 'Best score!'));
     // the run's new achievements: one compact chip (medals + name, or a count when several)

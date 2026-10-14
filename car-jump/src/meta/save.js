@@ -1,5 +1,8 @@
-// Persistent save for Ramp Rage. Everything is wrapped in try/catch: a missing, blocked, or corrupt
-// localStorage must never break boot — we fall back to defaults and keep playing in memory.
+// Persistent game save (cash, cars, upgrades, records, settings). Everything is wrapped in try/catch: a
+// missing, blocked, or corrupt localStorage must never break boot — we fall back to defaults and keep playing
+// in memory. Spell Jump (v3) keeps one save per player under `spellJump.<playerId>.save` (see
+// src/spelling/profiles.js); `setSaveKey` points load/write/wipe at the current player's key. The old
+// single-player key `rampRage.save.v1` (LEGACY_SAVE_KEY) is only read once, to migrate it into the first player.
 
 import { CARS, CAR_BY_ID } from '../data/cars.js';
 import { TRACKS, TRACK_BY_ID } from '../data/tracks.js';
@@ -9,8 +12,12 @@ import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
 // version. v2 (epic update) added: records.bestCombo/maxAltitude/rings/explosions/rejumps,
 // settings.shake (0-100), and achievements ({id: earned timestamp ms}). Older saves are upgraded by
 // normalize() with defaults for the new fields; nothing else changes shape.
-export const SAVE_KEY = 'rampRage.save.v1';
+export const LEGACY_SAVE_KEY = 'rampRage.save.v1';
+export const SAVE_KEY = LEGACY_SAVE_KEY;    // kept for older imports
 export const SAVE_VERSION = 2;
+let currentKey = null;                      // no player chosen yet: nothing is read or written
+export function setSaveKey(key) { currentKey = key; }
+export function getSaveKey() { return currentKey; }
 
 function emptyLevels() {
   return Object.fromEntries(UPGRADES.map((u) => [u.id, 0]));
@@ -119,10 +126,11 @@ export function normalize(raw) {
   return s;
 }
 
-export function loadSave() {
+export function loadSave(key = currentKey) {
+  if (!key) return defaultSave();
   let text = null;
   try {
-    text = localStorage.getItem(SAVE_KEY);
+    text = localStorage.getItem(key);
   } catch (e) {
     console.warn('[save] localStorage unavailable, playing without persistence', e);
     return defaultSave();
@@ -134,14 +142,15 @@ export function loadSave() {
     return normalize(raw);
   } catch (e) {
     console.warn('[save] corrupt save, starting fresh (backup kept)', e);
-    try { localStorage.setItem(SAVE_KEY + '.corrupt', text); } catch (_) { /* ignore */ }
+    try { localStorage.setItem(key + '.corrupt', text); } catch (_) { /* ignore */ }
     return defaultSave();
   }
 }
 
-export function writeSave(save) {
+export function writeSave(save, key = currentKey) {
+  if (!key) return false;
   try {
-    localStorage.setItem(SAVE_KEY, JSON.stringify(save));
+    localStorage.setItem(key, JSON.stringify(save));
     return true;
   } catch (e) {
     console.warn('[save] could not write save', e);
@@ -149,8 +158,8 @@ export function writeSave(save) {
   }
 }
 
-export function wipeSave() {
-  try { localStorage.removeItem(SAVE_KEY); } catch (_) { /* ignore */ }
+export function wipeSave(key = currentKey) {
+  if (key) try { localStorage.removeItem(key); } catch (_) { /* ignore */ }
   return defaultSave();
 }
 

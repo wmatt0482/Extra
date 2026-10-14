@@ -1,0 +1,172 @@
+// Players and the family record (SPEC v3 "Players"). Storage layout:
+//   spellJump.family              { v, players: [{id, name, color, createdAt}], pinHash, options: {playerId: {...}},
+//                                   migrated, lastPlayer }
+//   spellJump.<playerId>.save     the player's full game save (src/meta/save.js schema)
+//   spellJump.<playerId>.words    the player's spelling data (src/spelling/wordStore.js schema)
+// Every localStorage access is wrapped in try/catch. A corrupt record is backed up to `<key>.corrupt` and
+// replaced by defaults without touching the other players' keys; a corrupt family record is rebuilt from the
+// per-player keys it can still find.
+import { LEGACY_SAVE_KEY, loadSave, writeSave } from '../meta/save.js';
+import { hashString } from '../meta/rng.js';
+import { DEFAULT_OPTIONS, defaultWords, normalizeWordsData } from './wordStore.js';
+
+export const FAMILY_KEY = 'spellJump.family';
+export const MAX_PLAYERS = 4;
+export const MAX_NAME = 12;
+export const PLAYER_COLORS = ['#ff3b5c', '#3b7dd9', '#2fd36b', '#ffcf1a', '#8f6bff', '#ff8a1f'];
+export const saveKey = (id) => `spellJump.${id}.save`;
+export const wordsKey = (id) => `spellJump.${id}.words`;
+
+function read(key) {
+  try { return localStorage.getItem(key); } catch (_) { return null; }
+}
+function write(key, value) {
+  try { localStorage.setItem(key, value); return true; } catch (e) { console.warn('[profiles] could not write', key, e); return false; }
+}
+function remove(key) {
+  try { localStorage.removeItem(key); } catch (_) { /* ignore */ }
+}
+function storageKeys() {
+  const out = [];
+  try { for (let i = 0; i < localStorage.length; i++) out.push(localStorage.key(i)); } catch (_) { /* ignore */ }
+  return out;
+}
+
+export function defaultFamily() {
+  return { v: 1, players: [], pinHash: null, options: {}, migrated: false, lastPlayer: null };
+}
+
+export function cleanName(name) {
+  return String(name || '').replace(/[^A-Za-z' -]/g, '').replace(/\s+/g, ' ').trim().slice(0, MAX_NAME);
+}
+
+function normalizeFamily(raw) {
+  const f = defaultFamily();
+  if (!raw || typeof raw !== 'object') return null;
+  if (Array.isArray(raw.players)) {
+    f.players = raw.players.filter((p) => p && typeof p.id === 'string' && /^[a-z0-9]{2,24}$/i.test(p.id)).slice(0, MAX_PLAYERS).map((p, i) => ({
+      id: p.id, name: cleanName(p.name) || `Player ${i + 1}`, color: PLAYER_COLORS.includes(p.color) ? p.color : PLAYER_COLORS[i % PLAYER_COLORS.length],
+      createdAt: typeof p.createdAt === 'number' ? p.createdAt : 0,
+    }));
+  }
+  f.pinHash = typeof raw.pinHash === 'string' ? raw.pinHash : null;
+  f.migrated = !!raw.migrated;
+  f.lastPlayer = f.players.some((p) => p.id === raw.lastPlayer) ? raw.lastPlayer : null;
+  if (raw.options && typeof raw.options === 'object') {
+    for (const p of f.players) if (raw.options[p.id] && typeof raw.options[p.id] === 'object') f.options[p.id] = cleanOptions(raw.options[p.id]);
+  }
+  return f;
+}
+
+function cleanOptions(o) {
+  const d = { ...DEFAULT_OPTIONS };
+  if (o.rate === 'slow' || o.rate === 'normal') d.rate = o.rate;
+  if ([3, 5, 8].includes(o.newPerDay)) d.newPerDay = o.newPerDay;
+  if (typeof o.includeReview === 'boolean') d.includeReview = o.includeReview;
+  if (o.tileCase === 'lower' || o.tileCase === 'upper') d.tileCase = o.tileCase;
+  return d;
+}
+
+// players whose keys exist but who are missing from the family list (corrupt / lost family record)
+function rebuildPlayers(f) {
+  const ids = new Set(f.players.map((p) => p.id));
+  for (const k of storageKeys()) {
+    const m = /^spellJump\.([a-z0-9]{2,24})\.(save|words)$/i.exec(k || '');
+    if (m && !ids.has(m[1]) && f.players.length < MAX_PLAYERS) {
+      ids.add(m[1]);
+      f.players.push({ id: m[1], name: `Player ${f.players.length + 1}`, color: PLAYER_COLORS[f.players.length % PLAYER_COLORS.length], createdAt: 0 });
+    }
+  }
+  return f;
+}
+
+export function loadFamily() {
+  const text = read(FAMILY_KEY);
+  if (!text) return rebuildPlayers(defaultFamily());
+  try {
+    const f = normalizeFamily(JSON.parse(text));
+    if (!f) throw new Error('bad family shape');
+    return rebuildPlayers(f);
+  } catch (e) {
+    console.warn('[profiles] corrupt family record, rebuilding (backup kept)', e);
+    write(FAMILY_KEY + '.corrupt', text);
+    return rebuildPlayers(defaultFamily());
+  }
+}
+
+export const writeFamily = (f) => write(FAMILY_KEY, JSON.stringify(f));
+
+export const playerById = (f, id) => f.players.find((p) => p.id === id) || null;
+export const playerOptions = (f, id) => ({ ...DEFAULT_OPTIONS, ...(f.options[id] || {}) });
+export function setPlayerOption(f, id, key, value) {
+  f.options[id] = cleanOptions({ ...playerOptions(f, id), [key]: value });
+  return f.options[id];
+}
+
+function newId(f) {
+  let id;
+  do { id = 'p' + Date.now().toString(36) + Math.floor(Math.random() * 1296).toString(36); } while (playerById(f, id));
+  return id;
+}
+
+/** Add a player (max 4). The first player created inherits an existing single-player save
+ *  (`rampRage.save.v1`). Returns the player, or null when full / the name is empty. */
+export function createPlayer(f, name, color) {
+  const n = cleanName(name);
+  if (!n || f.players.length >= MAX_PLAYERS) return null;
+  const p = { id: newId(f), name: n, color: PLAYER_COLORS.includes(color) ? color : PLAYER_COLORS[f.players.length % PLAYER_COLORS.length], createdAt: Date.now() };
+  if (!f.migrated) {
+    f.migrated = true;
+    if (read(LEGACY_SAVE_KEY)) {
+      const legacy = loadSave(LEGACY_SAVE_KEY);      // normalized (v1 → v2 upgrade, corrupt → defaults)
+      writeSave(legacy, saveKey(p.id));
+    }
+  }
+  f.players.push(p);
+  f.lastPlayer = p.id;
+  writeFamily(f);
+  return p;
+}
+
+export function renamePlayer(f, id, name) {
+  const p = playerById(f, id); const n = cleanName(name);
+  if (!p || !n) return false;
+  p.name = n; writeFamily(f); return true;
+}
+
+// Only the Parent Zone calls this.
+export function removePlayer(f, id) {
+  f.players = f.players.filter((p) => p.id !== id);
+  delete f.options[id];
+  if (f.lastPlayer === id) f.lastPlayer = null;
+  remove(saveKey(id)); remove(wordsKey(id));
+  writeFamily(f);
+}
+
+// ---------- spelling data per player ----------
+export function loadWords(id, now = Date.now()) {
+  const key = wordsKey(id);
+  const text = read(key);
+  if (!text) return defaultWords(now);
+  try {
+    const raw = JSON.parse(text);
+    if (!raw || typeof raw !== 'object' || !Array.isArray(raw.lists)) throw new Error('bad words shape');
+    return normalizeWordsData(raw, now);
+  } catch (e) {
+    console.warn('[profiles] corrupt words data, starting fresh (backup kept)', e);
+    write(key + '.corrupt', text);
+    return defaultWords(now);
+  }
+}
+export const writeWords = (id, data) => write(wordsKey(id), JSON.stringify(data));
+
+// ---------- parent PIN ----------
+const pinHash = (pin) => 'h' + hashString('spellJump.pin:' + pin).toString(36);
+export const hasPin = (f) => !!f.pinHash;
+export const checkPin = (f, pin) => !!f.pinHash && pinHash(String(pin)) === f.pinHash;
+export function setPin(f, pin) {
+  if (!/^\d{4}$/.test(String(pin))) return false;
+  f.pinHash = pinHash(String(pin));
+  writeFamily(f);
+  return true;
+}

@@ -1,7 +1,7 @@
 {
-  "name": "Ramp Rage",
-  "short_name": "Ramp Rage",
-  "description": "Launch off giant ramps, flip, land, and smash everything in sight.",
+  "name": "Spell Jump",
+  "short_name": "Spell Jump",
+  "description": "A 4th-grade spelling trainer that is a car-jumping game: spell the word from memory to launch off giant ramps.",
   "id": "./",
   "start_url": "./index.html",
   "scope": "./",
@@ -9,7 +9,7 @@
   "orientation": "landscape-primary",
   "background_color": "#0d1230",
   "theme_color": "#0d1230",
-  "categories": ["games"],
+  "categories": ["education", "games", "kids"],
   "icons": [
     { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
     { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },

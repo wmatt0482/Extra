@@ -1,6 +1,9 @@
-// Mock engine: implements the src/game/engine.js contract (see SPEC.md, v1 + v2) with a scripted ~9 s run so
+// Mock engine: implements the src/game/engine.js contract (see SPEC.md, v1 + v2 + v3) with a scripted ~9 s run so
 // every meta screen can be exercised without physics. Loaded only with ?mock=1, or as a fallback
 // when the real engine fails to import. Cash math follows the SPEC formula exactly.
+// v3: the car stays parked at the ramp top until GAS is first pressed (the spell panel runs meanwhile);
+// start() takes letters / powerScale / nitroScale, setLaunchPower() changes them while parked, and the first
+// flight flies through one letter ring per letter, in order (letterRing events, then wordComplete).
 
 import { OBSTACLE_KINDS } from '../data/tracks.js';
 import { mulberry32 } from './rng.js';
@@ -45,10 +48,11 @@ export function createGame(canvas, opts = {}) {
   }
   const kindCash = (kind) => (OBSTACLE_KINDS[kind] ? OBSTACLE_KINDS[kind].cash : EXPLOSIVE[kind] || 20);
 
-  function start({ car, stats, track, seed = 1, bestDistance = null, shake = 1 }) {
+  function start({ car, stats, track, seed = 1, bestDistance = null, shake = 1, letters = null, powerScale = 1, nitroScale = 1 }) {
     const rnd = mulberry32(seed ^ 0x9e3779b9);
     const g = Math.max(0.2, track.gravity || 1);
-    const target = (250 + 110 * stats.power * stats.launchBoost + rnd() * 40) / Math.pow(g, 0.3);
+    const baseTarget = (250 + 110 * stats.power * stats.launchBoost + rnd() * 40) / Math.pow(g, 0.3);
+    const lt = Array.isArray(letters) ? letters.filter((l) => typeof l === 'string' && l) : [];
     const flips = 1 + Math.floor(rnd() * 2) + (g < 0.5 ? 1 : 0);
     const quality = rnd() < 0.5 * Math.min(1.6, stats.suspension) ? 'perfect' : rnd() < 0.7 ? 'good' : 'rough';
     const kinds = track.obstacles.kinds;
@@ -76,7 +80,10 @@ export function createGame(canvas, opts = {}) {
       { a: 0.7, kind: track.id === 'city' || track.id === 'moon' ? 'blimp' : 'balloon' },
     ];
     run = {
-      car, stats, track, target, flipsPlanned: flips, quality, timeline, air, air2: [{ a: 0.5, kind: 'ring' }],
+      baseTarget, target: baseTarget, powerScale: 1, nitroScale: 1, parked: true,
+      letters: lt, letterQ: lt.map((letter, index) => ({ a: lt.length > 1 ? 0.08 + (0.84 * index) / (lt.length - 1) : 0.5, letter, index })),
+      lettersCollected: 0, lettersInOrder: true,
+      car, stats, track, flipsPlanned: flips, quality, timeline, air, air2: [{ a: 0.5, kind: 'ring' }],
       bestDistance: bestDistance > 0 ? bestDistance : null, shakeAmt: reducedMotion ? 0 : Math.max(0, Math.min(1, shake == null ? 1 : shake)),
       peakAlt: (28 + rnd() * 6) / Math.pow(g, 0.6), peakAlt2: 9,
       t: 0, phase: 'ramp', distance: 0, speedKmh: 0, maxSpeed: 0, nextSpeedEvt: 10,
@@ -88,9 +95,38 @@ export function createGame(canvas, opts = {}) {
       landing: null, finishCrossed: false, launched: false, landed: false, kicked: false, landed2: false, recorded: false, ended: false,
       popups: [], shake: 0, rot: 0, bonus: 0,
     };
+    setPower(powerScale, nitroScale);
     paused = false;
     last = performance.now();
     if (!raf) raf = requestAnimationFrame(frame);
+  }
+
+  // powerScale 0..1.25 scales the run (the mock's stand-in for ramp acceleration + launch kick); nitroScale
+  // 0..1.5 scales the starting tank (the gauge stays 0..1, the tank drains slower).
+  function setPower(p, n) {
+    const r = run;
+    if (!r || !r.parked) return false;
+    r.powerScale = Math.max(0, Math.min(1.25, Number.isFinite(p) ? p : 1));
+    r.nitroScale = Math.max(0, Math.min(1.5, Number.isFinite(n) ? n : 1));
+    r.target = r.baseTarget * (0.5 + 0.5 * r.powerScale);
+    return true;
+  }
+
+  function hitLetter(r, ring) {
+    const cash = Math.round(40 * r.stats.coinMult);
+    r.airCash += cash;
+    r.nitro = Math.min(1, r.nitro + 0.25);
+    const inOrder = ring.index === r.lettersCollected;
+    if (!inOrder) r.lettersInOrder = false;
+    r.lettersCollected++;
+    emit({ type: 'letterRing', letter: ring.letter, index: ring.index, inOrder });
+    popup(ring.letter.toUpperCase(), '#ffcf1a');
+    if (r.lettersCollected === r.letters.length && r.lettersInOrder) {
+      const bonus = Math.round(200 * r.stats.coinMult);
+      r.airCash += bonus;
+      emit({ type: 'wordComplete', cash: bonus });
+      popup('WORD COMPLETE!', '#2fd36b');
+    }
   }
 
   // SPEC cash formula (each part × coinMult and rounded):
@@ -129,6 +165,7 @@ export function createGame(canvas, opts = {}) {
       landing: r.landing, finishCrossed: r.finishCrossed, cash, durationSec: Math.round(r.t * 10) / 10,
       rating: 'D', maxAltitude: Math.round(r.maxAltitude * 10) / 10, bestCombo: r.bestCombo,
       explosions: r.explosions, rings: r.rings, coins: r.coins, airTargets: r.airTargets, rejumps: r.rejumps,
+      letters: { collected: r.lettersCollected, total: r.letters.length, inOrder: r.lettersInOrder && r.lettersCollected === r.letters.length },
     };
     summary.ratingScore = ratingScore(summary, r.track.finish);
     summary.rating = ratingLetter(summary.ratingScore);
@@ -200,12 +237,14 @@ export function createGame(canvas, opts = {}) {
   function step(dt) {
     const r = run;
     if (!r || r.ended) return;
+    // parked at the ramp top until the first GAS (the engine never auto-starts)
+    if (r.parked) { if (!input.gas) return; r.parked = false; }
     r.t += dt;
     const nitroOn = input.nitro && r.nitro > 0 && r.phase !== 'done';
-    if (nitroOn) { r.nitro = Math.max(0, r.nitro - dt / (1.2 * r.stats.nitroCapacity)); r.bonus += dt * 12 * r.stats.nitroPower; }
+    if (nitroOn) { r.nitro = Math.max(0, r.nitro - dt / (1.2 * r.stats.nitroCapacity * Math.max(0.2, r.nitroScale))); r.bonus += dt * 12 * r.stats.nitroPower; }
     if (input.gas && r.phase === 'ground') r.bonus += dt * 6;
     const d1 = 0.45 * r.target, d2 = 0.62 * r.target, d3 = 0.78 * r.target;
-    const launchKmh = 95 + 25 * r.stats.power * r.stats.launchBoost;
+    const launchKmh = (95 + 25 * r.stats.power * r.stats.launchBoost) * (0.6 + 0.4 * r.powerScale);
     if (r.t < RAMP_T) {
       r.phase = 'ramp';
       r.speedKmh = launchKmh * (r.t / RAMP_T);
@@ -223,6 +262,7 @@ export function createGame(canvas, opts = {}) {
       const dir = flipsDue(r, a, r.flipsPlanned);
       r.rot = -0.2 + dir * Math.min(1, a * 1.2) * r.flipsPlanned * Math.PI * 2;
       while (r.air.length && r.air[0].a <= a) hitAir(r, r.air.shift().kind);
+      while (r.letterQ.length && r.letterQ[0].a <= a) hitLetter(r, r.letterQ.shift());
       if (!r.orbited && r.altitude > 45) { r.orbited = true; emit({ type: 'orbit', altitude: Math.round(r.altitude) }); popup('ORBIT!', '#c9a8ff'); }
     } else if (r.t < KICK_T || (r.t >= LAND2_T)) {
       if (!r.landed) {
@@ -359,6 +399,7 @@ export function createGame(canvas, opts = {}) {
   return {
     start,
     setInput(i) { if (i) { input.gas = !!i.gas; input.brake = !!i.brake; input.nitro = !!i.nitro; } },
+    setLaunchPower(p, n) { return setPower(p, n); },
     pause() { paused = true; },
     resume() { paused = false; last = performance.now(); },
     stop() { if (run && !run.ended) finish(); },
@@ -373,6 +414,7 @@ export function createGame(canvas, opts = {}) {
         phase: r.phase, distance: Math.max(0, r.distance), speedKmh: r.speedKmh, nitro: r.nitro, airTime: r.flightT,
         flips: r.flips, smashed: r.smashed, cash: cashParts(r).total, finishCrossed: r.finishCrossed, landing: r.landing,
         altitude: r.phase === 'air' ? r.altitude : 0, combo: { count: c.count, mult: c.mult, timer01 }, rejumps: r.rejumps,
+        letters: { collected: r.lettersCollected, total: r.letters.length },
       };
     },
   };

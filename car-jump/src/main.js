@@ -1,18 +1,26 @@
-// Ramp Rage bootstrap: save, audio, engine (real or mock), screens, and the run lifecycle.
-// The real engine lives at ./game/engine.js (built separately against the SPEC contract). It is
-// imported dynamically so the shell keeps working — on the mock — if it is missing or broken.
+// Spell Jump bootstrap: players, saves, audio + speech, engine (real or mock), screens, the spelling layer
+// (spell panel before every run, Qualifier, Friday Test + Mega Run, daily mission) and the run lifecycle.
+// The real engine lives at ./game/engine.js (built separately against the SPEC contract). It is imported
+// dynamically so the shell keeps working — on the mock — if it is missing or broken.
 
 import { CAR_BY_ID } from './data/cars.js';
 import { TRACK_BY_ID } from './data/tracks.js';
 import { resolveStats } from './data/upgrades.js';
 import { Audio } from './audio.js';
-import { loadSave, writeSave, wipeSave } from './meta/save.js';
+import { defaultSave, loadSave, setSaveKey, wipeSave, writeSave } from './meta/save.js';
 import { bankRun, earn, isUnlocked, nextTrackId, ratingFor, statsFor } from './meta/economy.js';
 import { ACHIEVEMENTS, createAchievements } from './meta/achievements.js';
 import { claimGoals, ensureGoals, goalEvent, goalSummary, goalText } from './meta/goals.js';
 import { dailyFor, refreshDaily, todayKey } from './meta/daily.js';
 import { hashString } from './meta/rng.js';
-import { $, $$, money } from './ui/dom.js';
+import { tts } from './spelling/tts.js';
+import { createSpellPanel } from './spelling/spellPanel.js';
+import { createTestScreen } from './spelling/testMode.js';
+import { createSession } from './spelling/scheduler.js';
+import { ringLetters } from './spelling/words.js';
+import * as WS from './spelling/wordStore.js';
+import * as Profiles from './spelling/profiles.js';
+import { $, $$, h, money } from './ui/dom.js';
 import { COIN, hydrateIcons } from './ui/icons.js';
 import { createControls } from './ui/controls.js';
 import { createHud } from './ui/hud.js';
@@ -21,9 +29,14 @@ import { createTracks } from './ui/tracks.js';
 import { createResults } from './ui/results.js';
 import { createPanels } from './ui/panels.js';
 import { createTitleHero } from './ui/titleHero.js';
+import { createPlayers, drawAvatar } from './ui/players.js';
+import { createParentZone } from './ui/parentZone.js';
 
-const VERSION = '2.0.1';
+const VERSION = '3.0.0';
 const params = new URLSearchParams(location.search);
+const MISSION_REWARD = 500;
+const QUALIFIER_PAY = 100;
+const MEGA_PAY = 150;
 
 async function loadEngine() {
   if (params.get('mock') === '1') {
@@ -35,7 +48,7 @@ async function loadEngine() {
     if (typeof m.createGame !== 'function') throw new Error('engine.js has no createGame export');
     return { createGame: m.createGame, name: '' };
   } catch (e) {
-    console.warn('[RampRage] Real engine (src/game/engine.js) failed to load — falling back to the MOCK engine.', e);
+    console.warn('[SpellJump] Real engine (src/game/engine.js) failed to load — falling back to the MOCK engine.', e);
     const m = await import('./meta/mockEngine.js');
     return { createGame: m.createGame, name: 'mock engine (fallback)' };
   }
@@ -43,9 +56,12 @@ async function loadEngine() {
 
 async function boot() {
   hydrateIcons();
-  const save = loadSave();
-  refreshDaily(save);
-  ensureGoals(save);
+  const family = Profiles.loadFamily();
+  const save = defaultSave();          // replaced in place when a player is picked (screens hold this reference)
+  let words = null;                    // the current player's spelling data
+  let session = createSession();       // same-session re-queue (R4)
+  let currentPlayerId = null;
+  const wordsCache = new Map();        // other players' spelling data while the Parent Zone edits them
 
   const canvas = $('#game');
   const engineMod = await loadEngine();
@@ -53,18 +69,26 @@ async function boot() {
   let run = null;          // active run context, null when not running
   let hudRaf = 0;
   let input = { gas: false, brake: false, nitro: false };
-  let screen = 'title';
+  let screen = 'players';
   let paused = false, stopFallback = 0;
   let coaching = false;    // first-run coach overlay is up (run is held until it is dismissed)
   let lastResult = null;   // for smoke tests
   let runEarned = null;    // achievements earned during the current run (+ its summary), for the results callouts
 
+  const opts = () => Profiles.playerOptions(family, currentPlayerId);
+
   const app = {
     save,
     audio: Audio,
+    tts,
     version: VERSION,
     engineName: engineMod.name,
+    get family() { return family; },
+    get currentPlayerId() { return currentPlayerId; },
+    get words() { return words; },
     persist: () => writeSave(save),
+    persistWords: () => { if (currentPlayerId && words) Profiles.writeWords(currentPlayerId, words); },
+    persistFamily: () => Profiles.writeFamily(family),
     go,
     toast,
     refreshCash,
@@ -74,6 +98,40 @@ async function boot() {
     setShake,
     resetProgress,
     checkAchievements: () => { achievements.checkSave(); },
+    createPlayer: (name, color) => Profiles.createPlayer(family, name, color),
+    selectPlayer,
+    // ----- Parent Zone helpers (any player, not only the current one) -----
+    wordsFor(id) {
+      if (id === currentPlayerId && words) return words;
+      if (!wordsCache.has(id)) wordsCache.set(id, Profiles.loadWords(id));
+      return wordsCache.get(id);
+    },
+    saveWordsFor(id, d) {
+      Profiles.writeWords(id, d);
+      if (id === currentPlayerId) { words = d; session = createSession(); refreshTitle(); }
+    },
+    settingsFor(id) { return id === currentPlayerId ? save.settings : loadSave(Profiles.saveKey(id)).settings; },
+    setSettingFor(id, key, value) {
+      if (id === currentPlayerId) { if (key === 'shake') setShake(value); else setSetting(key, value); return; }
+      const s = loadSave(Profiles.saveKey(id));
+      s.settings[key] = key === 'shake' ? Math.max(0, Math.min(100, Math.round(Number(value) || 0))) : !!value;
+      writeSave(s, Profiles.saveKey(id));
+    },
+    resetGameFor(id) {
+      if (id === currentPlayerId) resetProgress();
+      else wipeSave(Profiles.saveKey(id));
+    },
+    removePlayer(id) {
+      Profiles.removePlayer(family, id);
+      wordsCache.delete(id);
+      if (id === currentPlayerId) { currentPlayerId = null; words = null; setSaveKey(null); }
+    },
+    onOptionsChanged(id) { if (id === currentPlayerId) applyPlayerOptions(); },
+    onParentZoneClosed() {
+      wordsCache.clear();
+      if (!currentPlayerId) go('players');
+      else if (screen === 'title') refreshTitle();
+    },
   };
 
   // ---------- achievements ----------
@@ -92,13 +150,13 @@ async function boot() {
     try {
       game = engineMod.createGame(canvas, { onEvent, reducedMotion: save.settings.reducedMotion });
     } catch (e) {
-      console.error('[RampRage] createGame threw', e);
+      console.error('[SpellJump] createGame threw', e);
       game = null;
     }
   }
   makeGame();
   if (!game && engineMod.name === '') {
-    console.warn('[RampRage] Real engine threw on create — falling back to the MOCK engine.');
+    console.warn('[SpellJump] Real engine threw on create — falling back to the MOCK engine.');
     const m = await import('./meta/mockEngine.js');
     engineMod.createGame = m.createGame; engineMod.name = app.engineName = 'mock engine (fallback)';
     makeGame();
@@ -110,9 +168,14 @@ async function boot() {
     input = s;
     if (game && run) game.setInput(s);
   });
-  const screens = { garage: createGarage(app), tracks: createTracks(app), results: createResults(app) };
+  const playersUI = createPlayers(app);
+  const screens = { garage: createGarage(app), tracks: createTracks(app), results: createResults(app), players: playersUI.players, newplayer: playersUI.newplayer };
   const panels = createPanels(app);
   const hero = createTitleHero($('#hero'), () => CAR_BY_ID[save.selectedCar]);
+  const spellPanel = createSpellPanel($('#spell'), { tts, audio: Audio, onCancel: () => quitRun() });
+  const testScreen = createTestScreen($('#screen-test'), { tts, audio: Audio });
+  const pz = createParentZone(app);
+  tts.setOnSpeaking((on) => Audio.voice(on));
 
   function refreshAchBadge() {
     const n = ACHIEVEMENTS.filter((a) => save.achievements[a.id]).length;
@@ -129,7 +192,54 @@ async function boot() {
   function refreshCash() {
     const html = `${COIN}<span>${money(save.cash)}</span>`;
     for (const el of $$('[data-cash]')) el.innerHTML = html;
-    $('#badge-daily').hidden = save.daily.done;
+  }
+
+  // ---------- players ----------
+  function replaceSave(fresh) {
+    for (const k of Object.keys(save)) delete save[k];
+    Object.assign(save, fresh);
+  }
+  function applyPlayerOptions() {
+    const o = opts();
+    tts.setRate(o.rate);
+    document.documentElement.classList.toggle('tiles-upper', o.tileCase === 'upper');
+  }
+  function selectPlayer(id) {
+    if (!Profiles.playerById(family, id)) return;
+    const prevMotion = save.settings.reducedMotion;
+    currentPlayerId = id;
+    setSaveKey(Profiles.saveKey(id));
+    replaceSave(loadSave());
+    refreshDaily(save); ensureGoals(save);
+    words = Profiles.loadWords(id);
+    WS.rollToday(words, Date.now());
+    session = createSession();
+    family.lastPlayer = id;
+    Profiles.writeFamily(family);
+    applyPlayerOptions();
+    Audio.setSound(save.settings.sound);
+    if (Audio.unlocked) Audio.music(save.settings.music);
+    document.documentElement.classList.toggle('reduced-motion', save.settings.reducedMotion);
+    if (prevMotion !== save.settings.reducedMotion) { try { game && game.destroy(); } catch (_) {} makeGame(); }
+    achievements.checkSave();
+    refreshAchBadge();
+    hero.redraw();
+    app.persist();
+    app.persistWords();
+    go('title');
+  }
+
+  function refreshTitle() {
+    const p = Profiles.playerById(family, currentPlayerId);
+    if (!p || !words) return;
+    $('#title-player').textContent = p.name;
+    drawAvatar($('#title-avatar'), p.color);
+    const m = WS.missionState(words, Date.now());
+    const chip = $('#title-mission');
+    chip.classList.toggle('done', m.done);
+    $('#title-mission-text').textContent = m.done ? 'Mission complete! Free play' : `Today: ${m.count} / ${m.size} words`;
+    $('#title-sample').hidden = !WS.isSampleActive(words);
+    $('#btn-play').textContent = WS.qualifierDue(words) ? 'Play: new words!' : 'Play';
   }
 
   function go(name, arg) {
@@ -139,12 +249,14 @@ async function boot() {
     screen = name;
     const inRun = name === 'run';
     document.documentElement.classList.toggle('in-run', inRun);
+    if (!inRun) document.documentElement.classList.remove('spelling');
     if (name === 'results') { $('#toasts').textContent = ''; hud.flushAchievements(); }
     if (!inRun) hud.clearBanners();
     $('#hud').hidden = !inRun;
     $('#controls').hidden = !inRun;
     $('#backdrop').hidden = inRun || name === 'results';
     if (!inRun) hideCoach();
+    if (name === 'title') refreshTitle();
     if (screens[name]) screens[name].show(arg);
     hero.setMode(heroMode());
     refreshCash();
@@ -180,12 +292,12 @@ async function boot() {
     renderPauseToggles();
   }
 
-  // screen shake 0-100 (saved); passed to game.start as shake 0..1. preview = wiggle the panel once.
+  // screen shake 0-100 (saved); passed to game.start as shake 0..1. preview = wiggle the pause sheet once.
   function setShake(value, preview) {
     const v = Math.max(0, Math.min(100, Math.round(Number(value) || 0)));
     if (save.settings.shake !== v) { save.settings.shake = v; app.persist(); }
     if (preview && v > 0 && !save.settings.reducedMotion) {
-      const sheet = $('#panel-settings .sheet');
+      const sheet = $('#panel-pause .sheet');
       sheet.style.setProperty('--amp', `${(v / 100) * 7}px`);
       sheet.classList.remove('shake-preview'); void sheet.offsetWidth; sheet.classList.add('shake-preview');
     }
@@ -194,8 +306,8 @@ async function boot() {
   function resetProgress() {
     const fresh = wipeSave();
     const keepSettings = save.settings;
-    for (const k of Object.keys(save)) delete save[k];
-    Object.assign(save, fresh, { settings: keepSettings });
+    replaceSave(fresh);
+    save.settings = keepSettings;
     refreshDaily(save); ensureGoals(save);
     app.persist();
     refreshCash();
@@ -203,12 +315,64 @@ async function boot() {
     hero.redraw();
   }
 
+  // ---------- Qualifier / Friday Test ----------
+  function startTest(kind) {
+    if (!words) return;
+    const list = WS.activeList(words);
+    const n = list.words.length;
+    go('test');
+    const upper = opts().tileCase === 'upper';
+    const q = kind === 'qualifier';
+    testScreen.run({
+      kind, title: q ? 'Qualifier' : 'Friday Test', upper,
+      words: list.words.map((w) => ({ word: w.word, sentence: w.sentence })),
+      intro: q
+        ? { heading: 'New words!', lines: [`A quick check of this week's ${n} words: listen, then spell each one once.`, `Words you already know skip ahead. $${QUALIFIER_PAY} for each one you get right.`], button: 'Start' }
+        : { heading: 'Friday Test', lines: [`All ${n} words. Listen and spell. No hints!`, 'Your score powers the MEGA RUN.'], button: 'Start' },
+      summary(results) {
+        const now = Date.now();
+        const correct = results.filter((r) => r.correct).length;
+        const total = results.length;
+        const missed = total - correct;
+        if (q) {
+          WS.recordQualifier(words, results, now);
+          const paid = earn(save, correct * QUALIFIER_PAY);
+          app.persist(); app.persistWords();
+          if (paid) Audio.cash();
+          return {
+            heading: correct === total ? 'You knew them all!' : 'Qualifier done!',
+            lines: [h('div', { class: 'big-score', id: 'tm-score' }, `${correct} / ${total}`), `+$${money(paid)}`,
+              missed ? `${missed} Focus Word${missed === 1 ? '' : 's'} to practice. Each run starts with a word!` : 'Every word skips ahead. Keep them fresh in your runs!'],
+            button: "Let's go",
+          };
+        }
+        WS.recordFriday(words, results, now);
+        const score = total ? correct / total : 0;
+        const paid = earn(save, correct * MEGA_PAY);
+        app.persist(); app.persistWords();
+        lastTest = { correct, total, score, paid };
+        if (score >= 0.8) Audio.fanfare(); else Audio.cash();
+        return {
+          heading: score === 1 ? 'Perfect test!' : 'Test done!',
+          lines: [h('div', { class: 'big-score', id: 'tm-score' }, `${correct} / ${total}`),
+            `+$${money(paid)} ($${MEGA_PAY} a word) · Mega Run power ${Math.round((0.6 + 0.4 * score) * 100)}%`],
+          button: 'Mega Run!',
+        };
+      },
+    }).then(({ cancelled }) => {
+      if (cancelled) { go('title'); return; }
+      if (q) go('garage');
+      else startRun({ trackId: save.selectedTrack, mega: lastTest });
+    });
+  }
+  let lastTest = null;
+
   // ---------- run lifecycle ----------
-  function startRun({ trackId, daily = false }) {
+  function startRun({ trackId, daily = false, mega = null }) {
     if (!game) { toast('Engine failed to load'); return; }
     closePanel();
     let car, stats, seed, def = null;
-    trackId = daily ? dailyFor(todayKey()).trackId : trackId;
+    trackId = daily ? dailyFor(todayKey()).trackId : (TRACK_BY_ID[trackId] && isUnlocked(save, trackId) ? trackId : 'canyon');
     const track = TRACK_BY_ID[trackId];
     if (daily) {
       refreshDaily(save);
@@ -223,29 +387,89 @@ async function boot() {
       stats = statsFor(save, car.id);
       seed = hashString('track:' + trackId);   // fixed layout per track so it can be learned
     }
+    // every normal run starts with a word spelled from memory (the Mega Run's power comes from the test)
+    const pick = !daily && !mega && words ? WS.nextWord(words, Date.now(), session, opts()) : null;
+    const letters = pick ? ringLetters(pick.word) : null;
+    const powerScale = mega ? 0.6 + 0.4 * mega.score : 1;
+    clearTimeout(stopFallback);
     runEarned = [];
-    run = { trackId, daily, def, carId: car.id, stats, ended: false, goalToasts: [], earned: runEarned, flight: false, bigAir: false, rampage: false, rings: 0 };
+    run = {
+      trackId, daily, def, carId: car.id, stats, ended: false, goalToasts: [], earned: runEarned, flight: false, bigAir: false, rampage: false, rings: 0,
+      spelling: !!pick, pick, letters: letters || [], spell: null, mega, missionReward: 0,
+    };
     achievements.beginRun();
     go('run');
     hud.reset(track);
+    hud.word(null);
     controls.reset();
-    controls.enable(true);
+    controls.enable(!pick);
     Audio.duck(true);
     try {
+      // start first so the parked car is on screen behind the spell panel; the launch power is set after
       game.start({
         car, stats, track, seed,
         shake: save.settings.reducedMotion ? 0 : save.settings.shake / 100,
         bestDistance: daily ? null : (save.best[trackId] || null),
+        letters, powerScale, nitroScale: 1,
       });
       game.setInput({ gas: false, brake: false, nitro: false });
     } catch (e) {
-      console.error('[RampRage] game.start threw', e);
+      console.error('[SpellJump] game.start threw', e);
       run = null; controls.enable(false); go('tracks'); toast('Could not start the run');
       return;
     }
     cancelAnimationFrame(hudRaf);
     hudRaf = requestAnimationFrame(hudLoop);
-    if (!daily && !save.seen.coach) showCoach();
+    if (pick) {
+      const r = run;
+      setSpelling(true);
+      spellPanel.run(pick, {
+        coinMult: stats.coinMult || 1, streakBefore: Math.min(WS.STREAK_CAP, words.streak),
+        mission: WS.missionState(words, Date.now()), upper: opts().tileCase === 'upper',
+      }).then((res) => spelled(r, res));
+    } else if (mega) {
+      hud.banner('mega', `Mega run ${Math.round(powerScale * 100)}%`);
+      if (!save.seen.coach) showCoach();
+    } else if (!daily && !save.seen.coach) showCoach();
+  }
+
+  // the spell panel resolved: record it, pay the bonus, set the launch power, hand the car to the child
+  function spelled(r, res) {
+    if (run !== r || r.ended) return;
+    if (!res || res.cancelled) return;      // quitRun already ran (back button)
+    const now = Date.now();
+    const rec = WS.recordSpell(words, r.pick.word, { firstTry: res.firstTry }, now, session);
+    const bonus = res.firstTry ? earn(save, res.bonus) : 0;
+    const missionReward = rec.missionJustDone ? earn(save, MISSION_REWARD) : 0;
+    r.missionReward = missionReward;
+    r.spell = { word: r.pick.word, firstTry: res.firstTry, fixed: res.fixed, misses: res.misses, bonus, streak: rec.streak, powerScale: res.powerScale };
+    app.persist(); app.persistWords();
+    achievements.spell({ firstTry: res.firstTry, streak: rec.streak, newlyMastered: rec.newlyMastered });
+    try { if (typeof game.setLaunchPower === 'function') game.setLaunchPower(res.powerScale, res.nitroScale); } catch (e) { console.warn('[SpellJump] setLaunchPower failed', e); }
+    r.spelling = false;
+    setSpelling(false);
+    hud.word(r.letters);
+    if (missionReward) { hud.banner('mission', 'Mission complete!'); setTimeout(() => Audio.missionComplete(), 200); }
+    if (!save.seen.coach) showCoach();
+    else if (!paused) controls.enable(true);
+  }
+
+  // the HUD and the driving controls hide while the spell panel is up
+  function setSpelling(on) { document.documentElement.classList.toggle('spelling', !!on); }
+
+  // leave a run from the spell panel without jumping (nothing is recorded)
+  function quitRun() {
+    setSpelling(false);
+    if (!run) return;
+    run.ended = true;
+    run = null;
+    runEarned = null;
+    tts.cancel();
+    try { game.stop(); } catch (_) { /* ignore */ }
+    controls.enable(false);
+    Audio.engine(-1); Audio.nitro(false); Audio.duck(false);
+    achievements.endRun();
+    go('garage');
   }
 
   // ---------- first-run coach ----------
@@ -286,7 +510,7 @@ async function boot() {
       if (!run.bigAir && (s.airTime || 0) >= 3) { run.bigAir = true; hud.banner('bigair', 'Big air!'); }
     } else run.flight = false;
     achievements.state(s);
-    if (!paused) {
+    if (!paused && !run.spelling) {
       Audio.engine(s.phase === 'done' ? -1 : Math.min(1, (s.speedKmh || 0) / 180));
       Audio.nitro(!!(input.nitro && s.nitro > 0.01 && s.phase !== 'done'));
     }
@@ -314,7 +538,7 @@ async function boot() {
       case 'combo':
         Audio.comboUp(evt.count);
         hud.combo(evt);
-        if ((evt.mult || 0) >= 4 && !run.rampage) { run.rampage = true; hud.banner('rampage', 'Rampage ×4'); }
+        if ((evt.mult || 0) >= 4 && !run.rampage) { run.rampage = true; hud.banner('rampage', 'Super combo ×4'); }
         break;
       case 'comboEnd': hud.comboEnd(evt); run.rampage = false; break;
       case 'explosion': Audio.explosion(evt.chain || 0); break;
@@ -327,6 +551,17 @@ async function boot() {
       case 'rejump': Audio.rejump(); Audio.whoosh(); hud.banner('rejump', (evt.count || 1) > 1 ? `Rejump ×${evt.count}` : 'Rejump!'); break;
       case 'record': Audio.fanfare(); break;    // the engine's in-world NEW RECORD flag banner owns this moment
       case 'damage': Audio.clank(); break;
+      // ----- v3: letter rings say their letter (SOS), the whole word in order is a WORD COMPLETE -----
+      case 'letterRing':
+        Audio.ring();
+        if (evt.letter) setTimeout(() => tts.sayLetter(evt.letter), 140);
+        hud.letterHit(evt.index);
+        break;
+      case 'wordComplete':
+        hud.wordComplete();
+        hud.banner('word', 'Word complete!');
+        setTimeout(() => Audio.cash(), 380);
+        break;
       case 'finish': endRun(evt.summary); return;
       default: break;
     }
@@ -340,6 +575,8 @@ async function boot() {
     r.ended = true;
     run = null;
     clearTimeout(stopFallback);
+    if (spellPanel.isOpen) spellPanel.cancel();
+    setSpelling(false);
     controls.enable(false);
     Audio.engine(-1); Audio.nitro(false); Audio.duck(false);
     summary = summary || {};
@@ -361,17 +598,20 @@ async function boot() {
       trackId: r.trackId, daily: r.daily, carId: r.carId, stats: r.stats, summary, bank, goals,
       dailyReward, dailyAlreadyDone, dailyGoalText: r.def && r.def.goal.text, dailyValue: r.def && r.def.value(summary),
       rating, achievements: r.earned,
+      spell: r.spell, missionReward: r.missionReward, mega: r.mega, mission: words ? WS.missionState(words, Date.now()) : null,
     };
     setTimeout(() => {
       go('results', result);
-      if (bank.newBest || dailyReward || goals.length) Audio.cash();
+      if (bank.newBest || dailyReward || goals.length || (r.spell && r.spell.bonus)) Audio.cash();
+      if (r.missionReward) setTimeout(() => Audio.missionComplete(), 500);
     }, paused ? 0 : 900);
     paused = false;
   }
 
-  // ---------- pause ----------
+  // ---------- pause (settings live here; no reset in the kid-facing menus) ----------
   function pause() {
     if (!run || paused || coaching) return;   // the coach already holds the run
+    if (run.spelling) { tts.cancel(); return; } // the car is parked behind the spell panel anyway
     paused = true;
     try { game.pause(); } catch (_) {}
     controls.enable(false);
@@ -386,22 +626,43 @@ async function boot() {
     controls.enable(true);
     try { game.resume(); } catch (_) {}
   }
+  const shakeInput = $('#pause-shake');
   function renderPauseToggles() {
     $('#pause-sound').textContent = `Sound: ${save.settings.sound ? 'On' : 'Off'}`;
     $('#pause-music').textContent = `Music: ${save.settings.music ? 'On' : 'Off'}`;
+    $('#pause-motion').textContent = `Motion: ${save.settings.reducedMotion ? 'Calm' : 'Full'}`;
+    shakeInput.value = String(save.settings.shake);
+    shakeInput.disabled = save.settings.reducedMotion;
+    shakeInput.style.setProperty('--pct', `${save.settings.shake}%`);
+    $('#pause-shake-val').textContent = `${save.settings.shake}%`;
+    shakeInput.closest('.row').classList.toggle('is-disabled', save.settings.reducedMotion);
   }
+  // native range drags only from the thumb on iOS: map taps/drags anywhere on the track ourselves
+  const shakeFromPointer = (e) => {
+    const rect = shakeInput.getBoundingClientRect();
+    const v = Math.round((Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * 100) / 5) * 5;
+    if (String(v) !== shakeInput.value) { shakeInput.value = String(v); setShake(v, false); renderPauseToggles(); }
+  };
+  shakeInput.addEventListener('pointerdown', (e) => { if (shakeInput.disabled) return; e.preventDefault(); shakeInput.setPointerCapture(e.pointerId); shakeFromPointer(e); });
+  shakeInput.addEventListener('pointermove', (e) => { if (shakeInput.hasPointerCapture(e.pointerId)) shakeFromPointer(e); });
+  shakeInput.addEventListener('pointerup', (e) => { if (shakeInput.hasPointerCapture(e.pointerId)) { shakeInput.releasePointerCapture(e.pointerId); setShake(Number(shakeInput.value), true); } });
+  shakeInput.addEventListener('input', () => { setShake(Number(shakeInput.value), false); renderPauseToggles(); });
   $('#btn-pause').addEventListener('click', pause);
   $('#pause-resume').addEventListener('click', resume);
   $('#pause-sound').addEventListener('click', () => setSetting('sound', !save.settings.sound));
   $('#pause-music').addEventListener('click', () => setSetting('music', !save.settings.music));
+  $('#pause-motion').addEventListener('click', () => setSetting('reducedMotion', !save.settings.reducedMotion));
   $('#pause-end').addEventListener('click', () => {
     if (!run) return;
     closePanel();
     const snap = (() => { try { return game.getState(); } catch (_) { return null; } })();
+    const r = run;
     try { game.resume(); game.stop(); } catch (e) { console.error(e); }
-    // contract says stop() emits 'finish'; if an engine doesn't, bank what we have
+    // contract says stop() emits 'finish'; if an engine doesn't, bank what we have (only for THIS run: a quick
+    // Retry may already have started the next one)
+    clearTimeout(stopFallback);
     stopFallback = setTimeout(() => {
-      if (!run) return;
+      if (!run || run !== r || r.ended) return;
       const s = snap || {};
       endRun({ distance: s.distance || 0, airTime: s.airTime || 0, flips: s.flips || 0, frontFlips: 0, backFlips: 0, smashed: s.smashed || 0,
         maxSpeedKmh: s.speedKmh || 0, landing: s.landing, finishCrossed: !!s.finishCrossed,
@@ -409,31 +670,36 @@ async function boot() {
     }, 600);
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { pause(); Audio.suspend(); app.persist(); hero.setMode('off'); } else { Audio.resume(); hero.setMode(heroMode()); }
+    if (document.hidden) { pause(); tts.cancel(); Audio.suspend(); app.persist(); app.persistWords(); hero.setMode('off'); } else { Audio.resume(); hero.setMode(heroMode()); }
   });
   // iOS may kill a backgrounded Home Screen app without another event: pause and save on pagehide too
-  window.addEventListener('pagehide', () => { pause(); app.persist(); });
+  window.addEventListener('pagehide', () => { pause(); app.persist(); app.persistWords(); });
   window.addEventListener('keydown', (e) => {
     if (coaching && (e.code === 'Enter' || e.code === 'Space')) { dismissCoach(e); return; }
-    if (e.code === 'Escape' || e.code === 'KeyP') {
+    if (e.code === 'Escape' || (e.code === 'KeyP' && run && !run.spelling)) {
       if (coaching) { dismissCoach(e); return; }
-      if (run) { paused ? resume() : pause(); e.preventDefault(); }
+      if (pz.isOpen) { pz.close(); return; }
+      if (run && !run.spelling) { paused ? resume() : pause(); e.preventDefault(); }
       else if (!$$('.modal').every((m) => m.hidden)) closePanel();
     }
   });
 
   // ---------- navigation wiring ----------
-  $('#btn-play').addEventListener('click', () => go('garage'));
+  $('#btn-play').addEventListener('click', () => { if (words && WS.qualifierDue(words)) startTest('qualifier'); else go('garage'); });
+  $('#btn-friday').addEventListener('click', () => startTest('friday'));
+  $('#btn-parents').addEventListener('click', () => pz.open(currentPlayerId));
+  $('#btn-player').addEventListener('click', () => go('players'));
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));
   for (const b of $$('[data-open]')) b.addEventListener('click', () => openPanel(b.dataset.open));
   for (const b of $$('[data-close]')) b.addEventListener('click', closePanel);
   for (const m of $$('.modal')) m.addEventListener('click', (e) => { if (e.target === m && m.dataset.panel !== 'pause') closePanel(); });
   document.addEventListener('click', (e) => { if (e.target.closest('[data-sfx]')) Audio.click(); });
 
-  // ---------- audio unlock (first gesture anywhere) ----------
+  // ---------- audio + speech unlock (first gesture anywhere) ----------
   Audio.setSound(save.settings.sound);
   const unlock = () => {
     Audio.unlock();
+    tts.unlock();                 // iOS: the first speak must happen inside a tap
     Audio.setSound(save.settings.sound);
     if (!save.settings.music) Audio.music(false);
   };
@@ -444,17 +710,17 @@ async function boot() {
   // ---------- iOS gesture hygiene ----------
   document.addEventListener('gesturestart', (e) => e.preventDefault());
   document.addEventListener('dblclick', (e) => e.preventDefault());
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
+  document.addEventListener('contextmenu', (e) => { if (!e.target.closest('.pz textarea, .pz input, .pz pre')) e.preventDefault(); });
   document.addEventListener('touchmove', (e) => {
-    if (!e.target.closest('.scroll, .garage-body, .tracks-body, .results-body')) e.preventDefault();
+    if (!e.target.closest('.scroll, .garage-body, .tracks-body, .results-body, .pz-table-wrap, .pz-players, .tm-card, .pz textarea')) e.preventDefault();
   }, { passive: false });
 
-  document.documentElement.classList.toggle('reduced-motion', save.settings.reducedMotion);
-  achievements.checkSave();
-  refreshAchBadge();
-  go('title');
-  app.persist();
-  window.__rampRage = { app, hud, hero, get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; } }; // debugging / smoke tests
+  go('players');
+  window.__spellJump = window.__rampRage = {
+    app, hud, hero, spellPanel, testScreen, pz, tts,
+    get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; },
+    get words() { return words; }, get session() { return session; }, get screen() { return screen; },
+  }; // debugging / smoke tests
   registerSW();
 }
 
@@ -465,10 +731,10 @@ function registerSW() {
       // hand the SW every same-origin file this page actually loaded (catches engine modules too)
       const urls = performance.getEntriesByType('resource').map((e) => e.name).filter((u) => u.startsWith(location.origin));
       if (reg.active) reg.active.postMessage({ type: 'cache-urls', urls: [location.href.split('?')[0], ...urls] });
-    }).catch((e) => console.warn('[RampRage] service worker registration failed', e));
+    }).catch((e) => console.warn('[SpellJump] service worker registration failed', e));
   } catch (e) {
-    console.warn('[RampRage] service worker unavailable', e);
+    console.warn('[SpellJump] service worker unavailable', e);
   }
 }
 
-boot().catch((e) => console.error('[RampRage] boot failed', e));
+boot().catch((e) => console.error('[SpellJump] boot failed', e));

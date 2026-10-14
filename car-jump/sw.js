@@ -1,7 +1,7 @@
-// Ramp Rage service worker: cache-first app shell so the game works offline after the first load.
+// Spell Jump service worker: cache-first app shell so the game works offline after the first load.
 // Same-origin files are served from cache and refreshed in the background (stale-while-revalidate),
 // so a deploy shows up on the next launch. Bump VERSION to force a clean cache.
-const VERSION = 'ramp-rage-v2.0.1';
+const VERSION = 'spell-jump-v3.0.0';
 const SHELL = [
   './',
   'index.html',
@@ -35,6 +35,17 @@ const SHELL = [
   'src/ui/carPreview.js',
   'src/ui/fireworks.js',
   'src/ui/titleHero.js',
+  'src/ui/players.js',
+  'src/ui/parentZone.js',
+  'src/spelling/words.js',
+  'src/spelling/scheduler.js',
+  'src/spelling/wordStore.js',
+  'src/spelling/profiles.js',
+  'src/spelling/tts.js',
+  'src/spelling/keyboard.js',
+  'src/spelling/spellPanel.js',
+  'src/spelling/testMode.js',
+  'src/spelling/why.js',
 ];
 // The engine is built separately and may be split into several modules: cache the entry if present;
 // the page also posts every module it actually loaded (see 'cache-urls' below).

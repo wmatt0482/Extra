@@ -66,8 +66,8 @@ export const CARS = [
   },
   {
     id: 'tank',
-    name: 'Warthog',
-    tagline: 'Armored. Airborne. Unreasonable.',
+    name: 'Rhino',
+    tagline: 'Big, tough, and ready to fly.',
     price: 400000,
     tier: 6,
     color: '#6b705c',

@@ -1,11 +1,11 @@
-// Ramp Rage audio: everything synthesized with WebAudio, no files. The AudioContext is created and
+// Spell Jump audio: everything synthesized with WebAudio, no files. The AudioContext is created and
 // resumed inside the first user gesture (iOS requirement). All calls are safe before unlock (no-ops).
 
 const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
 
 function createAudio() {
   let ctx = null, master, sfxBus, musicBus, noiseBuf;
-  let soundOn = true, musicOn = true, ducked = false, unlocked = false;
+  let soundOn = true, musicOn = true, ducked = false, unlocked = false, voiceOn = false;
   let eng = null, nitroNode = null, musicTimer = 0, musicStep = 0, nextNoteAt = 0, lead, bass, leadGain, bassGain;
 
   function init() {
@@ -85,6 +85,10 @@ function createAudio() {
   const RHY = [1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1]; // lead gate per 16th
   const BPM = 128, SIX = 60 / BPM / 4;
 
+  // music sits under the speech voice: ducked hard while the voice talks, a bit during a run
+  const musicLevel = () => (voiceOn ? 0.1 : ducked ? 0.35 : 0.7);
+  const sfxLevel = () => (soundOn ? (voiceOn ? 0.6 : 1) : 0);
+
   function startMusic() {
     if (!ready() || musicTimer) return;
     lead = ctx.createOscillator(); lead.type = 'square';
@@ -96,7 +100,7 @@ function createAudio() {
     bass.connect(bassGain).connect(musicBus);
     lead.start(); bass.start();
     nextNoteAt = now() + 0.1;
-    musicBus.gain.setTargetAtTime(ducked ? 0.35 : 0.7, now(), 0.3);
+    musicBus.gain.setTargetAtTime(musicLevel(), now(), 0.3);
     musicTimer = setInterval(scheduleMusic, 40);
     scheduleMusic();
   }
@@ -162,7 +166,7 @@ function createAudio() {
     },
     setSound(on) {
       soundOn = !!on;
-      if (ctx) sfxBus.gain.setTargetAtTime(soundOn ? 1 : 0, now(), 0.03);
+      if (ctx) sfxBus.gain.setTargetAtTime(sfxLevel(), now(), 0.03);
     },
     music(on) {
       musicOn = !!on;
@@ -171,8 +175,16 @@ function createAudio() {
     },
     duck(on) {
       ducked = !!on;
-      if (ctx && musicTimer) musicBus.gain.setTargetAtTime(ducked ? 0.35 : 0.7, now(), 0.4);
+      if (ctx && musicTimer) musicBus.gain.setTargetAtTime(musicLevel(), now(), 0.4);
     },
+    // speech is playing (TTS): duck the music hard and soften effects so the voice is never talked over
+    voice(on) {
+      voiceOn = !!on;
+      if (!ctx) return;
+      if (musicTimer) musicBus.gain.setTargetAtTime(musicLevel(), now(), voiceOn ? 0.05 : 0.35);
+      sfxBus.gain.setTargetAtTime(sfxLevel(), now(), 0.05);
+    },
+    get speaking() { return voiceOn; },
     // speed01: 0..1 (null or negative = engine off)
     engine(speed01) {
       if (!ready()) return;
@@ -278,6 +290,27 @@ function createAudio() {
     rejump() { if (ready()) { tone('square', 196, 784, 0.22, 0.05); tone('triangle', 392, 1568, 0.25, 0.09, sfxBus, 0.03); } },
     clank() { if (ready()) { tone('square', 820, 610, 0.06, 0.04); noise('bandpass', 3200, 1800, 6, 0.12, 0.18); } },
     click() { if (ready()) tone('square', 660, 520, 0.05, 0.06); },
+    // ---- v3 spelling ----
+    // soft key click (a lower tick for backspace)
+    letter(back = false) { if (ready()) { tone('triangle', back ? 520 : 880, back ? 420 : 760, 0.035, 0.07); noise('highpass', 4000, 2500, 0.7, 0.02, 0.03, 0, 0.002); } },
+    // bright rising major triad (a gentler two-note version for a fixed word)
+    correct(soft = false) {
+      if (!ready()) return;
+      const notes = soft ? [659, 988] : [523, 659, 784, 1047];
+      notes.forEach((f, i) => { tone('triangle', f, f, i === notes.length - 1 ? 0.32 : 0.12, soft ? 0.1 : 0.13, sfxBus, i * 0.075); tone('sine', f * 2, f * 2, 0.1, 0.03, sfxBus, i * 0.075); });
+    },
+    // soft, not punishing: a low two-note "hm-mm" (quieter still for a rejected Copy letter)
+    oops(light = false) {
+      if (!ready()) return;
+      const p = light ? 0.05 : 0.1;
+      tone('sine', 392, 370, 0.14, p); tone('sine', 330, 311, 0.2, p, sfxBus, 0.13);
+    },
+    missionComplete() {
+      if (!ready()) return;
+      [523, 659, 784, 1047, 1319].forEach((f, i) => tone('square', f, f, i === 4 ? 0.5 : 0.12, 0.08, sfxBus, i * 0.09));
+      [262, 392, 523].forEach((f) => tone('triangle', f, f, 0.9, 0.08, sfxBus, 0.45));
+      setTimeout(() => api.cheer && api.cheer(1), 380);
+    },
     cash() { if (ready()) { [0, 0.06, 0.12].forEach((at, i) => tone('square', 988 * (1 + i * 0.26), 988 * (1 + i * 0.26), 0.08, 0.1, sfxBus, at)); } },
     error() { if (ready()) tone('square', 180, 140, 0.15, 0.08); },
     fanfare() { if (ready()) [523, 659, 784, 1047].forEach((f, i) => tone('square', f, f, i === 3 ? 0.4 : 0.1, 0.09, sfxBus, i * 0.1)); },
