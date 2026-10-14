@@ -309,3 +309,99 @@ variance avoids it.)
 - Settings: screen shake slider (0-100).
 - Audio additions: `explosion()`, `ring()`, `comboUp(count)`, `cheer()` (filtered-noise crowd swell at finish
   line and perfect landing), `fireworks()`, `orbit()` (airy pad swell), `rejump()`, nitro afterburner layer.
+
+## Spelling edition (v3): "Spell Jump"
+
+The game becomes a 4th-grade spelling trainer. Principle: spelling powers the fun instead of gating it. Every jump
+starts with a word; spelling it right is what gives the car full launch power. The pure car game is tagged
+`ramp-rage-v2` in git. The app is renamed **Spell Jump** (title, manifest, SW cache name, README). Cartoon
+explosions stay; copy is kid-friendly everywhere (no "rage", no "kill", no "hog").
+
+### Players (profiles)
+- Up to 4 players, each with a name and a car-color avatar. A player picker is the first screen (big tiles,
+  "+ New player" with a name field and a big on-screen keyboard, no native keyboard).
+- Each player has their own full save (cash, cars, upgrades, tracks, records, badges, goals, daily) under
+  `spellJump.<playerId>.save` and their own spelling data under `spellJump.<playerId>.words`. A family-level
+  record `spellJump.family` holds the player list, the parent PIN, and parent settings. All localStorage access
+  stays wrapped in try/catch. An existing `rampRage.save.v1` is migrated into the first created player.
+
+### Parent Zone (title screen button, PIN-gated)
+- First open: set a 4-digit PIN (two entries must match). Later opens: enter PIN. "Forgot PIN" = press and hold
+  3 s, then answer a 2-digit × 2-digit multiplication; correct → set a new PIN.
+- Tabs per player:
+  - **Words of the week**: one text area, one word per line; optional sentence after " - " (e.g.
+    `friend - My friend lives next door.`). Save creates a dated list (ISO date) and makes it the active list.
+    Past lists stay in an archive (view/restore/delete). "Copy to <other player>" button. Max 40 words, letters,
+    apostrophes, hyphens and spaces allowed, case-insensitive, trimmed, duplicates removed.
+  - **Report**: table per active-list word: attempts, first-try accuracy %, status (New / Learning / Almost /
+    Mastered), last practiced; a list of test results (date, score, missed words); "Copy report" puts a plain-text
+    version on the clipboard (fallback: select the text).
+  - **Options**: speech rate (slow/normal), show new words before the first attempt (default on), include a few
+    words from past lists (default on, 20%), letter case for tiles (lowercase default), reset this player.
+- A sample list ships so the game is playable before any words are entered. It is labeled "Sample list" in the
+  Parent Zone and on the title screen until replaced:
+  `because, beautiful, favorite, friend, neighbor, enough, through, thought, weather, whether, library,
+  different, question, straight, especially`.
+
+### Spell to Launch (every run)
+1. The run begins with the car parked at the top of the ramp (phase 'ramp', no input yet). A **Spell panel**
+   overlays the scene: a speaker button that says the word (Web Speech API `speechSynthesis`, en-US voice,
+   rate per options; the first `speak` is triggered inside a tap), "Say it again", "Use it in a sentence" (if a
+   sentence exists), a row of letter tiles filling as the child types, and a big on-screen QWERTY keyboard
+   (plus apostrophe, hyphen, space, backspace, and a wide LAUNCH key). Never the native keyboard (autocorrect).
+   If `speechSynthesis` is unavailable, the panel shows the word for 3 s ("Look at it, then spell it") instead.
+2. **New word** (first time this player has ever seen it, when the option is on): a "Look" step first shows the
+   word for 3 s with the audio, then hides it, then the spell step.
+3. **Correct on the first try**: tiles flash green, "PERFECT SPELL!", spelling bonus cash
+   `$400 × (1 + 0.1 × streak)` (streak = consecutive first-try words, capped at 10) × coinMult, launch power 100%,
+   nitro tank 125%. The panel closes and the child drives as usual (hold GAS).
+4. **Wrong**: the child's attempt stays with wrong tiles red; the correct spelling appears above in green tiles
+   with the audio spelling it letter by letter ("f – r – i – e – n – d"); the child must then type it correctly
+   (copy step; the keyboard stays live, the LAUNCH key enables only when it matches). Launch power 65%, nitro
+   100%, no spelling bonus. If the copy step is wrong twice, the correct word is auto-filled and the run goes.
+5. **Letter rings**: the air rings for this run carry the word's letters in order along the arc (the engine gets
+   `letters: ['f','r','i','e','n','d']`); passing through one says the letter and pays $40; collecting all of them
+   in order pays a "WORD COMPLETE" bonus of $200. Rings beyond the word's length are plain rings.
+6. Results screen gains a **Spelling** row (word, first try or not, bonus cash, streak) and a small "Words today"
+   counter.
+
+### Word scheduler (per player, per active list)
+- Each word: `box` 0..3 (Leitner), `attempts`, `firstTry`, `lastSeen`, `seenCount`, `streak`.
+- Correct first try → `box = min(3, box+1)`; wrong → `box = 0`. Status: New (seenCount 0), Learning (box 0-1),
+  Almost (box 2), Mastered (box 3 and firstTry ≥ 3).
+- Picker weights: box 0 ×4, box 1 ×3, box 2 ×2, box 3 ×1, plus ×2 if not seen in this session yet; never the same
+  word twice in a row while more than 1 word exists. With "include past lists" on, 20% of picks come from
+  archived lists' non-mastered words.
+- All of this lives in `src/spelling/` (`words.js` list parsing/normalizing, `scheduler.js`, `tts.js`,
+  `keyboard.js`, `spellPanel.js`, `testMode.js`, `report.js`, `parentZone.js`, `profiles.js`).
+
+### Friday Test (title screen button)
+- All active-list words, random order, no hints, no retries, one screen (word audio + tiles + keyboard), a
+  progress bar. Score = correct/total. At the end: one **Mega Run** with launch power `60% + 40% × score` and a
+  cash reward `$150 × correct`. The result (date, score, missed words) is stored in the player's test history and
+  shown in the Parent Zone report. The missed words all drop to box 0.
+
+### Engine contract additions (engine agent)
+- `game.start({..., letters: string[] | null, powerScale: 0..1.25, nitroScale: 0..1.5 })`.
+  `powerScale` multiplies ramp acceleration and launch kick; `nitroScale` multiplies the starting tank.
+- `game.setLaunchPower(powerScale, nitroScale)` — allowed while phase is 'ramp' and the car has not moved; the
+  UI calls it after the spell panel resolves (so `start` can be called first and the scene shown behind the panel).
+- Letter rings: when `letters` is given, the first N rings along the main arc (sorted by x) are labeled with
+  the letters in order and drawn with the letter inside; hitting one emits `{type:'letterRing', letter, index,
+  inOrder}` (`inOrder` = every earlier letter was collected) instead of the plain `airTarget`. When the last
+  letter is collected in order, emit `{type:'wordComplete', cash:200}` (cash into `cash.air`). Letter rings pay
+  $40 each (into `cash.air`). The engine does not speak; the UI does.
+- `summary` gains `letters: {collected, total, inOrder: bool}`.
+- The engine must not start the run on its own: with no input the car sits at the ramp top indefinitely (it
+  already does); the spell panel sits over it.
+
+### Economy
+- Spelling bonus is the main income. Keep run economy as is; the QA agent re-runs `tools/economy-sim.mjs` with a
+  simulated 75%-correct speller and reports the curve; aim for milestones about 1.5× faster than v2 (kids want
+  the next car within a few sessions): first finish ~5 runs, second car ~8, last car ~160.
+
+### Kid-proofing
+- No external links. No text input uses the native keyboard. The pause menu has no "reset". The Parent Zone is
+  the only place that can delete anything. Daily challenge and goals remain. Settings (sound, music, shake,
+  reduced motion) live in the pause menu and the Parent Zone, not on the title (keep the title simple: PLAY,
+  FRIDAY TEST, BADGES, PARENTS).
