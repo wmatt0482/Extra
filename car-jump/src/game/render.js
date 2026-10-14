@@ -1011,6 +1011,99 @@ export function drawRing(ctx, a, t, half, lw, k) {
   ctx.globalAlpha = 1;
 }
 
+// ---- v3 letter rings (Spell Jump): a rounder cyan hoop seen nearly face-on with the letter inside ----
+// The letter is a cached sprite in a bold rounded face with a dark outline, scaled so its glyph box fills
+// ~0.9 of the hoop's inner diameter (width-limited for wide glyphs), so it reads at phone size.
+const LETTER_FONT = '900 {S}px ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", "Varela Round", "Arial Black", system-ui, sans-serif';
+const letterSprites = new Map();
+function letterSprite(ch, fill) {
+  const key = fill + '|' + ch;
+  let sp = letterSprites.get(key);
+  if (sp) return sp;
+  if (letterSprites.size > 120) letterSprites.clear();
+  const PX = 160, LW = 20;
+  const text = /^\s+$/.test(ch) ? '_' : ch;
+  const f = LETTER_FONT.replace('{S}', PX);
+  if (!probe) probe = mkCanvas(4, 4).getContext('2d');
+  probe.font = f;
+  const m = probe.measureText(text);
+  const left = Number.isFinite(m.actualBoundingBoxLeft) ? m.actualBoundingBoxLeft : m.width / 2;
+  const right = Number.isFinite(m.actualBoundingBoxRight) ? m.actualBoundingBoxRight : m.width / 2;
+  const asc = Number.isFinite(m.actualBoundingBoxAscent) ? m.actualBoundingBoxAscent : PX * 0.72;
+  const desc = Number.isFinite(m.actualBoundingBoxDescent) ? m.actualBoundingBoxDescent : 0;
+  const gw = Math.max(1, left + right), gh = Math.max(1, asc + desc);
+  const pad = LW / 2 + 4;
+  const w = Math.ceil(gw + pad * 2), h = Math.ceil(gh + pad * 2);
+  const cv = mkCanvas(w, h);
+  const c = cv.getContext('2d');
+  c.font = f;
+  c.textAlign = 'left';
+  c.textBaseline = 'alphabetic';
+  c.lineJoin = 'round';
+  c.lineWidth = LW;
+  c.strokeStyle = OUT;
+  c.strokeText(text, pad + left, pad + asc);
+  c.fillStyle = fill;
+  c.fillText(text, pad + left, pad + asc);
+  sp = { cv, w, h, gw, gh, PX, LW, cx: pad + gw / 2, cy: pad + gh / 2 };
+  letterSprites.set(key, sp);
+  return sp;
+}
+
+// a: { x, y, r, letter }; half 'back' (hoop's far half + glass + letter, under the car) or 'front';
+// k: 0 = live, 0..1 = collected (expands and fades); next: the next letter to collect (pulses)
+export function drawLetterRing(ctx, a, t, half, lw, k, next) {
+  const ry = a.r * (1 + k * 0.5), rx = ry * 0.9;
+  const band = 0.5;
+  const a0 = half === 'back' ? Math.PI / 2 : -Math.PI / 2;
+  ctx.globalAlpha = 1 - k;
+  if (half === 'back') {
+    // tinted glass behind the letter: keeps it readable over sky, terrain or space
+    ctx.beginPath();
+    ctx.ellipse(a.x, a.y, rx - band / 2, ry - band / 2, 0, 0, TAU);
+    ctx.fillStyle = 'rgba(16,22,52,0.34)';
+    ctx.fill();
+    if (next && !k) {
+      ctx.beginPath();
+      ctx.ellipse(a.x, a.y, rx, ry, 0, 0, TAU);
+      ctx.strokeStyle = `rgba(120,236,255,${(0.28 + 0.18 * Math.sin(t * 7)).toFixed(3)})`;
+      ctx.lineWidth = band + 0.7 + 0.2 * Math.sin(t * 7);
+      ctx.stroke();
+    }
+  }
+  ctx.beginPath();
+  ctx.ellipse(a.x, a.y, rx, ry, 0, a0, a0 + Math.PI);
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = OUT;
+  ctx.lineWidth = band + lw * 1.6;
+  ctx.stroke();
+  ctx.strokeStyle = half === 'back' ? '#25a9d6' : '#6ee7ff';
+  ctx.lineWidth = band;
+  ctx.stroke();
+  if (half === 'front') {
+    ctx.strokeStyle = 'rgba(235,252,255,0.95)';
+    ctx.lineWidth = 0.12;
+    ctx.beginPath();
+    ctx.ellipse(a.x + 0.06, a.y, rx, ry, 0, -Math.PI * 0.4, Math.PI * 0.12);
+    ctx.stroke();
+  }
+  ctx.lineCap = 'butt';
+  if (half === 'back' && a.letter != null) {
+    try {
+      const sp = letterSprite(String(a.letter), '#ffffff');
+      const iw = 2 * (rx - band / 2) * 0.9, ih = 2 * (ry - band / 2) * 0.9;
+      // glyph + its outline fit the box (tiny glyphs like '-' or "'" are not blown up)
+      const s = Math.min(ih / (Math.max(sp.gh, sp.PX * 0.5) + sp.LW), iw / (Math.max(sp.gw, sp.PX * 0.3) + sp.LW)) * (1 + k * 0.6);
+      ctx.save();
+      ctx.translate(a.x, a.y);
+      ctx.scale(s, -s); // world is +y up; the sprite is y-down
+      ctx.drawImage(sp.cv, -sp.cx, -sp.cy);
+      ctx.restore();
+    } catch (_) { /* no 2D text in this context */ }
+  }
+  ctx.globalAlpha = 1;
+}
+
 export function drawCoin(ctx, a, t, lw) {
   const sx = Math.max(0.12, Math.abs(Math.cos(t * 3.2 + a.id * 0.7)));
   ctx.save();

@@ -167,7 +167,7 @@ try {
     console.log('api:', JSON.stringify(api));
     check(api.frozen, 'pause() freezes the simulation');
     check(api.finishEmitted && api.after === 'done', 'stop() emits finish and ends the run');
-    check(api.summaryKeys === 'airTargets,airTime,backFlips,bestCombo,cash,coins,distance,durationSec,explosions,finishCrossed,flips,frontFlips,landing,maxAltitude,maxSpeedKmh,rating,ratingScore,rejumps,rings,smashed', `summary keys: ${api.summaryKeys}`);
+    check(api.summaryKeys === 'airTargets,airTime,backFlips,bestCombo,cash,coins,distance,durationSec,explosions,finishCrossed,flips,frontFlips,landing,letters,maxAltitude,maxSpeedKmh,rating,ratingScore,rejumps,rings,smashed', `summary keys: ${api.summaryKeys}`);
     check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
     await context.close();
   }
@@ -314,6 +314,97 @@ try {
     check(['rating', 'ratingScore', 'maxAltitude', 'bestCombo', 'explosions', 'rings', 'coins', 'airTargets', 'rejumps'].every((x) => x in s) && 'combo' in s.cash && 'air' in s.cash, '(6) summary has all v2 fields');
     check(sumOK(s), '(6) cash adds up');
     check(!p.bad && errors.length === 0, `(7) no NaN / console errors (${p.bad || ''} ${errors.join(' | ')})`);
+    await context.close();
+  }
+
+  // ================= v3 (Spell Jump) engine contract =================
+  // dev.html panel fields feed game.start({ letters, powerScale, nitroScale }) on restart
+  const setPanel = (page, o) => page.evaluate((o) => { for (const [k, v] of Object.entries(o)) document.getElementById(k).value = v; }, o);
+  const coinMult = (page, car, lvl) => page.evaluate(async ({ car, lvl }) => {
+    const { CAR_BY_ID } = await import('/src/data/cars.js');
+    const { resolveStats } = await import('/src/data/upgrades.js');
+    return resolveStats(CAR_BY_ID[car], { engine: lvl, nitro: lvl, suspension: lvl, bonus: lvl }).coinMult;
+  }, { car, lvl });
+  // ---- v3.a: letters 'friend' on canyon, starter level 5, seed 1 ----
+  {
+    const word = 'friend';
+    const { page, context, errors } = await openRun(browser, { car: 'beater', track: 'canyon', lvl: '5', seed: '1', letters: word });
+    const m = await coinMult(page, 'beater', 5);
+    await restartPaused(page);
+    const st0 = await page.evaluate(() => window.__rr.game.getState().letters);
+    // (f) screenshots: the letter trail ahead just after the lip, then the car going through a labeled ring
+    let p = await stepUntil(page, 'release', "ev.some((e) => e.type === 'launch')", 40);
+    await frame(page);
+    await page.screenshot({ path: path.join(SHOTS, 'v3-letters-ahead.png') });
+    p = await stepUntil(page, 'release', "ev.some((e) => e.type === 'letterRing' && e.index === 1)", 0);
+    await page.evaluate(() => window.__rr.game.debugStep(2));
+    await frame(page);
+    await page.screenshot({ path: path.join(SHOTS, 'v3-letter-ring-pass.png') });
+    p = await stepUntil(page, 'release');
+    const s = p.finished;
+    const lr = await evs(page, 'letterRing'), wc = await evs(page, 'wordComplete'), air = await evs(page, 'airTarget');
+    const airRaw = air.reduce((a, e) => a + e.cash / m, 0) + 40 * lr.length + (wc.length ? 200 : 0);
+    console.log('v3 beater/canyon/L5 seed 1 letters:', JSON.stringify({ letterRings: lr.map((e) => `${e.letter}${e.index}${e.inOrder ? '' : '!'}`).join(' '), wordComplete: wc, airTargets: air.map((e) => e.kind[0]).join(''), letters: s.letters, coinMult: m, cashAir: s.cash.air, expectAir: Math.round(airRaw * m) }));
+    check(st0.collected === 0 && st0.total === word.length, `(v3.a) getState().letters at start = ${JSON.stringify(st0)}`);
+    check(lr.length >= 1 && lr.every((e, k) => e.letter === word[e.index] && (k === 0 || e.index > lr[k - 1].index)), '(v3.a) letterRing events carry the word\'s letters at their indices, in order');
+    check(lr.length === word.length && lr.every((e) => e.inOrder) && wc.length === 1 && wc[0].cash === Math.round(200 * m), `(v3.a) GAS-only flight collects all ${word.length} letters in order and fires wordComplete $${wc[0] && wc[0].cash}`);
+    check(lr.every((e) => e.cash === Math.round(40 * m) && e.nitroRefill === 0.25), '(v3.a) each letter pays $40 x coinMult and refills 25% nitro');
+    check(Math.abs(s.cash.air - Math.round(airRaw * m)) <= 1, `(v3.a) cash.air ${s.cash.air} = plain air targets + (40 x ${lr.length}${wc.length ? ' + 200' : ''}) x ${m}`);
+    check(air.every((e) => e.kind !== 'ring' || e.cash === Math.round(150 * m)) && s.rings === air.filter((e) => e.kind === 'ring').length && s.airTargets === air.length, `(v3.a) no airTarget for labeled rings (plain rings ${s.rings}, airTargets ${s.airTargets})`);
+    check(s.letters.collected === lr.length && s.letters.total === word.length && s.letters.inOrder === true, `(v3.a) summary.letters ${JSON.stringify(s.letters)}`);
+    check(sumOK(s), '(v3.a) cash adds up');
+    check(!p.bad && errors.length === 0, `(v3.a) no NaN / console errors (${p.bad || ''} ${errors.join(' | ')})`);
+    // ---- v3.d: parked 5 s with no input (and with BRAKE held): the car must not move or start ----
+    await restartPaused(page);
+    const park = await page.evaluate(() => {
+      const g = window.__rr.game, a = g.debugInfo();
+      g.setInput({ gas: false, brake: false, nitro: false });
+      g.debugStep(300);
+      const b = g.debugInfo();
+      g.setInput({ brake: true });
+      g.debugStep(120);
+      const c = g.debugInfo();
+      g.setInput({ brake: false });
+      return { moved: Math.hypot(b.x - a.x, b.y - a.y), movedBrake: Math.hypot(c.x - a.x, c.y - a.y), phase: g.getState().phase, events: window.__rr.events.length, speed: g.getState().speedKmh };
+    });
+    console.log('v3 parked:', JSON.stringify(park));
+    check(park.moved < 0.05 && park.movedBrake < 0.05 && park.phase === 'ramp' && park.events === 0 && park.speed === 0, `(v3.d) parked 5 s with no input moves ${park.moved.toFixed(4)} m (< 0.05), no events, still 'ramp'`);
+    // ---- v3.c: setLaunchPower on the parked car applies; after the car has moved it is ignored ----
+    const slp = await page.evaluate(() => {
+      const g = window.__rr.game, warns = [];
+      const w0 = console.warn; console.warn = (...a) => { warns.push(a.join(' ')); };
+      try {
+        const ok1 = g.setLaunchPower(0.65, 1.25);
+        const i1 = g.debugInfo(), n1 = g.getState().nitro;
+        g.setInput({ gas: true });
+        g.debugStep(90);
+        const ok2 = g.setLaunchPower(1.2, 0.5);
+        const i2 = g.debugInfo();
+        g.setInput({ gas: false });
+        return { ok1, ok2, p1: i1.powerScale, n1, fuel1: i1.nitroFuel / i1.nitroTank, p2: i2.powerScale, ns2: i2.nitroScale, speed2: g.getState().speedKmh, warns };
+      } finally { console.warn = w0; }
+    });
+    console.log('v3 setLaunchPower:', JSON.stringify(slp));
+    check(slp.ok1 && slp.p1 === 0.65 && Math.abs(slp.fuel1 - 1.25) < 1e-9 && slp.n1 === 1, `(v3.c) parked setLaunchPower(0.65, 1.25) applies (tank 125%, getState().nitro clamped to ${slp.n1})`);
+    check(!slp.ok2 && slp.p2 === 0.65 && slp.ns2 === 1.25 && slp.warns.length === 1, `(v3.c) setLaunchPower after moving (${slp.speed2} km/h) is ignored with a console.warn`);
+    await context.close();
+  }
+  // ---- v3.b: powerScale 0.65 vs 1.0, same seed: slower launch, shorter first landing ----
+  {
+    const { page, context, errors } = await openRun(browser, { car: 'beater', track: 'canyon', lvl: '5', seed: '1' });
+    const res = {};
+    for (const pw of ['0.65', '1']) {
+      await setPanel(page, { power: pw, nitroS: '1' });
+      await restartPaused(page);
+      await stepUntil(page, 'release', "ev.some((e) => e.type === 'land')", 0);
+      const landX = await page.evaluate(() => window.__rr.game.debugInfo().x);
+      const p = await stepUntil(page, 'release');
+      res[pw] = { launchKmh: (await evs(page, 'launch'))[0].speedKmh, landX: Math.round(landX * 10) / 10, distance: p.finished.distance };
+    }
+    console.log('v3 powerScale 0.65 vs 1.0:', JSON.stringify(res));
+    check(res['0.65'].launchKmh < res['1'].launchKmh - 5, `(v3.b) powerScale 0.65 launches slower (${res['0.65'].launchKmh} vs ${res['1'].launchKmh} km/h)`);
+    check(res['0.65'].landX < res['1'].landX, `(v3.b) powerScale 0.65 lands shorter (${res['0.65'].landX} vs ${res['1'].landX} m)`);
+    check(errors.length === 0, `(v3.b) no console errors (${errors.join(' | ')})`);
     await context.close();
   }
 } finally {

@@ -1,4 +1,4 @@
-// Ramp Rage gameplay engine. Contract: see SPEC.md "The contract: src/game/engine.js".
+// Spell Jump (ex Ramp Rage) gameplay engine. Contract: see SPEC.md "The contract: src/game/engine.js".
 // Physics: Matter.js (global `Matter`), 1 m = 30 px, fixed 60 Hz step (2 substeps), y-down in
 // physics space. Game logic and rendering work in meters with +y UP.
 
@@ -59,6 +59,13 @@ export const TUNING = {
   ringCash: 150, ringNitro: 0.25, coinCash: 20, balloonCash: 200, blimpCash: 500,
   orbitAlt: 45, orbitCash: 5,
   kickMinSpeed: 6, kickerBonus: 0.5,
+  // ---- v3 (Spell Jump) ----
+  letterCash: 40, letterNitro: 0.25, wordCash: 200, // per letter ring / all letters in order (x coinMult, into cash.air)
+  letterR: 2.5, // letter ring hit radius (m), a little bigger than a plain ring
+  letterGapMax: 11, letterGapMin: 4, letterStart: 10, // arc-length spacing / first ring (m past the lip)
+  letterClear: 4.5, // plain air targets this close to a letter ring are removed (no clutter between letters)
+  letterFitSteps: 4, // the letter arc is refitted to the real flight this many steps after the lip
+  letterGlide: 0.35, // s (real time): rings glide from the preview arc onto the fitted one
 };
 const T = TUNING;
 // Screen-space popup lanes (fractions of the view height). The HUD's banners and toasts own the band
@@ -71,7 +78,7 @@ const FW_COLS = [['#ff4d6d', '#ffd1dc'], ['#4dd2ff', '#e0f8ff'], ['#ffd23f', '#f
 
 export function createGame(canvas, opts = {}) {
   const M = globalThis.Matter;
-  if (!M) throw new Error('Ramp Rage engine: global Matter (vendor/matter.min.js) is not loaded');
+  if (!M) throw new Error('Spell Jump engine: global Matter (vendor/matter.min.js) is not loaded');
   const { Engine, Bodies, Body, Composite, Constraint, Events, Vertices } = M;
   const emitTo = typeof opts.onEvent === 'function' ? opts.onEvent : () => {};
   const reducedMotion = !!opts.reducedMotion;
@@ -326,6 +333,119 @@ export function createGame(canvas, opts = {}) {
   }
 
   // ---------- run lifecycle ----------
+  // v3 start() args: a 0..max scale (default 1), and the word's letters (array, or a string split into chars)
+  function scaleArg(v, max) {
+    const n = Number(v);
+    return v == null || v === '' || !Number.isFinite(n) ? 1 : clamp(n, 0, max);
+  }
+  function lettersArg(v) {
+    const a = typeof v === 'string' ? [...v] : Array.isArray(v) ? v : [];
+    return a.map((c) => String(c == null ? '' : c)).filter((c) => c.length > 0);
+  }
+
+  // v3: let the suspension settle at the ramp top before the first frame, then hold that pose (a static
+  // brake, see holdParked) until the first GAS/NITRO input, so a parked car never creeps.
+  function settleParked(r) {
+    for (let i = 0; i < 90 * SUBSTEPS; i++) {
+      Engine.update(r.engine, STEP_MS / SUBSTEPS);
+      for (const b of r.parts) { const v = Body.getVelocity(b); Body.setVelocity(b, { x: 0, y: v.y }); }
+    }
+    for (const b of r.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); }
+    r.parkPose = r.parts.map((b) => ({ x: b.position.x, y: b.position.y, a: b.angle }));
+    measure(r);
+  }
+  function holdParked(r) {
+    const P = r.parkPose;
+    for (let i = 0; i < r.parts.length; i++) {
+      const b = r.parts[i];
+      Body.setPosition(b, { x: P[i].x, y: P[i].y });
+      Body.setAngle(b, P[i].a);
+      Body.setVelocity(b, { x: 0, y: 0 });
+      Body.setAngularVelocity(b, 0);
+    }
+  }
+
+  // v3: rough GAS-only launch speed for the current power (1-D model down the ramp profile, calibrated
+  // against the real ramp run: ~0.89 of the frictionless estimate). Only used to preview the letter rings
+  // before the jump; at the lip they are refitted to the real flight.
+  function predictLaunch(r) {
+    const st = r.stats, c = r.course;
+    const pw = st.power * r.powerScale;
+    const vTop = T.vTopBase * Math.pow(pw, T.vTopExp);
+    const g = 9.81 * r.gMul, gripF = Math.min(1, clamp(st.grip * r.trackGrip, 0.4, 2));
+    let x = r.com.x, v = 0;
+    const h = 1 / 60;
+    for (let i = 0; i < 60 * 90 && x < 0; i++) {
+      const sl = c.rampSlope(x), cs = 1 / Math.hypot(1, sl);
+      let a = -g * sl * cs + T.rampDrive * pw * Math.max(0, 1 - Math.pow(v / Math.max(0.01, vTop), 8)) * gripF - T.airDrag * v * v;
+      if (v > vTop) a -= T.limiterK * (v - vTop);
+      v = Math.max(0, v + a * h);
+      x += v * cs * h;
+      if (v === 0 && i > 30) break;
+    }
+    return v * 0.89 * (1 + T.launchKick * st.launchBoost * r.powerScale);
+  }
+
+  // v3 letter rings: one ring per letter, in order, along the jump's flight arc (arc-length spacing
+  // letterGapMin..letterGapMax m, starting letterStart m past the lip). `from` = {x, y, vx, vy} of the
+  // real flight (refit at the lip), or null for the preview arc from predictLaunch.
+  function layoutLetters(r, from) {
+    const N = r.letters.length;
+    if (!N) return;
+    const c = r.course;
+    let s0 = from;
+    if (!s0) {
+      const v = predictLaunch(r), ang = (13.8 * Math.PI) / 180;
+      s0 = { x: 0.2, y: c.lipY + r.restAlt, vx: v * Math.cos(ang), vy: v * Math.sin(ang) };
+    }
+    // the same integrator as the flight (gravity + quadratic air drag), until the car is back down
+    const g = 9.81 * r.gMul, h = 1 / 60;
+    const pts = [];
+    let x = s0.x, y = s0.y, vx = s0.vx, vy = s0.vy, s = 0;
+    for (let i = 0; i < 60 * 40; i++) {
+      pts.push({ x, y, s });
+      if (i > 10 && vy < 0 && y - c.surfaceY(x) < r.restAlt + 0.2) break;
+      const sp = Math.hypot(vx, vy), k = T.airDrag * sp;
+      vx -= k * vx * h; vy -= (g + k * vy) * h;
+      const nx = x + vx * h, ny = y + vy * h;
+      s += Math.hypot(nx - x, ny - y);
+      x = nx; y = ny;
+    }
+    // usable stretch: rings stay clear of the ground (and of the lip)
+    const R = T.letterR;
+    let sB = 0;
+    for (const p of pts) if (p.y - c.surfaceY(p.x) >= R + 1.2) sB = p.s;
+    let sA = Math.min(T.letterStart, sB * 0.15);
+    let d = N > 1 ? Math.min(T.letterGapMax, (sB - sA) / (N - 1)) : 0;
+    if (N > 1 && d < T.letterGapMin) { d = T.letterGapMin; sA = Math.max(4, sB - d * (N - 1)); }
+    const at = (sv) => {
+      let lo = 0, hi = pts.length - 1;
+      if (sv >= pts[hi].s) { const p = pts[hi], q = pts[Math.max(0, hi - 1)], k = (sv - p.s) / Math.max(1e-6, p.s - q.s); return { x: p.x + (p.x - q.x) * k, y: p.y + (p.y - q.y) * k }; }
+      while (hi - lo > 1) { const m = (lo + hi) >> 1; if (pts[m].s <= sv) lo = m; else hi = m; }
+      const p = pts[lo], q = pts[hi], k = (sv - p.s) / Math.max(1e-6, q.s - p.s);
+      return { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k };
+    };
+    const old = r.air.filter((a) => a.li != null);
+    const keep = r.air.filter((a) => a.li == null);
+    const rings = [];
+    for (let i = 0; i < N; i++) {
+      const p = at(sA + d * i);
+      const o = old[i];
+      const a = o || { id: 10000 + i, kind: 'ring', li: i, letter: r.letters[i], r: R, hit: false, hitT: 0, ox: 0, oy: 0, vx: 0, vy: 0, rot: 0, spin: 0, gx: 0, gy: 0, glideT: -9 };
+      if (o && from) { a.gx = o.x - p.x; a.gy = o.y - p.y; a.glideT = r.realT; }
+      a.x = p.x; a.y = p.y;
+      rings.push(a);
+    }
+    // no plain ring/coin/balloon sitting among the letters (a stray gold ring between F and R would read
+    // as a missing letter); targets already hit are left alone
+    for (const a of keep) {
+      if (a.kind === 'blimp' || a.hit) continue;
+      a.gone = rings.some((l) => Math.hypot(a.x - l.x, a.y - l.y) < T.letterClear + (a.r || 0));
+    }
+    r.air = keep.concat(rings).sort((a, b) => a.x - b.x);
+    r.airLo = 0;
+  }
+
   function start(cfg = {}) {
     const { car, stats, track } = cfg;
     if (!car || !stats || !track) throw new Error('game.start needs { car, stats, track, seed }');
@@ -369,8 +489,12 @@ export function createGame(canvas, opts = {}) {
       fireworks: [], slowScale: 1, slowmoDur: T.slowmoDur, px: 0, py: 0, camFin: 0,
       speedLines: Array.from({ length: 26 }, () => ({ x: Math.random(), y: Math.random(), len: 0.5 + Math.random(), w: 1 + Math.random() * 2 })),
       dustColor: shade(track.theme.ground, luminance(track.theme.ground) > 0.8 ? -0.08 : 0.18),
+      // v3 (Spell Jump): launch power from the spelling result, letter rings, parked start
+      powerScale: scaleArg(cfg.powerScale, 1.25), nitroScale: scaleArg(cfg.nitroScale, 1.5),
+      letters: lettersArg(cfg.letters), letterHit: [], lettersCollected: 0, wordDone: false, letterFitIn: 0,
+      parked: true, parkPose: null,
     };
-    r.nitroFuel = r.nitroTank;
+    r.nitroFuel = r.nitroTank * r.nitroScale; // the tank can start above 100% (the bar clamps at full)
     // ramp bodies
     const rp = course.rampPts;
     r.rampBodies = [];
@@ -384,10 +508,12 @@ export function createGame(canvas, opts = {}) {
     buildCar(r);
     measure(r);
     r.restAlt = r.com.y - course.topY;
+    settleParked(r);
     r.px = r.com.x; r.py = r.com.y;
     shakeMul = cfg.shake == null ? 1 : clamp(Number(cfg.shake) || 0, 0, 1);
     r.prevAngle = r.chassis.angle;
     manageChunks(r);
+    layoutLetters(r, null);
     Events.on(engine, 'collisionStart', (e) => onPairs(r, e.pairs, true));
     Events.on(engine, 'collisionActive', (e) => onPairs(r, e.pairs, false));
     input = { gas: false, brake: false, nitro: false };
@@ -692,6 +818,7 @@ export function createGame(canvas, opts = {}) {
     r.contacts.fill(false);
     r.touchTerrain = false; r.touchRamp = false; r.nrm = null;
     for (let i = 0; i < SUBSTEPS; i++) Engine.update(r.engine, (STEP_MS * ts) / SUBSTEPS);
+    if (r.parked) holdParked(r); // v3: static brake at the ramp top until the first GAS/NITRO
     // deferred world changes
     bumpStops(r);
     measure(r);
@@ -749,6 +876,8 @@ export function createGame(canvas, opts = {}) {
 
   function controls(r, dt) {
     const st = r.stats;
+    if (r.parked && (input.gas || input.nitro)) r.parked = false;
+    const power = st.power * r.powerScale; // v3: launch power from the spelling result scales the drive
     const gripF = clamp(st.grip * r.trackGrip, 0.4, 2);
     const fx = Math.cos(r.ang), fy = Math.sin(r.ang);
     let wheelsDown = r.wheelsDown > 0;
@@ -773,10 +902,10 @@ export function createGame(canvas, opts = {}) {
       if (input.gas) {
         let a;
         if (r.phase === 'ramp') {
-          const vTop = T.vTopBase * Math.pow(st.power, T.vTopExp);
-          a = T.rampDrive * st.power * Math.max(0, 1 - Math.pow(v / vTop, 8));
+          const vTop = T.vTopBase * Math.pow(power, T.vTopExp);
+          a = vTop > 0 ? T.rampDrive * power * Math.max(0, 1 - Math.pow(v / vTop, 8)) : 0;
         } else {
-          a = T.groundDrive * st.power * Math.exp(-r.groundT / T.groundFade);
+          a = T.groundDrive * power * Math.exp(-r.groundT / T.groundFade);
         }
         a *= Math.min(1, gripF);
         addVelAll(r, fx * a * dt, fy * a * dt);
@@ -828,7 +957,7 @@ export function createGame(canvas, opts = {}) {
     if (sp > 0.01) {
       let dec = T.airDrag * sp * sp;
       if (r.phase === 'ramp' && wheelsDown) {
-        const vTop = T.vTopBase * Math.pow(st.power, T.vTopExp);
+        const vTop = T.vTopBase * Math.pow(power, T.vTopExp);
         if (sp > vTop) dec += T.limiterK * (sp - vTop);
       }
       if (r.phase === 'ground') {
@@ -999,6 +1128,7 @@ export function createGame(canvas, opts = {}) {
     if (r.phase === 'ramp') {
       if (r.com.x > 0) launch(r);
     } else if (r.phase === 'air') {
+      if (r.letterFitIn > 0 && --r.letterFitIn === 0) layoutLetters(r, { x: r.com.x, y: r.com.y, vx: r.com.vx, vy: r.com.vy });
       r.airTime += dt;
       r.totalAir += dt;
       r.flightRot += r.chassis.angle - r.prevAngle;
@@ -1115,7 +1245,7 @@ export function createGame(canvas, opts = {}) {
     for (let i = r.airLo; i < A.length; i++) {
       const a = A[i];
       if (a.x > hi) break;
-      if (a.hit) continue;
+      if (a.hit || a.gone) continue;
       let hit;
       if (a.kind === 'blimp') {
         const dx = (x - a.x) / (a.r + 1.2), dy = (y - a.y) / (a.rh + 1.2);
@@ -1129,7 +1259,41 @@ export function createGame(canvas, opts = {}) {
         const rad = a.kind === 'ring' ? a.r : a.kind === 'coin' ? a.r + 1.35 : a.r + 1.5;
         hit = d < rad;
       }
-      if (hit) hitAir(r, a);
+      if (hit) { if (a.li != null) hitLetter(r, a); else hitAir(r, a); }
+    }
+  }
+  // refill a fraction of the tank, capped at full, but never taking away a >100% start (nitroScale)
+  function refillNitro(r, frac) {
+    r.nitroFuel = Math.max(r.nitroFuel, Math.min(r.nitroTank, r.nitroFuel + r.nitroTank * frac));
+  }
+  // v3: a letter ring. Not an airTarget (no event, not in summary.rings/airTargets/rating); pays into cash.air.
+  function hitLetter(r, a) {
+    a.hit = true;
+    a.hitT = r.realT;
+    const m = r.stats.coinMult, N = r.letters.length, i = a.li;
+    let inOrder = true;
+    for (let j = 0; j < i; j++) if (!r.letterHit[j]) inOrder = false;
+    r.letterHit[i] = true;
+    r.lettersCollected++;
+    r.airRaw += T.letterCash;
+    refillNitro(r, T.letterNitro);
+    const cash = Math.round(T.letterCash * m);
+    emit({ type: 'letterRing', letter: a.letter, index: i, inOrder, cash, nitroRefill: T.letterNitro });
+    for (let k = 0; k < 16; k++) {
+      const ang = (k / 16) * TAU;
+      particle(r, 'spark', a.x + Math.cos(ang) * a.r * 0.8, a.y + Math.sin(ang) * a.r, Math.cos(ang) * 5 + r.com.vx * 0.3, Math.sin(ang) * 6,
+        0.09, k % 2 ? '#e9fbff' : '#6ee7ff', 0.55);
+    }
+    popup(r, `+$${cash}`, a.x, a.y + a.r + 0.7, '#ffd23f', 0.8, true);
+    if (i === N - 1 && inOrder) {
+      r.wordDone = true;
+      r.airRaw += T.wordCash;
+      const wc = Math.round(T.wordCash * m);
+      emit({ type: 'wordComplete', cash: wc });
+      // the big "WORD COMPLETE" text is the HUD's (one big text per moment); the engine adds the in-world
+      // cash popup and a confetti burst at the last ring
+      popup(r, `+$${wc}`, a.x + 1.5, a.y + a.r + 2.4, '#7dff6b', 1.05, true, 1.6);
+      confetti(r, a.x, a.y, 50, 3);
     }
   }
   function hitAir(r, a) {
@@ -1139,7 +1303,7 @@ export function createGame(canvas, opts = {}) {
     let raw = 0, refill = 0;
     if (a.kind === 'ring') {
       raw = T.ringCash; refill = T.ringNitro; r.rings++;
-      r.nitroFuel = Math.min(r.nitroTank, r.nitroFuel + r.nitroTank * T.ringNitro);
+      refillNitro(r, T.ringNitro);
       for (let k = 0; k < 14; k++) {
         const ang = (k / 14) * TAU;
         particle(r, 'spark', a.x + Math.cos(ang) * 0.6, a.y + Math.sin(ang) * a.r, Math.cos(ang) * 4 + r.com.vx * 0.3, Math.sin(ang) * 6,
@@ -1196,12 +1360,13 @@ export function createGame(canvas, opts = {}) {
 
   function launch(r) {
     beginFlight(r);
-    const k = 1 + T.launchKick * r.stats.launchBoost;
+    const k = 1 + T.launchKick * r.stats.launchBoost * r.powerScale;
     addVelAll(r, r.com.vx * (k - 1), r.com.vy * (k - 1));
     measure(r);
     r.launched = true;
     r.flightKind = 'jump';
     r.launchKmh = r.speed * 3.6;
+    if (r.letters.length) r.letterFitIn = T.letterFitSteps; // refit the letter arc once clear of the lip
     emit({ type: 'launch', speedKmh: Math.round(r.launchKmh) });
     for (let k2 = 0; k2 < 10; k2++) {
       particle(r, 'dust', r.com.x - 2 + Math.random() * 2, r.course.rampY(0) - 0.2, -2 + Math.random() * 4, Math.random() * 2,
@@ -1351,6 +1516,8 @@ export function createGame(canvas, opts = {}) {
       coins: r.coins,
       airTargets: r.airHits,
       rejumps: r.rejumps,
+      // v3
+      letters: { collected: r.lettersCollected, total: r.letters.length, inOrder: r.wordDone },
     };
     summary.ratingScore = ratingScore({ ...summary, cleanFlips: r.cleanFlips }, r.course.finish);
     summary.rating = ratingLetter(summary.ratingScore);
@@ -1504,6 +1671,17 @@ export function createGame(canvas, opts = {}) {
   }
 
   // ---------- rendering ----------
+  // v3 letter rings: drawn position (glides from the preview arc onto the refitted one), next letter to get
+  function letterPos(a, t) {
+    if (!(a.gx || a.gy)) return a;
+    const u = 1 - smoothstep(0, T.letterGlide, t - a.glideT);
+    if (u <= 0) { a.gx = 0; a.gy = 0; return a; }
+    return { ...a, x: a.x + a.gx * u, y: a.y + a.gy * u };
+  }
+  function nextLetter(r) {
+    for (let i = 0; i < r.letters.length; i++) if (!r.letterHit[i]) return i;
+    return -1;
+  }
   function render() {
     const { W, H, dpr } = view;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1578,11 +1756,14 @@ export function createGame(canvas, opts = {}) {
         const a = A[i];
         if (a.kind === 'blimp') {
           const k = a.hit ? clamp((t - a.hitT) / 3, 0, 1) : 0;
-          if (k < 1 && airVis({ x: a.x + a.ox, y: a.y + a.oy }, a.r + 3)) R.drawBlimp(ctx, a, lw, t, k, 'RAMP RAGE');
+          if (k < 1 && airVis({ x: a.x + a.ox, y: a.y + a.oy }, a.r + 3)) R.drawBlimp(ctx, a, lw, t, k, 'SPELL JUMP');
           continue;
         }
-        if (!airVis(a, 4)) continue;
-        if (a.kind === 'ring') {
+        if (a.gone || !airVis(a, 4)) continue;
+        if (a.li != null) {
+          const k = a.hit ? clamp((t - a.hitT) / 0.55, 0, 1) : 0;
+          if (k < 1) R.drawLetterRing(ctx, letterPos(a, t), t, 'back', lw, k, a.li === nextLetter(r));
+        } else if (a.kind === 'ring') {
           const k = a.hit ? clamp((t - a.hitT) / 0.45, 0, 1) : 0;
           if (k < 1) R.drawRing(ctx, a, t, 'back', lw, k);
         } else if (a.hit) continue;
@@ -1592,7 +1773,12 @@ export function createGame(canvas, opts = {}) {
       drawCar(r, lw);
       for (let i = 0; i < A.length; i++) {
         const a = A[i];
-        if (a.kind !== 'ring' || !airVis(a, 4)) continue;
+        if (a.kind !== 'ring' || a.gone || !airVis(a, 4)) continue;
+        if (a.li != null) {
+          const k = a.hit ? clamp((t - a.hitT) / 0.55, 0, 1) : 0;
+          if (k < 1) R.drawLetterRing(ctx, letterPos(a, t), t, 'front', lw, k, a.li === nextLetter(r));
+          continue;
+        }
         const k = a.hit ? clamp((t - a.hitT) / 0.45, 0, 1) : 0;
         if (k < 1) R.drawRing(ctx, a, t, 'front', lw, k);
       }
@@ -1704,13 +1890,13 @@ export function createGame(canvas, opts = {}) {
     const r = run;
     if (!r) {
       return { phase: 'done', distance: 0, speedKmh: 0, nitro: 0, airTime: 0, flips: 0, smashed: 0, cash: 0, finishCrossed: false, landing: null,
-        altitude: 0, combo: { count: 0, mult: 1, timer01: 0 }, rejumps: 0 };
+        altitude: 0, combo: { count: 0, mult: 1, timer01: 0 }, rejumps: 0, letters: { collected: 0, total: 0 } };
     }
     return {
       phase: r.phase,
       distance: Math.round(r.distance * 10) / 10,
       speedKmh: Math.round(r.speed * 3.6),
-      nitro: r.nitroTank > 0 ? r.nitroFuel / r.nitroTank : 0,
+      nitro: r.nitroTank > 0 ? clamp(r.nitroFuel / r.nitroTank, 0, 1) : 0,
       airTime: Math.round(r.airTime * 100) / 100,
       flips: r.flips,
       smashed: r.smashed,
@@ -1721,6 +1907,8 @@ export function createGame(canvas, opts = {}) {
       altitude: Math.round(r.alt * 10) / 10,
       combo: { count: r.combo.count, mult: r.combo.mult, timer01: r.combo.count ? clamp(r.combo.timer / T.comboWindow, 0, 1) : 0 },
       rejumps: r.rejumps,
+      // v3
+      letters: { collected: r.lettersCollected, total: r.letters.length },
     };
   }
 
@@ -1732,6 +1920,19 @@ export function createGame(canvas, opts = {}) {
         brake: next.brake !== undefined ? !!next.brake : input.brake,
         nitro: next.nitro !== undefined ? !!next.nitro : input.nitro,
       };
+    },
+    // v3: the spelling result decides the launch power after start() (the scene shows behind the panel)
+    setLaunchPower(powerScale, nitroScale) {
+      const r = run;
+      if (!r || r.phase !== 'ramp' || !r.parked || r.started || r.speed >= 0.5) {
+        console.warn('[engine] setLaunchPower ignored: only allowed while the car is parked at the ramp top');
+        return false;
+      }
+      r.powerScale = scaleArg(powerScale, 1.25);
+      r.nitroScale = scaleArg(nitroScale, 1.5);
+      r.nitroFuel = r.nitroTank * r.nitroScale;
+      layoutLetters(r, null); // the preview arc follows the new power
+      return true;
     },
     pause() { paused = true; },
     resume() { paused = false; last = performance.now(); acc = 0; },
@@ -1764,6 +1965,9 @@ export function createGame(canvas, opts = {}) {
         debris: r.debris.length, particles: r.particles.length, props: r.props.length, chunks: r.chunks.size, endReason: r.endReason, launchKmh: r.launchKmh, wd: r.wheelsDown, cd: r.chassisDown,
         timeScale: r.timeScale, lastLand: r.lastLand || null, cam: { ...cam }, perf: { ...perf },
         letterbox: r.letterbox, popups: r.popups.map((p) => ({ text: p.text, slot: p.slot, world: p.world, t: p.t, life: p.life, x: p.x, y: p.y, scale: p.scale })),
+        letterRings: r.air.filter((a) => a.li != null).map((a) => ({ letter: a.letter, i: a.li, x: a.x, y: a.y, hit: a.hit })),
+        goneTargets: r.air.filter((a) => a.gone).length,
+        powerScale: r.powerScale, nitroScale: r.nitroScale, parked: r.parked, nitroFuel: r.nitroFuel, nitroTank: r.nitroTank,
         view: { W: view.W, H: view.H }, carHalf: Math.max(r.geom.maxX - r.geom.minX, r.geom.maxY - r.geom.minY) / 2 * Math.pow(clamp(10 / cam.z, 1, 3), 0.85) };
     },
   };

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>Ramp Rage Engine Harness</title>
+<title>Spell Jump Engine Harness</title>
 <style>
   :root { --panel: rgba(20,18,30,0.78); --fg: #f4f1ff; --accent: #ffd23f; --btn: rgba(255,255,255,0.18); }
   html, body { margin: 0; height: 100%; background: #111; color: var(--fg); overflow: hidden;
@@ -16,6 +16,8 @@
   #panel label { display: flex; justify-content: space-between; align-items: center; gap: 6px; margin: 3px 0; }
   #panel select, #panel input[type=number] { font-size: 12px; max-width: 120px; }
   #panel input[type=range] { width: 100px; }
+  #panel input[type=text] { font-size: 12px; width: 110px; }
+  #panel hr { border: 0; border-top: 1px solid rgba(255,255,255,0.2); margin: 6px 0; }
   #panel button, #results button { font: 700 12px system-ui; padding: 5px 10px; border-radius: 6px; border: 0;
     background: var(--accent); color: #222; margin-top: 4px; }
   #toggle { background: #444 !important; color: #fff !important; margin: 0 !important; }
@@ -49,7 +51,12 @@
     <label>Nitro <input id="lv-nitro" type="range" min="0" max="10" value="0"><span id="v-nitro">0</span></label>
     <label>Suspension <input id="lv-suspension" type="range" min="0" max="10" value="0"><span id="v-suspension">0</span></label>
     <label>Bonus <input id="lv-bonus" type="range" min="0" max="10" value="0"><span id="v-bonus">0</span></label>
+    <hr>
+    <label>Letters <input id="letters" type="text" placeholder="word (blank = none)" autocomplete="off"></label>
+    <label>Power <input id="power" type="range" min="0" max="1.25" step="0.05" value="1"><span id="v-power">1</span></label>
+    <label>Nitro tank <input id="nitroS" type="range" min="0" max="1.5" step="0.05" value="1"><span id="v-nitroS">1</span></label>
     <button id="startBtn">Start run</button> <button id="stopBtn">Stop</button>
+    <button id="powerBtn" title="game.setLaunchPower(power, nitro tank): only while parked at the ramp top">Set launch power</button>
   </div>
 </div>
 <pre id="state"></pre>
@@ -81,6 +88,15 @@ for (const u of UPS) {
   $('lv-' + u).addEventListener('input', (e) => { $('v-' + u).textContent = e.target.value; });
 }
 $('toggle').onclick = () => $('panel').classList.toggle('collapsed');
+// v3: ?letters=friend&power=0.65&nitro=1.25 (start() values); the panel's "Set launch power" calls
+// game.setLaunchPower(power, nitro) on the parked car (parked-then-powered flow)
+$('letters').value = q.get('letters') || '';
+$('power').value = q.get('power') || '1';
+$('nitroS').value = q.get('nitro') || '1';
+for (const id of ['power', 'nitroS']) {
+  $('v-' + id).textContent = $(id).value;
+  $(id).addEventListener('input', (e) => { $('v-' + id).textContent = e.target.value; });
+}
 if (q.get('panel') === '0') $('panel').classList.add('collapsed');
 
 const rr = (window.__rr = { events: [], finished: null, launch: null, game: null });
@@ -96,7 +112,8 @@ function onEvent(evt) {
       `smashed    ${s.smashed}\nmax speed  ${s.maxSpeedKmh} km/h\nlanding    ${s.landing}\nfinish     ${s.finishCrossed}\n` +
       `cash       dist ${s.cash.distance} + stunts ${s.cash.stunts}\n           + smash ${s.cash.smash} + landing ${s.cash.landing}\n` +
       `           + combo ${s.cash.combo} + air ${s.cash.air}\n           = $${s.cash.total}   rating ${s.rating}\n` +
-      `combo ${s.bestCombo}  booms ${s.explosions}  rings ${s.rings}  coins ${s.coins}  kickers ${s.rejumps}  alt ${s.maxAltitude} m\nduration   ${s.durationSec} s`;
+      `combo ${s.bestCombo}  booms ${s.explosions}  rings ${s.rings}  coins ${s.coins}  kickers ${s.rejumps}  alt ${s.maxAltitude} m\n` +
+      `letters    ${s.letters.collected} / ${s.letters.total}${s.letters.inOrder ? '  WORD COMPLETE' : ''}\nduration   ${s.durationSec} s`;
     $('results').style.display = 'block';
   }
   if (evt.type !== 'speed' || evt.kmh % 50 < 10) {
@@ -117,8 +134,19 @@ function startRun() {
   $('results').style.display = 'none';
   const best = q.get('best') != null ? Number(q.get('best')) : null;
   const shake = q.get('shake') != null ? Number(q.get('shake')) : 1;
-  game.start({ car, stats: resolveStats(car, levels), track, seed: Number($('seed').value) | 0, bestDistance: best, shake });
+  const word = $('letters').value.trim();
+  game.start({ car, stats: resolveStats(car, levels), track, seed: Number($('seed').value) | 0, bestDistance: best, shake,
+    letters: word ? [...word] : null, powerScale: Number($('power').value), nitroScale: Number($('nitroS').value) });
 }
+function setLaunchPower() {
+  const ok = game.setLaunchPower(Number($('power').value), Number($('nitroS').value));
+  logLines.unshift(`setLaunchPower(${$('power').value}, ${$('nitroS').value}) ${ok ? 'applied' : 'IGNORED (car has moved)'}`);
+  logLines.length = Math.min(logLines.length, 10);
+  $('log').textContent = logLines.join('\n');
+  return ok;
+}
+rr.setLaunchPower = setLaunchPower;
+$('powerBtn').onclick = setLaunchPower;
 rr.restart = startRun; // tests: restart + pause in the same task for deterministic stepping
 $('startBtn').onclick = startRun;
 $('retry').onclick = startRun;
@@ -133,8 +161,9 @@ function sync() {
   game.setInput(s);
 }
 const KEYMAP = { ArrowLeft: 'brake', ArrowRight: 'gas', ' ': 'gas', Space: 'gas', Shift: 'nitro', ShiftLeft: 'nitro', ShiftRight: 'nitro' };
-addEventListener('keydown', (e) => { const k = KEYMAP[e.key] || KEYMAP[e.code]; if (k) { keys[k] = true; sync(); e.preventDefault(); } });
-addEventListener('keyup', (e) => { const k = KEYMAP[e.key] || KEYMAP[e.code]; if (k) { keys[k] = false; sync(); e.preventDefault(); } });
+const typing = (e) => e.target && e.target.tagName === 'INPUT' && e.target.type === 'text';
+addEventListener('keydown', (e) => { if (typing(e)) return; const k = KEYMAP[e.key] || KEYMAP[e.code]; if (k) { keys[k] = true; sync(); e.preventDefault(); } });
+addEventListener('keyup', (e) => { if (typing(e)) return; const k = KEYMAP[e.key] || KEYMAP[e.code]; if (k) { keys[k] = false; sync(); e.preventDefault(); } });
 addEventListener('blur', () => { keys.gas = keys.brake = keys.nitro = false; sync(); });
 for (const k of ['gas', 'brake', 'nitro']) {
   const el = $(k);
