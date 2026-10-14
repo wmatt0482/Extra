@@ -11,7 +11,7 @@ export const WORDS_VERSION = 1;
 export const SAMPLE_ID = 'sample';
 export const STREAK_CAP = 10;
 
-export const DEFAULT_OPTIONS = { rate: 'normal', newPerDay: 5, includeReview: true, tileCase: 'lower', wordsPerRace: 2 };
+export const DEFAULT_OPTIONS = { rate: 'normal', newPerDay: 99, includeReview: true, tileCase: 'lower', wordsPerRace: 2 };  // newPerDay 99 = all of this week's words
 export const WORDS_PER_RACE = [1, 2, 3, 4];
 
 function sampleList(now) {

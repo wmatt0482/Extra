@@ -161,6 +161,25 @@ test('free play weights box 0 ×4 … box 3 ×1', () => {
   assert.ok(Math.abs(counts.ant / counts.dog - 4) < 0.8, 'about 4:1 ' + JSON.stringify(counts));
 });
 
+test('missed words never crowd out new ones (an all-wrong child still meets new words)', () => {
+  const d = dataWith(['ant', 'bat', 'cat', 'dog', 'elk', 'fox', 'gnu', 'hen', 'ibis', 'jay']);
+  const s = createSession(); const reasons = [];
+  for (let i = 0; i < 12; i++) {
+    const w = nextWord(d, T0 + i * 60000, s, { newPerDay: 99, includeReview: true }, seq(0.5));
+    reasons.push(w.reason); recordSpell(d, w.word, { firstTry: false }, T0 + i * 60000, s);
+  }
+  const distinct = new Set(s.history).size;
+  assert.ok(distinct >= 6, `12 all-wrong picks reached only ${distinct} distinct words`);
+  for (let i = 1; i < reasons.length; i++) assert.ok(!(reasons[i] === 'requeue' && reasons[i - 1] === 'requeue'), 'two re-queues in a row');
+  for (let i = 1; i < s.history.length; i++) assert.notEqual(s.history[i], s.history[i - 1], 'same word twice in a row');
+});
+test('free play draws new words too while the daily cap allows', () => {
+  const d = dataWith(['ant', 'bat', 'cat', 'dog', 'elk', 'fox', 'gnu', 'hen', 'ibis', 'jay', 'kiwi', 'lark']);
+  const s = createSession();
+  for (let i = 0; i < 20; i++) { const w = nextWord(d, T0 + i * 60000, s, { newPerDay: 99 }, Math.random); recordSpell(d, w.word, { firstTry: true }, T0 + i * 60000, s); }
+  assert.ok(new Set(s.history).size >= 10, `20 picks reached ${new Set(s.history).size} of 12 words`);
+});
+
 console.log('scheduler: archived review at 2 and 4 weeks');
 test('archived words are due for review at +14 d and +28 d, then never', () => {
   const d = dataWith(['ant', 'bat']);

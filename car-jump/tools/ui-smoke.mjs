@@ -505,19 +505,22 @@ async function runLayout(browser, layout) {
   const pw3 = await J(page, (n) => window.__power.length === n + 1 && window.__power.at(-1), powerCount);
   check(pw3 && pw3[0] === 0.65, `go anyway: setLaunchPower(${pw3})`);
   await driveToResults(page, { end: true });
+  // a missed word comes back after at least 2 other words and within a few picks (re-queues never run
+  // back to back, so other pending words can take a turn first)
   const seen = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 6; i++) {
     await page.click('#res-retry');
     await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
     const w = await J(page, () => window.__spellJump.spellPanel.word);
     seen.push(w);
-    if (i === 2) break;
+    if (w === w3 || i === 5) break;
     if (await panelMode(page) === 'look') await waitMode(page, 'write', 9000);
     await tapKeys(page, '#sp-keyboard', w);
     await page.tap('#sp-keyboard [data-key="enter"]');
     await driveToResults(page, { end: true });
   }
-  check(seen[0] !== w3 && seen[1] !== w3 && seen[2] === w3, `re-queue: after "${w3}" came ${seen.slice(0, 2).join(', ')}, then "${seen[2]}" again`);
+  const back = seen.indexOf(w3);
+  check(back >= 2 && back <= 5, `re-queue: after "${w3}" came ${seen.join(', ')} (back at position ${back + 1})`);
   // leave this run from the panel (back button): nothing is recorded
   const cnt = (await readWords(page)).today.count;
   await page.click('#spell .sp-exit');

@@ -188,6 +188,8 @@ function weightedPick(words, recs, rand) {
  * Never the same word twice in a row while more than one word exists; a missed word comes back once
  * at least 2 other words were spelled after it.
  */
+export const REQUEUE_MAX = 2;                         // a word is re-queued at most this many times per session
+
 export function pickNext(data, now, session, opts = {}, rand = Math.random) {
   const recs = data.records || {};
   const active = (data.lists || []).find((l) => l.id === data.activeId);
@@ -195,8 +197,21 @@ export function pickNext(data, now, session, opts = {}, rand = Math.random) {
   const last = session.history[session.history.length - 1];
   // a re-queued word only comes back while it still belongs to a list (a parent may have replaced the list)
   session.pending = session.pending.filter((p) => recs[p.word]);
-  const ready = pendingReady(session).filter((p) => p.word !== last);
-  if (ready.length) return { word: ready[0].word, reason: 'requeue' };
+  // Re-queued words never take two picks in a row and never more than REQUEUE_MAX times each, so a child who
+  // misses the first few words still gets new words between the repeats instead of looping on the misses.
+  const ready = pendingReady(session).filter((p) => p.word !== last && (p.times || 0) < REQUEUE_MAX);
+  if (ready.length && session.lastReason !== 'requeue') {
+    ready[0].times = (ready[0].times || 0) + 1;
+    session.lastReason = 'requeue';
+    return { word: ready[0].word, reason: 'requeue' };
+  }
+  const r = pickFresh(data, now, session, opts, rand, recs, activeWords, last);
+  session.lastReason = r ? r.reason : null;
+  return r;
+}
+
+function pickFresh(data, now, session, opts, rand, recs, activeWords, last) {
+  session.pending = session.pending.filter((p) => (p.times || 0) < REQUEUE_MAX);
   const waiting = new Set(session.pending.map((p) => p.word));
   const exclude = new Set([...waiting, last].filter(Boolean));
 
@@ -220,10 +235,9 @@ export function pickNext(data, now, session, opts = {}, rand = Math.random) {
     }
     if (archived.length) return { word: archived[Math.floor(rand() * archived.length) % archived.length], reason: 'review' };
   }
-  let pool = activeWords.filter((w) => !exclude.has(w) && !isNew(recs[w]));
-  // new words only while today's cap allows (R5)
+  // seen words plus, while today's cap allows (R5), the new ones (a new word weighs like a box-0 word)
   const newLeft = (opts.newPerDay == null ? 5 : opts.newPerDay) - (opts.newToday || 0);
-  if (!pool.length && newLeft > 0) pool = activeWords.filter((w) => !exclude.has(w) && isNew(recs[w]));
+  let pool = activeWords.filter((w) => !exclude.has(w) && (!isNew(recs[w]) || newLeft > 0));
   if (!pool.length) pool = activeWords.filter((w) => !exclude.has(w) && !isNew(recs[w]));
   if (!pool.length) pool = activeWords.filter((w) => w !== last);
   if (!pool.length) pool = activeWords.slice();

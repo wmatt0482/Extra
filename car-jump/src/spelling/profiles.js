@@ -67,7 +67,7 @@ function cleanOptions(o) {
   // because voice objects differ per device; tts.js falls back to the ranked default when the name is absent.
   d.voiceName = typeof o.voiceName === 'string' ? o.voiceName.slice(0, 120) : '';
   d.voiceLang = d.voiceName && typeof o.voiceLang === 'string' && /^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(o.voiceLang) ? o.voiceLang : '';
-  if ([3, 5, 8].includes(o.newPerDay)) d.newPerDay = o.newPerDay;
+  if ([3, 5, 8, 99].includes(o.newPerDay)) d.newPerDay = o.newPerDay;
   if (typeof o.includeReview === 'boolean') d.includeReview = o.includeReview;
   if (o.tileCase === 'lower' || o.tileCase === 'upper') d.tileCase = o.tileCase;
   if ([1, 2, 3, 4].includes(o.wordsPerRace)) d.wordsPerRace = o.wordsPerRace;

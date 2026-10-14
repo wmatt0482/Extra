@@ -436,7 +436,7 @@ export function createParentZone(app) {
       segmented('Speech rate', 'How fast words are read aloud', [['veryslow', 'Very slow'], ['slow', 'Slow'], ['normal', 'Normal']], o.rate, (v) => set('rate', v), 'opt-rate'),
       ...voicePicker(p, o, set),
       segmented('Words before each race', 'Spelled back to back before the car launches; more right on the first try = more power', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], o.wordsPerRace, (v) => set('wordsPerRace', v), 'opt-race-words'),
-      segmented('New words per day', 'Most kids do best with a few at a time', [[3, '3'], [5, '5'], [8, '8']], o.newPerDay, (v) => set('newPerDay', v), 'opt-new'),
+      segmented('New words per day', 'All of this week\'s words by default. Pick a smaller number for a child who is overwhelmed', [[3, '3'], [5, '5'], [8, '8'], [99, 'All']], o.newPerDay, (v) => set('newPerDay', v), 'opt-new'),
       toggle('Past-list review words', 'Old lists come back 2 and 4 weeks later', o.includeReview, (v) => set('includeReview', v), 'opt-review'),
       segmented('Letter tiles', 'How letters look on the tiles and keys', [['lower', 'abc'], ['upper', 'ABC']], o.tileCase, (v) => set('tileCase', v), 'opt-case'),
       h('div', { class: 'hud-label pz-sec' }, 'GAME'),
