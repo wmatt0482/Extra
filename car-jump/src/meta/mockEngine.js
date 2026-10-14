@@ -414,7 +414,7 @@ export function createGame(canvas, opts = {}) {
         phase: r.phase, distance: Math.max(0, r.distance), speedKmh: r.speedKmh, nitro: r.nitro, airTime: r.flightT,
         flips: r.flips, smashed: r.smashed, cash: cashParts(r).total, finishCrossed: r.finishCrossed, landing: r.landing,
         altitude: r.phase === 'air' ? r.altitude : 0, combo: { count: c.count, mult: c.mult, timer01 }, rejumps: r.rejumps,
-        letters: { collected: r.lettersCollected, total: r.letters.length },
+        letters: { collected: r.lettersCollected, total: r.launched ? r.letters.length : 0 },   // R1: nothing before launch
       };
     },
   };

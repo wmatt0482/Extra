@@ -145,7 +145,6 @@ export function createResults(app) {
     const totalTd = h('td', {});
     el.pay.append(h('tr', { class: 'total', 'data-pay': 'total' }, h('td', { class: 'display' }, 'Run total', ' ', h('span', { class: 'hint' }, `incl. ×${mult.toFixed(2)}`)), totalTd));
     countUp(totalTd, Math.round(c.total || 0));
-    for (const g of r.goals) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'goal' }, h('td', {}, 'Goal ', h('span', { class: 'hint' }, g.text)), h('td', { 'data-value': String(g.reward) }, '+$' + money(g.reward))));
     if (r.spell) {
       const sp = r.spell;
       const how = sp.firstTry ? 'first try' : sp.fixed ? 'fixed it' : 'comes back soon';
@@ -155,6 +154,8 @@ export function createResults(app) {
     }
     if (r.missionReward) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'mission' }, h('td', {}, 'Mission ', h('span', { class: 'hint' }, '8 words today')), h('td', { 'data-value': String(r.missionReward) }, '+$' + money(r.missionReward))));
     if (r.mega) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'friday' }, h('td', {}, 'Friday Test ', h('span', { class: 'hint' }, `${r.mega.correct}/${r.mega.total} words · power ${Math.round((0.6 + 0.4 * r.mega.score) * 100)}%`)), h('td', { 'data-value': String(r.mega.paid || 0) }, '+$' + money(r.mega.paid || 0))));
+    // goals last: the spelling rows (the learning reward) sit right under the run total, above the fold
+    for (const g of r.goals) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'goal' }, h('td', {}, 'Goal ', h('span', { class: 'hint' }, g.text)), h('td', { 'data-value': String(g.reward) }, '+$' + money(g.reward))));
     if (r.dailyReward) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'daily' }, h('td', {}, 'Daily ', h('span', { class: 'hint' }, 'challenge complete')), h('td', { 'data-value': String(r.dailyReward) }, '+$' + money(r.dailyReward))));
     // a long breakdown (combo + air + goals) tightens so it still fits the card without scrolling
     el.pay.classList.toggle('dense', el.pay.rows.length > 8);

@@ -299,8 +299,8 @@ async function runLayout(browser, layout) {
     window.__spoken = [];
     window.__ttsBackend = {
       speaking: false, pending: false,
-      getVoices: () => [],
-      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
+      getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
       cancel() {}, addEventListener() {},
     };
     document.addEventListener('DOMContentLoaded', () => {

@@ -32,7 +32,7 @@ import { createTitleHero } from './ui/titleHero.js';
 import { createPlayers, drawAvatar } from './ui/players.js';
 import { createParentZone } from './ui/parentZone.js';
 
-const VERSION = '3.0.0';
+const VERSION = '3.0.1';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;
@@ -448,7 +448,7 @@ async function boot() {
     try { if (typeof game.setLaunchPower === 'function') game.setLaunchPower(res.powerScale, res.nitroScale); } catch (e) { console.warn('[SpellJump] setLaunchPower failed', e); }
     r.spelling = false;
     setSpelling(false);
-    hud.word(r.letters);
+    hud.word(null);           // R1: the HUD letter strip appears only once the car is airborne (launch event)
     if (missionReward) { hud.banner('mission', 'Mission complete!'); setTimeout(() => Audio.missionComplete(), 200); }
     if (!save.seen.coach) showCoach();
     else if (!paused) controls.enable(true);
@@ -519,7 +519,10 @@ async function boot() {
   function onEvent(evt) {
     if (!run || !evt) return;
     switch (evt.type) {
-      case 'launch': Audio.whoosh(); hud.banner('launch', `Launch! ${Math.round(evt.speedKmh || 0)} km/h`); break;
+      case 'launch':
+        Audio.whoosh(); hud.banner('launch', `Launch! ${Math.round(evt.speedKmh || 0)} km/h`);
+        if (run.letters.length && !run.lettersShown) { run.lettersShown = true; hud.word(run.letters); }
+        break;
       case 'flip': Audio.flip(); break;
       case 'land':
         Audio.land(evt.quality);
@@ -626,27 +629,43 @@ async function boot() {
     controls.enable(true);
     try { game.resume(); } catch (_) {}
   }
+  // the pause menu's shake slider is a plain element (role="slider"), not a native <input>: the only native
+  // inputs in the app live in the Parent Zone
   const shakeInput = $('#pause-shake');
+  let shakeVal = 100;
+  const shakeOff = () => !!save.settings.reducedMotion;
+  function paintShake(v) {
+    shakeVal = v;
+    shakeInput.setAttribute('aria-valuenow', String(v));
+    shakeInput.style.setProperty('--pct', `${v}%`);
+    shakeInput.style.setProperty('--p', String(v / 100));
+    $('#pause-shake-val').textContent = `${v}%`;
+  }
   function renderPauseToggles() {
     $('#pause-sound').textContent = `Sound: ${save.settings.sound ? 'On' : 'Off'}`;
     $('#pause-music').textContent = `Music: ${save.settings.music ? 'On' : 'Off'}`;
     $('#pause-motion').textContent = `Motion: ${save.settings.reducedMotion ? 'Calm' : 'Full'}`;
-    shakeInput.value = String(save.settings.shake);
-    shakeInput.disabled = save.settings.reducedMotion;
-    shakeInput.style.setProperty('--pct', `${save.settings.shake}%`);
-    $('#pause-shake-val').textContent = `${save.settings.shake}%`;
-    shakeInput.closest('.row').classList.toggle('is-disabled', save.settings.reducedMotion);
+    paintShake(save.settings.shake);
+    shakeInput.setAttribute('aria-disabled', String(shakeOff()));
+    shakeInput.tabIndex = shakeOff() ? -1 : 0;
+    shakeInput.closest('.row').classList.toggle('is-disabled', shakeOff());
   }
-  // native range drags only from the thumb on iOS: map taps/drags anywhere on the track ourselves
+  // taps / drags anywhere on the track, snapped to 5 %
   const shakeFromPointer = (e) => {
     const rect = shakeInput.getBoundingClientRect();
-    const v = Math.round((Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width)) * 100) / 5) * 5;
-    if (String(v) !== shakeInput.value) { shakeInput.value = String(v); setShake(v, false); renderPauseToggles(); }
+    const v = Math.round((Math.max(0, Math.min(1, (e.clientX - rect.left - 15) / Math.max(1, rect.width - 30))) * 100) / 5) * 5;
+    if (v !== shakeVal) { setShake(v, false); renderPauseToggles(); }
   };
-  shakeInput.addEventListener('pointerdown', (e) => { if (shakeInput.disabled) return; e.preventDefault(); shakeInput.setPointerCapture(e.pointerId); shakeFromPointer(e); });
-  shakeInput.addEventListener('pointermove', (e) => { if (shakeInput.hasPointerCapture(e.pointerId)) shakeFromPointer(e); });
-  shakeInput.addEventListener('pointerup', (e) => { if (shakeInput.hasPointerCapture(e.pointerId)) { shakeInput.releasePointerCapture(e.pointerId); setShake(Number(shakeInput.value), true); } });
-  shakeInput.addEventListener('input', () => { setShake(Number(shakeInput.value), false); renderPauseToggles(); });
+  shakeInput.addEventListener('pointerdown', (e) => { if (shakeOff()) return; e.preventDefault(); try { shakeInput.setPointerCapture(e.pointerId); } catch (_) {} shakeFromPointer(e); });
+  shakeInput.addEventListener('pointermove', (e) => { if (shakeInput.hasPointerCapture && shakeInput.hasPointerCapture(e.pointerId)) shakeFromPointer(e); });
+  shakeInput.addEventListener('pointerup', (e) => { if (shakeInput.hasPointerCapture && shakeInput.hasPointerCapture(e.pointerId)) { shakeInput.releasePointerCapture(e.pointerId); setShake(shakeVal, true); } });
+  shakeInput.addEventListener('keydown', (e) => {
+    if (shakeOff()) return;
+    const step = { ArrowLeft: -5, ArrowDown: -5, ArrowRight: 5, ArrowUp: 5, Home: -100, End: 100 }[e.key];
+    if (!step) return;
+    e.preventDefault(); e.stopPropagation();
+    setShake(Math.max(0, Math.min(100, shakeVal + step)), true); renderPauseToggles();
+  });
   $('#btn-pause').addEventListener('click', pause);
   $('#pause-resume').addEventListener('click', resume);
   $('#pause-sound').addEventListener('click', () => setSetting('sound', !save.settings.sound));
@@ -673,7 +692,7 @@ async function boot() {
     if (document.hidden) { pause(); tts.cancel(); Audio.suspend(); app.persist(); app.persistWords(); hero.setMode('off'); } else { Audio.resume(); hero.setMode(heroMode()); }
   });
   // iOS may kill a backgrounded Home Screen app without another event: pause and save on pagehide too
-  window.addEventListener('pagehide', () => { pause(); app.persist(); app.persistWords(); });
+  window.addEventListener('pagehide', () => { pause(); tts.cancel(); app.persist(); app.persistWords(); });
   window.addEventListener('keydown', (e) => {
     if (coaching && (e.code === 'Enter' || e.code === 'Space')) { dismissCoach(e); return; }
     if (e.code === 'Escape' || (e.code === 'KeyP' && run && !run.spelling)) {

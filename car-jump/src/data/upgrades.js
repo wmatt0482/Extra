@@ -14,7 +14,7 @@ export const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 
 // Cost of buying level `level+1` for a given car tier and current level. Tuned with
 // tools/economy-sim.mjs (see README "Economy"). Rounded to friendly price points.
-export const COST = { base: 480, tierMul: 2.15, levelMul: 1.5 };
+export const COST = { base: 480, tierMul: 2.0, levelMul: 1.5 };
 export function upgradeCost(carTier, level) {
   const raw = COST.base * Math.pow(COST.tierMul, carTier - 1) * Math.pow(COST.levelMul, level);
   const step = raw < 1000 ? 10 : raw < 10000 ? 50 : raw < 100000 ? 100 : 500;

@@ -1052,7 +1052,10 @@ function letterSprite(ch, fill) {
 
 // a: { x, y, r, letter }; half 'back' (hoop's far half + glass + letter, under the car) or 'front';
 // k: 0 = live, 0..1 = collected (expands and fades); next: the next letter to collect (pulses)
-export function drawLetterRing(ctx, a, t, half, lw, k, next) {
+// reveal: false (R1, before the car is airborne) draws a '?' instead of the letter. Returns true when a real
+// letter glyph was drawn (the engine counts any drawn while hidden as a leak for the smoke tests).
+export function drawLetterRing(ctx, a, t, half, lw, k, next, reveal = true) {
+  let drew = false;
   const ry = a.r * (1 + k * 0.5), rx = ry * 0.9;
   const band = 0.5;
   const a0 = half === 'back' ? Math.PI / 2 : -Math.PI / 2;
@@ -1090,7 +1093,8 @@ export function drawLetterRing(ctx, a, t, half, lw, k, next) {
   ctx.lineCap = 'butt';
   if (half === 'back' && a.letter != null) {
     try {
-      const sp = letterSprite(String(a.letter), '#ffffff');
+      const sp = reveal ? letterSprite(String(a.letter), '#ffffff') : letterSprite('?', '#9fdcf0');
+      drew = !!reveal;
       const iw = 2 * (rx - band / 2) * 0.9, ih = 2 * (ry - band / 2) * 0.9;
       // glyph + its outline fit the box (tiny glyphs like '-' or "'" are not blown up)
       const s = Math.min(ih / (Math.max(sp.gh, sp.PX * 0.5) + sp.LW), iw / (Math.max(sp.gw, sp.PX * 0.3) + sp.LW)) * (1 + k * 0.6);
@@ -1102,6 +1106,7 @@ export function drawLetterRing(ctx, a, t, half, lw, k, next) {
     } catch (_) { /* no 2D text in this context */ }
   }
   ctx.globalAlpha = 1;
+  return drew;
 }
 
 export function drawCoin(ctx, a, t, lw) {

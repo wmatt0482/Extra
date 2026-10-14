@@ -332,10 +332,44 @@ try {
     const m = await coinMult(page, 'beater', 5);
     await restartPaused(page);
     const st0 = await page.evaluate(() => window.__rr.game.getState().letters);
+    // ---- v3.e (R1): parked at the ramp top, no letter glyph is drawn and nothing about the word is reported ----
+    {
+      await frame(page); await frame(page);
+      const parked = await page.evaluate(() => { const d = window.__rr.game.debugInfo(); return { revealed: d.lettersRevealed, leaks: d.glyphLeaks, phase: d.phase, rings: d.letterRings.length }; });
+      // glyph spy: letter sprites are rasterized with fillText on first use (module cache), and none of this
+      // word's letters has been revealed on this page yet, so any single-letter fillText now is a leak
+      await page.evaluate(() => {
+        const P = CanvasRenderingContext2D.prototype, f0 = P.fillText, s0 = P.strokeText;
+        window.__glyphs = [];
+        P.fillText = function (t, ...a) { if (String(t).length <= 2) window.__glyphs.push(String(t)); return f0.call(this, t, ...a); };
+        P.strokeText = function (t, ...a) { if (String(t).length <= 2) window.__glyphs.push(String(t)); return s0.call(this, t, ...a); };
+      });
+      // drive (GAS) to a few steps short of the lip so the first rings are on screen, still in phase 'ramp'
+      // (the lip is found with a same-length word sharing no letter, since reaching it reveals that word)
+      await setPanel(page, { letters: 'zzzzzz' });
+      await restartPaused(page);
+      const toLip = (await stepUntil(page, 'release', "ev.some((e) => e.type === 'launch')", 0)).steps;
+      await setPanel(page, { letters: word });
+      await restartPaused(page);
+      await page.evaluate(() => { window.__glyphs.length = 0; });
+      await page.evaluate((n) => { const g = window.__rr.game; g.setInput({ gas: true }); g.debugStep(n); g.setInput({ gas: false }); }, toLip - 4);
+      await frame(page); await frame(page); await frame(page);
+      await page.screenshot({ path: path.join(SHOTS, 'v3-lip-hidden-letters.png') });
+      const lip = await page.evaluate(() => { const d = window.__rr.game.debugInfo(); return { phase: d.phase, revealed: d.lettersRevealed, leaks: d.glyphLeaks, onScreen: d.letterRings.filter((l) => Math.abs(l.x - d.cam.x) < 40).length, glyphs: [...new Set(window.__glyphs)] }; });
+      console.log('v3 R1:', JSON.stringify({ ...parked, st0, lip }));
+      check(parked.phase === 'ramp' && parked.rings === word.length && parked.revealed === false && parked.leaks === 0, `(v3.e R1) parked: lettersRevealed false, 0 letter glyphs drawn (${JSON.stringify(parked)})`);
+      check(st0.collected === 0 && st0.total === 0, `(v3.e R1) getState().letters while parked reveals nothing ${JSON.stringify(st0)}`);
+      check(lip.phase === 'ramp' && !lip.revealed && lip.leaks === 0 && lip.onScreen > 0, `(v3.e R1) at the lip (still 'ramp', ${lip.onScreen} letter rings on screen) no letter glyph drawn`);
+      check(!lip.glyphs.some((g) => /[a-z']/i.test(g) && word.includes(g.toLowerCase())), `(v3.e R1) canvas text spy: no letter of the word rasterized before launch (${JSON.stringify(lip.glyphs)})`);
+      await setPanel(page, { letters: word });
+      await restartPaused(page);
+    }
     // (f) screenshots: the letter trail ahead just after the lip, then the car going through a labeled ring
     let p = await stepUntil(page, 'release', "ev.some((e) => e.type === 'launch')", 40);
     await frame(page);
     await page.screenshot({ path: path.join(SHOTS, 'v3-letters-ahead.png') });
+    const air0 = await page.evaluate(() => ({ d: window.__rr.game.debugInfo(), l: window.__rr.game.getState().letters }));
+    check(air0.d.lettersRevealed === true && air0.d.glyphLeaks === 0 && air0.l.total === word.length, `(v3.a) after launch the letters are revealed (total ${air0.l.total}, leaks ${air0.d.glyphLeaks})`);
     p = await stepUntil(page, 'release', "ev.some((e) => e.type === 'letterRing' && e.index === 1)", 0);
     await page.evaluate(() => window.__rr.game.debugStep(2));
     await frame(page);
@@ -345,7 +379,6 @@ try {
     const lr = await evs(page, 'letterRing'), wc = await evs(page, 'wordComplete'), air = await evs(page, 'airTarget');
     const airRaw = air.reduce((a, e) => a + e.cash / m, 0) + 40 * lr.length + (wc.length ? 200 : 0);
     console.log('v3 beater/canyon/L5 seed 1 letters:', JSON.stringify({ letterRings: lr.map((e) => `${e.letter}${e.index}${e.inOrder ? '' : '!'}`).join(' '), wordComplete: wc, airTargets: air.map((e) => e.kind[0]).join(''), letters: s.letters, coinMult: m, cashAir: s.cash.air, expectAir: Math.round(airRaw * m) }));
-    check(st0.collected === 0 && st0.total === word.length, `(v3.a) getState().letters at start = ${JSON.stringify(st0)}`);
     check(lr.length >= 1 && lr.every((e, k) => e.letter === word[e.index] && (k === 0 || e.index > lr[k - 1].index)), '(v3.a) letterRing events carry the word\'s letters at their indices, in order');
     check(lr.length === word.length && lr.every((e) => e.inOrder) && wc.length === 1 && wc[0].cash === Math.round(200 * m), `(v3.a) GAS-only flight collects all ${word.length} letters in order and fires wordComplete $${wc[0] && wc[0].cash}`);
     check(lr.every((e) => e.cash === Math.round(40 * m) && e.nitroRefill === 0.25), '(v3.a) each letter pays $40 x coinMult and refills 25% nitro');

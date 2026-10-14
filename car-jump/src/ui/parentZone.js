@@ -59,6 +59,9 @@ export function createParentZone(app) {
   let view = 'pin', tab = 'words', playerId = null, unlockedUntil = 0;
   let pinMode = 'enter', pinFirst = '', pinEntry = '', mathQ = null, mathEntry = '';
   let holdTimer = 0, holdRaf = 0;
+  // the finger that finished the 3 s hold is still down when the math pad appears under it: the click its release
+  // synthesizes must not type a digit, so a pad key only acts on a click whose press started on that key
+  // (keyboard activation, detail 0, still works)
 
   // the iOS keyboard shrinks the visual viewport, not the layout viewport: size the sheet to what is visible
   const vv = window.visualViewport;
@@ -83,10 +86,17 @@ export function createParentZone(app) {
   // ---------- PIN ----------
   function pad(onDigit, onBack, okLabel, onOk) {
     const g = h('div', { class: 'pinpad' });
-    for (const d of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) g.append(h('button', { class: 'btn pin-key', 'data-digit': d, onclick: () => onDigit(d) }, d));
-    g.append(h('button', { class: 'btn pin-key', 'aria-label': 'Delete', id: 'pin-back', onclick: onBack, html: icon('back') }));
-    g.append(h('button', { class: 'btn pin-key', 'data-digit': '0', onclick: () => onDigit('0') }, '0'));
-    g.append(okLabel ? h('button', { class: 'btn btn-green pin-key', id: 'pin-ok', onclick: onOk }, okLabel) : h('span'));
+    const guard = (fn) => (e) => {
+      const btn = e.currentTarget;
+      const pressed = btn.dataset.pressed === '1';
+      btn.dataset.pressed = '';
+      if (pressed || e.detail === 0) fn(e);
+    };
+    g.addEventListener('pointerdown', (e) => { const k = e.target.closest('.pin-key'); if (k) k.dataset.pressed = '1'; });
+    for (const d of ['1', '2', '3', '4', '5', '6', '7', '8', '9']) g.append(h('button', { class: 'btn pin-key', 'data-digit': d, onclick: guard(() => onDigit(d)) }, d));
+    g.append(h('button', { class: 'btn pin-key', 'aria-label': 'Delete', id: 'pin-back', onclick: guard(onBack), html: icon('back') }));
+    g.append(h('button', { class: 'btn pin-key', 'data-digit': '0', onclick: guard(() => onDigit('0')) }, '0'));
+    g.append(okLabel ? h('button', { class: 'btn btn-green pin-key', id: 'pin-ok', onclick: guard(onOk) }, okLabel) : h('span'));
     return g;
   }
   function dots(n) {
@@ -148,7 +158,10 @@ export function createParentZone(app) {
       const t0 = performance.now();
       const tick = () => { ring.style.setProperty('--p', String(Math.min(1, (performance.now() - t0) / HOLD_MS))); holdRaf = requestAnimationFrame(tick); };
       tick();
-      holdTimer = setTimeout(() => { stop(); newMath(); view = 'math'; render(); }, HOLD_MS);
+      holdTimer = setTimeout(() => {
+        stop();
+        newMath(); view = 'math'; render();
+      }, HOLD_MS);
     });
     for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) btn.addEventListener(ev, stop);
     body.replaceChildren(h('div', { class: 'pin-wrap' },
@@ -322,6 +335,32 @@ export function createParentZone(app) {
     ];
   }
 
+  // speech on/off indicator: does this device list voices, and did the last spoken word actually start?
+  function speechRow() {
+    const t = app.tts;
+    const pill = h('span', { class: 'speech-pill', id: 'opt-speech-state' });
+    const sub = h('div', { class: 'sub', id: 'opt-speech-sub' });
+    const paint = () => {
+      const on = t.available && t.voiceCount > 0 && t.health !== 'no-start' && t.health !== 'error';
+      pill.textContent = on ? 'Speech on' : 'Speech off';
+      pill.classList.toggle('on', on);
+      sub.textContent = !t.available ? 'This browser has no speech. Each word is shown for 3 s before your child spells it.'
+        : t.voiceCount === 0 ? 'No voices detected yet. Words are shown for 3 s instead. Try "Test voice".'
+          : t.health === 'no-start' || t.health === 'error' ? `${t.voiceCount} voice${t.voiceCount === 1 ? '' : 's'} found, but the last word did not play, so words were shown instead. Check the mute switch and volume, then try "Test voice".`
+            : `${t.voiceCount} voice${t.voiceCount === 1 ? '' : 's'} detected${t.voiceName ? ` · using ${t.voiceName}` : ''}${t.health === 'ok' ? ' · working' : ''}`;
+    };
+    paint();
+    t.voicesReady().then(paint);
+    const test = h('button', { class: 'btn btn-sm', id: 'opt-speech-test', onclick: async () => {
+      if (!t.available) return;
+      t.unlock();
+      await t.say('Spell Jump is ready.');
+      paint();
+    } }, 'Test voice');
+    test.hidden = !t.available;
+    return h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Speech ', pill), sub), test);
+  }
+
   function optionsTab(p) {
     const o = playerOptions(app.family, p.id);
     const set = (k, v) => { setPlayerOption(app.family, p.id, k, v); app.persistFamily(); app.onOptionsChanged(p.id); };
@@ -334,6 +373,7 @@ export function createParentZone(app) {
     fill();
     return [
       h('div', { class: 'hud-label pz-sec' }, 'SPELLING'),
+      speechRow(),
       segmented('Speech rate', 'How fast words are read aloud', [['slow', 'Slow'], ['normal', 'Normal']], o.rate, (v) => set('rate', v), 'opt-rate'),
       segmented('New words per day', 'Most kids do best with a few at a time', [[3, '3'], [5, '5'], [8, '8']], o.newPerDay, (v) => set('newPerDay', v), 'opt-new'),
       toggle('Past-list review words', 'Old lists come back 2 and 4 weeks later', o.includeReview, (v) => set('includeReview', v), 'opt-review'),

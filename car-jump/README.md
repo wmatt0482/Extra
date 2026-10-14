@@ -9,6 +9,42 @@ across 5 stages. No ads, no IAP, no energy timer, no external links.
 The learning design (and the evidence behind each mechanic) is in [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md);
 the build contract is the "Spelling edition (v3)" section of `SPEC.md`. The pure car game is tagged `ramp-rage-v2`.
 
+## Parent quick start
+
+1. **Add your child.** Open the app, tap **+ New player**, type a name on the big keyboard, pick a car color.
+2. **Enter this week's words.** On the title screen tap **Parents**, choose a 4-digit PIN (you type it twice; if
+   you forget it, tap "Forgot PIN?", hold the button for 3 s and answer a multiplication). In **Words of the
+   week** type one word per line. Optional extras go after the word, separated by ` | `:
+
+   ```
+   neighbor | neigh/bor | My neighbor has a dog.
+   enough | e/nough
+   through | | We walked through the park.
+   ```
+
+   That is word | syllables (slash-separated, shown as breaks on the tiles) | a sentence (read aloud when your child
+   taps "Sentence"). Add a **Pattern of the week** if the list has one (`ough`, `-tion`): it is highlighted when a
+   word is first shown. Up to 40 words; letters, apostrophes, hyphens and spaces. Tap **Save**. The old list is
+   archived and comes back for review 2 and 4 weeks later.
+3. **Check speech.** In **Options**, the Speech line says **Speech on** (with the voice it found) or **Speech off**.
+   Tap **Test voice** to hear it. If it stays off (mute switch on, no voices installed, or a browser frame without
+   sound), the game still works: each word is shown for 3 s and then covered before your child spells it.
+4. **Hand it over.** Your child just plays. About 8 words a day (8 to 10 minutes) is the daily mission.
+
+**The weekly cycle.** Day 1: the first **Play** after you save a list is a quick **Qualifier** (pretest): every word
+once, by ear. Words your child already knows skip ahead; missed words become **Focus Words** and get most of the
+practice. Every day: each run starts with one word to spell from memory; spelling it right on the first try gives
+full launch power and a cash bonus, a miss is fixed right away (compare, copy, cover) and the word comes back later.
+Thursday or Friday: tap **Friday Test** on the title: all words, no hints, then a **Mega Run** powered by the score.
+
+**What the report means** (Parents → Report). *Pretest* is the Qualifier score for this list; *Latest Friday Test*
+is the most recent test: the gap between them is what this week's practice did. Each word has a status: **New**
+(not seen yet), **Focus** (missed in the pretest, still being learned), **Learning** (recently missed or just
+started), **Almost** (spelled right from memory, waiting for spaced review), **Mastered** (right on the first try at
+least 3 times, on at least 2 different days). *1st try* is the share of attempts spelled right before any help;
+*Days* is how many different days the word was practiced (spacing matters more than repetitions). **Copy report**
+puts it all on the clipboard for a teacher. **Why this works** lists the research behind each part.
+
 ## How a week works
 
 1. A parent opens **Parents** (PIN), types this week's words (one per line, optionally
@@ -40,14 +76,20 @@ the panel over it, the scene dimmed and blurred behind:
 - Each typed letter is spoken by name; the letter rings say their letter when hit and a whole word in order is
   "WORD COMPLETE". Results gain a **Spelling** row and "Today n / 8".
 
-Speech uses the device's `speechSynthesis` (en-US, a natural voice when present, slow / normal rate). If a device
-has none, the panel says so once and shows each word for 3 s before the child spells it.
+Speech uses the device's `speechSynthesis` (en-US, a natural voice when present, slow / normal rate). Speech counts
+as unavailable for an attempt when the API is missing, when `getVoices()` is still empty 1.5 s after asking
+(`voiceschanged` or polling), or when the spoken word has not fired `onstart` 1.5 s after `speak()` (iOS before a
+tap, a muted browser frame, a stuck synth). Then the word is shown for 3 s ("Look, then spell it") and covered, with a
+one-time hint "Speech isn't available on this device, so you'll see each word first"; the Qualifier and Friday Test
+do the same per word. The child never waits on a silent panel with no word. Every tap resumes an iOS synth left
+`paused`; speech is cancelled when the panel or test closes and when the app is hidden. Parents → Options shows
+**Speech on / off** with the number of voices found.
 
 ### The learning rules in code
 
 | Rule | Where it is enforced |
 | --- | --- |
-| R1 word never visible while spelling from memory | `spellPanel.js` removes the model tiles from the DOM (`hideModel`) in Write and Cover; the HUD word strip is only filled after the panel closes; the scene behind the panel is blurred; tests check the visible text |
+| R1 word never visible while spelling from memory | `spellPanel.js` / `testMode.js` remove the model tiles from the DOM (`hideModel`) in Write and Cover; the engine draws the letter rings with a `?` and reports `getState().letters.total = 0` until the car is airborne (`debugInfo().lettersRevealed`, `glyphLeaks`); the HUD word strip fills on the `launch` event; tests check the visible text, the canvas text calls and `lettersRevealed` |
 | R2 only the child's own misspelling, ≤ 3 s, marked | `diffAttempt` (words.js) marks the attempt; `COMPARE_MS = 2800` then the row is cleared; Copy refuses wrong letters; no multiple choice anywhere |
 | R3 every miss corrected by the child | the Cover-Copy-Compare loop in `spellPanel.js` |
 | R4 spacing, re-queue, mastery | `scheduler.js`: intervals 0 / 1 / 2 / 4 days, `REQUEUE_GAP = 2`, `isMastered` needs box 3, 3 first-try successes and 2 distinct days |
@@ -85,8 +127,10 @@ Per player:
 - **Options**: speech rate, new words per day (3 / 5 / 8), past-list review words, tile case (abc / ABC), sound,
   music, reduced motion, screen shake, reset spelling data, reset game save, remove player, change PIN.
 
-Kid-proofing: no external links, no native text inputs in the kid-facing UI, the pause menu (sound, music, motion,
-shake) has no reset, and only the Parent Zone deletes anything.
+Kid-proofing: no external links, no `window.open`, no `alert` / `confirm` / `prompt`; the only native inputs (the
+word text area, the pattern field, the shake slider in Options) are inside the PIN-gated Parent Zone. The pause menu
+(sound, music, motion, a custom non-input shake slider, End run) has no reset, and only the Parent Zone deletes
+anything. "Why this works" is plain text with no links.
 
 ## Game features (from v2)
 
@@ -111,6 +155,14 @@ fireworks on a new record, and 12 badges. v3 replaced three badges with spelling
 Audio is synthesized (WebAudio): v3 adds a soft key click, a bright rising triad for a correct word, a gentle
 (not punishing) "oops", and a mission fanfare; music ducks hard and effects soften while the voice speaks.
 
+## Economy
+
+The spelling bonus and the daily mission sit on top of the v2 run economy. `node tools/economy-sim.mjs --speller 0.75`
+plays the real engine headlessly as a child who spells 75 % of words right on the first try (bonus, full power) and
+fixes the rest (65 % power), 8 runs a day with the $500 mission once a day. Re-tuned for v3 (upgrade cost
+`480 × 2.0^(tier−1) × 1.5^level`, cars $13k / $19k / $36k / $88k / $340k), averaged over `--seed-jitter 0 / 0.4 / 0.8`:
+first finish ~4 runs, Gravel Fox ~8, Thunderline ~20, Bigfoot Jr. ~41, Vantablack GT ~77, Rhino ~159 (see SPEC.md).
+
 ## Run locally
 
 ```sh
@@ -132,14 +184,18 @@ node tools/spelling-tests.mjs   # Node unit tests: intervals, mastery (2 distinc
 node tools/ui-smoke.mjs         # Playwright, 844×390 + 390×844, mock engine + fake speechSynthesis: players, PIN,
                                 # word list, Qualifier, every spell-panel path, mission, Friday Test + Mega Run,
                                 # report, persistence; asserts R1 / R2 / R6, key sizes, layout, no console errors
-node tools/engine-smoke.mjs     # real engine in dev.html
-node tools/integration-smoke.mjs  # the full app on the real engine
-node tools/economy-sim.mjs      # headless economy simulation
+node tools/engine-smoke.mjs     # real engine in dev.html (incl. R1: no letter glyph rasterized before launch)
+node tools/integration-smoke.mjs  # the full app on the REAL engine with real touches, 844×390 + 390×844: picker →
+                                # player → spell paths A (first try, letter rings, bonus) / B (miss → CCC → 65 %,
+                                # slower launch) / C (Look), mission $500 once, Parent Zone (PIN, list, wrong PIN,
+                                # forgot PIN), Qualifier, Friday Test + Mega Run, report, 2nd player, reload; speech
+                                # fallback with speechSynthesis deleted / no voices / never starting; perf at 4x
+node tools/economy-sim.mjs --speller 0.75   # headless economy simulation (75 % first-try speller, 8 runs a day)
 node tools/make-icons.mjs       # re-renders icons/*.png (a car jumping over letter tiles)
 ```
 
 `SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt` runs one
-part of `ui-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it.
+part of `ui-smoke.mjs`, `ONLY=landscape|portrait|speech|perf` one part of `integration-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it.
 
 ## Add to the iPhone Home Screen
 

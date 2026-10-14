@@ -7,6 +7,9 @@
 //               Cover right → 65 % power. Cover wrong → Compare + Copy + Cover once more; a second miss goes at
 //               65 % anyway and the word is re-queued for later this session (the caller's scheduler does that).
 // R1: while the child spells from memory (Write / Cover) the word is not in the DOM at all.
+// Speech fallback: when speech is missing, lists no voices within 1.5 s, or the spoken word never starts
+// (no onstart within 1.5 s: iOS before a tap, an iframe without audio, a paused synth), the word is shown for
+// 3 s ("Look, then spell it") and then covered, with a one-time hint. The child never waits on a silent panel.
 // Resolves { word, firstTry, fixed, bonus, powerScale, nitroScale, misses } or { cancelled: true }.
 import { diffAttempt, letterName, normalizeWord, patternRanges, syllableBreaks } from './words.js';
 import { createKeyboard } from './keyboard.js';
@@ -14,6 +17,7 @@ import { spellBonus } from './wordStore.js';
 
 export const LOOK_MS = 4000;
 export const FALLBACK_LOOK_MS = 3000;
+export const NO_SPEECH_HINT = "Speech isn't available on this device, so you'll see each word first.";
 export const COMPARE_MS = 2800;          // the child's wrong attempt is gone before 3 s (R2)
 export const MAX_ATTEMPT = 24;
 export const POWER = { perfect: [1, 1.25], fixed: [0.65, 1], anyway: [0.65, 1] };
@@ -78,7 +82,6 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
   root.replaceChildren(card);
 
   let S = null;              // current run state
-  let noVoiceShown = false;
   const kb = createKeyboard({ id: 'sp-keyboard', onKey: typeKey, onBackspace: backspace, onEnter: launch });
   kbWrap.append(kb.el);
 
@@ -175,6 +178,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     if (st.resolve) st.resolve({ cancelled: true, word: st.word });
   }
   function finishUI() {
+    tts.cancel();               // the panel closing stops any speech it started
     kb.setActive(false);
     kb.setEnabled(false);
     root.hidden = true;
@@ -185,21 +189,46 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     S = null;
   }
 
-  async function look(st, ms) {
+  async function look(st, ms, silent = false) {
     setMode('look');
     setTyping(false);
-    setMsg(st.info.isNew ? 'New word! Look and listen' : 'Look and listen', 'cyan');
+    setMsg(silent ? 'Look, then spell it' : st.info.isNew ? 'New word! Look and listen' : 'Look and listen', 'cyan');
     showModel(st.word.length);
     const t0 = performance.now();
-    if (tts.available) {
-      await tts.say(st.word); guard(st);
-      await sleep(200); guard(st);
-      await tts.spell(st.word, (i) => { if (S === st) lightModel(i); }, { gap: 180 }); guard(st);
+    if (!silent && tts.available) {
+      const ok = await tts.say(st.word); guard(st);
+      if (ok === false) setMsg('Look, then spell it', 'cyan');   // the word is on screen anyway
+      else {
+        await sleep(200); guard(st);
+        await tts.spell(st.word, (i) => { if (S === st) lightModel(i); }, { gap: 180 }); guard(st);
+      }
     }
     const left = ms - (performance.now() - t0);
     if (left > 0) { await sleep(left); guard(st); }
     // Cover
     hideModel();
+  }
+  function noSpeechHint() {
+    if (tts.hintShown) return;
+    tts.hintShown = true;
+    note.hidden = false;
+    note.textContent = NO_SPEECH_HINT;
+  }
+  // speech failed while the child was waiting to hear the word: show it for 3 s, cover it, then spell (R1 holds
+  // again from the moment it is covered; any letters typed meanwhile are cleared)
+  async function lookInstead(st) {
+    if (S !== st || st.dead || st.mode !== 'write' || st.lookedInstead) return;
+    st.lookedInstead = true;
+    noSpeechHint();
+    const waiter = st.waiter;
+    st.waiter = null;
+    await look(st, FALLBACK_LOOK_MS, true);
+    if (S !== st || st.dead) return;
+    setMode('write');
+    setMsg('Now spell it from memory!', 'cyan');
+    st.waiter = waiter;
+    clearAttempt();
+    setTyping(true);
   }
 
   async function compare(st, attempt) {
@@ -269,21 +298,27 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
   }
 
   async function flow(st) {
-    if (!tts.available && !noVoiceShown) {
-      noVoiceShown = true;
-      note.hidden = false;
-      note.textContent = 'No voice on this device: look at the word for 3 seconds, then spell it.';
-    } else note.hidden = true;
-    // Look-Say-Cover-Write-Check for a new word (or Look for 3 s when there is no voice)
+    note.hidden = true;           // the no-speech hint shows once per app session (tts.hintShown)
+    // Look-Say-Cover-Write-Check for a new word. Otherwise the word is only heard: make sure speech can work
+    // (API + voices within 1.5 s), else Look for 3 s first.
+    let silentLook = false;
     if (st.info.look) await look(st, LOOK_MS);
-    else if (!tts.available) await look(st, FALLBACK_LOOK_MS);
+    else {
+      setMode('init');
+      setTyping(false);
+      setMsg('Get ready…', 'cyan');
+      const speech = await tts.ready(); guard(st);
+      if (!speech) { noSpeechHint(); silentLook = true; await look(st, FALLBACK_LOOK_MS, true); }
+    }
     // Write (R1: no word on screen)
     setMode('write');
     hideModel();
-    setMsg(st.info.look ? 'Now spell it from memory!' : 'Listen, then spell it!', 'cyan');
+    setMsg(st.info.look || silentLook ? 'Now spell it from memory!' : 'Listen, then spell it!', 'cyan');
     clearAttempt();
     setTyping(true);
-    if (!st.info.look) tts.say(st.word);
+    if (!st.info.look && !silentLook) {
+      tts.say(st.word).then((ok) => { if (ok === false) lookInstead(st).catch(() => {}); });
+    }
     let attempt = await waitLaunch(); guard(st);
     if (attempt === st.word) {
       st.result = { firstTry: true, fixed: false, power: POWER.perfect };
@@ -325,7 +360,8 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
       };
       root.hidden = false;
       root.dataset.word = '';
-      sent.hidden = !info.sentence;
+      sent.hidden = !info.sentence || !tts.available;
+      hear.hidden = again.hidden = !tts.available;
       chip.textContent = ctx.mission ? `Today ${Math.min(ctx.mission.count, ctx.mission.size)} / ${ctx.mission.size}` : '';
       chip.hidden = !ctx.mission;
       kb.setUpper(!!ctx.upper);

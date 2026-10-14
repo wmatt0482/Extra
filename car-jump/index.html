@@ -487,6 +487,12 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .slider input::-moz-range-track { height: 10px; border-radius: 7px; border: 2px solid var(--line); background: var(--ink-2); }
 .slider input::-moz-range-progress { height: 10px; border-radius: 7px; background: var(--go); }
 .slider input::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 4px solid var(--go-edge); }
+/* kid-facing slider (pause menu): a plain element, not a native <input>; driven by pointer + arrow keys in main.js */
+.kslider { position: relative; flex: 1; min-width: 0; height: 44px; touch-action: none; cursor: pointer; --pct: 100%; --p: 1; }
+.kslider::before { content: ""; position: absolute; left: 0; right: 0; top: 15px; height: 14px; box-sizing: border-box; border-radius: 7px; border: 2px solid var(--line); background: linear-gradient(90deg, var(--go) var(--pct), var(--ink-2) var(--pct)); }
+.kslider i { position: absolute; top: 7px; left: calc((100% - 30px) * var(--p)); width: 30px; height: 30px; box-sizing: border-box; border-radius: 50%; background: #fff; border: 4px solid var(--go-edge); box-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.kslider:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; border-radius: 8px; }
+.kslider[aria-disabled="true"] { cursor: default; }
 .slider-val { width: 52px; text-align: right; font: 400 15px/1 var(--font-display); color: var(--accent); }
 .slider-row.is-disabled .slider { opacity: .45; }
 .sheet.shake-preview { animation: shakePrev .4s linear; }
@@ -786,6 +792,8 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 .pz-msg .warn { color: #ffe9b0; font-size: 12px; }
 .pz-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
 .pz-sec { margin: 18px 0 4px; }
+.speech-pill { display: inline-block; margin-left: 6px; padding: 3px 8px; border-radius: 999px; background: rgba(255,59,92,.18); border: 2px solid var(--hot); font: 400 12px/1 var(--font-display); text-transform: uppercase; vertical-align: 2px; }
+.speech-pill.on { background: rgba(47,211,107,.16); border-color: var(--go); }
 .pz-active { padding: 10px 12px; border-radius: 12px; background: var(--ink-2); }
 .pz-active .label { font: 400 18px/1.1 var(--font-display); text-transform: uppercase; display: flex; align-items: center; gap: 8px; }
 .pz-active .sub { font-size: 13px; color: var(--muted); font-weight: 700; margin-top: 4px; }
@@ -1059,7 +1067,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
             <button class="btn btn-sm" id="pause-motion" data-sfx></button>
           </div>
           <div class="row slider-row pause-shake"><div class="grow"><div class="label">Screen shake</div></div>
-            <div class="slider"><input type="range" id="pause-shake" min="0" max="100" step="5" value="100" aria-label="Screen shake"><output class="slider-val" id="pause-shake-val">100%</output></div></div>
+            <div class="slider"><div class="kslider" id="pause-shake" role="slider" tabindex="0" aria-label="Screen shake" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i></i></div><output class="slider-val" id="pause-shake-val">100%</output></div></div>
           <button class="btn btn-hot" id="pause-end" data-sfx><span data-icon="flag"></span>End run</button>
         </div>
       </div>

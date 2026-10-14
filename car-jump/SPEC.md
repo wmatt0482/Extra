@@ -378,6 +378,13 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
    letter tiles that fills as the child types, and a big on-screen QWERTY keyboard with apostrophe, hyphen,
    space, backspace and a wide LAUNCH key. Each typed letter is spoken by name (R6). Never the native keyboard.
    If `speechSynthesis` is unavailable, the panel says so once and uses a "Look for 3 s, then spell" fallback.
+   **Speech robustness (QA pass):** speech counts as unavailable for an attempt when the API is missing, when
+   `getVoices()` is still empty 1.5 s after asking (`voiceschanged` + polling), or when the spoken word has not fired
+   `onstart` 1.5 s after `speak()`. Then the word is shown for 3 s ("Look, then spell it") and covered; the one-time
+   hint reads "Speech isn't available on this device, so you'll see each word first". The Qualifier and Friday Test
+   use the same per-word fallback. Every tap calls `speechSynthesis.resume()` if the synth is `paused` (iOS);
+   speech is cancelled when the panel / test closes and when the app is hidden. Parents → Options shows
+   "Speech on / off" with the number of voices detected and a "Test voice" button.
 2. **New word** (first encounter ever for this player): Look-Say-Cover-Write-Check. Look: the word is shown
    for 4 s in tiles with the pattern chunk highlighted (if a pattern is set) and syllable breaks marked (if
    given), while the audio says the word and then spells it. Cover: tiles hide. Write: the child spells it.
@@ -423,6 +430,11 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
   `{type:'letterRing', letter, index, inOrder}` (no `airTarget` for it), pays $40 into `cash.air`, refills 25%
   nitro; collecting the last letter with `inOrder` emits `{type:'wordComplete', cash:200}` (into `cash.air`).
   If a track has fewer rings than letters, add rings along the arc. The engine never speaks.
+- **R1 in the engine (QA pass):** the rings are placed at `start()` (so the preview arc shows behind the panel) but
+  draw a `?` instead of their letter until the car leaves the lip (`launch`, phase `'air'`); no letter glyph is ever
+  drawn in phase `'ramp'`. `getState().letters` is `{collected: 0, total: 0}` until then, and the HUD letter strip
+  fills on the `launch` event. `debugInfo()` exposes `lettersRevealed` and `glyphLeaks` (letter glyphs drawn while
+  hidden, always 0) for the smoke tests.
 - `summary.letters = {collected, total, inOrder}`; `getState().letters = {collected, total}`.
 - The engine never auto-starts: with no input the car sits parked at the ramp top indefinitely.
 
@@ -430,8 +442,27 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
 - Spelling bonus is the main income. Keep the run economy. The QA agent re-runs `tools/economy-sim.mjs` with
   a simulated 75%-first-try speller and the mission reward; aim for milestones about 1.5× faster than v2
   (first finish ~5 runs, second car ~8, last car ~160) so a child sees a new car within a few sessions.
+- **Tuned (QA pass):** `node tools/economy-sim.mjs --speller 0.75` (75 % first try with the $400 × streak bonus,
+  100 % / 65 % launch power, letter rings, 8 runs a day, $500 mission once a day; Qualifier / Friday Test pay-outs
+  not simulated), averaged over `--seed-jitter 0 / 0.4 / 0.8`. Upgrade cost `480 × 2.0^(tier−1) × 1.5^level`
+  (tier multiplier was 2.15); cars $13k / $19k / $36k / $88k / $340k (were 13k / 25k / 42k / 100k / 400k).
+  On-screen bonus numbers unchanged.
+
+  | milestone (runs) | target | v3 before tuning (avg; j0 / j0.4 / j0.8) | v3 tuned (avg; j0 / j0.4 / j0.8) |
+  | --- | --- | --- | --- |
+  | first 400 m finish | ~5 | 4.3 (4 / 4 / 5) | 4.3 (4 / 4 / 5) |
+  | Gravel Fox | ~8 | 8.3 (8 / 8 / 9) | 8.3 (8 / 8 / 9) |
+  | Thunderline | ~20 | 25.3 (20 / 27 / 29) | 20 (13 / 23 / 24) |
+  | Bigfoot Jr. | ~40 | 49.7 (45 / 56 / 48) | 41 (35 / 43 / 45) |
+  | Vantablack GT | ~80 | 93 (85 / 95 / 99) | 77.3 (69 / 83 / 80) |
+  | Rhino | ~160 | 185 (172 / 190 / 193) | 158.7 (133 / 176 / 167) |
+
+  Note: with the on-screen numbers kept as specified, the spelling bonus + mission is ~11 % of the cash earned
+  before the second car and ~3-4 % of lifetime cash, so it is not "the main income"; the launch power it sets
+  (100 % vs 65 %) matters more to progress than the bonus itself.
 
 ### Kid-proofing
 - No external links anywhere in the kid-facing UI. No native text inputs. The pause menu has no reset. Only
-  the Parent Zone deletes anything. Title: PLAY, FRIDAY TEST, BADGES, PARENTS (settings live in the pause menu
+  the Parent Zone deletes anything. (QA pass: the pause menu's shake slider is a `role="slider"` element, not an
+  `<input>`, so every native input lives in the PIN-gated Parent Zone.) Title: PLAY, FRIDAY TEST, BADGES, PARENTS (settings live in the pause menu
   and the Parent Zone).

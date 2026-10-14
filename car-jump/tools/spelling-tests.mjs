@@ -2,7 +2,8 @@
 //   node tools/spelling-tests.mjs
 // Covers the Leitner intervals, mastery (needs 2 distinct days), mission ordering, the new-word cap,
 // re-queue distance, never-twice-in-a-row, archived review at 2 and 4 weeks, the list parser's edge cases,
-// the attempt/word alignment, and the word store (save list → archive → restore → delete, qualifier, Friday).
+// the attempt/word alignment, the word store (save list → archive → restore → delete, qualifier, Friday) and the
+// speech fallbacks in tts.js (no API, no voices within 1.5 s, no onstart within 1.5 s, iOS paused synth).
 import assert from 'node:assert/strict';
 import { mulberry32 } from '../src/meta/rng.js';
 import {
@@ -303,6 +304,64 @@ test('corrupt or partial words data falls back safely', () => {
   assert.deepEqual(activeList(d).words.map((w) => w.word), ['friend']);
   assert.equal(d.records.friend.box, 3); assert.deepEqual(d.records.friend.daysCorrect, ['2026-10-12']);
   assert.equal(dayKey(T0), '2026-10-12');
+});
+
+// ---------- speech robustness (tts.js with fake backends) ----------
+console.log('speech: availability, start timeout, fallbacks');
+const { createTTS, START_TIMEOUT_MS, VOICES_TIMEOUT_MS } = await import('../src/spelling/tts.js');
+async function atest(name, fn) {
+  try { await fn(); passed++; console.log('  ✓ ' + name); } catch (e) { failures.push(name); console.log('  ✗ ' + name + '\n      ' + (e && e.message).split('\n').join('\n      ')); }
+}
+const VOICE = [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }];
+function fakeSynth({ voices = VOICE, starts = true, paused = false } = {}) {
+  const b = { calls: { speak: 0, cancel: 0, resume: 0 }, speaking: false, pending: false, paused, getVoices: () => voices,
+    speak(u) { b.calls.speak++; if (!starts) return; setTimeout(() => u.onstart && u.onstart(), 5); setTimeout(() => u.onend && u.onend(), 30); },
+    cancel() { b.calls.cancel++; }, resume() { b.calls.resume++; b.paused = false; }, addEventListener() {} };
+  return b;
+}
+const timed = async (p) => { const t = Date.now(); const v = await p; return [v, Date.now() - t]; };
+await atest('working speech: ready() true at once, say() resolves true, health ok', async () => {
+  const t = createTTS(); t.useBackend(fakeSynth());
+  const [ok, ms] = await timed(t.ready()); assert.equal(ok, true); assert.ok(ms < 50, `ready took ${ms} ms`);
+  assert.equal(await t.say('friend'), true); assert.equal(t.health, 'ok'); assert.equal(t.working, true);
+});
+await atest(`an utterance with no onstart within ${START_TIMEOUT_MS} ms counts as unavailable (say → false)`, async () => {
+  const t = createTTS(); const b = fakeSynth({ starts: false }); t.useBackend(b);
+  assert.equal(await t.ready(), true);                        // voices are listed…
+  const [ok, ms] = await timed(t.say('friend'));              // …but nothing ever starts
+  assert.equal(ok, false); assert.ok(ms >= START_TIMEOUT_MS - 20 && ms < START_TIMEOUT_MS + 400, `gave up after ${ms} ms`);
+  assert.equal(t.health, 'no-start'); assert.equal(t.working, false); assert.ok(b.calls.cancel >= 1, 'the stuck utterance is cancelled');
+});
+await atest(`no voices ${VOICES_TIMEOUT_MS} ms after asking → ready() false`, async () => {
+  const t = createTTS(); t.useBackend(fakeSynth({ voices: [] }));
+  const [ok, ms] = await timed(t.ready());
+  assert.equal(ok, false); assert.ok(ms >= VOICES_TIMEOUT_MS - 20, `waited ${ms} ms`); assert.equal(t.health, 'no-voices');
+});
+await atest('voices that arrive late (polled) make ready() true before the timeout', async () => {
+  const voices = []; const t = createTTS(); t.useBackend(fakeSynth({ voices }));
+  setTimeout(() => voices.push(VOICE[0]), 300);
+  const [ok, ms] = await timed(t.ready()); assert.equal(ok, true); assert.ok(ms < VOICES_TIMEOUT_MS, `took ${ms} ms`);
+});
+await atest('no speechSynthesis at all: available false, ready() false, say() false', async () => {
+  const t = createTTS(); t.useBackend(null);
+  assert.equal(t.available, false); assert.equal(await t.ready(), false); assert.equal(await t.say('x'), false); assert.equal(t.health, 'missing');
+});
+await atest('newer speech or cancel() is not a failure (say → null)', async () => {
+  const t = createTTS(); t.useBackend(fakeSynth({ starts: false }));
+  const p = t.say('friend'); setTimeout(() => t.cancel(), 50);
+  assert.equal(await p, null); assert.equal(t.health, 'unknown');
+});
+await atest('iOS paused synth: unlock() (every tap) and speak() call resume()', async () => {
+  const t = createTTS(); const b = fakeSynth({ paused: true }); t.useBackend(b);
+  t.unlock(); assert.equal(b.calls.resume, 1);
+  b.paused = true; t.unlock(); assert.equal(b.calls.resume, 2, 'a later tap resumes again');
+  b.paused = true; assert.equal(await t.say('x'), true); assert.ok(b.calls.resume >= 3);
+});
+await atest('after a failed start, spell() lights the letters on a timer instead of 1.5 s per silent letter', async () => {
+  const t = createTTS(); t.useBackend(fakeSynth({ starts: false }));
+  await t.say('x');
+  const lit = []; const [, ms] = await timed(t.spell('abc', (i) => lit.push(i), { gap: 10 }));
+  assert.deepEqual(lit, [0, 1, 2]); assert.ok(ms < 1600, `spell took ${ms} ms`);
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

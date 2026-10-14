@@ -493,6 +493,9 @@ export function createGame(canvas, opts = {}) {
       powerScale: scaleArg(cfg.powerScale, 1.25), nitroScale: scaleArg(cfg.nitroScale, 1.5),
       letters: lettersArg(cfg.letters), letterHit: [], lettersCollected: 0, wordDone: false, letterFitIn: 0,
       parked: true, parkPose: null,
+      // R1: no letter glyph is drawn and getState().letters reveals nothing until the car leaves the ramp lip
+      // (phase 'air'): the rings show '?' while the child may still be spelling behind the panel
+      lettersRevealed: false, glyphLeaks: 0,
     };
     r.nitroFuel = r.nitroTank * r.nitroScale; // the tank can start above 100% (the bar clamps at full)
     // ramp bodies
@@ -1366,6 +1369,7 @@ export function createGame(canvas, opts = {}) {
     r.launched = true;
     r.flightKind = 'jump';
     r.launchKmh = r.speed * 3.6;
+    r.lettersRevealed = true; // R1: the letters appear only once the car is airborne
     if (r.letters.length) r.letterFitIn = T.letterFitSteps; // refit the letter arc once clear of the lip
     emit({ type: 'launch', speedKmh: Math.round(r.launchKmh) });
     for (let k2 = 0; k2 < 10; k2++) {
@@ -1762,7 +1766,7 @@ export function createGame(canvas, opts = {}) {
         if (a.gone || !airVis(a, 4)) continue;
         if (a.li != null) {
           const k = a.hit ? clamp((t - a.hitT) / 0.55, 0, 1) : 0;
-          if (k < 1) R.drawLetterRing(ctx, letterPos(a, t), t, 'back', lw, k, a.li === nextLetter(r));
+          if (k < 1 && R.drawLetterRing(ctx, letterPos(a, t), t, 'back', lw, k, a.li === nextLetter(r), r.lettersRevealed) && !r.lettersRevealed) r.glyphLeaks++;
         } else if (a.kind === 'ring') {
           const k = a.hit ? clamp((t - a.hitT) / 0.45, 0, 1) : 0;
           if (k < 1) R.drawRing(ctx, a, t, 'back', lw, k);
@@ -1776,7 +1780,7 @@ export function createGame(canvas, opts = {}) {
         if (a.kind !== 'ring' || a.gone || !airVis(a, 4)) continue;
         if (a.li != null) {
           const k = a.hit ? clamp((t - a.hitT) / 0.55, 0, 1) : 0;
-          if (k < 1) R.drawLetterRing(ctx, letterPos(a, t), t, 'front', lw, k, a.li === nextLetter(r));
+          if (k < 1) R.drawLetterRing(ctx, letterPos(a, t), t, 'front', lw, k, a.li === nextLetter(r), r.lettersRevealed);
           continue;
         }
         const k = a.hit ? clamp((t - a.hitT) / 0.45, 0, 1) : 0;
@@ -1907,8 +1911,8 @@ export function createGame(canvas, opts = {}) {
       altitude: Math.round(r.alt * 10) / 10,
       combo: { count: r.combo.count, mult: r.combo.mult, timer01: r.combo.count ? clamp(r.combo.timer / T.comboWindow, 0, 1) : 0 },
       rejumps: r.rejumps,
-      // v3
-      letters: { collected: r.lettersCollected, total: r.letters.length },
+      // v3 (R1: nothing about the word, not even its length, before the car is airborne)
+      letters: { collected: r.lettersCollected, total: r.lettersRevealed ? r.letters.length : 0 },
     };
   }
 
@@ -1966,6 +1970,7 @@ export function createGame(canvas, opts = {}) {
         timeScale: r.timeScale, lastLand: r.lastLand || null, cam: { ...cam }, perf: { ...perf },
         letterbox: r.letterbox, popups: r.popups.map((p) => ({ text: p.text, slot: p.slot, world: p.world, t: p.t, life: p.life, x: p.x, y: p.y, scale: p.scale })),
         letterRings: r.air.filter((a) => a.li != null).map((a) => ({ letter: a.letter, i: a.li, x: a.x, y: a.y, hit: a.hit })),
+        lettersRevealed: r.lettersRevealed, glyphLeaks: r.glyphLeaks,
         goneTargets: r.air.filter((a) => a.gone).length,
         powerScale: r.powerScale, nitroScale: r.nitroScale, parked: r.parked, nitroFuel: r.nitroFuel, nitroTank: r.nitroTank,
         view: { W: view.W, H: view.H }, carHalf: Math.max(r.geom.maxX - r.geom.minX, r.geom.maxY - r.geom.minY) / 2 * Math.pow(clamp(10 / cam.z, 1, 3), 0.85) };
