@@ -179,12 +179,20 @@ export function diffAttempt(attempt, target) {
   return { cells, distance: d[n][m], correct: d[n][m] === 0 && n === m };
 }
 
-// Spoken name for a typed character (letters are said by name: SOS, R6).
+// Spoken name for a typed character (letters are said by name: SOS, R6). Letter names are spelled out
+// phonetically because speech engines read a bare uppercase letter as "capital B" and a bare lowercase
+// "a" as the word "a".
+export const LETTER_NAMES = {
+  a: 'ay', b: 'bee', c: 'see', d: 'dee', e: 'ee', f: 'ef', g: 'gee', h: 'aitch', i: 'eye', j: 'jay',
+  k: 'kay', l: 'el', m: 'em', n: 'en', o: 'oh', p: 'pee', q: 'cue', r: 'are', s: 'ess', t: 'tee',
+  u: 'you', v: 'vee', w: 'double you', x: 'ex', y: 'why', z: 'zee',
+};
 export function letterName(ch) {
   if (ch === "'") return 'apostrophe';
   if (ch === '-') return 'hyphen';
   if (ch === ' ') return 'space';
-  return String(ch).toUpperCase();
+  const k = String(ch).toLowerCase();
+  return LETTER_NAMES[k] || k;
 }
 
 // The built-in list ships so the game is playable before a parent adds a list (SPEC v3). This is the

@@ -26,6 +26,8 @@ import { mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { letterName } from '../src/spelling/words.js';
+const spelled = (w) => w.split('').map(letterName);
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
@@ -372,7 +374,7 @@ async function runLayout(browser, layout) {
   await layoutAudit(page, layout.insets, 'spell panel (look)');
   await waitMode(page, 'write', 9000);
   const sp1 = await spoken(page);
-  check(sp1.includes(`The word is, ${w1}.`) && sp1.includes(`${w1}.`) && w1.split('').every((c) => sp1.includes(c.toUpperCase())), 'Look: the word is presented, then spelled letter by letter');
+  check(sp1.includes(`The word is, ${w1}.`) && sp1.includes(`${w1}.`) && spelled(w1).every((n) => sp1.includes(n)), 'Look: the word is presented, then spelled letter by letter');
   // the presentation protocol: exactly [carrier, sentence, word], once (Write does not replay it)
   const info1 = await J(page, (w) => { for (const l of window.__spellJump.words.lists) { const e = l.words.find((x) => x.word === w); if (e) return e; } return null; }, w1);
   const want1 = [`The word is, ${w1}.`, info1.sentence, `${w1}.`];
@@ -406,7 +408,7 @@ async function runLayout(browser, layout) {
   const before6 = (await spoken(page)).length;
   await tapKeys(page, '#sp-keyboard', w1);
   const typedSpoken = (await spoken(page)).slice(before6);
-  check(typedSpoken.join('') === w1.toUpperCase(), `R6: each typed letter spoken by name (${typedSpoken.join(' ')})`);
+  check(typedSpoken.join('|') === spelled(w1).join('|'), `R6: each typed letter spoken by name (${typedSpoken.join(' ')})`);
   await shot(page, layout, '05b-spell-typed', 0);
   await page.tap('#sp-keyboard [data-key="enter"]');
   await waitMode(page, 'done', 3000);
@@ -427,7 +429,7 @@ async function runLayout(browser, layout) {
   await page.waitForSelector('#banner[data-kind="word"]:not([hidden])', { timeout: 9000 }).then(() => shot(page, layout, '06c-word-complete', 0)).catch(() => {});
   await page.waitForSelector(visibleSel('#screen-results'), { timeout: 20000 });
   const ringSpoken = (await spoken(page)).slice(spBefore);
-  check(ringSpoken.join('').startsWith(w1.toUpperCase()), `letter rings said their letters in order (${ringSpoken.slice(0, w1.length).join(' ')})`);
+  check(ringSpoken.slice(0, w1.length).join('|') === spelled(w1).join('|'), `letter rings said their letters in order (${ringSpoken.slice(0, w1.length).join(' ')})`);
   await page.waitForTimeout(1500);
   await shot(page, layout, '07-results');
   await layoutAudit(page, layout.insets, 'results');
