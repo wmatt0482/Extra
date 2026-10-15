@@ -6,8 +6,9 @@
 //
 // Texts: for each word "The word is, <word>." / the sentence / "<word>." (the presentation, tts.buildPresentation),
 // "<word>. <word>." (Say it again), the syllables phrase (if any); the parent's "say as" replaces the word. Shared per
-// voice: the 26 letter names + apostrophe / hyphen / space (spell-outs and typed letters), the Parent Zone sample
-// presentation and "Spell Jump is ready." (Test voice / Speech check).
+// voice: the 26 letters as single capitals "A".."Z" (the server says them as spelled-out characters; see
+// cloudLetterText) + apostrophe / hyphen / space (spell-outs and typed letters), the Parent Zone sample presentation
+// and "Spell Jump is ready." (Test voice / Speech check).
 // prepare(): POST /api/tts/prepare with the texts this device has no clip for (≤ 80 per request); the answer maps each
 // text to its content-addressed clip URL. That map is kept per voice in localStorage (`spellJump.cloudVoice`), so a
 // reload (or a device offline) knows its clips; the service worker keeps fetched clips (cache-first), so they play
@@ -34,15 +35,26 @@ export const READY_PHRASE = 'Spell Jump is ready.';
 const clean = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
 const fits = (t) => !!t && t.length <= MAX_TEXT;
 
+/** The clip text for one spelled / typed character in a natural voice: the capital letter itself ("F"), which the
+ *  server synthesizes as a spelled-out character (SSML say-as characters) so Google says the letter's name, "eff".
+ *  The device voices keep letterName() ("ef"), spelled phonetically because they say "capital F" for a bare "F";
+ *  sent to Google as text, "ef" came out as a word (v3.4). Apostrophe / hyphen / space keep their words. */
+export function cloudLetterText(ch) {
+  const k = String(ch == null ? '' : ch).toLowerCase();
+  return LETTER_NAMES[k] ? k.toUpperCase() : letterName(ch);
+}
+// device letter name → cloud clip text ("ef" → "F", "a" → "A"), so tts.js can ask for a letter by either name
+const CLOUD_KEY_BY_NAME = Object.fromEntries(Object.entries(LETTER_NAMES).map(([k, name]) => [name, k.toUpperCase()]));
+
 /** The texts one word needs (presentation, Say it again, syllables), in order, no duplicates. */
 export function wordTexts(entry = {}) {
   const out = [...buildPresentation(entry), buildRepeat(entry), buildSyllables(entry.syllables)].map(clean).filter(fits);
   return [...new Set(out)];
 }
-/** Texts shared by every word in a voice: letter names (+ apostrophe, hyphen, space), the sample presentation, the
- *  Test voice phrase. */
+/** Texts shared by every word in a voice: the 26 letters as capitals (+ apostrophe, hyphen, space), the sample
+ *  presentation, the Test voice phrase. */
 export function sharedTexts() {
-  const letters = [...Object.keys(LETTER_NAMES), "'", '-', ' '].map(letterName);
+  const letters = [...Object.keys(LETTER_NAMES), "'", '-', ' '].map(cloudLetterText);
   return [...new Set([...letters, ...buildPresentation(SAMPLE_PRESENTATION), CHECK_PHRASE, READY_PHRASE].map(clean).filter(fits))];
 }
 /** Every text a list needs (its words, then the shared ones), no duplicates. */
@@ -216,12 +228,15 @@ export function createCloudVoice(deps = {}) {
     /** a natural voice is picked and the device is in a family */
     get active() { return !!voice && !!getCode(); },
     get code() { return getCode(); },
-    /** the clip key for `text` in voice v: the text itself, or with a full stop added (a bare sentence), or null */
+    /** the clip key for `text` in voice v: the text itself (a device letter name like "ef" maps to its letter clip
+     *  "F"), or with a full stop added (a bare sentence), or null */
     resolve(text, v = voice) {
       const t = clean(text);
       if (!v || !t) return null;
       const m = store.clips[v];
       if (!m) return null;
+      const letter = CLOUD_KEY_BY_NAME[t];
+      if (letter && m[letter]) return letter;
       if (m[t]) return t;
       const stop = /[.!?]$/.test(t) ? t : t + '.';
       return m[stop] ? stop : null;
@@ -244,7 +259,7 @@ export function createCloudVoice(deps = {}) {
     needsPrepare(entry, v = voice) { return api.active && online() && api.wanted(entry, v).length > 0; },
     /** fetch + decode one word's clips (its texts and its letters) in the background */
     warmWord(entry, v = voice) {
-      const letters = Array.from(String((entry && entry.word) || '')).map(letterName);
+      const letters = Array.from(String((entry && entry.word) || '')).map(cloudLetterText);
       api.warm([...wordTexts(entry), ...new Set(letters)], v);
     },
     ensureWord(entry, v = voice) {

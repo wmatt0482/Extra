@@ -4,7 +4,7 @@ A 4th-grade spelling trainer that is a car-jumping game, built as a static web a
 no build step. Every jump starts with a word spoken aloud and spelled from memory on a big on-screen keyboard;
 spelling it right is what gives the car full launch power. Then the car rolls down a giant ramp, flies through
 rings that carry the word's letters, flips, lands and smashes props for cash to spend on 6 cars × 4 upgrades
-across 5 stages. No ads, no IAP, no energy timer, no external links.
+across 20 stages. No ads, no IAP, no energy timer, no external links.
 
 The learning design (and the evidence behind each mechanic) is in [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md);
 the build contract is the "Spelling edition (v3)" section of `SPEC.md`. The pure car game is tagged `ramp-rage-v2`.
@@ -301,7 +301,9 @@ picked for that player (stored as `cloudVoice` in the player's options, synced l
 device voice stores `''` (device voice, not picked again automatically).
 
 **What is spoken by clips.** For each word of the active list: "The word is, *word*." / the sentence / "*word*." /
-"*word*. *word*." (Say it again) / the syllables; per voice, once: the 26 letter names + apostrophe / hyphen / space,
+"*word*. *word*." (Say it again) / the syllables; per voice, once: the 26 letters + apostrophe / hyphen / space (a
+letter clip is the capital letter, "F", synthesized with SSML `<say-as interpret-as="characters">` so the voice says
+"eff": sent as the device-voice spelling "ef" it was read as a word, v3.4),
 the sample presentation and "Spell Jump is ready.". The parent's "say as" replaces the word as with the device
 voice. Clips are requested when a list is saved, when a natural voice is picked, when a player is selected (only
 texts this device has no clip for are sent), and lazily before a word whose clips are missing: the spell panel then

@@ -395,8 +395,8 @@ export function createCourse(track, seed) {
       add('balloon', x, y, { r: 0.95, hue: Math.floor(ar() * 5) });
       i++;
     }
-    // a blimp above the main arc's apex on city/moon
-    if (track.id === 'city' || track.id === 'moon') {
+    // a blimp above the main arc's apex on tracks that ask for one (city, moon, neon, sky)
+    if (track.blimp || track.id === 'city' || track.id === 'moon') {
       const pts = tiers[3];
       let apex = pts[0];
       for (const p of pts) if (p[1] > apex[1]) apex = p;

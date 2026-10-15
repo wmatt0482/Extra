@@ -41,7 +41,7 @@ import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdat
 import { createSyncClient } from './sync/client.js';
 import { applyImport, decodeTransfer, encodeTransfer } from './meta/transfer.js';
 
-const VERSION = '3.4.2';
+const VERSION = '3.5.0';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;

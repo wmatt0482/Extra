@@ -81,7 +81,7 @@ export function createGame(canvas, opts = {}) {
     const air = [
       { a: 0.22, kind: 'ring' },
       ...[0.4, 0.43, 0.46, 0.49, 0.52].map((a) => ({ a, kind: 'coin' })),
-      { a: 0.7, kind: track.id === 'city' || track.id === 'moon' ? 'blimp' : 'balloon' },
+      { a: 0.7, kind: track.blimp || track.id === 'city' || track.id === 'moon' ? 'blimp' : 'balloon' },
     ];
     runNo++;
     run = {

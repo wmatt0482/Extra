@@ -35,7 +35,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { letterName } from '../src/spelling/words.js';
+import { cloudLetterText } from '../src/spelling/cloudVoice.js';
 const spelled = (w) => w.split('').map(letterName);
+const cloudSpelled = (w) => w.split('').map(cloudLetterText);   // natural-voice letter clips are "B", "E", … (v3.5)
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
@@ -1533,7 +1535,7 @@ async function cloudVoiceTest(browser, layout) {
   const sample = await J(page, () => window.__spellJump.words.lists[0].words.map((w) => w.word));
   const allAsked = asked.flatMap((a) => a.texts);
   check(asked.length >= 1 && asked.every((a) => a.code === 'ABCD-2345' && a.voice === 'en-US-Neural2-F' && a.texts.length <= 80)
-    && sample.every((w) => allAsked.includes(`The word is, ${w}.`) && allAsked.includes(`${w}.`)) && ['bee', 'double you', 'apostrophe'].every((x) => allAsked.includes(x)),
+    && sample.every((w) => allAsked.includes(`The word is, ${w}.`) && allAsked.includes(`${w}.`)) && ['B', 'W', 'apostrophe'].every((x) => allAsked.includes(x)) && !allAsked.includes('ef'),
     `prepare asked for the whole list + letter names in ${asked.length} request(s) (${allAsked.length} texts, ≤ 80 each)`);
 
   await openOptions(true);
@@ -1564,12 +1566,12 @@ async function cloudVoiceTest(browser, layout) {
   await waitMode(page, 'write', 12000);
   const A = await J(page, () => ({ played: window.__cloudPlayed.slice(), note: document.querySelector('#sp-note').hidden ? '' : document.querySelector('#sp-note').textContent }));
   const wantPresent = [`The word is, ${w}.`, info.sentence, `${w}.`];
-  check(JSON.stringify(A.played.slice(0, 3)) === JSON.stringify(wantPresent) && JSON.stringify(A.played.slice(3)) === JSON.stringify(spelled(w)),
+  check(JSON.stringify(A.played.slice(0, 3)) === JSON.stringify(wantPresent) && JSON.stringify(A.played.slice(3)) === JSON.stringify(cloudSpelled(w)),
     `"${w}" presented and spelled by clips: ${A.played.slice(0, 4).join(' | ')} …`);
   check((await dev()).length === 0 && await J(page, () => window.__spellJump.tts.engine === 'cloud'), 'the device voice was not used for the word');
   await page.tap(`#sp-keyboard [data-key="${w[0]}"]`);
   await page.waitForTimeout(200);
-  check(await J(page, (l) => window.__cloudPlayed[window.__cloudPlayed.length - 1] === l, letterName(w[0])) && (await dev()).length === 0, `a typed letter is said by its clip ("${letterName(w[0])}")`);
+  check(await J(page, (l) => window.__cloudPlayed[window.__cloudPlayed.length - 1] === l, cloudLetterText(w[0])) && (await dev()).length === 0, `a typed letter is said by its clip ("${cloudLetterText(w[0])}", not "${letterName(w[0])}")`);
   await shot(page, layout, 'n02-word-by-clips');
   await page.click('#spell .sp-exit');
   await page.waitForSelector(visibleSel('#screen-garage'));
@@ -1589,7 +1591,7 @@ async function cloudVoiceTest(browser, layout) {
   const B = await J(page, () => ({ played: window.__cloudPlayed.slice(), spoken: window.__spoken.filter((t) => t !== 'ready'), noteHidden: document.querySelector('#sp-note').hidden }));
   check(JSON.stringify(B.spoken.slice(0, 3)) === JSON.stringify([`The word is, ${w2}.`, info2.sentence, `${w2}.`]) && !B.played.includes(`${w2}.`),
     `no clip for "The word is, ${w2}." → the device voice says the whole presentation (${B.spoken.slice(0, 3).join(' | ')})`);
-  check(JSON.stringify(B.played) === JSON.stringify(spelled(w2)) && B.noteHidden, `the letters still play as clips (${B.played.join(' ')}); the note is gone`);
+  check(JSON.stringify(B.played) === JSON.stringify(cloudSpelled(w2)) && B.noteHidden, `the letters still play as clips (${B.played.join(' ')}); the note is gone`);
   await page.click('#spell .sp-exit');
   await page.waitForSelector(visibleSel('#screen-garage'));
 

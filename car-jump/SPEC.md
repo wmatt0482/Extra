@@ -31,7 +31,7 @@ Core run loop
 Meta
 7. Garage: 6 vehicles (see `src/data/cars.js`), bought with cash. Each car has 4 upgrade tracks × 10 levels
    (`src/data/upgrades.js`): Engine, Nitro, Suspension, Bonus. Costs scale with car tier and level.
-8. Tracks: 5 themed stages (`src/data/tracks.js`), each with its own ramp size, terrain, gravity, props, finish line.
+8. Tracks: 20 themed stages (`src/data/tracks.js`; 5 at v1, 15 more at v3.5: jungle, beach, volcano, castle, Mars, neon city, candy, swamp, dino, sky, haunted, reef, rainbow, asteroid, black hole), each with its own ramp size, terrain, gravity, grip, props, backdrop style, finish line. Finish distances: 400 → 4,400 m, tuned with tools/economy-sim.mjs so stages 1-5 fall to a mid car, 6-9 want Bigfoot Jr. / Vantablack GT, 10-20 a well-upgraded Vantablack GT or the Rhino; the track select scrolls and opens on the stage in progress.
 9. Daily challenge: one seeded run per calendar day (fixed car + track + a goal such as "reach 350 m" or "do 3 back
    flips"), pays a one-time cash reward. Three rotating "Goals" (e.g. smash 10 crates, land perfectly twice, hit
    120 km/h) with cash rewards; completing one rolls a new one.

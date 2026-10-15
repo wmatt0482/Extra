@@ -60,9 +60,15 @@ export function apiKeyFrom(get) {
   return '';
 }
 
-/** The Google Cloud Text-to-Speech request body for one clip. */
-export const googleRequest = (text, voice) => ({
-  input: { text }, voice: { languageCode: 'en-US', name: voice }, audioConfig: { audioEncoding: 'MP3', speakingRate: SPEAKING_RATE },
+/** A single capital letter is a spelled-out letter (the app's letter clips, src/spelling/cloudVoice.js
+ *  cloudLetterText): it goes to Google as SSML <say-as interpret-as="characters">, so the voice says the letter's
+ *  name ("eff", "ay", "double-u") instead of reading a word. */
+export const LETTER_RE = /^[A-Z]$/;
+export const letterSsml = (ch) => `<speak><say-as interpret-as="characters">${ch}</say-as></speak>`;
+/** The Google Cloud Text-to-Speech request body for one clip (plain = true: never SSML, the retry path). */
+export const googleRequest = (text, voice, { plain = false } = {}) => ({
+  input: !plain && LETTER_RE.test(text) ? { ssml: letterSsml(text) } : { text },
+  voice: { languageCode: 'en-US', name: voice }, audioConfig: { audioEncoding: 'MP3', speakingRate: SPEAKING_RATE },
 });
 function base64ToBytes(b64) {
   if (typeof Buffer !== 'undefined') return new Uint8Array(Buffer.from(b64, 'base64'));
@@ -74,9 +80,9 @@ function base64ToBytes(b64) {
 /** synthesize(text, voice) over the Google REST API with an API key (the key never appears in an error message). */
 export function googleSynthesizer(apiKey, fetchImpl = (...a) => globalThis.fetch(...a)) {
   const scrub = (s) => String(s || '').split(apiKey).join('[key]').slice(0, 300);
-  return async (text, voice) => {
+  const call = async (body) => {
     const res = await fetchImpl(`${GOOGLE_URL}?key=${encodeURIComponent(apiKey)}`, {
-      method: 'POST', headers: { 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify(googleRequest(text, voice)),
+      method: 'POST', headers: { 'content-type': 'application/json; charset=utf-8' }, body: JSON.stringify(body),
     });
     let json = null;
     try { json = await res.json(); } catch (_) { /* not JSON */ }
@@ -87,6 +93,14 @@ export function googleSynthesizer(apiKey, fetchImpl = (...a) => globalThis.fetch
     }
     if (!json || typeof json.audioContent !== 'string' || !json.audioContent) throw new Error('Google sent no audio');
     return base64ToBytes(json.audioContent);
+  };
+  return async (text, voice) => {
+    const req = googleRequest(text, voice);
+    try { return await call(req); } catch (e) {
+      // a voice that rejects the SSML (400): say the letter as plain text, "F."
+      if (req.input.ssml && e && e.status === 400) return call(googleRequest(`${text}.`, voice, { plain: true }));
+      throw e;
+    }
   };
 }
 

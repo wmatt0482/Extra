@@ -1174,6 +1174,28 @@ await atest('clip id = first 32 hex of sha256(voice + "\\n" + text); the Google 
   const { createHash } = await import('node:crypto');
   assert.equal(await TS.clipId('en-US-Neural2-F', 'neighbor.'), createHash('sha256').update('en-US-Neural2-F\nneighbor.').digest('hex').slice(0, 32));
   assert.deepEqual(TS.googleRequest('hi.', 'en-US-Neural2-D'), { input: { text: 'hi.' }, voice: { languageCode: 'en-US', name: 'en-US-Neural2-D' }, audioConfig: { audioEncoding: 'MP3', speakingRate: 0.92 } });
+  // a single capital letter (a letter clip) is spelled out with SSML, so the voice says "eff", not a word
+  assert.deepEqual(TS.googleRequest('F', 'en-US-Neural2-F').input, { ssml: '<speak><say-as interpret-as="characters">F</say-as></speak>' });
+  assert.deepEqual(TS.googleRequest('F', 'en-US-Neural2-F', { plain: true }).input, { text: 'F' });
+  assert.deepEqual(TS.googleRequest('f', 'en-US-Neural2-F').input, { text: 'f' }, 'only capitals are letter clips');
+  assert.deepEqual(TS.googleRequest('F.', 'en-US-Neural2-F').input, { text: 'F.' });
+});
+await atest('synthesizer: a letter goes to Google as SSML; a voice that rejects the SSML (400) gets it again as plain "F."', async () => {
+  const calls = [];
+  let rejectSsml = true;                       // the first SSML request is refused, later ones accepted
+  const fetchStub = async (url, init) => {
+    const body = JSON.parse(init.body); calls.push(body.input);
+    if (body.input.ssml && rejectSsml) { rejectSsml = false; return { ok: false, status: 400, json: async () => ({ error: { message: 'This voice does not support SSML' } }) }; }
+    return { ok: true, status: 200, json: async () => ({ audioContent: Buffer.from('mp3').toString('base64') }) };
+  };
+  const synth = TS.googleSynthesizer('k', fetchStub);
+  assert.equal(Buffer.from(await synth('F', 'en-US-Studio-O')).toString(), 'mp3');
+  assert.deepEqual(calls, [{ ssml: '<speak><say-as interpret-as="characters">F</say-as></speak>' }, { text: 'F.' }]);
+  calls.length = 0;
+  await synth('B', 'en-US-Neural2-F');
+  assert.deepEqual(calls, [{ ssml: '<speak><say-as interpret-as="characters">B</say-as></speak>' }], 'no retry when Google accepts the SSML');
+  calls.length = 0;
+  await assert.rejects(() => synth('bad.', 'en-US-Neural2-F').then(() => { throw new Error('should fail'); }), /should fail/);
 });
 test('API key: GOOGLE_TTS_API_KEY, else the TexttoVoice alias; blank counts as missing', () => {
   const env = (o) => (name) => o[name];
@@ -1277,10 +1299,12 @@ test('word texts: carrier, sentence, word, Say it again, syllables; "say as" rep
   assert.deepEqual(CV.wordTexts({ word: '' }), []);
   assert.ok(!CV.wordTexts({ word: 'dog', sentence: 'y'.repeat(200) }).some((t) => t.length > 200), 'over 200 after the full stop: left to the device voice');
 });
-test('shared texts: the 26 letter names + apostrophe / hyphen / space, the sample presentation, the Test phrase', () => {
+test('shared texts: the 26 letters as capitals + apostrophe / hyphen / space, the sample presentation, the Test phrase', () => {
   const s = CV.sharedTexts();
-  for (const n of ['a', 'bee', 'double you', 'zee', 'apostrophe', 'hyphen', 'space', 'The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.', 'Spell Jump is ready.']) assert.ok(s.includes(n), n);
+  for (const n of ['A', 'B', 'F', 'W', 'Z', 'apostrophe', 'hyphen', 'space', 'The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.', 'Spell Jump is ready.']) assert.ok(s.includes(n), n);
+  for (const n of ['ef', 'bee', 'double you', 'a']) assert.ok(!s.includes(n), `device letter name "${n}" is not sent to Google (it read "ef" as a word)`);
   assert.equal(s.length, 29 + 4);
+  assert.equal(CV.cloudLetterText('f'), 'F'); assert.equal(CV.cloudLetterText('A'), 'A'); assert.equal(CV.cloudLetterText("'"), 'apostrophe'); assert.equal(CV.cloudLetterText('-'), 'hyphen');
 });
 test('list texts: every word, then the shared texts, no duplicates', () => {
   const t = CV.listTexts([{ word: 'neighbor', sentence: 'My neighbor has a dog.' }, { word: 'enough', syllables: ['e', 'nough'] }]);

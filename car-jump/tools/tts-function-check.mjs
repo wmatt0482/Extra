@@ -31,7 +31,7 @@ globalThis.fetch = async (input, init = {}) => {
     const body = JSON.parse(init.body);
     google.calls.push({ url: u, body });
     if (google.fail) return new Response(JSON.stringify({ error: { code: google.fail, message: `API key not valid: ${KEY}` } }), { status: google.fail, headers: { 'content-type': 'application/json' } });
-    const mp3 = Buffer.concat([Buffer.from([0xff, 0xf3, 0x44, 0xc4]), Buffer.from(`${body.voice.name}:${body.input.text}`)]);
+    const mp3 = Buffer.concat([Buffer.from([0xff, 0xf3, 0x44, 0xc4]), Buffer.from(`${body.voice.name}:${body.input.text || body.input.ssml}`)]);
     return new Response(JSON.stringify({ audioContent: mp3.toString('base64') }), { status: 200, headers: { 'content-type': 'application/json' } });
   }
   return realFetch(input, init);
@@ -49,7 +49,7 @@ try {
     return { status: res.status, cc: res.headers.get('cache-control'), ct, json: ct.startsWith('application/json') ? await res.json() : null, bytes: ct.startsWith('audio/') ? Buffer.from(await res.arrayBuffer()) : null };
   };
   const C = 'K7QX-M2PA';
-  const items = ['The word is, neighbor.', 'neighbor.', 'bee'].map((text) => ({ text }));
+  const items = ['The word is, neighbor.', 'neighbor.', 'F'].map((text) => ({ text }));   // 'F': a letter clip (SSML)
   delete process.env.GOOGLE_TTS_API_KEY;
   let r = await call('GET', '/api/tts/status'); ok(r.status === 200 && r.json.key === false && r.cc === 'no-store', 'status without GOOGLE_TTS_API_KEY → 200 { key: false }');
   // the family exists in the `families` store (written the way family.mjs writes it)
@@ -63,7 +63,9 @@ try {
   r = await call('POST', '/api/tts/prepare', { code: 'ZZZZ-2222', voice: 'en-US-Neural2-F', items }); ok(r.status === 403 && google.calls.length === 0, 'unknown family code → 403, Google not called');
   r = await call('POST', '/api/tts/prepare', { code: C, voice: 'en-US-Wavenet-A', items }); ok(r.status === 400, 'voice off the allowlist → 400');
   r = await call('POST', '/api/tts/prepare', { code: C, voice: 'en-US-Neural2-F', items });
-  ok(r.status === 200 && r.json.generated === 3 && r.json.cached === 0 && Object.keys(r.json.clips).length === 3 && r.json.charsToday === 'The word is, neighbor.neighbor.bee'.length, `prepare generates 3 clips (charsToday ${r.json.charsToday})`);
+  ok(r.status === 200 && r.json.generated === 3 && r.json.cached === 0 && Object.keys(r.json.clips).length === 3 && r.json.charsToday === 'The word is, neighbor.neighbor.F'.length, `prepare generates 3 clips (charsToday ${r.json.charsToday})`);
+  const gF = google.calls.find((c) => c.body.input.ssml);
+  ok(gF && gF.body.input.ssml === '<speak><say-as interpret-as="characters">F</say-as></speak>' && google.calls.filter((c) => c.body.input.text).length === 2, 'the letter "F" went to Google as SSML say-as characters; the words as plain text');
   const g0 = google.calls[0];
   ok(g0.url === `https://texttospeech.googleapis.com/v1/text:synthesize?key=${KEY}` && g0.body.voice.languageCode === 'en-US' && g0.body.voice.name === 'en-US-Neural2-F'
     && g0.body.audioConfig.audioEncoding === 'MP3' && g0.body.audioConfig.speakingRate === 0.92, 'Google request: key in the URL, en-US voice, MP3 at speaking rate 0.92');
@@ -72,7 +74,7 @@ try {
   r = await call('POST', '/api/tts/prepare', { code: C, voice: 'en-US-Neural2-F', items });
   ok(r.status === 200 && r.json.generated === 0 && r.json.cached === 3 && google.calls.length === 3 && r.json.clips['neighbor.'] === clipUrl, 'the same texts again: all cached, Google not called again');
   const usage = await getStore({ name: 'tts', consistency: 'strong' }).get(`ttsUsage/${C}/${new Date().toISOString().slice(0, 10)}`, { type: 'json' });
-  ok(usage && usage.chars === 34, `daily counter ttsUsage/${C}/<today> = ${usage && usage.chars} chars`);
+  ok(usage && usage.chars === 32, `daily counter ttsUsage/${C}/<today> = ${usage && usage.chars} chars`);
   const meta = await getStore({ name: 'tts', consistency: 'strong' }).getMetadata(`tts/${clipUrl.split('/').pop()}`);
   ok(meta && meta.metadata.voice === 'en-US-Neural2-F' && meta.metadata.chars === 9, 'clip blob metadata { voice, chars }');
   r = await call('GET', clipUrl);
@@ -81,7 +83,7 @@ try {
   r = await call('GET', '/api/tts/clip/not-an-id'); ok(r.status === 404, 'malformed clip id → 404');
   google.fail = 403;
   r = await call('POST', '/api/tts/prepare', { code: C, voice: 'en-US-Neural2-D', items: [{ text: 'enough.' }] });
-  ok(r.status === 502 && r.json.error === 'synthesis-failed' && !JSON.stringify(r.json).includes(KEY) && r.json.charsToday === 34, `Google error → 502, the key scrubbed from "${r.json.message}", the characters given back`);
+  ok(r.status === 502 && r.json.error === 'synthesis-failed' && !JSON.stringify(r.json).includes(KEY) && r.json.charsToday === 32, `Google error → 502, the key scrubbed from "${r.json.message}", the characters given back`);
   google.fail = null;
   r = await call('DELETE', '/api/tts/prepare'); ok(r.status === 405, 'DELETE → 405');
 } finally {
