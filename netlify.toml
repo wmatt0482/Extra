@@ -2,11 +2,15 @@
 # The Next.js inbox app at the repo root is not part of this site.
 
 [build]
-  base = "car-jump"
-  publish = "."
+  publish = "car-jump"
   command = "echo 'static site: nothing to build'"
-  # skip the deploy when a push did not touch the game folder
-  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- ."
+  # skip the deploy when a push did not touch the game folder or this file
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- car-jump netlify.toml"
+
+[build.environment]
+  # the repo root holds an unrelated Next.js app; Netlify must not install or build it
+  NETLIFY_SKIP_NPM_INSTALL = "true"
+  NODE_VERSION = "22"
 
 # The service worker must never be served from a stale cache, or players would keep an old version.
 [[headers]]
