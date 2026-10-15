@@ -510,3 +510,61 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
   the Parent Zone deletes anything. (QA pass: the pause menu's shake slider is a `role="slider"` element, not an
   `<input>`, so every native input lives in the PIN-gated Parent Zone.) Title: PLAY, FRIDAY TEST, BADGES, PARENTS (settings live in the pause menu
   and the Parent Zone).
+
+## Engagement update (v3.3): streaks, family board, crates, trophies, levels, cosmetics
+
+Goal: make the kids want to come back, with mechanics that reward practice and never punish or exploit.
+No lives, no energy, no timers that nag, no rewards for time spent. Data in `src/data/cosmetics.js`.
+
+### Save additions (per player, all sync-merged)
+- `xp` (number, merge: max), `streak: {count, best, lastDay (ISO), shieldAvailableWeek (ISO week), shieldUsedDays: []}`
+  (merge: the doc with the later `lastDay` wins `count`/`lastDay`; `best` = max; shields: union of used days),
+- `cosmetics: {skins: [ids], stickers: [ids], equipped: {carId: {skin, sticker}}}` (merge: union; equipped LWW),
+- `crates: {earned, opened, sinceCosmetic}` (monotonic counters; unopened = earned − opened; merge: max each),
+- `trophies: {listId: [mastered word, …]}` and `champion: [listId, …]` (merge: union).
+
+### 1. Daily streak
+- A day counts once the daily mission (8 words) is complete. Title screen shows a flame with the count next to
+  the player chip; tapping it opens the Streak panel: current / best, a month calendar with filled days,
+  shield days marked, and the next milestone ("3 days to a crate").
+- Streak shield: one per ISO week, applied automatically to the first missed day (the day after a miss, the
+  streak continues and the calendar shows a shield on the gap). Missing two days in a week breaks it.
+- Milestones in `STREAK_MILESTONES` pay a crate; 7 / 14 / 30 days also unlock the named cosmetics.
+
+### 2. Family board (player picker)
+- Below the tiles, a weekly board (ISO week, resets Monday) for every player on the device/family: words
+  mastered this week, current streak, best jump this week (m). Rank medals; the weekly leader's tile gets a
+  crown. A one-line nudge under the board for the selected/last player: "Mia is 2 words ahead" or "You're in
+  the lead!" With one player, the board shows that player's own numbers and no nudge.
+- Derived locally from the synced saves/words; nothing new on the server.
+
+### 3. Mystery crate
+- Earned on mission completion, streak milestones and Week Champion. A crate drops on the results screen
+  with a shake; tap to open: cash 60% ($300-800 scaled ×tier of the selected car), sticker 25%, skin 12%,
+  jackpot 3% (cash × 3). Pity: every 5th crate without a cosmetic guarantees one. Duplicates of cosmetics
+  roll again (if all crate cosmetics are owned, cosmetics convert to cash). Unopened crates wait on the
+  title ("1 crate" button with a bounce); opening is a short animation with a reveal card.
+
+### 4. Mastery trophies
+- When a word becomes Mastered (existing rule: box 3, 3 first-try successes on ≥2 days), the results screen
+  shows a "WORD MASTERED" moment: the word's tiles go gold and smash into a trophy that flies to a shelf
+  icon. A Trophies panel (title button) shows this week's words as a shelf: gray slots for unmastered words,
+  gold trophies for mastered ones, past weeks below.
+- Week Champion: every word of the active list mastered → badge, fireworks, the Champion Chrome skin +
+  Trophy sticker, a crate, and +300 XP. Shown on the Family board as a crown next to the name for the week.
+
+### 5. Speller levels
+- XP per `XP` in cosmetics.js. Level and title shown on the title under the player chip with a progress
+  bar, and on the picker tile ("Lv 4"). Level-up: fanfare + full-screen "LEVEL 5 · Word Wrangler" stamp on the
+  results screen; level cosmetics unlock at their levels.
+
+### 6. Skins and stickers
+- Garage gains a "Style" row under the car: skin chips (owned ones in color, locked ones gray with how to
+  earn: "crate", "7-day streak", "Level 8", "Week Champion") and sticker chips. Equipping is per car.
+- Engine: `game.start({ ..., skin: {body, accent, decal} | null, sticker: {glyph, color} | null })`; the car
+  renderer (shared by the game, the garage preview and the title hero) paints the skin and draws the decal
+  (`fade`, `stripes`, `flames`, `dots`, `camo`, `bolt`, `checker`, `stars`, `shine`, `rainbow`, `crown`) and
+  the sticker on the door. Decals are simple canvas shapes, no images.
+
+### Not doing (on purpose)
+No lives/energy, no countdown nags, no purchases, no rewards tied to minutes played, no notifications.
