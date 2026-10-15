@@ -5,8 +5,10 @@
 // here; pattern of the week; dated lists with an archive: view / restore / delete; copy to another player),
 // Report (pretest vs latest Friday Test, per-word table, test history, Copy report, "Why this works"),
 // Options (speech on/off + Test voice, Speech check with a timestamped log and Copy log, speech rate, voice picker
-// with "Automatic" / "Use default system voice" / each English voice, words before each race, new words per day,
-// review words, tile case, sound / music / motion / shake, resets).
+// in two groups: "Natural voices (online)" (Google voices made into clips on the server, v3.4: need a family code;
+// a status line says whether they are ready) and "Device voices" ("Automatic" / "Use default system voice" / each
+// English voice), words before each race, new words per day, review words, tile case, sound / music / motion /
+// shake, resets).
 // Family code (the first tab and the one that opens; for the whole family, so it works with no players at all):
 // the code (or Create / Join) on top, then details, Leave family, and what is stored online last. A one-line sync
 // status sits under the Parent Zone title on every tab (tap it to jump to Family code). With no players yet the
@@ -15,7 +17,8 @@
 // iOS keyboard never hides the text area.
 import { PLAYER_COLORS, checkPin, hasPin, playerById, playerOptions, setPin, setPlayerOption } from '../spelling/profiles.js';
 import { formatList, parseList, MAX_WORDS } from '../spelling/words.js';
-import { SAMPLE_PRESENTATION, SYSTEM_VOICE, VOICE_TIP, voiceQuality } from '../spelling/tts.js';
+import { SAMPLE_PRESENTATION, SYSTEM_VOICE, VOICE_TIP, buildPresentation, voiceQuality } from '../spelling/tts.js';
+import { CLOUD_VOICES, cloudVoiceInfo } from '../tts/voices.js';
 import {
   activeList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList,
 } from '../spelling/wordStore.js';
@@ -253,6 +256,7 @@ export function createParentZone(app) {
       }
       saveNewList(d, r.words, pat.value, Date.now());
       app.saveWordsFor(p.id, d);
+      if (app.cloudPrepareFor) app.cloudPrepareFor(p.id);    // natural voice: make this list's clips now
       app.toast('List saved');
       render();
       const m = $('#pz-msg');
@@ -268,6 +272,7 @@ export function createParentZone(app) {
           const od = app.wordsFor(o.id);
           saveNewList(od, list.words, list.pattern, Date.now());
           app.saveWordsFor(o.id, od);
+          if (app.cloudPrepareFor) app.cloudPrepareFor(o.id);
           app.toast(`Copied to ${o.name}`);
         });
         return b;
@@ -438,8 +443,9 @@ export function createParentZone(app) {
     const more = h('button', { class: 'btn btn-sm pz-voice-more', id: 'opt-voice-more', 'data-sfx': '' });
     more.addEventListener('click', () => { voiceShowAll = !voiceShowAll; paint(); });
     const current = () => { const q = playerOptions(app.family, p.id); return q.voiceName ? { name: q.voiceName, lang: q.voiceLang } : null; };
+    // a device voice picked: the natural voice is off for this player ('' = chosen, so it is not picked again for them)
     const choose = (v) => {
-      set(v === SYSTEM_VOICE ? { voiceName: SYSTEM_VOICE, voiceLang: '' } : v ? { voiceName: v.name, voiceLang: v.lang || '' } : { voiceName: '', voiceLang: '' });
+      set({ ...(v === SYSTEM_VOICE ? { voiceName: SYSTEM_VOICE, voiceLang: '' } : v ? { voiceName: v.name, voiceLang: v.lang || '' } : { voiceName: '', voiceLang: '' }), cloudVoice: '' });
       render();                          // the Speech row ("using …") and this list both show the new voice
     };
     // v: a voice, null (Automatic: the best-ranked one) or SYSTEM_VOICE (no voice set: the browser's default)
@@ -461,22 +467,26 @@ export function createParentZone(app) {
     function paint() {
       const voices = t.voices();
       const pref = current();
+      const cloudOn = cloudActiveFor(p);
       const system = !!pref && pref.name === SYSTEM_VOICE;
       const used = system ? null : t.resolveVoice(pref);
       const missing = !system && pref && (!used || used.name !== pref.name);
-      now.textContent = system ? 'Now using: the default system voice (the browser picks)'
-        : !voices.length ? 'No English voices found yet.'
-          : `Now using: ${used ? used.name : 'the system voice'}${missing ? ` (${pref.name} isn't on this device)` : ''}`;
+      const deviceNow = system ? 'the default system voice (the browser picks)' : `${used ? used.name : 'the system voice'}${missing ? ` (${pref.name} isn't on this device)` : ''}`;
+      const ci = cloudOn ? cloudVoiceInfo(playerOptions(app.family, p.id).cloudVoice) : null;
+      now.textContent = ci ? `Now using: ${ci.name}, the natural voice · device voice when a clip is missing: ${voices.length || system ? deviceNow : 'none found'}`
+        : system ? 'Now using: the default system voice (the browser picks)'
+          : !voices.length ? 'No English voices found yet.'
+            : `Now using: ${deviceNow}`;
       const best = voices[0];
       const rows = [
-        row(null, !pref, 'Automatic', best ? `Best on this device: ${best.name}` : 'The system voice'),
-        row(SYSTEM_VOICE, system, 'Use default system voice', 'The browser picks. Try this if a voice stays silent.'),
+        row(null, !cloudOn && !pref, 'Automatic', best ? `Best on this device: ${best.name}` : 'The system voice'),
+        row(SYSTEM_VOICE, !cloudOn && system, 'Use default system voice', 'The browser picks. Try this if a voice stays silent.'),
       ];
       // the short list always includes the picked voice, even when it ranks below the first LIMIT
       const shown = voiceShowAll ? voices : voices.filter((v, i) => i < LIMIT || (pref && !system && !missing && used && v.name === used.name && v.lang === used.lang));
       for (const v of shown) {
         const q = voiceQuality(v);
-        rows.push(row(v, !!pref && !system && !missing && !!used && v.name === used.name && v.lang === used.lang, v.name, [v.lang, q.label, v.localService === false ? 'online (slower to start)' : 'on device'].filter(Boolean).join(' · ')));
+        rows.push(row(v, !cloudOn && !!pref && !system && !missing && !!used && v.name === used.name && v.lang === used.lang, v.name, [v.lang, q.label, v.localService === false ? 'online (slower to start)' : 'on device'].filter(Boolean).join(' · ')));
       }
       list.replaceChildren(...rows);
       more.hidden = voices.length <= LIMIT;
@@ -486,9 +496,77 @@ export function createParentZone(app) {
     if (!t.voiceCount) t.voicesReady().then(() => { if (list.isConnected) paint(); });
     return [
       h('div', { class: 'row pz-voice-head' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Voice'), now)),
+      ...cloudPicker(p, set),
+      h('div', { class: 'pz-voice-group', id: 'opt-device-voices-head' }, 'Device voices'),
       list,
       more,
       h('div', { class: 'pz-help pz-voice-tip', id: 'opt-voice-tip' }, VOICE_TIP),
+    ];
+  }
+
+  // ---------- natural voices (v3.4, src/spelling/cloudVoice.js) ----------
+  // Google voices the server turns into clips (needs a family code; the server needs GOOGLE_TTS_API_KEY). ▶ Test asks
+  // the server for the sample presentation in that voice and plays it; picking one stores `cloudVoice` in the
+  // player's options (synced) and makes the clips for this player's list.
+  const cloudActiveFor = (p) => !!(app.cloud && app.sync.code && playerOptions(app.family, p.id).cloudVoice);
+  let repaintCloud = () => {};
+  function cloudPicker(p, set) {
+    const cloud = app.cloud;
+    if (!cloud) return [];
+    const status = h('div', { class: 'sub pz-cloud-status', id: 'opt-cloud-status', 'aria-live': 'polite' });
+    const list = h('div', { class: 'pz-voices', id: 'opt-cloud-voices', role: 'radiogroup', 'aria-label': 'Natural voices' });
+    let note = '';                      // a one-off message (Test failed) shown instead of the status for a while
+    const chosen = () => playerOptions(app.family, p.id).cloudVoice || '';
+    const usable = () => !!app.sync.code && cloud.server.key !== false;
+    function paint() {
+      const v = chosen();
+      status.textContent = note || cloud.statusText(v);
+      status.className = 'sub pz-cloud-status' + (app.sync.code && cloud.server.key && !cloud.server.error && v ? ' ok' : '');
+      const ok = usable();
+      list.replaceChildren(...CLOUD_VOICES.map((cv) => {
+        const picked = !!app.sync.code && v === cv.id;
+        const pick = h('button', { class: 'pz-voice-pick' + (picked ? ' on' : ''), role: 'radio', 'aria-checked': String(picked), 'data-cloud-voice': cv.id, disabled: !ok },
+          h('span', { class: 'pz-voice-dot', 'aria-hidden': 'true' }),
+          h('span', { class: 'grow' }, h('span', { class: 'label' }, `${cv.name} · ${cv.desc}`), h('span', { class: 'sub' }, `Google ${cv.id} · online, saved for offline after the first play`)));
+        pick.addEventListener('click', () => {
+          set('cloudVoice', cv.id);
+          note = '';
+          render();
+          app.cloudPrepareFor(p.id).then(() => repaintCloud());
+        });
+        const play = h('button', { class: 'btn btn-sm pz-voice-test', 'aria-label': `Test ${cv.name}`, 'data-cloud-test': cv.id, disabled: !ok }, '\u25B6\uFE0E Test');
+        play.addEventListener('click', () => test(cv.id, play));
+        return h('div', { class: 'pz-voice', 'data-cloud-row': cv.id }, pick, play);
+      }));
+    }
+    async function test(id, btn) {
+      const t = app.tts;
+      const texts = buildPresentation(SAMPLE_PRESENTATION);
+      t.cancel();
+      btn.disabled = true;
+      note = 'Getting the voice ready…'; paint();
+      const r = await cloud.prepare(texts, id);
+      note = '';
+      btn.disabled = false;
+      if (!texts.every((x) => cloud.has(x, id))) {
+        if (r && r.error === 'offline') note = 'Offline: the natural voice needs the internet the first time';
+        paint();
+        app.audio.error();
+        return;
+      }
+      paint();
+      t.present(SAMPLE_PRESENTATION, { voice: id });
+    }
+    paint();
+    repaintCloud = () => { if (status.isConnected) paint(); };
+    if (app.sync.code) {
+      if (app.cloudDefault) app.cloudDefault(p.id);
+      cloud.status().then(() => { if (status.isConnected) paint(); });
+    }
+    return [
+      h('div', { class: 'pz-voice-group', id: 'opt-cloud-head' }, 'Natural voices (online)'),
+      status,
+      list,
     ];
   }
 
@@ -534,7 +612,7 @@ export function createParentZone(app) {
   }
 
   // ---------- Family code (family sync) ----------
-  const PRIVACY = "What's stored online: player first names, word lists, spelling progress and the parent PIN (hashed). No emails or accounts. Anyone with the family code can see and change these, so keep it private.";
+  const PRIVACY = "What's stored online: player first names, word lists, spelling progress and the parent PIN (hashed). No emails or accounts. Anyone with the family code can see and change these, so keep it private. Word lists and sentences are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is.";
   function syncStatusClass(st) { return 'pz-sync-status' + (!st.synced ? '' : st.offline ? ' off' : st.lastError ? ' err' : ' on'); }
   function syncLineClass(st) { return 'pz-sync-line' + (!st.synced ? '' : st.offline ? ' off' : st.lastError ? ' err' : ' on'); }
   // the code (or Create / Join) comes first, the privacy note last
@@ -758,7 +836,16 @@ export function createParentZone(app) {
     },
     lock() { unlockedUntil = 0; },
     // family sync: the status changed / newer data arrived from another device
-    onSyncStatus() { if (!root.hidden && view === 'main') paintSyncStatus(); },
+    onSyncStatus() { if (!root.hidden && view === 'main') { paintSyncStatus(); repaintCloud(); } },
+    // the natural voice's state changed (server checked, clips made, a default voice picked)
+    onCloudStatus() {
+      if (root.hidden || view !== 'main' || tab !== 'options') return;
+      const p = playerById(app.family, playerId);
+      const want = p ? playerOptions(app.family, p.id).cloudVoice || '' : '';
+      const shown = (document.querySelector('#opt-cloud-voices .pz-voice-pick.on') || { dataset: {} }).dataset.cloudVoice || '';
+      if (want !== shown) render();      // a default natural voice was just picked for this player
+      else repaintCloud();
+    },
     onSyncApplied() {
       if (root.hidden || view !== 'main') return;
       // re-render the family-level tab (player list, status); other tabs keep what a parent may be typing

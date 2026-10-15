@@ -32,12 +32,20 @@
 // step with timestamps (API, voices, chosen voice, speak(), onstart / onend / onerror, watchdog).
 // Test hook: if `window.__ttsBackend` is set before boot (an object with speak/cancel/getVoices, like
 // speechSynthesis), it is used instead of the real one; `tts.useBackend(b)` swaps it at runtime.
+// Natural voice (v3.4): setCloud(cloud) plugs in src/spelling/cloudVoice.js as a second engine. When the player picked
+// a natural voice AND the device is in a family (cloud.active) AND every clip of an utterance exists, present() /
+// say() / sayAgain() / saySyllables() / sayWord() / sayLetter() / spell() play the clips (same order, pauses, onLetter
+// callbacks; the pauses grow at the slow rates since a clip's own speed is fixed). A missing clip sends the whole
+// utterance to the device voice; a clip that fails to load / play sends the rest of it there. The watchdog, health
+// and "off for the session" rules belong to the device engine only. `engine` tells which one spoke last.
 import { letterName } from './words.js';
+import { cloudVoiceInfo, isCloudVoice } from '../tts/voices.js';
 
 export const RATES = { veryslow: 0.5, slow: 0.6, normal: 0.85 };
 const LETTER_RATE = { veryslow: 0.7, slow: 0.75, normal: 0.95 };
 export const PITCH = 1.0;
 export const PHRASE_GAP_MS = 280;        // silence between the carrier, the sentence and the repeated word
+const CLOUD_GAP_SCALE = { veryslow: 2, slow: 1.5, normal: 1 };   // natural voice: slower rates = longer pauses
 const CHUNK = 140;
 export const FIRST_START_TIMEOUT_MS = 5000;  // onstart watchdog for the session's first utterance (and a new voice's)
 export const START_TIMEOUT_MS = 3000;        // onstart watchdog afterwards: no onstart → this one attempt failed
@@ -151,6 +159,8 @@ export function createTTS(opts = {}) {
   let voice = null, voiceCount = 0, rate = 'normal', unlocked = false, gen = 0, busy = 0, idleTimer = 0, lastCancelAt = 0;
   let pref = null;                 // { name, lang } picked in the Parent Zone, { system: true } for the system voice, null: ranked
   let onSpeaking = () => {};
+  let cloud = null, lastEngine = '', cloudFails = 0;   // natural voice engine (setCloud), the engine that spoke last
+  const cloudActive = () => !!(cloud && cloud.active);
   // health: 'unknown' until something was tried; 'ok' after an utterance really started; 'no-voices' / 'no-start' /
   // 'error' / 'not-allowed' after a failed attempt. A failure is per attempt: the next word tries again, and one
   // start clears it. `streak` counts onstart failures in a row; GIVE_UP of them → gaveUp (off for the session).
@@ -334,6 +344,7 @@ export function createTTS(opts = {}) {
     if (!groups.length) return true;
     if (gaveUp()) return false;
     const myGen = ++gen;
+    if (cloud) cloud.stop();
     if (!(await settle(myGen))) return null;
     const useVoice = v === SYSTEM_VOICE ? null : (v || voice);
     for (let gi = 0; gi < groups.length; gi++) {
@@ -349,9 +360,51 @@ export function createTTS(opts = {}) {
         if (res === 'cancel') return null;
       }
     }
+    lastEngine = 'device';
     return true;
   }
-  const speak = (text, r) => speakSeq([text], r);
+
+  // natural voice: play each phrase's clip, PHRASE_GAP_MS (scaled by the rate) between them. Any phrase without a
+  // clip → the whole sequence goes to the device voice; a clip that fails → the rest goes there. Same results as
+  // speakSeq (true / false / null).
+  async function cloudSeq(phrases, r, { gap = PHRASE_GAP_MS, cloudVoice: cv } = {}) {
+    const texts = (phrases || []).map(clean).filter(Boolean);
+    if (!texts.length) return true;
+    const keys = texts.map((t) => cloud.resolve(t, cv));
+    const miss = keys.indexOf(null);
+    if (miss >= 0) {
+      note(`natural voice: no clip for "${texts[miss]}" yet: device voice`);
+      return speakSeq(texts, r, { gap });
+    }
+    const myGen = ++gen;
+    lastCancelAt = Date.now();
+    try { if (synth && (busy > 0 || synth.speaking || synth.pending)) synth.cancel(); } catch (_) { /* ignore */ }
+    const pause = Math.round(gap * (CLOUD_GAP_SCALE[rate] || 1));
+    for (let i = 0; i < keys.length; i++) {
+      if (i > 0) { setBusy(1); await sleep(pause); setBusy(-1); }
+      if (myGen !== gen) return null;
+      setBusy(1);
+      const res = await cloud.play(keys[i], { voice: cv });
+      setBusy(-1);
+      if (myGen !== gen || res === 'cancel') return null;
+      if (res !== 'ok') {
+        cloudFails++;
+        note(`natural voice: clip for "${texts[i]}" did not play: device voice`);
+        return speakSeq(texts.slice(i), r, { gap });
+      }
+    }
+    lastEngine = 'cloud';
+    return true;
+  }
+  // the engine for an utterance: a natural voice passed explicitly (Parent Zone ▶ Test), a device voice passed
+  // explicitly, else the natural voice when it is active, else the device voice
+  function route(phrases, r, opts = {}) {
+    const v = opts.voice;
+    if (isCloudVoice(v)) return cloud ? cloudSeq(phrases, r, { gap: opts.gap, cloudVoice: v }) : speakSeq(phrases, r, { gap: opts.gap });
+    if (v || !cloudActive()) return speakSeq(phrases, r, opts);
+    return cloudSeq(phrases, r, { gap: opts.gap, cloudVoice: cloud.voice });
+  }
+  const speak = (text, r) => route([text], r);
   const slowRate = () => Math.min(RATES.slow, RATES[rate]);
   const failedLast = () => gaveUp() || health === 'no-start' || health === 'error' || health === 'no-voices' || health === 'not-allowed';
 
@@ -375,80 +428,114 @@ export function createTTS(opts = {}) {
       log(`recent speech events (${history.length}):`);
       for (const h of history) push(`    ${new Date(h.at).toLocaleTimeString('en-US')} ${h.msg}`);
     }
+    const finish = (ok) => ({ ok, lines: lines.slice(), text: lines.join('\n') });
+    if (cloudActive()) {
+      const info = cloudVoiceInfo(cloud.voice);
+      const k = cloud.resolve(phrase);
+      log(`natural voice: ${info ? info.name + ' · ' : ''}${cloud.voice} · ${cloud.count()} clips on this device · ${k ? 'clip ready for this phrase' : 'no clip for this phrase yet'}`);
+      if (k) {
+        log(`engine: natural voice (clip) · playing "${phrase}"`);
+        gen++; lastCancelAt = Date.now();
+        try { if (synth) synth.cancel(); } catch (_) { /* ignore */ }
+        const tPlay = now();
+        setBusy(1);
+        return cloud.play(k).then((res) => {
+          setBusy(-1);
+          if (res === 'ok') {
+            lastEngine = 'cloud';
+            log(`clip played to the end after ${Math.round(now() - tPlay)} ms`);
+            log('result: the natural voice played, so it works here. Heard nothing? Check the volume, the mute switch and Bluetooth audio.');
+            return finish(true);
+          }
+          log(`clip ${res === 'cancel' ? 'was cut off' : 'did not load or play'} after ${Math.round(now() - tPlay)} ms: the device voice takes over`);
+          if (!available()) { log('result: this browser has no speech synthesis either. Words are shown for 3 s instead.'); return finish(false); }
+          return deviceCheck();
+        });
+      }
+      log('engine: device voice (the natural voice has no clip for this phrase: open Options with the internet on)');
+    }
     if (!available()) {
       log('result: this browser has no speech synthesis. Words are shown for 3 s instead.');
-      return Promise.resolve({ ok: false, lines: lines.slice(), text: lines.join('\n') });
+      return Promise.resolve(finish(false));
     }
-    pickVoice();
-    const all = listVoices();
-    const en = rankVoices(all);
-    log(`voices: ${all.length} (${en.length} English, ${en.filter((x) => x.localService !== false).length} on-device)${all.length ? '' : ' (the list may still be loading, or this browser lists none)'}`);
-    const v = voice;
-    log(v ? `chosen voice: ${v.name} · ${v.lang || '?'} · localService: ${v.localService === false ? 'false (online voice: the first word can take a few seconds)' : String(v.localService !== undefined ? v.localService : 'unknown')}${v.default ? ' · system default' : ''}`
-      : `chosen voice: none set (${pref && pref.system ? '"Use default system voice" picked' : 'no English voice listed'}: the browser picks)`);
-    log(`synth state: speaking ${isSpeaking()}, pending ${!!synth.pending}, paused ${!!synth.paused} · health ${health}${gaveUp() ? ` (off for this session after ${streak} failures in a row)` : ''} · gesture unlock ${unlocked ? 'done' : 'not yet'}`);
-    // inside the tap: cancel, resume, then speak at once (no await before speak())
-    gen++; lastCancelAt = Date.now();
-    try { synth.cancel(); } catch (_) { /* ignore */ }
-    resumeIfPaused();
-    if (gaveUp()) streak = GIVE_UP - 1;      // re-probe: one success turns speech back on
-    const myGen = gen;
-    const startMs = startTimeout(v);
-    triedVoices.add(voiceKey(v));
-    return new Promise((resolve) => {
-      let started = false, done = false, tW = 0, tE = 0;
-      let u;
-      const end = (ok) => {
-        if (done) return; done = true;
-        clearTimeout(tW); clearTimeout(tE); setBusy(-1); releaseUtterance(u);
-        log(ok ? 'result: speech started, so the voice works here. Heard nothing? Check the volume, the mute switch and Bluetooth audio.'
-          : health === 'not-allowed' ? 'result: the browser blocked speech until a tap. Tap "Run speech check" again.'
-            : 'result: no speech started. Words are shown for 3 s instead; the app tries the voice again on the next word.');
-        resolve({ ok, lines: lines.slice(), text: lines.join('\n') });
-      };
-      try { u = makeUtterance(phrase, RATES[rate], v); } catch (e) { log(`could not make an utterance: ${e && e.message}`); markFail('error', 'utterance'); end(false); return; }
-      u.onstart = () => {
-        if (started || done) return;
-        started = true; markStart(); clearTimeout(tW);
-        log(`onstart after ${Math.round(now() - tSpeak)} ms`);
-        tE = setTimeout(() => { log(`onend not received ${endWaitMs} ms after onstart (some browsers drop it)`); end(true); }, endWaitMs);
-      };
-      u.onend = () => {
-        releaseUtterance(u);
-        if (done) return;
-        if (!started) { log('onend without an onstart'); started = true; markStart(); }
-        log(`onend after ${Math.round(now() - tSpeak)} ms`);
-        end(true);
-      };
-      u.onerror = (e) => {
-        releaseUtterance(u);
-        const code = (e && e.error) || 'unknown';
-        lastError = code;
-        if (done) return;
-        log(`onerror: ${code} after ${Math.round(now() - tSpeak)} ms`);
-        if (!started && myGen === gen && code !== 'interrupted' && code !== 'canceled') markFail(code === 'not-allowed' ? 'not-allowed' : 'error', `${code} · speech check`);
-        end(started);
-      };
-      setBusy(1);
-      holdUtterance(u);
-      log(`speak() called: "${phrase}" (onstart watchdog ${startMs} ms)`);
-      const tSpeak = now();
-      tW = setTimeout(() => {
-        if (started || done) return;
-        watchdogs++;
-        log(`watchdog fired: no onstart after ${startMs} ms`);
-        markFail('no-start', `no onstart after ${startMs} ms · speech check`);
-        try { synth.cancel(); } catch (_) { /* ignore */ }
-        end(false);
-      }, startMs);
-      try { synth.speak(u); } catch (e) { log(`speak() threw: ${e && e.message}`); markFail('error', 'speak() threw'); end(false); }
+    return deviceCheck();
+    // the device engine's check (unchanged from v3.2.1): nothing is awaited before speak(), so it runs inside the tap
+    function deviceCheck() {
+      pickVoice();
+      const all = listVoices();
+      const en = rankVoices(all);
+      log(`voices: ${all.length} (${en.length} English, ${en.filter((x) => x.localService !== false).length} on-device)${all.length ? '' : ' (the list may still be loading, or this browser lists none)'}`);
+      const v = voice;
+      log(v ? `chosen voice: ${v.name} · ${v.lang || '?'} · localService: ${v.localService === false ? 'false (online voice: the first word can take a few seconds)' : String(v.localService !== undefined ? v.localService : 'unknown')}${v.default ? ' · system default' : ''}`
+        : `chosen voice: none set (${pref && pref.system ? '"Use default system voice" picked' : 'no English voice listed'}: the browser picks)`);
+      log(`synth state: speaking ${isSpeaking()}, pending ${!!synth.pending}, paused ${!!synth.paused} · health ${health}${gaveUp() ? ` (off for this session after ${streak} failures in a row)` : ''} · gesture unlock ${unlocked ? 'done' : 'not yet'}`);
+      // inside the tap: cancel, resume, then speak at once (no await before speak())
+      gen++; lastCancelAt = Date.now();
+      try { synth.cancel(); } catch (_) { /* ignore */ }
       resumeIfPaused();
-    });
+      if (gaveUp()) streak = GIVE_UP - 1;      // re-probe: one success turns speech back on
+      const myGen = gen;
+      const startMs = startTimeout(v);
+      triedVoices.add(voiceKey(v));
+      return new Promise((resolve) => {
+        let started = false, done = false, tW = 0, tE = 0;
+        let u;
+        const end = (ok) => {
+          if (done) return; done = true;
+          clearTimeout(tW); clearTimeout(tE); setBusy(-1); releaseUtterance(u);
+          log(ok ? 'result: speech started, so the voice works here. Heard nothing? Check the volume, the mute switch and Bluetooth audio.'
+            : health === 'not-allowed' ? 'result: the browser blocked speech until a tap. Tap "Run speech check" again.'
+              : 'result: no speech started. Words are shown for 3 s instead; the app tries the voice again on the next word.');
+          resolve({ ok, lines: lines.slice(), text: lines.join('\n') });
+        };
+        try { u = makeUtterance(phrase, RATES[rate], v); } catch (e) { log(`could not make an utterance: ${e && e.message}`); markFail('error', 'utterance'); end(false); return; }
+        u.onstart = () => {
+          if (started || done) return;
+          started = true; markStart(); clearTimeout(tW);
+          log(`onstart after ${Math.round(now() - tSpeak)} ms`);
+          lastEngine = 'device';
+          tE = setTimeout(() => { log(`onend not received ${endWaitMs} ms after onstart (some browsers drop it)`); end(true); }, endWaitMs);
+        };
+        u.onend = () => {
+          releaseUtterance(u);
+          if (done) return;
+          if (!started) { log('onend without an onstart'); started = true; markStart(); }
+          log(`onend after ${Math.round(now() - tSpeak)} ms`);
+          end(true);
+        };
+        u.onerror = (e) => {
+          releaseUtterance(u);
+          const code = (e && e.error) || 'unknown';
+          lastError = code;
+          if (done) return;
+          log(`onerror: ${code} after ${Math.round(now() - tSpeak)} ms`);
+          if (!started && myGen === gen && code !== 'interrupted' && code !== 'canceled') markFail(code === 'not-allowed' ? 'not-allowed' : 'error', `${code} · speech check`);
+          end(started);
+        };
+        setBusy(1);
+        holdUtterance(u);
+        log(`engine: device voice · speak() called: "${phrase}" (onstart watchdog ${startMs} ms)`);
+        const tSpeak = now();
+        tW = setTimeout(() => {
+          if (started || done) return;
+          watchdogs++;
+          log(`watchdog fired: no onstart after ${startMs} ms`);
+          markFail('no-start', `no onstart after ${startMs} ms · speech check`);
+          try { synth.cancel(); } catch (_) { /* ignore */ }
+          end(false);
+        }, startMs);
+        try { synth.speak(u); } catch (e) { log(`speak() threw: ${e && e.message}`); markFail('error', 'speak() threw'); end(false); }
+        resumeIfPaused();
+      });
+    }
   }
 
   const available = () => !!synth && (typeof g.SpeechSynthesisUtterance === 'function' || !!g.__ttsBackend || synth !== g.speechSynthesis);
   const api = {
-    get available() { return available(); },
+    /** speech of some kind: the device's speechSynthesis, or the natural voice (active) */
+    get available() { return available() || cloudActive(); },
+    /** the device's speechSynthesis only */
+    get deviceAvailable() { return available(); },
     // best current guess that speech works: the API exists, speech is not off for the session and the last attempt
     // did not fail
     get working() { return available() && !gaveUp() && (health === 'ok' || health === 'unknown') && (voiceCount > 0 || health === 'ok'); },
@@ -491,6 +578,7 @@ export function createTTS(opts = {}) {
     /** Before an attempt that needs speech: true when the API exists and voices are listed (waits ≤ 1.5 s) or speech
      *  already started this session; false at once when speech is off for the session (GIVE_UP failures in a row). */
     async ready() {
+      if (cloudActive()) return true;        // clips play without the device voice (a missing one falls back to it)
       if (!available()) return false;
       resumeIfPaused();
       if (gaveUp()) return false;
@@ -536,26 +624,39 @@ export function createTTS(opts = {}) {
     /** Present a word like a spelling test: "The word is, <word>." → sentence → "<word>." (same result values
      *  as say). info: { word, sentence, sayAs }; opts.voice: speak in this voice instead (Parent Zone ▶ Test;
      *  SYSTEM_VOICE: no voice set). */
-    present(info, { voice: v } = {}) { return speakSeq(buildPresentation(info), RATES[rate], { voice: v }); },
+    present(info, { voice: v } = {}) { return route(buildPresentation(info), RATES[rate], { voice: v }); },
     /** "Say it again": "<word>. <word>." at the slow rate. */
-    sayAgain(info) { return speakSeq([buildRepeat(info)], slowRate()); },
+    sayAgain(info) { return route([buildRepeat(info)], slowRate()); },
     /** "Syllables": "neigh, bor." at the slow rate. */
-    saySyllables(syllables) { return speakSeq([buildSyllables(syllables)], slowRate()); },
+    saySyllables(syllables) { return route([buildSyllables(syllables)], slowRate()); },
     /** The word once on its own, with a full stop so the voice finishes it (praise after a perfect spell). */
     sayWord(info) { const w = spokenForm(info); return speak(w ? `${w}.` : '', RATES[rate]); },
     sayLetter(ch) { return speak(letterName(ch), LETTER_RATE[rate]); },
     // Spell a word letter by letter (SOS). onLetter(i, ch) fires as each letter starts, so tiles can light in sync.
+    // Natural voice: each letter's clip when it exists, else the device voice for that letter.
     async spell(word, onLetter, { gap = 260 } = {}) {
       const chars = Array.from(String(word || ''));
       const myGen = ++gen;
+      if (cloud) cloud.stop();
       try { synth && synth.cancel(); } catch (_) { /* ignore */ }
       resumeIfPaused();
+      const cv = cloudActive() ? cloud.voice : '';
       for (let i = 0; i < chars.length; i++) {
         if (myGen !== gen) return false;
         try { if (onLetter) onLetter(i, chars[i]); } catch (_) { /* ignore */ }
+        const name = letterName(chars[i]);
+        let done = false;
+        if (cv && cloud.has(name, cv)) {
+          setBusy(1);
+          const res = await cloud.play(name, { voice: cv });
+          setBusy(-1);
+          if (myGen !== gen) return false;
+          if (res === 'ok') { done = true; lastEngine = 'cloud'; } else { cloudFails++; note(`natural voice: letter "${name}" did not play: device voice`); }
+        }
         // after a failed start, light the tiles on a timer instead of waiting for the watchdog on every silent letter
-        if (synth && !failedLast()) await speakChunk(letterName(chars[i]), LETTER_RATE[rate], myGen);
-        else await sleep(420);
+        if (!done) {
+          if (synth && !failedLast()) { if ((await speakChunk(name, LETTER_RATE[rate], myGen)) === 'ok') lastEngine = 'device'; } else await sleep(420);
+        }
         if (myGen !== gen) return false;
         await sleep(gap);
       }
@@ -564,7 +665,25 @@ export function createTTS(opts = {}) {
     cancel() {
       gen++;
       lastCancelAt = Date.now();
+      if (cloud) cloud.stop();
       try { synth && synth.cancel(); } catch (_) { /* ignore */ }
+    },
+    // ---- natural voice (src/spelling/cloudVoice.js) ----
+    /** Plug in the natural voice engine (null: device voice only). */
+    setCloud(c) { cloud = c || null; },
+    get cloud() { return cloud; },
+    /** the natural voice is picked and the device is in a family (clips are used when they exist) */
+    get cloudActive() { return cloudActive(); },
+    /** 'cloud' | 'device' | '' : the engine that spoke the last utterance that finished */
+    get engine() { return lastEngine; },
+    get cloudFailures() { return cloudFails; },
+    /** Before a word: null when its clips are there (they are fetched in the background) or the natural voice is
+     *  off; else a promise that resolves once the server was asked for them (the spell panel waits ≤ 3 s). */
+    prepareWord(info) {
+      if (!cloudActive() || typeof cloud.ensureWord !== 'function') return null;
+      const warm = () => { try { cloud.warmWord(info); } catch (_) { /* ignore */ } };
+      if (!cloud.needsPrepare(info)) { warm(); return null; }
+      return cloud.ensureWord(info).then((r) => { warm(); return r; }, () => null);
     },
     /** Parent Zone "Speech check" (see runCheck above). */
     runCheck,

@@ -1,7 +1,7 @@
 // Players and the family record (SPEC v3 "Players"). Storage layout:
 //   spellJump.family              { v, players: [{id, name, color, createdAt, updatedAt}], pinHash, pinUpdatedAt,
 //                                   options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace,
-//                                   voiceName, voiceLang}}, optionsUpdatedAt: {playerId: ms},
+//                                   voiceName, voiceLang, cloudVoice?}}, optionsUpdatedAt: {playerId: ms},
 //                                   removedPlayers: [id] (tombstones for family sync), migrated, lastPlayer }
 //                                   (migrated and lastPlayer are per device; the rest is what family sync shares)
 //   spellJump.<playerId>.save     the player's full game save (src/meta/save.js schema)
@@ -12,6 +12,7 @@
 import { LEGACY_SAVE_KEY, loadSave, writeSave } from '../meta/save.js';
 import { hashString } from '../meta/rng.js';
 import { DEFAULT_OPTIONS, defaultWords, normalizeWordsData } from './wordStore.js';
+import { isCloudVoice } from '../tts/voices.js';
 import { localWrite } from '../sync/notify.js';
 
 export const FAMILY_KEY = 'spellJump.family';
@@ -79,6 +80,9 @@ function cleanOptions(o) {
   // because voice objects differ per device; tts.js falls back to the ranked default when the name is absent.
   d.voiceName = typeof o.voiceName === 'string' ? o.voiceName.slice(0, 120) : '';
   d.voiceLang = d.voiceName && typeof o.voiceLang === 'string' && /^[A-Za-z]{2,3}([-_][A-Za-z0-9]{2,8})*$/.test(o.voiceLang) ? o.voiceLang : '';
+  // v3.4 natural voice: a Google voice id from src/tts/voices.js, '' = the device voice (the parent chose it), absent =
+  // never chosen (the app picks the default natural voice once the server has one and the family has a code)
+  if (o.cloudVoice === '' || isCloudVoice(o.cloudVoice)) d.cloudVoice = o.cloudVoice;
   if ([3, 5, 8, 99].includes(o.newPerDay)) d.newPerDay = o.newPerDay;
   if (typeof o.includeReview === 'boolean') d.includeReview = o.includeReview;
   if (o.tileCase === 'lower' || o.tileCase === 'upper') d.tileCase = o.tileCase;

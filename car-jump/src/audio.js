@@ -1,10 +1,12 @@
-// Spell Jump audio: everything synthesized with WebAudio, no files. The AudioContext is created and
-// resumed inside the first user gesture (iOS requirement). All calls are safe before unlock (no-ops).
+// Spell Jump audio: everything synthesized with WebAudio, no files (except the natural voice's clips, v3.4: decoded
+// with decodeVoice() and played with playVoice() on their own bus straight into the master, so the music ducks
+// under them exactly like under the device voice). The AudioContext is created and resumed inside the first user
+// gesture (iOS requirement). All calls are safe before unlock (no-ops).
 
 const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
 
 function createAudio() {
-  let ctx = null, master, sfxBus, musicBus, noiseBuf;
+  let ctx = null, master, sfxBus, musicBus, voiceBus, noiseBuf;
   let soundOn = true, musicOn = true, ducked = false, unlocked = false, voiceOn = false;
   let eng = null, nitroNode = null, musicTimer = 0, musicStep = 0, nextNoteAt = 0, lead, bass, leadGain, bassGain;
 
@@ -20,6 +22,7 @@ function createAudio() {
     master.connect(comp).connect(limit).connect(ctx.destination);
     sfxBus = ctx.createGain(); sfxBus.gain.value = soundOn ? 1 : 0; sfxBus.connect(master);
     musicBus = ctx.createGain(); musicBus.gain.value = 0; musicBus.connect(master);
+    voiceBus = ctx.createGain(); voiceBus.gain.value = 1; voiceBus.connect(master);   // the natural voice (not muted with effects)
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
@@ -185,6 +188,44 @@ function createAudio() {
       sfxBus.gain.setTargetAtTime(sfxLevel(), now(), 0.05);
     },
     get speaking() { return voiceOn; },
+    // ---- natural voice clips (src/spelling/cloudVoice.js) ----
+    /** Decode an MP3 (ArrayBuffer) into an AudioBuffer (the callback form too, for older Safari). */
+    decodeVoice(data) {
+      if (!init()) return Promise.reject(new Error('no WebAudio'));
+      return new Promise((resolve, reject) => {
+        try { const p = ctx.decodeAudioData(data, resolve, reject); if (p && typeof p.then === 'function') p.then(resolve, reject); } catch (e) { reject(e); }
+      });
+    },
+    /** Play a decoded clip on the voice bus. { done: Promise<boolean> (true: played to the end), stop() }. A context
+     *  that is not running (no tap yet, iOS interruption) and does not resume within 800 ms → done(false), so the
+     *  caller can fall back to the device voice. */
+    playVoice(buffer) {
+      let settled = false, src = null, timer = 0, resolveDone;
+      const done = new Promise((r) => { resolveDone = r; });
+      const finish = (ok) => {
+        if (settled) return;
+        settled = true; clearTimeout(timer);
+        try { if (src) { src.onended = null; src.disconnect(); } } catch (_) { /* ignore */ }
+        resolveDone(ok);
+      };
+      const start = () => {
+        if (settled) return;
+        clearTimeout(timer);
+        try {
+          src = ctx.createBufferSource(); src.buffer = buffer; src.connect(voiceBus);
+          src.onended = () => finish(true);
+          src.start();
+        } catch (_) { finish(false); return; }
+        timer = setTimeout(() => finish(true), (buffer.duration || 0) * 1000 + 1500);   // onended can be dropped
+      };
+      if (!buffer || !init()) finish(false);
+      else if (ctx.state === 'running') start();
+      else {
+        timer = setTimeout(() => finish(false), 800);
+        try { ctx.resume().then(() => { if (ctx.state === 'running') start(); else finish(false); }, () => finish(false)); } catch (_) { finish(false); }
+      }
+      return { done, stop() { try { if (src) src.stop(); } catch (_) { /* ignore */ } finish(false); } };
+    },
     // speed01: 0..1 (null or negative = engine off)
     engine(speed01) {
       if (!ready()) return;

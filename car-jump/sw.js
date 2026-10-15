@@ -3,8 +3,12 @@
 // while online picks up a new version at once. Every other same-origin file is cache-first and refreshed in the
 // background (stale-while-revalidate). Bump VERSION on every deploy: the new worker installs, takes over at once
 // (skipWaiting + clients.claim) and the page reloads itself on the next safe screen (src/meta/selfUpdate.js).
-// The family sync API (/api/...) is network only: never cached, never answered from the cache.
-const VERSION = 'spell-jump-v3.3.0';
+// The family sync API and the natural voice's prepare / status calls (/api/...) are network only: never cached, never
+// answered from the cache. The natural voice's clips (/api/tts/clip/<id>, v3.4) are content-addressed (a clip never
+// changes), so they are cache-first in their own cache, TTS_CACHE, which survives version updates: a clip played once
+// plays offline afterwards.
+const VERSION = 'spell-jump-v3.4.0';
+const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
   './',
@@ -57,6 +61,8 @@ const SHELL = [
   'src/spelling/spellPanel.js',
   'src/spelling/testMode.js',
   'src/spelling/why.js',
+  'src/spelling/cloudVoice.js',
+  'src/tts/voices.js',
   'src/sync/client.js',
   'src/sync/merge.js',
   'src/sync/codes.js',
@@ -80,7 +86,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)));
+    await Promise.all(keys.filter((k) => k !== VERSION && k !== TTS_CACHE).map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -99,6 +105,17 @@ self.addEventListener('message', (event) => {
 const isFont = (url) => url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
 
 const isApi = (url) => url.origin === self.location.origin && url.pathname.startsWith('/api/');
+const isClip = (url) => url.origin === self.location.origin && /^\/api\/tts\/clip\/[0-9a-f]{32}$/.test(url.pathname);
+
+// a natural voice clip: the cached copy, else the network (kept when it is a real MP3)
+async function clip(req) {
+  const cache = await caches.open(TTS_CACHE);
+  const hit = await cache.match(req, { ignoreSearch: true });
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (res && res.status === 200 && /^audio\//.test(res.headers.get('content-type') || '')) cache.put(req, res.clone()).catch(() => {});
+  return res;
+}
 
 // the page and its entry module are network-first; paths are relative to this worker's scope
 const relPath = (url) => {
@@ -112,7 +129,8 @@ const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new E
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
-  if (isApi(url)) return;                 // family sync: straight to the network (no respondWith, no cache)
+  if (req.method === 'GET' && isClip(url)) { event.respondWith(clip(req).catch(() => Response.error())); return; }
+  if (isApi(url)) return;                 // family sync, voice prepare / status: straight to the network (no cache)
   if (req.method !== 'GET') return;
   const sameOrigin = url.origin === self.location.origin;
   if (!sameOrigin && !isFont(url)) return;

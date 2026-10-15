@@ -19,6 +19,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { handle, memoryStore } from '../src/sync/protocol.mjs';
+import { handleTts, memoryTtsStore } from '../src/tts/server.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
@@ -52,6 +53,8 @@ async function until(fn, timeout = 10000, step = 100) {
 const store = memoryStore();
 const online = { laptop: true, ipad: true };
 const apiLog = [];
+const ttsStore = memoryTtsStore();
+const ttsLog = [];          // natural voice requests (status only: this server has no Google key)
 const serverDoc = async (code, key) => { const e = await store.get(`${code}/${key}`); return e ? e.value : null; };
 
 const fontCache = new Map();
@@ -76,6 +79,17 @@ async function device(browser, name, opts) {
     apiLog.push({ name, method: req.method(), path: u.pathname, status: res.status });
     await route.fulfill({ status: res.status, headers: res.headers, body: res.body });
   });
+  // natural voice API (v3.4) through the real handler, as a server without the Google key: devices in a family ask
+  // /api/tts/status, get { key: false } and keep the device voice (nothing is prepared)
+  await ctx.route('**/api/tts/**', async (route) => {
+    const req = route.request();
+    if (!online[name]) { await route.abort('internetdisconnected'); return; }
+    const u = new URL(req.url());
+    const res = await handleTts({ method: req.method(), path: u.pathname, contentType: req.headers()['content-type'], body: req.postData() },
+      { store: ttsStore, families: { exists: async (code) => !!(await store.get(`${code}/family`)) }, synthesize: null });
+    ttsLog.push({ name, method: req.method(), path: u.pathname, status: res.status });
+    await route.fulfill({ status: res.status, headers: res.headers, body: res.body });
+  });
   const errors = [];
   const page = await ctx.newPage();
   page.on('console', (m) => {
@@ -83,7 +97,7 @@ async function device(browser, name, opts) {
     const where = (m.location() && m.location().url) || '';
     if (/fonts\.(googleapis|gstatic)/.test(m.text() + where)) return;
     // the protocol's own answers (404 unknown code, 409 conflict) and offline aborts are expected, not bugs
-    if (/\/api\/family\//.test(where) && /status of (404|409)|ERR_INTERNET_DISCONNECTED|net::ERR_FAILED/.test(m.text())) return;
+    if (/\/api\/(family|tts)\//.test(where) && /status of (404|409)|ERR_INTERNET_DISCONNECTED|net::ERR_FAILED/.test(m.text())) return;
     errors.push(`${name}: ${m.text()}`);
   });
   page.on('pageerror', (e) => errors.push(`${name} pageerror: ${e.message}`));
@@ -190,7 +204,7 @@ async function main() {
     console.log('\n=== sync off: nothing goes to the network ===');
     await L.waitForSelector(visibleSel('#screen-players'));
     check(apiLog.length === 0, 'no /api/family requests before a family exists');
-    check(await J(L, () => window.__spellJump.app.version) === '3.3.0', 'app version 3.3.0');
+    check(await J(L, () => window.__spellJump.app.version) === '3.4.0', 'app version 3.4.0');
 
     console.log('\n=== laptop: Mia, PIN, Create family code ===');
     await typeName(L, 'Mia');
@@ -396,6 +410,7 @@ async function main() {
     await L.click('#pz-close');
 
     const errors = [...laptop.errors, ...ipad.errors];
+    check(ttsLog.length > 0 && ttsLog.every((r) => r.path === '/api/tts/status' && r.status === 200), `natural voice: devices in a family asked /api/tts/status only (${ttsLog.length}×, no key on this server: the device voice stays)`);
     check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''}`);
   } finally {
     await browser.close();

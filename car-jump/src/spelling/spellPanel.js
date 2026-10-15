@@ -18,6 +18,9 @@
 // "<word>.", tts.present) once per presentation: in Look for a new word, else when Write opens. "Hear it" cancels
 // whatever is playing and presents it again; "Say it again" says "<word>. <word>." slowly; "Syllables" (only when
 // the parent gave them) says "neigh, bor." slowly. The parent's "say as" text replaces the word in all of these.
+// Natural voice (v3.4, src/spelling/cloudVoice.js): when the parent picked one and this word's clips are missing,
+// the panel shows "Getting the voice ready…" while the server makes them, for at most 3 s; then the word is presented
+// (by clips, or by the device voice for anything still missing).
 // Word sets ("Words before each race"): the caller runs several words back to back with ctx.set = {index, count}
 // ("Word 1 of 2" on the chip) and ctx.keepOpen (the panel stays up after the word), beat('Next word!') between
 // words, and close() after the last one. The car stays parked behind the panel the whole time.
@@ -33,6 +36,8 @@ export const NO_SPEECH_HINT = "Speech isn't available on this device, so you'll 
 export const TAP_HINT = 'Tap Hear it to turn on the voice';
 // shown under the one-time no-speech hint on the spell panel only (a grown-up is usually nearby)
 export const NO_SPEECH_TIP = VOICE_TIP.replace('then pick it here.', 'then pick it in Parents → Options.');
+export const VOICE_READY_NOTE = 'Getting the voice ready…';
+export const VOICE_WAIT_MS = 3000;       // natural voice: wait at most this long for the word's clips
 export const COMPARE_MS = 2800;          // the child's wrong attempt is gone before 3 s (R2)
 export const MAX_ATTEMPT = 24;
 export const POWER = { perfect: [1, 1.25], fixed: [0.65, 1], anyway: [0.65, 1] };
@@ -258,12 +263,14 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     if (tts.needsTap) {
       if (tts.tapHintShown) return;
       tts.tapHintShown = true;
+      delete note.dataset.kind;
       note.hidden = false;
       note.replaceChildren(document.createTextNode(TAP_HINT));
       return;
     }
     if (tts.hintShown) return;
     tts.hintShown = true;
+    delete note.dataset.kind;
     note.hidden = false;
     note.replaceChildren(document.createTextNode(NO_SPEECH_HINT), el('small', 'sp-tip'));
     note.lastChild.textContent = NO_SPEECH_TIP;
@@ -360,6 +367,19 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
   async function flow(st) {
     note.hidden = true;           // the no-speech hint shows once per app session (tts.hintShown)
     retry.hidden = true;          // the retry belongs to one word
+    // natural voice (v3.4): this word's clips are missing → ask the server (the whole list), at most 3 s, with a note
+    const prep = tts.prepareWord ? tts.prepareWord(speechInfo(st)) : null;
+    if (prep) {
+      setMode('init');
+      setTyping(false);
+      setMsg('Get ready…', 'cyan');
+      note.hidden = false;
+      note.dataset.kind = 'voice';
+      note.replaceChildren(document.createTextNode(VOICE_READY_NOTE));
+      await Promise.race([prep, sleep(VOICE_WAIT_MS)]); guard(st);
+      if (note.dataset.kind === 'voice') note.hidden = true;
+    }
+    delete note.dataset.kind;
     // Look-Say-Cover-Write-Check for a new word. Otherwise the word is only heard: make sure speech can work
     // (API + voices within 1.5 s), else Look for 3 s first.
     let silentLook = false;

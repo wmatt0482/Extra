@@ -1,12 +1,15 @@
 # Netlify deploys learninglab.fun: a static home page (site/) with the Spell Jump game under /spell-jump/
-# (car-jump/), assembled into dist/ by build.sh (plain bash, no dependencies), plus one Netlify Function
-# (netlify/functions/family.mjs, Netlify Blobs) for cross-device family sync.
+# (car-jump/), assembled into dist/ by build.sh (plain bash, no dependencies), plus two Netlify Functions:
+# netlify/functions/family.mjs (Netlify Blobs) for cross-device family sync, and netlify/functions/tts.mjs (Google
+# Cloud Text-to-Speech → Netlify Blobs) for the natural voice; it reads the key from the GOOGLE_TTS_API_KEY (or
+# TexttoVoice) environment variable set in the Netlify UI, never from this file.
 # The Next.js inbox app at the repo root is not part of this site.
 
 [build]
   publish = "dist"
   command = "bash build.sh"
-  # skip the deploy when a push did not touch the site, the game, the sync function, its dependencies or this file
+  # skip the deploy when a push did not touch the site, the game, the functions (netlify/: sync + natural voice),
+  # their dependencies or this file
   ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- site build.sh car-jump netlify netlify.toml package.json package-lock.json"
 
 [build.environment]
@@ -16,7 +19,8 @@
   NETLIFY_NEXT_PLUGIN_SKIP = "true"
   NODE_VERSION = "22"
 
-# Family sync API: /api/family/:code[/:key] (routes are declared in the function's own `config.path`)
+# Family sync API: /api/family/:code[/:key]; natural voice API: /api/tts/status, /api/tts/prepare, /api/tts/clip/:id
+# (routes are declared in each function's own `config.path`)
 [functions]
   directory = "netlify/functions"
   node_bundler = "esbuild"

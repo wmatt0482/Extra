@@ -24,6 +24,7 @@
 // Screenshots every state.
 // Parents from the player picker with zero players (PIN set there, Family code tab first with Create / Join on
 // top, "Add a player first" on the per-player tabs, the sync status line under the title on every tab).
+// Natural voice (ONLY=cloud runs just this, at both sizes): see cloudVoiceTest below.
 // Self-update (ONLY=update runs just this): a copy of the app served on another port with the REAL service worker;
 // changing sw.js VERSION reloads the page once on the picker (not on the first install), and with the spell panel
 // open it only shows "Update ready, restarting soon" and reloads when the run is left; index.html and src/main.js
@@ -1210,6 +1211,7 @@ async function transferTest(browser, layout, page) {
   const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await routeFonts(ctx);
   await ctx.route('**/api/family/**', (r) => r.abort());          // in a family, but offline: pushes wait (dirty)
+  await ctx.route('**/api/tts/**', (r) => r.abort());             // ... and the natural voice server is unreachable too
   const errors = [];
   const b = await ctx.newPage();
   b.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
@@ -1446,6 +1448,172 @@ async function corruptBoot(browser) {
   await ctx.close();
 }
 
+// ---------- natural voice (v3.4; ONLY=cloud runs just this) ----------
+// A device in a family (sync code seeded, /api/family aborted = offline sync) with a fake natural-voice backend
+// (window.__cloudVoiceBackend: status / prepare / load / play recorded, no network, no WebAudio) and the fake
+// speechSynthesis. A: the server has the voice → Ava (en-US-Neural2-F) is picked for the player on its own; Options
+// show "Natural voice ready · N clips cached", ▶ Test of Daniel asks for and plays the sample, the Speech check logs
+// the natural engine; a new word is presented and spelled by clips only (the device voice says nothing). B: a reload
+// with the clip store emptied, a slow server and no carrier clips → "Getting the voice ready…" on the spell panel,
+// then the presentation falls back to the device voice while the letters still play as clips. C: the status line:
+// no key, offline, no family code.
+async function cloudVoiceTest(browser, layout) {
+  console.log(`\n--- natural voice (${layout.name}) ---`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await routeFonts(ctx);
+  await ctx.route('**/api/family/**', (r) => r.abort());
+  let ttsNetwork = false;
+  await ctx.route('**/api/tts/**', (r) => { ttsNetwork = true; return r.abort(); });
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  await page.addInitScript(({ insets }) => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.clear();
+      const now = Date.now();
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0,
+        options: { pmia: { wordsPerRace: 1 } }, optionsUpdatedAt: { pmia: now }, removedPlayers: [], migrated: true, lastPlayer: 'pmia' }));
+      localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devC', keys: {} }));
+      sessionStorage.setItem('seeded', '1');
+    }
+    const mode = JSON.parse(sessionStorage.getItem('cloudMode') || '{"key":true}');
+    window.__cloudMode = mode;
+    window.__cloudAsked = []; window.__cloudPlayed = []; window.__spoken = [];
+    window.__ttsBackend = {
+      speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
+      cancel() {}, addEventListener() {},
+    };
+    const hex = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h.toString(16).padStart(8, '0').repeat(4); };
+    window.__cloudVoiceBackend = {
+      async status() { if (window.__cloudMode.offline) throw new TypeError('Failed to fetch'); return { key: !!window.__cloudMode.key }; },
+      async prepare({ code, voice, texts }) {
+        window.__cloudAsked.push({ code, voice, texts });
+        if (window.__cloudMode.offline) return { status: 0, body: null };
+        if (window.__cloudMode.delay) await new Promise((r) => setTimeout(r, window.__cloudMode.delay));
+        if (!window.__cloudMode.key) return { status: 503, body: { error: 'no-key' } };
+        const omit = window.__cloudMode.omit ? new RegExp(window.__cloudMode.omit) : null;
+        const clips = {};
+        for (const t of texts) if (!omit || !omit.test(t)) clips[t] = '/api/tts/clip/' + hex(voice + '\n' + t);
+        return { status: 200, body: { clips, generated: Object.keys(clips).length, cached: 0, charsToday: 100 } };
+      },
+      async load(url, text) { return { url, text, duration: 0.03 }; },
+      play(buf, text) { window.__cloudPlayed.push(text); return new Promise((r) => setTimeout(() => r(true), 25)); },
+      stop() {},
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const st = document.createElement('style');
+      st.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(st);
+    });
+  }, { insets: layout.insets });
+  const dev = () => J(page, () => window.__spoken.filter((t) => t !== 'ready'));
+  const opt = () => J(page, () => JSON.parse(localStorage.getItem('spellJump.family')).options.pmia);
+  const openOptions = async (first) => {
+    await page.click('#btn-parents');
+    await page.waitForSelector(visibleSel('#pz'));
+    if (first) { await pinIn(page, '1234'); await page.waitForFunction(() => /again/i.test((document.querySelector('#pin-title') || {}).textContent || '')); }
+    await pinIn(page, '1234');
+    await page.waitForSelector('.pz-content[data-tab="sync"]');
+    await page.click('.pz-tabs [data-tab="options"]');
+    await page.waitForSelector('#opt-cloud-status');
+  };
+  const cloudStatus = () => J(page, () => document.querySelector('#opt-cloud-status').textContent);
+
+  // ----- A: picked on its own, Options, Test, Speech check, a word by clips -----
+  await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.waitForFunction(() => JSON.parse(localStorage.getItem('spellJump.family')).options.pmia.cloudVoice === 'en-US-Neural2-F', null, { timeout: 5000 }).catch(() => {});
+  check((await opt()).cloudVoice === 'en-US-Neural2-F', `the server has the natural voice: Ava (en-US-Neural2-F) picked for Mia on its own (${(await opt()).cloudVoice})`);
+  await page.waitForFunction(() => window.__cloudAsked.length > 0, null, { timeout: 5000 }).catch(() => {});
+  const asked = await J(page, () => window.__cloudAsked);
+  const sample = await J(page, () => window.__spellJump.words.lists[0].words.map((w) => w.word));
+  const allAsked = asked.flatMap((a) => a.texts);
+  check(asked.length >= 1 && asked.every((a) => a.code === 'ABCD-2345' && a.voice === 'en-US-Neural2-F' && a.texts.length <= 80)
+    && sample.every((w) => allAsked.includes(`The word is, ${w}.`) && allAsked.includes(`${w}.`)) && ['bee', 'double you', 'apostrophe'].every((x) => allAsked.includes(x)),
+    `prepare asked for the whole list + letter names in ${asked.length} request(s) (${allAsked.length} texts, ≤ 80 each)`);
+
+  await openOptions(true);
+  check(/^Natural voice ready · \d+ clips cached$/.test(await cloudStatus()), `status: "${await cloudStatus()}"`);
+  const rows = await J(page, () => ({ ids: [...document.querySelectorAll('#opt-cloud-voices [data-cloud-voice]')].map((b) => b.dataset.cloudVoice), on: (document.querySelector('#opt-cloud-voices .pz-voice-pick.on') || { dataset: {} }).dataset.cloudVoice,
+    labels: [...document.querySelectorAll('#opt-cloud-voices .label')].map((l) => l.textContent), groups: [...document.querySelectorAll('.pz-voice-group')].map((g) => g.textContent), now: document.querySelector('#opt-voice-now').textContent }));
+  check(rows.ids.length === 6 && rows.on === 'en-US-Neural2-F' && rows.labels[0] === 'Ava · warm female' && rows.groups.join('|') === 'Natural voices (online)|Device voices' && /Now using: Ava, the natural voice/.test(rows.now),
+    `Options: "Natural voices (online)" (${rows.labels.join(', ')}) above "Device voices"; ${rows.now}`);
+  await shot(page, layout, 'n01-pz-natural-voices');
+  await layoutAudit(page, layout.insets, 'parent zone (natural voices)');
+  let n = await J(page, () => window.__cloudPlayed.length);
+  await page.click('#opt-cloud-voices [data-cloud-test="en-US-Neural2-D"]');
+  await page.waitForFunction((k) => window.__cloudPlayed.length >= k + 3, n, { timeout: 5000 }).catch(() => {});
+  const tested = await J(page, () => ({ played: window.__cloudPlayed.slice(-3), asked: window.__cloudAsked[window.__cloudAsked.length - 1] }));
+  check(tested.asked.voice === 'en-US-Neural2-D' && JSON.stringify(tested.played) === JSON.stringify(['The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.']), '▶ Test (Daniel) prepares the sample in that voice and plays it');
+  check((await opt()).cloudVoice === 'en-US-Neural2-F', 'testing a voice does not pick it');
+  const nDev = (await dev()).length;
+  await page.click('#opt-check-run');
+  await page.waitForFunction(() => /result:/.test(document.querySelector('#opt-check-log').textContent), null, { timeout: 8000 });
+  const chk = await J(page, () => document.querySelector('#opt-check-log').textContent);
+  check(/natural voice: Ava · en-US-Neural2-F · \d+ clips on this device · clip ready/.test(chk) && /engine: natural voice \(clip\)/.test(chk) && /result: the natural voice played/.test(chk) && (await dev()).length === nDev,
+    'Speech check logs the engine: the natural voice played the clip (the device voice did not)');
+  await page.click('#pz-close');
+
+  await J(page, () => { window.__cloudPlayed = []; window.__spoken = []; });
+  const w = await startRunFromTitle(page);
+  const info = await J(page, (word) => window.__spellJump.words.lists[0].words.find((x) => x.word === word), w);
+  await waitMode(page, 'write', 12000);
+  const A = await J(page, () => ({ played: window.__cloudPlayed.slice(), note: document.querySelector('#sp-note').hidden ? '' : document.querySelector('#sp-note').textContent }));
+  const wantPresent = [`The word is, ${w}.`, info.sentence, `${w}.`];
+  check(JSON.stringify(A.played.slice(0, 3)) === JSON.stringify(wantPresent) && JSON.stringify(A.played.slice(3)) === JSON.stringify(spelled(w)),
+    `"${w}" presented and spelled by clips: ${A.played.slice(0, 4).join(' | ')} …`);
+  check((await dev()).length === 0 && await J(page, () => window.__spellJump.tts.engine === 'cloud'), 'the device voice was not used for the word');
+  await page.tap(`#sp-keyboard [data-key="${w[0]}"]`);
+  await page.waitForTimeout(200);
+  check(await J(page, (l) => window.__cloudPlayed[window.__cloudPlayed.length - 1] === l, letterName(w[0])) && (await dev()).length === 0, `a typed letter is said by its clip ("${letterName(w[0])}")`);
+  await shot(page, layout, 'n02-word-by-clips');
+  await page.click('#spell .sp-exit');
+  await page.waitForSelector(visibleSel('#screen-garage'));
+
+  // ----- B: clips missing (store emptied, slow server, no carrier clips) → note, then the device voice -----
+  await J(page, () => { sessionStorage.setItem('cloudMode', JSON.stringify({ key: true, delay: 1800, omit: '^The word is' })); localStorage.removeItem('spellJump.cloudVoice'); });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const w2 = await startRunFromTitle(page);
+  const info2 = await J(page, (word) => window.__spellJump.words.lists[0].words.find((x) => x.word === word), w2);
+  const noteSeen = await page.waitForFunction(() => { const nt = document.querySelector('#sp-note'); return !nt.hidden && nt.textContent === 'Getting the voice ready…'; }, null, { timeout: 2500 }).then(() => true, () => false);
+  check(noteSeen, 'missing clips: "Getting the voice ready…" shows on the spell panel');
+  await shot(page, layout, 'n03-getting-voice-ready');
+  await waitMode(page, 'write', 15000);
+  const B = await J(page, () => ({ played: window.__cloudPlayed.slice(), spoken: window.__spoken.filter((t) => t !== 'ready'), noteHidden: document.querySelector('#sp-note').hidden }));
+  check(JSON.stringify(B.spoken.slice(0, 3)) === JSON.stringify([`The word is, ${w2}.`, info2.sentence, `${w2}.`]) && !B.played.includes(`${w2}.`),
+    `no clip for "The word is, ${w2}." → the device voice says the whole presentation (${B.spoken.slice(0, 3).join(' | ')})`);
+  check(JSON.stringify(B.played) === JSON.stringify(spelled(w2)) && B.noteHidden, `the letters still play as clips (${B.played.join(' ')}); the note is gone`);
+  await page.click('#spell .sp-exit');
+  await page.waitForSelector(visibleSel('#screen-garage'));
+
+  // ----- C: status lines -----
+  await J(page, () => window.__spellJump.app.go('title'));
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await J(page, () => { window.__cloudMode.key = false; window.__cloudMode.delay = 0; return window.__spellJump.app.cloud.status(true); });
+  await openOptions(false);
+  check(await cloudStatus() === 'Natural voice not set up on the server yet (ask the admin to add the Google key)' && await J(page, () => document.querySelector('[data-cloud-voice]').disabled), `no key: "${await cloudStatus()}" (rows disabled)`);
+  await shot(page, layout, 'n04-no-key');
+  await J(page, () => { window.__cloudMode.key = true; window.__cloudMode.offline = true; return window.__spellJump.app.cloud.status(true); });
+  await page.click('.pz-tabs [data-tab="report"]'); await page.click('.pz-tabs [data-tab="options"]'); await page.waitForSelector('#opt-cloud-status');
+  check(/^Offline: using the device voice/.test(await cloudStatus()), `offline: "${await cloudStatus()}"`);
+  await J(page, () => { window.__cloudMode.offline = false; window.__spellJump.app.sync.leave(); });
+  await page.click('.pz-tabs [data-tab="report"]'); await page.click('.pz-tabs [data-tab="options"]'); await page.waitForSelector('#opt-cloud-status');
+  check(await cloudStatus() === 'No family code yet: natural voices need family sync' && await J(page, () => !window.__spellJump.tts.cloudActive), `no family code: "${await cloudStatus()}", natural voice off`);
+  await shot(page, layout, 'n05-no-family-code');
+  await layoutAudit(page, layout.insets, 'parent zone (natural voices, no family)');
+  await page.click('#pz-close');
+  check(!ttsNetwork, 'no request reached /api/tts (the fake backend answered everything)');
+  check(errors.length === 0, `natural voice: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
 const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
@@ -1456,6 +1624,7 @@ try {
   if (!only || only === 'keys') await coachKeys(browser);
   if (!only || only === 'corrupt') await corruptBoot(browser);
   if (!only || only === 'update') await selfUpdate(browser);
+  for (const l of LAYOUTS) if (!only || only === 'cloud') await cloudVoiceTest(browser, l);
 } catch (e) {
   failures.push('exception: ' + e.message);
   console.error(e);

@@ -41,6 +41,9 @@ the build contract is the "Spelling edition (v3)" section of `SPEC.md`. The pure
    **Use default system voice** sets no voice at all and lets the browser choose: try it if a picked voice stays silent.
    On iPhone or iPad, much clearer voices can be downloaded in Settings → Accessibility → Spoken Content → Voices →
    English (choose an Enhanced or Premium voice), then picked here. **Speech rate** is Very slow / Slow / Normal.
+   **Natural voices (online)**, at the top of the Voice list, are much clearer than most device voices: once the
+   family has a family code (and the site's admin has added the Google key, see [Natural voice](#natural-voice-v34)),
+   **Ava** is picked automatically; ▶ **Test** any of them, tap one to use it, or tap a device voice to go back.
 4. **Hand it over.** Your child just plays. About 8 words a day (8 to 10 minutes) is the daily mission.
 
 **The weekly cycle.** Day 1: the first **Play** after you save a list is a quick **Qualifier** (pretest): every word
@@ -185,8 +188,9 @@ without touching other players):
 
 | Key | Contents |
 | --- | --- |
-| `spellJump.family` | `{ v, players: [{id, name, color, createdAt, updatedAt}], pinHash, pinUpdatedAt, options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace, voiceName, voiceLang}}, optionsUpdatedAt: {playerId: ms}, removedPlayers: [id], migrated, lastPlayer }` (rebuilt from the per-player keys if corrupt; `migrated` / `lastPlayer` stay on the device, the rest is shared by family sync) |
+| `spellJump.family` | `{ v, players: [{id, name, color, createdAt, updatedAt}], pinHash, pinUpdatedAt, options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace, voiceName, voiceLang, cloudVoice?}}, optionsUpdatedAt: {playerId: ms}, removedPlayers: [id], migrated, lastPlayer }` (rebuilt from the per-player keys if corrupt; `migrated` / `lastPlayer` stay on the device, the rest is shared by family sync) |
 | `spellJump.sync` | family sync state (only once a family is created or joined; see "Family sync") |
+| `spellJump.cloudVoice` | natural voice clips this device knows: `{ v: 1, clips: { <voice id>: { <text>: <clip id> } } }` (per device, not synced; the MP3s themselves sit in the service worker's `spell-jump-tts-v1` cache) |
 | `spellJump.<id>.save` | the full game save (`src/meta/save.js`, schema v2: cash, cars, upgrades, records, goals, settings incl. sound / music / reduced motion / shake, achievements; `resetAt` after a parent reset) |
 | `spellJump.<id>.words` | `{ v, lists: [{id, name, createdAt, archivedAt, pattern, sample, words: [{word, syllables, sentence, sayAs?}]}], activeId, records: {word: {box, due, attempts, firstTry, seenCount, lastSeen, daysCorrect, daysSeen, focus, studied, reviewsDone, misses, listId}}, tests: [{kind, listId, at, correct, total, missed}], qualifierPending, today: {date, count, newCount, missionPaid}, streak, bestStreak, perfectTotal, activeAt?, deletedLists?, resetAt? }` (the last three only once used; family sync bookkeeping) |
 
@@ -206,8 +210,10 @@ Per player:
 - **Report**: Qualifier vs latest Friday Test, a per-word table (status New / Focus / Learning / Almost / Mastered,
   attempts, first-try %, last practiced, days practiced), test history, **Copy report** (clipboard, or the text shown
   selected when the clipboard is unavailable), and **Why this works** (the LEARNING-DESIGN table, in the app).
-- **Options**: speech on / off with **Test voice**, **Speech check** (timestamped log, **Copy log**), speech rate
-  (very slow / slow / normal), voice (Automatic, Use default system voice, or a ranked list with ▶ Test), words before each race
+- **Options**: speech on / off with **Test voice**, **Speech check** (timestamped log, **Copy log**; it says which
+  engine played), speech rate (very slow / slow / normal), voice in two groups: **Natural voices (online)** (six
+  Google voices with ▶ Test and a status line) and **Device voices** (Automatic, Use default system voice, or a
+  ranked list with ▶ Test), words before each race
   (1-4, default 2), new words per day
   (3 / 5 / 8), past-list review words, tile case (abc / ABC), sound, music, reduced motion, screen shake, reset
   spelling data, reset game save, remove player, change PIN.
@@ -237,7 +243,8 @@ word lists and progress show up on every device (a laptop for entering the words
 4. **Leave family** stops syncing this device; nothing is deleted (the other devices keep the family).
 
 **Privacy.** What's stored online: player first names, word lists, spelling progress and the parent PIN (hashed).
-No emails or accounts. Anyone with the family code can see and change these, so keep it private.
+No emails or accounts. Anyone with the family code can see and change these, so keep it private. Word lists and
+sentences are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is.
 
 **When two devices changed the same thing** before syncing (`src/sync/merge.js`):
 
@@ -277,6 +284,74 @@ cannot both win.
 
 Netlify installs the root `package.json` dependencies (`@netlify/blobs`) so the function can be bundled with esbuild;
 the Next.js app at the root is not built (`NETLIFY_NEXT_PLUGIN_SKIP`).
+
+## Natural voice (v3.4)
+
+Device voices are often hard to understand. The natural voice plays clips made on the server with **Google Cloud
+Text-to-Speech** (Neural2 / Studio voices), kept in Netlify Blobs and on each device.
+
+**What the parent sees.** Parents → Options → Voice has two groups. *Natural voices (online)*: Ava · warm female
+(`en-US-Neural2-F`), Daniel · calm male (`-Neural2-D`), Clara · bright female (`-Neural2-C`), James · friendly male
+(`-Neural2-J`), Olivia · studio female (`en-US-Studio-O`), Quinn · studio male (`-Studio-Q`), each with ▶ Test (asks
+the server for the sample presentation in that voice and plays it). *Device voices*: the list from before. Under
+the natural voices a status line says *Natural voice ready · 41 clips cached*, *Natural voice not set up on the
+server yet (ask the admin to add the Google key)*, *No family code yet: natural voices need family sync* or
+*Offline: using the device voice*. The first time a player's device is in a family whose server has the key, Ava is
+picked for that player (stored as `cloudVoice` in the player's options, synced like the other options); tapping a
+device voice stores `''` (device voice, not picked again automatically).
+
+**What is spoken by clips.** For each word of the active list: "The word is, *word*." / the sentence / "*word*." /
+"*word*. *word*." (Say it again) / the syllables; per voice, once: the 26 letter names + apostrophe / hyphen / space,
+the sample presentation and "Spell Jump is ready.". The parent's "say as" replaces the word as with the device
+voice. Clips are requested when a list is saved, when a natural voice is picked, when a player is selected (only
+texts this device has no clip for are sent), and lazily before a word whose clips are missing: the spell panel then
+shows "Getting the voice ready…" for at most 3 s. A clip plays at Google's speaking rate 0.92; the Speech rate
+setting lengthens the pauses between phrases instead (×1.5 slow, ×2 very slow).
+
+**Fallback.** The natural voice is used when a natural voice is picked AND the device has a family code AND the clip
+exists. Any missing clip sends that whole utterance to the device voice; a clip that does not load within 4 s or
+does not play (no WebAudio, the audio context not running) sends the rest of it there. The device voice's watchdog
+and "off for the session" rules are unchanged and apply only to it. Clips play through the game's WebAudio context
+(`src/audio.js`, their own bus into the master), so the music ducks under them as under the device voice. On iPhone
+/ iPad, WebAudio (the clips and the game sounds) follows the ring / silent switch. Offline: the service worker
+serves every clip played before (cache-first, `/api/tts/clip/*` only, in a cache kept across app updates);
+everything else uses the device voice.
+
+**Setup (site admin, once).**
+
+1. In the [Google Cloud console](https://console.cloud.google.com/), create a project (or pick one) with billing
+   enabled. Google's free tier covers about 1 million Neural2 characters a month (Studio voices: far fewer, and
+   about 10× the price per character beyond it); check Google's current pricing.
+2. **APIs & Services → Library → Cloud Text-to-Speech API → Enable.**
+3. **APIs & Services → Credentials → Create credentials → API key.** Edit the key: *API restrictions → Restrict
+   key → Cloud Text-to-Speech API* only (the key is only ever used by the Netlify Function, never sent to browsers).
+4. In Netlify: **Site configuration → Environment variables → Add a variable**: `GOOGLE_TTS_API_KEY` (recommended
+   name) = the key, scope *Functions*. The function also accepts the name `TexttoVoice` (the name it was first
+   created under on the live site); when both exist, `GOOGLE_TTS_API_KEY` wins. Redeploy (Deploys → Trigger deploy)
+   so the function sees it. Without a key the app keeps the device voice and Options says it is not set up.
+
+**Limits.** The server only makes clips for an existing family code (403 otherwise), only in the six voices above,
+at most 80 texts per request and 200 characters per text, and at most **20,000 characters per family per day** (UTC;
+already-made clips are free and do not count). Over the cap it answers 429 and new texts use the device voice until
+the next day. A clip is content-addressed (`id` = the first 32 hex digits of sha256(voice + "\n" + text)), so the
+same text in the same voice is made once for everyone.
+
+### Natural voice API (Netlify Function + Netlify Blobs)
+
+`netlify/functions/tts.mjs` (Functions v2) adapts the Blobs store `tts` (`tts/<id>`: MP3 + metadata `{ voice,
+chars }`; `ttsUsage/<CODE>/<yyyy-mm-dd>`: `{ chars }`), the `families` store (is the code real?) and the Google REST
+call (`POST https://texttospeech.googleapis.com/v1/text:synthesize?key=…`, `{ input: { text }, voice: { languageCode:
+'en-US', name }, audioConfig: { audioEncoding: 'MP3', speakingRate: 0.92 } }`) to the pure handler in
+`src/tts/server.mjs`.
+
+| Request | Answer |
+| --- | --- |
+| `GET /api/tts/status` | 200 `{ ok, key: boolean, voices, dailyChars }` (no quota spent; the app's "set up?" check) |
+| `POST /api/tts/prepare` `{ code, voice, items: [{ text }] }` | 200 `{ clips: { <text>: '/api/tts/clip/<id>' }, generated, cached, failed, charsToday }`; 400 bad input; 403 unknown family; 503 `{ error: 'no-key' }`; 429 `{ error: 'daily-limit', clips (the ones that exist) }`; 502 when every new clip failed at Google (the key never appears in a message) |
+| `GET /api/tts/clip/:id` | 200 `audio/mpeg`, `Cache-Control: public, max-age=31536000, immutable`; 404 unknown |
+
+JSON answers carry `Cache-Control: no-store`. The service worker sends `/api/tts/status` and `/api/tts/prepare` (and
+`/api/family`) straight to the network and keeps clips cache-first.
 
 ## Coming back every day (v3.3)
 
@@ -388,11 +463,17 @@ node tools/spelling-tests.mjs   # Node unit tests: intervals, mastery (2 distinc
                                 # reference list, stuck-synth re-cancel, not-allowed, unlock, voice ranking (local
                                 # before online), system voice, the speech check log; family sync: the server
                                 # protocol (create / get / put, rev checks, 409, validation, 512 KB cap) on an
-                                # in-memory Map store, family codes, and every merge rule incl. both-changed cases
+                                # in-memory Map store, family codes, and every merge rule incl. both-changed cases;
+                                # natural voice: the server (in-memory stores + fake synthesize: 403, allowlist,
+                                # caching by id, 20k/day cap 429, no key 503, the TexttoVoice alias, clip 404 / 200),
+                                # the client's texts / batches / status lines, the engine choice + fallback in tts.js
 node tools/ui-smoke.mjs         # Playwright, 844×390 + 390×844, mock engine + fake speechSynthesis: players, PIN,
                                 # word list, Qualifier, every spell-panel path, mission, Friday Test + Mega Run,
                                 # report, voices (incl. system default), Run speech check log + Copy log,
-                                # persistence; asserts R1 / R2 / R6, key sizes, layout, no console errors
+                                # persistence; natural voice (fake window.__cloudVoiceBackend): picked on its own,
+                                # Options status lines, ▶ Test, Speech check engine, a word by clips only, a missing
+                                # clip → device voice + "Getting the voice ready…"; asserts R1 / R2 / R6, key sizes,
+                                # layout, no console errors
 node tools/engine-smoke.mjs     # real engine in dev.html (incl. R1: no letter glyph rasterized before launch)
 node tools/integration-smoke.mjs  # the full app on the REAL engine with real touches, 844×390 + 390×844: picker →
                                 # player → spell paths A (first try, letter rings, bonus) / B (miss → CCC → 65 %,
@@ -405,12 +486,13 @@ node tools/sync-smoke.mjs       # family sync end to end: two Playwright context
                                 # offline edits on both devices merged with no record lost; screenshots
 node tools/sync-function-check.mjs  # the real Netlify Function + @netlify/blobs against Blobs' local server
                                 # (needs `npm install` at the repo root)
+node tools/tts-function-check.mjs   # the real natural-voice function the same way, with fetch stubbed for Google
 node tools/economy-sim.mjs --speller 0.75   # headless economy simulation (75 % first-try speller, 8 runs a day)
 node tools/make-icons.mjs       # re-renders icons/*.png (a car jumping over letter tiles)
 ```
 
-`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt` runs one
-part of `ui-smoke.mjs`, `ONLY=landscape|portrait|speech|perf` one part of `integration-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it.
+`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud` runs one
+part of `ui-smoke.mjs`, `ONLY=landscape|portrait|speech|perf` one part of `integration-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it, and `cloudVoice.js` uses `window.__cloudVoiceBackend` (status / prepare / load / play) instead of the network and WebAudio.
 
 ## Add to the iPhone Home Screen
 

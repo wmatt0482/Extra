@@ -7,7 +7,10 @@
 // session, 3 s afterwards; per-word failure, off for the session only after 3 in a row, re-probe on a tap; the
 // utterance reference list (Chrome GC); cancel → resume → cancel again when stuck; 'not-allowed'; the gesture unlock
 // "ready" at volume 0.01; the system voice; the Speech check log; iOS paused synth), the "say as" list field, the
-// spoken presentation (buildPresentation / sayAgain / syllables) and voice ranking (local before online) / choice.
+// spoken presentation (buildPresentation / sayAgain / syllables) and voice ranking (local before online) / choice;
+// the natural voice (v3.4): the server (src/tts/server.mjs with in-memory stores and a fake synthesize: family check
+// 403, allowlist, caching by id, daily cap 429, no key 503, clip 404 / 200), the client's texts and prepare batches,
+// and the engine choice / fallback in tts.js.
 import assert from 'node:assert/strict';
 import { mulberry32 } from '../src/meta/rng.js';
 import { createUpdateGuard, safeToReload } from '../src/meta/selfUpdate.js';
@@ -1141,6 +1144,244 @@ test('check() with no update waiting does nothing; a throwing isSafe counts as n
   let reloads = 0;
   const g = createUpdateGuard({ hadController: true, isSafe: () => { throw new Error('boom'); }, reload: () => reloads++ });
   assert.equal(g.check(), false); assert.equal(g.onControllerChange(), false); assert.equal(reloads, 0);
+});
+
+// ---------- natural voice (v3.4): server (src/tts/server.mjs), client texts + engine (src/spelling/cloudVoice.js) ----------
+console.log('natural voice: server (prepare / clip / status)');
+const TS = await import('../src/tts/server.mjs');
+const { CLOUD_VOICES, CLOUD_VOICE_IDS, DEFAULT_CLOUD_VOICE } = await import('../src/tts/voices.js');
+const CV = await import('../src/spelling/cloudVoice.js');
+const Profiles = await import('../src/spelling/profiles.js');
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const FAM = 'K7QX-M2PA';
+function fakeSynth2({ fail = () => false } = {}) {
+  const f = async (text, voice) => { f.calls.push({ text, voice }); if (fail(text)) throw Object.assign(new Error('boom'), { status: 500 }); return new TextEncoder().encode(`MP3:${voice}:${text}`); };
+  f.calls = [];
+  return f;
+}
+const ttsDeps = (extra = {}) => ({ store: TS.memoryTtsStore(), families: TS.memoryFamilies([FAM]), synthesize: fakeSynth2(), now: () => T0, ...extra });
+async function tcall(deps, method, path, body, { contentType = 'application/json', raw = false } = {}) {
+  const res = await TS.handleTts({ method, path, contentType, body: body === undefined ? null : raw ? body : JSON.stringify(body) }, deps);
+  return { ...res, json: typeof res.body === 'string' && res.body ? JSON.parse(res.body) : null };
+}
+const prep = (texts, voice = DEFAULT_CLOUD_VOICE, code = FAM) => ({ code, voice, items: texts.map((text) => ({ text })) });
+await atest('voice allowlist: the six Google voices, Neural2-F first (the default), each with a friendly name', async () => {
+  assert.deepEqual(CLOUD_VOICE_IDS, ['en-US-Neural2-F', 'en-US-Neural2-D', 'en-US-Neural2-C', 'en-US-Neural2-J', 'en-US-Studio-O', 'en-US-Studio-Q']);
+  assert.equal(DEFAULT_CLOUD_VOICE, 'en-US-Neural2-F');
+  assert.ok(CLOUD_VOICES.every((v) => v.name && v.desc));
+});
+await atest('clip id = first 32 hex of sha256(voice + "\\n" + text); the Google request body', async () => {
+  const { createHash } = await import('node:crypto');
+  assert.equal(await TS.clipId('en-US-Neural2-F', 'neighbor.'), createHash('sha256').update('en-US-Neural2-F\nneighbor.').digest('hex').slice(0, 32));
+  assert.deepEqual(TS.googleRequest('hi.', 'en-US-Neural2-D'), { input: { text: 'hi.' }, voice: { languageCode: 'en-US', name: 'en-US-Neural2-D' }, audioConfig: { audioEncoding: 'MP3', speakingRate: 0.92 } });
+});
+test('API key: GOOGLE_TTS_API_KEY, else the TexttoVoice alias; blank counts as missing', () => {
+  const env = (o) => (name) => o[name];
+  assert.equal(TS.apiKeyFrom(env({ GOOGLE_TTS_API_KEY: 'main' })), 'main');
+  assert.equal(TS.apiKeyFrom(env({ TexttoVoice: 'alias' })), 'alias', 'the alias is honored');
+  assert.equal(TS.apiKeyFrom(env({ GOOGLE_TTS_API_KEY: 'main', TexttoVoice: 'alias' })), 'main', 'GOOGLE_TTS_API_KEY wins');
+  assert.equal(TS.apiKeyFrom(env({ GOOGLE_TTS_API_KEY: '  ', TexttoVoice: ' alias ' })), 'alias');
+  assert.equal(TS.apiKeyFrom(env({})), '');
+  assert.equal(TS.apiKeyFrom(() => { throw new Error('no env'); }), '');
+});
+await atest('status: always 200, key false without a synthesizer, true with one', async () => {
+  let r = await tcall(ttsDeps({ synthesize: null }), 'GET', '/api/tts/status');
+  assert.equal(r.status, 200); assert.equal(r.json.key, false); assert.equal(r.headers['cache-control'], 'no-store');
+  r = await tcall(ttsDeps(), 'GET', '/api/tts/status'); assert.equal(r.json.key, true); assert.deepEqual(r.json.voices, CLOUD_VOICE_IDS);
+});
+await atest('prepare: an unknown family code → 403 and nothing is synthesized (strangers cannot spend the quota)', async () => {
+  const d = ttsDeps();
+  const r = await tcall(d, 'POST', '/api/tts/prepare', prep(['neighbor.'], DEFAULT_CLOUD_VOICE, 'ZZZZ-2222'));
+  assert.equal(r.status, 403); assert.equal(r.json.error, 'unknown-family'); assert.equal(d.synthesize.calls.length, 0);
+});
+await atest('prepare: no API key → 503 no-key', async () => {
+  const r = await tcall(ttsDeps({ synthesize: null }), 'POST', '/api/tts/prepare', prep(['neighbor.']));
+  assert.equal(r.status, 503); assert.equal(r.json.error, 'no-key');
+});
+await atest('prepare validation: voice off the allowlist, > 80 items, a text over 200 chars, empty text, bad code, non-JSON → 400', async () => {
+  const d = ttsDeps();
+  for (const [body, why] of [
+    [prep(['a'], 'en-US-Wavenet-A'), 'voice'], [prep(['a'], 'en-GB-Neural2-A'), 'voice'],
+    [prep(Array.from({ length: 81 }, (_, i) => `w${i}.`)), '81 items'], [prep(['x'.repeat(201)]), '201 chars'], [prep(['   ']), 'blank'],
+    [prep(['a'], DEFAULT_CLOUD_VOICE, 'abcd-efgh'), 'code'], [{ code: FAM, voice: DEFAULT_CLOUD_VOICE, items: 'nope' }, 'items'], [{ code: FAM, voice: DEFAULT_CLOUD_VOICE, items: [{ text: 3 }] }, 'text type'],
+  ]) assert.equal((await tcall(d, 'POST', '/api/tts/prepare', body)).status, 400, why);
+  assert.equal((await tcall(d, 'POST', '/api/tts/prepare', 'code=1', { raw: true, contentType: 'text/plain' })).status, 400, 'content type');
+  assert.equal((await tcall(d, 'POST', '/api/tts/prepare', '{oops', { raw: true })).status, 400, 'bad JSON');
+  assert.equal((await tcall(d, 'POST', '/api/tts/prepare', prep(['x'.repeat(200)]))).status, 200, '200 chars is fine');
+  assert.equal((await tcall(d, 'POST', '/api/tts/prepare', prep(Array.from({ length: 80 }, (_, i) => `w${i}.`)))).status, 200, '80 items is fine');
+  assert.equal((await tcall(d, 'GET', '/api/tts/prepare')).status, 405);
+  assert.equal((await tcall(d, 'GET', '/api/tts/nope')).status, 404);
+});
+await atest('prepare: generates each new clip once (trimmed, duplicates merged), then serves it from the store by id', async () => {
+  const d = ttsDeps();
+  let r = await tcall(d, 'POST', '/api/tts/prepare', prep(['The word is, neighbor.', ' neighbor. ', 'neighbor.']));
+  assert.equal(r.status, 200); assert.equal(r.json.generated, 2); assert.equal(r.json.cached, 0); assert.equal(r.json.failed, 0);
+  assert.deepEqual(Object.keys(r.json.clips).sort(), ['The word is, neighbor.', 'neighbor.']);
+  const id = await TS.clipId(DEFAULT_CLOUD_VOICE, 'neighbor.');
+  assert.equal(r.json.clips['neighbor.'], `/api/tts/clip/${id}`);
+  assert.deepEqual(d.store.map.get(`tts/${id}`).metadata, { voice: DEFAULT_CLOUD_VOICE, chars: 9 });
+  assert.equal(r.json.charsToday, 31);
+  r = await tcall(d, 'POST', '/api/tts/prepare', prep(['neighbor.', 'enough.']));
+  assert.equal(r.json.generated, 1); assert.equal(r.json.cached, 1); assert.equal(d.synthesize.calls.length, 3, 'neighbor. was not made again');
+  assert.equal(r.json.charsToday, 38);
+  r = await tcall(d, 'POST', '/api/tts/prepare', prep(['neighbor.'], 'en-US-Neural2-D'));
+  assert.equal(r.json.generated, 1, 'another voice is another clip'); assert.notEqual(r.json.clips['neighbor.'], `/api/tts/clip/${id}`);
+  assert.equal(d.store.map.get(`ttsUsage/${FAM}/${TS.dayKey(T0)}`) != null, true, 'per-family daily counter');
+});
+await atest('clip: 200 audio/mpeg with an immutable cache header; unknown or malformed id → 404', async () => {
+  const d = ttsDeps();
+  const r0 = await tcall(d, 'POST', '/api/tts/prepare', prep(['neighbor.']));
+  const r = await TS.handleTts({ method: 'GET', path: r0.json.clips['neighbor.'] }, d);
+  assert.equal(r.status, 200); assert.equal(r.headers['content-type'], 'audio/mpeg'); assert.equal(r.headers['cache-control'], 'public, max-age=31536000, immutable');
+  assert.equal(new TextDecoder().decode(r.body), `MP3:${DEFAULT_CLOUD_VOICE}:neighbor.`);
+  assert.equal((await tcall(d, 'GET', '/api/tts/clip/' + 'a'.repeat(32))).status, 404);
+  assert.equal((await tcall(d, 'GET', '/api/tts/clip/../../families')).status, 404);
+  assert.equal((await tcall(d, 'GET', '/api/tts/clip/ABC')).status, 404);
+});
+await atest('daily cap: a request that would pass 20,000 chars/day → 429 (existing clips still returned, nothing made, counter unchanged)', async () => {
+  assert.equal(TS.DAILY_CHARS, 20000);
+  const d = ttsDeps();
+  const long = (i) => `${i}.${'x'.repeat(200)}`.slice(0, 200);
+  for (let b = 0; b < 2; b++) assert.equal((await tcall(d, 'POST', '/api/tts/prepare', prep(Array.from({ length: 50 }, (_, i) => long(b * 50 + i))))).status, 200);
+  const used = JSON.parse(d.store.map.get(`ttsUsage/${FAM}/${TS.dayKey(T0)}`).text).chars;
+  assert.equal(used, 20000);
+  const n = d.synthesize.calls.length;
+  const r = await tcall(d, 'POST', '/api/tts/prepare', prep([long(0), 'one more.']));
+  assert.equal(r.status, 429); assert.equal(r.json.error, 'daily-limit'); assert.equal(r.json.charsToday, 20000);
+  assert.ok(r.json.clips[long(0)], 'the cached clip comes back anyway'); assert.equal(r.json.clips['one more.'], undefined);
+  assert.equal(d.synthesize.calls.length, n); assert.equal(JSON.parse(d.store.map.get(`ttsUsage/${FAM}/${TS.dayKey(T0)}`).text).chars, 20000);
+  // already-cached texts cost nothing, even at the cap; the next UTC day starts at 0
+  assert.equal((await tcall(d, 'POST', '/api/tts/prepare', prep([long(1)]))).status, 200);
+  assert.equal((await tcall({ ...d, now: () => T0 + DAY_MS }, 'POST', '/api/tts/prepare', prep(['one more.']))).status, 200);
+  // another family has its own counter
+  const d2 = { ...d, families: TS.memoryFamilies([FAM, 'ABCD-2345']) };
+  assert.equal((await tcall(d2, 'POST', '/api/tts/prepare', prep(['fresh.'], DEFAULT_CLOUD_VOICE, 'ABCD-2345'))).status, 200);
+});
+await atest('Google failures: some fail → 200 with failed + characters given back; all fail → 502', async () => {
+  const d = ttsDeps({ synthesize: fakeSynth2({ fail: (t) => t === 'bad.' }) });
+  let r = await tcall(d, 'POST', '/api/tts/prepare', prep(['good.', 'bad.']));
+  assert.equal(r.status, 200); assert.equal(r.json.generated, 1); assert.equal(r.json.failed, 1); assert.equal(r.json.charsToday, 5);
+  r = await tcall(d, 'POST', '/api/tts/prepare', prep(['bad.']));
+  assert.equal(r.status, 502); assert.equal(r.json.error, 'synthesis-failed'); assert.equal(r.json.charsToday, 5);
+});
+await atest('a store failure becomes a 500, never a throw', async () => {
+  const d = ttsDeps(); d.store.has = async () => { throw new Error('down'); };
+  assert.equal((await tcall(d, 'POST', '/api/tts/prepare', prep(['x.']))).status, 500);
+});
+
+console.log('natural voice: client texts (cloudVoice.js)');
+test('word texts: carrier, sentence, word, Say it again, syllables; "say as" replaces the word', () => {
+  assert.deepEqual(CV.wordTexts({ word: 'neighbor', sentence: 'My neighbor has a dog', syllables: ['neigh', 'bor'] }),
+    ['The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.', 'neighbor. neighbor.', 'neigh, bor.']);
+  assert.deepEqual(CV.wordTexts({ word: 'read', sentence: null, sayAs: 'red' }), ['The word is, red.', 'red.', 'red. red.']);
+  assert.deepEqual(CV.wordTexts({ word: '' }), []);
+  assert.ok(!CV.wordTexts({ word: 'dog', sentence: 'y'.repeat(200) }).some((t) => t.length > 200), 'over 200 after the full stop: left to the device voice');
+});
+test('shared texts: the 26 letter names + apostrophe / hyphen / space, the sample presentation, the Test phrase', () => {
+  const s = CV.sharedTexts();
+  for (const n of ['a', 'bee', 'double you', 'zee', 'apostrophe', 'hyphen', 'space', 'The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.', 'Spell Jump is ready.']) assert.ok(s.includes(n), n);
+  assert.equal(s.length, 29 + 4);
+});
+test('list texts: every word, then the shared texts, no duplicates', () => {
+  const t = CV.listTexts([{ word: 'neighbor', sentence: 'My neighbor has a dog.' }, { word: 'enough', syllables: ['e', 'nough'] }]);
+  assert.equal(t[0], 'The word is, neighbor.'); assert.ok(t.includes('e, nough.')); assert.equal(new Set(t).size, t.length);
+  assert.equal(t.length, 4 + 4 + 33 - 3, 'the sample carrier, sentence and "neighbor." are shared with the word');
+});
+await atest('client: prepare sends only unknown texts, ≤ 80 per request, remembers the clips; status lines', async () => {
+  const posts = [];
+  let key = true, offline = false;
+  const fetchStub = async (url, init = {}) => {
+    if (offline) throw new TypeError('Failed to fetch');
+    if (url.endsWith('/status')) return { ok: true, status: 200, json: async () => ({ key }) };
+    const body = JSON.parse(init.body);
+    posts.push(body);
+    if (!key) return { ok: false, status: 503, json: async () => ({ error: 'no-key' }) };
+    const clips = {};
+    for (const it of body.items) clips[it.text] = '/api/tts/clip/' + (await TS.clipId(body.voice, it.text));
+    return { ok: true, status: 200, json: async () => ({ clips, generated: body.items.length, cached: 0, charsToday: 1 }) };
+  };
+  let code = null;
+  const c = CV.createCloudVoice({ getCode: () => code, fetch: fetchStub });
+  assert.equal(c.statusText(), 'No family code yet: natural voices need family sync');
+  c.setVoice('en-US-Neural2-F'); assert.equal(c.active, false, 'no family code: not active');
+  code = FAM; assert.equal(c.active, true);
+  const words = Array.from({ length: 20 }, (_, i) => ({ word: `word${'abcdefghijklmnopqrstu'[i]}`, sentence: `Sentence ${i}.` }));
+  const r = await c.prepareList(words);
+  assert.equal(r.ok, true); assert.equal(posts.length, 2, `${CV.listTexts(words).length} texts in 2 requests`); assert.equal(posts[0].items.length, 80);
+  assert.equal(c.count(), CV.listTexts(words).length);
+  assert.equal(c.statusText(), `Natural voice ready · ${c.count()} clips cached`);
+  await c.prepareList(words); assert.equal(posts.length, 2, 'nothing new to ask for');
+  assert.equal(c.resolve('Sentence 1'), 'Sentence 1.', 'a bare sentence finds its clip with the full stop');
+  assert.equal(c.has('The word is, worda.'), true); assert.equal(c.has('The word is, nothing.'), false);
+  assert.equal(c.needsPrepare(words[0]), false); assert.equal(c.needsPrepare({ word: 'brand' }), true);
+  key = false;
+  await c.status(true);
+  assert.equal(c.statusText(), 'Natural voice not set up on the server yet (ask the admin to add the Google key)');
+  key = true; offline = true;
+  await c.status(true);
+  assert.match(c.statusText(), /^Offline: using the device voice/);
+});
+await atest('client: play() through the test hook; a missing clip → fail; stop() → cancel', async () => {
+  const played = [];
+  globalThis.__cloudVoiceBackend = {
+    status: async () => ({ key: true }),
+    prepare: async ({ texts }) => ({ status: 200, body: { clips: Object.fromEntries(texts.filter((t) => t !== 'skip.').map((t, i) => [t, '/api/tts/clip/' + String(i).padStart(32, '0')])) } }),
+    load: async (url) => ({ url, duration: 0.01 }),
+    play: (buf, text) => new Promise((res) => { played.push(text); setTimeout(() => res(true), text === 'long.' ? 300 : 5); }),
+    stop() {},
+  };
+  try {
+    const c = CV.createCloudVoice({ getCode: () => FAM });
+    c.setVoice('en-US-Neural2-D');
+    const r = await c.prepare(['one.', 'skip.', 'long.']);
+    assert.deepEqual(r.missing, ['skip.']);
+    assert.equal(await c.play('one.'), 'ok'); assert.deepEqual(played, ['one.']);
+    assert.equal(await c.play('skip.'), 'fail');
+    const p = c.play('long.'); await sleep(50); c.stop(); assert.equal(await p, 'cancel');
+  } finally { delete globalThis.__cloudVoiceBackend; }
+});
+await atest('engine: a natural voice plays the presentation by clips (device not used); a missing clip → device for that utterance', async () => {
+  const t = createTTS(QUICK); const b = fakeSynth(); t.useBackend(b);
+  const spokenDev = []; const orig = b.speak; b.speak = (u) => { spokenDev.push(u.text); orig(u); };
+  const clips = new Set(['The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.', 'en', 'bee']);
+  const played = [];
+  const fake = { voice: 'en-US-Neural2-F', active: true, resolve: (x) => (clips.has(x) ? x : clips.has(x + '.') ? x + '.' : null), has: (x) => clips.has(x),
+    play: async (x) => { played.push(x); await sleep(5); return 'ok'; }, stop() {}, count: () => clips.size };
+  t.setCloud(fake);
+  assert.equal(await t.present({ word: 'neighbor', sentence: 'My neighbor has a dog.' }), true);
+  assert.deepEqual(played, ['The word is, neighbor.', 'My neighbor has a dog.', 'neighbor.']); assert.deepEqual(spokenDev, []); assert.equal(t.engine, 'cloud');
+  assert.equal(await t.present({ word: 'enough' }), true);
+  assert.deepEqual(spokenDev, ['The word is, enough.', 'enough.'], 'no clip → the device voice says the whole presentation'); assert.equal(t.engine, 'device');
+  played.length = 0; spokenDev.length = 0;
+  const lit = [];
+  await t.spell('ben', (i) => lit.push(i), { gap: 1 });
+  assert.deepEqual(lit, [0, 1, 2]); assert.deepEqual(played, ['bee', 'en']); assert.deepEqual(spokenDev, ['ee'], 'letters without a clip: device voice');
+  // a clip that fails to play: the rest of the utterance goes to the device voice
+  played.length = 0; spokenDev.length = 0;
+  fake.play = async (x) => { played.push(x); return x === 'My neighbor has a dog.' ? 'fail' : 'ok'; };
+  assert.equal(await t.present({ word: 'neighbor', sentence: 'My neighbor has a dog.' }), true);
+  assert.deepEqual(played, ['The word is, neighbor.', 'My neighbor has a dog.']); assert.deepEqual(spokenDev, ['My neighbor has a dog.', 'neighbor.']);
+  assert.equal(t.cloudFailures, 1); assert.equal(t.health, 'ok', 'cloud failures do not touch the device health');
+  fake.active = false; played.length = 0;
+  await t.say('neighbor.'); assert.deepEqual(played, [], 'natural voice off: device only');
+  t.setCloud(null);
+});
+await atest('engine: ready() is true with the natural voice even when the device lists no voices; watchdog rules stay device-only', async () => {
+  const t = createTTS(QUICK); t.useBackend(fakeSynth({ voices: [], starts: false }));
+  t.setCloud({ voice: 'en-US-Neural2-F', active: true, resolve: (x) => x, has: () => true, play: async () => 'ok', stop() {}, count: () => 1 });
+  assert.equal(await t.ready(), true); assert.equal(t.available, true);
+  for (let i = 0; i < 4; i++) assert.equal(await t.say('friend.'), true);
+  assert.equal(t.gaveUp, false); assert.equal(t.failStreak, 0);
+  const chk = await t.runCheck({ endWaitMs: 50 });
+  assert.equal(chk.ok, true); assert.match(chk.text, /engine: natural voice \(clip\)/); assert.match(chk.text, /result: the natural voice played/);
+});
+test('options: cloudVoice is kept when it is an allowlisted voice or "" (device), dropped otherwise', () => {
+  const f = Profiles.defaultFamily(); f.players.push({ id: 'pmia', name: 'Mia', color: '#ff3b5c', createdAt: 0, updatedAt: 0 });
+  assert.equal(Profiles.playerOptions(f, 'pmia').cloudVoice, undefined, 'never chosen');
+  assert.equal(Profiles.setPlayerOption(f, 'pmia', 'cloudVoice', 'en-US-Neural2-J').cloudVoice, 'en-US-Neural2-J');
+  assert.equal(Profiles.setPlayerOption(f, 'pmia', 'cloudVoice', '').cloudVoice, '');
+  assert.equal(Profiles.setPlayerOption(f, 'pmia', 'cloudVoice', 'en-US-Wavenet-A').cloudVoice, undefined);
+  assert.equal(Profiles.normalizeFamily({ ...f, options: { pmia: { cloudVoice: 'en-US-Studio-O' } } }).options.pmia.cloudVoice, 'en-US-Studio-O');
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

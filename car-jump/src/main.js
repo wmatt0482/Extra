@@ -17,6 +17,8 @@ import {
   XP, addTrophy, addXp, checkChampion, completeDay, earnCrate, levelFor, levelProgress, lookFor, noteJump, refreshStreak, streakNow, unopened,
 } from './meta/engagement.js';
 import { tts } from './spelling/tts.js';
+import { createCloudVoice, listTexts } from './spelling/cloudVoice.js';
+import { DEFAULT_CLOUD_VOICE } from './tts/voices.js';
 import { createSpellPanel } from './spelling/spellPanel.js';
 import { createTestScreen } from './spelling/testMode.js';
 import { createSession } from './spelling/scheduler.js';
@@ -39,7 +41,7 @@ import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdat
 import { createSyncClient } from './sync/client.js';
 import { applyImport, decodeTransfer, encodeTransfer } from './meta/transfer.js';
 
-const VERSION = '3.3.0';
+const VERSION = '3.4.0';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;
@@ -84,7 +86,7 @@ async function boot() {
   const sync = createSyncClient({
     canApply: (k) => syncCanApply(k),
     onApply: (k) => syncApplied(k),
-    onStatus: () => { playersUI.refreshSyncChip(); pz.onSyncStatus(); },
+    onStatus: () => { playersUI.refreshSyncChip(); pz.onSyncStatus(); if (currentPlayerId && cloud) { if (cloud.active) pz.onCloudStatus(); else cloudDefault(currentPlayerId); } },
   });
   const family = Profiles.loadFamily();
   const save = defaultSave();          // replaced in place when a player is picked (screens hold this reference)
@@ -244,6 +246,15 @@ async function boot() {
   const crates = app.crates = createCrateOpener(app);
   const spellPanel = createSpellPanel($('#spell'), { tts, audio: Audio, onCancel: () => quitRun() });
   const testScreen = createTestScreen($('#screen-test'), { tts, audio: Audio });
+  // natural voice (v3.4): clips from the server's Google voices, used when the player's options pick one and this
+  // device is in a family; the device voice stays the fallback (src/spelling/cloudVoice.js, tts.setCloud)
+  const cloud = app.cloud = createCloudVoice({
+    getCode: () => sync.code,
+    getWords: () => (words ? WS.activeList(words).words : []),
+    audio: Audio,
+    onChange: () => { if (pz) pz.onCloudStatus(); },
+  });
+  tts.setCloud(cloud);
   const pz = createParentZone(app);
   tts.setOnSpeaking((on) => Audio.voice(on));
 
@@ -273,8 +284,33 @@ async function boot() {
     const o = opts();
     tts.setRate(o.rate);
     tts.setVoice(o.voiceName ? { name: o.voiceName, lang: o.voiceLang } : null);
+    cloud.setVoice(o.cloudVoice || '');
+    if (cloud.active) cloud.prepareList().catch(() => {});    // only texts without a clip yet are sent
+    else cloudDefault(currentPlayerId);
     document.documentElement.classList.toggle('tiles-upper', o.tileCase === 'upper');
   }
+  // the first time a player is in a family whose server has the natural voice: pick the default natural voice for
+  // them (stored in the player's options, so it syncs; a parent who picks a device voice stores '' instead)
+  const cloudAsked = new Map();          // player id → when the server was last asked (once a minute at most)
+  function cloudDefault(id) {
+    if (!id || !sync.code || Profiles.playerOptions(family, id).cloudVoice !== undefined) return;
+    if (Date.now() - (cloudAsked.get(id) || 0) < 60000) return;
+    cloudAsked.set(id, Date.now());
+    cloud.status().then((key) => {
+      if (!key || !sync.code || !Profiles.playerById(family, id) || Profiles.playerOptions(family, id).cloudVoice !== undefined) return;
+      Profiles.setPlayerOption(family, id, 'cloudVoice', DEFAULT_CLOUD_VOICE);
+      Profiles.writeFamily(family);
+      if (id === currentPlayerId) applyPlayerOptions();
+      pz.onCloudStatus();
+    }).catch(() => {});
+  }
+  app.cloudDefault = cloudDefault;
+  // a list was saved (or the natural voice picked) in the Parent Zone: make that player's clips now
+  app.cloudPrepareFor = (id) => {
+    const o = Profiles.playerOptions(family, id);
+    if (!o.cloudVoice || !sync.code) return Promise.resolve(null);
+    return cloud.prepare(listTexts(WS.activeList(app.wordsFor(id)).words), o.cloudVoice).catch(() => null);
+  };
   function selectPlayer(id) {
     if (!Profiles.playerById(family, id)) return;
     const prevMotion = save.settings.reducedMotion;
