@@ -33,8 +33,12 @@ the build contract is the "Spelling edition (v3)" section of `SPEC.md`. The pure
 3. **Check speech.** In **Options**, the Speech line says **Speech on** (with the voice it found) or **Speech off**.
    Tap **Test voice** to hear it. If it stays off (mute switch on, no voices installed, or a browser frame without
    sound), the game still works: each word is shown for 3 s and then covered before your child spells it.
-   **Pick a clear voice** under **Voice**: every English voice on the device is listed, clearest first; tap
+   **If the voice is not working**, tap **Run speech check** (sound on): it says "The word is, neighbor." and lists,
+   with timestamps, what the browser did (see [Speech check](#speech-check)); **Copy log** copies it for whoever
+   helps. **Pick a clear voice** under **Voice**: every English voice on the device is listed, clearest first
+   (on-device voices before online ones of the same quality, since they start at once); tap
    **▶ Test** to hear "The word is, neighbor. My neighbor has a dog. Neighbor." in that voice, tap the row to use it.
+   **Use default system voice** sets no voice at all and lets the browser choose: try it if a picked voice stays silent.
    On iPhone or iPad, much clearer voices can be downloaded in Settings → Accessibility → Spoken Content → Voices →
    English (choose an Enhanced or Premium voice), then picked here. **Speech rate** is Very slow / Slow / Normal.
 4. **Hand it over.** Your child just plays. About 8 words a day (8 to 10 minutes) is the daily mission.
@@ -104,15 +108,63 @@ in all of these. Rates: normal 0.85, slow 0.6, very slow 0.5; pitch 1.0. The voi
 Options (stored by name + language in that player's options; a device without it uses the default), else the best
 ranked English voice: Apple Premium / Enhanced (and Ava, Zoe, Evan, Allison, Samantha, Tom) → Microsoft Natural →
 Google US English → other en-US → other English; novelty voices (Fred, Zarvox, Bad News, …, compact, eSpeak) last.
-Speech counts
-as unavailable for an attempt when the API is missing, when `getVoices()` is still empty 1.5 s after asking
-(`voiceschanged` or polling), or when the spoken word has not fired `onstart` 1.5 s after `speak()` (iOS before a
-tap, a muted browser frame, a stuck synth). Then the word is shown for 3 s ("Look, then spell it") and covered, with a
-one-time hint "Speech isn't available on this device, so you'll see each word first" (on the spell panel only, with
-the tip about downloading Enhanced / Premium voices on iPhone or iPad); the Qualifier and Friday Test
-do the same per word. The child never waits on a silent panel with no word. Every tap resumes an iOS synth left
-`paused`; speech is cancelled when the panel or test closes and when the app is hidden. Parents → Options shows
-**Speech on / off** with the number of voices found.
+Within the same quality, on-device voices (`localService`) rank above online ones: they start at once, while an
+online voice can take seconds the first time. **Use default system voice** stores no voice (the utterance gets
+`lang = en-US` and no `voice`), so the browser picks.
+
+#### Speech robustness (v3.2.1)
+
+Speech is self-healing and never leaves a silent panel. The rules (all in `src/spelling/tts.js`):
+
+- **Watchdog per utterance.** An utterance that has not fired `onstart` within **5 s** (the session's first utterance,
+  and the first one in a newly used voice: Chrome's online voices such as "Google US English" can take 2-5 s to start
+  the first time) or **3 s** (afterwards) counts as failed *for that word only*: the word is shown for 3 s ("Look,
+  then spell it") and covered, with a small **Hear it** retry next to the message, and the next word tries speech again.
+- **Off for the session only after 3 failures in a row.** Then `ready()` answers false at once and automatic speech
+  (words, letters) is skipped, so nobody waits on the watchdog; a tap on **Hear it** (or Test voice / ▶ Test / Run
+  speech check) re-probes: one attempt, and any utterance that starts turns speech back on.
+- **No voices** (`getVoices()` still empty 1.5 s after asking, through `voiceschanged` or polling; some sandboxes
+  never list any): the word is shown at once, and the app still tries to say it while it is shown, because some
+  browsers speak with their default voice anyway. If that starts, speech is on for the next word.
+- **Safari gesture rule.** The first `speak()` must happen inside a tap: `unlock()` runs on the pointerdown of Hear
+  it, the retry, the Test buttons, Run speech check, when the spell panel opens and on the first tap anywhere, and
+  speaks a very short real word ("ready" at volume 0.01, in the chosen voice, which also warms up a slow online
+  voice), not a space. An `onerror` with `not-allowed` means the gesture rule was not met: the next tap unlocks
+  again, and the panel shows the one-time hint "Tap Hear it to turn on the voice".
+- **Chrome quirks.** Every utterance in flight is kept referenced (`activeUtterances`) until its `onend` /
+  `onerror`, since Chrome garbage-collects unreferenced utterances and cuts them off. Before each phrase sequence the
+  synth is cancelled, resumed when `paused` (tab switches, iOS interruptions), and cancelled again if `speaking` is
+  still true 300 ms later. The word, the sentence and the repeated word stay separate short utterances; text longer
+  than 140 characters is split; `onend` that never comes is covered by an estimated-duration timer.
+
+The one-time hint "Speech isn't available on this device, so you'll see each word first" (on the spell panel with the
+tip about Enhanced / Premium voices on iPhone or iPad) still shows the first time a word falls back. The Qualifier and
+Friday Test use the same per-word rule. Speech is cancelled when the panel or test closes and when the app is
+hidden. Parents → Options shows **Speech on / off**, the voices found and why it is off (a failed last word, 3 in a
+row, or "the browser blocked the voice until a tap").
+
+#### Speech check
+
+Parents → Options → **Run speech check** speaks `"The word is, neighbor."` inside the tap and logs each step with a
+time since the tap, for example:
+
+```
+Speech check · 10/15/2026, 4:02:11 PM
+Spell Jump 3.2.1 · Mozilla/5.0 (iPad; …)
+[+0 ms] API present: yes (speechSynthesis: yes, SpeechSynthesisUtterance: yes)
+[+1 ms] voices: 61 (24 English, 24 on-device)
+[+1 ms] chosen voice: Samantha (Enhanced) · en-US · localService: true
+[+1 ms] synth state: speaking false, pending false, paused false · health ok · gesture unlock done
+[+2 ms] speak() called: "The word is, neighbor." (onstart watchdog 3000 ms)
+[+212 ms] onstart after 210 ms
+[+1630 ms] onend after 1628 ms
+[+1630 ms] result: speech started, so the voice works here. Heard nothing? Check the volume, the mute switch and Bluetooth audio.
+```
+
+It also logs `onerror: <code>` (for example `not-allowed`, `synthesis-failed`, `audio-busy`), `watchdog fired: no
+onstart after N ms`, and the last few speech events of the session (failed words, re-probes). The last log stays in
+memory until the next check; **Copy log** puts it on the clipboard (or shows it selected when the clipboard is not
+available).
 
 ### The learning rules in code
 
@@ -154,7 +206,8 @@ Per player:
 - **Report**: Qualifier vs latest Friday Test, a per-word table (status New / Focus / Learning / Almost / Mastered,
   attempts, first-try %, last practiced, days practiced), test history, **Copy report** (clipboard, or the text shown
   selected when the clipboard is unavailable), and **Why this works** (the LEARNING-DESIGN table, in the app).
-- **Options**: speech rate (very slow / slow / normal), voice (ranked list with ▶ Test), words before each race
+- **Options**: speech on / off with **Test voice**, **Speech check** (timestamped log, **Copy log**), speech rate
+  (very slow / slow / normal), voice (Automatic, Use default system voice, or a ranked list with ▶ Test), words before each race
   (1-4, default 2), new words per day
   (3 / 5 / 8), past-list review words, tile case (abc / ABC), sound, music, reduced motion, screen shake, reset
   spelling data, reset game save, remove player, change PIN.
@@ -270,12 +323,16 @@ worker). Keyboard on desktop: letters, `'`, `-`, Space, Backspace and Enter (LAU
 ```sh
 node tools/spelling-tests.mjs   # Node unit tests: intervals, mastery (2 distinct days), mission order, new-word cap,
                                 # re-queue distance, never twice in a row, archived review at 2 / 4 weeks, parser
-                                # edge cases, attempt alignment, word store, report; family sync: the server
+                                # edge cases, attempt alignment, word store, report; speech: the 5 s / 3 s onstart
+                                # watchdog, off only after 3 failures in a row, re-probe on a tap, the utterance
+                                # reference list, stuck-synth re-cancel, not-allowed, unlock, voice ranking (local
+                                # before online), system voice, the speech check log; family sync: the server
                                 # protocol (create / get / put, rev checks, 409, validation, 512 KB cap) on an
                                 # in-memory Map store, family codes, and every merge rule incl. both-changed cases
 node tools/ui-smoke.mjs         # Playwright, 844×390 + 390×844, mock engine + fake speechSynthesis: players, PIN,
                                 # word list, Qualifier, every spell-panel path, mission, Friday Test + Mega Run,
-                                # report, persistence; asserts R1 / R2 / R6, key sizes, layout, no console errors
+                                # report, voices (incl. system default), Run speech check log + Copy log,
+                                # persistence; asserts R1 / R2 / R6, key sizes, layout, no console errors
 node tools/engine-smoke.mjs     # real engine in dev.html (incl. R1: no letter glyph rasterized before launch)
 node tools/integration-smoke.mjs  # the full app on the REAL engine with real touches, 844×390 + 390×844: picker →
                                 # player → spell paths A (first try, letter rings, bonus) / B (miss → CCC → 65 %,
@@ -344,7 +401,7 @@ car-jump/
       codes.js            family code generator / normalizer, device id
       notify.js           local-write hook (profiles.js and save.js call it after every write)
       protocol.mjs        the sync API as a pure request handler (used by netlify/functions/family.mjs)
-      tts.js              speechSynthesis wrapper (voice pick, chunking, unlock, letter names, test hook)
+      tts.js              speechSynthesis wrapper (voice pick, chunking, unlock, watchdog + health, speech check, test hook)
       keyboard.js         on-screen QWERTY keyboard
       spellPanel.js       Spell to Launch panel (Look-Say-Cover-Write-Check, Cover-Copy-Compare)
       testMode.js         Qualifier / Friday Test screen

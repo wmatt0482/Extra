@@ -2,7 +2,7 @@
 // Same-origin files are served from cache and refreshed in the background (stale-while-revalidate),
 // so a deploy shows up on the next launch. Bump VERSION to force a clean cache.
 // The family sync API (/api/...) is network only: never cached, never answered from the cache.
-const VERSION = 'spell-jump-v3.2.0';
+const VERSION = 'spell-jump-v3.2.1';
 const SHELL = [
   './',
   'index.html',

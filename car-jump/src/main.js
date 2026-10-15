@@ -33,7 +33,7 @@ import { createPlayers, drawAvatar } from './ui/players.js';
 import { createParentZone } from './ui/parentZone.js';
 import { createSyncClient } from './sync/client.js';
 
-const VERSION = '3.2.0';
+const VERSION = '3.2.1';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;

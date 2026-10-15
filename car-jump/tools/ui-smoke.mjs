@@ -12,7 +12,8 @@
 //   (a 41-word list is refused), enter PIN (wrong then right), forgot PIN (hold 3 s + multiplication) →
 //   Qualifier (pays $100 a word, Focus words) → Friday Test → Mega Run (power 0.6 + 0.4 × score, $150 a word) →
 //   Report (pretest vs test, per-word table, Copy report via clipboard or the select-text fallback,
-//   "Why this works") → Options (tile case, voice picker, rate, words before each race) → a 2-word set (first
+//   "Why this works") → Options (tile case, voice picker incl. "Use default system voice", rate, Speech check: the
+//   timestamped log lines + Copy log via clipboard or the select-text fallback, words before each race) → a 2-word set (first
 //   right, second missed and fixed → setLaunchPower(0.825, 1.125), rings carry the missed word, mission +2, both
 //   words on the results row) → reload persistence (incl. the chosen voice). Earlier paths use 1 word per race.
 // Speech: a word is presented as exactly ["The word is, <word>.", <sentence>, "<word>."] once (Look), again on
@@ -763,7 +764,7 @@ async function runLayout(browser, layout) {
   check((await family(page)).options[pid].tileCase === 'upper', 'option saved: tile case ABC');
   // voice picker: English voices ranked (Enhanced first, novelty last, French left out), ▶ Test, choose one
   const vp = await J(page, () => ({ rows: [...document.querySelectorAll('#opt-voices [data-voice-row]')].map((r) => r.dataset.voiceRow), now: document.querySelector('#opt-voice-now').textContent, tip: (document.querySelector('#opt-voice-tip') || {}).textContent || '' }));
-  check(vp.rows.join('|') === '|Samantha (Enhanced)|Fake US|Fred' && /Samantha \(Enhanced\)/.test(vp.now), `voice list: Automatic, ${vp.rows.slice(1).join(', ')} (${vp.now})`);
+  check(vp.rows.join('|') === '|:system|Samantha (Enhanced)|Fake US|Fred' && /Samantha \(Enhanced\)/.test(vp.now), `voice list: Automatic, system default, ${vp.rows.slice(2).join(', ')} (${vp.now})`);
   check(/Spoken Content/.test(vp.tip), 'voice tip under the list');
   await page.click('#opt-voices [data-voice-row="Fake US"] [data-voice-test]');
   await page.waitForTimeout(1400);
@@ -777,6 +778,39 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '36b-pz-voices');
   await layoutAudit(page, layout.insets, 'parent zone (voices)');
   await page.click('#opt-rate [data-value="normal"]');
+  // "Use default system voice": stored as the system choice, no voice set on the utterance; then back to Fake US
+  await page.click('#opt-voices [data-voice=":system"]');
+  check((await family(page)).options[pid].voiceName === ':system' && await J(page, () => window.__spellJump.tts.systemVoice && window.__spellJump.tts.voiceName === '' && /default system voice/.test(document.querySelector('#opt-voice-now').textContent)),
+    'voice: "Use default system voice" stored and used (no voice set)');
+  await page.click('#opt-voices [data-voice="Fake US"]');
+  check(await J(page, () => window.__spellJump.tts.voiceName === 'Fake US'), 'voice: back to Fake US');
+  // Speech check: speaks "The word is, neighbor." inside the tap and logs each step with a timestamp
+  check(await J(page, () => document.querySelector('#opt-check-log').hidden && document.querySelector('#opt-check-copy-btn').hidden), 'speech check: no log (and no Copy log) before the first run');
+  const nCheck = (await spoken(page)).length;
+  await page.click('#opt-check-run');
+  await page.waitForFunction(() => /result:/.test(document.querySelector('#opt-check-log').textContent), null, { timeout: 8000 });
+  const chk = await J(page, () => ({ text: document.querySelector('#opt-check-log').textContent, cls: document.querySelector('#opt-check-log').className, copy: !document.querySelector('#opt-check-copy-btn').hidden, pill: document.querySelector('#opt-speech-state').textContent }));
+  const wantLines = [/^Speech check · /m, /Spell Jump 3\.\d+\.\d+/, /\[\+\s*\d+ ms\] API present: yes/, /voices: 4 \(3 English, 3 on-device\)/, /chosen voice: Fake US · en-US · localService: true/,
+    /speak\(\) called: "The word is, neighbor\."/, /onstart after \d+ ms/, /onend after \d+ ms/, /result: speech started/];
+  const missingLines = wantLines.filter((re) => !re.test(chk.text)).map(String);
+  check(missingLines.length === 0 && /\bok\b/.test(chk.cls) && chk.copy, `speech check log lines shown${missingLines.length ? ' (missing ' + missingLines.join(', ') + ')' : ''}`);
+  check(JSON.stringify((await spoken(page)).slice(nCheck)) === JSON.stringify(['The word is, neighbor.']) && chk.pill === 'Speech on', 'speech check speaks "The word is, neighbor." and Speech stays on');
+  await shot(page, layout, '36c-pz-speech-check');
+  await layoutAudit(page, layout.insets, 'parent zone (speech check)');
+  await page.click('#opt-check-copy-btn');
+  await page.waitForTimeout(400);
+  if (layout.clipboard) {
+    const clip = await J(page, () => navigator.clipboard.readText());
+    check(/API present: yes/.test(clip) && /onstart after/.test(clip) && clip === await J(page, () => window.__spellJump.tts.lastCheck.text), 'Copy log → clipboard (the whole log)');
+  } else {
+    const fb = await J(page, () => ({ shown: !document.querySelector('#opt-check-copy').hidden, sel: String(window.getSelection()) }));
+    check(fb.shown && /API present: yes/.test(fb.sel) && /onend after/.test(fb.sel), 'Copy log: clipboard unavailable → the log is shown selected');
+  }
+  // the log is kept in memory: it is still there after switching tabs
+  await page.click('.pz-tabs [data-tab="report"]');
+  await page.click('.pz-tabs [data-tab="options"]');
+  await page.waitForSelector('#opt-check-log');
+  check(await J(page, () => !document.querySelector('#opt-check-log').hidden && /onstart after/.test(document.querySelector('#opt-check-log').textContent)), 'speech check: the last log is kept after re-rendering');
   // "Words before each race": back to the default 2 through the Options control
   await page.click('#opt-race-words [data-value="2"]');
   check((await family(page)).options[pid].wordsPerRace === 2, 'option saved: 2 words before each race');

@@ -3,15 +3,16 @@
 // Per-player tabs: Words of the week (text area: the one place a native keyboard is used, since parents type
 // here; pattern of the week; dated lists with an archive: view / restore / delete; copy to another player),
 // Report (pretest vs latest Friday Test, per-word table, test history, Copy report, "Why this works"),
-// Options (speech, speech rate, voice picker, words before each race, new words per day, review words, tile case,
-// sound / music / motion / shake, resets).
+// Options (speech on/off + Test voice, Speech check with a timestamped log and Copy log, speech rate, voice picker
+// with "Automatic" / "Use default system voice" / each English voice, words before each race, new words per day,
+// review words, tile case, sound / music / motion / shake, resets).
 // Family sync (one tab for the whole family, also reachable from the player picker's chip when the device has no
 // players yet): status line, Create family code, Join a family, Leave family, and what is stored online.
 // Only this zone deletes anything. The whole zone is one scrollable sheet sized to the visual viewport so the
 // iOS keyboard never hides the text area.
 import { PLAYER_COLORS, checkPin, hasPin, playerById, playerOptions, setPin, setPlayerOption } from '../spelling/profiles.js';
 import { formatList, parseList, MAX_WORDS } from '../spelling/words.js';
-import { SAMPLE_PRESENTATION, VOICE_TIP, voiceQuality } from '../spelling/tts.js';
+import { SAMPLE_PRESENTATION, SYSTEM_VOICE, VOICE_TIP, voiceQuality } from '../spelling/tts.js';
 import {
   activeList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList,
 } from '../spelling/wordStore.js';
@@ -314,16 +315,8 @@ export function createParentZone(app) {
     const out = h('pre', { class: 'pz-report-text', id: 'pz-report-text', hidden: true });
     const copyBtn = h('button', { class: 'btn btn-cyan', id: 'pz-copy-report', 'data-sfx': '' }, 'Copy report');
     copyBtn.addEventListener('click', async () => {
-      const text = reportText(d, p.name);
-      let ok = false;
-      try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; } } catch (_) { ok = false; }
-      if (ok) { app.toast('Report copied'); out.hidden = true; return; }
-      // fallback: show the text selected so the parent can copy it from the system menu
-      out.textContent = text;
-      out.hidden = false;
-      try { const sel = window.getSelection(); sel.removeAllRanges(); const range = document.createRange(); range.selectNodeContents(out); sel.addRange(range); } catch (_) { /* ignore */ }
-      out.scrollIntoView({ block: 'nearest' });
-      app.toast('Text selected: use Copy');
+      // fallback: the text is shown selected so the parent can copy it from the system menu
+      if (await copyText(reportText(d, p.name), out, 'Report')) out.hidden = true;
     });
     const why = h('button', { class: 'btn btn-sm', 'data-sfx': '', id: 'pz-why-2' }, 'Why this works');
     why.addEventListener('click', () => { view = 'why'; render(); });
@@ -342,30 +335,88 @@ export function createParentZone(app) {
     ];
   }
 
+  // copy text to the clipboard; when that is not allowed, show it selected in `pre` so the parent can copy it from
+  // the system menu. Resolves true when it went to the clipboard.
+  async function copyText(text, pre, what) {
+    let ok = false;
+    try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; } } catch (_) { ok = false; }
+    if (ok) { app.toast(`${what} copied`); return true; }
+    pre.textContent = text;
+    pre.hidden = false;
+    try { const sel = window.getSelection(); sel.removeAllRanges(); const range = document.createRange(); range.selectNodeContents(pre); sel.addRange(range); } catch (_) { /* ignore */ }
+    pre.scrollIntoView({ block: 'nearest' });
+    app.toast('Text selected: use Copy');
+    return false;
+  }
+
   // speech on/off indicator: does this device list voices, and did the last spoken word actually start?
+  let repaintSpeech = () => {};
+  let lastCheckOk = null;              // the last speech check's outcome (its log lives in tts.lastCheck)
   function speechRow() {
     const t = app.tts;
     const pill = h('span', { class: 'speech-pill', id: 'opt-speech-state' });
     const sub = h('div', { class: 'sub', id: 'opt-speech-sub' });
+    const n = (k) => `${k} voice${k === 1 ? '' : 's'}`;
     const paint = () => {
-      const on = t.available && t.voiceCount > 0 && t.health !== 'no-start' && t.health !== 'error';
+      const failed = t.gaveUp || t.health === 'no-start' || t.health === 'error' || t.health === 'not-allowed';
+      const on = t.available && (t.voiceCount > 0 || t.health === 'ok') && !failed;
       pill.textContent = on ? 'Speech on' : 'Speech off';
       pill.classList.toggle('on', on);
       sub.textContent = !t.available ? 'This browser has no speech. Each word is shown for 3 s before your child spells it.'
-        : t.voiceCount === 0 ? 'No voices detected yet. Words are shown for 3 s instead. Try "Test voice".'
-          : t.health === 'no-start' || t.health === 'error' ? `${t.voiceCount} voice${t.voiceCount === 1 ? '' : 's'} found, but the last word did not play, so words were shown instead. Check the mute switch and volume, then try "Test voice".`
-            : `${t.voiceCount} voice${t.voiceCount === 1 ? '' : 's'} detected${t.voiceName ? ` · using ${t.voiceName}` : ''}${t.health === 'ok' ? ' · working' : ''}`;
+        : t.health === 'not-allowed' ? 'The browser blocked the voice until a tap. Your child can tap "Hear it"; or tap "Test voice" here.'
+          : t.gaveUp ? `The voice did not start ${t.failStreak} times in a row, so words are shown instead for now. Tapping "Hear it" tries again. Check the volume and mute switch, then run the speech check below.`
+            : t.voiceCount === 0 && t.health !== 'ok' ? 'No voices detected yet. Words are shown for 3 s instead. Try "Test voice" or the speech check below.'
+              : failed ? `${n(t.voiceCount)} found, but the last word did not play, so it was shown instead. The next word tries again. Check the mute switch and volume, then try "Test voice".`
+                : `${n(t.voiceCount)} detected${t.systemVoice ? ' · using the default system voice' : t.voiceName ? ` · using ${t.voiceName}` : ''}${t.health === 'ok' ? ' · working' : ''}`;
     };
     paint();
-    t.voicesReady().then(paint);
+    repaintSpeech = paint;
+    t.voicesReady().then(() => { if (pill.isConnected) paint(); });
     const test = h('button', { class: 'btn btn-sm', id: 'opt-speech-test', onclick: async () => {
       if (!t.available) return;
-      t.unlock();
+      t.unlock(); t.reprobe();
       await t.say('Spell Jump is ready.');
       paint();
     } }, 'Test voice');
+    test.addEventListener('pointerdown', () => t.unlock());      // Safari: the first speak() inside the gesture
     test.hidden = !t.available;
     return h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Speech ', pill), sub), test);
+  }
+
+  // Speech check: speaks "The word is, neighbor." inside the tap and logs each step with a timestamp (API, voices,
+  // chosen voice + localService, speak(), onstart / onend / onerror, watchdog). The last log stays in memory
+  // (tts.lastCheck) and can be copied for whoever helps with the problem.
+  function speechCheck() {
+    const t = app.tts;
+    const log = h('pre', { class: 'pz-check-log', id: 'opt-check-log', 'aria-live': 'polite' });
+    const copyOut = h('pre', { class: 'pz-report-text', id: 'opt-check-copy', hidden: true });
+    const copy = h('button', { class: 'btn btn-sm', id: 'opt-check-copy-btn', 'data-sfx': '' }, 'Copy log');
+    const run = h('button', { class: 'btn btn-sm btn-cyan', id: 'opt-check-run' }, 'Run speech check');
+    const show = (c, state = '') => {
+      log.hidden = !c;
+      copy.hidden = !c;
+      log.textContent = c ? c.text : '';
+      log.className = 'pz-check-log' + (state ? ' ' + state : '');
+    };
+    show(t.lastCheck, lastCheckOk == null ? '' : lastCheckOk ? 'ok' : 'bad');
+    run.addEventListener('pointerdown', () => t.unlock());
+    run.addEventListener('click', () => {
+      copyOut.hidden = true;
+      // no await before runCheck: speak() must happen inside this tap (Safari)
+      const header = [`Spell Jump ${app.version} · ${navigator.userAgent}`];
+      const p = t.runCheck({ header, onLine: (line, lines) => { log.hidden = false; copy.hidden = false; log.textContent = lines.join('\n'); log.scrollTop = log.scrollHeight; } });
+      run.disabled = true;
+      p.then((res) => { lastCheckOk = res.ok; if (log.isConnected) show(t.lastCheck, res.ok ? 'ok' : 'bad'); })
+        .finally(() => { run.disabled = false; repaintSpeech(); });
+    });
+    copy.addEventListener('click', () => { const c = t.lastCheck; if (c) copyText(c.text, copyOut, 'Log'); });
+    return [
+      h('div', { class: 'row pz-check' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Speech check'),
+        h('div', { class: 'sub' }, 'If the voice is not working: tap this with the sound on. It says "The word is, neighbor." and shows what the browser did.')),
+      h('div', { class: 'pz-actions pz-check-actions' }, run, copy)),
+      log,
+      copyOut,
+    ];
   }
 
   // Voice picker: every English voice the device reports, best first (tts.rankVoices). Each row can be tested
@@ -381,33 +432,44 @@ export function createParentZone(app) {
     more.addEventListener('click', () => { voiceShowAll = !voiceShowAll; paint(); });
     const current = () => { const q = playerOptions(app.family, p.id); return q.voiceName ? { name: q.voiceName, lang: q.voiceLang } : null; };
     const choose = (v) => {
-      set(v ? { voiceName: v.name, voiceLang: v.lang || '' } : { voiceName: '', voiceLang: '' });
+      set(v === SYSTEM_VOICE ? { voiceName: SYSTEM_VOICE, voiceLang: '' } : v ? { voiceName: v.name, voiceLang: v.lang || '' } : { voiceName: '', voiceLang: '' });
       render();                          // the Speech row ("using …") and this list both show the new voice
     };
-    const test = (v) => { const vv = v || t.voices()[0]; t.unlock(); t.cancel(); t.present(SAMPLE_PRESENTATION, vv ? { voice: vv } : {}); };
+    // v: a voice, null (Automatic: the best-ranked one) or SYSTEM_VOICE (no voice set: the browser's default)
+    const test = (v) => {
+      const vv = v === SYSTEM_VOICE ? SYSTEM_VOICE : v || t.voices()[0];
+      t.unlock(); t.reprobe(); t.cancel(); t.present(SAMPLE_PRESENTATION, vv ? { voice: vv } : {});
+    };
+    const key = (v) => (v === SYSTEM_VOICE ? SYSTEM_VOICE : v ? v.name : '');
     function row(v, picked, label, sub) {
-      const pick = h('button', { class: 'pz-voice-pick' + (picked ? ' on' : ''), role: 'radio', 'aria-checked': String(picked), 'data-voice': v ? v.name : '' },
+      const pick = h('button', { class: 'pz-voice-pick' + (picked ? ' on' : ''), role: 'radio', 'aria-checked': String(picked), 'data-voice': key(v) },
         h('span', { class: 'pz-voice-dot', 'aria-hidden': 'true' }),
         h('span', { class: 'grow' }, h('span', { class: 'label' }, label), h('span', { class: 'sub' }, sub)));
       pick.addEventListener('click', () => choose(v));
-      const play = h('button', { class: 'btn btn-sm pz-voice-test', 'aria-label': `Test ${label}`, 'data-voice-test': v ? v.name : '' }, '\u25B6\uFE0E Test');
+      const play = h('button', { class: 'btn btn-sm pz-voice-test', 'aria-label': `Test ${label}`, 'data-voice-test': key(v) }, '\u25B6\uFE0E Test');
+      play.addEventListener('pointerdown', () => t.unlock());   // Safari: the first speak() inside the gesture
       play.addEventListener('click', () => test(v));
-      return h('div', { class: 'pz-voice', 'data-voice-row': v ? v.name : '' }, pick, play);
+      return h('div', { class: 'pz-voice', 'data-voice-row': key(v) }, pick, play);
     }
     function paint() {
       const voices = t.voices();
       const pref = current();
-      const used = t.resolveVoice(pref);
-      const missing = pref && (!used || used.name !== pref.name);
-      now.textContent = !voices.length ? 'No English voices found yet.'
-        : `Now using: ${used ? used.name : 'the system voice'}${missing ? ` (${pref.name} isn't on this device)` : ''}`;
+      const system = !!pref && pref.name === SYSTEM_VOICE;
+      const used = system ? null : t.resolveVoice(pref);
+      const missing = !system && pref && (!used || used.name !== pref.name);
+      now.textContent = system ? 'Now using: the default system voice (the browser picks)'
+        : !voices.length ? 'No English voices found yet.'
+          : `Now using: ${used ? used.name : 'the system voice'}${missing ? ` (${pref.name} isn't on this device)` : ''}`;
       const best = voices[0];
-      const rows = [row(null, !pref, 'Automatic', best ? `Best on this device: ${best.name}` : 'The system voice')];
+      const rows = [
+        row(null, !pref, 'Automatic', best ? `Best on this device: ${best.name}` : 'The system voice'),
+        row(SYSTEM_VOICE, system, 'Use default system voice', 'The browser picks. Try this if a voice stays silent.'),
+      ];
       // the short list always includes the picked voice, even when it ranks below the first LIMIT
-      const shown = voiceShowAll ? voices : voices.filter((v, i) => i < LIMIT || (pref && !missing && used && v.name === used.name && v.lang === used.lang));
+      const shown = voiceShowAll ? voices : voices.filter((v, i) => i < LIMIT || (pref && !system && !missing && used && v.name === used.name && v.lang === used.lang));
       for (const v of shown) {
         const q = voiceQuality(v);
-        rows.push(row(v, !!pref && !missing && !!used && v.name === used.name && v.lang === used.lang, v.name, [v.lang, q.label, v.localService === false ? 'online' : ''].filter(Boolean).join(' · ')));
+        rows.push(row(v, !!pref && !system && !missing && !!used && v.name === used.name && v.lang === used.lang, v.name, [v.lang, q.label, v.localService === false ? 'online (slower to start)' : 'on device'].filter(Boolean).join(' · ')));
       }
       list.replaceChildren(...rows);
       more.hidden = voices.length <= LIMIT;
@@ -436,6 +498,7 @@ export function createParentZone(app) {
     return [
       h('div', { class: 'hud-label pz-sec' }, 'SPELLING'),
       speechRow(),
+      ...speechCheck(),
       segmented('Speech rate', 'How fast words are read aloud', [['veryslow', 'Very slow'], ['slow', 'Slow'], ['normal', 'Normal']], o.rate, (v) => set('rate', v), 'opt-rate'),
       ...voicePicker(p, o, set),
       segmented('Words before each race', 'Spelled back to back before the car launches; more right on the first try = more power', [[1, '1'], [2, '2'], [3, '3'], [4, '4']], o.wordsPerRace, (v) => set('wordsPerRace', v), 'opt-race-words'),
@@ -459,7 +522,7 @@ export function createParentZone(app) {
       }, 'opt-remove'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN')),
         h('button', { class: 'btn btn-sm', id: 'opt-pin', onclick: () => { pinMode = 'reset'; pinEntry = ''; view = 'pin'; render(); } }, 'Change PIN')),
-      h('div', { class: 'ver' }, `Spell Jump ${app.version}${app.engineName ? ' · ' + app.engineName : ''} · voice: ${app.tts.available ? (app.tts.voiceName || 'system') : 'not available'}`),
+      h('div', { class: 'ver' }, `Spell Jump ${app.version}${app.engineName ? ' · ' + app.engineName : ''} · voice: ${app.tts.available ? (app.tts.systemVoice ? 'system default' : app.tts.voiceName || 'system') : 'not available'}`),
     ];
   }
 

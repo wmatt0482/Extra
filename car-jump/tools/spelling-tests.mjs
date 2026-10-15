@@ -3,8 +3,11 @@
 // Covers the Leitner intervals, mastery (needs 2 distinct days), mission ordering, the new-word cap,
 // re-queue distance, never-twice-in-a-row, archived review at 2 and 4 weeks, the list parser's edge cases,
 // the attempt/word alignment, the word store (save list → archive → restore → delete, qualifier, Friday) and the
-// speech fallbacks in tts.js (no API, no voices within 1.5 s, no onstart within 1.5 s, iOS paused synth), the
-// "say as" list field, the spoken presentation (buildPresentation / sayAgain / syllables) and voice ranking / choice.
+// speech fallbacks in tts.js (no API, no voices within 1.5 s, the onstart watchdog: 5 s for the first utterance of a
+// session, 3 s afterwards; per-word failure, off for the session only after 3 in a row, re-probe on a tap; the
+// utterance reference list (Chrome GC); cancel → resume → cancel again when stuck; 'not-allowed'; the gesture unlock
+// "ready" at volume 0.01; the system voice; the Speech check log; iOS paused synth), the "say as" list field, the
+// spoken presentation (buildPresentation / sayAgain / syllables) and voice ranking (local before online) / choice.
 import assert from 'node:assert/strict';
 import { mulberry32 } from '../src/meta/rng.js';
 import {
@@ -374,7 +377,10 @@ test('corrupt or partial words data falls back safely', () => {
 
 // ---------- speech robustness (tts.js with fake backends) ----------
 console.log('speech: availability, start timeout, fallbacks');
-const { createTTS, START_TIMEOUT_MS, VOICES_TIMEOUT_MS } = await import('../src/spelling/tts.js');
+const {
+  createTTS, START_TIMEOUT_MS, FIRST_START_TIMEOUT_MS, GIVE_UP_AFTER, STUCK_MS, VOICES_TIMEOUT_MS, UNLOCK_TEXT, UNLOCK_VOLUME,
+  SYSTEM_VOICE, CHECK_PHRASE, activeUtterances,
+} = await import('../src/spelling/tts.js');
 async function atest(name, fn) {
   try { await fn(); passed++; console.log('  ✓ ' + name); } catch (e) { failures.push(name); console.log('  ✗ ' + name + '\n      ' + (e && e.message).split('\n').join('\n      ')); }
 }
@@ -391,12 +397,78 @@ await atest('working speech: ready() true at once, say() resolves true, health o
   const [ok, ms] = await timed(t.ready()); assert.equal(ok, true); assert.ok(ms < 50, `ready took ${ms} ms`);
   assert.equal(await t.say('friend'), true); assert.equal(t.health, 'ok'); assert.equal(t.working, true);
 });
-await atest(`an utterance with no onstart within ${START_TIMEOUT_MS} ms counts as unavailable (say → false)`, async () => {
+test('watchdog constants: 5 s for the first utterance, 3 s afterwards, off for the session after 3 in a row', () => {
+  assert.equal(FIRST_START_TIMEOUT_MS, 5000); assert.equal(START_TIMEOUT_MS, 3000); assert.equal(GIVE_UP_AFTER, 3); assert.equal(STUCK_MS, 300);
+});
+await atest(`no onstart: the first utterance gives up after ${FIRST_START_TIMEOUT_MS} ms, the next after ${START_TIMEOUT_MS} ms (per word, not permanent)`, async () => {
   const t = createTTS(); const b = fakeSynth({ starts: false }); t.useBackend(b);
   assert.equal(await t.ready(), true);                        // voices are listed…
+  assert.equal(t.startTimeoutFor(), FIRST_START_TIMEOUT_MS);
   const [ok, ms] = await timed(t.say('friend'));              // …but nothing ever starts
-  assert.equal(ok, false); assert.ok(ms >= START_TIMEOUT_MS - 20 && ms < START_TIMEOUT_MS + 400, `gave up after ${ms} ms`);
+  assert.equal(ok, false); assert.ok(ms >= FIRST_START_TIMEOUT_MS - 20 && ms < FIRST_START_TIMEOUT_MS + 400, `first gave up after ${ms} ms`);
   assert.equal(t.health, 'no-start'); assert.equal(t.working, false); assert.ok(b.calls.cancel >= 1, 'the stuck utterance is cancelled');
+  assert.equal(t.gaveUp, false, 'one failure is not permanent'); assert.equal(await t.ready(), true, 'the next word tries speech again');
+  assert.equal(t.startTimeoutFor(), START_TIMEOUT_MS);
+  const [ok2, ms2] = await timed(t.say('friend'));
+  assert.equal(ok2, false); assert.ok(ms2 >= START_TIMEOUT_MS - 20 && ms2 < START_TIMEOUT_MS + 400, `second gave up after ${ms2} ms`);
+  assert.equal(t.failStreak, 2); assert.equal(t.gaveUp, false);
+});
+// short watchdogs for the rest of the behavior tests
+const QUICK = { firstStartMs: 120, startMs: 60 };
+await atest('only 3 failures in a row turn speech off for the session; a start in between resets the count', async () => {
+  let starts = false;
+  const t = createTTS(QUICK); const b = fakeSynth(); b.speak = (u) => { b.calls.speak++; if (starts) { setTimeout(() => u.onstart(), 5); setTimeout(() => u.onend(), 20); } };
+  t.useBackend(b);
+  assert.equal(await t.say('a'), false); assert.equal(await t.say('b'), false);
+  assert.equal(t.failStreak, 2); assert.equal(t.gaveUp, false);
+  starts = true; assert.equal(await t.say('c'), true); assert.equal(t.failStreak, 0, 'a start resets the streak');
+  starts = false;
+  for (let i = 0; i < 2; i++) assert.equal(await t.say('x'), false);
+  assert.equal(t.gaveUp, false, 'two in a row: still trying');
+  assert.equal(await t.say('x'), false);
+  assert.equal(t.gaveUp, true, 'three in a row: off for the session'); assert.equal(t.working, false);
+  const n = b.calls.speak;
+  const [r, ms] = await timed(t.ready()); assert.equal(r, false); assert.ok(ms < 30, 'ready() is false at once (no waiting)');
+  const [p, ms2] = await timed(t.present({ word: 'friend' }));
+  assert.equal(p, false); assert.ok(ms2 < 30); assert.equal(b.calls.speak, n, 'automatic speech is not even tried');
+  const lit = []; const [, ms3] = await timed(t.spell('ab', (i) => lit.push(i), { gap: 5 }));
+  assert.deepEqual(lit, [0, 1]); assert.equal(b.calls.speak, n, 'spell() lights the tiles on a timer'); assert.ok(ms3 < 1200);
+});
+await atest('re-probe on tap: after giving up, Hear it (reprobe + present) tries again; a start turns speech back on', async () => {
+  let starts = false;
+  const t = createTTS(QUICK); const b = fakeSynth(); b.speak = (u) => { b.calls.speak++; if (starts) { setTimeout(() => u.onstart(), 5); setTimeout(() => u.onend(), 20); } };
+  t.useBackend(b);
+  for (let i = 0; i < 3; i++) await t.say('x');
+  assert.equal(t.gaveUp, true);
+  // a failed re-probe: one try, then off again at once
+  let n = b.calls.speak; t.reprobe(); assert.equal(t.gaveUp, false);
+  assert.equal(await t.present({ word: 'friend' }), false); assert.equal(b.calls.speak, n + 1, 'the tap made one real attempt');
+  assert.equal(t.gaveUp, true, 'still silent: off again after that one try');
+  // a successful re-probe
+  starts = true; n = b.calls.speak; t.reprobe();
+  assert.equal(await t.present({ word: 'friend' }), true); assert.ok(b.calls.speak > n);
+  assert.equal(t.gaveUp, false); assert.equal(t.health, 'ok'); assert.equal(await t.ready(), true); assert.equal(t.working, true);
+});
+await atest('utterance references (Chrome GC): every utterance in flight is held until onend / onerror', async () => {
+  const base = activeUtterances.length;
+  const t = createTTS(); let held = null; let endIt = null;
+  const b = fakeSynth(); b.speak = (u) => { held = activeUtterances.includes(u); setTimeout(() => u.onstart(), 5); endIt = () => u.onend(); };
+  t.useBackend(b);
+  const p = t.say('friend');
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(held, true, 'held while speaking'); assert.equal(activeUtterances.length, base + 1);
+  endIt(); await p;
+  assert.equal(activeUtterances.length, base, 'released on onend');
+  b.speak = (u) => { setTimeout(() => u.onerror({ error: 'synthesis-failed' }), 5); };
+  assert.equal(await t.say('x'), false); assert.equal(activeUtterances.length, base, 'released on onerror'); assert.equal(t.lastError, 'synthesis-failed');
+});
+await atest('Speech check re-probes when speech is off for the session', async () => {
+  const t = createTTS(QUICK); let starts = false;
+  const b = fakeSynth(); b.speak = (u) => { if (starts) { setTimeout(() => u.onstart(), 5); setTimeout(() => u.onend(), 20); } };
+  t.useBackend(b);
+  for (let i = 0; i < 3; i++) await t.say('x');
+  assert.equal(t.gaveUp, true);
+  starts = true; const r = await t.runCheck(); assert.equal(r.ok, true); assert.equal(t.gaveUp, false); assert.match(r.text, /off for this session/);
 });
 await atest(`no voices ${VOICES_TIMEOUT_MS} ms after asking → ready() false`, async () => {
   const t = createTTS(); t.useBackend(fakeSynth({ voices: [] }));
@@ -423,8 +495,8 @@ await atest('iOS paused synth: unlock() (every tap) and speak() call resume()', 
   b.paused = true; t.unlock(); assert.equal(b.calls.resume, 2, 'a later tap resumes again');
   b.paused = true; assert.equal(await t.say('x'), true); assert.ok(b.calls.resume >= 3);
 });
-await atest('after a failed start, spell() lights the letters on a timer instead of 1.5 s per silent letter', async () => {
-  const t = createTTS(); t.useBackend(fakeSynth({ starts: false }));
+await atest('after a failed start, spell() lights the letters on a timer instead of a watchdog per silent letter', async () => {
+  const t = createTTS(QUICK); t.useBackend(fakeSynth({ starts: false }));
   await t.say('x');
   const lit = []; const [, ms] = await timed(t.spell('abc', (i) => lit.push(i), { gap: 10 }));
   assert.deepEqual(lit, [0, 1, 2]); assert.ok(ms < 1600, `spell took ${ms} ms`);
@@ -471,6 +543,15 @@ test('rankVoices: Premium > Natural > Google > plain, novelty last, non-English 
   const firstNovelty = Math.min(...novelty.map(at));
   assert.equal(firstNovelty, names.length - novelty.length, `novelty voices last: ${names.join(', ')}`);
   assert.equal(names[0], 'Ava (Premium)');
+});
+test('rankVoices: within the same quality, on-device voices before online ones (they start at once)', () => {
+  const list = [V('Microsoft Aria Online (Natural) - English (United States)', 'en-US', { localService: false }), V('Microsoft Jenny (Natural) - English (United States)'),
+    V('Alex', 'en-US', { localService: false }), V('Victoria'), V('Google US English', 'en-US', { localService: false })];
+  const names = rankVoices(list).map((v) => v.name);
+  assert.ok(names.indexOf('Microsoft Jenny (Natural) - English (United States)') < names.indexOf('Microsoft Aria Online (Natural) - English (United States)'), 'local Natural before online Natural');
+  assert.ok(names.indexOf('Victoria') < names.indexOf('Alex'), 'local plain en-US before online plain en-US');
+  assert.ok(names.indexOf('Google US English') < names.indexOf('Victoria'), 'quality still comes first: Google (online) before a plain local voice');
+  assert.equal(names[0], 'Microsoft Jenny (Natural) - English (United States)');
 });
 test('voiceQuality: Apple names count as clear, compact / novelty as 0, empty list ranks to nothing', () => {
   assert.ok(voiceQuality(V('Samantha')).score > voiceQuality(V('Google US English')).score);
@@ -522,6 +603,80 @@ await atest(`a long carrier phrase that starts slowly but within ${START_TIMEOUT
   b.speak = (u) => { b.said.push(u.text); setTimeout(() => u.onstart && u.onstart(), 900); setTimeout(() => u.onend && u.onend(), 2600); };
   t.useBackend(b);
   assert.equal(await t.present({ word: 'neighbor' }), true); assert.equal(t.health, 'ok');
+});
+
+console.log('speech: slow voices, stuck synth, not-allowed, unlock, system voice, speech check');
+await atest('a slow online voice (onstart after 4 s on first use, like "Google US English") still plays', async () => {
+  const t = createTTS(); const b = recSynth([V('Google US English', 'en-US', { localService: false })]);
+  b.speak = (u) => { b.said.push(u.text); const d = b.said.length === 1 ? 4000 : 20; setTimeout(() => u.onstart && u.onstart(), d); setTimeout(() => u.onend && u.onend(), d + 30); };
+  t.useBackend(b);
+  assert.equal(await t.present({ word: 'neighbor' }), true); assert.equal(t.health, 'ok'); assert.equal(t.failures, 0);
+  assert.deepEqual(b.said, ['The word is, neighbor.', 'neighbor.']);
+});
+await atest(`stuck synth: cancel() before each phrase, resume() when paused, cancel() again when still speaking after ${STUCK_MS} ms`, async () => {
+  const t = createTTS(); const b = recSynth(VOICES); let cancels = 0, resumes = 0, stuckAt = 0, spokeAt = 0;
+  b.speaking = true; b.paused = true;
+  b.cancel = () => { cancels++; if (cancels >= 2) b.speaking = false; };        // only the second cancel unsticks it
+  b.resume = () => { resumes++; b.paused = false; };
+  const sp = b.speak; b.speak = (u) => { spokeAt = Date.now(); sp(u); };
+  t.useBackend(b);
+  stuckAt = Date.now();
+  assert.equal(await t.present({ word: 'friend' }), true);
+  assert.ok(cancels >= 2, `cancelled ${cancels}×`); assert.ok(resumes >= 1, 'a paused synth is resumed');
+  assert.ok(spokeAt - stuckAt >= STUCK_MS - 10, `spoke ${spokeAt - stuckAt} ms after the first cancel`);
+  assert.equal(t.stats.stuckCancels, 1);
+  // not stuck: no extra wait
+  cancels = 0; const t0 = Date.now(); assert.equal(await t.say('x'), true); assert.equal(cancels, 1); assert.ok(Date.now() - t0 < STUCK_MS);
+});
+await atest("onerror 'not-allowed': health not-allowed, a tap is needed, the next unlock() speaks again inside it", async () => {
+  const t = createTTS(QUICK); const b = recSynth(VOICES); const vols = [];
+  let mode = 'deny';
+  b.speak = (u) => { b.said.push(u.text); vols.push(u.volume); if (mode === 'deny') setTimeout(() => u.onerror({ error: 'not-allowed' }), 5); else { setTimeout(() => u.onstart(), 5); setTimeout(() => u.onend(), 20); } };
+  t.useBackend(b);
+  t.unlock(); assert.equal(t.unlocked, true);
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(t.unlocked, false, 'the unlock was refused'); assert.equal(t.needsTap, true);
+  assert.equal(await t.say('friend'), false); assert.equal(t.health, 'not-allowed'); assert.equal(t.gaveUp, false);
+  mode = 'ok'; b.said.length = 0; t.unlock();
+  assert.deepEqual(b.said, [UNLOCK_TEXT], 'the next tap unlocks again');
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(t.needsTap, false); assert.equal(await t.say('friend'), true);
+});
+await atest(`unlock() speaks a real word ("${UNLOCK_TEXT}" at volume ${UNLOCK_VOLUME}), once, in the chosen voice`, async () => {
+  const t = createTTS(); const b = recSynth(VOICES); const vols = []; const sp = b.speak; b.speak = (u) => { vols.push(u.volume); sp(u); };
+  t.useBackend(b);
+  t.unlock(); t.unlock(); t.unlock();
+  assert.deepEqual(b.said, ['ready']); assert.deepEqual(vols, [0.01]); assert.equal(b.voices[0], 'Ava (Premium)');
+  assert.notEqual(UNLOCK_TEXT.trim(), '');
+});
+await atest('"Use default system voice": no voice is set on the utterance', async () => {
+  const t = createTTS(); const b = recSynth(VOICES); t.useBackend(b);
+  t.setVoice({ name: SYSTEM_VOICE }); assert.equal(t.systemVoice, true); assert.equal(t.voiceName, ''); assert.equal(t.resolveVoice({ name: SYSTEM_VOICE }), null);
+  assert.equal(await t.say('friend'), true); assert.equal(b.voices.at(-1), null);
+  await t.present({ word: 'x' }, { voice: SYSTEM_VOICE }); assert.equal(b.voices.at(-1), null, 'Test button: system voice');
+  t.setVoice(null); assert.equal(t.systemVoice, false); assert.equal(t.voiceName, 'Ava (Premium)');
+});
+await atest('Speech check: speaks the check phrase at once and logs API / voices / chosen voice / speak() / onstart / onend', async () => {
+  const t = createTTS(); const b = recSynth(VOICES); t.useBackend(b);
+  const seen = [];
+  const p = t.runCheck({ header: ['Spell Jump test'], onLine: (l) => seen.push(l) });
+  assert.deepEqual(b.said, [CHECK_PHRASE], 'speak() was called synchronously (inside the tap)');
+  assert.equal(CHECK_PHRASE, 'The word is, neighbor.');
+  const res = await p;
+  assert.equal(res.ok, true);
+  const text = res.text;
+  for (const re of [/^Speech check · /m, /Spell Jump test/, /\[\+\s*\d+ ms\] API present: yes/, /voices: 4 \(3 English, 3 on-device\)/, /chosen voice: Ava \(Premium\) · en-US · localService: true/,
+    /speak\(\) called: "The word is, neighbor\." \(onstart watchdog 5000 ms\)/, /onstart after \d+ ms/, /onend after \d+ ms/, /result: speech started/]) assert.match(text, re);
+  assert.equal(seen.length, res.lines.length, 'onLine fired for every line');
+  assert.equal(t.lastCheck.text, text, 'the last log is kept');
+});
+await atest('Speech check: a silent synth logs "watchdog fired"; an error logs its code; no API logs that', async () => {
+  const t = createTTS(QUICK); t.useBackend(fakeSynth({ starts: false }));
+  const r1 = await t.runCheck();
+  assert.equal(r1.ok, false); assert.match(r1.text, /watchdog fired: no onstart after 120 ms/); assert.match(r1.text, /result: no speech started/);
+  const b = recSynth(VOICES); b.speak = (u) => setTimeout(() => u.onerror({ error: 'audio-busy' }), 5); t.useBackend(b);
+  const r2 = await t.runCheck(); assert.match(r2.text, /onerror: audio-busy after \d+ ms/); assert.equal(t.health, 'error');
+  t.useBackend(null); const r3 = await t.runCheck(); assert.match(r3.text, /API present: no/); assert.equal(r3.ok, false);
 });
 
 // ---------------------------------------------------------------------------------------------------------------

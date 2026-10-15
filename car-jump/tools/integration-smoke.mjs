@@ -13,8 +13,9 @@
 // R1 is asserted on every Write / Cover step: the word is in no visible element or the spell panel's DOM, the
 // HUD letter strip is empty and game.debugInfo().lettersRevealed === false (no letter glyph on the canvas).
 // "speech" part: speechSynthesis deleted / voices never listed / utterances never start → the word is shown
-// for 3 s ("Look, then spell it") with a one-time hint, in the spell panel and the tests; the whole app still
-// plays. "perf" part: city run with a 9-letter word at 4x CPU throttle; game code per frame avg and p95.
+// for 3 s ("Look, then spell it") with a one-time hint and a small "Hear it" retry, in the spell panel and the
+// tests; the whole app still plays. "Never starts" is detected by the onstart watchdog (5 s for the session's
+// first utterance, 3 s afterwards), per word: the next word tries again until 3 failures in a row. "perf" part: city run with a 9-letter word at 4x CPU throttle; game code per frame avg and p95.
 // "Words before each race" (default 2) is set to 1 for these players: the paths above are single-word paths
 // (the 2-word set is covered by ui-smoke). No console errors, no horizontal overflow, a screenshot of every state.
 import { execSync, spawn } from 'node:child_process';
@@ -703,12 +704,22 @@ async function runSpeech(browser) {
     await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 8000 });
     const word = await J(page, () => window.__spellJump.spellPanel.word);
     const tOpen = Date.now();
-    await waitMode(page, 'look', 4000);
-    const lk = await J(page, () => ({ msg: document.querySelector('#sp-msg').textContent, note: !document.querySelector('#sp-note').hidden && document.querySelector('#sp-note').textContent, tiles: document.querySelectorAll('#sp-model .tile').length, hear: !document.querySelector('#sp-hear').hidden }));
+    // silent: voices are listed, so the word is spoken first and the onstart watchdog (5 s on the session's first
+    // utterance) decides; none / novoices: known at once / after the 1.5 s voice wait
+    const lookLimit = mode === 'silent' ? 6500 : 4500;
+    await waitMode(page, 'look', lookLimit + 500);
+    const lk = await J(page, () => ({ msg: document.querySelector('#sp-msg').textContent, note: !document.querySelector('#sp-note').hidden && document.querySelector('#sp-note').textContent, tiles: document.querySelectorAll('#sp-model .tile').length, hear: !document.querySelector('#sp-hear').hidden, retry: !document.querySelector('#sp-retry').hidden }));
     const lookAfter = Date.now() - tOpen;
     check(/look, then spell/i.test(lk.msg) && lk.tiles === word.length && /speech isn't available/i.test(lk.note || ''), `${mode}: the word "${word}" is shown ("${lk.msg}") with the hint "${lk.note}" after ${lookAfter} ms`);
-    check(lookAfter < 4500, `${mode}: the child waited ${lookAfter} ms (≤ ~3 s) before seeing the word`);
-    if (mode === 'none') check(!lk.hear, 'none: no "Hear it" button without speech');
+    check(lookAfter < lookLimit, `${mode}: the child waited ${lookAfter} ms (< ${lookLimit} ms) before seeing the word`);
+    if (mode === 'none') check(!lk.hear && !lk.retry, 'none: no "Hear it" button (nor retry) without speech');
+    else {
+      check(lk.retry, `${mode}: a small "Hear it" retry is shown next to the word`);
+      const n0 = await J(page, () => window.__ttsCalls.speak);
+      await tap(page, '#sp-retry');
+      await sleep(150);
+      check(await J(page, (n) => window.__ttsCalls.speak > n, n0), `${mode}: tapping the retry tries to speak the word again`);
+    }
     await shot(page, layout, `${mode}-look`, 0);
     await waitMode(page, 'write', 5000);
     await r1Check(page, word, `${mode}: Write after the look`);
@@ -720,7 +731,7 @@ async function runSpeech(browser) {
     await tap(page, '#res-retry');
     await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 8000 });
     const w2 = await J(page, () => window.__spellJump.spellPanel.word);
-    await waitMode(page, 'look', 4000);
+    await waitMode(page, 'look', 6500);           // silent: the next word tries speech again (3 s watchdog) unless off
     check(await J(page, () => document.querySelector('#sp-note').hidden), `${mode}: the hint shows only once`);
     await waitMode(page, 'write', 5000);
     await spellRight(page, w2);

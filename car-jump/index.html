@@ -709,8 +709,15 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 .sp-model { --th: 36px; --tmax: 40px; }
 .sp-msg { min-height: 20px; font: 400 17px/1.1 var(--font-display); text-transform: uppercase; color: #fff; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
 .sp-msg.cyan { color: var(--cyan); } .sp-msg.go { color: var(--go); } .sp-msg.hot { color: #ff8aa0; }
+.sp-msgrow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; max-width: 100%; }
+.sp-retry { min-height: 44px; padding: 0 12px; font-size: 13px; gap: 6px; }
+.sp-retry svg { width: 18px; height: 18px; }
+.sp-retry[hidden] { display: none; }
+/* landscape phones have little height: the retry sits in the tiles area's top-right corner instead of a row */
+@media (orientation: landscape) { .sp-retry { position: absolute; top: 0; right: 0; z-index: 2; } }
 .sp-note { font-size: 12px; font-weight: 700; color: #ffe9b0; text-align: center; }
 .sp-note .sp-tip { display: block; margin-top: 3px; font-size: 11px; font-weight: 600; color: #d8dcff; max-width: 560px; }
+@media (orientation: landscape) and (max-height: 430px) { .sp-note .sp-tip { display: none; } }
 .sp-kb { flex: none; }
 .sp-banner { position: absolute; left: 50%; top: 52%; z-index: 3; transform: translate(-50%, -50%) rotate(-3deg); display: flex; flex-direction: column; align-items: center; gap: 4px;
   padding: 12px 34px 14px; border-radius: 16px; background: linear-gradient(var(--go), var(--go-edge)); box-shadow: 0 8px 0 rgba(5,7,25,.5); pointer-events: none;
@@ -863,6 +870,14 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 .pz-sync-name { padding: 6px 12px; border-radius: 10px; border: 2px solid var(--c, var(--line)); font: 400 16px/1 var(--font-display); text-transform: uppercase; }
 .pz-privacy { margin-top: 4px; font-size: 13px; }
 .pz-noplayer { margin: 2px 0 6px; font-size: 14px; }
+.pz-check { flex-wrap: wrap; border-bottom: 0; }
+.pz-check .grow { flex: 1 1 260px; }
+.pz-check-actions { margin-top: 0; flex: none; }
+.pz-check-actions .btn[hidden] { display: none; }
+.pz-check-log[hidden] { display: none; }
+.pz-check-log { margin-top: 10px; padding: 10px; max-height: 260px; overflow: auto; border-radius: 10px; background: var(--ink); border: 2px solid var(--line); font: 500 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; overflow-wrap: anywhere; -webkit-user-select: text; user-select: text; }
+.pz-check-log.ok { border-color: var(--go); }
+.pz-check-log.bad { border-color: var(--hot); }
 .pz-report-text { margin-top: 10px; padding: 10px; max-height: 240px; overflow: auto; border-radius: 10px; background: var(--ink); border: 2px solid var(--cyan); font: 500 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
 .pin-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 4px 0 8px; }
 .pin-title { font: 400 22px/1.1 var(--font-display); text-transform: uppercase; text-align: center; }

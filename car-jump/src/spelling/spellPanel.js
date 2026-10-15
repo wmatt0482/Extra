@@ -7,9 +7,13 @@
 //               Cover right → 65 % power. Cover wrong → Compare + Copy + Cover once more; a second miss goes at
 //               65 % anyway and the word is re-queued for later this session (the caller's scheduler does that).
 // R1: while the child spells from memory (Write / Cover) the word is not in the DOM at all.
-// Speech fallback: when speech is missing, lists no voices within 1.5 s, or the spoken word never starts
-// (no onstart within 1.5 s: iOS before a tap, an iframe without audio, a paused synth), the word is shown for
-// 3 s ("Look, then spell it") and then covered, with a one-time hint. The child never waits on a silent panel.
+// Speech fallback (per word, v3.2.1): when speech is missing, lists no voices within 1.5 s, or the spoken word never
+// starts (no onstart within 5 s for the session's first utterance, 3 s afterwards: a slow online voice, iOS before a
+// tap, a muted tab, a paused synth), the word is shown for 3 s ("Look, then spell it") and then covered, with a
+// one-time hint and a small "Hear it" retry next to the message that presents the word again. The next word tries
+// speech again; only after 3 failures in a row does tts count speech as off for the session (ready() → false at
+// once), and a Hear it tap re-probes. An onerror 'not-allowed' (the browser wanted a tap first) shows the one-time
+// hint "Tap Hear it to turn on the voice" instead. The child never waits on a silent panel.
 // Speech clarity (v3.1): the word is presented like a spelling test ("The word is, <word>." → sentence →
 // "<word>.", tts.present) once per presentation: in Look for a new word, else when Write opens. "Hear it" cancels
 // whatever is playing and presents it again; "Say it again" says "<word>. <word>." slowly; "Syllables" (only when
@@ -26,6 +30,7 @@ import { VOICE_TIP } from './tts.js';
 export const LOOK_MS = 4000;
 export const FALLBACK_LOOK_MS = 3000;
 export const NO_SPEECH_HINT = "Speech isn't available on this device, so you'll see each word first.";
+export const TAP_HINT = 'Tap Hear it to turn on the voice';
 // shown under the one-time no-speech hint on the spell panel only (a grown-up is usually nearby)
 export const NO_SPEECH_TIP = VOICE_TIP.replace('then pick it here.', 'then pick it in Parents → Options.');
 export const COMPARE_MS = 2800;          // the child's wrong attempt is gone before 3 s (R2)
@@ -80,10 +85,14 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
   const sent = el('button', 'btn sp-sentence', `${BUBBLE}<span>Sentence</span>`); sent.id = 'sp-sentence';
   const syl = el('button', 'btn sp-syl', `${SPLIT}<span>Syllables</span>`); syl.id = 'sp-syllables';
   const msg = el('div', 'sp-msg'); msg.id = 'sp-msg';
+  // small retry next to the message, shown only after this word's speech failed and the word was shown instead
+  const retry = el('button', 'btn btn-sm btn-cyan sp-retry', `${SPEAKER}<span>Hear it</span>`); retry.id = 'sp-retry'; retry.hidden = true;
+  retry.setAttribute('aria-label', 'Hear the word again');
+  const msgRow = el('div', 'sp-msgrow'); msgRow.append(msg, retry);
   const chip = el('div', 'sp-chip'); chip.id = 'sp-chip';
   top.append(exit, hear, again, sent, syl, chip);
   const tiles = el('div', 'sp-tiles');
-  tiles.append(msg);
+  tiles.append(msgRow);
   const model = el('div', 'sp-row sp-model'); model.id = 'sp-model'; model.hidden = true;
   const attemptRow = el('div', 'sp-row sp-attempt'); attemptRow.id = 'sp-attempt';
   const note = el('div', 'sp-note'); note.id = 'sp-note'; note.hidden = true;
@@ -177,7 +186,12 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
 
   // what the voice needs about the current word (the parent's "say as" replaces the word when spoken)
   const speechInfo = (st, withSentence = true) => ({ word: st.word, sentence: withSentence ? st.info.sentence : null, sayAs: st.info.sayAs });
-  hear.addEventListener('click', () => { if (S) { tts.cancel(); S.hearing = tts.present(speechInfo(S)); } });
+  // Safari: the first speak() must happen inside the gesture → unlock on pointerdown; a tap also re-probes speech
+  // that was switched off for the session (3 failures in a row)
+  const hearAgain = () => { if (!S) return; tts.reprobe(); tts.cancel(); S.hearing = tts.present(speechInfo(S)); };
+  for (const b of [hear, retry]) b.addEventListener('pointerdown', () => tts.unlock());
+  hear.addEventListener('click', hearAgain);
+  retry.addEventListener('click', hearAgain);
   again.addEventListener('click', () => { if (S) { tts.cancel(); tts.sayAgain(speechInfo(S)); } });
   sent.addEventListener('click', () => { if (S && S.info.sentence) { tts.cancel(); tts.say(S.info.sentence); } });
   syl.addEventListener('click', () => { if (S && S.syllables) { tts.cancel(); tts.saySyllables(S.syllables); } });
@@ -206,6 +220,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
       return;
     }
     tts.cancel();               // the panel closing stops any speech it started
+    retry.hidden = true;
     kb.setActive(false);
     kb.setEnabled(false);
     root.hidden = true;
@@ -227,7 +242,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
       let ok = await tts.present(speechInfo(st)); guard(st);
       // "Hear it" tapped mid-way: let that presentation finish before the letters are spelled
       if (ok === null && st.hearing) { ok = await st.hearing; guard(st); }
-      if (ok === false) setMsg('Look, then spell it', 'cyan');   // the word is on screen anyway
+      if (ok === false) { setMsg('Look, then spell it', 'cyan'); speechFailed(st); }   // the word is on screen anyway
       else {
         await sleep(200); guard(st);
         await tts.spell(st.word, (i) => { if (S === st) lightModel(i); }, { gap: 180 }); guard(st);
@@ -239,18 +254,32 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
     hideModel();
   }
   function noSpeechHint() {
+    // the browser wanted a tap first (onerror 'not-allowed'): its own one-time hint
+    if (tts.needsTap) {
+      if (tts.tapHintShown) return;
+      tts.tapHintShown = true;
+      note.hidden = false;
+      note.replaceChildren(document.createTextNode(TAP_HINT));
+      return;
+    }
     if (tts.hintShown) return;
     tts.hintShown = true;
     note.hidden = false;
     note.replaceChildren(document.createTextNode(NO_SPEECH_HINT), el('small', 'sp-tip'));
     note.lastChild.textContent = NO_SPEECH_TIP;
   }
+  // this word's speech failed (or speech is off) and the word is shown instead: one-time hint + the small retry
+  function speechFailed(st) {
+    if (S !== st || st.dead) return;
+    noSpeechHint();
+    retry.hidden = !tts.available;
+  }
   // speech failed while the child was waiting to hear the word: show it for 3 s, cover it, then spell (R1 holds
   // again from the moment it is covered; any letters typed meanwhile are cleared)
   async function lookInstead(st) {
     if (S !== st || st.dead || st.mode !== 'write' || st.lookedInstead) return;
     st.lookedInstead = true;
-    noSpeechHint();
+    speechFailed(st);
     const waiter = st.waiter;
     st.waiter = null;
     await look(st, FALLBACK_LOOK_MS, true);
@@ -330,6 +359,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
 
   async function flow(st) {
     note.hidden = true;           // the no-speech hint shows once per app session (tts.hintShown)
+    retry.hidden = true;          // the retry belongs to one word
     // Look-Say-Cover-Write-Check for a new word. Otherwise the word is only heard: make sure speech can work
     // (API + voices within 1.5 s), else Look for 3 s first.
     let silentLook = false;
@@ -339,7 +369,14 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
       setTyping(false);
       setMsg('Get ready…', 'cyan');
       const speech = await tts.ready(); guard(st);
-      if (!speech) { noSpeechHint(); silentLook = true; await look(st, FALLBACK_LOOK_MS, true); }
+      if (!speech) {
+        speechFailed(st); silentLook = true;
+        // no voices listed (some browsers never list any, yet speak with the default voice): still try to present
+        // the word while it is shown; if it starts, speech is back for the next word. Not when speech is off for
+        // the session (3 failures in a row): then only a Hear it tap tries again.
+        if (tts.available && !tts.gaveUp) { st.presented = true; tts.present(speechInfo(st)); }
+        await look(st, FALLBACK_LOOK_MS, true);
+      }
     }
     // Write (R1: no word on screen)
     setMode('write');
@@ -385,6 +422,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
      */
     run(info, ctx = {}) {
       if (S) cancel();
+      tts.unlock();                 // opened from a tap: Safari's first speak() must be inside the gesture
       const word = normalizeWord(info.word);
       const st = S = {
         info, ctx, word, attempt: '', mode: 'init', typing: false, upper: !!ctx.upper, misses: 0, bonus: 0, streak: 0,

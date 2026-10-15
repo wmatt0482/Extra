@@ -2,13 +2,15 @@
 // order, audio only (the word is never shown before the answer: R1), one attempt each, immediate check. A miss
 // shows the comparison for under 3 s (R2: the attempt with differing positions marked, the correct word above,
 // spelled aloud letter by letter) and moves on; there is no copy step, to keep the test quick.
-// Speech fallback (same rule as the spell panel): when speech is missing / lists no voices / never starts within
-// 1.5 s, each word is shown for 3 s ("Look, then spell it") and covered before the child spells it.
+// Speech fallback (same per-word rule as the spell panel): when speech is missing / lists no voices / a word never
+// starts (watchdog 5 s for the session's first utterance, 3 s afterwards), that word is shown for 3 s ("Look, then
+// spell it") and covered before the child spells it, with a small "Hear it" retry. The next word tries speech
+// again, until tts counts speech as off for the session (3 failures in a row); a Hear it tap re-probes.
 // Each word is presented like a spelling test (tts.present: "The word is, <word>." → sentence → "<word>."), using
 // the parent's "say as" text when given; "Hear it" cancels any speech and presents it again.
 // run() resolves { results: [{word, correct}], cancelled } after the end card's button is pressed.
 import { createKeyboard } from './keyboard.js';
-import { renderTiles, COMPARE_MS, FALLBACK_LOOK_MS, NO_SPEECH_HINT } from './spellPanel.js';
+import { renderTiles, COMPARE_MS, FALLBACK_LOOK_MS, NO_SPEECH_HINT, TAP_HINT } from './spellPanel.js';
 import { diffAttempt, normalizeWord } from './words.js';
 
 const SPEAKER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg>';
@@ -41,11 +43,14 @@ export function createTestScreen(root, { tts, audio }) {
   const bar = el('div', 'tm-bar', '<i></i>'); bar.id = 'tm-bar';
   const body = el('div', 'tm-body');
   const msg = el('div', 'sp-msg tm-msg'); msg.id = 'tm-msg';
+  const retry = el('button', 'btn btn-sm btn-cyan sp-retry', `${SPEAKER}<span>Hear it</span>`); retry.id = 'tm-retry'; retry.hidden = true;
+  retry.setAttribute('aria-label', 'Hear the word again');
+  const msgRow = el('div', 'sp-msgrow'); msgRow.append(msg, retry);
   const tiles = el('div', 'sp-tiles tm-tiles');
   const model = el('div', 'sp-row sp-model'); model.id = 'tm-model'; model.hidden = true;
   const attemptRow = el('div', 'sp-row sp-attempt'); attemptRow.id = 'tm-attempt';
   const note = el('div', 'sp-note'); note.id = 'tm-note'; note.hidden = true;
-  tiles.append(msg, model, attemptRow, note);
+  tiles.append(msgRow, model, attemptRow, note);
   const kbWrap = el('div', 'sp-kb');
   body.append(tiles, kbWrap);
   const card = el('div', 'tm-card card'); card.id = 'tm-card'; card.hidden = true;
@@ -90,11 +95,20 @@ export function createTestScreen(root, { tts, audio }) {
   }
   const guard = (st) => { if (S !== st || st.dead) throw CANCEL; };
   function hint() {
+    if (tts.needsTap) {               // onerror 'not-allowed': the browser wants a tap first
+      if (tts.tapHintShown) return;
+      tts.tapHintShown = true;
+      note.textContent = TAP_HINT;
+      note.hidden = false;
+      return;
+    }
     if (tts.hintShown) return;
     tts.hintShown = true;
     note.textContent = NO_SPEECH_HINT;
     note.hidden = false;
   }
+  // this word is shown because speech failed: one-time hint + the small retry
+  function speechFailed() { hint(); retry.hidden = !tts.available; }
   // R1 still holds: the word is shown only before the child spells, then removed from the DOM
   async function lookFirst(st, w) {
     root.dataset.mode = 'look';
@@ -108,7 +122,10 @@ export function createTestScreen(root, { tts, audio }) {
   const waitCheck = () => new Promise((resolve) => { S.waiter = resolve; });
 
   const speechInfo = (st) => ({ word: st.word, sentence: st.sentence, sayAs: st.sayAs });
-  hear.addEventListener('click', () => { if (S && S.word) { tts.cancel(); tts.present(speechInfo(S)); } });
+  const hearAgain = () => { if (S && S.word) { tts.reprobe(); tts.cancel(); tts.present(speechInfo(S)); } };
+  for (const b of [hear, retry]) b.addEventListener('pointerdown', () => tts.unlock());   // Safari: inside the gesture
+  hear.addEventListener('click', hearAgain);
+  retry.addEventListener('click', hearAgain);
   sent.addEventListener('click', () => { if (S && S.sentence) { tts.cancel(); tts.say(S.sentence); } });
   exit.addEventListener('click', () => {
     if (!S) return;
@@ -119,6 +136,7 @@ export function createTestScreen(root, { tts, audio }) {
 
   function end(st) {
     tts.cancel();
+    retry.hidden = true;
     kb.setActive(false); kb.setEnabled(false);
     model.hidden = true; model.replaceChildren(); attemptRow.replaceChildren();
     root.removeAttribute('data-mode');
@@ -152,24 +170,31 @@ export function createTestScreen(root, { tts, audio }) {
     note.hidden = true;
     msg.textContent = 'Get ready…'; msg.className = 'sp-msg tm-msg cyan';
     st.speech = await tts.ready(); guard(st);
-    if (!st.speech) hint();
     for (const w of st.words) {
       st.word = w.word; st.sentence = w.sentence || null; st.sayAs = w.sayAs || '';
       progress(st);
       sent.hidden = !st.sentence || !tts.available;
+      retry.hidden = true;
       model.hidden = true; model.replaceChildren();
       st.attempt = '';
-      if (!st.speech) await lookFirst(st, w); // no speech: Look for 3 s, then cover
+      // per word: speak unless speech is off for the session (3 failures in a row) or never worked yet
+      const speakIt = tts.available && !tts.gaveUp && (st.speech || tts.health === 'ok');
+      if (!speakIt) {                         // no speech: Look for 3 s, then cover
+        speechFailed();
+        // no voices listed: still try to present the word while it is shown (some browsers speak anyway)
+        if (tts.available && !tts.gaveUp) tts.present(speechInfo(st));
+        await lookFirst(st, w);
+      }
       root.dataset.mode = 'ask';
-      msg.textContent = st.speech ? 'Listen, then spell it' : 'Now spell it from memory!'; msg.className = 'sp-msg tm-msg cyan';
+      msg.textContent = speakIt ? 'Listen, then spell it' : 'Now spell it from memory!'; msg.className = 'sp-msg tm-msg cyan';
       st.attempt = '';
       setTyping(true);
-      if (st.speech) {
+      if (speakIt) {
         const word = w.word;
         tts.present(speechInfo(st)).then((ok) => {
-          // speech never started: show this word for 3 s instead, and stay silent for the rest of the test
+          // speech never started: show this word for 3 s instead (the next word tries speech again)
           if (ok !== false || S !== st || st.dead || st.word !== word || root.dataset.mode !== 'ask') return;
-          st.speech = false; hint();
+          speechFailed();
           const waiter = st.waiter; st.waiter = null;
           st.attempt = '';
           lookFirst(st, w).then(() => {
