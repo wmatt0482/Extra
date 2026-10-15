@@ -1,18 +1,24 @@
-# Netlify deploys the Spell Jump game (a static site under car-jump/, no build step).
+# Netlify deploys the Spell Jump game (a static site under car-jump/, no build step) plus one Netlify Function
+# (netlify/functions/family.mjs, Netlify Blobs) for cross-device family sync.
 # The Next.js inbox app at the repo root is not part of this site.
 
 [build]
   publish = "car-jump"
   command = "echo 'static site: nothing to build'"
-  # skip the deploy when a push did not touch the game folder or this file
-  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- car-jump netlify.toml"
+  # skip the deploy when a push did not touch the game, the sync function, its dependencies or this file
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- car-jump netlify netlify.toml package.json package-lock.json"
 
 [build.environment]
-  # the repo root holds an unrelated Next.js app; Netlify must not install or build it, and the
-  # Next.js plugin that site creation auto-added must skip this static site
-  NETLIFY_SKIP_NPM_INSTALL = "true"
+  # the repo root holds an unrelated Next.js app. Dependencies are installed (the sync function bundles
+  # @netlify/blobs from the root package.json) but the app is never built, and the Next.js plugin that site
+  # creation auto-added must skip this static site
   NETLIFY_NEXT_PLUGIN_SKIP = "true"
   NODE_VERSION = "22"
+
+# Family sync API: /api/family/:code[/:key] (routes are declared in the function's own `config.path`)
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
 
 # The service worker must never be served from a stale cache, or players would keep an old version.
 [[headers]]

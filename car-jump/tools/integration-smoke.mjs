@@ -22,6 +22,9 @@ import { mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { letterName } from '../src/spelling/words.js';
+// letters are spoken by name (v3.1.x: "bee", "oh", …), not as bare capitals
+const spelled = (w) => [...w].map(letterName);
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
@@ -382,13 +385,13 @@ async function runLayout(browser, layout) {
   await shot(page, layout, 'A-look', 0);
   await waitMode(page, 'write', 12000);
   const spA = await spoken(page);
-  check(spA.includes(`The word is, ${wA}.`) && spA.includes(`${wA}.`) && [...wA].every((c) => spA.includes(c.toUpperCase())), 'C: Look presents the word ("The word is, …") and spells it letter by letter');
+  check(spA.includes(`The word is, ${wA}.`) && spA.includes(`${wA}.`) && spelled(wA).every((n) => spA.includes(n)), 'C: Look presents the word ("The word is, …") and spells it letter by letter');
   await r1Check(page, wA, 'A Write');
   await shot(page, layout, 'A-write', 0);
   const before6 = (await spoken(page)).length;
   await tapKeys(page, '#sp-keyboard', wA);
   const typed = (await spoken(page)).slice(before6);
-  check(typed.join('') === wA.toUpperCase(), `R6: typed letters spoken by name (${typed.join(' ')})`);
+  check(typed.join('|') === spelled(wA).join('|'), `R6: typed letters spoken by name (${typed.join(' ')})`);
   await tap(page, '#sp-keyboard [data-key="enter"]');
   await waitMode(page, 'done', 4000);
   await shot(page, layout, 'A-perfect', 150);
@@ -404,7 +407,8 @@ async function runLayout(browser, layout) {
   const hitsA = await J(page, (n) => window.__letterHits.slice(n), hitsBefore);
   const resA = await J(page, () => ({ spell: window.__spellJump.lastResult.spell, letters: window.__spellJump.lastResult.summary.letters, coinMult: window.__spellJump.lastResult.stats.coinMult, row: !!document.querySelector('#res-pay tr[data-pay="spelling"]'), wc: window.__wordComplete }));
   check(hitsA.length > 0 && hitsA.length === resA.letters.collected && hitsA.every((h) => h.revealed), `A: ${hitsA.length} letterRing events (summary.letters ${JSON.stringify(resA.letters)}), strip revealed after launch`);
-  const ringSpoken = (await spoken(page)).filter((x) => /^[A-Z]$/.test(x)).slice(-hitsA.length);
+  const names = new Set('abcdefghijklmnopqrstuvwxyz'.split('').map(letterName));
+  const ringSpoken = (await spoken(page)).filter((x) => names.has(x)).slice(-hitsA.length);
   check(ringSpoken.length === hitsA.length, `A: letter rings said their letters (${ringSpoken.join(' ')})`);
   if (resA.letters.inOrder) check(resA.wc >= 1, 'A: WORD COMPLETE reached the HUD');
   const wantBonus = Math.round(400 * resA.coinMult);

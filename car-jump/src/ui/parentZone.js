@@ -5,6 +5,8 @@
 // Report (pretest vs latest Friday Test, per-word table, test history, Copy report, "Why this works"),
 // Options (speech, speech rate, voice picker, words before each race, new words per day, review words, tile case,
 // sound / music / motion / shake, resets).
+// Family sync (one tab for the whole family, also reachable from the player picker's chip when the device has no
+// players yet): status line, Create family code, Join a family, Leave family, and what is stored online.
 // Only this zone deletes anything. The whole zone is one scrollable sheet sized to the visual viewport so the
 // iOS keyboard never hides the text area.
 import { PLAYER_COLORS, checkPin, hasPin, playerById, playerOptions, setPin, setPlayerOption } from '../spelling/profiles.js';
@@ -59,6 +61,7 @@ export function createParentZone(app) {
   root.replaceChildren(sheet);
 
   let view = 'pin', tab = 'words', playerId = null, unlockedUntil = 0;
+  let joined = null;                   // players shown after a Join (merged list)
   let pinMode = 'enter', pinFirst = '', pinEntry = '', mathQ = null, mathEntry = '';
   let holdTimer = 0, holdRaf = 0;
   let voiceShowAll = false;            // Options → Voice: "Show all N voices" stays open across re-renders
@@ -209,7 +212,7 @@ export function createParentZone(app) {
   }
   function sectionTabs() {
     const row = h('div', { class: 'seg pz-tabs', role: 'tablist' });
-    for (const [id, text] of [['words', 'Words of the week'], ['report', 'Report'], ['options', 'Options']]) {
+    for (const [id, text] of [['words', 'Words of the week'], ['report', 'Report'], ['options', 'Options'], ['sync', 'Family sync']]) {
       const b = h('button', { class: 'seg-btn' + (tab === id ? ' on' : ''), role: 'tab', 'aria-selected': String(tab === id), 'data-tab': id }, text);
       b.addEventListener('click', () => { tab = id; render(); });
       row.append(b);
@@ -460,6 +463,88 @@ export function createParentZone(app) {
     ];
   }
 
+  // ---------- Family sync ----------
+  const PRIVACY = "What's stored online: player first names, word lists, spelling progress and the parent PIN (hashed). No emails or accounts. Anyone with the family code can see and change these, so keep it private.";
+  function syncStatusClass(st) { return 'pz-sync-status' + (!st.synced ? '' : st.offline ? ' off' : st.lastError ? ' err' : ' on'); }
+  function syncTab() {
+    const sync = app.sync;
+    const st = sync.status();
+    const status = h('div', { class: syncStatusClass(st), id: 'sync-status', 'aria-live': 'polite' }, sync.statusText());
+    const msg = h('div', { class: 'pz-msg', id: 'sync-msg', 'aria-live': 'polite' });
+    const say = (ok, ...lines) => { msg.className = 'pz-msg ' + (ok ? 'ok' : 'err'); msg.replaceChildren(...lines.map((l) => h('div', {}, l))); };
+    const out = [h('div', { class: 'hud-label pz-sec pz-sec-first' }, 'FAMILY SYNC'), status];
+    if (st.synced) {
+      const copy = h('button', { class: 'btn btn-sm btn-cyan', id: 'sync-copy', 'data-sfx': '' }, 'Copy');
+      copy.addEventListener('click', async () => {
+        let ok = false;
+        try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(st.code); ok = true; } } catch (_) { ok = false; }
+        if (ok) { app.toast('Code copied'); return; }
+        try { const sel = window.getSelection(); sel.removeAllRanges(); const r = document.createRange(); r.selectNodeContents(codeEl); sel.addRange(r); } catch (_) { /* ignore */ }
+        app.toast('Code selected: use Copy');
+      });
+      const codeEl = h('div', { class: 'pz-code', id: 'sync-code' }, st.code);
+      const now = h('button', { class: 'btn btn-sm', id: 'sync-now', 'data-sfx': '' }, 'Sync now');
+      now.addEventListener('click', async () => { now.disabled = true; await sync.syncNow(); now.disabled = false; paintSyncStatus(); });
+      out.push(
+        h('div', { class: 'pz-code-row' }, codeEl, copy, now),
+        h('div', { class: 'pz-help' }, 'On another phone, tablet or computer: open Spell Jump, then Parents → Family sync → Join a family, and type this code. Players, word lists and progress then show up on both.'),
+        msg,
+      );
+      if (joined) {
+        out.push(h('div', { class: 'pz-sync-players', id: 'sync-players' }, h('div', { class: 'label' }, 'Players in this family'),
+          joined.length ? h('div', { class: 'pz-sync-names' }, ...joined.map((p) => h('span', { class: 'pz-sync-name', 'data-player': p.id, style: { '--c': p.color } }, p.name))) : h('div', { class: 'sub' }, 'No players yet.')));
+      }
+      out.push(...confirmRow('Leave family', 'This device stops syncing. Its players and words stay here; the other devices keep the family.', 'Leave',
+        'Stop syncing this device? Nothing is deleted.', 'Leave family', () => { sync.leave(); joined = null; app.toast('Left the family'); render(); }, 'sync-leave'));
+    } else {
+      const create = h('button', { class: 'btn btn-green', id: 'sync-create', 'data-sfx': '' }, 'Create family code');
+      create.addEventListener('click', async () => {
+        create.disabled = true; create.textContent = 'Creating…';
+        const r = await sync.create();
+        if (!r.ok) { create.disabled = false; create.textContent = 'Create family code'; say(false, r.error); app.audio.error(); return; }
+        joined = null;
+        app.toast('Family code created');
+        render();
+        const m = $('#sync-msg');
+        if (m) { m.className = 'pz-msg ok'; m.replaceChildren(h('div', {}, `Family code ${r.code} created. Type it on your other devices to join.`)); }
+      });
+      const input = h('input', { id: 'sync-join-input', type: 'text', maxlength: '9', spellcheck: 'false', autocapitalize: 'characters', autocomplete: 'off', autocorrect: 'off',
+        placeholder: 'ABCD-2345', 'aria-label': 'Family code', inputmode: 'text' });
+      input.addEventListener('focus', () => setTimeout(() => input.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300));
+      input.addEventListener('input', () => { const v = input.value.toUpperCase(); if (v !== input.value) input.value = v; });
+      const join = h('button', { class: 'btn btn-cyan', id: 'sync-join', 'data-sfx': '' }, 'Join');
+      const doJoin = async () => {
+        join.disabled = true; join.textContent = 'Joining…';
+        const r = await sync.join(input.value);
+        if (!r.ok) { join.disabled = false; join.textContent = 'Join'; say(false, r.error); app.audio.error(); return; }
+        joined = r.players;
+        app.toast('Joined the family');
+        render();
+        const m = $('#sync-msg');
+        if (m) { m.className = 'pz-msg ok'; m.replaceChildren(h('div', {}, `Joined family ${r.code}. This device now uses the family's parent PIN.`)); }
+      };
+      join.addEventListener('click', doJoin);
+      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doJoin(); } });
+      out.push(
+        h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Start a family'),
+          h('div', { class: 'sub' }, "Puts this device's players online under a new family code, for your other devices to join.")), create),
+        h('label', { class: 'pz-label', for: 'sync-join-input' }, 'Join a family'),
+        h('div', { class: 'pz-help' }, 'Type the family code shown on your other device (Parents → Family sync). Players from both devices are kept.'),
+        h('div', { class: 'pz-join-row' }, input, join),
+        msg,
+      );
+    }
+    out.push(h('div', { class: 'hud-label pz-sec' }, 'PRIVACY'), h('p', { class: 'pz-help pz-privacy', id: 'sync-privacy' }, PRIVACY));
+    return out;
+  }
+  // refresh just the status line (a full re-render would drop what a parent is typing)
+  function paintSyncStatus() {
+    const el = $('#sync-status');
+    if (!el) return;
+    el.className = syncStatusClass(app.sync.status());
+    el.textContent = app.sync.statusText();
+  }
+
   function whyView() {
     header('Why this works', { back: () => { view = 'main'; render(); } });
     body.replaceChildren(h('div', { class: 'why', id: 'pz-why-page' },
@@ -477,9 +562,16 @@ export function createParentZone(app) {
     const f = app.family;
     if (!playerById(f, playerId)) playerId = (f.players[0] || {}).id || null;
     const p = playerById(f, playerId);
-    if (!p) { body.replaceChildren(h('div', { class: 'sub' }, 'Add a player first.')); return; }
-    const content = tab === 'words' ? wordsTab(p) : tab === 'report' ? reportTab(p) : optionsTab(p);
     const keepScroll = body.scrollTop;
+    if (!p) {
+      // no players on this device yet: only Family sync (join a family to bring the players here)
+      tab = 'sync';
+      body.replaceChildren(h('div', { class: 'sub pz-noplayer' }, 'No players on this device yet. Add one on the player screen, or join your family below to bring your players here.'),
+        h('div', { class: 'pz-content', 'data-tab': 'sync' }, ...syncTab().filter(Boolean)));
+      body.scrollTop = keepScroll;
+      return;
+    }
+    const content = tab === 'sync' ? syncTab() : tab === 'words' ? wordsTab(p) : tab === 'report' ? reportTab(p) : optionsTab(p);
     body.replaceChildren(playerTabs(), sectionTabs(), h('div', { class: 'pz-content', 'data-tab': tab }, ...content.filter(Boolean)));
     body.scrollTop = keepScroll;
   }
@@ -496,9 +588,10 @@ export function createParentZone(app) {
   const api = {
     get isOpen() { return !root.hidden; },
     get view() { return view; },
-    open(forPlayer) {
+    open(forPlayer, opts = {}) {
       playerId = forPlayer || app.currentPlayerId || (app.family.players[0] || {}).id || null;
-      tab = 'words';
+      tab = opts.tab || 'words';
+      joined = null;
       pinEntry = ''; pinFirst = '';
       if (Date.now() < unlockedUntil) view = 'main';
       else { view = 'pin'; pinMode = hasPin(app.family) ? 'enter' : 'set'; }
@@ -514,6 +607,14 @@ export function createParentZone(app) {
       app.onParentZoneClosed();
     },
     lock() { unlockedUntil = 0; },
+    // family sync: the status changed / newer data arrived from another device
+    onSyncStatus() { if (!root.hidden && view === 'main' && tab === 'sync') paintSyncStatus(); },
+    onSyncApplied() {
+      if (root.hidden || view !== 'main') return;
+      // re-render the family-level tab (player list, status); other tabs keep what a parent may be typing
+      if (tab === 'sync') { if (joined) joined = app.family.players.map((p) => ({ id: p.id, name: p.name, color: p.color })); render(); }
+      else if (!playerById(app.family, playerId)) render();
+    },
   };
   return api;
 }

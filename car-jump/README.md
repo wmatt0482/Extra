@@ -133,9 +133,10 @@ without touching other players):
 
 | Key | Contents |
 | --- | --- |
-| `spellJump.family` | `{ v, players: [{id, name, color, createdAt}], pinHash, options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace, voiceName, voiceLang}}, migrated, lastPlayer }` (rebuilt from the per-player keys if corrupt) |
-| `spellJump.<id>.save` | the full game save (`src/meta/save.js`, schema v2: cash, cars, upgrades, records, goals, settings incl. sound / music / reduced motion / shake, achievements) |
-| `spellJump.<id>.words` | `{ v, lists: [{id, name, createdAt, archivedAt, pattern, sample, words: [{word, syllables, sentence, sayAs?}]}], activeId, records: {word: {box, due, attempts, firstTry, seenCount, lastSeen, daysCorrect, daysSeen, focus, studied, reviewsDone, misses, listId}}, tests: [{kind, listId, at, correct, total, missed}], qualifierPending, today: {date, count, newCount, missionPaid}, streak, bestStreak, perfectTotal }` |
+| `spellJump.family` | `{ v, players: [{id, name, color, createdAt, updatedAt}], pinHash, pinUpdatedAt, options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace, voiceName, voiceLang}}, optionsUpdatedAt: {playerId: ms}, removedPlayers: [id], migrated, lastPlayer }` (rebuilt from the per-player keys if corrupt; `migrated` / `lastPlayer` stay on the device, the rest is shared by family sync) |
+| `spellJump.sync` | family sync state (only once a family is created or joined; see "Family sync") |
+| `spellJump.<id>.save` | the full game save (`src/meta/save.js`, schema v2: cash, cars, upgrades, records, goals, settings incl. sound / music / reduced motion / shake, achievements; `resetAt` after a parent reset) |
+| `spellJump.<id>.words` | `{ v, lists: [{id, name, createdAt, archivedAt, pattern, sample, words: [{word, syllables, sentence, sayAs?}]}], activeId, records: {word: {box, due, attempts, firstTry, seenCount, lastSeen, daysCorrect, daysSeen, focus, studied, reviewsDone, misses, listId}}, tests: [{kind, listId, at, correct, total, missed}], qualifierPending, today: {date, count, newCount, missionPaid}, streak, bestStreak, perfectTotal, activeAt?, deletedLists?, resetAt? }` (the last three only once used; family sync bookkeeping) |
 
 An existing single-player `rampRage.save.v1` is copied into the first player created (the old key is left alone).
 
@@ -162,6 +163,64 @@ Kid-proofing: no external links, no `window.open`, no `alert` / `confirm` / `pro
 word text area, the pattern field, the shake slider in Options) are inside the PIN-gated Parent Zone. The pause menu
 (sound, music, motion, a custom non-input shake slider, End run) has no reset, and only the Parent Zone deletes
 anything. "Why this works" is plain text with no links.
+
+## Family sync (v3.2)
+
+By default everything lives on one device. **Parents → Family sync** puts a family online so the same players,
+word lists and progress show up on every device (a laptop for entering the words, an iPad for playing):
+
+1. On the device that has the players: **Create family code**. The code (8 characters like `K7QX-M2PA`, no
+   look-alike letters) is shown big, with **Copy**.
+2. On each other device: **Join a family** and type the code. On a device with no players yet, the Parent Zone is
+   reached from the small **Family sync** chip on the player picker (the title's Parents button needs a player).
+   Players from both devices are kept (merged); the joining device adopts the family's parent PIN. A wrong code says
+   "That code was not found".
+3. From then on it is automatic: a change is uploaded 2 s later; the device checks for changes when the picker
+   appears, when the app comes back to the screen, when the device comes back online and every 60 s while open.
+   Offline play is never blocked: changes wait (they survive a restart) and go up when the connection returns.
+   The status line says *Synced as K7QX-M2PA · last sync 2 min ago*, *Offline, will sync when back online*, or the
+   problem. The picker shows a tiny muted *Synced · K7QX-M2PA* chip so you can tell which family a device is in.
+4. **Leave family** stops syncing this device; nothing is deleted (the other devices keep the family).
+
+**Privacy.** What's stored online: player first names, word lists, spelling progress and the parent PIN (hashed).
+No emails or accounts. Anyone with the family code can see and change these, so keep it private.
+
+**When two devices changed the same thing** before syncing (`src/sync/merge.js`):
+
+| Data | Rule |
+| --- | --- |
+| Family record | players = union by id, minus removed players (a removal is a tombstone in `removedPlayers`, so it spreads instead of the player coming back); a player edited on both sides: the later `updatedAt`; PIN: the later `pinUpdatedAt` (on Join: the family's); options: the later `optionsUpdatedAt`, per player |
+| Words | lists = union by id minus deleted lists (`deletedLists` tombstones), the same list keeps its later created / archived state; the active list is the one chosen later (`activeAt`); word records: the later `lastSeen` (higher box on a tie); tests = union by date + score; today's mission and the streak from the doc changed later; a spelling reset (`resetAt`) drops older progress |
+| Game save | the save changed later wins whole, except cash = the higher amount and owned cars / unlocked tracks = union (also the higher upgrade levels, best distances, records, and every earned badge), so nobody loses a car or a track; a "Reset game save" (`resetAt`) wins |
+
+**How it works.** Local state is `spellJump.sync` = `{ code, deviceId, keys: { family | <id>.save | <id>.words:
+{ rev, updatedAt, dirty, hash } }, lastSync, lastError }`. Each synced key is a server document
+`{ rev, updatedAt, deviceId, data }`; a device writes rev + 1 and the server refuses anything else with a 409 that
+carries the stored document, which the device merges before retrying once. The current player's data is never
+swapped out under a run, a test or the spell panel (the next pull applies it). The service worker never caches
+`/api/`.
+
+### Sync API (Netlify Function + Netlify Blobs)
+
+`netlify/functions/family.mjs` (repo root, Functions v2, routes in its `config.path`) adapts a Netlify Blobs store
+(`getStore({ name: 'families', consistency: 'strong' })`, keys `<CODE>/family`, `<CODE>/<playerId>.save`,
+`<CODE>/<playerId>.words`) to the pure handler in `src/sync/protocol.mjs`. Every response is JSON with
+`Cache-Control: no-store`; same origin, no CORS.
+
+| Request | Answer |
+| --- | --- |
+| `GET /api/family/:code` | 200 `{ family: doc, players: { <id>: { save: doc\|null, words: doc\|null } } }` (removed players are not listed); 404 when there is no such family |
+| `POST /api/family/:code` (body: doc with rev 1) | 201 `{ ok, rev, updatedAt }`; 409 when the code exists |
+| `PUT /api/family/:code/:key` (key `family`, `<id>.save` or `<id>.words`; body: doc) | 200 `{ ok, rev, updatedAt }` when `rev` = stored rev + 1 (or the key is new and rev = 1); else 409 `{ error: 'conflict', doc: <stored doc\|null> }`; 404 when the family does not exist |
+| anything else (`DELETE` included: players are tombstoned) | 405 / 404 |
+
+400 for a code not matching `^[A-Z2-9]{4}-[A-Z2-9]{4}$`, a player id not matching `^[a-z0-9_-]{1,32}$`, a body that
+is not `application/json`, not valid JSON, missing `rev` / `updatedAt` / `deviceId` / `data`, or over 512 KB. The
+rev check uses Blobs' conditional writes (`onlyIfNew`, `onlyIfMatch: etag`), so two devices racing for the same rev
+cannot both win.
+
+Netlify installs the root `package.json` dependencies (`@netlify/blobs`) so the function can be bundled with esbuild;
+the Next.js app at the root is not built (`NETLIFY_NEXT_PLUGIN_SKIP`).
 
 ## Game features (from v2)
 
@@ -211,7 +270,9 @@ worker). Keyboard on desktop: letters, `'`, `-`, Space, Backspace and Enter (LAU
 ```sh
 node tools/spelling-tests.mjs   # Node unit tests: intervals, mastery (2 distinct days), mission order, new-word cap,
                                 # re-queue distance, never twice in a row, archived review at 2 / 4 weeks, parser
-                                # edge cases, attempt alignment, word store, report
+                                # edge cases, attempt alignment, word store, report; family sync: the server
+                                # protocol (create / get / put, rev checks, 409, validation, 512 KB cap) on an
+                                # in-memory Map store, family codes, and every merge rule incl. both-changed cases
 node tools/ui-smoke.mjs         # Playwright, 844×390 + 390×844, mock engine + fake speechSynthesis: players, PIN,
                                 # word list, Qualifier, every spell-panel path, mission, Friday Test + Mega Run,
                                 # report, persistence; asserts R1 / R2 / R6, key sizes, layout, no console errors
@@ -221,6 +282,12 @@ node tools/integration-smoke.mjs  # the full app on the REAL engine with real to
                                 # slower launch) / C (Look), mission $500 once, Parent Zone (PIN, list, wrong PIN,
                                 # forgot PIN), Qualifier, Friday Test + Mega Run, report, 2nd player, reload; speech
                                 # fallback with speechSynthesis deleted / no voices / never starting; perf at 4x
+node tools/sync-smoke.mjs       # family sync end to end: two Playwright contexts ("laptop" 1280×800, "ipad" 1024×768)
+                                # whose /api/family requests are answered by ONE in-memory server (the real
+                                # protocol handler): create, join, list, cash, offline queue, remove a player,
+                                # offline edits on both devices merged with no record lost; screenshots
+node tools/sync-function-check.mjs  # the real Netlify Function + @netlify/blobs against Blobs' local server
+                                # (needs `npm install` at the repo root)
 node tools/economy-sim.mjs --speller 0.75   # headless economy simulation (75 % first-try speller, 8 runs a day)
 node tools/make-icons.mjs       # re-renders icons/*.png (a car jumping over letter tiles)
 ```
@@ -241,7 +308,10 @@ Note: iOS mutes WebAudio when the ring/silent switch is on silent.
 ## Deploy
 
 It is plain static files: upload the `car-jump/` folder as-is to any static host (GitHub Pages,
-Netlify, Cloudflare Pages, Vercel, S3 + CloudFront, nginx). No build, no server code. Make sure
+Netlify, Cloudflare Pages, Vercel, S3 + CloudFront, nginx). No build. The only server code is the optional family
+sync function: this repo deploys on Netlify (`netlify.toml` at the repo root publishes `car-jump/` and bundles
+`netlify/functions/family.mjs`); on another host the game works as before and Family sync reports that the server
+cannot be reached. Make sure
 `.webmanifest` is served as `application/manifest+json` (most hosts already do).
 
 When you ship changes, bump `VERSION` in `sw.js` so installed copies drop the old cache. Without a
@@ -268,6 +338,12 @@ car-jump/
       scheduler.js        Leitner boxes, mastery, mission, free-play pick, re-queue (pure, `now` passed in)
       wordStore.js        per-player spelling data: lists + archive, records, tests, mission, report text
       profiles.js         players, family record, per-player storage keys, PIN, legacy-save migration
+    sync/
+      client.js           family sync: dirty tracking, debounced push, pull (boot / visible / online / 60 s), join
+      merge.js            merge rules for the family record, words and game save (pure)
+      codes.js            family code generator / normalizer, device id
+      notify.js           local-write hook (profiles.js and save.js call it after every write)
+      protocol.mjs        the sync API as a pure request handler (used by netlify/functions/family.mjs)
       tts.js              speechSynthesis wrapper (voice pick, chunking, unlock, letter names, test hook)
       keyboard.js         on-screen QWERTY keyboard
       spellPanel.js       Spell to Launch panel (Look-Say-Cover-Write-Check, Cover-Copy-Compare)
@@ -277,7 +353,8 @@ car-jump/
     ui/                   players (picker + new player), parentZone, garage, tracks, results, panels (badges),
                           HUD, controls, icons, car preview, title hero, fireworks
   dev.html                engine harness (keyboard + on-screen buttons, no meta)
-  tools/                  spelling-tests, ui-smoke, engine-smoke, integration-smoke, economy-sim, make-icons
+  tools/                  spelling-tests, ui-smoke, engine-smoke, integration-smoke, sync-smoke,
+                          sync-function-check, economy-sim, make-icons
 ```
 
 ## Wrap as a native App Store build (Capacitor)

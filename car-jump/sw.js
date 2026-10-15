@@ -1,7 +1,8 @@
 // Spell Jump service worker: cache-first app shell so the game works offline after the first load.
 // Same-origin files are served from cache and refreshed in the background (stale-while-revalidate),
 // so a deploy shows up on the next launch. Bump VERSION to force a clean cache.
-const VERSION = 'spell-jump-v3.1.2';
+// The family sync API (/api/...) is network only: never cached, never answered from the cache.
+const VERSION = 'spell-jump-v3.2.0';
 const SHELL = [
   './',
   'index.html',
@@ -46,6 +47,10 @@ const SHELL = [
   'src/spelling/spellPanel.js',
   'src/spelling/testMode.js',
   'src/spelling/why.js',
+  'src/sync/client.js',
+  'src/sync/merge.js',
+  'src/sync/codes.js',
+  'src/sync/notify.js',
 ];
 // The engine is built separately and may be split into several modules: cache the entry if present;
 // the page also posts every module it actually loaded (see 'cache-urls' below).
@@ -74,17 +79,20 @@ self.addEventListener('message', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(VERSION);
     await Promise.allSettled(d.urls
-      .filter((u) => typeof u === 'string' && u.startsWith(self.location.origin))
+      .filter((u) => typeof u === 'string' && u.startsWith(self.location.origin) && !isApi(new URL(u)))
       .map(async (u) => { if (!(await cache.match(u, { ignoreSearch: true }))) await cache.add(u); }));
   })());
 });
 
 const isFont = (url) => url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
 
+const isApi = (url) => url.origin === self.location.origin && url.pathname.startsWith('/api/');
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
-  if (req.method !== 'GET') return;
   const url = new URL(req.url);
+  if (isApi(url)) return;                 // family sync: straight to the network (no respondWith, no cache)
+  if (req.method !== 'GET') return;
   const sameOrigin = url.origin === self.location.origin;
   if (!sameOrigin && !isFont(url)) return;
 

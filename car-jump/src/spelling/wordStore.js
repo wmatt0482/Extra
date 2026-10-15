@@ -91,6 +91,12 @@ export function normalizeWordsData(raw, now = Date.now()) {
   d.streak = Math.max(0, num(raw.streak));
   d.bestStreak = Math.max(0, num(raw.bestStreak));
   d.perfectTotal = Math.max(0, num(raw.perfectTotal));
+  // family sync bookkeeping (only present once used): when the active list was chosen, deleted list ids
+  // (tombstones), when spelling data was last reset
+  if (num(raw.activeAt) > 0) d.activeAt = num(raw.activeAt);
+  const del = strArr(raw.deletedLists).slice(-100);
+  if (del.length) d.deletedLists = del;
+  if (num(raw.resetAt) > 0) d.resetAt = num(raw.resetAt);
   ensureRecords(d);
   return d;
 }
@@ -153,6 +159,7 @@ export function saveNewList(d, words, pattern, now) {
   }
   d.lists.push(list);
   d.activeId = list.id;
+  d.activeAt = now;
   ensureRecords(d);
   d.qualifierPending = list.id;
   return list;
@@ -166,6 +173,7 @@ export function restoreList(d, id, now) {
   else prev.archivedAt = now;
   l.archivedAt = 0;
   d.activeId = l.id;
+  d.activeAt = now;
   ensureRecords(d);
   if (d.qualifierPending && d.qualifierPending !== l.id) d.qualifierPending = null;
   return true;
@@ -175,6 +183,7 @@ export function deleteList(d, id) {
   const l = listById(d, id);
   if (!l || l.id === d.activeId) return false;
   d.lists = d.lists.filter((x) => x !== l);
+  d.deletedLists = [...(d.deletedLists || []).filter((x) => x !== id), id].slice(-100);   // family sync tombstone
   for (const [w, r] of Object.entries(d.records)) if (r.listId === id) delete d.records[w];
   d.tests = d.tests.filter((t) => t.listId !== id);
   if (d.qualifierPending === id) d.qualifierPending = null;
@@ -263,6 +272,7 @@ export function resetSpelling(d, now) {
   d.tests = [];
   d.today = fresh.today;
   d.streak = 0; d.bestStreak = 0; d.perfectTotal = 0;
+  d.resetAt = now;                       // family sync: progress older than this does not come back
   ensureRecords(d);
   d.qualifierPending = activeList(d).sample ? null : d.activeId;
 }

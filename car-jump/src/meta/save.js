@@ -7,6 +7,7 @@
 import { CARS, CAR_BY_ID } from '../data/cars.js';
 import { TRACKS, TRACK_BY_ID } from '../data/tracks.js';
 import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
+import { localWrite } from '../sync/notify.js';
 
 // The key keeps its v1 name so existing saves load in place; `v` inside the object is the schema
 // version. v2 (epic update) added: records.bestCombo/maxAltitude/rings/explosions/rejumps,
@@ -123,6 +124,7 @@ export function normalize(raw) {
   const seen = raw.seen && typeof raw.seen === 'object' ? raw.seen : {};
   s.seen.coach = bool(seen.coach, s.records.runs > 0);
   s.seen.ach = Math.max(0, Math.floor(num(seen.ach)));   // achievements already seen in the panel (title badge)
+  if (num(raw.resetAt) > 0) s.resetAt = num(raw.resetAt);  // family sync: when a parent last reset this save
   return s;
 }
 
@@ -151,11 +153,12 @@ export function writeSave(save, key = currentKey) {
   if (!key) return false;
   try {
     localStorage.setItem(key, JSON.stringify(save));
-    return true;
   } catch (e) {
     console.warn('[save] could not write save', e);
     return false;
   }
+  localWrite(key);            // family sync marks the key dirty (no-op when sync is off)
+  return true;
 }
 
 export function wipeSave(key = currentKey) {

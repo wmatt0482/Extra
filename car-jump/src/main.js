@@ -31,8 +31,9 @@ import { createPanels } from './ui/panels.js';
 import { createTitleHero } from './ui/titleHero.js';
 import { createPlayers, drawAvatar } from './ui/players.js';
 import { createParentZone } from './ui/parentZone.js';
+import { createSyncClient } from './sync/client.js';
 
-const VERSION = '3.1.2';
+const VERSION = '3.2.0';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;
@@ -56,6 +57,13 @@ async function loadEngine() {
 
 async function boot() {
   hydrateIcons();
+  // family sync (off until a parent creates or joins a family): subscribes to local writes before anything is
+  // written; the hooks below reload what is in memory when newer data arrives from another device
+  const sync = createSyncClient({
+    canApply: (k) => syncCanApply(k),
+    onApply: (k) => syncApplied(k),
+    onStatus: () => { playersUI.refreshSyncChip(); pz.onSyncStatus(); },
+  });
   const family = Profiles.loadFamily();
   const save = defaultSave();          // replaced in place when a player is picked (screens hold this reference)
   let words = null;                    // the current player's spelling data
@@ -81,6 +89,7 @@ async function boot() {
     save,
     audio: Audio,
     tts,
+    sync,
     version: VERSION,
     engineName: engineMod.name,
     get family() { return family; },
@@ -118,8 +127,10 @@ async function boot() {
       writeSave(s, Profiles.saveKey(id));
     },
     resetGameFor(id) {
-      if (id === currentPlayerId) resetProgress();
-      else wipeSave(Profiles.saveKey(id));
+      if (id === currentPlayerId) { resetProgress(); return; }
+      // a fresh save stamped with resetAt (family sync: the reset wins over older progress on other devices)
+      wipeSave(Profiles.saveKey(id));
+      writeSave({ ...defaultSave(), resetAt: Date.now() }, Profiles.saveKey(id));
     },
     removePlayer(id) {
       Profiles.removePlayer(family, id);
@@ -127,6 +138,7 @@ async function boot() {
       if (id === currentPlayerId) { currentPlayerId = null; words = null; setSaveKey(null); }
     },
     onOptionsChanged(id) { if (id === currentPlayerId) applyPlayerOptions(); },
+    openFamilySync: () => pz.open(null, { tab: 'sync' }),
     onParentZoneClosed() {
       wordsCache.clear();
       if (!currentPlayerId) go('players');
@@ -309,11 +321,53 @@ async function boot() {
     const keepSettings = save.settings;
     replaceSave(fresh);
     save.settings = keepSettings;
+    save.resetAt = Date.now();          // family sync: this reset wins over older progress from other devices
     refreshDaily(save); ensureGoals(save);
     app.persist();
     refreshCash();
     refreshAchBadge();
     hero.redraw();
+  }
+
+  // ---------- family sync: newer data from another device ----------
+  // the current player's data is not swapped out under a run, a test or the spell panel (the next pull applies it)
+  function syncBusy() { return screen === 'run' || screen === 'test' || spellPanel.isOpen; }
+  function syncCanApply(k) {
+    if (k === 'family') return !syncBusy();
+    return !(syncBusy() && k.startsWith(currentPlayerId + '.'));
+  }
+  const replaceInPlace = (obj, fresh) => { for (const k of Object.keys(obj)) delete obj[k]; Object.assign(obj, fresh); };
+  function syncApplied(k) {
+    if (k === 'family') {
+      replaceInPlace(family, Profiles.loadFamily());
+      for (const id of [...wordsCache.keys()]) if (!Profiles.playerById(family, id)) wordsCache.delete(id);
+      if (currentPlayerId && !Profiles.playerById(family, currentPlayerId)) {
+        currentPlayerId = null; words = null; setSaveKey(null);
+        if (!pz.isOpen) go('players');
+      } else if (currentPlayerId) applyPlayerOptions();
+      if (screen === 'players') screens.players.show();
+      else if (screen === 'title') refreshTitle();
+      pz.onSyncApplied();
+      return;
+    }
+    const id = k.replace(/\.(save|words)$/, '');
+    if (k.endsWith('.save')) {
+      if (id !== currentPlayerId) return;
+      replaceSave(loadSave());
+      refreshCash();
+      refreshAchBadge();
+      hero.redraw();
+    } else {
+      const fresh = Profiles.loadWords(id);
+      if (id === currentPlayerId && words) {
+        replaceInPlace(words, fresh);
+        WS.rollToday(words, Date.now());
+        session = createSession();
+        if (screen === 'title') refreshTitle();
+      }
+      if (wordsCache.has(id) && wordsCache.get(id) !== words) replaceInPlace(wordsCache.get(id), fresh);
+    }
+    pz.onSyncApplied();
   }
 
   // ---------- Qualifier / Friday Test ----------
@@ -788,8 +842,9 @@ async function boot() {
   }, { passive: false });
 
   go('players');
+  sync.start();                        // first pull after the picker is on screen (never blocks it)
   window.__spellJump = window.__rampRage = {
-    app, hud, hero, spellPanel, testScreen, pz, tts,
+    app, hud, hero, spellPanel, testScreen, pz, tts, sync,
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; },
     get words() { return words; }, get session() { return session; }, get screen() { return screen; },
   }; // debugging / smoke tests

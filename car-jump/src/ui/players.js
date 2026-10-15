@@ -1,10 +1,14 @@
 // Player picker (the first screen) and "+ New player" (name typed on the big on-screen keyboard, never the
 // native one, plus a car-color avatar). Up to 4 players; removing a player lives in the Parent Zone only.
+// Family sync: a tiny muted chip under the tiles shows "Synced · CODE" so a parent can tell which family this
+// device is in; on a device with no players and no family it reads "Family sync" (the way into Parents → Family
+// sync to join, since the title's Parents button needs a player). Either opens the PIN-gated Parent Zone.
 import { CAR_BY_ID } from '../data/cars.js';
 import { MAX_NAME, MAX_PLAYERS, PLAYER_COLORS, cleanName } from '../spelling/profiles.js';
 import { createKeyboard } from '../spelling/keyboard.js';
 import { drawCar } from './carPreview.js';
 import { $, h } from './dom.js';
+import { icon } from './icons.js';
 
 // the starter car body painted in the player's color
 export const avatarCar = (color) => ({ ...CAR_BY_ID.beater, color, accent: '#0d1230' });
@@ -53,8 +57,19 @@ export function createPlayers(app) {
     }));
   }
 
+  const chip = $('#sync-chip');
+  chip.addEventListener('click', () => app.openFamilySync());
+  function refreshSyncChip() {
+    const s = app.sync.status();
+    chip.hidden = !s.synced && app.family.players.length > 0;
+    chip.classList.toggle('on', s.synced);
+    chip.replaceChildren(...(s.synced ? [h('span', { class: 'sc-dot', 'aria-hidden': 'true' }), `Synced · ${s.code}`] : [h('span', { html: icon('lock') }), 'Family sync']));
+    chip.setAttribute('aria-label', s.synced ? `Family sync on, code ${s.code}` : 'Family sync (parents)');
+  }
+
   function showPicker() {
     const f = app.family;
+    refreshSyncChip();
     grid.replaceChildren();
     for (const p of f.players) {
       const cv = h('canvas', { class: 'pl-avatar', 'aria-hidden': 'true' });
@@ -82,6 +97,7 @@ export function createPlayers(app) {
   }
 
   return {
+    refreshSyncChip,
     players: { show: showPicker, hide() {} },
     newplayer: { show: showNew, hide() { kb.setActive(false); } },
   };

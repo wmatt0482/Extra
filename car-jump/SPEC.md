@@ -336,6 +336,10 @@ R6. Letters are spoken by name as they are typed (SOS). Speech is synthesized on
   `spellJump.<playerId>.words`. A family record `spellJump.family` holds the player list, the parent PIN and
   parent options. All localStorage access stays wrapped in try/catch. An existing `rampRage.save.v1` is
   migrated into the first created player.
+- Family sync (v3.2, optional, Parents → Family sync): a family code shares the family record and every player's
+  save and words across devices through one Netlify Function over Netlify Blobs (`/api/family/:code[/:key]`,
+  rev-checked writes, 409 + merge on conflict). Players are removed by tombstone (`removedPlayers`). See README
+  "Family sync" for the API, the merge rules and the privacy note.
 
 ### Parent Zone (title button, PIN-gated)
 - First open: set a 4-digit PIN (entered twice). Later: enter PIN. "Forgot PIN": press-and-hold 3 s, then a

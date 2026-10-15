@@ -14,7 +14,7 @@ import {
 import { diffAttempt, formatList, normalizeWord, parseList, patternRanges, ringLetters, syllableBreaks, SAMPLE_WORDS } from '../src/spelling/words.js';
 import {
   activeList, archivedLists, defaultWords, deleteList, missionState, nextWord, normalizeWordsData, qualifierDue, recordFriday,
-  recordQualifier, recordSpell, report, reportText, restoreList, saveNewList, setLaunch, spellBonus, wordInfo, DEFAULT_OPTIONS, WORDS_PER_RACE,
+  recordQualifier, recordSpell, report, reportText, resetSpelling, restoreList, saveNewList, setLaunch, spellBonus, wordInfo, DEFAULT_OPTIONS, WORDS_PER_RACE,
 } from '../src/spelling/wordStore.js';
 
 let passed = 0;
@@ -522,6 +522,234 @@ await atest(`a long carrier phrase that starts slowly but within ${START_TIMEOUT
   b.speak = (u) => { b.said.push(u.text); setTimeout(() => u.onstart && u.onstart(), 900); setTimeout(() => u.onend && u.onend(), 2600); };
   t.useBackend(b);
   assert.equal(await t.present({ word: 'neighbor' }), true); assert.equal(t.health, 'ok');
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Family sync: the server protocol (src/sync/protocol.mjs, driven with an in-memory Map store exactly like the
+// Netlify Blobs adapter in netlify/functions/family.mjs), family codes and the merge rules (src/sync/merge.js).
+const { handle, memoryStore, MAX_BODY } = await import('../src/sync/protocol.mjs');
+const { generateCode, normalizeCode, CODE_ALPHABET, CODE_RE } = await import('../src/sync/codes.js');
+const { mergeFamily, mergeSave, mergeWords } = await import('../src/sync/merge.js');
+const { defaultSave } = await import('../src/meta/save.js');
+
+const CODE = 'K7QX-M2PA';
+const JSON_CT = 'application/json';
+const doc = (rev, data, extra = {}) => ({ rev, updatedAt: T0 + rev, deviceId: 'dlaptop', data, ...extra });
+async function call(store, method, path, body, { contentType = JSON_CT, raw = false, contentLength } = {}) {
+  const res = await handle({ method, path, contentType, contentLength, body: body === undefined ? null : raw ? body : JSON.stringify(body) }, store);
+  return { ...res, json: JSON.parse(res.body) };
+}
+const famData = (players = [{ id: 'pmia', name: 'Mia' }], extra = {}) => ({ v: 1, players: players.map((p) => ({ color: '#ff3b5c', createdAt: T0, updatedAt: T0, ...p })), pinHash: 'h1', pinUpdatedAt: T0, options: {}, optionsUpdatedAt: {}, removedPlayers: [], ...extra });
+
+console.log('sync: protocol (create / get / put / rev checks)');
+await atest('POST creates a family (201); GET returns it with its players; a second POST is 409', async () => {
+  const st = memoryStore();
+  const r = await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()));
+  assert.equal(r.status, 201); assert.equal(r.json.rev, 1);
+  const g = await call(st, 'GET', `/api/family/${CODE}`);
+  assert.equal(g.status, 200); assert.equal(g.json.family.rev, 1); assert.equal(g.json.family.data.players[0].name, 'Mia');
+  assert.deepEqual(g.json.players, { pmia: { save: null, words: null } });
+  assert.equal((await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()))).status, 409);
+  assert.equal((await call(memoryStore(), 'POST', `/api/family/${CODE}`, doc(2, famData()))).status, 400, 'a new family starts at rev 1');
+});
+await atest('GET of an unknown family is 404; every response is JSON with Cache-Control: no-store', async () => {
+  const g = await call(memoryStore(), 'GET', `/api/family/${CODE}`);
+  assert.equal(g.status, 404); assert.equal(g.headers['cache-control'], 'no-store'); assert.match(g.headers['content-type'], /application\/json/);
+});
+await atest('PUT stores only rev = stored rev + 1, else 409 with the stored doc', async () => {
+  const st = memoryStore();
+  await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()));
+  const ok = await call(st, 'PUT', `/api/family/${CODE}/family`, doc(2, famData([{ id: 'pmia', name: 'Mia' }, { id: 'pleo', name: 'Leo' }])));
+  assert.equal(ok.status, 200); assert.equal(ok.json.rev, 2);
+  const stale = await call(st, 'PUT', `/api/family/${CODE}/family`, doc(2, famData()));
+  assert.equal(stale.status, 409); assert.equal(stale.json.doc.rev, 2); assert.equal(stale.json.doc.data.players.length, 2);
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/family`, doc(4, famData()))).status, 409, 'skipping a rev');
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/family`, doc(3, famData()))).status, 200);
+});
+await atest('a new player key must start at rev 1 (409 with doc null otherwise); its family must exist (404)', async () => {
+  const st = memoryStore();
+  await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()));
+  const c = await call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(3, { cash: 5 }));
+  assert.equal(c.status, 409); assert.equal(c.json.doc, null);
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(1, { cash: 5 }))).status, 200);
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.words`, doc(1, { lists: [] }))).status, 200);
+  const g = await call(st, 'GET', `/api/family/${CODE}`);
+  assert.equal(g.json.players.pmia.save.data.cash, 5); assert.equal(g.json.players.pmia.words.rev, 1);
+  assert.equal((await call(st, 'PUT', '/api/family/ZZZZ-2222/pmia.save', doc(1, { cash: 1 }))).status, 404);
+});
+await atest('two devices racing with the same rev: exactly one write wins, the other gets 409 (conditional set)', async () => {
+  const st = memoryStore();
+  await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()));
+  const [a, b] = await Promise.all([
+    call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(1, { cash: 1 }, { deviceId: 'dipad' })),
+    call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(1, { cash: 2 }, { deviceId: 'dlaptop' })),
+  ]);
+  assert.deepEqual([a.status, b.status].sort(), [200, 409]);
+  const [c, d] = await Promise.all([call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(2, { cash: 3 })), call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(2, { cash: 4 }))]);
+  assert.deepEqual([c.status, d.status].sort(), [200, 409]);
+});
+await atest('removed players (tombstones in the family doc) are not listed by GET; DELETE is 405', async () => {
+  const st = memoryStore();
+  await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData([{ id: 'pmia', name: 'Mia' }, { id: 'pleo', name: 'Leo' }], { removedPlayers: ['pleo'] })));
+  assert.deepEqual(Object.keys((await call(st, 'GET', `/api/family/${CODE}`)).json.players), ['pmia']);
+  assert.equal((await call(st, 'DELETE', `/api/family/${CODE}/pleo.save`)).status, 405);
+  assert.equal((await call(st, 'GET', `/api/family/${CODE}/pleo.save`)).status, 405);
+});
+console.log('sync: protocol validation (400) and size cap');
+await atest('bad family codes are 400', async () => {
+  for (const c of ['k7qx-m2pa', 'K7QXM2PA', 'K7QX-M2P', 'K7QX-M2PA1', 'K0QX-M2PA', 'K1QX-M2PA', 'K7Q%20-M2PA']) {
+    assert.equal((await call(memoryStore(), 'GET', `/api/family/${c}`)).status, 400, c);
+  }
+});
+await atest('bad keys are 400 (family | <id>.save | <id>.words, id a-z 0-9 _ - up to 32)', async () => {
+  const st = memoryStore();
+  await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()));
+  for (const k of ['Mia.save', 'pmia.notes', 'pmia', 'a'.repeat(33) + '.save', 'p mia.words', '.save', 'families']) {
+    assert.equal((await call(st, 'PUT', `/api/family/${CODE}/${encodeURIComponent(k)}`, doc(1, {}))).status, 400, k);
+  }
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/${'a'.repeat(32)}.save`, doc(1, {}))).status, 200, '32 chars is fine');
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/p_m-1.words`, doc(1, {}))).status, 200);
+});
+await atest('JSON only: wrong Content-Type, broken JSON, missing rev / updatedAt / deviceId / data are 400', async () => {
+  const st = memoryStore();
+  await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()));
+  const url = `/api/family/${CODE}/pmia.save`;
+  assert.equal((await call(st, 'PUT', url, doc(1, {}), { contentType: 'text/plain' })).status, 400);
+  assert.equal((await call(st, 'PUT', url, '{"rev":1,', { raw: true })).status, 400);
+  assert.equal((await call(st, 'PUT', url, '[1,2]', { raw: true })).status, 400);
+  for (const bad of [{ ...doc(1, {}), rev: 0 }, { ...doc(1, {}), rev: 1.5 }, { ...doc(1, {}), updatedAt: 'now' }, { ...doc(1, {}), deviceId: '' },
+    { ...doc(1, {}), deviceId: 'x'.repeat(65) }, { ...doc(1, {}), data: [1] }, { rev: 1, updatedAt: 1, deviceId: 'd' }]) {
+    assert.equal((await call(st, 'PUT', url, bad)).status, 400, JSON.stringify(bad).slice(0, 60));
+  }
+});
+await atest(`bodies over ${MAX_BODY / 1024} KB are refused (400 too-large), by Content-Length and by actual size`, async () => {
+  const st = memoryStore();
+  await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()));
+  const big = doc(1, { pad: 'x'.repeat(MAX_BODY) });
+  const r = await call(st, 'PUT', `/api/family/${CODE}/pmia.words`, big);
+  assert.equal(r.status, 400); assert.equal(r.json.error, 'too-large');
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.words`, doc(1, {}), { contentLength: String(MAX_BODY + 1) })).json.error, 'too-large');
+  const fits = doc(1, { pad: 'x'.repeat(MAX_BODY - 200) });
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.words`, fits)).status, 200, 'just under the cap is stored');
+});
+test('family codes: 8 characters from the no-look-alike alphabet as XXXX-XXXX; typed codes normalize', () => {
+  for (let i = 0; i < 200; i++) { const c = generateCode(); assert.match(c, CODE_RE); assert.ok(c.replace('-', '').split('').every((ch) => CODE_ALPHABET.includes(ch)), c); }
+  assert.ok(!/[IO01]/.test(CODE_ALPHABET)); assert.equal(CODE_ALPHABET.length, 32);
+  assert.equal(normalizeCode(' k7qx m2pa '), 'K7QX-M2PA'); assert.equal(normalizeCode('K7QX-M2PA'), 'K7QX-M2PA');
+  assert.equal(normalizeCode('K7QX-M2P'), null); assert.equal(normalizeCode('K7QX-M2P0'), null);
+});
+
+console.log('sync: merge rules — family');
+const P = (id, name, t, extra = {}) => ({ id, name, color: '#3b7dd9', createdAt: t, updatedAt: t, ...extra });
+test('players = union by id; removedPlayers tombstones drop a player on both sides', () => {
+  const a = famData([P('pmia', 'Mia', T0), P('pleo', 'Leo', T0 + 5)]);
+  const b = famData([P('pmia', 'Mia', T0), P('pava', 'Ava', T0 + 9)], { removedPlayers: ['pleo'] });
+  const m = mergeFamily(a, b);
+  assert.deepEqual(m.players.map((p) => p.id), ['pmia', 'pava']); assert.deepEqual(m.removedPlayers, ['pleo']);
+  assert.deepEqual(mergeFamily(b, a).players.map((p) => p.id), ['pmia', 'pava'], 'symmetric');
+});
+test('same player on both sides (both renamed): the later updatedAt wins', () => {
+  const a = famData([P('pmia', 'Mia', T0, { updatedAt: T0 + 50, name: 'Mimi' })]);
+  const b = famData([P('pmia', 'Mia', T0, { updatedAt: T0 + 90, name: 'Amelia' })]);
+  assert.equal(mergeFamily(a, b).players[0].name, 'Amelia'); assert.equal(mergeFamily(b, a).players[0].name, 'Amelia');
+});
+test('PIN hash: the later pinUpdatedAt wins either way; Join adopts the family PIN', () => {
+  const a = famData([], { pinHash: 'hOLD', pinUpdatedAt: T0 }), b = famData([], { pinHash: 'hNEW', pinUpdatedAt: T0 + 1000 });
+  assert.equal(mergeFamily(a, b).pinHash, 'hNEW'); assert.equal(mergeFamily(b, a).pinHash, 'hNEW');
+  assert.equal(mergeFamily(a, famData([], { pinHash: null, pinUpdatedAt: 0 })).pinHash, 'hOLD', 'no PIN never erases one');
+  const fresh = famData([], { pinHash: 'hIPAD', pinUpdatedAt: T0 + 5000 });
+  assert.equal(mergeFamily(fresh, a, { preferRemotePin: true }).pinHash, 'hOLD');
+  assert.equal(mergeFamily(fresh, a).pinHash, 'hIPAD');
+});
+test('per-player options: the later optionsUpdatedAt wins per player (both devices changed different players)', () => {
+  const a = famData([P('pmia', 'Mia', T0), P('pleo', 'Leo', T0)], { options: { pmia: { rate: 'slow' }, pleo: { rate: 'normal' } }, optionsUpdatedAt: { pmia: T0 + 100, pleo: T0 + 1 } });
+  const b = famData([P('pmia', 'Mia', T0), P('pleo', 'Leo', T0)], { options: { pmia: { rate: 'veryslow' }, pleo: { rate: 'slow', wordsPerRace: 4 } }, optionsUpdatedAt: { pmia: T0 + 2, pleo: T0 + 200 } });
+  const m = mergeFamily(a, b);
+  assert.equal(m.options.pmia.rate, 'slow'); assert.equal(m.options.pleo.wordsPerRace, 4);
+  assert.deepEqual(m.optionsUpdatedAt, { pmia: T0 + 100, pleo: T0 + 200 });
+  assert.deepEqual(mergeFamily(b, a).options, m.options, 'symmetric');
+});
+
+console.log('sync: merge rules — words');
+const W = (d, t) => ({ updatedAt: t, data: d });
+const WL = ['enough', 'through', 'neighbor', 'friend', 'because', 'thought'];
+function wordsDoc() { const d = defaultWords(T0); saveNewList(d, WL.map((w) => ({ word: w })), 'ough', T0); d.qualifierPending = null; return d; }
+const clone = (x) => JSON.parse(JSON.stringify(x));
+test('both devices practiced different words offline: no record is lost; the same word keeps the later lastSeen', () => {
+  const base = wordsDoc();
+  const a = clone(base), b = clone(base);
+  recordSpell(a, 'enough', { firstTry: true }, day(1));
+  recordSpell(a, 'friend', { firstTry: false }, day(1, 1));
+  recordSpell(b, 'through', { firstTry: true }, day(1, 2));
+  recordSpell(b, 'friend', { firstTry: true }, day(1, 3));
+  const m = mergeWords(W(a, day(1, 1)), W(b, day(1, 3)), day(2));
+  assert.equal(m.records.enough.attempts, 1); assert.equal(m.records.through.attempts, 1);
+  assert.equal(m.records.friend.lastSeen, day(1, 3)); assert.equal(m.records.friend.firstTry, 1, "the later 'friend' wins");
+  for (const w of WL) assert.ok(m.records[w], `record ${w} kept`);
+  assert.deepEqual(mergeWords(W(b, day(1, 3)), W(a, day(1, 1)), day(2)).records, m.records, 'symmetric');
+});
+test('records: same lastSeen → the higher box wins', () => {
+  const a = wordsDoc(), b = clone(a);
+  Object.assign(a.records.enough, { lastSeen: day(3), box: 1 }); Object.assign(b.records.enough, { lastSeen: day(3), box: 3 });
+  assert.equal(mergeWords(W(a, 9), W(b, 1)).records.enough.box, 3); assert.equal(mergeWords(W(b, 1), W(a, 9)).records.enough.box, 3);
+});
+test('lists = union by id; the same list keeps its later archive state; deleted lists stay deleted', () => {
+  const a = wordsDoc(), b = clone(a);
+  const oldId = a.activeId;
+  saveNewList(a, [{ word: 'weather' }, { word: 'whether' }], '', day(7));          // A: new week, old list archived
+  const m = mergeWords(W(a, day(7)), W(b, day(8)), day(8));
+  assert.equal(m.lists.length, 2); assert.ok(m.lists.find((l) => l.id === oldId).archivedAt > 0, 'archived on A wins');
+  assert.equal(m.activeId, a.activeId, 'the list chosen later (activeAt) stays active even though B changed something later');
+  const c = clone(m); deleteList(c, oldId);
+  const m2 = mergeWords(W(c, day(9)), W(m, day(10)), day(10));
+  assert.ok(!m2.lists.some((l) => l.id === oldId), 'tombstoned list does not come back'); assert.deepEqual(m2.deletedLists, [oldId]);
+});
+test('the built-in sample list leaves when one side replaced it', () => {
+  const a = defaultWords(T0), b = defaultWords(T0);
+  saveNewList(a, [{ word: 'weather' }], '', day(1));
+  const m = mergeWords(W(a, day(1)), W(b, day(2)), day(2));
+  assert.ok(!m.lists.some((l) => l.sample)); assert.equal(m.activeId, a.activeId);
+});
+test('tests = union by date + score (the same test is not doubled)', () => {
+  const a = wordsDoc(), b = clone(a);
+  recordFriday(a, WL.map((w, i) => ({ word: w, correct: i > 0 })), day(4));
+  const shared = clone(a.tests);
+  b.tests = clone(shared);
+  recordQualifier(b, WL.map((w) => ({ word: w, correct: true })), day(5));
+  const m = mergeWords(W(a, day(4)), W(b, day(5)), day(5));
+  assert.equal(m.tests.length, 2); assert.deepEqual(m.tests.map((t) => t.kind), ['friday', 'qualifier']);
+});
+test('today / streak come from the doc with the later updatedAt; best streak never goes down', () => {
+  const a = wordsDoc(), b = clone(a);
+  a.today = { date: dayKey(day(2)), count: 3, newCount: 1, missionPaid: false }; a.streak = 5; a.bestStreak = 7;
+  b.today = { date: dayKey(day(2)), count: 6, newCount: 2, missionPaid: false }; b.streak = 1; b.bestStreak = 2;
+  const m = mergeWords(W(a, day(2, 1)), W(b, day(2, 2)), day(2, 3));
+  assert.equal(m.today.count, 6); assert.equal(m.streak, 1); assert.equal(m.bestStreak, 7);
+});
+test('a spelling reset on one side drops the other side\'s older progress', () => {
+  const a = wordsDoc(), b = clone(a);
+  recordSpell(b, 'enough', { firstTry: true }, day(1));
+  resetSpelling(a, day(2));
+  const m = mergeWords(W(a, day(2)), W(b, day(1)), day(2));
+  assert.equal(m.records.enough.attempts, 0); assert.equal(m.resetAt, day(2));
+});
+
+console.log('sync: merge rules — game save');
+const S = (t, f) => { const s = defaultSave(); f(s); return { updatedAt: t, data: s }; };
+test('the later save wins whole, except cash = max and cars / tracks = union (both devices changed it)', () => {
+  const laptop = S(day(1), (s) => { s.cash = 9000; s.owned = ['beater', 'rally']; s.selectedCar = 'rally'; s.unlocked = ['canyon', 'city']; s.settings.music = false; });
+  const ipad = S(day(2), (s) => { s.cash = 4000; s.owned = ['beater']; s.unlocked = ['canyon', 'desert']; s.records.runs = 12; s.settings.music = true; });
+  const m = mergeSave(laptop, ipad);
+  assert.equal(m.cash, 9000); assert.deepEqual([...m.owned].sort(), ['beater', 'rally']);
+  assert.ok(m.unlocked.includes('city') && m.unlocked.includes('desert'));
+  assert.equal(m.settings.music, true, 'settings from the later save'); assert.equal(m.records.runs, 12);
+  assert.deepEqual(mergeSave(ipad, laptop), m, 'symmetric');
+});
+test('a "Reset game save" (resetAt) wins whole over older progress', () => {
+  const reset = S(day(3), (s) => { s.resetAt = day(3); });
+  const old = S(day(4), (s) => { s.cash = 50000; s.owned = ['beater', 'rally']; });
+  const m = mergeSave(old, reset);
+  assert.equal(m.cash, 0); assert.deepEqual(m.owned, ['beater']); assert.equal(m.resetAt, day(3));
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

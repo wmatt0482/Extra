@@ -602,7 +602,15 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 /* player picker */
 .players-top { justify-content: center; }
 .players-top h2 { flex: none; text-align: center; color: var(--accent); }
-.players-body { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 8px 0; }
+.players-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
+.players-body::before, .players-body::after { content: ''; flex: 1 0 0; }   /* centered while it fits, scrolls from the top when not */
+/* family sync chip: tiny and muted (parents only), but a full 44 px tap target */
+.sync-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; flex: none; border-radius: 22px; background: none; border: 0;
+  color: var(--muted); font: 800 12px/1 var(--font-body); letter-spacing: .04em; }
+.sync-chip { position: relative; isolation: isolate; }
+.sync-chip::before { content: ''; position: absolute; inset: 9px 0; border-radius: 13px; background: rgba(6,8,28,.55); z-index: -1; }
+.sync-chip svg { width: 13px; height: 13px; }
+.sync-chip .sc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--go); }
 .player-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; max-width: 100%; }
 .pl-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 150px; height: 168px; padding: 10px 8px;
   border-color: var(--c, var(--line)); transition: transform .06s, box-shadow .06s; }
@@ -840,6 +848,21 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 .st { padding: 3px 7px; border-radius: 6px; font-size: 12px; font-weight: 800; background: var(--ink-2); }
 .st-mastered { background: var(--go); color: #062a12; } .st-almost { background: var(--cyan); color: #032634; }
 .st-learning { background: var(--violet); } .st-focus { background: var(--hot); } .st-new { background: var(--line); }
+/* family sync tab */
+.pz-sec-first { margin-top: 6px; }
+.pz-sync-status { padding: 10px 12px; border-radius: 12px; background: var(--ink-2); border: 2px solid var(--line); font-weight: 800; font-size: 14px; line-height: 1.35; }
+.pz-sync-status.on { border-color: var(--go); }
+.pz-sync-status.off { border-color: var(--accent); }
+.pz-sync-status.err { border-color: var(--hot); }
+.pz-code-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 6px; }
+.pz-code { flex: 1 1 auto; min-width: 0; font: 400 clamp(30px, 7vw, 44px)/1.1 var(--font-display); letter-spacing: .08em; color: var(--accent); -webkit-user-select: all; user-select: all; overflow-wrap: anywhere; }
+.pz-join-row { display: flex; gap: 10px; align-items: stretch; }
+.pz .pz-join-row input[type="text"] { flex: 1; min-width: 0; width: auto; font: 400 22px/1 var(--font-display); letter-spacing: .08em; text-transform: uppercase; }
+.pz-sync-players { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--ink-2); }
+.pz-sync-names { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+.pz-sync-name { padding: 6px 12px; border-radius: 10px; border: 2px solid var(--c, var(--line)); font: 400 16px/1 var(--font-display); text-transform: uppercase; }
+.pz-privacy { margin-top: 4px; font-size: 13px; }
+.pz-noplayer { margin: 2px 0 6px; font-size: 14px; }
 .pz-report-text { margin-top: 10px; padding: 10px; max-height: 240px; overflow: auto; border-radius: 10px; background: var(--ink); border: 2px solid var(--cyan); font: 500 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; }
 .pin-wrap { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 4px 0 8px; }
 .pin-title { font: 400 22px/1.1 var(--font-display); text-transform: uppercase; text-align: center; }
@@ -915,7 +938,8 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
   <!-- ===== Player picker (first screen) ===== -->
   <section class="screen" id="screen-players" data-screen="players" hidden>
     <div class="topbar players-top"><h2>Who's playing?</h2></div>
-    <div class="players-body scroll"><div class="player-grid" id="player-grid"></div></div>
+    <div class="players-body scroll"><div class="player-grid" id="player-grid"></div>
+      <button class="sync-chip" id="sync-chip" data-sfx hidden></button></div>
   </section>
 
   <!-- ===== New player ===== -->
