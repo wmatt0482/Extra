@@ -5,8 +5,8 @@
 // index.html?nosw=1&mock=1 with a fake speechSynthesis. `page.route('**/api/family/**')` on both contexts answers
 // from ONE in-memory store in this process through the real request handler (src/sync/protocol.mjs), so the two
 // devices talk to the same server; a device "goes offline" by having its route abort.
-// Flow: laptop creates Mia, sets the PIN, creates a family code → ipad (no players) opens Family sync from the
-// picker chip, a wrong code says "That code was not found", the right one joins → Mia on the ipad picker, same PIN →
+// Flow: laptop creates Mia, sets the PIN, creates a family code → ipad (no players) opens Parents from the picker
+// (the Family code tab opens first), a wrong code says "That code was not found", the right one joins → Mia on the ipad picker, same PIN →
 // laptop saves a 6-word list → the ipad has it after one poll (visibilitychange) → ipad plays the Qualifier + a mock
 // run and earns cash → the laptop sees the cash after a pull → ipad offline: another run, the cash waits ("Offline,
 // will sync…") → back online: pushed, the laptop sees it → laptop adds Leo (ipad gets him) and removes him (ipad
@@ -130,10 +130,12 @@ async function setPin(page, pin) {
   await page.waitForFunction(() => document.querySelector('#pz').dataset.view === 'main');
 }
 async function syncTab(page) {
-  if (await J(page, () => !!document.querySelector('.pz-tabs [data-tab="sync"]'))) await page.click('.pz-tabs [data-tab="sync"]');
-  await page.waitForSelector('#sync-status');
+  await page.waitForSelector('.pz-tabs [data-tab="sync"]');
+  await page.click('.pz-tabs [data-tab="sync"]');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
 }
-const statusText = (page) => page.textContent('#sync-status');
+const statusText = (page) => page.textContent('#sync-status');          // Family code tab, when in a family
+const lineText = async (page) => (await page.textContent('#pz-sync-line')).trim();   // under the Parent Zone title
 
 // Qualifier with every word right (pays $100 a word)
 async function qualifier(page) {
@@ -188,15 +190,15 @@ async function main() {
     console.log('\n=== sync off: nothing goes to the network ===');
     await L.waitForSelector(visibleSel('#screen-players'));
     check(apiLog.length === 0, 'no /api/family requests before a family exists');
-    check(await J(L, () => window.__spellJump.app.version) === '3.2.1', 'app version 3.2.1');
+    check(await J(L, () => window.__spellJump.app.version) === '3.2.2', 'app version 3.2.2');
 
     console.log('\n=== laptop: Mia, PIN, Create family code ===');
     await typeName(L, 'Mia');
     const miaId = (await lsJSON(L, 'spellJump.family')).players[0].id;
     await L.click('#btn-parents');
     await setPin(L, PIN);
-    await syncTab(L);
-    check((await statusText(L)).trim() === 'Not synced. Players and words stay on this device.', `status: "${(await statusText(L)).trim()}"`);
+    check(await J(L, () => document.querySelector('.pz-content').dataset.tab === 'sync' && document.querySelector('.pz-tabs [data-tab]').dataset.tab === 'sync'), 'Parent Zone opens on Family code, the first tab');
+    check(await lineText(L) === 'Not synced · tap to set up family sync', `status line: "${await lineText(L)}"`);
     check(/No emails or accounts\. Anyone with the family code can see and change these, so keep it private\./.test(await L.textContent('#sync-privacy')), 'privacy note shown');
     await shot(L, '01-laptop-not-synced');
     await L.click('#sync-create');
@@ -204,6 +206,14 @@ async function main() {
     const code = (await L.textContent('#sync-code')).trim();
     check(/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{4}$/.test(code), `family code ${code} (8 characters, no look-alikes)`);
     check(/^Synced as [A-Z0-9-]+ · last sync just now$/.test((await statusText(L)).trim()), `status: "${(await statusText(L)).trim()}"`);
+    check(await lineText(L) === `Family code ${code} · synced just now`, `status line: "${await lineText(L)}"`);
+    check(await J(L, () => document.querySelector('.pz-content').firstElementChild.contains(document.querySelector('#sync-code'))), 'the code is the first thing on the tab');
+    for (const t of ['words', 'report', 'options']) {
+      await L.click(`.pz-tabs [data-tab="${t}"]`);
+      check(await lineText(L) === `Family code ${code} · synced just now`, `${t} tab: the status line shows the code`);
+    }
+    await L.click('#pz-sync-line');
+    await L.waitForSelector('#sync-code');
     await shot(L, '02-laptop-created');
     const fam1 = await serverDoc(code, 'family');
     check(fam1 && fam1.rev >= 1 && fam1.data.players.map((p) => p.name).join() === 'Mia' && fam1.data.pinHash, 'server: family doc with Mia and the hashed PIN');
@@ -212,8 +222,8 @@ async function main() {
 
     console.log('\n=== ipad: join from the picker ===');
     await I.waitForSelector(visibleSel('#screen-players'));
-    check((await I.textContent('#sync-chip')).trim() === 'Family sync', 'ipad picker (no players): a muted "Family sync" chip');
-    await I.click('#sync-chip');
+    check(await J(I, () => document.querySelector('#sync-chip').hidden && !document.querySelector('#btn-parents-picker').closest('[hidden]')), 'ipad picker (no players): a Parents button, no sync chip');
+    await I.click('#btn-parents-picker');
     await setPin(I, '1357');
     await I.waitForSelector('#sync-join-input');
     await shot(I, '03-ipad-join-empty');
@@ -238,6 +248,7 @@ async function main() {
     console.log('\n=== laptop saves a 6-word list → the ipad has it after one poll ===');
     const SIX = ['enough', 'through', 'neighbor', 'friend', 'because', 'thought'];
     await L.click('#btn-parents');
+    await L.click('.pz-tabs [data-tab="words"]');
     await L.waitForSelector('#pz-words');
     await L.fill('#pz-words', SIX.join('\n'));
     await L.click('#pz-save');
@@ -306,8 +317,8 @@ async function main() {
     check((await pickerNames(I)).join() === 'Mia,Leo', `ipad picker after a pull: ${await pickerNames(I)}`);
     await L.click('#btn-parents');
     await L.waitForSelector('.pz-tabs');
-    await L.click(`.pz-players [data-player="${leoId}"]`);
     await L.click('.pz-tabs [data-tab="options"]');
+    await L.click(`.pz-players [data-player="${leoId}"]`);
     await L.click('#opt-remove');
     await L.click('#opt-remove-yes');
     await L.click('#pz-close').catch(() => {});
@@ -368,7 +379,7 @@ async function main() {
     await L.click('#sync-leave');
     await L.click('#sync-leave-yes');
     await L.waitForSelector('#sync-create');
-    check((await statusText(L)).trim() === 'Not synced. Players and words stay on this device.' && (await familyIds(L)).join() === 'Mia', 'Leave family: not synced, Mia stays on the laptop');
+    check(await lineText(L) === 'Not synced · tap to set up family sync' && (await familyIds(L)).join() === 'Mia', 'Leave family: not synced, Mia stays on the laptop');
     await shot(L, '11-laptop-left');
     const nReq = apiLog.length;
     await J(L, () => { window.dispatchEvent(new Event('online')); document.dispatchEvent(new Event('visibilitychange')); });

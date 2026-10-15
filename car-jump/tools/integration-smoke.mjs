@@ -483,6 +483,8 @@ async function runLayout(browser, layout) {
   await pin(page, '1234');
   await page.waitForFunction(() => /again/i.test((document.querySelector('#pin-title') || {}).textContent || ''));
   await pin(page, '1234');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');   // the Parent Zone opens on Family code
+  await tap(page, '.pz-tabs [data-tab="words"]');
   await page.waitForSelector('#pz-words');
   await page.fill('#pz-words', LIST_TEXT);              // parent-facing native fields (allowed)
   await page.fill('#pz-pattern', PATTERN);
@@ -505,10 +507,10 @@ async function runLayout(browser, layout) {
   await tap(page, '#btn-parents');
   await pin(page, '9999');
   await page.waitForSelector('#pin-err');
-  check(await J(page, () => !document.querySelector('#pz-words')), 'wrong PIN refused');
+  check(await J(page, () => !document.querySelector('.pz-content')), 'wrong PIN refused');
   await shot(page, layout, 'pz-wrong-pin');
   await pin(page, '1234');
-  await page.waitForSelector('#pz-words');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
   await tap(page, '#pz-close');
   // forgot PIN: hold 3 s (a real touch hold), 2-digit × 2-digit, new PIN
   await J(page, () => window.__spellJump.pz.lock());
@@ -526,12 +528,12 @@ async function runLayout(browser, layout) {
   await pin(page, '5678');
   await page.waitForFunction(() => /again/i.test(document.querySelector('#pin-title').textContent));
   await pin(page, '5678');
-  await page.waitForSelector('#pz-words');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
   await tap(page, '#pz-close');
   await J(page, () => window.__spellJump.pz.lock());
   await tap(page, '#btn-parents');
   await pin(page, '5678');
-  await page.waitForSelector('#pz-words');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
   check(true, `forgot PIN: hold 3 s, ${q.a} × ${q.b}, new PIN 5678 opens the Parent Zone`);
   await tap(page, '#pz-close');
 
@@ -599,7 +601,7 @@ async function runLayout(browser, layout) {
   await J(page, () => window.__spellJump.pz.lock());
   await tap(page, '#btn-parents');
   await pin(page, '5678');
-  await page.waitForSelector('#pz-words');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
   await tap(page, '.pz-tabs [data-tab="report"]');
   await page.waitForSelector('#pz-table');
   const rep = await J(page, () => ({
@@ -767,7 +769,7 @@ async function runSpeech(browser) {
     await pin(page, '1111');
     await page.waitForFunction(() => /again/i.test((document.querySelector('#pin-title') || {}).textContent || ''));
     await pin(page, '1111');
-    await page.waitForSelector('#pz-words');
+    await page.waitForSelector('.pz-content[data-tab="sync"]');
     await tap(page, '.pz-tabs [data-tab="options"]');
     await page.waitForSelector('#opt-speech-state');
     await sleep(1700);

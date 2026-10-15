@@ -321,6 +321,16 @@ export function createSyncClient(hooks = {}, opts = {}) {
       if (!s.lastSync) return `Synced as ${s.code} · syncing…`;
       return `Synced as ${s.code} · last sync ${agoText(now - s.lastSync)}`;
     },
+    // the one-line summary under the Parent Zone title (every tab)
+    statusLine(now = Date.now()) {
+      const s = api.status();
+      if (!s.synced) return 'Not synced · tap to set up family sync';
+      const head = `Family code ${s.code}`;
+      if (s.offline) return `${head} · offline, will sync when back online`;
+      if (s.lastError) return `${head} · ${s.lastError}`;
+      if (!s.lastSync) return `${head} · syncing…`;
+      return `${head} · synced ${agoText(now - s.lastSync)}`;
+    },
     /** Push everything dirty, then pull. Resolves to true when the server answered. */
     syncNow() { return exclusive(syncCycle).catch((e) => { console.warn('[sync] sync failed', e); setError('Sync problem: ' + (e && e.message || 'unknown error')); return false; }); },
     pullNow() { return exclusive(async () => { if (!state.code) return false; const ok = await pull(); if (ok && Object.values(state.keys).some((m) => m.dirty)) await pushAll(); return ok; }).catch(() => false); },

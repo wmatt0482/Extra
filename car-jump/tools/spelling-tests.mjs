@@ -10,6 +10,7 @@
 // spoken presentation (buildPresentation / sayAgain / syllables) and voice ranking (local before online) / choice.
 import assert from 'node:assert/strict';
 import { mulberry32 } from '../src/meta/rng.js';
+import { createUpdateGuard, safeToReload } from '../src/meta/selfUpdate.js';
 import {
   DAY_MS, INTERVAL_DAYS, MISSION_SIZE, applyQualifier, applyResult, applyReview, applyTest, buildMission, createSession,
   dayKey, isMastered, newRecord, noteSpelled, pendingReady, pickNext, reviewDue, status,
@@ -905,6 +906,37 @@ test('a "Reset game save" (resetAt) wins whole over older progress', () => {
   const old = S(day(4), (s) => { s.cash = 50000; s.owned = ['beater', 'rally']; });
   const m = mergeSave(old, reset);
   assert.equal(m.cash, 0); assert.deepEqual(m.owned, ['beater']); assert.equal(m.resetAt, day(3));
+});
+
+console.log('self-update: reload guard (meta/selfUpdate.js)');
+test('safe screens: picker, title, garage, track select, with nothing in progress', () => {
+  for (const screen of ['players', 'title', 'garage', 'tracks']) assert.equal(safeToReload({ screen }), true, screen);
+  for (const screen of ['run', 'test', 'results', 'newplayer']) assert.equal(safeToReload({ screen }), false, screen);
+  assert.equal(safeToReload({ screen: 'tracks', spelling: true }), false, 'spell panel open');
+  assert.equal(safeToReload({ screen: 'garage', running: true }), false, 'a run in progress');
+  assert.equal(safeToReload({ screen: 'title', parentZone: true }), false, 'Parent Zone open');
+  assert.equal(safeToReload({ screen: 'title', testing: true }), false, 'a test');
+});
+test('the first install (no controller at load) never reloads; a later new worker does, once', () => {
+  let reloads = 0;
+  const g = createUpdateGuard({ hadController: false, isSafe: () => true, reload: () => reloads++ });
+  assert.equal(g.onControllerChange(), false); assert.equal(reloads, 0, 'clients.claim() on first install');
+  assert.equal(g.onControllerChange(), true); assert.equal(reloads, 1, 'next version');
+  assert.equal(g.onControllerChange(), false); assert.equal(g.check(), false); assert.equal(reloads, 1, 'at most once per page');
+});
+test('not safe: one "restarting soon" notice, then reload when the app is back on a safe screen', () => {
+  let reloads = 0, notices = 0, state = { screen: 'run', spelling: true };
+  const g = createUpdateGuard({ hadController: true, isSafe: () => safeToReload(state), reload: () => reloads++, notify: () => notices++ });
+  assert.equal(g.onControllerChange(), false); assert.equal(g.pending, true);
+  state = { screen: 'results' }; assert.equal(g.check(), false);
+  assert.equal(reloads, 0); assert.equal(notices, 1, 'notified once');
+  state = { screen: 'garage' }; assert.equal(g.check(), true);
+  assert.equal(reloads, 1); assert.equal(g.reloaded, true); assert.equal(g.check(), false); assert.equal(reloads, 1);
+});
+test('check() with no update waiting does nothing; a throwing isSafe counts as not safe', () => {
+  let reloads = 0;
+  const g = createUpdateGuard({ hadController: true, isSafe: () => { throw new Error('boom'); }, reload: () => reloads++ });
+  assert.equal(g.check(), false); assert.equal(g.onControllerChange(), false); assert.equal(reloads, 0);
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

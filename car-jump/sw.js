@@ -1,8 +1,11 @@
-// Spell Jump service worker: cache-first app shell so the game works offline after the first load.
-// Same-origin files are served from cache and refreshed in the background (stale-while-revalidate),
-// so a deploy shows up on the next launch. Bump VERSION to force a clean cache.
+// Spell Jump service worker: the app works offline after the first load.
+// index.html (every navigation) and src/main.js are network-first (3 s timeout, then the cache), so a launch
+// while online picks up a new version at once. Every other same-origin file is cache-first and refreshed in the
+// background (stale-while-revalidate). Bump VERSION on every deploy: the new worker installs, takes over at once
+// (skipWaiting + clients.claim) and the page reloads itself on the next safe screen (src/meta/selfUpdate.js).
 // The family sync API (/api/...) is network only: never cached, never answered from the cache.
-const VERSION = 'spell-jump-v3.2.1';
+const VERSION = 'spell-jump-v3.2.2';
+const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
   './',
   'index.html',
@@ -25,6 +28,7 @@ const SHELL = [
   'src/meta/rng.js',
   'src/meta/mockEngine.js',
   'src/meta/achievements.js',
+  'src/meta/selfUpdate.js',
   'src/ui/dom.js',
   'src/ui/icons.js',
   'src/ui/controls.js',
@@ -59,8 +63,10 @@ const OPTIONAL = ['src/game/engine.js'];
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(VERSION);
-    await cache.addAll(SHELL);
-    await Promise.allSettled(OPTIONAL.map((u) => cache.add(u)));
+    // straight from the server, not the HTTP cache (Netlify sends max-age=300): a new version caches new files
+    const fresh = (u) => new Request(u, { cache: 'reload' });
+    await cache.addAll(SHELL.map(fresh));
+    await Promise.allSettled(OPTIONAL.map((u) => cache.add(fresh(u))));
     await self.skipWaiting();
   })());
 });
@@ -88,6 +94,15 @@ const isFont = (url) => url.hostname === 'fonts.googleapis.com' || url.hostname 
 
 const isApi = (url) => url.origin === self.location.origin && url.pathname.startsWith('/api/');
 
+// the page and its entry module are network-first; paths are relative to this worker's scope
+const relPath = (url) => {
+  const scope = new URL(self.registration.scope).pathname;
+  return url.pathname.startsWith(scope) ? url.pathname.slice(scope.length) : url.pathname;
+};
+const isPage = (req, url) => req.mode === 'navigate' || (url.origin === self.location.origin && (relPath(url) === '' || relPath(url) === 'index.html'));
+const isNetworkFirst = (req, url) => isPage(req, url) || (url.origin === self.location.origin && relPath(url) === 'src/main.js');
+const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
+
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   const url = new URL(req.url);
@@ -98,12 +113,26 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     const cache = await caches.open(VERSION);
-    const nav = req.mode === 'navigate';
-    const cached = await cache.match(nav ? 'index.html' : req, { ignoreSearch: nav || sameOrigin });
-    const refresh = () => fetch(req).then((res) => {
-      if (res && (res.ok || res.type === 'opaque')) cache.put(nav ? 'index.html' : req, res.clone()).catch(() => {});
+    const key = isPage(req, url) ? 'index.html' : req;   // every navigation is the one page
+    // network-first requests skip the HTTP cache too (revalidate), so a new deploy shows up on the next launch
+    // (a navigation is re-requested by URL: a 'navigate' Request cannot take options; a redirected answer is
+    // re-wrapped, since a navigation may not be answered with one)
+    const refresh = (opts) => fetch(opts && req.mode === 'navigate' ? url.href : req, opts).then((res) => {
+      if (res && res.redirected && req.mode === 'navigate') res = new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers });
+      if (res && (res.ok || res.type === 'opaque')) cache.put(key, res.clone()).catch(() => {});
       return res;
     });
+    if (isNetworkFirst(req, url)) {
+      // the fresh copy when online (and cache it); the cached one when offline, slow (3 s) or failing
+      const net = refresh({ cache: 'no-cache' });
+      let res = null;
+      try { res = await Promise.race([net, timeout(NETWORK_TIMEOUT_MS)]); } catch (_) { res = null; }
+      if (res && res.ok) return res;
+      const hit = await cache.match(key, { ignoreSearch: true });
+      if (hit) { event.waitUntil(net.catch(() => {})); return hit; }
+      try { return res || await net; } catch (_) { return Response.error(); }
+    }
+    const cached = await cache.match(req, { ignoreSearch: sameOrigin });
     if (cached) {
       if (sameOrigin) event.waitUntil(refresh().catch(() => {})); // refresh in the background
       return cached;
@@ -111,7 +140,7 @@ self.addEventListener('fetch', (event) => {
     try {
       return await refresh();
     } catch (e) {
-      return nav ? (await cache.match('index.html')) || Response.error() : Response.error();
+      return Response.error();
     }
   })());
 });

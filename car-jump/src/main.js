@@ -31,13 +31,30 @@ import { createPanels } from './ui/panels.js';
 import { createTitleHero } from './ui/titleHero.js';
 import { createPlayers, drawAvatar } from './ui/players.js';
 import { createParentZone } from './ui/parentZone.js';
+import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { createSyncClient } from './sync/client.js';
 
-const VERSION = '3.2.1';
+const VERSION = '3.2.2';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;
 const MEGA_PAY = 150;
+const RESUME_KEY = 'spellJump.resumePlayer';   // sessionStorage: the player to come back to after an update reload
+const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
+
+// ---------- self-update (see meta/selfUpdate.js) ----------
+// Wired before boot so a new version can still take over if boot fails; boot() fills in the hooks.
+const updateHooks = { isSafe: () => true, notify: () => {}, beforeReload: () => {} };
+const updater = createUpdateGuard({
+  hadController: swUsable && !!navigator.serviceWorker.controller,
+  isSafe: () => updateHooks.isSafe(),
+  notify: () => updateHooks.notify(),
+  reload: () => { try { updateHooks.beforeReload(); } catch (_) { /* ignore */ } location.reload(); },
+});
+if (swUsable) {
+  window.__spellJumpUpdate = updater;   // tells the index.html safety net that this module loaded
+  navigator.serviceWorker.addEventListener('controllerchange', () => updater.onControllerChange());
+}
 
 async function loadEngine() {
   if (params.get('mock') === '1') {
@@ -141,8 +158,9 @@ async function boot() {
     openFamilySync: () => pz.open(null, { tab: 'sync' }),
     onParentZoneClosed() {
       wordsCache.clear();
-      if (!currentPlayerId) go('players');
+      if (!currentPlayerId || screen === 'players') go('players');   // players may have been added, joined or removed
       else if (screen === 'title') refreshTitle();
+      setTimeout(() => updater.check(), 0);
     },
   };
 
@@ -273,6 +291,7 @@ async function boot() {
     if (screens[name]) screens[name].show(arg);
     hero.setMode(heroMode());
     refreshCash();
+    setTimeout(() => updater.check(), 0);   // a waiting update reloads once the app is on a safe screen
   }
 
   function openPanel(name) {
@@ -842,6 +861,20 @@ async function boot() {
   }, { passive: false });
 
   go('players');
+  // self-update: reload only on a menu screen with nothing in progress; afterwards come back to the same player
+  updateHooks.isSafe = () => safeToReload({ screen, running: !!run, spelling: spellPanel.isOpen, testing: screen === 'test', parentZone: pz.isOpen }) && !coaching;
+  updateHooks.notify = () => {        // above the spell panel and the Parent Zone too (plain toasts sit under them)
+    const t = h('div', { class: 'toast update-note', id: 'update-note', role: 'status' }, UPDATE_NOTICE);
+    $('#app').append(t);
+    setTimeout(() => t.remove(), 4000);
+  };
+  updateHooks.beforeReload = () => {
+    app.persist(); app.persistWords();
+    try { if (currentPlayerId && screen !== 'players') sessionStorage.setItem(RESUME_KEY, currentPlayerId); } catch (_) { /* ignore */ }
+  };
+  let resumeId = null;
+  try { resumeId = sessionStorage.getItem(RESUME_KEY); sessionStorage.removeItem(RESUME_KEY); } catch (_) { /* ignore */ }
+  if (resumeId && Profiles.playerById(family, resumeId)) selectPlayer(resumeId);
   sync.start();                        // first pull after the picker is on screen (never blocks it)
   window.__spellJump = window.__rampRage = {
     app, hud, hero, spellPanel, testScreen, pz, tts, sync,
@@ -853,8 +886,12 @@ async function boot() {
 
 function registerSW() {
   try {
-    if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol) || params.has('nosw')) return;
-    navigator.serviceWorker.register('sw.js').then(() => navigator.serviceWorker.ready).then((reg) => {
+    if (!swUsable) return;
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // look for a new version whenever the app comes back to the front (a Home Screen app may stay open for days)
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); });
+      return navigator.serviceWorker.ready;
+    }).then((reg) => {
       // hand the SW every same-origin file this page actually loaded (catches engine modules too)
       const urls = performance.getEntriesByType('resource').map((e) => e.name).filter((u) => u.startsWith(location.origin));
       if (reg.active) reg.active.postMessage({ type: 'cache-urls', urls: [location.href.split('?')[0], ...urls] });

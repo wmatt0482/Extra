@@ -22,8 +22,14 @@
 // is cleared within 3 s), R6 (each typed letter is spoken by name), keyboard keys ≥ 7 % (landscape) / 9 %
 // (portrait) of the viewport width, no console errors, no horizontal overflow, tap targets ≥ 44 px.
 // Screenshots every state.
+// Parents from the player picker with zero players (PIN set there, Family code tab first with Create / Join on
+// top, "Add a player first" on the per-player tabs, the sync status line under the title on every tab).
+// Self-update (ONLY=update runs just this): a copy of the app served on another port with the REAL service worker;
+// changing sw.js VERSION reloads the page once on the picker (not on the first install), and with the spell panel
+// open it only shows "Update ready, restarting soon" and reloads when the run is left; index.html and src/main.js
+// are network-first (an edit shows up on the next load while the worker controls the page).
 import { execSync, spawn } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -138,6 +144,29 @@ const family = (page) => J(page, () => JSON.parse(localStorage.getItem('spellJum
 async function readSave(page) {
   return J(page, () => { const id = window.__spellJump.app.currentPlayerId; return JSON.parse(localStorage.getItem(`spellJump.${id}.save`)); });
 }
+// Parent Zone: which tab is shown, the tab order, and the one-line sync status right under the title
+async function pzState(page) {
+  return J(page, () => {
+    const line = document.querySelector('#pz-sync-line');
+    const head = document.querySelector('.pz-head').getBoundingClientRect();
+    const lr = line && !line.hidden ? line.getBoundingClientRect() : null;
+    const tabs = [...document.querySelectorAll('.pz-tabs [data-tab]')];
+    const content = document.querySelector('.pz-content');
+    return {
+      tab: content && content.dataset.tab, order: tabs.map((t) => t.dataset.tab), labels: tabs.map((t) => t.textContent.trim()),
+      on: (tabs.find((t) => t.classList.contains('on')) || {}).dataset?.tab,
+      line: lr ? line.textContent.trim() : null,
+      // directly under the title: below the head, above the tabs / content, in the sheet's top area
+      lineUnderTitle: !!lr && lr.top >= head.top + head.height / 2 && lr.top - head.bottom < 16 && lr.bottom <= document.querySelector('#pz-body').getBoundingClientRect().top + 1,
+      first: content && content.firstElementChild ? (content.firstElementChild.id || content.firstElementChild.className) : null,
+      firstHas: content && content.firstElementChild ? [...content.firstElementChild.querySelectorAll('[id]')].map((e) => e.id) : [],
+      last: content && content.lastElementChild ? content.lastElementChild.id : null,
+      noPlayer: (document.querySelector('#pz-noplayer .label') || {}).textContent || null,
+    };
+  });
+}
+async function pinIn(page, pin) { for (const d of pin) await page.click(`.pinpad [data-digit="${d}"]`); }
+
 async function readWords(page) {
   return J(page, () => { const id = window.__spellJump.app.currentPlayerId; return JSON.parse(localStorage.getItem(`spellJump.${id}.words`)); });
 }
@@ -332,6 +361,49 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '01-players');
   await layoutAudit(page, layout.insets, 'player picker');
   check(await J(page, () => document.querySelectorAll('[data-player]').length === 0 && !!document.querySelector('#pl-add')), 'picker is the first screen, with "+ New player"');
+
+  // ---------- Parents from the picker, before any player exists ----------
+  const pb = await J(page, () => {
+    const b = document.querySelector('#btn-parents-picker'), r = b.getBoundingClientRect(), h2 = document.querySelector('.players-top h2').getBoundingClientRect();
+    return { visible: !b.closest('[hidden]') && r.width > 0, text: b.textContent.trim(), lock: !!b.querySelector('svg'), right: r.right, top: r.top, bottom: r.bottom, h2: [h2.left, h2.right, h2.top, h2.bottom],
+      W: innerWidth, chipHidden: document.querySelector('#sync-chip').hidden };
+  });
+  check(pb.visible && pb.text === 'Parents' && pb.lock, `picker: a "Parents" button with the lock icon (${pb.text})`);
+  check(pb.right >= pb.W - layout.insets.r - 24 && pb.top < 70 && (pb.right > pb.h2[1] || pb.bottom <= pb.h2[2] + 1), `picker: Parents sits in the top-right corner (right ${Math.round(pb.right)} of ${pb.W}, top ${Math.round(pb.top)})`);
+  check(pb.chipHidden, 'picker: no sync chip while this device is not in a family');
+  await page.screenshot({ path: path.join(SHOTS, `${layout.name}-01b-picker-parents-btn.png`), clip: { x: Math.max(0, pb.W / 2), y: 0, width: pb.W / 2, height: Math.ceil(pb.bottom + 16) } });
+  await page.click('#btn-parents-picker');
+  await page.waitForSelector(visibleSel('#pz'));
+  check(await page.textContent('#pin-title') === 'Choose a 4-digit PIN', 'picker Parents (no players): first use sets the PIN');
+  check(await J(page, () => document.querySelector('#pz-sync-line').hidden), 'the sync status (and code) stay hidden behind the PIN');
+  await shot(page, layout, '16-pz-set-pin');
+  await layoutAudit(page, layout.insets, 'parent zone (set PIN)');
+  await pinIn(page, '1234');
+  await page.waitForFunction(() => document.querySelector('#pin-title') && /again/i.test(document.querySelector('#pin-title').textContent));
+  await pinIn(page, '1234');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
+  check(!!(await family(page)).pinHash, 'PIN saved (hashed) in spellJump.family');
+  let z = await pzState(page);
+  check(z.order.join() === 'sync,words,report,options' && z.on === 'sync' && z.labels[0] === 'Family code', `Parent Zone opens on the first tab, "${z.labels[0]}" (tabs: ${z.labels.join(' | ')})`);
+  check(z.firstHas.includes('sync-create') && !z.firstHas.includes('sync-privacy') && z.last === 'sync-privacy', `Family code tab: Create on top (${z.first}), Join right after, privacy note last (${z.last})`);
+  check(await J(page, () => { const c = document.querySelector('#sync-create').getBoundingClientRect(), j = document.querySelector('#sync-join-input').getBoundingClientRect(), pr = document.querySelector('#sync-privacy').getBoundingClientRect(); return c.top < j.top && j.top < pr.top && c.bottom <= innerHeight; }), 'Create and Join are above the fold, above the privacy note');
+  check(z.line === 'Not synced · tap to set up family sync' && z.lineUnderTitle, `status line under the title: "${z.line}"`);
+  await shot(page, layout, '16b-pz-family-code-no-players');
+  await layoutAudit(page, layout.insets, 'parent zone (family code, no players)');
+  for (const t of ['words', 'report', 'options']) {
+    await page.click(`.pz-tabs [data-tab="${t}"]`);
+    await page.waitForSelector(`.pz-content[data-tab="${t}"]`);
+    z = await pzState(page);
+    check(z.noPlayer === 'Add a player first' && z.line === 'Not synced · tap to set up family sync' && z.lineUnderTitle, `no players, ${t} tab: "Add a player first", status line still under the title`);
+  }
+  await shot(page, layout, '16c-pz-no-player-tab');
+  await layoutAudit(page, layout.insets, 'parent zone (no player tab)');
+  await page.click('#pz-sync-line');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
+  check(true, 'tapping the status line jumps to the Family code tab');
+  await page.click('#pz-close');
+  await page.waitForSelector(visibleSel('#screen-players'));
+  check(await J(page, () => document.querySelectorAll('[data-player]').length === 0), 'closing the Parent Zone returns to the picker');
   await page.click('#pl-add');
   await page.waitForSelector(visibleSel('#screen-newplayer'));
   check(await J(page, () => !document.querySelector('#screen-newplayer input, #screen-newplayer textarea')), 'new player: no native text input');
@@ -555,17 +627,24 @@ async function runLayout(browser, layout) {
   check(/mission complete/i.test(await page.textContent('#title-mission-text')), `title chip: "${await page.textContent('#title-mission-text')}"`);
   await shot(page, layout, '15-title-mission');
 
-  // ---------- Parent Zone: set PIN, save a list ----------
+  // ---------- Parent Zone (PIN set from the picker): Family code first, status line on every tab, save a list ----------
+  await J(page, () => window.__spellJump.pz.lock());
   await page.click('#btn-parents');
   await page.waitForSelector(visibleSel('#pz'));
-  check(await page.textContent('#pin-title') === 'Choose a 4-digit PIN', 'first open: set a PIN');
-  await shot(page, layout, '16-pz-set-pin');
-  await layoutAudit(page, layout.insets, 'parent zone (set PIN)');
-  for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`);
-  await page.waitForFunction(() => document.querySelector('#pin-title') && /again/i.test(document.querySelector('#pin-title').textContent));
-  for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`);
+  check(await page.textContent('#pin-title') === 'Enter the parent PIN', 'title Parents: asks for the PIN set from the picker');
+  await pinIn(page, '1234');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
+  z = await pzState(page);
+  check(z.on === 'sync' && z.firstHas.includes('sync-create') && z.last === 'sync-privacy', 'with a player: still opens on Family code, Create on top');
+  await shot(page, layout, '16d-pz-family-code');
+  for (const t of ['sync', 'words', 'report', 'options']) {
+    await page.click(`.pz-tabs [data-tab="${t}"]`);
+    await page.waitForSelector(`.pz-content[data-tab="${t}"]`);
+    z = await pzState(page);
+    check(z.line === 'Not synced · tap to set up family sync' && z.lineUnderTitle, `${t} tab: status line under the title`);
+  }
+  await page.click('.pz-tabs [data-tab="words"]');
   await page.waitForSelector('#pz-words');
-  check(!!(await family(page)).pinHash, 'PIN saved (hashed) in spellJump.family');
   await shot(page, layout, '17-pz-words');
   await layoutAudit(page, layout.insets, 'parent zone (words)');
   // 41 words are refused
@@ -601,7 +680,7 @@ async function runLayout(browser, layout) {
   await page.waitForSelector('#pin-err');
   await shot(page, layout, '21-pz-wrong-pin');
   for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`);
-  await page.waitForSelector('#pz-words');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
   check(true, 'enter PIN: wrong PIN refused, right PIN opens');
   // forgot PIN: hold 3 s, multiplication, new PIN
   await page.click('#pz-close');
@@ -627,12 +706,12 @@ async function runLayout(browser, layout) {
   for (const d of '4321') await page.click(`.pinpad [data-digit="${d}"]`);
   await page.waitForFunction(() => /again/i.test(document.querySelector('#pin-title').textContent));
   for (const d of '4321') await page.click(`.pinpad [data-digit="${d}"]`);
-  await page.waitForSelector('#pz-words');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
   await page.click('#pz-close');
   await J(page, () => window.__spellJump.pz.lock());
   await page.click('#btn-parents');
   for (const d of '4321') await page.click(`.pinpad [data-digit="${d}"]`);
-  await page.waitForSelector('#pz-words');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
   check(true, 'forgot PIN: hold 3 s + multiplication → new PIN works');
   await page.click('#pz-close');
 
@@ -735,7 +814,7 @@ async function runLayout(browser, layout) {
   await J(page, () => window.__spellJump.pz.lock());
   await page.click('#btn-parents');
   for (const d of '4321') await page.click(`.pinpad [data-digit="${d}"]`);
-  await page.waitForSelector('#pz-words');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
   await page.click('.pz-tabs [data-tab="report"]');
   await page.waitForSelector('#pz-table');
   const rep = await J(page, () => ({
@@ -885,6 +964,88 @@ async function runLayout(browser, layout) {
   await ctx.close();
 }
 
+async function selfUpdate(browser) {
+  console.log('\n=== self-update (real service worker) ===');
+  const PORT = 8093, B = `http://localhost:${PORT}`;
+  const dir = mkdtempSync(path.join(os.tmpdir(), 'spell-jump-sw-'));
+  cpSync(root, dir, { recursive: true, filter: (src) => !/[\\/](\.git|node_modules)([\\/]|$)/.test(src) });
+  const srv = spawn('python3', ['-m', 'http.server', String(PORT)], { cwd: dir, stdio: 'ignore' });
+  const up = async () => { try { return (await fetch(B + '/index.html')).ok; } catch (_) { return false; } };
+  for (let i = 0; i < 50 && !(await up()); i++) await new Promise((r) => setTimeout(r, 100));
+  const swFile = path.join(dir, 'sw.js');
+  const bump = (v) => writeFileSync(swFile, readFileSync(swFile, 'utf8').replace(/const VERSION = '[^']+';/, `const VERSION = '${v}';`));
+  const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, hasTouch: true });
+  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (route) => route.fulfill({ status: 200, body: '', contentType: 'text/css' }));
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.addInitScript(() => {
+    sessionStorage.setItem('loads', String((Number(sessionStorage.getItem('loads')) || 0) + 1));
+    window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); }, cancel() {}, addEventListener() {} };
+  });
+  // the page context is replaced by a reload: poll, tolerating that
+  const loads = async () => { for (let i = 0; i < 20; i++) { try { return Number(await page.evaluate(() => sessionStorage.getItem('loads'))); } catch (_) { await page.waitForTimeout(150); } } return -1; };
+  const waitLoads = async (n, ms = 15000) => { const t = Date.now(); while (Date.now() - t < ms) { if (await loads() === n) return true; await page.waitForTimeout(200); } return false; };
+  const visible = () => { document.dispatchEvent(new Event('visibilitychange')); };   // the page is visible: reg.update()
+  try {
+    await page.goto(B + '/index.html?mock=1', { waitUntil: 'load' });
+    await page.waitForFunction(() => !!navigator.serviceWorker.controller, null, { timeout: 15000 });
+    await page.waitForTimeout(1200);
+    check(await loads() === 1, 'first install (clients.claim) does not reload the page');
+    await page.waitForSelector(visibleSel('#screen-players'));
+    await page.click('#pl-add');
+    await tapKeys(page, '#np-keyboard', 'ann');
+    await page.tap('#np-keyboard [data-key="enter"]');
+    await page.waitForSelector(visibleSel('#screen-title'));
+    await page.click('#btn-player');
+    await page.waitForSelector(visibleSel('#screen-players'));
+
+    bump('spell-jump-v9.9.1-test');
+    await page.evaluate(visible);
+    check(await waitLoads(2), 'new sw.js VERSION on the picker: the page reloads itself');
+    await page.waitForSelector(visibleSel('#screen-players'));
+    check(await page.evaluate(async () => (await caches.keys()).join()) === 'spell-jump-v9.9.1-test', 'the new worker controls the page (only its cache is left)');
+    await page.waitForTimeout(2500);
+    check(await loads() === 2 && await page.evaluate(() => window.__spellJump.screen) === 'players', 'reloaded exactly once, still on the picker');
+
+    // spell panel open: no reload, a notice; leaving the run reloads (back to the same player)
+    await page.click('#player-grid [data-player]');
+    await page.waitForSelector(visibleSel('#screen-title'));
+    await page.click('#btn-play');
+    await page.waitForSelector(visibleSel('#screen-garage'));
+    await page.click('#btn-race');
+    await page.click('[data-track="canyon"]');
+    await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 8000 });
+    bump('spell-jump-v9.9.2-test');
+    await page.evaluate(visible);
+    const noticed = await page.waitForFunction(() => /update ready, restarting soon/i.test((document.querySelector("#update-note") || {}).textContent || ""), null, { timeout: 15000 }).then(() => true).catch(() => false);
+    await page.waitForTimeout(600);
+    await page.screenshot({ path: path.join(SHOTS, 'update-toast-spell-panel.png') });
+    await page.waitForTimeout(2000);
+    check(noticed && await loads() === 2 && await page.evaluate(() => window.__spellJump.spellPanel.isOpen), 'spell panel open: "Update ready, restarting soon", no reload');
+    await page.click('#spell .sp-exit');
+    check(await waitLoads(3), 'leaving the run (back to a safe screen) reloads');
+    await page.waitForFunction(() => window.__spellJump && window.__spellJump.screen === 'title', null, { timeout: 8000 }).catch(() => {});
+    check(await page.evaluate(() => window.__spellJump.screen === 'title' && !!window.__spellJump.app.currentPlayerId), 'after the update reload: back on the title with the same player');
+    await page.waitForTimeout(2000);
+    check(await loads() === 3, 'no second reload');
+
+    // network-first: index.html and src/main.js edits show up on the next load (no new VERSION needed)
+    const idx = path.join(dir, 'index.html'), mainJs = path.join(dir, 'src/main.js');
+    writeFileSync(idx, readFileSync(idx, 'utf8').replace('</body>', '<meta name="nf-marker" content="1"></body>'));
+    writeFileSync(mainJs, 'window.__nfMain = 1;\n' + readFileSync(mainJs, 'utf8'));
+    await page.reload({ waitUntil: 'load' });
+    await page.waitForFunction(() => !!window.__spellJump, null, { timeout: 10000 });
+    check(await page.evaluate(() => !!navigator.serviceWorker.controller && !!document.querySelector('meta[name="nf-marker"]') && window.__nfMain === 1), 'network-first: edited index.html and src/main.js served fresh under the worker');
+    check(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  } finally {
+    await ctx.close();
+    srv.kill();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
 async function corruptBoot(browser) {
   console.log('\n=== corrupt data boot ===');
   const ctx = await browser.newContext({ viewport: { width: 844, height: 390 } });
@@ -925,6 +1086,7 @@ const only = process.env.ONLY;
 try {
   for (const l of LAYOUTS) if (!only || only === l.name) await runLayout(browser, l);
   if (!only || only === 'corrupt') await corruptBoot(browser);
+  if (!only || only === 'update') await selfUpdate(browser);
 } catch (e) {
   failures.push('exception: ' + e.message);
   console.error(e);
