@@ -3,7 +3,7 @@
 // physics space. Game logic and rendering work in meters with +y UP.
 
 import { createCourse, CHUNK, SEG } from './course.js';
-import { carGeometry } from './car.js';
+import { carGeometry, resolveLook } from './car.js';
 import * as R from './render.js';
 import { OBSTACLE_KINDS } from '../data/tracks.js';
 import { ratingLetter, ratingScore } from '../data/rating.js';
@@ -57,7 +57,10 @@ export const TUNING = {
   collapseDelay: 0.08, deckHold: 0.3,
   launchSlowmo: 0.3, launchSlowDur: 0.5, landSlowDur: 0.4,
   ringCash: 150, ringNitro: 0.25, coinCash: 20, balloonCash: 200, blimpCash: 500,
-  orbitAlt: 45, orbitCash: 5,
+  orbitAlt: 45, altCash: 8, // v3.3: $ per metre of EVERY flight's peak altitude, paid on landing (cash.air)
+  // v3.3 air pays: $ per second of flight (every flight, kickers included) + Big Air tiers paid once per
+  // flight on landing (min air time s, $, tier), both into cash.stunts
+  airTimeCash: 50, bigAir: [[8, 600, 3], [5, 300, 2], [3, 150, 1]],
   kickMinSpeed: 6, kickerBonus: 0.5,
   // ---- v3 (Spell Jump) ----
   letterCash: 40, letterNitro: 0.25, wordCash: 200, // per letter ring / all letters in order (x coinMult, into cash.air)
@@ -455,18 +458,21 @@ export function createGame(canvas, opts = {}) {
     const bd = R.createBackdrop(track, seed);
     bd.baseY = 0; // terrain baseline: the horizon sits low when the camera is high up
     const gMul = track.gravity || 1;
+    // v3.3: optional skin {body, accent, decal} / sticker {glyph, color}; ids are accepted too
+    const look = resolveLook(car, { skin: cfg.skin || null, sticker: cfg.sticker || null });
     const engine = Engine.create({
       gravity: { x: 0, y: 1, scale: (9.81 * gMul * S) / 1e6 },
       positionIterations: 8, velocityIterations: 8, constraintIterations: 4, enableSleeping: false,
     });
     const r = {
       car, stats, track, seed, course, bd, engine, world: engine.world,
-      geom: Object.assign(carGeometry(car), { rim: bd.night ? 'rgba(225,232,255,0.9)' : null }), gMul, trackGrip: track.grip || 1,
+      look, // v3.3 cosmetics: {skin, sticker} (cosmetics.js entries or null = stock)
+      geom: Object.assign(carGeometry(car, look), { rim: bd.night ? 'rgba(225,232,255,0.9)' : null }), gMul, trackGrip: track.grip || 1,
       phase: 'ramp', t: 0, runT: 0, realT: 0,
       com: { x: 0, y: 0, vx: 0, vy: 0 }, speed: 0, ang: 0, omega: 0, speedNow: 0,
       maxX: 0, distance: 0,
       airTime: 0, totalAir: 0, flightRot: 0, flipMark: 0, flightFlips: 0, prevAngle: 0,
-      flips: 0, frontFlips: 0, backFlips: 0, flipCash: 0, cleanFlips: 0,
+      flips: 0, frontFlips: 0, backFlips: 0, flipCash: 0, bigAirRaw: 0, cleanFlips: 0,
       smashed: 0, smashRaw: 0, landingRaw: 0, landing: null, firstLanding: null,
       maxKmh: 0, speedBucket: 0, launchKmh: 0, launched: false, lastSpeedPopup: -9,
       finishCrossed: false,
@@ -1066,8 +1072,6 @@ export function createGame(canvas, opts = {}) {
         r.orbits++;
         emit({ type: 'orbit', altitude: Math.round(r.alt) });
       }
-      // $5 x peak altitude for an orbit flight, paid as the peak grows
-      if (r.orbitFlight && r.alt > r.orbitPaid) { r.airRaw += T.orbitCash * (r.alt - r.orbitPaid); r.orbitPaid = r.alt; }
     }
     if (r.best > 0 && !r.recordHit && r.distance >= r.best) {
       r.recordHit = true;
@@ -1424,6 +1428,15 @@ export function createGame(canvas, opts = {}) {
       const rem = r.flightRot - r.flipMark;
       if (Math.abs(rem) >= TAU - T.flipGrace) { r.flipMark += Math.sign(rem) * TAU; flip(r, rem > 0 ? 'front' : 'back'); }
     }
+    // v3.3 altitude: $8 x this flight's peak altitude above terrain, paid on landing (cash.air)
+    const peak = r.flightPeak;
+    r.airRaw += T.altCash * peak;
+    // v3.3 Big Air: paid once per flight on landing (crash landings too: the air was earned)
+    const tierDef = T.bigAir.find(([min]) => r.airTime >= min);
+    if (tierDef) {
+      r.bigAirRaw += tierDef[1];
+      emit({ type: 'bigAir', tier: tierDef[2], airTime: Math.round(r.airTime * 100) / 100, cash: Math.round(tierDef[1] * st.coinMult) });
+    }
     r.phase = 'ground';
     r.noContactT = 0;
     r.landing = q;
@@ -1442,7 +1455,7 @@ export function createGame(canvas, opts = {}) {
     r.flightKind = 'hop';
     const bonus = scale * (q === 'perfect' ? 300 : q === 'good' ? 100 : 0);
     r.landingRaw += bonus;
-    emit({ type: 'land', quality: q, impact: Math.round(impact * 10) / 10 });
+    emit({ type: 'land', quality: q, impact: Math.round(impact * 10) / 10, peak: Math.round(peak * 1000) / 1000 });
     const cx = r.com.x, cy = r.com.y;
     const pay = Math.round(bonus * st.coinMult);
     if (!scale && (q === 'perfect' || q === 'good')) {
@@ -1480,7 +1493,7 @@ export function createGame(canvas, opts = {}) {
   function cashBreakdown(r) {
     const m = r.stats.coinMult;
     const distance = Math.round(2 * r.distance * m);
-    const stunts = Math.round((r.flipCash + 10 * r.totalAir) * m);
+    const stunts = Math.round((r.flipCash + T.airTimeCash * r.totalAir + r.bigAirRaw) * m);
     const smash = Math.round(r.smashRaw * m);
     const landing = Math.round(r.landingRaw * m);
     const combo = Math.round(r.comboRaw * m);

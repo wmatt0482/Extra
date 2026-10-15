@@ -113,7 +113,7 @@ game.getState();                 // snapshot, cheap, call per frame from the HUD
 Events delivered to `onEvent(evt)` (all objects have `type`):
 - `{type:'launch', speedKmh}` — car left the lip.
 - `{type:'flip', dir:'front'|'back', count}` — a full rotation completed in the air.
-- `{type:'land', quality:'perfect'|'good'|'rough'|'crash', impact}` — first ground contact after flight.
+- `{type:'land', quality:'perfect'|'good'|'rough'|'crash', impact, peak}` — first ground contact after flight (`peak` = that flight's peak altitude, m; v3.3).
 - `{type:'smash', kind, cash, x, y}` — a prop was destroyed (cash already × coinMult).
 - `{type:'finishLine'}` — crossed the track's finish distance.
 - `{type:'speed', kmh}` — emitted at most once per 10 km/h new max.
@@ -125,7 +125,9 @@ Events delivered to `onEvent(evt)` (all objects have `type`):
 Cash formula (engine computes it; keep these numbers so the economy agent can balance against them):
 - distance: `2 × meters`
 - stunts: `150` per flip, +`50` per extra consecutive flip in the same flight capped at +`250` (flip k pays
-  `150 + min(250, 50·(k−1))`), air time `10/s`
+  `150 + min(250, 50·(k−1))`), air time `50/s` (every flight, kickers included), and Big Air once per flight
+  on landing: air time ≥ 3 s `+150` (BIG AIR), ≥ 5 s `+300` (HUGE AIR), ≥ 8 s `+600` (MEGA AIR), emitted as
+  `{type:'bigAir', tier: 1|2|3, airTime, cash}` (v3.3)
 - smash: per-prop `cash` from `OBSTACLE_KINDS` (a multi-segment wall/billboard pays once)
 - landing: for the jump's landing only (the run's first landing, = `summary.landing`): perfect `300`, good `100`,
   rough `0`, crash `0`. Later hops over crests pay nothing.
@@ -217,7 +219,8 @@ camera moments, and celebrations. Everything below is additive; nothing in the v
    A kicker launch starts a new flight: flips count again, landing quality is scored again (bonus pays half),
    and `rejump` is emitted. Air targets are also placed over kickers.
 6. **Altitude.** `getState().altitude` = meters above terrain. Above 45 m emit `orbit` once per flight: the sky
-   darkens toward space, stars fade in, and an "ORBIT!" popup shows. Cash: `$5 × peak altitude` into `cash.air`.
+   darkens toward space, stars fade in, and an "ORBIT!" popup shows. Cash (v3.3): every flight pays `$8 × its peak altitude` (m above terrain) into `cash.air` on landing
+   (was $5 × peak, orbit flights only).
 7. **Car damage.** A crash landing or an explosion kick knocks parts off (bumper, a door panel, a hubcap as
    debris bodies) and starts a smoke trail. Cosmetic only; the run continues.
 8. **Cinematics.** Launch: 0.5 s slow-mo at 0.3x with letterbox bars sliding in and the camera pulling back,

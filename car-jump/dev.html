@@ -47,6 +47,8 @@
     <label>Car <select id="car"></select></label>
     <label>Track <select id="track"></select></label>
     <label>Seed <input id="seed" type="number" value="42"></label>
+    <label>Skin <select id="skin"></select></label>
+    <label>Sticker <select id="sticker"></select></label>
     <label>Engine <input id="lv-engine" type="range" min="0" max="10" value="0"><span id="v-engine">0</span></label>
     <label>Nitro <input id="lv-nitro" type="range" min="0" max="10" value="0"><span id="v-nitro">0</span></label>
     <label>Suspension <input id="lv-suspension" type="range" min="0" max="10" value="0"><span id="v-suspension">0</span></label>
@@ -72,6 +74,8 @@ import { createGame } from './src/game/engine.js';
 import { CARS, CAR_BY_ID } from './src/data/cars.js';
 import { TRACKS, TRACK_BY_ID } from './src/data/tracks.js';
 import { resolveStats } from './src/data/upgrades.js';
+import { SKINS, STICKERS } from './src/data/cosmetics.js';
+import { resolveLook } from './src/game/car.js';
 
 const q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -81,6 +85,11 @@ for (const t of TRACKS) $('track').add(new Option(t.name + ' (' + t.id + ')', t.
 $('car').value = q.get('car') || 'beater';
 $('track').value = q.get('track') || 'canyon';
 $('seed').value = q.get('seed') || '42';
+// v3.3 cosmetics: ?skin=flames&sticker=star
+for (const k of SKINS) $('skin').add(new Option(k.name, k.id));
+for (const k of STICKERS) $('sticker').add(new Option(k.name, k.id));
+$('skin').value = q.get('skin') || 'stock';
+$('sticker').value = q.get('sticker') || 'none';
 const UPS = ['engine', 'nitro', 'suspension', 'bonus'];
 for (const u of UPS) {
   const v = q.get(u) ?? q.get('lvl') ?? '0';
@@ -135,7 +144,8 @@ function startRun() {
   const best = q.get('best') != null ? Number(q.get('best')) : null;
   const shake = q.get('shake') != null ? Number(q.get('shake')) : 1;
   const word = $('letters').value.trim();
-  game.start({ car, stats: resolveStats(car, levels), track, seed: Number($('seed').value) | 0, bestDistance: best, shake,
+  const look = resolveLook(car, { skin: $('skin').value, sticker: $('sticker').value });
+  game.start({ skin: look.skin, sticker: look.sticker, car, stats: resolveStats(car, levels), track, seed: Number($('seed').value) | 0, bestDistance: best, shake,
     letters: word ? [...word] : null, powerScale: Number($('power').value), nitroScale: Number($('nitroS').value) });
 }
 function setLaunchPower() {

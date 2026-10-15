@@ -1,6 +1,8 @@
 // Procedural car drawing for the garage / daily preview. Uses car.body (+y up) and car.wheels only.
+// v3.3 cosmetics: pass { skin, sticker } (ids like 'flames' / 'star', or cosmetics.js entries; null = stock).
+import { carGeometry, resolveLook, drawDecal, drawSticker, drawRoofEmblem } from '../game/car.js';
 
-export function drawCar(canvas, car, { spin = 0, bob = 0, floor = true, dx = 0, alpha = 1 } = {}) {
+export function drawCar(canvas, car, { spin = 0, bob = 0, floor = true, dx = 0, alpha = 1, skin = null, sticker = null } = {}) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const r = canvas.getBoundingClientRect();
   const W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height));
@@ -36,12 +38,27 @@ export function drawCar(canvas, car, { spin = 0, bob = 0, floor = true, dx = 0, 
   ctx.scale(s, -s);
   const lw = 2.4 / s;
 
-  paintCar(ctx, car, lw, spin);
+  paintCar(ctx, car, lw, spin, { skin, sticker });
   ctx.restore();
 }
 
+// Skinned geometry per car + look (built once; decal paths/gradients are cached on it).
+const lookCache = new WeakMap();
+function lookGeom(car, look) {
+  const { skin, sticker } = resolveLook(car, look);
+  if (!skin && !sticker) return null;
+  const key = (skin ? skin.id || skin.body + skin.decal : '-') + '|' + (sticker ? sticker.id || sticker.glyph : '-');
+  let m = lookCache.get(car);
+  if (!m) lookCache.set(car, (m = new Map()));
+  let g = m.get(key);
+  if (!g) m.set(key, (g = carGeometry(car, { skin, sticker })));
+  return g;
+}
+
 // Paint a car in car space (meters, +y up) on an already-transformed context. lw = 1 px in car units.
-export function paintCar(ctx, car, lw, spin = 0) {
+export function paintCar(ctx, car, lw, spin = 0, look = null) {
+  const lg = look ? lookGeom(car, look) : null;
+  if (lg) car = { ...car, color: lg.color, accent: lg.accent };
   let maxY = -Infinity;
   for (const [, y] of car.body) maxY = Math.max(maxY, y);
   for (const w of car.wheels) maxY = Math.max(maxY, w.y + w.r);
@@ -57,6 +74,7 @@ export function paintCar(ctx, car, lw, spin = 0) {
   // windows: clip to body, fill the cabin band above the beltline
   ctx.save();
   ctx.clip(body);
+  if (lg && lg.decal) drawDecal(ctx, lg, lw);
   const belt = minYBody(car) + (maxYBody(car) - minYBody(car)) * 0.5;
   ctx.fillStyle = 'rgba(160,215,255,.9)';
   const front = maxXBody(car), rear = minXBody(car);
@@ -73,12 +91,15 @@ export function paintCar(ctx, car, lw, spin = 0) {
   ctx.beginPath();
   ctx.moveTo(rear + (front - rear) * 0.3, maxY + 1); ctx.lineTo(rear + (front - rear) * 0.38, belt); ctx.lineTo(rear + (front - rear) * 0.43, belt); ctx.lineTo(rear + (front - rear) * 0.35, maxY + 1);
   ctx.fill();
-  // accent stripe
-  ctx.fillStyle = car.accent;
-  ctx.fillRect(rear - 1, belt - 0.22, front - rear + 2, 0.13);
+  // accent stripe (a skin's decal replaces it)
+  if (!(lg && lg.decal)) {
+    ctx.fillStyle = car.accent;
+    ctx.fillRect(rear - 1, belt - 0.22, front - rear + 2, 0.13);
+  }
   // headlight / taillight
   ctx.fillStyle = '#fff6b0'; ctx.fillRect(front - 0.18, minYBody(car) + 0.2, 0.25, 0.16);
   ctx.fillStyle = '#ff3b3b'; ctx.fillRect(rear - 0.05, minYBody(car) + 0.22, 0.22, 0.14);
+  if (lg && lg.sticker) drawSticker(ctx, lg, lw);
   ctx.restore();
 
   ctx.lineWidth = lw * 1.4; ctx.strokeStyle = '#05071a'; ctx.lineJoin = 'round';
@@ -88,6 +109,7 @@ export function paintCar(ctx, car, lw, spin = 0) {
   ctx.lineWidth = lw * 2; ctx.strokeStyle = 'rgba(255,255,255,.22)';
   ctx.translate(0, -lw * 1.2); ctx.stroke(body);
   ctx.restore();
+  if (lg && lg.decal === 'crown') drawRoofEmblem(ctx, lg, lw * 1.4);
 
   // wheels
   for (const w of car.wheels) {

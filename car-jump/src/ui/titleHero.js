@@ -3,6 +3,8 @@
 // restarts. Drawn on a canvas laid over the backdrop SVG using the SVG's own coordinate system
 // (viewBox 1600×900, xMidYMax slice), so the car rides the painted ramp exactly.
 // Modes: 'anim' (title screen), 'static' (other menus / reduced motion: one mid-air pose), 'off'.
+// v3.3: the equipped look comes from getLook() -> {skin, sticker} (ids or cosmetics.js entries) or
+// hero.setLook({skin, sticker}); null / missing = stock paint.
 import { paintCar } from './carPreview.js';
 
 const VB_W = 1600, VB_H = 900;
@@ -33,8 +35,10 @@ function groundAt(x) {
 const smooth = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
 
-export function createTitleHero(canvas, getCar) {
+export function createTitleHero(canvas, getCar, getLook = null) {
   const ctx = canvas.getContext('2d');
+  let lookOverride = null;
+  const currentLook = () => lookOverride || (typeof getLook === 'function' ? getLook() : null) || null;
   let W = 1, H = 1, dpr = 1, raf = 0, mode = 'off', t0 = 0, lastT = 0;
   let trail = [], dust = [], landedLoop = -1, frameCount = 0;
 
@@ -125,7 +129,7 @@ export function createTitleHero(canvas, getCar) {
     ctx.translate(p.x, p.y);
     ctx.rotate(p.a);
     ctx.scale(PPM, -PPM);
-    paintCar(ctx, car, 1.6 / (PPM * s), p.spin || 0);
+    paintCar(ctx, car, 1.6 / (PPM * s), p.spin || 0, currentLook());
     ctx.restore();
   }
 
@@ -243,5 +247,6 @@ export function createTitleHero(canvas, getCar) {
     },
     get mode() { return mode; },
     redraw() { if (mode === 'static') drawStatic(); },
+    setLook(look) { lookOverride = look || null; if (mode === 'static') drawStatic(); },
   };
 }

@@ -17,6 +17,7 @@ const AIR_T = 3.2;            // first flight (≥ 3 s → the HUD's BIG AIR ban
 const LAND_T = RAMP_T + AIR_T;
 const KICK_T = LAND_T + 1.4;  // kicker relaunch
 const AIR2_T = 1.2;           // second flight
+const bigAirCash = (t) => (t >= 8 ? 600 : t >= 5 ? 300 : t >= 3 ? 150 : 0);   // v3.3 Big Air tiers (SPEC)
 const LAND2_T = KICK_T + AIR2_T;
 const RUN_T = LAND2_T + 1.4;  // total scripted run length (~9.2 s)
 const COMBO_WINDOW = 1.5;
@@ -130,15 +131,16 @@ export function createGame(canvas, opts = {}) {
   }
 
   // SPEC cash formula (each part × coinMult and rounded):
-  //   stunts = flip k of a flight pays 150 + min(250, 50·(k−1)), + 10/s air time
+  //   stunts = flip k of a flight pays 150 + min(250, 50·(k−1)), + 50/s air time, + Big Air per flight
+  //   (≥3 s $150, ≥5 s $300, ≥8 s $600)
   //   smash = per-prop cash; combo = extra from the chain multiplier; landing = 300/100 for the jump's
-  //   landing, half for kicker landings; air = rings $150, coins $20, balloon $200, blimp $500, + $5 × peak
-  //   altitude on an orbit flight.
+  //   landing, half for kicker landings; air = rings $150, coins $20, balloon $200, blimp $500, + $8 × peak
+  //   altitude of every flight (paid on landing).
   function cashParts(r) {
     const m = r.stats.coinMult;
     const parts = {
       distance: Math.round(2 * Math.floor(r.distance) * m),
-      stunts: Math.round((r.stuntCash + r.airTime * 10) * m),
+      stunts: Math.round((r.stuntCash + r.airTime * 50 + (r.landed ? bigAirCash(AIR_T) : 0) + (r.landed2 ? bigAirCash(AIR2_T) : 0)) * m),
       smash: r.smashCash,
       landing: r.landingCash,
       combo: r.comboCash,
@@ -267,11 +269,13 @@ export function createGame(canvas, opts = {}) {
     } else if (r.t < KICK_T || (r.t >= LAND2_T)) {
       if (!r.landed) {
         r.landed = true; r.airTime = AIR_T;
-        if (r.orbited) r.airCash += Math.round(5 * r.peakAlt * r.stats.coinMult);
+        r.airCash += Math.round(8 * r.peakAlt * r.stats.coinMult);   // v3.3: every flight's peak altitude
+        if (bigAirCash(AIR_T)) emit({ type: 'bigAir', tier: AIR_T >= 8 ? 3 : AIR_T >= 5 ? 2 : 1, airTime: AIR_T, cash: Math.round(bigAirCash(AIR_T) * r.stats.coinMult) });
         land(r, r.quality, false);
       }
       if (r.t >= LAND2_T && !r.landed2) {
         r.landed2 = true; r.airTime = AIR_T + AIR2_T;
+        r.airCash += Math.round(8 * r.peakAlt2 * r.stats.coinMult);
         land(r, r.quality === 'rough' ? 'good' : 'perfect', true);
       }
       r.phase = 'ground';

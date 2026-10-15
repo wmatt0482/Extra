@@ -283,7 +283,7 @@ try {
     const s = p.finished;
     console.log('v2 super/moon/L10 seed 7:', JSON.stringify({ orbit: orb, altitudeAfter: alt, maxAltitude: s.maxAltitude, rating: s.rating, cash: s.cash }));
     check(orb.length >= 1 && orb[0].altitude >= 45, `(5) orbit fires above 45 m (${JSON.stringify(orb[0] || null)})`);
-    check(s.maxAltitude >= 45 && s.cash.air >= 5 * 45, `(5) summary.maxAltitude ${s.maxAltitude} m, orbit pays into cash.air ($${s.cash.air})`);
+    check(s.maxAltitude >= 45 && s.cash.air >= 8 * 45, `(5) summary.maxAltitude ${s.maxAltitude} m, altitude pays into cash.air ($${s.cash.air})`);
     check(sumOK(s) && RATINGS.includes(s.rating), `(6) moon cash adds up, rating ${s.rating}`);
     check(!p.bad && errors.length === 0, `(7) no NaN / console errors (${p.bad || ''} ${errors.join(' | ')})`);
     await context.close();
@@ -377,12 +377,14 @@ try {
     p = await stepUntil(page, 'release');
     const s = p.finished;
     const lr = await evs(page, 'letterRing'), wc = await evs(page, 'wordComplete'), air = await evs(page, 'airTarget');
-    const airRaw = air.reduce((a, e) => a + e.cash / m, 0) + 40 * lr.length + (wc.length ? 200 : 0);
+    const lands = await evs(page, 'land');
+    // v3.3: + $8 x each flight's peak altitude (land event .peak)
+    const airRaw = air.reduce((a, e) => a + e.cash / m, 0) + 40 * lr.length + (wc.length ? 200 : 0) + lands.reduce((a, e) => a + 8 * e.peak, 0);
     console.log('v3 beater/canyon/L5 seed 1 letters:', JSON.stringify({ letterRings: lr.map((e) => `${e.letter}${e.index}${e.inOrder ? '' : '!'}`).join(' '), wordComplete: wc, airTargets: air.map((e) => e.kind[0]).join(''), letters: s.letters, coinMult: m, cashAir: s.cash.air, expectAir: Math.round(airRaw * m) }));
     check(lr.length >= 1 && lr.every((e, k) => e.letter === word[e.index] && (k === 0 || e.index > lr[k - 1].index)), '(v3.a) letterRing events carry the word\'s letters at their indices, in order');
     check(lr.length === word.length && lr.every((e) => e.inOrder) && wc.length === 1 && wc[0].cash === Math.round(200 * m), `(v3.a) GAS-only flight collects all ${word.length} letters in order and fires wordComplete $${wc[0] && wc[0].cash}`);
     check(lr.every((e) => e.cash === Math.round(40 * m) && e.nitroRefill === 0.25), '(v3.a) each letter pays $40 x coinMult and refills 25% nitro');
-    check(Math.abs(s.cash.air - Math.round(airRaw * m)) <= 1, `(v3.a) cash.air ${s.cash.air} = plain air targets + (40 x ${lr.length}${wc.length ? ' + 200' : ''}) x ${m}`);
+    check(Math.abs(s.cash.air - Math.round(airRaw * m)) <= 1, `(v3.a) cash.air ${s.cash.air} = plain air targets + (40 x ${lr.length}${wc.length ? ' + 200' : ''} + 8 x flight peaks) x ${m}`);
     check(air.every((e) => e.kind !== 'ring' || e.cash === Math.round(150 * m)) && s.rings === air.filter((e) => e.kind === 'ring').length && s.airTargets === air.length, `(v3.a) no airTarget for labeled rings (plain rings ${s.rings}, airTargets ${s.airTargets})`);
     check(s.letters.collected === lr.length && s.letters.total === word.length && s.letters.inOrder === true, `(v3.a) summary.letters ${JSON.stringify(s.letters)}`);
     check(sumOK(s), '(v3.a) cash adds up');
@@ -432,12 +434,46 @@ try {
       await stepUntil(page, 'release', "ev.some((e) => e.type === 'land')", 0);
       const landX = await page.evaluate(() => window.__rr.game.debugInfo().x);
       const p = await stepUntil(page, 'release');
-      res[pw] = { launchKmh: (await evs(page, 'launch'))[0].speedKmh, landX: Math.round(landX * 10) / 10, distance: p.finished.distance };
+      res[pw] = { launchKmh: (await evs(page, 'launch'))[0].speedKmh, landX: Math.round(landX * 10) / 10, distance: p.finished.distance,
+        airTime: p.finished.airTime, cash: p.finished.cash, ok: sumOK(p.finished), bigAir: (await evs(page, 'bigAir')).map((e) => e.tier) };
     }
     console.log('v3 powerScale 0.65 vs 1.0:', JSON.stringify(res));
+    // v3.3: air pays ($50/s + Big Air tiers), so the longer flight on the same seed must pay more in total
+    check(res['1'].airTime > res['0.65'].airTime && res['1'].cash.total > res['0.65'].cash.total && res['1'].ok && res['0.65'].ok,
+      `(v3.3 air) power 1.0 flies longer (${res['1'].airTime} vs ${res['0.65'].airTime} s) and pays more ($${res['1'].cash.total} vs $${res['0.65'].cash.total}), totals add up`);
     check(res['0.65'].launchKmh < res['1'].launchKmh - 5, `(v3.b) powerScale 0.65 launches slower (${res['0.65'].launchKmh} vs ${res['1'].launchKmh} km/h)`);
     check(res['0.65'].landX < res['1'].landX, `(v3.b) powerScale 0.65 lands shorter (${res['0.65'].landX} vs ${res['1'].landX} m)`);
     check(errors.length === 0, `(v3.b) no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- v3.3: car cosmetics: a skinned + stickered car renders differently from stock, no errors ----
+  {
+    const { page, context, errors } = await openRun(browser, { car: 'beater', track: 'canyon', seed: '3' });
+    const setPanel = (o) => page.evaluate((o) => { for (const [k, v] of Object.entries(o)) document.getElementById(k).value = v; }, o);
+    // grab a crop of the game canvas around the parked car, after the same number of fixed steps
+    const grab = async (skin, sticker) => {
+      await setPanel({ skin, sticker });
+      await restartPaused(page);
+      await page.evaluate(() => window.__rr.game.debugStep(30));
+      await frame(page);
+      return page.evaluate(() => {
+        const c = document.getElementById('c'), d = window.__rr.game.debugInfo();
+        const k = c.width / d.view.W, z = d.cam.z;
+        const sx = (d.view.W / 2 + (d.x - d.cam.x) * z + d.cam.sx) * k, sy = (d.view.H / 2 + (d.cam.y - d.y) * z + d.cam.sy) * k;
+        const w = Math.round(70 * k), h = Math.round(40 * k);
+        const px = c.getContext('2d').getImageData(Math.round(sx - w / 2), Math.round(sy - h / 2), w, h).data;
+        return Array.from(px);
+      });
+    };
+    const diff = (a, b) => { let n = 0; for (let i = 0; i < a.length; i += 4) if (Math.abs(a[i] - b[i]) + Math.abs(a[i + 1] - b[i + 1]) + Math.abs(a[i + 2] - b[i + 2]) > 30) n++; return n / (a.length / 4); };
+    const stock1 = await grab('stock', 'none');
+    const stock2 = await grab('stock', 'none');
+    const skinned = await grab('flames', 'star');
+    await page.screenshot({ path: path.join(SHOTS, 'v33-skin-flames-star.png') });
+    const same = diff(stock1, stock2), changed = diff(stock1, skinned);
+    console.log('v3.3 cosmetics crop diff:', JSON.stringify({ stockVsStock: same, stockVsFlames: Math.round(changed * 1000) / 1000 }));
+    check(same < 0.01 && changed > 0.03, `(v3.3 skin) flames + star sticker changes the car crop (${(changed * 100).toFixed(1)}% px) vs stock (stock repeat ${(same * 100).toFixed(1)}%)`);
+    check(errors.length === 0, `(v3.3 skin) no console errors (${errors.join(' | ')})`);
     await context.close();
   }
 } finally {
