@@ -122,7 +122,7 @@ function onEvent(evt) {
       `cash       dist ${s.cash.distance} + stunts ${s.cash.stunts}\n           + smash ${s.cash.smash} + landing ${s.cash.landing}\n` +
       `           + combo ${s.cash.combo} + air ${s.cash.air}\n           = $${s.cash.total}   rating ${s.rating}\n` +
       `combo ${s.bestCombo}  booms ${s.explosions}  rings ${s.rings}  coins ${s.coins}  kickers ${s.rejumps}  alt ${s.maxAltitude} m\n` +
-      `letters    ${s.letters.collected} / ${s.letters.total}${s.letters.inOrder ? '  WORD COMPLETE' : ''}\nduration   ${s.durationSec} s`;
+      `letters    ${s.letters.collected} / ${s.letters.total}${s.letters.inOrder ? '  WORD COMPLETE' : ''}\nduration   ${s.durationSec} s${s.finale ? '   GRAND FINALE' : ''}`;
     $('results').style.display = 'block';
   }
   if (evt.type !== 'speed' || evt.kmh % 50 < 10) {
@@ -133,7 +133,9 @@ function onEvent(evt) {
   }
 }
 
-const game = (rr.game = createGame($('c'), { onEvent, reducedMotion: q.get('rm') === '1', simSpeed: Number(q.get('sim')) || 1 }));
+// ?finale=1 forces the Grand Finale on every run end, ?finale=0 leaves only crash ends (default chance 0.3)
+const game = (rr.game = createGame($('c'), { onEvent, reducedMotion: q.get('rm') === '1', simSpeed: Number(q.get('sim')) || 1,
+  finaleChance: q.get('finale') != null ? Number(q.get('finale')) : undefined }));
 
 function startRun() {
   const car = CAR_BY_ID[$('car').value];

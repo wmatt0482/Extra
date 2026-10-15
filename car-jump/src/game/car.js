@@ -114,6 +114,73 @@ export function carGeometry(car, look = {}) {
   };
 }
 
+// ---------- Grand Finale: the body cut into panels ----------
+// Sutherland-Hodgman clip of a (possibly concave) polygon to an axis-aligned box.
+function clipBox(poly, x0, y0, x1, y1) {
+  let p = poly;
+  for (const [ax, v, sg] of [[0, x0, 1], [0, x1, -1], [1, y0, 1], [1, y1, -1]]) {
+    const out = [];
+    for (let i = 0; i < p.length; i++) {
+      const a = p[i], b = p[(i + 1) % p.length];
+      const ia = sg * (a[ax] - v) >= 0, ib = sg * (b[ax] - v) >= 0;
+      if (ia) out.push(a);
+      if (ia !== ib) { const t = (v - a[ax]) / (b[ax] - a[ax]); out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); }
+    }
+    p = out;
+    if (p.length < 3) return [];
+  }
+  return p;
+}
+function polyArea(p) {
+  let a = 0;
+  for (let i = 0; i < p.length; i++) { const q = p[(i + 1) % p.length]; a += p[i][0] * q[1] - q[0] * p[i][1]; }
+  return Math.abs(a) / 2;
+}
+// The chassis as 7 chunky pieces (trunk, door, hood, bumper, roof halves with their glass, engine block), in
+// car-local metres. Each: { part, poly (relative to cx, cy), cx, cy, w, h, color, stripe?, glass? }.
+// Cached on the geometry; drawn by render.js drawCarPiece.
+export function carPieces(g) {
+  if (g.pieces) return g.pieces;
+  const L = g.maxX - g.minX, h = g.maxY - g.minY;
+  const xa = g.minX + 0.3 * L, xb = g.minX + 0.64 * L, xr = g.winC[0];
+  const yS = g.minY + 0.28 * h, yB = g.beltY;
+  const sy0 = g.minY + h * 0.36, sy1 = sy0 + Math.max(0.09, h * 0.08);
+  const cells = [
+    ['trunk', g.minX - 1, g.minY - 1, xa, yB, g.color, true],
+    ['door', xa, g.minY - 1, xb, yB, g.color, true],
+    ['hood', xb, yS, g.maxX + 1, yB, g.color, true],
+    ['bumper', xb, g.minY - 1, g.maxX + 1, yS, '#9aa0aa', false],
+    ['roof', g.minX - 1, yB, xr, g.maxY + 1, g.color, false],
+    ['screen', xr, yB, g.maxX + 1, g.maxY + 1, g.color, false],
+  ];
+  const out = [];
+  for (const [part, x0, y0, x1, y1, color, stripe] of cells) {
+    const poly = clipBox(g.body, x0, y0, x1, y1);
+    if (poly.length < 3 || polyArea(poly) < 0.06) continue;
+    let px0 = Infinity, px1 = -Infinity, py0 = Infinity, py1 = -Infinity;
+    for (const [x, y] of poly) { px0 = Math.min(px0, x); px1 = Math.max(px1, x); py0 = Math.min(py0, y); py1 = Math.max(py1, y); }
+    const cx = (px0 + px1) / 2, cy = (py0 + py1) / 2;
+    const rel = (pts) => pts.map(([x, y]) => [x - cx, y - cy]);
+    const piece = { part, poly: rel(poly), cx, cy, w: Math.max(0.2, px1 - px0), h: Math.max(0.15, py1 - py0), color, outline: g.outline };
+    if (stripe) {
+      const st = clipBox(poly, x0, sy0, x1, sy1);
+      if (st.length >= 3) piece.stripe = { poly: rel(st), color: g.accent };
+    }
+    if (part === 'roof' || part === 'screen') {
+      const gl = clipBox(g.win, x0, y0, x1, y1);
+      if (gl.length >= 3 && polyArea(gl) > 0.02) piece.glass = rel(gl);
+    }
+    out.push(piece);
+  }
+  // and the engine block from inside, a dark chunky slab
+  const ew = Math.min(0.9, L * 0.2), eh = Math.min(0.5, h * 0.4);
+  const ecx = g.minX + 0.72 * L, ecy = g.minY + h * 0.45;
+  out.push({ part: 'engine', poly: [[-ew / 2, -eh / 2], [ew / 2, -eh / 2], [ew / 2, eh / 2 - 0.08], [ew / 2 - 0.12, eh / 2], [-ew / 2, eh / 2]],
+    cx: ecx, cy: ecy, w: ew, h: eh, color: '#4a4752', outline: g.outline, stripe: { poly: [[-ew / 2 + 0.08, eh / 2 - 0.16], [ew / 2 - 0.1, eh / 2 - 0.16], [ew / 2 - 0.1, eh / 2 - 0.08], [-ew / 2 + 0.08, eh / 2 - 0.08]], color: '#8a8f9c' } });
+  g.pieces = out;
+  return out;
+}
+
 function pathPoly(ctx, pts) {
   ctx.beginPath();
   ctx.moveTo(pts[0][0], pts[0][1]);

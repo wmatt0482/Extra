@@ -41,7 +41,7 @@ import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdat
 import { createSyncClient } from './sync/client.js';
 import { applyImport, decodeTransfer, encodeTransfer } from './meta/transfer.js';
 
-const VERSION = '3.4.1';
+const VERSION = '3.4.2';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;
@@ -810,6 +810,8 @@ async function boot() {
         break;
       case 'comboEnd': hud.comboEnd(evt); run.rampage = false; break;
       case 'explosion': Audio.explosion(evt.chain || 0); break;
+      case 'finaleWhine': Audio.whine(); break;                                      // Grand Finale: the car is about to go
+      case 'finale': Audio.explosion(0); hud.banner('finale', 'Grand Finale!'); break;  // ... KABOOM (+cash into stunts)
       case 'airTarget':
         if (evt.kind === 'ring') { Audio.ring(); run.rings += 1; }
         else if (evt.kind === 'coin') Audio.coin();

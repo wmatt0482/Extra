@@ -3,7 +3,7 @@
 // physics space. Game logic and rendering work in meters with +y UP.
 
 import { createCourse, CHUNK, SEG } from './course.js';
-import { carGeometry, resolveLook } from './car.js';
+import { carGeometry, resolveLook, carPieces } from './car.js';
 import * as R from './render.js';
 import { OBSTACLE_KINDS } from '../data/tracks.js';
 import { ratingLetter, ratingScore } from '../data/rating.js';
@@ -69,6 +69,10 @@ export const TUNING = {
   letterClear: 4.5, // plain air targets this close to a letter ring are removed (no clutter between letters)
   letterFitSteps: 4, // the letter arc is refitted to the real flight this many steps after the lip
   letterGlide: 0.35, // s (real time): rings glide from the preview arc onto the fitted one
+  // ---- Grand Finale: the car blows up (cartoon, no penalty) at the end of crash runs and some others ----
+  finaleChance: 0.3, // default chance on a clean run end (opts.finaleChance overrides; crash ends always go)
+  finaleCash: 150, // flat bonus x coinMult, into cash.stunts
+  finaleWobble: 0.3, finaleDur: 1.6, // s: wobble + whine, then KABOOM; finish fires finaleDur after the stop
 };
 const T = TUNING;
 // Screen-space popup lanes (fractions of the view height). The HUD's banners and toasts own the band
@@ -87,6 +91,7 @@ export function createGame(canvas, opts = {}) {
   const reducedMotion = !!opts.reducedMotion;
   let shakeMul = 1; // game.start({ shake }) 0..1; reducedMotion still wins
   const simSpeed = Math.max(0.1, Number(opts.simSpeed) || 1);
+  const finaleChance = opts.finaleChance == null || opts.finaleChance === '' ? T.finaleChance : clamp(Number(opts.finaleChance) || 0, 0, 1);
 
   const ctx = canvas.getContext('2d');
   canvas.style.width = '100%';
@@ -502,6 +507,8 @@ export function createGame(canvas, opts = {}) {
       // R1: no letter glyph is drawn and getState().letters reveals nothing until the car leaves the ramp lip
       // (phase 'air'): the rings show '?' while the child may still be spelling behind the panel
       lettersRevealed: false, glyphLeaks: 0,
+      // Grand Finale: decided at the run end (a dedicated seeded roll, so replays agree), see startFinale
+      finale: null, finaleRaw: 0, finaleRoll: mulberry32((seed ^ 0xf1a1e5) >>> 0)(), endT: 0, carGone: false, fxN: 0,
     };
     r.nitroFuel = r.nitroTank * r.nitroScale; // the tank can start above 100% (the bar clamps at full)
     // ramp bodies
@@ -670,11 +677,29 @@ export function createGame(canvas, opts = {}) {
       const cash = Math.round(def.cash * r.stats.coinMult);
       emit({ type: 'explosion', x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, cash, chain });
     }
+    blastArea(r, x, y, chain, pr);
+    const R0 = T.blastR;
+    // the car gets a modest kick (and loses a part if it was close)
+    const dx = r.com.x - x, dy = r.com.y - y, dist = Math.hypot(dx, dy);
+    if (dist < R0 && live) {
+      const k = 1 - dist / R0;
+      const ux = dist > 1e-3 ? dx / dist : 0, uy = dist > 1e-3 ? dy / dist : 1;
+      // mostly a hop: the horizontal part never brakes the car much (it usually drove into the drum)
+      r.kick.x += clamp(ux * T.blastKick * k, 0, T.blastKick);
+      r.kick.y += Math.max(0, uy) * T.blastKick * k * 0.4 + T.blastLift * k;
+      if (dist < 4.5 && r.t - r.damageT > 0.6) { r.wantDamage = Math.max(r.wantDamage, 1); r.damageT = r.t; }
+    }
+    explosionFx(r, x, y, chain);
+  }
+
+  // A blast at (x, y): props within blastR are blown apart (explosives queued: chain reaction), loose
+  // debris gets thrown. Shared by explosive props and the Grand Finale.
+  function blastArea(r, x, y, chain, skip) {
     const R0 = T.blastR;
     const blast = { x, y, chain: chain + 1 };
     // props in range: explosives are queued (chain reaction), the rest are blown apart now
     for (const q of r.props) {
-      if (q.smashed || q === pr) continue;
+      if (q.smashed || q === skip) continue;
       const qx = q.x + q.nx * q.h * 0.5, qy = q.y + q.ny * q.h * 0.5;
       const d = Math.hypot(qx - x, qy - y);
       if (d > R0) continue;
@@ -693,17 +718,9 @@ export function createGame(canvas, opts = {}) {
       const k = 12 * (1 - dist / R0);
       addV(b, (dx / dist) * k, (dy / dist) * k + 3);
     }
-    // the car gets a modest kick (and loses a part if it was close)
-    const dx = r.com.x - x, dy = r.com.y - y, dist = Math.hypot(dx, dy);
-    if (dist < R0 && live) {
-      const k = 1 - dist / R0;
-      const ux = dist > 1e-3 ? dx / dist : 0, uy = dist > 1e-3 ? dy / dist : 1;
-      // mostly a hop: the horizontal part never brakes the car much (it usually drove into the drum)
-      r.kick.x += clamp(ux * T.blastKick * k, 0, T.blastKick);
-      r.kick.y += Math.max(0, uy) * T.blastKick * k * 0.4 + T.blastLift * k;
-      if (dist < 4.5 && r.t - r.damageT > 0.6) { r.wantDamage = Math.max(r.wantDamage, 1); r.damageT = r.t; }
-    }
-    // fx
+  }
+
+  function explosionFx(r, x, y, chain) {
     r.shake = Math.max(r.shake, 12 + Math.min(8, chain * 2));
     // one flash per chain (the full-screen blend is the priciest thing a blast draws); later links just shake
     if (chain === 0) { r.flash = Math.max(r.flash, reducedMotion ? 0.14 : 0.26); r.flashCol = '255,232,170'; }
@@ -755,16 +772,17 @@ export function createGame(canvas, opts = {}) {
       Composite.remove(r.world, old.body);
     }
     const o = {
-      angle: r.fxRand() * TAU, friction: 0.7, restitution: d.round ? 0.45 : 0.25, frictionAir: 0.005,
+      angle: d.angle != null ? d.angle : r.fxRand() * TAU, friction: 0.7, restitution: d.round ? 0.45 : 0.25, frictionAir: 0.005,
       collisionFilter: { category: CAT_DEBRIS, mask: CAT_TERRAIN }, label: 'debris', plugin: { rr: { t: 'debris' } },
     };
     const b = d.round ? Bodies.circle(d.x * S, -d.y * S, (d.w / 2) * S, o, 10) : Bodies.rectangle(d.x * S, -d.y * S, d.w * S, d.h * S, o);
     Body.setMass(b, 0.2);
     Body.setVelocity(b, { x: d.vx * U, y: -d.vy * U });
-    Body.setAngularVelocity(b, (r.fxRand() - 0.5) * 0.5);
+    Body.setAngularVelocity(b, d.spin != null ? d.spin : (r.fxRand() - 0.5) * 0.5);
     Composite.add(r.world, b);
     const life = d.life || 2.2 + r.fxRand() * 1.2;
-    r.debris.push({ body: b, w: d.w, h: d.h, color: d.color, life, max: life, round: !!d.round });
+    // finale pieces: piece = a car panel (car.js carPieces) or {wheel: radius}; trail = s of fire trail left
+    r.debris.push({ body: b, w: d.w, h: d.h, color: d.color, life, max: life, round: !!d.round, piece: d.piece || null, trail: d.trail || 0 });
   }
 
   // ---------- fx ----------
@@ -863,7 +881,7 @@ export function createGame(canvas, opts = {}) {
     if (!isFinite(r.com.x) || !isFinite(r.com.y) || !isFinite(r.speed)) {
       console.warn('[engine] non-finite car state; ending run');
       r.com.x = r.maxX; r.com.y = 0; r.com.vx = 0; r.com.vy = 0; r.speed = 0;
-      if (r.phase !== 'done') endRun(r, 'error');
+      if (r.phase !== 'done') endRun(r, 'error', true);
       return;
     }
     // hard safety cap on speed
@@ -874,6 +892,7 @@ export function createGame(canvas, opts = {}) {
       if (r.combo.timer <= 0) endCombo(r);
     }
     if (r.phase !== 'done') logic(r, dt, pre);
+    if (r.finale) finaleStep(r, dt);
     // debris lifetimes
     for (let i = r.debris.length - 1; i >= 0; i--) {
       const d = r.debris[i];
@@ -1493,7 +1512,7 @@ export function createGame(canvas, opts = {}) {
   function cashBreakdown(r) {
     const m = r.stats.coinMult;
     const distance = Math.round(2 * r.distance * m);
-    const stunts = Math.round((r.flipCash + T.airTimeCash * r.totalAir + r.bigAirRaw) * m);
+    const stunts = Math.round((r.flipCash + T.airTimeCash * r.totalAir + r.bigAirRaw + r.finaleRaw) * m);
     const smash = Math.round(r.smashRaw * m);
     const landing = Math.round(r.landingRaw * m);
     const combo = Math.round(r.comboRaw * m);
@@ -1507,12 +1526,20 @@ export function createGame(canvas, opts = {}) {
     cb.count = 0; cb.mult = 1; cb.extra = 0; cb.timer = 0;
   }
 
-  function endRun(r, reason) {
+  // instant: end now without a Grand Finale (stop(), errors)
+  function endRun(r, reason, instant = false) {
     if (r.phase === 'done') return;
     endCombo(r); // a chain still running when the run ends is closed (and reported) first
     r.phase = 'done';
     r.endReason = reason;
     r.nitroOn = false;
+    r.endT = r.t;
+    if (!instant && wantFinale(r, reason)) { startFinale(r); return; }
+    emitFinish(r);
+  }
+
+  function emitFinish(r) {
+    if (r.summary) return;
     const cash = cashBreakdown(r);
     const summary = {
       distance: Math.round(r.distance * 10) / 10,
@@ -1523,7 +1550,7 @@ export function createGame(canvas, opts = {}) {
       landing: r.firstLanding,
       finishCrossed: r.finishCrossed,
       cash,
-      durationSec: Math.round(r.t * 10) / 10,
+      durationSec: Math.round(r.endT * 10) / 10,
       // v2
       rating: 'D', ratingScore: 0, // set below (src/data/rating.js)
       maxAltitude: Math.round(r.maxAlt * 10) / 10,
@@ -1535,11 +1562,153 @@ export function createGame(canvas, opts = {}) {
       rejumps: r.rejumps,
       // v3
       letters: { collected: r.lettersCollected, total: r.letters.length, inOrder: r.wordDone },
+      finale: !!(r.finale && r.finale.boomed), // the car went up in a Grand Finale (cash.stunts holds its bonus)
     };
     summary.ratingScore = ratingScore({ ...summary, cleanFlips: r.cleanFlips }, r.course.finish);
     summary.rating = ratingLetter(summary.ratingScore);
     r.summary = summary;
     emit({ type: 'finish', summary });
+  }
+
+  // ---------- Grand Finale ----------
+  // Crash ends (upside-down rest, or the last landing was a crash) always go up; other ends roll the run's
+  // seeded finaleRoll against finaleChance. A car that fell off the world, or an error, never does.
+  function wantFinale(r, reason) {
+    if (reason === 'fell' || reason === 'error' || !r.launched) return false;
+    if (reason === 'upside-down' || r.landing === 'crash') return true;
+    return r.finaleRoll < finaleChance;
+  }
+  // Sequence (finale clock in real fixed steps, so slow-mo can't stretch it): 0 .. finaleWobble the car
+  // shakes, swells and smokes (finaleWhine), then KABOOM (finale event, +$150 x coinMult into stunts); the
+  // finish event fires at finaleDur. The physics, pieces and the parachuting driver carry on after it.
+  function startFinale(r) {
+    r.finale = { t: 0, boomed: false, boomAt: 0, x: r.com.x, y: r.com.y, ring2: false, driver: null, lobes: null, spikes: null };
+    emit({ type: 'finaleWhine' });
+  }
+  function finaleStep(r, dt) {
+    const f = r.finale;
+    f.t += STEP;
+    const n = r.fxN++;
+    if (!f.boomed) {
+      f.x = r.com.x; f.y = r.com.y;
+      const k = f.t / T.finaleWobble;
+      if (n % 3 === 0) {
+        const g = r.geom;
+        const [hx, hy] = localToWorld(r, g.maxX - 0.6 - Math.random() * (g.maxX - g.minX) * 0.6, g.beltY);
+        particle(r, 'smoke', hx, hy, (Math.random() - 0.5) * 1.5, 1.5 + Math.random() * 1.5, 0.3 + 0.25 * k + Math.random() * 0.15,
+          n % 2 ? '#4a4550' : '#77707c', 0.7 + Math.random() * 0.4, 0.75);
+      }
+      if (n % 5 === 0) sparks(r, f.x + (Math.random() - 0.5) * 1.5, f.y, 2);
+      r.shake = Math.max(r.shake, 2 + 4 * k);
+      if (f.t >= T.finaleWobble - 1e-9) finaleBoom(r);
+    } else {
+      const u = f.t - f.boomAt;
+      if (!f.ring2 && u >= 0.1) {
+        f.ring2 = true;
+        particle(r, 'ring', f.x, f.y + 0.6, 0, 0, 0.6, '#ffe9a8', 0.6, 0.8, 10.5);
+      }
+      // the lingering smoke column
+      if (u > 0.3 && u < 1.6 && n % 4 === 0) {
+        particle(r, 'smoke', f.x + (Math.random() - 0.5) * 1.8, f.y + 1.5 + u * 2.5, (Math.random() - 0.5) * 0.8, 2.2 + Math.random() * 1.2,
+          0.55 + Math.random() * 0.4 + u * 0.25, n % 8 ? '#6d6672' : '#8c8591', 1.5 + Math.random() * 0.7, 0.55);
+      }
+      // the flying pieces leave fire trails
+      if (n % 3 === 0) {
+        for (const d of r.debris) {
+          if (!(d.trail > 0)) continue;
+          d.trail -= STEP * 3;
+          const b = d.body;
+          particle(r, 'fire', b.position.x / S, -b.position.y / S, 0, 0.5, 0.32 + Math.random() * 0.12, null, 0.28 + Math.random() * 0.12, 1);
+        }
+      }
+    }
+    if (f.driver) stepDriver(r, f.driver, dt);
+    if (!r.summary && f.t >= T.finaleDur - 1e-9) emitFinish(r);
+  }
+  function finaleBoom(r) {
+    const f = r.finale, g = r.geom, sr = r.fxRand;
+    f.boomed = true;
+    f.boomAt = f.t;
+    const x = r.com.x, y = r.com.y;
+    f.x = x; f.y = y;
+    r.finaleRaw = T.finaleCash;
+    emit({ type: 'finale', cash: Math.round(T.finaleCash * r.stats.coinMult) });
+    // crates and drums nearby go too (unpaid: the run is over), and loose debris gets thrown
+    blastArea(r, x, y, 0, null);
+    // the chassis flies apart: panels in the car's (skin) colours, then every wheel
+    const vx0 = clamp(r.com.vx, -6, 6) * 0.3;
+    for (const p of carPieces(g)) {
+      const [wx, wy] = localToWorld(r, p.cx, p.cy);
+      const dx = wx - x, dy = wy - y, dd = Math.hypot(dx, dy) || 1;
+      const sp = 7 + sr() * 6;
+      spawnDebrisBody(r, { x: wx, y: wy, w: p.w, h: p.h, angle: r.chassis.angle, piece: p, color: p.color, trail: 0.55 + sr() * 0.35,
+        vx: vx0 + (dx / dd) * sp + (sr() - 0.5) * 3, vy: Math.max(0, dy / dd) * sp * 0.6 + 8 + sr() * 7,
+        spin: (sr() < 0.5 ? -1 : 1) * (0.18 + sr() * 0.22), life: 2.6 + sr() * 0.8 });
+    }
+    const spoke = luminance(g.accent) > 0.7 ? '#8a8f9c' : g.accent;
+    for (let i = 0; i < r.wheels.length; i++) {
+      const w = r.wheels[i], rad = r.wheelR[i];
+      const wx = w.position.x / S, wy = -w.position.y / S;
+      const side = wx >= x ? 1 : -1;
+      spawnDebrisBody(r, { x: wx, y: wy, w: rad * 2, h: rad * 2, round: true, color: '#23222b', trail: 0.4,
+        piece: { wheel: rad, spoke, noHub: i === r.wheels.length - 1 && !!r.lost.hubcap },
+        vx: vx0 + side * (4 + sr() * 5), vy: 9 + sr() * 6, spin: -side * (0.25 + sr() * 0.2), life: 3 + sr() * 0.6 });
+    }
+    // the car itself leaves the world (its bodies stay put for the camera)
+    Composite.remove(r.world, [r.chassis, ...r.wheels, ...r.cons]);
+    r.carGone = true;
+    // the tiny driver ejects and floats down on a parachute
+    f.driver = { x, y: y + 0.6, vx: 2.6 + clamp(r.com.vx * 0.08, -1.5, 1.5), vy: 8.5, t: 0, open: 0, rot: 0, landed: false, landT: 0 };
+    // fx: cartoon fireball (drawn in render), two shockwave rings, flash, shake, fire, sparks, smoke, KABOOM
+    f.lobes = [9, 7, 5].map((nl) => Array.from({ length: nl }, (_, i) => ({ a: (i / nl) * TAU + Math.random() * 0.5, d: 0.5 + Math.random() * 0.25, r: 0.45 + Math.random() * 0.2 })));
+    f.spikes = Array.from({ length: 16 }, () => 0.7 + Math.random() * 0.5);
+    r.boomLoad += 2; // a prop chain set off by the finale gets the light bursts
+    r.boomLoadT = r.t;
+    r.shake = Math.max(r.shake, 26);
+    if (!reducedMotion) { r.flash = Math.max(r.flash, 0.62); r.flashCol = '255,255,255'; }
+    particle(r, 'ring', x, y + 0.5, 0, 0, 1, '#ffffff', 0.75, 0.95, 15);
+    for (let k = 0; k < 4; k++) {
+      particle(r, 'smoke', x + (Math.random() - 0.5) * 3, y + 1 + Math.random() * 2, (Math.random() - 0.5) * 3, 2.5 + Math.random() * 2,
+        1.4 + Math.random() * 0.8, k % 2 ? '#3b3640' : '#5e5761', 1.8 + Math.random() * 1, 0.75);
+    }
+    for (let k = 0; k < 10; k++) {
+      const a = Math.random() * TAU, sp = 4 + Math.random() * 7;
+      particle(r, 'fire', x + Math.cos(a) * 1.5, y + Math.sin(a) * 1.2 + 1, Math.cos(a) * sp, Math.sin(a) * sp * 0.7 + 4,
+        0.8 + Math.random() * 0.7, null, 0.5 + Math.random() * 0.5, 1);
+    }
+    for (let k = 0; k < 22; k++) {
+      const a = Math.random() * Math.PI * 1.1 - 0.05, sp = 10 + Math.random() * 16;
+      particle(r, 'spark', x, y + 0.5, Math.cos(a) * sp, Math.sin(a) * sp, 0.1 + Math.random() * 0.08,
+        k % 3 ? '#ffd23f' : '#ff7a1a', 0.5 + Math.random() * 0.6);
+    }
+    // over the fireball (the band under the top bar is the HUD's GRAND FINALE banner)
+    popup(r, 'KABOOM!', x, y + 1.4, '#ffe14a', 1.7, true, 1.3);
+  }
+  function stepDriver(r, d, dt) {
+    d.t += dt;
+    if (d.landed) { d.landT += dt; d.open = Math.max(0, d.open - dt * 2); return; }
+    if (d.t < 0.4) {
+      d.vy -= 9.81 * dt; // thrown clear, tumbling
+      d.rot += dt * 11;
+    } else {
+      // pop! the canopy opens and the drop slows to a gentle float
+      d.open = Math.min(1, d.open + dt * 3.2);
+      const k = 1 - Math.exp(-dt * 4.5);
+      d.vy += (-2.3 - d.vy) * k;
+      d.vx += (0.8 - d.vx) * k * 0.5;
+      d.rot = wrapPi(d.rot) * Math.exp(-dt * 9);
+    }
+    d.x += d.vx * dt;
+    d.y += d.vy * dt;
+    const gy = r.course.surfaceY(d.x);
+    if (d.vy < 0 && d.y - gy <= 0.62) {
+      d.y = gy + 0.62;
+      d.landed = true;
+      d.rot = 0;
+      for (let k = 0; k < 6; k++) {
+        particle(r, 'dust', d.x + (Math.random() - 0.5) * 1.2, gy + 0.1, (Math.random() - 0.5) * 2, Math.random(), 0.25 + Math.random() * 0.2, r.dustColor, 0.5 + Math.random() * 0.3, 0.6);
+      }
+    }
   }
 
   // ---------- camera ----------
@@ -1577,6 +1746,15 @@ export function createGame(canvas, opts = {}) {
       tx = tx + ((xL + xR) / 2 - tx) * k;
       ty = ty + ((yTop + yBot) / 2 - ty) * k;
       fz = Math.exp(Math.log(z) + (Math.log(Math.min(z, zf)) - Math.log(z)) * k);
+    }
+    if (r.finale) {
+      // Grand Finale: pull back to frame the blast, the flying pieces and the parachuting driver
+      const f = r.finale, dr = f.driver;
+      const top = Math.max(f.y + 10, dr ? dr.y + 4 : 0), bot = Math.min(r.course.surfaceY(f.x), f.y) - 3;
+      const needH = clamp(top - bot, 22, 40);
+      fz = view.H > view.W ? view.W / (needH * 1.2) : Math.min(view.H / needH, view.W / (needH * 1.55));
+      tx = (dr ? f.x * 0.7 + dr.x * 0.3 : f.x) + 1;
+      ty = (top + bot) / 2;
     }
     if (snap) { cam.x = tx; cam.y = ty; cam.z = fz; return; }
     // launch cine: the camera lags (the car crosses the frame in slow-mo), then the chase snaps back
@@ -1657,8 +1835,9 @@ export function createGame(canvas, opts = {}) {
     for (const p of r.popups) p.t += dt;
     r.popups = r.popups.filter((p) => p.t < p.life);
     r.shake *= Math.exp(-dt * 7);
-    const shk = r.shake * shakeMul;
-    if (reducedMotion || shk < 0.2) { cam.sx = 0; cam.sy = 0; } else {
+    // reduced motion: no shake, except a small one for the Grand Finale
+    const shk = reducedMotion ? (r.finale ? Math.min(2, r.shake * shakeMul) : 0) : r.shake * shakeMul;
+    if (shk < 0.2) { cam.sx = 0; cam.sy = 0; } else {
       cam.sx = (Math.random() - 0.5) * 2 * shk;
       cam.sy = (Math.random() - 0.5) * 2 * shk;
     }
@@ -1745,6 +1924,7 @@ export function createGame(canvas, opts = {}) {
       }
       for (const d of r.debris) {
         const b = d.body;
+        if (d.piece) continue; // Grand Finale pieces draw over the fireball (below)
         const x = b.position.x / S, y = -b.position.y / S;
         if (x < vis.x0 - 2 || x > vis.x1 + 2 || y < vis.y0 - 2 || y > vis.y1 + 2) continue;
         ctx.globalAlpha = clamp(d.life / 0.6, 0, 1);
@@ -1787,7 +1967,7 @@ export function createGame(canvas, opts = {}) {
         else if (a.kind === 'coin') R.drawCoin(ctx, a, t, lw);
         else if (a.kind === 'balloon') R.drawBalloon(ctx, a.x, a.y + 0.35 * Math.sin(r.t * 1.4 + a.id * 1.7), a, BALLOON_COLS[a.hue % BALLOON_COLS.length], lw, t);
       }
-      drawCar(r, lw);
+      if (!r.carGone) drawCar(r, lw);
       for (let i = 0; i < A.length; i++) {
         const a = A[i];
         if (a.kind !== 'ring' || a.gone || !airVis(a, 4)) continue;
@@ -1800,6 +1980,8 @@ export function createGame(canvas, opts = {}) {
         if (k < 1) R.drawRing(ctx, a, t, 'front', lw, k);
       }
       R.drawParticles(ctx, r.particles, vis);
+      if (r.finale && r.finale.boomed) drawFinale(r, lw, vis); // over the smoke: a bright fireball, not a smudge
+      if (r.finale && r.finale.driver) R.drawParachuter(ctx, r.finale.driver, lw, t, r.geom.accent);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       const inten = clamp((r.speed - 22) / 30, 0, 1) * (r.phase === 'done' ? 0 : 1);
       if (inten > 0) R.drawSpeedLines(ctx, view, r.speedLines, inten, r.com.vx / (r.speed || 1), r.com.vy / (r.speed || 1));
@@ -1824,6 +2006,29 @@ export function createGame(canvas, opts = {}) {
     ctx.closePath();
   }
 
+  // Grand Finale after the boom: the cartoon fireball, then the car's panels and wheels flying over it
+  function drawFinale(r, lw, vis) {
+    const f = r.finale;
+    const u = f.t - f.boomAt;
+    R.drawFinaleBoom(ctx, f.x, f.y + 0.6, u, f.lobes, f.spikes, lw);
+    const g = r.geom;
+    for (const d of r.debris) {
+      if (!d.piece) continue;
+      const b = d.body;
+      const x = b.position.x / S, y = -b.position.y / S;
+      if (x < vis.x0 - 3 || x > vis.x1 + 3 || y < vis.y0 - 3 || y > vis.y1 + 3) continue;
+      ctx.globalAlpha = clamp(d.life / 0.6, 0, 1);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(-b.angle);
+      ctx.scale(1.4, 1.4); // cartoon: the flying panels read a size up
+      if (d.piece.wheel) R.drawWheel(ctx, d.piece.wheel, lw / 1.4, d.piece.spoke, d.piece.noHub);
+      else R.drawCarPiece(ctx, d.piece, g, lw / 1.4, clamp(1 - d.life / d.max, 0, 1));
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+  }
+
   function drawCar(r, lw) {
     const g = r.geom, ch = r.chassis;
     // when the camera is zoomed far out (big air) draw the car a bit larger so it stays readable
@@ -1834,6 +2039,16 @@ export function createGame(canvas, opts = {}) {
       ctx.scale(boost, boost);
       ctx.translate(-r.com.x, -r.com.y);
       lw /= boost;
+    }
+    // Grand Finale wobble: the car rattles and swells before it goes up
+    const wob = r.finale && !r.finale.boomed ? clamp(r.finale.t / T.finaleWobble, 0, 1) : 0;
+    if (wob > 0) {
+      const tt = r.realT;
+      const sw = 1 + 0.14 * wob * wob;
+      ctx.translate(r.com.x + Math.sin(tt * 83) * 0.09 * wob, r.com.y + Math.sin(tt * 67 + 1) * 0.07 * wob);
+      ctx.rotate(Math.sin(tt * 47) * 0.06 * wob);
+      ctx.scale(sw * (1 + 0.03 * Math.sin(tt * 90)), sw * (1 - 0.03 * Math.sin(tt * 90)));
+      ctx.translate(-r.com.x, -r.com.y);
     }
     // suspension struts
     ctx.strokeStyle = '#3a3a44';
@@ -1851,6 +2066,15 @@ export function createGame(canvas, opts = {}) {
     ctx.translate(-g.centroid[0], -g.centroid[1]);
     g.rim = r.bd.night || r.spaceK > 0.25 ? 'rgba(225,232,255,0.9)' : null; // dark cars stay readable in space
     R.drawChassis(ctx, g, lw, r.realT, r.nitroOn, r.damage ? r.lost : null);
+    if (wob > 0) {
+      // the paint glows hot and blinks red/white
+      ctx.beginPath();
+      ctx.moveTo(g.body[0][0], g.body[0][1]);
+      for (let i = 1; i < g.body.length; i++) ctx.lineTo(g.body[i][0], g.body[i][1]);
+      ctx.closePath();
+      ctx.fillStyle = Math.sin(r.realT * 38) > 0 ? `rgba(255,60,30,${(0.55 * wob).toFixed(3)})` : `rgba(255,240,200,${(0.4 * wob).toFixed(3)})`;
+      ctx.fill();
+    }
     ctx.restore();
     const spoke = luminance(g.accent) > 0.7 ? '#8a8f9c' : g.accent;
     for (let i = 0; i < r.wheels.length; i++) {
@@ -1954,7 +2178,8 @@ export function createGame(canvas, opts = {}) {
     pause() { paused = true; },
     resume() { paused = false; last = performance.now(); acc = 0; },
     stop() {
-      if (run && run.phase !== 'done') endRun(run, 'stopped');
+      if (run && run.phase !== 'done') endRun(run, 'stopped', true);
+      else if (run && !run.summary) emitFinish(run); // mid Grand Finale: finish now
       teardown();
     },
     destroy() {
@@ -1984,6 +2209,8 @@ export function createGame(canvas, opts = {}) {
         letterbox: r.letterbox, popups: r.popups.map((p) => ({ text: p.text, slot: p.slot, world: p.world, t: p.t, life: p.life, x: p.x, y: p.y, scale: p.scale })),
         letterRings: r.air.filter((a) => a.li != null).map((a) => ({ letter: a.letter, i: a.li, x: a.x, y: a.y, hit: a.hit })),
         lettersRevealed: r.lettersRevealed, glyphLeaks: r.glyphLeaks,
+        finale: r.finale ? { t: r.finale.t, boomed: r.finale.boomed, x: r.finale.x, y: r.finale.y, driver: r.finale.driver && { ...r.finale.driver } } : null,
+        finaleRoll: r.finaleRoll, finaleChance, flash: r.flash, carGone: r.carGone,
         goneTargets: r.air.filter((a) => a.gone).length,
         powerScale: r.powerScale, nitroScale: r.nitroScale, parked: r.parked, nitroFuel: r.nitroFuel, nitroTank: r.nitroTank,
         view: { W: view.W, H: view.H }, carHalf: Math.max(r.geom.maxX - r.geom.minX, r.geom.maxY - r.geom.minY) / 2 * Math.pow(clamp(10 / cam.z, 1, 3), 0.85) };

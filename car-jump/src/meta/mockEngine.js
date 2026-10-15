@@ -4,6 +4,8 @@
 // v3: the car stays parked at the ramp top until GAS is first pressed (the spell panel runs meanwhile);
 // start() takes letters / powerScale / nitroScale, setLaunchPower() changes them while parked, and the first
 // flight flies through one letter ring per letter, in order (letterRing events, then wordComplete).
+// Grand Finale: every 3rd run of this engine ends with finaleWhine, then (0.3 s) finale {cash $150 x coinMult,
+// into cash.stunts}, then finish 1.6 s after the scripted end with summary.finale = true.
 
 import { OBSTACLE_KINDS } from '../data/tracks.js';
 import { mulberry32 } from './rng.js';
@@ -32,6 +34,7 @@ export function createGame(canvas, opts = {}) {
   let W = 0, H = 0;
   let raf = 0, last = 0, paused = false, run = null;
   const input = { gas: false, brake: false, nitro: false };
+  let runNo = 0;
 
   function resize() {
     const p = canvas.parentElement || canvas;
@@ -80,7 +83,9 @@ export function createGame(canvas, opts = {}) {
       ...[0.4, 0.43, 0.46, 0.49, 0.52].map((a) => ({ a, kind: 'coin' })),
       { a: 0.7, kind: track.id === 'city' || track.id === 'moon' ? 'blimp' : 'balloon' },
     ];
+    runNo++;
     run = {
+      finalePlanned: runNo % 3 === 0, finaleT: null, boomed: false, finaleRaw: 0,
       baseTarget, target: baseTarget, powerScale: 1, nitroScale: 1, parked: true,
       letters: lt, letterQ: lt.map((letter, index) => ({ a: lt.length > 1 ? 0.08 + (0.84 * index) / (lt.length - 1) : 0.5, letter, index })),
       lettersCollected: 0, lettersInOrder: true,
@@ -140,7 +145,7 @@ export function createGame(canvas, opts = {}) {
     const m = r.stats.coinMult;
     const parts = {
       distance: Math.round(2 * Math.floor(r.distance) * m),
-      stunts: Math.round((r.stuntCash + r.airTime * 50 + (r.landed ? bigAirCash(AIR_T) : 0) + (r.landed2 ? bigAirCash(AIR2_T) : 0)) * m),
+      stunts: Math.round((r.stuntCash + r.airTime * 50 + (r.landed ? bigAirCash(AIR_T) : 0) + (r.landed2 ? bigAirCash(AIR2_T) : 0) + r.finaleRaw) * m),
       smash: r.smashCash,
       landing: r.landingCash,
       combo: r.comboCash,
@@ -168,6 +173,7 @@ export function createGame(canvas, opts = {}) {
       rating: 'D', maxAltitude: Math.round(r.maxAltitude * 10) / 10, bestCombo: r.bestCombo,
       explosions: r.explosions, rings: r.rings, coins: r.coins, airTargets: r.airTargets, rejumps: r.rejumps,
       letters: { collected: r.lettersCollected, total: r.letters.length, inOrder: r.lettersInOrder && r.lettersCollected === r.letters.length },
+      finale: r.boomed,
     };
     summary.ratingScore = ratingScore(summary, r.track.finish);
     summary.rating = ratingLetter(summary.ratingScore);
@@ -322,7 +328,20 @@ export function createGame(canvas, opts = {}) {
     for (const p of r.popups) p.life -= dt;
     r.popups = r.popups.filter((p) => p.life > 0);
     r.shake = Math.max(0, r.shake - dt);
-    if (r.t >= RUN_T) finish();
+    if (r.t >= RUN_T) {
+      if (!r.finalePlanned) { finish(); return; }
+      // Grand Finale: wobble + whine, KABOOM at +0.3 s, finish at +1.6 s
+      r.phase = 'done';
+      if (r.finaleT == null) { r.finaleT = r.t; emit({ type: 'finaleWhine' }); }
+      const u = r.t - r.finaleT;
+      if (!r.boomed && u >= 0.3) {
+        r.boomed = true; r.finaleRaw = 150;
+        emit({ type: 'finale', cash: Math.round(150 * r.stats.coinMult) });
+        popup('KABOOM!', '#ff9b2e');
+        kick(r, 1);
+      }
+      if (u >= 1.6) finish();
+    }
   }
 
   // ---- crude but readable rendering ----
@@ -367,8 +386,18 @@ export function createGame(canvas, opts = {}) {
     // finish line
     const fx = sx(r.track.finish);
     if (fx > -20 && fx < W + 20) { ctx.fillStyle = '#fff'; ctx.fillRect(fx - 3, sy(terrainY(r.track.finish)) - 6 * ppm, 6, 6 * ppm); }
+    // Grand Finale: a crude fireball where the car was
+    if (r.boomed) {
+      const u = Math.min(1, (r.t - r.finaleT - 0.3) / 1.0);
+      ctx.globalAlpha = 1 - u;
+      for (const [k, c] of [[1, '#ff7a1a'], [0.68, '#ffc93c'], [0.36, '#fffbe6']]) {
+        ctx.fillStyle = c; ctx.beginPath(); ctx.arc(sx(cx), sy(cy), k * ppm * (3 + 2 * u), 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
     // car
     ctx.save();
+    if (r.boomed) ctx.globalAlpha = 0;
     ctx.translate(sx(cx), sy(cy));
     ctx.rotate(-r.rot);
     ctx.scale(ppm, -ppm);
@@ -378,6 +407,7 @@ export function createGame(canvas, opts = {}) {
     for (const w of r.car.wheels) { ctx.beginPath(); ctx.arc(w.x, w.y, w.r, 0, Math.PI * 2); ctx.fill(); }
     if (input.nitro && r.nitro > 0) { ctx.fillStyle = '#52d6ff'; ctx.beginPath(); ctx.moveTo(-2, 0.1); ctx.lineTo(-3.4, 0.25); ctx.lineTo(-2, 0.4); ctx.fill(); }
     ctx.restore();
+    ctx.globalAlpha = 1;
     ctx.restore();
     // popups
     ctx.textAlign = 'center';

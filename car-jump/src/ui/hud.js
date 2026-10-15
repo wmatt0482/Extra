@@ -159,7 +159,7 @@ export function createHud() {
       restartAnim(el.combo, 'ended');
       last.co = undefined; last.cc = undefined; last.cm = undefined; last.ct = undefined;
     },
-    // kind: bigair | orbit | rampage | rejump | record. One on screen at a time: a newer banner
+    // kind: bigair | orbit | rampage | rejump | record | finale. One on screen at a time: a newer banner
     // waits at most BANNER_MIN_MS, then replaces the current one; only the latest waiting one is kept.
     banner(kind, text) {
       if ((bannerCur && bannerCur.kind === kind) || bannerQ.some((b) => b.kind === kind)) return;

@@ -1275,6 +1275,210 @@ export function drawRadialFlash(ctx, view, x, y, a) {
   ctx.fillRect(0, 0, view.W, view.H);
 }
 
+// ---------- Grand Finale ----------
+function polyPath(ctx, pts) {
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.closePath();
+}
+// One flying car panel (car.js carPieces), local frame centred on the piece. burn 0..1 chars it a little.
+export function drawCarPiece(ctx, p, g, lw, burn = 0) {
+  ctx.beginPath();
+  polyPath(ctx, p.poly);
+  ctx.fillStyle = p.color;
+  ctx.fill();
+  if (p.stripe) {
+    ctx.beginPath();
+    polyPath(ctx, p.stripe.poly);
+    ctx.fillStyle = p.stripe.color;
+    ctx.fill();
+  }
+  if (p.glass) {
+    ctx.beginPath();
+    polyPath(ctx, p.glass);
+    ctx.fillStyle = '#bfe9ff';
+    ctx.fill();
+    ctx.lineWidth = lw * 0.7;
+    ctx.strokeStyle = p.outline || OUT;
+    ctx.stroke();
+  }
+  // scorch: darken toward soot as it flies
+  const sc = 0.06 + 0.3 * burn;
+  ctx.beginPath();
+  polyPath(ctx, p.poly);
+  ctx.fillStyle = `rgba(30,20,20,${sc.toFixed(3)})`;
+  ctx.fill();
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = lw;
+  ctx.strokeStyle = p.outline || OUT;
+  ctx.stroke();
+}
+
+const easeOutBack = (k) => { const c = 1.9; const u = k - 1; return 1 + (c + 1) * u * u * u + c * u * u; };
+// Cartoon fireball u s after the boom: a comic burst star, then three lobed cloud layers (orange with a
+// dark outline, yellow, a white-hot core) that pop out, swell, cool to red and soot, rise and fade.
+export function drawFinaleBoom(ctx, x, y, u, lobes, spikes, lw) {
+  if (u > 1.25 || !lobes) return;
+  const grow = u < 0.18 ? easeOutBack(u / 0.18) : 1;
+  const R = 4.3 * grow * (1 + 0.18 * Math.min(1, u / 1.1));
+  const cool = clamp((u - 0.38) / 0.62, 0, 1);
+  const fade = 1 - clamp((u - 0.8) / 0.45, 0, 1);
+  const cy = y + cool * cool * 3.2;
+  ctx.lineJoin = 'round';
+  // comic burst star (behind, first ~0.3 s)
+  if (u < 0.34 && spikes) {
+    const k = u / 0.34;
+    const Rs = 9.5 * Math.min(1, u / 0.07 + 0.25);
+    ctx.globalAlpha = 1 - k * k;
+    for (const [sc, col] of [[1, '#ffe14a'], [0.62, '#fffbe6']]) {
+      ctx.beginPath();
+      const n = spikes.length;
+      for (let i = 0; i < n * 2; i++) {
+        const a = (i / (n * 2)) * TAU + 0.2;
+        const rr = (i % 2 ? Rs * 0.5 : Rs * spikes[i >> 1]) * sc;
+        if (i) ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); else ctx.moveTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fillStyle = col;
+      ctx.fill();
+      if (sc === 1) { ctx.lineWidth = lw * 1.4; ctx.strokeStyle = '#ff9b2e'; ctx.stroke(); }
+    }
+  }
+  if (fade <= 0) { ctx.globalAlpha = 1; return; }
+  ctx.globalAlpha = fade;
+  const layers = [
+    { s: 1, c0: '#ff7a1a', c1: '#c8371c', c2: '#4a424c', shrink: 0 },
+    { s: 0.7, c0: '#ffc93c', c1: '#ff7a1a', c2: '#7a5a50', shrink: 0.75 },
+    { s: 0.4, c0: '#fffbe6', c1: '#ffd23f', c2: '#ff9b2e', shrink: 1 },
+  ];
+  for (let li = 0; li < layers.length; li++) {
+    const L = layers[li];
+    const s = L.s * (1 - L.shrink * cool) * (0.65 + 0.35 * fade);
+    if (s < 0.04) continue;
+    const col = cool < 0.5 ? mix(L.c0, L.c1, cool * 2) : mix(L.c1, L.c2, (cool - 0.5) * 2);
+    const Rl = R * s;
+    const lb = lobes[li] || lobes[0];
+    ctx.beginPath();
+    ctx.moveTo(x + Rl * 0.66, cy);
+    ctx.arc(x, cy, Rl * 0.66, 0, TAU);
+    for (const o of lb) {
+      const lx = x + Math.cos(o.a) * o.d * Rl, ly = cy + Math.sin(o.a) * o.d * Rl * 0.9;
+      ctx.moveTo(lx + o.r * Rl, ly);
+      ctx.arc(lx, ly, o.r * Rl, 0, TAU);
+    }
+    if (li === 0 && fade > 0.999) { // a translucent fill would show the per-lobe strokes inside it
+      ctx.lineWidth = lw * 2.2;
+      ctx.strokeStyle = cool < 0.6 ? '#7a1f0a' : OUT;
+      ctx.stroke();
+    }
+    ctx.fillStyle = col;
+    ctx.fill('nonzero');
+  }
+  ctx.globalAlpha = 1;
+}
+
+// The tiny driver: thrown clear tumbling, then floating down under a red/white canopy; after landing the
+// canopy lies on the ground and the driver waves. d = engine finale driver { x, y, open, rot, landed, landT }.
+export function drawParachuter(ctx, d, lw, t, helmet = '#ffd23f') {
+  ctx.save();
+  ctx.translate(d.x, d.y);
+  ctx.scale(1.3, 1.3);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  const lwd = lw / 1.3;
+  if (d.landed) {
+    // collapsed canopy draped behind
+    const k = 1 - d.open;
+    ctx.beginPath();
+    ctx.ellipse(-1.05, -0.38, 0.95, 0.12 + 0.5 * (1 - k), 0, 0, Math.PI);
+    ctx.closePath();
+    ctx.fillStyle = '#ff4d6d';
+    ctx.fill();
+    ctx.lineWidth = lwd;
+    ctx.strokeStyle = OUT;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(-1.05, -0.38, 0.35, 0.1 + 0.4 * (1 - k), 0, 0, Math.PI);
+    ctx.fillStyle = '#ffffff';
+    ctx.fill();
+  } else {
+    const sway = 0.15 * Math.sin(t * 2.4) * d.open;
+    ctx.rotate(d.rot * (1 - d.open) + sway);
+    if (d.open > 0.02) {
+      const k = easeOutBack(Math.min(1, d.open));
+      const cw = 1.6 * k, chh = 1.15 * Math.min(1, d.open * 1.4), cy = 2.0;
+      // lines
+      ctx.beginPath();
+      for (const fx of [-1, -0.4, 0.4, 1]) { ctx.moveTo(fx * cw, cy); ctx.lineTo(fx > 0 ? 0.16 : -0.16, 0.42); }
+      ctx.lineWidth = lwd * 0.5;
+      ctx.strokeStyle = '#3a3a44';
+      ctx.stroke();
+      // gores, alternating red / white
+      const n = 6;
+      for (let i = 0; i < n; i++) {
+        const a0 = (i / n) * Math.PI, a1 = ((i + 1) / n) * Math.PI;
+        ctx.beginPath();
+        ctx.moveTo(0, cy - 0.2 * k);
+        ctx.ellipse(0, cy, cw, chh, 0, a0, a1);
+        ctx.closePath();
+        ctx.fillStyle = i % 2 ? '#ffffff' : '#ff4d6d';
+        ctx.fill();
+      }
+      ctx.beginPath();
+      ctx.ellipse(0, cy, cw, chh, 0, 0, Math.PI);
+      // scalloped hem
+      for (let i = n; i > 0; i--) {
+        const xa = cw * Math.cos(((i - 1) / n) * Math.PI);
+        const xm = (cw * Math.cos((i / n) * Math.PI) + xa) / 2;
+        ctx.quadraticCurveTo(xm, cy - 0.28 * k, xa, cy);
+      }
+      ctx.closePath();
+      ctx.lineWidth = lwd;
+      ctx.strokeStyle = OUT;
+      ctx.stroke();
+    }
+  }
+  // driver: legs, suit, arms (up to the lines, flailing while tumbling, waving once down), helmet
+  const suit = '#2b2d42';
+  ctx.strokeStyle = suit;
+  ctx.lineWidth = 0.13;
+  ctx.beginPath();
+  const kick = d.landed ? 0 : 0.08 * Math.sin(t * 9);
+  ctx.moveTo(-0.08, -0.05); ctx.lineTo(-0.12 - kick, -0.5);
+  ctx.moveTo(0.08, -0.05); ctx.lineTo(0.12 + kick, -0.5);
+  ctx.stroke();
+  ctx.beginPath();
+  if (d.landed) {
+    const wave = Math.sin(t * 9) * 0.25;
+    ctx.moveTo(-0.15, 0.24); ctx.lineTo(-0.34, -0.02);
+    ctx.moveTo(0.15, 0.26); ctx.lineTo(0.36 + wave * 0.3, 0.66);
+  } else if (d.open > 0.5) {
+    ctx.moveTo(-0.15, 0.26); ctx.lineTo(-0.2, 0.52);
+    ctx.moveTo(0.15, 0.26); ctx.lineTo(0.2, 0.52);
+  } else {
+    const fl = Math.sin(t * 20) * 0.15;
+    ctx.moveTo(-0.15, 0.24); ctx.lineTo(-0.48, 0.3 + fl);
+    ctx.moveTo(0.15, 0.24); ctx.lineTo(0.48, 0.3 - fl);
+  }
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(0, 0.12, 0.2, 0.27, 0, 0, TAU);
+  ctx.fillStyle = suit;
+  ctx.fill();
+  ctx.lineWidth = lwd * 0.7;
+  ctx.strokeStyle = OUT;
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(0, 0.56, 0.21, 0, TAU);
+  ctx.fillStyle = helmet;
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#20202a';
+  ctx.fillRect(0.02, 0.5, 0.18, 0.1);
+  ctx.restore();
+  ctx.lineCap = 'butt';
+}
+
 // ---------- particles / popups / overlays ----------
 export function drawParticles(ctx, parts, vis) {
   for (let i = 0; i < parts.length; i++) {

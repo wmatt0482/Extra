@@ -295,6 +295,22 @@ function createAudio() {
       noise('bandpass', 900, 220, 1.4, 0.4, 0.35 * k, 0.03);
       noise('highpass', 3000, 1200, 0.7, 0.25, 0.12 * k, 0.12);
     },
+    // Grand Finale wobble: a 0.3 s rising sine whine with a little hiss swelling under it
+    whine() {
+      if (!ready()) return;
+      const t = now();
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.setValueAtTime(330, t); o.frequency.exponentialRampToValueAtTime(1760, t + 0.3);
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.11, t + 0.24); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.33);
+      o.connect(g).connect(sfxBus); o.start(t); o.stop(t + 0.36);
+      tone('triangle', 660, 3520, 0.3, 0.025);
+      const ns = ctx.createBufferSource(); ns.buffer = noiseBuf;
+      const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 2.5;
+      bp.frequency.setValueAtTime(700, t); bp.frequency.exponentialRampToValueAtTime(4200, t + 0.3);
+      const ng = ctx.createGain(); ng.gain.setValueAtTime(0.0001, t); ng.gain.exponentialRampToValueAtTime(0.05, t + 0.27); ng.gain.exponentialRampToValueAtTime(0.0001, t + 0.33);
+      ns.connect(bp).connect(ng).connect(sfxBus); ns.start(t, Math.random() * 0.5); ns.stop(t + 0.36);
+    },
     ring() { if (ready()) { tone('triangle', 1568, 1568, 0.12, 0.13); tone('sine', 2093, 2093, 0.4, 0.13, sfxBus, 0.09); tone('sine', 3136, 3136, 0.25, 0.04, sfxBus, 0.09); } },
     pop() { if (ready()) { noise('highpass', 2600, 900, 0.8, 0.1, 0.22); tone('sine', 620, 180, 0.12, 0.12); } },
     comboUp(count = 2) {

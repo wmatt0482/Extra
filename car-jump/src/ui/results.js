@@ -204,7 +204,7 @@ export function createResults(app) {
     const extraTargets = Math.max(0, (s.airTargets || 0) - (s.rings || 0));
     const rows = [
       ['Distance', `${money(Math.floor(s.distance || 0))} m`, c.distance],
-      ['Stunts', `${s.flips || 0} flip${s.flips === 1 ? '' : 's'} · ${fmt1(s.airTime)} s air`, c.stunts],
+      ['Stunts' + (s.finale ? ' · Grand Finale' : ''), `${s.flips || 0} flip${s.flips === 1 ? '' : 's'} · ${fmt1(s.airTime)} s air`, c.stunts],
       ['Smashes', `${s.smashed || 0} prop${s.smashed === 1 ? '' : 's'}${s.explosions ? ` · ${s.explosions} boom${s.explosions === 1 ? '' : 's'}` : ''}`, c.smash],
       ['Combo', s.bestCombo ? `best chain ${s.bestCombo} hits` : 'chain multiplier', c.combo || 0, true],
       ['Air', [s.rings ? `${s.rings} ring${s.rings === 1 ? '' : 's'}` : '', extraTargets ? `${extraTargets} target${extraTargets === 1 ? '' : 's'}` : '', s.maxAltitude >= 45 ? `${Math.round(s.maxAltitude)} m orbit` : ''].filter(Boolean).join(' · ') || 'air targets', c.air || 0, true],

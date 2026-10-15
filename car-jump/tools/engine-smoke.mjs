@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
 const SHOTS = process.env.SHOTS_DIR || path.join(ROOT, 'tools', 'shots');
+const FINALE_SHOTS = process.env.FINALE_SHOTS_DIR || SHOTS;
 mkdirSync(SHOTS, { recursive: true });
+mkdirSync(FINALE_SHOTS, { recursive: true });
 
 async function loadPlaywright() {
   try { return await import('playwright'); } catch {}
@@ -167,7 +169,7 @@ try {
     console.log('api:', JSON.stringify(api));
     check(api.frozen, 'pause() freezes the simulation');
     check(api.finishEmitted && api.after === 'done', 'stop() emits finish and ends the run');
-    check(api.summaryKeys === 'airTargets,airTime,backFlips,bestCombo,cash,coins,distance,durationSec,explosions,finishCrossed,flips,frontFlips,landing,letters,maxAltitude,maxSpeedKmh,rating,ratingScore,rejumps,rings,smashed', `summary keys: ${api.summaryKeys}`);
+    check(api.summaryKeys === 'airTargets,airTime,backFlips,bestCombo,cash,coins,distance,durationSec,explosions,finale,finishCrossed,flips,frontFlips,landing,letters,maxAltitude,maxSpeedKmh,rating,ratingScore,rejumps,rings,smashed', `summary keys: ${api.summaryKeys}`);
     check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
     await context.close();
   }
@@ -199,6 +201,17 @@ try {
 
   // ================= v2 (epic update) scenarios: deterministic fixed-step runs =================
   const v2 = {};
+  // worst draw time over a few rendered frames of the paused scene (ms)
+  const drawCost = (page) => page.evaluate(async () => {
+    const g = window.__rr.game;
+    let worst = 0;
+    for (let i = 0; i < 3; i++) {
+      g.debugPerf(true);
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(res))));
+      worst = Math.max(worst, g.debugPerf().maxDraw);
+    }
+    return Math.round(worst * 100) / 100;
+  });
   // ---- v2.1 + v2.2: city, mid-tier car: combo >= 3 and a fuel-depot chain reaction ----
   {
     const { page, context, errors } = await openRun(browser, { car: 'rally', track: 'city', lvl: '5', seed: '7' });
@@ -209,6 +222,7 @@ try {
     p = await stepUntil(page, 'release', "ev.some((e) => e.type === 'explosion' && e.chain >= 1)", 14);
     await frame(page);
     await page.screenshot({ path: path.join(SHOTS, 'v2-explosion-chain.png') });
+    v2.chainDraw = await drawCost(page);
     p = await stepUntil(page, 'release');
     const combos = await evs(page, 'combo'), booms = await evs(page, 'explosion'), ends = await evs(page, 'comboEnd');
     const s = p.finished;
@@ -317,14 +331,72 @@ try {
     await context.close();
   }
 
-  // ================= v3 (Spell Jump) engine contract =================
-  // dev.html panel fields feed game.start({ letters, powerScale, nitroScale }) on restart
-  const setPanel = (page, o) => page.evaluate((o) => { for (const [k, v] of Object.entries(o)) document.getElementById(k).value = v; }, o);
   const coinMult = (page, car, lvl) => page.evaluate(async ({ car, lvl }) => {
     const { CAR_BY_ID } = await import('/src/data/cars.js');
     const { resolveStats } = await import('/src/data/upgrades.js');
     return resolveStats(CAR_BY_ID[car], { engine: lvl, nitro: lvl, suspension: lvl, bonus: lvl }).coinMult;
   }, { car, lvl });
+  // ================= Grand Finale: the car blows up at the end of the run =================
+  {
+    // ?finale=1 forces it; beater/canyon/L5 seed 1 is a clean run (good landing, rolls to a stop)
+    const { page, context, errors } = await openRun(browser, { car: 'beater', track: 'canyon', lvl: '5', seed: '1', finale: '1' });
+    const m = await coinMult(page, 'beater', 5);
+    await restartPaused(page);
+    let p = await stepUntil(page, 'release', "ev.some((e) => e.type === 'finaleWhine')", 0);
+    const stopStep = p.steps;
+    const wob = await page.evaluate(() => window.__rr.game.debugInfo().finale);
+    p = await stepUntil(page, 'release', "ev.some((e) => e.type === 'finale')", 11); // ~0.2 s after the boom: the biggest frame
+    await frame(page);
+    await page.screenshot({ path: path.join(FINALE_SHOTS, 'finale-boom.png') });
+    const boomInfo = await page.evaluate(() => { const d = window.__rr.game.debugInfo(); return { debris: d.debris, particles: d.particles, carGone: d.carGone, flash: d.flash, bodies: d.bodies }; });
+    const finaleDraw = await drawCost(page);
+    p = await stepUntil(page, 'release', 'false', 0, 40); // the canopy is open, the driver floats down
+    await frame(page);
+    await page.screenshot({ path: path.join(FINALE_SHOTS, 'finale-parachute.png') });
+    p = await stepUntil(page, 'release');
+    const finishStep = p.steps;
+    const seq = await page.evaluate(() => window.__rr.events.map((e) => e.type).filter((t) => /^finale|^finish$/.test(t)));
+    const fe = (await evs(page, 'finale'))[0];
+    const s = p.finished;
+    const after = await page.evaluate(() => { const g = window.__rr.game; g.debugStep(150); const d = g.debugInfo(); return { driver: d.finale && d.finale.driver, finishes: window.__rr.events.filter((e) => e.type === 'finish').length }; });
+    console.log('finale beater/canyon/L5 seed 1:', JSON.stringify({ seq, finale: fe, stunts: s.cash.stunts, finaleFlag: s.finale, endAfter: ((finishStep - stopStep) / 60).toFixed(2) + ' s', wobble: wob && wob.boomed, boomInfo, finaleDraw, chainDraw: v2.chainDraw, driver: after.driver && { landed: after.driver.landed } }));
+    check(JSON.stringify(seq) === JSON.stringify(['finaleWhine', 'finale', 'finish']), `(finale) events in order finaleWhine -> finale -> finish (${seq.join(' -> ')})`);
+    check(s.finale === true && fe && fe.cash === Math.round(150 * m), `(finale) summary.finale true, finale cash $${fe && fe.cash} = $150 x ${m}`);
+    check((finishStep - stopStep) / 60 <= 3 && (finishStep - stopStep) / 60 >= 1.4, `(finale) finish ${((finishStep - stopStep) / 60).toFixed(2)} s after the stop condition (<= 3 s)`);
+    check(boomInfo.carGone && boomInfo.debris >= 8 && boomInfo.debris <= 60 && boomInfo.flash > 0.1, `(finale) the car flew apart (${boomInfo.debris} debris bodies, cap 60) with a flash`);
+    check(after.finishes === 1 && after.driver && after.driver.landed, '(finale) one finish only; the parachuting driver lands afterwards');
+    check(finaleDraw <= Math.max(2 * v2.chainDraw + 4, 8), `(finale) worst boom frame draw ${finaleDraw} ms comparable to a fuel-depot chain (${v2.chainDraw} ms)`);
+    check(sumOK(s) && !p.bad && errors.length === 0, `(finale) cash adds up, no NaN / console errors (${p.bad || ''} ${errors.join(' | ')})`);
+    // stop() in the middle of a finale still emits finish right away
+    await restartPaused(page);
+    await stepUntil(page, 'release', "ev.some((e) => e.type === 'finaleWhine')", 0);
+    const mid = await page.evaluate(() => { window.__rr.game.stop(); return { fin: window.__rr.events.filter((e) => e.type === 'finish').length, phase: window.__rr.game.getState().phase }; });
+    check(mid.fin === 1, `(finale) stop() mid-finale emits finish at once (${mid.fin})`);
+    await context.close();
+    // the same run with finaleChance 0 (clean end: no crash): no finale; stunts differ by exactly the bonus
+    const b = await openRun(browser, { car: 'beater', track: 'canyon', lvl: '5', seed: '1', finale: '0' });
+    await restartPaused(b.page);
+    const q = await stepUntil(b.page, 'release');
+    const types = await b.page.evaluate(() => window.__rr.events.map((e) => e.type));
+    const s0 = q.finished;
+    console.log('finale chance 0:', JSON.stringify({ landing: s0.landing, finale: s0.finale, stunts: s0.cash.stunts, endReason: await b.page.evaluate(() => window.__rr.game.debugInfo().endReason) }));
+    check(s0.landing !== 'crash' && s0.finale === false && !types.some((t) => /^finale/.test(t)), `(finale) finaleChance 0 on a clean run: no finale (landing ${s0.landing})`);
+    check(Math.abs(s.cash.stunts - s0.cash.stunts - Math.round(150 * m)) <= 1 && s.distance === s0.distance, `(finale) cash.stunts ${s.cash.stunts} = ${s0.cash.stunts} + $150 x ${m}`);
+    check(b.errors.length === 0, `(finale) no console errors (${b.errors.join(' | ')})`);
+    await b.context.close();
+    // reduced motion: pieces still fly, no flash
+    const c = await openRun(browser, { car: 'beater', track: 'canyon', lvl: '5', seed: '1', finale: '1', rm: '1' });
+    await restartPaused(c.page);
+    await stepUntil(c.page, 'release', "ev.some((e) => e.type === 'finale')", 3);
+    const rm = await c.page.evaluate(() => { const d = window.__rr.game.debugInfo(); return { debris: d.debris, flash: d.flash, carGone: d.carGone }; });
+    check(rm.carGone && rm.debris >= 8 && rm.flash < 0.01, `(finale) reduced motion: pieces fly (${rm.debris}), no flash (${rm.flash})`);
+    check(c.errors.length === 0, `(finale) reduced motion: no console errors (${c.errors.join(' | ')})`);
+    await c.context.close();
+  }
+
+  // ================= v3 (Spell Jump) engine contract =================
+  // dev.html panel fields feed game.start({ letters, powerScale, nitroScale }) on restart
+  const setPanel = (page, o) => page.evaluate((o) => { for (const [k, v] of Object.entries(o)) document.getElementById(k).value = v; }, o);
   // ---- v3.a: letters 'friend' on canyon, starter level 5, seed 1 ----
   {
     const word = 'friend';
