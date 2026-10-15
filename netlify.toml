@@ -8,8 +8,10 @@
   ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- car-jump netlify.toml"
 
 [build.environment]
-  # the repo root holds an unrelated Next.js app; Netlify must not install or build it
+  # the repo root holds an unrelated Next.js app; Netlify must not install or build it, and the
+  # Next.js plugin that site creation auto-added must skip this static site
   NETLIFY_SKIP_NPM_INSTALL = "true"
+  NETLIFY_NEXT_PLUGIN_SKIP = "true"
   NODE_VERSION = "22"
 
 # The service worker must never be served from a stale cache, or players would keep an old version.
