@@ -1,12 +1,13 @@
-# Netlify deploys the Spell Jump game (a static site under car-jump/, no build step) plus one Netlify Function
+# Netlify deploys learninglab.fun: a static home page (site/) with the Spell Jump game under /spell-jump/
+# (car-jump/), assembled into dist/ by build.sh (plain bash, no dependencies), plus one Netlify Function
 # (netlify/functions/family.mjs, Netlify Blobs) for cross-device family sync.
 # The Next.js inbox app at the repo root is not part of this site.
 
 [build]
-  publish = "car-jump"
-  command = "echo 'static site: nothing to build'"
-  # skip the deploy when a push did not touch the game, the sync function, its dependencies or this file
-  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- car-jump netlify netlify.toml package.json package-lock.json"
+  publish = "dist"
+  command = "bash build.sh"
+  # skip the deploy when a push did not touch the site, the game, the sync function, its dependencies or this file
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- site build.sh car-jump netlify netlify.toml package.json package-lock.json"
 
 [build.environment]
   # the repo root holds an unrelated Next.js app. Dependencies are installed (the sync function bundles
@@ -20,14 +21,21 @@
   directory = "netlify/functions"
   node_bundler = "esbuild"
 
+# The game's pages use relative URLs, so it must be opened at /spell-jump/ (with the slash).
+# Not forced: Netlify matches /spell-jump and /spell-jump/ alike, and a forced rule would loop on /spell-jump/.
+[[redirects]]
+  from = "/spell-jump"
+  to = "/spell-jump/"
+  status = 301
+
 # The service worker must never be served from a stale cache, or players would keep an old version.
 [[headers]]
-  for = "/sw.js"
+  for = "/spell-jump/sw.js"
   [headers.values]
     Cache-Control = "no-cache, no-store, must-revalidate"
 
 [[headers]]
-  for = "/manifest.webmanifest"
+  for = "/spell-jump/manifest.webmanifest"
   [headers.values]
     Content-Type = "application/manifest+json"
 

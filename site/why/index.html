@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Why it works</title>
+<meta name="description" content="The learning science behind Spell Jump: each technique, the evidence for it, and where it lives in the game, with sources.">
+<meta name="theme-color" content="#0d1230">
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="Learning Lab">
+<meta property="og:title" content="Why it works: the learning science behind Spell Jump">
+<meta property="og:description" content="Retrieval practice, spaced practice, Cover-Copy-Compare and more: each technique, its evidence, and where it lives in the game.">
+<meta property="og:url" content="https://learninglab.fun/why/">
+<link rel="icon" type="image/png" href="/spell-jump/icons/favicon.png">
+<link rel="apple-touch-icon" href="/spell-jump/icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;700;800&display=swap">
+<style>
+:root {
+  --ink: #0d1230;
+  --ink-2: #151c45;
+  --panel: #1b2357;
+  --panel-2: #24307a;
+  --line: #34418f;
+  --text: #ffffff;
+  --muted: #aab4ee;
+  --dim: #6f7bc0;
+  --accent: #ffcf1a;
+  --accent-edge: #b98200;
+  --accent-ink: #2a1a00;
+  --hot: #ff3b5c;
+  --go: #2fd36b;
+  --cyan: #22d3ff;
+  --violet: #8f6bff;
+  --font-display: 'Bungee', 'Arial Black', 'Helvetica Neue', Impact, system-ui, sans-serif;
+  --font-body: 'Rubik', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --r: 16px;
+  --gutter: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  --max: 860px;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--ink); color: var(--text); font: 400 17px/1.6 var(--font-body); overflow-x: hidden; }
+a { color: var(--cyan); text-underline-offset: 3px; }
+a:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
+h1, h2 { font-family: var(--font-display); font-weight: 400; text-transform: uppercase; letter-spacing: .02em; margin: 0; }
+.wrap { width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter-r) 0 var(--gutter); }
+
+.top { background: linear-gradient(#2a1d78 0%, #7b2a8c 60%, #b3337e 100%); padding: max(20px, env(safe-area-inset-top, 0px)) 0 44px;
+  border-bottom: 4px solid var(--accent); }
+.back { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; font-weight: 700; color: #fff; text-decoration: none;
+  padding: 0 14px 0 10px; border-radius: 999px; background: rgba(13,18,48,.55); border: 2px solid rgba(255,255,255,.25); }
+.back:hover { background: rgba(13,18,48,.8); }
+.back svg { width: 20px; height: 20px; }
+h1 { margin: 26px 0 14px; font-size: clamp(34px, 9vw, 60px); line-height: .95; color: var(--accent);
+  text-shadow: 0 4px 0 #e0532a, 0 8px 0 var(--ink); }
+.intro { margin: 0; max-width: 60ch; color: #ffe9b0; font-weight: 500; font-size: 18px; }
+
+main { padding: 32px 0 8px; }
+.tech { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; counter-reset: t; }
+.tech > li { counter-increment: t; background: var(--panel); border: 2px solid var(--line); border-radius: var(--r);
+  box-shadow: 0 6px 0 rgba(5,7,25,.55); padding: 20px 18px 20px; }
+.tech h2 { display: flex; gap: 12px; align-items: flex-start; font-size: clamp(18px, 4.8vw, 22px); line-height: 1.15; margin-bottom: 4px; }
+.tech h2::before { content: counter(t); flex: none; width: 34px; height: 34px; margin-top: -4px; border-radius: 10px; display: grid; place-items: center;
+  background: var(--accent); color: var(--ink); font-size: 16px; box-shadow: 0 3px 0 var(--accent-edge); }
+.tech .sub { margin: 0 0 12px 46px; color: var(--muted); font-size: 15px; }
+dl { margin: 0; display: grid; gap: 12px; }
+dt { font: 400 12px/1 var(--font-display); text-transform: uppercase; letter-spacing: .08em; margin-bottom: 5px; }
+dt.ev { color: var(--cyan); }
+dt.game { color: var(--go); }
+dd { margin: 0; color: #e3e7ff; }
+.note { margin: 28px 0 0; padding: 16px 18px; border-left: 4px solid var(--violet); background: var(--ink-2); border-radius: 0 12px 12px 0; color: var(--muted); }
+
+.sources { margin-top: 44px; }
+.sources h2 { font-size: clamp(22px, 6vw, 28px); margin-bottom: 8px; }
+.sources p { margin: 0 0 12px; color: var(--muted); font-size: 15px; }
+.sources ul { margin: 0; padding-left: 20px; color: #e3e7ff; font-size: 16px; }
+.sources li { margin: 6px 0; }
+.cta { margin: 36px 0 0; }
+.cta a { font-weight: 700; }
+
+footer { margin-top: 56px; padding: 26px 0 max(26px, env(safe-area-inset-bottom, 0px)); background: var(--ink-2); border-top: 2px solid var(--line);
+  color: var(--dim); font-size: 15px; font-weight: 700; }
+footer p { margin: 0; }
+
+@media (min-width: 760px) {
+  body { font-size: 18px; }
+  .top { padding-top: 28px; padding-bottom: 56px; }
+  .tech > li { padding: 24px 26px; }
+  dl { grid-template-columns: 1fr 1fr; gap: 22px; }
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="back" href="/"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>Learning Lab</a>
+    <h1>Why it works</h1>
+    <p class="intro">Every part of Spell Jump exists because a learning technique has evidence for it. For each one: what the research found, and where it lives in the game. Where the evidence is thin or comes from a different age group, that is noted.</p>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <ol class="tech">
+      <li>
+        <h2>Retrieval practice</h2>
+        <p class="sub">Spell from memory, from audio, never from a visible word.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>Rated a highest-utility learning technique in a major review (Dunlosky et al. 2013). A 2018 classroom study found retrieval practice beat rainbow writing for spelling, including 5 weeks later.</dd></div>
+          <div><dt class="game">In the game</dt><dd>Every jump starts with a word spoken aloud and spelled from memory. No word is ever on screen while your child spells it.</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Spaced practice</h2>
+        <p class="sub">Practice spread over days, not crammed into one.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>Also rated highest-utility by Dunlosky et al. 2013; spaced retrieval helps children's word learning.</dd></div>
+          <div><dt class="game">In the game</dt><dd>Words move through boxes with growing gaps: same session, next day, 2 days, 4 days. A word counts as Mastered only after 3 first-try successes on at least 2 different days. Past lists come back 2 and 4 weeks later.</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Test, study, test</h2>
+        <p class="sub">Pretest, study only what you missed, then retest.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>About twice as many studies favor test-study-test over study-then-test, from Horn's era onward; it is the weekly cycle Gentry recommends.</dd></div>
+          <div><dt class="game">In the game</dt><dd>A new list starts with a quick Qualifier (the pretest). Known words skip ahead; missed words become Focus Words and get most of the practice. A Friday Test closes the week, and the parent report shows pretest vs test.</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Immediate self-correction</h2>
+        <p class="sub">Correct right after each word, with the child doing the fixing.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>Horn's corrected-test research; later single-case studies found correcting after each word beat correcting after the whole list.</dd></div>
+          <div><dt class="game">In the game</dt><dd>A miss is checked at once. Your child sees which letter positions differ, then fixes it themselves.</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Cover-Copy-Compare</h2>
+        <p class="sub">A short routine for fixing a missed word.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>An established, evidence-based self-management procedure (Joseph et al. 2012 review).</dd></div>
+          <div><dt class="game">In the game</dt><dd>After a miss: Compare (differences marked), Copy (type it from the model), Cover (model hidden, type it once more from memory).</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>No exposure to misspellings</h2>
+        <p class="sub">Wrong spellings are kept out of sight.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>Reading misspellings lowers later spelling accuracy for both good and poor spellers, for at least a week (Dixon 1997; Brown 1988).</dd></div>
+          <div><dt class="game">In the game</dt><dd>A wrong attempt is shown for at most 3 seconds with the differences marked, then cleared. The game never offers wrong spellings as choices; "pick the right one" is deliberately absent.</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Simultaneous Oral Spelling</h2>
+        <p class="sub">Say the letter names while writing.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>A multisensory routine from Gillingham and Stillman, with reported benefits for young and struggling spellers.</dd></div>
+          <div><dt class="game">In the game</dt><dd>Each typed letter is spoken by name. After a miss, the correct word is spelled aloud letter by letter with the tiles lighting in sync. Letter rings in the air say their letter.</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Look-Say-Cover-Write-Check</h2>
+        <p class="sub">For the very first meeting with a new word.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>A randomized trial with Year 3 children found it as effective as a phonological program on the taught words, but weaker at transferring to new words.</dd></div>
+          <div><dt class="game">In the game</dt><dd>First encounter only: Look (the word shown with its pattern chunk highlighted and syllables marked), Say, Cover, Write, Check.</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Patterns and word parts</h2>
+        <p class="sub">Teaching the spelling pattern, not just the word.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>Explicit pattern instruction transfers to new words better than rote routines.</dd></div>
+          <div><dt class="game">In the game</dt><dd>An optional "pattern of the week" (for example <i>ough</i> or <i>-tion</i>) and per-word syllables from the parent, highlighted during the Look and Fix steps.</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Interleaving</h2>
+        <p class="sub">Mixing kinds of words instead of drilling one kind at a time.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>Third graders made fewer errors after interleaved than after blocked practice (Klimovich &amp; Richter 2025).</dd></div>
+          <div><dt class="game">In the game</dt><dd>The scheduler mixes patterns and mixes in 20% past-list words, and never gives the same word twice in a row.</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Instant feedback, few new words</h2>
+        <p class="sub">Know right away, and don't take on too much at once.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>Feedback beats no feedback, and practitioner guidance is to introduce only a few new words per session.</dd></div>
+          <div><dt class="game">In the game</dt><dd>Every word is checked the moment your child taps LAUNCH. At most 5 new words a day, and a daily mission of about 8 words (8 to 10 minutes of play).</dd></div>
+        </dl>
+      </li>
+      <li>
+        <h2>Intrinsic integration</h2>
+        <p class="sub">The learning action is the game action.</p>
+        <dl>
+          <div><dt class="ev">The evidence</dt><dd>Children learned more, and chose to play 7 times longer, with games where the learning was built into the play itself (Habgood &amp; Ainsworth 2011).</dd></div>
+          <div><dt class="game">In the game</dt><dd>Spelling sets the launch power and nitro, letters are the rings, and the Friday score sets the power of the Mega Run. There is no "do homework, then play".</dd></div>
+        </dl>
+      </li>
+    </ol>
+
+    <section class="sources" aria-labelledby="sources-title">
+      <h2 id="sources-title">Sources</h2>
+      <p>Mostly consulted through secondary summaries.</p>
+      <ul>
+        <li>Dunlosky et al. 2013, <i>Improving Students' Learning With Effective Learning Techniques</i> (Association for Psychological Science)</li>
+        <li>The Learning Scientists, 2018 classroom spelling study (retrieval practice vs rainbow writing)</li>
+        <li>Horn 1947, the corrected test (via a 1978 Iowa guide and later single-case studies)</li>
+        <li>Joseph et al. 2012, review of Cover-Copy-Compare</li>
+        <li>Dixon 1997 (thesis) and Brown 1988 (<i>Journal of Experimental Psychology</i>) on exposure to misspellings</li>
+        <li>Gillingham &amp; Stillman, Simultaneous Oral Spelling (Bradford and Swindon help sheets)</li>
+        <li>Waikato randomized trial on Look-Say-Cover-Write-Check vs a phonological strategy</li>
+        <li>Klimovich &amp; Richter 2025 on interleaving</li>
+        <li>Habgood &amp; Ainsworth 2011 on intrinsic integration</li>
+        <li>Gentry on the test-study-test weekly cycle</li>
+      </ul>
+    </section>
+
+    <p class="cta"><a href="/spell-jump/">Play Spell Jump</a> · <a href="/">Back to Learning Lab</a></p>
+  </div>
+</main>
+
+<footer>
+  <div class="wrap"><p>Learning Lab · learninglab.fun · Free to use</p></div>
+</footer>
+
+</body>
+</html>
