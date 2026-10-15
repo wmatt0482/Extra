@@ -64,6 +64,10 @@ export function createPlayers(app) {
   }
 
   $('#btn-parents-picker').addEventListener('click', () => app.openFamilySync());
+  // "Learning Lab" home link: only when the game is served under /spell-jump/ on the site (not the
+  // claude.ai copy or a local dev server at the root), so it never points at a dead page
+  const home = $('#btn-home');
+  if (home) home.hidden = !/\/spell-jump\/?$/.test(location.pathname);
   const chip = $('#sync-chip');
   chip.addEventListener('click', () => app.openFamilySync());
   function refreshSyncChip() {

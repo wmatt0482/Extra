@@ -430,7 +430,7 @@ async function runLayout(browser, layout) {
   const title = await J(page, () => ({
     buttons: [...document.querySelectorAll('#screen-title .title-actions button')].map((b) => b.textContent.replace(/\d+/g, '').trim().toLowerCase()),
     mission: document.querySelector('#title-mission-text').textContent, sample: !document.querySelector('#title-sample').hidden,
-    links: document.querySelectorAll('a[href]').length,
+    links: [...document.querySelectorAll('a[href]')].filter((a) => a.origin !== location.origin).length,   // the Learning Lab home link is same-origin
   }));
   check(title.buttons.join('|') === 'play|friday test|badges|trophies|parents', `title buttons: ${title.buttons.join(', ')}`);
   check(title.mission === 'Today: 0 / 8 words' && title.sample, `title shows "${title.mission}" and the Sample-list notice`);
