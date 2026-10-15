@@ -1,0 +1,28 @@
+# Netlify deploys the Spell Jump game (a static site under car-jump/, no build step).
+# The Next.js inbox app at the repo root is not part of this site.
+
+[build]
+  base = "car-jump"
+  publish = "."
+  command = "echo 'static site: nothing to build'"
+  # skip the deploy when a push did not touch the game folder
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- ."
+
+# The service worker must never be served from a stale cache, or players would keep an old version.
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"
+
+# Everything else can be cached briefly; the service worker refreshes the app shell in the background.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "public, max-age=300"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "no-referrer"
