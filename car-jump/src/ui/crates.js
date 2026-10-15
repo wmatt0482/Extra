@@ -1,10 +1,12 @@
 // v3.3 mystery crate opening: a full-screen overlay (#crate-fx). The crate shakes for a moment (Audio.crateOpen),
 // bursts, and a reveal card shows what was inside: cash, a jackpot, a new sticker or a new skin (painted on the
-// player's selected car). Tap anywhere to dismiss once the card is up. Used by the title's "n crates" button and
+// player's selected car). v3.6: a new skin / sticker goes straight onto the selected car when that slot is still
+// stock, and the card says so ("Now on Rusty"), else where to put it on (Garage → Paint / Stickers). Tap anywhere to
+// dismiss once the card is up. Used by the title's "n crates" button and
 // the crate that drops on the results screen. The roll itself lives in src/meta/engagement.js (openCrate).
 import { CAR_BY_ID } from '../data/cars.js';
 import { SKIN_BY_ID, STICKER_BY_ID } from '../data/cosmetics.js';
-import { lookFor, openCrate } from '../meta/engagement.js';
+import { equip, equippedFor, lookFor, openCrate } from '../meta/engagement.js';
 import { drawCar } from './carPreview.js';
 import { $, h, money } from './dom.js';
 import { COIN, icon } from './icons.js';
@@ -16,7 +18,7 @@ export const CRATE_SVG = `<svg viewBox="0 0 64 56" aria-hidden="true"><path d="M
 
 export function createCrateOpener(app) {
   const root = $('#crate-fx'), box = $('#crate-box'), card = $('#crate-card');
-  const kindEl = $('#crate-kind'), nameEl = $('#crate-name'), art = $('#crate-art');
+  const kindEl = $('#crate-kind'), nameEl = $('#crate-name'), art = $('#crate-art'), hintEl = $('#crate-hint');
   box.innerHTML = CRATE_SVG;
   let busy = false, ready = false, onDone = null, timer = 0, last = null;
 
@@ -37,16 +39,25 @@ export function createCrateOpener(app) {
     if (out.kind === 'skin' || out.kind === 'sticker') {
       const cv = h('canvas', { class: 'reveal-car', 'aria-hidden': 'true' });
       art.append(cv);
+      // put it on the selected car right away when that slot is still stock (the kids never found the Style row)
+      const slot = equippedFor(app.save, car.id)[out.kind];
+      let wornNow = false;
+      if (slot === (out.kind === 'skin' ? 'stock' : 'none') && app.save.owned.includes(car.id)) {
+        wornNow = equip(app.save, car.id, out.kind, out.id);
+        if (wornNow) { app.persist(); try { app.onLookChanged && app.onLookChanged(); } catch (_) { /* no hero yet */ } }
+      }
       const look = lookFor(app.save, car.id);
       if (out.kind === 'skin') look.skin = SKIN_BY_ID[out.id]; else look.sticker = STICKER_BY_ID[out.id];
       requestAnimationFrame(() => drawCar(cv, car, { skin: look.skin, sticker: look.sticker, floor: true }));
       if (out.kind === 'sticker') art.append(h('span', { class: 'reveal-glyph', style: { color: STICKER_BY_ID[out.id].color } }, STICKER_BY_ID[out.id].glyph));
-      kindEl.textContent = out.kind === 'skin' ? 'New skin!' : 'New sticker!';
+      kindEl.textContent = out.kind === 'skin' ? 'New paint!' : 'New sticker!';
       nameEl.textContent = out.name;
+      if (hintEl) { hintEl.textContent = wornNow ? `Now on ${car.name}` : `Put it on in the Garage → ${out.kind === 'skin' ? 'Paint' : 'Stickers'}`; hintEl.hidden = false; }
     } else {
       art.append(h('span', { class: 'reveal-coin', html: COIN }));
       kindEl.textContent = out.kind === 'jackpot' ? 'Jackpot!' : 'Cash!';
       nameEl.textContent = '+$' + money(out.cash);
+      if (hintEl) hintEl.hidden = true;
     }
     card.dataset.kind = out.kind;
     card.hidden = false;

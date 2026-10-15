@@ -11,8 +11,9 @@ export const WORDS_VERSION = 1;
 export const SAMPLE_ID = 'sample';
 export const STREAK_CAP = 10;
 
-export const DEFAULT_OPTIONS = { rate: 'normal', newPerDay: 99, includeReview: true, tileCase: 'lower', wordsPerRace: 2 };  // newPerDay 99 = all of this week's words
+export const DEFAULT_OPTIONS = { rate: 'normal', newPerDay: 99, includeReview: true, tileCase: 'lower', wordsPerRace: 2, levelsPerRace: 3 };  // newPerDay 99 = all of this week's words
 export const WORDS_PER_RACE = [1, 2, 3, 4];
+export const LEVELS_PER_RACE = [1, 2, 3];   // v3.6: cross the finish line → Level 2 (×1.5 cash), Level 3 (×2), each with a new word set
 
 function sampleList(now) {
   return { id: SAMPLE_ID, name: SAMPLE_LIST_NAME, createdAt: now, archivedAt: 0, pattern: SAMPLE_PATTERN, sample: true, sampleVersion: SAMPLE_VERSION, words: SAMPLE_WORDS.map((w) => ({ ...w })) };

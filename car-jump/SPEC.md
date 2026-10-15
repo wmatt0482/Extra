@@ -571,3 +571,25 @@ No lives, no energy, no timers that nag, no rewards for time spent. Data in `src
 
 ### Not doing (on purpose)
 No lives/energy, no countdown nags, no purchases, no rewards tied to minutes played, no notifications.
+
+## Levels, stretch cars and the Style row (v3.6)
+
+1. **Levels per race** (`levelsPerRace` player option, Parents → Options, 1 / 2 / 3, default 3). Crossing a level's
+   finish line does not end the round: a "Level 2!" moment (1.6 s), then the car is back on the ramp of the same
+   track with a fresh layout (seed `track:<id>:L<k>`), a new word set (the same "Words before each race" count), a
+   longer finish (×1.2 then ×1.4 of the track's) and a bigger cash multiplier (×1.5 then ×2 on every cash part of
+   that level). A level that ends short of its finish line ends the round. The daily challenge and the Mega Run are
+   one level. The results screen shows one round: cash parts per level × multiplier (whole numbers that add up to
+   the total; the Run total hint says `levels +$n`), distance = the longest level (banked as the track best, the
+   unlock comes from level 1's finish), counters summed, the best level's rating, a Levels stat tile (`2/3`), the
+   title "All 3 levels!" / "Level 2 done!", and a Spelling row that lists every word of the round. Ending a run
+   from the pause menu never starts the next level.
+2. **Stretch cars** (`src/data/cars.js` tiers 7-11): Hyperion $900k, Mech Rex $2.2M, Phantom X $5M, Starhopper
+   $12M, Dragon $30M, each above the Rhino in every stat (Dragon ≈ 2× Rhino power, coinMult 5). Upgrade costs keep
+   the tier rule (×2 per tier). Garage tier pips go to 11. Economy sim (single level, 75 % first-try speller): Rhino
+   run 128, Hyperion 227, Mech Rex 334, Phantom X 525, Starhopper 833, Dragon 1390 (~46 h of scripted play; levels
+   2-3 pay ×1.5 / ×2, so a child who clears them gets there faster).
+3. **Style row**: two tabs, Paint and Stickers (the stickers used to sit off-screen after 13 paint chips), owned
+   chips first, the tabs count the owned items. A crate that reveals a skin / sticker puts it on the selected car at
+   once when that slot is still stock ("Now on Rusty"), else says where to put it on.
+

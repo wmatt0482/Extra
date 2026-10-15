@@ -41,8 +41,14 @@ import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdat
 import { createSyncClient } from './sync/client.js';
 import { applyImport, decodeTransfer, encodeTransfer } from './meta/transfer.js';
 
-const VERSION = '3.5.0';
+const VERSION = '3.6.0';
 const params = new URLSearchParams(location.search);
+// v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
+const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
+const LEVEL_CASH = [1, 1.5, 2];         // cash multiplier of level k
+const LEVEL_GAP_MS = 1600;              // the "Level 2!" moment before the car is back on the ramp
+const levelTrack = (track, level) => (level > 1 ? { ...track, finish: Math.round((track.finish * LEVEL_FINISH[level - 1]) / 10) * 10 } : track);
+const mockLevels = params.has('mock') && params.has('levels') ? Number(params.get('levels')) : null;   // tests only
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;
 const MEGA_PAY = 150;
@@ -590,12 +596,16 @@ async function boot() {
     const letters = pick ? ringLetters(pick.word) : null;
     const setSize = WS.WORDS_PER_RACE.includes(opts().wordsPerRace) ? opts().wordsPerRace : 2;
     const powerScale = mega ? 0.6 + 0.4 * mega.score : 1;
+    // v3.6: levels per race (Parents → Options, default 3); the daily challenge and the Mega Run are one level
+    const levelsOpt = mockLevels != null ? mockLevels : opts().levelsPerRace;
+    const levels = daily || mega ? 1 : WS.LEVELS_PER_RACE.includes(levelsOpt) ? levelsOpt : 3;
     clearTimeout(stopFallback);
     runEarned = [];
     run = {
       trackId, daily, def, carId: car.id, stats, ended: false, goalToasts: [], earned: runEarned, flight: false, bigAir: false, rampage: false, rings: 0,
       spelling: !!pick, pick, letters: letters || [], spell: null, mega, missionReward: 0, setSize, startCfg: null,
       eng: mega && mega.eng ? mega.eng : newEng(),
+      level: 1, levels, levelDone: [], levelTimer: 0, pendingLevel: false, quitting: false,
     };
     if (mega) mega.eng = null;           // a Retry of the Mega Run does not replay the test's moments
     achievements.beginRun();
@@ -631,6 +641,89 @@ async function boot() {
       hud.banner('mega', `Mega run ${Math.round(powerScale * 100)}%`);
       if (!save.seen.coach) showCoach();
     } else if (!daily && !save.seen.coach) showCoach();
+  }
+
+  // ---------- v3.6 levels ----------
+  // The level's finish was crossed and more levels remain: a "Level k!" moment, then the car is back on the ramp
+  // (startLevel) with a new word set, a longer finish line and a bigger cash multiplier. The level's summary is kept
+  // and folded into the round's results at the end (aggregateLevels).
+  function advanceLevel(r, summary) {
+    r.levelDone.push({ summary, spell: r.spell });
+    r.level += 1;
+    controls.enable(false);
+    Audio.engine(-1); Audio.nitro(false);
+    Audio.fanfare();
+    hud.banner('level', `Level ${r.level}! Cash ×${LEVEL_CASH[r.level - 1]}`);
+    clearTimeout(r.levelTimer);
+    r.levelTimer = setTimeout(() => { if (run === r && !r.ended) { if (paused) r.pendingLevel = true; else startLevel(r); } }, LEVEL_GAP_MS);
+  }
+  function startLevel(r) {
+    if (run !== r || r.ended) return;
+    r.pendingLevel = false;
+    const track = levelTrack(TRACK_BY_ID[r.trackId], r.level);
+    const pick = words ? WS.nextWord(words, Date.now(), session, opts()) : null;
+    const letters = pick ? ringLetters(pick.word) : null;
+    Object.assign(r, { pick, spelling: !!pick, letters: letters || [], spell: null, lettersShown: false, flight: false, bigAir: false, rampage: false });
+    hud.reset(track);
+    hud.word(null);
+    controls.reset();
+    controls.enable(false);
+    try {
+      r.startCfg = { ...r.startCfg, track, seed: hashString(`track:${r.trackId}:L${r.level}`), letters, powerScale: 1, nitroScale: 1, bestDistance: save.best[r.trackId] || null };
+      game.start(r.startCfg);
+      game.setInput({ gas: false, brake: false, nitro: false });
+    } catch (e) {
+      console.error('[SpellJump] level start threw', e);
+      const prev = r.levelDone.pop();
+      r.level -= 1;
+      endRun(prev ? prev.summary : null);
+      return;
+    }
+    Audio.duck(true);
+    hud.banner('level', `Level ${r.level} of ${r.levels} · cash ×${LEVEL_CASH[r.level - 1]}`);
+    if (pick) {
+      setSpelling(true);
+      spellSet(r, pick).catch((e) => console.error('[SpellJump] spelling set', e));
+    } else controls.enable(true);
+  }
+  // one summary for the whole round: cash per level × its multiplier (parts stay whole numbers that add up to the
+  // total), distance = the longest level, counters summed, rating = the best level's
+  function aggregateLevels(r, sums) {
+    const cash = { distance: 0, stunts: 0, smash: 0, landing: 0, combo: 0, air: 0, total: 0 };
+    let raw = 0;
+    sums.forEach((s, i) => {
+      const m = LEVEL_CASH[i] || 1, c = s.cash || {};
+      for (const k of ['distance', 'stunts', 'smash', 'landing', 'combo', 'air']) cash[k] += Math.round((c[k] || 0) * m);
+      raw += c.total || 0;
+    });
+    cash.total = cash.distance + cash.stunts + cash.smash + cash.landing + cash.combo + cash.air;
+    const sum = (k) => sums.reduce((a, s) => a + (s[k] || 0), 0);
+    const max = (k) => sums.reduce((a, s) => Math.max(a, s[k] || 0), 0);
+    const best = sums.reduce((a, s) => ((s.ratingScore || 0) > (a.ratingScore || 0) ? s : a), sums[0]);
+    const last = sums[sums.length - 1];
+    return {
+      distance: max('distance'), airTime: Math.round(sum('airTime') * 100) / 100,
+      flips: sum('flips'), frontFlips: sum('frontFlips'), backFlips: sum('backFlips'), smashed: sum('smashed'),
+      maxSpeedKmh: max('maxSpeedKmh'), landing: last.landing, finishCrossed: sums.some((s) => s.finishCrossed), cash,
+      durationSec: Math.round(sum('durationSec') * 10) / 10, rating: best.rating, ratingScore: best.ratingScore,
+      maxAltitude: max('maxAltitude'), bestCombo: max('bestCombo'), explosions: sum('explosions'), rings: sum('rings'), coins: sum('coins'),
+      airTargets: sum('airTargets'), rejumps: sum('rejumps'),
+      letters: { collected: sums.reduce((a, s) => a + ((s.letters && s.letters.collected) || 0), 0), total: sums.reduce((a, s) => a + ((s.letters && s.letters.total) || 0), 0), inOrder: sums.every((s) => !s.letters || s.letters.inOrder) },
+      finale: sums.some((s) => s.finale),
+      levels: { reached: sums.length, total: r.levels, cleared: sums.map((s) => !!s.finishCrossed), bonus: cash.total - raw },
+    };
+  }
+  function aggregateSpell(r) {
+    const sets = [...r.levelDone.map((l) => l.spell), r.spell].filter(Boolean);
+    if (sets.length <= 1) return sets[0] || null;
+    const words = sets.flatMap((sp) => sp.words || []);
+    const c = words.filter((w) => w.firstTry).length, n = words.length;
+    const last = sets[sets.length - 1];
+    return {
+      words, word: last.word, correct: c, total: n, firstTry: c === n, fixed: c < n && words.every((w) => w.firstTry || w.fixed),
+      misses: words.reduce((a, w) => a + (w.misses || 0), 0), bonus: sets.reduce((a, sp) => a + (sp.bonus || 0), 0),
+      streak: last.streak, powerScale: last.powerScale, nitroScale: last.nitroScale,
+    };
   }
 
   // the words of one race, back to back in the spell panel (the car stays parked behind it). Each word is recorded
@@ -717,6 +810,7 @@ async function boot() {
   function quitRun() {
     setSpelling(false);
     if (!run) return;
+    clearTimeout(run.levelTimer);
     run.ended = true;
     run = null;
     runEarned = null;
@@ -842,9 +936,16 @@ async function boot() {
   function endRun(summary) {
     if (!run || run.ended) return;
     const r = run;
+    // v3.6: the finish line of a level with more to come → next level instead of the results
+    if (summary && summary.finishCrossed && r.level < r.levels && !r.quitting && !r.daily && !r.mega) { advanceLevel(r, summary); return; }
     r.ended = true;
     run = null;
     clearTimeout(stopFallback);
+    clearTimeout(r.levelTimer);
+    if (r.levelDone.length) {
+      summary = aggregateLevels(r, [...r.levelDone.map((l) => l.summary), summary || {}]);
+      r.spell = aggregateSpell(r);
+    } else if (summary && r.levels > 1) summary = { ...summary, levels: { reached: 1, total: r.levels, cleared: [!!summary.finishCrossed], bonus: 0 } };
     if (spellPanel.isOpen) spellPanel.cancel();
     setSpelling(false);
     controls.enable(false);
@@ -895,6 +996,7 @@ async function boot() {
     if (!run || !paused) return;
     paused = false;
     closePanel();
+    if (run.pendingLevel) { startLevel(run); return; }   // the Level k! moment ran out while paused
     controls.enable(true);
     try { game.resume(); } catch (_) {}
   }
@@ -945,6 +1047,8 @@ async function boot() {
     closePanel();
     const snap = (() => { try { return game.getState(); } catch (_) { return null; } })();
     const r = run;
+    r.quitting = true;                 // v3.6: ending the run never starts the next level
+    clearTimeout(r.levelTimer);
     try { game.resume(); game.stop(); } catch (e) { console.error(e); }
     // contract says stop() emits 'finish'; if an engine doesn't, bank what we have (only for THIS run: a quick
     // Retry may already have started the next one)

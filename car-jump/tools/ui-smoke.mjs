@@ -222,7 +222,7 @@ async function instrument(page) {
     window.__starts = window.__starts || [];
     window.__power = window.__power || [];
     if (g && !g.__wrapped) {
-      const o = g.start; g.start = (opts) => { window.__starts.push({ letters: opts.letters, powerScale: opts.powerScale, nitroScale: opts.nitroScale, track: opts.track.id }); return o(opts); };
+      const o = g.start; g.start = (opts) => { window.__starts.push({ letters: opts.letters, powerScale: opts.powerScale, nitroScale: opts.nitroScale, track: opts.track.id, finishLine: opts.track.finish }); return o(opts); };
       const p = g.setLaunchPower; g.setLaunchPower = (a, b) => { window.__power.push([a, b]); return p(a, b); };
 
       g.__wrapped = true;
@@ -1062,19 +1062,27 @@ async function engagement(browser, layout) {
   // ----- garage Style row: locked hints, equip a skin + sticker for this car -----
   await page.click('#btn-play');
   await page.waitForSelector(visibleSel('#screen-garage'));
+  // v3.6: two tabs (Paint / Stickers), owned chips first, the Stickers tab counts the owned stickers
   const chips = await J(page, () => ({
-    skins: document.querySelectorAll('#style-strip [data-skin]').length, stickers: document.querySelectorAll('#style-strip [data-sticker]').length,
+    skins: document.querySelectorAll('#style-strip [data-skin]').length, stickersHidden: document.querySelectorAll('#style-strip [data-sticker]').length,
     hints: Object.fromEntries(['galaxy', 'rainbow', 'champion', 'sunset'].map((id) => [id, document.querySelector(`[data-skin="${id}"]`).textContent.trim()])),
     owned: document.querySelector('[data-skin="flames"]').classList.contains('owned'), stockOn: document.querySelector('[data-skin="stock"]').classList.contains('on'),
+    order: [...document.querySelectorAll('#style-strip [data-skin]')].slice(0, 2).map((b) => b.dataset.skin), tabs: [...document.querySelectorAll('#style-strip .style-tab')].map((b) => b.textContent.trim()),
   }));
-  check(chips.skins === 13 && chips.stickers === 13 && chips.owned && chips.stockOn, `Style row: ${chips.skins} skins, ${chips.stickers} stickers; Stock equipped (${chips.stockOn}), Hot Flames owned (${chips.owned})`);
+  check(chips.skins === 13 && chips.stickersHidden === 0 && chips.owned && chips.stockOn, `Paint tab: ${chips.skins} skins, no sticker chips; Stock equipped (${chips.stockOn}), Hot Flames owned (${chips.owned})`);
+  check(chips.order.join(',') === 'stock,flames' && chips.tabs.join('|') === 'Paint1|Stickers1', `owned paint first (${chips.order.join(', ')}); tabs count the owned items (${chips.tabs.join(' / ')})`);
   check(chips.hints.galaxy === 'Level 8' && chips.hints.rainbow === '14-day streak' && chips.hints.champion === 'Week Champion' && chips.hints.sunset === 'Crate', `locked chips say how to earn them: ${JSON.stringify(chips.hints)}`);
   await shot(page, layout, 'e04-garage-style');
   await layoutAudit(page, layout.insets, 'garage (style row)');
   const before = await J(page, () => document.querySelector('#car-preview').dataset.lookSkin);
   await page.click('[data-skin="flames"]');
+  await page.click('[data-style-tab="sticker"]');
+  const stickerChips = await J(page, () => ({ n: document.querySelectorAll('#style-strip [data-sticker]').length, skins: document.querySelectorAll('#style-strip [data-skin]').length, first: [...document.querySelectorAll('#style-strip [data-sticker]')].slice(0, 2).map((b) => b.dataset.sticker) }));
+  check(stickerChips.n === 13 && stickerChips.skins === 0 && stickerChips.first.join(',') === 'none,star', `Stickers tab: ${stickerChips.n} stickers, owned first (${stickerChips.first.join(', ')})`);
   await page.click('[data-sticker="star"]');
   await page.waitForTimeout(300);
+  check(await J(page, () => document.querySelector('[data-sticker="star"]').classList.contains('on')), 'the Gold Star chip is on');
+  await page.click('[data-style-tab="skin"]');
   const eq = await J(page, () => ({ skin: document.querySelector('#car-preview').dataset.lookSkin, sticker: document.querySelector('#car-preview').dataset.lookSticker, on: document.querySelector('[data-skin="flames"]').classList.contains('on'),
     saved: JSON.parse(localStorage.getItem('spellJump.pmia.save')).cosmetics.equipped, hero: (() => { const l = window.__spellJump.app.save.cosmetics.equipped.beater; return l; })() }));
   check(before === 'stock' && eq.skin === 'flames' && eq.sticker === 'star' && eq.on && eq.saved.beater && eq.saved.beater.skin === 'flames' && eq.saved.beater.sticker === 'star',
@@ -1459,6 +1467,114 @@ async function corruptBoot(browser) {
 // with the clip store emptied, a slow server and no carrier clips → "Getting the voice ready…" on the spell panel,
 // then the presentation falls back to the device voice while the letters still play as clips. C: the status line:
 // no key, offline, no family code.
+// v3.6 levels per race (mock engine, a Vantablack GT so the scripted run crosses the finish line): spell → launch →
+// finish line → "Level 2!" → the spell panel again (new word, finish 480 m, cash ×1.5) → Level 3 (560 m, ×2) → one
+// results screen: "All 3 levels!", the Spelling row lists the 3 words, cash parts add up to the total, the distance
+// banked once, Downtown Drop unlocked. Ending a run from the pause menu never starts the next level.
+async function levelsTest(browser, layout) {
+  console.log(`\n=== levels per race (${layout.name}) ===`);
+  const context = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  await routeFonts(context);
+  const page = await context.newPage();
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.addInitScript(({ insets }) => {
+    window.__spoken = [];
+    window.__ttsBackend = {
+      speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
+      cancel() {}, addEventListener() {},
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const s = document.createElement('style');
+      s.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(s);
+    });
+  }, { insets: layout.insets });
+  await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  await J(page, async () => {
+    const S = await import('/src/spelling/scheduler.js');
+    const now = Date.now(), DAY = 864e5, dk = (t) => S.dayKey(t);
+    const near = (w, list) => ({ word: w, listId: list, box: 1, due: now - 1000, attempts: 2, firstTry: 1, seenCount: 2, lastSeen: now - DAY, daysCorrect: [dk(now - DAY)], daysSeen: [dk(now - 2 * DAY), dk(now - DAY)], focus: false, studied: true, reviewsDone: 0, misses: 0 });
+    const ws = ['mold', 'bolt', 'shadow', 'float', 'coast', 'throat'];
+    localStorage.clear();
+    localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, migrated: true, lastPlayer: 'pmia', options: { pmia: { wordsPerRace: 1 } },
+      players: [{ id: 'pmia', name: 'Mia', color: '#ff3b5c', createdAt: 1, updatedAt: 1 }] }));
+    localStorage.setItem('spellJump.pmia.save', JSON.stringify({ v: 2, cash: 1000, owned: ['beater', 'super'], selectedCar: 'super', seen: { coach: true, ach: 0 } }));
+    localStorage.setItem('spellJump.pmia.words', JSON.stringify({ v: 1, lists: [{ id: 'L1', name: 'Long o', createdAt: now - 3 * DAY, archivedAt: 0, pattern: '', words: ws.map((word) => ({ word })) }], activeId: 'L1',
+      records: Object.fromEntries(ws.map((w) => [w, near(w, 'L1')])), tests: [], qualifierPending: null, today: { date: dk(now), count: 0, newCount: 0, missionPaid: false }, streak: 0, bestStreak: 0, perfectTotal: 0 }));
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await instrument(page);
+  const save0 = await readSave(page);
+  check(save0.selectedCar === 'super' && save0.unlocked.length === 1, `start: Vantablack GT selected, ${save0.unlocked.length} track unlocked`);
+  await page.click('#btn-play');
+  await page.waitForSelector(visibleSel('#screen-garage'));
+  await page.click('#btn-race');
+  await page.waitForSelector(visibleSel('#screen-tracks'));
+  await page.click('[data-track="canyon"]');
+  const words = [];
+  const spellOne = async (level) => {
+    await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 8000 });
+    const w = await J(page, () => window.__spellJump.spellPanel.word);
+    if (await panelMode(page) !== 'write') await waitMode(page, 'write', 9000);
+    const lv = await J(page, () => ({ level: window.__spellJump.run.level, finish: window.__starts.at(-1).track.finish, trackId: window.__starts.at(-1).track }));
+    check(lv.level === level, `level ${level}: the spell panel opens with "${w}" (run.level ${lv.level})`);
+    words.push(w);
+    await tapKeys(page, '#sp-keyboard', w);
+    await page.tap('#sp-keyboard [data-key="enter"]');
+    await page.waitForFunction(() => !window.__spellJump.spellPanel.isOpen, null, { timeout: 8000 });
+    await page.waitForTimeout(200);
+    await dismissCoachIfUp(page);
+    await gas(page);
+  };
+  await spellOne(1);
+  // level 1 ends at its finish line → the Level 2 moment, then the panel again
+  await page.waitForFunction(() => window.__spellJump.run && window.__spellJump.run.level === 2, null, { timeout: 25000 });
+  const lv2 = await J(page, () => ({ done: window.__spellJump.run.levelDone.length, crossed: window.__spellJump.run.levelDone[0].summary.finishCrossed, banner: (document.querySelector('.banner') || {}).textContent || '' }));
+  check(lv2.done === 1 && lv2.crossed, `finish line crossed on level 1 → Level 2 (banner "${lv2.banner.trim()}")`);
+  await shot(page, layout, 'l01-level-2', 0);
+  await spellOne(2);
+  const st2 = await J(page, () => window.__starts.at(-1));
+  check(st2 && st2.finishLine === 480 && st2.powerScale === 1, `level 2 starts on a 480 m finish (${st2 && st2.finishLine}) at full power`);
+  await page.waitForFunction(() => window.__spellJump.run && window.__spellJump.run.level === 3, null, { timeout: 25000 });
+  await spellOne(3);
+  const st3 = await J(page, () => window.__starts.at(-1));
+  check(st3 && st3.finishLine === 560, `level 3 starts on a 560 m finish (${st3 && st3.finishLine})`);
+  await page.waitForSelector(visibleSel('#screen-results'), { timeout: 30000 });
+  await page.waitForFunction(() => { const td = document.querySelector('#res-pay tr[data-pay="total"] td:last-child'); return td && Number(td.textContent.replace(/[^0-9-]/g, '')) === Number(td.dataset.value); }, null, { timeout: 8000 });
+  await page.waitForTimeout(300);
+  const res = await J(page, () => ({ title: document.querySelector('#res-title').textContent, sub: document.querySelector('#res-sub').textContent, s: window.__spellJump.lastResult.summary,
+    spellWords: document.querySelector('#res-pay tr[data-pay="spelling"]').dataset.words, starts: window.__starts.length,
+    levelsTile: (document.querySelector('#res-stats [data-stat="levels"] b') || {}).textContent, totalHint: document.querySelector('#res-pay tr[data-pay="total"] .hint').textContent }));
+  check(/All 3 levels!/.test(res.title) && res.levelsTile === '3/3' && /levels \+\$[\d,]+/.test(res.totalHint), `results: "${res.title}" · Levels tile ${res.levelsTile} · total hint "${res.totalHint}"`);
+  check(res.s.levels && res.s.levels.reached === 3 && res.s.levels.cleared.every(Boolean) && res.s.levels.bonus > 0, `summary.levels ${JSON.stringify(res.s.levels)}`);
+  check(res.spellWords === '3' && new Set(words).size === 3, `the Spelling row lists the 3 words (${words.join(', ')})`);
+  await payoutCheck(page, 'three levels', save0);
+  const save1 = await readSave(page);
+  check(save1.unlocked.includes('city') && save1.records.runs === 1 && save1.best.canyon >= 400, `banked once: runs ${save1.records.runs}, best ${save1.best.canyon} m, Downtown Drop unlocked`);
+  await shot(page, layout, 'l02-results-levels', 0);
+  await layoutAudit(page, layout.insets, 'results (levels)');
+  // pause → End run during level 1 never starts level 2 (even with the finish line crossed)
+  await page.click('#res-retry');
+  await spellOne(1);
+  await page.waitForFunction(() => window.__spellJump.game.getState().finishCrossed, null, { timeout: 25000 });
+  await page.click('#btn-pause');
+  await page.waitForSelector(visibleSel('#panel-pause'));
+  await page.click('#pause-end');
+  await page.waitForSelector(visibleSel('#screen-results'), { timeout: 15000 });
+  const ended = await J(page, () => ({ lv: window.__spellJump.lastResult.summary.levels, title: document.querySelector('#res-title').textContent }));
+  check(ended.lv && ended.lv.reached === 1, `End run after the finish line: results for level 1 only (${JSON.stringify(ended.lv)}, "${ended.title}")`);
+  check(await J(page, () => window.__spellJump.run === null), 'no run left behind');
+  check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+  await context.close();
+}
+
 async function cloudVoiceTest(browser, layout) {
   console.log(`\n--- natural voice (${layout.name}) ---`);
   const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
@@ -1627,6 +1743,7 @@ try {
   if (!only || only === 'corrupt') await corruptBoot(browser);
   if (!only || only === 'update') await selfUpdate(browser);
   for (const l of LAYOUTS) if (!only || only === 'cloud') await cloudVoiceTest(browser, l);
+  for (const l of LAYOUTS) if (!only || only === 'levels' || only === l.name) await levelsTest(browser, l);
 } catch (e) {
   failures.push('exception: ' + e.message);
   console.error(e);

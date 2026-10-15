@@ -152,13 +152,14 @@ export function createResults(app) {
     }, app.save.settings.reducedMotion ? 0 : 450);
   }
 
-  function statTiles(s) {
+  function statTiles(s, lv = null) {
     const base = [
       ['air', 'Air time', fmt1(s.airTime), 's'], ['flips', 'Flips', String(s.flips || 0)], ['smashed', 'Smashed', String(s.smashed || 0)],
       ['speed', 'Top speed', String(Math.round(s.maxSpeedKmh || 0)), 'km/h'], ['landing', 'Landing', LANDING[s.landing] || '—'], ['time', 'Time', fmt1(s.durationSec), 's'],
     ];
     const targets = s.airTargets || s.rings || 0;
     const extras = [
+      lv && ['levels', 'Levels', `${lv.reached}/${lv.total}`],       // v3.6: levels reached this round
       s.bestCombo >= 2 && ['combo', 'Combo', `${s.bestCombo}`, 'hits'],
       s.maxAltitude >= 1 && ['altitude', 'Altitude', String(Math.round(s.maxAltitude)), 'm'],
       targets > 0 && ['targets', s.airTargets ? 'Targets' : 'Rings', String(targets)],
@@ -186,7 +187,10 @@ export function createResults(app) {
     const track = TRACK_BY_ID[trackId];
     const car = CAR_BY_ID[r.carId];
     const mult = r.stats.coinMult || 1;
-    el.title.textContent = r.mega ? 'Mega run!' : r.daily ? 'Daily challenge' : s.finishCrossed ? 'Finish line!' : s.landing === 'crash' ? 'Wrecked!' : 'Run over';
+    const lv = s.levels && s.levels.total > 1 ? s.levels : null;   // v3.6 levels per race
+    const allClear = lv && lv.reached === lv.total && lv.cleared[lv.reached - 1];
+    el.title.textContent = r.mega ? 'Mega run!' : r.daily ? 'Daily challenge' : allClear ? `All ${lv.total} levels!` : lv && lv.reached > 1 ? `Level ${lv.reached} done!`
+      : s.finishCrossed ? 'Finish line!' : s.landing === 'crash' ? 'Wrecked!' : 'Run over';
     el.dist.textContent = money(Math.floor(s.distance || 0));
     const record = !!(bank.newBest && !r.daily);
     el.record.hidden = !record;
@@ -197,28 +201,30 @@ export function createResults(app) {
       if (!s.finishCrossed) sub += ` · finish ${money(track.finish)} m`;
     } else sub += ' · loaner car';
     el.sub.textContent = sub;
-    statTiles(s);
+    statTiles(s, lv);
 
     // payout table — rows sum exactly to cash.total; any rounding/multiplier difference gets its own row
     const c = s.cash || { distance: 0, stunts: 0, smash: 0, landing: 0, total: 0 };
     const extraTargets = Math.max(0, (s.airTargets || 0) - (s.rings || 0));
+    // [key (data-pay), label, hint, value, optional]: the key never changes with the label ("Stunts · Grand Finale")
     const rows = [
-      ['Distance', `${money(Math.floor(s.distance || 0))} m`, c.distance],
-      ['Stunts' + (s.finale ? ' · Grand Finale' : ''), `${s.flips || 0} flip${s.flips === 1 ? '' : 's'} · ${fmt1(s.airTime)} s air`, c.stunts],
-      ['Smashes', `${s.smashed || 0} prop${s.smashed === 1 ? '' : 's'}${s.explosions ? ` · ${s.explosions} boom${s.explosions === 1 ? '' : 's'}` : ''}`, c.smash],
-      ['Combo', s.bestCombo ? `best chain ${s.bestCombo} hits` : 'chain multiplier', c.combo || 0, true],
-      ['Air', [s.rings ? `${s.rings} ring${s.rings === 1 ? '' : 's'}` : '', extraTargets ? `${extraTargets} target${extraTargets === 1 ? '' : 's'}` : '', s.maxAltitude >= 45 ? `${Math.round(s.maxAltitude)} m orbit` : ''].filter(Boolean).join(' · ') || 'air targets', c.air || 0, true],
-      ['Landing', landingHint(c.landing, mult, s.landing, s.rejumps || 0), c.landing],
-    ].filter((row) => !(row[3] && !row[2]));     // hide Combo / Air when they paid nothing
-    const sum = rows.reduce((a, row) => a + (row[2] || 0), 0);
+      ['distance', 'Distance', `${money(Math.floor(s.distance || 0))} m`, c.distance],
+      ['stunts', 'Stunts' + (s.finale ? ' · Grand Finale' : ''), `${s.flips || 0} flip${s.flips === 1 ? '' : 's'} · ${fmt1(s.airTime)} s air`, c.stunts],
+      ['smashes', 'Smashes', `${s.smashed || 0} prop${s.smashed === 1 ? '' : 's'}${s.explosions ? ` · ${s.explosions} boom${s.explosions === 1 ? '' : 's'}` : ''}`, c.smash],
+      ['combo', 'Combo', s.bestCombo ? `best chain ${s.bestCombo} hits` : 'chain multiplier', c.combo || 0, true],
+      ['air', 'Air', [s.rings ? `${s.rings} ring${s.rings === 1 ? '' : 's'}` : '', extraTargets ? `${extraTargets} target${extraTargets === 1 ? '' : 's'}` : '', s.maxAltitude >= 45 ? `${Math.round(s.maxAltitude)} m orbit` : ''].filter(Boolean).join(' · ') || 'air targets', c.air || 0, true],
+      ['landing', 'Landing', landingHint(c.landing, mult, s.landing, s.rejumps || 0), c.landing],
+    ].filter((row) => !(row[4] && !row[3]));     // hide Combo / Air when they paid nothing
+    const sum = rows.reduce((a, row) => a + (row[3] || 0), 0);
     const diff = Math.round((c.total || 0) - sum);
-    if (diff !== 0) rows.push(['Bonus', `×${mult.toFixed(2)} cash multiplier`, diff]);
+    if (diff !== 0) rows.push(['bonus', 'Bonus', `×${mult.toFixed(2)} cash multiplier`, diff]);
     el.pay.innerHTML = '';
-    for (const [k, hint, v] of rows) {
-      el.pay.append(h('tr', { 'data-pay': k.toLowerCase() }, h('td', {}, k, ' ', h('span', { class: 'hint' }, hint)), h('td', { 'data-value': String(v || 0) }, '$' + money(v))));
+    for (const [key, k, hint, v] of rows) {
+      el.pay.append(h('tr', { 'data-pay': key }, h('td', {}, k, ' ', h('span', { class: 'hint' }, hint)), h('td', { 'data-value': String(v || 0) }, '$' + money(v))));
     }
     const totalTd = h('td', {});
-    el.pay.append(h('tr', { class: 'total', 'data-pay': 'total' }, h('td', { class: 'display' }, 'Run total', ' ', h('span', { class: 'hint' }, `incl. ×${mult.toFixed(2)}`)), totalTd));
+    const levelHint = lv && lv.bonus > 0 ? ` · levels +$${money(lv.bonus)}` : '';
+    el.pay.append(h('tr', { class: 'total', 'data-pay': 'total' }, h('td', { class: 'display' }, 'Run total', ' ', h('span', { class: 'hint' }, `incl. ×${mult.toFixed(2)}${levelHint}`)), totalTd));
     countUp(totalTd, Math.round(c.total || 0));
     if (r.spell) {
       const sp = r.spell;

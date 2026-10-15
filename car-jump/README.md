@@ -4,7 +4,7 @@ A 4th-grade spelling trainer that is a car-jumping game, built as a static web a
 no build step. Every jump starts with a word spoken aloud and spelled from memory on a big on-screen keyboard;
 spelling it right is what gives the car full launch power. Then the car rolls down a giant ramp, flies through
 rings that carry the word's letters, flips, lands and smashes props for cash to spend on 6 cars × 4 upgrades
-across 20 stages. No ads, no IAP, no energy timer, no external links.
+across 20 stages, 3 levels a race (cross the finish line to launch again for ×1.5, then ×2 cash), with 11 cars. No ads, no IAP, no energy timer, no external links.
 
 The learning design (and the evidence behind each mechanic) is in [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md);
 the build contract is the "Spelling edition (v3)" section of `SPEC.md`. The pure car game is tagged `ramp-rage-v2`.

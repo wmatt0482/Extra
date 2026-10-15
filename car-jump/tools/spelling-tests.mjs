@@ -358,6 +358,7 @@ test('set launch power: 0.65 + 0.35 × c/n, nitro 1 + 0.25 × c/n (n = 1 reprodu
 });
 test('"Words before each race" option: 1-4, default 2', () => {
   assert.equal(DEFAULT_OPTIONS.wordsPerRace, 2); assert.deepEqual(WORDS_PER_RACE, [1, 2, 3, 4]);
+  assert.equal(DEFAULT_OPTIONS.levelsPerRace, 3, 'v3.6: three levels per race by default');
 });
 test('spelling bonus = $400 × (1 + 0.1 × streak, cap 10) × coinMult', () => {
   assert.equal(spellBonus(0), 400); assert.equal(spellBonus(3), 520); assert.equal(spellBonus(25), 800); assert.equal(spellBonus(0, 1.25), 500);
@@ -1402,6 +1403,10 @@ await atest('engine: ready() is true with the natural voice even when the device
 test('options: cloudVoice is kept when it is an allowlisted voice or "" (device), dropped otherwise', () => {
   const f = Profiles.defaultFamily(); f.players.push({ id: 'pmia', name: 'Mia', color: '#ff3b5c', createdAt: 0, updatedAt: 0 });
   assert.equal(Profiles.playerOptions(f, 'pmia').cloudVoice, undefined, 'never chosen');
+  // v3.6 levels per race: 1-3, anything else falls back to the default 3
+  assert.equal(Profiles.setPlayerOption(f, 'pmia', 'levelsPerRace', 2).levelsPerRace, 2);
+  assert.equal(Profiles.normalizeFamily({ ...f, options: { pmia: { levelsPerRace: 7 } } }).options.pmia.levelsPerRace, 3, 'an unknown value falls back to 3');
+  assert.equal(Profiles.normalizeFamily({ ...f, options: { pmia: { levelsPerRace: 1 } } }).options.pmia.levelsPerRace, 1);
   assert.equal(Profiles.setPlayerOption(f, 'pmia', 'cloudVoice', 'en-US-Neural2-J').cloudVoice, 'en-US-Neural2-J');
   assert.equal(Profiles.setPlayerOption(f, 'pmia', 'cloudVoice', '').cloudVoice, '');
   assert.equal(Profiles.setPlayerOption(f, 'pmia', 'cloudVoice', 'en-US-Wavenet-A').cloudVoice, undefined);

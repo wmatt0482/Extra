@@ -140,7 +140,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .car-name { margin: 0; font: 400 22px/1.05 var(--font-display); }
 .car-tag { margin: 3px 0 0; font-size: 13px; color: var(--muted); }
 .tier { display: flex; gap: 3px; margin-bottom: 4px; flex: none; }
-.tier i { width: 10px; height: 10px; border-radius: 3px; background: var(--line); transform: skewX(-12deg); }
+.tier i { width: 7px; height: 10px; border-radius: 2px; background: var(--line); transform: skewX(-12deg); }
 .tier i.on { background: var(--accent); }
 .dots { display: flex; justify-content: center; gap: 6px; margin: 6px 0 8px; }
 .dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); }
@@ -390,6 +390,7 @@ html.kbd .touch-only { display: none; }
 .banner.b-word > span { color: var(--go); --sh: var(--go-edge); }
 .banner.b-mission > span { color: var(--accent-ink); --sh: var(--accent-edge); background: linear-gradient(#fff3b0, var(--accent)); border-color: #fff; }
 .banner.b-mega > span { color: #fff; --sh: var(--violet-edge); background: linear-gradient(var(--violet), #3a2490); }
+.banner.b-level > span { color: var(--accent-ink); --sh: var(--accent-edge); background: linear-gradient(#fff3b0, var(--accent)); border-color: #fff; }
 .banner.b-record > span { color: #fff; --sh: var(--hot-edge); border-color: var(--accent); background: linear-gradient(var(--hot), #c81e45); }
 .banner.show { animation: bannerSlide 1.55s cubic-bezier(.3,.9,.4,1) forwards; }
 @keyframes bannerSlide {
@@ -1031,6 +1032,12 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
   -webkit-overflow-scrolling: touch; scrollbar-width: none; padding: 2px 2px 4px; margin: 0 0 4px; }
 .style-strip::-webkit-scrollbar { display: none; }
 .style-label { flex: none; font: 400 12px/1 var(--font-display); color: var(--accent); text-transform: uppercase; padding: 0 2px; }
+.style-tabs { flex: none; display: flex; gap: 4px; padding-right: 4px; border-right: 2px solid var(--line); margin-right: 2px; }
+.style-tab { height: 44px; padding: 0 10px; border-radius: 10px; border: 2px solid var(--line); background: var(--ink); color: var(--muted);
+  font: 400 12px/1 var(--font-display); text-transform: uppercase; display: inline-flex; align-items: center; gap: 5px; }
+.style-tab b { min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px; background: var(--ink-2); color: #fff; font: 700 11px/18px var(--font-body); text-align: center; }
+.style-tab.on { color: var(--accent); border-color: var(--accent); background: var(--panel-2); }
+.style-tab.on b { background: var(--accent); color: var(--accent-ink); }
 .style-sep { flex: none; width: 2px; height: 30px; margin: 0 2px; border-radius: 1px; background: var(--line); }
 .style-chip { flex: none; position: relative; display: inline-flex; align-items: center; gap: 6px; height: 44px; padding: 0 10px 0 6px; border-radius: 12px;
   background: var(--ink-2); border: 2px solid var(--line); font: 800 12px/1 var(--font-body); color: #fff; white-space: nowrap; }
@@ -1107,6 +1114,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 @keyframes spinCoin { from { transform: scaleX(1); } to { transform: scaleX(.75) translateY(-6px); } }
 .reveal-glyph { position: absolute; right: 2px; top: 0; width: 46px; height: 46px; display: grid; place-items: center; border-radius: 50%; background: var(--ink); border: 2px solid var(--accent); font-size: 26px; }
 .reveal-name { font: 400 22px/1.1 var(--font-display); text-transform: uppercase; }
+.reveal-hint { margin: 4px 0 0; font: 700 13px/1.2 var(--font-body); color: var(--go); }
 .reveal-card.r-jackpot { border-color: #fff; box-shadow: 0 6px 0 rgba(5,7,25,.55), 0 0 40px rgba(255,207,26,.6); }
 .reveal-card.r-jackpot .reveal-name, .reveal-card.r-cash .reveal-name { color: var(--accent); font-size: 30px; }
 .reveal-tap { margin: 2px 0 0; font: 800 13px/1 var(--font-body); color: var(--muted); visibility: hidden; }
@@ -1276,7 +1284,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
           <button class="btn icon-btn car-nav next" id="car-next" aria-label="Next car" data-sfx><span data-icon="right"></span></button>
         </div>
         <div class="dots" id="car-dots"></div>
-        <div class="style-strip" id="style-strip" role="group" aria-label="Style: skins and stickers"></div>
+        <div class="style-strip" id="style-strip" role="group" aria-label="Style: paint and stickers"></div>
         <div class="car-meta">
           <div style="min-width:0"><h3 class="car-name" id="car-name"></h3><p class="car-tag" id="car-tag"></p></div>
           <div class="tier" id="car-tier" aria-label="Tier"></div>
@@ -1419,6 +1427,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
       <div class="reveal-kind" id="crate-kind"></div>
       <div class="reveal-art" id="crate-art"></div>
       <div class="reveal-name" id="crate-name"></div>
+      <p class="reveal-hint" id="crate-hint" hidden></p>
       <p class="reveal-tap">Tap to continue</p>
     </div>
   </div>

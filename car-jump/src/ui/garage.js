@@ -2,7 +2,9 @@
 // v3.3: a "Style" row under the preview: skin chips then sticker chips. Owned ones are in color (a mini swatch /
 // the sticker glyph); locked ones are gray with how to earn them ("Crate", "7-day streak", "Level 8", "Week
 // Champion"). Equipping is per car (owned cars only); the preview, the title hero and the run use the equipped look.
-import { CARS } from '../data/cars.js';
+// v3.6: the row has two tabs, Paint and Stickers (13 paint chips used to push the stickers off the screen, so nobody
+// found them); owned chips come first, and the Stickers tab shows how many are owned.
+import { CARS, MAX_TIER } from '../data/cars.js';
 import { SKINS, STICKERS } from '../data/cosmetics.js';
 import { earnHint, equip, equippedFor, lookFor, owns } from '../meta/engagement.js';
 import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
@@ -19,6 +21,7 @@ export function createGarage(app) {
     action: $('#car-action'), upgrades: $('#upgrades'), style: $('#style-strip'),
   };
   let index = 0, raf = 0, t0 = 0, slide = 0;
+  let styleTab = 'skin';            // 'skin' (Paint) | 'sticker' (Stickers)
 
   CARS.forEach(() => ui.dots.append(h('i')));
 
@@ -107,16 +110,26 @@ export function createGarage(app) {
     });
     return b;
   }
+  function styleTabBtn(type, text, count) {
+    const on = styleTab === type;
+    const b = h('button', { class: 'style-tab' + (on ? ' on' : ''), role: 'tab', 'aria-selected': String(on), 'data-style-tab': type, 'data-sfx': '' },
+      text, count ? h('b', {}, String(count)) : null);
+    b.addEventListener('click', () => { if (styleTab !== type) { styleTab = type; renderStyle(); ui.style.scrollLeft = 0; } });
+    return b;
+  }
   function renderStyle() {
     const car = CARS[index];
     const owned = isOwned(app.save, car.id);
     const eq = equippedFor(app.save, car.id);
     const keep = ui.style.scrollLeft;
+    // owned first (Stock / No sticker stay first), locked after, each group in catalogue order
+    const sorted = (type, list) => [...list].sort((a, b) => Number(owns(app.save, type, b.id)) - Number(owns(app.save, type, a.id)));
+    const list = styleTab === 'skin' ? sorted('skin', SKINS) : sorted('sticker', STICKERS);
+    const nSkins = SKINS.filter((c) => c.id !== 'stock' && owns(app.save, 'skin', c.id)).length;
+    const nStickers = STICKERS.filter((c) => c.id !== 'none' && owns(app.save, 'sticker', c.id)).length;
     ui.style.replaceChildren(
-      h('span', { class: 'style-label' }, 'Style'),
-      ...SKINS.map((c) => chip('skin', c, car, owned, eq.skin === c.id)),
-      h('span', { class: 'style-sep', 'aria-hidden': 'true' }),
-      ...STICKERS.map((c) => chip('sticker', c, car, owned, eq.sticker === c.id)));
+      h('div', { class: 'style-tabs', role: 'tablist', 'aria-label': 'Style' }, styleTabBtn('skin', 'Paint', nSkins), styleTabBtn('sticker', 'Stickers', nStickers)),
+      ...list.map((c) => chip(styleTab, c, car, owned, (styleTab === 'skin' ? eq.skin : eq.sticker) === c.id)));
     ui.style.scrollLeft = keep;
     canvas.dataset.lookSkin = eq.skin; canvas.dataset.lookSticker = eq.sticker;
   }
@@ -128,7 +141,7 @@ export function createGarage(app) {
     ui.name.textContent = car.name;
     ui.tag.textContent = car.tagline;
     ui.tier.innerHTML = '';
-    for (let i = 1; i <= 6; i++) ui.tier.append(h('i', { class: i <= car.tier ? 'on' : '' }));
+    for (let i = 1; i <= MAX_TIER; i++) ui.tier.append(h('i', { class: i <= car.tier ? 'on' : '' }));
     [...ui.dots.children].forEach((d, i) => d.classList.toggle('on', i === index));
 
     const a = ui.action;
