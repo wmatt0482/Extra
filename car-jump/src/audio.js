@@ -314,6 +314,25 @@ function createAudio() {
     cash() { if (ready()) { [0, 0.06, 0.12].forEach((at, i) => tone('square', 988 * (1 + i * 0.26), 988 * (1 + i * 0.26), 0.08, 0.1, sfxBus, at)); } },
     error() { if (ready()) tone('square', 180, 140, 0.15, 0.08); },
     fanfare() { if (ready()) [523, 659, 784, 1047].forEach((f, i) => tone('square', f, f, i === 3 ? 0.4 : 0.1, 0.09, sfxBus, i * 0.1)); },
+    // v3.3: mystery crate — a wooden rattle (the shake), then a sparkly reveal chime
+    crateOpen() {
+      if (!ready()) return;
+      [0, 0.11, 0.22, 0.33].forEach((at) => noise('bandpass', 700, 420, 3, 0.07, 0.22, at, 0.003));
+      [784, 988, 1175, 1568].forEach((f, i) => tone('triangle', f, f, i === 3 ? 0.45 : 0.12, 0.1, sfxBus, 0.62 + i * 0.06));
+      tone('sine', 3136, 3136, 0.35, 0.035, sfxBus, 0.8);
+    },
+    // v3.3: speller level-up — a short brass-like fanfare ending on a held chord
+    levelUp() {
+      if (!ready()) return;
+      [392, 523, 659, 784].forEach((f, i) => tone('square', f, f, 0.1, 0.075, sfxBus, i * 0.09));
+      [523, 659, 784, 1047].forEach((f) => tone('triangle', f, f, 0.7, 0.07, sfxBus, 0.4));
+      tone('sine', 2093, 2093, 0.5, 0.03, sfxBus, 0.42);
+    },
+    // v3.3: word mastered / trophy — two soft bell strikes
+    trophy() {
+      if (!ready()) return;
+      for (const [f, at] of [[1047, 0], [1568, 0.14]]) { tone('sine', f, f, 0.8, 0.11, sfxBus, at); tone('sine', f * 2.76, f * 2.76, 0.35, 0.025, sfxBus, at); }
+    },
     suspend() { if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {}); },
     resume() { if (ctx && unlocked && ctx.state !== 'running') ctx.resume().catch(() => {}); },
   };

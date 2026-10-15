@@ -1,8 +1,8 @@
 // On-screen GAS / BRAKE / NITRO + keyboard. Multi-touch safe: each button tracks the set of pointerIds
 // holding it, so GAS + NITRO can be held at once with two thumbs. Keyboard (desktop testing):
-// ← = BRAKE/FLIP, → or Space = GAS, Shift = NITRO.
+// ← = BRAKE/FLIP, → or Space = GAS, ↑ or Shift = NITRO (Esc / P = pause, in main.js).
 
-const KEYMAP = { ArrowLeft: 'brake', ArrowRight: 'gas', Space: 'gas', ShiftLeft: 'nitro', ShiftRight: 'nitro' };
+const KEYMAP = { ArrowLeft: 'brake', ArrowRight: 'gas', Space: 'gas', ArrowUp: 'nitro', ShiftLeft: 'nitro', ShiftRight: 'nitro' };
 
 export function createControls(root, onChange) {
   const names = ['gas', 'brake', 'nitro'];

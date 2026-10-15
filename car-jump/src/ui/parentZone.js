@@ -608,7 +608,66 @@ export function createParentZone(app) {
       );   // "Not synced" is already the line under the title
     }
     out.push(h('div', { class: 'hud-label pz-sec' }, 'PRIVACY'), h('p', { class: 'pz-help pz-privacy', id: 'sync-privacy' }, PRIVACY));
+    out.push(transferSection());
     return out;
+  }
+
+  // Transfer progress (src/meta/transfer.js): a code that carries one player's progress to another device, for a copy
+  // of the game that cannot sync. Export per player (read-only code + Copy), Import (paste + Import).
+  function transferSection() {
+    const players = app.family.players;
+    const outBox = h('textarea', { id: 'transfer-out', class: 'pz-transfer-code', readonly: true, rows: '3', hidden: true, 'aria-label': 'Transfer code', spellcheck: 'false' });
+    const copy = h('button', { class: 'btn btn-sm btn-cyan', id: 'transfer-copy', 'data-sfx': '', hidden: true }, 'Copy code');
+    const note = h('p', { class: 'pz-help', id: 'transfer-note', hidden: true }, 'Copy this code, then on the other device open Parents → Family code → Import progress and paste it.');
+    copy.addEventListener('click', async () => {
+      let ok = false;
+      try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(outBox.value); ok = true; } } catch (_) { ok = false; }
+      if (ok) { app.toast('Code copied'); return; }
+      try { outBox.focus(); outBox.select(); outBox.setSelectionRange(0, outBox.value.length); } catch (_) { /* ignore */ }
+      app.toast('Code selected: use Copy');
+    });
+    const exportRow = h('div', { class: 'pz-actions pz-export-row' }, ...players.map((p) => {
+      const b = h('button', { class: 'btn btn-sm', 'data-export': p.id, 'data-sfx': '' }, `Export ${p.name}`);
+      b.addEventListener('click', async () => {
+        b.disabled = true;
+        const code = await app.exportProgress(p.id).catch(() => null);
+        b.disabled = false;
+        if (!code) { app.audio.error(); return; }
+        outBox.value = code; outBox.hidden = false; copy.hidden = false; note.hidden = false;
+        outBox.dataset.player = p.id;
+        try { outBox.scrollIntoView({ block: 'nearest' }); } catch (_) { /* ignore */ }
+      });
+      return b;
+    }));
+    const inBox = h('textarea', { id: 'transfer-in', class: 'pz-transfer-code', rows: '3', placeholder: 'Paste a transfer code here', spellcheck: 'false', autocapitalize: 'off', autocomplete: 'off', autocorrect: 'off' });
+    inBox.addEventListener('focus', () => setTimeout(() => inBox.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300));
+    const imp = h('button', { class: 'btn btn-green', id: 'transfer-import', 'data-sfx': '' }, 'Import');
+    const msg = h('div', { class: 'pz-msg', id: 'transfer-msg', 'aria-live': 'polite' });
+    imp.addEventListener('click', async () => {
+      imp.disabled = true; imp.textContent = 'Importing…';
+      let r;
+      try { r = await app.importProgress(inBox.value); } catch (_) { r = { ok: false, error: 'Import failed: nothing was changed.' }; }
+      imp.disabled = false; imp.textContent = 'Import';
+      msg.className = 'pz-msg ' + (r.ok ? 'ok' : 'err');
+      msg.textContent = r.ok ? r.message : r.error;
+      try { msg.scrollIntoView({ block: 'nearest' }); } catch (_) { /* ignore */ }
+      if (!r.ok) { app.audio.error(); return; }
+      app.audio.cash();
+      inBox.value = '';
+      if (r.mode === 'add') {           // the new player shows up in the export row (keep the message)
+        const keep = msg.textContent;
+        render();
+        const m = $('#transfer-msg'); if (m) { m.className = 'pz-msg ok'; m.textContent = keep; try { m.scrollIntoView({ block: 'nearest' }); } catch (_) { /* ignore */ } }
+      }
+    });
+    return h('div', { class: 'pz-transfer', id: 'sync-transfer' },
+      h('div', { class: 'hud-label pz-sec' }, 'TRANSFER PROGRESS'),
+      h('p', { class: 'pz-help' }, "For a copy of the game that cannot sync: export a player's progress here as a code, and import it on the other device. A player with the same name is merged (nothing is lost); otherwise the player is added."),
+      h('div', { class: 'label' }, 'Export a player'),
+      players.length ? exportRow : h('p', { class: 'pz-help' }, 'No players on this device yet.'),
+      outBox, h('div', { class: 'pz-actions' }, copy), note,
+      h('label', { class: 'pz-label', for: 'transfer-in' }, 'Import progress'),
+      inBox, h('div', { class: 'pz-actions' }, imp), msg);
   }
   // refresh just the status lines (a full re-render would drop what a parent is typing)
   function paintSyncStatus() {

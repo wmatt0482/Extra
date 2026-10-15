@@ -8,11 +8,14 @@ import { CARS, CAR_BY_ID } from '../data/cars.js';
 import { TRACKS, TRACK_BY_ID } from '../data/tracks.js';
 import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
 import { localWrite } from '../sync/notify.js';
+import { defaultCosmetics, defaultCrates, defaultStreak, grantEarned, normalizeCosmetics, normalizeCrates, normalizeStreak, normalizeTrophies } from './engagement.js';
 
 // The key keeps its v1 name so existing saves load in place; `v` inside the object is the schema
 // version. v2 (epic update) added: records.bestCombo/maxAltitude/rings/explosions/rejumps,
 // settings.shake (0-100), and achievements ({id: earned timestamp ms}). Older saves are upgraded by
-// normalize() with defaults for the new fields; nothing else changes shape.
+// normalize() with defaults for the new fields; nothing else changes shape. v3.3 (engagement update) adds xp,
+// streak, cosmetics, crates, trophies, champion and weekBest (src/meta/engagement.js); `v` stays 2 so an older app
+// on another family device still reads a synced save (it keeps the fields it does not know out of its copy).
 export const LEGACY_SAVE_KEY = 'rampRage.save.v1';
 export const SAVE_KEY = LEGACY_SAVE_KEY;    // kept for older imports
 export const SAVE_VERSION = 2;
@@ -54,6 +57,14 @@ export function defaultSave() {
     settings: { sound: true, music: true, reducedMotion: false, shake: 100 },
     seen: { coach: false, ach: 0 },  // one-time UI hints already shown
     achievements: {},        // achievement id -> earned timestamp (ms)
+    // ----- v3.3 engagement (src/meta/engagement.js) -----
+    xp: 0,
+    streak: defaultStreak(),
+    cosmetics: defaultCosmetics(),
+    crates: defaultCrates(),
+    trophies: {},            // listId -> [mastered words]
+    champion: [],            // listIds of Week Champion lists
+    weekBest: { week: '', distance: 0 },
   };
 }
 
@@ -125,6 +136,15 @@ export function normalize(raw) {
   s.seen.coach = bool(seen.coach, s.records.runs > 0);
   s.seen.ach = Math.max(0, Math.floor(num(seen.ach)));   // achievements already seen in the panel (title badge)
   if (num(raw.resetAt) > 0) s.resetAt = num(raw.resetAt);  // family sync: when a parent last reset this save
+  // v3.3 engagement
+  s.xp = Math.max(0, Math.floor(num(raw.xp)));
+  s.streak = normalizeStreak(raw.streak);
+  s.cosmetics = normalizeCosmetics(raw.cosmetics, CARS.map((c) => c.id));
+  s.crates = normalizeCrates(raw.crates);
+  s.trophies = normalizeTrophies(raw.trophies);
+  s.champion = Array.isArray(raw.champion) ? [...new Set(raw.champion.filter((id) => typeof id === 'string' && id.length <= 40))].slice(-60) : [];
+  if (raw.weekBest && typeof raw.weekBest === 'object' && /^\d{4}-W\d{2}$/.test(raw.weekBest.week)) s.weekBest = { week: raw.weekBest.week, distance: Math.max(0, Math.floor(num(raw.weekBest.distance))) };
+  grantEarned(s);          // level / streak / champion cosmetics follow from the numbers (also after a merge)
   return s;
 }
 

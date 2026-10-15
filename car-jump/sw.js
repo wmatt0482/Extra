@@ -4,7 +4,7 @@
 // background (stale-while-revalidate). Bump VERSION on every deploy: the new worker installs, takes over at once
 // (skipWaiting + clients.claim) and the page reloads itself on the next safe screen (src/meta/selfUpdate.js).
 // The family sync API (/api/...) is network only: never cached, never answered from the cache.
-const VERSION = 'spell-jump-v3.2.2';
+const VERSION = 'spell-jump-v3.3.0';
 const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
   './',
@@ -21,6 +21,7 @@ const SHELL = [
   'src/data/tracks.js',
   'src/data/upgrades.js',
   'src/data/rating.js',
+  'src/data/cosmetics.js',
   'src/meta/save.js',
   'src/meta/economy.js',
   'src/meta/goals.js',
@@ -29,6 +30,8 @@ const SHELL = [
   'src/meta/mockEngine.js',
   'src/meta/achievements.js',
   'src/meta/selfUpdate.js',
+  'src/meta/engagement.js',
+  'src/meta/transfer.js',
   'src/ui/dom.js',
   'src/ui/icons.js',
   'src/ui/controls.js',
@@ -38,6 +41,9 @@ const SHELL = [
   'src/ui/results.js',
   'src/ui/panels.js',
   'src/ui/carPreview.js',
+  'src/ui/crates.js',
+  'src/game/car.js',
+  'src/game/util.js',
   'src/ui/fireworks.js',
   'src/ui/titleHero.js',
   'src/ui/players.js',

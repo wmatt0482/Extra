@@ -246,6 +246,8 @@ No emails or accounts. Anyone with the family code can see and change these, so 
 | Family record | players = union by id, minus removed players (a removal is a tombstone in `removedPlayers`, so it spreads instead of the player coming back); a player edited on both sides: the later `updatedAt`; PIN: the later `pinUpdatedAt` (on Join: the family's); options: the later `optionsUpdatedAt`, per player |
 | Words | lists = union by id minus deleted lists (`deletedLists` tombstones), the same list keeps its later created / archived state; the active list is the one chosen later (`activeAt`); word records: the later `lastSeen` (higher box on a tie); tests = union by date + score; today's mission and the streak from the doc changed later; a spelling reset (`resetAt`) drops older progress |
 | Game save | the save changed later wins whole, except cash = the higher amount and owned cars / unlocked tracks = union (also the higher upgrade levels, best distances, records, and every earned badge), so nobody loses a car or a track; a "Reset game save" (`resetAt`) wins |
+| v3.3 save fields | XP = the higher; daily streak: the side with the later streak day wins the count (best = the higher, shield days and counted days = union); skins / stickers owned = union, the equipped look from the save changed later; crates earned / opened = the higher of each; trophies and Week Champion lists = union; this week's best jump = the later week, else the farther jump |
+| v3.3 word records | `masteredAt` (when a word became Mastered, for the family board) comes with the winning record, or from the other side when the winner is Mastered without one |
 
 **How it works.** Local state is `spellJump.sync` = `{ code, deviceId, keys: { family | <id>.save | <id>.words:
 { rev, updatedAt, dirty, hash } }, lastSync, lastError }`. Each synced key is a server document
@@ -276,6 +278,49 @@ cannot both win.
 Netlify installs the root `package.json` dependencies (`@netlify/blobs`) so the function can be bundled with esbuild;
 the Next.js app at the root is not built (`NETLIFY_NEXT_PLUGIN_SKIP`).
 
+## Coming back every day (v3.3)
+
+Six things that reward practice, never time spent: no lives, no energy, no countdowns, no purchases, no notifications.
+Everything is per player, works offline and follows the player through family sync.
+
+1. **Daily streak.** A day counts when the daily mission (8 words) or the Friday Test is finished. The flame next to
+   the player's name on the title shows the streak; tapping it opens a month calendar (streak days, shield days,
+   today), the best streak and the next milestone ("3 days to a crate"). **Streak shield:** one per week (Monday to
+   Sunday) covers one missed day automatically, the next time the child opens the game; the calendar shows it.
+   Missing two days in the same week starts a new streak. Milestones (3, 7, 14, 30, 60, 100 days) pay a mystery
+   crate; 7 / 14 / 30 days also unlock a sticker / the Rainbow skin / the Streak Flame sticker.
+2. **Family board.** Under the player tiles: this week's words mastered, current streak and best jump for every
+   player on the device (synced players included), with medals, a crown on the leader's tile and one friendly line
+   for the last player ("Mia is 2 words ahead" / "You're in the lead!"). It resets every Monday and is worked out on
+   the device; nothing new is sent anywhere.
+3. **Mystery crates.** Earned for finishing the daily mission, for streak milestones and for Week Champion. A crate
+   drops on the results screen; tap to open: cash (60 %, $300-800 × the car's tier), a sticker (25 %), a car skin
+   (12 %) or a jackpot (3 %, triple cash). Every 5th crate in a row without a sticker or skin is guaranteed to be one;
+   duplicates roll again, then turn into cash. Unopened crates wait on the title ("1 crate").
+4. **Trophies.** When a word becomes Mastered (box 3, three first-try spells on at least two days) the results
+   screen celebrates it (WORD MASTERED). The Trophies button on the title shows this week's words as a shelf (gold
+   = mastered) and past weeks below. Mastering every word of the week = **Week Champion**: a badge, fireworks, the
+   Champion Chrome skin, the Trophy sticker, a crate, +300 XP and a crown on the family board for that week.
+5. **Speller levels.** XP for learning only: +20 a first-try word, +8 a fixed word, +15 a right Friday Test word,
+   +50 a mastered word, +100 the daily mission, +300 Week Champion. The level, its title ("Word Wrangler") and a
+   progress bar sit under the player's name; the picker tiles show "Lv 4". A level-up gets a stamp and a fanfare on
+   the results screen; levels 8 / 12 / 16 unlock the Galaxy skin, the Wizard Hat sticker and Solid Gold.
+6. **Car style.** The garage has a Style row under the car: skins (paint + decal) and stickers (an emblem on the
+   door). Owned ones are in color; locked ones are gray and say how to earn them ("Crate", "7-day streak",
+   "Level 8", "Week Champion"). The look is chosen per car and shows in the garage, on the title and in the race.
+   Cosmetics are earned, never bought with cash.
+
+### Transfer progress (v3.3)
+
+For a copy of the game that cannot use family sync (for example one opened from a link where the sync service is
+blocked): **Parents → Family code → Transfer progress**. *Export* a player to get a code (Copy code), then on the
+other device open **Parents → Family code**, paste it under **Import progress** and tap **Import**. A player with the
+same name is merged with the same rules as family sync (the higher cash, every car and track, every word's progress,
+the higher XP…) and the result says *Merged into Nathan: $12,400, 3 cars, 15 words*; otherwise the player is added
+(*Added Nathan*). If the device is in a family, the imported data syncs on. A damaged or incomplete code is refused
+with a message and changes nothing. (The code is the player's save and words as gzip-compressed JSON, base64url;
+`src/meta/transfer.js`.)
+
 ## Game features (from v2)
 
 Combo chains with a HUD badge, explosions, formations, air targets, kickers, cinematics, a results rating stamp,
@@ -304,8 +349,12 @@ Audio is synthesized (WebAudio): v3 adds a soft key click, a bright rising triad
 The spelling bonus and the daily mission sit on top of the v2 run economy. `node tools/economy-sim.mjs --speller 0.75`
 plays the real engine headlessly as a child who spells 75 % of words right on the first try (bonus, full power) and
 fixes the rest (65 % power), 8 runs a day with the $500 mission once a day. Re-tuned for v3 (upgrade cost
-`480 × 2.0^(tier−1) × 1.5^level`, cars $13k / $19k / $36k / $88k / $340k), averaged over `--seed-jitter 0 / 0.4 / 0.8`:
+`480 × 2.0^(tier−1) × 1.5^level`, cars $13k / $19k / $36k / $88k / $340k at the time), averaged over `--seed-jitter 0 / 0.4 / 0.8`:
 first finish ~4 runs, Gravel Fox ~8, Thunderline ~20, Bigfoot Jr. ~41, Vantablack GT ~77, Rhino ~159 (see SPEC.md).
+v3.3: the engine now also pays air time and Big Air on landing, which sped the early game up (jitter 0: first finish
+run 2, Gravel Fox run 5, Rhino run 103), so Gravel Fox went to $16k and Rhino to $440k: Gravel Fox run 10,
+Thunderline 19, Bigfoot Jr. 32, Vantablack GT 55, Rhino 120 (first 400 m finish stays at run 2: that is the track,
+not the car prices). Crate cash ($300-800 × tier, about one crate a day) is not simulated.
 
 ## Run locally
 
@@ -316,8 +365,18 @@ python3 -m http.server 8080      # or: npx serve
 
 Open <http://localhost:8080/>. URL flags: `?mock=1` (scripted mock engine, `src/meta/mockEngine.js`: parks until
 GAS, flies through one letter ring per letter in order, emits `letterRing` / `wordComplete`), `?nosw=1` (no service
-worker). Keyboard on desktop: letters, `'`, `-`, Space, Backspace and Enter (LAUNCH) on the spell keyboard;
-← brake, → / Space gas, Shift nitro, Esc / P pause while driving.
+worker). Keyboard on desktop: letters, `'`, `-`, Space, Backspace and Enter (LAUNCH) on the spell keyboard; while
+driving:
+
+| Key | Action |
+| --- | --- |
+| → or Space | GAS (front flip in the air) |
+| ← | BRAKE (back flip in the air) |
+| ↑ or Shift | NITRO |
+| Esc or P | pause |
+
+On a computer (a mouse / trackpad that can hover) or once a key has been pressed, the first-run "How to jump" tips
+and the pause menu show these keys too.
 
 ### Tests and tools
 
@@ -392,7 +451,7 @@ car-jump/
   src/
     main.js               boot: players, saves, audio + speech, engine loading, navigation, spelling flow, runs
     audio.js              WebAudio synth (engine, smashes, music, …, v3: letter click, correct, oops, mission, ducking)
-    data/                 cars, tracks, upgrades, rating
+    data/                 cars, tracks, upgrades, rating, cosmetics (skins, stickers, levels, XP, crate odds)
     game/                 the physics engine (createGame contract in SPEC.md)
     spelling/
       words.js            list parser, normalizing, pattern / syllable helpers, attempt alignment, sample list
@@ -410,9 +469,12 @@ car-jump/
       spellPanel.js       Spell to Launch panel (Look-Say-Cover-Write-Check, Cover-Copy-Compare)
       testMode.js         Qualifier / Friday Test screen
       why.js              "Why this works" table (copy of docs/LEARNING-DESIGN.md)
-    meta/                 save, economy, goals, achievements, daily, rng, mockEngine
-    ui/                   players (picker + new player), parentZone, garage, tracks, results, panels (badges),
-                          HUD, controls, icons, car preview, title hero, fireworks
+    meta/                 save, economy, goals, achievements, daily, rng, mockEngine,
+                          engagement (v3.3 streak / XP / crates / trophies / family board rules, pure),
+                          transfer (progress transfer code)
+    ui/                   players (picker + family board), parentZone, garage (+ Style row), tracks, results,
+                          panels (badges, streak, trophies), crates (crate opening), HUD, controls, icons,
+                          car preview, title hero, fireworks
   dev.html                engine harness (keyboard + on-screen buttons, no meta)
   tools/                  spelling-tests, ui-smoke, engine-smoke, integration-smoke, sync-smoke,
                           sync-function-check, economy-sim, make-icons

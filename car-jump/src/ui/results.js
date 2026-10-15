@@ -4,7 +4,13 @@
 // v3: a Spelling row (word, first try / fixed, bonus, streak), the daily-mission reward and the Friday Test
 // (Mega Run) pay as extra rows under the run total (they were credited when they happened), plus a
 // "Today n / 8" chip and a big "Mission complete" callout.
+// v3.3 (r.eng): after the rating stamp, one moment at a time over the screen (never blocking the buttons): WORD
+// MASTERED (the word's tiles go gold and smash into a trophy that flies to the shelf icon, confetti), Week Champion
+// (fireworks + a callout), the level-up stamp ("LEVEL 5 · Word Wrangler", fanfare); then the crates earned in this
+// run drop into the callouts row with a shake — tap to open (src/ui/crates.js). A streak day shows as a callout.
 import { CAR_BY_ID } from '../data/cars.js';
+import { levelTitle, unopened } from '../meta/engagement.js';
+import { CRATE_SVG } from './crates.js';
 import { TRACK_BY_ID } from '../data/tracks.js';
 import { isUnlocked, nextTrackId, ratingFor } from '../meta/economy.js';
 import { $, h, money, fmt1 } from './dom.js';
@@ -33,7 +39,76 @@ export function createResults(app) {
     retry: $('#res-retry'), garage: $('#res-garage'), next: $('#res-next'),
   };
   const fx = createFireworks($('#res-fx'));
-  let last = null, countRaf = 0, stampTimer = 0;
+  const moment = $('#res-moment');
+  let last = null, countRaf = 0, stampTimer = 0, momentTimers = [];
+  const later = (fn, ms) => momentTimers.push(setTimeout(fn, ms));
+  function clearMoments() { momentTimers.forEach(clearTimeout); momentTimers = []; moment.hidden = true; moment.replaceChildren(); moment.className = 'res-moment'; }
+
+  // WORD MASTERED: gold tiles → trophy → shelf (≈ 2.6 s)
+  function masteryMoment(word, shelfCount) {
+    const upper = document.documentElement.classList.contains('tiles-upper');
+    const tiles = h('div', { class: 'mm-tiles' }, [...word].map((ch, i) => h('i', { style: { '--i': i, '--n': word.length } }, upper ? ch.toUpperCase() : ch)));
+    const cup = h('span', { class: 'mm-cup', html: icon('trophy') });
+    const shelf = h('span', { class: 'mm-shelf', id: 'res-shelf' }, h('span', { html: icon('trophy') }), h('b', {}, String(Math.max(0, shelfCount - 1))));
+    moment.className = 'res-moment mastery';
+    moment.dataset.word = word;
+    moment.replaceChildren(h('div', { class: 'mm-title' }, 'Word mastered!'), tiles, cup, shelf);
+    moment.hidden = false;
+    requestAnimationFrame(() => {
+      const tr = tiles.getBoundingClientRect(), mr = moment.getBoundingClientRect();
+      cup.style.left = `${tr.left + tr.width / 2 - mr.left}px`; cup.style.top = `${tr.top + tr.height / 2 - mr.top}px`;
+      const c = cup.getBoundingClientRect(), t = shelf.getBoundingClientRect();
+      cup.style.setProperty('--fx', `${t.left + t.width / 2 - (c.left + c.width / 2)}px`);
+      cup.style.setProperty('--fy', `${t.top + t.height / 2 - (c.top + c.height / 2)}px`);
+      moment.classList.add('go');
+    });
+    later(() => app.audio.trophy(), 900);
+    later(() => { shelf.querySelector('b').textContent = String(shelfCount); shelf.classList.add('bump'); }, 2050);
+    if (!app.save.settings.reducedMotion) later(() => fx.start(1200), 1000);
+  }
+  function levelMoment(level) {
+    moment.className = 'res-moment levelup';
+    moment.replaceChildren(h('div', { class: 'stamp lvl-stamp r-L', id: 'res-levelup', role: 'img', 'aria-label': `Level ${level}, ${levelTitle(level)}` },
+      h('span', { class: 'rays', 'aria-hidden': 'true' }), h('b', {}, h('span', { class: 'lv-word' }, 'Level'), String(level)), h('small', {}, levelTitle(level))));
+    moment.hidden = false;
+    const st = moment.firstChild;
+    void st.offsetWidth;
+    st.classList.add('slam');
+    app.audio.levelUp();
+  }
+  function crateDrop() {
+    const n = unopened(app.save);
+    const old = $('#res-crate');
+    if (old) old.remove();
+    if (!n) return;
+    const b = h('button', { class: 'crate-drop', id: 'res-crate', 'data-sfx': '', 'aria-label': `Mystery crate${n > 1 ? `, ${n} waiting` : ''}. Tap to open.` },
+      h('span', { class: 'cd-box', html: CRATE_SVG }), h('span', { class: 'cd-text' }, 'Open!'), n > 1 ? h('span', { class: 'cd-count' }, String(n)) : null);
+    b.addEventListener('click', () => {
+      if (!app.crates || app.crates.busy) return;
+      app.crates.open(() => crateDrop());
+    });
+    el.callouts.prepend(b);
+    app.audio.land('good');
+  }
+  // the run's engagement moments, one after another, then the crate drop
+  function playMoments(r) {
+    clearMoments();
+    const e = r.eng;
+    if (!e) return;
+    const rm = app.save.settings.reducedMotion;
+    let t = rm ? 300 : 1100;
+    (e.mastered || []).forEach((m, i) => { later(() => masteryMoment(m.word, m.shelf), t); t += rm ? 1200 : 2700; void i; });
+    if (e.champion) {
+      later(() => {
+        el.callouts.prepend(h('span', { class: 'callout champ', id: 'res-champion' }, h('span', { html: icon('crown') }), 'Week Champion!'));
+        if (!rm) fx.start(3200);
+        app.audio.fireworks(); app.audio.trophy();
+      }, t - (rm ? 0 : 300));
+      t += rm ? 300 : 900;
+    }
+    if (e.levelAfter > e.levelBefore) { later(() => levelMoment(e.levelAfter), t); t += rm ? 1400 : 2400; }
+    later(() => { moment.hidden = true; moment.replaceChildren(); for (const u of e.unlocks || []) app.toast(`Unlocked: ${u.name}!`); if (e.crates) crateDrop(); }, t);
+  }
 
   el.retry.addEventListener('click', () => last && app.startRun({ trackId: last.trackId, daily: last.daily }));
   el.garage.addEventListener('click', () => app.go('garage'));
@@ -183,8 +258,13 @@ export function createResults(app) {
       else el.callouts.append(h('span', { class: 'callout cyan' }, `Daily: ${r.dailyGoalText} (got ${r.dailyValue})`));
     }
 
+    if (r.eng && r.eng.streak && r.eng.streak.counted) {
+      el.callouts.append(h('span', { class: 'callout streak', id: 'res-streak' }, h('span', { html: icon('flame') }), `${r.eng.streak.count}-day streak!`));
+    }
+
     stamp(s.rating || ratingFor(s, track.finish), s.ratingScore);
     fx.stop();
+    playMoments(r);
     if (record) {
       if (!app.save.settings.reducedMotion) fx.start(2800);
       setTimeout(() => app.audio.fireworks(), 150);
@@ -198,6 +278,6 @@ export function createResults(app) {
   }
   return {
     show,
-    hide() { fx.stop(); cancelAnimationFrame(countRaf); clearTimeout(stampTimer); },
+    hide() { fx.stop(); cancelAnimationFrame(countRaf); clearTimeout(stampTimer); clearMoments(); },
   };
 }

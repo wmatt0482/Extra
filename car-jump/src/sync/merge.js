@@ -11,9 +11,16 @@
 // save    the doc with the later updatedAt wins whole, except cash = max and owned cars / unlocked tracks = union
 //         (also kept: the higher upgrade levels, best distances, records, earned badges), so nobody loses a car or
 //         a track. A "Reset game save" (resetAt) on one side wins whole.
+//         v3.3: xp = max; streak: the doc with the later lastDay wins count / lastDay (same day: the higher count),
+//         best = max, shield days and counted days = union; cosmetics owned = union, equipped from the later doc;
+//         crates earned / opened / sinceCosmetic = max each; trophies (per list) and champion = union; weekBest:
+//         the later week, the farther jump within the same week.
+// words   v3.3: a record's masteredAt comes with the winning record; when that one is Mastered without a date, the
+//         other side's date is kept.
 import { MAX_PLAYERS } from '../spelling/profiles.js';
 import { normalizeWordsData } from '../spelling/wordStore.js';
 import { normalize as normalizeSave } from '../meta/save.js';
+import { isMastered } from '../spelling/scheduler.js';
 
 const clone = (x) => (x == null ? x : JSON.parse(JSON.stringify(x)));
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -111,7 +118,9 @@ export function mergeWords(local, remote, now = Date.now()) {
   for (const d of progress) {
     for (const [w, r] of Object.entries(d.records || {})) {
       if (!r || typeof r !== 'object' || deleted.includes(r.listId)) continue;
-      records[w] = records[w] ? betterRecord(records[w], r) : r;
+      if (!records[w]) { records[w] = r; continue; }
+      const win = betterRecord(records[w], r), lose = win === r ? records[w] : r;
+      records[w] = !num(win.masteredAt) && num(lose.masteredAt) && isMastered(win) ? { ...win, masteredAt: num(lose.masteredAt) } : win;
     }
   }
   const tests = new Map();
@@ -161,7 +170,34 @@ export function mergeSave(local, remote) {
   for (const [k, v] of Object.entries(o.records || {})) s.records[k] = Math.max(num(s.records[k]), num(v));
   s.achievements = s.achievements && typeof s.achievements === 'object' ? s.achievements : {};
   for (const [id, t] of Object.entries(o.achievements || {})) if (num(t) > 0) s.achievements[id] = s.achievements[id] ? Math.min(num(s.achievements[id]), num(t)) : num(t);
+  mergeEngagement(s, o);
   return normalizeSave(s);
+}
+
+// v3.3 fields; s = a clone of the later doc (modified in place), o = the other doc
+const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
+const arr = (x) => (Array.isArray(x) ? x : []);
+function mergeEngagement(s, o) {
+  s.xp = Math.max(num(s.xp), num(o.xp));
+  const a = obj(s.streak), b = obj(o.streak);
+  const da = typeof a.lastDay === 'string' ? a.lastDay : '', db = typeof b.lastDay === 'string' ? b.lastDay : '';
+  const win = da !== db ? (da > db ? a : b) : (num(a.count) >= num(b.count) ? a : b);   // ISO days compare as strings
+  s.streak = {
+    count: num(win.count), lastDay: win.lastDay || '', best: Math.max(num(a.best), num(b.best), num(win.count)),
+    shieldAvailableWeek: win.shieldAvailableWeek || '',
+    shieldUsedDays: uniq(a.shieldUsedDays, b.shieldUsedDays).sort(), days: uniq(a.days, b.days).sort(),
+  };
+  const ca = obj(s.cosmetics), cb = obj(o.cosmetics);
+  s.cosmetics = { skins: uniq(ca.skins, cb.skins), stickers: uniq(ca.stickers, cb.stickers), equipped: clone(obj(ca.equipped)) };
+  const ka = obj(s.crates), kb = obj(o.crates);
+  s.crates = { earned: Math.max(num(ka.earned), num(kb.earned)), opened: Math.max(num(ka.opened), num(kb.opened)), sinceCosmetic: Math.max(num(ka.sinceCosmetic), num(kb.sinceCosmetic)) };
+  const ta = obj(s.trophies), tb = obj(o.trophies);
+  s.trophies = {};
+  for (const id of uniq(Object.keys(ta), Object.keys(tb))) s.trophies[id] = uniq(ta[id], tb[id]);
+  s.champion = uniq(s.champion, o.champion);
+  const wa = obj(s.weekBest), wb = obj(o.weekBest);
+  const ka2 = typeof wa.week === 'string' ? wa.week : '', kb2 = typeof wb.week === 'string' ? wb.week : '';
+  if (ka2 || kb2) s.weekBest = ka2 === kb2 ? { week: ka2, distance: Math.max(num(wa.distance), num(wb.distance)) } : clone(ka2 > kb2 ? wa : wb);
 }
 
 /** Dispatch by sync key: 'family' | '<id>.save' | '<id>.words'. */

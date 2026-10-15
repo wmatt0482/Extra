@@ -190,7 +190,7 @@ async function main() {
     console.log('\n=== sync off: nothing goes to the network ===');
     await L.waitForSelector(visibleSel('#screen-players'));
     check(apiLog.length === 0, 'no /api/family requests before a family exists');
-    check(await J(L, () => window.__spellJump.app.version) === '3.2.2', 'app version 3.2.2');
+    check(await J(L, () => window.__spellJump.app.version) === '3.3.0', 'app version 3.3.0');
 
     console.log('\n=== laptop: Mia, PIN, Create family code ===');
     await typeName(L, 'Mia');
@@ -349,6 +349,10 @@ async function main() {
     await sleep(30);
     const ipadA = await practice(I, 'thought', true);
     const ipadB = await practice(I, 'friend', true);
+    // v3.3: both devices change Mia's cosmetics / crates / XP offline too (the save doc conflicts → merged)
+    const crates0 = await J(L, () => ({ ...window.__spellJump.app.save.crates }));
+    await J(L, () => { const s = window.__spellJump.app.save; s.cosmetics.skins.push('flames'); s.crates.earned += 2; s.xp = 400; window.__spellJump.app.persist(); });
+    await J(I, () => { const s = window.__spellJump.app.save; s.cosmetics.stickers.push('star'); s.cosmetics.equipped.beater = { skin: 'stock', sticker: 'star' }; s.crates.earned += 1; s.crates.opened += 1; s.xp = 250; window.__spellJump.app.persist(); });
     await sleep(2600);                                   // both debounced pushes fail offline
     check((await syncStatus(L)).offline && (await syncStatus(I)).offline, 'both devices offline with changes waiting');
     online.ipad = true;
@@ -369,6 +373,10 @@ async function main() {
     check(Object.keys(before.records).every((w) => ws.records[w]), `no word record lost (${Object.keys(ws.records).length} records)`);
     check(JSON.stringify(wl.records) === JSON.stringify(ws.records) && JSON.stringify(wi.records) === JSON.stringify(ws.records), 'laptop, ipad and server agree on every record');
     check(await J(L, () => window.__spellJump.words.records.thought.attempts) === ipadA.attempts, "the laptop's in-memory words got the ipad's practice");
+    const sv = { l: await lsJSON(L, `spellJump.${miaId}.save`), i: await lsJSON(I, `spellJump.${miaId}.save`), s: (await serverDoc(code, `${miaId}.save`)).data };
+    const okSave = (x) => x.cosmetics.skins.includes('flames') && x.cosmetics.stickers.includes('star') && x.crates.earned === crates0.earned + 2 && x.crates.opened === crates0.opened + 1 && x.xp === 400;
+    check(okSave(sv.l) && okSave(sv.i) && okSave(sv.s), `cosmetics + crates merged across the devices: skins ${sv.s.cosmetics.skins}, stickers ${sv.s.cosmetics.stickers}, crates ${JSON.stringify(sv.s.crates)}, xp ${sv.s.xp} (laptop, ipad and server agree)`);
+    check(await J(L, () => window.__spellJump.app.save.cosmetics.stickers.includes('star') && window.__spellJump.app.save.crates.earned) === crates0.earned + 2, "the laptop's in-memory save got the ipad's sticker");
 
     console.log('\n=== status screens ===');
     await L.click('#btn-parents');

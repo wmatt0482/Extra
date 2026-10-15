@@ -13,6 +13,9 @@ import { ACHIEVEMENTS, createAchievements } from './meta/achievements.js';
 import { claimGoals, ensureGoals, goalEvent, goalSummary, goalText } from './meta/goals.js';
 import { dailyFor, refreshDaily, todayKey } from './meta/daily.js';
 import { hashString } from './meta/rng.js';
+import {
+  XP, addTrophy, addXp, checkChampion, completeDay, earnCrate, levelFor, levelProgress, lookFor, noteJump, refreshStreak, streakNow, unopened,
+} from './meta/engagement.js';
 import { tts } from './spelling/tts.js';
 import { createSpellPanel } from './spelling/spellPanel.js';
 import { createTestScreen } from './spelling/testMode.js';
@@ -31,10 +34,12 @@ import { createPanels } from './ui/panels.js';
 import { createTitleHero } from './ui/titleHero.js';
 import { createPlayers, drawAvatar } from './ui/players.js';
 import { createParentZone } from './ui/parentZone.js';
+import { createCrateOpener } from './ui/crates.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { createSyncClient } from './sync/client.js';
+import { applyImport, decodeTransfer, encodeTransfer } from './meta/transfer.js';
 
-const VERSION = '3.2.2';
+const VERSION = '3.3.0';
 const params = new URLSearchParams(location.search);
 const MISSION_REWARD = 500;
 const QUALIFIER_PAY = 100;
@@ -113,6 +118,40 @@ async function boot() {
     get currentPlayerId() { return currentPlayerId; },
     get words() { return words; },
     persist: () => writeSave(save),
+    // v3.3: another player's save + words (family board on the picker); the current player's come from memory
+    playerData(id) {
+      if (id === currentPlayerId && words) return { save, words };
+      return { save: loadSave(Profiles.saveKey(id)), words: Profiles.loadWords(id) };
+    },
+    onLookChanged: () => hero.redraw(),
+    // ----- progress transfer code (Parent Zone → Family code → Transfer progress; src/meta/transfer.js) -----
+    async exportProgress(id) {
+      const p = Profiles.playerById(family, id);
+      if (!p) return null;
+      if (id === currentPlayerId) { app.persist(); app.persistWords(); }
+      const { save: sv, words: wd } = app.playerData(id);
+      return encodeTransfer({ player: p, save: sv, words: wd });
+    },
+    async importProgress(code) {
+      const d = await decodeTransfer(code);
+      if (!d.ok) return d;
+      const r = applyImport(family, d.data, {
+        createPlayer: (f, name, color) => Profiles.createPlayer(f, name, color),
+        loadSave: (id) => (id === currentPlayerId ? JSON.parse(JSON.stringify(save)) : loadSave(Profiles.saveKey(id))),
+        loadWords: (id) => (id === currentPlayerId && words ? JSON.parse(JSON.stringify(words)) : Profiles.loadWords(id)),
+        writeSave: (id, sv) => writeSave(sv, Profiles.saveKey(id)),
+        writeWords: (id, wd) => Profiles.writeWords(id, wd),
+      });
+      if (!r.ok) return r;
+      wordsCache.delete(r.player.id);
+      if (r.player.id === currentPlayerId) {        // the merged data replaces what is in memory
+        replaceSave(loadSave());
+        replaceInPlace(words, Profiles.loadWords(currentPlayerId));
+        WS.rollToday(words, Date.now()); session = createSession();
+        refreshCash(); refreshAchBadge(); hero.redraw();
+      }
+      return r;
+    },
     persistWords: () => { if (currentPlayerId && words) Profiles.writeWords(currentPlayerId, words); },
     persistFamily: () => Profiles.writeFamily(family),
     go,
@@ -201,7 +240,8 @@ async function boot() {
   const playersUI = createPlayers(app);
   const screens = { garage: createGarage(app), tracks: createTracks(app), results: createResults(app), players: playersUI.players, newplayer: playersUI.newplayer };
   const panels = createPanels(app);
-  const hero = createTitleHero($('#hero'), () => CAR_BY_ID[save.selectedCar]);
+  const hero = createTitleHero($('#hero'), () => CAR_BY_ID[save.selectedCar], () => (currentPlayerId ? lookFor(save, save.selectedCar) : null));
+  const crates = app.crates = createCrateOpener(app);
   const spellPanel = createSpellPanel($('#spell'), { tts, audio: Audio, onCancel: () => quitRun() });
   const testScreen = createTestScreen($('#screen-test'), { tts, audio: Audio });
   const pz = createParentZone(app);
@@ -242,6 +282,7 @@ async function boot() {
     setSaveKey(Profiles.saveKey(id));
     replaceSave(loadSave());
     refreshDaily(save); ensureGoals(save);
+    refreshStreak(save, Date.now());     // v3.3: a missed day since the last streak day uses this week's shield
     words = Profiles.loadWords(id);
     WS.rollToday(words, Date.now());
     session = createSession();
@@ -271,6 +312,43 @@ async function boot() {
     $('#title-mission-text').textContent = m.done ? 'Mission complete! Free play' : `Today: ${m.count} / ${m.size} words`;
     $('#title-sample').hidden = !WS.isSampleActive(words);
     $('#btn-play').textContent = WS.qualifierDue(words) ? 'Play: new words!' : 'Play';
+    refreshEngagement();
+  }
+
+  // ---------- v3.3 engagement: title chips (streak flame, level + progress, crates waiting) ----------
+  function refreshEngagement() {
+    const now = Date.now();
+    const n = streakNow(save.streak, now);
+    $('#title-streak').textContent = String(n);
+    $('#btn-streak').classList.toggle('cold', n === 0);
+    $('#btn-streak').setAttribute('aria-label', `Streak: ${n} day${n === 1 ? '' : 's'}. Opens the streak calendar.`);
+    const lp = levelProgress(save.xp || 0);
+    $('#title-lv').textContent = `Lv ${lp.level}`;
+    $('#title-lv-name').textContent = lp.title;
+    $('#title-lv-bar').style.width = `${lp.max ? 100 : Math.round((lp.into / lp.need) * 100)}%`;
+    $('#title-level').setAttribute('aria-label', `Level ${lp.level}, ${lp.title}${lp.max ? '' : `, ${lp.need - lp.into} XP to the next level`}`);
+    const c = unopened(save);
+    const cb = $('#btn-crates');
+    cb.hidden = c === 0;
+    $('#crate-count').textContent = `${c} crate${c === 1 ? '' : 's'}`;
+  }
+  // a run's (or a Friday Test's) engagement bookkeeping, shown on the results screen
+  function newEng() { const l = levelFor(save.xp || 0); return { xp: 0, levelBefore: l, levelAfter: l, mastered: [], crates: 0, champion: false, unlocks: [], streak: null }; }
+  function gainXp(eng, n) {
+    const x = addXp(save, n);
+    eng.xp += x.gained; eng.unlocks.push(...x.unlocks); eng.levelAfter = levelFor(save.xp);
+  }
+  function masteredWord(eng, word, listId) {
+    gainXp(eng, XP.mastered);
+    addTrophy(save, listId, word);
+    eng.mastered.push({ word, listId, shelf: (save.trophies[listId] || []).length });
+    const ch = checkChampion(save, words);
+    if (ch) { eng.champion = true; eng.crates += 1; eng.xp += ch.xp.gained; eng.unlocks.push(...ch.unlocks); eng.levelAfter = levelFor(save.xp); }
+  }
+  function dayDone(eng, now) {
+    const d = completeDay(save, now);
+    if (!d.counted) return;
+    eng.streak = d; eng.crates += d.crates; eng.unlocks.push(...d.unlocks);
   }
 
   function go(name, arg) {
@@ -371,11 +449,13 @@ async function boot() {
     }
     const id = k.replace(/\.(save|words)$/, '');
     if (k.endsWith('.save')) {
+      if (screen === 'players') screens.players.show();     // v3.3: the family board reads every player's save
       if (id !== currentPlayerId) return;
       replaceSave(loadSave());
       refreshCash();
       refreshAchBadge();
       hero.redraw();
+      if (screen === 'title') refreshTitle();
     } else {
       const fresh = Profiles.loadWords(id);
       if (id === currentPlayerId && words) {
@@ -385,6 +465,7 @@ async function boot() {
         if (screen === 'title') refreshTitle();
       }
       if (wordsCache.has(id) && wordsCache.get(id) !== words) replaceInPlace(wordsCache.get(id), fresh);
+      if (screen === 'players') screens.players.show();
     }
     pz.onSyncApplied();
   }
@@ -420,11 +501,16 @@ async function boot() {
             button: "Let's go",
           };
         }
-        WS.recordFriday(words, results, now);
+        const ft = WS.recordFriday(words, results, now);
         const score = total ? correct / total : 0;
         const paid = earn(save, correct * MEGA_PAY);
+        // v3.3: XP per correct word, trophies for words the test mastered, and the test counts as a streak day
+        const eng = newEng();
+        gainXp(eng, correct * XP.testWord);
+        for (const w of ft.mastered || []) masteredWord(eng, w, words.activeId);
+        dayDone(eng, now);
         app.persist(); app.persistWords();
-        lastTest = { correct, total, score, paid };
+        lastTest = { correct, total, score, paid, eng };
         if (score >= 0.8) Audio.fanfare(); else Audio.cash();
         return {
           heading: score === 1 ? 'Perfect test!' : 'Test done!',
@@ -473,7 +559,9 @@ async function boot() {
     run = {
       trackId, daily, def, carId: car.id, stats, ended: false, goalToasts: [], earned: runEarned, flight: false, bigAir: false, rampage: false, rings: 0,
       spelling: !!pick, pick, letters: letters || [], spell: null, mega, missionReward: 0, setSize, startCfg: null,
+      eng: mega && mega.eng ? mega.eng : newEng(),
     };
+    if (mega) mega.eng = null;           // a Retry of the Mega Run does not replay the test's moments
     achievements.beginRun();
     go('run');
     hud.reset(track);
@@ -483,8 +571,9 @@ async function boot() {
     Audio.duck(true);
     try {
       // start first so the parked car is on screen behind the spell panel; the launch power is set after
+      const look = lookFor(save, car.id);  // v3.3: the equipped skin / sticker (cosmetics.js entries, null = stock)
       run.startCfg = {
-        car, stats, track, seed,
+        car, stats, track, seed, skin: look.skin, sticker: look.sticker,
         shake: save.settings.reducedMotion ? 0 : save.settings.shake / 100,
         bestDistance: daily ? null : (save.best[trackId] || null),
         letters, powerScale, nitroScale: 1,
@@ -541,6 +630,11 @@ async function boot() {
     const bonus = res.firstTry ? earn(save, res.bonus) : 0;
     const missionReward = rec.missionJustDone ? earn(save, MISSION_REWARD) : 0;
     r.missionReward += missionReward;
+    // v3.3: XP (first try / fixed), a mastered word's trophy (+ Week Champion), the mission's crate + streak day
+    const eng = r.eng;
+    if (res.firstTry) gainXp(eng, XP.firstTry); else if (res.fixed) gainXp(eng, XP.fixed);
+    if (rec.newlyMastered) masteredWord(eng, pick.word, rec.listId);
+    if (rec.missionJustDone) { gainXp(eng, XP.mission); eng.crates += earnCrate(save); dayDone(eng, now); }
     app.persist(); app.persistWords();
     achievements.spell({ firstTry: res.firstTry, streak: rec.streak, newlyMastered: rec.newlyMastered });
     return { word: pick.word, firstTry: res.firstTry, fixed: res.fixed, misses: res.misses, bonus, streak: rec.streak };
@@ -597,6 +691,15 @@ async function boot() {
     achievements.endRun();
     go('garage');
   }
+
+  // ---------- keyboard hints (coach tips, pause menu) ----------
+  // a keyboard is likely with a fine pointer that can hover (a computer), or once any key was pressed this session
+  let keyPressed = false;
+  const fineHover = (() => { try { return matchMedia('(hover: hover) and (pointer: fine)'); } catch (_) { return null; } })();
+  function paintKbd() { document.documentElement.classList.toggle('kbd', keyPressed || !!(fineHover && fineHover.matches)); }
+  paintKbd();
+  if (fineHover && fineHover.addEventListener) fineHover.addEventListener('change', paintKbd);
+  window.addEventListener('keydown', () => { if (!keyPressed) { keyPressed = true; paintKbd(); } }, { capture: true });
 
   // ---------- first-run coach ----------
   function showCoach() {
@@ -711,6 +814,7 @@ async function boot() {
     summary = summary || {};
     if (summary.rings == null && r.rings) summary = { ...summary, rings: r.rings };   // engine without v2 summary fields
     const bank = bankRun(save, r.trackId, summary, { ranked: !r.daily });
+    if (!r.daily) noteJump(save, summary.distance, Date.now());   // v3.3: best jump this week (family board)
     const rating = summary.rating || ratingFor(summary, TRACK_BY_ID[r.trackId].finish);
     achievements.summary(summary, rating);
     achievements.endRun();
@@ -728,6 +832,7 @@ async function boot() {
       dailyReward, dailyAlreadyDone, dailyGoalText: r.def && r.def.goal.text, dailyValue: r.def && r.def.value(summary),
       rating, achievements: r.earned,
       spell: r.spell, missionReward: r.missionReward, mega: r.mega, mission: words ? WS.missionState(words, Date.now()) : null,
+      eng: r.eng,
     };
     setTimeout(() => {
       go('results', result);
@@ -834,6 +939,8 @@ async function boot() {
   $('#btn-friday').addEventListener('click', () => startTest('friday'));
   $('#btn-parents').addEventListener('click', () => pz.open(currentPlayerId));
   $('#btn-player').addEventListener('click', () => go('players'));
+  $('#btn-streak').addEventListener('click', () => openPanel('streak'));
+  $('#btn-crates').addEventListener('click', () => { if (!crates.busy) crates.open(() => { refreshEngagement(); refreshCash(); }); });
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));
   for (const b of $$('[data-open]')) b.addEventListener('click', () => openPanel(b.dataset.open));
   for (const b of $$('[data-close]')) b.addEventListener('click', closePanel);

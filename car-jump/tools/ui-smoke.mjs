@@ -385,7 +385,7 @@ async function runLayout(browser, layout) {
   check(!!(await family(page)).pinHash, 'PIN saved (hashed) in spellJump.family');
   let z = await pzState(page);
   check(z.order.join() === 'sync,words,report,options' && z.on === 'sync' && z.labels[0] === 'Family code', `Parent Zone opens on the first tab, "${z.labels[0]}" (tabs: ${z.labels.join(' | ')})`);
-  check(z.firstHas.includes('sync-create') && !z.firstHas.includes('sync-privacy') && z.last === 'sync-privacy', `Family code tab: Create on top (${z.first}), Join right after, privacy note last (${z.last})`);
+  check(z.firstHas.includes('sync-create') && !z.firstHas.includes('sync-privacy') && z.last === 'sync-transfer', `Family code tab: Create on top (${z.first}), Join right after, privacy note then Transfer progress last (${z.last})`);
   check(await J(page, () => { const c = document.querySelector('#sync-create').getBoundingClientRect(), j = document.querySelector('#sync-join-input').getBoundingClientRect(), pr = document.querySelector('#sync-privacy').getBoundingClientRect(); return c.top < j.top && j.top < pr.top && c.bottom <= innerHeight; }), 'Create and Join are above the fold, above the privacy note');
   check(z.line === 'Not synced · tap to set up family sync' && z.lineUnderTitle, `status line under the title: "${z.line}"`);
   await shot(page, layout, '16b-pz-family-code-no-players');
@@ -431,7 +431,7 @@ async function runLayout(browser, layout) {
     mission: document.querySelector('#title-mission-text').textContent, sample: !document.querySelector('#title-sample').hidden,
     links: document.querySelectorAll('a[href]').length,
   }));
-  check(title.buttons.join('|') === 'play|friday test|badges|parents', `title buttons: ${title.buttons.join(', ')}`);
+  check(title.buttons.join('|') === 'play|friday test|badges|trophies|parents', `title buttons: ${title.buttons.join(', ')}`);
   check(title.mission === 'Today: 0 / 8 words' && title.sample, `title shows "${title.mission}" and the Sample-list notice`);
   check(title.links === 0, 'no external links anywhere');
 
@@ -635,7 +635,7 @@ async function runLayout(browser, layout) {
   await pinIn(page, '1234');
   await page.waitForSelector('.pz-content[data-tab="sync"]');
   z = await pzState(page);
-  check(z.on === 'sync' && z.firstHas.includes('sync-create') && z.last === 'sync-privacy', 'with a player: still opens on Family code, Create on top');
+  check(z.on === 'sync' && z.firstHas.includes('sync-create') && z.last === 'sync-transfer', 'with a player: still opens on Family code, Create on top');
   await shot(page, layout, '16d-pz-family-code');
   for (const t of ['sync', 'words', 'report', 'options']) {
     await page.click(`.pz-tabs [data-tab="${t}"]`);
@@ -964,6 +964,373 @@ async function runLayout(browser, layout) {
   await ctx.close();
 }
 
+// ---------- v3.3 engagement (ONLY=engage runs just this, at both sizes) ----------
+// Mia and Leo seeded on one device: the family board ranks them (Leo 3 words this week, leader's crown) with the
+// nudge "Leo is 3 words ahead"; Mia's streak missed yesterday, so the shield covers it when she opens the game
+// (calendar). Her two words are one first try from Mastered and the mission is at 7 / 8: one run masters a word
+// (WORD MASTERED moment), completes the mission (crate) and the 3rd streak day (milestone crate), and levels her up
+// (stamp). The crate drop opens to a reward that lands in the save; the second crate waits on the title. The garage
+// Style row equips the Hot Flames skin (persists; the preview and game.start use it). The Trophies panel shows the
+// shelf; a second run masters the last word → Week Champion (chip, Champion skin + Trophy sticker, crate).
+async function engagement(browser, layout) {
+  console.log(`\n=== v3.3 engagement ${layout.name} ${layout.width}x${layout.height} ===`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await routeFonts(ctx);
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.addInitScript(({ insets }) => {
+    window.__spoken = [];
+    window.__ttsBackend = {
+      speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
+      cancel() {}, addEventListener() {},
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const s = document.createElement('style');
+      s.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(s);
+    });
+  }, { insets: layout.insets });
+  await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  const seed = await J(page, async () => {
+    const E = await import('/src/meta/engagement.js'), S = await import('/src/spelling/scheduler.js');
+    const now = Date.now(), DAY = 864e5, dk = (t) => S.dayKey(t);
+    const near = (w, list) => ({ word: w, listId: list, box: 3, due: now - 1000, attempts: 3, firstTry: 2, seenCount: 3, lastSeen: now - DAY, daysCorrect: [dk(now - 2 * DAY), dk(now - DAY)], daysSeen: [dk(now - 2 * DAY), dk(now - DAY)], focus: false, studied: true, reviewsDone: 0, misses: 0 });
+    const done = (w, list) => ({ ...near(w, list), firstTry: 3, masteredAt: now - 3600e3 });
+    const words = (id, ws, recs, today) => ({ v: 1, lists: [{ id, name: 'Week of practice', createdAt: now - 3 * DAY, archivedAt: 0, pattern: '', words: ws.map((word) => ({ word })) }], activeId: id,
+      records: recs, tests: [], qualifierPending: null, today, streak: 0, bestStreak: 0, perfectTotal: 0 });
+    localStorage.clear();
+    localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, migrated: true, lastPlayer: 'pmia', options: { pmia: { wordsPerRace: 1 }, pleo: { wordsPerRace: 1 } },
+      players: [{ id: 'pmia', name: 'Mia', color: '#ff3b5c', createdAt: 1, updatedAt: 1 }, { id: 'pleo', name: 'Leo', color: '#2fd36b', createdAt: 2, updatedAt: 2 }] }));
+    localStorage.setItem('spellJump.pmia.save', JSON.stringify({ v: 2, cash: 1000, xp: 90, seen: { coach: true, ach: 0 },
+      streak: { count: 2, best: 2, lastDay: dk(now - 2 * DAY), days: [dk(now - 3 * DAY), dk(now - 2 * DAY)], shieldUsedDays: [] },
+      cosmetics: { skins: ['flames'], stickers: ['star'], equipped: {} } }));
+    localStorage.setItem('spellJump.pmia.words', JSON.stringify(words('L1', ['shelf', 'medal'], { shelf: near('shelf', 'L1'), medal: near('medal', 'L1') }, { date: dk(now), count: 7, newCount: 0, missionPaid: false })));
+    localStorage.setItem('spellJump.pleo.save', JSON.stringify({ v: 2, cash: 500, xp: 300, seen: { coach: true, ach: 0 },
+      streak: { count: 4, best: 6, lastDay: dk(now - DAY), days: [dk(now - DAY)], shieldUsedDays: [] }, weekBest: { week: E.isoWeek(now), distance: 350 } }));
+    localStorage.setItem('spellJump.pleo.words', JSON.stringify(words('L2', ['cat', 'dog', 'sun'], { cat: done('cat', 'L2'), dog: done('dog', 'L2'), sun: done('sun', 'L2') }, { date: '', count: 0, newCount: 0, missionPaid: false })));
+    return { yesterday: dk(now - DAY), sameMonth: new Date(now - DAY).getMonth() === new Date(now).getMonth() };
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  const L = layout.name[0];
+
+  // ----- family board on the picker -----
+  await page.waitForSelector(visibleSel('#screen-players'));
+  const board = await J(page, () => ({
+    rows: [...document.querySelectorAll('#family-board [data-board]')].map((r) => ({ id: r.dataset.board, rank: r.querySelector('.medal').textContent, words: r.querySelector('[data-stat="words"] b').textContent, streak: r.querySelector('[data-stat="streak"] b').textContent, jump: r.querySelector('[data-stat="jump"] b').textContent })),
+    nudge: (document.querySelector('#board-nudge') || {}).textContent, crownOn: [...document.querySelectorAll('.pl-tile .pl-crown')].map((c) => c.closest('[data-player]').dataset.player),
+    levels: Object.fromEntries([...document.querySelectorAll('[data-player]')].map((t) => [t.dataset.player, t.querySelector('.pl-level').textContent])),
+  }));
+  check(board.rows.length === 2 && board.rows[0].id === 'pleo' && board.rows[0].words === '3' && board.rows[0].streak === '4' && board.rows[0].jump === '350' && board.rows[1].id === 'pmia' && board.rows[1].rank === '2',
+    `family board: ${board.rows.map((r) => `${r.rank}. ${r.id} ${r.words} words, streak ${r.streak}, ${r.jump} m`).join(' | ')}`);
+  check(board.crownOn.join() === 'pleo', `crown on the leader's tile (${board.crownOn})`);
+  check(board.nudge === 'Leo is 3 words ahead', `nudge: "${board.nudge}"`);
+  check(board.levels.pmia === 'Lv 1' && board.levels.pleo === 'Lv 3', `tiles show the level (${JSON.stringify(board.levels)})`);
+  await shot(page, layout, `e01-picker-board`);
+  await layoutAudit(page, layout.insets, 'picker with family board');
+
+  // ----- title: streak flame (the shield covered yesterday), level, no crate yet -----
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await instrument(page);
+  await J(page, () => { const g = window.__spellJump.game; if (!g.__looks) { const o = g.start; g.start = (opts) => { window.__looks = window.__looks || []; window.__looks.push({ skin: opts.skin && opts.skin.id, sticker: opts.sticker && opts.sticker.id }); return o(opts); }; g.__looks = true; } });
+  let t = await J(page, () => ({ flame: document.querySelector('#title-streak').textContent, lv: document.querySelector('#title-lv').textContent, lvName: document.querySelector('#title-lv-name').textContent,
+    bar: document.querySelector('#title-lv-bar').style.width, crate: !document.querySelector('#btn-crates').hidden, buttons: [...document.querySelectorAll('#screen-title .title-actions button')].map((b) => b.textContent.replace(/\d+/g, '').trim().toLowerCase()) }));
+  const s0 = await readSave(page);
+  check(t.flame === '2' && s0.streak.shieldUsedDays.includes(seed.yesterday), `title flame "${t.flame}": yesterday (${seed.yesterday}) was missed and the week's shield covered it (${s0.streak.shieldUsedDays})`);
+  check(t.lv === 'Lv 1' && t.lvName === 'Rookie Speller' && t.bar === '90%', `level row: ${t.lv} · ${t.lvName}, bar ${t.bar}`);
+  check(!t.crate, 'no crate button while no crate waits');
+  check(t.buttons.join('|') === 'play|friday test|badges|trophies|parents', `title buttons: ${t.buttons.join(', ')}`);
+  await shot(page, layout, 'e02-title');
+  await layoutAudit(page, layout.insets, 'title (flame, level)');
+  await page.click('#btn-streak');
+  await page.waitForSelector(visibleSel('#panel-streak'));
+  const sp = await J(page, (y) => ({ cur: document.querySelector('#streak-cur b').textContent, next: (document.querySelector('#streak-next') || {}).textContent, played: document.querySelectorAll('.cal-day.played').length,
+    shield: !!document.querySelector(`.cal-day.shield[data-day="${y}"]`), line: document.querySelector('#shield-line').textContent }), seed.yesterday);
+  check(sp.cur === '2' && sp.next === '1 day to a crate', `Streak panel: ${sp.cur} days, "${sp.next}"`);
+  check(!seed.sameMonth || (sp.shield && /used/.test(sp.line)), `calendar marks the shield day (${seed.yesterday}): ${sp.shield}, "${sp.line}"`);
+  await shot(page, layout, 'e03-streak-panel');
+  await layoutAudit(page, layout.insets, 'streak panel');
+  await page.click('#panel-streak [data-close]');
+
+  // ----- garage Style row: locked hints, equip a skin + sticker for this car -----
+  await page.click('#btn-play');
+  await page.waitForSelector(visibleSel('#screen-garage'));
+  const chips = await J(page, () => ({
+    skins: document.querySelectorAll('#style-strip [data-skin]').length, stickers: document.querySelectorAll('#style-strip [data-sticker]').length,
+    hints: Object.fromEntries(['galaxy', 'rainbow', 'champion', 'sunset'].map((id) => [id, document.querySelector(`[data-skin="${id}"]`).textContent.trim()])),
+    owned: document.querySelector('[data-skin="flames"]').classList.contains('owned'), stockOn: document.querySelector('[data-skin="stock"]').classList.contains('on'),
+  }));
+  check(chips.skins === 13 && chips.stickers === 13 && chips.owned && chips.stockOn, `Style row: ${chips.skins} skins, ${chips.stickers} stickers; Stock equipped (${chips.stockOn}), Hot Flames owned (${chips.owned})`);
+  check(chips.hints.galaxy === 'Level 8' && chips.hints.rainbow === '14-day streak' && chips.hints.champion === 'Week Champion' && chips.hints.sunset === 'Crate', `locked chips say how to earn them: ${JSON.stringify(chips.hints)}`);
+  await shot(page, layout, 'e04-garage-style');
+  await layoutAudit(page, layout.insets, 'garage (style row)');
+  const before = await J(page, () => document.querySelector('#car-preview').dataset.lookSkin);
+  await page.click('[data-skin="flames"]');
+  await page.click('[data-sticker="star"]');
+  await page.waitForTimeout(300);
+  const eq = await J(page, () => ({ skin: document.querySelector('#car-preview').dataset.lookSkin, sticker: document.querySelector('#car-preview').dataset.lookSticker, on: document.querySelector('[data-skin="flames"]').classList.contains('on'),
+    saved: JSON.parse(localStorage.getItem('spellJump.pmia.save')).cosmetics.equipped, hero: (() => { const l = window.__spellJump.app.save.cosmetics.equipped.beater; return l; })() }));
+  check(before === 'stock' && eq.skin === 'flames' && eq.sticker === 'star' && eq.on && eq.saved.beater && eq.saved.beater.skin === 'flames' && eq.saved.beater.sticker === 'star',
+    `equip: preview ${before} → (${eq.on}) ${eq.skin} + ${eq.sticker}, saved per car ${JSON.stringify(eq.saved)}`);
+  await shot(page, layout, 'e05-garage-equipped');
+
+  // ----- run 1: master a word + mission + streak day 3 + level up -----
+  const save1 = await readSave(page);
+  await page.click('#btn-race');
+  await page.waitForSelector(visibleSel('#screen-tracks'));
+  await page.click('[data-track="canyon"]');
+  await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+  const w1 = await J(page, () => window.__spellJump.spellPanel.word);
+  if (await panelMode(page) !== 'write') await waitMode(page, 'write', 9000);
+  await tapKeys(page, '#sp-keyboard', w1);
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  const look = await J(page, () => (window.__looks || []).at(-1));
+  check(look && look.skin === 'flames' && look.sticker === 'star', `game.start got the equipped look (${JSON.stringify(look)})`);
+  await driveToResults(page, { end: true });
+  await page.waitForSelector('#res-moment.mastery:not([hidden])', { timeout: 5000 });
+  const mm = await J(page, () => ({ word: document.querySelector('#res-moment').dataset.word, title: document.querySelector('.mm-title').textContent, tiles: document.querySelectorAll('.mm-tiles i').length }));
+  check(mm.word === w1 && /word mastered/i.test(mm.title) && mm.tiles === w1.length, `WORD MASTERED moment for "${mm.word}" (${mm.tiles} gold tiles)`);
+  await page.waitForTimeout(1500);
+  await shot(page, layout, 'e06-word-mastered', 0);
+  await page.waitForSelector('#res-levelup', { timeout: 6000 });
+  await page.waitForTimeout(500);
+  const lvText = await J(page, () => document.querySelector('#res-levelup').textContent);
+  check(/level\s*3/i.test(lvText) && /letter cadet/i.test(lvText), `level-up stamp: "${lvText}"`);
+  await shot(page, layout, 'e07-level-up', 0);
+  await page.waitForSelector('#res-crate', { timeout: 6000 });
+  await page.waitForTimeout(700);
+  const r1 = await J(page, () => ({ eng: window.__spellJump.lastResult.eng, streak: (document.querySelector('#res-streak') || {}).textContent, xp: (document.querySelector('#res-xp') || {}).textContent, crate: document.querySelector('#res-crate').textContent }));
+  const s1 = await readSave(page);
+  check(r1.eng.mastered.length === 1 && r1.eng.mastered[0].word === w1 && s1.trophies.L1.includes(w1), `mastered "${w1}" → trophy saved (${JSON.stringify(s1.trophies)})`);
+  check(r1.eng.levelBefore === 1 && r1.eng.levelAfter === 3 && s1.xp === 90 + 20 + 50 + 100, `XP 90 → ${s1.xp} (+20 first try, +50 mastered, +100 mission): level ${r1.eng.levelBefore} → ${r1.eng.levelAfter}`);
+  check(r1.eng.crates === 2 && s1.crates.earned === 2 && s1.crates.opened === 0, `crates: mission + 3-day milestone = ${r1.eng.crates} (save earned ${s1.crates.earned})`);
+  check(s1.streak.count === 3 && r1.streak === '3-day streak!' && r1.eng.xp === 170, `streak day 3 ("${r1.streak}"), +${r1.eng.xp} XP`);
+  await shot(page, layout, 'e08-crate-drop', 0);
+  await layoutAudit(page, layout.insets, 'results (engagement)');
+  await page.click('#res-crate');
+  await page.waitForSelector('#crate-fx.ready', { timeout: 4000 });
+  const out = await J(page, () => window.__spellJump.app.crates.last);
+  const s2 = await readSave(page);
+  const applied = out.cash ? s2.cash === s1.cash + out.cash : (out.kind === 'skin' ? s2.cosmetics.skins : s2.cosmetics.stickers).includes(out.id);
+  check(s2.crates.opened === 1 && applied, `crate opened: ${out.kind}${out.cash ? ' $' + out.cash : ' ' + out.id} applied to the save (cash ${s1.cash} → ${s2.cash})`);
+  check(await J(page, () => !document.querySelector('#crate-card').hidden && document.querySelector('#crate-name').textContent.length > 0), `reveal card: "${await page.textContent('#crate-kind')}" ${await page.textContent('#crate-name')}`);
+  await shot(page, layout, 'e09-crate-reveal', 0);
+  await layoutAudit(page, layout.insets, 'crate reveal');
+  await page.click('#crate-fx');
+  await page.waitForSelector('#crate-fx', { state: 'hidden' });
+  check(await J(page, () => !!document.querySelector('#res-crate')), 'the second crate is still on the results screen');
+  await page.click('#res-garage');
+  await page.click('#screen-garage [data-back]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  t = await J(page, () => ({ crate: document.querySelector('#btn-crates').hidden ? null : document.querySelector('#btn-crates').textContent.trim(), flame: document.querySelector('#title-streak').textContent, lv: document.querySelector('#title-lv').textContent }));
+  check(t.crate === '1 crate' && t.flame === '3' && t.lv === 'Lv 3', `title: "${t.crate}" button, flame ${t.flame}, ${t.lv}`);
+  await shot(page, layout, 'e10-title-crate');
+  await layoutAudit(page, layout.insets, 'title (crate waiting)');
+  await page.click('#btn-crates');
+  await page.waitForSelector('#crate-fx.ready', { timeout: 4000 });
+  await page.click('#crate-fx');
+  await page.waitForSelector('#crate-fx', { state: 'hidden' });
+  check(await J(page, () => document.querySelector('#btn-crates').hidden) && (await readSave(page)).crates.opened === 2, 'title crate opened: the button goes away');
+
+  // ----- Trophies panel -----
+  await page.click('#btn-trophies');
+  await page.waitForSelector(visibleSel('#panel-trophies'));
+  const tr = await J(page, () => ({ gold: [...document.querySelectorAll('#tr-shelf .tr-slot.gold')].map((x) => x.dataset.word), slots: document.querySelectorAll('#tr-shelf .tr-slot').length, count: document.querySelector('#trophy-count').textContent }));
+  check(tr.slots === 2 && tr.gold.join() === w1 && tr.count === '1 / 2', `Trophies: shelf ${tr.count}, gold ${tr.gold}`);
+  await shot(page, layout, 'e11-trophies');
+  await layoutAudit(page, layout.insets, 'trophies panel');
+  await page.click('#panel-trophies [data-close]');
+
+  // ----- run 2: the last word → Week Champion -----
+  await page.click('#btn-play');
+  await page.waitForSelector(visibleSel('#screen-garage'));
+  await page.click('#btn-race');
+  await page.click('[data-track="canyon"]');
+  await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+  const w2 = await J(page, () => window.__spellJump.spellPanel.word);
+  if (await panelMode(page) !== 'write') await waitMode(page, 'write', 9000);
+  await tapKeys(page, '#sp-keyboard', w2);
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await driveToResults(page, { end: true });
+  await page.waitForSelector('#res-champion', { timeout: 8000 });
+  await page.waitForTimeout(600);
+  const s3 = await readSave(page);
+  const r2 = await J(page, () => window.__spellJump.lastResult.eng);
+  check(w2 !== w1 && r2.champion && s3.champion.includes('L1') && s3.cosmetics.skins.includes('champion') && s3.cosmetics.stickers.includes('trophy') && s3.crates.earned === 3,
+    `Week Champion: "${w2}" mastered too → badge, Champion Chrome + Trophy sticker, a crate (earned ${s3.crates.earned}), XP ${s2.xp} → ${s3.xp}`);
+  await shot(page, layout, 'e12-champion', 0);
+  await page.waitForSelector('#res-crate', { timeout: 8000 });
+  await page.click('#res-garage');
+  check(await J(page, () => document.querySelector('[data-skin="champion"]').classList.contains('owned')), 'garage: the Champion skin chip is now owned');
+  await page.click('#screen-garage [data-back]');
+  await page.click('#btn-player');
+  await page.waitForSelector(visibleSel('#screen-players'));
+  const b2 = await J(page, () => ({ nudge: (document.querySelector('#board-nudge') || {}).textContent, crown: !!document.querySelector('[data-board="pmia"] .b-crown'), words: document.querySelector('[data-board="pmia"] [data-stat="words"] b').textContent }));
+  check(b2.words === '2' && b2.crown && b2.nudge === 'Leo is 1 word ahead', `board after: Mia ${b2.words} words, champion crown ${b2.crown}, "${b2.nudge}"`);
+  await shot(page, layout, 'e13-board-champion');
+  await layoutAudit(page, layout.insets, 'picker (champion)');
+  // persistence
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const s4 = await readSave(page);
+  check(s4.cosmetics.equipped.beater.skin === 'flames' && s4.xp === s3.xp && s4.crates.earned === 3 && s4.streak.count === 3, 'reload: equipped look, XP, crates and streak kept');
+  if (layout.name === 'landscape') await transferTest(browser, layout, page);
+  check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
+// Progress transfer code: export Mia on this page (Parents → Family code → Transfer progress), import it on a fresh
+// device that is in a (fake, offline) family: Mia is added with her cash, cars and words, and the sync keys are
+// dirty (waiting to push). Importing again merges into Mia. A corrupt code is refused with a message.
+async function transferTest(browser, layout, page) {
+  console.log('\n--- progress transfer code ---');
+  const src = { save: await readSave(page), words: await readWords(page) };
+  await page.click('#btn-parents');
+  await page.waitForSelector(visibleSel('#pz'));
+  await pinIn(page, '1357');
+  await page.waitForFunction(() => document.querySelector('#pin-title') && /again/i.test(document.querySelector('#pin-title').textContent));
+  await pinIn(page, '1357');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
+  await page.click('[data-export="pmia"]');
+  await page.waitForSelector('#transfer-out:not([hidden])');
+  const code = await J(page, () => document.querySelector('#transfer-out').value);
+  check(/^[A-Za-z0-9_-]{100,}$/.test(code) && code.startsWith('H4sI') && await J(page, () => !document.querySelector('#transfer-note').hidden && document.querySelector('#transfer-out').readOnly),
+    `export: a ${code.length}-character gzip code in a read-only box, with the "Copy this code…" note`);
+  await page.click('#transfer-copy');
+  await page.evaluate(() => document.querySelector('#sync-transfer').scrollIntoView());
+  await shot(page, layout, 'e14-transfer-export', 300);
+  await layoutAudit(page, layout.insets, 'parent zone (transfer export)');
+  await page.click('#pz-close');
+
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await routeFonts(ctx);
+  await ctx.route('**/api/family/**', (r) => r.abort());          // in a family, but offline: pushes wait (dirty)
+  const errors = [];
+  const b = await ctx.newPage();
+  b.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  b.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  await b.addInitScript(({ insets }) => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const st = document.createElement('style');
+      st.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(st);
+    });
+  }, { insets: layout.insets });
+  await b.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { localStorage.clear(); localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devB', keys: {} })); sessionStorage.setItem('seeded', '1'); } });
+  await b.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  await b.waitForSelector(visibleSel('#screen-players'));
+  await b.click('#btn-parents-picker');
+  await pinIn(b, '2468');
+  await b.waitForFunction(() => document.querySelector('#pin-title') && /again/i.test(document.querySelector('#pin-title').textContent));
+  await pinIn(b, '2468');
+  await b.waitForSelector('.pz-content[data-tab="sync"]');
+  await b.fill('#transfer-in', 'not-a-real-code!!');
+  await b.click('#transfer-import');
+  await b.waitForFunction(() => document.querySelector('#transfer-msg').textContent.length > 0);
+  const badMsg = await b.textContent('#transfer-msg');
+  check(/transfer code|damaged/i.test(badMsg) && await J(b, () => JSON.parse(localStorage.getItem('spellJump.family') || '{"players":[]}').players.length === 0), `corrupt code refused: "${badMsg}"`);
+  await b.fill('#transfer-in', code.replace(/(.{60})/g, '$1\n'));     // pasted with line breaks
+  await b.click('#transfer-import');
+  await b.waitForFunction(() => /Added|Merged/.test(document.querySelector('#transfer-msg').textContent));
+  const added = await b.textContent('#transfer-msg');
+  const st = await J(b, () => {
+    const f = JSON.parse(localStorage.getItem('spellJump.family')), p = f.players[0];
+    const sync = JSON.parse(localStorage.getItem('spellJump.sync'));
+    return { name: p.name, id: p.id, save: JSON.parse(localStorage.getItem(`spellJump.${p.id}.save`)), words: JSON.parse(localStorage.getItem(`spellJump.${p.id}.words`)),
+      dirty: [sync.keys[`${p.id}.save`], sync.keys[`${p.id}.words`], sync.keys.family].map((k) => !!(k && k.dirty)) };
+  });
+  check(added === 'Added Mia' && st.name === 'Mia', `import on a fresh device: "${added}"`);
+  check(st.save.cash === src.save.cash && st.save.owned.join() === src.save.owned.join() && st.save.xp === src.save.xp && Object.keys(st.words.records).sort().join() === Object.keys(src.words.records).sort().join()
+    && st.words.records.shelf.firstTry === src.words.records.shelf.firstTry,
+    `cash $${st.save.cash}, cars ${st.save.owned}, XP ${st.save.xp} and ${Object.keys(st.words.records).length} word records arrived`);
+  check(st.dirty.every(Boolean), `sync keys marked dirty (save, words, family): ${st.dirty}`);
+  await shot(b, layout, 'e15-transfer-import', 300);
+  await layoutAudit(b, layout.insets, 'parent zone (transfer import)');
+  // the same code again: merged into Mia (same name), nothing doubled
+  await b.fill('#transfer-in', code);
+  await b.click('#transfer-import');
+  await b.waitForFunction(() => /Merged/.test(document.querySelector('#transfer-msg').textContent));
+  const merged = await b.textContent('#transfer-msg');
+  const nPlayers = await J(b, () => JSON.parse(localStorage.getItem('spellJump.family')).players.length);
+  check(merged === `Merged into Mia: $${src.save.cash.toLocaleString('en-US')}, ${src.save.owned.length} car${src.save.owned.length === 1 ? '' : 's'}, ${Object.keys(src.words.records).length} words` && nPlayers === 1, `import again: "${merged}" (${nPlayers} player)`);
+  await b.click('#pz-close');
+  await b.waitForSelector(visibleSel('#screen-players'));
+  await b.click('[data-player]');
+  await b.waitForSelector(visibleSel('#screen-title'));
+  check(await J(b, () => window.__spellJump.app.save.cash) === src.save.cash, 'the imported player plays with the imported cash');
+  check(errors.length === 0, `transfer device: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
+// ---------- coach + pause key hints (ONLY=keys) ----------
+// A desktop context (fine pointer, hover; Playwright's default) shows the keyboard commands in the "How to jump" tips
+// and the pause menu; a touch phone (hasTouch + isMobile: coarse pointer, no hover) keeps the touch wording.
+async function coachKeys(browser) {
+  for (const v of [{ name: 'desktop', opts: { viewport: { width: 1280, height: 720 } }, keys: true }, { name: 'touch', opts: { viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true, deviceScaleFactor: 2 }, keys: false }]) {
+    console.log(`\n=== coach key hints: ${v.name} ===`);
+    const ctx = await browser.newContext(v.opts);
+    await routeFonts(ctx);
+    const errors = [];
+    const page = await ctx.newPage();
+    page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+    await page.addInitScript(() => {
+      window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+        speak(u) { setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); }, cancel() {}, addEventListener() {} };
+      if (!sessionStorage.getItem('seeded')) {
+        localStorage.clear();
+        localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, migrated: true, options: { pkid: { wordsPerRace: 1 } }, players: [{ id: 'pkid', name: 'Kid', color: '#3b7dd9', createdAt: 1, updatedAt: 1 }] }));
+        sessionStorage.setItem('seeded', '1');
+      }
+    });
+    await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+    const media = await J(page, () => ({ fine: matchMedia('(hover: hover) and (pointer: fine)').matches, coarse: matchMedia('(pointer: coarse)').matches }));
+    const tap = (sel) => (v.opts.hasTouch ? page.tap(sel) : page.click(sel));
+    await tap('[data-player="pkid"]');
+    await page.waitForSelector(visibleSel('#screen-title'));
+    await tap('#btn-play');
+    await tap('#btn-race');
+    await tap('[data-track="canyon"]');
+    await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+    await waitMode(page, 'write', 12000);
+    const w = await J(page, () => window.__spellJump.spellPanel.word);
+    for (const ch of w) await tap(`#sp-keyboard [data-key="${ch === ' ' ? 'space' : ch}"]`);
+    await tap('#sp-keyboard [data-key="enter"]');
+    await page.waitForSelector(visibleSel('#coach'), { timeout: 8000 });
+    await page.waitForTimeout(250);
+    const text = await J(page, () => [...document.querySelectorAll('#coach li')].filter((li) => getComputedStyle(li).display !== 'none').map((li) => li.innerText.replace(/\s+/g, ' ').trim()));
+    if (v.keys) {
+      check(media.fine && text.length === 4 && text[0] === '1 Hold GAS (→ or Space) down the ramp' && text[1] === '2 In the air: BRAKE (←) = back flip, GAS (→) = front flip, release to level out'
+        && text[2] === '3 NITRO (↑) for a boost' && text[3] === '4 Land flat for a bonus', `desktop (fine pointer ${media.fine}): coach shows the keys: ${JSON.stringify(text)}`);
+    } else {
+      check(!media.fine && media.coarse && text.length === 3 && text[0] === '1 Hold GAS down the ramp' && text[2] === '3 Land flat for a bonus' && !text.join(' ').includes('→'),
+        `touch (coarse pointer ${media.coarse}): coach keeps the touch wording: ${JSON.stringify(text)}`);
+    }
+    await page.screenshot({ path: path.join(SHOTS, `keys-${v.name}-coach.png`) });
+    await tap('#coach');
+    await page.waitForTimeout(150);
+    await tap('#btn-pause');
+    await page.waitForSelector(visibleSel('#panel-pause'));
+    const pk = await J(page, () => { const e = document.querySelector('#pause-keys'); return getComputedStyle(e).display !== 'none' ? e.textContent : null; });
+    check(v.keys ? pk === 'Keys: ← brake · → gas · ↑ nitro · Esc pause' : pk === null, `${v.name}: pause menu key line ${pk === null ? 'hidden' : `"${pk}"`}`);
+    await page.screenshot({ path: path.join(SHOTS, `keys-${v.name}-pause.png`) });
+    if (v.keys) {
+      // ↑ = NITRO while driving
+      await tap('#pause-resume');
+      await page.keyboard.down('ArrowUp');
+      const nitro = await J(page, () => document.querySelector('#ctl-nitro').classList.contains('is-down'));
+      await page.keyboard.up('ArrowUp');
+      check(nitro, '↑ holds NITRO');
+    }
+    check(errors.length === 0, `${v.name}: no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
+  }
+}
+
 async function selfUpdate(browser) {
   console.log('\n=== self-update (real service worker) ===');
   const PORT = 8093, B = `http://localhost:${PORT}`;
@@ -1085,6 +1452,8 @@ const browser = await chromium.launch();
 const only = process.env.ONLY;
 try {
   for (const l of LAYOUTS) if (!only || only === l.name) await runLayout(browser, l);
+  for (const l of LAYOUTS) if (!only || only === 'engage' || only === l.name) await engagement(browser, l);
+  if (!only || only === 'keys') await coachKeys(browser);
   if (!only || only === 'corrupt') await corruptBoot(browser);
   if (!only || only === 'update') await selfUpdate(browser);
 } catch (e) {

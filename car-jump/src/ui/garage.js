@@ -1,5 +1,10 @@
 // Garage: car carousel with procedural preview, buy/select, and 4 upgrade rows with level pips.
+// v3.3: a "Style" row under the preview: skin chips then sticker chips. Owned ones are in color (a mini swatch /
+// the sticker glyph); locked ones are gray with how to earn them ("Crate", "7-day streak", "Level 8", "Week
+// Champion"). Equipping is per car (owned cars only); the preview, the title hero and the run use the equipped look.
 import { CARS } from '../data/cars.js';
+import { SKINS, STICKERS } from '../data/cosmetics.js';
+import { earnHint, equip, equippedFor, lookFor, owns } from '../meta/engagement.js';
 import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
 import { buyCar, buyUpgrade, canAfford, isOwned, nextUpgradeCost, selectCar } from '../meta/economy.js';
 import { carLevels } from '../meta/save.js';
@@ -11,7 +16,7 @@ export function createGarage(app) {
   const canvas = $('#car-preview');
   const ui = {
     name: $('#car-name'), tag: $('#car-tag'), tier: $('#car-tier'), dots: $('#car-dots'),
-    action: $('#car-action'), upgrades: $('#upgrades'),
+    action: $('#car-action'), upgrades: $('#upgrades'), style: $('#style-strip'),
   };
   let index = 0, raf = 0, t0 = 0, slide = 0;
 
@@ -81,6 +86,41 @@ export function createGarage(app) {
       btn);
   }
 
+  function chip(type, c, car, owned, on) {
+    const isSkin = type === 'skin';
+    const has = owns(app.save, type, c.id);
+    const sw = isSkin
+      ? h('i', { class: 'sw', style: { background: c.body ? `linear-gradient(135deg, ${c.body} 0 55%, ${c.accent} 55%)` : `linear-gradient(135deg, ${car.color} 0 55%, ${car.accent} 55%)` } })
+      : h('i', { class: 'sw glyph', style: { color: c.color || '#fff' } }, c.glyph || '∅');
+    const b = h('button', {
+      class: `style-chip ${type}${has ? ' owned' : ' locked'}${on ? ' on' : ''}`, [`data-${type}`]: c.id, 'data-sfx': '',
+      'aria-pressed': String(!!on), 'aria-label': `${c.name}${has ? (on ? ', equipped' : '') : ', locked: ' + earnHint(c)}`,
+    }, sw, h('span', { class: 'sc-text' }, has ? c.name : earnHint(c)), has ? null : h('span', { class: 'sc-lock', html: icon('lock') }));
+    b.addEventListener('click', () => {
+      if (!has) { app.audio.error(); app.toast(`${c.name}: ${earnHint(c) === 'Crate' ? 'find it in a crate' : earnHint(c)}`); return; }
+      if (!owned) { app.audio.error(); app.toast('Buy this car first'); return; }
+      if (on) return;
+      equip(app.save, car.id, type, c.id);
+      app.persist();
+      app.onLookChanged && app.onLookChanged();
+      renderStyle();
+    });
+    return b;
+  }
+  function renderStyle() {
+    const car = CARS[index];
+    const owned = isOwned(app.save, car.id);
+    const eq = equippedFor(app.save, car.id);
+    const keep = ui.style.scrollLeft;
+    ui.style.replaceChildren(
+      h('span', { class: 'style-label' }, 'Style'),
+      ...SKINS.map((c) => chip('skin', c, car, owned, eq.skin === c.id)),
+      h('span', { class: 'style-sep', 'aria-hidden': 'true' }),
+      ...STICKERS.map((c) => chip('sticker', c, car, owned, eq.sticker === c.id)));
+    ui.style.scrollLeft = keep;
+    canvas.dataset.lookSkin = eq.skin; canvas.dataset.lookSticker = eq.sticker;
+  }
+
   function render() {
     const s = app.save;
     const car = CARS[index];
@@ -108,6 +148,7 @@ export function createGarage(app) {
 
     ui.upgrades.innerHTML = '';
     for (const u of UPGRADES) ui.upgrades.append(upgradeRow(car, u, owned));
+    renderStyle();
     app.refreshCash();
     paint();
   }
@@ -117,7 +158,9 @@ export function createGarage(app) {
     const rm = app.save.settings.reducedMotion;
     const k = rm ? 1 : Math.min(1, (now - t0) / 280);
     const ease = 1 - Math.pow(1 - k, 3);
+    const look = lookFor(app.save, CARS[index].id);
     drawCar(canvas, CARS[index], {
+      skin: look.skin, sticker: look.sticker,
       spin: rm ? 0 : now / 300 + (1 - ease) * 6 * slide,
       bob: rm ? 0 : Math.sin(now / 380) * 1.5,
       dx: slide ? (1 - ease) * slide * 70 : 0,

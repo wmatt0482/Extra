@@ -908,6 +908,210 @@ test('a "Reset game save" (resetAt) wins whole over older progress', () => {
   assert.equal(m.cash, 0); assert.deepEqual(m.owned, ['beater']); assert.equal(m.resetAt, day(3));
 });
 
+test('v3.3 save fields: xp max, streak by the later lastDay (best max, shield days union), cosmetics union + equipped from the later doc', () => {
+  const a = S(day(1), (s) => { s.xp = 500; s.streak = { count: 6, best: 9, lastDay: dayKey(day(5)), shieldAvailableWeek: '', shieldUsedDays: [dayKey(day(2))], days: [dayKey(day(5))] };
+    s.cosmetics = { skins: ['flames'], stickers: ['star'], equipped: { beater: { skin: 'flames', sticker: 'none' } } }; });
+  const b = S(day(2), (s) => { s.xp = 300; s.streak = { count: 2, best: 4, lastDay: dayKey(day(6)), shieldAvailableWeek: '', shieldUsedDays: [dayKey(day(4))], days: [dayKey(day(6))] };
+    s.cosmetics = { skins: ['camo'], stickers: ['heart'], equipped: { beater: { skin: 'camo', sticker: 'heart' } } }; });
+  const m = mergeSave(a, b);
+  assert.equal(m.xp, 500);
+  assert.equal(m.streak.count, 2, 'the later lastDay wins the count'); assert.equal(m.streak.lastDay, dayKey(day(6))); assert.equal(m.streak.best, 9);
+  assert.deepEqual(m.streak.shieldUsedDays, [dayKey(day(2)), dayKey(day(4))]); assert.deepEqual(m.streak.days, [dayKey(day(5)), dayKey(day(6))]);
+  assert.deepEqual([...m.cosmetics.skins].sort(), ['camo', 'flames']); assert.deepEqual([...m.cosmetics.stickers].sort(), ['heart', 'number1', 'star'], 'union (+ the 7-day sticker earned by best 9)');
+  assert.deepEqual(m.cosmetics.equipped.beater, { skin: 'camo', sticker: 'heart' }, 'equipped: last writer (the later doc) wins');
+  assert.deepEqual(mergeSave(b, a), m, 'symmetric');
+});
+test('v3.3 save fields: crates max each, trophies + champion union, weekBest by week then distance', () => {
+  const a = S(day(1), (s) => { s.crates = { earned: 5, opened: 2, sinceCosmetic: 1 }; s.trophies = { L1: ['enough'] }; s.champion = ['L0']; s.weekBest = { week: '2026-W42', distance: 300 }; });
+  const b = S(day(2), (s) => { s.crates = { earned: 4, opened: 4, sinceCosmetic: 3 }; s.trophies = { L1: ['through'], L2: ['friend'] }; s.champion = ['L1']; s.weekBest = { week: '2026-W42', distance: 280 }; });
+  const m = mergeSave(a, b);
+  assert.deepEqual(m.crates, { earned: 5, opened: 4, sinceCosmetic: 3 });
+  assert.deepEqual([...m.trophies.L1].sort(), ['enough', 'through']); assert.deepEqual(m.trophies.L2, ['friend']);
+  assert.deepEqual([...m.champion].sort(), ['L0', 'L1']); assert.deepEqual(m.weekBest, { week: '2026-W42', distance: 300 });
+  assert.ok(m.cosmetics.skins.includes('champion') && m.cosmetics.stickers.includes('trophy'), 'a champion owns the champion cosmetics after a merge');
+  const c = S(day(3), (s) => { s.weekBest = { week: '2026-W43', distance: 90 }; });
+  assert.deepEqual(mergeSave(a, c).weekBest, { week: '2026-W43', distance: 90 }, 'a newer week replaces the old best');
+});
+test('words: masteredAt travels with the winning record, or is kept from the other side when the winner is Mastered without one', () => {
+  const a = wordsDoc(), b = clone(a);
+  Object.assign(a.records.enough, { box: 3, firstTry: 3, daysCorrect: [dayKey(day(1)), dayKey(day(2))], lastSeen: day(2), masteredAt: day(2) });
+  Object.assign(b.records.enough, { box: 3, firstTry: 4, daysCorrect: [dayKey(day(1)), dayKey(day(2)), dayKey(day(3))], lastSeen: day(3) });
+  delete b.records.enough.masteredAt;
+  const m = mergeWords(W(a, day(2)), W(b, day(3)), day(3));
+  assert.equal(m.records.enough.firstTry, 4); assert.equal(m.records.enough.masteredAt, day(2));
+  Object.assign(b.records.through, { box: 3, firstTry: 3, daysCorrect: [dayKey(day(1)), dayKey(day(3))], lastSeen: day(3), masteredAt: day(3) });
+  assert.equal(mergeWords(W(a, day(2)), W(b, day(3)), day(3)).records.through.masteredAt, day(3));
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// v3.3 engagement rules (src/meta/engagement.js) and the progress transfer code (src/meta/transfer.js)
+const E = await import('../src/meta/engagement.js');
+const { encodeTransfer, decodeTransfer, applyImport } = await import('../src/meta/transfer.js');
+const { normalize: normalizeSave } = await import('../src/meta/save.js');
+const dk = (n) => dayKey(day(n));
+console.log('engagement: daily streak + shield');
+test('ISO weeks: Mon Oct 12 2026 is 2026-W42 through Sunday; Monday the 19th starts W43; Jan 1 2027 is 2026-W53', () => {
+  assert.equal(E.isoWeek(day(0)), '2026-W42'); assert.equal(E.isoWeek(day(6, 7)), '2026-W42'); assert.equal(E.isoWeek(day(7)), '2026-W43');
+  assert.equal(E.weekOfDay('2027-01-01'), '2026-W53'); assert.equal(E.mondayOf(day(3)), dk(0));
+});
+test('a week of streak days with one missed day: the shield covers it on the next open, the streak continues, the calendar shows it', () => {
+  const s = defaultSave();
+  assert.equal(E.completeDay(s, day(0)).count, 1);
+  assert.equal(E.completeDay(s, day(0, 2)).counted, false, 'the same day counts once');
+  assert.equal(E.completeDay(s, day(1)).count, 2);
+  assert.equal(E.streakNow(s.streak, day(3)), 2, 'Wednesday missed: still alive (the shield can cover it)');
+  assert.deepEqual(E.refreshStreak(s, day(3)), [dk(2)], 'opened on Thursday: the shield goes on Wednesday');
+  assert.equal(s.streak.shieldAvailableWeek, '', "this week's shield is spent");
+  const r = E.completeDay(s, day(3));
+  assert.equal(r.count, 3); assert.equal(r.milestone, 3);
+  assert.deepEqual(s.streak.shieldUsedDays, [dk(2)]); assert.deepEqual(s.streak.days, [dk(0), dk(1), dk(3)]);
+  assert.equal(E.completeDay(s, day(4)).count, 4);
+});
+test('two missed days in one week break the streak; a miss in each of two weeks is covered by each week\'s shield', () => {
+  const s = defaultSave();
+  E.completeDay(s, day(0)); E.completeDay(s, day(1));
+  assert.equal(E.streakNow(s.streak, day(4)), 0, 'Wed + Thu missed');
+  assert.deepEqual(E.refreshStreak(s, day(4)), [], 'no shield is spent on a broken streak');
+  assert.equal(E.completeDay(s, day(4)).count, 1); assert.equal(s.streak.best, 2);
+  const t = defaultSave();
+  E.completeDay(t, day(5)); E.completeDay(t, day(-1));           // (out of order is ignored)
+  assert.equal(t.streak.count, 1);
+  const u = defaultSave();
+  E.completeDay(u, day(4)); E.completeDay(u, day(5));            // Fri, Sat
+  assert.equal(E.completeDay(u, day(8)).count, 3, 'Sun (W42) and Mon (W43) missed: one shield each');
+  assert.deepEqual(u.streak.shieldUsedDays, [dk(6), dk(7)]);
+  E.completeDay(u, day(10));                                      // Wed missed in W43 too: no shield left
+  assert.equal(u.streak.count, 1);
+});
+test('milestones: 3 days → a crate; 7 → crate + Number One sticker; 14 → crate + Rainbow skin', () => {
+  const s = defaultSave();
+  const got = [];
+  for (let i = 0; i < 14; i++) { const r = E.completeDay(s, day(i)); if (r.milestone) got.push([r.milestone, r.crates, r.unlocks.map((u) => u.id).join()]); }
+  assert.deepEqual(got, [[3, 1, ''], [7, 1, 'number1'], [14, 1, 'rainbow']]);
+  assert.equal(s.crates.earned, 3); assert.ok(s.cosmetics.stickers.includes('number1') && s.cosmetics.skins.includes('rainbow'));
+  assert.equal(E.nextMilestone(14), 30); assert.equal(E.nextMilestone(2), 3);
+});
+console.log('engagement: XP and levels');
+test('XP per word / mission; level-up detection; level cosmetics unlock at their level', () => {
+  const s = defaultSave();
+  let r = E.addXp(s, E.XP.firstTry * 4 + E.XP.fixed);
+  assert.equal(r.after, 88); assert.equal(r.levelUp, false); assert.equal(r.levelAfter, 1);
+  r = E.addXp(s, E.XP.mastered);
+  assert.equal(r.levelUp, true); assert.equal(r.levelBefore, 1); assert.equal(r.levelAfter, 2);
+  r = E.addXp(s, 2500 - s.xp);
+  assert.equal(r.levelAfter, 9); assert.deepEqual(r.unlocks.map((u) => u.id), ['galaxy']);
+  assert.equal(E.levelProgress(s.xp).title, 'Spelling Stunt Driver');
+  assert.deepEqual(E.levelProgress(140), { level: 2, title: 'Rookie Speller', into: 40, need: 150, max: false });
+});
+console.log('engagement: mystery crates');
+test('crate rolls with a fixed rand: cash ($300-800 × car tier), jackpot ×3, sticker, skin', () => {
+  const s = defaultSave();
+  assert.deepEqual(E.rollCrate(s, { tier: 2, rand: seq(0.1, 0.5) }), { kind: 'cash', cash: 1100, pity: false });
+  assert.deepEqual(E.rollCrate(s, { tier: 1, rand: seq(0.99, 0) }), { kind: 'jackpot', cash: 900, pity: false });
+  assert.deepEqual(E.rollCrate(s, { rand: seq(0.7, 0) }), { kind: 'sticker', id: 'star', name: 'Gold Star', pity: false });
+  assert.equal(E.rollCrate(s, { rand: seq(0.9, 0.99) }).id, 'checker');
+});
+test('a duplicate cosmetic rolls again once; a second duplicate converts to cash', () => {
+  const s = defaultSave(); s.cosmetics.stickers = ['star'];
+  assert.equal(E.rollCrate(s, { rand: seq(0.7, 0, 0.99) }).id, 'smile', 'the re-roll found a new one');
+  const r = E.rollCrate(s, { rand: seq(0.7, 0, 0, 0.5) });
+  assert.equal(r.kind, 'cash'); assert.equal(r.converted, 'sticker'); assert.equal(r.cash, 550);
+});
+test('pity: the 5th crate in a row without a cosmetic is a cosmetic the player does not own; opening applies the reward', () => {
+  const s = defaultSave(); s.crates.earned = 6; s.cash = 0;
+  for (let i = 0; i < 4; i++) assert.equal(E.openCrate(s, { rand: () => 0.1 }).kind, 'cash');
+  assert.equal(s.crates.sinceCosmetic, 4); assert.equal(s.cash, 4 * 350); assert.equal(s.records.lifetimeCash, 1400);
+  s.cosmetics.stickers = ['star'];
+  const p = E.openCrate(s, { rand: () => 0.1 });
+  assert.equal(p.pity, true); assert.equal(p.kind, 'sticker'); assert.notEqual(p.id, 'star');
+  assert.ok(s.cosmetics.stickers.includes(p.id)); assert.equal(s.crates.sinceCosmetic, 0); assert.equal(s.crates.opened, 5);
+  assert.equal(E.unopened(s), 1); E.openCrate(s); assert.equal(E.openCrate(s), null, 'none left');
+});
+console.log('engagement: trophies, Week Champion, family board');
+const mastered = (r, at) => Object.assign(r, { box: 3, firstTry: 3, seenCount: 3, daysCorrect: [dk(0), dk(1)], masteredAt: at });
+test('Week Champion: every word of the active list mastered → badge, Champion skin + Trophy sticker, a crate, +300 XP (once)', () => {
+  const s = defaultSave(), w = dataWith(['enough', 'through']);
+  mastered(w.records.enough, day(1));
+  assert.equal(E.checkChampion(s, w), null);
+  mastered(w.records.through, day(2));
+  const c = E.checkChampion(s, w);
+  assert.equal(c.listId, w.activeId); assert.deepEqual(s.champion, [w.activeId]);
+  assert.ok(s.cosmetics.skins.includes('champion') && s.cosmetics.stickers.includes('trophy'));
+  assert.equal(s.crates.earned, 1); assert.equal(s.xp, 300); assert.deepEqual([...s.trophies[w.activeId]].sort(), ['enough', 'through']);
+  assert.equal(E.checkChampion(s, w), null, 'only once per list');
+  assert.equal(E.championThisWeek(s, w, day(3)), true); assert.equal(E.championThisWeek(s, w, day(8)), false, 'the crown is for that week');
+});
+test('family board: ranked by words mastered this week, then streak, then best jump; leader + nudge; Monday resets the week', () => {
+  const mk = (id, name, words, streakDays, jump) => {
+    const s = defaultSave(), w = dataWith(['enough', 'through', 'friend']);
+    words.forEach((x, i) => mastered(w.records[x], day(1, i)));
+    for (const d of streakDays) E.completeDay(s, day(d));
+    if (jump) E.noteJump(s, jump, day(2));
+    return { player: { id, name, color: '#ff3b5c' }, save: s, words: w };
+  };
+  const mia = mk('pmia', 'Mia', ['enough', 'through'], [1, 2], 120), leo = mk('pleo', 'Leo', ['friend'], [0, 1, 2], 300), ava = mk('pava', 'Ava', ['enough'], [2], 50);
+  let rows = E.weeklyBoard([leo, ava, mia], day(2, 3));
+  assert.deepEqual(rows.map((r) => [r.id, r.rank, r.mastered, r.streak, r.best]), [['pmia', 1, 2, 2, 120], ['pleo', 2, 1, 3, 300], ['pava', 3, 1, 1, 50]]);
+  assert.equal(rows[0].leader, true);
+  assert.equal(E.boardNudge(rows, 'pleo'), 'Mia is 1 word ahead'); assert.equal(E.boardNudge(rows, 'pmia'), "You're in the lead!");
+  assert.equal(E.boardNudge(rows, 'pava'), "Leo's streak is 2 days longer");
+  assert.equal(E.boardNudge(E.weeklyBoard([mia], day(2)), 'pmia'), '', 'one player: no nudge');
+  rows = E.weeklyBoard([leo, ava, mia], day(7, 1));                  // next Monday: words + best jump reset
+  assert.deepEqual(rows.map((r) => [r.id, r.mastered, r.best]), [['pava', 0, 0], ['pleo', 0, 0], ['pmia', 0, 0]], 'all tied: by name');
+  assert.equal(rows.some((r) => r.leader), false, 'no leader on a tie');
+  assert.deepEqual(rows.map((r) => r.streak), [0, 0, 0], 'nobody played Sat-Sun: two misses break every streak');
+});
+console.log('progress transfer code');
+await atest('encode → decode round trip, gzip (CompressionStream) and plain (no CompressionStream)', async () => {
+  const s = defaultSave(); s.cash = 4321; s.owned = ['beater', 'rally']; s.xp = 777;
+  const w = dataWith(['enough', 'through']); recordSpell(w, 'enough', { firstTry: true }, day(1));
+  const gz = await encodeTransfer({ player: { name: 'Nathan', color: '#3b7dd9' }, save: s, words: w }, { now: day(2) });
+  assert.match(gz, /^H4sI[A-Za-z0-9_-]+$/, 'gzip magic, base64url');
+  const plain = await encodeTransfer({ player: { name: 'Nathan', color: '#3b7dd9' }, save: s, words: w }, { now: day(2), CompressionStream: null });
+  assert.match(plain, /^eyJ2/, 'plain JSON');
+  assert.ok(gz.length < plain.length);
+  for (const c of [gz, plain, plain.replace(/(.{40})/g, '$1\n ')]) {
+    const d = await decodeTransfer(c);
+    assert.equal(d.ok, true, d.error); assert.equal(d.data.player.name, 'Nathan'); assert.equal(d.data.save.cash, 4321); assert.equal(d.data.save.xp, 777);
+    assert.deepEqual(d.data.save.owned, ['beater', 'rally']); assert.equal(d.data.words.records.enough.firstTry, 1); assert.equal(d.data.exportedAt, day(2));
+  }
+  const noDS = await decodeTransfer(gz, { DecompressionStream: null });
+  assert.equal(noDS.ok, false); assert.match(noDS.error, /browser/);
+  assert.equal((await decodeTransfer(plain, { DecompressionStream: null })).ok, true, 'a plain code needs no DecompressionStream');
+});
+await atest('corrupt / foreign codes are refused with a message, never thrown', async () => {
+  const gz = await encodeTransfer({ player: { name: 'Nathan' }, save: defaultSave(), words: dataWith(['enough']) });
+  for (const c of ['', '   ', 'hello world!', gz.slice(0, 50), 'eyJmb28iOjF9', btoa(JSON.stringify({ v: 1, player: { name: '' }, save: {}, words: { lists: [] } })), btoa(JSON.stringify({ v: 9, player: { name: 'X' }, save: {}, words: { lists: [] } }))]) {
+    const r = await decodeTransfer(c);
+    assert.equal(r.ok, false, c.slice(0, 20)); assert.ok(r.error.length > 10);
+  }
+});
+await atest('import: same name (any case) → merged with the sync rules; a new name → a new player', async () => {
+  const store = {}, fam = { players: [{ id: 'pnat', name: 'Nathan', color: '#3b7dd9' }] };
+  const here = defaultSave(); here.cash = 9000; here.owned = ['beater', 'muscle']; here.xp = 100;
+  store['pnat.save'] = here; store['pnat.words'] = dataWith(['enough', 'through']);
+  recordSpell(store['pnat.words'], 'through', { firstTry: true }, day(1));
+  const deps = {
+    createPlayer: (f, name, color) => { if (f.players.length >= 4) return null; const p = { id: 'p' + name.toLowerCase(), name, color }; f.players.push(p); return p; },
+    loadSave: (id) => clone(store[id + '.save']), loadWords: (id) => clone(store[id + '.words']),
+    writeSave: (id, s) => { store[id + '.save'] = s; }, writeWords: (id, w) => { store[id + '.words'] = w; },
+  };
+  const s = defaultSave(); s.cash = 4000; s.owned = ['beater', 'rally']; s.xp = 900;
+  const w = dataWith(['enough', 'through']); recordSpell(w, 'enough', { firstTry: true }, day(2));
+  const d = (await decodeTransfer(await encodeTransfer({ player: { name: 'NATHAN' }, save: s, words: w }, { now: day(2) }))).data;
+  const m = applyImport(fam, d, deps, day(3));
+  assert.equal(m.mode, 'merge'); assert.equal(fam.players.length, 1);
+  assert.equal(store['pnat.save'].cash, 9000); assert.deepEqual([...store['pnat.save'].owned].sort(), ['beater', 'muscle', 'rally']); assert.equal(store['pnat.save'].xp, 900);
+  assert.equal(store['pnat.words'].records.enough.firstTry, 1); assert.equal(store['pnat.words'].records.through.firstTry, 1, 'both sides\' practice kept');
+  assert.equal(m.message, 'Merged into Nathan: $9,000, 3 cars, 2 words');
+  const d2 = (await decodeTransfer(await encodeTransfer({ player: { name: 'Mia', color: '#ff3b5c' }, save: s, words: w }))).data;
+  const a = applyImport(fam, d2, deps, day(3));
+  assert.equal(a.mode, 'add'); assert.equal(a.message, 'Added Mia'); assert.equal(store['pmia.save'].cash, 4000); assert.equal(fam.players.length, 2);
+  fam.players.push({ id: 'x1', name: 'A' }, { id: 'x2', name: 'B' });
+  const full = applyImport(fam, { ...d2, player: { name: 'Zed' } }, deps);
+  assert.equal(full.ok, false); assert.match(full.error, /4 players/);
+});
+
 console.log('self-update: reload guard (meta/selfUpdate.js)');
 test('safe screens: picker, title, garage, track select, with nothing in progress', () => {
   for (const screen of ['players', 'title', 'garage', 'tracks']) assert.equal(safeToReload({ screen }), true, screen);

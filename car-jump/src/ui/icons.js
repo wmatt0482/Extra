@@ -36,6 +36,11 @@ export const ICONS = {
   rocket: S('<path d="M12 2.5c3.5 2.5 5 6.5 4 11.5H8c-1-5 .5-9 4-11.5z"/><circle cx="12" cy="9" r="1.6"/><path d="M8 14l-3 3.5 3.2.3M16 14l3 3.5-3.2.3M10.5 17.5L12 21.5l1.5-4"/>'),
   medal: S('<path d="M8 2.5l4 6 4-6M5.5 2.5h5M13.5 2.5h5"/><circle cx="12" cy="15" r="6"/><path d="M12 12l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2-1.5-1.4 2-.3z" fill="currentColor" stroke-width="1"/>'),
   music: S('<path d="M9 18V6l10-2v12"/><circle cx="6.5" cy="18" r="2.5" fill="currentColor"/><circle cx="16.5" cy="16" r="2.5" fill="currentColor"/>'),
+  // v3.3 engagement
+  crown: F('<path d="M3 8.5l4.5 3.8L12 5l4.5 7.3L21 8.5l-1.8 10H4.8z"/><rect x="4.8" y="19.5" width="14.4" height="2" rx="1"/>'),
+  shield: F('<path d="M12 2.5l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10v-6z"/>'),
+  crate: S('<rect x="3.5" y="8" width="17" height="12.5" rx="2"/><path d="M2.5 8h19V5.5H2.5zM12 5.5v15M12 5.5C10 2 6.5 2.5 7.5 5.5M12 5.5c2-3.5 5.5-3 4.5 0"/>'),
+  style: S('<path d="M4 20l3.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11z"/><path d="M14 6.5l3 3"/>'),
 };
 
 export const COIN = `<svg class="coin" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12.8" r="10" fill="#b98200"/><circle cx="12" cy="11.2" r="10" fill="#ffcf1a"/><circle cx="12" cy="11.2" r="7" fill="none" stroke="#e7a800" stroke-width="2"/><path d="M12 6.8v8.8M14.3 8.6c-.5-.6-1.3-.9-2.3-.9-1.3 0-2.2.7-2.2 1.6 0 2.3 4.6 1.2 4.6 3.5 0 .9-1 1.6-2.4 1.6-1 0-1.9-.4-2.4-1" stroke="#8a5d00" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>`;

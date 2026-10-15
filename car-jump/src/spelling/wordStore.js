@@ -78,6 +78,7 @@ export function normalizeWordsData(raw, now = Date.now()) {
       rec.daysSeen = strArr(r.daysSeen);
       rec.focus = !!r.focus;
       rec.studied = !!r.studied;
+      if (num(r.masteredAt) > 0) rec.masteredAt = num(r.masteredAt);   // v3.3: when the word last became Mastered
       d.records[word] = rec;
     }
   }
@@ -220,7 +221,9 @@ export function recordSpell(d, word, { firstTry }, now, session) {
   d.bestStreak = Math.max(d.bestStreak, d.streak);
   let missionJustDone = false;
   if (!t.missionPaid && t.count >= MISSION_SIZE) { t.missionPaid = true; missionJustDone = true; }
-  return { rec, streakBefore, streak: d.streak, missionJustDone, newlyMastered: !wasMastered && isMastered(rec), mission: missionState(d, now) };
+  const newlyMastered = !wasMastered && isMastered(rec);
+  if (newlyMastered) rec.masteredAt = now;          // v3.3: the family board counts words mastered this week
+  return { rec, streakBefore, streak: d.streak, missionJustDone, newlyMastered, listId: rec.listId, mission: missionState(d, now) };
 }
 
 /**
@@ -256,12 +259,18 @@ export function recordQualifier(d, results, now) {
   return pushTest(d, 'qualifier', results, now);
 }
 
+// Returns the test entry; `mastered` (not stored) lists the words this test made Mastered (v3.3 trophies).
 export function recordFriday(d, results, now) {
+  const mastered = [];
   for (const r of results) {
     const rec = d.records[r.word] || (d.records[r.word] = newRecord(r.word, d.activeId));
+    const was = isMastered(rec);
     applyTest(rec, r.correct, now);
+    if (!was && isMastered(rec)) { rec.masteredAt = now; mastered.push(r.word); }
   }
-  return pushTest(d, 'friday', results, now);
+  const t = pushTest(d, 'friday', results, now);
+  Object.defineProperty(t, 'mastered', { value: mastered, enumerable: false });
+  return t;
 }
 
 export const testWords = (d) => activeList(d).words.map((w) => w.word);
