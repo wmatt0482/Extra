@@ -1,17 +1,28 @@
-// Mock engine: implements the src/game/engine.js contract (SPEC §3) with a scripted ~7 s ride, so every screen can be
-// exercised without physics (tools/ui-smoke.mjs runs on it with ?mock=1). Loaded with ?mock=1, or as a fallback when
-// the real engine fails to load. Cash follows SPEC §6: distance $2/m, air $30/s, smashes, coins $10, finish $300,
-// gates $120 (+$80 quick, $40 fixed), all × stats.coinMult, each part a whole number so the parts add up to the total.
-// The Ranger stays parked at the trail head until GAS is first pressed ('launch'); after that the ride plays on its
-// own timeline (GAS / BRAKE / BOOST still move the gauges). Gates (cfg.gates > 0) park it and wait for openGate().
-// Test hooks: window.__mockScript = { stuck: true } (the Ranger gets stuck once, mid-ride, until winch(true)),
-// { short: true } (the ride ends at 60 % without crossing the finish).
+// Mock engine: implements the src/game/engine.js contract (SPEC §3 + v1.1 race mode §6) with a scripted race, so every
+// screen can be exercised without physics (tools/ui-smoke.mjs runs on it with ?mock=1). Loaded with ?mock=1, or as a
+// fallback when the real engine fails to load.
+// The race: a 3-2-1 countdown ('countdown' {n}), the gate drop ('go'; GAS held before it = a bogged start), then the
+// player's Ranger rides on its own timeline against three AI riders (Max, Zoe, Kai): a slow launch, one jump with a
+// backflip ('bigAir', 'flip' {kind, count}, a PERFECT landing), one CRASH ('crash', 1.5 s, 'respawn' at the last
+// checkpoint), checkpoints every 100 m, trail coins, 'position' {place} whenever the order changes, 'finishLine', and
+// 'finish' {summary} 0.8 s later. getState().riders and summary.riders list every rider, the player included (me: true). Cash (× stats.coinMult, each part a whole number so the parts add up to the total):
+// distance $2/m, air $30/s, flips $150, perfect landings $100, coins $10, place 1st $500 / 2nd $300 / 3rd $150, finish
+// $300 (and gates $120 / quick $80 / fixed $40 when a ride has gates: the math phase).
+// Test hooks: window.__mockScript = { aiTimes: [s, s, s] (the AI riders' race times; default 7.0, 9.6, 10.4: the
+//   player, ~8.8 s, finishes 2nd), noCrash: true }.
 import { drawRanger } from '../ui/vehiclePreview.js';
 
-const RIDE_T = 7;            // seconds of riding from launch to the finish flag
-const FINISH_DELAY = 0.8;    // finishLine → finish
-const COIN_T = [0.6, 1.1, 1.6, 2.2, 3.6, 4.4, 5.6, 6.3];
-const STUCK_T = 4.8;
+const CD_STEP = 0.7;          // seconds between 3, 2, 1, GO
+const PLAYER_T = 6.5;         // a clean race at full speed (race seconds)
+const LAUNCH_T = 0.8;         // slow launch off the gate (60 % speed)
+const JUMP1 = [1.6, 3.2];     // take-off, landing (race seconds): big air + backflip + perfect
+const JUMP2 = [3.6, 4.2];     // take-off, landing: crash
+const CRASH_T = 1.5;
+const FINISH_DELAY = 0.8;
+const COIN_RT = [0.5, 1.0, 1.4, 3.4, 5.0, 5.6, 6.2, 7.0];
+const AI = [{ name: 'Max' }, { name: 'Zoe' }, { name: 'Kai' }];
+const AI_PAINTS = ['lakeblue', 'sunset', 'gold', 'sky', 'purple', 'black'];
+const PLACE_CASH = { 1: 500, 2: 300, 3: 150 };
 
 export function createGame(canvas, opts = {}) {
   const onEvent = typeof opts.onEvent === 'function' ? opts.onEvent : () => {};
@@ -32,108 +43,142 @@ export function createGame(canvas, opts = {}) {
   const emit = (evt) => { try { onEvent(evt); } catch (e) { console.error('[mockEngine] onEvent threw', e); } };
 
   function start(cfg = {}) {
-    const trail = cfg.trail || { id: 'trail', length: 600, style: 'forest', theme: {} };
-    const stats = cfg.stats || {};
+    const trail = cfg.trail || { id: 'track', length: 600, style: 'forest', theme: {} };
     const script = (typeof window !== 'undefined' && window.__mockScript) || {};
-    const gates = Math.max(0, Math.floor(cfg.gates || 0));
+    const times = Array.isArray(script.aiTimes) && script.aiTimes.length === 3 ? script.aiTimes : [7.0, 9.6, 10.4];
+    const paints = AI_PAINTS.filter((p) => p !== cfg.paint).slice(0, 3);
+    const nRiders = cfg.race && Number.isFinite(cfg.race.riders) ? Math.max(0, Math.min(3, cfg.race.riders)) : 3;
+    const length = trail.length || 600;
     run = {
-      cfg, trail, stats, mult: stats.coinMult || 1, length: trail.length || 600, short: !!script.short,
-      stuckPlanned: !!script.stuck, stuckDone: false,
-      gateAt: Array.from({ length: gates }, (_, i) => ((i + 1) / (gates + 1)) * RIDE_T), gateIndex: 0,
+      cfg, trail, length, mult: (cfg.stats && cfg.stats.coinMult) || 1, crashPlanned: !script.noCrash,
+      riders: AI.slice(0, nRiders).map((a, i) => ({ name: a.name, paint: paints[i], finishT: times[i], x: 0 })),
+      phase: 'countdown', t: 0, cd: 3, goT: 3 * CD_STEP, bogged: false, rt: 0, distance: 0, checkpoint: 0, place: nRiders + 1,
+      speedKmh: 0, maxSpeed: 0, boost: 0.4, boosting: false, inAir: false, flightT: 0, airTime: 0, airCash: 0, bigAir: false,
+      flips: 0, flipCash: 0, perfect: 0, perfectCash: 0, crashes: 0, crashT: 0, coins: 0, coinCash: 0, nextCoin: 0,
+      jump1: false, jump2: false, finishCrossed: false, timeSec: 0, finishAt: null, ended: false, popups: [],
       gates: { answered: 0, correct: 0, quick: 0, fixed: 0 }, gateCash: 0, quickCash: 0,
-      phase: 'parked', t: 0, launched: false, distance: 0, speedKmh: 0, maxSpeed: 0, boost: 0.5, boosting: false,
-      airTime: 0, flightT: 0, inAir: false, flips: 0, smashed: 0, smashCash: 0, coins: 0, coinCash: 0, airCash: 0,
-      winches: 0, finishCrossed: false, finishAt: null, ended: false, upsideDown: false, popups: [], startedAt: 0,
-      nextCoin: 0, flipped: false, landed: false, smashedOnce: false, splashed: false,
     };
+    emit({ type: 'countdown', n: 3 });
     paused = false;
     last = performance.now();
     if (!raf) raf = requestAnimationFrame(frame);
   }
 
+  function placeCash(r) { return r.finishCrossed && PLACE_CASH[r.place] ? PLACE_CASH[r.place] : 0; }
   function cashNow(r) {
-    const m = r.mult;
-    const distance = Math.round(Math.floor(r.distance) * 2 * m);
-    const air = Math.round(r.airCash * m);
-    const smash = Math.round(r.smashCash * m);
-    const coins = Math.round(r.coinCash * m);
-    const gates = Math.round(r.gateCash * m);
-    const quick = Math.round(r.quickCash * m);
-    const finish = r.finishCrossed ? Math.round(300 * m) : 0;
-    return { distance, air, smash, coins, gates, quick, finish, total: distance + air + smash + coins + gates + quick + finish };
+    const m = r.mult, k = (v) => Math.round(v * m);
+    const c = {
+      distance: k(Math.floor(r.distance) * 2), air: k(r.airCash), flips: k(r.flipCash), perfect: k(r.perfectCash), coins: k(r.coinCash),
+      place: k(placeCash(r)), finish: r.finishCrossed ? k(300) : 0, gates: k(r.gateCash), quick: k(r.quickCash),
+    };
+    c.total = Object.values(c).reduce((a, v) => a + v, 0);
+    return c;
+  }
+  function currentPlace(r) {
+    const me = r.finishCrossed ? r.timeSec : null;
+    let ahead = 0;
+    for (const a of r.riders) {
+      if (me != null) { if (a.finishT < me) ahead++; } else if (a.x > r.distance) ahead++;
+    }
+    return ahead + 1;
   }
 
   function step(dt) {
     const r = run;
     if (!r || r.ended) return;
-    if (r.phase === 'parked') {
-      if (input.gas) { r.phase = 'ride'; r.launched = true; r.startedAt = performance.now(); emit({ type: 'launch' }); }
+    r.t += dt;
+    if (r.phase === 'countdown') {
+      if (input.gas && !r.bogged) { r.bogged = true; emit({ type: 'bogged' }); }
+      const n = 3 - Math.floor(r.t / CD_STEP);
+      if (n < r.cd && n >= 1) { r.cd = n; emit({ type: 'countdown', n }); }
+      if (r.t >= r.goT) { r.phase = 'ride'; r.rt = r.bogged ? -0.4 : 0; emit({ type: 'go', bogged: r.bogged }); }
       return;
     }
+    // the AI keeps riding until the summary is out
+    const raceT = Math.max(0, r.t - r.goT);
+    for (const a of r.riders) a.x = Math.min(r.length + 30, r.length * Math.pow(Math.min(1.2, raceT / a.finishT), 0.95));
     if (r.phase === 'done') {
       if (r.finishAt != null && r.t >= r.finishAt) end();
-      r.t += dt;
       return;
     }
-    if (r.phase === 'gate' || r.phase === 'stuck') { r.speedKmh = 0; return; }
-    // boost burns while held
-    const wantBoost = input.boost && r.boost > 0.01;
+    const wantBoost = input.boost && r.boost > 0.01 && r.phase === 'ride';
     if (wantBoost !== r.boosting) { r.boosting = wantBoost; emit({ type: 'boost', on: wantBoost }); }
     if (r.boosting) r.boost = Math.max(0, r.boost - dt * 0.4);
-    r.t += dt * (r.boosting ? 1.25 : 1);
-    const k = Math.min(1, r.t / RIDE_T);
-    const endK = r.short ? 0.6 : 1;
-    r.distance = r.length * Math.min(k, endK);
-    r.speedKmh = 28 + 18 * Math.sin(r.t * 1.7) * 0.5 + (r.boosting ? 22 : 0) + (r.stats.power || 1) * 6;
-    r.maxSpeed = Math.max(r.maxSpeed, r.speedKmh);
-    // gates
-    if (r.gateIndex < r.gateAt.length && r.t >= r.gateAt[r.gateIndex]) {
-      r.phase = 'gate';
-      emit({ type: 'gate', index: r.gateIndex, x: r.distance + 3 });
+    r.rt += dt;
+    if (r.rt < 0) return;   // bogged start
+    if (r.phase === 'crash') {
+      r.speedKmh = 0;
+      if (r.rt >= r.crashT + CRASH_T) {
+        r.phase = 'ride'; r.distance = r.checkpoint;
+        emit({ type: 'respawn', x: r.distance });
+      }
       return;
     }
+    const v = (r.length / PLAYER_T) * (r.rt < LAUNCH_T ? 0.6 : 1) * (r.boosting ? 1.25 : 1);
+    r.distance = Math.min(r.length, r.distance + v * dt);
+    r.speedKmh = (r.rt < LAUNCH_T ? 48 : 88) + (r.boosting ? 22 : 0);
+    r.maxSpeed = Math.max(r.maxSpeed, r.speedKmh);
+    // checkpoints every 100 m
+    const cp = Math.floor(r.distance / 100) * 100;
+    if (cp > r.checkpoint) { r.checkpoint = cp; emit({ type: 'checkpoint', index: cp / 100 }); }
     // coins
-    while (r.nextCoin < COIN_T.length && r.t >= COIN_T[r.nextCoin]) {
-      r.nextCoin++; r.coins++; r.coinCash += 10; r.boost = Math.min(1, r.boost + 0.08);
+    while (r.nextCoin < COIN_RT.length && r.rt >= COIN_RT[r.nextCoin]) {
+      r.nextCoin++; r.coins++; r.coinCash += 10; r.boost = Math.min(1, r.boost + 0.06);
       emit({ type: 'coin', cash: Math.round(10 * r.mult) });
-      r.popups.push({ text: '+$' + Math.round(10 * r.mult), t: 0.8 });
     }
-    // one jump: airborne 2.0 → 3.2 s, a back flip, a perfect landing (+ boost)
-    if (!r.inAir && !r.landed && r.t >= 2.0) { r.inAir = true; r.flightT = 0; }
+    // jump 1: big air, a backflip, a perfect landing
+    if (!r.jump1 && r.rt >= JUMP1[0]) { r.jump1 = true; r.inAir = true; r.flightT = 0; r.bigAir = false; r.flipped = false; }
+    if (!r.jump2 && r.rt >= JUMP2[0] && r.crashPlanned) { r.jump2 = true; r.inAir = true; r.flightT = 0; r.bigAir = true; r.crashing = true; }
     if (r.inAir) {
       r.flightT += dt;
-      if (!r.flipped && r.t >= 2.6) { r.flipped = true; r.flips++; emit({ type: 'flip', direction: 'back' }); }
-      if (r.t >= 3.2) {
-        r.inAir = false; r.landed = true; r.airTime += r.flightT; r.airCash += 30 * r.flightT;
+      if (!r.bigAir && r.flightT >= 1.5) { r.bigAir = true; emit({ type: 'bigAir', airTime: Math.round(r.flightT * 10) / 10 }); }
+      const landAt = r.crashing ? JUMP2[1] : JUMP1[1];
+      if (r.rt >= landAt) {
+        r.inAir = false; r.airTime += r.flightT; r.airCash += 30 * r.flightT;
         emit({ type: 'air', airTime: Math.round(r.flightT * 100) / 100 });
-        emit({ type: 'land', quality: 'perfect' });
-        r.boost = Math.min(1, r.boost + 0.25);
-        r.popups.push({ text: 'PERFECT!', t: 1 });
+        if (r.crashing) {
+          r.crashing = false; r.crashes++; r.phase = 'crash'; r.crashT = r.rt; r.speedKmh = 0;
+          emit({ type: 'land', quality: 'crash' });
+          emit({ type: 'crash' });
+        } else {
+          r.flips++; r.flipCash += 150; r.perfect++; r.perfectCash += 100; r.boost = Math.min(1, r.boost + 0.3);
+          emit({ type: 'flip', kind: 'back', count: 1, direction: 'back' });
+          emit({ type: 'land', quality: 'perfect' });
+        }
       }
     }
-    if (!r.smashedOnce && r.t >= 4.0) { r.smashedOnce = true; r.smashed++; r.smashCash += 40; emit({ type: 'smash', kind: 'log', cash: Math.round(40 * r.mult) }); }
-    if (!r.splashed && r.trail.style === 'lake' && r.t >= 4.4) { r.splashed = true; emit({ type: 'splash' }); }
-    if (r.stuckPlanned && !r.stuckDone && r.t >= STUCK_T) {
-      r.stuckDone = true; r.phase = 'stuck'; r.upsideDown = true; r.speedKmh = 0;
-      emit({ type: 'stuck' });
-      return;
-    }
-    if (k >= endK) {
-      if (!r.short) { r.finishCrossed = true; emit({ type: 'finishLine' }); r.popups.push({ text: 'FINISH!', t: 1.2 }); }
+    const place = currentPlace(r);
+    if (place !== r.place) { r.place = place; emit({ type: 'position', place }); }
+    if (r.distance >= r.length) {
+      r.finishCrossed = true; r.timeSec = Math.round(r.rt * 100) / 100;
+      r.place = currentPlace(r);
+      emit({ type: 'finishLine', place: r.place, timeSec: r.timeSec });
+      emit({ type: 'lap', timeSec: r.timeSec });
+      r.popups.push({ text: 'FINISH!', t: 1.2 });
       r.phase = 'done'; r.finishAt = r.t + FINISH_DELAY;
     }
   }
 
+  // every rider, the player included ({ me: true }), with a place: the engine's getState().riders / summary.riders
+  function ridersOut(r) {
+    const name = (r.cfg.race && r.cfg.race.name) || 'You';
+    const list = [{ name, paint: r.cfg.paint, x: r.distance, me: true, finished: r.finishCrossed, timeSec: r.finishCrossed ? r.timeSec : null },
+      ...r.riders.map((a) => ({ name: a.name, paint: a.paint, x: a.x, me: false, finished: a.x >= r.length, timeSec: a.x >= r.length ? a.finishT : null }))];
+    const key = (x) => (x.finished ? -1e6 + x.timeSec : -x.x);
+    list.slice().sort((a, b) => key(a) - key(b)).forEach((x, i) => { x.place = i + 1; });
+    return list;
+  }
   function summary() {
     const r = run;
     const cash = cashNow(r);
     const reach = Math.min(1, r.distance / r.length);
-    const ratingScore = Math.round(reach * 60 + (r.finishCrossed ? 20 : 0) + r.flips * 5 + Math.min(10, r.airTime * 2) - r.winches * 3);
+    const ratingScore = Math.round(reach * 50 + (r.finishCrossed ? 20 : 0) + (r.finishCrossed ? (5 - r.place) * 8 : 0) + r.flips * 4 - r.crashes * 4);
     const rating = ratingScore >= 88 ? 'S' : ratingScore >= 70 ? 'A' : ratingScore >= 50 ? 'B' : ratingScore >= 25 ? 'C' : 'D';
     return {
-      distance: Math.floor(r.distance), durationSec: Math.round(r.t * 10) / 10, airTime: Math.round(r.airTime * 100) / 100, flips: r.flips,
-      smashed: r.smashed, coins: r.coins, maxSpeedKmh: Math.round(r.maxSpeed), gates: { ...r.gates }, winches: r.winches,
-      finishCrossed: r.finishCrossed, cash, rating, ratingScore,
+      distance: Math.floor(r.distance), durationSec: Math.round(r.t * 10) / 10, timeSec: r.finishCrossed ? r.timeSec : Math.round(Math.max(0, r.rt) * 100) / 100,
+      airTime: Math.round(r.airTime * 100) / 100, flips: r.flips, crashes: r.crashes, perfect: r.perfect, smashed: 0, coins: r.coins,
+      maxSpeedKmh: Math.round(r.maxSpeed), place: r.finishCrossed ? r.place : null, gates: { ...r.gates }, winches: 0,
+      finishCrossed: r.finishCrossed, cash, rating, ratingScore, riders: ridersOut(r),
     };
   }
   function end() {
@@ -153,7 +198,7 @@ export function createGame(canvas, opts = {}) {
     g.addColorStop(0, sky[0]); g.addColorStop(1, sky[1]);
     ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
     const off = r ? r.distance * 8 : 0;
-    const groundY = (x) => H * 0.68 + Math.sin((x + off) / 140) * 18 + Math.sin((x + off) / 47) * 5;
+    const groundY = (x) => H * 0.7 + Math.sin((x + off) / 140) * 16 + Math.sin((x + off) / 47) * 5;
     ctx.fillStyle = th.far || '#5f8f7a';
     ctx.beginPath(); ctx.moveTo(0, H);
     for (let x = 0; x <= W; x += 20) ctx.lineTo(x, H * 0.5 + Math.sin((x + off * 0.3) / 90) * 30);
@@ -163,24 +208,25 @@ export function createGame(canvas, opts = {}) {
     for (let x = 0; x <= W; x += 10) ctx.lineTo(x, groundY(x));
     ctx.lineTo(W, H); ctx.fill();
     ctx.fillStyle = th.groundDark || '#3f2a17';
-    ctx.fillRect(0, H * 0.86, W, H * 0.14);
+    ctx.fillRect(0, H * 0.88, W, H * 0.12);
     if (!r) return;
-    const vx = W * 0.32;
-    const lift = r.inAir ? Math.sin(Math.min(1, r.flightT / 1.2) * Math.PI) * H * 0.18 : 0;
-    const vy = groundY(vx) - lift;
-    const ang = r.phase === 'stuck' ? Math.PI : r.inAir ? -Math.min(1, r.flightT / 1.2) * Math.PI * 2 : Math.atan2(groundY(vx + 10) - groundY(vx - 10), 20);
-    ctx.save();
-    ctx.translate(vx, vy);
-    ctx.rotate(ang);
-    drawRanger(ctx, { paint: r.cfg.paint, decal: r.cfg.decal }, { width: Math.min(150, W * 0.18), t: performance.now() / 1000, speed: r.speedKmh });
-    ctx.restore();
-    if (r.phase === 'gate') {
-      ctx.fillStyle = '#8a5a32'; ctx.fillRect(vx + 90, groundY(vx + 90) - 80, 10, 80); ctx.fillRect(vx + 70, groundY(vx + 90) - 76, 60, 26);
-      ctx.fillStyle = '#fff'; ctx.font = 'bold 14px sans-serif'; ctx.fillText('GATE', vx + 80, groundY(vx + 90) - 58);
+    const vx = W * 0.34, size = Math.min(140, W * 0.17);
+    // the AI riders, ahead of / behind the player by their gap (8 px per m), drawn first
+    ctx.globalAlpha = 0.8;
+    for (const a of r.riders) {
+      const ax = vx + (a.x - r.distance) * 8;
+      if (ax < -size || ax > W + size) continue;
+      ctx.save(); ctx.translate(ax, groundY(ax)); drawRanger(ctx, { paint: a.paint }, { width: size * 0.9, t: performance.now() / 1000, speed: 40 }); ctx.restore();
     }
+    ctx.globalAlpha = 1;
+    const lift = r.inAir ? Math.sin(Math.min(1, r.flightT / 1.6) * Math.PI) * H * 0.18 : 0;
+    const ang = r.phase === 'crash' ? Math.PI * 0.9 : r.inAir && !r.crashing ? -Math.min(1, r.flightT / 1.6) * Math.PI * 2 : Math.atan2(groundY(vx + 10) - groundY(vx - 10), 20);
+    ctx.save(); ctx.translate(vx, groundY(vx) - lift); ctx.rotate(ang);
+    drawRanger(ctx, { paint: r.cfg.paint, decal: r.cfg.decal }, { width: size, t: performance.now() / 1000, speed: r.speedKmh });
+    ctx.restore();
     ctx.fillStyle = '#fff'; ctx.textAlign = 'center';
     ctx.font = `400 ${Math.round(H * 0.07)}px Bungee, "Arial Black", sans-serif`;
-    for (const p of r.popups) ctx.fillText(p.text, W / 2, H * 0.42 - (1 - p.t) * 20);
+    for (const p of r.popups) ctx.fillText(p.text, W / 2, H * 0.46 - (1 - p.t) * 20);
     ctx.textAlign = 'left';
   }
 
@@ -199,24 +245,8 @@ export function createGame(canvas, opts = {}) {
   return {
     start,
     setInput(i = {}) { input.gas = !!i.gas; input.brake = !!i.brake; input.boost = !!(i.boost || i.nitro); },
-    openGate(result = {}) {
-      const r = run;
-      if (!r || r.phase !== 'gate') return false;
-      r.gates.answered++;
-      if (result.correct) { r.gates.correct++; r.gateCash += 120; r.boost = Math.min(1, r.boost + 0.4); }
-      if (result.quick) { r.gates.quick++; r.quickCash += 80; r.boost = Math.min(1, r.boost + 0.2); }
-      if (result.fixed) { r.gates.fixed++; r.gateCash += 40; r.boost = Math.min(1, r.boost + 0.15); }
-      r.gateIndex++; r.phase = 'ride';
-      emit({ type: 'gateOpen', index: r.gateIndex - 1 });
-      return true;
-    },
-    winch(ok) {
-      const r = run;
-      if (!ok || !r || r.phase !== 'stuck') return false;
-      r.winches++; r.phase = 'ride'; r.upsideDown = false;
-      emit({ type: 'winched' });
-      return true;
-    },
+    openGate() { return false; },              // no gates in race mode (the math phase)
+    winch() { return false; },                 // no winch in race mode: a crash respawns at the last checkpoint
     pause() { paused = true; },
     resume() { paused = false; last = performance.now(); },
     stop() { if (run && !run.ended) end(); },
@@ -225,9 +255,10 @@ export function createGame(canvas, opts = {}) {
       const r = run;
       if (!r) return null;
       return {
-        phase: r.phase, distance: r.distance, speedKmh: r.speedKmh, boost: r.boost, airTime: r.inAir ? r.flightT : 0, flips: r.flips, smashed: r.smashed,
-        cash: cashNow(r).total, finishCrossed: r.finishCrossed, gateIndex: r.gateIndex, gatesTotal: r.gateAt.length,
-        stuck: r.phase === 'stuck', upsideDown: r.upsideDown,
+        phase: r.phase, distance: r.distance, speedKmh: r.speedKmh, boost: r.boost, airTime: r.inAir ? r.flightT : 0, flips: r.flips, smashed: 0,
+        cash: cashNow(r).total, finishCrossed: r.finishCrossed, gateIndex: 0, gatesTotal: 0, stuck: false, upsideDown: r.phase === 'crash',
+        place: r.place, timeSec: r.phase === 'countdown' ? 0 : r.finishCrossed ? r.timeSec : Math.max(0, r.rt),
+        riders: ridersOut(r),
       };
     },
   };

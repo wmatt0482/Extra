@@ -3,9 +3,11 @@
 // Jump's record, read and written only through ../spell-jump/src/spelling/profiles.js.
 // Every localStorage access is wrapped in try/catch: a missing, blocked or corrupt store never breaks boot (defaults
 // in memory); a corrupt save is backed up to `<key>.corrupt`. `v` is the schema version: normalize() upgrades older
-// saves and a save from a newer app version is kept aside (backup) rather than misread.
+// saves and a save from a newer app version is kept aside (backup) rather than misread. v1.1 (races) added bestPlace,
+// bestTime, medals and the race records as optional fields (v stays 1: an older copy just ignores them).
 import { UPGRADES, MAX_LEVEL, emptyLevels } from '../data/upgrades.js';
 import { PAINT_BY_ID, DECAL_BY_ID } from '../data/paints.js';
+import { MEDALS as MEDAL_IDS } from '../data/medals.js';
 
 export const SAVE_VERSION = 1;
 export const SETTINGS_KEY = 'trailBlazer.settings';
@@ -17,11 +19,15 @@ export function defaultSave() {
     cash: 0,
     levels: emptyLevels(),
     best: {},                 // trailId -> best distance (m)
-    finished: {},             // trailId -> times the finish flag was crossed
+    finished: {},             // trailId -> times the finish line was crossed
+    bestPlace: {},            // trailId -> best finishing place (1..4); 3rd or better unlocks the next track
+    bestTime: {},             // trailId -> best finishing time (s)
+    medals: {},               // trailId -> best medal ('gold' | 'silver' | 'bronze')
     selectedTrail: null,
     paint: 'sage',
     decal: 'none',
-    records: { rides: 0, lifetimeCash: 0, longestRide: 0, totalSmashes: 0, totalFlips: 0, totalCoins: 0, maxSpeedKmh: 0, longestAir: 0, winches: 0 },
+    records: { rides: 0, lifetimeCash: 0, longestRide: 0, totalSmashes: 0, totalFlips: 0, totalCoins: 0, maxSpeedKmh: 0, longestAir: 0, winches: 0,
+      wins: 0, podiums: 0, crashes: 0, perfectLandings: 0 },
     seen: { coach: false },
   };
 }
@@ -46,6 +52,17 @@ export function normalize(raw) {
       for (const [k, v] of Object.entries(raw[key])) if (idOk(k) && num(v) > 0) s[key][k] = key === 'best' ? Math.floor(num(v)) : Math.floor(num(v));
     }
   }
+  if (raw.bestPlace && typeof raw.bestPlace === 'object') {
+    for (const [k, v] of Object.entries(raw.bestPlace)) if (idOk(k) && num(v) >= 1) s.bestPlace[k] = Math.min(4, Math.floor(num(v)));
+  }
+  if (raw.bestTime && typeof raw.bestTime === 'object') {
+    for (const [k, v] of Object.entries(raw.bestTime)) if (idOk(k) && num(v) > 0) s.bestTime[k] = Math.round(num(v) * 100) / 100;
+  }
+  if (raw.medals && typeof raw.medals === 'object') {
+    for (const [k, v] of Object.entries(raw.medals)) if (idOk(k) && MEDAL_IDS.includes(v)) s.medals[k] = v;
+  }
+  // v1 saves (trail rides, before races): a finished trail keeps the next one open
+  for (const k of Object.keys(s.finished)) if (!s.bestPlace[k]) s.bestPlace[k] = 3;
   s.selectedTrail = idOk(raw.selectedTrail) ? raw.selectedTrail : null;
   s.paint = PAINT_BY_ID[raw.paint] ? raw.paint : 'sage';
   s.decal = DECAL_BY_ID[raw.decal] ? raw.decal : 'none';

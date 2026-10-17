@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Trail Blazer</title>
-<meta name="description" content="Trail Blazer: ride a kid-size side-by-side over six forest, rock, lake, snow, desert and night trails. A Learning Lab game.">
+<meta name="description" content="Trail Blazer: a motocross-style race in the Ranger 150, a kid-size side-by-side, with flips, big air and three rivals. A Learning Lab game.">
 <meta name="theme-color" content="#0d1a16">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -115,7 +115,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .muted { color: var(--muted); }
 /* Bungee is caps-only; uppercase keeps the look identical if the webfont has not loaded (offline first run) */
 .btn, .ctl, .topbar h2, .logo, .veh-name, .up-name, .trail-name, .trail-num, .results-head h2, .record, .callout, .sheet-head h3,
-.toast, .stat b, .cleared, .hud-num small, .pl-name, .pl-level, .winch-btn { text-transform: uppercase; }
+.toast, .stat b, .cleared, .hud-num small, .pl-name, .pl-level, .medal-badge, .pod-name { text-transform: uppercase; }
 .up-name small, .stat b small { text-transform: none; }
 
 /* ---------- player picker ---------- */
@@ -253,6 +253,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .lock { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 6px; text-align: center; padding: 8px;
   font: 700 12px/1.25 var(--font-body); color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.6); }
 .lock svg { width: 30px; height: 30px; color: var(--accent); filter: drop-shadow(0 3px 0 rgba(0,0,0,.4)); }
+.trail-card .t-medal { position: absolute; top: 8px; left: 8px; padding: 3px 8px 3px 3px; font-size: 10px; }
+.trail-card .t-medal::before { width: 16px; height: 16px; }
 .trail-card .cleared { position: absolute; top: 8px; right: 8px; padding: 4px 7px; border-radius: 7px; background: var(--go); color: #062a12;
   font: 400 10px/1 var(--font-display); box-shadow: 0 2px 0 var(--go-edge); }
 
@@ -264,9 +266,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .hud-num { font: 400 28px/1 var(--font-display); font-variant-numeric: tabular-nums; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
 .hud-num small { font-size: 14px; margin-left: 3px; color: var(--muted); }
 .hud-label { font: 800 10px/1 var(--font-body); letter-spacing: .12em; color: var(--muted); margin-bottom: 3px; text-transform: uppercase; }
-.finish-bar { position: relative; width: 150px; height: 8px; margin-top: 6px; border-radius: 4px; background: rgba(255,255,255,.15); }
-.finish-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--accent); }
-.finish-bar b { position: absolute; right: -4px; top: -5px; width: 4px; height: 18px; background: repeating-linear-gradient(#fff 0 4px, #111 4px 8px); border-radius: 1px; }
 .hud-left { justify-self: start; }
 .hud-mid { justify-self: center; }
 .hud-mid .hud-num { color: var(--accent); }
@@ -275,8 +274,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .boost-bar { width: 100%; height: 8px; margin-top: 6px; border-radius: 4px; background: rgba(255,255,255,.15); overflow: hidden; }
 .boost-bar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--accent), #ffd29a); transform-origin: left; }
 #btn-pause { pointer-events: auto; }
-#hud-cash-box.bump { animation: cashBump .28s ease-out; }
-@keyframes cashBump { 35% { transform: scale(1.09); border-color: rgba(255,138,31,.7); } }
 .banner { position: absolute; left: 0; right: 0; top: 20%; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
 .banner > span { display: inline-block; max-width: calc(100vw - 24px); padding: 8px 30px 11px; white-space: nowrap; text-transform: uppercase;
   font: 400 clamp(26px, 3.4vmin + 2.2vw, 52px)/1 var(--font-display); color: var(--accent);
@@ -313,15 +310,40 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 #ctl-boost.is-down { box-shadow: 0 2px 0 #26140a; }
 #ctl-boost .fill { position: absolute; left: 0; right: 0; bottom: 0; height: 100%; background: linear-gradient(var(--accent), #e06a00); transform-origin: bottom; transition: transform .1s linear; }
 #ctl-boost.empty { color: var(--dim); }
-/* the winch: shows when the Ranger is stuck (under the HUD, clear of the Ranger and the driving buttons); a 1 s pull,
-   then the engine rights it and pulls it up the trail */
-.winch-btn { position: absolute; left: 50%; top: calc(var(--pad-t) + 92px); z-index: 5; transform: translateX(-50%); pointer-events: auto; overflow: hidden;
-  min-height: 72px; padding: 0 28px 0 20px; font-size: 24px; --edge: 7px; animation: winchIn .35s cubic-bezier(.2,1.5,.5,1); }
-.winch-btn .wfill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(255,255,255,.35); }
-.winch-btn.pulling .wfill { width: 100%; transition: width 1s linear; }
-.winch-btn > :not(.wfill) { position: relative; }
-.winch-btn svg { width: 30px; height: 30px; }
-@keyframes winchIn { from { transform: translateX(-50%) scale(.6); opacity: 0; } }
+/* race HUD: position badge, race time, the track bar with every rider */
+.hud-pos { flex-direction: row; align-items: baseline; gap: 2px; padding: 4px 14px 6px; min-width: 96px; }
+.hud-pos b { font: 400 40px/1 var(--font-display); color: var(--accent); text-shadow: 0 3px 0 var(--accent-edge), 0 5px 0 rgba(0,0,0,.4); }
+.hud-pos .pos-sfx { font: 400 18px/1 var(--font-display); color: var(--accent); }
+.hud-pos small { margin-left: 6px; font: 800 13px/1 var(--font-body); color: var(--muted); }
+.hud-pos.p1 b, .hud-pos.p1 .pos-sfx { color: #ffd23a; }
+.hud-pos.bump { animation: posBump .45s cubic-bezier(.2,1.6,.4,1); }
+@keyframes posBump { 0% { transform: scale(1.45) rotate(-6deg); } 100% { transform: none; } }
+.reduced-motion .hud-pos.bump { animation: none; }
+#hud-time { font-size: 26px; color: #fff; }
+.ctl small { font: 800 10px/1 var(--font-body); letter-spacing: .08em; opacity: .85; text-transform: uppercase; }
+.race-bar { position: absolute; left: 50%; top: calc(var(--pad-t) + 70px); transform: translateX(-50%); width: min(46vw, 420px); height: 20px; }
+.race-bar .rb-line { position: absolute; left: 0; right: 0; top: 8px; height: 4px; border-radius: 2px; background: rgba(13,26,22,.55); box-shadow: 0 0 0 2px rgba(255,255,255,.18); }
+.race-bar .rb-flag { position: absolute; right: -6px; top: 0; width: 6px; height: 20px; border-radius: 1px; background: repeating-linear-gradient(#fff 0 4px, #111 4px 8px); }
+.rb-dots { position: absolute; inset: 0; }
+.rb-dot { position: absolute; top: 4px; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: var(--c); border: 2px solid rgba(0,0,0,.55); }
+.rb-dot.me { top: 1px; width: 18px; height: 18px; margin-left: -9px; border: 3px solid #fff; box-shadow: 0 0 0 2px rgba(0,0,0,.45); z-index: 2; }
+.banner.b-flip > span { color: var(--cyan); text-shadow: 0 4px 0 var(--cyan-edge), 0 7px 0 var(--ink); }
+.banner.b-bigair > span { color: #fff; text-shadow: 0 4px 0 var(--violet-edge), 0 7px 0 var(--ink); }
+.banner.b-perfect > span { color: #ffd23a; text-shadow: 0 4px 0 #a8820f, 0 7px 0 var(--ink); }
+.banner.b-crash > span { color: #fff; background: linear-gradient(var(--hot), var(--hot-edge)); text-shadow: 0 4px 0 #6a0f25, 0 7px 0 var(--ink); }
+.banner.b-pos > span { color: var(--accent-ink); background: linear-gradient(#ffd29a, var(--accent)); border-color: #fff; text-shadow: none; font-size: clamp(22px, 2.8vmin + 1.9vw, 40px); }
+.banner.b-small > span { font-size: clamp(20px, 2.4vmin + 1.6vw, 34px); color: var(--go); text-shadow: 0 3px 0 var(--go-edge), 0 6px 0 var(--ink); }
+/* countdown + gate drop */
+.countdown { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; pointer-events: none; }
+.cd-n { font: 400 clamp(90px, 22vmin, 190px)/1 var(--font-display); color: #fff; text-shadow: 0 8px 0 var(--accent-edge), 0 14px 0 var(--ink), 0 18px 40px rgba(0,0,0,.5); }
+.cd-n.go { color: var(--go); text-shadow: 0 8px 0 var(--go-edge), 0 14px 0 var(--ink), 0 18px 40px rgba(0,0,0,.5); }
+.cd-n.tick { animation: cdTick .7s cubic-bezier(.2,1.4,.4,1) both; }
+@keyframes cdTick { 0% { transform: scale(2.2); opacity: 0; } 30% { transform: scale(.92); opacity: 1; } 100% { transform: scale(1); } }
+.cd-gate { position: absolute; left: 50%; top: calc(50% + 11vmin + 22px); width: min(60vw, 420px); height: 22px; transform: translateX(-50%); transform-origin: 50% 100%; border-radius: 6px;
+  background: repeating-linear-gradient(90deg, #fff 0 22px, var(--accent) 22px 44px); box-shadow: 0 6px 0 rgba(0,0,0,.4); }
+.cd-gate.drop { animation: gateDrop .4s ease-in forwards; }
+@keyframes gateDrop { to { transform: translateX(-50%) perspective(300px) rotateX(80deg) translateY(30px); opacity: 0; } }
+.reduced-motion .cd-n.tick, .reduced-motion .cd-gate.drop { animation: none; }
 
 /* first-ride coach */
 #coach { position: absolute; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
@@ -342,12 +364,30 @@ html:not(.kbd) .kb-only { display: none; }
 .results-head h2 { margin: 0; font: 400 28px/1 var(--font-display); color: var(--accent); text-shadow: 0 3px 0 var(--ink); transform: rotate(-2deg); }
 .results-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 14px; padding: 8px 0 12px; }
 .res-main { position: relative; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
-.res-dist { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding-right: 80px; }
-.res-dist .big { font: 400 46px/1 var(--font-display); }
-.res-dist .big small { font-size: 20px; color: var(--muted); margin-left: 4px; }
+.res-time { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.res-time .big { font: 400 40px/1 var(--font-display); font-variant-numeric: tabular-nums; }
+.medal-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px 5px 5px; border-radius: 999px; font: 400 14px/1 var(--font-display); color: var(--ink);
+  background: var(--mc); box-shadow: 0 3px 0 rgba(0,0,0,.4), inset 0 2px 0 rgba(255,255,255,.5); }
+.medal-badge::before { content: ''; width: 24px; height: 24px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff, var(--mc) 55%, rgba(0,0,0,.35)); box-shadow: inset 0 0 0 2px rgba(0,0,0,.2); }
+.medal-badge.slam { animation: medalIn .5s cubic-bezier(.3,1.5,.5,1) both; }
+@keyframes medalIn { 0% { opacity: 0; transform: scale(2.6); } 60% { opacity: 1; transform: scale(.9); } 100% { transform: none; } }
+.reduced-motion .medal-badge.slam { animation: none; }
+.m-gold { --mc: #ffd23a; } .m-silver { --mc: #d4dde4; } .m-bronze { --mc: #e0954a; }
+.podium { display: flex; align-items: flex-end; justify-content: center; gap: 6px; flex: none; }
+.pod { display: flex; flex-direction: column; align-items: center; width: 31%; max-width: 130px; min-width: 0; }
+.pod canvas { width: 100%; height: 44px; }
+.pod-name { max-width: 100%; font: 400 12px/1.1 var(--font-display); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 2px 0 3px; }
+.pod-step { width: 100%; display: grid; place-items: center; border-radius: 8px 8px 0 0; font: 400 18px/1 var(--font-display); color: var(--ink); background: var(--sc); box-shadow: inset 0 -6px 0 rgba(0,0,0,.18); }
+.pod.p1 .pod-step { height: 46px; --sc: #ffd23a; } .pod.p2 .pod-step { height: 34px; --sc: #d4dde4; } .pod.p3 .pod-step { height: 24px; --sc: #e0954a; }
+.pod.me .pod-name { color: var(--accent); }
+.pod.me .pod-step { box-shadow: inset 0 0 0 3px #fff, inset 0 -6px 0 rgba(0,0,0,.18); }
 .record { display: inline-block; padding: 7px 10px; border-radius: 10px; background: var(--hot); font: 400 13px/1 var(--font-display); transform: rotate(-4deg); box-shadow: 0 3px 0 var(--hot-edge); }
-.res-sub { font-size: 13px; color: var(--muted); font-weight: 700; margin-top: -4px; padding-right: 80px; }
+.res-sub { font-size: 13px; color: var(--muted); font-weight: 700; margin-top: -4px; }
 .stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat-grid.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.stat-grid.cols-4 .stat { padding: 6px 8px; }
+.stat-grid.cols-4 .stat span { font-size: 10px; letter-spacing: .03em; }
+.callout .sw + .sw { margin-left: -4px; }
 .stat { padding: 8px 10px; border-radius: 12px; background: var(--ink-2); }
 .stat b { display: block; font: 400 18px/1.1 var(--font-display); white-space: nowrap; }
 .stat b small { font-size: .62em; color: var(--muted); margin-left: 2px; }
@@ -519,15 +559,15 @@ html:not(.kbd) .kb-only { display: none; }
   .trail-art { flex: 0 0 120px; }
   .trail-info { flex: 1; padding: 12px; }
   .results-body { grid-template-columns: 1fr; overflow: auto; touch-action: pan-y; align-content: start; }
+  .results-body > .card { min-height: auto; }
   .results-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
   .results-foot .btn { min-width: 0; padding: 0 10px; }
   #res-again { grid-column: 1 / -1; grid-row: 1; min-height: 60px; font-size: 22px; }
   .results-foot:has(#res-next[hidden]) #res-garage { grid-column: 1 / -1; }
   .hud-top { grid-template-columns: 1fr auto; }
   .hud-mid { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
-  .finish-bar { width: 120px; }
   .in-run #toasts { top: calc(var(--pad-t) + 150px); }
-  .winch-btn { top: calc(var(--pad-t) + 186px); }
+  .race-bar { top: calc(var(--pad-t) + 146px); width: calc(100vw - 52px); }
   .pz { padding-left: max(8px, var(--sal)); padding-right: max(8px, var(--sar)); }
   .pz-sheet { padding: 10px 10px 12px; }
   .pz-head h3 { font-size: 18px; }
@@ -535,8 +575,13 @@ html:not(.kbd) .kb-only { display: none; }
 @media (orientation: landscape) and (max-height: 500px) {
   .stamp { top: -14px; right: -12px; width: 72px; height: 72px; }
   .stamp b { font-size: 34px; border-width: 3px; }
-  .res-dist, .res-sub { padding-right: 46px; }
-  .res-main { gap: 8px; }
+  .res-time .big { font-size: 26px; }
+  .res-time .medal-badge { padding: 3px 10px 3px 3px; font-size: 12px; }
+  .res-time .medal-badge::before { width: 18px; height: 18px; }
+  .res-main { gap: 6px; padding: 10px 12px; }
+  .pod canvas { height: 24px; }
+  .pod-name { font-size: 11px; margin: 1px 0 2px; }
+  .pod.p1 .pod-step { height: 28px; } .pod.p2 .pod-step { height: 22px; } .pod.p3 .pod-step { height: 16px; font-size: 14px; }
   .stat-grid { gap: 6px; }
   .stat-grid .stat { padding: 5px 8px; }
   .stat-grid .stat b { font-size: 15px; }
@@ -552,7 +597,6 @@ html:not(.kbd) .kb-only { display: none; }
   .up-row { padding: 5px 8px; }
   .up-icon { width: 40px; height: 40px; }
   .up-blurb { display: none; }
-  .res-dist .big { font-size: 38px; }
   .stat { padding: 6px 8px; }
   .stat b { font-size: 16px; }
   .pay td { padding: 4px 0; }
@@ -564,12 +608,12 @@ html:not(.kbd) .kb-only { display: none; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
-.reduced-motion .toast, .reduced-motion .coach-go, .reduced-motion .winch-btn { animation: none; }
+.reduced-motion .toast, .reduced-motion .coach-go { animation: none; }
 </style>
 </head>
 <body>
 <div id="app">
-  <div id="stage"><canvas id="game" aria-label="Trail Blazer ride"></canvas></div>
+  <div id="stage"><canvas id="game" aria-label="Trail Blazer race"></canvas></div>
 
   <div id="backdrop" aria-hidden="true">
     <svg viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice">
@@ -622,13 +666,13 @@ html:not(.kbd) .kb-only { display: none; }
   <section class="screen" id="screen-title" data-screen="title" hidden>
     <div class="topbar">
       <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span></button>
-      <span class="trails-chip" id="title-trails"><span data-icon="flag"></span><span id="title-trails-text">Trails 0 / 6</span></span>
+      <span class="trails-chip" id="title-trails"><span data-icon="flag"></span><span id="title-trails-text">Tracks 0 / 6</span></span>
       <span class="cash-pill" data-cash></span>
     </div>
     <h1 class="logo">Trail<span>Blazer</span></h1>
-    <p class="tagline">Ride the trails. Upgrade the Ranger.</p>
+    <p class="tagline">Race the trails. Flip it, jump it, win it.</p>
     <div class="title-actions">
-      <button class="btn btn-orange btn-big" id="btn-ride" data-sfx>Ride<span data-icon="right"></span></button>
+      <button class="btn btn-orange btn-big" id="btn-ride" data-sfx>Race<span data-icon="right"></span></button>
       <div class="menu-row">
         <button class="btn" id="btn-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
         <button class="btn" id="btn-parents" data-sfx><span data-icon="lock"></span>Parents</button>
@@ -651,7 +695,7 @@ html:not(.kbd) .kb-only { display: none; }
           <div style="min-width:0"><h3 class="veh-name">Ranger 150</h3><p class="veh-tag" id="veh-tag">Paint: Sage Green</p></div>
         </div>
         <div class="veh-actions">
-          <button class="btn btn-green" id="btn-garage-ride" data-sfx>Ride<span data-icon="right"></span></button>
+          <button class="btn btn-green" id="btn-garage-ride" data-sfx>Race<span data-icon="right"></span></button>
         </div>
       </div>
       <div class="upgrades" id="upgrades"></div>
@@ -662,20 +706,17 @@ html:not(.kbd) .kb-only { display: none; }
   <section class="screen" id="screen-trails" data-screen="trails" hidden>
     <div class="topbar">
       <button class="btn icon-btn" data-back="title" aria-label="Back" data-sfx><span data-icon="back"></span></button>
-      <h2>Pick a trail</h2>
+      <h2>Pick a track</h2>
       <span class="cash-pill" data-cash></span>
     </div>
     <div class="trails-body"><div class="trail-grid" id="trail-grid"></div></div>
   </section>
 
-  <!-- ===== Ride HUD ===== -->
+  <!-- ===== Race HUD ===== -->
   <div id="hud" hidden>
     <div class="hud-top">
-      <div class="hud-left hud-box">
-        <div class="hud-num"><span id="hud-distance">0</span><small>m</small></div>
-        <div class="finish-bar" aria-hidden="true"><i id="hud-finish"></i><b></b></div>
-      </div>
-      <div class="hud-mid hud-box" id="hud-cash-box"><div class="hud-label">Ride cash</div><div class="hud-num">$<span id="hud-cash">0</span></div></div>
+      <div class="hud-left hud-box hud-pos" id="hud-pos" aria-live="polite"><b id="hud-place">4</b><span class="pos-sfx" id="hud-place-sfx">th</span><small id="hud-of">/ 4</small></div>
+      <div class="hud-mid hud-box" id="hud-time-box"><div class="hud-label">Time</div><div class="hud-num" id="hud-time">0:00.0</div></div>
       <div class="hud-right">
         <div class="hud-box">
           <div class="hud-num"><span id="hud-speed">0</span><small>km/h</small></div>
@@ -684,24 +725,27 @@ html:not(.kbd) .kb-only { display: none; }
         <button class="btn icon-btn" id="btn-pause" aria-label="Pause"><span data-icon="pause"></span></button>
       </div>
     </div>
+    <!-- the track: start to finish flag, a dot per rider (the player's is ringed) -->
+    <div class="race-bar" id="race-bar" aria-hidden="true"><i class="rb-line"></i><b class="rb-flag"></b><span class="rb-dots" id="race-dots"></span></div>
     <div class="banner" id="banner" hidden aria-live="polite"><span id="banner-text"></span></div>
     <!-- TODO (math phase, SPEC §4-§5): src/ui/gatePanel.js opens over the parked Ranger on the engine's 'gate' event -->
   </div>
   <div id="controls" hidden>
-    <button class="ctl" id="ctl-brake" data-ctl="brake" aria-label="Brake"><span data-icon="left"></span><span>Brake</span></button>
+    <button class="ctl" id="ctl-brake" data-ctl="brake" aria-label="Brake, backflip in the air"><span data-icon="left"></span><span>Brake</span><small>backflip</small></button>
     <button class="ctl" id="ctl-boost" data-ctl="nitro" aria-label="Boost"><span class="fill" id="ctl-boost-fill"></span><span data-icon="flame"></span><span>Boost</span></button>
-    <button class="ctl" id="ctl-gas" data-ctl="gas" aria-label="Gas"><span data-icon="right"></span><span>Gas</span></button>
+    <button class="ctl" id="ctl-gas" data-ctl="gas" aria-label="Gas, front flip in the air"><span data-icon="right"></span><span>Gas</span><small>front flip</small></button>
   </div>
-  <button class="btn btn-orange winch-btn" id="btn-winch" hidden data-sfx><span class="wfill"></span><span data-icon="winch"></span><span id="winch-text">Winch</span></button>
+  <!-- 3-2-1 and the gate drop -->
+  <div class="countdown" id="countdown" hidden aria-live="assertive"><div class="cd-gate" id="cd-gate"></div><span class="cd-n" id="countdown-n">3</span></div>
 
   <div id="coach" hidden role="dialog" aria-labelledby="coach-h">
     <div class="card coach-card">
-      <h3 id="coach-h">How to ride</h3>
+      <h3 id="coach-h">How to race</h3>
       <ol class="coach-tips">
-        <li><span class="tip-n">1</span><span>Hold <span class="k k-gas">GAS</span><span class="kb-only"> (→ or Space)</span> to climb, <span class="k k-brake">BRAKE</span><span class="kb-only"> (←)</span> to slow down</span></li>
-        <li><span class="tip-n">2</span><span>In the air: <span class="k k-gas">GAS</span> tips the nose up, <span class="k k-brake">BRAKE</span> tips it down. Land on both wheels!</span></li>
-        <li><span class="tip-n">3</span><span><span class="k k-boost">BOOST</span><span class="kb-only"> (↑)</span> burns fuel. Coins and good landings fill it up</span></li>
-        <li><span class="tip-n">4</span><span>Stuck or upside down? Tap <span class="k k-boost">WINCH</span></span></li>
+        <li><span class="tip-n">1</span><span>Wait for <b>GO!</b>, then hold <span class="k k-gas">GAS</span><span class="kb-only"> (→ or Space)</span>. Too early and you bog down</span></li>
+        <li><span class="tip-n">2</span><span>In the air: <span class="k k-brake">BRAKE</span><span class="kb-only"> (←)</span> = backflip, <span class="k k-gas">GAS</span> = front flip</span></li>
+        <li><span class="tip-n">3</span><span>Land on the downslope, wheels first, for a <b>PERFECT</b> landing</span></li>
+        <li><span class="tip-n">4</span><span><span class="k k-boost">BOOST</span><span class="kb-only"> (↑)</span> burns fuel: flips, perfect landings and coins fill it</span></li>
       </ol>
       <p class="coach-go">Tap to start</p>
     </div>
@@ -709,20 +753,20 @@ html:not(.kbd) .kb-only { display: none; }
 
   <!-- ===== Results ===== -->
   <section class="screen" id="screen-results" data-screen="results" hidden>
-    <div class="results-head"><h2 id="res-title">Ride over</h2><div class="res-callouts" id="res-callouts"></div></div>
+    <div class="results-head"><h2 id="res-title">Race over</h2><div class="res-callouts" id="res-callouts"></div></div>
     <div class="results-body">
       <div class="card res-main">
-        <div class="stamp" id="res-stamp" hidden role="img"><b id="res-stamp-letter">A</b><small>rank</small></div>
-        <div class="res-dist"><div class="big"><span id="res-distance">0</span><small>m</small></div><span class="record" id="res-record" hidden>New best!</span></div>
+        <div class="podium" id="res-podium" aria-label="Podium"></div>
+        <div class="res-time"><div class="big" id="res-time">0:00.0</div><span class="medal-badge" id="res-medal" hidden></span><span class="record" id="res-record" hidden>New best!</span></div>
         <div class="res-sub" id="res-sub"></div>
-        <div class="stat-grid" id="res-stats"></div>
+        <div class="stat-grid cols-4" id="res-stats"></div>
       </div>
       <div class="card res-pay scroll"><table class="pay" id="res-pay"></table></div>
     </div>
     <div class="results-foot">
       <button class="btn" id="res-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
-      <button class="btn btn-orange" id="res-again" data-sfx><span data-icon="retry"></span>Ride again</button>
-      <button class="btn btn-green" id="res-next" data-sfx>Next trail<span data-icon="right"></span></button>
+      <button class="btn btn-orange" id="res-again" data-sfx><span data-icon="retry"></span>Race again</button>
+      <button class="btn btn-green" id="res-next" data-sfx>Next track<span data-icon="right"></span></button>
     </div>
   </section>
 
@@ -740,7 +784,7 @@ html:not(.kbd) .kb-only { display: none; }
           </div>
           <div class="row slider-row pause-shake"><div class="grow"><div class="label">Screen shake</div></div>
             <div class="slider"><div class="kslider" id="pause-shake" role="slider" tabindex="0" aria-label="Screen shake" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><i></i></div><output class="slider-val" id="pause-shake-val">100%</output></div></div>
-          <button class="btn btn-hot" id="pause-end" data-sfx><span data-icon="flag"></span>End ride</button>
+          <button class="btn btn-hot" id="pause-end" data-sfx><span data-icon="flag"></span>End race</button>
           <p class="pause-keys kb-only">Keys: ← brake · → gas · ↑ boost · Esc pause</p>
         </div>
       </div>

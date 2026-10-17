@@ -1,18 +1,19 @@
 # Trail Blazer
 
-Learning Lab's second game, at **learninglab.fun/trail-blazer/**. A trail-riding game: the child drives the
-**Ranger 150**, a kid-size sage-green side-by-side, over six procedural trails (Pine Ridge, Granite Gap, Lake Loop,
-Snow Pass, Desert Wash, Night Ride). Finishing a trail opens the next one; cash from each ride buys Engine, Tires,
-Suspension and Boost upgrades (10 levels each); finished trails unlock paints and long rides unlock decals.
+Learning Lab's second game, at **learninglab.fun/trail-blazer/**. A **motocross-style race** in the **Ranger 150**, a
+kid-size sage-green side-by-side, against three rivals (Max, Zoe, Kai) on six tracks (Pine Ridge, Granite Gap, Lake
+Loop, Snow Pass, Desert Wash, Night Ride). A 3-2-1 gate drop starts each race; in the air BRAKE is a backflip and GAS a
+front flip; land on the downslope for a PERFECT; a crash respawns at the last checkpoint. Finishing 3rd or better
+opens the next track; race times earn Gold / Silver / Bronze medals; cash buys Engine, Tires, Suspension and Boost
+upgrades (10 levels each); finished tracks and medals unlock paints, flips / a long race / a win unlock decals.
 
-**v1 has no math layer yet.** The game is built so the 4th-grade math-facts layer in `SPEC.md` §4-§5 (trail gates
-answered on a numpad) can be added later without engine changes: rides start with `gates: 0`, boost fuel comes from
-trail coins and good landings, and the Winch (shown when the Ranger is stuck or upside down) is free.
+**v1.1 has no math layer yet.** The game is built so the 4th-grade math-facts layer in `SPEC.md` §4-§5 can be added
+later without engine changes: races start with `gates: 0`.
 
 Same house style and kid-proofing as Spell Jump: no external links, no native text inputs outside the Parent Zone,
-no ads, no accounts, no timers or lives, works offline after the first load, updates itself on a safe screen, and
-plays in landscape or portrait, with touch or a keyboard (→ / Space = GAS, ← = BRAKE, ↑ / Shift = BOOST,
-Esc / P = pause, Enter / W = winch when stuck).
+no ads, no accounts, no lives, works offline after the first load, updates itself on a safe screen, and plays in
+landscape or portrait, with touch or a keyboard (→ / Space = GAS / front flip, ← = BRAKE / backflip, ↑ / Shift =
+BOOST, Esc / P = pause).
 
 ## Run it
 
@@ -52,7 +53,7 @@ Nothing has to be set up twice.
 - **Players**: rename, reset a player's Trail Blazer progress on this device, or remove a player (removes them from
   the family in both games).
 
-Trail Blazer's own progress (cash, upgrades, finished trails, paint) is stored per device in v1
+Trail Blazer's own progress (cash, upgrades, medals, best times, paint) is stored per device in v1
 (`trailBlazer.<playerId>.save`); syncing it is a later phase.
 
 ## How it is built
@@ -73,25 +74,27 @@ trail-blazer/
   index.html              app shell: every screen and all CSS (forest chrome, blaze-orange accent)
   manifest.webmanifest, sw.js, icons/
   SPEC.md                 the build spec (v1 phasing note at the top; §4-§5 = the later math phase)
-  src/main.js             boot, players, screens, the ride lifecycle, winch, pause, sync wiring, self-update
-  src/sfx.js              Trail Blazer-only sounds (winch, splash, gate creak)
+  src/main.js             boot, players, screens, the race lifecycle (countdown, banners, podium), pause, sync, self-update
+  src/sfx.js              Trail Blazer-only sounds (countdown beeps, gate drop, finish cowbell, splash, gate creak)
   src/data/upgrades.js    the 4 upgrades, costs (300 × 1.45^level), resolveStats()
-  src/data/paints.js      paints (one per finished trail) and decals (ride-distance milestones)
+  src/data/paints.js      paints (finished tracks, medals) and decals (a 250 m race, 10 / 50 flips, a win)
+  src/data/medals.js      medal times (MEDAL_TIMES from data/trails.js, with a fallback), place / time formatting
   src/data/fallbackTrails.js  the 6 trails for the menus if data/trails.js fails to load
   src/data/trails.js      the trails (engine-owned)
   src/game/*              the engine, course, renderer, vehicle art (engine-owned)
   src/meta/save.js        save + device settings, normalize + versioning
-  src/meta/economy.js     upgrades, unlock chain, banking a ride, cash rows that add up, paints / decals owned
+  src/meta/economy.js     upgrades, unlock chain (3rd or better), banking a race (place, time, medal), cash rows that
+                          add up, paints / decals owned
   src/meta/selfUpdate.js  reload-on-a-safe-screen guard for new versions
-  src/meta/mockEngine.js  scripted engine with the same contract (?mock=1, tests, fallback)
+  src/meta/mockEngine.js  scripted race with the same contract (?mock=1, tests, fallback)
   src/ui/players.js       player picker + new player (on-screen keyboard)
   src/ui/keyboard.js      the on-screen keyboard (same as Spell Jump's)
   src/ui/garage.js        upgrades, paint + decal strip, Ranger preview
-  src/ui/trails.js        trail select (mini-landscape cards, lock state, best distance)
-  src/ui/hud.js           ride HUD (distance + finish bar, cash, speed, boost gauge, banners)
-  src/ui/results.js       results (rating, stats, cash rows, unlock callouts)
+  src/ui/trails.js        track select (mini-landscape cards, lock state, medal, best time)
+  src/ui/hud.js           race HUD (position badge, timer, track bar with every rider, speed, boost gauge, banners)
+  src/ui/results.js       results (podium, time + medal + best, stats, cash rows, unlock callouts)
   src/ui/parentZone.js    Parent Zone (PIN, Family code, Options, Players)
   src/ui/vehiclePreview.js  Ranger previews (the engine's vehicle art, with a built-in fallback)
-  src/ui/tbIcons.js       extra icons (tire, winch, trail) on top of Spell Jump's set
+  src/ui/tbIcons.js       extra icons (tire, trail) on top of Spell Jump's set
   tools/ui-smoke.mjs      UI smoke test; tools/make-icons.mjs icon renderer
 ```

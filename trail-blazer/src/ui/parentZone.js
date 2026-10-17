@@ -11,7 +11,7 @@ import { icon } from './tbIcons.js';
 import { drawAvatar } from './vehiclePreview.js';
 
 const HOLD_MS = 3000;
-export const SAVE_NOTE = "Trail Blazer's own progress (cash, upgrades, finished trails) stays on this device for now; the family code shares the players and the PIN with Spell Jump.";
+export const SAVE_NOTE = "Trail Blazer's own progress (cash, upgrades, medals, best times) stays on this device for now; the family code shares the players and the PIN with Spell Jump.";
 
 function toggle(label, sub, on, onChange, id) {
   const t = h('button', { class: 'toggle', role: 'switch', 'aria-checked': String(!!on), 'aria-label': label, id });
@@ -273,9 +273,9 @@ export function createParentZone(app) {
         if (renamePlayer(app.family, p.id, input.value)) { app.toast('Name saved'); app.onFamilyChanged(); render(); } else { app.audio.error(); app.toast('Type a name (letters only)'); }
       });
       const card = h('div', { class: 'pz-player', 'data-player': p.id, style: { '--c': p.color } },
-        h('div', { class: 'pz-player-head' }, cv, h('div', { class: 'name' }, p.name, h('div', { class: 'sub' }, `${app.trailsDoneFor(p.id)} of ${app.trails.length} trails finished on this device`))),
+        h('div', { class: 'pz-player-head' }, cv, h('div', { class: 'name' }, p.name, h('div', { class: 'sub' }, `${app.trailsDoneFor(p.id)} of ${app.trails.length} tracks on the podium, on this device`))),
         h('div', { class: 'pz-rename' }, input, save),
-        ...confirmRow('Reset Trail Blazer progress', `Cash, upgrades and trails back to the start for ${p.name} on this device. Spell Jump is not touched.`, 'Reset',
+        ...confirmRow('Reset Trail Blazer progress', `Cash, upgrades, medals and tracks back to the start for ${p.name} on this device. Spell Jump is not touched.`, 'Reset',
           `Reset ${p.name}'s Trail Blazer progress?`, 'Reset', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-${p.id}`),
         ...confirmRow('Remove player', `Removes ${p.name} from the family in both games, on every device, with all of ${p.name}'s data.`, 'Remove',
           `Remove ${p.name} for good, in Trail Blazer and Spell Jump?`, 'Remove', () => { app.removePlayer(p.id); render(); }, `pz-remove-${p.id}`));

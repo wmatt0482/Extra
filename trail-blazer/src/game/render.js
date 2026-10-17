@@ -1120,3 +1120,84 @@ export function drawFlash(ctx, view, a, col) {
   ctx.fillRect(0, 0, view.W, view.H);
   ctx.globalAlpha = 1;
 }
+
+// ---------- v1.1 race mode ----------
+export function drawNameTag(ctx, name, x, y, color) {
+  worldText(ctx, String(name).toUpperCase(), 0.48, x, y, color || '#ffffff');
+}
+
+// berm: a banked turn drawn as a dirt wall behind the track (the ground under it stays flat)
+export function drawBerms(ctx, course, vis, lw) {
+  for (const b of course.berms || []) {
+    if (b.x1 < vis.x0 - 2 || b.x0 > vis.x1 + 2) continue;
+    const len = b.x1 - b.x0, y = b.y;
+    ctx.beginPath();
+    ctx.moveTo(b.x0 - 1, y - 0.5);
+    ctx.quadraticCurveTo(b.x0 + len * 0.55, y + 0.6, b.x1 - 1.5, y + 3.2);
+    ctx.lineTo(b.x1 + 0.5, y + 3.0);
+    ctx.quadraticCurveTo(b.x1 + 1.5, y + 1.2, b.x1 + 2, y - 0.5);
+    ctx.closePath();
+    ctx.fillStyle = '#a77845';
+    ctx.fill();
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = OUT;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(60,35,15,0.35)';
+    ctx.lineWidth = 0.08;
+    ctx.beginPath();
+    for (let k = 1; k <= 3; k++) {
+      ctx.moveTo(b.x0 + len * 0.2, y - 0.2 + k * 0.15);
+      ctx.quadraticCurveTo(b.x0 + len * 0.6, y + 0.3 + k * 0.5, b.x1 - 1.2, y + 0.4 + k * 0.8);
+    }
+    ctx.stroke();
+    // marker poles along the top
+    ctx.fillStyle = '#ff8a1f';
+    for (let k = 0; k < 3; k++) { const px = b.x1 - 4 + k * 1.6; ctx.fillRect(px, y + 2.2 + k * 0.25, 0.12, 1.1); }
+  }
+}
+
+export function drawCheckpoints(ctx, course, vis, lw, passed) {
+  for (const cp of course.checkpoints || []) {
+    if (!cp.index || cp.x < vis.x0 - 2 || cp.x > vis.x1 + 2) continue;
+    const y = course.groundY(cp.x);
+    ctx.lineWidth = lw * 0.8;
+    ctx.strokeStyle = OUT;
+    ctx.fillStyle = '#e8e8ee';
+    ctx.fillRect(cp.x - 0.07, y, 0.14, 3.2);
+    ctx.strokeRect(cp.x - 0.07, y, 0.14, 3.2);
+    ctx.fillStyle = cp.index <= passed ? '#7dff6b' : '#ff8a1f';
+    ctx.beginPath();
+    ctx.moveTo(cp.x + 0.07, y + 3.2); ctx.lineTo(cp.x + 1.5, y + 2.85); ctx.lineTo(cp.x + 0.07, y + 2.5);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+  }
+}
+
+// the start: a drop gate in front of the riders (drop 0..1 swings it down flat) under a START banner
+export function drawStartGate(ctx, course, lw, drop) {
+  const x = course.startGateX || 3.3, y = course.groundY(x);
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = lw;
+  ctx.strokeStyle = OUT;
+  // banner posts + banner
+  ctx.fillStyle = '#9aa0aa';
+  ctx.fillRect(x - 6.2, y - 0.3, 0.22, 4.6); ctx.strokeRect(x - 6.2, y - 0.3, 0.22, 4.6);
+  ctx.fillRect(x + 0.9, y - 0.3, 0.22, 4.6); ctx.strokeRect(x + 0.9, y - 0.3, 0.22, 4.6);
+  ctx.fillStyle = '#ff8a1f';
+  ctx.fillRect(x - 6.3, y + 3.5, 7.5, 0.9); ctx.strokeRect(x - 6.3, y + 3.5, 7.5, 0.9);
+  worldText(ctx, 'START', 0.62, x - 2.55, y + 3.95, '#ffffff');
+  // the gate plate pivots at its foot and falls forward
+  const a = (Math.PI / 2) * (1 - Math.min(1, drop) * (1 + 0.15 * Math.sin(Math.min(1, drop) * Math.PI)));
+  ctx.save();
+  ctx.translate(x, y + 0.05);
+  ctx.rotate(-(Math.PI / 2 - a));
+  ctx.fillStyle = '#c9ced6';
+  ctx.fillRect(-0.08, 0, 0.16, 0.95);
+  ctx.strokeRect(-0.08, 0, 0.16, 0.95);
+  ctx.fillStyle = '#ff8a1f';
+  ctx.fillRect(-0.08, 0.6, 0.16, 0.22);
+  ctx.restore();
+  ctx.fillStyle = '#5b616d';
+  ctx.fillRect(x - 0.3, y - 0.1, 0.6, 0.2);
+}

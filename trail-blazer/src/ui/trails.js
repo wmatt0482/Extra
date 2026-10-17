@@ -1,6 +1,8 @@
-// Trail select: one card per trail (6) with a procedural mini-landscape per style, the length, the best distance and
-// the lock state (finish a trail to unlock the next). Opening the screen scrolls the trail being worked on into view.
-import { isFinished, isUnlocked } from '../meta/economy.js';
+// Track select: one card per track (6) with a procedural mini-landscape per style, the length, the best time, the best
+// medal and the lock state (3rd or better on a track unlocks the next). Opening the screen scrolls the track being
+// worked on into view.
+import { isCleared, isUnlocked } from '../meta/economy.js';
+import { MEDAL_LABEL, fmtTime, ordinal } from '../data/medals.js';
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from './tbIcons.js';
 
@@ -45,21 +47,23 @@ export function createTrails(app) {
     let focus = null;
     trails.forEach((t, i) => {
       const unlocked = isUnlocked(s, trails, t.id);
-      const done = isFinished(s, t.id);
-      const best = s.best[t.id] || 0;
+      const done = isCleared(s, t.id);
+      const bestTime = s.bestTime[t.id] || 0;
+      const bestPlace = s.bestPlace[t.id] || 0;
+      const medal = s.medals[t.id] || null;
       const len = t.length || 600;
       const prev = trails[i - 1];
       const card = h('button', { class: 'card trail-card' + (unlocked ? '' : ' locked'), 'data-trail': t.id, 'data-sfx': '', 'aria-label': `${t.name}${unlocked ? '' : ' (locked)'}` },
-        h('div', { class: 'trail-art', html: trailArt(t, i) + (unlocked ? '' : `<div class="lock">${icon('lock')}<span>Finish ${prev ? prev.name : ''}</span></div>`) }),
+        h('div', { class: 'trail-art', html: trailArt(t, i) + (unlocked ? '' : `<div class="lock">${icon('lock')}<span>Top 3 on ${prev ? prev.name : ''}</span></div>`) }),
         h('div', { class: 'trail-info' },
-          h('div', { class: 'trail-num' }, `Trail ${i + 1}`),
+          h('div', { class: 'trail-num' }, `Track ${i + 1}`),
           h('div', { class: 'trail-name' }, t.name),
           h('div', { class: 'trail-stat' }, h('span', {}, 'Length'), h('b', {}, `${money(len)} m`)),
-          h('div', { class: 'trail-stat' }, h('span', {}, 'Best'), h('b', {}, best ? `${money(best)} m` : '—')),
-          h('div', { class: 'trail-bar' }, h('i', { style: { width: Math.min(100, (best / len) * 100) + '%' } }))),
-        done ? h('span', { class: 'cleared' }, 'Finished') : null);
+          h('div', { class: 'trail-stat' }, h('span', {}, 'Best time'), h('b', { 'data-best-time': String(bestTime) }, bestTime ? fmtTime(bestTime) : '—'))),
+        medal ? h('span', { class: `medal-badge m-${medal} t-medal`, 'data-medal': medal }, MEDAL_LABEL[medal]) : null,
+        done ? h('span', { class: 'cleared' }, bestPlace === 1 ? 'Won' : ordinal(bestPlace)) : null);
       card.addEventListener('click', () => {
-        if (!unlocked) { app.audio.error(); app.toast(`Locked: finish ${prev ? prev.name : 'the trail before'} first`); return; }
+        if (!unlocked) { app.audio.error(); app.toast(`Locked: finish 3rd or better on ${prev ? prev.name : 'the track before'}`); return; }
         s.selectedTrail = t.id;
         app.persist();
         app.startRide(t.id);

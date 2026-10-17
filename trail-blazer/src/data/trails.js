@@ -10,9 +10,14 @@
 // stretches), seed (the default ride seed). gates defaults to Math.round(length / 140) (game.start({ gates })
 // overrides it, 0 = no gates); the course places up to that many on flat ground (getState().gatesTotal = actual).
 //
-// Reach probe (hold GAS only, no boost, gates 0, all upgrades at the same level; tools: matrix probe in the
-// engine report): stock stalls on Pine Ridge at ~380 m; finishes Pine at lvl 2, Granite 3, Lake 4, Snow 4,
-// Desert 6, Night 6.
+// Reach probe (v1 trail mode: hold GAS only, no boost, gates 0, all upgrades at the same level): stock stalls on
+// Pine Ridge at ~380 m; finishes Pine at lvl 2, Granite 4, Lake 4, Snow 4, Desert 6, Night 6.
+//
+// v1.1 race mode (game.start({ race })) uses trail.mx instead of terrain: { design (the upgrade level the jumps are
+// shaped for: that rider clears them at full throttle), aiPace (AI power multiplier), aiBias (levels added to the
+// AI: it rides at (your level + design) / 2 + aiBias, max 9), mix (relative weights of double / table / stepup /
+// stepdown / whoops / berm) }. Each track also gets one big jump, checkpoints every ~100 m, and its water /
+// bridges as sprint sections. MEDAL_TIMES below are the race target times.
 
 export const TRAILS = [
   {
@@ -27,6 +32,7 @@ export const TRAILS = [
     props: ['log', 'rock', 'cone', 'sign', 'stump', 'puddle'],
     patches: ['mud'],
     water: 0, bridges: 1, kickers: 2,
+    mx: { design: 0, aiPace: 0.88, aiBias: 0, mix: { double: 3, table: 3, stepup: 1, stepdown: 1, whoops: 1.2, berm: 1.5 } },
     seed: 1101,
   },
   {
@@ -41,6 +47,7 @@ export const TRAILS = [
     props: ['rock', 'boulder', 'log', 'cone', 'sign'],
     patches: ['mud'],
     water: 0, bridges: 2, kickers: 3,
+    mx: { design: 2, aiPace: 0.95, aiBias: 1, mix: { double: 3.5, table: 2, stepup: 1.5, stepdown: 1, whoops: 1.4, berm: 1 } },
     seed: 2202,
   },
   {
@@ -55,6 +62,7 @@ export const TRAILS = [
     props: ['log', 'puddle', 'cone', 'sign', 'rock'],
     patches: ['mud', 'sand'],
     water: 4, bridges: 2, kickers: 2,
+    mx: { design: 3, aiPace: 0.97, aiBias: 1.5, mix: { double: 3, table: 2.5, stepup: 1, stepdown: 1.5, whoops: 1.2, berm: 1.2 } },
     seed: 3303,
   },
   {
@@ -69,6 +77,7 @@ export const TRAILS = [
     props: ['snowman', 'sign', 'rock', 'cone', 'log'],
     patches: ['ice'],
     water: 0, bridges: 2, kickers: 3,
+    mx: { design: 4, aiPace: 0.98, aiBias: 2, mix: { double: 3, table: 3, stepup: 1.5, stepdown: 1, whoops: 1, berm: 1.5 } },
     seed: 4404,
   },
   {
@@ -83,6 +92,7 @@ export const TRAILS = [
     props: ['cactus', 'tumbleweed', 'rock', 'cone', 'sign'],
     patches: ['sand'],
     water: 1, bridges: 1, kickers: 4,
+    mx: { design: 5, aiPace: 1.0, aiBias: 2.5, mix: { double: 3.5, table: 2, stepup: 1.5, stepdown: 1.5, whoops: 2, berm: 1 } },
     seed: 5505,
   },
   {
@@ -97,10 +107,27 @@ export const TRAILS = [
     props: ['log', 'pumpkin', 'sign', 'rock', 'cone'],
     patches: ['mud'],
     water: 2, bridges: 2, kickers: 3,
+    mx: { design: 6, aiPace: 1.0, aiBias: 3, mix: { double: 4, table: 2, stepup: 1.5, stepdown: 1.5, whoops: 1.5, berm: 1.2 } },
     seed: 6606,
   },
 ];
 for (const t of TRAILS) if (t.gates == null) t.gates = Math.round(t.length / 140);
+
+// v1.1 race mode: medal target times (s) per track (gold / silver / bronze). Gold ~ a clean full-throttle rider who
+// boosts whenever the tank is over 30 %, at the track's design level (mx.design); silver ~+12 %, bronze ~+25 %.
+export const MEDAL_TIMES = {
+  'pine-ridge': { gold: 30, silver: 34.5, bronze: 38.5 },
+  'granite-gap': { gold: 42, silver: 48, bronze: 53 },
+  'lake-loop': { gold: 52, silver: 59, bronze: 66 },
+  'snow-pass': { gold: 63, silver: 71, bronze: 79 },
+  'desert-wash': { gold: 76, silver: 85, bronze: 95 },
+  'night-ride': { gold: 92, silver: 103, bronze: 115 },
+};
+export function medalFor(trailId, timeSec) {
+  const m = MEDAL_TIMES[trailId];
+  if (!m || !(timeSec > 0)) return null;
+  return timeSec <= m.gold ? 'gold' : timeSec <= m.silver ? 'silver' : timeSec <= m.bronze ? 'bronze' : null;
+}
 
 export const TRAIL_BY_ID = Object.fromEntries(TRAILS.map((t) => [t.id, t]));
 

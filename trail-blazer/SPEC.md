@@ -241,3 +241,38 @@ Grade 4 math facts") and the quick start mentions both games share the family co
   `node trail-blazer/tools/ui-smoke.mjs` pass; `bash build.sh` passes with the new required files; Spell Jump's
   suites still pass (`node car-jump/tools/spelling-tests.mjs`, `node car-jump/tools/ui-smoke.mjs`).
 - No console errors; no external links; no native inputs outside the Parent Zone; keys ≥ 44 px.
+
+## v1.1 — Race mode (Matt, Oct 17: "a bit boring, make it more like a motocross game")
+
+The trail crawl becomes a **motocross race** in the same Ranger. Everything below replaces the v1 ride loop; the
+screens, family, garage, paints and save stay.
+
+1. **Tracks, not trails** (`data/trails.js` gains `kind: 'mx'` sections): each track is a rhythm of motocross
+   features built for speed and air: start straight with a drop gate, **doubles** (gap jumps the stock vehicle just
+   clears at full throttle), **tabletops**, **step-ups / step-downs**, **whoop sections** (6-10 small bumps), one
+   **big jump** per track, a few flat sprints, **berms** drawn as banked turns (2D: a short speed-holding curve), and a
+   finish line. No climbs that stall a stock vehicle: momentum is the game; a lost jump costs time, not the run.
+   Lengths stay 600-2,200 m; themes stay (forest, granite, lake, snow, desert, night).
+2. **Racing**: 3 **AI riders** (other Rangers in other paints, with names: Max, Zoe, Kai) on the same track, driven
+   by the same physics with a scripted throttle/lean policy and a per-track skill (they clear the jumps they are
+   tuned for, make small mistakes on landings). A **3-2-1 gate drop** start (GAS early = a bogged start). HUD shows
+   **position (1st-4th)**, the **lap time**, and a thin track-progress bar with all four riders. The finish line
+   gives a **podium** (results: position, time, medal: Gold / Silver / Bronze per track from target times, best time).
+   AI speed scales with the player's upgrade total so a stock player can win Pine Ridge with clean riding and the
+   later tracks want upgrades and good jumps.
+3. **Stunts**: in the air, BRAKE = lean back (backflip), GAS = lean forward (front flip); a full rotation landed
+   wheels-down scores **FLIP! +$150** (two in one jump ×2, combo chain), air ≥ 1.5 s = **BIG AIR**, a landing whose
+   angle matches the downslope = **PERFECT** (+boost, +cash), nose-down or back-wheel-first over the limit =
+   **CRASH**: the Ranger tumbles (driver flies off, helmet bounces), 1.5 s, then it respawns on its wheels at the last
+   checkpoint (every ~100 m) with a short invulnerable push; a crash costs ~2 s against the AI, never the run.
+   Boost refills from PERFECT landings, flips and coins (no winch, no stuck state in race mode).
+4. **Speed feel**: top speed up (~95 km/h stock, 140 at level 10), engine pitch rises with speed, dust rooster
+   tails on throttle, speed lines above 60 km/h, the camera leads further and zooms out with speed and in the air,
+   a short slow-mo + zoom on a landed flip, screen shake on hard landings, a gate-drop sound and crowd/cowbell at
+   the finish.
+5. **Results**: position + podium, time + medal + best, cash rows (distance, air, flips, perfect landings, coins,
+   position bonus: 1st $500, 2nd $300, 3rd $150; finish bonus), next track unlocks on **3rd or better**.
+6. **Engine contract additions**: `start({ ..., race: { riders: 3, skill } })`, events `countdown {n}`, `go`,
+   `checkpoint {index}`, `crash`, `respawn`, `flip {kind, count}`, `bigAir`, `position {place}`, `lap {timeSec}`;
+   `getState()` adds `place`, `timeSec`, `riders: [{name, paint, x}]`; summary adds `place`, `timeSec`, `flips`,
+   `crashes`, `cash.flips`, `cash.perfect`, `cash.place`. The gate mechanics stay dormant for the math phase.

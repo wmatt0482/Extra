@@ -1,6 +1,6 @@
 // Garage: the Ranger (procedural preview), a Paint / Decals strip and the four upgrades (10 levels each, bought with
-// cash). Paints and decals are never bought: a finished trail unlocks a paint, a long ride unlocks a decal
-// (src/data/paints.js); locked chips say how to earn them.
+// race cash). Paints and decals are never bought: finished tracks and medals unlock paints, flips, a long race and a
+// win unlock decals (src/data/paints.js); locked chips say how to earn them.
 import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
 import { DECALS, PAINTS, PAINT_BY_ID, decalHint, paintHint } from '../data/paints.js';
 import { buyUpgrade, canAfford, nextUpgradeCost, ownsDecal, ownsPaint } from '../meta/economy.js';
@@ -59,7 +59,7 @@ export function createGarage(app) {
     const on = (kind === 'paint' ? s.paint : s.decal) === item.id;
     const hint = kind === 'paint' ? paintHint(item, app.trails) : decalHint(item);
     const sw = kind === 'paint'
-      ? h('i', { class: 'sw', style: { background: `linear-gradient(135deg, ${item.body} 0 60%, #ff8a1f 60% 70%, ${item.trim} 70%)` } })
+      ? h('i', { class: 'sw', style: { background: item.swatch || `linear-gradient(135deg, ${item.body} 0 60%, #ff8a1f 60% 70%, ${item.trim} 70%)` } })
       : h('i', { class: 'sw glyph', html: DECAL_SW[item.id] || '' });
     const b = h('button', { class: `style-chip ${kind}${has ? ' owned' : ' locked'}${on ? ' on' : ''}`, [`data-${kind}`]: item.id, 'data-sfx': '', 'aria-pressed': String(on),
       'aria-label': `${item.name}${has ? (on ? ', on' : '') : ', locked: ' + hint}` },

@@ -1,4 +1,5 @@
-// Trail Blazer-only sound effects (the winch, a water splash, a gate creak), synthesized with WebAudio like Spell
+// Trail Blazer-only sound effects (countdown beeps, the start gate dropping, the finish cowbell, a water splash, a gate
+// creak), synthesized with WebAudio like Spell
 // Jump's audio.js (which owns everything else: engine, boost, landings, coins, music). Its own small context, created
 // and resumed inside the first user gesture (iOS); every call is a safe no-op before that or with sound off.
 const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
@@ -33,12 +34,14 @@ function createSfx() {
   return {
     unlock() { if (!init()) return; if (ctx.state !== 'running') ctx.resume().catch(() => {}); },
     setSound(v) { on = !!v; if (out) out.gain.value = on ? 0.8 : 0; },
-    /** the winch motor pulling for `sec` seconds: a rising whir with ratchet clicks */
-    winch(sec = 1) {
+    /** the countdown: a short beep for 3-2-1, a long higher one for GO */
+    beep(go = false) { if (ready()) tone('square', go ? 1320 : 660, go ? 1320 : 660, go ? 0.45 : 0.16, 0.07); },
+    /** the start gate slamming down */
+    gateDrop() { if (ready()) { noise('lowpass', 1800, 200, 0.8, 0.3, 0.35, 0.02); tone('triangle', 220, 70, 0.25, 0.12, 0.02); } },
+    /** the finish: a cowbell over the crowd (Spell Jump's audio.cheer) */
+    cowbell() {
       if (!ready()) return;
-      tone('sawtooth', 70, 160, sec, 0.06);
-      noise('bandpass', 400, 1400, 4, sec, 0.12);
-      for (let i = 0; i < Math.floor(sec * 9); i++) noise('highpass', 3000, 2500, 1, 0.025, 0.12, i / 9);
+      for (const at of [0, 0.22, 0.44]) { tone('square', 800, 790, 0.22, 0.05, at); tone('square', 540, 535, 0.22, 0.05, at); }
     },
     splash() { if (ready()) { noise('lowpass', 2400, 300, 0.7, 0.6, 0.3); noise('bandpass', 900, 3000, 2, 0.25, 0.15, 0.05); } },
     creak() { if (ready()) { tone('square', 180, 120, 0.35, 0.03); noise('bandpass', 700, 500, 12, 0.35, 0.08); } },

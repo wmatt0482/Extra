@@ -245,45 +245,47 @@ export function drawVehicle(ctx, look, state = {}) {
   ctx.moveTo(-0.66, 1.14); ctx.lineTo(-0.64, 1.98);
   ctx.stroke();
 
-  // seat + driver
+  // seat + driver (state.noDriver: thrown off in a crash, drawn by drawRider instead)
   ctx.fillStyle = '#2a2c33';
   ctx.beginPath();
   ctx.moveTo(-0.46, 1.1); ctx.lineTo(-0.3, 1.1); ctx.lineTo(-0.26, 1.68); ctx.lineTo(-0.42, 1.72);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = '#3f5a8a';
-  ctx.beginPath();
-  ctx.moveTo(-0.3, 1.1); ctx.lineTo(0.14, 1.1); ctx.lineTo(0.1, 1.48); ctx.quadraticCurveTo(-0.08, 1.58, -0.26, 1.5);
-  ctx.closePath();
-  ctx.fill();
-  ctx.lineWidth = lw * 0.7;
-  ctx.strokeStyle = OUTLINE;
-  ctx.stroke();
-  // arm to the wheel
-  ctx.strokeStyle = '#3f5a8a';
-  ctx.lineWidth = 0.1;
-  ctx.beginPath(); ctx.moveTo(-0.02, 1.42); ctx.lineTo(0.3, 1.34); ctx.stroke();
   // steering wheel + column
   ctx.strokeStyle = '#1b1c20';
   ctx.lineWidth = 0.05;
   ctx.beginPath(); ctx.moveTo(0.56, 1.14); ctx.lineTo(0.4, 1.34); ctx.stroke();
   ctx.lineWidth = 0.06;
   ctx.beginPath(); ctx.ellipse(0.39, 1.36, 0.04, 0.13, -0.5, 0, TAU); ctx.stroke();
-  // helmet
-  ctx.beginPath();
-  ctx.arc(-0.06, 1.7, 0.2, 0, TAU);
-  ctx.fillStyle = L.helmet;
-  ctx.fill();
-  ctx.lineWidth = lw * 0.8;
-  ctx.strokeStyle = OUTLINE;
-  ctx.stroke();
-  ctx.fillStyle = '#1a1d26';
-  ctx.beginPath();
-  ctx.moveTo(0.02, 1.77); ctx.lineTo(0.15, 1.75); ctx.quadraticCurveTo(0.17, 1.65, 0.1, 1.6); ctx.lineTo(0.0, 1.63);
-  ctx.closePath();
-  ctx.fill();
-  ctx.fillStyle = 'rgba(255,255,255,0.55)';
-  ctx.fillRect(-0.16, 1.77, 0.08, 0.05);
+  if (!state.noDriver) {
+    ctx.fillStyle = '#3f5a8a';
+    ctx.beginPath();
+    ctx.moveTo(-0.3, 1.1); ctx.lineTo(0.14, 1.1); ctx.lineTo(0.1, 1.48); ctx.quadraticCurveTo(-0.08, 1.58, -0.26, 1.5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.lineWidth = lw * 0.7;
+    ctx.strokeStyle = OUTLINE;
+    ctx.stroke();
+    // arm to the wheel
+    ctx.strokeStyle = '#3f5a8a';
+    ctx.lineWidth = 0.1;
+    ctx.beginPath(); ctx.moveTo(-0.02, 1.42); ctx.lineTo(0.3, 1.34); ctx.stroke();
+    // helmet
+    ctx.beginPath();
+    ctx.arc(-0.06, 1.7, 0.2, 0, TAU);
+    ctx.fillStyle = L.helmet;
+    ctx.fill();
+    ctx.lineWidth = lw * 0.8;
+    ctx.strokeStyle = OUTLINE;
+    ctx.stroke();
+    ctx.fillStyle = '#1a1d26';
+    ctx.beginPath();
+    ctx.moveTo(0.02, 1.77); ctx.lineTo(0.15, 1.75); ctx.quadraticCurveTo(0.17, 1.65, 0.1, 1.6); ctx.lineTo(0.0, 1.63);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.55)';
+    ctx.fillRect(-0.16, 1.77, 0.08, 0.05);
+  }
 
   // ---- body ----
   poly(ctx, V.body);
@@ -471,4 +473,46 @@ export function drawVehiclePreview(ctx, look, o = {}) {
   ctx.scale(scale, -scale);
   drawVehicle(ctx, look, { t: o.t || 0, speed: o.speed || 0, lw: o.lw || 2.2 / scale, nitroOn: !!o.nitroOn, lights: !!o.lights });
   ctx.restore();
+}
+
+// The driver thrown clear in a crash (race mode): a small rider figure at the origin, +y up, rotated by the caller.
+export function drawRider(ctx, look, lw = 0.05, helmet = true) {
+  const L = look && look.key ? look : resolveLook(look);
+  ctx.lineJoin = 'round';
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#2b3e63';
+  ctx.lineWidth = 0.12;
+  ctx.beginPath();
+  ctx.moveTo(0, 0); ctx.lineTo(-0.22, -0.45); ctx.moveTo(0, 0); ctx.lineTo(0.2, -0.42); // legs
+  ctx.moveTo(0, 0.42); ctx.lineTo(-0.3, 0.2); ctx.moveTo(0, 0.42); ctx.lineTo(0.32, 0.6); // arms
+  ctx.stroke();
+  ctx.fillStyle = '#3f5a8a';
+  ctx.beginPath();
+  ctx.ellipse(0, 0.25, 0.16, 0.3, 0, 0, TAU);
+  ctx.fill();
+  ctx.lineWidth = lw * 0.7;
+  ctx.strokeStyle = OUTLINE;
+  ctx.stroke();
+  if (helmet) drawHelmet(ctx, L, lw, 0, 0.72);
+  else {
+    ctx.fillStyle = '#f1c7a1';
+    ctx.beginPath(); ctx.arc(0, 0.68, 0.15, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#5a3a22';
+    ctx.beginPath(); ctx.arc(0, 0.74, 0.13, 0.2, Math.PI - 0.2); ctx.fill();
+  }
+}
+export function drawHelmet(ctx, look, lw = 0.05, x = 0, y = 0) {
+  const L = look && look.key ? look : resolveLook(look);
+  ctx.beginPath();
+  ctx.arc(x, y, 0.2, 0, TAU);
+  ctx.fillStyle = L.helmet;
+  ctx.fill();
+  ctx.lineWidth = lw * 0.8;
+  ctx.strokeStyle = OUTLINE;
+  ctx.stroke();
+  ctx.fillStyle = '#1a1d26';
+  ctx.beginPath();
+  ctx.moveTo(x + 0.08, y + 0.07); ctx.lineTo(x + 0.21, y + 0.05); ctx.quadraticCurveTo(x + 0.23, y - 0.05, x + 0.16, y - 0.1); ctx.lineTo(x + 0.06, y - 0.07);
+  ctx.closePath();
+  ctx.fill();
 }

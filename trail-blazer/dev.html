@@ -44,9 +44,10 @@
 <script src="../spell-jump/vendor/matter.min.js"></script>
 <script type="module">
 // Engine playground. URL params: trail (id), lvl (0..10, all stats), eng / tires / susp / boostLvl (per upgrade),
-// seed, sim (speed multiplier), paint, decal, gates (count, 0 = none), auto=1 (answer gates after 400 ms with
-// { correct: true, quick: index % 2 === 0 }), winch=1 (winch(true) whenever 'stuck' fires), ui=0 (no overlays),
-// best (best distance flag), rm=1 (reduced motion).
+// seed, sim (speed multiplier), paint, decal, race (1 = motocross race, the default; 0 = the v1 trail ride),
+// riders (AI riders 0..3), skill (AI 0..1; default from the upgrades), gates (count, 0 = none), auto=1 (answer gates
+// after 400 ms with { correct: true, quick: index % 2 === 0 }), winch=1 (winch(true) whenever 'stuck' fires),
+// ui=0 (no overlays), best (best distance flag), rm=1 (reduced motion).
 import { createGame } from './src/game/engine.js';
 import { TRAILS, TRAIL_BY_ID } from './src/data/trails.js';
 
@@ -64,8 +65,9 @@ const stats = {
 };
 const trail = TRAIL_BY_ID[q.get('trail')] || TRAILS[0];
 const auto = q.get('auto') === '1', autoWinch = q.get('winch') === '1';
+const race = q.get('race') !== '0' && !!trail.mx;
 
-const tb = (window.__tb = { game: null, events: [], finished: null, restart: null, stats, trail });
+const tb = (window.__tb = { game: null, events: [], finished: null, restart: null, stats, trail, race });
 const logLines = [];
 let timers = [];
 function onEvent(evt) {
@@ -84,10 +86,13 @@ function onEvent(evt) {
     tb.finished = evt.summary;
     const s = evt.summary, c = s.cash;
     $('resText').textContent =
+      (s.race ? `race       ${['', '1st', '2nd', '3rd', '4th'][s.place]} place   time ${s.timeSec} s   medal ${s.medal || '-'}\n` +
+        `riders     ${s.riders.map((x) => x.name + ' ' + (x.timeSec != null ? x.timeSec + 's' : Math.round(x.x) + 'm')).join(' · ')}\n` +
+        `flips      ${s.flips}   crashes ${s.crashes}\n` : '') +
       `trail      ${trail.name} (${trail.length} m)\ndistance   ${s.distance} m   ${s.finishCrossed ? 'FINISHED' : s.endReason}\n` +
       `time       ${s.durationSec} s   max ${s.maxSpeedKmh} km/h\nair        ${s.airTime} s   flips ${s.flips}   smashed ${s.smashed}   coins ${s.coins}\n` +
       `gates      ${s.gates.correct}/${s.gates.answered} (quick ${s.gates.quick}, fixed ${s.gates.fixed}) of ${s.gatesTotal}\nwinches    ${s.winches}\n` +
-      `cash       dist ${c.distance} + air ${c.air} + smash ${c.smash}\n           + gates ${c.gates} + quick ${c.quick} + coins ${c.coins} + finish ${c.finish}\n` +
+      `cash       dist ${c.distance} + air ${c.air} + smash ${c.smash} + flips ${c.flips} + perfect ${c.perfect}\n           + gates ${c.gates} + quick ${c.quick} + coins ${c.coins} + finish ${c.finish} + place ${c.place}\n` +
       `           = $${c.total}   rating ${s.rating} (${s.ratingScore})`;
     $('results').style.display = 'block';
   }
@@ -108,7 +113,8 @@ function restart() {
   $('results').style.display = 'none';
   $('gateBtn').hidden = true; $('winchBtn').hidden = true;
   game.start({ trail, stats, seed: q.get('seed') != null ? num('seed', trail.seed) : trail.seed, paint: q.get('paint') || 'sage', decal: q.get('decal') || 'none',
-    bestDistance: num('best', 0), gates: q.get('gates') != null ? num('gates', undefined) : undefined });
+    bestDistance: num('best', 0), gates: q.get('gates') != null ? num('gates', undefined) : undefined,
+    race: race ? { riders: num('riders', 3), skill: q.get('skill') != null ? num('skill', undefined) : undefined } : undefined });
 }
 tb.restart = restart;
 restart();
@@ -144,7 +150,10 @@ $('retry').onclick = restart;
 // ---- debug readout ----
 function readout() {
   const s = game.getState();
-  $('state').textContent = `${trail.name}  lvl ${lvl}\nphase ${s.phase}${s.upsideDown ? ' (upside down)' : ''}\ndist  ${s.distance} / ${trail.length} m\n` +
+  const ord = ['', '1st', '2nd', '3rd', '4th'];
+  $('state').textContent = `${trail.name}  lvl ${lvl}${race ? '  RACE' : ''}\nphase ${s.phase}${s.upsideDown ? ' (upside down)' : ''}${s.crashed ? ' CRASHED' : ''}${s.countdown ? ' ' + s.countdown.toFixed(1) : ''}\n` +
+    (race ? `place ${ord[s.place]} / ${s.riders.length}   time ${s.timeSec.toFixed(1)} s\n` + s.riders.map((x) => `  ${x.place}. ${x.name.padEnd(4)} ${Math.round(x.x)} m${x.timeSec != null ? '  ' + x.timeSec + ' s' : ''}`).join('\n') + '\n' : '') +
+    `dist  ${s.distance} / ${trail.length} m\n` +
     `speed ${s.speedKmh} km/h\nboost ${Math.round(s.boost * 100)}%\ncash  $${s.cash}\ngate  ${s.gateIndex}/${s.gatesTotal}  coins ${s.coins}`;
   requestAnimationFrame(readout);
 }

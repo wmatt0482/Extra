@@ -2,10 +2,11 @@
 // the save, audio, the engine (real or mock), the screens and the ride lifecycle.
 // The real engine lives at ./game/engine.js and the trails at ./data/trails.js (the engine agent's, SPEC §3); both are
 // imported dynamically so the shell keeps working (mock engine, built-in trail list) if they are missing or broken.
-// v1 has no math layer: rides start with `gates: 0`; boost fuel comes from trail coins and good landings, and the
-// winch is free (a 1 s pull, then game.winch(true)).
+// v1.1 (SPEC "Race mode"): every ride is a motocross race against three AI riders: a 3-2-1 gate drop, position +
+// time + track bar on the HUD, stunt banners, crashes respawn at the last checkpoint (no winch), a podium with a medal.
+// No math layer yet: races start with `gates: 0`.
 // TODO (math phase, SPEC §4-§5): the gate flow hooks in at onEvent 'gate' (src/ui/gatePanel.js → game.openGate()),
-// the winch question at showWinch(), the ride's facts on the results, and Facts this week / Report in the Parent Zone.
+// the ride's facts on the results, and Facts this week / Report in the Parent Zone.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -17,7 +18,7 @@ import { Sfx } from './sfx.js';
 import { FALLBACK_TRAILS } from './data/fallbackTrails.js';
 import { defaultSave, loadSave, loadSettings, removeSave, writeSave, writeSettings } from './meta/save.js';
 import {
-  bankRide, cashRows, currentTrail, finishedCount, hashString, isUnlocked, nextTrail, ratingFor, statsFor,
+  bankRide, cashRows, currentTrail, finishedCount, hashString, isUnlocked, nextTrail, statsFor,
 } from './meta/economy.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { hydrateAll } from './ui/tbIcons.js';
@@ -27,12 +28,13 @@ import { createTrails } from './ui/trails.js';
 import { createHud } from './ui/hud.js';
 import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
-import { drawAvatar, drawPreview, loadVehicle } from './ui/vehiclePreview.js';
+import { drawAvatar, drawPreview, loadVehicle, vehicleModule } from './ui/vehiclePreview.js';
+import { COLOR_BY_PAINT } from './data/paints.js';
+import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
-const WINCH_MS = 1000;
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
 
 // ---------- self-update (see meta/selfUpdate.js) ----------
@@ -70,13 +72,14 @@ async function loadTrails() {
     const m = await import('./data/trails.js');
     const list = Array.isArray(m.TRAILS) ? m.TRAILS : Array.isArray(m.default) ? m.default : null;
     if (list && list.length && list.every((t) => t && typeof t.id === 'string' && typeof t.name === 'string')) {
-      return { trails: list.map((t) => ({ ...t, length: Number(t.length) > 0 ? Number(t.length) : 600 })), source: 'data/trails.js' };
+      return { trails: list.map((t) => ({ ...t, length: Number(t.length) > 0 ? Number(t.length) : 600 })), source: 'data/trails.js',
+        medalTable: m.MEDAL_TIMES && typeof m.MEDAL_TIMES === 'object' ? m.MEDAL_TIMES : null };
     }
     console.warn('[TrailBlazer] data/trails.js has no usable TRAILS list: using the built-in trails.');
   } catch (e) {
     console.warn('[TrailBlazer] data/trails.js failed to load: using the built-in trails.', e);
   }
-  return { trails: FALLBACK_TRAILS, source: 'built-in' };
+  return { trails: FALLBACK_TRAILS, source: 'built-in', medalTable: null };
 }
 
 async function boot() {
@@ -93,7 +96,7 @@ async function boot() {
   const family = Profiles.loadFamily();
   const save = defaultSave();           // replaced in place when a player is picked (screens hold this reference)
   let currentPlayerId = null;
-  const { trails, source: trailSource } = await loadTrails();
+  const { trails, source: trailSource, medalTable } = await loadTrails();
   const canvas = $('#game');
   const engineMod = await loadEngine();
   let game = null, run = null, hudRaf = 0, screen = 'players', paused = false, coaching = false, stopFallback = 0, lastResult = null;
@@ -101,7 +104,7 @@ async function boot() {
   const toastsEl = $('#toasts');
 
   const app = {
-    save, settings, sync, trails, trailSource,
+    save, settings, sync, trails, trailSource, medalTable,
     audio: Audio, sfx: Sfx,
     version: VERSION,
     engineName: engineMod.name,
@@ -143,7 +146,9 @@ async function boot() {
   }
 
   // ---------- UI ----------
-  const hud = createHud();
+  const paintColor = (id) => { const m = vehicleModule(); return (m && m.PAINT_BY_ID && m.PAINT_BY_ID[id] && m.PAINT_BY_ID[id].body) || COLOR_BY_PAINT[id] || '#c9d1d6'; };
+  app.paintColor = paintColor;
+  const hud = createHud({ paintColor });
   const controls = createControls($('#controls'), (s) => {
     input = { gas: !!s.gas, brake: !!s.brake, boost: !!s.nitro };
     if (game && run) game.setInput(input);
@@ -191,7 +196,7 @@ async function boot() {
     if (!p) return;
     $('#title-player').textContent = p.name;
     drawAvatar($('#title-avatar'), p.color);
-    $('#title-trails-text').textContent = `Trails ${finishedCount(save, trails)} / ${trails.length}`;
+    $('#title-trails-text').textContent = `Tracks ${finishedCount(save, trails)} / ${trails.length}`;
   }
 
   function go(name, arg) {
@@ -201,7 +206,7 @@ async function boot() {
     screen = name;
     const inRide = name === 'ride';
     document.documentElement.classList.toggle('in-run', inRide);
-    if (!inRide) { hud.clearBanners(); hideCoach(); hideWinch(); }
+    if (!inRide) { hud.clearBanners(); hideCoach(); hideCountdown(); }
     if (inRide || name === 'results') toastsEl.replaceChildren();
     $('#hud').hidden = !inRide;
     $('#controls').hidden = !inRide;
@@ -253,29 +258,35 @@ async function boot() {
     pz.onSyncApplied();
   }
 
-  // ---------- ride lifecycle ----------
+  // ---------- race lifecycle (SPEC v1.1) ----------
+  // AI skill: left to the engine (its default sits between the player's upgrade level and the track's design level, so
+  // a stock Ranger can win Pine Ridge with clean riding and later tracks want upgrades: SPEC v1.1 §2)
+  const playerName = () => { const p = Profiles.playerById(family, currentPlayerId); return p ? p.name : 'You'; };
   function startRide(trailId) {
-    if (!game) { toast('The ride could not load'); return; }
+    if (!game) { toast('The race could not load'); return; }
     closePanel();
     const trail = trails.find((t) => t.id === trailId && isUnlocked(save, trails, t.id)) || currentTrail(save, trails);
     clearTimeout(stopFallback);
-    run = { trail, ended: false, winching: false, winchCalled: false, winchTimer: 0, quitting: false };
+    run = { trail, ended: false, quitting: false, place: null, lastState: null, started: false, posBannerAt: 0, cdTimer: 0 };
     save.selectedTrail = trail.id;
     go('ride');
-    hud.reset(trail);
+    hud.reset(trail, paintColor(save.paint));
+    hideCountdown();
     controls.reset();
     controls.enable(true);
     paused = false;
     try {
       game.start({
         trail, stats: statsFor(save), seed: hashString('trail:' + trail.id), paint: save.paint, decal: save.decal,
-        bestDistance: save.best[trail.id] || null, gates: 0,          // v1: no gate signs (the math layer adds them)
+        bestDistance: save.best[trail.id] || null, bestTime: save.bestTime[trail.id] || null,
+        gates: 0,                                      // no gate signs until the math phase
+        race: { riders: 3, name: playerName() },
         shake: settings.reducedMotion ? 0 : settings.shake / 100,
       });
       game.setInput({ gas: false, brake: false, boost: false });
     } catch (e) {
       console.error('[TrailBlazer] game.start threw', e);
-      run = null; controls.enable(false); go('trails'); toast('Could not start the ride');
+      run = null; controls.enable(false); go('trails'); toast('Could not start the race');
       return;
     }
     cancelAnimationFrame(hudRaf);
@@ -287,74 +298,81 @@ async function boot() {
     if (!run) return;
     hudRaf = requestAnimationFrame(hudLoop);
     let s = null;
-    try { s = game.getState(); } catch (_) { /* engine between rides */ }
+    try { s = game.getState(); } catch (_) { /* engine between races */ }
     if (!s) return;
+    run.lastState = s;
     hud.update(s);
-    // the engine keeps phase 'stuck' while its own winch animation pulls the Ranger (until 'winched'): no second button
-    if (s.stuck && !run.winching && !run.winchCalled && winchBtn.hidden && !paused && !coaching) showWinch();
-    if (!s.stuck) { run.winchCalled = false; if (!run.winching && !winchBtn.hidden) hideWinch(); }
+    if (s.place >= 1 && run.place == null) run.place = s.place;
     if (!paused) {
-      Audio.engine(s.phase === 'done' ? -1 : Math.min(1, (s.speedKmh || 0) / 90));
+      Audio.engine(s.phase === 'done' ? -1 : Math.min(1, (s.speedKmh || 0) / 120));
       Audio.nitro(!!(input.boost && s.boost > 0.01 && s.phase === 'ride'));
     }
   }
 
-  // ---------- the winch: free in v1 (TODO math phase: the gate panel in winch mode asks one fact first) ----------
-  const winchBtn = $('#btn-winch');
-  function showWinch() {
-    if (!run) return;
-    winchBtn.classList.remove('pulling');
-    $('#winch-text').textContent = 'Winch';
-    winchBtn.hidden = false;
-    Audio.oops(true);
+  // ---------- countdown + gate drop ----------
+  const cdEl = $('#countdown'), cdN = $('#countdown-n'), cdGate = $('#cd-gate');
+  function showCount(text, go) {
+    clearTimeout(run && run.cdTimer);
+    cdEl.hidden = false;
+    cdN.textContent = text;
+    cdN.classList.toggle('go', !!go);
+    cdN.classList.remove('tick'); void cdN.offsetWidth; cdN.classList.add('tick');
+    cdGate.classList.toggle('drop', !!go);
+    if (go && run) run.cdTimer = setTimeout(hideCountdown, 800);
   }
-  function hideWinch() {
-    winchBtn.hidden = true;
-    winchBtn.classList.remove('pulling');
-  }
-  function pullWinch() {
+  function hideCountdown() { cdEl.hidden = true; cdGate.classList.remove('drop'); }
+
+  // banners: one at a time, position changes at most every 1.2 s (and never during the countdown)
+  function positionChanged(place) {
     const r = run;
-    if (!r || r.winching || winchBtn.hidden || paused) return;
-    r.winching = true;
-    winchBtn.classList.add('pulling');
-    $('#winch-text').textContent = 'Pulling…';
-    Sfx.winch(WINCH_MS / 1000);
-    r.winchTimer = setTimeout(() => {
-      if (run !== r || r.ended) return;
-      r.winching = false;
-      let ok = false;
-      try { ok = game.winch(true) !== false; } catch (e) { console.error('[TrailBlazer] winch failed', e); }
-      r.winchCalled = ok;           // the engine now pulls the Ranger up the trail; 'winched' ends it
-      hideWinch();
-    }, WINCH_MS);
+    if (!r || !(place >= 1)) return;
+    const prev = r.place;
+    r.place = place;
+    if (prev == null || prev === place) return;
+    hud.bumpPlace();
+    if (!r.started || r.lastState && r.lastState.finishCrossed) return;
+    const now = performance.now();
+    if (now - r.posBannerAt < 1200) return;
+    if (!hud.banner('pos', place === 1 ? "You're in the lead!" : `You're ${ordinal(place)}!`, 1100, { low: true })) return;
+    r.posBannerAt = now;
+    if (place < prev) Audio.coin();
   }
-  winchBtn.addEventListener('click', pullWinch);
 
   function onEvent(evt) {
     if (!run || !evt) return;
     switch (evt.type) {
-      case 'launch': Audio.whoosh(); break;
-      case 'flip': Audio.flip(); break;
+      case 'countdown': showCount(String(evt.n), false); Sfx.beep(false); break;
+      case 'go': run.started = true; showCount('GO!', true); Sfx.beep(true); Sfx.gateDrop(); Audio.whoosh(); if (evt.bogged) bogged(); break;
+      case 'bogged': bogged(); break;
+      case 'launch': if (!run.started) { run.started = true; Audio.whoosh(); } break;
+      // the engine draws BACKFLIP! / BIG AIR! / PERFECT! / CRASH! in the world itself; the HUD only adds sound and
+      // the things the engine does not say (a double / triple flip, the respawn, position changes)
+      case 'flip': {
+        Audio.flip();
+        const n = Math.max(1, Number(evt.count) || 1);
+        if (n >= 2) hud.banner('flip', n >= 3 ? 'Triple flip!' : 'Double flip!', 1000);
+        break;
+      }
+      case 'bigAir': Audio.whoosh(); break;
       case 'land':
         Audio.land(evt.quality === 'hard' ? 'rough' : evt.quality);
         if (evt.quality === 'perfect') setTimeout(() => Audio.cheer(0.6), 120);
         break;
+      case 'crash': Audio.smash(); Audio.oops(); break;
+      case 'respawn': hud.banner('small', 'Back on track!', 1000); Audio.whoosh(); break;
+      case 'position': positionChanged(evt.place); break;
       case 'smash': Audio.smash(); setTimeout(() => Audio.coin(), 60); break;
       case 'coin': Audio.coin(); break;
       case 'splash': Sfx.splash(); break;
-      case 'stuck': if (!run.winching && !run.winchCalled) showWinch(); break;
-      case 'winched': run.winchCalled = false; hideWinch(); Audio.land('good'); break;
-      case 'unstuck': if (!run.winching) hideWinch(); break;     // drove out without the winch
       case 'gate':
-        // v1 starts every ride with gates: 0, so no gate should appear; never leave the Ranger parked if one does.
+        // races start with gates: 0, so no gate should appear; never leave the Ranger parked if one does.
         // TODO (math phase): open src/ui/gatePanel.js here and pass its result to game.openGate().
         try { game.openGate({ correct: true, quick: false, fixed: false }); } catch (_) { /* ignore */ }
         break;
       case 'gateOpen': Sfx.creak(); break;
       case 'finishLine': {
-        Audio.cheer(1.2); Audio.fireworks();
-        const n = nextTrail(trails, run.trail.id);
-        if (n && !isUnlocked(save, trails, n.id)) hud.banner('go', `Unlocked: ${n.name}`);
+        if (evt.place >= 1) run.place = evt.place;
+        Audio.cheer(1.4); Audio.fireworks(); Sfx.cowbell();
         break;
       }
       case 'finish': endRide(evt.summary); break;
@@ -362,24 +380,44 @@ async function boot() {
     }
   }
 
+  function bogged() { if (run && !run.boggedShown) { run.boggedShown = true; hud.banner('small', 'Too early! Bogged start', 1200); Audio.oops(true); } }
+
+  // the final order for the podium: the engine's summary.riders when every rider has a place; else the player at
+  // summary.place and the AI riders around them by how far along the track they were at the end
+  function standings(r, summary) {
+    const p = Profiles.playerById(family, currentPlayerId);
+    const meRow = { name: p ? p.name : 'You', paint: save.paint, color: p ? p.color : null, me: true };
+    const list = Array.isArray(summary.riders) && summary.riders.length ? summary.riders : null;
+    if (list && list.some((x) => x.me) && list.every((x) => x.place >= 1) && summary.finishCrossed) {
+      return list.slice().sort((a, b) => a.place - b.place).map((x) => (x.me ? { ...meRow, place: x.place } : { name: x.name, paint: x.paint, place: x.place }));
+    }
+    const ai = ((r.lastState && r.lastState.riders) || []).filter((x) => !x.me).sort((a, b) => (b.x || 0) - (a.x || 0));
+    const total = ai.length + 1;
+    const myPlace = summary.finishCrossed && summary.place >= 1 ? Math.min(total, summary.place) : total;
+    const out = [];
+    for (let place = 1, k = 0; place <= total; place++) out.push(place === myPlace ? { ...meRow, place } : { name: ai[k].name, paint: ai[k++].paint, place });
+    return out;
+  }
+
   function endRide(summary) {
     if (!run || run.ended) return;
     const r = run;
     r.ended = true;
     run = null;
-    clearTimeout(stopFallback); clearTimeout(r.winchTimer);
+    clearTimeout(stopFallback); clearTimeout(r.cdTimer);
     controls.enable(false);
-    hideWinch(); hideCoach();
+    hideCoach(); hideCountdown();
     Audio.engine(-1); Audio.nitro(false);
     summary = summary && typeof summary === 'object' ? summary : {};
     const { rows, total } = cashRows(summary.cash);
-    const bank = bankRide(save, trails, r.trail.id, summary);
+    const medalTimes = medalTimesFor(r.trail, medalTable);
+    const bank = bankRide(save, trails, r.trail.id, summary, medalTimes);
     save.seen.coach = true;
     app.persist();
-    const rating = summary.rating || ratingFor(summary, r.trail.length).rating;
     const nt = nextTrail(trails, r.trail.id);
     const result = lastResult = {
-      trail: r.trail, summary, rows, total, bank, rating,
+      trail: r.trail, summary, rows, total, bank, medalTimes, standings: standings(r, summary),
+      place: bank.place, timeSec: summary.timeSec || 0,
       next: nt && isUnlocked(save, trails, nt.id) ? nt : null,
       unlocked: bank.unlocked ? trails.find((t) => t.id === bank.unlocked) : null,
     };
@@ -388,13 +426,13 @@ async function boot() {
     setTimeout(() => {
       go('results', result);
       if (bank.earned) Audio.cash();
-      if (bank.unlocked || bank.paints.length || bank.decals.length) setTimeout(() => Audio.fanfare(), 400);
+      if (bank.place === 1 || bank.newMedal || bank.unlocked || bank.paints.length || bank.decals.length) setTimeout(() => Audio.fanfare(), 400);
     }, wasPaused ? 0 : 900);
   }
 
   // ---------- pause (sound, music, motion, shake, end ride) ----------
   function pause() {
-    if (!run || paused || coaching || run.winching) return;
+    if (!run || paused || coaching) return;
     paused = true;
     try { game.pause(); } catch (_) { /* ignore */ }
     controls.enable(false);
@@ -460,8 +498,8 @@ async function boot() {
       if (!run || run !== r || r.ended) return;
       const s = snap || {};
       const c = Math.round(s.cash || 0);
-      endRide({ distance: s.distance || 0, airTime: 0, flips: s.flips || 0, smashed: s.smashed || 0, maxSpeedKmh: s.speedKmh || 0, finishCrossed: !!s.finishCrossed,
-        cash: { distance: c, air: 0, smash: 0, coins: 0, total: c }, winches: 0 });
+      endRide({ distance: s.distance || 0, airTime: 0, flips: s.flips || 0, smashed: s.smashed || 0, maxSpeedKmh: s.speedKmh || 0, finishCrossed: false,
+        timeSec: s.timeSec || 0, place: null, cash: { distance: c, air: 0, flips: 0, perfect: 0, coins: 0, total: c }, winches: 0 });
     }, 600);
   });
 
@@ -501,7 +539,6 @@ async function boot() {
   window.addEventListener('pagehide', () => { pause(); app.persist(); });
   window.addEventListener('keydown', (e) => {
     if (coaching && (e.code === 'Enter' || e.code === 'Space')) { dismissCoach(e); return; }
-    if (run && !winchBtn.hidden && (e.code === 'Enter' || e.code === 'KeyW')) { e.preventDefault(); pullWinch(); return; }
     if (e.code === 'Escape' || (e.code === 'KeyP' && run)) {
       if (coaching) { dismissCoach(e); return; }
       if (pz.isOpen) { pz.close(); return; }
