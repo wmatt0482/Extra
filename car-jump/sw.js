@@ -7,7 +7,7 @@
 // answered from the cache. The natural voice's clips (/api/tts/clip/<id>, v3.4) are content-addressed (a clip never
 // changes), so they are cache-first in their own cache, TTS_CACHE, which survives version updates: a clip played once
 // plays offline afterwards.
-const VERSION = 'spell-jump-v3.6.0';
+const VERSION = 'spell-jump-v3.6.1';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
@@ -86,7 +86,8 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k !== VERSION && k !== TTS_CACHE).map((k) => caches.delete(k)));
+    // only this app's old caches: Trail Blazer (/trail-blazer/) keeps its own caches on the same origin
+    await Promise.all(keys.filter((k) => k.startsWith('spell-jump-') && k !== VERSION && k !== TTS_CACHE).map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });

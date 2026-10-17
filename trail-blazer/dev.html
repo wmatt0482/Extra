@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Trail Blazer Engine Harness</title>
+<style>
+  :root { --panel: rgba(20,18,30,0.78); --fg: #f4f1ff; --accent: #ff8a1f; --btn: rgba(255,255,255,0.18); }
+  html, body { margin: 0; height: 100%; background: #111; color: var(--fg); overflow: hidden;
+    font: 12px/1.35 system-ui, -apple-system, sans-serif; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; overscroll-behavior: none; }
+  #stage { position: fixed; inset: 0; touch-action: none; }
+  #state, #log { position: fixed; z-index: 4; background: var(--panel); border-radius: 8px; padding: 6px 8px; margin: 0;
+    font: 11px/1.3 ui-monospace, Menlo, monospace; white-space: pre; pointer-events: none; }
+  #state { top: max(6px, env(safe-area-inset-top)); left: max(6px, env(safe-area-inset-left)); }
+  #log { top: max(6px, env(safe-area-inset-top)); right: max(6px, env(safe-area-inset-right)); max-height: 40vh; overflow: hidden; opacity: 0.85; }
+  .ctl { position: fixed; z-index: 6; width: 84px; height: 84px; border-radius: 50%; border: 3px solid rgba(255,255,255,0.7);
+    background: var(--btn); color: #fff; font: 900 14px system-ui; display: flex; align-items: center; justify-content: center;
+    touch-action: none; text-shadow: 0 1px 2px #000; }
+  .ctl.on { background: rgba(255,138,31,0.6); }
+  #brake { left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom)); }
+  #gas { right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); }
+  #boost { right: max(24px, env(safe-area-inset-right)); bottom: calc(max(16px, env(safe-area-inset-bottom)) + 98px); width: 66px; height: 66px; }
+  #side { position: fixed; z-index: 6; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; gap: 8px; }
+  #side button, #results button { font: 800 13px system-ui; padding: 8px 12px; border-radius: 8px; border: 0; background: var(--accent); color: #2a1400; }
+  #side button[hidden] { display: none; }
+  #results { position: fixed; z-index: 7; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(20,18,30,0.92);
+    border: 3px solid var(--accent); border-radius: 14px; padding: 12px 18px; min-width: 240px; display: none; }
+  #results h2 { margin: 0 0 6px; color: var(--accent); font: 900 20px system-ui; }
+  #results pre { margin: 0 0 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; }
+  body.noui #log, body.noui #state, body.noui .ctl, body.noui #side { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<pre id="state"></pre>
+<pre id="log"></pre>
+<div id="brake" class="ctl">BRAKE</div>
+<div id="boost" class="ctl">BOOST</div>
+<div id="gas" class="ctl">GAS</div>
+<div id="side"><button id="gateBtn" hidden>Open gate</button><button id="winchBtn" hidden>Winch</button><button id="restartBtn">Restart</button></div>
+<div id="results"><h2>Ride over</h2><pre id="resText"></pre><button id="retry">Ride again</button></div>
+
+<script src="../spell-jump/vendor/matter.min.js"></script>
+<script type="module">
+// Engine playground. URL params: trail (id), lvl (0..10, all stats), eng / tires / susp / boostLvl (per upgrade),
+// seed, sim (speed multiplier), paint, decal, gates (count, 0 = none), auto=1 (answer gates after 400 ms with
+// { correct: true, quick: index % 2 === 0 }), winch=1 (winch(true) whenever 'stuck' fires), ui=0 (no overlays),
+// best (best distance flag), rm=1 (reduced motion).
+import { createGame } from './src/game/engine.js';
+import { TRAILS, TRAIL_BY_ID } from './src/data/trails.js';
+
+const q = new URLSearchParams(location.search);
+const $ = (id) => document.getElementById(id);
+if (q.get('ui') === '0') document.body.classList.add('noui');
+
+const num = (k, d) => (q.get(k) != null && q.get(k) !== '' && Number.isFinite(Number(q.get(k))) ? Number(q.get(k)) : d);
+const lvl = num('lvl', 0);
+const L = { eng: num('eng', lvl), tires: num('tires', lvl), susp: num('susp', lvl), boost: num('boostLvl', lvl) };
+// level 0..10 -> stat (SPEC: power 1.0 -> 2.2, grip 1.0 -> 1.6, suspension 1.0 -> 2.4, boost 1.0 -> 2.5, coinMult 1.0 -> 1.5)
+const stats = {
+  power: 1 + 0.12 * L.eng, grip: 1 + 0.06 * L.tires, suspension: 1 + 0.14 * L.susp,
+  boostPower: 1 + 0.15 * L.boost, boostCapacity: 1 + 0.15 * L.boost, coinMult: 1 + 0.05 * L.boost,
+};
+const trail = TRAIL_BY_ID[q.get('trail')] || TRAILS[0];
+const auto = q.get('auto') === '1', autoWinch = q.get('winch') === '1';
+
+const tb = (window.__tb = { game: null, events: [], finished: null, restart: null, stats, trail });
+const logLines = [];
+let timers = [];
+function onEvent(evt) {
+  tb.events.push(evt);
+  if (evt.type === 'gate') {
+    $('gateBtn').hidden = false;
+    if (auto) timers.push(setTimeout(() => { $('gateBtn').hidden = true; tb.game.openGate({ correct: true, quick: evt.index % 2 === 0 }); }, 400));
+  }
+  if (evt.type === 'gateOpen') $('gateBtn').hidden = true;
+  if (evt.type === 'stuck') {
+    $('winchBtn').hidden = false;
+    if (autoWinch) timers.push(setTimeout(() => { $('winchBtn').hidden = true; tb.game.winch(true); }, 300));
+  }
+  if (evt.type === 'winched' || evt.type === 'unstuck') $('winchBtn').hidden = true;
+  if (evt.type === 'finish') {
+    tb.finished = evt.summary;
+    const s = evt.summary, c = s.cash;
+    $('resText').textContent =
+      `trail      ${trail.name} (${trail.length} m)\ndistance   ${s.distance} m   ${s.finishCrossed ? 'FINISHED' : s.endReason}\n` +
+      `time       ${s.durationSec} s   max ${s.maxSpeedKmh} km/h\nair        ${s.airTime} s   flips ${s.flips}   smashed ${s.smashed}   coins ${s.coins}\n` +
+      `gates      ${s.gates.correct}/${s.gates.answered} (quick ${s.gates.quick}, fixed ${s.gates.fixed}) of ${s.gatesTotal}\nwinches    ${s.winches}\n` +
+      `cash       dist ${c.distance} + air ${c.air} + smash ${c.smash}\n           + gates ${c.gates} + quick ${c.quick} + coins ${c.coins} + finish ${c.finish}\n` +
+      `           = $${c.total}   rating ${s.rating} (${s.ratingScore})`;
+    $('results').style.display = 'block';
+  }
+  const { type, ...rest } = evt;
+  if (type !== 'coin') {
+    logLines.unshift(type + ' ' + (type === 'finish' ? '' : JSON.stringify(rest)));
+    logLines.length = Math.min(logLines.length, 12);
+    $('log').textContent = logLines.join('\n');
+  }
+}
+
+const game = (tb.game = createGame($('c'), { onEvent, simSpeed: num('sim', 1), reducedMotion: q.get('rm') === '1' }));
+function restart() {
+  for (const t of timers) clearTimeout(t);
+  timers = [];
+  tb.events.length = 0;
+  tb.finished = null;
+  $('results').style.display = 'none';
+  $('gateBtn').hidden = true; $('winchBtn').hidden = true;
+  game.start({ trail, stats, seed: q.get('seed') != null ? num('seed', trail.seed) : trail.seed, paint: q.get('paint') || 'sage', decal: q.get('decal') || 'none',
+    bestDistance: num('best', 0), gates: q.get('gates') != null ? num('gates', undefined) : undefined });
+}
+tb.restart = restart;
+restart();
+
+// ---- controls: on-screen buttons (multi-touch) + keyboard ----
+const held = { gas: new Set(), brake: new Set(), boost: new Set() };
+function sync() {
+  const inp = { gas: held.gas.size > 0, brake: held.brake.size > 0, boost: held.boost.size > 0 };
+  game.setInput(inp);
+  $('gas').classList.toggle('on', inp.gas); $('brake').classList.toggle('on', inp.brake); $('boost').classList.toggle('on', inp.boost);
+}
+for (const k of ['gas', 'brake', 'boost']) {
+  const el = $(k);
+  el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.setPointerCapture(e.pointerId); held[k].add('p' + e.pointerId); sync(); });
+  const up = (e) => { held[k].delete('p' + e.pointerId); sync(); };
+  el.addEventListener('pointerup', up); el.addEventListener('pointercancel', up); el.addEventListener('lostpointercapture', up);
+}
+const KEYS = { ArrowRight: 'gas', ' ': 'gas', ArrowLeft: 'brake', ArrowUp: 'boost', Shift: 'boost' };
+addEventListener('keydown', (e) => {
+  const k = KEYS[e.key];
+  if (k) { held[k].add('k' + e.key); sync(); e.preventDefault(); }
+  if (e.key === 'r') restart();
+  if (e.key === 'w') game.winch(true);
+  if (e.key === 'g') game.openGate({ correct: true, quick: true });
+});
+addEventListener('keyup', (e) => { const k = KEYS[e.key]; if (k) { held[k].delete('k' + e.key); sync(); } });
+addEventListener('blur', () => { for (const s of Object.values(held)) s.clear(); sync(); });
+$('gateBtn').onclick = () => { $('gateBtn').hidden = true; game.openGate({ correct: true, quick: false }); };
+$('winchBtn').onclick = () => { $('winchBtn').hidden = true; game.winch(true); };
+$('restartBtn').onclick = restart;
+$('retry').onclick = restart;
+
+// ---- debug readout ----
+function readout() {
+  const s = game.getState();
+  $('state').textContent = `${trail.name}  lvl ${lvl}\nphase ${s.phase}${s.upsideDown ? ' (upside down)' : ''}\ndist  ${s.distance} / ${trail.length} m\n` +
+    `speed ${s.speedKmh} km/h\nboost ${Math.round(s.boost * 100)}%\ncash  $${s.cash}\ngate  ${s.gateIndex}/${s.gatesTotal}  coins ${s.coins}`;
+  requestAnimationFrame(readout);
+}
+readout();
+</script>
+</body>
+</html>

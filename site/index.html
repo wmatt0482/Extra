@@ -19,7 +19,7 @@
   }
 </script>
 <title>Learning Lab</title>
-<meta name="description" content="Free learning games built on learning science. Start with Spell Jump: a 4th-grade spelling trainer that is a car-jumping game. No ads, no accounts.">
+<meta name="description" content="Free learning games built on learning science. Spell Jump: a 4th-grade spelling trainer that is a car-jumping game. Trail Blazer: a trail-riding game. No ads, no accounts.">
 <meta name="theme-color" content="#0d1230">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Learning Lab">
@@ -88,6 +88,9 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 400; text-transform:
   transition: transform .06s, box-shadow .06s; }
 .btn:active { transform: translateY(6px); box-shadow: 0 1px 0 var(--accent-edge), inset 0 -3px 0 rgba(0,0,0,.12); }
 .btn svg { width: 26px; height: 26px; flex: none; }
+.btn-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px 18px; }
+.btn-tb { background: #ff8a1f; color: #2a1400; box-shadow: 0 var(--edge) 0 #b35400, 0 calc(var(--edge) + 8px) 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45); }
+.btn-tb:active { box-shadow: 0 1px 0 #b35400, inset 0 -3px 0 rgba(0,0,0,.12); }
 .free { margin: 22px 0 0; font-weight: 700; font-size: 15px; letter-spacing: .03em; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
 
 /* ---------- sections ---------- */
@@ -106,6 +109,9 @@ h2 { font-size: clamp(24px, 6.4vw, 34px); line-height: 1.05; margin-bottom: 20px
 .chip { display: inline-block; padding: 7px 12px; border-radius: 999px; background: var(--ink); border: 2px solid var(--line);
   font-weight: 700; font-size: 14px; color: var(--accent); }
 .game-body .text-link { display: inline-block; margin-left: 4px; font-weight: 700; }
+.game.second { margin-top: 22px; }
+.game-art.tb { background: linear-gradient(#ffb35c, #ff8a1f 62%, #e86f00); }
+.chip.tb { color: #ff8a1f; }
 
 /* science */
 .science { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
@@ -142,6 +148,7 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
   .hero { padding-top: 84px; padding-bottom: 150px; }
   .hero-ground { height: 140px; }
   .game { grid-template-columns: 1.05fr 1fr; margin-top: -84px; }
+  .game.second { margin-top: 26px; }
   .game-art { min-height: 0; }
   .game-body { padding: 32px 32px 32px; align-self: center; }
   .science { grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -161,10 +168,16 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
   <div class="wrap">
     <h1 class="wordmark">Learning<span>Lab</span></h1>
     <p class="lede">Free games built on learning science.</p>
-    <a class="btn" href="/spell-jump/">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
-      Play Spell Jump
-    </a>
+    <div class="btn-row">
+      <a class="btn" href="/spell-jump/">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+        Play Spell Jump
+      </a>
+      <a class="btn btn-tb" href="/trail-blazer/">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+        Play Trail Blazer
+      </a>
+    </div>
     <p class="free">Free · no ads · no accounts</p>
   </div>
   <svg class="hero-ground" viewBox="0 0 1600 140" preserveAspectRatio="none" aria-hidden="true">
@@ -223,6 +236,35 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       </div>
     </article>
 
+    <article class="card game second" aria-labelledby="game2-title">
+      <div class="game-art tb">
+        <svg viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A green side-by-side riding a dirt trail through pine hills">
+          <circle cx="306" cy="70" r="34" fill="#ffd7a3"/>
+          <path d="M0 150 L60 112 L120 140 L190 96 L260 134 L330 104 L400 130 L400 220 L0 220 Z" fill="#c75a00" opacity=".55"/>
+          <g fill="#1f4d2e"><path d="M20 168 l14 -46 l14 46 z M46 172 l10 -34 l10 34 z M330 160 l15 -50 l15 50 z M358 166 l11 -38 l11 38 z"/></g>
+          <path d="M0 176 C 110 156, 260 174, 400 160 L400 220 L0 220 Z" fill="#1f4d2e"/>
+          <path d="M-10 206 C 110 184, 250 200, 410 178" fill="none" stroke="#8a5a32" stroke-width="22" stroke-linecap="round"/>
+          <path d="M-10 206 C 110 184, 250 200, 410 178" fill="none" stroke="#ffd29a" stroke-width="2" stroke-dasharray="2 12" stroke-linecap="round" opacity=".8"/>
+          <!-- the Ranger 150 -->
+          <g class="float"><g transform="translate(150 118) rotate(-6)">
+            <g stroke="#111416" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"><path d="M36 34 L38 2 L76 2 L88 34"/><path d="M37 14 L84 14"/></g>
+            <circle cx="58" cy="22" r="7" fill="#ffd23a" stroke="#1d1b26" stroke-width="2"/>
+            <path d="M8 58 L8 36 L36 36 L40 42 L82 42 L100 38 L110 46 L110 58 Z" fill="#7c9a63" stroke="#1d1b26" stroke-width="2.5" stroke-linejoin="round"/>
+            <rect x="8" y="46" width="102" height="5" fill="#ff8a1f"/>
+            <rect x="44" y="28" width="30" height="14" fill="none" stroke="#111416" stroke-width="2"/>
+            <circle cx="28" cy="60" r="13" fill="#15181a"/><circle cx="28" cy="60" r="5" fill="#c9d1d6"/>
+            <circle cx="90" cy="60" r="13" fill="#15181a"/><circle cx="90" cy="60" r="5" fill="#c9d1d6"/>
+          </g></g>
+        </svg>
+      </div>
+      <div class="game-body">
+        <span class="kicker">Game two</span>
+        <h2 id="game2-title">Trail Blazer</h2>
+        <p>A trail-riding game: drive the Ranger 150, a kid-size side-by-side, over forest, rock, lake, snow, desert and night trails. Finish a trail to open the next one, and upgrade the engine, tires, suspension and boost with what you earn.</p>
+        <span class="chip tb">Trail riding now · Grade 4 math facts coming later</span>
+      </div>
+    </article>
+
     <section aria-labelledby="science-title">
       <span class="kicker">Why it works</span>
       <h2 id="science-title">The science we build on</h2>
@@ -254,6 +296,7 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
         <li class="card">Paste this week's spelling words in <b>Parents → Words of the week</b>, one per line. To add a sentence, put it after two bars, like <code>neighbor | | My neighbor has a dog.</code></li>
         <li class="card">Kids play about 8 words a day. Check the <b>Report</b> on Friday to see how far each word has come.</li>
       </ol>
+      <p class="more">Both games share the same players, family code and parent PIN: set them up once in either game.</p>
     </section>
   </div>
 </main>
