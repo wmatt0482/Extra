@@ -45,8 +45,9 @@
 <script type="module">
 // Engine playground. URL params: trail (id), lvl (0..10, all stats), eng / tires / susp / boostLvl (per upgrade),
 // seed, sim (speed multiplier), paint, decal, race (1 = motocross race, the default; 0 = the v1 trail ride),
-// riders (AI riders 0..3), skill (AI 0..1; default from the upgrades), gates (count, 0 = none), auto=1 (answer gates
-// after 400 ms with { correct: true, quick: index % 2 === 0 }), winch=1 (winch(true) whenever 'stuck' fires),
+// riders (AI riders 0..3), skill (AI 0..1; default from the upgrades), gates (count, 0 = none; a race defaults to 4),
+// auto=1 (answer gates after 400 ms: in a race quick / correct / fixed in turn, on the trail ride correct with every
+// other one quick), winch=1 (winch(true) whenever 'stuck' fires),
 // ui=0 (no overlays), best (best distance flag), rm=1 (reduced motion).
 import { createGame } from './src/game/engine.js';
 import { TRAILS, TRAIL_BY_ID } from './src/data/trails.js';
@@ -74,7 +75,9 @@ function onEvent(evt) {
   tb.events.push(evt);
   if (evt.type === 'gate') {
     $('gateBtn').hidden = false;
-    if (auto) timers.push(setTimeout(() => { $('gateBtn').hidden = true; tb.game.openGate({ correct: true, quick: evt.index % 2 === 0 }); }, 400));
+    // race: alternate quick / correct / fixed so all three paths show; trail ride: correct, every other one quick
+    const answer = race ? [{ correct: true, quick: true }, { correct: true }, { fixed: true }][evt.index % 3] : { correct: true, quick: evt.index % 2 === 0 };
+    if (auto) timers.push(setTimeout(() => { $('gateBtn').hidden = true; tb.game.openGate(answer); }, 400));
   }
   if (evt.type === 'gateOpen') $('gateBtn').hidden = true;
   if (evt.type === 'stuck') {
@@ -152,7 +155,7 @@ function readout() {
   const s = game.getState();
   const ord = ['', '1st', '2nd', '3rd', '4th'];
   $('state').textContent = `${trail.name}  lvl ${lvl}${race ? '  RACE' : ''}\nphase ${s.phase}${s.upsideDown ? ' (upside down)' : ''}${s.crashed ? ' CRASHED' : ''}${s.countdown ? ' ' + s.countdown.toFixed(1) : ''}\n` +
-    (race ? `place ${ord[s.place]} / ${s.riders.length}   time ${s.timeSec.toFixed(1)} s\n` + s.riders.map((x) => `  ${x.place}. ${x.name.padEnd(4)} ${Math.round(x.x)} m${x.timeSec != null ? '  ' + x.timeSec + ' s' : ''}`).join('\n') + '\n' : '') +
+    (race ? `place ${ord[s.place]} / ${s.riders.length}   time ${s.timeSec.toFixed(1)} s${s.frozen ? '  FROZEN' : ''}${s.gateHold ? '  hold ' + s.gateHold.toFixed(1) : ''}\n` + s.riders.map((x) => `  ${x.place}. ${x.name.padEnd(4)} ${Math.round(x.x)} m${x.timeSec != null ? '  ' + x.timeSec + ' s' : ''}`).join('\n') + '\n' : '') +
     `dist  ${s.distance} / ${trail.length} m\n` +
     `speed ${s.speedKmh} km/h\nboost ${Math.round(s.boost * 100)}%\ncash  $${s.cash}\ngate  ${s.gateIndex}/${s.gatesTotal}  coins ${s.coins}`;
   requestAnimationFrame(readout);

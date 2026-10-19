@@ -301,7 +301,7 @@ export function createGame(canvas, opts = {}) {
       maxX: 0, // race
       leanBlockGas: false, leanBlockBrake: false, leaned: false, aiErr: 0, ai: null,
       crashed: false, crashT: 0, crashes: 0, invulnT: 0, driver: null, helmetObj: null, upT: 0, slowT: 0,
-      cpIndex: 0, finished: false, finishTime: 0, finishOrder: 0, place: i + 1, startDelay: 0, bogT: 0, stopped: false,
+      cpIndex: 0, finished: false, finishTime: 0, finishOrder: 0, place: i + 1, startDelay: 0, bogT: 0, stopped: false, releaseT: 0,
     };
   }
   function buildVehicle(r, v, ox) {
@@ -381,7 +381,8 @@ export function createGame(canvas, opts = {}) {
     const stats = statsArg(cfg.stats);
     const raceCfg = cfg.race === true ? {} : cfg.race && typeof cfg.race === 'object' ? cfg.race : null;
     const race = !!raceCfg && !!trail.mx;
-    const course = createCourse(trail, seed, { gates: race ? cfg.gates ?? 0 : cfg.gates, race });
+    // v1.2: a race has math gates (default 4; gates: 0 = none); the AI riders pass through them
+    const course = createCourse(trail, seed, { gates: race ? (cfg.gates == null || cfg.gates === '' ? 4 : cfg.gates) : cfg.gates, race });
     const bd = R.createBackdrop(trail, seed);
     const engine = Engine.create({
       gravity: { x: 0, y: 1, scale: (G * S) / 1e6 },
@@ -551,9 +552,12 @@ export function createGame(canvas, opts = {}) {
   // ---------- simulation ----------
   function tick() {
     const r = run;
+    // v1.2 math gate: the whole race is frozen (riders, clock, particles); only the player's glide to the sign runs
+    if (r.frozen) { if (r.gateGlide) gateGlideStep(r); return; }
     const ts = r.timeScale;
     const dt = STEP * ts;
     if (r.slowT > 0) { r.slowT -= STEP; if (r.slowT <= 0) r.timeScale = 1; }
+    if (r.race && r.me.hold && r.me.releaseT > 0 && r.t >= r.me.releaseT) releasePlayer(r);
     if (r.race && r.phase === 'parked') countdownStep(r);
     const me = r.me;
     if (r.race && r.goT >= 0) for (const v of r.riders) if (v.ai && v.hold && !v.finished && r.t - r.goT >= v.startDelay) v.hold = false;
@@ -1010,7 +1014,73 @@ export function createGame(canvas, opts = {}) {
     waterFx(r, v);
     coinsFor(r, v, true);
     wheelFx(r, v, input);
+    raceGate(r, v);
     if (r.finishCrossed && (v.stopped || r.t - r.finishT > 4)) endRun(r, 'finish');
+  }
+
+  // ---- v1.2 math gates in a race: only the player stops; the race freezes while the question is open ----
+  function raceGate(r, v) {
+    for (const q of r.gates) if (q.openT >= 0 && q.open < 1) q.open = Math.min(1, (r.realT - q.openT) / 0.6);
+    const g = r.gates[r.gateIndex];
+    if (!g || g.done || v.crashed || v.finished || v.hold || r.goT < 0) return;
+    const frontX = v.wheels[1].position.x / S;
+    const stopX = g.x - T.gateStop;
+    if (frontX > g.x + 2) { openGateNow(r, g, null); return; } // carried past it (should not happen)
+    // start the glide early enough that it lasts about a second at the current speed
+    const d = clamp(v.speed * 0.5, 3, 14);
+    if (frontX >= stopX - d) startGateGlide(r, g);
+  }
+  function startGateGlide(r, g) {
+    const v = r.me, c = r.course;
+    measure(v);
+    r.gateEntryV = clamp(Math.max(v.vf, v.speed * 0.8), 6, v.vTop);
+    const a0 = v.ang, cs = Math.cos(a0), sn = Math.sin(a0);
+    const ox = v.chassis.position.x / S - (cs * HULL_C[0] - sn * HULL_C[1]);
+    const oy = -v.chassis.position.y / S - (sn * HULL_C[0] + cs * HULL_C[1]);
+    const x1 = g.x - T.gateStop - VEHICLE.wheels[1].x;
+    const dist = Math.max(0.5, x1 - ox);
+    r.gateGlide = { t: 0, dur: clamp(dist / Math.max(4, r.gateEntryV * 0.5), 0.35, 1.0), x0: ox, y0: oy, a0, x1, a1: Math.atan(c.groundSlope(x1)), g };
+    r.frozen = true;
+    r.gateApproach = true;
+    v.air = false;
+    if (v.boostOn) { v.boostOn = false; emit({ type: 'boost', on: false }); }
+  }
+  function gateGlideStep(r) {
+    const G = r.gateGlide, v = r.me, c = r.course;
+    G.t += STEP;
+    const u = Math.min(1, G.t / G.dur);
+    const e = 1 - (1 - u) * (1 - u); // brakes hard, settles gently
+    const x = G.x0 + (G.x1 - G.x0) * e;
+    const yg = c.groundY(x) + 0.06;
+    const y = G.y0 + (yg - G.y0) * smoothstep(0, 0.6, u);
+    const a = G.a0 + wrapPi(Math.atan(c.groundSlope(x)) - G.a0) * smoothstep(0, 0.7, u);
+    placeVehicle(v, x, y, a);
+    for (let i = 0; i < 2; i++) Body.setAngle(v.wheels[i], (x - G.x0) / VEHICLE.wheels[i].r);
+    measure(v);
+    if (u >= 1) {
+      capturePose(v);
+      v.hold = true;
+      v.prevAngle = v.chassis.angle;
+      r.gateGlide = null;
+      r.gateApproach = false;
+      r.phase = 'gate';
+      emit({ type: 'gate', index: G.g.index, x: G.g.x });
+      popup(r, 'GATE!', 0.5, LANE_BIG, '#ffb347', 1.2, false, 1.3, 'big');
+    }
+  }
+  // release the player from the line at the speed it reached the gate with (a gate is time-neutral)
+  function releasePlayer(r) {
+    const v = r.me, c = r.course;
+    v.hold = false;
+    v.releaseT = 0;
+    const a = Math.atan(c.groundSlope(v.com.x));
+    for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); }
+    measure(v);
+    addVelAll(v, r.gateEntryV * Math.cos(a), r.gateEntryV * Math.sin(a));
+    measure(v);
+    v.wheelAgo[1] = v.wheelAgo[2] = 0;
+    v.air = false; v.noContactT = 0;
+    v.prevAngle = v.chassis.angle;
   }
 
   function racePlaces(r) {
@@ -1493,7 +1563,10 @@ export function createGame(canvas, opts = {}) {
     if (r.race) {
       const place = r.finishCrossed ? r.me.finishOrder : 0;
       const medal = r.finishCrossed ? medalFor(r.trail.id, r.timeSec) : null;
-      const score = Math.round(clamp([0, 50, 35, 20, 5][place] + ({ gold: 35, silver: 25, bronze: 15 }[medal] || 0) + Math.min(15, 5 * r.flips) - Math.min(15, 3 * r.crashes), 0, 100));
+      let score = [0, 50, 35, 20, 5][place] + ({ gold: 35, silver: 25, bronze: 15 }[medal] || 0) + Math.min(15, 5 * r.flips) - Math.min(15, 3 * r.crashes);
+      // v1.2: the gate answers fold in (correct = full, fixed = half) when the race had gates
+      if (r.gateAnswered) score = 0.85 * score + 15 * ((r.gateCorrect + 0.5 * r.gateFixed) / r.gateAnswered);
+      score = Math.round(clamp(score, 0, 100));
       return { score, letter: score >= 90 ? 'S' : score >= 70 ? 'A' : score >= 50 ? 'B' : score >= 30 ? 'C' : 'D', medal };
     }
     const reach = clamp(r.distance / r.course.length, 0, 1);
@@ -1758,7 +1831,7 @@ export function createGame(canvas, opts = {}) {
       if (n >= maxSteps) acc = 0;
       if (run === r) {
         r.realT += dt;
-        updateFx(r, dt);
+        if (!r.frozen || r.gateGlide) updateFx(r, dt);
         updateCamera(r, dt, false);
       }
     }
@@ -1804,6 +1877,10 @@ export function createGame(canvas, opts = {}) {
       timeSec: Math.round(r.timeSec * 100) / 100,
       riders: ridersOut(r),
       crashed: v.crashed,
+      // v1.2 gates: gliding to a sign (the race is already frozen), or held at the line after a fixed answer
+      gateApproach: !!r.gateApproach,
+      gateHold: r.race && v.hold && v.releaseT > 0 ? Math.max(0, Math.round((v.releaseT - r.t) * 100) / 100) : 0,
+      frozen: !!r.frozen,
       countdown: r.race && r.goT < 0 ? Math.max(0.01, Math.round((TR.goAt - r.cdT) * 100) / 100) : 0,
       length: r.course.length,
     };
@@ -1824,18 +1901,32 @@ export function createGame(canvas, opts = {}) {
       const g = r.gates[r.gateIndex];
       if (!g) return false;
       const v = r.me;
-      const res = { correct: !!result.correct, quick: !!result.quick && !!result.correct, fixed: !!result.fixed && !result.correct };
+      const quickIn = !!result.quick && !result.fixed;
+      const res = { correct: !!result.correct || quickIn, quick: quickIn, fixed: !!result.fixed && !result.correct && !quickIn };
       r.gateAnswered++;
       let raw = 0, quick = 0, fuel = 0;
       if (res.correct) { r.gateCorrect++; raw = T.cash.gate; fuel = T.fuel.correct; }
       if (res.quick) { r.gateQuick++; quick = T.cash.quick; fuel = T.fuel.quick; }
-      if (res.fixed) { r.gateFixed++; raw = T.cash.fixed; fuel = T.fuel.fixed; }
+      if (res.fixed) { r.gateFixed++; raw = T.cash.fixed; fuel = r.race ? 0 : T.fuel.fixed; } // a race: no boost for a fixed answer
       r.gatesRaw += raw;
       r.quickRaw += quick;
       v.fuel = Math.min(v.tank, v.fuel + v.tank * fuel);
       const m = r.stats.coinMult;
       const cash = Math.round(raw * m) + Math.round(quick * m);
       openGateNow(r, g, res);
+      if (r.race) {
+        // the gate drops: everyone resumes at once (fixed: the rivals get a head start while you wait at the line)
+        r.phase = 'ride';
+        r.frozen = false;
+        const hold = res.fixed ? (Number.isFinite(Number(result.holdSec)) ? clamp(Number(result.holdSec), 0, 10) : 1.5) : 0;
+        if (hold > 0) { v.hold = true; v.releaseT = r.t + hold; } else releasePlayer(r);
+        if (res.quick) v.burstT = 1.2;
+        emit({ type: 'gateOpen', index: g.index, cash, fuel, correct: res.correct, quick: res.quick, fixed: res.fixed, holdSec: hold });
+        if (cash > 0) popup(r, '+$' + cash + (res.quick ? ' QUICK!' : ''), 0.5, LANE_SUB, '#ffe14a', 0.85, false, 1.4, 'sub');
+        if (res.quick) popup(r, 'BOOST!', 0.5, LANE_BIG, '#7cf2ff', 1.2, false, 1.1, 'big');
+        else if (hold > 0) popup(r, 'WAIT...', 0.5, LANE_BIG, '#ffb36b', 1.0, false, hold, 'big');
+        return true;
+      }
       r.phase = 'ride';
       r.progMark = r.maxX; r.progT = 0; r.stallT = 0;
       if (res.correct || res.fixed) v.burstT = res.quick ? 0.7 : 0.5;
@@ -1866,7 +1957,7 @@ export function createGame(canvas, opts = {}) {
     getState,
     // --- not part of the contract: test / debug helpers ---
     debugStep(n = 1) {
-      for (let i = 0; i < n && run; i++) { tick(); if (run) { run.realT += STEP; updateFx(run, STEP); updateCamera(run, STEP, false); } }
+      for (let i = 0; i < n && run; i++) { tick(); if (run) { run.realT += STEP; if (!run.frozen || run.gateGlide) updateFx(run, STEP); updateCamera(run, STEP, false); } }
       return getState();
     },
     debugPerf(reset = false) {

@@ -4,9 +4,12 @@
 // flips, perfect landings, coins, position bonus, finish bonus; whatever the total holds beyond the parts shows as a
 // Bonus row), and callouts for what the race unlocked (the next track on 3rd or better, a medal, a paint, a decal).
 // Title: "1st place!" / "Podium!" / "Race over". Buttons: Garage / Race again / Next track.
-// TODO (math phase, SPEC §2.6): the race's facts (✓ / ⚡ / ↻), "N facts mastered", the mission and the level stamp.
+// v1.2 (math layer): the race's facts (✓ right first try, ⚡ quick, ↻ fixed), "N facts mastered!", the daily mission
+// (its $400 shows as an extra row under the total: paid when it happened, not part of the race's cash), the XP and a
+// level-up stamp.
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { MEDAL_LABEL, fmtTime, ordinal } from '../data/medals.js';
+import { factAnswer, factText } from '../facts/facts.js';
 import { icon } from './tbIcons.js';
 import { drawPreview } from './vehiclePreview.js';
 
@@ -18,9 +21,16 @@ const fmt1 = (n) => (Math.round((n || 0) * 10) / 10).toFixed(1);
 export function createResults(app) {
   const el = {
     title: $('#res-title'), podium: $('#res-podium'), time: $('#res-time'), medal: $('#res-medal'), record: $('#res-record'), sub: $('#res-sub'),
-    stats: $('#res-stats'), pay: $('#res-pay'), callouts: $('#res-callouts'), again: $('#res-again'), garage: $('#res-garage'), next: $('#res-next'),
+    facts: $('#res-facts'), moment: $('#res-moment'), pay: $('#res-pay'), callouts: $('#res-callouts'), again: $('#res-again'), garage: $('#res-garage'), next: $('#res-next'),
   };
-  let last = null, countRaf = 0, medalTimer = 0;
+  let last = null, countRaf = 0, medalTimer = 0, momentTimers = [];
+  const clearMoment = () => { momentTimers.forEach(clearTimeout); momentTimers = []; el.moment.hidden = true; el.moment.replaceChildren(); };
+  function levelUp(level) {
+    el.moment.replaceChildren(h('div', { class: 'lvl-stamp', id: 'res-levelup', role: 'img', 'aria-label': `Level ${level}` }, h('div', {}, h('small', {}, 'Level'), h('b', {}, String(level)))));
+    el.moment.hidden = false;
+    app.audio.levelUp();
+    momentTimers.push(setTimeout(clearMoment, app.settings.reducedMotion ? 1200 : 2200));
+  }
 
   el.again.addEventListener('click', () => last && app.startRide(last.trail.id));
   el.garage.addEventListener('click', () => app.go('garage'));
@@ -39,7 +49,16 @@ export function createResults(app) {
     td.textContent = '$0';
     countRaf = requestAnimationFrame(tick);
   }
-  const tile = (value, unit, label, key) => h('div', { class: 'stat', 'data-stat': key }, h('b', {}, value, unit ? h('small', {}, unit) : null), h('span', {}, label));
+  function factsRow(list) {
+    if (!list || !list.length) { el.facts.replaceChildren(); el.facts.hidden = true; return; }
+    el.facts.hidden = false;
+    el.facts.replaceChildren(...list.map((f) => {
+      const kind = f.quick ? 'quick' : f.correct ? 'ok' : 'fixed';
+      const mark = f.quick ? '⚡' : f.correct ? '✓' : '↻';
+      return h('span', { class: `rf ${kind}`, 'data-fact': f.fact, 'data-kind': kind, title: kind === 'quick' ? 'Quick!' : kind === 'ok' ? 'Right first try' : 'Fixed' },
+        h('b', {}, `${factText(f.fact, f.flip)} = ${factAnswer(f.fact)}`), h('span', { class: 'mk', 'aria-label': kind }, mark));
+    }));
+  }
 
   // podium order on screen: 2nd, 1st, 3rd
   function podium(rows) {
@@ -76,19 +95,22 @@ export function createResults(app) {
     const best = app.save.bestTime[r.trail.id];
     const t = r.medalTimes || {};
     el.sub.textContent = `${r.trail.name} · ${place ? `${ordinal(place)} of ${(r.standings || []).length || 4}` : 'not finished'}${best ? ` · best ${fmtTime(best)}` : ''}${t.gold ? ` · gold ${fmtTime(t.gold)}` : ''}`;
-    el.stats.replaceChildren(
-      tile(String(s.flips || 0), '', 'Flips', 'flips'),
-      tile(fmt1(s.airTime), 's', 'Air', 'air'),
-      tile(String(s.crashes || 0), '', 'Crashes', 'crashes'),
-      tile(String(Math.round(s.maxSpeedKmh || 0)), 'km/h', 'Speed', 'speed'));
+    el.sub.textContent += ` · ${s.flips || 0} flip${s.flips === 1 ? '' : 's'} · ${fmt1(s.airTime)} s air${s.crashes ? ` · ${s.crashes} crash${s.crashes === 1 ? '' : 'es'}` : ''}`;
+    const math = r.math;
+    factsRow(math && math.facts);
     const hints = { distance: `${money(Math.floor(s.distance || 0))} m`, air: `${fmt1(s.airTime)} s`, flips: `${s.flips || 0}×`, coins: `${s.coins || 0}×`, place: place ? ordinal(place) : '' };
     const rows = r.rows.map((row) => h('tr', { 'data-row': row.key },
       h('td', {}, LABEL[row.key] || row.key, hints[row.key] ? h('span', { class: 'hint' }, ` · ${hints[row.key]}`) : null),
       h('td', { 'data-value': String(row.value) }, '$' + money(row.value))));
     const totalTd = h('td', { id: 'res-total' });
-    el.pay.replaceChildren(h('tbody', {}, ...rows, h('tr', { class: 'total' }, h('td', {}, 'Total'), totalTd)));
+    const extra = math && math.missionPaid ? [h('tr', { class: 'extra', 'data-extra': 'mission' }, h('td', {}, 'Daily mission', h('span', { class: 'hint' }, ' · paid on the 12th gate')), h('td', {}, '+$' + money(math.missionPaid)))] : [];
+    el.pay.replaceChildren(h('tbody', {}, ...rows, h('tr', { class: 'total' }, h('td', {}, 'Total'), totalTd), ...extra));
     countUp(totalTd, r.total);
     const call = [];
+    if (math && math.mastered.length) call.push(h('span', { class: 'callout mastered', 'data-callout': 'mastered' }, `${math.mastered.length} fact${math.mastered.length > 1 ? 's' : ''} mastered!`));
+    if (math && math.missionPaid) call.push(h('span', { class: 'callout orange', 'data-callout': 'mission' }, `Mission complete! +$${money(math.missionPaid)}`));
+    else if (math && math.facts.length) call.push(h('span', { class: 'callout', 'data-callout': 'mission-progress' }, math.mission.done ? 'Mission done today' : `Today ${math.mission.count} / ${math.mission.size} gates`));
+    if (math && math.xp) call.push(h('span', { class: 'callout xp', 'data-callout': 'xp' }, `+${math.xp} XP`));
     if (r.bank.newMedal) call.push(h('span', { class: 'callout orange', 'data-callout': 'medal', 'data-medal': m }, `${MEDAL_LABEL[m]} medal!`));
     if (r.unlocked) call.push(h('span', { class: 'callout', 'data-callout': 'unlock', 'data-trail': r.unlocked.id }, h('span', { html: icon('trail') }), `Unlocked: ${r.unlocked.name}`));
     const ps = r.bank.paints;
@@ -98,6 +120,8 @@ export function createResults(app) {
     if (s.finishCrossed && place > 3 && !r.next) call.push(h('span', { class: 'callout orange', 'data-callout': 'need-podium' }, 'Finish 3rd or better to open the next track'));
     el.callouts.replaceChildren(...call);
     el.next.hidden = !r.next;
+    clearMoment();
+    if (math && math.levelAfter > math.levelBefore) momentTimers.push(setTimeout(() => levelUp(math.levelAfter), app.settings.reducedMotion ? 200 : 1300));
   }
-  return { show, hide() { clearTimeout(medalTimer); cancelAnimationFrame(countRaf); } };
+  return { show, hide() { clearTimeout(medalTimer); cancelAnimationFrame(countRaf); clearMoment(); } };
 }

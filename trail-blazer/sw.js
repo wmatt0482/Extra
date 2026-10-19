@@ -9,7 +9,7 @@
 // content-addressed: cache-first in Spell Jump's clip cache (TTS_CACHE, shared on this origin).
 // Caches are per origin, shared with Spell Jump's worker: this worker only ever deletes its own ('trail-blazer-…').
 // If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'trail-blazer-v1.1.0';
+const VERSION = 'trail-blazer-v1.2.0';
 const PREFIX = 'trail-blazer-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -40,6 +40,14 @@ const SHELL = [
   'src/ui/results.js',
   'src/ui/parentZone.js',
   'src/ui/vehiclePreview.js',
+  'src/ui/numpad.js',
+  'src/ui/gatePanel.js',
+  'src/ui/grid.js',
+  'src/facts/facts.js',
+  'src/facts/spoken.js',
+  'src/facts/hints.js',
+  'src/facts/scheduler.js',
+  'src/facts/store.js',
 ];
 // The engine (built separately, may be split differently) and the shared Spell Jump modules (+ their imports):
 // cached when present; the page also posts every module it actually loaded (see 'cache-urls' below).
@@ -56,6 +64,8 @@ const OPTIONAL = [
   '../spell-jump/src/ui/icons.js',
   '../spell-jump/src/ui/controls.js',
   '../spell-jump/src/spelling/profiles.js',
+  '../spell-jump/src/spelling/tts.js',
+  '../spell-jump/src/spelling/cloudVoice.js',
   '../spell-jump/src/spelling/wordStore.js',
   '../spell-jump/src/spelling/scheduler.js',
   '../spell-jump/src/spelling/words.js',

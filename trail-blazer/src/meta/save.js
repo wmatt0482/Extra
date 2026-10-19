@@ -8,6 +8,7 @@
 import { UPGRADES, MAX_LEVEL, emptyLevels } from '../data/upgrades.js';
 import { PAINT_BY_ID, DECAL_BY_ID } from '../data/paints.js';
 import { MEDALS as MEDAL_IDS } from '../data/medals.js';
+import { defaultFacts, factsKey, normalizeFacts } from '../facts/store.js';
 
 export const SAVE_VERSION = 1;
 export const SETTINGS_KEY = 'trailBlazer.settings';
@@ -120,4 +121,29 @@ export function loadSettings() {
 }
 export function writeSettings(s) {
   try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); return true; } catch (_) { return false; }
+}
+
+// ---------- the math data (src/facts/store.js): `trailBlazer.<playerId>.facts` ----------
+export function loadFactsData(playerId, now = Date.now()) {
+  if (!playerId) return defaultFacts(now);
+  const key = factsKey(playerId);
+  const text = readText(key);
+  if (!text) return defaultFacts(now);
+  try {
+    const raw = JSON.parse(text);
+    if (!raw || typeof raw !== 'object' || (raw.v !== undefined && raw.v > 1)) throw new Error('bad facts shape');
+    return normalizeFacts(raw, now);
+  } catch (e) {
+    console.warn('[save] corrupt facts data, starting fresh (backup kept)', e);
+    try { localStorage.setItem(key + '.corrupt', text); } catch (_) { /* ignore */ }
+    return defaultFacts(now);
+  }
+}
+export function writeFactsData(playerId, d) {
+  if (!playerId || !d) return false;
+  try { localStorage.setItem(factsKey(playerId), JSON.stringify(d)); return true; } catch (e) { console.warn('[save] could not write facts', e); return false; }
+}
+export function removeFactsData(playerId) {
+  if (!playerId) return;
+  try { localStorage.removeItem(factsKey(playerId)); } catch (_) { /* ignore */ }
 }

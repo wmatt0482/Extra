@@ -19,7 +19,7 @@
   }
 </script>
 <title>Learning Lab</title>
-<meta name="description" content="Free learning games built on learning science. Spell Jump: a 4th-grade spelling trainer that is a car-jumping game. Trail Blazer: a motocross-style race with flips and big air. No ads, no accounts.">
+<meta name="description" content="Free learning games built on learning science. Spell Jump: a 4th-grade spelling trainer that is a car-jumping game. Trail Blazer: a motocross-style race where Grade 4 math facts open the gates. No ads, no accounts.">
 <meta name="theme-color" content="#0d1230">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Learning Lab">
@@ -123,6 +123,7 @@ h2 { font-size: clamp(24px, 6.4vw, 34px); line-height: 1.05; margin-bottom: 20px
 .n3 { background: var(--go); box-shadow: 0 4px 0 var(--go-edge); }
 .n4 { background: var(--hot); box-shadow: 0 4px 0 var(--hot-edge); color: #fff; }
 .n5 { background: var(--violet); box-shadow: 0 4px 0 var(--violet-edge); color: #fff; }
+.n6 { background: #ff8a1f; box-shadow: 0 4px 0 #b85a00; }
 .science h3 { font-size: 17px; line-height: 1.2; margin: 2px 0 6px; }
 .science p { margin: 0; color: var(--muted); }
 .science strong { color: #fff; font-weight: 700; }
@@ -152,7 +153,6 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
   .game-art { min-height: 0; }
   .game-body { padding: 32px 32px 32px; align-self: center; }
   .science { grid-template-columns: 1fr 1fr; gap: 16px; }
-  .science li:last-child { grid-column: 1 / -1; }
   .science li { padding: 22px; }
   section { padding-top: 64px; }
 }
@@ -260,8 +260,8 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       <div class="game-body">
         <span class="kicker">Game two</span>
         <h2 id="game2-title">Trail Blazer</h2>
-        <p>A motocross-style race in the Ranger 150 with flips, big air and three rivals. Six tracks from pine forest to a night ride: land on the podium to open the next one, earn medals and new paints, and upgrade the engine, tires, suspension and boost.</p>
-        <span class="chip tb">Racing now · Grade 4 math facts coming later</span>
+        <p>A motocross-style race in the Ranger 150 with flips, big air and three rivals. Math Gates stop the race: your child hears a times-table fact and types the answer, and a quick right answer is a big boost toward the podium. Misses get a fix-it routine with a strategy hint, and facts return over the days until they are fast.</p>
+        <span class="chip tb">Grade 4 math facts</span>
       </div>
     </article>
 
@@ -271,19 +271,22 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       <ol class="science">
         <li class="card"><span class="num n1" aria-hidden="true">1</span><div>
           <h3>Retrieval practice</h3>
-          <p>Pulling a word out of memory builds it far better than copying it. <strong>In the game:</strong> the word is spoken, never shown, and your child spells it from memory.</p></div></li>
+          <p>Pulling a word out of memory builds it far better than copying it. <strong>In Spell Jump:</strong> the word is spoken, never shown, and your child spells it from memory. <strong>In Trail Blazer:</strong> the answer to each Math Gate is typed on a number pad, never picked from choices.</p></div></li>
         <li class="card"><span class="num n2" aria-hidden="true">2</span><div>
           <h3>Spaced practice</h3>
-          <p>Practice spread over days lasts longer than cramming. <strong>In the game:</strong> words come back on a schedule (next day, 2 days, 4 days) until they stick, and old lists return weeks later.</p></div></li>
+          <p>Practice spread over days lasts longer than cramming. <strong>In Spell Jump:</strong> words come back on a schedule (next day, 2 days, 4 days) until they stick, and old lists return weeks later. <strong>In Trail Blazer:</strong> facts return over the following days the same way, mixed with the other tables instead of drilled one table at a time.</p></div></li>
         <li class="card"><span class="num n3" aria-hidden="true">3</span><div>
           <h3>Immediate self-correction</h3>
-          <p>Fixing a mistake right away, by yourself, beats correcting a whole list later. <strong>In the game:</strong> after a miss comes Cover-Copy-Compare: see what differs, copy it, then spell it once more from memory.</p></div></li>
+          <p>Fixing a mistake right away, by yourself, beats correcting a whole list later. <strong>In Spell Jump:</strong> after a miss comes Cover-Copy-Compare: see what differs, copy it, then spell it once more from memory. <strong>In Trail Blazer:</strong> a missed fact shows its answer and a strategy hint (for 7 × 9: "10 × 7 is 70, take away 7"), read aloud, then hides it, and your child types it from memory to open the gate.</p></div></li>
         <li class="card"><span class="num n4" aria-hidden="true">4</span><div>
           <h3>No misspelling exposure</h3>
-          <p>Seeing wrong spellings makes kids spell worse, even a week later. <strong>In the game:</strong> there are never wrong spellings to pick from, and a wrong attempt is cleared within seconds.</p></div></li>
+          <p>Seeing wrong spellings makes kids spell worse, even a week later. <strong>In Spell Jump:</strong> there are never wrong spellings to pick from, and a wrong attempt is cleared within seconds. <strong>In Trail Blazer:</strong> a wrong answer is cleared within half a second and the correct fact takes its place.</p></div></li>
         <li class="card"><span class="num n5" aria-hidden="true">5</span><div>
           <h3>Intrinsic integration</h3>
-          <p>Kids learn more, and play longer, when the learning is the game rather than a toll before it. <strong>In the game:</strong> spelling right is what powers the jump. No "do homework, then play".</p></div></li>
+          <p>Kids learn more, and play longer, when the learning is the game rather than a toll before it. <strong>In Spell Jump:</strong> spelling right is what powers the jump. No "do homework, then play". <strong>In Trail Blazer:</strong> facts open the gates and fill the boost tank, so knowing them fast is how you win the race.</p></div></li>
+        <li class="card"><span class="num n6" aria-hidden="true">6</span><div>
+          <h3>Fluency</h3>
+          <p>Knowing a fact is not enough: it should come back in about 3 seconds, so working memory is free for the bigger problem. Practice that rewards speed, after accuracy, builds that automaticity (Hasselbring 1988; Woodward 2006), and new facts stick best when rehearsed in between known ones (incremental rehearsal, Burns 2005). <strong>In Trail Blazer:</strong> a right answer within 3 seconds is a ⚡ Quick boost. There is never a clock on screen, and a fact counts as fluent only after quick answers on two different days.</p></div></li>
       </ol>
       <p class="more">Full detail, with sources, on the <a href="/why/">Why it works page</a>.</p>
     </section>
@@ -295,6 +298,7 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
         <li class="card">Open <a href="/spell-jump/">Spell Jump</a>, tap <b>Parents</b>, set a PIN, and create a family code. Join with that code on your kids' devices so their progress follows them.</li>
         <li class="card">Paste this week's spelling words in <b>Parents → Words of the week</b>, one per line. To add a sentence, put it after two bars, like <code>neighbor | | My neighbor has a dog.</code></li>
         <li class="card">Kids play about 8 words a day. Check the <b>Report</b> on Friday to see how far each word has come.</li>
+        <li class="card">For math, open <a href="/trail-blazer/">Trail Blazer</a> → <b>Parents → Facts this week</b> and pick the times tables (×2 to ×12, with ÷ if you like), or type your own problems one per line, like <code>7 x 8</code> or <code>56 / 7</code>. Each race asks 4 facts; 12 a day is the daily mission.</li>
       </ol>
       <p class="more">Both games share the same players, family code and parent PIN: set them up once in either game.</p>
     </section>
@@ -303,7 +307,7 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
 
 <footer>
   <div class="wrap">
-    <p>What's stored online: first names, word lists, spelling progress and a hashed parent PIN, under your family code. Nothing else. Word lists and sentences are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is.</p>
+    <p>What's stored online: first names, word lists, spelling progress and a hashed parent PIN, under your family code. Nothing else. Word lists, sentences and the math facts being practiced are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is.</p>
     <p class="meta">Learning Lab · learninglab.fun · Free to use</p>
   </div>
 </footer>

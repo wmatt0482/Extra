@@ -661,18 +661,31 @@ function createMxCourse(trail, seed, opts) {
     return 0;
   }
 
-  // ---- gates stay dormant (only when a ride asks for them): on sprints near even targets ----
+  // ---- math gates (v1.2: only when a race asks for them): on flat sprints near evenly spaced targets, never on a
+  // jump face or a landing; the engine glides the player to a stop in front of the sign, so a gate can follow a jump
   const gateCount = opts.gates == null ? 0 : trailGates(trail, opts.gates);
   const gates = [];
-  for (let k = 0; k < gateCount; k++) {
-    const target = (L * (k + 1)) / (gateCount + 1);
-    let best = null, bd = 120;
+  {
+    const cands = [];
     for (const f of features) {
-      if (f.type !== 'sprint' || f.x1 - f.x0 < 24) continue;
-      const gx = f.x0 + 16, d = Math.abs(gx - target);
-      if (d < bd && (!gates.length || gx - gates[gates.length - 1].x > 60)) { bd = d; best = gx; }
+      if (f.type !== 'sprint' || f.x1 - f.x0 < 22 || f.x0 < 60 || f.x1 > L - 12) continue;
+      const len = f.x1 - f.x0;
+      cands.push(f.x0 + clamp(len * 0.55, 12, len - 6));
     }
-    if (best != null) gates.push({ index: gates.length, x: best, y: hAt(best) });
+    const used = new Set();
+    for (let k = 0; k < gateCount; k++) {
+      const target = (L * (k + 1)) / (gateCount + 1);
+      const prev = gates.length ? gates[gates.length - 1].x : -1e9;
+      let best = -1, bd = Infinity;
+      for (let i = 0; i < cands.length; i++) {
+        if (used.has(i) || cands[i] - prev < 50) continue;
+        const d = Math.abs(cands[i] - target);
+        if (d < bd) { bd = d; best = i; }
+      }
+      if (best < 0) continue;
+      used.add(best);
+      gates.push({ index: gates.length, x: cands[best], y: hAt(cands[best]) });
+    }
   }
 
   // ---- coins: rows on sprints, arcs over the jumps along the design line ----

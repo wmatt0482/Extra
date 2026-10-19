@@ -276,3 +276,41 @@ screens, family, garage, paints and save stay.
    `checkpoint {index}`, `crash`, `respawn`, `flip {kind, count}`, `bigAir`, `position {place}`, `lap {timeSec}`;
    `getState()` adds `place`, `timeSec`, `riders: [{name, paint, x}]`; summary adds `place`, `timeSec`, `flips`,
    `crashes`, `cash.flips`, `cash.perfect`, `cash.place`. The gate mechanics stay dormant for the math phase.
+
+## v1.2 — The math layer, in race mode (Matt, Oct 19: "Add the math layer now")
+
+§4 and §5 apply as written (facts, scheduler, incremental rehearsal, fluency, cover-copy-compare with strategy hints,
+interleaving, the Fact Grid, Parent Zone tabs, report, daily mission, XP, LEARNING-DESIGN.md), with these race
+adaptations:
+
+1. **Math Gates in a race.** The track keeps its motocross rhythm; `gates` (Parents → Options "Math gates per race":
+   3 / 4 / 6, default 4) wooden gate signs stand on flat sections. Only the **player** stops at them (the AI riders
+   are ghosts and pass through). When the player reaches a gate the engine parks the vehicle in front of the sign
+   (≤ 1 s) and **freezes the whole race**: every rider, the clock, the particles (phase `gate`, event
+   `gate {index, x}`), so time spent answering never counts. `openGate(result)` with `{ correct, quick, fixed }`:
+   - **quick** (≤ 3 s): the gate drops, a big boost burst (+60 % tank and a 1.2 s push), "+$200 QUICK!", the race
+     resumes for everyone at once;
+   - **correct**: the gate drops, +40 % tank, "+$120", resumes for everyone;
+   - **fixed** (after the cover-copy routine): the gate drops, no boost, the **rivals get a 1.5 s head start**
+     (they run while the player is held at the line), "+$40".
+   The engine also accepts `holdSec` in `result` to tune that head start. Gate cash goes in `cash.gates` /
+   `cash.quick`; the summary keeps `gates: { answered, correct, quick, fixed }`.
+2. **Winch mode is gone** (no stuck state in a race); the Gate panel has no winch header.
+3. **Facts per race = gates per race** (default 4). The daily mission counts gate answers (12 a day → $400 once,
+   +100 XP). Between races nothing is asked: every fact is asked at a gate, in the race.
+4. **Results** add the facts list of the race (each fact with ✓ / ⚡ quick / ↻ fixed), "N facts mastered!",
+   the mission state and the level-up stamp; the podium stays. Fast answers are what make the time: the medal
+   targets (MEDAL_TIMES) are unchanged because the clock is frozen during a question, so a quick answer's boost is
+   pure gain and a fixed answer's head start is pure loss.
+5. **Voice**: the fact is read as it appears ("seven times eight") and, on a miss, the fact with its answer and
+   the hint, through Spell Jump's tts (device voice; the natural Google voice when the family has a code and the
+   player's Spell Jump voice option picked one). `tts.unlock()` inside the countdown tap / first GAS.
+6. **Parent Zone**: Family code · Facts this week · Options (math gates per race, new facts per day, facts aloud;
+   the voice is set in Spell Jump) · Report · Players. The stock set is ×2 … ×9 with ÷ (commutative pairs are one
+   fact). Custom problems one per line (`7 x 8`, `56 / 7`, `34 + 19`, `80 - 46`), bad lines reported by number.
+7. **Fact Grid** on the title ("Facts"): the 12 × 12 × grid and a ÷ view, cells colored by status, tap to hear.
+8. **Home page**: the Trail Blazer card says "Grade 4 math facts" and the science section gets an "In Trail
+   Blazer:" line per technique (retrieval = typed answers, spacing = facts return over days, self-correction =
+   the fix-it routine with a strategy hint, no wrong answers shown, intrinsic = facts open the gates and win races)
+   plus a sixth card, **Fluency**, for the ≤ 3 s quick answers (Hasselbring 1988 / Woodward 2006) and incremental
+   rehearsal (Burns 2005). The Why page gets the math sources.

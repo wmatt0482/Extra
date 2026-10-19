@@ -8,6 +8,10 @@
 // 'finish' {summary} 0.8 s later. getState().riders and summary.riders list every rider, the player included (me: true). Cash (× stats.coinMult, each part a whole number so the parts add up to the total):
 // distance $2/m, air $30/s, flips $150, perfect landings $100, coins $10, place 1st $500 / 2nd $300 / 3rd $150, finish
 // $300 (and gates $120 / quick $80 / fixed $40 when a ride has gates: the math phase).
+// Math Gates (v1.2): cfg.gates signs spread along the track; at each one the player is parked and the WHOLE race
+// freezes (riders, clock) with phase 'gate' + event 'gate' {index, x} until openGate({ correct, quick, fixed, holdSec }):
+// quick → +60 % boost and a 1.2 s push, correct → +40 %, fixed → no boost and the rivals run on for holdSec (1.5 s)
+// while the player waits at the line. Gate cash: $120 a right answer (+$80 quick), $40 fixed (cash.gates / cash.quick).
 // Test hooks: window.__mockScript = { aiTimes: [s, s, s] (the AI riders' race times; default 7.0, 9.6, 10.4: the
 //   player, ~8.8 s, finishes 2nd), noCrash: true }.
 import { drawRanger } from '../ui/vehiclePreview.js';
@@ -57,6 +61,8 @@ export function createGame(canvas, opts = {}) {
       flips: 0, flipCash: 0, perfect: 0, perfectCash: 0, crashes: 0, crashT: 0, coins: 0, coinCash: 0, nextCoin: 0,
       jump1: false, jump2: false, finishCrossed: false, timeSec: 0, finishAt: null, ended: false, popups: [],
       gates: { answered: 0, correct: 0, quick: 0, fixed: 0 }, gateCash: 0, quickCash: 0,
+      gateX: Array.from({ length: Math.max(0, Math.floor(cfg.gates || 0)) }, (_, i) => Math.round((length * (i + 1)) / (Math.floor(cfg.gates) + 1))),
+      gateIndex: 0, frozen: 0, holdUntil: 0, pushUntil: 0,
     };
     emit({ type: 'countdown', n: 3 });
     paused = false;
@@ -94,8 +100,10 @@ export function createGame(canvas, opts = {}) {
       if (r.t >= r.goT) { r.phase = 'ride'; r.rt = r.bogged ? -0.4 : 0; emit({ type: 'go', bogged: r.bogged }); }
       return;
     }
+    // a Math Gate: everything waits (the clock, every rider) until openGate()
+    if (r.phase === 'gate') { r.frozen += dt; r.speedKmh = 0; return; }
     // the AI keeps riding until the summary is out
-    const raceT = Math.max(0, r.t - r.goT);
+    const raceT = Math.max(0, r.t - r.goT - r.frozen);
     for (const a of r.riders) a.x = Math.min(r.length + 30, r.length * Math.pow(Math.min(1.2, raceT / a.finishT), 0.95));
     if (r.phase === 'done') {
       if (r.finishAt != null && r.t >= r.finishAt) end();
@@ -114,7 +122,15 @@ export function createGame(canvas, opts = {}) {
       }
       return;
     }
-    const v = (r.length / PLAYER_T) * (r.rt < LAUNCH_T ? 0.6 : 1) * (r.boosting ? 1.25 : 1);
+    if (r.rt < r.holdUntil) { r.speedKmh = 0; return; }     // held at the gate while the rivals get their head start
+    const v = (r.length / PLAYER_T) * (r.rt < LAUNCH_T ? 0.6 : 1) * (r.boosting ? 1.25 : 1) * (r.rt < r.pushUntil ? 1.3 : 1);
+    const gx = r.gateX[r.gateIndex];
+    if (gx != null && !r.inAir && r.distance + v * dt >= gx - 3) {
+      r.distance = Math.max(r.distance, gx - 3); r.phase = 'gate'; r.speedKmh = 0;
+      if (r.boosting) { r.boosting = false; emit({ type: 'boost', on: false }); }
+      emit({ type: 'gate', index: r.gateIndex, x: gx });
+      return;
+    }
     r.distance = Math.min(r.length, r.distance + v * dt);
     r.speedKmh = (r.rt < LAUNCH_T ? 48 : 88) + (r.boosting ? 22 : 0);
     r.maxSpeed = Math.max(r.maxSpeed, r.speedKmh);
@@ -245,7 +261,18 @@ export function createGame(canvas, opts = {}) {
   return {
     start,
     setInput(i = {}) { input.gas = !!i.gas; input.brake = !!i.brake; input.boost = !!(i.boost || i.nitro); },
-    openGate() { return false; },              // no gates in race mode (the math phase)
+    openGate(result = {}) {
+      const r = run;
+      if (!r || r.phase !== 'gate') return false;
+      const quick = !!result.quick && !!result.correct, correct = !!result.correct, fixed = !!result.fixed && !correct;
+      r.gates.answered++;
+      if (correct) { r.gates.correct++; r.gateCash += 120; r.boost = Math.min(1, r.boost + (quick ? 0.6 : 0.4)); }
+      if (quick) { r.gates.quick++; r.quickCash += 80; r.pushUntil = r.rt + 1.2; }
+      if (fixed) { r.gates.fixed++; r.gateCash += 40; r.holdUntil = r.rt + (Number.isFinite(result.holdSec) ? result.holdSec : 1.5); }
+      r.gateIndex++; r.phase = 'ride';
+      emit({ type: 'gateOpen', index: r.gateIndex - 1, correct, quick, fixed });
+      return true;
+    },
     winch() { return false; },                 // no winch in race mode: a crash respawns at the last checkpoint
     pause() { paused = true; },
     resume() { paused = false; last = performance.now(); },
@@ -256,7 +283,7 @@ export function createGame(canvas, opts = {}) {
       if (!r) return null;
       return {
         phase: r.phase, distance: r.distance, speedKmh: r.speedKmh, boost: r.boost, airTime: r.inAir ? r.flightT : 0, flips: r.flips, smashed: 0,
-        cash: cashNow(r).total, finishCrossed: r.finishCrossed, gateIndex: 0, gatesTotal: 0, stuck: false, upsideDown: r.phase === 'crash',
+        cash: cashNow(r).total, finishCrossed: r.finishCrossed, gateIndex: r.gateIndex, gatesTotal: r.gateX.length, stuck: false, upsideDown: r.phase === 'crash',
         place: r.place, timeSec: r.phase === 'countdown' ? 0 : r.finishCrossed ? r.timeSec : Math.max(0, r.rt),
         riders: ridersOut(r),
       };

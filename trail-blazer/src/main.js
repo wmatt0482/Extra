@@ -4,9 +4,10 @@
 // imported dynamically so the shell keeps working (mock engine, built-in trail list) if they are missing or broken.
 // v1.1 (SPEC "Race mode"): every ride is a motocross race against three AI riders: a 3-2-1 gate drop, position +
 // time + track bar on the HUD, stunt banners, crashes respawn at the last checkpoint (no winch), a podium with a medal.
-// No math layer yet: races start with `gates: 0`.
-// TODO (math phase, SPEC §4-§5): the gate flow hooks in at onEvent 'gate' (src/ui/gatePanel.js → game.openGate()),
-// the ride's facts on the results, and Facts this week / Report in the Parent Zone.
+// v1.2 (SPEC §4-§5 + "The math layer, in race mode"): Math Gates. A race starts with `gates` (Parents → Options, 3 / 4
+// / 6) and on each 'gate' event the engine freezes the race; the Gate panel asks the scheduler's next fact (read
+// aloud through Spell Jump's tts), main.js records the answer (facts store: boxes, mission, XP) and calls
+// game.openGate({ correct, quick, fixed }). Results list the race's facts; the Fact Grid shows every fact's status.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -14,12 +15,21 @@ import { Audio } from '../../spell-jump/src/audio.js';
 import { $, $$, h, money } from '../../spell-jump/src/ui/dom.js';
 import { COIN } from '../../spell-jump/src/ui/icons.js';
 import { createControls } from '../../spell-jump/src/ui/controls.js';
+import { tts } from '../../spell-jump/src/spelling/tts.js';
+import { createCloudVoice } from '../../spell-jump/src/spelling/cloudVoice.js';
 import { Sfx } from './sfx.js';
 import { FALLBACK_TRAILS } from './data/fallbackTrails.js';
-import { defaultSave, loadSave, loadSettings, removeSave, writeSave, writeSettings } from './meta/save.js';
 import {
-  bankRide, cashRows, currentTrail, finishedCount, hashString, isUnlocked, nextTrail, statsFor,
+  defaultSave, loadFactsData, loadSave, loadSettings, removeFactsData, removeSave, writeFactsData, writeSave, writeSettings,
+} from './meta/save.js';
+import {
+  bankRide, cashRows, currentTrail, earn, finishedCount, hashString, isUnlocked, nextTrail, statsFor,
 } from './meta/economy.js';
+import { MISSION_REWARD, activeFacts, levelFor, missionState, nextFact, noteRace, recordAnswer, resetFacts } from './facts/store.js';
+import { createSession } from './facts/scheduler.js';
+import { questionSentence } from './facts/facts.js';
+import { createGatePanel } from './ui/gatePanel.js';
+import { createGrid } from './ui/grid.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { hydrateAll } from './ui/tbIcons.js';
 import { createPlayers } from './ui/players.js';
@@ -32,7 +42,7 @@ import { drawAvatar, drawPreview, loadVehicle, vehicleModule } from './ui/vehicl
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -96,6 +106,9 @@ async function boot() {
   const family = Profiles.loadFamily();
   const save = defaultSave();           // replaced in place when a player is picked (screens hold this reference)
   let currentPlayerId = null;
+  let facts = null;                     // the current player's math data (src/facts/store.js)
+  let session = createSession();        // re-queue + incremental rehearsal across the races of one sitting
+  const factsCache = new Map();         // other players' math data while the Parent Zone edits them
   const { trails, source: trailSource, medalTable } = await loadTrails();
   const canvas = $('#game');
   const engineMod = await loadEngine();
@@ -110,7 +123,29 @@ async function boot() {
     engineName: engineMod.name,
     get family() { return family; },
     get currentPlayerId() { return currentPlayerId; },
+    get facts() { return facts; },
     persist: () => writeSave(currentPlayerId, save),
+    persistFacts: () => { if (currentPlayerId && facts) writeFactsData(currentPlayerId, facts); },
+    // ----- the math data of any player (Parent Zone) -----
+    factsFor(id) {
+      if (id === currentPlayerId && facts) return facts;
+      if (!factsCache.has(id)) factsCache.set(id, loadFactsData(id));
+      return factsCache.get(id);
+    },
+    saveFactsFor(id, d) {
+      writeFactsData(id, d);
+      if (id === currentPlayerId) { facts = d; session = createSession(); prepareVoice(); }
+    },
+    resetFactsFor(id) { const d = app.factsFor(id); resetFacts(d, Date.now()); app.saveFactsFor(id, d); },
+    levelFor: (id) => levelFor((id === currentPlayerId && facts ? facts : app.factsFor(id)).xp || 0),
+    // ----- the voice (Spell Jump's tts + natural voice) -----
+    tts,
+    say(text) { if (!facts || !facts.opts.aloud || !tts.available) return; try { tts.cancel(); tts.say(text); } catch (_) { /* ignore */ } },
+    unlockVoice() { try { tts.unlock(); } catch (_) { /* ignore */ } },
+    voiceInfo(id) {
+      const o = Profiles.playerOptions(family, id);
+      return { rate: o.rate, voiceName: o.voiceName || '', cloudVoice: o.cloudVoice || '', synced: !!sync.code, available: tts.available };
+    },
     go, toast, refreshCash, startRide, setSetting, setShake, selectPlayer,
     createPlayer: (name, color) => Profiles.createPlayer(family, name, color),
     openParents: (opts) => pz.open(opts),
@@ -122,11 +157,13 @@ async function boot() {
     },
     removePlayer(id) {
       Profiles.removePlayer(family, id);    // tombstoned in the family record: removed on every device, both games
-      removeSave(id);
-      if (id === currentPlayerId) { currentPlayerId = null; replaceSave(defaultSave()); }
+      removeSave(id); removeFactsData(id); factsCache.delete(id);
+      if (id === currentPlayerId) { currentPlayerId = null; facts = null; replaceSave(defaultSave()); }
     },
     onFamilyChanged() { if (screen === 'title') refreshTitle(); },
     onParentZoneClosed() {
+      factsCache.clear();
+      if (currentPlayerId) applyVoice();
       if (!currentPlayerId || screen === 'players') go('players');   // players may have been added, joined or removed
       else if (screen === 'title') refreshTitle();
       setTimeout(() => updater.check(), 0);
@@ -154,7 +191,28 @@ async function boot() {
     if (game && run) game.setInput(input);
   });
   const playersUI = createPlayers(app);
-  const screens = { players: playersUI.players, newplayer: playersUI.newplayer, garage: createGarage(app), trails: createTrails(app), results: createResults(app) };
+  const screens = { players: playersUI.players, newplayer: playersUI.newplayer, garage: createGarage(app), trails: createTrails(app), results: createResults(app), grid: createGrid(app) };
+  // the voice (SPEC §1): Spell Jump's tts, with the natural voice when the family has a code and the player's Spell Jump
+  // voice option picked one (clips of "seven times eight." etc. from /api/tts/prepare; the device voice otherwise)
+  const cloud = createCloudVoice({ getCode: () => sync.code, getWords: () => [], audio: Audio });
+  tts.setCloud(cloud);
+  tts.setOnSpeaking((on) => Audio.voice(on));
+  const gatePanel = createGatePanel($('#gate'), { tts, audio: Audio, aloud: () => !!(facts && facts.opts.aloud) });
+  function applyVoice() {
+    if (!currentPlayerId) return;
+    const o = Profiles.playerOptions(family, currentPlayerId);
+    tts.setRate(o.rate);
+    tts.setVoice(o.voiceName ? { name: o.voiceName, lang: o.voiceLang } : null);
+    cloud.setVoice(o.cloudVoice || '');
+    prepareVoice();
+  }
+  // the natural voice's clips for this week's facts (both ways round): asked once, the server keeps them
+  function prepareVoice() {
+    if (!facts || !cloud.active) return;
+    const texts = [];
+    for (const f of activeFacts(facts)) texts.push(questionSentence(f, false), questionSentence(f, true));
+    cloud.prepare([...new Set(texts)]).catch(() => {});
+  }
   const pz = createParentZone(app);
   const heroCanvas = $('#hero');
   let heroRaf = 0;
@@ -186,9 +244,13 @@ async function boot() {
     if (!Profiles.playerById(family, id)) return;
     currentPlayerId = id;
     replaceSave(loadSave(id));
+    facts = loadFactsData(id);
+    session = createSession();
     family.lastPlayer = id;
     Profiles.writeFamily(family);
     app.persist();
+    app.persistFacts();
+    applyVoice();
     go('title');
   }
   function refreshTitle() {
@@ -197,16 +259,40 @@ async function boot() {
     $('#title-player').textContent = p.name;
     drawAvatar($('#title-avatar'), p.color);
     $('#title-trails-text').textContent = `Tracks ${finishedCount(save, trails)} / ${trails.length}`;
+    if (facts) {
+      $('#title-lv').textContent = `Lv ${levelFor(facts.xp)}`;
+      const m = missionState(facts, Date.now());
+      $('#title-mission').classList.toggle('done', m.done);
+      $('#title-mission-text').textContent = m.done ? 'Mission complete! Race on' : `Today: ${m.count} / ${m.size} math gates`;
+    }
+  }
+  function refreshFactsHud() {
+    if (!facts) return;
+    const m = missionState(facts, Date.now());
+    const el = $('#hud-facts');
+    el.textContent = m.done ? `Facts ${m.answered} · mission done` : `Facts ${m.count} / ${m.size}`;
+    el.classList.toggle('done', m.done);
   }
 
+  // Ghost-click guard: on-screen keys act on pointerdown, so the click that follows the same tap would land on whatever the
+  // new screen has under the finger (Done on the name keyboard sits over the title's Parents button). Swallow a pointer
+  // click that arrives just after a screen change when its pointerdown came before the change.
+  let lastGo = 0, lastDown = 0;
+  document.addEventListener('pointerdown', () => { lastDown = performance.now(); }, true);
+  document.addEventListener('click', (e) => {
+    const t = performance.now();
+    if (lastDown < lastGo && t - lastGo < 500) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
   function go(name, arg) {
+    lastGo = performance.now();
     closePanel();
     for (const el of $$('.screen')) el.hidden = el.dataset.screen !== name;
     for (const [k, s] of Object.entries(screens)) if (k !== name && s.hide) s.hide();
     screen = name;
     const inRide = name === 'ride';
     document.documentElement.classList.toggle('in-run', inRide);
-    if (!inRide) { hud.clearBanners(); hideCoach(); hideCountdown(); }
+    if (!inRide) { hud.clearBanners(); hideCoach(); hideCountdown(); gatePanel.cancel(); document.documentElement.classList.remove('math'); }
     if (inRide || name === 'results') toastsEl.replaceChildren();
     $('#hud').hidden = !inRide;
     $('#controls').hidden = !inRide;
@@ -267,10 +353,12 @@ async function boot() {
     closePanel();
     const trail = trails.find((t) => t.id === trailId && isUnlocked(save, trails, t.id)) || currentTrail(save, trails);
     clearTimeout(stopFallback);
-    run = { trail, ended: false, quitting: false, place: null, lastState: null, started: false, posBannerAt: 0, cdTimer: 0 };
+    run = { trail, ended: false, quitting: false, place: null, lastState: null, started: false, posBannerAt: 0, cdTimer: 0,
+      gates: facts ? facts.opts.gates : 4, facts: [], xp: 0, mastered: [], fluent: [], missionPaid: 0, levelBefore: facts ? levelFor(facts.xp) : 1 };
     save.selectedTrail = trail.id;
     go('ride');
     hud.reset(trail, paintColor(save.paint));
+    refreshFactsHud();
     hideCountdown();
     controls.reset();
     controls.enable(true);
@@ -279,7 +367,7 @@ async function boot() {
       game.start({
         trail, stats: statsFor(save), seed: hashString('trail:' + trail.id), paint: save.paint, decal: save.decal,
         bestDistance: save.best[trail.id] || null, bestTime: save.bestTime[trail.id] || null,
-        gates: 0,                                      // no gate signs until the math phase
+        gates: facts ? facts.opts.gates : 4,           // Math Gates (Parents → Options: 3 / 4 / 6)
         race: { riders: 3, name: playerName() },
         shake: settings.reducedMotion ? 0 : settings.shake / 100,
       });
@@ -364,11 +452,7 @@ async function boot() {
       case 'smash': Audio.smash(); setTimeout(() => Audio.coin(), 60); break;
       case 'coin': Audio.coin(); break;
       case 'splash': Sfx.splash(); break;
-      case 'gate':
-        // races start with gates: 0, so no gate should appear; never leave the Ranger parked if one does.
-        // TODO (math phase): open src/ui/gatePanel.js here and pass its result to game.openGate().
-        try { game.openGate({ correct: true, quick: false, fixed: false }); } catch (_) { /* ignore */ }
-        break;
+      case 'gate': askGate(evt).catch((e) => { console.error('[TrailBlazer] gate failed', e); try { game.openGate({ correct: true }); } catch (_) { /* ignore */ } }); break;
       case 'gateOpen': Sfx.creak(); break;
       case 'finishLine': {
         if (evt.place >= 1) run.place = evt.place;
@@ -378,6 +462,36 @@ async function boot() {
       case 'finish': endRide(evt.summary); break;
       default: break;
     }
+  }
+
+  // ---------- Math Gates: the race is frozen while the Gate panel asks one fact ----------
+  async function askGate(evt) {
+    const r = run;
+    if (!r || r.ended || gatePanel.isOpen) return;
+    if (!facts) { game.openGate({ correct: true }); return; }
+    controls.reset(); controls.enable(false);
+    input = { gas: false, brake: false, boost: false };
+    try { game.setInput(input); } catch (_) { /* ignore */ }
+    Audio.engine(-1); Audio.nitro(false);
+    document.documentElement.classList.add('math');
+    const pick = nextFact(facts, Date.now(), session) || { fact: '7x8', flip: false, isNew: false };
+    const index = Number.isInteger(evt.index) ? evt.index : r.facts.length;
+    const res = await gatePanel.open({ fact: pick.fact, flip: pick.flip, index, total: r.gates });
+    if (res.cancelled || run !== r || r.ended) return;
+    const out = recordAnswer(facts, pick.fact, res, Date.now(), session);
+    r.facts.push({ fact: pick.fact, flip: pick.flip, correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, ms: res.ms, status: out.status, newlyMastered: out.newlyMastered });
+    r.xp += out.xp;
+    if (out.newlyMastered) r.mastered.push(pick.fact);
+    if (out.newlyFluent) r.fluent.push(pick.fact);
+    if (out.missionJustDone) {
+      r.missionPaid = earn(save, MISSION_REWARD);
+      setTimeout(() => { if (run === r) { hud.banner('mission', `Mission complete! +$${MISSION_REWARD}`, 1500); Audio.missionComplete(); } }, 300);
+    }
+    app.persistFacts(); app.persist();
+    refreshFactsHud();
+    document.documentElement.classList.remove('math');
+    controls.enable(!paused);
+    try { game.openGate({ correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed }); } catch (e) { console.error('[TrailBlazer] openGate threw', e); }
   }
 
   function bogged() { if (run && !run.boggedShown) { run.boggedShown = true; hud.banner('small', 'Too early! Bogged start', 1200); Audio.oops(true); } }
@@ -407,6 +521,7 @@ async function boot() {
     clearTimeout(stopFallback); clearTimeout(r.cdTimer);
     controls.enable(false);
     hideCoach(); hideCountdown();
+    gatePanel.cancel(); document.documentElement.classList.remove('math');
     Audio.engine(-1); Audio.nitro(false);
     summary = summary && typeof summary === 'object' ? summary : {};
     const { rows, total } = cashRows(summary.cash);
@@ -414,10 +529,17 @@ async function boot() {
     const bank = bankRide(save, trails, r.trail.id, summary, medalTimes);
     save.seen.coach = true;
     app.persist();
+    if (facts && r.facts.length) {
+      noteRace(facts, { at: Date.now(), trail: r.trail.id, place: bank.place, asked: r.facts.length, correct: r.facts.filter((f) => f.correct).length,
+        quick: r.facts.filter((f) => f.quick).length, fixed: r.facts.filter((f) => f.fixed).length });
+      app.persistFacts();
+    }
+    const math = facts ? { facts: r.facts, xp: r.xp, mastered: r.mastered, fluent: r.fluent, missionPaid: r.missionPaid, mission: missionState(facts, Date.now()),
+      levelBefore: r.levelBefore, levelAfter: levelFor(facts.xp) } : null;
     const nt = nextTrail(trails, r.trail.id);
     const result = lastResult = {
       trail: r.trail, summary, rows, total, bank, medalTimes, standings: standings(r, summary),
-      place: bank.place, timeSec: summary.timeSec || 0,
+      place: bank.place, timeSec: summary.timeSec || 0, math,
       next: nt && isUnlocked(save, trails, nt.id) ? nt : null,
       unlocked: bank.unlocked ? trails.find((t) => t.id === bank.unlocked) : null,
     };
@@ -427,12 +549,13 @@ async function boot() {
       go('results', result);
       if (bank.earned) Audio.cash();
       if (bank.place === 1 || bank.newMedal || bank.unlocked || bank.paints.length || bank.decals.length) setTimeout(() => Audio.fanfare(), 400);
+      if (math && math.mastered.length) setTimeout(() => Audio.trophy(), 900);
     }, wasPaused ? 0 : 900);
   }
 
   // ---------- pause (sound, music, motion, shake, end ride) ----------
   function pause() {
-    if (!run || paused || coaching) return;
+    if (!run || paused || coaching || gatePanel.isOpen) return;    // the race is frozen at the gate anyway
     paused = true;
     try { game.pause(); } catch (_) { /* ignore */ }
     controls.enable(false);
@@ -534,21 +657,22 @@ async function boot() {
   $('#coach').addEventListener('pointerdown', dismissCoach);
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { pause(); Audio.suspend(); Sfx.suspend(); app.persist(); setHero(false); } else { Audio.resume(); Sfx.resume(); setHero(screen === 'title'); }
+    if (document.hidden) { pause(); tts.cancel(); Audio.suspend(); Sfx.suspend(); app.persist(); app.persistFacts(); setHero(false); } else { Audio.resume(); Sfx.resume(); setHero(screen === 'title'); }
   });
-  window.addEventListener('pagehide', () => { pause(); app.persist(); });
+  window.addEventListener('pagehide', () => { pause(); tts.cancel(); app.persist(); app.persistFacts(); });
   window.addEventListener('keydown', (e) => {
     if (coaching && (e.code === 'Enter' || e.code === 'Space')) { dismissCoach(e); return; }
     if (e.code === 'Escape' || (e.code === 'KeyP' && run)) {
       if (coaching) { dismissCoach(e); return; }
       if (pz.isOpen) { pz.close(); return; }
-      if (run) { paused ? resume() : pause(); e.preventDefault(); }
+      if (run && !gatePanel.isOpen) { paused ? resume() : pause(); e.preventDefault(); }
     }
   });
 
   // ---------- navigation wiring ----------
   $('#btn-ride').addEventListener('click', () => go('trails'));
   $('#btn-garage').addEventListener('click', () => go('garage'));
+  $('#btn-grid').addEventListener('click', () => go('grid'));
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'sync' }));
   $('#btn-player').addEventListener('click', () => go('players'));
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));
@@ -556,7 +680,8 @@ async function boot() {
 
   // ---------- audio unlock (first gesture anywhere) ----------
   Audio.setSound(settings.sound); Audio.music(settings.music); Sfx.setSound(settings.sound);
-  const unlock = () => { Audio.unlock(); Sfx.unlock(); Audio.setSound(settings.sound); if (!settings.music) Audio.music(false); };
+  // iOS: the first speak() must happen inside a tap; the first GAS / countdown tap (or any tap) unlocks the voice
+  const unlock = () => { Audio.unlock(); Sfx.unlock(); tts.unlock(); Audio.setSound(settings.sound); if (!settings.music) Audio.music(false); };
   document.addEventListener('pointerdown', unlock, { capture: true });
   document.addEventListener('touchend', unlock, { capture: true });
   document.addEventListener('keydown', unlock, { capture: true });
@@ -564,20 +689,20 @@ async function boot() {
   // ---------- iOS gesture hygiene ----------
   document.addEventListener('gesturestart', (e) => e.preventDefault());
   document.addEventListener('dblclick', (e) => e.preventDefault());
-  document.addEventListener('contextmenu', (e) => { if (!e.target.closest('.pz input, .pz textarea')) e.preventDefault(); });
+  document.addEventListener('contextmenu', (e) => { if (!e.target.closest('.pz input, .pz textarea, .pz pre')) e.preventDefault(); });
   document.addEventListener('touchmove', (e) => {
-    if (!e.target.closest('.scroll, .garage-body, .trails-body, .results-body, .style-strip, .pz input')) e.preventDefault();
+    if (!e.target.closest('.scroll, .garage-body, .trails-body, .results-body, .style-strip, .grid-scroll, .pz input, .pz textarea')) e.preventDefault();
   }, { passive: false });
 
   go('players');
-  updateHooks.isSafe = () => safeToReload({ screen, running: !!run, parentZone: pz.isOpen }) && !coaching;
+  updateHooks.isSafe = () => safeToReload({ screen, running: !!run, parentZone: pz.isOpen }) && !coaching && !gatePanel.isOpen;
   updateHooks.notify = () => {
     const t = h('div', { class: 'toast update-note', id: 'update-note', role: 'status' }, UPDATE_NOTICE);
     $('#app').append(t);
     setTimeout(() => t.remove(), 4000);
   };
   updateHooks.beforeReload = () => {
-    app.persist();
+    app.persist(); app.persistFacts();
     try { if (currentPlayerId && screen !== 'players') sessionStorage.setItem(RESUME_KEY, currentPlayerId); } catch (_) { /* ignore */ }
   };
   let resumeId = null;
@@ -585,9 +710,16 @@ async function boot() {
   if (resumeId && Profiles.playerById(family, resumeId)) selectPlayer(resumeId);
   sync.start();                       // first pull after the picker is on screen (never blocks it)
   window.__trailBlazer = {
-    app, hud, pz, sync, controls,
+    app, hud, pz, sync, controls, gatePanel, tts, get facts() { return facts; }, get session() { return session; },
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; },
     get screen() { return screen; }, get paused() { return paused; },
+    // the open Math Gate, for playtests that answer the real engine's gates: { open, fact, answer, state, flip, index }
+    // (fact / answer null while no gate is open; state 'ask' | 'right' | 'bad' | 'show' | 'copy' | 'fixed' | null)
+    get gate() {
+      const open = gatePanel.isOpen;
+      return { open, fact: open ? gatePanel.fact : null, answer: open ? gatePanel.answer : null, state: open ? gatePanel.state : null,
+        flip: open ? gatePanel.flip : false, index: run && run.facts ? run.facts.length : 0 };
+    },
   }; // debugging / smoke tests
   registerSW();
 }

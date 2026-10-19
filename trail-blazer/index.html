@@ -332,6 +332,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .banner.b-perfect > span { color: #ffd23a; text-shadow: 0 4px 0 #a8820f, 0 7px 0 var(--ink); }
 .banner.b-crash > span { color: #fff; background: linear-gradient(var(--hot), var(--hot-edge)); text-shadow: 0 4px 0 #6a0f25, 0 7px 0 var(--ink); }
 .banner.b-pos > span { color: var(--accent-ink); background: linear-gradient(#ffd29a, var(--accent)); border-color: #fff; text-shadow: none; font-size: clamp(22px, 2.8vmin + 1.9vw, 40px); }
+.banner.b-mission > span { color: var(--accent-ink); background: linear-gradient(#fff3b0, #ffd23a); border-color: #fff; text-shadow: none; font-size: clamp(22px, 2.8vmin + 1.9vw, 40px); }
 .banner.b-small > span { font-size: clamp(20px, 2.4vmin + 1.6vw, 34px); color: var(--go); text-shadow: 0 3px 0 var(--go-edge), 0 6px 0 var(--ink); }
 /* countdown + gate drop */
 .countdown { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; pointer-events: none; }
@@ -572,6 +573,9 @@ html:not(.kbd) .kb-only { display: none; }
   .pz-sheet { padding: 10px 10px 12px; }
   .pz-head h3 { font-size: 18px; }
 }
+@media (orientation: portrait) and (max-width: 420px) {
+  .gp-title-text { display: none; }
+}
 @media (orientation: landscape) and (max-height: 500px) {
   .stamp { top: -14px; right: -12px; width: 72px; height: 72px; }
   .stamp b { font-size: 34px; border-width: 3px; }
@@ -609,6 +613,159 @@ html:not(.kbd) .kb-only { display: none; }
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 .reduced-motion .toast, .reduced-motion .coach-go { animation: none; }
+
+/* ================= v1.2: the math layer ================= */
+.lv-pill { flex: none; padding: 4px 7px 3px; border-radius: 7px; background: var(--ink); border: 2px solid var(--accent); font: 400 12px/1 var(--font-display); color: var(--accent); }
+.mission-line { display: inline-flex; align-items: center; gap: 7px; margin: -4px 0 14px; padding: 6px 12px; border-radius: 999px; background: rgba(13,26,22,.78); border: 2px solid var(--go);
+  font: 400 13px/1 var(--font-display); color: #fff; text-transform: uppercase; }
+.mission-line svg { width: 16px; height: 16px; color: var(--accent); }
+.mission-line.done { background: linear-gradient(var(--go), var(--go-edge)); color: #062a12; border-color: var(--accent); }
+.hud-facts { margin-top: 4px; font: 800 11px/1 var(--font-body); letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+.hud-facts.done { color: var(--go); }
+html.math #controls { visibility: hidden; }
+
+/* Gate panel: the race stays visible behind it, dimmed and blurred */
+.gate { position: absolute; inset: 0; z-index: 25; display: flex; justify-content: center; align-items: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l);
+  background: linear-gradient(rgba(4,12,9,.55), rgba(4,12,9,.82)); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.gp-card { width: min(100%, 820px); height: 100%; max-height: 420px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, .78fr); grid-template-rows: auto 1fr; gap: 8px 18px; }
+.gp-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; min-height: 46px; }
+.gp-title { white-space: nowrap; display: inline-flex; align-items: center; gap: 7px; font: 400 18px/1 var(--font-display); color: var(--accent); text-transform: uppercase; }
+.gp-title svg { width: 18px; height: 18px; }
+.gp-chip { white-space: nowrap; padding: 6px 10px; border-radius: 999px; background: rgba(13,26,22,.85); border: 2px solid var(--line); font: 800 12px/1 var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.gp-hear { margin-left: auto; }
+.gp-hear svg { width: 20px; height: 20px; }
+.gp-main { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; min-width: 0; min-height: 0; }
+.gp-fact { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 8px 14px; font: 400 clamp(44px, 9vmin + 1vw, 84px)/1 var(--font-display); color: #fff;
+  text-shadow: 0 4px 0 var(--ink); }
+.gp-eq { color: var(--muted); }
+.gp-tiles { display: inline-flex; gap: 6px; }
+.gp-tile { display: grid; place-items: center; width: .82em; height: 1.08em; border-radius: 12px; background: #f3f8f4; color: var(--ink); font-style: normal; text-shadow: none;
+  box-shadow: 0 4px 0 #8fb3a0; }
+.gp-tile.cursor { background: rgba(255,255,255,.12); box-shadow: inset 0 0 0 3px rgba(255,255,255,.35); }
+.gp-tile.cursor::after { content: ''; width: 4px; height: 60%; background: var(--accent); animation: blink .6s steps(1) infinite alternate; }
+.gp-tile.covered { background: var(--panel-2); box-shadow: 0 4px 0 var(--ink); }
+.gp-tile.ok { background: var(--go); color: #062a12; box-shadow: 0 4px 0 var(--go-edge); animation: pop .3s cubic-bezier(.2,1.6,.5,1); }
+.gp-tile.model { background: #ffe9b0; color: #2a1400; box-shadow: 0 4px 0 var(--accent-edge), 0 0 0 3px var(--accent); }
+.gp-tile.bad { background: var(--hot); color: #fff; box-shadow: 0 4px 0 var(--hot-edge); animation: shakeX .4s linear; }
+@keyframes shakeX { 20% { transform: translateX(-6px); } 40% { transform: translateX(6px); } 60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+@keyframes pop { from { transform: scale(.9); } }
+.gp-msg { min-height: 26px; font: 400 clamp(18px, 2.4vmin + 1vw, 28px)/1.1 var(--font-display); text-transform: uppercase; text-align: center; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
+.gp-msg.quick { color: #ffd23a; } .gp-msg.go { color: var(--go); } .gp-msg.hot { color: #ff8aa0; } .gp-msg.cyan { color: var(--cyan); } .gp-msg.model { color: #ffe9b0; }
+.gp-hint::first-letter { text-transform: uppercase; }
+.gp-hint { max-width: 520px; padding: 8px 14px; border-radius: 12px; background: rgba(255,138,31,.14); border: 2px solid var(--accent); font: 700 16px/1.35 var(--font-body); color: #fff; text-align: center; }
+.gp-pad { display: flex; align-items: center; justify-content: center; min-height: 0; }
+.np { --nk: clamp(46px, 12.5vmin, 76px); display: grid; grid-template-columns: repeat(3, minmax(var(--nk), 1fr)); grid-auto-rows: var(--nk); gap: 8px; width: 100%; max-width: 330px; touch-action: none; }
+.np-key { border-radius: 14px; background: #f3f8f4; color: var(--ink); font: 400 calc(var(--nk) * .5)/1 var(--font-display); box-shadow: 0 5px 0 #8fb3a0; display: grid; place-items: center; touch-action: none; }
+.np-key.is-down { transform: translateY(4px); box-shadow: 0 1px 0 #8fb3a0; background: #ffe7cf; }
+.np-key svg { width: 30px; height: 30px; }
+.np-back { background: #cfe3d8; }
+.np-go { background: var(--go); color: #062a12; box-shadow: 0 5px 0 var(--go-edge); font-size: calc(var(--nk) * .38); }
+.np-go.ready { animation: readyPulse 1s ease-in-out infinite alternate; }
+@keyframes readyPulse { to { filter: brightness(1.12); box-shadow: 0 5px 0 var(--go-edge), 0 0 0 4px rgba(47,211,107,.35); } }
+.np-key:disabled { cursor: default; }
+.np-go:disabled { background: #557565; color: #c0d6ca; box-shadow: 0 5px 0 #2c4237; animation: none; }
+.np.is-disabled .np-key:not(.np-go) { opacity: .45; }
+.reduced-motion .np-go.ready, .reduced-motion .gp-tile.bad, .reduced-motion .gp-tile.ok { animation: none; }
+
+/* Fact Grid */
+.grid-seg { flex: none; }
+.grid-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 230px; gap: 12px; padding-top: 6px; }
+.grid-scroll { min-height: 0; min-width: 0; touch-action: pan-x pan-y; border-radius: 12px; }
+.fgrid { display: grid; grid-template-columns: 34px repeat(12, 44px); grid-auto-rows: 44px; gap: 3px; width: max-content; padding: 2px 4px 6px 2px; }
+.fg-h { display: grid; place-items: center; font: 400 13px/1 var(--font-display); color: var(--accent); }
+.fg-h.corner { color: var(--muted); font-size: 16px; }
+/* the headers stay put while the 44-px cells scroll under them (the full 12 × 12 never fits a phone) */
+.fg-h { position: sticky; z-index: 1; background: #10211b; box-shadow: 0 0 0 3px #10211b; border-radius: 6px; }
+.fg-h.col { top: 0; }
+.fg-h.row { left: 0; }
+.fg-h.corner { top: 0; left: 0; z-index: 2; }
+.grid-scroll { background: rgba(16,33,27,.72); padding: 0; overflow: auto; }
+.fg-cell { border-radius: 8px; font: 800 14px/1 var(--font-body); color: #fff; background: var(--sc, #2a4a3e); border: 2px solid transparent; }
+.fg-cell.off { opacity: .32; }
+.fg-cell.sel { border-color: #fff; box-shadow: 0 0 0 2px var(--accent); }
+.st-New { --sc: #2a4a3e; } .st-Learning { --sc: #6a48e0; } .st-Almost { --sc: #0a8fbf; } .st-Mastered { --sc: #1ea653; } .st-Fluent { --sc: #e0a800; }
+.fg-cell.st-Fluent { color: #2a1400; }
+.grid-side { display: flex; flex-direction: column; gap: 10px; padding: 12px; min-height: 0; overflow: auto; }
+.gi-fact { font: 400 30px/1.05 var(--font-display); color: #fff; }
+.gi-status { margin-top: 4px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.grid-legend { display: flex; flex-wrap: wrap; gap: 6px; }
+.lg { display: inline-flex; align-items: center; gap: 5px; font: 800 12px/1 var(--font-body); color: #fff; }
+.lg i { width: 14px; height: 14px; border-radius: 4px; background: var(--sc); }
+.grid-count { font-size: 12px; font-weight: 700; color: var(--muted); line-height: 1.4; }
+
+/* results: the race's facts, the level-up moment */
+.res-facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.rf { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px; border-radius: 10px; background: var(--ink-2); border: 2px solid var(--line); font: 800 14px/1 var(--font-body); white-space: nowrap; }
+.rf b { font: 400 14px/1 var(--font-display); }
+.rf .mk { font-size: 15px; }
+.rf.ok { border-color: var(--go); } .rf.quick { border-color: #ffd23a; } .rf.fixed { border-color: var(--cyan); }
+.rf.ok .mk { color: var(--go); } .rf.quick .mk { color: #ffd23a; } .rf.fixed .mk { color: var(--cyan); }
+.pay tr.extra td:last-child { color: var(--go); }
+.callout.xp { background: var(--violet); color: #fff; box-shadow: 0 3px 0 var(--violet-edge); }
+.callout.mastered { background: linear-gradient(#ffe9b0, #ffd23a); color: #2a1400; box-shadow: 0 3px 0 #a8820f; }
+.res-moment { position: absolute; inset: 0; z-index: 9; pointer-events: none; display: grid; place-items: center; background: radial-gradient(60% 55% at 50% 50%, rgba(6,16,12,.8), rgba(6,16,12,.25)); }
+.lvl-stamp { position: relative; width: 170px; height: 170px; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(#ffc06b, #ff8a1f); border: 5px solid #ffe6c8;
+  box-shadow: 0 8px 0 rgba(0,0,0,.45); transform: rotate(-10deg); animation: slam .5s cubic-bezier(.3,1.5,.5,1) both; text-align: center; color: var(--accent-ink); }
+.lvl-stamp small { display: block; font: 400 18px/1 var(--font-display); letter-spacing: .08em; }
+.lvl-stamp b { display: block; font: 400 64px/1 var(--font-display); }
+.reduced-motion .lvl-stamp { animation: none; }
+
+/* Parent Zone: facts tab, report */
+.pz-players { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 8px; }
+.pz-ptab { display: inline-flex; align-items: center; gap: 6px; min-height: 46px; padding: 0 12px 0 4px; border-radius: 12px; background: var(--ink-2); border: 2px solid var(--line); font-weight: 800; white-space: nowrap; }
+.pz-ptab.on { border-color: var(--accent); background: var(--panel-2); }
+.pz-av { width: 46px; height: 30px; }
+.fam-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 4px; }
+.fam { min-width: 52px; min-height: 44px; padding: 0 10px; border-radius: 11px; background: var(--ink-2); border: 2px solid var(--line); font: 400 16px/1 var(--font-display); color: var(--muted); }
+.fam.on { background: var(--accent); border-color: var(--accent-edge); color: var(--accent-ink); }
+.pz textarea { width: 100%; display: block; min-height: 140px; resize: vertical; border-radius: 12px; border: 2px solid var(--line); background: var(--ink); color: #fff; padding: 10px 12px;
+  font: 500 16px/1.45 var(--font-body); -webkit-user-select: text; user-select: text; touch-action: auto; }
+.pz textarea:focus { outline: none; border-color: var(--cyan); }
+.pz-msg .err-line { display: block; }
+.pz-table-wrap { overflow-x: auto; border-radius: 12px; border: 2px solid var(--line); margin-top: 6px; }
+.pz-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.pz-table th { text-align: left; padding: 7px 8px; background: var(--ink); color: var(--muted); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.pz-table td { padding: 7px 8px; border-top: 1px solid var(--line); white-space: nowrap; }
+.pz-table td.op { font-weight: 800; }
+.pz-table td.op small { display: block; font-weight: 700; font-size: 11px; color: var(--muted); }
+@media (max-width: 480px) {
+  .pz-tabs .tab-more { display: none; }
+  .pz-table th { padding: 6px 4px; font-size: 9.5px; letter-spacing: .02em; }
+  .pz-table td { padding: 6px 4px; font-size: 13px; }
+  .pz-table th:first-child, .pz-table td:first-child { padding-left: 8px; }
+}
+.pz-report-text { margin-top: 10px; padding: 10px; max-height: 240px; overflow: auto; border-radius: 10px; background: var(--ink); border: 2px solid var(--cyan); font: 500 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; -webkit-user-select: text; user-select: text; }
+.pz-tabs .seg-btn { font-size: 13px; }
+@media (orientation: portrait) {
+  .gp-card { grid-template-columns: 1fr; grid-template-rows: auto auto 1fr; max-height: none; }
+  .gp-main { padding-top: 18px; }
+  .gp-pad { align-items: flex-end; }
+  .np { --nk: 68px; max-width: 100%; }
+  .gp-top { gap: 8px; }
+  .gp-title { font-size: 16px; }
+  .grid-body { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
+  .grid-side { order: -1; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 10px; }
+  .grid-info { flex: 1 1 100%; }
+  .gi-fact { font-size: 24px; }
+  .grid-count { display: none; }
+  #screen-grid .topbar { flex-wrap: wrap; }
+  .grid-seg { order: 3; width: 100%; }
+  .grid-seg .seg-btn { flex: 1; }
+  .menu-row .btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .gp-card { max-height: none; }
+  .np { --nk: 62px; gap: 7px; }
+  .gp-hint { font-size: 14px; padding: 6px 10px; }
+  .mission-line { margin: -6px 0 10px; }
+  .res-facts { gap: 4px; }
+  .rf { padding: 4px 7px; font-size: 12px; }
+  .rf b { font-size: 12px; }
+}
+@media (orientation: landscape) and (max-height: 400px) {
+  .np { --nk: 56px; gap: 6px; }
+  #screen-title .logo { font-size: clamp(40px, 8vmin + 1.4vw, 80px); }
+}
 </style>
 </head>
 <body>
@@ -665,16 +822,18 @@ html:not(.kbd) .kb-only { display: none; }
   <!-- ===== Title ===== -->
   <section class="screen" id="screen-title" data-screen="title" hidden>
     <div class="topbar">
-      <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span></button>
+      <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span><b class="lv-pill" id="title-lv">Lv 1</b></button>
       <span class="trails-chip" id="title-trails"><span data-icon="flag"></span><span id="title-trails-text">Tracks 0 / 6</span></span>
       <span class="cash-pill" data-cash></span>
     </div>
     <h1 class="logo">Trail<span>Blazer</span></h1>
     <p class="tagline">Race the trails. Flip it, jump it, win it.</p>
+    <p class="mission-line" id="title-mission"><span data-icon="star"></span><span id="title-mission-text">Today: 0 / 12 math gates</span></p>
     <div class="title-actions">
       <button class="btn btn-orange btn-big" id="btn-ride" data-sfx>Race<span data-icon="right"></span></button>
       <div class="menu-row">
         <button class="btn" id="btn-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
+        <button class="btn" id="btn-grid" data-sfx><span data-icon="grid"></span>Facts</button>
         <button class="btn" id="btn-parents" data-sfx><span data-icon="lock"></span>Parents</button>
       </div>
     </div>
@@ -712,11 +871,28 @@ html:not(.kbd) .kb-only { display: none; }
     <div class="trails-body"><div class="trail-grid" id="trail-grid"></div></div>
   </section>
 
+  <!-- ===== Fact Grid (src/ui/grid.js) ===== -->
+  <section class="screen" id="screen-grid" data-screen="grid" hidden>
+    <div class="topbar">
+      <button class="btn icon-btn" data-back="title" aria-label="Back" data-sfx><span data-icon="back"></span></button>
+      <h2>Fact Grid</h2>
+      <div class="seg grid-seg" role="tablist" aria-label="Operation"><button class="seg-btn on" data-view="x" role="tab">× Times</button><button class="seg-btn" data-view="d" role="tab">÷ Divide</button></div>
+    </div>
+    <div class="grid-body">
+      <div class="grid-scroll scroll" id="grid-scroll"><div class="fgrid" id="fgrid"></div></div>
+      <div class="card grid-side">
+        <div class="grid-info" id="grid-info"><div class="gi-fact" id="gi-fact">Tap a fact</div><div class="gi-status" id="gi-status">to hear it and see how far it has come</div></div>
+        <div class="grid-legend" id="grid-legend"></div>
+        <div class="grid-count" id="grid-count"></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ===== Race HUD ===== -->
   <div id="hud" hidden>
     <div class="hud-top">
       <div class="hud-left hud-box hud-pos" id="hud-pos" aria-live="polite"><b id="hud-place">4</b><span class="pos-sfx" id="hud-place-sfx">th</span><small id="hud-of">/ 4</small></div>
-      <div class="hud-mid hud-box" id="hud-time-box"><div class="hud-label">Time</div><div class="hud-num" id="hud-time">0:00.0</div></div>
+      <div class="hud-mid hud-box" id="hud-time-box"><div class="hud-label">Time</div><div class="hud-num" id="hud-time">0:00.0</div><div class="hud-facts" id="hud-facts">Facts 0 / 12</div></div>
       <div class="hud-right">
         <div class="hud-box">
           <div class="hud-num"><span id="hud-speed">0</span><small>km/h</small></div>
@@ -735,6 +911,8 @@ html:not(.kbd) .kb-only { display: none; }
     <button class="ctl" id="ctl-boost" data-ctl="nitro" aria-label="Boost"><span class="fill" id="ctl-boost-fill"></span><span data-icon="flame"></span><span>Boost</span></button>
     <button class="ctl" id="ctl-gas" data-ctl="gas" aria-label="Gas, front flip in the air"><span data-icon="right"></span><span>Gas</span><small>front flip</small></button>
   </div>
+  <!-- ===== Gate panel (src/ui/gatePanel.js) over the frozen race ===== -->
+  <div class="gate" id="gate" hidden></div>
   <!-- 3-2-1 and the gate drop -->
   <div class="countdown" id="countdown" hidden aria-live="assertive"><div class="cd-gate" id="cd-gate"></div><span class="cd-n" id="countdown-n">3</span></div>
 
@@ -759,10 +937,11 @@ html:not(.kbd) .kb-only { display: none; }
         <div class="podium" id="res-podium" aria-label="Podium"></div>
         <div class="res-time"><div class="big" id="res-time">0:00.0</div><span class="medal-badge" id="res-medal" hidden></span><span class="record" id="res-record" hidden>New best!</span></div>
         <div class="res-sub" id="res-sub"></div>
-        <div class="stat-grid cols-4" id="res-stats"></div>
+        <div class="res-facts" id="res-facts" aria-label="Facts this race"></div>
       </div>
       <div class="card res-pay scroll"><table class="pay" id="res-pay"></table></div>
     </div>
+    <div class="res-moment" id="res-moment" hidden aria-live="polite"></div>
     <div class="results-foot">
       <button class="btn" id="res-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
       <button class="btn btn-orange" id="res-again" data-sfx><span data-icon="retry"></span>Race again</button>

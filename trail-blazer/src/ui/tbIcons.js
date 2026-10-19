@@ -4,6 +4,7 @@ import { icon as sjIcon } from '../../../spell-jump/src/ui/icons.js';
 const S = (body) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 export const TB_ICONS = {
   tire: S('<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8"/>'),
+  grid: S('<rect x="3.5" y="3.5" width="17" height="17" rx="2.5"/><path d="M3.5 9.2h17M3.5 14.8h17M9.2 3.5v17M14.8 3.5v17"/>'),
   trail: S('<path d="M4 20c4-3 2-6 6-8s7-1 9-6"/><path d="M5 9l2-5 2 5zM15 19l2-5 2 5z"/>'),
 };
 export const icon = (name) => TB_ICONS[name] || sjIcon(name);

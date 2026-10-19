@@ -1,11 +1,17 @@
 // Parent Zone (Parents on the player picker and the title; PIN-gated with the family's PIN, the same one as Spell
 // Jump: set or changed in either game). First open on a device with no PIN: set a 4-digit PIN (twice). Later: enter
 // it. "Forgot PIN": press and hold 3 s, then answer a 2-digit × 2-digit multiplication, then set a new PIN.
-// Tabs: Family code (opens first; for the whole family, works with no players) · Options (this device's sound, music,
-// motion, shake; Change PIN) · Players (rename, reset Trail Blazer progress, remove). A one-line family sync status
-// sits under the title. Native text inputs exist only here (family code, player names).
-// TODO (math phase, SPEC §2.8): Facts this week and Report tabs.
+// Tabs: Family code (opens first; for the whole family, works with no players) · Facts this week (per player: the ×2 …
+// ×12 families, "÷ too", "+ and − within 20", Custom problems one per line with per-line errors) · Options (per player:
+// math gates per race, new facts per day, facts aloud, the voice as set in Spell Jump; this device's sound, music,
+// motion, shake; Change PIN) · Report (per operation the status counts, slowest facts, this week's races, Copy report)
+// · Players (rename, reset facts data, reset Trail Blazer progress, remove). A one-line family sync status sits under
+// the title. Native text inputs exist only here (family code, custom problems, player names).
 import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spell-jump/src/spelling/profiles.js';
+import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
+import { ALL_FAMILIES, MAX_CUSTOM, factText, parseCustom } from '../facts/facts.js';
+import { STATUSES } from '../facts/scheduler.js';
+import { GATES_OPTIONS, NEW_PER_DAY_OPTIONS, activeFacts, report, reportText } from '../facts/store.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from './tbIcons.js';
 import { drawAvatar } from './vehiclePreview.js';
@@ -17,6 +23,18 @@ function toggle(label, sub, on, onChange, id) {
   const t = h('button', { class: 'toggle', role: 'switch', 'aria-checked': String(!!on), 'aria-label': label, id });
   t.addEventListener('click', () => { const v = t.getAttribute('aria-checked') !== 'true'; t.setAttribute('aria-checked', String(v)); onChange(v); });
   return h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, label), sub ? h('div', { class: 'sub' }, sub) : null), t);
+}
+function segmented(label, sub, options, value, onChange, id) {
+  const wrap = h('div', { class: 'seg', role: 'radiogroup', 'aria-label': label, id });
+  for (const [v, text] of options) {
+    const b = h('button', { class: 'seg-btn' + (v === value ? ' on' : ''), role: 'radio', 'aria-checked': String(v === value), 'data-value': String(v) }, text);
+    b.addEventListener('click', () => {
+      for (const x of wrap.children) { x.classList.toggle('on', x === b); x.setAttribute('aria-checked', String(x === b)); }
+      onChange(v);
+    });
+    wrap.append(b);
+  }
+  return h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, label), sub ? h('div', { class: 'sub' }, sub) : null), wrap);
 }
 function confirmRow(label, sub, buttonText, question, yesText, onYes, id) {
   const box = h('div', { class: 'confirm', hidden: true },
@@ -38,7 +56,7 @@ export function createParentZone(app) {
   sheet.append(head, syncLine, body);
   root.replaceChildren(sheet);
 
-  let view = 'pin', tab = 'sync', unlockedUntil = 0, lineTimer = 0, joined = null;
+  let view = 'pin', tab = 'sync', unlockedUntil = 0, lineTimer = 0, joined = null, playerId = null;
   let pinMode = 'enter', pinFirst = '', pinEntry = '', mathQ = null, mathEntry = '', holdTimer = 0, holdRaf = 0;
 
   // the iOS keyboard shrinks the visual viewport, not the layout viewport: size the sheet to what is visible
@@ -155,12 +173,112 @@ export function createParentZone(app) {
   // ---------- main ----------
   function sectionTabs() {
     const row = h('div', { class: 'seg pz-tabs', role: 'tablist' });
-    for (const [id, text] of [['sync', 'Family code'], ['options', 'Options'], ['players', 'Players']]) {
-      const b = h('button', { class: 'seg-btn' + (tab === id ? ' on' : ''), role: 'tab', 'aria-selected': String(tab === id), 'data-tab': id }, text);
+    // on a narrow phone the long names shorten to "Family" / "Facts" (the rest is in a span hidden by CSS)
+    for (const [id, text, more] of [['sync', 'Family', ' code'], ['facts', 'Facts', ' this week'], ['options', 'Options'], ['report', 'Report'], ['players', 'Players']]) {
+      const b = h('button', { class: 'seg-btn' + (tab === id ? ' on' : ''), role: 'tab', 'aria-selected': String(tab === id), 'data-tab': id, 'aria-label': text + (more || '') },
+        text, ...(more ? [h('span', { class: 'tab-more' }, more)] : []));
       b.addEventListener('click', () => { tab = id; render(); });
       row.append(b);
     }
     return row;
+  }
+
+  // ---------- which child (Facts this week, Options, Report) ----------
+  function playerTabs() {
+    const row = h('div', { class: 'pz-players', role: 'tablist', 'aria-label': 'Player' });
+    for (const p of app.family.players) {
+      const cv = h('canvas', { class: 'pz-av', 'aria-hidden': 'true' });
+      const b = h('button', { class: 'pz-ptab' + (p.id === playerId ? ' on' : ''), role: 'tab', 'aria-selected': String(p.id === playerId), 'data-player': p.id }, cv, h('span', {}, p.name));
+      b.addEventListener('click', () => { playerId = p.id; render(); });
+      row.append(b);
+      drawAvatar(cv, p.color);
+    }
+    return row;
+  }
+  function noPlayer() {
+    const add = h('button', { class: 'btn btn-green', id: 'pz-add-player', 'data-sfx': '' }, 'Add a player');
+    add.addEventListener('click', () => { api.close(); app.go('newplayer'); });
+    return [h('div', { class: 'pz-noplayer', id: 'pz-noplayer' }, h('div', { class: 'label' }, 'No players yet'),
+      h('div', { class: 'pz-help' }, 'Add one on the player screen, or join your family on the Family code tab to bring your players here.'), h('div', { class: 'pz-actions' }, add))];
+  }
+
+  // ---------- Facts this week ----------
+  function factsTab(p) {
+    const d = app.factsFor(p.id);
+    const save = () => { d.updatedAt = Date.now(); app.saveFactsFor(p.id, d); count.textContent = countText(); };
+    const countText = () => `${activeFacts(d).length} facts this week · ${p.name} answers ${d.opts.gates} at the gates of each race`;
+    const count = h('div', { class: 'pz-help', id: 'facts-count' }, countText());
+    const fams = h('div', { class: 'fam-row', role: 'group', 'aria-label': 'Times tables' }, ...ALL_FAMILIES.map((f) => {
+      const on = d.sets.families.includes(f);
+      const b = h('button', { class: 'fam' + (on ? ' on' : ''), 'data-family': f, 'aria-pressed': String(on), 'data-sfx': '' }, `×${f.slice(1)}`);
+      b.addEventListener('click', () => {
+        const has = d.sets.families.includes(f);
+        d.sets.families = has ? d.sets.families.filter((x) => x !== f) : ALL_FAMILIES.filter((x) => x === f || d.sets.families.includes(x));
+        b.classList.toggle('on', !has); b.setAttribute('aria-pressed', String(!has));
+        save();
+      });
+      return b;
+    }));
+    const ta = h('textarea', { id: 'facts-custom', rows: '6', spellcheck: 'false', autocapitalize: 'off', autocomplete: 'off', autocorrect: 'off',
+      placeholder: '7 x 8\n56 / 7\n34 + 19\n80 - 46', 'aria-label': 'Custom problems' });
+    ta.value = d.sets.customText || d.sets.custom.map((f) => factText(f)).join('\n');
+    const msg = h('div', { class: 'pz-msg', id: 'facts-msg', 'aria-live': 'polite' });
+    const saveBtn = h('button', { class: 'btn btn-green', id: 'facts-save', 'data-sfx': '' }, 'Save problems');
+    saveBtn.addEventListener('click', () => {
+      const r = parseCustom(ta.value);
+      d.sets.custom = r.facts;
+      d.sets.customText = ta.value.slice(0, 4000);
+      save();
+      msg.className = 'pz-msg ' + (r.errors.length ? 'err' : 'ok');
+      msg.replaceChildren(
+        h('span', { class: 'err-line' }, `${r.facts.length} custom problem${r.facts.length === 1 ? '' : 's'} saved.`),
+        ...r.errors.map((e) => h('span', { class: 'err-line', 'data-line': String(e.line) }, e.line ? `Line ${e.line}: "${e.text}": ${e.error}.` : `${e.error}.`)));
+      if (r.errors.length) app.audio.error(); else app.audio.cash();
+    });
+    return [
+      h('div', { class: 'hud-label pz-sec pz-first' }, 'Times tables'),
+      h('div', { class: 'pz-help' }, 'Pick the families to practice this week. Each one is n × 2 … n × 12 (7 × 8 and 8 × 7 count as one fact). Grade 4 aims at all of them, fluent.'),
+      fams,
+      toggle('÷ too', 'The division facts that undo the chosen families (56 ÷ 7 and 56 ÷ 8 for 7 × 8)', d.sets.division, (v) => { d.sets.division = v; save(); }, 'facts-div'),
+      toggle('+ and − within 20', 'Addition up to 20 and the subtractions back (a warm-up or a refresher)', d.sets.addSub, (v) => { d.sets.addSub = v; save(); }, 'facts-addsub'),
+      h('label', { class: 'pz-label', for: 'facts-custom' }, 'Custom problems', h('span', { class: 'pz-help' }, `one per line, up to ${MAX_CUSTOM}`)),
+      h('div', { class: 'pz-help' }, 'Like 7 x 8, 56 / 7, 34 + 19 or 80 - 46. Answers are worked out for you; whole numbers only.'),
+      ta, h('div', { class: 'pz-actions' }, saveBtn), msg, count,
+    ];
+  }
+
+  // ---------- Report ----------
+  const OP_SHORT = { x: '× Multiply', '/': '÷ Divide', '+': '+ Add', '-': '− Subtract' };
+  function reportTab(p) {
+    const d = app.factsFor(p.id);
+    const now = Date.now();
+    const r = report(d, now);
+    const ops = Object.entries(r.ops).filter(([, o]) => o.total);
+    const table = h('div', { class: 'pz-table-wrap' }, h('table', { class: 'pz-table', id: 'report-table' },
+      h('thead', {}, h('tr', {}, h('th', {}, 'Facts'), ...STATUSES.map((st) => h('th', {}, st)))),
+      h('tbody', {}, ...ops.map(([op, o]) => h('tr', { 'data-op': op, 'data-total': String(o.total) },
+        h('td', { class: 'op' }, OP_SHORT[op], h('small', {}, `${o.total} facts`)), ...STATUSES.map((st) => h('td', { 'data-status': st }, String(o[st]))))))));
+    const tName = (id) => (app.trails.find((t) => t.id === id) || { name: id }).name;
+    const text = reportText(d, p.name, now, tName);
+    const pre = h('pre', { class: 'pz-report-text', id: 'report-text', hidden: true }, text);
+    const copy = h('button', { class: 'btn btn-sm btn-cyan', id: 'report-copy', 'data-sfx': '' }, 'Copy report');
+    copy.addEventListener('click', async () => {
+      pre.hidden = false;
+      let ok = false;
+      try { if (navigator.clipboard && window.isSecureContext) { await navigator.clipboard.writeText(text); ok = true; } } catch (_) { ok = false; }
+      if (ok) { app.toast('Report copied'); return; }
+      try { const sel = window.getSelection(); sel.removeAllRanges(); const rg = document.createRange(); rg.selectNodeContents(pre); sel.addRange(rg); } catch (_) { /* ignore */ }
+      app.toast('Report selected: use Copy');
+    });
+    return [
+      h('div', { class: 'pz-help pz-first', id: 'report-summary' }, `${r.totals.mastered} mastered · ${r.totals.fluent} fluent (mastered and answered in 3 s or less on 2 days) · ${r.totals.seen} of ${r.totals.facts} facts practiced`),
+      table,
+      h('div', { class: 'hud-label pz-sec' }, 'Slowest facts'),
+      h('div', { class: 'pz-help', id: 'report-slow' }, r.slowest.length ? r.slowest.map((x) => `${factText(x.fact)} (${(x.avgMs / 1000).toFixed(1)} s)`).join(' · ') : 'Not enough answers yet.'),
+      h('div', { class: 'hud-label pz-sec' }, "This week's races"),
+      h('div', { class: 'pz-help', id: 'report-races' }, r.races.length ? r.races.slice(-8).map((x) => `${new Date(x.at).toLocaleDateString('en-US', { weekday: 'short' })} ${tName(x.trail)}: ${x.correct}/${x.asked} right, ${x.quick} quick, ${x.fixed} fixed`).join(' · ') : 'No races this week yet.'),
+      h('div', { class: 'pz-actions' }, copy), pre,
+    ];
   }
 
   // ---------- Family code (Spell Jump's family sync client) ----------
@@ -236,7 +354,22 @@ export function createParentZone(app) {
   }
 
   // ---------- Options (this device) ----------
-  function optionsTab() {
+  function mathOptions(p) {
+    const d = app.factsFor(p.id);
+    const set = (k, v) => { d.opts[k] = v; d.updatedAt = Date.now(); app.saveFactsFor(p.id, d); };
+    const v = app.voiceInfo(p.id);
+    const cv = v.cloudVoice ? cloudVoiceInfo(v.cloudVoice) : null;
+    const voiceText = `${cv ? `Natural voice: ${cv.name}${v.synced ? '' : ' (needs a family code)'}` : v.voiceName ? `Device voice: ${v.voiceName}` : 'Device voice: automatic'} · rate ${v.rate === 'veryslow' ? 'very slow' : v.rate}`;
+    return [
+      h('div', { class: 'hud-label pz-sec pz-first' }, `Math for ${p.name}`),
+      segmented('Math gates per race', 'Each gate asks one fact; the race waits while the answer is typed', GATES_OPTIONS.map((n) => [n, String(n)]), d.opts.gates, (x) => set('gates', x), 'opt-gates'),
+      segmented('New facts per day', 'All of this week\'s facts by default; fewer for a child who is overwhelmed', NEW_PER_DAY_OPTIONS.map((n) => [n, n >= 99 ? 'All' : String(n)]), d.opts.newPerDay, (x) => set('newPerDay', x), 'opt-new'),
+      toggle('Facts aloud', 'Read each fact as it appears, and the answer with a hint after a miss', d.opts.aloud, (x) => set('aloud', x), 'opt-aloud'),
+      h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Voice'),
+        h('div', { class: 'sub', id: 'opt-voice' }, `${voiceText}. Set in Spell Jump → Parents → Options.`))),
+    ];
+  }
+  function optionsTab(p) {
     const st = app.settings;
     const shake = h('input', { type: 'range', id: 'pz-shake', min: '0', max: '100', step: '5', value: String(st.shake), 'aria-label': 'Screen shake' });
     const out = h('output', { class: 'slider-val' }, `${st.shake}%`);
@@ -244,6 +377,7 @@ export function createParentZone(app) {
     shake.addEventListener('input', () => { out.textContent = `${shake.value}%`; fill(); app.setShake(Number(shake.value)); });
     fill();
     return [
+      ...(p ? mathOptions(p) : []),
       h('div', { class: 'hud-label pz-sec' }, 'This device'),
       toggle('Sound effects', null, st.sound, (v) => app.setSetting('sound', v), 'opt-sound'),
       toggle('Music', null, st.music, (v) => app.setSetting('music', v), 'opt-music'),
@@ -275,6 +409,8 @@ export function createParentZone(app) {
       const card = h('div', { class: 'pz-player', 'data-player': p.id, style: { '--c': p.color } },
         h('div', { class: 'pz-player-head' }, cv, h('div', { class: 'name' }, p.name, h('div', { class: 'sub' }, `${app.trailsDoneFor(p.id)} of ${app.trails.length} tracks on the podium, on this device`))),
         h('div', { class: 'pz-rename' }, input, save),
+        ...confirmRow('Reset facts data', `Every fact back to New for ${p.name} (this week's set, the options and the level stay).`, 'Reset',
+          `Reset ${p.name}'s math facts progress?`, 'Reset facts', () => { app.resetFactsFor(p.id); app.toast('Facts data reset'); render(); }, `pz-reset-facts-${p.id}`),
         ...confirmRow('Reset Trail Blazer progress', `Cash, upgrades, medals and tracks back to the start for ${p.name} on this device. Spell Jump is not touched.`, 'Reset',
           `Reset ${p.name}'s Trail Blazer progress?`, 'Reset', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-${p.id}`),
         ...confirmRow('Remove player', `Removes ${p.name} from the family in both games, on every device, with all of ${p.name}'s data.`, 'Remove',
@@ -287,8 +423,13 @@ export function createParentZone(app) {
   function mainView() {
     header('Parent Zone');
     const keep = body.scrollTop;
-    const content = tab === 'sync' ? syncTab() : tab === 'options' ? optionsTab() : playersTab();
-    body.replaceChildren(sectionTabs(), h('div', { class: 'pz-content', 'data-tab': tab }, ...content.filter(Boolean)));
+    const f = app.family;
+    if (!playerById(f, playerId)) playerId = app.currentPlayerId && playerById(f, app.currentPlayerId) ? app.currentPlayerId : (f.players[0] || {}).id || null;
+    const p = playerById(f, playerId);
+    const perPlayer = tab === 'facts' || tab === 'report' || tab === 'options';
+    const content = tab === 'sync' ? syncTab() : tab === 'players' ? playersTab()
+      : tab === 'options' ? optionsTab(p) : !p ? noPlayer() : tab === 'facts' ? factsTab(p) : reportTab(p);
+    body.replaceChildren(sectionTabs(), ...(perPlayer && p && f.players.length > 1 ? [playerTabs()] : []), h('div', { class: 'pz-content', 'data-tab': tab }, ...content.filter(Boolean)));
     body.scrollTop = keep;
   }
   function render() {
@@ -306,6 +447,7 @@ export function createParentZone(app) {
     get tab() { return tab; },
     open(opts = {}) {
       tab = opts.tab || 'sync';
+      playerId = opts.playerId || app.currentPlayerId || null;
       joined = null; pinEntry = ''; pinFirst = '';
       if (Date.now() < unlockedUntil) view = 'main';
       else { view = 'pin'; pinMode = hasPin(app.family) ? 'enter' : 'set'; }
@@ -327,7 +469,7 @@ export function createParentZone(app) {
     onSyncApplied() {
       if (root.hidden || view !== 'main') return;
       if (tab === 'sync' && joined) joined = app.family.players.map((p) => ({ id: p.id, name: p.name, color: p.color }));
-      if (tab === 'sync' || (tab === 'players' && !root.contains(document.activeElement))) render();
+      if (tab === 'sync' || ((tab === 'players' || tab === 'report') && !root.contains(document.activeElement))) render();
     },
     playerExists: (id) => !!playerById(app.family, id),
   };
