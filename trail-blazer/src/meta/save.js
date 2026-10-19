@@ -8,7 +8,7 @@
 import { UPGRADES, MAX_LEVEL, emptyLevels } from '../data/upgrades.js';
 import { PAINT_BY_ID, DECAL_BY_ID } from '../data/paints.js';
 import { MEDALS as MEDAL_IDS } from '../data/medals.js';
-import { defaultFacts, factsKey, normalizeFacts } from '../facts/store.js';
+import { FACTS_VERSION, defaultFacts, factsKey, normalizeFacts } from '../facts/store.js';
 
 export const SAVE_VERSION = 1;
 export const SETTINGS_KEY = 'trailBlazer.settings';
@@ -131,7 +131,7 @@ export function loadFactsData(playerId, now = Date.now()) {
   if (!text) return defaultFacts(now);
   try {
     const raw = JSON.parse(text);
-    if (!raw || typeof raw !== 'object' || (raw.v !== undefined && raw.v > 1)) throw new Error('bad facts shape');
+    if (!raw || typeof raw !== 'object' || (raw.v !== undefined && raw.v > FACTS_VERSION)) throw new Error('bad facts shape');
     return normalizeFacts(raw, now);
   } catch (e) {
     console.warn('[save] corrupt facts data, starting fresh (backup kept)', e);

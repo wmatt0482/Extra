@@ -22,6 +22,22 @@ the "v1.2" section adapts them to race mode.
 | 12 | **Intrinsic integration**: the math is the game mechanic, not a quiz in front of it | Habgood & Ainsworth 2011 | Facts open the gates and fill the boost tank; a quick answer is pure race time gained, a fixed answer gives the rivals a 1.5 s head start. The race clock is frozen during a question, so medals reward fast *answers*, never reading speed | `main.js` `askGate` → `game.openGate({ correct, quick, fixed })` |
 | 13 | **Dual coding / reading support**: the fact is read aloud as it appears ("seven times eight"), the fix-it fact and hint too | Spell Jump's voice stack | Spell Jump's `tts` with the player's voice (the natural cloud voice when the family has a code); "Hear it" on the panel; Parents → Options "Facts aloud" turns it off (shown only) | `spelling/tts.js`, `spelling/cloudVoice.js`, `facts/spoken.js` |
 | 14 | **A small daily goal** | Spell Jump's daily mission | 12 gate answers a day → $400 and +100 XP, once; "Today: 8 / 12 math gates" on the title and HUD | `store.js` `missionState`, `MISSION_SIZE` |
+| 15 | **Placement and adaptive sequencing**: start where the child is, then move on by mastery | Vygotsky's zone of proximal development, put into practice as mastery-based progression; Fuchs & Fuchs 1986 (progress monitoring); Codding, Burns & Lukito 2011 (interventions matched to the learner's phase, acquisition or fluency, work best) | The **Pit Crew Check** after the first finished race (Start / Later, offered after up to 3 races, re-run from Parents → Facts): an adaptive staircase from ×3 ×4 up through ×7 ×8 and ÷, ≤ 24 facts, no clock on screen, ending on the **Start line** ("Fluent: … · Working on: … · Up next: …", +100 XP). **Auto mode** (the default) then works on two families by the ladder: the lowest unfinished tier first (shaky ×6 ×9 always before ×7 ×8), the weakest within a tier (misses, then slowness), never above an untested gap, mixed with known families: about 60 % of gates on the frontier (acquisition), 30 % known (spacing, fluency), 10 % mastered (retention). A family moves on at 90 % mastered and 70 % fluent and comes back when two facts slip in a week | `src/facts/placement.js`, `src/facts/adaptive.js`, `src/ui/pitCheck.js` |
+| 16 | **Retention checks** | Spacing (Cepeda et al. 2006) and progress monitoring (Fuchs & Fuchs 1986) | Every 15 finished races or 7 days, 6 mastered facts are mixed into the next race's gates; a miss brings that family back into the frontier | `adaptive.js` `probeDue`, `startProbe`, `noteProbe` |
+| 17 | **Error-pattern analysis** | Ashlock, *Error Patterns in Computation* (systematic errors tell you what to teach) | Every miss is classified: neighbouring fact, one group off, digits swapped, the other operation, ÷ missed while its × is known, big numbers, or slow but right. The kind of miss picks the hint ("7 × 7 is 49, then one more 7 is 56"; "you know 7 × 8 = 56, so 56 ÷ 7 = 8"); a cluster of ÷ misses brings the ÷ twin two gates after its × fact; the Report's **Patterns** say it in plain words ("Misses cluster in ×7 and ×8", "Division is weaker than multiplication", "Slow on big numbers: 6 × 7, 8 × 9") and the Start line turns it into a pit note | `src/facts/patterns.js`, `gatePanel.js` (hint provider) |
+
+## How the Pit Crew Check works (v1.3)
+
+Tiers: T0 + − within 20 (only when the parent allows them) · T1 ×2 ×5 ×10 · T2 ×3 ×4 · T3 ×6 ×9 · T4 ×7 ×8 · T5 ×11
+×12 · T6 ÷ of T1-T2 · T7 ÷ of T3-T5 (÷ only with "÷ too"). It starts at T2 with 3 facts from different families
+(other number 3 … 9). 2 of 3 right **and quick** → the next tier; 2 of 3 right but slow → 3 more in that tier, then
+stop; 1 or 0 right → one tier down and 3 there (a tier already passed is not asked again), then stop, or down again
+(two drops end it). It also ends when the top tier passes or at 24 facts. A fluent child climbs to ÷ in 18 facts.
+Every family it touched gets **fluent** (all right, all quick), **known** (right, slow), **shaky** (a miss) or
+**untested**; tiers below a passed tier count as known. The answers seed the records (quick right → box 2 and a
+first-try, slow right → box 1, a miss → box 0 and first among due facts), so the next race starts in the right place.
+The child never sees a score or a wrong count: right answers flash "56!" (⚡ when quick), a miss shows the fact with its
+answer for a moment, read aloud.
 
 ## What the game never does
 
@@ -47,6 +63,9 @@ the "v1.2" section adapts them to race mode.
 | Daily mission | 12 gate answers → $400, +100 XP, once a day | `store.js` |
 | XP | right 15, quick +5, fixed 5, newly mastered +50, mission +100 | `store.js` `XP` |
 | Gate cash | quick $200 (+60 % tank, 1.2 s push), right $120 (+40 %), fixed $40 (rivals +1.5 s) | engine `openGate` |
+| Pit Crew Check | start T2, blocks of 3, advance on ≥ 2 quick, probe on 2 slow, drop on ≤ 1 right, ≤ 24 facts, +100 XP | `placement.js` |
+| Auto frontier | 2 families, lowest unfinished tier first, weakest within it; gates 60 / 30 / 10 frontier / known / mastered; advance at 90 % mastered + 70 % fluent; re-enter on 2 facts at box 0 in a week | `adaptive.js` |
+| Retention probe | 6 mastered facts every 15 finished races or 7 days, every other gate | `adaptive.js` `PROBE` |
 
 ## Sources
 
@@ -71,5 +90,9 @@ the "v1.2" section adapts them to race mode.
   Science*, 35(6).
 - Skinner, C. H., McLaughlin, T. F., & Logan, P. (1997). Cover, copy, and compare: A self-managed academic
   intervention effective across skills, students, and settings. *Journal of Behavioral Education*, 7(3).
+- Ashlock, R. B. (2010). *Error Patterns in Computation: Using Error Patterns to Help Each Student Learn* (10th ed.).
+  Allyn & Bacon.
+- Vygotsky, L. S. (1978). *Mind in Society: The Development of Higher Psychological Processes*. Harvard University
+  Press (the zone of proximal development).
 - Woodward, J. (2006). Developing automaticity in multiplication facts: Integrating strategy instruction with timed
   practice drills. *Learning Disability Quarterly*, 29(4).

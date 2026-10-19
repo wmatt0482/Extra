@@ -66,9 +66,11 @@ export function hintFor(fact, flip = false) {
   if (p.op === '+') return addHint(p.a, p.b);
   return subHint(p.a, p.b);
 }
-/** The same hint as the voice reads it ("ten times seven is seventy, take away seven is sixty-three."). */
-export function hintSpoken(fact, flip = false) {
-  const t = spokenText(hintFor(fact, flip).replace(/\(([^)]*)\)/g, ', $1,'));
+/** Any hint text as the voice reads it (numbers and symbols as words, a sentence). */
+export function spokenHint(text) {
+  const t = spokenText(String(text || '').replace(/\(([^)]*)\)/g, ', $1,'));
   return t ? `${t}.` : '';
 }
+/** The same hint as the voice reads it ("ten times seven is seventy, take away seven is sixty-three."). */
+export const hintSpoken = (fact, flip = false) => spokenHint(hintFor(fact, flip));
 export { factParts };

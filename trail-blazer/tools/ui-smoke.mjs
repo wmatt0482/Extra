@@ -366,6 +366,15 @@ async function runLayout(browser, layout) {
   const fd1 = await J(page, () => JSON.parse(localStorage.getItem(`trailBlazer.${window.__trailBlazer.app.currentPlayerId}.facts`)));
   check(fd1 && fd1.today.count === 4 && Object.keys(fd1.records).length >= 2 && fd1.xp > 0 && fd1.races.length === 1, `facts saved: ${Object.keys(fd1.records).length} facts, today ${fd1.today.count}, ${fd1.xp} XP`);
   check(fd1.records[g2.fact] && fd1.records[g2.fact].box === 0 && fd1.records[g2.fact].fixed === 1, `the fixed fact ${g2.fact} goes to box 0 for tomorrow (${JSON.stringify(fd1.records[g2.fact])})`);
+  // ---------- v1.3: the Pit Crew Check is offered after the first finished race ----------
+  await page.waitForSelector('#pit-offer:not([hidden])', { timeout: 6000 });
+  const offer1 = await J(page, () => ({ text: document.querySelector('#pit-offer').textContent, offers: window.__trailBlazer.facts.checkOffers }));
+  check(/Pit Crew Check/.test(offer1.text) && /About 20 quick facts/.test(offer1.text) && !/\btest|grade|score/i.test(offer1.text) && offer1.offers === 1,
+    `the Pit Crew Check is offered on the results after the first finished race, kid-framed ("${offer1.text.replace(/\s+/g, ' ').trim()}")`);
+  await shot(page, layout, '10b-pit-offer', 400);
+  await audit(page, layout.insets, 'Pit Crew Check offer');
+  await page.click('#pit-later');
+  check(await J(page, () => document.querySelector('#pit-offer').hidden && !window.__trailBlazer.facts.placement), 'Later: the card goes, no placement yet');
   await shot(page, layout, '10-results');
   await audit(page, layout.insets, 'results (podium)');
 
@@ -397,6 +406,16 @@ async function runLayout(browser, layout) {
   check(await J(page, (t) => document.querySelector('[data-trail="pine-ridge"] [data-best-time]').dataset.bestTime === String(t), res.last.summary.timeSec), 'Pine Ridge card shows the best time');
   await shot(page, layout, '13-tracks-after');
   await J(page, () => { window.__mockScript = { aiTimes: [3, 3.5, 4], noCrash: true }; });
+  // v1.3 retention probe: 14 finished races so far (race 2 is the 15th) and some mastered facts to probe
+  await J(page, async () => {
+    const S = await import('/trail-blazer/src/facts/scheduler.js');
+    const T = window.__trailBlazer; const d = T.facts; const now = Date.now();
+    const day = (k) => S.dayKey(now - k * 86400000);
+    for (const f of ['2x6', '2x7', '2x8', '2x9', '5x6', '5x7', '5x8']) {
+      d.records[f] = { ...S.newRecord(f), box: 3, seenCount: 5, attempts: 5, firstTry: 4, quick: 3, daysCorrect: [day(9), day(5), day(2)], daysSeen: [day(2)], daysQuick: [day(5), day(2)], due: now + 4 * 86400000, lastSeen: now - 2 * 86400000 };
+    }
+    d.raceCount = 14; T.app.persistFacts();
+  });
   await page.click('[data-trail="granite-gap"]');
   await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
   const st2 = await J(page, () => window.__starts[window.__starts.length - 1]);
@@ -428,13 +447,70 @@ async function runLayout(browser, layout) {
   const save3 = await readSave(page);
   check(save3.cash === save2.cash + res2.total && save3.bestPlace['granite-gap'] === 4, `banked ${res2.total} (cash ${save3.cash}); Granite Gap best place 4`);
   await shot(page, layout, '15-results-4th');
+  check(await J(page, () => { const T = window.__trailBlazer; return T.lastResult.probeStarted && T.facts.raceCount === 15 && T.facts.probe && T.facts.probe.facts.length === 6; }),
+    'race 15 finished: a retention probe of 6 mastered facts waits for the next race');
 
-  // ---------- race 3: End race from the pause menu ----------
+  // ---------- v1.3: Later → offered again after the next race; Start → the check → the Start line ----------
+  await page.waitForSelector('#pit-offer:not([hidden])', { timeout: 6000 });
+  check(await J(page, () => window.__trailBlazer.facts.checkOffers === 2), 'Later → the check is offered again after the next finished race');
+  const xpBefore = await J(page, () => window.__trailBlazer.facts.xp);
+  await page.click('#pit-start');
+  await page.waitForFunction(() => window.__trailBlazer.screen === 'check' && window.__trailBlazer.gatePanel.isOpen, null, { timeout: 4000 });
+  const items = [];
+  const flipDigits = (n) => { const r = Number(String(n).split('').reverse().join('')); return r !== n && String(r).length === String(n).length ? r : n + 1; };
+  for (let i = 0; i < 80 && items.length < 30; i++) {
+    const g = await J(page, () => ({ scr: window.__trailBlazer.screen, ...window.__trailBlazer.gate, spoken: window.__spoken.slice(-1)[0] }));
+    if (g.scr === 'startline') break;
+    if (!g.open || g.state !== 'ask') { await page.waitForTimeout(80); continue; }
+    if (items.length === 1) {
+      const ui = await J(page, () => ({ title: document.querySelector('#gp-title-text').textContent, chip: document.querySelector('#gp-chip').textContent, bar: !document.querySelector('#gp-progress').hidden,
+        later: !document.querySelector('#gp-exit').hidden, text: document.querySelector('#gate').textContent }));
+      check(g.mode === 'check' && ui.title === 'Pit Crew Check' && ui.chip === 'Fact 2' && ui.bar && ui.later && !/\d+(\.\d)?\s?s\b|sec|timer|test|grade/i.test(ui.text),
+        `the check runs in the gate panel: "${ui.title}", "${ui.chip}", a progress bar, Later, no clock`);
+      const heard = await page.waitForFunction((t) => window.__spoken.includes(t), F.questionSentence(g.fact, g.flip), { timeout: 2500 }).then(() => true).catch(() => false);
+      check(heard, `each check fact is read aloud ("${F.questionSentence(g.fact, g.flip)}")`);
+      await shot(page, layout, '16a-pit-check', 0);
+      await audit(page, layout.insets, 'Pit Crew Check');
+    }
+    // T2 and T3 right and quick; the first two T4 facts with the digits swapped (a pattern), then right
+    const wrong = items.length === 6 || items.length === 7;
+    await typeAnswer(page, wrong ? flipDigits(g.answer) : g.answer);
+    items.push({ fact: g.fact, wrong });
+    if (items.length === 8) { await page.waitForFunction(() => window.__trailBlazer.gatePanel.state === 'show', null, { timeout: 2000 }); await shot(page, layout, '16b-pit-check-miss', 0); }
+    await page.waitForFunction((f) => window.__trailBlazer.screen === 'startline' || (window.__trailBlazer.gatePanel.isOpen && window.__trailBlazer.gatePanel.state === 'ask' && window.__trailBlazer.gatePanel.fact !== f), g.fact, { timeout: 4000 });
+  }
+  await page.waitForSelector(visibleSel('#screen-startline'), { timeout: 4000 });
+  check(items.length >= 9 && items.length <= 24, `the staircase asked ${items.length} facts (${items.map((x) => x.fact + (x.wrong ? '✗' : '')).join(' ')})`);
+  const sl = await J(page, () => {
+    const T = window.__trailBlazer; const chips = (id) => [...document.querySelectorAll(`#${id} .sl-chip`)].map((x) => x.dataset.family);
+    return { fluent: chips('sl-fluent'), working: chips('sl-working'), next: chips('sl-next'), xp: document.querySelector('#sl-xp').textContent, xpShown: !document.querySelector('#sl-xp').hidden,
+      note: document.querySelector('#sl-note').textContent, text: document.querySelector('#screen-startline').textContent, placement: !!T.facts.placement, factsXp: T.facts.xp, frontier: T.facts.frontier.families,
+      reversed: Object.values(T.facts.records).filter((r) => (r.patterns || []).some((p) => p.kind === 'reversed')).length };
+  });
+  check(sl.placement && sl.working.length >= 1 && sl.fluent.length >= 1 && sl.working.join() === sl.frontier.join(), `Start line: Fluent ${sl.fluent.join(' ')} · Working on ${sl.working.join(' ')} · Up next ${sl.next.join(' ')}`);
+  check(sl.xpShown && /\+100 XP/.test(sl.xp) && sl.factsXp >= xpBefore + 100, `+100 XP for the check (${xpBefore} → ${sl.factsXp})`);
+  check(/^Pit note: /.test(sl.note) && !/\btest|grade|score/i.test(sl.text), `kid-framed, with a pit note ("${sl.note}")`);
+  const kinds = await J(page, () => Object.values(window.__trailBlazer.facts.records).flatMap((r) => (r.patterns || []).map((p) => p.kind)));
+  check(kinds.length >= 2 && (sl.reversed >= 1 || kinds.length >= 2), `the check's misses are classified (${kinds.join(', ')})`);
+  await page.waitForTimeout(2600);
+  await shot(page, layout, '16c-startline', 0);
+  await audit(page, layout.insets, 'Start line');
+
+  // ---------- race 3 (the 16th): the retention probe is mixed into the gates, then End race from the pause menu ----------
   await J(page, () => { window.__mockScript = { noCrash: true }; });
-  await page.click('#res-again');
+  await page.click('#sl-race');
   await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
   await page.waitForFunction(() => window.__trailBlazer.game.getState().phase === 'ride', null, { timeout: 5000 });
-  await page.waitForTimeout(500);
+  const reasons = [];
+  for (let k = 0; k < 3 && !reasons.includes('probe'); k++) {
+    await waitGate(page);
+    const pg = await J(page, () => window.__trailBlazer.gate);
+    reasons.push(pg.reason);
+    await typeAnswer(page, pg.answer);
+    await page.waitForFunction(() => !window.__trailBlazer.gatePanel.isOpen, null, { timeout: 4000 });
+  }
+  check(reasons.includes('probe') && await J(page, () => window.__trailBlazer.facts.probe && window.__trailBlazer.facts.probe.done.length >= 1), `the next race mixes the probe into its gates (${reasons.join(', ')})`);
+  await page.waitForTimeout(300);
   await page.click('#btn-pause');
   await page.click('#pause-end');
   await page.waitForSelector(visibleSel('#screen-results'), { timeout: 5000 });
@@ -451,14 +527,17 @@ async function runLayout(browser, layout) {
   await page.waitForSelector(visibleSel('#screen-title'));
   check(await J(page, () => document.querySelector('#title-trails-text').textContent === 'Tracks 1 / 6'), 'title: "Tracks 1 / 6" (podiums)');
   await shot(page, layout, '16-title-after');
-  check(await J(page, () => /^Today: 8 \/ 12 math gates$/.test(document.querySelector('#title-mission-text').textContent) && /^Lv \d+$/.test(document.querySelector('#title-lv').textContent)), 'title: "Today: 8 / 12 math gates" and the level');
+  const today = await J(page, () => window.__trailBlazer.facts.today.count);
+  check(await J(page, (n) => document.querySelector('#title-mission-text').textContent === (n >= 12 ? 'Mission complete! Race on' : `Today: ${n} / 12 math gates`) && /^Lv \d+$/.test(document.querySelector('#title-lv').textContent), today) && today >= 9,
+    `title: today's math gates (${today}) and the level`);
 
   // ---------- Fact Grid ----------
   await page.click('#btn-grid');
   await page.waitForSelector(visibleSel('#screen-grid'));
-  const gridSt = await J(page, () => { const c = [...document.querySelectorAll('#fgrid .fg-cell')]; return { n: c.length, practiced: c.filter((x) => x.dataset.status !== 'New').map((x) => x.dataset.fact), off: c.filter((x) => x.classList.contains('off')).length }; });
+  const gridSt = await J(page, () => { const c = [...document.querySelectorAll('#fgrid .fg-cell')]; return { n: c.length, practiced: c.filter((x) => x.dataset.status !== 'New').map((x) => x.dataset.fact),
+    learning: c.filter((x) => ['Learning', 'Almost'].includes(x.dataset.status)).map((x) => x.dataset.fact), off: c.filter((x) => x.classList.contains('off')).length }; });
   check(gridSt.n === 144 && gridSt.practiced.length >= 2, `Fact Grid: 12 × 12 cells, ${gridSt.practiced.length} practiced (${gridSt.practiced.join(', ')}), ${gridSt.off} outside this week's set`);
-  const xFact = gridSt.practiced[0];
+  const xFact = gridSt.learning[0];
   const cellSt = await J(page, (f) => document.querySelector(`#fgrid [data-fact="${f}"]`).dataset.status, xFact);
   const recSt = await J(page, (f) => { const S = window.__trailBlazer; const r = S.facts.records[f]; return r ? (r.box <= 1 ? 'Learning' : 'Almost') : 'New'; }, xFact);
   check(['Learning', 'Almost'].includes(cellSt) && cellSt === recSt, `cell ${xFact} is colored ${cellSt}`);
@@ -483,22 +562,42 @@ async function runLayout(browser, layout) {
   check(true, 'the shared PIN opens the Parent Zone');
   check((await J(page, () => [...document.querySelectorAll('.pz-tabs [data-tab]')].map((t) => t.dataset.tab))).join(',') === 'sync,facts,options,report,players', 'tabs: Family code · Facts this week · Options · Report · Players');
   await page.click('.pz-tabs [data-tab="facts"]');
-  check(await J(page, () => ['x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8', 'x9'].every((f) => document.querySelector(`[data-family="${f}"]`).classList.contains('on')) && !document.querySelector('[data-family="x12"]').classList.contains('on')), 'Facts this week: ×2 … ×9 on (the stock set)');
-  await page.click('[data-family="x12"]');
+  const au = await J(page, () => ({ mode: document.querySelector('#facts-mode .seg-btn.on').dataset.value, fr: document.querySelector('#facts-frontier').dataset.families, reason: document.querySelector('#facts-reason').textContent,
+    ladder: document.querySelectorAll('#facts-ladder [data-family]').length, check: document.querySelector('#facts-check-text').textContent, btn: document.querySelector('#facts-check').textContent, stored: window.__trailBlazer.facts.frontier.families.join(' ') }));
+  check(au.mode === 'auto' && au.fr && au.fr === au.stored && au.reason.length > 5 && au.ladder >= 11 && /Last check/.test(au.check) && /again/.test(au.btn),
+    `Facts this week: Auto (recommended) shows the frontier (${au.fr}: "${au.reason}"), the ladder and the last Pit Crew Check (${au.btn})`);
+  await shot(page, layout, '19-pz-auto');
+  await audit(page, layout.insets, 'Parent Zone (Facts: auto)');
+  await page.click('#facts-mode [data-value="families"]');
+  check(await J(page, () => { const d = JSON.parse(localStorage.getItem(`trailBlazer.${window.__trailBlazer.app.currentPlayerId}.facts`)); return d.sets.mode === 'manual' && d.sets.source === 'families' && !document.querySelector('#facts-frontier'); }), 'Pick families: manual mode, saved');
+  check(await J(page, () => ['x2', 'x3', 'x4', 'x5', 'x6', 'x7', 'x8', 'x9'].every((f) => document.querySelector(`.fam[data-family="${f}"]`).classList.contains('on')) && !document.querySelector('.fam[data-family="x12"]').classList.contains('on')), 'Pick families: ×2 … ×9 on (the stock set)');
+  await page.click('.fam[data-family="x12"]');
   await page.click('#facts-addsub');
   const fd2 = await J(page, () => JSON.parse(localStorage.getItem(`trailBlazer.${window.__trailBlazer.app.currentPlayerId}.facts`)));
   check(fd2.sets.families.includes('x12') && fd2.sets.addSub === true, '×12 and "+ and − within 20" toggle on and are saved');
+  await shot(page, layout, '19b-pz-families');
+  await page.click('#facts-mode [data-value="custom"]');
   await page.fill('#facts-custom', '7 x 8\n56 / 7\nbanana\n34 + 19\n80 - 46\n5 / 2');
   await page.click('#facts-save');
   const cm = await J(page, () => ({ lines: [...document.querySelectorAll('#facts-msg [data-line]')].map((x) => x.dataset.line), text: document.querySelector('#facts-msg').textContent }));
   const fd3 = await J(page, () => JSON.parse(localStorage.getItem(`trailBlazer.${window.__trailBlazer.app.currentPlayerId}.facts`)));
-  check(cm.lines.join(',') === '3,6' && /Line 3: "banana"/.test(cm.text) && /does not come out even/.test(cm.text), `custom problems: bad lines reported by number (${cm.lines.join(', ')})`);
-  check(fd3.sets.custom.join(',') === '7x8,56/7,19+34,80-46', `the good lines are saved (${fd3.sets.custom.join(', ')})`);
-  await shot(page, layout, '19-pz-facts');
-  await audit(page, layout.insets, 'Parent Zone (Facts this week)');
+  check(cm.lines.join(',') === '3,6' && /Line 3: "banana"/.test(cm.text) && /does not come out even/.test(cm.text), `Custom list: bad lines reported by number (${cm.lines.join(', ')})`);
+  check(fd3.sets.custom.join(',') === '7x8,56/7,19+34,80-46' && fd3.sets.source === 'custom', `the good lines are saved (${fd3.sets.custom.join(', ')}), the Custom list is the set`);
+  await shot(page, layout, '19c-pz-custom');
+  await audit(page, layout.insets, 'Parent Zone (Facts: custom)');
+  await page.click('#facts-mode [data-value="auto"]');
+  const back = await J(page, () => ({ mode: JSON.parse(localStorage.getItem(`trailBlazer.${window.__trailBlazer.app.currentPlayerId}.facts`)).sets.mode,
+    fr: (document.querySelector('#facts-frontier') || { dataset: {} }).dataset.families }));
+  check(back.mode === 'auto' && back.fr === au.fr, `and back to Auto: saved, the same frontier (${back.fr} = ${au.fr})`);
   await page.click('.pz-tabs [data-tab="report"]');
   const rp = await J(page, () => ({ rows: [...document.querySelectorAll('#report-table tbody tr')].map((r) => r.dataset.op), summary: document.querySelector('#report-summary').textContent, races: document.querySelector('#report-races').textContent }));
-  check(rp.rows.includes('x') && rp.rows.includes('/') && rp.rows.includes('+') && rp.rows.includes('-') && /practiced/.test(rp.summary) && /Pine Ridge/.test(rp.races), `Report: per operation counts (${rp.rows.join(' ')}), this week's races`);
+  check(rp.rows.includes('x') && rp.rows.includes('/') && /practiced/.test(rp.summary) && /Pine Ridge/.test(rp.races), `Report: per operation counts (${rp.rows.join(' ')}), this week's races`);
+  const pat = await J(page, () => [...document.querySelectorAll('#report-patterns li')].map((x) => ({ kind: x.dataset.kind, text: x.textContent })));
+  const patEmpty = await J(page, () => (document.querySelector('div#report-patterns') || {}).textContent || '');
+  check(sl.reversed >= 2 ? pat.some((x) => x.kind === 'reversed' && /swaps the digits \(like /.test(x.text)) : (pat.length > 0 || /No patterns this week yet/.test(patEmpty)),
+    `Report → Patterns, in plain words: ${pat.map((x) => x.text).join(' · ') || patEmpty}`);
+  const rfr = await J(page, () => (document.querySelector('#report-frontier') || {}).textContent || '');
+  check(/^Working on now: .{6,}/.test(rfr), `Report: what auto mode is working on, and why ("${rfr}")`);
   await page.click('#report-copy');
   await page.waitForTimeout(150);
   check(await J(page, () => !document.querySelector('#report-text').hidden && /Multiplication \(×\): New \d+ · Learning/.test(document.querySelector('#report-text').textContent)), 'Copy report: the plain-text report');
@@ -536,7 +635,9 @@ async function runLayout(browser, layout) {
   check(save4.cash === save3b.cash && save4.levels.engine === 1 && save4.paint === 'orange' && save4.medals['pine-ridge'] === res.medal, `progress persists (cash ${save4.cash}, Engine ${save4.levels.engine}, paint ${save4.paint}, ${save4.medals['pine-ridge']} medal)`);
   check(await J(page, () => !!localStorage.getItem('trailBlazer.' + window.__trailBlazer.app.currentPlayerId + '.save') && !Object.keys(localStorage).some((k) => /^spellJump\.[^.]+\.save$/.test(k))), 'Trail Blazer writes only its own save key (no spellJump.<id>.save)');
   const fd4 = await J(page, () => { const S = window.__trailBlazer; return { recs: Object.keys(S.facts.records).length, xp: S.facts.xp, gates: S.facts.opts.gates, count: S.facts.today.count, custom: S.facts.sets.custom.length }; });
-  check(fd4.recs >= 3 && fd4.xp > 0 && fd4.gates === 6 && fd4.count === 8 && fd4.custom === 4, `facts persist after a reload (${fd4.recs} facts, ${fd4.xp} XP, ${fd4.gates} gates, today ${fd4.count}, ${fd4.custom} custom)`);
+  const fd4p = await J(page, () => { const S = window.__trailBlazer; return { placement: !!S.facts.placement, mode: S.facts.sets.mode, fr: S.facts.frontier.families.length }; });
+  check(fd4.recs >= 3 && fd4.xp > 0 && fd4.gates === 6 && fd4.count === today && fd4.custom === 4 && fd4p.placement && fd4p.mode === 'auto' && fd4p.fr >= 1,
+    `facts persist after a reload (${fd4.recs} facts, ${fd4.xp} XP, ${fd4.gates} gates, today ${fd4.count}, ${fd4.custom} custom, placement, auto mode)`);
 
   check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 4).join(' | ') : ''}`);
   await ctx.close();

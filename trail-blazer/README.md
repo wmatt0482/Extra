@@ -17,6 +17,12 @@ come back over days, and turn **Mastered** (box 3, right on 2+ days, 3 first-try
 quick on 2 days). The **Fact Grid** (title → Facts) shows every fact's status; 12 gate answers a day is the daily
 mission ($400 and +100 XP, once). Why each piece is there, with sources: `docs/LEARNING-DESIGN.md`.
 
+**v1.3 makes it adaptive**: after the first finished race the results offer a short **Pit Crew Check** (an adaptive
+staircase over the tables, about 20 facts, ending on a **Start line** screen), and **Auto mode** (the default) then
+practices two families up the ladder (the lowest unfinished tier first, the weakest within it), mixed with known ones (60 / 30 / 10), moves on at 90 % mastered /
+70 % fluent, re-checks mastered facts every 15 races or 7 days, and reads each miss for its error pattern (the hint
+and the Parent Zone Report use it).
+
 Same house style and kid-proofing as Spell Jump: no external links, no native text inputs outside the Parent Zone,
 no ads, no accounts, no lives, works offline after the first load, updates itself on a safe screen, and plays in
 landscape or portrait, with touch or a keyboard (→ / Space = GAS / front flip, ← = BRAKE / backflip, ↑ / Shift =
@@ -38,7 +44,7 @@ URL flags: `?mock=1` runs the scripted mock engine (`src/meta/mockEngine.js`) in
 Tests:
 
 ```
-node trail-blazer/tools/facts-tests.mjs    # facts, parser, hints, scheduler, store (46 checks, no browser)
+node trail-blazer/tools/facts-tests.mjs    # facts, parser, hints, scheduler, store, placement, auto mode, patterns (70 checks)
 node trail-blazer/tools/ui-smoke.mjs       # Playwright, both orientations, on the mock engine (serves the repo root itself;
                                            # ONLY=landscape|portrait runs one, SHOTS_DIR=… keeps the screenshots)
 node trail-blazer/tools/engine-smoke.mjs   # the engine (engine-owned)
@@ -58,14 +64,17 @@ Nothing has to be set up twice.
   multiplication).
 - **Family code**: create a family or join one with the code from Spell Jump (Parents → Family code). Players made
   in either game show up in both, on every device in the family.
-- **Facts this week** (per player): the ×2 … ×12 families (stock: ×2 … ×9), "÷ too" (the division facts that undo
-  them), "+ and − within 20", and **custom problems**, one per line (`7 x 8`, `56 / 7`, `34 + 19`, `80 - 46`; up to
-  60; answers are worked out for you). A line that is not a problem is reported by its number and skipped.
+- **Facts this week** (per player): **Auto (recommended)** shows what the game is working on and why ("×7 and ×8: 5
+  misses this week"), every family's place on the ladder, the last Pit Crew Check and "Run the check again"; **Pick
+  families** = the ×2 … ×12 toggles (stock: ×2 … ×9); **Custom list** = only your own problems, one per line (`7 x 8`,
+  `56 / 7`, `34 + 19`, `80 - 46`; up to 60; answers are worked out for you; a bad line is reported by its number).
+  "÷ too" and "+ and − within 20" decide which operations are allowed in every mode.
 - **Options**: per player: math gates per race (3 / 4 / 6), new facts per day (3 / 5 / 8 / All), facts aloud (the
   voice itself is set in Spell Jump → Parents → Options, natural voice included); for this device: sound, music,
   reduced motion, screen shake; change the PIN.
 - **Report** (per player): each operation's facts by status (New / Learning / Almost / Mastered / Fluent), the
-  slowest facts, this week's races (right / quick / fixed), and **Copy report** (plain text for a teacher).
+  **Patterns** in plain words ("Division is weaker than multiplication"), what auto mode is working on, the slowest
+  facts, this week's races (right / quick / fixed), and **Copy report** (plain text for a teacher).
 - **Players**: rename, reset a player's facts data, reset their Trail Blazer progress on this device, or remove a
   player (removes them from the family in both games).
 
@@ -105,6 +114,9 @@ trail-blazer/
   src/facts/hints.js      the strategy hint for every fact (×9 "10 × 7 is 70, take away 7", ÷ "7 × ? = 56", make ten …)
   src/facts/scheduler.js  Leitner boxes, mastery / fluency, the session (re-queue, incremental rehearsal), pickNext
   src/facts/store.js      the per-player facts store: set, records, today's mission, XP / levels, report, normalize
+  src/facts/placement.js  the Pit Crew Check staircase, the placement, seeding the records, the Start line
+  src/facts/adaptive.js   auto mode: the frontier, advancement / re-entry, the 60 / 30 / 10 gate mix, the retention probe
+  src/facts/patterns.js   error patterns: classify a miss, pattern-shaped hints, the Report's Patterns
   src/sfx.js              Trail Blazer-only sounds (countdown beeps, gate drop, finish cowbell, splash, gate creak)
   src/data/upgrades.js    the 4 upgrades, costs (300 × 1.45^level), resolveStats()
   src/data/paints.js      paints (finished tracks, medals) and decals (a 250 m race, 10 / 50 flips, a win)
@@ -127,6 +139,7 @@ trail-blazer/
   src/ui/gatePanel.js     the Math Gate panel (ask → right / quick, or wrong → fact + answer + hint → covered → copy)
   src/ui/numpad.js        the 0-9 ⌫ GO numpad (touch and keyboard)
   src/ui/grid.js          the Fact Grid (× and ÷ views, status colors, tap to hear)
+  src/ui/pitCheck.js      the Pit Crew Check offer card, the check run in the gate panel, the Start line screen
   src/ui/parentZone.js    Parent Zone (PIN, Family code, Facts this week, Options, Report, Players)
   src/ui/vehiclePreview.js  Ranger previews (the engine's vehicle art, with a built-in fallback)
   src/ui/tbIcons.js       extra icons (tire, trail) on top of Spell Jump's set

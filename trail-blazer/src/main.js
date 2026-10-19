@@ -8,6 +8,10 @@
 // / 6) and on each 'gate' event the engine freezes the race; the Gate panel asks the scheduler's next fact (read
 // aloud through Spell Jump's tts), main.js records the answer (facts store: boxes, mission, XP) and calls
 // game.openGate({ correct, quick, fixed }). Results list the race's facts; the Fact Grid shows every fact's status.
+// v1.3 (SPEC "Adaptive placement and difficulty"): auto mode picks the set (the frontier + known families; gates mixed
+// 60 / 30 / 10, a retention probe every 15 finished races or 7 days); misses are classified into error patterns that
+// shape the hint; the Pit Crew Check is offered on the results after a finished race until the player has a
+// placement, and ends on the Start line.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -25,7 +29,11 @@ import {
 import {
   bankRide, cashRows, currentTrail, earn, finishedCount, hashString, isUnlocked, nextTrail, statsFor,
 } from './meta/economy.js';
-import { MISSION_REWARD, activeFacts, levelFor, missionState, nextFact, noteRace, recordAnswer, resetFacts } from './facts/store.js';
+import {
+  MISSION_REWARD, activeFacts, afterRace, checkOfferDue, levelFor, missionState, nextFact, noteCheckOffered, noteRace, recordAnswer, refreshFrontier, resetFacts,
+} from './facts/store.js';
+import { hintKind, patternHint } from './facts/patterns.js';
+import { createPitCheck } from './ui/pitCheck.js';
 import { createSession } from './facts/scheduler.js';
 import { questionSentence } from './facts/facts.js';
 import { createGatePanel } from './ui/gatePanel.js';
@@ -42,7 +50,7 @@ import { drawAvatar, drawPreview, loadVehicle, vehicleModule } from './ui/vehicl
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -124,6 +132,7 @@ async function boot() {
     get family() { return family; },
     get currentPlayerId() { return currentPlayerId; },
     get facts() { return facts; },
+    get screen() { return screen; },
     persist: () => writeSave(currentPlayerId, save),
     persistFacts: () => { if (currentPlayerId && facts) writeFactsData(currentPlayerId, facts); },
     // ----- the math data of any player (Parent Zone) -----
@@ -147,6 +156,16 @@ async function boot() {
       return { rate: o.rate, voiceName: o.voiceName || '', cloudVoice: o.cloudVoice || '', synced: !!sync.code, available: tts.available };
     },
     go, toast, refreshCash, startRide, setSetting, setShake, selectPlayer,
+    // ----- the Pit Crew Check (v1.3) -----
+    showCheckOffer: () => pit.showOffer(),
+    hideCheckOffer: () => pit && pit.hideOffer(),
+    /** Parents → Facts → "Run the check again": for that player (switching to them first when needed). */
+    runCheckFor(id) {
+      if (!Profiles.playerById(family, id)) return;
+      pz.close();
+      if (id !== currentPlayerId) selectPlayer(id);
+      setTimeout(() => pit.run(), 0);
+    },
     createPlayer: (name, color) => Profiles.createPlayer(family, name, color),
     openParents: (opts) => pz.open(opts),
     onLookChanged: () => drawHero(),
@@ -197,7 +216,12 @@ async function boot() {
   const cloud = createCloudVoice({ getCode: () => sync.code, getWords: () => [], audio: Audio });
   tts.setCloud(cloud);
   tts.setOnSpeaking((on) => Audio.voice(on));
-  const gatePanel = createGatePanel($('#gate'), { tts, audio: Audio, aloud: () => !!(facts && facts.opts.aloud) });
+  // the hint on a miss follows the error pattern (patterns.js): "7 × 7 is 49, then one more 7 is 56"
+  const hintFromPattern = (fact, flip, given) => (facts ? patternHint(fact, flip, hintKind(fact, given, facts.records), given) : null);
+  const gatePanel = createGatePanel($('#gate'), { tts, audio: Audio, aloud: () => !!(facts && facts.opts.aloud), hint: hintFromPattern });
+  const pit = createPitCheck(app, gatePanel);
+  screens.check = pit.checkScreen;
+  screens.startline = pit.startlineScreen;
   function applyVoice() {
     if (!currentPlayerId) return;
     const o = Profiles.playerOptions(family, currentPlayerId);
@@ -245,6 +269,7 @@ async function boot() {
     currentPlayerId = id;
     replaceSave(loadSave(id));
     facts = loadFactsData(id);
+    refreshFrontier(facts, Date.now());       // a new day / week can move the frontier (re-entry windows)
     session = createSession();
     family.lastPlayer = id;
     Profiles.writeFamily(family);
@@ -475,11 +500,13 @@ async function boot() {
     Audio.engine(-1); Audio.nitro(false);
     document.documentElement.classList.add('math');
     const pick = nextFact(facts, Date.now(), session) || { fact: '7x8', flip: false, isNew: false };
+    r.pick = pick;
     const index = Number.isInteger(evt.index) ? evt.index : r.facts.length;
     const res = await gatePanel.open({ fact: pick.fact, flip: pick.flip, index, total: r.gates });
     if (res.cancelled || run !== r || r.ended) return;
     const out = recordAnswer(facts, pick.fact, res, Date.now(), session);
-    r.facts.push({ fact: pick.fact, flip: pick.flip, correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, ms: res.ms, status: out.status, newlyMastered: out.newlyMastered });
+    r.facts.push({ fact: pick.fact, flip: pick.flip, correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, ms: res.ms, status: out.status, newlyMastered: out.newlyMastered,
+      reason: pick.reason || '', bucket: pick.bucket || '', pattern: out.pattern || null });
     r.xp += out.xp;
     if (out.newlyMastered) r.mastered.push(pick.fact);
     if (out.newlyFluent) r.fluent.push(pick.fact);
@@ -529,9 +556,19 @@ async function boot() {
     const bank = bankRide(save, trails, r.trail.id, summary, medalTimes);
     save.seen.coach = true;
     app.persist();
-    if (facts && r.facts.length) {
-      noteRace(facts, { at: Date.now(), trail: r.trail.id, place: bank.place, asked: r.facts.length, correct: r.facts.filter((f) => f.correct).length,
-        quick: r.facts.filter((f) => f.quick).length, fixed: r.facts.filter((f) => f.fixed).length });
+    let offerCheck = false, probeStarted = false;
+    if (facts) {
+      if (r.facts.length) {
+        noteRace(facts, { at: Date.now(), trail: r.trail.id, place: bank.place, asked: r.facts.length, correct: r.facts.filter((f) => f.correct).length,
+          quick: r.facts.filter((f) => f.quick).length, fixed: r.facts.filter((f) => f.fixed).length });
+      }
+      // v1.3: a finished race counts toward the retention probe; the frontier moves (advancement / re-entry); the
+      // Pit Crew Check is offered while there is no placement (after up to 3 finished races)
+      const finished = !!summary.finishCrossed;
+      const ar = afterRace(facts, { finished }, Date.now());
+      probeStarted = ar.probeStarted;
+      if (ar.frontierChanged) prepareVoice();      // the natural voice's clips for the facts now in play
+      if (finished && checkOfferDue(facts)) { offerCheck = true; noteCheckOffered(facts); }
       app.persistFacts();
     }
     const math = facts ? { facts: r.facts, xp: r.xp, mastered: r.mastered, fluent: r.fluent, missionPaid: r.missionPaid, mission: missionState(facts, Date.now()),
@@ -539,7 +576,7 @@ async function boot() {
     const nt = nextTrail(trails, r.trail.id);
     const result = lastResult = {
       trail: r.trail, summary, rows, total, bank, medalTimes, standings: standings(r, summary),
-      place: bank.place, timeSec: summary.timeSec || 0, math,
+      place: bank.place, timeSec: summary.timeSec || 0, math, offerCheck, probeStarted,
       next: nt && isUnlocked(save, trails, nt.id) ? nt : null,
       unlocked: bank.unlocked ? trails.find((t) => t.id === bank.unlocked) : null,
     };
@@ -718,8 +755,10 @@ async function boot() {
     get gate() {
       const open = gatePanel.isOpen;
       return { open, fact: open ? gatePanel.fact : null, answer: open ? gatePanel.answer : null, state: open ? gatePanel.state : null,
-        flip: open ? gatePanel.flip : false, index: run && run.facts ? run.facts.length : 0 };
+        flip: open ? gatePanel.flip : false, index: run && run.facts ? run.facts.length : 0, mode: open ? gatePanel.mode : null,
+        reason: open && run && run.pick ? run.pick.reason || '' : '', bucket: open && run && run.pick ? run.pick.bucket || '' : '' };
     },
+    pit,
   }; // debugging / smoke tests
   registerSW();
 }

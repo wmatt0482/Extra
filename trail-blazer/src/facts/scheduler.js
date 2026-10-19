@@ -5,7 +5,8 @@
 //
 // Record: { fact, box 0..3, due (ms), attempts, firstTry, quick, seenCount, lastSeen, daysCorrect: [day], daysSeen,
 //           daysQuick: [day], misses, fixed, missDay (the last day it was missed), totalMs, answeredMs (correct answers
-//           timed), lastMs, rehearsed }
+//           timed), lastMs, rehearsed, focus (missed in the Pit Crew Check: first among due facts until box 2),
+//           times: [ms] (the last 5 answers), patterns: [{ kind, at, given }] (the last 10 misses, src/facts/patterns.js) }
 
 export const DAY_MS = 86400000;
 export const INTERVAL_DAYS = [0, 1, 2, 4];       // box 0 = again this session (after ≥ 2 other facts)
@@ -14,7 +15,8 @@ export const REQUEUE_MAX = 2;                     // … at most twice per sessi
 export const QUICK_MS = 3000;                     // a correct answer within 3 s of the fact appearing is quick
 export const REHEARSAL_GAPS = [1, 2, 3];          // a new fact returns after 1, then 2, then 3 known facts
 export const MAX_REHEARSING = 2;                  // at most 2 new facts in rehearsal at once
-export const SPARSE_KNOWN = 3;                    // fewer known facts than this (a new player, a brand-new list): sparse mode
+export const SPARSE_KNOWN = 3;
+export const TIMES_KEPT = 5;                      // response times kept per fact                    // fewer known facts than this (a new player, a brand-new list): sparse mode
 export const BOX_WEIGHTS = [4, 3, 2, 1];
 export const STATUSES = ['New', 'Learning', 'Almost', 'Mastered', 'Fluent'];
 
@@ -29,7 +31,7 @@ export function dayKey(now) {
 
 export function newRecord(fact) {
   return { fact, box: 0, due: 0, attempts: 0, firstTry: 0, quick: 0, seenCount: 0, lastSeen: 0, daysCorrect: [], daysSeen: [], daysQuick: [], misses: 0, fixed: 0, missDay: '',
-    totalMs: 0, answeredMs: 0, lastMs: 0, rehearsed: false };
+    totalMs: 0, answeredMs: 0, lastMs: 0, rehearsed: false, focus: false, times: [], patterns: [] };
 }
 const addDay = (list, now) => { const k = dayKey(now); if (!list.includes(k)) list.push(k); };
 
@@ -48,6 +50,7 @@ export function applyAnswer(rec, result = {}, now) {
   addDay(rec.daysSeen, now);
   const today = dayKey(now);
   const ms = Number(result.ms) > 0 ? Math.round(result.ms) : 0;
+  if (ms) rec.times = [...(rec.times || []), ms].slice(-TIMES_KEPT);
   if (result.correct) {
     if (ms) { rec.totalMs += ms; rec.answeredMs += 1; rec.lastMs = ms; }
     if (rec.missDay === today) {
@@ -69,6 +72,7 @@ export function applyAnswer(rec, result = {}, now) {
     rec.box = 0;
     rec.due = now;
   }
+  if (rec.box >= 2) rec.focus = false;
   return rec;
 }
 
@@ -148,13 +152,10 @@ function weightedPick(facts, recs, rand) {
  * across every family (interleaving). Never the same fact twice in a row while another exists. In sparse mode (fewer
  * than 3 known facts) the rehearsal gaps count any other fact and the ≤ 2-rehearsing limit is off.
  */
-export function pickNext(active, recs, now, session, opts = {}, rand = Math.random) {
-  const facts = [...new Set(active || [])];
-  if (!facts.length) return null;
-  const inSet = new Set(facts);
+/** The session's obligations first: a missed fact after 2 others (max twice), then a rehearsing new fact whose gap
+ *  is done. Returns a pick or null. */
+export function pickObligation(facts, recs, session, sparse = isSparse(facts, recs)) {
   const last = session.history[session.history.length - 1];
-  session.pending = session.pending.filter((p) => inSet.has(p.fact) && (p.times || 0) < REQUEUE_MAX);
-  session.rehearsal = session.rehearsal.filter((r) => inSet.has(r.fact));
   const ready = pendingReady(session).filter((p) => p.fact !== last);
   if (ready.length && session.lastReason !== 'requeue') {
     ready[0].times = (ready[0].times || 0) + 1;
@@ -163,13 +164,28 @@ export function pickNext(active, recs, now, session, opts = {}, rand = Math.rand
     session.lastReason = 'requeue';
     return { fact: ready[0].fact, reason: 'requeue', isNew: false };
   }
-  const sparse = isSparse(facts, recs);
   const reh = rehearsalReady(session, sparse).filter((r) => r.fact !== last);
   if (reh.length) { session.lastReason = 'rehearsal'; return { fact: reh[0].fact, reason: 'rehearsal', isNew: false }; }
+  return null;
+}
+
+export function pickNext(active, recs, now, session, opts = {}, rand = Math.random) {
+  const facts = [...new Set(active || [])];
+  if (!facts.length) return null;
+  const last = session.history[session.history.length - 1];
+  const sparse = typeof opts.sparse === 'boolean' ? opts.sparse : isSparse(facts, recs);
+  if (!opts.skipObligations) {
+    // (a subset pick, opts.skipObligations, must not drop the session's entries for facts outside the subset)
+    const inSet = new Set(facts);
+    session.pending = session.pending.filter((p) => inSet.has(p.fact) && (p.times || 0) < REQUEUE_MAX);
+    session.rehearsal = session.rehearsal.filter((r) => inSet.has(r.fact));
+    const ob = pickObligation(facts, recs, session, sparse);
+    if (ob) return ob;
+  }
   const busy = new Set([...session.pending.map((p) => p.fact), ...session.rehearsal.map((r) => r.fact), last].filter(Boolean));
   const pick = (fact, reason) => { session.lastReason = reason; return { fact, reason, isNew: isNew(recs[fact]) }; };
   const due = facts.filter((f) => !busy.has(f) && isDue(recs[f], now))
-    .sort((a, b) => recs[a].box - recs[b].box || recs[a].due - recs[b].due);
+    .sort((a, b) => (recs[b].focus ? 1 : 0) - (recs[a].focus ? 1 : 0) || recs[a].box - recs[b].box || recs[a].due - recs[b].due);
   if (due.length) return pick(due[0], 'due');
   const newLeft = opts.newLeft == null ? Infinity : opts.newLeft;
   const fresh = facts.filter((f) => !busy.has(f) && isNew(recs[f]));

@@ -6,12 +6,16 @@
 // math gates per race, new facts per day, facts aloud, the voice as set in Spell Jump; this device's sound, music,
 // motion, shake; Change PIN) · Report (per operation the status counts, slowest facts, this week's races, Copy report)
 // · Players (rename, reset facts data, reset Trail Blazer progress, remove). A one-line family sync status sits under
+// v1.3: Facts this week has three modes: Auto (recommended: the frontier and its reason, every family's state on the
+// ladder, ÷ / + − allowed, the Pit Crew Check: last result, "Run the check again") · Pick families (v1.2 toggles) ·
+// Custom list (only the typed problems). The Report gains Patterns (patterns.js, in plain words) and the frontier.
 // the title. Native text inputs exist only here (family code, custom problems, player names).
 import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spell-jump/src/spelling/profiles.js';
 import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
-import { ALL_FAMILIES, MAX_CUSTOM, factText, parseCustom } from '../facts/facts.js';
+import { ALL_FAMILIES, MAX_CUSTOM, factText, famLabel, parseCustom } from '../facts/facts.js';
 import { STATUSES } from '../facts/scheduler.js';
-import { GATES_OPTIONS, NEW_PER_DAY_OPTIONS, activeFacts, report, reportText } from '../facts/store.js';
+import { GATES_OPTIONS, NEW_PER_DAY_OPTIONS, activeFacts, refreshFrontier, report, reportText } from '../facts/store.js';
+import { autoFamilies, famInfo, ladder } from '../facts/adaptive.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from './tbIcons.js';
 import { drawAvatar } from './vehiclePreview.js';
@@ -205,20 +209,45 @@ export function createParentZone(app) {
   // ---------- Facts this week ----------
   function factsTab(p) {
     const d = app.factsFor(p.id);
-    const save = () => { d.updatedAt = Date.now(); app.saveFactsFor(p.id, d); count.textContent = countText(); };
-    const countText = () => `${activeFacts(d).length} facts this week · ${p.name} answers ${d.opts.gates} at the gates of each race`;
+    const save = () => { d.updatedAt = Date.now(); if (d.sets.mode === 'auto') refreshFrontier(d, Date.now()); app.saveFactsFor(p.id, d); count.textContent = countText(); };
+    const countText = () => `${activeFacts(d).length} facts in play · ${p.name} answers ${d.opts.gates} at the gates of each race`;
     const count = h('div', { class: 'pz-help', id: 'facts-count' }, countText());
-    const fams = h('div', { class: 'fam-row', role: 'group', 'aria-label': 'Times tables' }, ...ALL_FAMILIES.map((f) => {
-      const on = d.sets.families.includes(f);
-      const b = h('button', { class: 'fam' + (on ? ' on' : ''), 'data-family': f, 'aria-pressed': String(on), 'data-sfx': '' }, `×${f.slice(1)}`);
-      b.addEventListener('click', () => {
-        const has = d.sets.families.includes(f);
-        d.sets.families = has ? d.sets.families.filter((x) => x !== f) : ALL_FAMILIES.filter((x) => x === f || d.sets.families.includes(x));
-        b.classList.toggle('on', !has); b.setAttribute('aria-pressed', String(!has));
-        save();
-      });
-      return b;
-    }));
+    const mode = d.sets.mode === 'auto' ? 'auto' : d.sets.source === 'custom' ? 'custom' : 'families';
+    const modeSeg = segmented('How facts are chosen', '', [['auto', 'Auto (recommended)'], ['families', 'Pick families'], ['custom', 'Custom list']], mode, (v) => {
+      if (v === 'auto') d.sets.mode = 'auto';
+      else { d.sets.mode = 'manual'; d.sets.source = v; d.sets.edited = true; }
+      save();
+      render();
+    }, 'facts-mode').lastChild;                       // just the segmented control, under its own heading
+    modeSeg.classList.add('facts-mode');
+    const autoBtn = modeSeg.querySelector('[data-value="auto"]');
+    autoBtn.replaceChildren('Auto', h('small', { class: 'rec' }, ' (recommended)'));
+    const head = [h('div', { class: 'hud-label pz-sec pz-first' }, 'How facts are chosen'), modeSeg];
+    const ops = [
+      toggle('÷ too', 'The division facts that undo the times tables (56 ÷ 7 and 56 ÷ 8 for 7 × 8)', d.sets.division, (v) => { d.sets.division = v; save(); if (mode === 'auto') render(); }, 'facts-div'),
+      toggle('+ and − within 20', 'Addition up to 20 and the subtractions back (a warm-up or a refresher)', d.sets.addSub, (v) => { d.sets.addSub = v; save(); if (mode === 'auto') render(); }, 'facts-addsub'),
+    ];
+    if (mode === 'auto') return [...head, ...autoView(p, d), ...ops, checkRow(p, d), count];
+    if (mode === 'families') {
+      const fams = h('div', { class: 'fam-row', role: 'group', 'aria-label': 'Times tables' }, ...ALL_FAMILIES.map((f) => {
+        const on = d.sets.families.includes(f);
+        const b = h('button', { class: 'fam' + (on ? ' on' : ''), 'data-family': f, 'aria-pressed': String(on), 'data-sfx': '' }, `×${f.slice(1)}`);
+        b.addEventListener('click', () => {
+          const has = d.sets.families.includes(f);
+          d.sets.families = has ? d.sets.families.filter((x) => x !== f) : ALL_FAMILIES.filter((x) => x === f || d.sets.families.includes(x));
+          d.sets.edited = true;
+          b.classList.toggle('on', !has); b.setAttribute('aria-pressed', String(!has));
+          save();
+        });
+        return b;
+      }));
+      return [...head,
+        h('div', { class: 'hud-label pz-sec' }, 'Times tables'),
+        h('div', { class: 'pz-help' }, 'Pick the families to practice this week. Each one is n × 2 … n × 12 (7 × 8 and 8 × 7 count as one fact). Grade 4 aims at all of them, fluent.'),
+        fams, ...ops,
+        d.sets.custom.length ? h('div', { class: 'pz-help', id: 'facts-custom-note' }, `Plus the ${d.sets.custom.length} problem${d.sets.custom.length === 1 ? '' : 's'} from the Custom list.`) : null,
+        checkRow(p, d), count];
+    }
     const ta = h('textarea', { id: 'facts-custom', rows: '6', spellcheck: 'false', autocapitalize: 'off', autocomplete: 'off', autocorrect: 'off',
       placeholder: '7 x 8\n56 / 7\n34 + 19\n80 - 46', 'aria-label': 'Custom problems' });
     ta.value = d.sets.customText || d.sets.custom.map((f) => factText(f)).join('\n');
@@ -228,6 +257,7 @@ export function createParentZone(app) {
       const r = parseCustom(ta.value);
       d.sets.custom = r.facts;
       d.sets.customText = ta.value.slice(0, 4000);
+      d.sets.edited = true;
       save();
       msg.className = 'pz-msg ' + (r.errors.length ? 'err' : 'ok');
       msg.replaceChildren(
@@ -235,16 +265,45 @@ export function createParentZone(app) {
         ...r.errors.map((e) => h('span', { class: 'err-line', 'data-line': String(e.line) }, e.line ? `Line ${e.line}: "${e.text}": ${e.error}.` : `${e.error}.`)));
       if (r.errors.length) app.audio.error(); else app.audio.cash();
     });
-    return [
-      h('div', { class: 'hud-label pz-sec pz-first' }, 'Times tables'),
-      h('div', { class: 'pz-help' }, 'Pick the families to practice this week. Each one is n × 2 … n × 12 (7 × 8 and 8 × 7 count as one fact). Grade 4 aims at all of them, fluent.'),
-      fams,
-      toggle('÷ too', 'The division facts that undo the chosen families (56 ÷ 7 and 56 ÷ 8 for 7 × 8)', d.sets.division, (v) => { d.sets.division = v; save(); }, 'facts-div'),
-      toggle('+ and − within 20', 'Addition up to 20 and the subtractions back (a warm-up or a refresher)', d.sets.addSub, (v) => { d.sets.addSub = v; save(); }, 'facts-addsub'),
+    return [...head,
       h('label', { class: 'pz-label', for: 'facts-custom' }, 'Custom problems', h('span', { class: 'pz-help' }, `one per line, up to ${MAX_CUSTOM}`)),
-      h('div', { class: 'pz-help' }, 'Like 7 x 8, 56 / 7, 34 + 19 or 80 - 46. Answers are worked out for you; whole numbers only.'),
-      ta, h('div', { class: 'pz-actions' }, saveBtn), msg, count,
+      h('div', { class: 'pz-help' }, 'Only these problems come up at the gates. Like 7 x 8, 56 / 7, 34 + 19 or 80 - 46. Answers are worked out for you; whole numbers only.'),
+      ta, h('div', { class: 'pz-actions' }, saveBtn), msg, checkRow(p, d), count];
+  }
+
+  // auto mode: the frontier with its reason, and every family's place on the ladder
+  function autoView(p, d) {
+    const now = Date.now();
+    const fr = (d.frontier && d.frontier.families) || [];
+    const box = h('div', { class: 'fr-box', id: 'facts-frontier', 'data-families': fr.join(' ') },
+      h('div', { class: 'label' }, 'Working on now'),
+      h('div', { class: 'fr-fams' }, ...(fr.length ? fr.map((f) => h('span', { class: 'lad st-frontier', 'data-family': f }, famLabel(f))) : [h('span', { class: 'pz-help' }, 'Everything is mastered: mixed practice')])),
+      h('div', { class: 'fr-reason', id: 'facts-reason' }, (d.frontier && d.frontier.reason) || ''));
+    const inPlay = new Set(autoFamilies(d, now));
+    const chips = ladder(d.sets).map((f) => {
+      const i = famInfo(d, f, now);
+      const st = fr.includes(f) ? 'frontier' : !inPlay.has(f) ? 'later' : i.graduated ? 'mastered' : i.known ? 'known' : 'practice';
+      const word = { frontier: 'now', mastered: 'mastered', known: 'known', practice: 'mixed in', later: 'later' }[st];
+      return h('span', { class: `lad st-${st}`, 'data-family': f, 'data-state': st, title: `${famLabel(f)}: ${word}` }, famLabel(f), h('small', {}, word));
+    });
+    return [
+      h('div', { class: 'pz-help' }, `Auto picks ${p.name}'s practice up the ladder: two families from the lowest tier not yet secure (the weakest first), mixed with the known ones (about 6 gates in 10 on the new work, 3 on known facts, 1 on mastered ones). A family moves on at 90 % mastered and 70 % fluent, and comes back if facts slip.`),
+      box,
+      h('div', { class: 'hud-label pz-sec' }, 'The ladder'),
+      h('div', { class: 'ladder', id: 'facts-ladder' }, ...chips),
+      h('div', { class: 'lad-legend' }, 'now = working on · known / mixed in = in the gates for spacing (÷ joins once its × is known) · mastered = quick checks only · later = waits for the families before it'),
     ];
+  }
+  // the Pit Crew Check: last result and "Run the check again"
+  function checkRow(p, d) {
+    const pl = d.placement;
+    const by = (st) => (pl ? Object.entries(pl.families).filter(([, v]) => v.status === st && !v.inferred).map(([f]) => famLabel(f)) : []);
+    const text = pl ? `Last check ${new Date(pl.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: fluent ${by('fluent').join(' ') || '–'} · right but slow ${by('known').join(' ') || '–'} · missed ${by('shaky').join(' ') || '–'}`
+      : `Not done yet. It is offered after ${p.name}'s next finished race${(d.checkOffers || 0) >= 3 ? ' (offered 3 times: run it from here)' : ''}.`;
+    const btn = h('button', { class: 'btn btn-sm btn-cyan', id: 'facts-check', 'data-sfx': '' }, pl ? 'Run the check again' : 'Run the Pit Crew Check');
+    btn.addEventListener('click', () => app.runCheckFor(p.id));
+    return h('div', { class: 'pz-check-row', id: 'facts-check-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Pit Crew Check'),
+      h('div', { class: 'sub', id: 'facts-check-text' }, text)), btn);
   }
 
   // ---------- Report ----------
@@ -273,6 +332,10 @@ export function createParentZone(app) {
     return [
       h('div', { class: 'pz-help pz-first', id: 'report-summary' }, `${r.totals.mastered} mastered · ${r.totals.fluent} fluent (mastered and answered in 3 s or less on 2 days) · ${r.totals.seen} of ${r.totals.facts} facts practiced`),
       table,
+      h('div', { class: 'hud-label pz-sec' }, 'Patterns'),
+      r.patterns.length ? h('ul', { class: 'pat-list', id: 'report-patterns' }, ...r.patterns.map((x) => h('li', { 'data-kind': x.kind }, x.text)))
+        : h('div', { class: 'pz-help', id: 'report-patterns' }, 'No patterns this week yet: they show up after a few misses.'),
+      r.mode === 'auto' && r.frontier.length ? h('div', { class: 'pz-help', id: 'report-frontier' }, `Working on now: ${r.reason}`) : null,
       h('div', { class: 'hud-label pz-sec' }, 'Slowest facts'),
       h('div', { class: 'pz-help', id: 'report-slow' }, r.slowest.length ? r.slowest.map((x) => `${factText(x.fact)} (${(x.avgMs / 1000).toFixed(1)} s)`).join(' · ') : 'Not enough answers yet.'),
       h('div', { class: 'hud-label pz-sec' }, "This week's races"),

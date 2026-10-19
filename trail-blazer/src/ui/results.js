@@ -6,7 +6,7 @@
 // Title: "1st place!" / "Podium!" / "Race over". Buttons: Garage / Race again / Next track.
 // v1.2 (math layer): the race's facts (✓ right first try, ⚡ quick, ↻ fixed), "N facts mastered!", the daily mission
 // (its $400 shows as an extra row under the total: paid when it happened, not part of the race's cash), the XP and a
-// level-up stamp.
+// level-up stamp. v1.3: the Pit Crew Check offer card (r.offerCheck) after the race's own moments.
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { MEDAL_LABEL, fmtTime, ordinal } from '../data/medals.js';
 import { factAnswer, factText } from '../facts/facts.js';
@@ -121,7 +121,10 @@ export function createResults(app) {
     el.callouts.replaceChildren(...call);
     el.next.hidden = !r.next;
     clearMoment();
-    if (math && math.levelAfter > math.levelBefore) momentTimers.push(setTimeout(() => levelUp(math.levelAfter), app.settings.reducedMotion ? 200 : 1300));
+    const leveled = math && math.levelAfter > math.levelBefore;
+    if (leveled) momentTimers.push(setTimeout(() => levelUp(math.levelAfter), app.settings.reducedMotion ? 200 : 1300));
+    // v1.3: the Pit Crew Check offer, once the race's own moments have played
+    if (r.offerCheck) momentTimers.push(setTimeout(() => app.showCheckOffer(), leveled ? 2600 : 1600));
   }
-  return { show, hide() { clearTimeout(medalTimer); cancelAnimationFrame(countRaf); clearMoment(); } };
+  return { show, hide() { clearTimeout(medalTimer); cancelAnimationFrame(countRaf); clearMoment(); app.hideCheckOffer && app.hideCheckOffer(); } };
 }

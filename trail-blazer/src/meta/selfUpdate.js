@@ -3,7 +3,7 @@
 // the title, the garage and trail select, with no ride and the Parent Zone closed. Anywhere else the app shows
 // "Update ready, restarting soon" (once) and reloads as soon as it is back on a safe screen. Pure logic (no DOM).
 
-export const SAFE_SCREENS = Object.freeze(['players', 'title', 'garage', 'trails', 'grid']);
+export const SAFE_SCREENS = Object.freeze(['players', 'title', 'garage', 'trails', 'grid', 'startline']);
 export const UPDATE_NOTICE = 'Update ready, restarting soon';
 
 /** True when a reload would not interrupt anything. */

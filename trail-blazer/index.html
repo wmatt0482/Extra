@@ -766,6 +766,81 @@ html.math #controls { visibility: hidden; }
   .np { --nk: 56px; gap: 6px; }
   #screen-title .logo { font-size: clamp(40px, 8vmin + 1.4vw, 80px); }
 }
+
+/* ===== v1.3: Pit Crew Check (gate panel in check mode), the offer card, the Start line ===== */
+.gp-top { flex-wrap: wrap; row-gap: 6px; }
+.gp-progress { flex: 1 1 100%; height: 8px; border-radius: 99px; background: rgba(255,255,255,.12); overflow: hidden; }
+.gp-progress i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #ffd23a); transition: width .3s ease; }
+.gp-exit { margin-left: 4px; }
+.gate[data-mode="check"] .gp-hear { margin-left: auto; }
+.pit-offer { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); background: rgba(4,12,9,.72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.pit-card { width: min(100%, 460px); padding: 20px 20px 18px; text-align: center; display: grid; gap: 10px; justify-items: center; animation: pop .35s cubic-bezier(.2,1.6,.5,1); }
+.pit-badge { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); box-shadow: 0 4px 0 var(--accent-edge); color: var(--accent-ink); }
+.pit-badge svg { width: 34px; height: 34px; }
+.pit-card h3 { margin: 0; font: 400 30px/1 var(--font-display); color: #fff; text-shadow: 0 3px 0 var(--ink); }
+.pit-card p { margin: 0; font-weight: 700; color: var(--muted); font-size: 16px; line-height: 1.35; }
+.pit-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
+.pit-actions .btn { min-width: 120px; }
+#screen-check { background: transparent; }
+#screen-startline { align-items: center; justify-content: center; gap: 10px; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); overflow-y: auto; }
+.sl-title { margin: 0; font: 400 40px/1 var(--font-display); color: var(--accent); text-shadow: 0 4px 0 var(--ink); transform: rotate(-2deg); display: flex; align-items: center; gap: 12px; }
+.sl-flag { width: 44px; height: 30px; border-radius: 4px; background: conic-gradient(#fff 0 25%, #111 0 50%, #fff 0 75%, #111 0) 0 0 / 15px 15px; box-shadow: 0 3px 0 var(--ink); }
+.sl-sub { margin: 0; font-weight: 800; color: var(--muted); text-align: center; }
+.sl-card { width: min(100%, 560px); padding: 14px 16px; display: grid; gap: 10px; }
+.sl-row { display: grid; grid-template-columns: 112px 1fr; align-items: center; gap: 10px; }
+.sl-row[hidden] { display: none; }
+.sl-label { font: 400 15px/1.1 var(--font-display); text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.sl-row[data-row="fluent"] .sl-label { color: #ffd23a; }
+.sl-row[data-row="working"] .sl-label { color: var(--accent); }
+.sl-row[data-row="next"] .sl-label { color: var(--cyan); }
+.sl-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sl-chip { min-width: 52px; min-height: 40px; padding: 0 10px; border-radius: 11px; display: inline-grid; place-items: center; font: 400 18px/1 var(--font-display); background: var(--ink-2); border: 2px solid var(--line); color: #fff; }
+.sl-row[data-row="fluent"] .sl-chip { background: linear-gradient(#ffe9b0, #ffd23a); color: #2a1400; border-color: #a8820f; }
+.sl-row[data-row="working"] .sl-chip { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-edge); }
+.sl-note { font-weight: 700; color: #e9f3ee; font-size: 15px; line-height: 1.35; padding-top: 4px; border-top: 1px dashed var(--line); }
+.sl-note:empty { display: none; }
+.sl-foot { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+.sl-foot .btn { min-width: 140px; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #screen-startline { gap: 6px; }
+  .sl-title { font-size: 30px; }
+  .sl-card { padding: 10px 14px; gap: 6px; }
+  .sl-chip { min-height: 34px; font-size: 16px; }
+  .sl-foot .btn-big { min-height: 52px; font-size: 20px; }
+}
+@media (max-width: 480px) {
+  .sl-row { grid-template-columns: 1fr; gap: 4px; }
+}
+/* Parent Zone (v1.3): auto mode */
+.seg.facts-mode { display: flex; width: 100%; margin: 4px 0 8px; }
+.seg.facts-mode .seg-btn { flex: 1; min-height: 44px; white-space: normal; line-height: 1.1; padding: 6px 8px; }
+.seg.facts-mode .rec { font-size: inherit; font-weight: inherit; }
+@media (max-width: 480px) {
+  .seg.facts-mode .seg-btn { font-size: 15px; }
+  .seg.facts-mode .rec { display: block; font-size: 10px; letter-spacing: .02em; opacity: .85; }
+}
+@media (orientation: portrait) and (max-width: 420px) {
+  .gate[data-mode="check"] .gp-title-text { display: inline; font-size: 15px; }
+  .gate[data-mode="check"] .gp-chip { display: none; }
+  .gate[data-mode="check"] .gp-hear-text { display: none; }
+  .gate[data-mode="check"] .gp-hear { min-width: 52px; padding: 0 12px; }
+}
+.fr-box { margin: 8px 0 4px; padding: 12px 14px; border-radius: 12px; background: rgba(255,138,31,.12); border: 2px solid var(--accent); display: grid; gap: 6px; }
+.fr-box .label { font: 400 15px/1.1 var(--font-display); color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
+.fr-fams { display: flex; gap: 6px; flex-wrap: wrap; }
+.fr-reason { font-weight: 700; font-size: 14px; color: #e9f3ee; }
+.ladder { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+.lad { min-width: 50px; min-height: 36px; padding: 4px 8px; border-radius: 10px; display: inline-grid; place-items: center; font: 400 15px/1 var(--font-display); background: var(--ink-2); border: 2px solid var(--line); color: var(--muted); }
+.lad small { display: block; font: 800 9px/1 var(--font-body); letter-spacing: .04em; text-transform: uppercase; margin-top: 3px; }
+.lad.st-frontier { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-edge); }
+.lad.st-mastered { background: var(--go); color: #062a12; border-color: var(--go-edge); }
+.lad.st-known { background: #1f5c46; color: #fff; border-color: #2f8a68; }
+.lad.st-practice { background: #20404f; color: #fff; border-color: #2f6a83; }
+.lad-legend { font-size: 12px; color: var(--muted); font-weight: 700; }
+.pz-check-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
+.pz-check-row .grow { flex: 1 1 200px; }
+.pat-list { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.pat-list li { padding: 8px 12px; border-radius: 10px; background: var(--ink-2); border: 2px solid var(--line); font-weight: 700; font-size: 14px; }
 </style>
 </head>
 <body>
@@ -942,11 +1017,37 @@ html.math #controls { visibility: hidden; }
       <div class="card res-pay scroll"><table class="pay" id="res-pay"></table></div>
     </div>
     <div class="res-moment" id="res-moment" hidden aria-live="polite"></div>
+    <div class="pit-offer" id="pit-offer" hidden role="dialog" aria-labelledby="pit-offer-title">
+      <div class="card pit-card">
+        <div class="pit-badge"><span data-icon="wrench"></span></div>
+        <h3 id="pit-offer-title">Pit Crew Check</h3>
+        <p>Your crew needs to know what you've got. About 20 quick facts.</p>
+        <div class="pit-actions"><button class="btn" id="pit-later" data-sfx>Later</button><button class="btn btn-orange btn-big" id="pit-start" data-sfx>Start<span data-icon="right"></span></button></div>
+      </div>
+    </div>
     <div class="results-foot">
       <button class="btn" id="res-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
       <button class="btn btn-orange" id="res-again" data-sfx><span data-icon="retry"></span>Race again</button>
       <button class="btn btn-green" id="res-next" data-sfx>Next track<span data-icon="right"></span></button>
     </div>
+  </section>
+
+  <!-- ===== Pit Crew Check (the gate panel runs over this, without a race) ===== -->
+  <section class="screen" id="screen-check" data-screen="check" hidden aria-label="Pit Crew Check"></section>
+
+  <!-- ===== Start line (after the Pit Crew Check) ===== -->
+  <section class="screen" id="screen-startline" data-screen="startline" hidden>
+    <h2 class="sl-title"><span class="sl-flag" aria-hidden="true"></span>Start line</h2>
+    <p class="sl-sub" id="sl-sub">Your crew knows what you've got.</p>
+    <div class="card sl-card">
+      <div class="sl-row" data-row="fluent"><span class="sl-label">Fluent</span><div class="sl-chips" id="sl-fluent"></div></div>
+      <div class="sl-row" data-row="working"><span class="sl-label">Working on</span><div class="sl-chips" id="sl-working"></div></div>
+      <div class="sl-row" data-row="next"><span class="sl-label">Up next</span><div class="sl-chips" id="sl-next"></div></div>
+      <div class="sl-note" id="sl-note"></div>
+    </div>
+    <span class="callout xp" id="sl-xp">+100 XP</span>
+    <div class="sl-foot"><button class="btn" id="sl-done" data-sfx>Done</button><button class="btn btn-orange btn-big" id="sl-race" data-sfx>Race<span data-icon="right"></span></button></div>
+    <div class="res-moment" id="sl-moment" hidden aria-live="polite"></div>
   </section>
 
   <!-- ===== Pause ===== -->

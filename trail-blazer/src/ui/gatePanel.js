@@ -5,11 +5,15 @@
 //       → wrong: the typed answer goes (never left on screen), the whole fact with its answer and a strategy hint,
 //         read aloud, 2.5 s → copy: the answer covered, type it from memory; a match → "Fixed it!", done (fixed);
 //         a wrong copy clears within a second and the fact with its answer shows again (then copy again)
-// The panel owns no data: open() resolves { correct, quick, fixed, ms } and main.js records it and opens the gate.
-// opts.aloud() false ("Facts aloud" off in the Parent Zone): shown only, no Hear it.
+// The panel owns no data: open() resolves { correct, quick, fixed, ms, given (the first wrong answer typed) } and
+// main.js records it and opens the gate. opts.aloud() false ("Facts aloud" off in the Parent Zone): shown only, no
+// Hear it. opts.hint(fact, flip, given) → a hint shaped by the error pattern (v1.3), else the strategy hint.
+// v1.3 mode 'check' (the Pit Crew Check): the same layout without a gate: "Pit Crew Check" with a thin progress bar
+// and a "Later" button; right → "56!" (⚡ when quick) 0.7 s; wrong → the fact with its answer, read aloud, 1.5 s, no
+// fix-it routine. No clock on screen in either mode.
 import { h } from '../../../spell-jump/src/ui/dom.js';
 import { factAnswer, factText, fullSentence, questionSentence } from '../facts/facts.js';
-import { hintFor, hintSpoken } from '../facts/hints.js';
+import { hintFor, spokenHint } from '../facts/hints.js';
 import { QUICK_MS } from '../facts/scheduler.js';
 import { createNumpad } from './numpad.js';
 import { icon } from './tbIcons.js';
@@ -17,23 +21,30 @@ import { icon } from './tbIcons.js';
 export const RIGHT_MS = 900;
 export const SHOW_MS = 2500;
 export const WRONG_FLASH_MS = 450;
+export const CHECK_RIGHT_MS = 700;
+export const CHECK_SHOW_MS = 1500;
 
-export function createGatePanel(root, { tts, audio, aloud = () => true } = {}) {
+export function createGatePanel(root, { tts, audio, aloud = () => true, hint: hintOf = null } = {}) {
   const chip = h('span', { class: 'gp-chip', id: 'gp-chip' });
-  const hear = h('button', { class: 'btn btn-sm gp-hear', id: 'gp-hear', 'data-sfx': '', 'aria-label': 'Hear it' }, h('span', { html: icon('sound') }), 'Hear it');
+  const hear = h('button', { class: 'btn btn-sm gp-hear', id: 'gp-hear', 'data-sfx': '', 'aria-label': 'Hear it' }, h('span', { html: icon('sound') }), h('span', { class: 'gp-hear-text' }, 'Hear it'));
   const q = h('span', { class: 'gp-q', id: 'gp-q' });
   const tiles = h('span', { class: 'gp-tiles', id: 'gp-tiles', 'aria-live': 'polite' });
   const msg = h('div', { class: 'gp-msg', id: 'gp-msg', 'aria-live': 'polite' });
   const hint = h('div', { class: 'gp-hint', id: 'gp-hint' });
   const pad = createNumpad({ onDigit: (d) => type(d), onBack: () => back(), onGo: () => go() });
+  const titleText = h('span', { class: 'gp-title-text', id: 'gp-title-text' }, 'Math gate');
+  const titleIcon = h('span', { html: icon('lock') });
+  const bar = h('i', {});
+  const progress = h('div', { class: 'gp-progress', id: 'gp-progress', role: 'progressbar', 'aria-label': 'Pit Crew Check progress', hidden: true }, bar);
+  const exit = h('button', { class: 'btn btn-sm gp-exit', id: 'gp-exit', 'data-sfx': '', hidden: true }, 'Later');
   const card = h('div', { class: 'gp-card', role: 'dialog', 'aria-labelledby': 'gp-q' },
-    h('div', { class: 'gp-top' }, h('span', { class: 'gp-title' }, h('span', { html: icon('lock') }), h('span', { class: 'gp-title-text' }, 'Math gate')), chip, hear),
+    h('div', { class: 'gp-top' }, h('span', { class: 'gp-title' }, titleIcon, titleText), chip, hear, exit, progress),
     h('div', { class: 'gp-main' }, h('div', { class: 'gp-fact' }, q, h('span', { class: 'gp-eq' }, '='), tiles), msg, hint),
     h('div', { class: 'gp-pad' }, pad.el));
   root.replaceChildren(card);
   root.hidden = true;
 
-  let S = null;            // { fact, flip, answer, state, typed, t0, resolve, timers, ms, missed }
+  let S = null;            // { fact, flip, answer, state, typed, t0, resolve, timers, ms, missed, given, mode, hintText }
   const later = (fn, ms) => { const st = S; const t = setTimeout(() => { if (S === st) fn(); }, ms); S.timers.push(t); };
   const speakable = () => aloud() && tts && tts.available;
   function say(text) { if (!speakable()) return; try { tts.cancel(); tts.say(text); } catch (_) { /* ignore */ } }
@@ -83,6 +94,8 @@ export function createGatePanel(root, { tts, audio, aloud = () => true } = {}) {
     const ok = Number(S.typed) === S.answer;
     if (S.state === 'ask') {
       S.ms = Math.round(performance.now() - S.t0);
+      if (!ok) S.given = Number(S.typed);
+      if (S.mode === 'check') { checkAnswered(ok); return; }
       if (ok) {
         const quick = S.ms <= QUICK_MS;
         S.state = 'right'; S.quick = quick;
@@ -103,7 +116,7 @@ export function createGatePanel(root, { tts, audio, aloud = () => true } = {}) {
       setMsg(`${S.answer}! Fixed it!`, 'go');
       if (audio) audio.correct(true);
       paint();
-      later(() => finish({ correct: false, quick: false, fixed: true, ms: S.ms }), RIGHT_MS);
+      later(() => finish({ correct: false, quick: false, fixed: true, ms: S.ms, given: S.given }), RIGHT_MS);
       return;
     }
     wrong(true);
@@ -116,14 +129,40 @@ export function createGatePanel(root, { tts, audio, aloud = () => true } = {}) {
     paint();
     later(() => show(), WRONG_FLASH_MS);
   }
+  // the Pit Crew Check: no fix-it routine; a miss shows the fact with its answer (read aloud), then the next item
+  function checkAnswered(ok) {
+    if (ok) {
+      const quick = S.ms <= QUICK_MS;
+      S.state = 'right';
+      setMsg(quick ? `${S.answer}! ⚡` : `${S.answer}!`, quick ? 'quick' : 'go');
+      if (audio) audio.correct();
+      if (speakable()) { try { tts.cancel(); } catch (_) { /* ignore */ } }
+      paint();
+      later(() => finish({ correct: true, quick, fixed: false, ms: S.ms, given: null }), CHECK_RIGHT_MS);
+      return;
+    }
+    S.typed = '';
+    S.state = 'show';
+    setMsg(`${factText(S.fact, S.flip)} = ${S.answer}`, 'model');
+    hint.hidden = true;
+    paint();
+    say(fullSentence(S.fact, S.flip));
+    later(() => finish({ correct: false, quick: false, fixed: false, ms: S.ms, given: S.given }), CHECK_SHOW_MS);
+  }
+  const hintText = () => {
+    let t = null;
+    try { t = hintOf ? hintOf(S.fact, S.flip, S.given) : null; } catch (_) { t = null; }
+    return t || hintFor(S.fact, S.flip);
+  };
   function show() {
     S.typed = '';
     S.state = 'show';
-    hint.textContent = hintFor(S.fact, S.flip);
+    S.hintText = hintText();
+    hint.textContent = S.hintText;
     hint.hidden = false;
     setMsg(`${factText(S.fact, S.flip)} = ${S.answer}`, 'model');
     paint();
-    say(`${fullSentence(S.fact, S.flip)} ${hintSpoken(S.fact, S.flip)}`);
+    say(`${fullSentence(S.fact, S.flip)} ${spokenHint(S.hintText)}`);
     later(() => copy(), SHOW_MS);
   }
   function copy() {
@@ -147,21 +186,32 @@ export function createGatePanel(root, { tts, audio, aloud = () => true } = {}) {
   hear.addEventListener('click', () => {
     if (!S || !speakable()) return;
     try { tts.reprobe(); } catch (_) { /* ignore */ }
-    say(S.state === 'show' ? `${fullSentence(S.fact, S.flip)} ${hintSpoken(S.fact, S.flip)}` : questionSentence(S.fact, S.flip));
+    say(S.state === 'show' ? `${fullSentence(S.fact, S.flip)}${S.mode === 'check' ? '' : ` ${spokenHint(S.hintText)}`}` : questionSentence(S.fact, S.flip));
   });
+
+  exit.addEventListener('click', () => { if (S && S.mode === 'check') { try { tts.cancel(); } catch (_) { /* ignore */ } finish({ cancelled: true, exit: true }); } });
 
   return {
     get isOpen() { return !!S; },
+    get mode() { return S ? S.mode : null; },
     get state() { return S ? S.state : 'closed'; },
     get fact() { return S ? S.fact : null; },
     get flip() { return S ? S.flip : false; },
     get answer() { return S ? S.answer : null; },
-    /** Ask one fact. info: { fact, flip, index (0-based), total }. Resolves { correct, quick, fixed, ms }. */
-    open({ fact, flip = false, index = 0, total = 1 } = {}) {
+    /** Ask one fact. info: { fact, flip, index (0-based), total, mode ('gate' | 'check'), progress (0 … 1, check) }.
+     *  Resolves { correct, quick, fixed, ms, given } or { cancelled }. */
+    open({ fact, flip = false, index = 0, total = 1, mode = 'gate', progress: prog = 0 } = {}) {
       if (S) finish({ cancelled: true });
       return new Promise((resolve) => {
-        S = { fact, flip, answer: factAnswer(fact), state: 'ask', typed: '', t0: 0, resolve, timers: [], ms: 0, missed: false, quick: false };
-        chip.textContent = `Gate ${index + 1} of ${total}`;
+        S = { fact, flip, answer: factAnswer(fact), state: 'ask', typed: '', t0: 0, resolve, timers: [], ms: 0, missed: false, quick: false, given: null, mode, hintText: '' };
+        const check = mode === 'check';
+        root.dataset.mode = mode;
+        titleText.textContent = check ? 'Pit Crew Check' : 'Math gate';
+        titleIcon.innerHTML = icon(check ? 'wrench' : 'lock');
+        chip.textContent = check ? `Fact ${index + 1}` : `Gate ${index + 1} of ${total}`;
+        progress.hidden = !check; exit.hidden = !check;
+        bar.style.width = `${Math.round(Math.max(0, Math.min(1, prog)) * 100)}%`;
+        progress.setAttribute('aria-valuenow', String(Math.round(prog * 100)));
         hint.hidden = true;
         setMsg('');
         root.hidden = false;

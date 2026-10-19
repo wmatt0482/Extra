@@ -314,3 +314,57 @@ adaptations:
    the fix-it routine with a strategy hint, no wrong answers shown, intrinsic = facts open the gates and win races)
    plus a sixth card, **Fluency**, for the ≤ 3 s quick answers (Hasselbring 1988 / Woodward 2006) and incremental
    rehearsal (Burns 2005). The Why page gets the math sources.
+
+## v1.3 — Adaptive placement and difficulty (Matt, Oct 19: "adaptive, assess from what they get right and wrong,
+## an assessment test at the end of the first race")
+
+No engine changes. Everything lives in `src/facts/` + the gate panel + main.js + Parent Zone.
+
+1. **Pit Crew Check (placement)**: offered on the results screen right after a player's **first finished race**
+   (and from Parents → Facts → "Run the check again"): a big "Pit Crew Check" card, kid-framed ("Your crew needs to
+   know what you've got. About 20 quick facts.") with Start / Later; "Later" offers it again after the next race (max
+   3 times, then it only lives in the Parent Zone). The check runs in the gate panel's layout (fact, numpad, voice)
+   without a gate, with a thin progress bar, no clock on screen; each item records correct + response time.
+   **Adaptive staircase** over difficulty tiers, within the operations the parent allows (default × and ÷):
+   T1 ×2 ×5 ×10 · T2 ×3 ×4 · T3 ×6 ×9 · T4 ×7 ×8 · T5 ×11 ×12 · T6 ÷ of T1-T2 families · T7 ÷ of T3-T5 (÷ tiers
+   come after ×; + / − within 20 as T0 only when the parent enabled it). Start at T2: 3 items from the tier (distinct
+   families, random operands 3..9 first); **advance** when ≥ 2 of 3 are correct and quick (≤ 3 s), **probe** (3 more
+   items in that tier, then stop climbing) when 2 of 3 are correct but slow, **drop** one tier when ≤ 1 of 3 correct
+   (and probe it). Stop after the top tier passes, after two drops, or at 24 items. Result = per family a
+   placement `{ acc, medianMs }` → status **fluent** (≥ 2/2 quick) / **known** (correct, slow) / **shaky** (a miss)
+   / **untested** (above the frontier). Facts answered in the check seed their records: a quick correct = box 2 and a
+   first-try, a slow correct = box 1, a miss = box 0 + focus. Ends with the **Start line** screen: "Fluent: ×2 ×5
+   ×10 · Working on: ×3 ×4 · Up next: ×6 ×9 …" and "+100 XP".
+2. **Auto mode (default)**: `sets.mode = 'auto' | 'manual'`. In auto the active set = the **frontier**: the two
+   weakest families that are not above an untested gap (so a kid never gets ×8 before ×3 is known), plus every
+   *known/fluent* family for interleaving and rehearsal (gates: ~60 % frontier, 30 % known for spacing/retention,
+   10 % mastered probes), plus the ÷ twin of any family once it is known. A family **advances** when ≥ 90 % of its
+   facts are mastered and ≥ 70 % fluent (the next tier's families enter the frontier); a family **re-enters** the
+   frontier when two of its facts drop to box 0 in a week. Manual mode = v1.2 behaviour (toggles / custom list); the
+   Parent Zone shows "Auto (recommended)" / "Pick families" / "Custom list" and, in auto, the current frontier and a
+   one-line reason ("×7 and ×8: 5 misses this week").
+3. **Re-checks**: every 15 finished races (or 7 days, whichever first) the next race's gates include a 6-item
+   **retention probe** from mastered families, mixed into the normal gates (no separate screen); a miss there pulls
+   that family back in. The Pit Crew Check itself can be re-run from the Parent Zone.
+4. **Error patterns** (`src/facts/patterns.js`): classify each miss: `adjacent` (answer is the neighbouring row /
+   column, 7×8 → 49 or 64), `reversed` (digits reversed, 56 → 65), `off-by-operand` (±one operand, 7×8 → 48 or 63),
+   `inverse` (division missed while its × twin is known), `big-operands` (both operands ≥ 6), `operation` (÷ vs ×
+   gap, + vs −), `slow-only` (correct but never quick), `random`. Patterns feed (a) the **hint** on the next miss
+   (adjacent → "7 × 7 is 49, then one more 7"; reversed → read the digits; inverse → "7 × ? = 56"), (b) the
+   frontier (an `inverse` cluster brings ÷ twins into the next gates right after their × fact: ask 7×8 then 56÷7
+   two gates later), (c) the Report: a "Patterns" section in plain words ("Misses cluster in ×7 and ×8", "Division
+   is weaker than multiplication", "Slow on big numbers: 6 × 7, 8 × 9") and the Start line.
+5. **Data**: `facts` store gains `placement: { at, tiers: [...], families: { x7: {acc, medianMs, status} } ,
+   checks: n }`, `sets.mode`, `frontier: { families, since, reason }`, per-record `times: [ms...] (last 5)`,
+   `patterns: [{ kind, at }] (last 10)`, `races` counter and `lastProbeAt`. Normalize old data (no placement →
+   the check is offered after the next finished race; mode 'auto' when sets were never edited, else 'manual').
+6. **Tests** (`tools/facts-tests.mjs`): the staircase (a fluent kid climbs to ÷ in ≤ 24 items; a kid who misses at
+   T2 drops to T1 and stops), placement → records seeding, frontier selection and advancement/re-entry rules, gate
+   mix proportions over 100 picks, retention probe cadence, every pattern classifier with examples, hints from
+   patterns, normalize of old data. `tools/ui-smoke.mjs`: the check offered after the first finished race, Later →
+   offered again, Start → ≥ 9 items → the Start line screen → XP; auto mode shows the frontier in Parents → Facts;
+   switching to Pick families and back; the Report's Patterns section; a retention probe at race 15 (mock).
+7. **Docs**: LEARNING-DESIGN.md gains Placement / adaptive sequencing (Vygotsky's ZPD via mastery-based progression;
+   Fuchs & Fuchs progress monitoring; the Codding 2011 finding that interventions matched to the learner's phase
+   (acquisition vs fluency) work best) and error-pattern analysis (Ashlock, error pattern analysis in arithmetic);
+   README and the site's Fluency card get one sentence each.

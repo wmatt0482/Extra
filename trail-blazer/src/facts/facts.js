@@ -163,3 +163,29 @@ export function parseCustom(text) {
   if (facts.length > MAX_CUSTOM) errors.push({ line: 0, text: '', error: `only the first ${MAX_CUSTOM} problems are kept` });
   return { facts: facts.slice(0, MAX_CUSTOM), errors };
 }
+
+// ---------- families as units (v1.3 adaptive): "x7" (7 × 2 … 7 × 12), "d7" (14 ÷ 7 … 84 ÷ 7), "add", "sub" ----------
+/** "×7", "÷7", "+", "−" */
+export function famLabel(fam) {
+  const f = String(fam || '');
+  if (f === 'add') return '+';
+  if (f === 'sub') return '−';
+  return (f[0] === 'd' ? '÷' : '×') + f.slice(1);
+}
+/** The facts of one family: x_n → n × 2 … n × 12, d_n → n·m ÷ n (m 2 … 12), add / sub → within 20. */
+export function familyMembers(fam) {
+  const f = String(fam || '');
+  if (f === 'add') return addSubFacts().filter((x) => x.includes('+'));
+  if (f === 'sub') return addSubFacts().filter((x) => x.includes('-'));
+  const n = Number(f.slice(1));
+  if (!(n >= 2 && n <= TABLE_MAX)) return [];
+  const out = [];
+  for (let m = 2; m <= TABLE_MAX; m++) out.push(f[0] === 'd' ? `${n * m}/${n}` : factKey(n, 'x', m));
+  return out;
+}
+/** The ÷ facts that undo a × fact (7x8 → 56/7, 56/8). */
+export function divisionTwins(fact) {
+  const p = factParts(fact);
+  if (!p || p.op !== 'x' || !p.a || !p.b) return [];
+  return [...new Set([`${p.a * p.b}/${p.a}`, `${p.a * p.b}/${p.b}`])];
+}
