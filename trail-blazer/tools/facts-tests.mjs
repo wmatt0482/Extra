@@ -26,7 +26,7 @@ import { MIX, PROBE, autoFamilies, computeFrontier, famInfo, pickAuto, probeDue,
 import { afterRace, checkOfferDue, noteCheckOffered } from '../src/facts/store.js';
 import { familyMembers } from '../src/facts/facts.js';
 import { createUpdateGuard, safeToReload } from '../src/meta/selfUpdate.js';
-import { medalFor, medalTimesFor, fmtTime, ordinal } from '../src/data/medals.js';
+import { medalFor, medalTimesFor, fmtTime, ordinal, placeMedal, raceMedal } from '../src/data/medals.js';
 
 let passed = 0;
 const failures = [];
@@ -467,6 +467,24 @@ test('advancement: ≥ 90 % mastered and ≥ 70 % fluent graduates a family and 
   const i = famInfo(d, 'x3', T0); assert.ok(i.graduated, `x3 mastered ${i.mastered} fluent ${i.fluent}`);
   refreshFrontier(d, T0 + 1); assert.deepEqual(d.frontier.families, ['x6', 'x9']);
 });
+test('secure (v1.3.2): 4 quick first-try answers vouch a family out of the frontier the same day; a miss today holds it', () => {
+  const d = defaultFacts(T0);
+  d.placement = { at: T0, checks: 1, families: { x2: { status: 'known' }, x5: { status: 'known' }, x10: { status: 'known' } } };
+  refreshFrontier(d, T0); assert.deepEqual(d.frontier.families, ['x2', 'x5'], 'start: the lowest tier');
+  for (const f of ['2x3', '2x4', '2x7', '2x9']) recordAnswer(d, f, { correct: true, quick: true, ms: 1200 }, T0 + 1000);
+  const i = famInfo(d, 'x2', T0 + 2000);
+  assert.ok(i.secure && i.known, `×2 secure after 4 instant answers: ${JSON.stringify({ secure: i.secure, known: i.known })}`);
+  refreshFrontier(d, T0 + 2000); assert.deepEqual(d.frontier.families, ['x5', 'x10'], 'the frontier moved on the same day');
+  assert.ok(autoFamilies(d, T0 + 2000).includes('x2') && autoFamilies(d, T0 + 2000).includes('d2'), '×2 stays in the gates as known, ÷2 joins');
+  for (const f of ['5x3', '5x4', '5x7']) recordAnswer(d, f, { correct: true, quick: true, ms: 1000 }, T0 + 3000);
+  recordAnswer(d, '5x8', { correct: false, given: 45 }, T0 + 4000);
+  assert.ok(!famInfo(d, 'x5', T0 + 5000).secure, 'a miss in the family today: not secure');
+  refreshFrontier(d, T0 + 5000); assert.ok(d.frontier.families.includes('x5'), `×5 stays: ${d.frontier.families}`);
+  // slow but right is not secure either: every fact seen, 2 of 6 quick
+  const e = defaultFacts(T0);
+  for (const f of familyMembers('x10')) recordAnswer(e, f, { correct: true, quick: f === '10x3' || f === '10x4', ms: 2500 }, T0 + 1000);
+  assert.ok(!famInfo(e, 'x10', T0 + 2000).secure, 'all right but slow: the family is still being learned');
+});
 test('re-entry: two facts of a family dropping to box 0 in a week bring it back into the frontier first', () => {
   const d = defaultFacts(T0);
   d.placement = { at: T0, checks: 1, families: { x2: { status: 'fluent' }, x5: { status: 'fluent' }, x10: { status: 'fluent' }, x3: { status: 'known' }, x4: { status: 'known' } } };
@@ -570,6 +588,11 @@ test('medal times from MEDAL_TIMES (object or array) with a fallback; medalFor',
   assert.deepEqual(t, { gold: 30, silver: 34, bronze: 38 }); assert.deepEqual(medalTimesFor({ id: 'p' }, { p: [1, 2, 3] }), { gold: 1, silver: 2, bronze: 3 });
   assert.ok(medalTimesFor({ id: 'q', length: 600 }, {}).gold > 0);
   assert.equal(medalFor(29.9, t), 'gold'); assert.equal(medalFor(34, t), 'silver'); assert.equal(medalFor(38, t), 'bronze'); assert.equal(medalFor(39, t), null);
+  // v1.4: the place earns a medal on its own; the time can only improve it
+  assert.equal(placeMedal(1), 'gold'); assert.equal(placeMedal(3), 'bronze'); assert.equal(placeMedal(4), null); assert.equal(placeMedal(null), null);
+  assert.equal(raceMedal(1, 40, t), 'gold', '1st but slower than bronze is still gold');
+  assert.equal(raceMedal(2, 33, t), 'silver'); assert.equal(raceMedal(2, 29, t), 'gold', '2nd under the gold time');
+  assert.equal(raceMedal(4, 39, t), null); assert.equal(raceMedal(4, 37, t), 'bronze');
   assert.equal(fmtTime(42.37), '0:42.3'); assert.equal(ordinal(2), '2nd'); assert.equal(ordinal(13), '13th');
 });
 test('self-update reloads only on a safe screen, once, never on the first install', () => {

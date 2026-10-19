@@ -4,7 +4,7 @@
 // fallback list), so nothing here depends on ids.
 import { MAX_LEVEL, UPGRADE_BY_ID, resolveStats, upgradeCost } from '../data/upgrades.js';
 import { DECALS, PAINTS } from '../data/paints.js';
-import { MEDAL_RANK, medalFor } from '../data/medals.js';
+import { MEDAL_RANK, raceMedal } from '../data/medals.js';
 
 export const canAfford = (save, amount) => save.cash >= amount;
 
@@ -137,11 +137,10 @@ export function bankRide(save, trails, trailId, summary = {}, medalTimes = null)
       save.bestPlace[trailId] = Math.min(save.bestPlace[trailId] || 99, place);
     }
     const t = Number(summary.timeSec);
-    if (t > 0) {
-      if (!out.prevBestTime || t < out.prevBestTime) { save.bestTime[trailId] = Math.round(t * 100) / 100; out.newBestTime = true; }
-      out.medal = medalFor(t, medalTimes);
-      if (out.medal && (MEDAL_RANK[out.medal] || 0) > (MEDAL_RANK[save.medals[trailId]] || 0)) { save.medals[trailId] = out.medal; out.newMedal = true; }
-    }
+    if (t > 0 && (!out.prevBestTime || t < out.prevBestTime)) { save.bestTime[trailId] = Math.round(t * 100) / 100; out.newBestTime = true; }
+    // v1.4: 1st is gold, 2nd silver, 3rd bronze, or better when the time beats a target
+    out.medal = raceMedal(place, t, medalTimes);
+    if (out.medal && (MEDAL_RANK[out.medal] || 0) > (MEDAL_RANK[save.medals[trailId]] || 0)) { save.medals[trailId] = out.medal; out.newMedal = true; }
   }
   const nt = trails.find((t) => !unlockedBefore.has(t.id) && isUnlocked(save, trails, t.id));
   out.unlocked = nt ? nt.id : null;

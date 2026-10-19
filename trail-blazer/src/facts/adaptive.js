@@ -22,6 +22,7 @@ export const D_LADDER = X_LADDER.map((f) => 'd' + f.slice(1));
 export const AS_LADDER = ['add', 'sub'];
 export const FRONTIER_SIZE = 2;
 export const ADVANCE = { mastered: 0.9, fluent: 0.7 };
+export const SECURE = { quick: 0.75, vouchSeen: 4 };   // v1.3.2: evidence-based advancement (famInfo)
 export const MIX = { frontier: 0.6, known: 0.3, mastered: 0.1 };
 export const PROBE = { size: 6, races: 15, days: 7 };
 const WEEK = 7 * DAY_MS;
@@ -62,8 +63,21 @@ export function famInfo(d, fam, now = Date.now()) {
   const strength = reentry ? -1 : Math.max(0, score - 0.06 * misses);
   const tested = (!!pst && pst !== 'untested') || seen >= 3;
   const onePlus = facts.filter((f) => recs[f] && recs[f].box >= 1).length;
-  const known = graduated || (!reentry && (pst === 'fluent' || pst === 'known' || onePlus >= Math.ceil(n * 0.6)));
-  return { fam, facts, seen, mastered, fluent, misses, slipped, pulled, reentry, graduated, tested, known, strength, placement: pst };
+  // v1.3.2 "secure": evidence now, not the calendar. The family leaves the frontier when the child has shown it is
+  // known: every fact seen was answered right (first try, or right since its miss), ≥ 75 % of the family's answers
+  // were quick, and (a) every fact has been seen with at most one miss this week and none today, or (b) at least
+  // 4 facts seen, all first-try, quick, with no miss ever in the family (a "vouch": ×2 is not drilled for days after
+  // 4 instant answers). Spacing keeps revisiting a secure family from the known bucket; a slip brings it back.
+  const today = dayKey(now);
+  const seenRecs = facts.map((f) => recs[f]).filter((r) => r && r.attempts > 0);
+  const attempts = seenRecs.reduce((a, r) => a + r.attempts, 0);
+  const quickShare = attempts ? seenRecs.reduce((a, r) => a + (r.quick || 0), 0) / attempts : 0;
+  const everMissed = seenRecs.reduce((a, r) => a + (r.misses || 0), 0);
+  const allRight = seenRecs.length > 0 && seenRecs.every((r) => (r.firstTry >= 1 || r.box >= 1) && r.missDay !== today);
+  const secure = !reentry && allRight && quickShare >= SECURE.quick
+    && ((seenRecs.length === n && misses <= 1) || (seenRecs.length >= SECURE.vouchSeen && everMissed === 0 && seenRecs.every((r) => r.firstTry >= 1)));
+  const known = graduated || secure || (!reentry && (pst === 'fluent' || pst === 'known' || onePlus >= Math.ceil(n * 0.6)));
+  return { fam, facts, seen, mastered, fluent, misses, slipped, pulled, reentry, graduated, secure, tested, known, strength, placement: pst };
 }
 
 /** The frontier now: { families, reason, info } (pure; refreshFrontier stores it). */
@@ -81,6 +95,7 @@ export function computeFrontier(d, now = Date.now()) {
     if (i.graduated) continue;
     if (!i.tested) { unfinished.push(f); if (f[0] !== 'd') gap[section(f)] = true; continue; }
     if (gap[section(f)] && !i.reentry && f[0] !== 'd') continue;                     // above an untested gap
+    if (i.secure && i.misses < 2) { strong.push(f); continue; }                       // shown known: the frontier moves on
     if (i.reentry || i.strength < 0.7) unfinished.push(f); else strong.push(f);
   }
   // the ladder first: the lowest unfinished tier, and only within a tier the weakest (misses, then slowness)

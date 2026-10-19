@@ -368,3 +368,77 @@ No engine changes. Everything lives in `src/facts/` + the gate panel + main.js +
    Fuchs & Fuchs progress monitoring; the Codding 2011 finding that interventions matched to the learner's phase
    (acquisition vs fluency) work best) and error-pattern analysis (Ashlock, error pattern analysis in arithmetic);
    README and the site's Fluency card get one sentence each.
+
+## v1.4 — Find where they are, fast (Matt, Oct 19: "the math game needs to more aggressively see where the kids
+## are currently")
+
+No engine changes. The v1.3 pieces stay; these change *when* the game looks, *how wide* it looks, and *how fast* it
+believes what it sees. A child who knows a family cold should be past it within a race or two, not after three days.
+
+1. **The check comes first.** A player with no placement gets the Pit Crew Check when they tap **RACE** (before the
+   first race), not on the results afterwards: a card "Before your first race, the pit crew checks what you've got.
+   About 15 quick facts." with **Start** (primary) and a small **Race first**. "Race first" runs the race and the card
+   comes back before the next race, every time, until the check is done (no cap, never nagging mid-race, never a lock).
+   The results-screen offer goes away. Players placed under v1.3 keep their placement.
+2. **A staircase that locates, then zooms.** Start at **T3** (×6 ×9), the middle of the Grade 4 ladder.
+   *Locate*: 2 items per tier, one per family (operands 3..9 first); both right and quick → up a tier; any miss → down
+   a tier; right but slow → stay and go to zoom. Bounded by the ladder ends; ≤ 10 items. *Zoom*: in the located tier
+   and the tier above it, 2 more items per family (never a fact already asked), so every family there has ≥ 2–3
+   answers and the result tells families apart (×6 fluent, ×9 shaky). *Twins*: for each family found fluent, one ÷
+   item when ÷ is on (is division ready?). Cap 24 items in all; tiers below a passed tier are vouched for as in v1.3.
+   No score, no wrong count on screen; the Start line as in v1.3, plus "Your crew will keep checking as you race."
+3. **Advance on evidence, not on the calendar.** New family status **secure**: every fact in the family answered
+   right at least once (a first-sight answer counts), ≥ 75 % of its answers quick, and no miss in its last 8
+   answers. A secure family leaves the frontier at once (it moves to the known bucket, where spacing keeps revisiting
+   it over days; mastery over days still governs the Grid's colours and the retention probes). The v1.3 rule (≥ 90 %
+   mastered and ≥ 70 % fluent) stays as the other path. Families the check found fluent are secure from the start.
+4. **Scout gates (placement that never stops).** In every race with ≥ 4 gates, one gate is a **scout**: a never-asked
+   fact from the lowest untested or non-secure family *above* the frontier on the ladder (the next tier first). Three
+   quick-right scouts in a family with no scout miss → the family is **vouched** (secure without ever being in the
+   frontier; its ÷ twin joins the gates); a scout miss costs nothing beyond the normal fix-it and the family simply
+   waits its turn. With 4 gates: 2 frontier, 1 known, 1 scout; the mastered probe (10 %) only when nothing is left to
+   scout. Scouts count as first-sight answers in the records. A child who is ahead climbs a tier every few races.
+5. **Re-checks on their own.** The Pit Crew Check offers itself again (the same card before a race, Start / Race
+   first) after **14 days**, or sooner when the placement is stale: 5 finished races in a row with no misses, or the
+   frontier two tiers above the placed tier ("Pit Crew re-check: let's see how far you've come"). Still available from
+   Parents → Facts.
+6. **Parent Zone and Start line.** Facts tab: a "Where Mia is" line ("Tier 4 · ×7 ×8 · placed Oct 19 · re-check in
+   10 days" and the families vouched by scouts), the ladder with the new states (secure, vouched), **Check now**.
+   Report: "Moved up" lines ("×6 ×9 → ×7 ×8 on Oct 21: 3 quick scouts"). Start line: "Up next" names the scout
+   family.
+7. **Data.** `placement` gains `tier` (the located tier) and `phase` counts; per family `scout: { asked, quick, miss }`;
+   `frontier.history: [{ at, families, why }]` (last 10); `lastCheckOfferAt`. Normalize v1.3 data (no scouts, no
+   history). Version 1.4.0, sw.js `trail-blazer-v1.4.0`.
+8. **Tests.** `tools/facts-tests.mjs`: the staircase from T3 (a fluent kid reaches T5 and ÷ twins in ≤ 24; a kid who
+   misses at T3 lands in T2 with every T2/T3 family having ≥ 2 answers; slow-but-right stays and zooms), the secure
+   rule (an all-quick family advances in one sitting, one miss in the last 8 blocks it), scout selection (next tier
+   first, never a seen fact), vouching after 3 quick scouts and not after a miss, re-check triggers (14 days, 5 clean
+   races, two tiers above), normalize of v1.3 data. `tools/ui-smoke.mjs`: a new player tapping RACE gets the check
+   first; "Race first" → the race runs and the card returns before the next race; Start → ≥ 9 items → Start line;
+   with the mock engine a kid who answers everything quick has a vouched family within 3 races and the frontier
+   moves; Parents → Facts shows "Where Mia is" and Check now; the Report's "Moved up" line.
+9. **Docs.** LEARNING-DESIGN.md: continuous assessment / scouting (curriculum-based measurement and progress
+   monitoring, Fuchs & Fuchs 1986; Deno 1985, curriculum-based measurement), evidence-based advancement vs calendar
+   mastery; README; site Fluency card one phrase ("keeps checking as they race").
+10. **Medals follow the place** (Matt, Oct 19: "you can get first but still only get silver"). `data/medals.js`
+    `raceMedal(place, timeSec, times)`: 1st is gold, 2nd silver, 3rd bronze, and the target time can only improve it
+    (a 2nd under the gold time is gold). Used by `economy.js` (the saved medal, the callout) and the engine's rating.
+    Results subtitle: "1st = gold · or beat 0:30.0". Done in the tree already (medals.js, economy.js, engine.js,
+    facts-tests); the subtitle wording and the README line remain.
+11. **The difficulty governor** (Matt, Oct 19: "keep the math hardness in the level where the student is still
+    learning all the time"). The gates must sit at the child's **instructional level**: mostly right, never all right,
+    never a wall. Over the child's last **12 gate answers** (rolling, across races; scouts and probes included):
+    - **≥ 92 % right and ≥ 70 % quick → too easy**: every family in the frontier is re-tested for *secure* at once
+      and the secure ones leave; the scout tier climbs (2 scouts in the next race); the gate mix becomes 50 %
+      frontier / 25 % known / 25 % scout. The frontier never stays on a family the child has beaten.
+    - **70–92 % right → on target**: v1.4 as above (60 / 30 / 10 with one scout).
+    - **< 70 % right → too hard**: the frontier narrows to **one** family (the weaker of the two); the mix becomes
+      50 % frontier / 50 % known (confidence, spacing), **no scouts**; a family with ≥ 3 misses in its last 6 answers
+      **steps back**: its lower neighbour on the ladder re-enters the frontier in its place and it waits (so a kid
+      drowning in ×8 goes back to ×4 ×6 for a while, then ×8 returns when those are secure again).
+    The governor re-evaluates after every gate, so the level moves within a race, not after it. Cold start (fewer
+    than 6 answers): on target. The Start line and Parents → Facts show the dial in plain words: "Right now: on
+    target (10 of 12 right)" / "a bit easy: moving up" / "a bit hard: stepping back"; the Report keeps a per-race
+    history of the dial. Tests: the three bands from synthetic answer streams (all right + quick → secure + 2
+    scouts; 5 of 12 → one family, no scouts, the lower neighbour re-enters; the band boundaries), and that no
+    stream can leave the frontier empty.

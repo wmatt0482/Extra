@@ -1,4 +1,5 @@
-// Medals per track (SPEC v1.1 §2, §5): Gold / Silver / Bronze from target times. The engine agent's data/trails.js
+// Medals per track (SPEC v1.1 §2, §5; v1.4 raceMedal): Gold / Silver / Bronze from the place (1st / 2nd / 3rd) or
+// the target times, whichever is better. The engine agent's data/trails.js
 // exports MEDAL_TIMES (the source); medalTimesFor() accepts { gold, silver, bronze } or [gold, silver, bronze] (seconds)
 // and falls back to times from the track length when a track has none.
 export const MEDALS = ['gold', 'silver', 'bronze'];
@@ -24,6 +25,11 @@ export function medalFor(timeSec, times) {
   return null;
 }
 export const betterMedal = (a, b) => ((MEDAL_RANK[a] || 0) >= (MEDAL_RANK[b] || 0) ? a || null : b || null);
+/** The medal a finishing place earns on its own: 1st gold, 2nd silver, 3rd bronze (null otherwise). */
+export const placeMedal = (place) => ['', 'gold', 'silver', 'bronze'][Math.floor(Number(place)) || 0] || null;
+/** The medal of a finished race: the better of the place and the time (v1.4: winning the race is always gold, a 2nd
+ *  under the gold time is still gold; the target times stay as a second way to earn one). */
+export const raceMedal = (place, timeSec, times) => betterMedal(placeMedal(place), medalFor(timeSec, times));
 
 /** "1st", "2nd", "3rd", "4th" */
 export const ordinal = (n) => `${n}${n % 10 === 1 && n % 100 !== 11 ? 'st' : n % 10 === 2 && n % 100 !== 12 ? 'nd' : n % 10 === 3 && n % 100 !== 13 ? 'rd' : 'th'}`;

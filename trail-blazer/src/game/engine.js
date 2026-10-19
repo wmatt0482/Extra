@@ -1562,7 +1562,11 @@ export function createGame(canvas, opts = {}) {
     const nl = L.perfect + L.good + L.hard + L.crash;
     if (r.race) {
       const place = r.finishCrossed ? r.me.finishOrder : 0;
-      const medal = r.finishCrossed ? medalFor(r.trail.id, r.timeSec) : null;
+      // v1.4: the place earns a medal on its own (1st gold, 2nd silver, 3rd bronze); the target time can only improve it
+      const byTime = r.finishCrossed ? medalFor(r.trail.id, r.timeSec) : null;
+      const byPlace = r.finishCrossed ? ['', 'gold', 'silver', 'bronze'][place] || null : null;
+      const rank = { gold: 3, silver: 2, bronze: 1 };
+      const medal = (rank[byPlace] || 0) >= (rank[byTime] || 0) ? byPlace : byTime;
       let score = [0, 50, 35, 20, 5][place] + ({ gold: 35, silver: 25, bronze: 15 }[medal] || 0) + Math.min(15, 5 * r.flips) - Math.min(15, 3 * r.crashes);
       // v1.2: the gate answers fold in (correct = full, fixed = half) when the race had gates
       if (r.gateAnswered) score = 0.85 * score + 15 * ((r.gateCorrect + 0.5 * r.gateFixed) / r.gateAnswered);
