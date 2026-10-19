@@ -94,5 +94,17 @@ answer for a moment, read aloud.
   Allyn & Bacon.
 - Vygotsky, L. S. (1978). *Mind in Society: The Development of Higher Psychological Processes*. Harvard University
   Press (the zone of proximal development).
+- Baroody, A. J. (2006). Why children have difficulties mastering the basic number combinations and how to help
+  them. *Teaching Children Mathematics*, 13(1).
+- Burns, M. K., VanDerHeyden, A. M., & Jiban, C. L. (2006). Assessing the instructional level for mathematics: A
+  comparison of methods. *School Psychology Review*, 35(3).
+- Campbell, J. I. D., & Graham, D. J. (1985). Mental multiplication skill: Structure, process, and acquisition.
+  *Canadian Journal of Psychology*, 39(2).
+- Haring, N. G., & Eaton, M. D. (1978). Systematic instructional procedures: An instructional hierarchy. In Haring,
+  Lovitt, Eaton & Hansen, *The Fourth R: Research in the Classroom*. Merrill.
+- Kulik, C.-L. C., Kulik, J. A., & Bangert-Drowns, R. L. (1990). Effectiveness of mastery learning programs: A
+  meta-analysis. *Review of Educational Research*, 60(2).
+- Weiss, D. J., & Kingsbury, G. G. (1984). Application of computerized adaptive testing to educational problems.
+  *Journal of Educational Measurement*, 21(4).
 - Woodward, J. (2006). Developing automaticity in multiplication facts: Integrating strategy instruction with timed
   practice drills. *Learning Disability Quarterly*, 29(4).
