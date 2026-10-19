@@ -140,6 +140,14 @@ Speech is self-healing and never leaves a silent panel. The rules (all in `src/s
   still true 300 ms later. The word, the sentence and the repeated word stay separate short utterances; text longer
   than 140 characters is split; `onend` that never comes is covered by an estimated-duration timer.
 
+- **Natural voice clips (v3.6.2).** A clip plays through WebAudio (`src/audio.js` `playVoice`). Two iPhone rules:
+  on iOS 17+ the first tap sets the page's audio session to **playback** (`navigator.audioSession.type`), so the ring /
+  silent switch no longer mutes the clips, the music and the effects while the device voice kept talking; and the
+  **audio clock must move** while a clip plays: a context that reports *running* but whose clock stands still (after
+  a call, Siri, an output change) is caught within 400 ms, the clip is abandoned (`done(false)`) and the device
+  voice says the word; later clips fail at once until the clock moves again. The Speech check prints the audio
+  output (state, sample rate, audio session type) and how far the clock moved during the test clip.
+
 The one-time hint "Speech isn't available on this device, so you'll see each word first" (on the spell panel with the
 tip about Enhanced / Premium voices on iPhone or iPad) still shows the first time a word falls back. The Qualifier and
 Friday Test use the same per-word rule. Speech is cancelled when the panel or test closes and when the app is

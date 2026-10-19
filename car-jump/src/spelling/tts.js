@@ -438,16 +438,23 @@ export function createTTS(opts = {}) {
         gen++; lastCancelAt = Date.now();
         try { if (synth) synth.cancel(); } catch (_) { /* ignore */ }
         const tPlay = now();
+        const d0 = cloud.diagnostics ? cloud.diagnostics() : null;
+        const fmtSession = (d) => (d && d.session ? `${d.session.type || '?'} / ${d.session.state || '?'}` : 'not available');
+        if (d0) log(`audio output: ${d0.state} · ${d0.sampleRate} Hz · audio session ${fmtSession(d0)}`);
+        else log('audio output: not started yet (no tap on the game before this check)');
         setBusy(1);
         return cloud.play(k).then((res) => {
           setBusy(-1);
+          const d1 = cloud.diagnostics ? cloud.diagnostics() : null;
+          const moved = d0 && d1 ? Math.round((d1.currentTime - d0.currentTime) * 1000) : null;
           if (res === 'ok') {
             lastEngine = 'cloud';
-            log(`clip played to the end after ${Math.round(now() - tPlay)} ms`);
-            log('result: the natural voice played, so it works here. Heard nothing? Check the volume, the mute switch and Bluetooth audio.');
+            log(`clip played to the end after ${Math.round(now() - tPlay)} ms${moved != null ? ` · audio clock moved ${moved} ms` : ''}`);
+            const silentSwitch = d1 && d1.session && d1.session.type !== 'playback';
+            log(`result: the natural voice played, so it works here. Heard nothing? Check the volume${silentSwitch ? ', the ring / silent switch (this browser keeps it in charge of game sound)' : ''} and Bluetooth audio.`);
             return finish(true);
           }
-          log(`clip ${res === 'cancel' ? 'was cut off' : 'did not load or play'} after ${Math.round(now() - tPlay)} ms: the device voice takes over`);
+          log(`clip ${res === 'cancel' ? 'was cut off' : 'did not load or play'} after ${Math.round(now() - tPlay)} ms${d1 ? ` · audio output ${d1.state}${moved != null ? `, clock moved ${moved} ms` : ''}${d1.stalls ? `, ${d1.stalls} stalled clip${d1.stalls === 1 ? '' : 's'} this session` : ''}` : ''}: the device voice takes over`);
           if (!available()) { log('result: this browser has no speech synthesis either. Words are shown for 3 s instead.'); return finish(false); }
           return deviceCheck();
         });

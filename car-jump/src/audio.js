@@ -8,6 +8,9 @@ const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkit
 function createAudio() {
   let ctx = null, master, sfxBus, musicBus, voiceBus, noiseBuf;
   let soundOn = true, musicOn = true, ducked = false, unlocked = false, voiceOn = false;
+  let voiceStalls = 0;                  // clips abandoned because the audio clock did not move (playVoice)
+  let stalledAt = -1;                   // the clock reading of the last stall: clips fail at once until it moves again
+  const CLOCK_CHECK_MS = 400;
   let eng = null, nitroNode = null, musicTimer = 0, musicStep = 0, nextNoteAt = 0, lead, bass, leadGain, bassGain;
 
   function init() {
@@ -150,10 +153,25 @@ function createAudio() {
     return eng;
   }
 
+  // iOS 17+: the page's audio session. 'auto' (the default) follows the ring / silent switch, which mutes every
+  // WebAudio sound (the natural voice's clips, music, effects) while the device voice (speechSynthesis) still plays, so
+  // a muted iPhone says nothing for a word. 'playback' is the category of an app whose sound is the point: it plays
+  // with the switch on silent, like a video. Set once, inside the first gesture; a browser without the API ignores it.
+  let sessionSet = false;
+  function playbackSession() {
+    if (sessionSet) return;
+    sessionSet = true;
+    try {
+      const as = typeof navigator !== 'undefined' ? navigator.audioSession : null;
+      if (as && typeof as.type === 'string' && as.type === 'auto') as.type = 'playback';
+    } catch (_) { /* older engines */ }
+  }
+
   const api = {
     get unlocked() { return unlocked; },
     unlock() {
       if (!AC) return;
+      playbackSession();
       if (!init()) return;
       // called on every pointerdown: cheap once running; also recovers iOS's 'interrupted' state
       // (call, Siri, app switch), which can only be resumed from inside a gesture
@@ -200,23 +218,34 @@ function createAudio() {
      *  that is not running (no tap yet, iOS interruption) and does not resume within 800 ms → done(false), so the
      *  caller can fall back to the device voice. */
     playVoice(buffer) {
-      let settled = false, src = null, timer = 0, resolveDone;
+      let settled = false, src = null, timer = 0, clockTimer = 0, resolveDone;
       const done = new Promise((r) => { resolveDone = r; });
       const finish = (ok) => {
         if (settled) return;
-        settled = true; clearTimeout(timer);
+        settled = true; clearTimeout(timer); clearTimeout(clockTimer);
         try { if (src) { src.onended = null; src.disconnect(); } } catch (_) { /* ignore */ }
         resolveDone(ok);
       };
       const start = () => {
         if (settled) return;
         clearTimeout(timer);
+        const t0 = ctx.currentTime;
+        // still stalled since the last clip: fail at once (one 400 ms wait per episode, not per letter)
+        if (stalledAt >= 0 && t0 <= stalledAt) { finish(false); return; }
+        stalledAt = -1;
         try {
           src = ctx.createBufferSource(); src.buffer = buffer; src.connect(voiceBus);
           src.onended = () => finish(true);
           src.start();
         } catch (_) { finish(false); return; }
         timer = setTimeout(() => finish(true), (buffer.duration || 0) * 1000 + 1500);   // onended can be dropped
+        // the audio clock must move while the clip plays: a context that says 'running' but whose clock stands still
+        // (iOS after an interruption or an output change) makes no sound, so the caller gets done(false) and falls
+        // back to the device voice instead of a silent word
+        clockTimer = setTimeout(() => {
+          if (settled) return;
+          if (ctx.currentTime <= t0) { voiceStalls++; stalledAt = t0; try { if (src) src.stop(); } catch (_) { /* ignore */ } finish(false); }
+        }, CLOCK_CHECK_MS);
       };
       if (!buffer || !init()) finish(false);
       else if (ctx.state === 'running') start();
@@ -389,6 +418,13 @@ function createAudio() {
     trophy() {
       if (!ready()) return;
       for (const [f, at] of [[1047, 0], [1568, 0.14]]) { tone('sine', f, f, 0.8, 0.11, sfxBus, at); tone('sine', f * 2.76, f * 2.76, 0.35, 0.025, sfxBus, at); }
+    },
+    /** What the Speech check prints about the audio output (null before the first tap). */
+    diagnostics() {
+      if (!ctx) return null;
+      let session = null;
+      try { const as = typeof navigator !== 'undefined' ? navigator.audioSession : null; if (as) session = { type: as.type, state: as.state }; } catch (_) { /* ignore */ }
+      return { state: ctx.state, sampleRate: ctx.sampleRate, currentTime: ctx.currentTime, baseLatency: ctx.baseLatency, outputLatency: ctx.outputLatency, session, stalls: voiceStalls, unlocked };
     },
     suspend() { if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {}); },
     resume() { if (ctx && unlocked && ctx.state !== 'running') ctx.resume().catch(() => {}); },

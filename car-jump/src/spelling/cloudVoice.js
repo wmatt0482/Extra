@@ -315,6 +315,8 @@ export function createCloudVoice(deps = {}) {
       return `Natural voice ready · ${api.count(v)} clips cached`;
     },
     state() { return { voice, active: api.active, count: api.count(), key: server.key, error: server.error }; },
+    /** the audio output's state for the Speech check (src/audio.js diagnostics), or null */
+    diagnostics() { try { return audio && audio.diagnostics ? audio.diagnostics() : null; } catch (_) { return null; } },
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     info: cloudVoiceInfo,
     DEFAULT: DEFAULT_CLOUD_VOICE,
