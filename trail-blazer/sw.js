@@ -9,7 +9,7 @@
 // content-addressed: cache-first in Spell Jump's clip cache (TTS_CACHE, shared on this origin).
 // Caches are per origin, shared with Spell Jump's worker: this worker only ever deletes its own ('trail-blazer-…').
 // If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'trail-blazer-v1.3.2';
+const VERSION = 'trail-blazer-v1.4.0';
 const PREFIX = 'trail-blazer-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -51,6 +51,8 @@ const SHELL = [
   'src/facts/patterns.js',
   'src/facts/placement.js',
   'src/facts/adaptive.js',
+  'src/facts/governor.js',
+  'src/facts/scouts.js',
   'src/ui/pitCheck.js',
 ];
 // The engine (built separately, may be split differently) and the shared Spell Jump modules (+ their imports):

@@ -1,13 +1,24 @@
-// The Pit Crew Check (SPEC v1.3 §1), kid-framed (never "test" or "grade"): the offer card on the results screen after
-// a finished race while the player has no placement (Start / Later; offered after up to 3 races, then only from
-// Parents → Facts → "Run the check again"), the check itself (the gate panel in 'check' mode over an empty screen:
-// the fact, the numpad, the voice, a thin progress bar, no clock, "Later" to stop), and the Start line screen:
-// "Fluent: ×2 ×5 ×10 · Working on: ×3 ×4 · Up next: ×6 ×9", a pit note from the error patterns, +100 XP.
+// The Pit Crew Check (SPEC v1.3 §1, v1.4 §1-§2, §5-§6), kid-framed (never "test" or "grade"):
+// - the card BEFORE a race: a player with no placement gets it when they tap a track to race ("Before your first
+//   race, the pit crew checks what you've got. About 15 quick facts." · Start · Race first); "Race first" runs the race
+//   and the card comes back before the next one, every time, until the check is done (no cap, never mid-race, never a
+//   lock). A stale placement brings the same card as a re-check ("Pit Crew re-check: let's see how far you've come").
+// - the check itself: the gate panel in 'check' mode (the fact, the numpad, the voice, a thin progress bar, no clock,
+//   a "Race first" / "Later" way out that always works), the locate → zoom → twins staircase (placement.js);
+// - the Start line: "Fluent: … · Working on: … · Up next: <the scout family>", a pit note from the error patterns,
+//   "Your crew will keep checking as you race.", the governor's dial, +100 XP.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { famLabel } from '../facts/facts.js';
 import { applyCheck, checkAnswer, checkNext, checkProgress, createCheck, startLine, tiersFor } from '../facts/placement.js';
 import { patternSummary } from '../facts/patterns.js';
-import { levelFor, refreshFrontier } from '../facts/store.js';
+import { levelFor, noteCheckOffer, refreshFrontier } from '../facts/store.js';
+import { recheckStart, scoutFamily } from '../facts/scouts.js';
+import { dial, dialText } from '../facts/governor.js';
+
+export const CARD_TEXT = {
+  first: "Before your first race, the pit crew checks what you've got. About 15 quick facts.",
+  recheck: "Pit Crew re-check: let's see how far you've come. About 15 quick facts.",
+};
 
 /** A pit note for the child from the strongest pattern (plain, encouraging). */
 export function kidNote(patterns) {
@@ -23,30 +34,42 @@ export function kidNote(patterns) {
 }
 
 export function createPitCheck(app, gatePanel) {
-  const offerEl = $('#pit-offer');
-  const el = { fluent: $('#sl-fluent'), working: $('#sl-working'), next: $('#sl-next'), note: $('#sl-note'), xp: $('#sl-xp'), sub: $('#sl-sub'), moment: $('#sl-moment') };
-  let running = false, momentTimer = 0, lastOut = null;
+  const card = $('#pit-offer');
+  const el = { fluent: $('#sl-fluent'), working: $('#sl-working'), next: $('#sl-next'), note: $('#sl-note'), dial: $('#sl-dial'), xp: $('#sl-xp'), sub: $('#sl-sub'), moment: $('#sl-moment') };
+  let running = false, momentTimer = 0, lastOut = null, pending = null, st = null;
 
-  function showOffer() { if (app.screen !== 'results') return; offerEl.hidden = false; app.audio.missionComplete && app.audio.missionComplete(); }
-  function hideOffer() { offerEl.hidden = true; }
-  $('#pit-start').addEventListener('click', () => { hideOffer(); run(); });
-  $('#pit-later').addEventListener('click', () => { hideOffer(); app.toast('OK! Your crew will ask after the next race'); });
+  /** The card before a race: due = checkDue(d) ({ kind: 'first' | 'recheck' }). */
+  function showCard(trailId, due = { kind: 'first' }) {
+    pending = { trailId, kind: due.kind || 'first' };
+    card.dataset.kind = pending.kind;
+    $('#pit-offer-title').textContent = pending.kind === 'recheck' ? 'Pit Crew re-check' : 'Pit Crew Check';
+    $('#pit-offer-text').textContent = CARD_TEXT[pending.kind] || CARD_TEXT.first;
+    card.hidden = false;
+    if (app.facts) { noteCheckOffer(app.facts); app.persistFacts(); }
+  }
+  function hideCard() { card.hidden = true; }
+  $('#pit-start').addEventListener('click', () => { hideCard(); run(pending || {}); });
+  // "Race first" always works: the race runs, the card comes back before the next one
+  $('#pit-later').addEventListener('click', () => { hideCard(); const p = pending; pending = null; app.startRide(p && p.trailId, { skipCheck: true }); });
   $('#sl-done').addEventListener('click', () => app.go('title'));
-  $('#sl-race').addEventListener('click', () => app.startRide(app.save.selectedTrail));
+  $('#sl-race').addEventListener('click', () => app.startRide((lastOut && lastOut.trailId) || app.save.selectedTrail, { skipCheck: true }));
 
-  async function run() {
+  /** Run the check. opts: { trailId (race afterwards), kind ('first' | 'recheck') }. */
+  async function run(opts = {}) {
     const d = app.facts;
     if (!d || running) return;
     running = true;
+    hideCard();
     app.unlockVoice();
     app.go('check');
-    const st = createCheck({ tiers: tiersFor(d.sets) }, Math.random);
+    const recheck = !!d.placement || opts.kind === 'recheck';
+    st = createCheck({ tiers: tiersFor(d.sets), start: recheck ? recheckStart(d) : 'T3', division: d.sets.division !== false }, Math.random);
     let it;
     while ((it = checkNext(st))) {
-      const res = await gatePanel.open({ fact: it.fact, flip: it.flip, index: st.items.length, mode: 'check', progress: checkProgress(st) });
-      if (!res || res.cancelled) {                  // "Later" (or left): nothing is kept, it is offered again
-        running = false;
-        if (app.screen === 'check') app.go('title');
+      const res = await gatePanel.open({ fact: it.fact, flip: it.flip, index: st.items.length, mode: 'check', progress: checkProgress(st), exitText: opts.trailId ? 'Race first' : 'Later' });
+      if (!res || res.cancelled) {                  // the way out always works: nothing is kept, the card comes back
+        running = false; st = null;
+        if (app.screen === 'check') { if (opts.trailId) app.startRide(opts.trailId, { skipCheck: true }); else app.go('title'); }
         return;
       }
       checkAnswer(st, res);
@@ -54,10 +77,11 @@ export function createPitCheck(app, gatePanel) {
     const now = Date.now();
     const levelBefore = levelFor(d.xp);
     const placement = applyCheck(d, st, now);
-    refreshFrontier(d, now);
+    refreshFrontier(d, now, recheck ? 'Pit Crew re-check' : 'Pit Crew Check');
     app.persistFacts();
     running = false;
-    lastOut = { placement, items: st.items.length, right: st.items.filter((x) => x.correct).length, levelBefore, levelAfter: levelFor(d.xp) };
+    lastOut = { placement, items: st.items.length, levelBefore, levelAfter: levelFor(d.xp), trailId: opts.trailId || null, recheck };
+    st = null;
     app.onCheckDone && app.onCheckDone(lastOut);
     app.go('startline', lastOut);
   }
@@ -67,12 +91,13 @@ export function createPitCheck(app, gatePanel) {
     show(out) {
       const d = app.facts;
       if (!d) return;
-      const line = startLine(d);
+      const line = startLine(d, { scout: scoutFamily(d, Date.now()) });
       chips(el.fluent, line.fluent);
       chips(el.working, line.working);
       chips(el.next, line.next);
-      el.sub.textContent = out && out.items ? `${out.items} facts in the pit. Your crew knows what you've got!` : "Your crew knows what you've got!";
+      el.sub.textContent = `${out && out.items ? `${out.items} facts in the pit. ` : ''}Your crew will keep checking as you race.`;
       el.note.textContent = kidNote(patternSummary(d, Date.now()));
+      el.dial.textContent = dialText(dial(d));
       el.xp.hidden = !out;
       clearTimeout(momentTimer);
       el.moment.hidden = true;
@@ -89,5 +114,10 @@ export function createPitCheck(app, gatePanel) {
   };
   const checkScreen = { show() {}, hide() {} };
 
-  return { run, showOffer, hideOffer, get running() { return running; }, get last() { return lastOut; }, startlineScreen, checkScreen };
+  return {
+    run, showCard, hideCard, startlineScreen, checkScreen,
+    get running() { return running; }, get last() { return lastOut; }, get cardOpen() { return !card.hidden; },
+    /** the current check item (tests): { fact, family, tier, phase } */
+    get item() { return st && st.current ? { ...st.current } : null; },
+  };
 }

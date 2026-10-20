@@ -189,3 +189,14 @@ export function divisionTwins(fact) {
   if (!p || p.op !== 'x' || !p.a || !p.b) return [];
   return [...new Set([`${p.a * p.b}/${p.a}`, `${p.a * p.b}/${p.b}`])];
 }
+
+// v1.4: a missed × fact counts against the HARDER of its two families (the one later on the ladder): a miss on 5 × 8
+// is a ×8 miss, not a ×5 miss. Right and quick answers still count for both. ÷, + and − have one family.
+const MISS_LADDER = ['x2', 'x5', 'x10', 'x3', 'x4', 'x6', 'x9', 'x7', 'x8', 'x11', 'x12'];
+export function missFamily(fact) {
+  const fams = factFamilies(fact);
+  if (fams.length < 2) return fams[0] || '';
+  return fams.slice().sort((a, b) => MISS_LADDER.indexOf(b) - MISS_LADDER.indexOf(a))[0];
+}
+/** Does a miss on this fact count against this family? */
+export const missCountsFor = (fact, fam) => missFamily(fact) === fam;

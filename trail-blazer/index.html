@@ -773,14 +773,15 @@ html.math #controls { visibility: hidden; }
 .gp-progress i { display: block; height: 100%; width: 0; border-radius: inherit; background: linear-gradient(90deg, var(--accent), #ffd23a); transition: width .3s ease; }
 .gp-exit { margin-left: 4px; }
 .gate[data-mode="check"] .gp-hear { margin-left: auto; }
-.pit-offer { position: absolute; inset: 0; z-index: 8; display: grid; place-items: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); background: rgba(4,12,9,.72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.pit-offer { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); background: rgba(4,12,9,.72); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 .pit-card { width: min(100%, 460px); padding: 20px 20px 18px; text-align: center; display: grid; gap: 10px; justify-items: center; animation: pop .35s cubic-bezier(.2,1.6,.5,1); }
 .pit-badge { width: 64px; height: 64px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); box-shadow: 0 4px 0 var(--accent-edge); color: var(--accent-ink); }
 .pit-badge svg { width: 34px; height: 34px; }
 .pit-card h3 { margin: 0; font: 400 30px/1 var(--font-display); color: #fff; text-shadow: 0 3px 0 var(--ink); }
 .pit-card p { margin: 0; font-weight: 700; color: var(--muted); font-size: 16px; line-height: 1.35; }
 .pit-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
-.pit-actions .btn { min-width: 120px; }
+.pit-actions .btn { min-width: 160px; }
+.pit-later { min-height: 44px; background: transparent; box-shadow: none; border: 2px solid var(--line); color: var(--muted); }
 #screen-check { background: transparent; }
 #screen-startline { align-items: center; justify-content: center; gap: 10px; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); overflow-y: auto; }
 .sl-title { margin: 0; font: 400 40px/1 var(--font-display); color: var(--accent); text-shadow: 0 4px 0 var(--ink); transform: rotate(-2deg); display: flex; align-items: center; gap: 12px; }
@@ -837,6 +838,13 @@ html.math #controls { visibility: hidden; }
 .lad.st-known { background: #1f5c46; color: #fff; border-color: #2f8a68; }
 .lad.st-practice { background: #20404f; color: #fff; border-color: #2f6a83; }
 .lad-legend { font-size: 12px; color: var(--muted); font-weight: 700; }
+.where { margin: 4px 0 8px; padding: 12px 14px; border-radius: 12px; background: rgba(34,211,255,.10); border: 2px solid var(--cyan); display: grid; gap: 4px; }
+.where .label { font: 400 15px/1.1 var(--font-display); color: var(--cyan); text-transform: uppercase; letter-spacing: .04em; }
+.where-line { font-weight: 800; font-size: 16px; color: #fff; }
+.lad.st-secure, .lad.st-vouched { background: #1f6a50; color: #fff; border-color: var(--go); }
+.lad.st-scout { background: #173a4a; color: #fff; border-color: var(--cyan); border-style: dashed; }
+.lad.st-stepped { opacity: .7; border-style: dashed; }
+.sl-dial { border-top: none; padding-top: 0; color: var(--muted); }
 .pz-check-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 8px; }
 .pz-check-row .grow { flex: 1 1 200px; }
 .pat-list { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
@@ -987,6 +995,16 @@ html.math #controls { visibility: hidden; }
     <button class="ctl" id="ctl-gas" data-ctl="gas" aria-label="Gas, front flip in the air"><span data-icon="right"></span><span>Gas</span><small>front flip</small></button>
   </div>
   <!-- ===== Gate panel (src/ui/gatePanel.js) over the frozen race ===== -->
+  <!-- ===== Pit Crew Check card (v1.4: before a race until placed, and for re-checks) ===== -->
+  <div class="pit-offer" id="pit-offer" hidden role="dialog" aria-labelledby="pit-offer-title" data-kind="first">
+    <div class="card pit-card">
+      <div class="pit-badge"><span data-icon="wrench"></span></div>
+      <h3 id="pit-offer-title">Pit Crew Check</h3>
+      <p id="pit-offer-text">Before your first race, the pit crew checks what you've got. About 15 quick facts.</p>
+      <div class="pit-actions"><button class="btn btn-orange btn-big" id="pit-start" data-sfx>Start<span data-icon="right"></span></button></div>
+      <button class="btn btn-sm pit-later" id="pit-later" data-sfx>Race first</button>
+    </div>
+  </div>
   <div class="gate" id="gate" hidden></div>
   <!-- 3-2-1 and the gate drop -->
   <div class="countdown" id="countdown" hidden aria-live="assertive"><div class="cd-gate" id="cd-gate"></div><span class="cd-n" id="countdown-n">3</span></div>
@@ -1017,14 +1035,6 @@ html.math #controls { visibility: hidden; }
       <div class="card res-pay scroll"><table class="pay" id="res-pay"></table></div>
     </div>
     <div class="res-moment" id="res-moment" hidden aria-live="polite"></div>
-    <div class="pit-offer" id="pit-offer" hidden role="dialog" aria-labelledby="pit-offer-title">
-      <div class="card pit-card">
-        <div class="pit-badge"><span data-icon="wrench"></span></div>
-        <h3 id="pit-offer-title">Pit Crew Check</h3>
-        <p>Your crew needs to know what you've got. About 20 quick facts.</p>
-        <div class="pit-actions"><button class="btn" id="pit-later" data-sfx>Later</button><button class="btn btn-orange btn-big" id="pit-start" data-sfx>Start<span data-icon="right"></span></button></div>
-      </div>
-    </div>
     <div class="results-foot">
       <button class="btn" id="res-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
       <button class="btn btn-orange" id="res-again" data-sfx><span data-icon="retry"></span>Race again</button>
@@ -1044,6 +1054,7 @@ html.math #controls { visibility: hidden; }
       <div class="sl-row" data-row="working"><span class="sl-label">Working on</span><div class="sl-chips" id="sl-working"></div></div>
       <div class="sl-row" data-row="next"><span class="sl-label">Up next</span><div class="sl-chips" id="sl-next"></div></div>
       <div class="sl-note" id="sl-note"></div>
+      <div class="sl-note sl-dial" id="sl-dial"></div>
     </div>
     <span class="callout xp" id="sl-xp">+100 XP</span>
     <div class="sl-foot"><button class="btn" id="sl-done" data-sfx>Done</button><button class="btn btn-orange btn-big" id="sl-race" data-sfx>Race<span data-icon="right"></span></button></div>

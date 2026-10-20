@@ -200,7 +200,7 @@ export function createGatePanel(root, { tts, audio, aloud = () => true, hint: hi
     get answer() { return S ? S.answer : null; },
     /** Ask one fact. info: { fact, flip, index (0-based), total, mode ('gate' | 'check'), progress (0 … 1, check) }.
      *  Resolves { correct, quick, fixed, ms, given } or { cancelled }. */
-    open({ fact, flip = false, index = 0, total = 1, mode = 'gate', progress: prog = 0 } = {}) {
+    open({ fact, flip = false, index = 0, total = 1, mode = 'gate', progress: prog = 0, exitText = 'Later' } = {}) {
       if (S) finish({ cancelled: true });
       return new Promise((resolve) => {
         S = { fact, flip, answer: factAnswer(fact), state: 'ask', typed: '', t0: 0, resolve, timers: [], ms: 0, missed: false, quick: false, given: null, mode, hintText: '' };
@@ -209,7 +209,7 @@ export function createGatePanel(root, { tts, audio, aloud = () => true, hint: hi
         titleText.textContent = check ? 'Pit Crew Check' : 'Math gate';
         titleIcon.innerHTML = icon(check ? 'wrench' : 'lock');
         chip.textContent = check ? `Fact ${index + 1}` : `Gate ${index + 1} of ${total}`;
-        progress.hidden = !check; exit.hidden = !check;
+        progress.hidden = !check; exit.hidden = !check; exit.textContent = exitText;
         bar.style.width = `${Math.round(Math.max(0, Math.min(1, prog)) * 100)}%`;
         progress.setAttribute('aria-valuenow', String(Math.round(prog * 100)));
         hint.hidden = true;

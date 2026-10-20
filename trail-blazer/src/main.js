@@ -12,6 +12,9 @@
 // 60 / 30 / 10, a retention probe every 15 finished races or 7 days); misses are classified into error patterns that
 // shape the hint; the Pit Crew Check is offered on the results after a finished race until the player has a
 // placement, and ends on the Start line.
+// v1.4 ("find where they are, fast"): the check runs before the first race (and re-checks itself), locates then
+// zooms; secure families move on at once; one scout gate per race reaches ahead; the difficulty governor keeps the
+// gates at the child's learning level (store.js / governor.js / scouts.js).
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -30,7 +33,7 @@ import {
   bankRide, cashRows, currentTrail, earn, finishedCount, hashString, isUnlocked, nextTrail, statsFor,
 } from './meta/economy.js';
 import {
-  MISSION_REWARD, activeFacts, afterRace, checkOfferDue, levelFor, missionState, nextFact, noteCheckOffered, noteRace, recordAnswer, refreshFrontier, resetFacts,
+  MISSION_REWARD, activeFacts, afterRace, beginRace, checkDue, levelFor, missionState, nextFact, noteRace, recordAnswer, refreshFrontier, resetFacts,
 } from './facts/store.js';
 import { hintKind, patternHint } from './facts/patterns.js';
 import { createPitCheck } from './ui/pitCheck.js';
@@ -50,7 +53,7 @@ import { drawAvatar, drawPreview, loadVehicle, vehicleModule } from './ui/vehicl
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.3.2';
+const VERSION = '1.4.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -157,14 +160,13 @@ async function boot() {
     },
     go, toast, refreshCash, startRide, setSetting, setShake, selectPlayer,
     // ----- the Pit Crew Check (v1.3) -----
-    showCheckOffer: () => pit.showOffer(),
-    hideCheckOffer: () => pit && pit.hideOffer(),
+
     /** Parents → Facts → "Run the check again": for that player (switching to them first when needed). */
     runCheckFor(id) {
       if (!Profiles.playerById(family, id)) return;
       pz.close();
       if (id !== currentPlayerId) selectPlayer(id);
-      setTimeout(() => pit.run(), 0);
+      setTimeout(() => pit.run({ kind: 'recheck' }), 0);
     },
     createPlayer: (name, color) => Profiles.createPlayer(family, name, color),
     openParents: (opts) => pz.open(opts),
@@ -373,9 +375,15 @@ async function boot() {
   // AI skill: left to the engine (its default sits between the player's upgrade level and the track's design level, so
   // a stock Ranger can win Pine Ridge with clean riding and later tracks want upgrades: SPEC v1.1 §2)
   const playerName = () => { const p = Profiles.playerById(family, currentPlayerId); return p ? p.name : 'You'; };
-  function startRide(trailId) {
+  /** opts.skipCheck: "Race first" (or straight from the Start line). v1.4: an unplaced player (or a stale placement)
+   *  gets the Pit Crew Check card first, before every race until the check is done. */
+  function startRide(trailId, opts = {}) {
     if (!game) { toast('The race could not load'); return; }
     closePanel();
+    if (facts && !opts.skipCheck && facts.sets.mode === 'auto') {
+      const due = checkDue(facts, Date.now());
+      if (due.due) { pit.showCard(trailId, due); return; }
+    }
     const trail = trails.find((t) => t.id === trailId && isUnlocked(save, trails, t.id)) || currentTrail(save, trails);
     clearTimeout(stopFallback);
     run = { trail, ended: false, quitting: false, place: null, lastState: null, started: false, posBannerAt: 0, cdTimer: 0,
@@ -397,6 +405,7 @@ async function boot() {
         shake: settings.reducedMotion ? 0 : settings.shake / 100,
       });
       game.setInput({ gas: false, brake: false, boost: false });
+      beginRace(session, run.gates);                    // v1.4: the governor's gate plan for this race
     } catch (e) {
       console.error('[TrailBlazer] game.start threw', e);
       run = null; controls.enable(false); go('trails'); toast('Could not start the race');
@@ -504,7 +513,7 @@ async function boot() {
     const index = Number.isInteger(evt.index) ? evt.index : r.facts.length;
     const res = await gatePanel.open({ fact: pick.fact, flip: pick.flip, index, total: r.gates });
     if (res.cancelled || run !== r || r.ended) return;
-    const out = recordAnswer(facts, pick.fact, res, Date.now(), session);
+    const out = recordAnswer(facts, pick.fact, { ...res, scout: pick.reason === 'scout' ? pick.family : undefined }, Date.now(), session);
     r.facts.push({ fact: pick.fact, flip: pick.flip, correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, ms: res.ms, status: out.status, newlyMastered: out.newlyMastered,
       reason: pick.reason || '', bucket: pick.bucket || '', pattern: out.pattern || null });
     r.xp += out.xp;
@@ -556,7 +565,7 @@ async function boot() {
     const bank = bankRide(save, trails, r.trail.id, summary, medalTimes);
     save.seen.coach = true;
     app.persist();
-    let offerCheck = false, probeStarted = false;
+    let probeStarted = false;
     if (facts) {
       if (r.facts.length) {
         noteRace(facts, { at: Date.now(), trail: r.trail.id, place: bank.place, asked: r.facts.length, correct: r.facts.filter((f) => f.correct).length,
@@ -565,10 +574,9 @@ async function boot() {
       // v1.3: a finished race counts toward the retention probe; the frontier moves (advancement / re-entry); the
       // Pit Crew Check is offered while there is no placement (after up to 3 finished races)
       const finished = !!summary.finishCrossed;
-      const ar = afterRace(facts, { finished }, Date.now());
+      const ar = afterRace(facts, { finished, clean: r.facts.length > 0 && r.facts.every((f) => f.correct), gates: r.facts.length }, Date.now());
       probeStarted = ar.probeStarted;
       if (ar.frontierChanged) prepareVoice();      // the natural voice's clips for the facts now in play
-      if (finished && checkOfferDue(facts)) { offerCheck = true; noteCheckOffered(facts); }
       app.persistFacts();
     }
     const math = facts ? { facts: r.facts, xp: r.xp, mastered: r.mastered, fluent: r.fluent, missionPaid: r.missionPaid, mission: missionState(facts, Date.now()),
@@ -576,7 +584,7 @@ async function boot() {
     const nt = nextTrail(trails, r.trail.id);
     const result = lastResult = {
       trail: r.trail, summary, rows, total, bank, medalTimes, standings: standings(r, summary),
-      place: bank.place, timeSec: summary.timeSec || 0, math, offerCheck, probeStarted,
+      place: bank.place, timeSec: summary.timeSec || 0, math, probeStarted,
       next: nt && isUnlocked(save, trails, nt.id) ? nt : null,
       unlocked: bank.unlocked ? trails.find((t) => t.id === bank.unlocked) : null,
     };

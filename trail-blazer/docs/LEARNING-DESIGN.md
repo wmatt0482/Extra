@@ -25,8 +25,19 @@ the "v1.2" section adapts them to race mode.
 | 15 | **Placement and adaptive sequencing**: start where the child is, then move on by mastery | Vygotsky's zone of proximal development, put into practice as mastery-based progression; Fuchs & Fuchs 1986 (progress monitoring); Codding, Burns & Lukito 2011 (interventions matched to the learner's phase, acquisition or fluency, work best) | The **Pit Crew Check** after the first finished race (Start / Later, offered after up to 3 races, re-run from Parents → Facts): an adaptive staircase from ×3 ×4 up through ×7 ×8 and ÷, ≤ 24 facts, no clock on screen, ending on the **Start line** ("Fluent: … · Working on: … · Up next: …", +100 XP). **Auto mode** (the default) then works on two families by the ladder: the lowest unfinished tier first (shaky ×6 ×9 always before ×7 ×8), the weakest within a tier (misses, then slowness), never above an untested gap, mixed with known families: about 60 % of gates on the frontier (acquisition), 30 % known (spacing, fluency), 10 % mastered (retention). A family moves on at 90 % mastered and 70 % fluent and comes back when two facts slip in a week | `src/facts/placement.js`, `src/facts/adaptive.js`, `src/ui/pitCheck.js` |
 | 16 | **Retention checks** | Spacing (Cepeda et al. 2006) and progress monitoring (Fuchs & Fuchs 1986) | Every 15 finished races or 7 days, 6 mastered facts are mixed into the next race's gates; a miss brings that family back into the frontier | `adaptive.js` `probeDue`, `startProbe`, `noteProbe` |
 | 17 | **Error-pattern analysis** | Ashlock, *Error Patterns in Computation* (systematic errors tell you what to teach) | Every miss is classified: neighbouring fact, one group off, digits swapped, the other operation, ÷ missed while its × is known, big numbers, or slow but right. The kind of miss picks the hint ("7 × 7 is 49, then one more 7 is 56"; "you know 7 × 8 = 56, so 56 ÷ 7 = 8"); a cluster of ÷ misses brings the ÷ twin two gates after its × fact; the Report's **Patterns** say it in plain words ("Misses cluster in ×7 and ×8", "Division is weaker than multiplication", "Slow on big numbers: 6 × 7, 8 × 9") and the Start line turns it into a pit note | `src/facts/patterns.js`, `gatePanel.js` (hint provider) |
+| 18 | **Continuous assessment (scouting) and placement first** | Curriculum-based measurement and progress monitoring: Deno 1985; Fuchs & Fuchs 1986 | v1.4: the Pit Crew Check runs **before the first race** (Start, or "Race first" and it asks again before the next race), locates from T3 with 2 facts a tier, then **zooms** (2 more per family in the located tier and the one above, so ×6 and ×9 are told apart), then one ÷ twin per fluent family; ≤ 24 facts. After that the game never stops looking: one **scout gate** a race asks a never-seen fact from the next tier up; 3 quick scouts vouch a family without drilling it. Re-checks offer themselves after 14 days, 5 clean races or when the frontier is two tiers above the placement | `placement.js`, `scouts.js`, `pitCheck.js` |
+| 19 | **Advance on evidence, not the calendar** | Mastery-based progression (as row 15), measured directly | A family is **secure** once every fact was answered right, ≥ 75 % of its answers were quick and none of its last 8 was a miss (or the check / scouts vouched for it with no miss since); it leaves the frontier at once and spacing keeps it in the gates. Days-based mastery still colours the Grid and drives the retention checks | `adaptive.js` `famInfo` (`secure`) |
+| 20 | **Instructional level** (the difficulty governor) | Gickling & Armstrong 1978; Burns 2004 (practice works best when most items are known and a few are being learned) | Over the last 12 gates: ≥ 92 % right and ≥ 70 % quick is "a bit easy" (secure families move on after every gate, 2 scouts a race, 50 / 25 / 25); 70–92 % "on target"; < 70 % "a bit hard" (one family at a time, no scouts, 50 / 50 with known facts, and a family with 3 misses in its last 6 answers steps back to the family its strategy leans on, ×8 → ×4, until that one is solid again). The dial is shown to parents ("Right now: on target (10 of 12 right)") and kept race by race in the Report | `governor.js`, `store.js` `refreshFrontier` |
 
-## How the Pit Crew Check works (v1.3)
+## How the Pit Crew Check works (v1.4)
+
+Before the first race (Start or "Race first"; the card returns before each race until it is done). Locate from T3:
+2 facts a tier, one per family (other number 3 … 9); both right and quick → up, any miss → down, right but slow →
+stay; ≤ 10 facts. Zoom: 2 more per family in the located tier and the one above. Twins: one ÷ fact per fluent ×
+family. ≤ 24 facts, no score or wrong count on screen, no clock. The Start line names the work ("Working on") and the
+scout family ("Up next"): "Your crew will keep checking as you race."
+
+## How the Pit Crew Check worked in v1.3 (superseded)
 
 Tiers: T0 + − within 20 (only when the parent allows them) · T1 ×2 ×5 ×10 · T2 ×3 ×4 · T3 ×6 ×9 · T4 ×7 ×8 · T5 ×11
 ×12 · T6 ÷ of T1-T2 · T7 ÷ of T3-T5 (÷ only with "÷ too"). It starts at T2 with 3 facts from different families
@@ -63,7 +74,11 @@ answer for a moment, read aloud.
 | Daily mission | 12 gate answers → $400, +100 XP, once a day | `store.js` |
 | XP | right 15, quick +5, fixed 5, newly mastered +50, mission +100 | `store.js` `XP` |
 | Gate cash | quick $200 (+60 % tank, 1.2 s push), right $120 (+40 %), fixed $40 (rivals +1.5 s) | engine `openGate` |
-| Pit Crew Check | start T2, blocks of 3, advance on ≥ 2 quick, probe on 2 slow, drop on ≤ 1 right, ≤ 24 facts, +100 XP | `placement.js` |
+| Pit Crew Check | before the first race; locate from T3 (2 a tier, ≤ 10), zoom (2 per family, located tier + 1), ÷ twins, ≤ 24 facts, +100 XP | `placement.js` |
+| Secure | every fact right once, ≥ 75 % quick, no miss in the last 8 (or vouched with no miss since) | `adaptive.js` `SECURE` |
+| Scouts | 1 a race (≥ 4 gates; 2 when a bit easy, none when a bit hard); 3 quick with no miss vouch | `scouts.js` |
+| Re-check | 14 days, 5 clean races in a row, or the frontier two tiers above the placement | `scouts.js` `RECHECK` |
+| Governor | last 12 gates: ≥ 92 % right + ≥ 70 % quick easy, 70–92 % on target, < 70 % hard; step back on 3 misses in 6 | `governor.js` |
 | Auto frontier | 2 families, lowest unfinished tier first, weakest within it; gates 60 / 30 / 10 frontier / known / mastered; advance at 90 % mastered + 70 % fluent; re-enter on 2 facts at box 0 in a week | `adaptive.js` |
 | Retention probe | 6 mastered facts every 15 finished races or 7 days, every other gate | `adaptive.js` `PROBE` |
 
@@ -75,8 +90,13 @@ answer for a moment, read aloud.
   tasks: A review and quantitative synthesis. *Psychological Bulletin*, 132(3).
 - Codding, R. S., Burns, M. K., & Lukito, G. (2011). Meta-analysis of mathematic basic-fact fluency interventions:
   A component analysis. *Learning Disabilities Research & Practice*, 26(1).
+- Burns, M. K. (2004). Empirical analysis of drill ratio research: Refining the instructional level for drill tasks.
+  *Remedial and Special Education*, 25(3).
+- Deno, S. L. (1985). Curriculum-based measurement: The emerging alternative. *Exceptional Children*, 52(3).
 - Fuchs, L. S., & Fuchs, D. (1986). Effects of systematic formative evaluation: A meta-analysis. *Exceptional
   Children*, 53(3).
+- Gickling, E. E., & Armstrong, D. L. (1978). Levels of instructional difficulty as related to on-task behavior, task
+  completion, and comprehension. *Journal of Learning Disabilities*, 11(9).
 - Habgood, M. P. J., & Ainsworth, S. E. (2011). Motivating children to learn effectively: Exploring the value of
   intrinsic integration in educational games. *Journal of the Learning Sciences*, 20(2).
 - Hasselbring, T. S., Goin, L. I., & Bransford, J. D. (1988). Developing math automaticity in learning handicapped

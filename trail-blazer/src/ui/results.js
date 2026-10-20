@@ -6,7 +6,7 @@
 // Title: "1st place!" / "Podium!" / "Race over". Buttons: Garage / Race again / Next track.
 // v1.2 (math layer): the race's facts (✓ right first try, ⚡ quick, ↻ fixed), "N facts mastered!", the daily mission
 // (its $400 shows as an extra row under the total: paid when it happened, not part of the race's cash), the XP and a
-// level-up stamp. v1.3: the Pit Crew Check offer card (r.offerCheck) after the race's own moments.
+// level-up stamp. (v1.4: the Pit Crew Check comes before a race now, not on the results.)
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { MEDAL_LABEL, fmtTime, ordinal } from '../data/medals.js';
 import { factAnswer, factText } from '../facts/facts.js';
@@ -94,7 +94,7 @@ export function createResults(app) {
     el.record.hidden = !(r.bank.newBestTime && r.bank.prevBestTime);
     const best = app.save.bestTime[r.trail.id];
     const t = r.medalTimes || {};
-    el.sub.textContent = `${r.trail.name} · ${place ? `${ordinal(place)} of ${(r.standings || []).length || 4}` : 'not finished'}${best ? ` · best ${fmtTime(best)}` : ''}${t.gold ? ` · gold ${fmtTime(t.gold)}` : ''}`;
+    el.sub.textContent = `${r.trail.name} · ${place ? `${ordinal(place)} of ${(r.standings || []).length || 4}` : 'not finished'}${best ? ` · best ${fmtTime(best)}` : ''}${t.gold ? ` · 1st = gold · or beat ${fmtTime(t.gold)}` : ''}`;
     el.sub.textContent += ` · ${s.flips || 0} flip${s.flips === 1 ? '' : 's'} · ${fmt1(s.airTime)} s air${s.crashes ? ` · ${s.crashes} crash${s.crashes === 1 ? '' : 'es'}` : ''}`;
     const math = r.math;
     factsRow(math && math.facts);
@@ -123,8 +123,6 @@ export function createResults(app) {
     clearMoment();
     const leveled = math && math.levelAfter > math.levelBefore;
     if (leveled) momentTimers.push(setTimeout(() => levelUp(math.levelAfter), app.settings.reducedMotion ? 200 : 1300));
-    // v1.3: the Pit Crew Check offer, once the race's own moments have played
-    if (r.offerCheck) momentTimers.push(setTimeout(() => app.showCheckOffer(), leveled ? 2600 : 1600));
   }
-  return { show, hide() { clearTimeout(medalTimer); cancelAnimationFrame(countRaf); clearMoment(); app.hideCheckOffer && app.hideCheckOffer(); } };
+  return { show, hide() { clearTimeout(medalTimer); cancelAnimationFrame(countRaf); clearMoment(); } };
 }

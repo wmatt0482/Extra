@@ -22,8 +22,10 @@ import {
 } from '../src/facts/store.js';
 import { CHECK_XP, MAX_ITEMS, TIERS, applyCheck, checkAnswer, checkNext, checkResult, createCheck, startLine, tiersFor } from '../src/facts/placement.js';
 import { classifyMiss, hintKind, inverseCluster, isSlowOnly, notePattern, patternHint, patternSummary } from '../src/facts/patterns.js';
-import { MIX, PROBE, autoFamilies, computeFrontier, famInfo, pickAuto, probeDue, refreshFrontier } from '../src/facts/adaptive.js';
-import { afterRace, checkOfferDue, noteCheckOffered } from '../src/facts/store.js';
+import { MIX, PROBE, autoFamilies, computeFrontier, famInfo, pickAuto, probeDue } from '../src/facts/adaptive.js';
+import { afterRace, beginRace, checkDue, refreshFrontier } from '../src/facts/store.js';
+import { DIAL_MIN, dial, dialText, drowning, familyRecent, raceQuota } from '../src/facts/governor.js';
+import { noteScout, recheckStart, scoutFact, scoutFamily } from '../src/facts/scouts.js';
 import { familyMembers } from '../src/facts/facts.js';
 import { createUpdateGuard, safeToReload } from '../src/meta/selfUpdate.js';
 import { medalFor, medalTimesFor, fmtTime, ordinal, placeMedal, raceMedal } from '../src/data/medals.js';
@@ -346,7 +348,7 @@ test('normalize round-trips a used store', () => {
 test('every × family ×2 … ×12 is selectable', () => { assert.equal(ALL_FAMILIES.length, 11); assert.equal(ALL_FAMILIES[0], 'x2'); assert.equal(ALL_FAMILIES[10], 'x12'); });
 
 
-console.log('\nv1.3: Pit Crew Check (placement)');
+console.log('\nv1.4: Pit Crew Check (placement: locate, zoom, twins)');
 const lcg = (seed = 7) => { let x = seed; return () => { x = (x * 1103515245 + 12345) % 2147483648; return x / 2147483648; }; };
 function runCheck(answer, opts = {}, rand = lcg(3)) {
   const st = createCheck({ tiers: tiersFor({ division: true, ...(opts.sets || {}) }), ...opts }, rand);
@@ -357,44 +359,54 @@ function runCheck(answer, opts = {}, rand = lcg(3)) {
 const QUICK = { correct: true, quick: true, ms: 1400 };
 const SLOW = { correct: true, quick: false, ms: 5200 };
 const MISS = (it) => ({ correct: false, quick: false, ms: 4000, given: 1 });
-test('tiers: × and ÷ by default (T1 … T7), T0 + − only when the parent allows it, no ÷ without "÷ too"', () => {
-  assert.deepEqual(tiersFor({ division: true }), ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7']);
+const itemsBy = (st, tier) => st.items.filter((x) => x.tier === tier);
+const answersFor = (st, fam) => st.items.filter((x) => x.family === fam).length;
+test('tiers: × T1 … T5 (÷ comes as twins), T0 + − only when the parent allows it', () => {
+  assert.deepEqual(tiersFor({ division: true }), ['T1', 'T2', 'T3', 'T4', 'T5']);
   assert.deepEqual(tiersFor({ division: false, addSub: true }), ['T0', 'T1', 'T2', 'T3', 'T4', 'T5']);
   assert.deepEqual(TIERS.find((t) => t.id === 'T4').families, ['x7', 'x8']);
 });
-test('staircase: a fluent kid climbs from T2 to the ÷ tiers in ≤ 24 items (3 per tier, then the top passes)', () => {
+test('staircase (v1.4): from T3 a fluent kid reaches T5 and the ÷ twins in ≤ 24 items', () => {
   const st = runCheck(() => QUICK);
-  assert.equal(st.items[0].tier, 'T2', 'starts at T2');
-  assert.ok(st.items.some((x) => x.tier === 'T7'), 'reached ÷ (T7)'); assert.equal(st.end, 'top');
-  assert.ok(st.items.length <= MAX_ITEMS); assert.equal(st.items.length, 18);
+  assert.equal(st.items[0].tier, 'T3', 'starts at T3');
+  assert.deepEqual(st.items.filter((x) => x.phase === 'locate').map((x) => x.tier), ['T3', 'T3', 'T4', 'T4', 'T5', 'T5'], 'locate: 2 items per tier, up on right + quick');
+  assert.ok(st.items.some((x) => x.phase === 'twins' && x.fact.includes('/')), 'then ÷ twins for the fluent families');
+  assert.ok(st.items.length <= MAX_ITEMS, `${st.items.length} items`);
+  const pl = checkResult(st, T0);
+  assert.equal(pl.located, 'T5'); assert.equal(pl.families.x11.status, 'fluent'); assert.equal(pl.families.x3.status, 'known'); assert.ok(pl.families.x3.inferred);
 });
-test('staircase: a block has distinct families and other numbers 3 … 9 first; no fact twice', () => {
+test('staircase: locate items are one per family, other numbers 3 … 9 first; no fact twice', () => {
   const st = runCheck(() => QUICK);
-  const t3 = st.items.filter((x) => x.tier === 'T3');
-  assert.equal(new Set(t3.slice(0, 2).map((x) => x.family)).size, 2);
+  const t3 = st.items.filter((x) => x.phase === 'locate' && x.tier === 'T3');
+  assert.equal(new Set(t3.map((x) => x.family)).size, 2);
   assert.equal(new Set(st.items.map((x) => x.fact)).size, st.items.length);
-  for (const it of st.items.filter((x) => x.fact.includes('x'))) { const [a, b] = it.fact.split('x').map(Number); const n = Number(it.family.slice(1)); const m = a === n ? b : a; assert.ok(m >= 3 && m <= 9, it.fact); }
+  for (const it of st.items.filter((x) => x.phase === 'locate')) { const [a, b] = it.fact.split('x').map(Number); const n = Number(it.family.slice(1)); const m = a === n ? b : a; assert.ok(m >= 3 && m <= 9, it.fact); }
 });
-test('staircase: a kid who misses at T2 drops to T1 and stops (6 items)', () => {
-  const st = runCheck((it) => (it.tier === 'T2' ? MISS(it) : QUICK));
-  assert.deepEqual([...new Set(st.items.map((x) => x.tier))], ['T2', 'T1']); assert.equal(st.items.length, 6); assert.equal(st.end, 'frontier');
-  const st3 = runCheck((it) => (it.tier === 'T4' ? MISS(it) : QUICK));
-  assert.equal(st3.end, 'frontier'); assert.ok(!st3.items.slice(9).length, 'climbing T2, T3, then missing T4: T3 already passed, no second look');
-  const st2 = runCheck((it) => MISS(it));
-  assert.equal(st2.end, 'drops'); assert.equal(st2.items.length, 6, 'two drops: T2, T1, then stop');
+test('staircase: a kid who misses at T3 lands in T2, and every T2 / T3 family has ≥ 2 answers (zoom)', () => {
+  const st = runCheck((it) => (it.tier === 'T3' ? MISS(it) : QUICK));
+  const pl = checkResult(st, T0);
+  assert.equal(pl.located, 'T2'); assert.equal(pl.tier, 'T3', 'the work starts at T3');
+  for (const fam of ['x3', 'x4', 'x6', 'x9']) assert.ok(answersFor(st, fam) >= 2, `${fam}: ${answersFor(st, fam)} answers`);
+  assert.equal(pl.families.x6.status, 'shaky'); assert.equal(pl.families.x3.status, 'fluent');
+  assert.ok(pl.phase.locate <= 10 && pl.phase.zoom >= 8, JSON.stringify(pl.phase));
 });
-test('staircase: 2 of 3 right but slow → 3 more in that tier, then stop climbing; 24 items at most', () => {
+test('staircase: right but slow stays and zooms (the tier and the one above); ≤ 24 items in all', () => {
   const st = runCheck((it) => (it.tier === 'T3' ? SLOW : QUICK));
-  assert.equal(st.items.filter((x) => x.tier === 'T3').length, 6); assert.ok(!st.items.some((x) => x.tier === 'T4')); assert.equal(st.items.length, 9);
+  assert.deepEqual(st.items.filter((x) => x.phase === 'locate').map((x) => x.tier), ['T3', 'T3']);
+  for (const fam of ['x6', 'x9', 'x7', 'x8']) assert.ok(answersFor(st, fam) >= 2, fam);
+  assert.ok(!itemsBy(st, 'T2').length, 'no need to look lower: right is right');
+  const pl = checkResult(st, T0);
+  assert.equal(pl.families.x6.status, 'known'); assert.equal(pl.families.x7.status, 'fluent'); assert.equal(pl.families.x3.status, 'known', 'vouched below');
+  const all = runCheck((it) => MISS(it));
+  assert.ok(all.items.length <= MAX_ITEMS); assert.equal(checkResult(all, T0).located, 'T1');
   const long = runCheck(() => QUICK, { sets: { addSub: true }, start: 'T0' });
   assert.ok(long.items.length <= MAX_ITEMS, `${long.items.length} items`);
 });
-test('placement: per family fluent / known / shaky / untested; a passed tier vouches for the tiers below', () => {
-  const st = runCheck((it) => (it.tier === 'T3' ? (it.family === 'x6' ? MISS(it) : SLOW) : QUICK));
+test('placement: families told apart (×6 fluent, ×9 shaky); tiers below the lowest passed tier are vouched for', () => {
+  const st = runCheck((it) => (it.family === 'x9' ? MISS(it) : QUICK));
   const pl = checkResult(st, T0);
-  assert.equal(pl.families.x3.status, 'fluent'); assert.equal(pl.families.x2.status, 'known'); assert.ok(pl.families.x2.inferred);
-  assert.equal(pl.families.x6.status, 'shaky'); assert.equal(pl.families.x9.status, 'known'); assert.equal(pl.families.x7.status, 'untested');
-  assert.ok(pl.families.x9.medianMs >= 5000);
+  assert.equal(pl.families.x6.status, 'fluent'); assert.equal(pl.families.x9.status, 'shaky');
+  assert.equal(pl.families.x2.status, 'known'); assert.ok(pl.families.x2.inferred); assert.equal(pl.families.x11.status, 'untested');
 });
 test('placement seeds the records: quick right = box 2 + a first-try, slow right = box 1, a miss = box 0 + focus; +100 XP', () => {
   const d = defaultFacts(T0);
@@ -405,23 +417,30 @@ test('placement seeds the records: quick right = box 2 + a first-try, slow right
   assert.equal(d.records[q.fact].box, 2); assert.equal(d.records[q.fact].firstTry, 1); assert.equal(d.records[q.fact].due, T0 + 2 * DAY_MS);
   assert.equal(d.records[sl.fact].box, 1); assert.equal(d.records[sl.fact].firstTry, 0);
   assert.equal(d.records[m.fact].box, 0); assert.equal(d.records[m.fact].focus, true); assert.equal(d.records[m.fact].patterns.length, 1);
-  assert.equal(d.xp, CHECK_XP); assert.equal(pl.checks, 1); assert.equal(d.placement, pl);
+  assert.equal(d.xp, CHECK_XP); assert.equal(pl.checks, 1); assert.equal(d.placement, pl); assert.ok(pl.tier && pl.phase.locate >= 2);
   assert.equal(applyCheck(d, runCheck(() => QUICK), T0 + 1).checks, 2);
 });
-test('the Start line: "Fluent: … · Working on: … · Up next: …"', () => {
+test('the Start line: "Fluent: … · Working on: … · Up next: <the scout family>"', () => {
   const d = defaultFacts(T0);
   applyCheck(d, runCheck((it) => (it.tier === 'T3' ? SLOW : QUICK)), T0);
   refreshFrontier(d, T0);
-  const sl = startLine(d);
   assert.deepEqual(d.frontier.families, ['x6', 'x9']);
-  assert.deepEqual(sl.working, ['x6', 'x9']); assert.ok(sl.fluent.includes('x3') && sl.fluent.includes('x4')); assert.deepEqual(sl.next, ['x7', 'x8']);
-  assert.match(sl.text, /^Fluent: .*×3.* · Working on: ×6 ×9 · Up next: ×7 ×8$/);
+  const sl = startLine(d, { scout: scoutFamily(d, T0) });
+  assert.deepEqual(sl.working, ['x6', 'x9']); assert.ok(sl.fluent.includes('x7') && sl.fluent.includes('x8')); assert.deepEqual(sl.next, ['x11']);
+  assert.match(sl.text, /^Fluent: .*×7.* · Working on: ×6 ×9 · Up next: ×11$/);
 });
-test('the check is offered after a finished race while there is no placement, at most 3 times', () => {
+test('the check runs before the first race until done; then re-checks: 14 days, 5 clean races, two tiers above', () => {
   const d = defaultFacts(T0);
-  for (let i = 0; i < 3; i++) { assert.ok(checkOfferDue(d)); noteCheckOffered(d); }
-  assert.ok(!checkOfferDue(d), 'then only from the Parent Zone');
-  const d2 = defaultFacts(T0); applyCheck(d2, runCheck(() => QUICK), T0); assert.ok(!checkOfferDue(d2));
+  assert.deepEqual(checkDue(d, T0), { due: true, kind: 'first', why: 'not placed yet' });
+  applyCheck(d, runCheck((it) => (it.tier === 'T3' ? MISS(it) : QUICK)), T0); refreshFrontier(d, T0);
+  assert.ok(!checkDue(d, T0 + 1).due);
+  assert.ok(checkDue(d, T0 + 14 * DAY_MS).due && checkDue(d, T0 + 14 * DAY_MS).kind === 'recheck', '14 days');
+  for (let i = 0; i < 5; i++) afterRace(d, { finished: true, clean: true, gates: 4 }, T0 + i);
+  assert.ok(checkDue(d, T0 + 10).due, '5 clean races in a row'); assert.match(checkDue(d, T0 + 10).why, /5 races in a row/);
+  afterRace(d, { finished: true, clean: false, gates: 4 }, T0 + 11); assert.ok(!checkDue(d, T0 + 12).due, 'a miss resets the count');
+  d.frontier.families = ['x11', 'x12'];
+  assert.ok(checkDue(d, T0 + 13).due, `two tiers above the placed tier (${d.placement.tier})`);
+  assert.equal(recheckStart(d), 'T5');
 });
 
 console.log('\nv1.3: auto mode, frontier, gate mix, retention probe');
@@ -490,7 +509,7 @@ test('re-entry: two facts of a family dropping to box 0 in a week bring it back 
   d.placement = { at: T0, checks: 1, families: { x2: { status: 'fluent' }, x5: { status: 'fluent' }, x10: { status: 'fluent' }, x3: { status: 'known' }, x4: { status: 'known' } } };
   for (const fam of ['x3', 'x4']) for (const f of familyMembers(fam)) d.records[f] = mastered(f);
   refreshFrontier(d, T0); assert.ok(!d.frontier.families.includes('x3'));
-  recordAnswer(d, '3x7', { correct: false, given: 24 }, T0 + 10); recordAnswer(d, '3x8', { correct: false, given: 23 }, T0 + 20);
+  recordAnswer(d, '2x3', { correct: false, given: 5 }, T0 + 10); recordAnswer(d, '3x5', { correct: false, given: 8 }, T0 + 20);   // ×3 is the harder family of both
   refreshFrontier(d, T0 + 30);
   assert.equal(d.frontier.families[0], 'x3'); assert.match(d.frontier.reason, /came back/);
 });
@@ -552,7 +571,7 @@ test('Report patterns in plain words: misses cluster, division weaker, slow on b
   for (let i = 0; i < 3; i++) recordAnswer(d, '6x7', { correct: true, ms: 5000 }, T0 + i * DAY_MS);
   const lines = patternSummary(d, T0 + 3 * DAY_MS);
   const kinds = lines.map((x) => x.kind);
-  assert.ok(kinds.includes('cluster') && /Misses cluster in ×7/.test(lines.find((x) => x.kind === 'cluster').text), JSON.stringify(lines));
+  assert.ok(kinds.includes('cluster') && /Misses cluster in ×8/.test(lines.find((x) => x.kind === 'cluster').text), JSON.stringify(lines));   // a × miss counts for the harder family
   assert.ok(kinds.includes('division'), 'Division is weaker'); assert.ok(kinds.includes('slow-big') && /6 × 7/.test(lines.find((x) => x.kind === 'slow-big').text));
   assert.ok(lines.some((x) => x.kind === 'adjacent' && /like 7 × 8 → /.test(x.text)));
   assert.ok(inverseCluster(d, T0));
@@ -573,13 +592,142 @@ test('an inverse cluster brings the ÷ twin in two gates after its × fact', () 
 test('normalize v1.2 data: stock set → auto, edited set → manual, no placement → the check is offered; records gain times / patterns', () => {
   const old = { v: 1, sets: { families: STOCK_FAMILIES, division: true, addSub: false, custom: [] }, records: { '7x8': { box: 2, seenCount: 3, attempts: 3, firstTry: 2 } }, xp: 30, opts: { gates: 4 } };
   const d = normalizeFacts(JSON.parse(JSON.stringify(old)), T0);
-  assert.equal(d.sets.mode, 'auto'); assert.equal(d.placement, null); assert.ok(checkOfferDue(d)); assert.deepEqual(d.records['7x8'].times, []); assert.deepEqual(d.records['7x8'].patterns, []);
+  assert.equal(d.sets.mode, 'auto'); assert.equal(d.placement, null); assert.ok(checkDue(d, T0).due && checkDue(d, T0).kind === 'first'); assert.deepEqual(d.records['7x8'].times, []); assert.deepEqual(d.records['7x8'].patterns, []);
   assert.ok(d.frontier.families.length === 2);
   const edited = normalizeFacts({ ...old, sets: { families: ['x7', 'x8'], division: false, custom: [] } }, T0);
   assert.equal(edited.sets.mode, 'manual'); assert.deepEqual(activeFacts(edited).length, 21);
   const custom = normalizeFacts({ ...old, sets: { ...old.sets, custom: ['19+34'] } }, T0); assert.equal(custom.sets.mode, 'manual');
   const d3 = defaultFacts(T0); applyCheck(d3, runCheck(() => QUICK), T0); afterRace(d3, { finished: true }, T0);
   assert.deepEqual(normalizeFacts(JSON.parse(JSON.stringify(d3)), T0), d3, 'a v1.3 store round-trips');
+});
+
+
+console.log('\nv1.4: secure, scouts, the difficulty governor');
+const gateStream = (d, list, t0 = T0) => list.forEach(([f, ok, quick], i) => recordAnswer(d, f, ok ? { correct: true, quick, ms: quick ? 1200 : 5200 } : { correct: false, given: 1 }, t0 + i * 1000));
+const placedAt = (d, fams) => { d.placement = { at: T0, checks: 1, tier: 'T2', families: Object.fromEntries(Object.entries(fams).map(([f, st]) => [f, { status: st }])) }; refreshFrontier(d, T0); };
+test('secure (v1.4): an all-quick family advances in one sitting; one miss in its last 8 answers blocks it', () => {
+  const d = defaultFacts(T0);
+  placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'known', x4: 'known' });
+  assert.deepEqual(d.frontier.families, ['x3', 'x4']);
+  gateStream(d, familyMembers('x3').map((f) => [f, true, true]));
+  assert.ok(famInfo(d, 'x3', T0 + 60000).secure); assert.ok(!d.frontier.families.includes('x3'), `×3 moved on in one sitting: ${d.frontier.families}`);
+  const e = defaultFacts(T0);
+  placedAt(e, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'known', x4: 'known' });
+  const fs = familyMembers('x4');
+  gateStream(e, fs.map((f, i) => [f, i !== 8, true]));
+  assert.ok(!famInfo(e, 'x4', T0 + DAY_MS).secure, 'a miss in the last 8: not secure');
+  gateStream(e, fs.slice(1, 9).map((f) => [f, true, true]), T0 + DAY_MS);
+  assert.ok(famInfo(e, 'x4', T0 + DAY_MS + 60000).secure, '8 clean answers later (the next day): secure');
+});
+test('vouched: families the check found fluent are secure from the start; a miss since takes it back', () => {
+  const d = defaultFacts(T0);
+  placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'fluent', x4: 'shaky' });
+  assert.ok(famInfo(d, 'x3', T0).secure && famInfo(d, 'x3', T0).checkVouched); assert.ok(!famInfo(d, 'x4', T0).secure);
+  recordAnswer(d, '2x3', { correct: false, given: 5 }, T0 + 10);
+  assert.ok(!famInfo(d, 'x3', T0 + 20).secure, 'a miss after the check');
+});
+test('scouts: from the next tier up first, never a fact already seen; 3 quick scouts vouch, a scout miss does not', () => {
+  const d = defaultFacts(T0);
+  placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'shaky', x4: 'known', x6: 'untested', x9: 'untested' });
+  assert.deepEqual(d.frontier.families, ['x3', 'x4']);
+  assert.equal(scoutFamily(d, T0), 'x6', 'the next tier first');
+  d.records['6x7'] = { ...newRecord('6x7'), seenCount: 1, attempts: 1, firstTry: 1, box: 1, daysCorrect: ['2026-10-05'] };
+  for (let i = 0; i < 30; i++) { const f = scoutFact(d, 'x6', lcg(i + 1)); assert.ok(f && f !== '6x7' && familyMembers('x6').includes(f)); }
+  for (let i = 0; i < 2; i++) assert.ok(!noteScout(d, 'x6', true, true, T0 + i).vouched);
+  assert.ok(noteScout(d, 'x6', true, true, T0 + 3).vouched, '3 quick scouts'); assert.ok(famInfo(d, 'x6', T0 + 4).secure && famInfo(d, 'x6', T0 + 4).vouched);
+  assert.equal(scoutFamily(d, T0 + 5), 'x9', 'then the next family up');
+  noteScout(d, 'x9', false, false, T0 + 6); for (let i = 0; i < 3; i++) noteScout(d, 'x9', true, true, T0 + 7 + i);
+  assert.ok(!(d.vouched && d.vouched.x9), 'a scout miss: no vouch'); assert.notEqual(scoutFamily(d, T0 + 20), 'x9', 'and it waits its turn');
+});
+test('a race with 4 gates: 2 frontier, 1 known, 1 scout; scouts are recorded and vouch over 3 races', () => {
+  const d = defaultFacts(T0);
+  placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'known', x4: 'known', x6: 'untested' });
+  const s = createSession(); let t = T0 + 1000;
+  for (let race = 0; race < 3; race++) {
+    beginRace(s, 4); const kinds = [];
+    for (let g = 0; g < 4; g++) {
+      const p = nextFact(d, t, s, lcg(race * 10 + g + 1)); kinds.push(p.bucket === 'scout' ? 'scout' : p.bucket);
+      recordAnswer(d, p.fact, { correct: true, quick: true, ms: 900, scout: p.reason === 'scout' ? p.family : undefined }, (t += 1000), s);
+    }
+    if (race === 0) assert.deepEqual(kinds.slice().sort(), ['frontier', 'frontier', 'known', 'scout'], `race 1 (on target): ${kinds}`);
+    else assert.ok(kinds.filter((k) => k === 'scout').length >= 1, `race ${race + 1}: ${kinds}`);
+  }
+  assert.ok(d.vouched && Object.keys(d.vouched).length >= 1, `a family vouched within 3 races (${JSON.stringify(d.scouts)})`);
+  assert.ok(d.frontier.history.some((h) => /quick scouts/.test(h.why)) || famInfo(d, Object.keys(d.vouched)[0], t).secure);
+});
+test('governor: the dial from the last 12 gates (cold start, band boundaries)', () => {
+  const mk = (right, quick, n = 12) => ({ gateLog: Array.from({ length: n }, (_, i) => [i + 1, i < right ? 1 : 0, i < quick ? 1 : 0]) });
+  assert.equal(dial(mk(0, 0, DIAL_MIN - 1)).band, 'target', 'fewer than 6 answers: on target');
+  assert.equal(dial(mk(12, 12)).band, 'easy'); assert.equal(dial(mk(12, 9)).band, 'easy', '≥ 70 % quick');
+  assert.equal(dial(mk(12, 8)).band, 'target', 'all right but slow is not too easy'); assert.equal(dial(mk(11, 11)).band, 'target', '11 of 12 = 91.7 %');
+  assert.equal(dial(mk(9, 9)).band, 'target', '75 %'); assert.equal(dial(mk(8, 8)).band, 'hard', '66.7 %');
+  assert.equal(dialText(dial(mk(10, 8))), 'Right now: on target (10 of 12 right)');
+  assert.equal(dialText(dial(mk(12, 12))), 'Right now: a bit easy: moving up (12 of 12 right)');
+  assert.equal(dialText(dial(mk(5, 5))), 'Right now: a bit hard: stepping back (5 of 12 right)');
+  assert.deepEqual(raceQuota('easy', 4), { frontier: 1, known: 1, scout: 2, mastered: 0 }); assert.deepEqual(raceQuota('target', 4), { frontier: 2, known: 1, scout: 1, mastered: 0 });
+  assert.deepEqual(raceQuota('hard', 4), { frontier: 2, known: 2, scout: 0, mastered: 0 });
+});
+test('governor, too easy: all right + quick → the frontier families go secure and the next race has 2 scouts', () => {
+  const d = defaultFacts(T0);
+  placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'known', x4: 'known', x6: 'untested', x9: 'untested' });
+  gateStream(d, [...familyMembers('x3'), ...familyMembers('x4').slice(0, 4)].map((f) => [f, true, true]));
+  assert.equal(dial(d).band, 'easy'); assert.ok(!d.frontier.families.includes('x3') && !d.frontier.families.includes('x4'), `moved up: ${d.frontier.families}`);
+  const s = createSession(); beginRace(s, 4); const kinds = [];
+  for (let g = 0; g < 4; g++) { const p = nextFact(d, T0 + 90000, s, lcg(g + 3)); kinds.push(p.bucket); recordAnswer(d, p.fact, { correct: true, quick: true, ms: 900, scout: p.reason === 'scout' ? p.family : undefined }, T0 + 90000 + g, s); }
+  assert.equal(kinds.filter((k) => k === 'scout').length, 2, `2 scouts: ${kinds}`);
+});
+test('governor, too hard: 5 of 12 → one family, no scouts, a drowning family steps back and its lower neighbour re-enters', () => {
+  const d = defaultFacts(T0);
+  placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'fluent', x4: 'fluent', x6: 'fluent', x9: 'fluent', x7: 'known', x8: 'shaky' });
+  assert.deepEqual(d.frontier.families, ['x7', 'x8']);
+  gateStream(d, [['7x7', true, true], ['7x8', false], ['8x8', false], ['3x8', true, true], ['8x9', false], ['4x8', true, true], ['5x7', true, true], ['8x6', false], ['2x8', true, true], ['7x9', false], ['6x7', false], ['8x11', false]]);
+  assert.equal(dial(d).band, 'hard', JSON.stringify(dial(d)));
+  assert.ok(drowning(d, 'x8')); assert.ok(d.stepped.x8 && d.stepped.x8.back === 'x4', JSON.stringify(d.stepped));
+  assert.equal(d.frontier.families.length, 1); assert.deepEqual(d.frontier.families, ['x4'], `×8 steps back to ×4: ${d.frontier.families}`);
+  assert.match(d.frontier.reason, /stepping back/);
+  const s = createSession(); beginRace(s, 4);
+  for (let g = 0; g < 4; g++) { const p = nextFact(d, T0 + 50000, s, lcg(g + 1)); assert.notEqual(p.reason, 'scout', 'no scouts when it is too hard'); }
+  // ×4 secure again (4+ answers since, all right, quick) → ×8 comes back
+  gateStream(d, ['4x3', '4x5', '4x6', '4x7', '4x9'].map((f) => [f, true, true]), T0 + 60000);
+  assert.ok(!d.stepped.x8, '×8 returns once ×4 is solid');
+});
+test('the frontier is never empty, whatever the answers', () => {
+  for (let seed = 1; seed <= 6; seed++) {
+    const d = defaultFacts(T0); const s = createSession(); const r = lcg(seed); let t = T0;
+    if (seed % 2) placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'fluent', x4: 'fluent', x6: 'fluent', x9: 'fluent', x7: 'fluent', x8: 'fluent', x11: 'fluent', x12: 'fluent' });
+    for (let race = 0; race < 6; race++) {
+      beginRace(s, 4);
+      for (let g = 0; g < 4; g++) {
+        const p = nextFact(d, t, s, r); assert.ok(p && p.fact, 'a fact for every gate');
+        const ok = r() < (seed <= 2 ? 0.3 : seed <= 4 ? 0.8 : 1);
+        recordAnswer(d, p.fact, ok ? { correct: true, quick: r() < 0.8, ms: 1500, scout: p.reason === 'scout' ? p.family : undefined } : { correct: false, given: 1, scout: p.reason === 'scout' ? p.family : undefined }, (t += 1000), s);
+        assert.ok(d.frontier.families.length >= 1, `seed ${seed}: empty frontier after ${p.fact}`);
+      }
+      afterRace(d, { finished: true, gates: 4 }, (t += 1000));
+    }
+    for (const fam of ['x2', 'x5', 'x10', 'x3', 'x4', 'x6', 'x9', 'x7', 'x8', 'x11', 'x12']) for (const f of familyMembers(fam)) d.records[f] = mastered(f, t);
+    refreshFrontier(d, t); assert.ok(d.frontier.families.length >= 1, 'everything mastered: still one family');
+  }
+});
+test('a × miss judges only the harder family: 5 × 8 missed is an ×8 miss; right answers count for both', () => {
+  const d = defaultFacts(T0);
+  placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'fluent', x4: 'fluent', x6: 'fluent', x9: 'fluent', x7: 'known', x8: 'known' });
+  recordAnswer(d, '5x8', { correct: false, given: 45 }, T0 + 10);
+  assert.ok(famInfo(d, 'x5', T0 + 20).secure, '×5 keeps its vouch'); assert.equal(famInfo(d, 'x5', T0 + 20).misses, 0);
+  assert.equal(famInfo(d, 'x8', T0 + 20).misses, 1, 'the miss is ×8\'s');
+  for (const f of ['3x8', '4x8', '6x8']) recordAnswer(d, f, { correct: false, given: 1 }, T0 + 30);
+  assert.ok(drowning(d, 'x8') && !drowning(d, 'x4') && !drowning(d, 'x6'));
+  assert.ok(familyRecent(d, 'x5').every((x) => x[1]), 'the ×5 list has no misses'); recordAnswer(d, '5x7', { correct: true, quick: true, ms: 900 }, T0 + 40);
+  assert.ok(familyRecent(d, 'x5').length >= 1 && familyRecent(d, 'x7').length >= 1, 'a right answer counts for both');
+});
+test('normalize v1.3 data: no scouts, no history, no gate log → the v1.4 defaults; a v1.4 store round-trips', () => {
+  const v13 = { v: 2, sets: { mode: 'auto', families: STOCK_FAMILIES, division: true, custom: [] }, records: { '7x8': { box: 2, seenCount: 3, attempts: 3, firstTry: 2, times: [900] } },
+    placement: { at: T0, checks: 1, families: { x2: { status: 'fluent' }, x7: { status: 'shaky' } } }, frontier: { families: ['x7', 'x8'], since: T0, reason: 'x' } };
+  const d = normalizeFacts(JSON.parse(JSON.stringify(v13)), T0);
+  assert.deepEqual(d.scouts, {}); assert.deepEqual(d.frontier.history, []); assert.deepEqual(d.gateLog, []); assert.deepEqual(d.records['7x8'].recent, []);
+  assert.equal(d.placement.tier, null); assert.ok(!checkDue(d, T0 + 1).due, 'a v1.3 placement is kept'); assert.equal(dial(d).band, 'target');
+  gateStream(d, [['7x8', true, true], ['6x7', false]]); noteScout(d, 'x11', true, true, T0); afterRace(d, { finished: true, gates: 4 }, T0 + 99);
+  assert.deepEqual(normalizeFacts(JSON.parse(JSON.stringify(d)), T0 + 100), d);
 });
 
 console.log('\nmedals + self-update');

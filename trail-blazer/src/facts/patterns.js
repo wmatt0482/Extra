@@ -11,7 +11,7 @@
 //   big-operands    any other miss with both numbers ≥ 6   8 × 9 → 71
 //   slow-only       not a miss: right, but never quick after 2+ right answers (recorded once in a row)
 //   random          anything else
-import { divisionTwins, factAnswer, factFamilies, factKey, factParts, factText, famLabel, shownParts } from './facts.js';
+import { divisionTwins, factAnswer, factFamilies, factKey, factParts, factText, famLabel, missFamily, shownParts } from './facts.js';
 import { DAY_MS, isKnown } from './scheduler.js';
 import { hintFor } from './hints.js';
 
@@ -124,9 +124,9 @@ export function patternSummary(d, now = Date.now(), days = 7) {
   for (const r of recs) for (const x of r.patterns || []) if (x.at >= since) misses.push({ fact: r.fact, ...x });
   const real = misses.filter((m) => m.kind !== 'slow-only');
   const out = [];
-  // where the misses cluster (a × miss counts for both of its families)
+  // where the misses cluster (v1.4: a × miss counts for the harder of its two families)
   const fam = {};
-  for (const m of real) for (const f of factFamilies(m.fact)) fam[f] = (fam[f] || 0) + 1;
+  for (const m of real) { const f = missFamily(m.fact); fam[f] = (fam[f] || 0) + 1; }
   const top = Object.entries(fam).sort((a, b) => b[1] - a[1]);
   if (top.length && top[0][1] >= 3) {
     const fams = top.filter(([, n]) => n >= Math.max(3, Math.ceil(top[0][1] * 0.6))).slice(0, 2).map(([f]) => f);

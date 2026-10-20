@@ -6,7 +6,8 @@
 // Record: { fact, box 0..3, due (ms), attempts, firstTry, quick, seenCount, lastSeen, daysCorrect: [day], daysSeen,
 //           daysQuick: [day], misses, fixed, missDay (the last day it was missed), totalMs, answeredMs (correct answers
 //           timed), lastMs, rehearsed, focus (missed in the Pit Crew Check: first among due facts until box 2),
-//           times: [ms] (the last 5 answers), patterns: [{ kind, at, given }] (the last 10 misses, src/facts/patterns.js) }
+//           times: [ms] (the last 5 answers), patterns: [{ kind, at, given }] (the last 10 misses, src/facts/patterns.js),
+//           recent: [[at, right 0/1, quick 0/1]] (the last 8 answers: v1.4's "secure" rule looks at a family's last 8) }
 
 export const DAY_MS = 86400000;
 export const INTERVAL_DAYS = [0, 1, 2, 4];       // box 0 = again this session (after ≥ 2 other facts)
@@ -16,7 +17,12 @@ export const QUICK_MS = 3000;                     // a correct answer within 3 s
 export const REHEARSAL_GAPS = [1, 2, 3];          // a new fact returns after 1, then 2, then 3 known facts
 export const MAX_REHEARSING = 2;                  // at most 2 new facts in rehearsal at once
 export const SPARSE_KNOWN = 3;
-export const TIMES_KEPT = 5;                      // response times kept per fact                    // fewer known facts than this (a new player, a brand-new list): sparse mode
+export const TIMES_KEPT = 5;                      // response times kept per fact
+export const RECENT_KEPT = 8;                     // answers kept per fact for the secure rule
+/** Keep one answer in rec.recent ([at, right, quick], the last 8). */
+export function noteRecent(rec, at, right, quick) {
+  rec.recent = [...(Array.isArray(rec.recent) ? rec.recent : []), [at, right ? 1 : 0, right && quick ? 1 : 0]].slice(-RECENT_KEPT);
+}                    // fewer known facts than this (a new player, a brand-new list): sparse mode
 export const BOX_WEIGHTS = [4, 3, 2, 1];
 export const STATUSES = ['New', 'Learning', 'Almost', 'Mastered', 'Fluent'];
 
@@ -31,7 +37,7 @@ export function dayKey(now) {
 
 export function newRecord(fact) {
   return { fact, box: 0, due: 0, attempts: 0, firstTry: 0, quick: 0, seenCount: 0, lastSeen: 0, daysCorrect: [], daysSeen: [], daysQuick: [], misses: 0, fixed: 0, missDay: '',
-    totalMs: 0, answeredMs: 0, lastMs: 0, rehearsed: false, focus: false, times: [], patterns: [] };
+    totalMs: 0, answeredMs: 0, lastMs: 0, rehearsed: false, focus: false, times: [], patterns: [], recent: [] };
 }
 const addDay = (list, now) => { const k = dayKey(now); if (!list.includes(k)) list.push(k); };
 
@@ -51,6 +57,7 @@ export function applyAnswer(rec, result = {}, now) {
   const today = dayKey(now);
   const ms = Number(result.ms) > 0 ? Math.round(result.ms) : 0;
   if (ms) rec.times = [...(rec.times || []), ms].slice(-TIMES_KEPT);
+  noteRecent(rec, now, !!result.correct, !!result.quick && (!ms || ms <= QUICK_MS));
   if (result.correct) {
     if (ms) { rec.totalMs += ms; rec.answeredMs += 1; rec.lastMs = ms; }
     if (rec.missDay === today) {

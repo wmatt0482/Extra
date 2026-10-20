@@ -9,13 +9,18 @@
 // v1.3: Facts this week has three modes: Auto (recommended: the frontier and its reason, every family's state on the
 // ladder, ÷ / + − allowed, the Pit Crew Check: last result, "Run the check again") · Pick families (v1.2 toggles) ·
 // Custom list (only the typed problems). The Report gains Patterns (patterns.js, in plain words) and the frontier.
+// v1.4: Auto shows "Where Mia is" (tier · frontier · placed · re-check in N days · vouched by scouts), the governor's
+// dial in plain words, the ladder with secure / vouched states, and Check now; the Report gains "Moved up" lines and
+// the dial race by race.
 // the title. Native text inputs exist only here (family code, custom problems, player names).
 import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spell-jump/src/spelling/profiles.js';
 import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
 import { ALL_FAMILIES, MAX_CUSTOM, factText, famLabel, parseCustom } from '../facts/facts.js';
 import { STATUSES } from '../facts/scheduler.js';
 import { GATES_OPTIONS, NEW_PER_DAY_OPTIONS, activeFacts, refreshFrontier, report, reportText } from '../facts/store.js';
-import { autoFamilies, famInfo, ladder } from '../facts/adaptive.js';
+import { autoFamilies, famInfo, ladder, tierOf } from '../facts/adaptive.js';
+import { dial, dialText, steppedText } from '../facts/governor.js';
+import { recheckInDays, scoutFamily } from '../facts/scouts.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from './tbIcons.js';
 import { drawAvatar } from './vehiclePreview.js';
@@ -280,18 +285,34 @@ export function createParentZone(app) {
       h('div', { class: 'fr-fams' }, ...(fr.length ? fr.map((f) => h('span', { class: 'lad st-frontier', 'data-family': f }, famLabel(f))) : [h('span', { class: 'pz-help' }, 'Everything is mastered: mixed practice')])),
       h('div', { class: 'fr-reason', id: 'facts-reason' }, (d.frontier && d.frontier.reason) || ''));
     const inPlay = new Set(autoFamilies(d, now));
+    const scout = scoutFamily(d, now);
     const chips = ladder(d.sets).map((f) => {
       const i = famInfo(d, f, now);
-      const st = fr.includes(f) ? 'frontier' : !inPlay.has(f) ? 'later' : i.graduated ? 'mastered' : i.known ? 'known' : 'practice';
-      const word = { frontier: 'now', mastered: 'mastered', known: 'known', practice: 'mixed in', later: 'later' }[st];
+      const st = fr.includes(f) ? 'frontier' : d.stepped && d.stepped[f] ? 'stepped' : i.graduated ? 'mastered' : i.vouched && i.secure ? 'vouched' : i.secure ? 'secure'
+        : f === scout ? 'scout' : !inPlay.has(f) ? 'later' : i.known ? 'known' : 'practice';
+      const word = { frontier: 'now', mastered: 'mastered', vouched: 'vouched', secure: 'secure', scout: 'scouting', stepped: 'waits', known: 'known', practice: 'mixed in', later: 'later' }[st];
       return h('span', { class: `lad st-${st}`, 'data-family': f, 'data-state': st, title: `${famLabel(f)}: ${word}` }, famLabel(f), h('small', {}, word));
     });
+    const tiers = fr.map(tierOf);
+    const pl = d.placement;
+    const vouched = Object.keys(d.vouched || {}).filter((f) => famInfo(d, f, now).secure);
+    const where = h('div', { class: 'where', id: 'facts-where' },
+      h('div', { class: 'label' }, `Where ${p.name} is`),
+      h('div', { class: 'where-line', id: 'facts-where-line' }, [
+        fr.length ? `Tier ${Math.min(...tiers)} · ${fr.map(famLabel).join(' ')}` : 'Everything mastered',
+        pl ? `placed ${new Date(pl.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : 'not placed yet: the Pit Crew Check runs before the next race',
+        pl ? (recheckInDays(d, now) ? `re-check in ${recheckInDays(d, now)} day${recheckInDays(d, now) === 1 ? '' : 's'}` : 're-check before the next race') : '',
+      ].filter(Boolean).join(' · ')),
+      vouched.length ? h('div', { class: 'pz-help', id: 'facts-vouched' }, `Vouched by scouts: ${vouched.map(famLabel).join(' ')}`) : null,
+      h('div', { class: 'pz-help', id: 'facts-dial' }, dialText(dial(d))),
+      ...steppedText(d).map((t) => h('div', { class: 'pz-help' }, t)));
     return [
-      h('div', { class: 'pz-help' }, `Auto picks ${p.name}'s practice up the ladder: two families from the lowest tier not yet secure (the weakest first), mixed with the known ones (about 6 gates in 10 on the new work, 3 on known facts, 1 on mastered ones). A family moves on at 90 % mastered and 70 % fluent, and comes back if facts slip.`),
+      where,
+      h('div', { class: 'pz-help' }, `Auto works up the ladder for ${p.name}: two families from the lowest tier not yet secure. A family moves on as soon as it is right and quick (no miss in its last 8 answers), or when 3 quick scout gates vouch for it; one gate a race scouts ahead. The gates stay at the learning level: a bit easy moves up, a bit hard steps back to an easier family for a while.`),
       box,
       h('div', { class: 'hud-label pz-sec' }, 'The ladder'),
       h('div', { class: 'ladder', id: 'facts-ladder' }, ...chips),
-      h('div', { class: 'lad-legend' }, 'now = working on · known / mixed in = in the gates for spacing (÷ joins once its × is known) · mastered = quick checks only · later = waits for the families before it'),
+      h('div', { class: 'lad-legend' }, 'now = working on · secure = right and quick, moved on (spacing keeps it in the gates) · vouched = 3 quick scouts · scouting = one gate a race looks ahead here · mastered = right on several days · later = waits for the families before it'),
     ];
   }
   // the Pit Crew Check: last result and "Run the check again"
@@ -299,8 +320,8 @@ export function createParentZone(app) {
     const pl = d.placement;
     const by = (st) => (pl ? Object.entries(pl.families).filter(([, v]) => v.status === st && !v.inferred).map(([f]) => famLabel(f)) : []);
     const text = pl ? `Last check ${new Date(pl.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}: fluent ${by('fluent').join(' ') || '–'} · right but slow ${by('known').join(' ') || '–'} · missed ${by('shaky').join(' ') || '–'}`
-      : `Not done yet. It is offered after ${p.name}'s next finished race${(d.checkOffers || 0) >= 3 ? ' (offered 3 times: run it from here)' : ''}.`;
-    const btn = h('button', { class: 'btn btn-sm btn-cyan', id: 'facts-check', 'data-sfx': '' }, pl ? 'Run the check again' : 'Run the Pit Crew Check');
+      : `Not done yet: it runs before ${p.name}'s next race (about 15 quick facts).`;
+    const btn = h('button', { class: 'btn btn-sm btn-cyan', id: 'facts-check', 'data-sfx': '' }, 'Check now');
     btn.addEventListener('click', () => app.runCheckFor(p.id));
     return h('div', { class: 'pz-check-row', id: 'facts-check-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Pit Crew Check'),
       h('div', { class: 'sub', id: 'facts-check-text' }, text)), btn);
@@ -336,6 +357,13 @@ export function createParentZone(app) {
       r.patterns.length ? h('ul', { class: 'pat-list', id: 'report-patterns' }, ...r.patterns.map((x) => h('li', { 'data-kind': x.kind }, x.text)))
         : h('div', { class: 'pz-help', id: 'report-patterns' }, 'No patterns this week yet: they show up after a few misses.'),
       r.mode === 'auto' && r.frontier.length ? h('div', { class: 'pz-help', id: 'report-frontier' }, `Working on now: ${r.reason}`) : null,
+      h('div', { class: 'hud-label pz-sec' }, 'Moved up'),
+      r.moved.length ? h('ul', { class: 'pat-list', id: 'report-moved' }, ...r.moved.slice(-6).reverse().map((x) => h('li', {}, x.text)))
+        : h('div', { class: 'pz-help', id: 'report-moved' }, 'No moves yet: they show up as families go secure, get vouched or step back.'),
+      h('div', { class: 'hud-label pz-sec' }, 'Level, race by race'),
+      h('div', { class: 'pz-help', id: 'report-dial' }, r.dialHistory.length
+        ? r.dialHistory.slice(-10).map((x) => `${new Date(x.at).toLocaleDateString('en-US', { weekday: 'short' })} ${x.band === 'target' ? 'on target' : x.band === 'easy' ? 'a bit easy' : 'a bit hard'} (${x.right}/${x.n})`).join(' · ')
+        : dialText(r.dial)),
       h('div', { class: 'hud-label pz-sec' }, 'Slowest facts'),
       h('div', { class: 'pz-help', id: 'report-slow' }, r.slowest.length ? r.slowest.map((x) => `${factText(x.fact)} (${(x.avgMs / 1000).toFixed(1)} s)`).join(' · ') : 'Not enough answers yet.'),
       h('div', { class: 'hud-label pz-sec' }, "This week's races"),

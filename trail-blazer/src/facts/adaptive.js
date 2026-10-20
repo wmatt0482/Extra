@@ -13,7 +13,10 @@
 // frontier. It RE-ENTERS when two of its facts drop to box 0 in a week, or a retention-probe miss pulls it back.
 // RETENTION PROBE: every 15 finished races or 7 days (whichever first) the next race's gates mix in 6 mastered facts
 // (every other gate until all 6 are asked, carried into the next race if needed); a miss pulls its family back in.
-import { divisionTwins, factFamilies, factParts, familyMembers, famLabel } from './facts.js';
+// v1.3.2 / v1.4 SECURE (famInfo): a family the child has shown is known leaves the frontier at once (evidence, not the
+// calendar; no miss in its last 8 answers), or vouched by the Pit Crew Check / 3 quick scouts (scouts.js) with no
+// miss since. The difficulty governor (governor.js) and the frontier's history sit on top, in store.refreshFrontier.
+import { divisionTwins, factFamilies, factParts, familyMembers, famLabel, missCountsFor } from './facts.js';
 import { DAY_MS, dayKey, isFluent, isMastered, isNew, isSparse, pendingReady, pickNext, pickObligation } from './scheduler.js';
 import { famList, inverseCluster } from './patterns.js';
 
@@ -22,7 +25,7 @@ export const D_LADDER = X_LADDER.map((f) => 'd' + f.slice(1));
 export const AS_LADDER = ['add', 'sub'];
 export const FRONTIER_SIZE = 2;
 export const ADVANCE = { mastered: 0.9, fluent: 0.7 };
-export const SECURE = { quick: 0.75, vouchSeen: 4 };   // v1.3.2: evidence-based advancement (famInfo)
+export const SECURE = { quick: 0.75, vouchSeen: 4, window: 8 };   // v1.3.2 / v1.4: evidence-based advancement (famInfo)
 export const MIX = { frontier: 0.6, known: 0.3, mastered: 0.1 };
 export const PROBE = { size: 6, races: 15, days: 7 };
 const WEEK = 7 * DAY_MS;
@@ -52,9 +55,11 @@ export function famInfo(d, fam, now = Date.now()) {
   const pl = d.placement && d.placement.families && d.placement.families[fam];
   const pst = pl ? pl.status : null;
   const weekDay = dayKey(now - WEEK);
+  // v1.4: a × miss judges only the harder family (missCountsFor); right answers count for both
+  const judged = facts.filter((f) => missCountsFor(f, fam));
   let misses = 0;
-  for (const f of facts) for (const x of (recs[f] && recs[f].patterns) || []) if (x.kind !== 'slow-only' && x.at >= now - WEEK) misses += 1;
-  const slipped = facts.filter((f) => recs[f] && !isNew(recs[f]) && recs[f].box === 0 && recs[f].missDay && recs[f].missDay >= weekDay && recs[f].daysCorrect.some((x) => x < recs[f].missDay)).length;
+  for (const f of judged) for (const x of (recs[f] && recs[f].patterns) || []) if (x.kind !== 'slow-only' && x.at >= now - WEEK) misses += 1;
+  const slipped = judged.filter((f) => recs[f] && !isNew(recs[f]) && recs[f].box === 0 && recs[f].missDay && recs[f].missDay >= weekDay && recs[f].daysCorrect.some((x) => x < recs[f].missDay)).length;
   const pulled = !!(d.pulled && d.pulled[fam] && now - d.pulled[fam] < WEEK);
   const reentry = slipped >= 2 || pulled;
   const graduated = !reentry && mastered >= ADVANCE.mastered && fluent >= ADVANCE.fluent;
@@ -69,15 +74,31 @@ export function famInfo(d, fam, now = Date.now()) {
   // 4 facts seen, all first-try, quick, with no miss ever in the family (a "vouch": ×2 is not drilled for days after
   // 4 instant answers). Spacing keeps revisiting a secure family from the known bucket; a slip brings it back.
   const today = dayKey(now);
-  const seenRecs = facts.map((f) => recs[f]).filter((r) => r && r.attempts > 0);
-  const attempts = seenRecs.reduce((a, r) => a + r.attempts, 0);
+  const ownsMiss = (r) => missCountsFor(r.fact, fam);
+  const everRight = (r) => r.firstTry >= 1 || r.box >= 1 || (r.daysCorrect || []).length > 0;
+  // a fact whose misses belong to the other family is "seen" here only once it was answered right
+  const seenRecs = facts.map((f) => recs[f]).filter((r) => r && r.attempts > 0 && (ownsMiss(r) || everRight(r)));
+  const answers = (r) => (ownsMiss(r) ? r.attempts : Math.max(1, r.attempts - (r.misses || 0)));
+  const attempts = seenRecs.reduce((a, r) => a + answers(r), 0);
   const quickShare = attempts ? seenRecs.reduce((a, r) => a + (r.quick || 0), 0) / attempts : 0;
-  const everMissed = seenRecs.reduce((a, r) => a + (r.misses || 0), 0);
-  const allRight = seenRecs.length > 0 && seenRecs.every((r) => (r.firstTry >= 1 || r.box >= 1) && r.missDay !== today);
-  const secure = !reentry && allRight && quickShare >= SECURE.quick
-    && ((seenRecs.length === n && misses <= 1) || (seenRecs.length >= SECURE.vouchSeen && everMissed === 0 && seenRecs.every((r) => r.firstTry >= 1)));
+  const everMissed = seenRecs.filter(ownsMiss).reduce((a, r) => a + (r.misses || 0), 0);
+  const allRight = seenRecs.length > 0 && seenRecs.every((r) => (ownsMiss(r) ? (r.firstTry >= 1 || r.box >= 1) && r.missDay !== today : everRight(r)));
+  // v1.4 §3: and no miss in the family's last 8 answers. Or vouched: the Pit Crew Check found it fluent (or a passed
+  // tier above vouched for it), or 3 quick scouts did (scouts.js), with no miss since.
+  const recent = [];
+  for (const r of seenRecs) for (const x of r.recent || []) if (x[1] || ownsMiss(r)) recent.push(x);
+  recent.sort((a, b) => a[0] - b[0]);
+  const last8Clean = !recent.slice(-SECURE.window).some((x) => !x[1]);
+  const scoutVouch = (d.vouched && d.vouched[fam]) || 0;
+  const checkVouch = pl && (pst === 'fluent' || pl.inferred) ? d.placement.at : 0;
+  const vouchedAt = Math.max(scoutVouch, checkVouch);
+  let missSince = 0;
+  if (vouchedAt) for (const r of seenRecs.filter(ownsMiss)) for (const x of r.patterns || []) if (x.kind !== 'slow-only' && x.at >= vouchedAt) missSince += 1;
+  const evidence = allRight && quickShare >= SECURE.quick && last8Clean
+    && ((seenRecs.length === n && misses <= 1) || (seenRecs.length >= SECURE.vouchSeen && everMissed === 0 && seenRecs.every((r) => (ownsMiss(r) ? r.firstTry >= 1 : everRight(r)))));
+  const secure = !reentry && (evidence || (!!vouchedAt && missSince === 0));   // a vouch starts a fresh window
   const known = graduated || secure || (!reentry && (pst === 'fluent' || pst === 'known' || onePlus >= Math.ceil(n * 0.6)));
-  return { fam, facts, seen, mastered, fluent, misses, slipped, pulled, reentry, graduated, secure, tested, known, strength, placement: pst };
+  return { fam, facts, seen, mastered, fluent, misses, slipped, pulled, reentry, graduated, secure, vouched: !!scoutVouch, checkVouched: !!checkVouch, tested, known, strength, placement: pst };
 }
 
 /** The frontier now: { families, reason, info } (pure; refreshFrontier stores it). */
@@ -102,7 +123,9 @@ export function computeFrontier(d, now = Date.now()) {
   // (untested + / −, allowed later, wait behind tested × work: they never hold it back)
   const rank = (f) => (section(f) === 'as' && !info[f].tested ? 8 : tierOf(f));
   unfinished.sort((a, b) => rank(a) - rank(b) || (info[b].reentry ? 1 : 0) - (info[a].reentry ? 1 : 0)
-    || info[b].misses - info[a].misses || info[a].strength - info[b].strength || idx(a) - idx(b));
+    || info[b].misses - info[a].misses
+    // (untested families keep ladder order: re-evaluated after every gate, a first answer must not reshuffle them)
+    || (info[a].tested && info[b].tested ? info[a].strength - info[b].strength : 0) || (info[b].tested ? 1 : 0) - (info[a].tested ? 1 : 0) || idx(a) - idx(b));
   strong.sort((a, b) => info[a].strength - info[b].strength || idx(b) - idx(a));
   // chosen in that order, kept in ladder order ("×6 ×9")
   const families = [...unfinished, ...strong].slice(0, FRONTIER_SIZE).sort((a, b) => idx(a) - idx(b));
@@ -198,6 +221,9 @@ export function pickAuto(d, now, session, opts = {}, rand = Math.random) {
   const total = order.reduce((a, k) => a + MIX[k], 0);
   let x = rand() * total, pickB = order[order.length - 1];
   for (const k of order) { x -= MIX[k]; if (x < 0) { pickB = k; break; } }
+  // v1.4: the governor's race plan names the bucket (store.nextFact); an empty one falls back to the next
+  if (opts.bucket && order.includes(opts.bucket)) pickB = opts.bucket;
+  else if (opts.bucket) pickB = ['frontier', 'known', 'mastered'].find((k) => order.includes(k)) || pickB;
   if (pickB === 'mastered') {
     const pool = b.mastered.filter((f) => f !== last).sort((p, q) => (recs[p].lastSeen || 0) - (recs[q].lastSeen || 0));
     if (pool.length) { session.lastReason = 'mastered'; return { fact: pool[0], reason: 'mastered', isNew: false, bucket: 'mastered' }; }
