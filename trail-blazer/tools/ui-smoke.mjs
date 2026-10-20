@@ -507,12 +507,15 @@ async function runLayout(browser, layout) {
     for (const f of ['2x6', '2x7', '2x8', '2x9', '5x6', '5x7', '5x8']) {
       d.records[f] = { ...S.newRecord(f), box: 3, seenCount: 5, attempts: 5, firstTry: 4, quick: 3, daysCorrect: [day(9), day(5), day(2)], daysSeen: [day(2)], daysQuick: [day(5), day(2)], due: now + 4 * 86400000, lastSeen: now - 2 * 86400000 };
     }
-    d.raceCount = 14; T.app.persistFacts();
+    d.raceCount = 14; d.checkSkips = 2; T.app.persistFacts();     // v1.6.1: two "Race first" already spent
   });
   await page.click('[data-trail="granite-gap"]');
   // ---------- v1.4: the card comes back before the next race; Start → locate → zoom → twins → the Start line ----------
   await page.waitForSelector('#pit-offer:not([hidden])', { timeout: 4000 });
   check(await J(page, () => window.__trailBlazer.screen !== 'ride' && !window.__trailBlazer.facts.placement), '"Race first" → the card comes back before the next race');
+  const card2 = await J(page, () => ({ later: document.querySelector('#pit-later').hidden, text: document.querySelector('#pit-offer-text').textContent, skips: document.querySelector('#pit-offer').dataset.skips }));
+  check(card2.later && /The crew needs this one before you race/.test(card2.text) && card2.skips === 'none', `v1.6.1: with both "Race first" spent the card has only Start: "${card2.text}"`);
+  await shot(page, layout, '05c-pit-card-last', 300);
   const xpBefore = await J(page, () => window.__trailBlazer.facts.xp);
   await page.click('#pit-start');
   await page.waitForFunction(() => window.__trailBlazer.screen === 'check' && window.__trailBlazer.gatePanel.isOpen, null, { timeout: 4000 });
@@ -526,7 +529,8 @@ async function runLayout(browser, layout) {
       const ui = await J(page, () => ({ title: document.querySelector('#gp-title-text').textContent, chip: document.querySelector('#gp-chip').textContent, bar: !document.querySelector('#gp-progress').hidden,
         later: !document.querySelector('#gp-exit').hidden, text: document.querySelector('#gate').textContent }));
       check(g.mode === 'check' && ui.title === 'Pit Crew Check' && ui.chip === 'Fact 2' && ui.bar && ui.later && !/\d+(\.\d)?\s?s\b|sec|timer|test|grade/i.test(ui.text),
-        `the check runs in the gate panel: "${ui.title}", "${ui.chip}", a progress bar, "Race first", no clock, no score`);
+        `the check runs in the gate panel: "${ui.title}", "${ui.chip}", a progress bar, a way out, no clock, no score`);
+      check(await J(page, () => document.querySelector('#gp-exit').textContent.trim() === 'Later'), 'v1.6.1: no "Race first" left: the way out reads "Later" (back to the title, no race)');
       const heard = await page.waitForFunction((t) => window.__spoken.includes(t), F.questionSentence(g.fact, g.flip), { timeout: 2500 }).then(() => true).catch(() => false);
       check(heard, `each check fact is read aloud ("${F.questionSentence(g.fact, g.flip)}")`);
       await shot(page, layout, '16a-pit-check', 0);

@@ -14,6 +14,12 @@ import { familyRecent } from './governor.js';
 
 export const SCOUTS_TO_VOUCH = 3;
 export const RECHECK = { days: 14, cleanRaces: 5, tiersAbove: 2 };
+/** v1.6.1 (Matt: "the kid can't just keep skipping"): "Race first" works CHECK_SKIPS times per check; after that the
+ *  card has only Start and the way out of the check leads to the title, not a race. A finished check resets it. */
+export const CHECK_SKIPS = 2;
+export const canSkipCheck = (d) => (Number(d && d.checkSkips) || 0) < CHECK_SKIPS;
+export function noteCheckSkip(d) { d.checkSkips = (Number(d.checkSkips) || 0) + 1; return d.checkSkips; }
+export const checkSkipsLeft = (d) => Math.max(0, CHECK_SKIPS - (Number(d && d.checkSkips) || 0));
 const tierNum = (id) => Number(String(id || '').slice(1));
 const twinOf = (fam) => (fam[0] === 'd' ? 'x' + fam.slice(1) : null);
 const isSecure = (i) => !!(i && (i.secure || i.graduated || i.vouched));

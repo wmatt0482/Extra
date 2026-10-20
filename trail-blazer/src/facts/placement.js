@@ -227,6 +227,7 @@ export function applyCheck(d, st, now = Date.now()) {
   // v1.4: a fresh look: scouting and the clean-race count start over (families vouched by scouts stay vouched)
   d.scouts = {};
   d.cleanRaces = 0;
+  d.checkSkips = 0;                       // the "Race first" budget starts over (scouts.js CHECK_SKIPS)
   d.xp = (d.xp || 0) + CHECK_XP;
   d.updatedAt = now;
   return placement;

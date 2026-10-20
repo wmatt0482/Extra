@@ -24,8 +24,8 @@ practices two families up the ladder (the lowest unfinished tier first, the weak
 70 % fluent, re-checks mastered facts every 15 races or 7 days, and reads each miss for its error pattern (the hint
 and the Parent Zone Report use it).
 
-**v1.4 finds where they are, fast**: the Pit Crew Check runs before the first race ("Race first" is always there and
-it simply asks again next time), locates from ×6 ×9 and zooms in; a family the child answers right and quick moves on
+**v1.4 finds where they are, fast**: the Pit Crew Check runs before the first race ("Race first" works twice, then the card
+has only Start and the way out of the check leads to the title; a finished check resets that), locates from ×6 ×9 and zooms in; a family the child answers right and quick moves on
 the same day ("secure"); one scout gate a race reaches a tier ahead (3 quick scouts vouch a family); re-checks offer
 themselves after 14 days or when the placement looks stale; and a difficulty governor keeps the gates at the learning
 level ("Right now: on target (10 of 12 right)"), stepping back to an easier family when it is a bit hard.

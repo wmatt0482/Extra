@@ -12,12 +12,15 @@ import { famLabel } from '../facts/facts.js';
 import { applyCheck, checkAnswer, checkNext, checkProgress, createCheck, startLine, tiersFor } from '../facts/placement.js';
 import { patternSummary } from '../facts/patterns.js';
 import { levelFor, noteCheckOffer, refreshFrontier } from '../facts/store.js';
-import { recheckStart, scoutFamily } from '../facts/scouts.js';
+import { canSkipCheck, noteCheckSkip, recheckStart, scoutFamily } from '../facts/scouts.js';
 import { dial, dialText } from '../facts/governor.js';
 
 export const CARD_TEXT = {
   first: "Before your first race, the pit crew checks what you've got. About 15 quick facts.",
   recheck: "Pit Crew re-check: let's see how far you've come. About 15 quick facts.",
+  // v1.6.1: the "Race first" budget is used up (scouts.js CHECK_SKIPS): Start is the only button
+  firstLast: 'The crew needs this one before you race. About 15 quick facts, then the track is yours!',
+  recheckLast: 'Time for the re-check before the next race. About 15 quick facts, then race on!',
 };
 
 /** A pit note for the child from the strongest pattern (plain, encouraging). */
@@ -44,14 +47,21 @@ export function createPitCheck(app, gatePanel) {
     pending = { trailId, kind: due.kind || 'first', rideOpts };
     card.dataset.kind = pending.kind;
     $('#pit-offer-title').textContent = pending.kind === 'recheck' ? 'Pit Crew re-check' : 'Pit Crew Check';
-    $('#pit-offer-text').textContent = CARD_TEXT[pending.kind] || CARD_TEXT.first;
+    const canSkip = !app.facts || canSkipCheck(app.facts);
+    $('#pit-offer-text').textContent = canSkip ? (CARD_TEXT[pending.kind] || CARD_TEXT.first) : (pending.kind === 'recheck' ? CARD_TEXT.recheckLast : CARD_TEXT.firstLast);
+    $('#pit-later').hidden = !canSkip;
+    card.dataset.skips = canSkip ? 'left' : 'none';
     card.hidden = false;
     if (app.facts) { noteCheckOffer(app.facts); app.persistFacts(); }
   }
   function hideCard() { card.hidden = true; }
   $('#pit-start').addEventListener('click', () => { hideCard(); run(pending || {}); });
-  // "Race first" always works: the race runs, the card comes back before the next one
-  $('#pit-later').addEventListener('click', () => { hideCard(); const p = pending; pending = null; app.startRide(p && p.trailId, { ...((p && p.rideOpts) || {}), skipCheck: true }); });
+  // "Race first": the race runs and the card comes back before the next one; it works CHECK_SKIPS times per check
+  $('#pit-later').addEventListener('click', () => {
+    if (app.facts && !canSkipCheck(app.facts)) return;
+    if (app.facts) { noteCheckSkip(app.facts); app.persistFacts(); }
+    hideCard(); const p = pending; pending = null; app.startRide(p && p.trailId, { ...((p && p.rideOpts) || {}), skipCheck: true });
+  });
   $('#sl-done').addEventListener('click', () => app.go('title'));
   $('#sl-race').addEventListener('click', () => app.startRide((lastOut && lastOut.trailId) || app.save.selectedTrail, { ...((lastOut && lastOut.rideOpts) || {}), skipCheck: true }));
 
@@ -67,10 +77,14 @@ export function createPitCheck(app, gatePanel) {
     st = createCheck({ tiers: tiersFor(d.sets), start: recheck ? recheckStart(d) : 'T3', division: d.sets.division !== false }, Math.random);
     let it;
     while ((it = checkNext(st))) {
-      const res = await gatePanel.open({ fact: it.fact, flip: it.flip, index: st.items.length, mode: 'check', progress: checkProgress(st), exitText: opts.trailId ? 'Race first' : 'Later' });
-      if (!res || res.cancelled) {                  // the way out always works: nothing is kept, the card comes back
+      const skipLeft = !!opts.trailId && canSkipCheck(d);
+      const res = await gatePanel.open({ fact: it.fact, flip: it.flip, index: st.items.length, mode: 'check', progress: checkProgress(st), exitText: skipLeft ? 'Race first' : 'Later' });
+      if (!res || res.cancelled) {                  // the way out always works (never a lock): nothing is kept, the card comes back
         running = false; st = null;
-        if (app.screen === 'check') { if (opts.trailId) app.startRide(opts.trailId, { ...(opts.rideOpts || {}), skipCheck: true }); else app.go('title'); }
+        if (app.screen === 'check') {
+          // v1.6.1: leaving mid-check spends a "Race first"; with none left the way out is the title, not a race
+          if (skipLeft) { noteCheckSkip(d); app.persistFacts(); app.startRide(opts.trailId, { ...(opts.rideOpts || {}), skipCheck: true }); } else app.go('title');
+        }
         return;
       }
       checkAnswer(st, res);

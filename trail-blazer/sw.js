@@ -9,7 +9,7 @@
 // content-addressed: cache-first in Spell Jump's clip cache (TTS_CACHE, shared on this origin).
 // Caches are per origin, shared with Spell Jump's worker: this worker only ever deletes its own ('trail-blazer-…').
 // If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'trail-blazer-v1.6.0';
+const VERSION = 'trail-blazer-v1.6.1';
 const PREFIX = 'trail-blazer-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;

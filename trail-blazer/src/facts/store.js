@@ -64,6 +64,7 @@ export function defaultFacts(now = Date.now()) {
     gateLog: [],
     dialHistory: [],
     cleanRaces: 0,
+    checkSkips: 0,
     lastCheckOfferAt: 0,
   };
   d.frontier.history = [];
@@ -186,6 +187,7 @@ export function normalizeFacts(raw, now = Date.now()) {
   if (Array.isArray(raw.gateLog)) d.gateLog = raw.gateLog.filter((x) => Array.isArray(x) && num(x[0]) > 0).map((x) => [num(x[0]), x[1] ? 1 : 0, x[2] ? 1 : 0]).slice(-12);
   if (Array.isArray(raw.dialHistory)) d.dialHistory = raw.dialHistory.filter((x) => x && ['easy', 'target', 'hard'].includes(x.band) && num(x.at) > 0).map((x) => ({ at: num(x.at), band: x.band, right: Math.floor(num(x.right)), n: Math.floor(num(x.n)) })).slice(-20);
   d.cleanRaces = Math.max(0, Math.floor(num(raw.cleanRaces)));
+  d.checkSkips = Math.max(0, Math.floor(num(raw.checkSkips)));
   d.lastCheckOfferAt = Math.max(0, num(raw.lastCheckOfferAt));
   const fr = raw.frontier;
   if (fr && typeof fr === 'object' && Array.isArray(fr.families)) {
@@ -442,7 +444,7 @@ export function resetFacts(d, now = Date.now()) {
   d.races = [];
   // v1.3: the placement goes too (the Pit Crew Check is offered again), and the probe clock starts over
   Object.assign(d, { placement: null, checkOffers: 0, raceCount: 0, lastProbeAt: 0, probeRace: 0, probe: null, lastProbe: null, pulled: {},
-    scouts: {}, vouched: {}, stepped: {}, gateLog: [], dialHistory: [], cleanRaces: 0, lastCheckOfferAt: 0 });
+    scouts: {}, vouched: {}, stepped: {}, gateLog: [], dialHistory: [], cleanRaces: 0, checkSkips: 0, lastCheckOfferAt: 0 });
   d.frontier = { families: [], since: 0, reason: '', history: [] };
   refreshFrontier(d, now);
   d.updatedAt = now;

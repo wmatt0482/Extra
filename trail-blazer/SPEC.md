@@ -619,3 +619,10 @@ kept green (spelling-tests, ui-smoke, sync-smoke) and no change to what Spell Ju
    record lost after the 409 merge; Spell Jump on the same server still syncs its own keys. Both Spell Jump sync
    suites stay green. Version 1.6.0, sw.js `trail-blazer-v1.6.0`; Spell Jump 3.6.3 (client change), sw.js
    `spell-jump-v3.6.3`. README (both) one paragraph; the site's quick-start mentions that one code syncs both games.
+
+## v1.6.1 — No endless "Race first" (Matt, Oct 20: "make it so that the kid can't just keep skipping the pit challenge")
+"Race first" (on the card and as the way out of a running check) works **twice per check** (`scouts.js CHECK_SKIPS`,
+counted in `facts.checkSkips`); after that the card shows only **Start** ("The crew needs this one before you race.
+About 15 quick facts, then the track is yours!") and the way out of the check reads "Later" and leads to the title,
+never to a race. A finished check (`applyCheck`) resets the budget, so a re-check gets two skips again. Never a lock:
+the child can always leave to the title; they just cannot race past the check a third time.

@@ -25,7 +25,7 @@ import { classifyMiss, hintKind, inverseCluster, isSlowOnly, notePattern, patter
 import { MIX, PROBE, autoFamilies, computeFrontier, famInfo, pickAuto, probeDue } from '../src/facts/adaptive.js';
 import { afterRace, beginRace, checkDue, refreshFrontier } from '../src/facts/store.js';
 import { DIAL_MIN, dial, dialText, drowning, familyRecent, raceQuota } from '../src/facts/governor.js';
-import { noteScout, recheckStart, scoutFact, scoutFamily } from '../src/facts/scouts.js';
+import { CHECK_SKIPS, canSkipCheck, checkSkipsLeft, noteCheckSkip, noteScout, recheckStart, scoutFact, scoutFamily } from '../src/facts/scouts.js';
 import { familyMembers } from '../src/facts/facts.js';
 import { createUpdateGuard, safeToReload } from '../src/meta/selfUpdate.js';
 import { medalFor, medalTimesFor, fmtTime, ordinal, placeMedal, raceMedal } from '../src/data/medals.js';
@@ -360,6 +360,17 @@ const QUICK = { correct: true, quick: true, ms: 1400 };
 const SLOW = { correct: true, quick: false, ms: 5200 };
 const MISS = (it) => ({ correct: false, quick: false, ms: 4000, given: 1 });
 const itemsBy = (st, tier) => st.items.filter((x) => x.tier === tier);
+test('v1.6.1: "Race first" works twice per check, then only Start; a finished check resets the budget', () => {
+  const d = defaultFacts(T0);
+  assert.equal(CHECK_SKIPS, 2); assert.ok(canSkipCheck(d)); assert.equal(checkSkipsLeft(d), 2);
+  noteCheckSkip(d); assert.ok(canSkipCheck(d)); assert.equal(checkSkipsLeft(d), 1);
+  noteCheckSkip(d); assert.ok(!canSkipCheck(d)); assert.equal(checkSkipsLeft(d), 0);
+  noteCheckSkip(d); assert.ok(!canSkipCheck(d), 'never negative, never a lock: the card just has Start');
+  assert.equal(normalizeFacts(JSON.parse(JSON.stringify(d))).checkSkips, 3, 'the count survives a save');
+  const st = runCheck(() => QUICK);
+  applyCheck(d, st, T0 + 1000);
+  assert.equal(d.checkSkips, 0, 'a finished check starts the budget over'); assert.ok(canSkipCheck(d));
+});
 const answersFor = (st, fam) => st.items.filter((x) => x.family === fam).length;
 test('tiers: × T1 … T5 (÷ comes as twins), T0 + − only when the parent allows it', () => {
   assert.deepEqual(tiersFor({ division: true }), ['T1', 'T2', 'T3', 'T4', 'T5']);
