@@ -752,6 +752,150 @@ test('self-update reloads only on a safe screen, once, never on the first instal
   safe = true; g.check(); g.check(); assert.equal(reloads, 1);
 });
 
+// ---------- v1.6: family sync (src/meta/sync.js), FACTS_VERSION 4 caps, the storage form and its size ----------
+console.log('v1.6 sync: storage form and size');
+const { PATTERN_KINDS } = await import('../src/facts/patterns.js');
+const PK0 = PATTERN_KINDS[0];
+const { compactFacts, FACTS_VERSION } = await import('../src/facts/store.js');
+const { mergeTb, mergeFactsDocs, mergeRecord } = await import('../src/meta/sync.js');
+const SV = await import('../src/meta/save.js');
+const DAYX = 86400000;
+function matureStore() {
+  const d = defaultFacts(T0);
+  d.sets = { ...d.sets, mode: 'manual', source: 'families', families: ALL_FAMILIES.filter((f) => /^x/.test(f)), division: true, addSub: true };
+  const facts = setFacts({ families: d.sets.families, division: true, addSub: true }).slice(0, 222);
+  let k = 0;
+  // 222 facts × 30 days, every fact every day, 1 in 5 missed (a pattern each) and half the right answers quick: worse than real play
+  for (let day = 0; day < 30; day++) for (const f of facts) { k++; recordAnswer(d, f, { correct: k % 5 !== 0, quick: k % 2 === 0, fixed: k % 5 === 0, ms: 1500 + (k % 7) * 400, given: 3 }, T0 + day * DAYX + (k % 300) * 1000); }
+  return d;
+}
+const mature = matureStore();
+const kb = (x) => JSON.stringify(x).length / 1024;
+const fullKB = kb(mature), storedKB = kb(compactFacts(mature));
+test(`a mature store (222 facts × 30 days of answers) is stored in ${storedKB.toFixed(1)} KB (< 150 KB; ${fullKB.toFixed(1)} KB in memory form, 363 KB before v1.6)`, () => {
+  assert.equal(Object.keys(mature.records).length, 222);
+  assert.ok(storedKB < 150, `${storedKB.toFixed(1)} KB`);
+  assert.equal(FACTS_VERSION, 4);
+  for (const r of Object.values(mature.records)) {
+    assert.ok(r.daysSeen.length <= 12 && r.daysCorrect.length <= 12 && r.daysQuick.length <= 12, 'day lists capped at 12');
+    assert.ok(r.patterns.length <= 6 && r.recent.length <= 8 && r.times.length <= 5);
+  }
+});
+test('the storage form loads back to the same records (defaults restored, day numbers → days, seconds → ms)', () => {
+  const now = T0 + 29 * DAYX;
+  const viaStore = normalizeFacts(JSON.parse(JSON.stringify(compactFacts(mature))), now);
+  const direct = normalizeFacts(JSON.parse(JSON.stringify(mature)), now);
+  assert.deepEqual(viaStore.records, direct.records);
+  const r = viaStore.records['7x8'] || Object.values(viaStore.records)[0];
+  assert.equal(typeof r.fact, 'string'); assert.equal(r.rehearsed, false); assert.ok(/^\d{4}-\d\d-\d\d$/.test(r.daysSeen[0]));
+  const c = compactFacts(mature).records[r.fact];
+  assert.ok(!('fact' in c) && !('rehearsed' in c) && !('focus' in c), 'default-valued fields are not stored');
+});
+test('v3 data trims on load: 30 days → the last 12, 10 patterns → the newest 6', () => {
+  const days30 = Array.from({ length: 30 }, (_, i) => new Date(T0 + i * DAYX).toISOString().slice(0, 10));
+  const pats = Array.from({ length: 10 }, (_, i) => ({ kind: PK0, at: T0 + i * 1000, given: 54 }));
+  const d = normalizeFacts({ v: 3, records: { '7x8': { fact: '7x8', box: 3, attempts: 30, firstTry: 25, seenCount: 30, lastSeen: T0 + 29 * DAYX, daysSeen: days30, daysCorrect: days30, daysQuick: days30, patterns: pats } } }, T0 + 30 * DAYX);
+  const r = d.records['7x8'];
+  assert.deepEqual(r.daysSeen, days30.slice(-12)); assert.equal(r.patterns.length, 6); assert.equal(r.patterns[0].at, T0 + 4000);
+  assert.ok(isMastered(r), 'still mastered with 12 days');
+});
+test('ghosts are packed for storage (a 1,500-sample run in ~11 KB) and unpack within 0.01 s / 0.1 m / 0.01 rad', () => {
+  const tr = Array.from({ length: 1500 }, (_, i) => [i / 10, i * 3.37 + 0.12, Math.sin(i / 50) * 4, Math.cos(i / 30) * 0.5]);
+  const enc = SV.encodeGhost(tr), dec = SV.decodeGhost(enc);
+  assert.ok(enc.length < 14 * 1024, `${(enc.length / 1024).toFixed(1)} KB`);
+  assert.equal(dec.length, 1500);
+  for (const i of [0, 1, 777, 1499]) tr[i].forEach((v, j) => assert.ok(Math.abs(v - dec[i][j]) <= [0.005, 0.05, 0.05, 0.005][j] + 1e-9, `${i}:${j}`));
+  const s = SV.normalize(JSON.parse(JSON.stringify(SV.storedSave({ ...SV.defaultSave(), ghosts: { 'pine-ridge': tr } }))));
+  assert.equal(s.ghosts['pine-ridge'].length, 1500); assert.equal(s.ghosts['pine-ridge'][10].length, 4, '[t, x, y, angle] kept (v1.5 kept 3)');
+});
+
+console.log('v1.6 sync: merge rules — the Trail Blazer save');
+const tbSave = (f) => { const s = SV.defaultSave(); f(s); return SV.storedSave(s); };
+test('purchases on two devices: both vehicles owned, the higher upgrade levels, cash max, gear owned = union; the later doc picks what is equipped', () => {
+  const laptop = tbSave((s) => { s.cash = 4000; s.vehicles.quad = { owned: true, levels: { engine: 2, tires: 0, suspension: 0, boost: 0 } }; s.vehicle = 'quad'; s.vehicles.ranger150.levels.engine = 3; s.cosmetics.owned.helmet.push('flames'); s.paint = 'orange'; });
+  const ipad = tbSave((s) => { s.cash = 9000; s.vehicles.dirtbike = { owned: true, levels: { engine: 0, tires: 1, suspension: 0, boost: 0 } }; s.vehicle = 'dirtbike'; s.vehicles.ranger150.levels.tires = 4; s.cosmetics.owned.helmet.push('dino'); });
+  const m = SV.normalize(mergeTb({ updatedAt: 200, data: laptop }, { updatedAt: 100, data: ipad }));
+  assert.deepEqual(Object.keys(m.vehicles).sort(), ['dirtbike', 'quad', 'ranger150']);
+  assert.equal(m.vehicles.ranger150.levels.engine, 3); assert.equal(m.vehicles.ranger150.levels.tires, 4); assert.equal(m.vehicles.quad.levels.engine, 2);
+  assert.equal(m.cash, 9000); assert.deepEqual(m.cosmetics.owned.helmet.sort(), ['dino', 'flames']);
+  assert.equal(m.vehicle, 'quad', 'the later doc drives'); assert.equal(m.paint, 'orange');
+  const m2 = SV.normalize(mergeTb({ updatedAt: 100, data: laptop }, { updatedAt: 200, data: ipad }));
+  assert.equal(m2.vehicle, 'dirtbike'); assert.ok(m2.vehicles.quad.owned, 'still owns the quad');
+});
+test('a race on each device: best times min, places min, medals the better, stars OR, finished / records / best max, cups the better trophy', () => {
+  const a = tbSave((s) => { s.bestTime['pine-ridge'] = 41.2; s.bestPlace['pine-ridge'] = 2; s.medals['pine-ridge'] = 'silver'; s.stars['pine-ridge'] = [false, true, false]; s.finished['pine-ridge'] = 3; s.records.rides = 9; s.records.wins = 1; s.cups.rookie = { best: 16, trophy: 'silver', weekends: 1 }; s.best['pine-ridge'] = 600; });
+  const b = tbSave((s) => { s.bestTime['pine-ridge'] = 43.0; s.bestPlace['pine-ridge'] = 1; s.medals['pine-ridge'] = 'gold'; s.stars['pine-ridge'] = [true, false, false]; s.finished['pine-ridge'] = 2; s.records.rides = 7; s.records.wins = 2;
+    s.bestTime['granite-gap'] = 60; s.bestPlace['granite-gap'] = 3; s.cups.rookie = { best: 14, trophy: 'gold', weekends: 1 }; });
+  const m = SV.normalize(mergeTb({ updatedAt: 100, data: a }, { updatedAt: 200, data: b }));
+  assert.equal(m.bestTime['pine-ridge'], 41.2); assert.equal(m.bestPlace['pine-ridge'], 1); assert.equal(m.medals['pine-ridge'], 'gold');
+  assert.deepEqual(m.stars['pine-ridge'], [true, true, false]); assert.equal(m.finished['pine-ridge'], 3); assert.equal(m.records.rides, 9); assert.equal(m.records.wins, 2);
+  assert.equal(m.bestTime['granite-gap'], 60); assert.deepEqual(m.cups.rookie, { best: 16, trophy: 'gold', weekends: 1 });
+});
+test('crates (max counters, the longer waiting queue), streak (Spell Jump\'s rule), rivals (max tier, retired union), the faster ghost', () => {
+  const g = (end) => Array.from({ length: 20 }, (_, i) => [i === 19 ? end : i / 10, i * 3, 0, 0]);
+  const a = tbSave((s) => { s.crates = { queue: ['bronze', 'gold'], earned: 6, opened: 4, sinceNew: 1 }; s.streak = { ...s.streak, count: 4, lastDay: '2026-10-19', best: 4, days: ['2026-10-19'] }; s.rivals = { tier: 1, retired: ['dusty'], beats: { dusty: 3, blaze: 1 } }; s.ghosts['pine-ridge'] = g(40.5); });
+  const b = tbSave((s) => { s.crates = { queue: ['silver'], earned: 5, opened: 5, sinceNew: 2 }; s.streak = { ...s.streak, count: 5, lastDay: '2026-10-20', best: 5, days: ['2026-10-20'] }; s.rivals = { tier: 0, retired: [], beats: { blaze: 2 } }; s.ghosts['pine-ridge'] = g(39.9); s.ghosts['lake-loop'] = g(70); });
+  const m = SV.normalize(mergeTb({ updatedAt: 200, data: a }, { updatedAt: 100, data: b }));
+  assert.deepEqual(m.crates, { queue: ['bronze', 'gold'], earned: 6, opened: 5, sinceNew: 2 });
+  assert.equal(m.streak.count, 5); assert.equal(m.streak.lastDay, '2026-10-20'); assert.deepEqual(m.streak.days, ['2026-10-19', '2026-10-20']);
+  assert.equal(m.rivals.tier, 1); assert.deepEqual(m.rivals.retired, ['dusty']); assert.equal(m.rivals.beats.blaze, 2);
+  assert.equal(m.ghosts['pine-ridge'][19][0], 39.9, 'the faster trace'); assert.ok(m.ghosts['lake-loop']);
+});
+test('a reset on one device (resetAt) wins whole; merging is symmetric', () => {
+  const rich = tbSave((s) => { s.cash = 50000; s.vehicles.quad = { owned: true, levels: { engine: 1, tires: 0, suspension: 0, boost: 0 } }; });
+  const reset = tbSave((s) => { s.resetAt = 500; s.cash = 10; });
+  for (const [x, y] of [[rich, reset], [reset, rich]]) {
+    const m = SV.normalize(mergeTb({ updatedAt: 900, data: x }, { updatedAt: 100, data: y }));
+    assert.equal(m.cash, 10); assert.ok(!m.vehicles.quad); assert.equal(m.resetAt, 500);
+  }
+  const p = mergeTb({ updatedAt: 300, data: rich }, { updatedAt: 300, data: tbSave((s) => { s.cash = 7; }) }), q = mergeTb({ updatedAt: 300, data: tbSave((s) => { s.cash = 7; }) }, { updatedAt: 300, data: rich });
+  assert.deepEqual(p, q, 'the same result on both devices');
+});
+
+console.log('v1.6 sync: merge rules — the math facts');
+function factsOn(day, f) { const d = defaultFacts(T0 + day * DAYX); f(d); return compactFacts(d); }
+test('a fact answered on both devices on different days: counters max, days union, the later answer\'s box, patterns / recent union', () => {
+  const laptop = factsOn(0, (d) => { recordAnswer(d, '7x8', { correct: true, quick: true, ms: 1500 }, T0); recordAnswer(d, '6x7', { correct: true, ms: 2000 }, T0 + 1000); d.xp = 120; });
+  const ipad = factsOn(1, (d) => { recordAnswer(d, '7x8', { correct: false, fixed: true, ms: 5000, given: 54 }, T0 + DAYX); recordAnswer(d, '7x8', { correct: true, ms: 2500 }, T0 + DAYX + 5000); d.xp = 80; });
+  const m = normalizeFacts(mergeFactsDocs({ updatedAt: T0, data: laptop }, { updatedAt: T0 + DAYX, data: ipad }, T0 + DAYX + 9000), T0 + DAYX + 9000);
+  const r = m.records['7x8'];
+  assert.ok(m.records['6x7'], 'a record only the laptop had is kept');
+  assert.equal(r.attempts, 2, 'counters max (the iPad answered twice)'); assert.equal(r.firstTry, 1);
+  assert.equal(r.daysSeen.length, 2, 'both days kept'); assert.equal(r.lastSeen, T0 + DAYX + 5000);
+  assert.equal(r.box, 0, "the later answer's box (missed on day 2)"); assert.equal(r.patterns.length, 1); assert.equal(r.recent.length, 3, "the laptop's answer and the iPad's two");
+  assert.equal(m.xp, 120, 'xp max');
+});
+test('the same fact on the same day: the higher box wins; the record lists stay capped after a merge', () => {
+  const a = mergeRecord({ fact: '7x8', box: 2, due: 5, lastSeen: T0 + 1000, attempts: 3, daysSeen: ['2026-10-01'], recent: [[1, 1, 1]], patterns: [] },
+    { fact: '7x8', box: 1, due: 9, lastSeen: T0 + 2000, attempts: 4, daysSeen: ['2026-10-02'], recent: [[2, 1, 0]], patterns: [] });
+  assert.equal(a.box, 2); assert.equal(a.due, 5); assert.equal(a.attempts, 4);
+  const many = (o) => Array.from({ length: 10 }, (_, i) => ({ kind: PK0, at: o + i }));
+  const b = mergeRecord({ fact: '7x8', lastSeen: 1, patterns: many(0), recent: Array.from({ length: 8 }, (_, i) => [i * 2, 1, 1]), daysSeen: Array.from({ length: 12 }, (_, i) => `2026-09-${String(i + 1).padStart(2, '0')}`) },
+    { fact: '7x8', lastSeen: 2, patterns: many(100), recent: Array.from({ length: 8 }, (_, i) => [i * 2 + 1, 1, 1]), daysSeen: Array.from({ length: 12 }, (_, i) => `2026-10-${String(i + 1).padStart(2, '0')}`) });
+  assert.equal(b.patterns.length, 6); assert.equal(b.patterns[5].at, 109); assert.equal(b.recent.length, 8); assert.equal(b.recent[7][0], 15);
+  assert.equal(b.daysSeen.length, 12); assert.equal(b.daysSeen[0], '2026-10-01');
+});
+test('store level: today (same day → max), the later sets.updatedAt, placement by `at`, scouts max, vouched earliest, gateLog / races union', () => {
+  const now = T0 + 2 * DAYX;
+  const a = factsOn(2, (d) => { d.today.count = 7; d.sets.families = ['x2', 'x3']; d.sets.mode = 'manual'; d.sets.updatedAt = T0 + 10; d.placement = { at: T0, families: {}, tiers: [] }; d.scouts = { x7: { asked: 3, quick: 1, miss: 0 } }; d.vouched = { x6: T0 + 50 };
+    d.gateLog = [[T0 + 1, 1, 1], [T0 + 3, 1, 0]]; d.races = [{ at: T0 + 100, trail: 'pine-ridge', asked: 4, correct: 4, quick: 2, fixed: 0 }]; });
+  const b = factsOn(2, (d) => { d.today.count = 9; d.sets.families = ['x9']; d.sets.mode = 'manual'; d.sets.updatedAt = T0 + 20; d.placement = { at: T0 + 5, families: {}, tiers: [] }; d.scouts = { x7: { asked: 2, quick: 2, miss: 1 } }; d.vouched = { x6: T0 + 30 };
+    d.gateLog = [[T0 + 2, 0, 0]]; d.races = [{ at: T0 + 200, trail: 'lake-loop', asked: 4, correct: 3, quick: 1, fixed: 1 }]; });
+  const m = normalizeFacts(mergeFactsDocs({ updatedAt: T0 + 500, data: a }, { updatedAt: T0 + 400, data: b }, now), now);
+  assert.equal(m.today.count, 9); assert.deepEqual(m.sets.families, ['x9'], 'the parent\'s later set'); assert.equal(m.placement.at, T0 + 5);
+  assert.deepEqual(m.scouts.x7, { asked: 3, quick: 2, miss: 1 }); assert.equal(m.vouched.x6, T0 + 30);
+  assert.deepEqual(m.gateLog.map((x) => x[0]), [T0 + 1, T0 + 2, T0 + 3]); assert.deepEqual(m.races.map((x) => x.trail), ['pine-ridge', 'lake-loop']);
+});
+test('a facts reset on one device wins whole; no record is lost otherwise (every fact of both sides survives)', () => {
+  const a = factsOn(0, (d) => { for (const f of ['2x3', '2x4', '2x5']) recordAnswer(d, f, { correct: true }, T0); });
+  const b = factsOn(0, (d) => { for (const f of ['3x4', '3x5']) recordAnswer(d, f, { correct: true }, T0 + 10); });
+  const both = normalizeFacts(mergeFactsDocs({ updatedAt: 1, data: a }, { updatedAt: 2, data: b }, T0 + 20), T0 + 20);
+  assert.deepEqual(Object.keys(both.records).sort(), ['2x3', '2x4', '2x5', '3x4', '3x5']);
+  const r = defaultFacts(T0); resetFacts(r, T0 + 30);
+  const m = normalizeFacts(mergeFactsDocs({ updatedAt: 1, data: compactFacts(r) }, { updatedAt: 99, data: a }, T0 + 40), T0 + 40);
+  assert.equal(Object.keys(m.records).length, 0); assert.equal(m.resetAt, T0 + 30);
+});
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('FAILED:\n - ' + failures.join('\n - ')); process.exit(1); }
 console.log('ALL FACTS TESTS PASSED');

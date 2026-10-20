@@ -65,6 +65,16 @@ Crates: 0.78 a race in the first 60 races (one every 1.3), 0.86 a race in races 
 Longest stretch with nothing new (a vehicle, an upgrade, a crate, a star, a trail): 7 races (target < 10).
 Upgrade multiplier per tier: 1 / 1.6 / 2.5 / 4 / 7 / 12 / 20 / 35 · cup cash: ×1 / ×2 / ×4
 
+**v1.6 syncs Trail Blazer across the family's devices** (`SPEC.md` "v1.6"): the family code a parent already uses for
+Spell Jump (Parents → Family code) now carries each child's Trail Blazer save (`<id>.tb`: cash, vehicles, upgrades,
+medals, stars, cups, gear, ghosts) and math facts (`<id>.facts`) through the same Netlify Function. Trail Blazer
+registers both kinds with Spell Jump's sync client (`src/meta/sync.js`, which holds the merge rules: purchases, fact
+records and practice days are never lost when two devices played offline; a reset on one device wins). The facts are
+stored compactly (day lists capped at 12, default fields dropped: a mature store of 222 facts after 30 days is about
+135 KB instead of 363 KB) and the ghosts packed (about 11 KB a trail), so both fit a sync request. Newer data from
+another device loads when it arrives, never in the middle of a race. Tests: `tools/facts-tests.mjs` (merge rules, caps,
+size) and `tools/sync-smoke.mjs` (two devices on one in-memory server, plus Spell Jump on the same code).
+
 Same house style and kid-proofing as Spell Jump: no external links, no native text inputs outside the Parent Zone,
 no ads, no accounts, no lives, works offline after the first load, updates itself on a safe screen, and plays in
 landscape or portrait, with touch or a keyboard (→ / Space = GAS / front flip, ← = BRAKE / backflip, ↑ / Shift =
@@ -184,6 +194,7 @@ trail-blazer/
   src/meta/mockEngine.js  scripted race with the same contract (?mock=1, tests, fallback)
   src/meta/crates.js      earning, rolling (weighted, pity, cash when nothing is new) and opening crates; the Garage Wall
   src/meta/season.js      stars, the streak (Spell Jump's engagement.js), the daily Pit Challenge, weekends, the play log
+  src/meta/sync.js        the family-sync kinds <id>.tb and <id>.facts and their merge rules (v1.6)
   src/ui/players.js       player picker + new player (on-screen keyboard)
   src/ui/keyboard.js      the on-screen keyboard (same as Spell Jump's)
   src/ui/garage.js        the Vehicles row (buy / select), per-vehicle upgrades, Paint / Decal / rider gear strip
@@ -203,4 +214,5 @@ trail-blazer/
   src/ui/tbIcons.js       extra icons (tire, trail) on top of Spell Jump's set
   tools/ui-smoke.mjs      UI smoke test; tools/facts-tests.mjs math-layer tests; tools/make-icons.mjs icon renderer
   tools/economy-sim.mjs   the economy simulator (the runway table above)
+  tools/sync-smoke.mjs    family sync end to end (two devices, one server, Spell Jump on the same code)
 ```

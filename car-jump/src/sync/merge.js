@@ -174,19 +174,27 @@ export function mergeSave(local, remote) {
   return normalizeSave(s);
 }
 
+/**
+ * The streak rule (v3.3, shared with Trail Blazer's save sync in v3.6.3): the streak with the later lastDay wins count /
+ * lastDay (the same day: the higher count), best = max, shield days and counted days = union.
+ */
+export function mergeStreak(sa, sb) {
+  const a = obj(sa), b = obj(sb);
+  const da = typeof a.lastDay === 'string' ? a.lastDay : '', db = typeof b.lastDay === 'string' ? b.lastDay : '';
+  const win = da !== db ? (da > db ? a : b) : (num(a.count) >= num(b.count) ? a : b);   // ISO days compare as strings
+  return {
+    count: num(win.count), lastDay: win.lastDay || '', best: Math.max(num(a.best), num(b.best), num(win.count)),
+    shieldAvailableWeek: win.shieldAvailableWeek || '',
+    shieldUsedDays: uniq(a.shieldUsedDays, b.shieldUsedDays).sort(), days: uniq(a.days, b.days).sort(),
+  };
+}
+
 // v3.3 fields; s = a clone of the later doc (modified in place), o = the other doc
 const obj = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
 const arr = (x) => (Array.isArray(x) ? x : []);
 function mergeEngagement(s, o) {
   s.xp = Math.max(num(s.xp), num(o.xp));
-  const a = obj(s.streak), b = obj(o.streak);
-  const da = typeof a.lastDay === 'string' ? a.lastDay : '', db = typeof b.lastDay === 'string' ? b.lastDay : '';
-  const win = da !== db ? (da > db ? a : b) : (num(a.count) >= num(b.count) ? a : b);   // ISO days compare as strings
-  s.streak = {
-    count: num(win.count), lastDay: win.lastDay || '', best: Math.max(num(a.best), num(b.best), num(win.count)),
-    shieldAvailableWeek: win.shieldAvailableWeek || '',
-    shieldUsedDays: uniq(a.shieldUsedDays, b.shieldUsedDays).sort(), days: uniq(a.days, b.days).sort(),
-  };
+  s.streak = mergeStreak(s.streak, o.streak);
   const ca = obj(s.cosmetics), cb = obj(o.cosmetics);
   s.cosmetics = { skins: uniq(ca.skins, cb.skins), stickers: uniq(ca.stickers, cb.stickers), equipped: clone(obj(ca.equipped)) };
   const ka = obj(s.crates), kb = obj(o.crates);
@@ -200,7 +208,8 @@ function mergeEngagement(s, o) {
   if (ka2 || kb2) s.weekBest = ka2 === kb2 ? { week: ka2, distance: Math.max(num(wa.distance), num(wb.distance)) } : clone(ka2 > kb2 ? wa : wb);
 }
 
-/** Dispatch by sync key: 'family' | '<id>.save' | '<id>.words'. */
+/** Dispatch by sync key: 'family' | '<id>.save' | '<id>.words' (Spell Jump's kinds; the client's registry dispatches
+ *  every kind, Trail Blazer's tb / facts included). */
 export function mergeKey(key, local, remote, opts) {
   if (key === 'family') return mergeFamily(local && local.data, remote && remote.data, opts);
   if (key.endsWith('.save')) return mergeSave(local, remote);

@@ -3,7 +3,7 @@
 //   SHOTS_DIR=/some/dir BASE_URL=http://localhost:8080 node trail-blazer/tools/ui-smoke.mjs
 // At 844×390 and 390×844 (DPR 2, touch, simulated iPhone safe-area insets, ?mock=1&nosw=1):
 //   player picker (first screen; Learning Lab + Spell Jump links same-origin) → Parents with no players (PIN set twice,
-//   Family code tab first, the "own progress stays on this device" note, Players "No players yet") → "+ New player" on
+//   Family code tab first, the "one family code syncs both games" note, Players "No players yet") → "+ New player" on
 //   the on-screen keyboard (lands in Spell Jump's family record via profiles.js) → title (RACE, "Tracks 0 / 6") →
 //   track select (Pine Ridge open, the rest locked) → race 1 (4 Math Gates): gate 1 freezes the race, the fact is read
 //   aloud, a right answer → "⚡ Quick!" → openGate({ correct, quick }); gate 2: a wrong answer → the fact with its answer
@@ -213,7 +213,7 @@ async function runLayout(browser, layout) {
   }));
   check(pz0.tabs.join(',') === 'sync,facts,options,report,players', `Parent Zone tabs: Family code · Facts this week · Options · Report · Players (${pz0.tabs.join(', ')})`);
   check(pz0.create && pz0.join, 'Family code tab opens first, with Create family code / Join');
-  check(/stays on this device/.test(pz0.note), 'Family code tab says Trail Blazer progress stays on this device (v1)');
+  check(/One family code syncs both games/.test(pz0.note) && /Trail Blazer progress/.test(pz0.note), 'Family code tab: one code syncs both games, Trail Blazer progress included (v1.6)');
   check(!!pz0.pin, "the PIN is stored in Spell Jump's family record (spellJump.family.pinHash)");
   await shot(page, layout, '02-pz-family');
   await audit(page, layout.insets, 'Parent Zone (Family code)');
@@ -410,7 +410,7 @@ async function runLayout(browser, layout) {
   check(res.callouts.includes('mission-progress') && res.callouts.includes('xp'), 'results: today\'s mission progress and the XP earned');
   const fd1 = await J(page, () => JSON.parse(localStorage.getItem(`trailBlazer.${window.__trailBlazer.app.currentPlayerId}.facts`)));
   check(fd1 && fd1.today.count === 4 && Object.keys(fd1.records).length >= 2 && fd1.xp > 0 && fd1.races.length === 1, `facts saved: ${Object.keys(fd1.records).length} facts, today ${fd1.today.count}, ${fd1.xp} XP`);
-  check(fd1.records[g2.fact] && fd1.records[g2.fact].box === 0 && fd1.records[g2.fact].fixed === 1, `the fixed fact ${g2.fact} goes to box 0 for tomorrow (${JSON.stringify(fd1.records[g2.fact])})`);
+  check(fd1.records[g2.fact] && (fd1.records[g2.fact].box || 0) === 0 && fd1.records[g2.fact].fixed === 1, `the fixed fact ${g2.fact} goes to box 0 for tomorrow (${JSON.stringify(fd1.records[g2.fact])})`);
   check(await J(page, () => document.querySelector('#pit-offer').hidden && !window.__trailBlazer.facts.placement), '"Race first": the race ran; no offer on the results (it comes before a race now)');
   await shot(page, layout, '10-results');
   await audit(page, layout.insets, 'results (podium)');

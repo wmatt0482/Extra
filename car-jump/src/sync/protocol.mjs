@@ -2,10 +2,12 @@
 // Blobs store to the `store` interface below and forwards each request here; tools/spelling-tests.mjs drives it with
 // an in-memory Map store.
 //
-//   GET  /api/family/:code        → 200 { family: doc|null, players: { id: { save: doc|null, words: doc|null } } }
-//                                   (404 when the family does not exist; removed players are not listed)
+//   GET  /api/family/:code        → 200 { family: doc|null, players: { id: { save, words, tb, facts } } } (each
+//                                   doc|null; 404 when the family does not exist; removed players are not listed;
+//                                   older clients simply ignore the fields they do not know)
 //   POST /api/family/:code        body = doc (rev 1) → 201 { ok, rev, updatedAt }; 409 { error: 'exists' }
-//   PUT  /api/family/:code/:key   key = family | <playerId>.save | <playerId>.words, body = doc
+//   PUT  /api/family/:code/:key   key = family | <playerId>.save | <playerId>.words | <playerId>.tb (the Trail Blazer
+//                                   save) | <playerId>.facts (Trail Blazer's math facts), body = doc
 //                                   → 200 { ok, rev, updatedAt } when rev = stored rev + 1 (or the key is new and
 //                                   rev = 1); otherwise 409 { error: 'conflict', doc: <stored doc|null> }
 //   doc = { rev, updatedAt, deviceId, data }
@@ -25,9 +27,12 @@ const reply = (status, body) => ({ status, headers: { ...HEADERS }, body: JSON.s
 const bad = (msg) => reply(400, { error: 'bad-request', message: msg });
 const tooLarge = () => reply(400, { error: 'too-large', message: `body over ${MAX_BODY / 1024} KB` });
 
+/** The per-player document kinds: Spell Jump's save and words, Trail Blazer's save (tb) and math facts (facts). */
+export const PLAYER_KINDS = ['save', 'words', 'tb', 'facts'];
+
 export function parseKey(key) {
   if (key === 'family') return { kind: 'family' };
-  const m = /^(.+)\.(save|words)$/.exec(key || '');
+  const m = /^(.+)\.(save|words|tb|facts)$/.exec(key || '');
   if (!m || !PLAYER_ID_RE.test(m[1])) return null;
   return { kind: m[2], playerId: m[1] };
 }
@@ -88,7 +93,7 @@ async function route(req, store) {
     return { ...reply(405, { error: 'method-not-allowed' }), headers: { ...HEADERS, allow: 'GET, POST' } };
   }
   const k = parseKey(key);
-  if (!k) return bad('key must be family, <playerId>.save or <playerId>.words (player id: a-z 0-9 _ -, up to 32)');
+  if (!k) return bad('key must be family or <playerId>.save | .words | .tb | .facts (player id: a-z 0-9 _ -, up to 32)');
   if (method !== 'PUT') return { ...reply(405, { error: 'method-not-allowed', message: 'players are removed through the removedPlayers list in the family doc' }), headers: { ...HEADERS, allow: 'PUT' } };
   return putKey(code, key, req, store);
 }
@@ -98,8 +103,9 @@ async function getFamily(code, store) {
   if (!fam) return reply(404, { error: 'not-found', message: 'no family with this code' });
   const players = {};
   const ids = playerIds(fam.value);
-  const docs = await Promise.all(ids.flatMap((id) => [store.get(blobKey(code, `${id}.save`)), store.get(blobKey(code, `${id}.words`))]));
-  ids.forEach((id, i) => { players[id] = { save: docs[2 * i] ? docs[2 * i].value : null, words: docs[2 * i + 1] ? docs[2 * i + 1].value : null }; });
+  const n = PLAYER_KINDS.length;
+  const docs = await Promise.all(ids.flatMap((id) => PLAYER_KINDS.map((kind) => store.get(blobKey(code, `${id}.${kind}`)))));
+  ids.forEach((id, i) => { players[id] = Object.fromEntries(PLAYER_KINDS.map((kind, j) => [kind, docs[n * i + j] ? docs[n * i + j].value : null])); });
   return reply(200, { family: fam.value, players });
 }
 

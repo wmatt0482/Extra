@@ -16,7 +16,7 @@ import { DAY_MS, isKnown } from './scheduler.js';
 import { hintFor } from './hints.js';
 
 export const PATTERN_KINDS = ['reversed', 'operation', 'inverse', 'adjacent', 'off-by-operand', 'big-operands', 'slow-only', 'random'];
-export const PATTERNS_KEPT = 10;
+export const PATTERNS_KEPT = 6;                 // v1.6: the newest 6 per fact (the size cap for sync)
 const HINTED = ['adjacent', 'off-by-operand', 'reversed', 'inverse', 'operation'];
 
 const reverseDigits = (n) => Number(String(n).split('').reverse().join(''));

@@ -708,7 +708,7 @@ await atest('POST creates a family (201); GET returns it with its players; a sec
   assert.equal(r.status, 201); assert.equal(r.json.rev, 1);
   const g = await call(st, 'GET', `/api/family/${CODE}`);
   assert.equal(g.status, 200); assert.equal(g.json.family.rev, 1); assert.equal(g.json.family.data.players[0].name, 'Mia');
-  assert.deepEqual(g.json.players, { pmia: { save: null, words: null } });
+  assert.deepEqual(g.json.players, { pmia: { save: null, words: null, tb: null, facts: null } });
   assert.equal((await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()))).status, 409);
   assert.equal((await call(memoryStore(), 'POST', `/api/family/${CODE}`, doc(2, famData()))).status, 400, 'a new family starts at rev 1');
 });
@@ -755,16 +755,31 @@ await atest('removed players (tombstones in the family doc) are not listed by GE
   assert.equal((await call(st, 'DELETE', `/api/family/${CODE}/pleo.save`)).status, 405);
   assert.equal((await call(st, 'GET', `/api/family/${CODE}/pleo.save`)).status, 405);
 });
+await atest('v3.6.3: Trail Blazer keys <id>.tb and <id>.facts store with the same rev rules; GET lists all four kinds', async () => {
+  const st = memoryStore();
+  await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData([{ id: 'pmia', name: 'Mia' }, { id: 'pleo', name: 'Leo' }])));
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.tb`, doc(1, { cash: 900, vehicle: 'quad' }))).status, 200);
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.facts`, doc(1, { v: 4, records: {} }))).status, 200);
+  const stale = await call(st, 'PUT', `/api/family/${CODE}/pmia.tb`, doc(1, { cash: 1 }));
+  assert.equal(stale.status, 409); assert.equal(stale.json.doc.data.cash, 900);
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.tb`, doc(2, { cash: 950 }))).status, 200);
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(1, { cash: 5 }))).status, 200);
+  const g = await call(st, 'GET', `/api/family/${CODE}`);
+  assert.deepEqual(Object.keys(g.json.players.pmia), ['save', 'words', 'tb', 'facts']);
+  assert.equal(g.json.players.pmia.tb.data.cash, 950); assert.equal(g.json.players.pmia.tb.rev, 2); assert.equal(g.json.players.pmia.facts.data.v, 4);
+  assert.equal(g.json.players.pmia.save.data.cash, 5, "Spell Jump's save is untouched by the Trail Blazer keys");
+  assert.deepEqual(g.json.players.pleo, { save: null, words: null, tb: null, facts: null });
+});
 console.log('sync: protocol validation (400) and size cap');
 await atest('bad family codes are 400', async () => {
   for (const c of ['k7qx-m2pa', 'K7QXM2PA', 'K7QX-M2P', 'K7QX-M2PA1', 'K0QX-M2PA', 'K1QX-M2PA', 'K7Q%20-M2PA']) {
     assert.equal((await call(memoryStore(), 'GET', `/api/family/${c}`)).status, 400, c);
   }
 });
-await atest('bad keys are 400 (family | <id>.save | <id>.words, id a-z 0-9 _ - up to 32)', async () => {
+await atest('bad keys are 400 (family | <id>.save | .words | .tb | .facts, id a-z 0-9 _ - up to 32)', async () => {
   const st = memoryStore();
   await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()));
-  for (const k of ['Mia.save', 'pmia.notes', 'pmia', 'a'.repeat(33) + '.save', 'p mia.words', '.save', 'families']) {
+  for (const k of ['Mia.save', 'pmia.notes', 'pmia', 'a'.repeat(33) + '.save', 'p mia.words', '.save', 'families', 'Mia.tb', 'pmia.fact', '.facts', 'pmia.tbx']) {
     assert.equal((await call(st, 'PUT', `/api/family/${CODE}/${encodeURIComponent(k)}`, doc(1, {}))).status, 400, k);
   }
   assert.equal((await call(st, 'PUT', `/api/family/${CODE}/${'a'.repeat(32)}.save`, doc(1, {}))).status, 200, '32 chars is fine');
@@ -792,6 +807,68 @@ await atest(`bodies over ${MAX_BODY / 1024} KB are refused (400 too-large), by C
   const fits = doc(1, { pad: 'x'.repeat(MAX_BODY - 200) });
   assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.words`, fits)).status, 200, 'just under the cap is stored');
 });
+console.log('sync: the client key-kind registry (v3.6.3)');
+{
+  // a minimal localStorage for the client in Node
+  const mem = new Map();
+  const hadLS = 'localStorage' in globalThis;
+  const prevLS = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k), key: (i) => [...mem.keys()][i] ?? null, get length() { return mem.size; } };
+  const { createSyncClient, registerSyncKind, syncKeyFor, syncKinds, SYNC_KEY } = await import('../src/sync/client.js');
+  const fam = { v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#ff3b5c', createdAt: T0, updatedAt: T0 }], pinHash: 'h1', pinUpdatedAt: T0, options: {}, optionsUpdatedAt: {}, removedPlayers: [], migrated: true };
+  const seed = () => {
+    mem.clear();
+    mem.set('spellJump.family', JSON.stringify(fam));
+    mem.set('spellJump.pmia.save', JSON.stringify({ v: 3, cash: 40 }));
+    mem.set('trailBlazer.pmia.save', JSON.stringify({ v: 3, cash: 900 }));
+    mem.set(SYNC_KEY, JSON.stringify({ v: 1, code: CODE, deviceId: 'dlaptop', lastSync: 0, lastError: '', keys: {
+      family: { rev: 1, updatedAt: T0, dirty: false, hash: 'x' },
+      'pmia.save': { rev: 2, updatedAt: T0, dirty: true, hash: 'x' },
+      'pmia.tb': { rev: 3, updatedAt: T0, dirty: true, hash: 'y' },
+      'pmia.facts': { rev: 7, updatedAt: T0, dirty: false, hash: 'z' },
+      'Not A Key!': { rev: 1 }, 'pmia.SAVE2': { rev: 1 },
+    } }));
+  };
+  const fetchLog = [];
+  const fakeFetch = async (url, init) => {
+    fetchLog.push(`${init.method} ${url}`);
+    const body = init.body ? JSON.parse(init.body) : null;
+    return { status: 200, json: async () => (init.method === 'GET' ? { family: null, players: {} } : { ok: true, rev: body.rev, updatedAt: body.updatedAt }) };
+  };
+  await atest('load() keeps the metadata of kinds this app does not know (pmia.tb, pmia.facts); malformed keys are dropped', async () => {
+    seed();
+    const c = createSyncClient({}, { fetch: fakeFetch });
+    assert.deepEqual(Object.keys(c.state.keys).sort(), ['family', 'pmia.facts', 'pmia.save', 'pmia.tb']);
+    assert.equal(c.state.keys['pmia.tb'].rev, 3); assert.equal(c.state.keys['pmia.facts'].rev, 7);
+    assert.deepEqual(syncKinds(), ['save', 'words']);
+    assert.equal(syncKeyFor('spellJump.pmia.save'), 'pmia.save'); assert.equal(syncKeyFor('spellJump.pmia.words'), 'pmia.words');
+    assert.equal(syncKeyFor('trailBlazer.pmia.save'), null, 'not registered here: not a sync key');
+    assert.equal(c.status().pending, 1, 'only the registered dirty key counts as waiting');
+  });
+  await atest('push acts only on registered kinds: the unknown pmia.tb stays dirty with its rev, and survives persist()', async () => {
+    seed(); fetchLog.length = 0;
+    const c = createSyncClient({}, { fetch: fakeFetch });
+    await c.pushNow();
+    assert.deepEqual(fetchLog, [`PUT /api/family/${CODE}/pmia.save`]);
+    const st = JSON.parse(mem.get(SYNC_KEY));
+    assert.equal(st.keys['pmia.save'].rev, 3); assert.equal(st.keys['pmia.save'].dirty, false);
+    assert.deepEqual(st.keys['pmia.tb'], { rev: 3, updatedAt: T0, dirty: true, hash: 'y' }, "Trail Blazer's metadata is kept as it was");
+    assert.equal(st.keys['pmia.facts'].rev, 7);
+  });
+  await atest('registerSyncKind: a registered kind maps its storage key both ways and is pushed with rev + 1', async () => {
+    seed(); fetchLog.length = 0;
+    assert.throws(() => registerSyncKind('family', { storageKey: (id) => id, merge: () => ({}) }));
+    assert.throws(() => registerSyncKind('tb', { storageKey: (id) => id }), /bad sync kind/);
+    registerSyncKind('tb', { storageKey: (id) => `trailBlazer.${id}.save`, merge: (k, l, r) => ({ ...r.data, ...l.data }) });
+    assert.equal(syncKeyFor('trailBlazer.pmia.save'), 'pmia.tb'); assert.equal(syncKeyFor('trailBlazer.Bad Id.save'), null);
+    const c = createSyncClient({}, { fetch: fakeFetch });
+    assert.equal(c.status().pending, 2);
+    await c.pushNow();
+    assert.deepEqual(fetchLog.sort(), [`PUT /api/family/${CODE}/pmia.save`, `PUT /api/family/${CODE}/pmia.tb`]);
+    assert.equal(JSON.parse(mem.get(SYNC_KEY)).keys['pmia.tb'].rev, 4);
+  });
+  if (hadLS) globalThis.localStorage = prevLS; else delete globalThis.localStorage;
+}
 test('family codes: 8 characters from the no-look-alike alphabet as XXXX-XXXX; typed codes normalize', () => {
   for (let i = 0; i < 200; i++) { const c = generateCode(); assert.match(c, CODE_RE); assert.ok(c.replace('-', '').split('').every((ch) => CODE_ALPHABET.includes(ch)), c); }
   assert.ok(!/[IO01]/.test(CODE_ALPHABET)); assert.equal(CODE_ALPHABET.length, 32);

@@ -13,7 +13,7 @@
 // slow right = box 1, a miss = box 0 + focus). The Start line: "Fluent: … · Working on: … · Up next: <the scout family>".
 // Pure: the caller passes `rand` and `now`.
 import { factKey, famLabel } from './facts.js';
-import { DAY_MS, INTERVAL_DAYS, QUICK_MS, TIMES_KEPT, dayKey, isNew, newRecord, noteRecent } from './scheduler.js';
+import { DAY_MS, INTERVAL_DAYS, QUICK_MS, TIMES_KEPT, addDay, dayKey, isNew, newRecord, noteRecent } from './scheduler.js';
 import { classifyMiss, notePattern } from './patterns.js';
 
 export const TIERS = [
@@ -194,7 +194,6 @@ export function checkResult(st, now = Date.now()) {
   return { at: now, tier: workTier, located: st.located != null ? st.tiers[st.located] : null, phase: { ...st.phases }, tiers, families, items: st.items.length, end: st.end };
 }
 
-const addDay = (list, now) => { const k = dayKey(now); if (!list.includes(k)) list.push(k); };
 /**
  * Put a finished check into the facts store: seed the records (quick right = box 2 + a first-try, slow right = box 1,
  * a miss = box 0 + focus; facts seen before only ever go up for a right answer), keep the placement (checks + 1),

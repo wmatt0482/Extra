@@ -9,6 +9,10 @@
 // cups, stars, crates (a queue of crate tiers), cosmetics (owned per kind + equipped rider gear), streak (Spell Jump's
 // shape), rivals, ghosts (best run per trail), daily (the Pit Challenge), weekend (a championship in progress), play
 // (races / stars / crates per day for the Report). Older saves migrate: the Ranger is owned with the old levels.
+// v1.6 (family sync): writeSave / writeFactsData tell the sync client (Spell Jump's src/sync/notify.js localWrite) after
+// a successful write; the save is stored with its ghosts packed (encodeGhost: deltas in 0.01 s / 0.1 m / 0.01 rad, a
+// few KB a trail instead of ~60) and the facts in their compact form (store.js compactFacts), so both fit a sync
+// request; `resetAt` (Parents → Reset) is kept so a reset on one device wins the merge (src/meta/sync.js).
 import { UPGRADES, MAX_LEVEL, emptyLevels } from '../data/upgrades.js';
 import { PAINT_BY_ID, DECAL_BY_ID } from '../data/paints.js';
 import { KINDS, STOCK, itemOf } from '../data/cosmetics.js';
@@ -16,7 +20,8 @@ import { CUP_BY_ID, TROPHIES } from '../data/cups.js';
 import { defaultRivals, normalizeRivals } from '../data/rivals.js';
 import { defaultStreak, normalizeStreak } from '../../../spell-jump/src/meta/engagement.js';
 import { MEDALS as MEDAL_IDS } from '../data/medals.js';
-import { FACTS_VERSION, defaultFacts, factsKey, normalizeFacts } from '../facts/store.js';
+import { FACTS_VERSION, compactFacts, defaultFacts, factsKey, normalizeFacts } from '../facts/store.js';
+import { localWrite } from '../../../spell-jump/src/sync/notify.js';
 
 export const SAVE_VERSION = 3;
 export const FIRST_VEHICLE = 'ranger150';
@@ -116,10 +121,13 @@ export function normalize(raw) {
   s.streak = normalizeStreak(raw.streak);
   s.rivals = normalizeRivals(raw.rivals);
   if (raw.ghosts && typeof raw.ghosts === 'object') for (const [k, v] of Object.entries(raw.ghosts)) {
-    if (!idOk(k) || !Array.isArray(v)) continue;
-    const g = v.filter((x) => Array.isArray(x) && x.length >= 2 && x.every((n) => typeof n === 'number' && Number.isFinite(n))).slice(0, GHOST_MAX).map((x) => [x[0], x[1], x[2] || 0]);
-    if (g.length) s.ghosts[k] = g;
+    if (!idOk(k)) continue;
+    const list = typeof v === 'string' ? decodeGhost(v) : Array.isArray(v) ? v : [];
+    // the engine's samples: [t, x, y, angle] (v1.5 kept 3 numbers: [t, x, angle])
+    const g = list.filter((x) => Array.isArray(x) && x.length >= 2 && x.every((n) => typeof n === 'number' && Number.isFinite(n))).slice(0, GHOST_MAX).map((x) => x.slice(0, 4));
+    if (g.length > 1) s.ghosts[k] = g;
   }
+  if (num(raw.resetAt) > 0) s.resetAt = num(raw.resetAt);
   const d = raw.daily && typeof raw.daily === 'object' ? raw.daily : {};
   s.daily = { day: typeof d.day === 'string' && /^\d{4}-\d\d-\d\d$/.test(d.day) ? d.day : '', trailId: idOk(d.trailId) ? d.trailId : null, mutator: idOk(d.mutator) ? d.mutator : null, done: !!d.done };
   const w = raw.weekend;
@@ -157,9 +165,54 @@ export function loadSave(playerId) {
   }
 }
 
+// ---------- ghosts, packed for storage ----------
+// "t0,x0,y0,a0;dt,dx,dy,da;…" in 0.01 s, 0.1 m, 0.1 m and 0.01 rad (the deltas from the sample before); dt is left out
+// when it is the usual 0.1 s ("dx,dy,da")
+const GH = [100, 10, 10, 100];
+export function encodeGhost(trace) {
+  if (!Array.isArray(trace)) return '';
+  let prev = null;
+  const out = [];
+  for (const p of trace) {
+    if (!Array.isArray(p) || p.length < 2) continue;
+    const q = [p[0], p[1], p.length >= 4 ? p[2] : 0, p.length >= 4 ? p[3] : p.length === 3 ? p[2] : 0].map((v, i) => Math.round((Number(v) || 0) * GH[i]));
+    if (!prev) out.push(q.join(','));
+    else {
+      const d = q.map((v, i) => v - prev[i]);
+      out.push(d[0] === 10 ? `${d[1]},${d[2]},${d[3]}` : d.join(','));
+    }
+    prev = q;
+  }
+  return out.join(';');
+}
+export function decodeGhost(text) {
+  if (typeof text !== 'string' || !text) return [];
+  const out = [];
+  let cur = null;
+  for (const part of text.split(';')) {
+    const n = part.split(',').map(Number);
+    if (n.some((v) => !Number.isFinite(v))) return [];
+    if (!cur) { if (n.length !== 4) return []; cur = n; }
+    else if (n.length === 3) cur = [cur[0] + 10, cur[1] + n[0], cur[2] + n[1], cur[3] + n[2]];
+    else if (n.length === 4) cur = cur.map((v, i) => v + n[i]);
+    else return [];
+    out.push(cur.map((v, i) => Math.round(v) / GH[i]));
+  }
+  return out;
+}
+/** The save as stored (and synced): the ghosts packed. A new object; the save is not changed. */
+export function storedSave(save) {
+  const ghosts = {};
+  for (const [k, g] of Object.entries((save && save.ghosts) || {})) ghosts[k] = typeof g === 'string' ? g : encodeGhost(g);
+  return { ...save, ghosts };
+}
+
 export function writeSave(playerId, save) {
   if (!playerId) return false;
-  try { localStorage.setItem(saveKey(playerId), JSON.stringify(save)); return true; } catch (e) { console.warn('[save] could not write save', e); return false; }
+  const key = saveKey(playerId);
+  try { localStorage.setItem(key, JSON.stringify(storedSave(save))); } catch (e) { console.warn('[save] could not write save', e); return false; }
+  localWrite(key);       // family sync (no subscriber = no cost)
+  return true;
 }
 
 export function removeSave(playerId) {
@@ -203,7 +256,10 @@ export function loadFactsData(playerId, now = Date.now()) {
 }
 export function writeFactsData(playerId, d) {
   if (!playerId || !d) return false;
-  try { localStorage.setItem(factsKey(playerId), JSON.stringify(d)); return true; } catch (e) { console.warn('[save] could not write facts', e); return false; }
+  const key = factsKey(playerId);
+  try { localStorage.setItem(key, JSON.stringify(compactFacts(d))); } catch (e) { console.warn('[save] could not write facts', e); return false; }
+  localWrite(key);
+  return true;
 }
 export function removeFactsData(playerId) {
   if (!playerId) return;

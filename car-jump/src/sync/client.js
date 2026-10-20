@@ -3,7 +3,12 @@
 // the server, so the same players and progress show up on every device in the family.
 //
 // Local state lives in `spellJump.sync`:
-//   { v, code, deviceId, keys: { family | <id>.save | <id>.words: { rev, updatedAt, dirty, hash } }, lastSync, lastError }
+//   { v, code, deviceId, keys: { family | <id>.<kind>: { rev, updatedAt, dirty, hash } }, lastSync, lastError }
+// Key kinds (v3.6.3) are a registry: { kind: { storageKey(id), merge(key, local, remote), canon? } }. Spell Jump's
+//   `save` and `words` are registered here; Trail Blazer registers `tb` (its save) and `facts` (its math facts) from
+//   trail-blazer/src/meta/sync.js with registerSyncKind() before it creates the client. load() keeps the metadata of
+//   every well-formed <id>.<kind> key, also kinds this app does not know (Spell Jump must not drop Trail Blazer's
+//   revs when it persists the shared state); push and pull only touch the registered kinds.
 // rev       the server revision this device last saw or wrote for the key
 // dirty     the local copy changed since then (persisted, so changes made offline are pushed later)
 // hash      hash of the content at that revision (a write that changes nothing does not mark the key dirty)
@@ -17,7 +22,7 @@ import { FAMILY_KEY, loadFamily, normalizeFamily, defaultFamily, saveKey, wordsK
 import { hashString } from '../meta/rng.js';
 import { onLocalWrite } from './notify.js';
 import { generateCode, newDeviceId, normalizeCode } from './codes.js';
-import { familySyncData, mergeFamily, mergeKey } from './merge.js';
+import { familySyncData, mergeFamily, mergeSave, mergeWords } from './merge.js';
 
 export const SYNC_KEY = 'spellJump.sync';
 export const API_BASE = '/api/family/';
@@ -37,17 +42,50 @@ function removeRaw(key) { try { localStorage.removeItem(key); } catch (_) { /* i
 
 const hashOf = (data) => { const s = JSON.stringify(data ?? null); return hashString(s).toString(36) + ':' + s.length; };
 
+// ---------- the key-kind registry ----------
+const KINDS = new Map();
+const PLAYER_ID = /^[a-z0-9_-]{1,32}$/;
+const KEY_RE = /^([a-z0-9_-]{1,32})\.([a-z]{1,16})$/;
+/**
+ * Register a per-player document kind. def = { storageKey(playerId) → localStorage key, merge(syncKey, local, remote)
+ * → merged data (local / remote = { updatedAt, data }), canon?(data) → the data as it reads back after a load }.
+ */
+export function registerSyncKind(kind, def) {
+  if (!/^[a-z]{1,16}$/.test(kind) || kind === 'family' || !def || typeof def.storageKey !== 'function' || typeof def.merge !== 'function') throw new Error(`bad sync kind ${kind}`);
+  const tpl = String(def.storageKey('\u0001'));
+  const at = tpl.indexOf('\u0001');
+  KINDS.set(kind, { ...def, prefix: tpl.slice(0, at), suffix: tpl.slice(at + 1) });
+}
+export const syncKinds = () => [...KINDS.keys()];
+registerSyncKind('save', { storageKey: saveKey, merge: (k, local, remote) => mergeSave(local, remote) });
+registerSyncKind('words', { storageKey: wordsKey, merge: (k, local, remote) => mergeWords(local, remote) });
+
+const parseSyncKey = (k) => { const m = KEY_RE.exec(k || ''); return m ? { id: m[1], kind: m[2] } : null; };
+const isRegistered = (k) => k === 'family' || (!!parseSyncKey(k) && KINDS.has(parseSyncKey(k).kind));
+/** localStorage key → sync key (the registry's storageKey in reverse), or null for anything that does not sync. */
 export const syncKeyFor = (storageKey) => {
   if (storageKey === FAMILY_KEY) return 'family';
-  const m = /^spellJump\.([a-z0-9_-]{1,32})\.(save|words)$/i.exec(storageKey || '');
-  return m ? `${m[1]}.${m[2]}` : null;
+  if (typeof storageKey !== 'string') return null;
+  for (const [kind, d] of KINDS) {
+    if (storageKey.length > d.prefix.length + d.suffix.length && storageKey.startsWith(d.prefix) && storageKey.endsWith(d.suffix)) {
+      const id = storageKey.slice(d.prefix.length, storageKey.length - d.suffix.length);
+      if (PLAYER_ID.test(id)) return `${id}.${kind}`;
+    }
+  }
+  return null;
 };
-const storageKeyFor = (k) => (k === 'family' ? FAMILY_KEY : k.endsWith('.save') ? saveKey(k.slice(0, -5)) : wordsKey(k.slice(0, -6)));
-const playerOf = (k) => (k === 'family' ? null : k.replace(/\.(save|words)$/, ''));
+const storageKeyFor = (k) => { if (k === 'family') return FAMILY_KEY; const p = parseSyncKey(k); return p && KINDS.has(p.kind) ? KINDS.get(p.kind).storageKey(p.id) : null; };
+const playerOf = (k) => (k === 'family' ? null : (parseSyncKey(k) || {}).id || null);
+const playerKeys = (id) => [...KINDS.keys()].map((kind) => `${id}.${kind}`);
 
 // the shared part of a family record, as it would read back after a load (normalized)
 const canonFamily = (data) => familySyncData(normalizeFamily(data) || defaultFamily());
-const canon = (k, data) => (k === 'family' ? canonFamily(data) : data);
+const canon = (k, data) => {
+  if (k === 'family') return canonFamily(data);
+  const d = KINDS.get((parseSyncKey(k) || {}).kind);
+  return d && d.canon ? d.canon(data) : data;
+};
+const mergeKey = (k, local, remote) => KINDS.get(parseSyncKey(k).kind).merge(k, local, remote);
 
 function agoText(ms) {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -84,7 +122,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
       if (typeof raw.deviceId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(raw.deviceId)) s.deviceId = raw.deviceId;
       if (raw.keys && typeof raw.keys === 'object') {
         for (const [k, m] of Object.entries(raw.keys)) {
-          if (!m || typeof m !== 'object' || !(k === 'family' || /^[a-z0-9_-]{1,32}\.(save|words)$/i.test(k))) continue;
+          if (!m || typeof m !== 'object' || !(k === 'family' || KEY_RE.test(k))) continue;   // unknown kinds are kept too
           s.keys[k] = { rev: Number.isInteger(m.rev) && m.rev > 0 ? m.rev : 0, updatedAt: Number(m.updatedAt) || 0, dirty: !!m.dirty, hash: typeof m.hash === 'string' ? m.hash : '' };
         }
       }
@@ -106,12 +144,16 @@ export function createSyncClient(hooks = {}, opts = {}) {
   }
   const isVisible = () => typeof document === 'undefined' || document.visibilityState !== 'hidden';
   const exclusive = (fn) => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
+  // dirty keys this app can push (another app's kinds wait for that app)
+  const dirtyKeys = () => Object.keys(state.keys).filter((k) => state.keys[k].dirty && isRegistered(k));
+  const anyDirty = () => dirtyKeys().length > 0;
 
   // ---------- local data ----------
   function familyIds() { return new Set(loadFamily().players.map((p) => p.id)); }
   function readLocal(k) {
     if (k === 'family') return familySyncData(loadFamily());
-    return readJSON(storageKeyFor(k));
+    const sk = storageKeyFor(k);
+    return sk ? readJSON(sk) : null;
   }
   function writeLocal(k, data) {
     applying++;
@@ -123,8 +165,8 @@ export function createSyncClient(hooks = {}, opts = {}) {
         writeRaw(FAMILY_KEY, record);
         // removed players: their data goes on every device
         for (const id of fam.removedPlayers) {
-          removeRaw(saveKey(id)); removeRaw(wordsKey(id));
-          delete state.keys[`${id}.save`]; delete state.keys[`${id}.words`];
+          for (const pk of playerKeys(id)) removeRaw(storageKeyFor(pk));
+          for (const sk of Object.keys(state.keys)) if (playerOf(sk) === id) delete state.keys[sk];
         }
       } else writeRaw(storageKeyFor(k), data);
     } finally { applying--; }
@@ -202,12 +244,15 @@ export function createSyncClient(hooks = {}, opts = {}) {
 
   // one remote doc from a GET: newer than ours → replace (clean) or merge (dirty). Returns true when applied.
   function applyRemote(k, doc) {
-    if (!doc || !Number.isInteger(doc.rev) || !doc.data) return false;
+    if (!doc || !Number.isInteger(doc.rev) || !doc.data || !isRegistered(k)) return false;
     const m = state.keys[k];
     if (m && doc.rev <= m.rev) return false;
     if (k !== 'family' && !familyIds().has(playerOf(k))) return false;
     try { if (hooks.canApply && !hooks.canApply(k)) return false; } catch (_) { /* apply */ }
     if (m && m.dirty) mergeIntoLocal(k, doc);
+    // v3.6.3: a key this device never synced but has data for (Trail Blazer progress from before 1.6 on a device
+    // that was already in the family, or a join made in the other game): merge it, never replace it
+    else if (!m && k !== 'family' && readLocal(k) != null) { meta(k).updatedAt = 0; mergeIntoLocal(k, doc); }
     else replaceLocal(k, doc);
     notifyApplied(k);
     return true;
@@ -216,7 +261,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
   // ---------- push ----------
   async function pushKey(k, retry = true) {
     const m = state.keys[k];
-    if (!m || !m.dirty || !state.code) return true;
+    if (!m || !m.dirty || !state.code || !isRegistered(k)) return true;
     const data = readLocal(k);
     if (data == null) { m.dirty = false; return true; }
     const h = hashOf(data);
@@ -245,7 +290,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
     if (!state.code) return true;
     const ids = familyIds();
     for (const k of Object.keys(state.keys)) if (k !== 'family' && !ids.has(playerOf(k))) delete state.keys[k];
-    const keys = Object.keys(state.keys).filter((k) => state.keys[k].dirty).sort((a, b) => (a === 'family' ? -1 : b === 'family' ? 1 : a < b ? -1 : 1));
+    const keys = Object.keys(state.keys).filter((k) => state.keys[k].dirty && isRegistered(k)).sort((a, b) => (a === 'family' ? -1 : b === 'family' ? 1 : a < b ? -1 : 1));
     let ok = true;
     for (const k of keys) {
       const done = await pushKey(k);
@@ -266,8 +311,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
     applyRemote('family', family);
     for (const [id, docs] of Object.entries(players || {})) {
       if (!docs) continue;
-      applyRemote(`${id}.save`, docs.save);
-      applyRemote(`${id}.words`, docs.words);
+      for (const kind of KINDS.keys()) applyRemote(`${id}.${kind}`, docs[kind]);
     }
     state.lastSync = Date.now();
     state.lastError = '';
@@ -282,7 +326,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
     const pushed = await pushAll();
     if (!pushed && state.lastError === OFFLINE) return false;
     const pulled = await pull();
-    if (pulled && Object.values(state.keys).some((m) => m.dirty)) await pushAll();
+    if (pulled && anyDirty()) await pushAll();
     return pulled;
   }
 
@@ -310,7 +354,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
     },
     onChange(fn) { listeners.add(fn); return () => listeners.delete(fn); },
     status() {
-      const pending = Object.values(state.keys).filter((m) => m.dirty).length;
+      const pending = dirtyKeys().length;
       return { synced: !!state.code, code: state.code, lastSync: state.lastSync, lastError: state.lastError, offline: state.lastError === OFFLINE, pending };
     },
     statusText(now = Date.now()) {
@@ -333,7 +377,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
     },
     /** Push everything dirty, then pull. Resolves to true when the server answered. */
     syncNow() { return exclusive(syncCycle).catch((e) => { console.warn('[sync] sync failed', e); setError('Sync problem: ' + (e && e.message || 'unknown error')); return false; }); },
-    pullNow() { return exclusive(async () => { if (!state.code) return false; const ok = await pull(); if (ok && Object.values(state.keys).some((m) => m.dirty)) await pushAll(); return ok; }).catch(() => false); },
+    pullNow() { return exclusive(async () => { if (!state.code) return false; const ok = await pull(); if (ok && anyDirty()) await pushAll(); return ok; }).catch(() => false); },
     pushNow() { clearTimeout(pushTimer); return exclusive(pushAll).catch(() => false); },
 
     /** Create a family on the server from this device's data. Resolves { ok, code } or { ok: false, error }. */
@@ -354,7 +398,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
           state.code = code;
           state.keys = { family: { rev: 1, updatedAt: now, dirty: false, hash: hashOf(fam) } };
           for (const p of fam.players) {
-            for (const k of [`${p.id}.save`, `${p.id}.words`]) {
+            for (const k of playerKeys(p.id)) {
               if (readLocal(k) != null) state.keys[k] = { rev: 0, updatedAt: now, dirty: true, hash: '' };
             }
           }
@@ -391,7 +435,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
         const ids = familyIds();
         for (const [id, docs] of Object.entries(players || {})) {
           if (!ids.has(id) || !docs) continue;
-          for (const kind of ['save', 'words']) {
+          for (const kind of KINDS.keys()) {
             const doc = docs[kind], k = `${id}.${kind}`;
             if (!doc || !Number.isInteger(doc.rev) || !doc.data) continue;
             if (readLocal(k) != null) { meta(k).updatedAt = 0; mergeIntoLocal(k, doc); } else replaceLocal(k, doc);
@@ -400,7 +444,7 @@ export function createSyncClient(hooks = {}, opts = {}) {
         // players only this device had: upload them
         const now = Date.now();
         for (const id of ids) {
-          for (const k of [`${id}.save`, `${id}.words`]) {
+          for (const k of playerKeys(id)) {
             if (!state.keys[k] && readLocal(k) != null) state.keys[k] = { rev: 0, updatedAt: now, dirty: true, hash: '' };
           }
         }

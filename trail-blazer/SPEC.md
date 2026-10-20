@@ -561,3 +561,61 @@ championship weekend to the podium, the daily challenge card, the streak flame, 
 unchanged + the economy-sim prints its table. Version 1.5.0, sw.js `trail-blazer-v1.5.0`. Docs: README (the runway
 table), LEARNING-DESIGN (one row: rewards never gate the math, the math gates the rewards; the daily loop is a
 habit cue, not a punishment), the site card ("18 worlds, 8 vehicles, cups").
+
+## v1.6 — The sync engine (Matt, Oct 20: "we need to add the sync engine")
+
+Trail Blazer's progress (the save and the math facts) syncs across a family's devices with the same family code
+Spell Jump uses, through the same Netlify Function and Blobs store. The shared sync code lives in
+`car-jump/src/sync/` (protocol, client, notify, merge); this version may change it, with every Spell Jump suite
+kept green (spelling-tests, ui-smoke, sync-smoke) and no change to what Spell Jump's data does.
+
+1. **Protocol** (`car-jump/src/sync/protocol.mjs`): keys are `family`, `<id>.save`, `<id>.words`, and now
+   `<id>.tb` (the Trail Blazer save) and `<id>.facts` (the math facts). `parseKey` accepts the four kinds; the GET
+   answer lists `players[id] = { save, words, tb, facts }` (null when a doc is missing). Old clients ignore the new
+   fields. `MAX_BODY` stays 512 KB. The Netlify function (`netlify/functions/family.mjs`) only gets its comment updated.
+2. **Client** (`car-jump/src/sync/client.js`): key kinds become a registry: `{ kind: { storageKey(id), merge(key,
+   local, remote), canon? } }` with `save` and `words` registered by Spell Jump's modules as today, and
+   `registerSyncKind(kind, def)` exported so Trail Blazer registers `tb` and `facts` from
+   `trail-blazer/src/meta/sync.js` before it creates the client. `syncKeyFor(storageKey)` maps
+   `trailBlazer.<id>.save` → `<id>.tb` and `trailBlazer.<id>.facts` → `<id>.facts` (via the registry's
+   `storageKey` in reverse). `load()` keeps the metadata of any well-formed `<id>.<kind>` key even when the kind
+   is not registered in this app (Spell Jump must not drop Trail Blazer's revs when it persists `spellJump.sync`), and
+   push / pull act only on registered kinds. Everything else (push on write, 409 merge + retry, pull on show /
+   visible / online / 60 s, removed players) applies to the new kinds unchanged.
+3. **Notify**: `trail-blazer/src/meta/save.js` `writeSave` and `writeFactsData` call `localWrite(key)` from
+   `../../spell-jump/src/sync/notify.js` after a successful write; `removeSave` / `removeFactsData` nothing (removed
+   players are tombstoned in the family doc, as today).
+4. **Merge rules** (`trail-blazer/src/meta/sync.js`, pure, tested): take the later doc as the base, then
+   - **tb save**: cash max; vehicles: owned = union, levels = per-upgrade max; vehicle / paint / decal / cosmetics
+     equipped = the later doc; cosmetics owned = union; best / records = max; finished = max; bestPlace = min;
+     bestTime = min; medals = best rank; stars = per-trail OR; cups = best trophy, max points, max weekends; crates
+     earned / opened / sinceCosmetic = max; streak = Spell Jump's rule (`mergeEngagement`); rivals = max tier, retired
+     union; ghosts = the faster trace per trail; daily = the later doc; seen = OR; `resetAt` as in Spell Jump
+     (a reset on one device wins).
+   - **facts**: records merged per fact: base = the record with the later `lastSeen`; attempts / firstTry / quick /
+     misses / fixed / seenCount / totalMs / answeredMs = max; box = the base's unless the other's `lastSeen` is within
+     the same day and higher; daysSeen / daysCorrect / daysQuick = union, sorted, **capped at the last 12**; times
+     = the base's; patterns = union by `at`, newest 6; recent = union by `at`, newest 8; missDay = the later.
+     Store-level: xp max; placement = the later `at`; scouts = per-family max; vouched / stepped = union (earliest
+     `at`); gateLog / dialHistory = union by `at`, capped (12 / 20); today = same day → max counts, else the later;
+     sets = the doc with the later `sets.updatedAt` (add that stamp when sets change); frontier recomputed after a
+     merge (`refreshFrontier`); `pulled` union. `FACTS_VERSION` 4 with those caps applied on normalize (old data
+     trims on load).
+5. **Size**: a mature store (222 facts, 30 days of play) must serialize under **150 KB**: the day lists capped at 12
+   (mastery and fluency only need 2–3 days; keep `lastSeen`), patterns 6, recent 8, and default-valued record fields
+   (`rehearsed: false`, `focus: false`, `missDay: ''`, empty arrays, zeros) dropped on write and restored on
+   normalize. Measure with a script and print the KB in the tests.
+6. **App**: `main.js` registers the kinds, creates the client as now, and on `onApply('<id>.tb' | '<id>.facts')` for
+   the current player reloads the save / facts in memory (never during a race: `canApply` stays `!run` for those
+   keys too) and refreshes the title, garage and grid. Parents → Family: the status line says "Synced · players, Spell
+   Jump and Trail Blazer progress" when a code is set; the Family-code tab's blurb mentions both games. A device that
+   joins a family with existing Trail Blazer data merges it (never loses purchases or facts).
+7. **Tests**: `car-jump/tools/spelling-tests.mjs` protocol cases for the new keys and the GET shape; the client's
+   registry (unknown kinds kept in `load()`, not pushed). `trail-blazer/tools/facts-tests.mjs`: merge rules for the
+   tb save and the facts (purchases on two devices, a race on each, a facts record answered on both days, a reset,
+   caps, the size check). `trail-blazer/tools/sync-smoke.mjs` modelled on `car-jump/tools/sync-smoke.mjs`: two
+   browser contexts, one in-memory server through the real protocol: laptop buys the Dune Quad and answers gates →
+   the iPad shows the quad and the facts; iPad races offline → cash waits, then syncs; both answer facts offline → no
+   record lost after the 409 merge; Spell Jump on the same server still syncs its own keys. Both Spell Jump sync
+   suites stay green. Version 1.6.0, sw.js `trail-blazer-v1.6.0`; Spell Jump 3.6.3 (client change), sw.js
+   `spell-jump-v3.6.3`. README (both) one paragraph; the site's quick-start mentions that one code syncs both games.

@@ -250,6 +250,13 @@ word lists and progress show up on every device (a laptop for entering the words
    synced 2 min ago*, *Not synced · tap to set up family sync*, the offline note or the problem. The picker shows a tiny muted *Synced · K7QX-M2PA* chip so you can tell which family a device is in.
 4. **Leave family** stops syncing this device; nothing is deleted (the other devices keep the family).
 
+**Trail Blazer on the same code (v3.6.3).** The sync client's key kinds are a registry (`registerSyncKind` in
+`src/sync/client.js`): Spell Jump registers `<id>.save` and `<id>.words`; Trail Blazer adds `<id>.tb` (its save) and
+`<id>.facts` (its math facts) with its own merge rules (`trail-blazer/src/meta/sync.js`), and the server stores and lists
+all four (`GET` answers `players[id] = { save, words, tb, facts }`). Spell Jump keeps Trail Blazer's sync bookkeeping in
+`spellJump.sync` untouched and never uploads it, so one family code syncs both games: when Trail Blazer is used, the
+child's Trail Blazer progress (cash, vehicles, medals, gear, math facts) is stored online under the code as well.
+
 **Privacy.** What's stored online: player first names, word lists, spelling progress and the parent PIN (hashed).
 No emails or accounts. Anyone with the family code can see and change these, so keep it private. Word lists and
 sentences are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is.

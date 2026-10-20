@@ -9,6 +9,10 @@
 //     v1.4: placement.tier / located / phase, scouts: { fam: { asked, quick, miss } }, vouched: { fam: at }, stepped:
 //           { fam: { at, back } }, gateLog: [[at, right, quick]] (the last 12 gates: the governor's dial), dialHistory,
 //           cleanRaces, lastCheckOfferAt, frontier.history: [{ at, from, families, why }] (the last 10)
+//     v1.6 (FACTS_VERSION 4, family sync): sets.updatedAt (stamped when a parent changes the set: the later set wins a
+//           merge), resetAt (Parents → Reset facts: a reset on one device wins), and the size caps: day lists = the
+//           last 12 days, patterns 6, recent 8, times 5; compactFacts() drops default-valued record fields for storage
+//           (normalizeFacts restores them), so a mature store (222 facts, 30 days) stays well under 150 KB.
 // In auto mode (the default) the set is the frontier + known families (src/facts/adaptive.js); manual = v1.2.
 // v1.4: the frontier goes through refreshFrontier below, which adds the difficulty governor (governor.js: step-back,
 // one family when it is "a bit hard", never empty) and keeps the frontier's history ("Moved up" in the Report).
@@ -20,9 +24,9 @@ import { PATTERNS_KEPT, PATTERN_KINDS, classifyMiss, famList, isSlowOnly, notePa
 import { autoFacts, famInfo, ladder, noteFinished, noteProbe, pickAuto, probeDue, queueTwin, refreshFrontier as computeAndStore, startProbe, tierOf } from './adaptive.js';
 import { dial, drowning, nextSlot, noteGate, noteRaceDial, raceQuota, releaseStepped, stepBack } from './governor.js';
 import { checkDue, noteScout, scoutFact, scoutFamily } from './scouts.js';
-import { RECENT_KEPT, applyAnswer, avgMs, createSession, dayKey, isFluent, isMastered, isNew, isSparse, newRecord, noteAnswered, pendingReady, pickNext, status, STATUSES, TIMES_KEPT } from './scheduler.js';
+import { DAYS_KEPT, RECENT_KEPT, applyAnswer, avgMs, createSession, dayKey, isFluent, isMastered, isNew, isSparse, newRecord, noteAnswered, pendingReady, pickNext, status, STATUSES, TIMES_KEPT } from './scheduler.js';
 
-export const FACTS_VERSION = 3;
+export const FACTS_VERSION = 4;
 const HISTORY_KEPT = 10;
 export const MAX_CHECK_OFFERS = 3;       // the Pit Crew Check is offered after up to 3 finished races, then only in Parents
 export const factsKey = (playerId) => `trailBlazer.${playerId}.facts`;
@@ -71,7 +75,18 @@ const stockSets = (s) => Array.isArray(s.families) && s.families.length === STOC
   && s.division !== false && !s.addSub && !(Array.isArray(s.custom) && s.custom.length);
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-const days = (v) => (Array.isArray(v) ? [...new Set(v.filter((x) => typeof x === 'string' && /^\d{4}-\d\d-\d\d$/.test(x)))].slice(-60) : []);
+// storage form (compactFacts): a day list is [first day number since 1970-01-01, then the gaps] ('2026-10-20',
+// '2026-10-22' → [20746, 2]); the recent answers are [[at (s), right, quick], [seconds since the one before, …], …]
+const dayNum = (k) => Date.UTC(+k.slice(0, 4), +k.slice(5, 7) - 1, +k.slice(8, 10)) / 86400000;
+const numDay = (n) => new Date(n * 86400000).toISOString().slice(0, 10);
+const asDay = (x) => (typeof x === 'string' && /^\d{4}-\d\d-\d\d$/.test(x) ? x : Number.isInteger(x) && x > 0 && x < 100000 ? numDay(x) : null);
+const asMs = (t) => (typeof t === 'number' && t > 0 && t < 1e11 ? t * 1000 : t);   // seconds (storage) or ms
+const undelta = (v) => { let t = 0; return v.map((x) => (t += x)); };
+const days = (v) => {
+  if (!Array.isArray(v)) return [];
+  const list = v.length && v.every((x) => Number.isInteger(x)) ? undelta(v) : v;
+  return [...new Set(list.map(asDay).filter(Boolean))].sort().slice(-DAYS_KEPT);
+};
 
 /** Coerce stored data into a valid store (unknown fields dropped, numbers clamped, facts re-keyed canonically). */
 export function normalizeFacts(raw, now = Date.now()) {
@@ -88,7 +103,9 @@ export function normalizeFacts(raw, now = Date.now()) {
     d.sets.edited = typeof s.edited === 'boolean' ? s.edited : !stockSets(s);
     d.sets.mode = s.mode === 'auto' || s.mode === 'manual' ? s.mode : d.sets.edited ? 'manual' : 'auto';
     d.sets.source = s.source === 'custom' ? 'custom' : 'families';
+    if (num(s.updatedAt) > 0) d.sets.updatedAt = num(s.updatedAt);
   }
+  if (num(raw.resetAt) > 0) d.resetAt = num(raw.resetAt);
   if (raw.records && typeof raw.records === 'object') {
     for (const [k, r] of Object.entries(raw.records)) {
       const fact = normFact(k);
@@ -105,8 +122,16 @@ export function normalizeFacts(raw, now = Date.now()) {
       if (typeof r.missDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(r.missDay) && r.missDay > (rec.missDay || '')) rec.missDay = r.missDay;
       rec.focus = !!r.focus && rec.box < 2;
       if (Array.isArray(r.times)) rec.times = [...rec.times, ...r.times.filter((x) => typeof x === 'number' && x > 0 && x < 600000).map(Math.round)].slice(-TIMES_KEPT);
-      if (Array.isArray(r.recent)) rec.recent = [...rec.recent, ...r.recent.filter((x) => Array.isArray(x) && num(x[0]) > 0).map((x) => [num(x[0]), x[1] ? 1 : 0, x[2] ? 1 : 0])].slice(-RECENT_KEPT);
-      if (Array.isArray(r.patterns)) rec.patterns = [...rec.patterns, ...r.patterns.filter((x) => x && PATTERN_KINDS.includes(x.kind) && num(x.at) > 0)
+      if (Array.isArray(r.recent)) {
+        // storage form: seconds, each after the first relative to the one before (a first stamp under 1e11 = seconds)
+        const rel = r.recent.length && Array.isArray(r.recent[0]) && num(r.recent[0][0]) > 0 && num(r.recent[0][0]) < 1e11;
+        let t = 0;
+        const list = r.recent.filter((x) => Array.isArray(x)).map((x, i) => [rel ? (t = i ? t + num(x[0]) : num(x[0])) * 1000 : num(x[0]), x[1] ? 1 : 0, x[2] ? 1 : 0]);
+        rec.recent = [...rec.recent, ...list.filter((x) => x[0] > 0)].slice(-RECENT_KEPT);
+      }
+      // patterns: { kind, at, given? } or the storage form [kind, at (s), given?]
+      const pat = (x) => (Array.isArray(x) ? { kind: x[0], at: asMs(num(x[1])), ...(typeof x[2] === 'number' && Number.isFinite(x[2]) ? { given: x[2] } : {}) } : x);
+      if (Array.isArray(r.patterns)) rec.patterns = [...rec.patterns, ...r.patterns.map(pat).filter((x) => x && PATTERN_KINDS.includes(x.kind) && num(x.at) > 0)
         .map((x) => ({ kind: x.kind, at: num(x.at), ...(typeof x.given === 'number' && Number.isFinite(x.given) ? { given: x.given } : {}) }))].slice(-PATTERNS_KEPT);
       d.records[fact] = rec;
     }
@@ -421,7 +446,34 @@ export function resetFacts(d, now = Date.now()) {
   d.frontier = { families: [], since: 0, reason: '', history: [] };
   refreshFrontier(d, now);
   d.updatedAt = now;
+  d.resetAt = now;              // v1.6: a reset on one device wins the family-sync merge
   return d;
+}
+
+// ---------- v1.6: storage form (family sync size) ----------
+const REC_DEFAULTS = { box: 0, due: 0, attempts: 0, firstTry: 0, quick: 0, seenCount: 0, lastSeen: 0, misses: 0, fixed: 0, missDay: '', totalMs: 0, answeredMs: 0, lastMs: 0, rehearsed: false, focus: false };
+const REC_LISTS = ['daysCorrect', 'daysSeen', 'daysQuick', 'times', 'patterns', 'recent'];
+const DAY_LISTS = ['daysCorrect', 'daysSeen', 'daysQuick'];
+const sec = (ms) => Math.round(num(ms) / 1000);
+/** The store as written to localStorage (and synced): every record without its default-valued fields and without its
+ *  own `fact` (the key says it), day lists as day numbers, the recent answers and patterns stamped in seconds;
+ *  normalizeFacts restores the full form on load. A new object; d is not changed. */
+export function compactFacts(d) {
+  const records = {};
+  for (const [f, r] of Object.entries(d.records || {})) {
+    const c = {};
+    for (const [k, v] of Object.entries(r)) {
+      if (k === 'fact') continue;
+      if (k in REC_DEFAULTS && v === REC_DEFAULTS[k]) continue;
+      if (REC_LISTS.includes(k) && Array.isArray(v) && !v.length) continue;
+      if (DAY_LISTS.includes(k) && Array.isArray(v)) c[k] = v.filter((x) => typeof x === 'string' && /^\d{4}-\d\d-\d\d$/.test(x)).map(dayNum).sort((a, b) => a - b).map((x, i, a) => (i ? x - a[i - 1] : x));
+      else if (k === 'recent' && Array.isArray(v)) c[k] = v.map((x, i) => [i ? sec(x[0]) - sec(v[i - 1][0]) : sec(x[0]), x[1] ? 1 : 0, x[2] ? 1 : 0]);
+      else if (k === 'patterns' && Array.isArray(v)) c[k] = v.map((x) => (x.given == null ? [x.kind, sec(x.at)] : [x.kind, sec(x.at), x.given]));
+      else c[k] = v;
+    }
+    records[f] = c;
+  }
+  return { ...d, records };
 }
 
 export { factAnswer, factFamilies, factParts, status, famList };

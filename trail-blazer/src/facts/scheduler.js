@@ -19,6 +19,8 @@ export const MAX_REHEARSING = 2;                  // at most 2 new facts in rehe
 export const SPARSE_KNOWN = 3;
 export const TIMES_KEPT = 5;                      // response times kept per fact
 export const RECENT_KEPT = 8;                     // answers kept per fact for the secure rule
+export const DAYS_KEPT = 12;                      // v1.6: the last 12 days in daysSeen / daysCorrect / daysQuick (mastery and
+                                                  // fluency need 2-3; lastSeen keeps the date of the last answer)
 /** Keep one answer in rec.recent ([at, right, quick], the last 8). */
 export function noteRecent(rec, at, right, quick) {
   rec.recent = [...(Array.isArray(rec.recent) ? rec.recent : []), [at, right ? 1 : 0, right && quick ? 1 : 0]].slice(-RECENT_KEPT);
@@ -39,7 +41,14 @@ export function newRecord(fact) {
   return { fact, box: 0, due: 0, attempts: 0, firstTry: 0, quick: 0, seenCount: 0, lastSeen: 0, daysCorrect: [], daysSeen: [], daysQuick: [], misses: 0, fixed: 0, missDay: '',
     totalMs: 0, answeredMs: 0, lastMs: 0, rehearsed: false, focus: false, times: [], patterns: [], recent: [] };
 }
-const addDay = (list, now) => { const k = dayKey(now); if (!list.includes(k)) list.push(k); };
+/** Add today to a day list (sorted ISO days), keeping the last DAYS_KEPT. */
+export function addDay(list, now) {
+  const k = dayKey(now);
+  if (list.includes(k)) return;
+  list.push(k);
+  list.sort();
+  if (list.length > DAYS_KEPT) list.splice(0, list.length - DAYS_KEPT);
+}
 
 /**
  * One gate answer. result: { correct (first try), quick, fixed (missed, then copied right), ms (time to the answer) }.

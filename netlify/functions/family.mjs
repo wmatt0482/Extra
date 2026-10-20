@@ -1,7 +1,8 @@
-// Spell Jump family sync: one Netlify Function (Functions v2 API) over one Netlify Blobs store.
+// Family sync for Spell Jump and Trail Blazer: one Netlify Function (Functions v2 API) over one Netlify Blobs store.
 // All request handling lives in car-jump/src/sync/protocol.mjs (pure, unit-tested in tools/spelling-tests.mjs);
 // this file only adapts the Blobs store and the Request/Response objects. Blob keys: `<CODE>/family`,
-// `<CODE>/<playerId>.save`, `<CODE>/<playerId>.words`, each holding { rev, updatedAt, deviceId, data }.
+// `<CODE>/<playerId>.save` and `<CODE>/<playerId>.words` (Spell Jump), `<CODE>/<playerId>.tb` and
+// `<CODE>/<playerId>.facts` (Trail Blazer's save and math facts, since v1.6), each holding { rev, updatedAt, deviceId, data }.
 import { getStore } from '@netlify/blobs';
 import { MAX_BODY, handle } from '../../car-jump/src/sync/protocol.mjs';
 

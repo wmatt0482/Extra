@@ -18,9 +18,13 @@
 // v1.5 ("The Season"): 8 vehicles (buy, select, per-vehicle upgrades), 18 trails in 3 cups with championship
 // weekends, crates and rider gear (the Garage Wall), stars, rivals, the ghost of the best run, the streak and the daily
 // Pit Challenge (a trail + a mutator, double cash). The engine's coinMult input carries the cup × daily multiplier.
+// v1.6 ("the sync engine"): the family code now syncs Trail Blazer's progress too: the save (<id>.tb) and the math
+// facts (<id>.facts) are kinds registered with Spell Jump's sync client (src/meta/sync.js: the merge rules); newer data
+// from another device is loaded into memory when it arrives, never during a race or the Pit Crew Check.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
+import { registerTrailBlazerSync } from './meta/sync.js';
 import { Audio } from '../../spell-jump/src/audio.js';
 import { $, $$, h, money } from '../../spell-jump/src/ui/dom.js';
 import { COIN } from '../../spell-jump/src/ui/icons.js';
@@ -68,7 +72,7 @@ import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, vehicleM
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -146,8 +150,11 @@ async function boot() {
   document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);
   // family sync (off until a parent creates or joins a family): Spell Jump's client, started the same way. It syncs
   // the family record (players, PIN, options) and Spell Jump's own keys; Trail Blazer's save stays on this device (v1)
+  registerTrailBlazerSync();             // <id>.tb and <id>.facts, before the client exists
+  // the family record and the current player's save / facts are in use during a race (and the facts during the check)
+  const inUse = (k) => k === 'family' || (currentPlayerId && (k === `${currentPlayerId}.tb` || k === `${currentPlayerId}.facts`));
   const sync = createSyncClient({
-    canApply: (k) => (k === 'family' ? !run : true),
+    canApply: (k) => (inUse(k) ? !run && screen !== 'check' : true),
     onApply: (k) => syncApplied(k),
     onStatus: () => { playersUI.refreshSyncChip(); pz.onSyncStatus(); },
   });
@@ -214,8 +221,12 @@ async function boot() {
     saveOf(id) { return id === currentPlayerId ? save : loadSave(id); },
     trailsDoneFor(id) { return finishedCount(id === currentPlayerId ? save : loadSave(id), trails); },
     resetSaveFor(id) {
-      removeSave(id);
-      if (id === currentPlayerId) { replaceSave(defaultSave()); save.seen.coach = true; app.persist(); refreshCash(); }
+      // v1.6: a fresh save stamped resetAt (not a removed key), so the reset wins the sync merge on every device
+      const fresh = defaultSave();
+      fresh.seen.coach = true;
+      fresh.resetAt = Date.now();
+      writeSave(id, fresh);
+      if (id === currentPlayerId) { replaceSave(loadSave(id)); refreshCash(); }
     },
     removePlayer(id) {
       Profiles.removePlayer(family, id);    // tombstoned in the family record: removed on every device, both games
@@ -436,6 +447,8 @@ async function boot() {
   // ---------- family sync: newer data from another device ----------
   const replaceInPlace = (obj, fresh) => { for (const k of Object.keys(obj)) delete obj[k]; Object.assign(obj, fresh); };
   function syncApplied(k) {
+    const m = /^([a-z0-9_-]{1,32})\.(tb|facts)$/.exec(k);
+    if (m) { trailBlazerApplied(m[1], m[2]); return; }
     if (k !== 'family') return;                    // Spell Jump's own keys: nothing in memory here
     replaceInPlace(family, Profiles.loadFamily());
     if (currentPlayerId && !Profiles.playerById(family, currentPlayerId)) {
@@ -443,6 +456,19 @@ async function boot() {
       if (!pz.isOpen) go('players');
     } else if (screen === 'players') screens.players.show();
     else if (screen === 'title') refreshTitle();
+    pz.onSyncApplied();
+  }
+
+  // v1.6: another device's Trail Blazer progress arrived (merged into localStorage by the sync client): reload it
+  function trailBlazerApplied(id, kind) {
+    if (kind === 'facts') factsCache.delete(id);
+    if (id === currentPlayerId) {
+      if (kind === 'tb') replaceSave(loadSave(id));
+      else { facts = loadFactsData(id); refreshFrontier(facts, Date.now()); }
+      refreshCash();
+      if (screen === 'title') { refreshTitle(); drawHero(); }
+      else if (['garage', 'trails', 'wall', 'grid'].includes(screen) && screens[screen]) screens[screen].show();
+    } else if (screen === 'players') screens.players.show();
     pz.onSyncApplied();
   }
 

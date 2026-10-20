@@ -28,7 +28,9 @@ import { icon } from './tbIcons.js';
 import { drawAvatar } from './vehiclePreview.js';
 
 const HOLD_MS = 3000;
-export const SAVE_NOTE = "Trail Blazer's own progress (cash, upgrades, medals, best times) stays on this device for now; the family code shares the players and the PIN with Spell Jump.";
+export const SAVE_NOTE = "One family code syncs both games: the players and the PIN, each child's Spell Jump progress and their Trail Blazer progress (cash, vehicles, upgrades, medals, cups, gear and the math facts). Nothing is lost when two devices played offline: the progress is merged.";
+/** v1.6: the Parent Zone line when synced and well. */
+export const SYNCED_LINE = 'Synced · players, Spell Jump and Trail Blazer progress';
 
 function toggle(label, sub, on, onChange, id) {
   const t = h('button', { class: 'toggle', role: 'switch', 'aria-checked': String(!!on), 'aria-label': label, id });
@@ -216,7 +218,7 @@ export function createParentZone(app) {
   // ---------- Facts this week ----------
   function factsTab(p) {
     const d = app.factsFor(p.id);
-    const save = () => { d.updatedAt = Date.now(); if (d.sets.mode === 'auto') refreshFrontier(d, Date.now()); app.saveFactsFor(p.id, d); count.textContent = countText(); };
+    const save = () => { d.updatedAt = d.sets.updatedAt = Date.now(); if (d.sets.mode === 'auto') refreshFrontier(d, Date.now()); app.saveFactsFor(p.id, d); count.textContent = countText(); };
     const countText = () => `${activeFacts(d).length} facts in play · ${p.name} answers ${d.opts.gates} at the gates of each race`;
     const count = h('div', { class: 'pz-help', id: 'facts-count' }, countText());
     const mode = d.sets.mode === 'auto' ? 'auto' : d.sets.source === 'custom' ? 'custom' : 'families';
@@ -427,10 +429,10 @@ export function createParentZone(app) {
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doJoin(); } });
       out.push(
         h('div', { class: 'row pz-first pz-create-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Start a family'),
-          h('div', { class: 'sub' }, "Puts this device's players online under a new family code (the same code works in Spell Jump).")), create),
+          h('div', { class: 'sub' }, "Puts this device's players and their Spell Jump and Trail Blazer progress online under a new family code (the same code works in both games).")), create),
         h('label', { class: 'pz-label', for: 'sync-join-input' }, 'Join a family'),
         h('div', { class: 'pz-join-row' }, input, join),
-        h('div', { class: 'pz-help' }, 'Already set up in Spell Jump? Type the family code shown there (Parents → Family code).'),
+        h('div', { class: 'pz-help' }, 'Already set up in Spell Jump? Type the family code shown there (Parents → Family code). Progress already on this device is merged with the family\'s, never lost.'),
         msg);
     }
     out.push(h('p', { class: 'pz-note', id: 'pz-save-note' }, SAVE_NOTE));
@@ -447,14 +449,15 @@ export function createParentZone(app) {
     if (!show) return;
     const st = app.sync.status();
     syncLine.className = statusClass('pz-sync-line', st);
-    syncLine.replaceChildren(h('span', { class: 'sl-dot', 'aria-hidden': 'true' }), h('span', { class: 'sl-text' }, app.sync.statusLine()));
-    syncLine.setAttribute('aria-label', `${app.sync.statusLine()}. Open Family code.`);
+    const text = st.synced && !st.offline && !st.lastError && st.lastSync ? SYNCED_LINE : app.sync.statusLine();
+    syncLine.replaceChildren(h('span', { class: 'sl-dot', 'aria-hidden': 'true' }), h('span', { class: 'sl-text' }, text));
+    syncLine.setAttribute('aria-label', `${text}. Open Family code.`);
   }
 
   // ---------- Options (this device) ----------
   function mathOptions(p) {
     const d = app.factsFor(p.id);
-    const set = (k, v) => { d.opts[k] = v; d.updatedAt = Date.now(); app.saveFactsFor(p.id, d); };
+    const set = (k, v) => { d.opts[k] = v; d.updatedAt = d.sets.updatedAt = Date.now(); app.saveFactsFor(p.id, d); };   // v1.6: options travel with the set in a merge
     const v = app.voiceInfo(p.id);
     const cv = v.cloudVoice ? cloudVoiceInfo(v.cloudVoice) : null;
     const voiceText = `${cv ? `Natural voice: ${cv.name}${v.synced ? '' : ' (needs a family code)'}` : v.voiceName ? `Device voice: ${v.voiceName}` : 'Device voice: automatic'} · rate ${v.rate === 'veryslow' ? 'very slow' : v.rate}`;
