@@ -15,6 +15,8 @@
 //         best = max, shield days and counted days = union; cosmetics owned = union, equipped from the later doc;
 //         crates earned / opened / sinceCosmetic = max each; trophies (per list) and champion = union; weekBest:
 //         the later week, the farther jump within the same week.
+// words   v3.7: a class list has the class list's id on every device, so the same week applied on two devices is one
+//         list (the later copy's fields win; "Stop following" stamps editedAt so that edit wins).
 // words   v3.3: a record's masteredAt comes with the winning record; when that one is Mastered without a date, the
 //         other side's date is kept.
 import { MAX_PLAYERS } from '../spelling/profiles.js';
@@ -81,7 +83,7 @@ export function mergeFamily(local, remote, { preferRemotePin = false } = {}) {
 }
 
 // ---------- words ----------
-const listTime = (l) => Math.max(num(l.createdAt), num(l.archivedAt));
+const listTime = (l) => Math.max(num(l.createdAt), num(l.archivedAt), num(l.editedAt));   // v3.7: editedAt (Stop following a class list)
 function betterRecord(a, b) {
   if (num(a.lastSeen) !== num(b.lastSeen)) return num(a.lastSeen) > num(b.lastSeen) ? a : b;
   if (num(a.box) !== num(b.box)) return num(a.box) > num(b.box) ? a : b;

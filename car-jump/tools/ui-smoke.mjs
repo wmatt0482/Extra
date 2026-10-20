@@ -25,6 +25,7 @@
 // Parents from the player picker with zero players (PIN set there, Family code tab first with Create / Join on
 // top, "Add a player first" on the per-player tabs, the sync status line under the title on every tab).
 // Natural voice (ONLY=cloud runs just this, at both sizes): see cloudVoiceTest below.
+// Class lists (v3.7; ONLY=class): see classListTest below. The other paths set window.__noClassLists (the built-in list).
 // Self-update (ONLY=update runs just this): a copy of the app served on another port with the REAL service worker;
 // changing sw.js VERSION reloads the page once on the picker (not on the first install), and with the spell panel
 // open it only shows "Update ready, restarting soon" and reloads when the run is left; index.html and src/main.js
@@ -341,6 +342,7 @@ async function runLayout(browser, layout) {
     }
     // headless Chromium has no voices: a fake speechSynthesis records every utterance (tts.js test hook)
     window.__spoken = [];
+    window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = {
       speaking: false, pending: false,
       // several voices so the Parent Zone voice picker has a choice (ranked: Enhanced first, novelty last, no French)
@@ -622,6 +624,10 @@ async function runLayout(browser, layout) {
   const res8 = await J(page, () => ({ mission: !!document.querySelector('#res-mission'), row: !!document.querySelector('#res-pay tr[data-pay="mission"]'), reward: window.__spellJump.lastResult.missionReward }));
   check(res8.mission && res8.row && res8.reward === 500, 'mission complete: callout + $500 row');
   await shot(page, layout, '14-results-mission');
+  // the results play their moments (level-up stamp, trophies) and then drop the crate in from above: measure the
+  // layout once the moments are over and the crate has landed (crateDrop .6 s), never mid-flight
+  await page.waitForFunction(() => { const m = document.querySelector('#res-moment'); return !m || m.hidden; }, null, { timeout: 20000 }).catch(() => {});
+  await page.waitForTimeout(900);
   await layoutAudit(page, layout.insets, 'results (mission)');
   await payoutCheck(page, 'mission run', save);
   await page.click('#res-garage');
@@ -985,6 +991,7 @@ async function engagement(browser, layout) {
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   await page.addInitScript(({ insets }) => {
     window.__spoken = [];
+    window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = {
       speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
       speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
@@ -1227,6 +1234,7 @@ async function transferTest(browser, layout, page) {
   b.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   b.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   await b.addInitScript(({ insets }) => {
+    window.__noClassLists = true;
     document.addEventListener('DOMContentLoaded', () => {
       const st = document.createElement('style');
       st.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
@@ -1291,7 +1299,8 @@ async function coachKeys(browser) {
     const page = await ctx.newPage();
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
     await page.addInitScript(() => {
-      window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
+    window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
         speak(u) { setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); }, cancel() {}, addEventListener() {} };
       if (!sessionStorage.getItem('seeded')) {
         localStorage.clear();
@@ -1360,6 +1369,7 @@ async function selfUpdate(browser) {
   page.on('pageerror', (e) => errors.push(e.message));
   await page.addInitScript(() => {
     sessionStorage.setItem('loads', String((Number(sessionStorage.getItem('loads')) || 0) + 1));
+    window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
       speak(u) { setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); }, cancel() {}, addEventListener() {} };
   });
@@ -1432,6 +1442,7 @@ async function corruptBoot(browser) {
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await page.addInitScript(() => {
+    window.__noClassLists = true;
     if (sessionStorage.getItem('seeded')) return;
     sessionStorage.setItem('seeded', '1');
     localStorage.clear();
@@ -1481,6 +1492,7 @@ async function levelsTest(browser, layout) {
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   await page.addInitScript(({ insets }) => {
     window.__spoken = [];
+    window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = {
       speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
       speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
@@ -1598,6 +1610,7 @@ async function cloudVoiceTest(browser, layout) {
     const mode = JSON.parse(sessionStorage.getItem('cloudMode') || '{"key":true}');
     window.__cloudMode = mode;
     window.__cloudAsked = []; window.__cloudPlayed = []; window.__spoken = [];
+    window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = {
       speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
       speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
@@ -1735,6 +1748,111 @@ async function cloudVoiceTest(browser, layout) {
 const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
+// ---------- v3.7 class lists (ONLY=class runs just this, at both sizes) ----------
+// Leo (built-in list) gets the class list when picked (toast); Mia (a pasted list) is never switched; Parents → Words:
+// the class-list card, "Use for Mia" (the class list with its prefix pattern), the prefix highlighted on the Look
+// step, "Use for everyone" from Zoe's tab, "Stop following" (the words stay, the classId goes).
+async function classListTest(browser, layout) {
+  console.log(`\n=== class lists (${layout.name}) ===`);
+  const context = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  await routeFonts(context);
+  const page = await context.newPage();
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.addInitScript(({ insets }) => {
+    window.__spoken = [];
+    window.__ttsBackend = {
+      speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
+      cancel() {}, addEventListener() {},
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const s = document.createElement('style');
+      s.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(s);
+    });
+  }, { insets: layout.insets });
+  await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  const CL = await J(page, async () => {
+    const C = await import('/src/data/classLists.js');
+    const now = Date.now(), DAY = 864e5;
+    const pasted = (ws) => JSON.stringify({ v: 1, lists: [{ id: 'L1', name: 'Our list', createdAt: now - 3 * DAY, archivedAt: 0, pattern: '', words: ws.map((word) => ({ word })) }], activeId: 'L1', records: {}, tests: [], qualifierPending: null });
+    localStorage.clear();
+    localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, migrated: true, lastPlayer: null, options: {},
+      players: [['pmia', 'Mia', '#ff3b5c'], ['pleo', 'Leo', '#22d3ff'], ['pzoe', 'Zoe', '#2fd36b']].map(([id, name, color], i) => ({ id, name, color, createdAt: i + 1, updatedAt: i + 1 })) }));
+    for (const id of ['pmia', 'pleo', 'pzoe']) localStorage.setItem(`spellJump.${id}.save`, JSON.stringify({ v: 2, cash: 100, owned: ['beater'], seen: { coach: true, ach: 0 } }));
+    localStorage.setItem('spellJump.pmia.words', pasted(['neighbor', 'because', 'enough']));
+    localStorage.setItem('spellJump.pzoe.words', pasted(['friend', 'thought']));
+    const c = C.newestClassList(now);
+    return { id: c.id, name: c.name, pattern: c.pattern, n: c.words.length, words: c.words.map((w) => w.word) };
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  const activeOf = (id) => J(page, (pid) => { const d = JSON.parse(localStorage.getItem(`spellJump.${pid}.words`) || 'null'); const l = d && d.lists.find((x) => x.id === d.activeId); return l ? { id: l.id, classId: l.classId || null, name: l.name, pattern: l.pattern, words: l.words.map((w) => w.word), sample: !!l.sample } : null; }, id);
+
+  // Leo is on the built-in list: picking him applies the class list (toast)
+  await page.click('[data-player="pleo"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.waitForTimeout(200);
+  const toastText = await J(page, () => [...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent).join(' | '));
+  const leo = await activeOf('pleo');
+  check(leo && leo.classId === CL.id && leo.id === CL.id && !leo.sample && leo.words.length === CL.n, `a built-in-list player gets the class list on start (${leo && leo.name}, ${leo && leo.words.length} words)`);
+  check(toastText.includes(`New class list: ${CL.name}`), `toast "New class list: ${CL.name}"`);
+  await shot(page, layout, 'cl-01-title-toast', 0);
+  // Mia has a pasted list: never switched
+  await page.click('#btn-player').catch(() => J(page, () => window.__spellJump.app.go('players')));
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const mia0 = await activeOf('pmia');
+  check(mia0.id === 'L1' && !mia0.classId, 'a player with a pasted list is never switched automatically');
+
+  // Parents → Words: the class list card
+  await page.click('#btn-parents');
+  for (let k = 0; k < 2 && await J(page, () => !!document.querySelector('.pinpad')); k++) { await pinIn(page, '1234'); await page.waitForTimeout(250); }
+  await page.waitForSelector('.pz-content');
+  await page.click('.pz-tabs [data-tab="words"]');
+  await page.waitForSelector('#pz-class');
+  const card = await J(page, () => ({ head: document.querySelector('#pz-class .pc-head').textContent, words: document.querySelector('#pz-class .pc-words').textContent,
+    use: (document.querySelector('#pz-class-use') || {}).textContent || '', all: (document.querySelector('#pz-class-all') || {}).textContent || '', first: document.querySelector('.pz-content').firstElementChild.id }));
+  check(card.head === `Class list${CL.name} · ${CL.n} words` && card.first === 'pz-class', `Words tab: the class-list card on top ("Class list · ${CL.name} · ${CL.n} words")`);
+  check(CL.words.every((w) => card.words.includes(w)) && card.use === 'Use for Mia' && card.all === 'Use for everyone', 'the words shown small, "Use for Mia" and "Use for everyone"');
+  await shot(page, layout, 'cl-02-words-card');
+  await layoutAudit(page, layout.insets, 'parent zone (class list card)');
+  await page.click('#pz-class-use');
+  await page.waitForSelector('#pz-class-following');
+  const mia1 = await activeOf('pmia');
+  check(mia1.classId === CL.id && mia1.pattern === CL.pattern && mia1.words.join() === CL.words.join(), `Use for Mia: her active list is the class list with its pattern (${mia1.pattern})`);
+  check(await J(page, () => /^Following the class lists ✓/.test(document.querySelector('#pz-class-following').textContent) && !!document.querySelector('#pz-class-stop')), '"Following the class lists ✓ · each new week applies on its own" with "Stop following"');
+  await shot(page, layout, 'cl-03-following');
+  // Use for everyone (from Zoe's tab)
+  await page.click('.pz-ptab[data-player="pzoe"]');
+  await page.waitForSelector('#pz-class-all');
+  await page.click('#pz-class-all');
+  await page.waitForSelector('#pz-class-following');
+  const all = await Promise.all(['pmia', 'pleo', 'pzoe'].map(activeOf));
+  check(all.every((a) => a.classId === CL.id), 'Use for everyone: Mia, Leo and Zoe all on the class list');
+  // Stop following (Zoe): the words stay, the classId goes
+  await page.click('#pz-class-stop');
+  await page.waitForSelector('#pz-class-use');
+  const zoe = await activeOf('pzoe');
+  check(!zoe.classId && zoe.words.length === CL.n, 'Stop following: the words stay, the list is no longer a class list');
+  await page.click('#pz-close');
+
+  // the prefix is highlighted on the Look step (Mia: a new word on the class list; the Qualifier skipped here)
+  await J(page, () => { const S = window.__spellJump; S.words.qualifierPending = null; S.words.today.count = 0; S.app.persistWords(); });
+  await startRunFromTitle(page);
+  await page.waitForTimeout(400);
+  const look = await J(page, () => ({ word: window.__spellJump.spellPanel.word, mode: window.__spellJump.spellPanel.mode, pat: [...document.querySelectorAll('#sp-model .tile.pat')].map((t) => t.textContent).join('') }));
+  const prefix = CL.pattern.split(' ').map((p) => p.replace(/-/g, '')).find((p) => look.word && look.word.startsWith(p));
+  check(look.mode === 'look' && prefix && look.pat.toLowerCase() === prefix, `Look: the prefix of "${look.word}" is highlighted (${look.pat})`);
+  await shot(page, layout, 'cl-04-look-prefix', 0);
+  await page.click('#spell .sp-exit').catch(() => {});
+  check(errors.length === 0, `class lists: no console errors${errors.length ? ' — ' + errors.slice(0, 3).join(' | ') : ''}`);
+  await context.close();
+}
+
 const only = process.env.ONLY;
 try {
   for (const l of LAYOUTS) if (!only || only === l.name) await runLayout(browser, l);
@@ -1744,6 +1862,7 @@ try {
   if (!only || only === 'update') await selfUpdate(browser);
   for (const l of LAYOUTS) if (!only || only === 'cloud') await cloudVoiceTest(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'levels' || only === l.name) await levelsTest(browser, l);
+  for (const l of LAYOUTS) if (!only || only === 'class' || only === l.name) await classListTest(browser, l);
 } catch (e) {
   failures.push('exception: ' + e.message);
   console.error(e);

@@ -41,10 +41,17 @@ export function cleanSayAs(s) {
 // Letters only (what the engine's letter rings carry).
 export const ringLetters = (word) => normalizeWord(word).replace(/[^a-z]/g, '').split('');
 
+/** One pattern ("ough", "-tion", "un-") or several separated by spaces or commas ("un- re- pre- mis-", v3.6.4: a
+ *  prefix or suffix week): lowercase, letters ' and - only, up to 8 patterns of 12 characters, joined by spaces. */
+export const MAX_PATTERNS = 8;
 export function normalizePattern(p) {
-  const s = normalizeWord(p).replace(/[^a-z'-]/g, '');
-  return /[a-z]/.test(s) ? s.slice(0, 12) : '';
+  const parts = String(p == null ? '' : p).toLowerCase().split(/[\s,;|]+/).map((x) => x.replace(/[^a-z'-]/g, '')).filter((x) => /[a-z]/.test(x)).map((x) => x.slice(0, 12));
+  const out = [];
+  for (const x of parts) if (!out.includes(x)) out.push(x);
+  return out.slice(0, MAX_PATTERNS).join(' ');
 }
+/** The patterns of a list as an array. */
+export const patternList = (p) => (normalizePattern(p) ? normalizePattern(p).split(' ') : []);
 
 /**
  * Parse the Words-of-the-week text area. One word per line, optional parts after ` | `:
@@ -121,15 +128,19 @@ export function formatList(words) {
 // "un-" one at the start; otherwise every occurrence.
 export function patternRanges(word, pattern) {
   const w = normalizeWord(word);
-  const p = normalizePattern(pattern);
-  const core = p.replace(/^-+|-+$/g, '');
-  if (!core) return [];
-  const all = [];
-  for (let i = w.indexOf(core); i >= 0; i = w.indexOf(core, i + 1)) all.push([i, i + core.length]);
-  if (!all.length) return [];
-  if (p.startsWith('-') && !p.endsWith('-')) { const end = all.filter(([, e]) => e === w.length); if (end.length) return end; }
-  if (p.endsWith('-') && !p.startsWith('-')) { const st = all.filter(([s]) => s === 0); if (st.length) return st; }
-  return all;
+  // several patterns: the first one that matches this word (an anchored prefix / suffix only where it is anchored)
+  for (const p of patternList(pattern)) {
+    const core = p.replace(/^-+|-+$/g, '');
+    if (!core) continue;
+    const all = [];
+    for (let i = w.indexOf(core); i >= 0; i = w.indexOf(core, i + 1)) all.push([i, i + core.length]);
+    if (!all.length) continue;
+    const prefix = p.endsWith('-') && !p.startsWith('-'), suffix = p.startsWith('-') && !p.endsWith('-');
+    if (suffix) { const end = all.filter(([, e]) => e === w.length); if (end.length) return end; continue; }
+    if (prefix) { const st = all.filter(([s]) => s === 0); if (st.length) return st; continue; }
+    return all;
+  }
+  return [];
 }
 
 // Indices i (into the word) where a syllable break falls just before character i.

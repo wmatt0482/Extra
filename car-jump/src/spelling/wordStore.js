@@ -1,11 +1,16 @@
 // Per-player spelling data (`spellJump.<playerId>.words`): dated word lists (one active, the rest archived),
 // one progress record per word, test history, today's mission counter and the first-try streak.
 // Pure functions over a plain object (callers persist it); all dates come in as `now` (ms).
+// v3.7 class lists: a list applied from src/data/classLists.js keeps its `classId` (and the class list's id as its own
+// id, so two devices applying the same week merge into one list); a player whose active list is the sample or a class
+// list follows the class lists (autoClassList applies each new week); "Stop following" drops the classId (editedAt
+// stamps the change so it wins a sync merge).
 import {
   MISSION_SIZE, applyQualifier, applyResult, applyReview, applyTest, buildMission, dayKey, isMastered, isNew,
   needsLook, newRecord, noteSpelled, pickNext, status,
 } from './scheduler.js';
 import { SAMPLE_WORDS, SAMPLE_LIST_NAME, SAMPLE_PATTERN, SAMPLE_VERSION, cleanSayAs, normalizePattern, normalizeWord, isValidWord } from './words.js';
+import { newestClassList } from '../data/classLists.js';
 
 export const WORDS_VERSION = 1;
 export const SAMPLE_ID = 'sample';
@@ -61,7 +66,10 @@ export function normalizeWordsData(raw, now = Date.now()) {
     if (!words.length) return null;
     // the built-in list follows the shipped version (a new week's words replace a stored older copy)
     if (l.sample) return { ...sampleList(num(l.createdAt, now)), archivedAt: num(l.archivedAt, 0) };
-    return { id: l.id, name: str(l.name, 'Word list'), createdAt: num(l.createdAt, now), archivedAt: num(l.archivedAt, 0), pattern: normalizePattern(l.pattern), sample: !!l.sample, words };
+    const out = { id: l.id, name: str(l.name, 'Word list'), createdAt: num(l.createdAt, now), archivedAt: num(l.archivedAt, 0), pattern: normalizePattern(l.pattern), sample: !!l.sample, words };
+    if (typeof l.classId === 'string' && /^class-[a-z0-9-]{1,40}$/.test(l.classId)) out.classId = l.classId;
+    if (num(l.editedAt, 0) > 0) out.editedAt = num(l.editedAt, 0);
+    return out;
   }).filter(Boolean);
   if (!d.lists.length) d.lists = [sampleList(now)];
   d.activeId = d.lists.some((l) => l.id === raw.activeId) ? raw.activeId : d.lists[0].id;
@@ -148,9 +156,10 @@ export function listName(now) {
 
 /** Save a parsed list as the new active list; the previous one goes to the archive (the sample list is
  *  dropped instead). The next PLAY runs the Qualifier on it. Returns the new list. */
-export function saveNewList(d, words, pattern, now) {
+export function saveNewList(d, words, pattern, now, { id = null, name = null, classId = null } = {}) {
   const prev = activeList(d);
-  const list = { id: newListId(d, now), name: listName(now), createdAt: now, archivedAt: 0, pattern: normalizePattern(pattern), sample: false, words: words.map((w) => cleanWordEntry(w)).filter(Boolean) };
+  const list = { id: id && !d.lists.some((l) => l.id === id) ? id : newListId(d, now), name: name || listName(now), createdAt: now, archivedAt: 0, pattern: normalizePattern(pattern), sample: false, words: words.map((w) => cleanWordEntry(w)).filter(Boolean) };
+  if (classId) list.classId = classId;
   if (prev && prev.sample) {
     d.lists = d.lists.filter((l) => l !== prev);
     // sample-list progress for words not in the new list goes with it
@@ -189,6 +198,38 @@ export function deleteList(d, id) {
   for (const [w, r] of Object.entries(d.records)) if (r.listId === id) delete d.records[w];
   d.tests = d.tests.filter((t) => t.listId !== id);
   if (d.qualifierPending === id) d.qualifierPending = null;
+  return true;
+}
+
+// ---------- v3.7: class lists ----------
+/** The player follows the class lists: the active list is the built-in sample or a class list. */
+export const followsClass = (d) => { const l = activeList(d); return !!(l && (l.sample || l.classId)); };
+/** Make a class list (src/data/classLists.js) the active list. Its id is the class list's id on every device. A list
+ *  already active with that classId: nothing (null). An archived copy comes back (restored). Returns the list. */
+export function applyClassList(d, cl, now) {
+  if (!cl || !cl.id) return null;
+  const cur = activeList(d);
+  if (cur && cur.classId === cl.id) return null;
+  d.deletedLists = (d.deletedLists || []).filter((x) => x !== cl.id);
+  const old = listById(d, cl.id);
+  if (old) {
+    old.classId = cl.id; old.name = cl.name; old.pattern = normalizePattern(cl.pattern);
+    restoreList(d, cl.id, now);
+    return old;
+  }
+  return saveNewList(d, cl.words, cl.pattern, now, { id: cl.id, name: cl.name, classId: cl.id });
+}
+/** A new week for a player who follows the class lists: applies the newest class list. Returns it, or null. */
+export function autoClassList(d, now, newest = newestClassList(now)) {
+  if (!newest || !followsClass(d) || activeList(d).classId === newest.id) return null;
+  return applyClassList(d, newest, now);
+}
+/** "Stop following": the words stay, the list is no longer a class list (later weeks do not apply). */
+export function stopFollowing(d, now) {
+  const l = activeList(d);
+  if (!l || !l.classId) return false;
+  delete l.classId;
+  l.editedAt = now;
   return true;
 }
 

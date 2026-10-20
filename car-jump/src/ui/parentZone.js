@@ -20,8 +20,9 @@ import { formatList, parseList, MAX_WORDS } from '../spelling/words.js';
 import { SAMPLE_PRESENTATION, SYSTEM_VOICE, VOICE_TIP, buildPresentation, voiceQuality } from '../spelling/tts.js';
 import { CLOUD_VOICES, cloudVoiceInfo } from '../tts/voices.js';
 import {
-  activeList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList,
+  activeList, applyClassList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList, stopFollowing,
 } from '../spelling/wordStore.js';
+import { newestClassList } from '../data/classLists.js';
 import { WHY_INTRO, WHY_ROWS, WHY_SOURCES } from '../spelling/why.js';
 import { $, h } from './dom.js';
 import { icon } from './icons.js';
@@ -237,7 +238,7 @@ export function createParentZone(app) {
     const ta = h('textarea', { id: 'pz-words', rows: '9', spellcheck: 'false', autocapitalize: 'none', autocomplete: 'off', autocorrect: 'off',
       placeholder: 'neighbor | neigh/bor | My neighbor has a dog.\nbecause\nenough | e/nough' });
     ta.value = list.sample ? '' : formatList(list.words);
-    const pat = h('input', { id: 'pz-pattern', type: 'text', maxlength: '12', spellcheck: 'false', autocapitalize: 'none', autocomplete: 'off', autocorrect: 'off', placeholder: 'e.g. ough or -tion' });
+    const pat = h('input', { id: 'pz-pattern', type: 'text', maxlength: '104', spellcheck: 'false', autocapitalize: 'none', autocomplete: 'off', autocorrect: 'off', placeholder: 'e.g. ough, -tion, or un- re- pre- for a prefix week' });
     pat.value = list.sample ? '' : list.pattern || '';
     const msg = h('div', { class: 'pz-msg', id: 'pz-msg', 'aria-live': 'polite' });
     const count = h('span', { class: 'pz-count', id: 'pz-count' });
@@ -278,6 +279,32 @@ export function createParentZone(app) {
         return b;
       })) : null;
 
+    // v3.7: this week's class list (src/data/classLists.js): one tap for this player or the whole family
+    const cl = newestClassList(Date.now());
+    let classCard = null;
+    if (cl) {
+      const following = !!list.classId;
+      const useFor = (ids) => {
+        const now = Date.now();
+        for (const id of ids) {
+          const wd = app.wordsFor(id);
+          applyClassList(wd, cl, now);
+          app.saveWordsFor(id, wd);
+          if (app.cloudPrepareFor) app.cloudPrepareFor(id);
+        }
+      };
+      const actions = following
+        ? [h('div', { class: 'pc-follow', id: 'pz-class-following' }, 'Following the class lists ✓ · each new week applies on its own'),
+          h('button', { class: 'pc-stop', id: 'pz-class-stop', 'data-sfx': '', onclick: () => { stopFollowing(d, Date.now()); app.saveWordsFor(p.id, d); app.toast('Stopped following the class lists'); render(); } }, 'Stop following')]
+        : [h('button', { class: 'btn btn-sm btn-cyan', id: 'pz-class-use', 'data-sfx': '', onclick: () => { useFor([p.id]); app.toast(`Class list for ${p.name}`); render(); } }, `Use for ${p.name}`),
+          app.family.players.length > 1 ? h('button', { class: 'btn btn-sm', id: 'pz-class-all', 'data-sfx': '', onclick: () => { useFor(app.family.players.map((x) => x.id)); app.toast('Class list for everyone'); render(); } }, 'Use for everyone') : null];
+      classCard = h('div', { class: 'pz-class', id: 'pz-class', 'data-class': cl.id, 'data-following': String(following) },
+        h('div', { class: 'pc-head' }, h('span', { class: 'tag' }, 'Class list'), h('b', {}, `${cl.name} · ${cl.words.length} words`)),
+        h('div', { class: 'pc-words' }, cl.words.map((w) => w.word).join(' · ')),
+        cl.pattern ? h('div', { class: 'sub' }, `Pattern of the week: ${cl.pattern}`) : null,
+        h('div', { class: 'pc-actions' }, ...actions));
+    }
+
     const arch = archivedLists(d);
     const archBox = h('div', { class: 'pz-archive', id: 'pz-archive' });
     if (!arch.length) archBox.append(h('div', { class: 'sub muted' }, 'Older lists show up here after you save a new one. They come back for review 2 and 4 weeks later.'));
@@ -295,8 +322,9 @@ export function createParentZone(app) {
     }
 
     return [
+      classCard,
       h('div', { class: 'pz-active' },
-        h('div', { class: 'label' }, list.name, list.sample ? h('span', { class: 'tag' }, 'built in') : null),
+        h('div', { class: 'label' }, list.name, list.sample ? h('span', { class: 'tag' }, 'built in') : list.classId ? h('span', { class: 'tag' }, 'class list') : null),
         h('div', { class: 'sub' }, list.sample ? `${list.words.length} long-o words, ready to play. Paste next week's words below when they arrive; this list moves to the archive.` : `${list.words.length} words${list.pattern ? ` · pattern of the week: ${list.pattern}` : ''} · saved ${fmtDate(list.createdAt)}`)),
       h('label', { class: 'pz-label', for: 'pz-words' }, 'Words of the week, one per line', count),
       h('div', { class: 'pz-help' }, 'Optional extras after a word, separated by " | ": syllables with slashes, then a sentence. Example: neighbor | neigh/bor | My neighbor has a dog. Letters, apostrophes, hyphens and spaces only; up to 40 words.'),

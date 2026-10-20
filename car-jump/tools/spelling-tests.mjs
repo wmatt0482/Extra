@@ -300,6 +300,12 @@ test('normalizeWord, ringLetters, pattern ranges and syllable breaks', () => {
   assert.deepEqual(patternRanges('enough', 'ough'), [[2, 6]]);
   assert.deepEqual(patternRanges('question', '-tion'), [[4, 8]]);
   assert.deepEqual(patternRanges('friend', 'ough'), []);
+  // v3.6.4: several patterns (a prefix week): the first that matches, anchored where it is anchored
+  assert.deepEqual(patternRanges('unblock', 'un- re- pre- mis-'), [[0, 2]]);
+  assert.deepEqual(patternRanges('preheat', 'un- re- pre- mis-'), [[0, 3]], '"re-" is anchored, so it skips pre-heat and "pre-" matches');
+  assert.deepEqual(patternRanges('misbehave', 'un-, re-, mis-'), [[0, 3]]);
+  assert.deepEqual(patternRanges('happened', 'un- re- pre- mis-'), []);
+  assert.deepEqual(patternRanges('action', '-tion -sion'), [[2, 6]]);
   assert.deepEqual([...syllableBreaks('beautiful', ['beau', 'ti', 'ful'])], [4, 6]);
   assert.deepEqual([...syllableBreaks('ice cream', ['ice', 'cream'])], [4]);
 });
@@ -701,6 +707,78 @@ async function call(store, method, path, body, { contentType = JSON_CT, raw = fa
 }
 const famData = (players = [{ id: 'pmia', name: 'Mia' }], extra = {}) => ({ v: 1, players: players.map((p) => ({ color: '#ff3b5c', createdAt: T0, updatedAt: T0, ...p })), pinHash: 'h1', pinUpdatedAt: T0, options: {}, optionsUpdatedAt: {}, removedPlayers: [], ...extra });
 
+console.log('class lists (v3.7)');
+{
+  const CL = await import('../src/data/classLists.js');
+  const W = await import('../src/spelling/wordStore.js');
+  const { isValidWord: validWord } = await import('../src/spelling/words.js');
+  const { mergeWords: mergeW } = await import('../src/sync/merge.js');
+  const day = (y, m, d, h = 12) => new Date(y, m - 1, d, h).getTime();
+  const oct19 = CL.CLASS_LIST_BY_ID['class-2026-10-19'];
+  test('the class lists: newest first, 18 valid words for Oct 19 with syllables that spell the word and sentences ≤ 200 chars', () => {
+    assert.ok(CL.CLASS_LISTS.length >= 1);
+    for (let i = 1; i < CL.CLASS_LISTS.length; i++) assert.ok(CL.CLASS_LISTS[i - 1].weekOf > CL.CLASS_LISTS[i].weekOf, 'newest first');
+    for (const l of CL.CLASS_LISTS) {
+      assert.match(l.id, /^class-\d{4}-\d\d-\d\d$/); assert.equal(l.id, `class-${l.weekOf}`); assert.ok(l.words.length >= 1 && l.words.length <= 40);
+      for (const w of l.words) {
+        assert.ok(validWord(w.word), w.word);
+        if (w.syllables) assert.equal(w.syllables.join(''), w.word.replace(/[^a-z]/g, ''), w.word);
+        assert.ok(w.sentence && w.sentence.length <= 200 && w.sentence.toLowerCase().includes(w.word), `${w.word}: "${w.sentence}"`);
+      }
+    }
+    assert.equal(oct19.words.length, 18); assert.equal(oct19.name, 'Week of Oct 19 · prefixes'); assert.equal(oct19.pattern, 'un- re- im- in- pre- mis- dis- over-');
+    assert.deepEqual(oct19.words.find((w) => w.word === 'misbehave').syllables, ['mis', 'be', 'have']);
+    assert.deepEqual(patternRanges('overheat', oct19.pattern), [[0, 4]], 'the prefix is highlighted');
+  });
+  test('newestClassList: the newest week that started, or starts within 2 days (Sat Oct 17 yes, Fri Oct 16 no)', () => {
+    assert.equal(CL.newestClassList(day(2026, 10, 16)), null);
+    assert.equal(CL.newestClassList(day(2026, 10, 17)).id, 'class-2026-10-19');
+    assert.equal(CL.newestClassList(day(2026, 10, 20)).id, 'class-2026-10-19');
+    assert.equal(CL.newestClassList(day(2027, 3, 1)).id, CL.CLASS_LISTS[0].id);
+  });
+  test('applyClassList: the active list (id = the class id, classId, its name and pattern), the sample goes, the Qualifier is due; again = no-op', () => {
+    const d = W.defaultWords(T0);
+    assert.ok(W.followsClass(d), 'the sample list follows the class lists');
+    const l = W.applyClassList(d, oct19, T0);
+    const a = W.activeList(d);
+    assert.equal(a.id, 'class-2026-10-19'); assert.equal(a.classId, 'class-2026-10-19'); assert.equal(a.name, 'Week of Oct 19 · prefixes'); assert.equal(a.pattern, oct19.pattern);
+    assert.equal(l, a); assert.equal(d.lists.length, 1, 'the sample list is dropped'); assert.equal(d.qualifierPending, a.id);
+    assert.equal(W.applyClassList(d, oct19, T0 + 1000), null); assert.equal(d.lists.length, 1);
+    const n = W.normalizeWordsData(JSON.parse(JSON.stringify(d)), T0);
+    assert.equal(W.activeList(n).classId, 'class-2026-10-19', 'normalize keeps classId');
+  });
+  test('autoClassList: a sample or class-list player gets the newest week; a pasted list is never switched; Stop following keeps the words', () => {
+    const fresh = W.defaultWords(T0);
+    assert.equal(W.autoClassList(fresh, day(2026, 10, 19)).id, 'class-2026-10-19');
+    assert.equal(W.autoClassList(fresh, day(2026, 10, 20)), null, 'already on it');
+    const older = { ...oct19, id: 'class-2026-10-12', name: 'Week of Oct 12', weekOf: '2026-10-12' };
+    const follower = W.defaultWords(T0); W.applyClassList(follower, older, T0);
+    assert.equal(W.autoClassList(follower, day(2026, 10, 19), oct19).id, 'class-2026-10-19', 'a new week applies on its own');
+    assert.equal(W.archivedLists(follower)[0].id, 'class-2026-10-12', 'last week goes to the archive');
+    const pasted = W.defaultWords(T0); W.saveNewList(pasted, parseList('neighbor\nbecause').words, '', T0);
+    assert.ok(!W.followsClass(pasted)); assert.equal(W.autoClassList(pasted, day(2026, 10, 19)), null); assert.equal(W.activeList(pasted).words.length, 2);
+    const stop = W.defaultWords(T0); W.applyClassList(stop, oct19, T0);
+    assert.ok(W.stopFollowing(stop, T0 + 5)); assert.ok(!W.followsClass(stop)); assert.equal(W.activeList(stop).words.length, 18);
+    assert.equal(W.autoClassList(stop, day(2026, 10, 26), { ...oct19, id: 'class-2026-10-26', weekOf: '2026-10-26' }), null, 'later weeks do not apply after Stop following');
+  });
+  test('sync: the same class list applied on two devices the same day merges into ONE list with every word record', () => {
+    const a = W.defaultWords(T0), b = W.defaultWords(T0);
+    W.applyClassList(a, oct19, T0 + 1000); W.applyClassList(b, oct19, T0 + 2000);
+    a.records.unblock = { ...a.records.unblock, attempts: 2, lastSeen: T0 + 3000, box: 1 };
+    b.records.preview = { ...b.records.preview, attempts: 1, lastSeen: T0 + 4000, box: 1 };
+    const m = mergeW({ updatedAt: T0 + 3000, data: a }, { updatedAt: T0 + 4000, data: b }, T0 + 5000);
+    assert.equal(m.lists.length, 1); assert.equal(m.lists[0].id, 'class-2026-10-19'); assert.equal(m.activeId, 'class-2026-10-19'); assert.equal(m.lists[0].classId, 'class-2026-10-19');
+    assert.equal(m.records.unblock.attempts, 2); assert.equal(m.records.preview.attempts, 1); assert.equal(Object.keys(m.records).length, 18);
+    // one device still on the sample: the class list wins (applied later) and the sample is dropped
+    const s = W.defaultWords(T0);
+    const m2 = mergeW({ updatedAt: T0, data: s }, { updatedAt: T0 + 4000, data: b }, T0 + 5000);
+    assert.equal(m2.activeId, 'class-2026-10-19'); assert.ok(!m2.lists.some((l) => l.sample));
+    // Stop following on one device wins over the other's older copy (editedAt)
+    const c = JSON.parse(JSON.stringify(b)); W.stopFollowing(c, T0 + 9000);
+    const m3 = mergeW({ updatedAt: T0 + 9000, data: c }, { updatedAt: T0 + 4000, data: b }, T0 + 9500);
+    assert.ok(!m3.lists[0].classId);
+  });
+}
 console.log('sync: protocol (create / get / put / rev checks)');
 await atest('POST creates a family (201); GET returns it with its players; a second POST is 409', async () => {
   const st = memoryStore();

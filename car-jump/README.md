@@ -27,7 +27,7 @@ the build contract is the "Spelling edition (v3)" section of `SPEC.md`. The pure
    button) | a sentence (read aloud with the word and when your child taps "Sentence") | **say as**: how the voice
    should pronounce the word, for when it says it wrong (`read | | I read a book yesterday. | red`). The say-as text
    is never shown to your child (the tiles still show "read"); letters, apostrophes, hyphens and spaces, up to 40
-   characters. Add a **Pattern of the week** if the list has one (`ough`, `-tion`): it is highlighted when a
+   characters. Add a **Pattern of the week** if the list has one (`ough`, `-tion`, or several for a prefix week: `un- re- pre- mis-`): it is highlighted when a
    word is first shown. Up to 40 words; letters, apostrophes, hyphens and spaces. Tap **Save**. The old list is
    archived and comes back for review 2 and 4 weeks later.
 3. **Check speech.** In **Options**, the Speech line says **Speech on** (with the voice it found) or **Speech off**.
@@ -74,6 +74,21 @@ puts it all on the clipboard for a teacher. **Why this works** lists the researc
 
 Until a parent saves a list, a 15-word **built-in list** (this week's long-o words, with sentences) is active and labeled on the
 title and in the Parent Zone.
+
+### Class lists (v3.7)
+
+The weekly spelling list from the class teacher ships inside the game for every family (`src/data/classLists.js`).
+A player whose active list is the built-in list or a class list **follows the class lists**: when the game starts
+(and after a sync), the newest class list becomes the active list on its own, with a toast "New class list: Week of
+Oct 19 · prefixes", and last week's list goes to the archive for review (a new player starts on it at once). A family
+that pasted its own list is never switched. **Parents → Words** shows the class list on top ("Class list · Week of
+Oct 19 · prefixes · 18 words", the words small) with **Use for Mia** and **Use for everyone**; a player who follows
+it sees "Following the class lists ✓" and a **Stop following** link that keeps the words but stops the weekly change.
+The applied list has the class list's id on every device, so two devices applying the same week merge into one list.
+**Adding a week:** one entry at the top of `WEEKS` in `src/data/classLists.js`: `id: 'class-2026-10-26'`, `name: 'Week
+of Oct 26 · topic'`, `weekOf: '2026-10-26'`, an optional `pattern` (`'un- re- pre-'`, `'-tion'`) and the words in the
+Parent Zone format, one per line: `word | syl/la/bles | a sentence`. It becomes the newest list two days before its
+week starts, so it can ship over the weekend; bump `VERSION` in `src/main.js` and `sw.js` as for any release.
 
 ## The spell panel ("Spell to Launch")
 
@@ -550,7 +565,8 @@ car-jump/
   src/
     main.js               boot: players, saves, audio + speech, engine loading, navigation, spelling flow, runs
     audio.js              WebAudio synth (engine, smashes, music, …, v3: letter click, correct, oops, mission, ducking)
-    data/                 cars, tracks, upgrades, rating, cosmetics (skins, stickers, levels, XP, crate odds)
+    data/                 cars, tracks, upgrades, rating, cosmetics (skins, stickers, levels, XP, crate odds),
+                          classLists (v3.7: the weekly class spelling lists, newest first)
     game/                 the physics engine (createGame contract in SPEC.md)
     spelling/
       words.js            list parser, normalizing, pattern / syllable helpers, attempt alignment, sample list

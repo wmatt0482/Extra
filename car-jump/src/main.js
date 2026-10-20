@@ -41,7 +41,7 @@ import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdat
 import { createSyncClient } from './sync/client.js';
 import { applyImport, decodeTransfer, encodeTransfer } from './meta/transfer.js';
 
-const VERSION = '3.6.3';
+const VERSION = '3.7.0';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
@@ -327,6 +327,7 @@ async function boot() {
     refreshStreak(save, Date.now());     // v3.3: a missed day since the last streak day uses this week's shield
     words = Profiles.loadWords(id);
     WS.rollToday(words, Date.now());
+    const classList = WS.autoClassList(words, Date.now(), classOverride());   // v3.7: a new class-list week for a player who follows them
     session = createSession();
     family.lastPlayer = id;
     Profiles.writeFamily(family);
@@ -341,6 +342,19 @@ async function boot() {
     app.persist();
     app.persistWords();
     go('title');
+    if (classList) toast(`New class list: ${classList.name}`);
+  }
+  // test hook (like window.__ttsBackend): window.__noClassLists = true keeps the built-in list (the pre-3.7 UI paths)
+  const classOverride = () => (window.__noClassLists ? null : undefined);
+  /** v3.7: the current player's words changed under us (sync): a new class-list week applies when they follow them. */
+  function classListCheck() {
+    if (!words || run) return;
+    const l = WS.autoClassList(words, Date.now(), classOverride());
+    if (!l) return;
+    session = createSession();
+    app.persistWords();
+    toast(`New class list: ${l.name}`);
+    if (screen === 'title') refreshTitle();
   }
 
   function refreshTitle() {
@@ -505,6 +519,7 @@ async function boot() {
         WS.rollToday(words, Date.now());
         session = createSession();
         if (screen === 'title') refreshTitle();
+        classListCheck();
       }
       if (wordsCache.has(id) && wordsCache.get(id) !== words) replaceInPlace(wordsCache.get(id), fresh);
       if (screen === 'players') screens.players.show();
