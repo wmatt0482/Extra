@@ -12,6 +12,10 @@
 // freezes (riders, clock) with phase 'gate' + event 'gate' {index, x} until openGate({ correct, quick, fixed, holdSec }):
 // quick → +60 % boost and a 1.2 s push, correct → +40 %, fixed → no boost and the rivals run on for holdSec (1.5 s)
 // while the player waits at the line. Gate cash: $120 a right answer (+$80 quick), $40 fixed (cash.gates / cash.quick).
+// v1.5: race.riders may be a list ({ name, paint, vehicle, ... }: the rival trio; their names and paints are used); the
+// backflip is a 'combo' {count: 2} (+$50 combo cash); openGate({ turbo: true }) fires 'turbo' and a 3 s push; the run
+// is sampled every 0.1 s into summary.ghostTrace [[t, x, 0]]; with cfg.ghost, getState().ghostGap and
+// summary.beatGhost compare the run with it.
 // Test hooks: window.__mockScript = { aiTimes: [s, s, s] (the AI riders' race times; default 7.0, 9.6, 10.4: the
 //   player, ~8.8 s, finishes 2nd), noCrash: true }.
 import { drawRanger } from '../ui/vehiclePreview.js';
@@ -51,11 +55,13 @@ export function createGame(canvas, opts = {}) {
     const script = (typeof window !== 'undefined' && window.__mockScript) || {};
     const times = Array.isArray(script.aiTimes) && script.aiTimes.length === 3 ? script.aiTimes : [7.0, 9.6, 10.4];
     const paints = AI_PAINTS.filter((p) => p !== cfg.paint).slice(0, 3);
-    const nRiders = cfg.race && Number.isFinite(cfg.race.riders) ? Math.max(0, Math.min(3, cfg.race.riders)) : 3;
+    const list = cfg.race && Array.isArray(cfg.race.riders) ? cfg.race.riders.slice(0, 3) : null;
+    const nRiders = list ? list.length : cfg.race && Number.isFinite(cfg.race.riders) ? Math.max(0, Math.min(3, cfg.race.riders)) : 3;
     const length = trail.length || 600;
     run = {
       cfg, trail, length, mult: (cfg.stats && cfg.stats.coinMult) || 1, crashPlanned: !script.noCrash,
-      riders: AI.slice(0, nRiders).map((a, i) => ({ name: a.name, paint: paints[i], finishT: times[i], x: 0 })),
+      riders: (list || AI.slice(0, nRiders)).map((a, i) => ({ name: a.name || AI[i].name, paint: (list && typeof a.paint === 'string' && a.paint) || paints[i], finishT: times[i], x: 0 })),
+      ghost: Array.isArray(cfg.ghost) && cfg.ghost.length > 1 ? cfg.ghost : null, trace: [], nextSample: 0, comboCash: 0, maxCombo: 0,
       phase: 'countdown', t: 0, cd: 3, goT: 3 * CD_STEP, bogged: false, rt: 0, distance: 0, checkpoint: 0, place: nRiders + 1,
       speedKmh: 0, maxSpeed: 0, boost: 0.4, boosting: false, inAir: false, flightT: 0, airTime: 0, airCash: 0, bigAir: false,
       flips: 0, flipCash: 0, perfect: 0, perfectCash: 0, crashes: 0, crashT: 0, coins: 0, coinCash: 0, nextCoin: 0,
@@ -75,10 +81,17 @@ export function createGame(canvas, opts = {}) {
     const m = r.mult, k = (v) => Math.round(v * m);
     const c = {
       distance: k(Math.floor(r.distance) * 2), air: k(r.airCash), flips: k(r.flipCash), perfect: k(r.perfectCash), coins: k(r.coinCash),
-      place: k(placeCash(r)), finish: r.finishCrossed ? k(300) : 0, gates: k(r.gateCash), quick: k(r.quickCash),
+      place: k(placeCash(r)), finish: r.finishCrossed ? k(300) : 0, gates: k(r.gateCash), quick: k(r.quickCash), combo: k(r.comboCash),
     };
     c.total = Object.values(c).reduce((a, v) => a + v, 0);
     return c;
+  }
+  // seconds behind (+) / ahead (-) of the ghost at the player's distance
+  function ghostGap(r) {
+    const g = r.ghost;
+    const i = g.findIndex((p) => p[1] >= r.distance);
+    const t = i < 0 ? g[g.length - 1][0] : g[i][0];
+    return Math.round((Math.max(0, r.rt) - t) * 10) / 10;
   }
   function currentPlace(r) {
     const me = r.finishCrossed ? r.timeSec : null;
@@ -114,6 +127,7 @@ export function createGame(canvas, opts = {}) {
     if (r.boosting) r.boost = Math.max(0, r.boost - dt * 0.4);
     r.rt += dt;
     if (r.rt < 0) return;   // bogged start
+    while (r.rt >= r.nextSample && r.trace.length < 1500) { r.trace.push([Math.round(r.nextSample * 10) / 10, Math.round(r.distance * 10) / 10, 0]); r.nextSample += 0.1; }
     if (r.phase === 'crash') {
       r.speedKmh = 0;
       if (r.rt >= r.crashT + CRASH_T) {
@@ -159,6 +173,8 @@ export function createGame(canvas, opts = {}) {
         } else {
           r.flips++; r.flipCash += 150; r.perfect++; r.perfectCash += 100; r.boost = Math.min(1, r.boost + 0.3);
           emit({ type: 'flip', kind: 'back', count: 1, direction: 'back' });
+          r.comboCash += 50; r.maxCombo = 2;
+          emit({ type: 'combo', count: 2 });
           emit({ type: 'land', quality: 'perfect' });
         }
       }
@@ -191,7 +207,8 @@ export function createGame(canvas, opts = {}) {
     const ratingScore = Math.round(reach * 50 + (r.finishCrossed ? 20 : 0) + (r.finishCrossed ? (5 - r.place) * 8 : 0) + r.flips * 4 - r.crashes * 4);
     const rating = ratingScore >= 88 ? 'S' : ratingScore >= 70 ? 'A' : ratingScore >= 50 ? 'B' : ratingScore >= 25 ? 'C' : 'D';
     return {
-      distance: Math.floor(r.distance), durationSec: Math.round(r.t * 10) / 10, timeSec: r.finishCrossed ? r.timeSec : Math.round(Math.max(0, r.rt) * 100) / 100,
+      distance: Math.floor(r.distance), durationSec: Math.round(r.t * 10) / 10, timeSec: r.finishCrossed ? r.timeSec : Math.round(Math.max(0, r.rt) * 100) / 100, maxCombo: r.maxCombo,
+      ghostTrace: r.trace.slice(), beatGhost: r.ghost && r.finishCrossed ? r.timeSec < r.ghost[r.ghost.length - 1][0] : null,
       airTime: Math.round(r.airTime * 100) / 100, flips: r.flips, crashes: r.crashes, perfect: r.perfect, smashed: 0, coins: r.coins,
       maxSpeedKmh: Math.round(r.maxSpeed), place: r.finishCrossed ? r.place : null, gates: { ...r.gates }, winches: 0,
       finishCrossed: r.finishCrossed, cash, rating, ratingScore, riders: ridersOut(r),
@@ -268,6 +285,7 @@ export function createGame(canvas, opts = {}) {
       r.gates.answered++;
       if (correct) { r.gates.correct++; r.gateCash += 120; r.boost = Math.min(1, r.boost + (quick ? 0.6 : 0.4)); }
       if (quick) { r.gates.quick++; r.quickCash += 80; r.pushUntil = r.rt + 1.2; }
+      if (quick && result.turbo) { r.boost = 1; r.pushUntil = r.rt + 3; emit({ type: 'turbo' }); }
       if (fixed) { r.gates.fixed++; r.gateCash += 40; r.holdUntil = r.rt + (Number.isFinite(result.holdSec) ? result.holdSec : 1.5); }
       r.gateIndex++; r.phase = 'ride';
       emit({ type: 'gateOpen', index: r.gateIndex - 1, correct, quick, fixed });
@@ -285,7 +303,7 @@ export function createGame(canvas, opts = {}) {
         phase: r.phase, distance: r.distance, speedKmh: r.speedKmh, boost: r.boost, airTime: r.inAir ? r.flightT : 0, flips: r.flips, smashed: 0,
         cash: cashNow(r).total, finishCrossed: r.finishCrossed, gateIndex: r.gateIndex, gatesTotal: r.gateX.length, stuck: false, upsideDown: r.phase === 'crash',
         place: r.place, timeSec: r.phase === 'countdown' ? 0 : r.finishCrossed ? r.timeSec : Math.max(0, r.rt),
-        riders: ridersOut(r),
+        riders: ridersOut(r), ghostGap: r.ghost ? ghostGap(r) : undefined,
       };
     },
   };

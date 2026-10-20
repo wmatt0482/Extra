@@ -2,29 +2,58 @@
 // time, place, medal), and the paints / decals that racing unlocks. Pure functions over the save object (they mutate
 // it and return a result); the caller persists. Tracks are passed in (the engine agent's src/data/trails.js, or the
 // fallback list), so nothing here depends on ids.
-import { MAX_LEVEL, UPGRADE_BY_ID, resolveStats, upgradeCost } from '../data/upgrades.js';
+import { MAX_LEVEL, UPGRADE_BY_ID, emptyLevels, resolveStats, upgradeCost } from '../data/upgrades.js';
 import { DECALS, PAINTS } from '../data/paints.js';
 import { MEDAL_RANK, raceMedal } from '../data/medals.js';
+import { TIER_MUL } from '../data/runway.js';
+import { CUPS, cupOf } from '../data/cups.js';
 
 export const canAfford = (save, amount) => save.cash >= amount;
 
-/** Cost of the next level of an upgrade, or null when maxed. */
-export function nextUpgradeCost(save, upgradeId) {
-  const lv = save.levels[upgradeId] || 0;
-  return lv >= MAX_LEVEL ? null : upgradeCost(lv);
+// ---------- vehicles (v1.5): owned / selected, per-vehicle upgrades ----------
+/** The shop price (src/data/vehicles.js, sim-tuned). */
+export const priceOf = (v) => (v && v.price) || 0;
+export const tierOfVehicle = (vehicles, id) => ((vehicles || []).find((v) => v.id === id) || { tier: 1 }).tier || 1;
+export const tierMulOf = (vehicles, id) => TIER_MUL[Math.max(0, Math.min(TIER_MUL.length - 1, tierOfVehicle(vehicles, id) - 1))];
+export const ownsVehicle = (save, id) => !!(save.vehicles[id] && save.vehicles[id].owned);
+/** The selected vehicle's upgrade levels. */
+export const levelsOf = (save, id = save.vehicle) => (save.vehicles[id] && save.vehicles[id].levels) || emptyLevels();
+export function buyVehicle(save, vehicles, id) {
+  const v = (vehicles || []).find((x) => x.id === id);
+  if (!v) return { ok: false, reason: 'unknown vehicle' };
+  if (ownsVehicle(save, id)) return { ok: false, reason: 'owned' };
+  const price = priceOf(v);
+  if (!canAfford(save, price)) return { ok: false, reason: 'cash', need: price - save.cash };
+  save.cash -= price;
+  save.vehicles[id] = { owned: true, levels: emptyLevels() };
+  save.vehicle = id;
+  return { ok: true, spent: price, vehicle: v };
+}
+export function selectVehicle(save, id) {
+  if (!ownsVehicle(save, id)) return false;
+  save.vehicle = id;
+  return true;
 }
 
-export function buyUpgrade(save, upgradeId) {
+/** Cost of the next level of an upgrade on the selected vehicle, or null when maxed. */
+export function nextUpgradeCost(save, upgradeId, vehicles = null) {
+  const lv = levelsOf(save)[upgradeId] || 0;
+  return lv >= MAX_LEVEL ? null : upgradeCost(lv, tierMulOf(vehicles, save.vehicle));
+}
+
+export function buyUpgrade(save, upgradeId, vehicles = null) {
   if (!UPGRADE_BY_ID[upgradeId]) return { ok: false, reason: 'unknown upgrade' };
-  const cost = nextUpgradeCost(save, upgradeId);
+  const cost = nextUpgradeCost(save, upgradeId, vehicles);
   if (cost === null) return { ok: false, reason: 'max' };
   if (!canAfford(save, cost)) return { ok: false, reason: 'cash' };
   save.cash -= cost;
-  save.levels[upgradeId] = (save.levels[upgradeId] || 0) + 1;
-  return { ok: true, spent: cost, level: save.levels[upgradeId] };
+  const levels = levelsOf(save);
+  levels[upgradeId] = (levels[upgradeId] || 0) + 1;
+  save.vehicles[save.vehicle].levels = levels;
+  return { ok: true, spent: cost, level: levels[upgradeId] };
 }
 
-export const statsFor = (save) => resolveStats(save.levels);
+export const statsFor = (save) => resolveStats(levelsOf(save));
 
 export function earn(save, amount) {
   const a = Math.max(0, Math.round(amount || 0));
@@ -39,10 +68,26 @@ export const PLACE_BONUS = { 1: 500, 2: 300, 3: 150 };   // the engine pays it (
 export const trailIndex = (trails, id) => trails.findIndex((t) => t.id === id);
 export const isFinished = (save, id) => (save.finished[id] || 0) > 0;
 export const isCleared = (save, id) => (save.bestPlace[id] || 99) <= PODIUM;
+// v1.5 cups: a cup's first trail opens with the cup; inside a cup, 3rd or better on the previous trail opens the next.
+// A cup opens with BOTH any trophy from the previous cup's weekend (bronze / silver / gold: a podium in the points)
+// AND enough stars (STARS_TO_OPEN: 12 for Pro, 30 for Legend): the trophy proves they can race the cup, the stars that
+// they have worked its trails.
+export const starCount = (save) => Object.values(save.stars || {}).reduce((a, v) => a + v.filter(Boolean).length, 0);
+export function isCupOpen(save, cupId) {
+  const i = CUPS.findIndex((c) => c.id === cupId);
+  if (i <= 0) return true;
+  const prev = CUPS[i - 1].id;
+  return !!(save.cups && save.cups[prev] && save.cups[prev].trophy) && starCount(save) >= CUPS[i].starsToOpen;
+}
 export function isUnlocked(save, trails, id) {
   const i = trailIndex(trails, id);
   if (i < 0) return false;
-  return i === 0 || isCleared(save, trails[i - 1].id);
+  const cup = cupOf(trails[i], trails);
+  if (!isCupOpen(save, cup)) return false;
+  if (i === 0) return true;
+  const prev = trails[i - 1];
+  if (cupOf(prev, trails) !== cup) return true;           // the first trail of an open cup
+  return isCleared(save, prev.id);
 }
 export function nextTrail(trails, id) {
   const i = trailIndex(trails, id);
@@ -58,11 +103,14 @@ export function currentTrail(save, trails) {
 }
 
 // ---------- paints + decals ----------
+const ownedCos = (save, kind, id) => !!(save.cosmetics && save.cosmetics.owned && (save.cosmetics.owned[kind] || []).includes(id));
 export function ownsPaint(save, trails, paintId) {
   const p = PAINTS.find((x) => x.id === paintId);
   if (!p) return false;
   const u = p.unlock;
   if (!u) return true;
+  if (ownedCos(save, 'paint', paintId)) return true;       // v1.5: a crate drop, the streak, a set bonus
+  if (u.crate || u.streak || u.set) return false;
   if (u.finish) return trails.some((t) => t.style === u.finish && isFinished(save, t.id));
   if (u.medal) {
     if (u.count === 'all') return trails.length > 0 && trails.every((t) => save.medals[t.id] === u.medal);
@@ -75,6 +123,8 @@ export function ownsDecal(save, decalId) {
   if (!d) return false;
   const u = d.unlock;
   if (!u) return true;
+  if (ownedCos(save, 'decal', decalId)) return true;
+  if (u.crate) return false;
   const r = save.records;
   if (u.distance) return (r.longestRide || 0) >= u.distance;
   if (u.flips) return (r.totalFlips || 0) >= u.flips;
@@ -86,7 +136,7 @@ export const ownedDecals = (save) => DECALS.filter((d) => ownsDecal(save, d.id))
 
 /** The race's cash rows (the engine's breakdown): every part as a whole dollar amount, plus a 'bonus' row for whatever
  *  the total holds beyond the parts, so the rows always add up to the total that is banked. */
-export const CASH_ORDER = ['distance', 'air', 'flips', 'perfect', 'smash', 'coins', 'place', 'finish', 'gates', 'quick'];
+export const CASH_ORDER = ['distance', 'air', 'flips', 'perfect', 'combo', 'smash', 'coins', 'place', 'finish', 'gates', 'quick'];
 const ALWAYS = ['distance', 'air', 'flips', 'perfect', 'coins'];
 export function cashRows(cash) {
   const c = cash && typeof cash === 'object' ? cash : {};

@@ -9,7 +9,7 @@
 // content-addressed: cache-first in Spell Jump's clip cache (TTS_CACHE, shared on this origin).
 // Caches are per origin, shared with Spell Jump's worker: this worker only ever deletes its own ('trail-blazer-…').
 // If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'trail-blazer-v1.4.0';
+const VERSION = 'trail-blazer-v1.5.0';
 const PREFIX = 'trail-blazer-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -27,10 +27,17 @@ const SHELL = [
   'src/data/paints.js',
   'src/data/medals.js',
   'src/data/fallbackTrails.js',
+  'src/data/fallbackVehicles.js',
+  'src/data/cups.js',
+  'src/data/cosmetics.js',
+  'src/data/rivals.js',
+  'src/data/runway.js',
   'src/meta/save.js',
   'src/meta/economy.js',
   'src/meta/selfUpdate.js',
   'src/meta/mockEngine.js',
+  'src/meta/crates.js',
+  'src/meta/season.js',
   'src/ui/tbIcons.js',
   'src/ui/keyboard.js',
   'src/ui/players.js',
@@ -54,11 +61,16 @@ const SHELL = [
   'src/facts/governor.js',
   'src/facts/scouts.js',
   'src/ui/pitCheck.js',
+  'src/ui/items.js',
+  'src/ui/crate.js',
+  'src/ui/wall.js',
 ];
 // The engine (built separately, may be split differently) and the shared Spell Jump modules (+ their imports):
 // cached when present; the page also posts every module it actually loaded (see 'cache-urls' below).
 const OPTIONAL = [
   'src/data/trails.js',
+  'src/data/vehicles.js',
+  'src/data/mutators.js',
   'src/game/engine.js',
   'src/game/course.js',
   'src/game/render.js',

@@ -15,6 +15,9 @@
 // v1.4 ("find where they are, fast"): the check runs before the first race (and re-checks itself), locates then
 // zooms; secure families move on at once; one scout gate per race reaches ahead; the difficulty governor keeps the
 // gates at the child's learning level (store.js / governor.js / scouts.js).
+// v1.5 ("The Season"): 8 vehicles (buy, select, per-vehicle upgrades), 18 trails in 3 cups with championship
+// weekends, crates and rider gear (the Garage Wall), stars, rivals, the ghost of the best run, the streak and the daily
+// Pit Challenge (a trail + a mutator, double cash). The engine's coinMult input carries the cup × daily multiplier.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -30,8 +33,20 @@ import {
   defaultSave, loadFactsData, loadSave, loadSettings, removeFactsData, removeSave, writeFactsData, writeSave, writeSettings,
 } from './meta/save.js';
 import {
-  bankRide, cashRows, currentTrail, earn, finishedCount, hashString, isUnlocked, nextTrail, statsFor,
+  bankRide, cashRows, currentTrail, earn, finishedCount, hashString, isCupOpen, isUnlocked, nextTrail, statsFor, tierOfVehicle,
 } from './meta/economy.js';
+import { CUPS, CUP_BY_ID, cupMult, cupOf, trailsOfCup } from './data/cups.js';
+import { DAILY_MULT } from './data/runway.js';
+import { FALLBACK_VEHICLES } from './data/fallbackVehicles.js';
+import { itemOf } from './data/cosmetics.js';
+import { RIVAL_BY_ID, noteRivalRace, rivalTrio } from './data/rivals.js';
+import { GHOST_MAX } from './meta/save.js';
+import { earnCrate } from './meta/crates.js';
+import {
+  awardStars, dailyDone, dailyFor, finishWeekend, notePlay, openStreak, raceDayDone, starLabels, streakDays, weekendDone, weekendNext, weekendRace,
+} from './meta/season.js';
+import { createWall } from './ui/wall.js';
+import { createCrateOpener } from './ui/crate.js';
 import {
   MISSION_REWARD, activeFacts, afterRace, beginRace, checkDue, levelFor, missionState, nextFact, noteRace, recordAnswer, refreshFrontier, resetFacts,
 } from './facts/store.js';
@@ -49,11 +64,11 @@ import { createTrails } from './ui/trails.js';
 import { createHud } from './ui/hud.js';
 import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
-import { drawAvatar, drawPreview, loadVehicle, vehicleModule } from './ui/vehiclePreview.js';
+import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, vehicleModule } from './ui/vehiclePreview.js';
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -103,6 +118,28 @@ async function loadTrails() {
   return { trails: FALLBACK_TRAILS, source: 'built-in', medalTable: null };
 }
 
+// v1.5: the engine agent's vehicle lineup (src/data/vehicles.js) and the daily mutators (src/data/mutators.js); the
+// built-in lineup / no mutators if they are missing
+async function loadVehicles() {
+  try {
+    const m = await import('./data/vehicles.js');
+    const list = Array.isArray(m.VEHICLES) ? m.VEHICLES : null;
+    if (list && list.length && list.every((v) => v && typeof v.id === 'string')) {
+      const sp = m.SPECIALS || {};
+      return { vehicles: list.map((v) => ({ ...v, specialName: (sp[v.special] && sp[v.special].name) || '', specialText: v.specialBlurb || (sp[v.special] && sp[v.special].blurb) || '' })),
+        rivalVehicles: typeof m.rivalVehicles === 'function' ? m.rivalVehicles : null };
+    }
+  } catch (e) { console.warn('[TrailBlazer] data/vehicles.js failed to load: using the built-in lineup.', e); }
+  return { vehicles: FALLBACK_VEHICLES.map((v) => ({ ...v, specialName: v.special ? 'Special' : '', specialText: v.special || '' })), rivalVehicles: null };
+}
+async function loadMutators() {
+  try {
+    const m = await import('./data/mutators.js');
+    if (Array.isArray(m.MUTATORS)) return m.MUTATORS.filter((x) => x && typeof x.id === 'string');
+  } catch (e) { console.warn('[TrailBlazer] data/mutators.js failed to load: no Pit Challenge mutators.', e); }
+  return [];
+}
+
 async function boot() {
   hydrateAll();
   const settings = loadSettings();
@@ -121,6 +158,8 @@ async function boot() {
   let session = createSession();        // re-queue + incremental rehearsal across the races of one sitting
   const factsCache = new Map();         // other players' math data while the Parent Zone edits them
   const { trails, source: trailSource, medalTable } = await loadTrails();
+  const { vehicles, rivalVehicles } = await loadVehicles();
+  const mutators = await loadMutators();
   const canvas = $('#game');
   const engineMod = await loadEngine();
   let game = null, run = null, hudRaf = 0, screen = 'players', paused = false, coaching = false, stopFallback = 0, lastResult = null;
@@ -128,7 +167,7 @@ async function boot() {
   const toastsEl = $('#toasts');
 
   const app = {
-    save, settings, sync, trails, trailSource, medalTable,
+    save, settings, sync, trails, trailSource, medalTable, vehicles, mutators,
     audio: Audio, sfx: Sfx,
     version: VERSION,
     engineName: engineMod.name,
@@ -137,6 +176,7 @@ async function boot() {
     get facts() { return facts; },
     get screen() { return screen; },
     persist: () => writeSave(currentPlayerId, save),
+    dailyInfo: () => dailyInfo(),
     persistFacts: () => { if (currentPlayerId && facts) writeFactsData(currentPlayerId, facts); },
     // ----- the math data of any player (Parent Zone) -----
     factsFor(id) {
@@ -171,6 +211,7 @@ async function boot() {
     createPlayer: (name, color) => Profiles.createPlayer(family, name, color),
     openParents: (opts) => pz.open(opts),
     onLookChanged: () => drawHero(),
+    saveOf(id) { return id === currentPlayerId ? save : loadSave(id); },
     trailsDoneFor(id) { return finishedCount(id === currentPlayerId ? save : loadSave(id), trails); },
     resetSaveFor(id) {
       removeSave(id);
@@ -212,7 +253,10 @@ async function boot() {
     if (game && run) game.setInput(input);
   });
   const playersUI = createPlayers(app);
-  const screens = { players: playersUI.players, newplayer: playersUI.newplayer, garage: createGarage(app), trails: createTrails(app), results: createResults(app), grid: createGrid(app) };
+  const crates = createCrateOpener(app);
+  app.crates = crates;
+  const screens = { players: playersUI.players, newplayer: playersUI.newplayer, garage: createGarage(app), trails: createTrails(app), results: createResults(app, crates), grid: createGrid(app),
+    wall: createWall(app, crates) };
   // the voice (SPEC §1): Spell Jump's tts, with the natural voice when the family has a code and the player's Spell Jump
   // voice option picked one (clips of "seven times eight." etc. from /api/tts/prepare; the device voice otherwise)
   const cloud = createCloudVoice({ getCode: () => sync.code, getWords: () => [], audio: Audio });
@@ -245,7 +289,7 @@ async function boot() {
   function drawHero(t = 0) {
     if (!currentPlayerId) return;
     const rm = settings.reducedMotion;
-    drawPreview(heroCanvas, { paint: save.paint, decal: save.decal }, { t: 0, bob: rm ? 0 : Math.sin(t / 70) * 0.7 + Math.sin(t / 23) * 0.3 });
+    drawPreview(heroCanvas, playerLook(save), { t: rm ? 0 : t / 1000, bob: rm ? 0 : Math.sin(t / 70) * 0.7 + Math.sin(t / 23) * 0.3 });
   }
   function heroLoop(t) { drawHero(t); heroRaf = requestAnimationFrame(heroLoop); }
   function setHero(on) {
@@ -272,6 +316,7 @@ async function boot() {
     replaceSave(loadSave(id));
     facts = loadFactsData(id);
     refreshFrontier(facts, Date.now());       // a new day / week can move the frontier (re-entry windows)
+    openStreak(save, Date.now());             // v1.5: the streak's shield / restart, as Spell Jump does on open
     session = createSession();
     family.lastPlayer = id;
     Profiles.writeFamily(family);
@@ -285,13 +330,42 @@ async function boot() {
     if (!p) return;
     $('#title-player').textContent = p.name;
     drawAvatar($('#title-avatar'), p.color);
-    $('#title-trails-text').textContent = `Tracks ${finishedCount(save, trails)} / ${trails.length}`;
+    // v1.5: cup progress ("Rookie Cup: 4 / 6 · 9 ★"), the streak flame, the daily Pit Challenge card
+    const cup = [...CUPS].reverse().find((c) => isCupOpen(save, c.id)) || CUPS[0];
+    const inCup = trailsOfCup(cup.id, trails);
+    const cupStars = inCup.reduce((a, t) => a + (save.stars[t.id] || []).filter(Boolean).length, 0);
+    $('#title-trails-text').textContent = `${cup.name}: ${inCup.filter((t) => finishedCount(save, [t])).length} / ${inCup.length} · ${cupStars} ★`;
+    const days = streakDays(save);
+    const sEl = $('#title-streak');
+    sEl.dataset.days = String(days);
+    sEl.classList.toggle('lit', days > 0);
+    $('#title-streak-n').textContent = String(days);
+    $('#title-streak-u').textContent = days === 1 ? 'day' : 'days';
+    sEl.setAttribute('aria-label', `Streak: ${days} day${days === 1 ? '' : 's'}`);
+    const d = dailyInfo();
+    const card = $('#title-daily');
+    card.hidden = !d;
+    if (d) {
+      card.classList.toggle('done', d.done);
+      card.dataset.dailyTrail = d.trail.id;
+      card.dataset.dailyMutator = d.mutator ? d.mutator.id : '';
+      $('#title-daily-text').textContent = d.done ? `Done today! New one tomorrow` : `Today: ${d.mutator ? d.mutator.name + ' on ' : ''}${d.trail.name} · ×${DAILY_MULT} cash`;
+      $('#title-daily-go').textContent = d.done ? 'Race' : 'Go';
+    }
     if (facts) {
       $('#title-lv').textContent = `Lv ${levelFor(facts.xp)}`;
       const m = missionState(facts, Date.now());
       $('#title-mission').classList.toggle('done', m.done);
       $('#title-mission-text').textContent = m.done ? 'Mission complete! Race on' : `Today: ${m.count} / ${m.size} math gates`;
     }
+  }
+  /** Today's Pit Challenge: { trail, mutator, done } (seeded by the date; picks among the unlocked trails). */
+  function dailyInfo() {
+    if (!currentPlayerId) return null;
+    const d = dailyFor(save, trails, mutators, Date.now());
+    const trail = trails.find((t) => t.id === d.trailId);
+    if (!trail) return null;
+    return { trail, mutator: mutators.find((m) => m.id === d.mutator) || null, done: !!d.done };
   }
   function refreshFactsHud() {
     if (!facts) return;
@@ -314,6 +388,7 @@ async function boot() {
   function go(name, arg) {
     lastGo = performance.now();
     closePanel();
+    if (crates.isOpen) crates.close();
     for (const el of $$('.screen')) el.hidden = el.dataset.screen !== name;
     for (const [k, s] of Object.entries(screens)) if (k !== name && s.hide) s.hide();
     screen = name;
@@ -382,26 +457,53 @@ async function boot() {
     closePanel();
     if (facts && !opts.skipCheck && facts.sets.mode === 'auto') {
       const due = checkDue(facts, Date.now());
-      if (due.due) { pit.showCard(trailId, due); return; }
+      if (due.due) { pit.showCard(trailId, due, { weekend: !!opts.weekend, daily: !!opts.daily }); return; }
     }
     const trail = trails.find((t) => t.id === trailId && isUnlocked(save, trails, t.id)) || currentTrail(save, trails);
     clearTimeout(stopFallback);
+    // v1.5: the weekend (only when started from the cup / the results and this is the weekend's next trail), the daily
+    // Pit Challenge (from the title card, once a day), the cup × daily cash multiplier, the rival trio, the ghost
+    const weekend = !!opts.weekend && weekendNext(save) === trail.id;
+    const d = opts.daily && !weekend ? dailyInfo() : null;
+    const daily = !!(d && !d.done && d.trail.id === trail.id);
+    const mutator = daily && d.mutator ? d.mutator : null;
+    const cupId = cupOf(trail, trails);
+    const mult = cupMult(cupId) * (daily ? DAILY_MULT : 1);
+    // a weekend keeps the same three rivals from its first race to its last (a retirement waits for the weekend's end)
+    let trio = rivalTrio(save.rivals);
+    if (weekend) {
+      const kept = (save.weekend.trio || []).map((id) => RIVAL_BY_ID[id]).filter(Boolean);
+      if (kept.length === trio.length) trio = kept; else save.weekend.trio = trio.map((x) => x.id);
+    }
+    const myTier = tierOfVehicle(vehicles, save.vehicle);
+    const rv = rivalVehicles ? (() => { try { return rivalVehicles(myTier, trio.length); } catch (_) { return null; } })() : null;
+    const riders = trio.map((x, i) => {
+      const t = Math.max(1, Math.min(vehicles.length, myTier + [-1, 0, 1][i % 3]));
+      return { name: x.name, rivalId: x.id, paint: x.paint, helmet: x.helmet, suit: x.suit, vehicle: (rv && rv[i]) || (vehicles[t - 1] || vehicles[0]).id };
+    });
+    const ghostTrace = !mutator && Array.isArray(save.ghosts[trail.id]) && save.ghosts[trail.id].length > 1 ? save.ghosts[trail.id] : null;
     run = { trail, ended: false, quitting: false, place: null, lastState: null, started: false, posBannerAt: 0, cdTimer: 0,
-      gates: facts ? facts.opts.gates : 4, facts: [], xp: 0, mastered: [], fluent: [], missionPaid: 0, levelBefore: facts ? levelFor(facts.xp) : 1 };
+      gates: facts ? facts.opts.gates : 4, facts: [], xp: 0, mastered: [], fluent: [], missionPaid: 0, levelBefore: facts ? levelFor(facts.xp) : 1,
+      weekend, daily, mutator, cupId, mult, riders, ghost: ghostTrace, ghostTime: save.bestTime[trail.id] || 0, maxCombo: 0, turbo: false, taunted: false };
     save.selectedTrail = trail.id;
     go('ride');
-    hud.reset(trail, paintColor(save.paint));
+    hud.reset(trail, paintColor(save.paint), { ghost: !!ghostTrace });
     refreshFactsHud();
     hideCountdown();
     controls.reset();
     controls.enable(true);
     paused = false;
     try {
+      const stats = statsFor(save);
+      stats.coinMult = (stats.coinMult || 1) * mult;
+      const look = { ...playerLook(save), paint: enginePaint(save.paint) };
       game.start({
-        trail, stats: statsFor(save), seed: hashString('trail:' + trail.id), paint: save.paint, decal: save.decal,
+        trail, stats, seed: hashString('trail:' + trail.id), paint: look.paint, decal: save.decal,
+        vehicle: save.vehicle, helmet: look.helmet, suit: look.suit, flag: look.flag, boostTrail: look.trail, look,
+        ghost: ghostTrace, mutator: mutator ? mutator.id : null,
         bestDistance: save.best[trail.id] || null, bestTime: save.bestTime[trail.id] || null,
         gates: facts ? facts.opts.gates : 4,           // Math Gates (Parents → Options: 3 / 4 / 6)
-        race: { riders: 3, name: playerName() },
+        race: { riders, name: playerName(), ...(save.rivals.tier > 0 ? { skillUp: Math.min(0.3, save.rivals.tier * 0.05) } : {}) },
         shake: settings.reducedMotion ? 0 : settings.shake / 100,
       });
       game.setInput({ gas: false, brake: false, boost: false });
@@ -463,7 +565,15 @@ async function boot() {
   function onEvent(evt) {
     if (!run || !evt) return;
     switch (evt.type) {
-      case 'countdown': showCount(String(evt.n), false); Sfx.beep(false); break;
+      case 'countdown':
+        showCount(String(evt.n), false); Sfx.beep(false);
+        if (!run.taunted) {                 // v1.5: the trio's leader says hi (kid tone), or the Pit Challenge's twist
+          run.taunted = true;
+          if (run.mutator) hud.banner('small', `Pit Challenge: ${run.mutator.name}!`, 1400);
+          const lead = run.riders[0] && RIVAL_BY_ID[run.riders[0].rivalId];
+          if (lead) hud.banner('rival', `${lead.name}: ${lead.taunt}`, 1700);
+        }
+        break;
       case 'go': run.started = true; showCount('GO!', true); Sfx.beep(true); Sfx.gateDrop(); Audio.whoosh(); if (evt.bogged) bogged(); break;
       case 'bogged': bogged(); break;
       case 'launch': if (!run.started) { run.started = true; Audio.whoosh(); } break;
@@ -488,8 +598,17 @@ async function boot() {
       case 'splash': Sfx.splash(); break;
       case 'gate': askGate(evt).catch((e) => { console.error('[TrailBlazer] gate failed', e); try { game.openGate({ correct: true }); } catch (_) { /* ignore */ } }); break;
       case 'gateOpen': Sfx.creak(); break;
+      case 'turbo': run.turbo = true; hud.banner('turbo', 'TURBO!', 1300); Audio.whoosh(); break;
+      case 'combo': {
+        const n = Math.max(1, Number(evt.count) || 1);
+        run.maxCombo = Math.max(run.maxCombo, n);
+        if (n >= 2) hud.banner('combo', `COMBO ×${n}`, 1000);
+        break;
+      }
       case 'finishLine': {
         if (evt.place >= 1) run.place = evt.place;
+        { const lead = run.riders[0] && RIVAL_BY_ID[run.riders[0].rivalId]; if (lead && evt.place === 1) hud.banner('rival', `${lead.name}: ${lead.cheer}`, 1700); }
+        if (evt.place >= 1 && evt.place <= 3) { const horn = itemOf('horn', save.cosmetics.equipped.horn); if (horn) setTimeout(() => Sfx.horn(horn.notes), 500); }
         Audio.cheer(1.4); Audio.fireworks(); Sfx.cowbell();
         break;
       }
@@ -511,7 +630,8 @@ async function boot() {
     const pick = nextFact(facts, Date.now(), session) || { fact: '7x8', flip: false, isNew: false };
     r.pick = pick;
     const index = Number.isInteger(evt.index) ? evt.index : r.facts.length;
-    const res = await gatePanel.open({ fact: pick.fact, flip: pick.flip, index, total: r.gates });
+    const turbo = r.gates > 1 && index === r.gates - 1;    // v1.5: the race's last gate is the Turbo gate
+    const res = await gatePanel.open({ fact: pick.fact, flip: pick.flip, index, total: r.gates, turbo });
     if (res.cancelled || run !== r || r.ended) return;
     const out = recordAnswer(facts, pick.fact, { ...res, scout: pick.reason === 'scout' ? pick.family : undefined }, Date.now(), session);
     r.facts.push({ fact: pick.fact, flip: pick.flip, correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, ms: res.ms, status: out.status, newlyMastered: out.newlyMastered,
@@ -527,7 +647,7 @@ async function boot() {
     refreshFactsHud();
     document.documentElement.classList.remove('math');
     controls.enable(!paused);
-    try { game.openGate({ correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed }); } catch (e) { console.error('[TrailBlazer] openGate threw', e); }
+    try { game.openGate({ correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, turbo: turbo && !!res.quick }); } catch (e) { console.error('[TrailBlazer] openGate threw', e); }
   }
 
   function bogged() { if (run && !run.boggedShown) { run.boggedShown = true; hud.banner('small', 'Too early! Bogged start', 1200); Audio.oops(true); } }
@@ -536,16 +656,21 @@ async function boot() {
   // summary.place and the AI riders around them by how far along the track they were at the end
   function standings(r, summary) {
     const p = Profiles.playerById(family, currentPlayerId);
-    const meRow = { name: p ? p.name : 'You', paint: save.paint, color: p ? p.color : null, me: true };
+    const meRow = { name: p ? p.name : 'You', paint: save.paint, color: p ? p.color : null, me: true, look: { ...playerLook(save), flag: null, paint: enginePaint(save.paint) } };
+    // v1.5: the AI riders are the rival trio (names, paints, helmets, vehicles from run.riders)
+    const ai = (x) => {
+      const c = r.riders.find((q) => q.name === x.name) || {};
+      return { name: x.name, paint: x.paint || c.paint, rivalId: c.rivalId || null, look: { vehicle: c.vehicle, paint: enginePaint(x.paint || c.paint), helmet: c.helmet, suit: c.suit } };
+    };
     const list = Array.isArray(summary.riders) && summary.riders.length ? summary.riders : null;
     if (list && list.some((x) => x.me) && list.every((x) => x.place >= 1) && summary.finishCrossed) {
-      return list.slice().sort((a, b) => a.place - b.place).map((x) => (x.me ? { ...meRow, place: x.place } : { name: x.name, paint: x.paint, place: x.place }));
+      return list.slice().sort((a, b) => a.place - b.place).map((x) => (x.me ? { ...meRow, place: x.place } : { ...ai(x), place: x.place }));
     }
-    const ai = ((r.lastState && r.lastState.riders) || []).filter((x) => !x.me).sort((a, b) => (b.x || 0) - (a.x || 0));
-    const total = ai.length + 1;
+    const others = ((r.lastState && r.lastState.riders) || []).filter((x) => !x.me).sort((a, b) => (b.x || 0) - (a.x || 0));
+    const total = others.length + 1;
     const myPlace = summary.finishCrossed && summary.place >= 1 ? Math.min(total, summary.place) : total;
     const out = [];
-    for (let place = 1, k = 0; place <= total; place++) out.push(place === myPlace ? { ...meRow, place } : { name: ai[k].name, paint: ai[k++].paint, place });
+    for (let place = 1, k = 0; place <= total; place++) out.push(place === myPlace ? { ...meRow, place } : { ...ai(others[k++]), place });
     return out;
   }
 
@@ -581,11 +706,15 @@ async function boot() {
     }
     const math = facts ? { facts: r.facts, xp: r.xp, mastered: r.mastered, fluent: r.fluent, missionPaid: r.missionPaid, mission: missionState(facts, Date.now()),
       levelBefore: r.levelBefore, levelAfter: levelFor(facts.xp) } : null;
+    const rows4 = standings(r, summary);
+    const season = seasonAfterRace(r, summary, bank, math, rows4, medalTimes);
+    app.persist();
     const nt = nextTrail(trails, r.trail.id);
     const result = lastResult = {
-      trail: r.trail, summary, rows, total, bank, medalTimes, standings: standings(r, summary),
-      place: bank.place, timeSec: summary.timeSec || 0, math, probeStarted,
-      next: nt && isUnlocked(save, trails, nt.id) ? nt : null,
+      trail: r.trail, summary: { ...summary, maxCombo: Math.max(Number(summary.maxCombo) || 0, r.maxCombo) }, rows, total, bank, medalTimes, standings: rows4,
+      place: bank.place, timeSec: summary.timeSec || 0, math, probeStarted, season,
+      next: !season.weekend && nt && isUnlocked(save, trails, nt.id) && cupOf(nt, trails) === cupOf(r.trail, trails) ? nt : null,
+      weekendNext: season.weekend && !season.weekendFinal ? weekendNext(save) : null,
       unlocked: bank.unlocked ? trails.find((t) => t.id === bank.unlocked) : null,
     };
     const wasPaused = paused;
@@ -593,9 +722,56 @@ async function boot() {
     setTimeout(() => {
       go('results', result);
       if (bank.earned) Audio.cash();
-      if (bank.place === 1 || bank.newMedal || bank.unlocked || bank.paints.length || bank.decals.length) setTimeout(() => Audio.fanfare(), 400);
+      if (bank.place === 1 || bank.newMedal || bank.unlocked || bank.paints.length || bank.decals.length || season.crates.length) setTimeout(() => Audio.fanfare(), 400);
       if (math && math.mastered.length) setTimeout(() => Audio.trophy(), 900);
     }, wasPaused ? 0 : 900);
+  }
+
+  // ---------- v1.5: the season after a race (stars, crates, streak, daily, ghost, rivals, weekend, play log) ----------
+  function seasonAfterRace(r, summary, bank, math, rows4, medalTimes) {
+    const now = Date.now();
+    const finished = !!summary.finishCrossed;
+    const asked = r.facts.length, right = r.facts.filter((f) => f.correct).length, quick = r.facts.filter((f) => f.quick).length;
+    const out = { cup: { id: r.cupId, name: CUP_BY_ID[r.cupId].name, mult: cupMult(r.cupId) }, daily: r.daily, turbo: r.turbo, crates: [] };
+    const crate = (tier, why) => { earnCrate(save, tier); out.crates.push({ tier, why }); };
+    if (finished) {
+      out.stars = { ...awardStars(save, r.trail, trails, summary, { asked, right }, medalTimes), labels: starLabels(r.trail, trails) };
+      if (out.stars.set) out.crates.push({ tier: 'gold', why: 'all 3 stars' });
+      if (bank.place >= 1 && bank.place <= 3 && right >= 3) crate('bronze', 'podium');
+      if (asked > 0 && quick === asked) crate('silver', 'all gates quick');
+      out.streak = raceDayDone(save, now);
+      if (r.daily) out.dailyDone = dailyDone(save, now);
+      // the ghost: a new best time keeps this run's trace (not on a Pit Challenge: its twist changes the trail)
+      const trace = Array.isArray(summary.ghostTrace) ? summary.ghostTrace : null;
+      if (!r.mutator && bank.newBestTime && trace && trace.length > 1) save.ghosts[r.trail.id] = trace.slice(0, GHOST_MAX);
+      if (r.ghost && r.ghostTime > 0 && summary.timeSec > 0) {
+        const beat = typeof summary.beatGhost === 'boolean' ? summary.beatGhost : summary.timeSec < r.ghostTime;
+        out.ghost = { beat, by: Math.round(Math.abs(r.ghostTime - summary.timeSec) * 10) / 10 };
+      }
+      const before = rivalTrio(save.rivals)[0];
+      const rv = noteRivalRace(save.rivals, rows4);
+      out.rival = { ...rv, beats: save.rivals.beats[before.id] || 0, next: rv.retired ? rivalTrio(save.rivals)[0] : null };
+      if (r.weekend) {
+        weekendRace(save, r.trail.id, rows4);
+        const w = save.weekend;
+        if (weekendDone(save)) {
+          const fin = finishWeekend(save);
+          const looks = Object.fromEntries(rows4.map((x) => [x.name, x.look]));
+          fin.table = fin.table.map((x) => ({ ...x, look: looks[x.name] }));
+          out.weekendFinal = fin;
+          out.weekend = { cupName: fin.cupName, race: 3, of: 3, table: fin.table };
+          if (fin.trophy) out.crates.push({ tier: 'gold', why: `${fin.trophy} trophy` });
+        } else {
+          out.weekend = { cupName: CUP_BY_ID[w.cup].name, race: w.results.length, of: w.trails.length, table: [] };
+          const looks = Object.fromEntries(rows4.map((x) => [x.name, x.look]));
+          out.weekend.table = Object.entries(w.points).map(([name, points]) => ({ name, points, me: rows4.some((x) => x.me && x.name === name), look: looks[name] }))
+            .sort((a, b) => b.points - a.points || (b.me ? 1 : 0) - (a.me ? 1 : 0));
+        }
+      }
+    }
+    if (math && math.levelAfter > math.levelBefore) for (let l = math.levelBefore; l < math.levelAfter; l++) crate('bronze', `level ${l + 1}`);
+    notePlay(save, now, { races: finished ? 1 : 0, stars: out.stars ? out.stars.fresh.length : 0, crates: out.crates.length + ((out.streak && out.streak.rewards) || []).filter((w) => w.crate).length + (out.dailyDone ? 1 : 0), streak: streakDays(save, now) });
+    return out;
   }
 
   // ---------- pause (sound, music, motion, shake, end ride) ----------
@@ -717,6 +893,7 @@ async function boot() {
   // ---------- navigation wiring ----------
   $('#btn-ride').addEventListener('click', () => go('trails'));
   $('#btn-garage').addEventListener('click', () => go('garage'));
+  $('#title-daily').addEventListener('click', () => { const d = dailyInfo(); if (d) startRide(d.trail.id, { daily: !d.done }); });
   $('#btn-grid').addEventListener('click', () => go('grid'));
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'sync' }));
   $('#btn-player').addEventListener('click', () => go('players'));
@@ -736,7 +913,7 @@ async function boot() {
   document.addEventListener('dblclick', (e) => e.preventDefault());
   document.addEventListener('contextmenu', (e) => { if (!e.target.closest('.pz input, .pz textarea, .pz pre')) e.preventDefault(); });
   document.addEventListener('touchmove', (e) => {
-    if (!e.target.closest('.scroll, .garage-body, .trails-body, .results-body, .style-strip, .grid-scroll, .pz input, .pz textarea')) e.preventDefault();
+    if (!e.target.closest('.scroll, .garage-body, .garage-side, .trails-body, .results-body, .style-strip, .style-tabs, .veh-row, .cup-tabs, .grid-scroll, .pz input, .pz textarea')) e.preventDefault();
   }, { passive: false });
 
   go('players');
@@ -766,7 +943,7 @@ async function boot() {
         flip: open ? gatePanel.flip : false, index: run && run.facts ? run.facts.length : 0, mode: open ? gatePanel.mode : null,
         reason: open && run && run.pick ? run.pick.reason || '' : '', bucket: open && run && run.pick ? run.pick.bucket || '' : '' };
     },
-    pit,
+    pit, crates, get vehicles() { return vehicles; }, get mutators() { return mutators; },
   }; // debugging / smoke tests
   registerSW();
 }

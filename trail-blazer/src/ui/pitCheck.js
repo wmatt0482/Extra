@@ -39,8 +39,9 @@ export function createPitCheck(app, gatePanel) {
   let running = false, momentTimer = 0, lastOut = null, pending = null, st = null;
 
   /** The card before a race: due = checkDue(d) ({ kind: 'first' | 'recheck' }). */
-  function showCard(trailId, due = { kind: 'first' }) {
-    pending = { trailId, kind: due.kind || 'first' };
+  /** rideOpts (v1.5): the ride's own options ({ weekend } / { daily }), kept for the race after the card or the check. */
+  function showCard(trailId, due = { kind: 'first' }, rideOpts = {}) {
+    pending = { trailId, kind: due.kind || 'first', rideOpts };
     card.dataset.kind = pending.kind;
     $('#pit-offer-title').textContent = pending.kind === 'recheck' ? 'Pit Crew re-check' : 'Pit Crew Check';
     $('#pit-offer-text').textContent = CARD_TEXT[pending.kind] || CARD_TEXT.first;
@@ -50,9 +51,9 @@ export function createPitCheck(app, gatePanel) {
   function hideCard() { card.hidden = true; }
   $('#pit-start').addEventListener('click', () => { hideCard(); run(pending || {}); });
   // "Race first" always works: the race runs, the card comes back before the next one
-  $('#pit-later').addEventListener('click', () => { hideCard(); const p = pending; pending = null; app.startRide(p && p.trailId, { skipCheck: true }); });
+  $('#pit-later').addEventListener('click', () => { hideCard(); const p = pending; pending = null; app.startRide(p && p.trailId, { ...((p && p.rideOpts) || {}), skipCheck: true }); });
   $('#sl-done').addEventListener('click', () => app.go('title'));
-  $('#sl-race').addEventListener('click', () => app.startRide((lastOut && lastOut.trailId) || app.save.selectedTrail, { skipCheck: true }));
+  $('#sl-race').addEventListener('click', () => app.startRide((lastOut && lastOut.trailId) || app.save.selectedTrail, { ...((lastOut && lastOut.rideOpts) || {}), skipCheck: true }));
 
   /** Run the check. opts: { trailId (race afterwards), kind ('first' | 'recheck') }. */
   async function run(opts = {}) {
@@ -69,7 +70,7 @@ export function createPitCheck(app, gatePanel) {
       const res = await gatePanel.open({ fact: it.fact, flip: it.flip, index: st.items.length, mode: 'check', progress: checkProgress(st), exitText: opts.trailId ? 'Race first' : 'Later' });
       if (!res || res.cancelled) {                  // the way out always works: nothing is kept, the card comes back
         running = false; st = null;
-        if (app.screen === 'check') { if (opts.trailId) app.startRide(opts.trailId, { skipCheck: true }); else app.go('title'); }
+        if (app.screen === 'check') { if (opts.trailId) app.startRide(opts.trailId, { ...(opts.rideOpts || {}), skipCheck: true }); else app.go('title'); }
         return;
       }
       checkAnswer(st, res);
@@ -80,7 +81,7 @@ export function createPitCheck(app, gatePanel) {
     refreshFrontier(d, now, recheck ? 'Pit Crew re-check' : 'Pit Crew Check');
     app.persistFacts();
     running = false;
-    lastOut = { placement, items: st.items.length, levelBefore, levelAfter: levelFor(d.xp), trailId: opts.trailId || null, recheck };
+    lastOut = { placement, items: st.items.length, levelBefore, levelAfter: levelFor(d.xp), trailId: opts.trailId || null, rideOpts: opts.rideOpts || {}, recheck };
     st = null;
     app.onCheckDone && app.onCheckDone(lastOut);
     app.go('startline', lastOut);

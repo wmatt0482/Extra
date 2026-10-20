@@ -1,4 +1,4 @@
-// The Ranger's four upgrades, 10 levels each, bought with cash in the garage (SPEC §2.3, §6).
+// The four upgrades, 10 levels each, per vehicle (v1.5: save.vehicles[id].levels), bought with cash in the garage.
 // resolveStats(levels) gives the multipliers the engine consumes (all 1.0 at level 0):
 //   Engine      power 1 → 2.2 (+ topSpeed 1 → 1.8)          Tires   grip 1 → 1.6
 //   Suspension  suspension 1 → 2.4 (bump tolerance, air control)
@@ -17,9 +17,10 @@ export const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 
 export const COST_BASE = 300;
 export const COST_MUL = 1.45;
-/** Cost of buying level `level + 1` (level = the current level, 0..9). */
-export function upgradeCost(level) {
-  return Math.round((COST_BASE * Math.pow(COST_MUL, level)) / 10) * 10;
+/** Cost of buying level `level + 1` (level = the current level, 0..9); v1.5: × the vehicle tier's multiplier
+ *  (TIER_MUL in runway.js: 1, 1.6, 2.5 … 35). */
+export function upgradeCost(level, tierMul = 1) {
+  return Math.round((COST_BASE * Math.pow(COST_MUL, level) * tierMul) / 10) * 10;
 }
 export function totalCostToMax() {
   let s = 0;

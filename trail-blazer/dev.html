@@ -45,12 +45,17 @@
 <script type="module">
 // Engine playground. URL params: trail (id), lvl (0..10, all stats), eng / tires / susp / boostLvl (per upgrade),
 // seed, sim (speed multiplier), paint, decal, race (1 = motocross race, the default; 0 = the v1 trail ride),
-// riders (AI riders 0..3), skill (AI 0..1; default from the upgrades), gates (count, 0 = none; a race defaults to 4),
+// riders (AI riders 0..3), skill (AI 0..1; default from the upgrades), skillUp (0..0.3, added to the default AI level), gates (count, 0 = none; a race defaults to 4),
 // auto=1 (answer gates after 400 ms: in a race quick / correct / fixed in turn, on the trail ride correct with every
 // other one quick), winch=1 (winch(true) whenever 'stuck' fires),
 // ui=0 (no overlays), best (best distance flag), rm=1 (reduced motion).
+// v1.5: vehicle (id from src/data/vehicles.js), mutator (id from src/data/mutators.js), helmet / suit / flag / trailfx
+// (cosmetic ids), rivals (comma-separated rival vehicle ids), ghost=1 (replay the previous run of this page as the
+// ghost: the trace is kept in sessionStorage per trail + vehicle), turbo=1 (the last gate answered with turbo: true).
 import { createGame } from './src/game/engine.js';
 import { TRAILS, TRAIL_BY_ID } from './src/data/trails.js';
+import { VEHICLE_BY_ID } from './src/data/vehicles.js';
+import { MUTATOR_BY_ID } from './src/data/mutators.js';
 
 const q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
@@ -67,8 +72,15 @@ const stats = {
 const trail = TRAIL_BY_ID[q.get('trail')] || TRAILS[0];
 const auto = q.get('auto') === '1', autoWinch = q.get('winch') === '1';
 const race = q.get('race') !== '0' && !!trail.mx;
+const vehicle = VEHICLE_BY_ID[q.get('vehicle')] ? q.get('vehicle') : 'ranger150';
+const mutator = MUTATOR_BY_ID[q.get('mutator')] ? q.get('mutator') : null;
+const ghostKey = 'tb-ghost:' + trail.id + ':' + vehicle;
+let ghost = null;
+if (q.get('ghost') === '1') { try { ghost = JSON.parse(sessionStorage.getItem(ghostKey) || 'null'); } catch (_) { ghost = null; } }
+const rivals = (q.get('rivals') || '').split(',').filter((id) => VEHICLE_BY_ID[id]);
+const useTurbo = q.get('turbo') === '1';
 
-const tb = (window.__tb = { game: null, events: [], finished: null, restart: null, stats, trail, race });
+const tb = (window.__tb = { game: null, events: [], finished: null, restart: null, stats, trail, race, vehicle, mutator, ghost });
 const logLines = [];
 let timers = [];
 function onEvent(evt) {
@@ -77,6 +89,7 @@ function onEvent(evt) {
     $('gateBtn').hidden = false;
     // race: alternate quick / correct / fixed so all three paths show; trail ride: correct, every other one quick
     const answer = race ? [{ correct: true, quick: true }, { correct: true }, { fixed: true }][evt.index % 3] : { correct: true, quick: evt.index % 2 === 0 };
+    if (useTurbo && race && evt.index === tb.game.getState().gatesTotal - 1) Object.assign(answer, { correct: true, quick: true, fixed: false, turbo: true });
     if (auto) timers.push(setTimeout(() => { $('gateBtn').hidden = true; tb.game.openGate(answer); }, 400));
   }
   if (evt.type === 'gateOpen') $('gateBtn').hidden = true;
@@ -88,14 +101,15 @@ function onEvent(evt) {
   if (evt.type === 'finish') {
     tb.finished = evt.summary;
     const s = evt.summary, c = s.cash;
+    if (s.finishCrossed && s.ghostTrace && s.ghostTrace.length) { try { sessionStorage.setItem(ghostKey, JSON.stringify(s.ghostTrace)); } catch (_) { /* quota */ } }
     $('resText').textContent =
       (s.race ? `race       ${['', '1st', '2nd', '3rd', '4th'][s.place]} place   time ${s.timeSec} s   medal ${s.medal || '-'}\n` +
         `riders     ${s.riders.map((x) => x.name + ' ' + (x.timeSec != null ? x.timeSec + 's' : Math.round(x.x) + 'm')).join(' · ')}\n` +
-        `flips      ${s.flips}   crashes ${s.crashes}\n` : '') +
+        `flips      ${s.flips}   crashes ${s.crashes}   combo max x${s.comboMax}   ghost ${s.beatGhost == null ? '-' : s.beatGhost ? 'BEATEN' : 'not beaten'}${s.turbo ? '   TURBO' : ''}\n` : '') +
       `trail      ${trail.name} (${trail.length} m)\ndistance   ${s.distance} m   ${s.finishCrossed ? 'FINISHED' : s.endReason}\n` +
       `time       ${s.durationSec} s   max ${s.maxSpeedKmh} km/h\nair        ${s.airTime} s   flips ${s.flips}   smashed ${s.smashed}   coins ${s.coins}\n` +
       `gates      ${s.gates.correct}/${s.gates.answered} (quick ${s.gates.quick}, fixed ${s.gates.fixed}) of ${s.gatesTotal}\nwinches    ${s.winches}\n` +
-      `cash       dist ${c.distance} + air ${c.air} + smash ${c.smash} + flips ${c.flips} + perfect ${c.perfect}\n           + gates ${c.gates} + quick ${c.quick} + coins ${c.coins} + finish ${c.finish} + place ${c.place}\n` +
+      `cash       dist ${c.distance} + air ${c.air} + smash ${c.smash} + flips ${c.flips} + perfect ${c.perfect} + combo ${c.combo}\n           + gates ${c.gates} + quick ${c.quick} + coins ${c.coins} + finish ${c.finish} + place ${c.place}\n` +
       `           = $${c.total}   rating ${s.rating} (${s.ratingScore})`;
     $('results').style.display = 'block';
   }
@@ -115,9 +129,12 @@ function restart() {
   tb.finished = null;
   $('results').style.display = 'none';
   $('gateBtn').hidden = true; $('winchBtn').hidden = true;
-  game.start({ trail, stats, seed: q.get('seed') != null ? num('seed', trail.seed) : trail.seed, paint: q.get('paint') || 'sage', decal: q.get('decal') || 'none',
+  const riderN = num('riders', 3);
+  game.start({ trail, stats, seed: q.get('seed') != null ? num('seed', trail.seed) : trail.seed, paint: q.get('paint') || undefined, decal: q.get('decal') || 'none',
+    vehicle, mutator, ghost, helmet: q.get('helmet') || undefined, suit: q.get('suit') || undefined, flag: q.get('flag') || undefined, boostTrail: q.get('trailfx') || undefined,
     bestDistance: num('best', 0), gates: q.get('gates') != null ? num('gates', undefined) : undefined,
-    race: race ? { riders: num('riders', 3), skill: q.get('skill') != null ? num('skill', undefined) : undefined } : undefined });
+    race: race ? { riders: rivals.length ? rivals.slice(0, riderN).map((v, i) => ({ vehicle: v, name: ['Dusty', 'Blaze', 'Nitro'][i], helmet: ['flames', 'shark', 'lightning'][i], suit: ['racer', 'neon', 'gold'][i], flag: ['skull', 'star', 'lightning'][i] })) : riderN,
+      skill: q.get('skill') != null ? num('skill', undefined) : undefined, skillUp: num('skillUp', 0) } : undefined });
 }
 tb.restart = restart;
 restart();
@@ -154,7 +171,7 @@ $('retry').onclick = restart;
 function readout() {
   const s = game.getState();
   const ord = ['', '1st', '2nd', '3rd', '4th'];
-  $('state').textContent = `${trail.name}  lvl ${lvl}${race ? '  RACE' : ''}\nphase ${s.phase}${s.upsideDown ? ' (upside down)' : ''}${s.crashed ? ' CRASHED' : ''}${s.countdown ? ' ' + s.countdown.toFixed(1) : ''}\n` +
+  $('state').textContent = `${trail.name}  lvl ${lvl}${race ? '  RACE' : ''}  ${vehicle}${mutator ? '  [' + mutator + ']' : ''}\nphase ${s.phase}${s.upsideDown ? ' (upside down)' : ''}${s.crashed ? ' CRASHED' : ''}${s.countdown ? ' ' + s.countdown.toFixed(1) : ''}${s.turbo ? '  TURBO ' + s.turbo.toFixed(1) : ''}${s.combo && s.combo.count > 1 ? '  COMBO x' + s.combo.mult : ''}${s.ghostGap != null ? '  ghost ' + (s.ghostGap > 0 ? '+' : '') + s.ghostGap.toFixed(1) + 's' : ''}\n` +
     (race ? `place ${ord[s.place]} / ${s.riders.length}   time ${s.timeSec.toFixed(1)} s${s.frozen ? '  FROZEN' : ''}${s.gateHold ? '  hold ' + s.gateHold.toFixed(1) : ''}\n` + s.riders.map((x) => `  ${x.place}. ${x.name.padEnd(4)} ${Math.round(x.x)} m${x.timeSec != null ? '  ' + x.timeSec + ' s' : ''}`).join('\n') + '\n' : '') +
     `dist  ${s.distance} / ${trail.length} m\n` +
     `speed ${s.speedKmh} km/h\nboost ${Math.round(s.boost * 100)}%\ncash  $${s.cash}\ngate  ${s.gateIndex}/${s.gatesTotal}  coins ${s.coins}`;

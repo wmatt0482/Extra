@@ -30,11 +30,37 @@
 //   to total). Trail-mode additions (v1): events unstuck / record, summary endReason / landings / gatesTotal / length.
 // Debug (not contract): debugStep(n), debugInfo(), debugPerf(reset), debugCourse(), debugTeleport(x, vx, tilt),
 //   debugRiders().
+//
+// v1.5 (The Season) contract additions:
+//   start({ ..., vehicle: id | def (src/data/vehicles.js; default 'ranger150'), stats (the per-vehicle UPGRADE
+//     multipliers from upgrades.js; the engine multiplies in the vehicle's base stats itself; stats.coinMult is applied
+//     as given), look: { vehicle, paint, decal, helmet, suit, flag, trail } (or the same as top-level paint / decal /
+//     helmet / suit / flag / boostTrail|trail; ids from src/game/vehicle.js HELMETS / SUITS / FLAGS / TRAIL_FX, a css
+//     colour still works for helmet / trail, flag 'none' | null = no flag),
+//     ghost: [[t, x, angle] | [t, x, y, angle] ...] | { trace, vehicle?, paint? } | null (the best run, drawn as a
+//     translucent copy; 3-tuples are placed on the ground), mutator: id | def | null (src/data/mutators.js),
+//     race: { riders: 3 | [{ name, paint, vehicle, helmet, suit, flag, decal, rivalId }], skill?, skillUp?, name? } (an array
+//     gives each rival its own look + vehicle; a number uses the player's tier ± 1 lineup; the AI's pace still follows
+//     the player's upgrade level + the track's design level; skillUp 0..0.3 adds skillUp x 10 levels on top of
+//     that default (the app's rival ladder: +0.05 per retired rival)) }).
+//   openGate({ ..., turbo: true }) → a 3 s rocket boost that burns no fuel, event turbo { sec }, popup "TURBO!".
+//   Events: combo { count, mult, cash } (flips, big airs and perfect landings within 3 s of each other chain into
+//     x2 .. x5 on their cash; the extra goes to cash.combo), turbo { sec }, fell (dropped into a Sky Bridge gap; then
+//     crash / respawn as usual), ghostPassed { ahead: bool } when the player overtakes / is overtaken by the ghost.
+//   getState() adds vehicle (id), mutator (id | null), combo { count, mult, left (s) }, turbo (s left), ghostGap
+//     (seconds behind (+) / ahead (-) of the ghost at the same distance; null without a ghost), fog (0..1).
+//   Summary adds vehicle, mutator, ghostTrace ([t, x, y, angle] every 0.1 s, ≤ 1,500 samples: thinned to 0.2 s and so
+//     on when a run is long), beatGhost (true / false / null without a ghost), ghostTime, comboMax, turbo (used),
+//     fell; cash adds combo and air now includes big-air bonuses ($40 each); all parts still add up to total.
+//   Specials (vehicles.js SPECIALS) and mutators (gravity, tank, fog, wheels, crush, top speed, mirror, bounce) are
+//   applied here; trail.gravity / wind / gaps / fog come from trails.js. The vehicle's top speed is capped at 64 m/s.
 
 import { createCourse, CHUNK, START_X, SURF_IDS, RACE, levelStats, raceTop } from './course.js';
-import { VEHICLE, resolveLook, drawVehicle, drawRider, drawHelmet } from './vehicle.js';
+import { VEHICLE, resolveLook, drawVehicle, drawRider, drawHelmet, trailColor } from './vehicle.js';
 import * as R from './render.js';
 import { OBSTACLE_KINDS, SURFACES, medalFor } from '../data/trails.js';
+import { VEHICLES, vehicleDef, effectiveStats, rivalVehicles } from '../data/vehicles.js';
+import { mutatorDef } from '../data/mutators.js';
 import { TAU, clamp, wrapPi, smoothstep, shade, mulberry32, hash2 } from './util.js';
 
 const S = 30; // px per meter (physics space)
@@ -72,14 +98,15 @@ export const RACE_TUNING = {
   assistLook: 0.8, assistK: 16, assistD: 5, assistMax: 10, assistMaxPer: 8, // auto-level before touchdown (no lean held)
   crashAngle: 58, roofAngle: 42, perfectAngle: 13, goodAngle: 30, impactThr: 9, // landing (deg, m/s x suspension)
   flipGrace: 0.9, // rad short of a full turn that still counts when landed wheels-down
-  flipCash: 150, perfectCash: 50, comboStep: 0.5, comboMax: 3,
+  flipCash: 150, perfectCash: 50, bigAirCash: 40, comboWindow: 3, comboMax: 5, // v1.5 combo meter
+  turboSec: 3, vTopCap: 64, ghostDt: 0.1, ghostMax: 1500,
   flipFuel: 0.2, perfectFuel: 0.25, coinFuel: 0.08, bigAir: 1.5,
   crashTime: 1.5, respawnPush: 0.62, invuln: 1.5,
   placeCash: [500, 300, 150, 0],
   goAt: 3.6, // s after start(): countdown 3 / 2 / 1 one second apart, then the gate drops
   bogWindow: 0.8, bogTime: 1.0, bogMul: 0.25,
   slowmo: 0.35, slowmoDur: 0.5,
-  names: ['Max', 'Zoe', 'Kai'], paints: ['lakeblue', 'sunset', 'purple'], helmets: ['#ffd23f', '#7dff6b', '#4dd2ff'],
+  names: ['Max', 'Zoe', 'Kai'], paints: ['lakeblue', 'sunset', 'purple'], helmets: ['#ffd23f', '#7dff6b', '#4dd2ff'], tierEdge: 1.04,
   pace: [1, 0.965, 0.93],
 };
 const T = TUNING, TR = RACE_TUNING;
@@ -100,17 +127,71 @@ function polyCentroid(pts) {
   a *= 0.5;
   return [cx / (6 * a), cy / (6 * a)];
 }
-const HULL_C = polyCentroid(VEHICLE.hull);
+const hullCs = new Map();
+function hullCentroid(def) {
+  let c = hullCs.get(def);
+  if (!c) { c = polyCentroid(def.hull); hullCs.set(def, c); }
+  return c;
+}
+const HULL_C = hullCentroid(VEHICLE);
 
 function statsArg(s = {}) {
   const n = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
-  return { power: n(s.power, 1), grip: n(s.grip, 1), suspension: n(s.suspension, 1), boostPower: n(s.boostPower, 1),
+  return { power: n(s.power, 1), topSpeed: n(s.topSpeed, 1), grip: n(s.grip, 1), suspension: n(s.suspension, 1), boostPower: n(s.boostPower, 1),
     boostCapacity: n(s.boostCapacity, 1), coinMult: n(s.coinMult, 1) };
 }
-// the upgrade level (0..10) a stat block corresponds to (average over the four upgrades)
+// the Ranger-equivalent upgrade level a stat block corresponds to (average over the four upgrades; v1.5: the vehicle's
+// base stats are folded in, so a Thunder Rail at upgrade 5 reads as ~18)
 function statsLevel(st) {
   const l = [(st.power - 1) / 0.12, (st.grip - 1) / 0.06, (st.suspension - 1) / 0.14, (st.boostPower - 1) / 0.15];
-  return clamp(l.reduce((a, b) => a + b, 0) / l.length, 0, 10);
+  return clamp(l.reduce((a, b) => a + b, 0) / l.length, 0, 24);
+}
+// v1.5: a rider's top speed: the upgrade part (sqrt of the upgrade power) x the vehicle's base top speed x mutators
+function riderTop(upg, def, mul) {
+  return Math.min(TR.vTopCap, raceTop(upg) * (def.base.topSpeed || 1) * mul);
+}
+const SPECIAL_LAND = { bigair: { crash: 48, roof: 34 }, landsAll: { crash: 999, roof: 42 } };
+
+// v1.5 ghost: [[t, x, angle] | [t, x, y, angle]] (or { trace }) -> a flat Float32Array [t, x, y, a] sorted by t
+function parseGhost(src, course) {
+  const trace = Array.isArray(src) ? src : src && Array.isArray(src.trace) ? src.trace : null;
+  if (!trace || trace.length < 2) return null;
+  const out = [];
+  for (const s of trace) {
+    if (!Array.isArray(s) || s.length < 3) continue;
+    const t = Number(s[0]), x = Number(s[1]);
+    if (!Number.isFinite(t) || !Number.isFinite(x)) continue;
+    const y = s.length >= 4 ? Number(s[2]) : course.groundY(x) + 0.95, a = Number(s[s.length >= 4 ? 3 : 2]) || 0;
+    out.push([t, x, Number.isFinite(y) ? y : course.groundY(x) + 0.95, a]);
+  }
+  if (out.length < 2) return null;
+  out.sort((p, q) => p[0] - q[0]);
+  const f = new Float32Array(out.length * 4);
+  for (let i = 0; i < out.length; i++) { f[i * 4] = out[i][0]; f[i * 4 + 1] = out[i][1]; f[i * 4 + 2] = out[i][2]; f[i * 4 + 3] = out[i][3]; }
+  return { data: f, n: out.length, time: out[out.length - 1][0], paint: src && !Array.isArray(src) ? src.paint : null, vehicle: src && !Array.isArray(src) ? src.vehicle : null };
+}
+// the ghost's pose at race time t (interpolated); out = [x, y, a]
+function ghostPose(gh, t, out) {
+  const d = gh.data, n = gh.n;
+  if (t <= d[0]) { out[0] = d[1]; out[1] = d[2]; out[2] = d[3]; return out; }
+  if (t >= d[(n - 1) * 4]) { const k = (n - 1) * 4; out[0] = d[k + 1]; out[1] = d[k + 2]; out[2] = d[k + 3]; return out; }
+  let lo = 0, hi = n - 1;
+  while (hi - lo > 1) { const m = (lo + hi) >> 1; if (d[m * 4] <= t) lo = m; else hi = m; }
+  const a = lo * 4, b = hi * 4, u = (t - d[a]) / Math.max(1e-6, d[b] - d[a]);
+  out[0] = d[a + 1] + (d[b + 1] - d[a + 1]) * u;
+  out[1] = d[a + 2] + (d[b + 2] - d[a + 2]) * u;
+  out[2] = d[a + 3] + wrapPi(d[b + 3] - d[a + 3]) * u;
+  return out;
+}
+// the race time at which the ghost first reached x (null past its end)
+function ghostTimeAt(gh, x) {
+  const d = gh.data, n = gh.n;
+  if (x <= d[1]) return d[0];
+  for (let i = 1; i < n; i++) {
+    const k = i * 4;
+    if (d[k + 1] >= x) { const p = k - 4, u = (x - d[p + 1]) / Math.max(1e-6, d[k + 1] - d[p + 1]); return d[p] + (d[k] - d[p]) * u; }
+  }
+  return null;
 }
 
 export function createGame(canvas, opts = {}) {
@@ -193,7 +274,7 @@ export function createGame(canvas, opts = {}) {
   }
   function localToWorld(v, lx, ly, out) {
     const ch = v.chassis;
-    const dx = lx - HULL_C[0], dy = ly - HULL_C[1];
+    const dx = lx - v.hc[0], dy = ly - v.hc[1];
     const c = Math.cos(v.ang), s = Math.sin(v.ang);
     out[0] = ch.position.x / S + c * dx - s * dy;
     out[1] = -ch.position.y / S + s * dx + c * dy;
@@ -209,7 +290,8 @@ export function createGame(canvas, opts = {}) {
       const dx = w.position.x - ch.position.x, dy = w.position.y - ch.position.y;
       const lx = c * dx + s * dy, ly = -s * dx + c * dy;
       const ox = lx - rest.x, oy = ly - rest.y;
-      const cx = clamp(ox, -0.16 * S, 0.16 * S), cy = clamp(oy, -0.24 * S, 0.16 * S);
+      const tr = v.travel;
+      const cx = clamp(ox, -0.16 * S * tr, 0.16 * S * tr), cy = clamp(oy, -0.24 * S * tr, 0.16 * S * tr);
       if (cx === ox && cy === oy) continue;
       const nlx = rest.x + cx, nly = rest.y + cy;
       const wx = c * nlx - s * nly, wy = s * nlx + c * nly;
@@ -288,13 +370,19 @@ export function createGame(canvas, opts = {}) {
 
   // ---------- vehicles ----------
   function makeRider(r, i, cfg) {
+    const def = cfg.def || vehicleDef(cfg.vehicle);
+    const special = def.special || 'none';
+    const wheelMul = r.mut.wheelMul || 1;
     return {
-      i, me: !!cfg.me, name: cfg.name, paint: cfg.paint, look: resolveLook({ paint: cfg.paint, decal: cfg.decal || 'none', helmet: cfg.helmet }),
-      stats: cfg.stats, vTop: 0, chassis: null, wheels: null, parts: null, cons: null, wheelRest: null,
+      i, me: !!cfg.me, name: cfg.name, paint: cfg.paint, rivalId: cfg.rivalId || null,
+      look: resolveLook({ vehicle: def, paint: cfg.paint, decal: cfg.decal || 'none', helmet: cfg.helmet, suit: cfg.suit, flag: cfg.flag, trail: cfg.trail }),
+      def, special, hc: hullCentroid(def), wheelMul, lift: (wheelMul - 1) * def.wheels[0].r, travel: special === 'landsAll' ? 1.5 : 1,
+      bounce: r.mut.bounce || (special === 'lunar' ? 1.35 : 1), turboT: 0,
+      stats: cfg.stats, upg: cfg.upg || cfg.stats, vTop: 0, chassis: null, wheels: null, parts: null, cons: null, wheelRest: null,
       contacts: [false, false, false], wheelAgo: [9, 9, 9], nrm: null, gateTouch: false,
       com: { x: 0, y: 0, vx: 0, vy: 0 }, speed: 0, ang: 0, omega: 0, fx: 1, fy: 0, vf: 0, rideH: 1,
       air: false, noContactT: 0, airTime: 0, flightRot: 0, flipMark: 0, prevAngle: 0, spin: 0, surf: 0, inWater: false,
-      tank: Math.max(0.3, (r.race ? TR.boostSec : T.boostSec) * cfg.stats.boostCapacity), fuel: 0, boostOn: false, burstT: 0,
+      tank: Math.max(0.3, (r.race ? TR.boostSec : T.boostSec) * cfg.stats.boostCapacity * (r.mut.tankMul || 1)), fuel: 0, boostOn: false, burstT: 0,
       wheelSpin: [0, 0], wheelLocal: [{ x: 0, y: 0, a: 0 }, { x: 0, y: 0, a: 0 }],
       pose: [{ x: 0, y: 0, a: 0 }, { x: 0, y: 0, a: 0 }, { x: 0, y: 0, a: 0 }], hold: true,
       imp: { t: 0, x: 0, ok: false }, pre: { vx: 0, vy: 0 }, vtBefore: 0,
@@ -305,9 +393,9 @@ export function createGame(canvas, opts = {}) {
     };
   }
   function buildVehicle(r, v, ox) {
-    const st = v.stats, V = VEHICLE;
-    const oy = r.course.groundY(ox) + 0.04;
-    const cx = ox + HULL_C[0], cy = oy + HULL_C[1];
+    const st = v.stats, V = v.def, HC = v.hc, wr = v.wheelMul;
+    const oy = r.course.groundY(ox) + 0.04 + v.lift;
+    const cx = ox + HC[0], cy = oy + HC[1];
     const verts = Vertices.clockwiseSort(V.hull.map(([x, y]) => ({ x: (ox + x) * S, y: -(oy + y) * S })));
     const group = Body.nextGroup(true);
     const mask = CAT_TERRAIN | (v.me ? CAT_PROP | CAT_GATE : 0); // riders never touch each other
@@ -317,27 +405,28 @@ export function createGame(canvas, opts = {}) {
       friction: 0.5, frictionStatic: 0.6, frictionAir: 0, restitution: 0.05, collisionFilter: filter(), label: 'chassis',
     });
     chassis.plugin.tb = { t: 'car', i: 0, v };
-    Body.setMass(chassis, 9);
+    Body.setMass(chassis, V.mass || 9);
     const wheels = [], cons = [];
+    const rest = v.bounce > 1 ? clamp(0.25 * (v.bounce - 1) + 0.2, 0, 0.7) : 0;
     V.wheels.forEach((w, k) => {
-      const wb = Bodies.circle((ox + w.x) * S, -(oy + w.y) * S, w.r * S, {
-        friction: 0, frictionStatic: 0, frictionAir: 0, restitution: 0, collisionFilter: filter(), label: 'wheel',
+      const wb = Bodies.circle((ox + w.x) * S, -(oy + w.y) * S, w.r * wr * S, {
+        friction: 0, frictionStatic: 0, frictionAir: 0, restitution: rest, collisionFilter: filter(), label: 'wheel',
       }, 22);
       wb.plugin.tb = { t: 'car', i: k + 1, v };
-      Body.setMass(wb, 2.6);
+      Body.setMass(wb, (V.wheelMass || 2.6) * wr);
       wheels.push(wb);
       const stiff = clamp(0.32 + 0.06 * (st.suspension - 1), 0.3, 0.45);
       for (const ax of [-0.38, 0.38]) {
         const px = w.x + ax, py = w.y + 0.5;
         cons.push(Constraint.create({
-          bodyA: chassis, pointA: { x: (px - HULL_C[0]) * S, y: -(py - HULL_C[1]) * S },
+          bodyA: chassis, pointA: { x: (px - HC[0]) * S, y: -(py - HC[1]) * S },
           bodyB: wb, pointB: { x: 0, y: 0 }, stiffness: stiff, damping: 0.14, label: 'susp',
         }));
       }
     });
     v.chassis = chassis;
     v.wheels = wheels;
-    v.wheelRest = V.wheels.map((w) => ({ x: (w.x - HULL_C[0]) * S, y: -(w.y - HULL_C[1]) * S }));
+    v.wheelRest = V.wheels.map((w) => ({ x: (w.x - HC[0]) * S, y: -(w.y - HC[1]) * S }));
     v.cons = cons;
     v.parts = [chassis, ...wheels];
     Composite.add(r.world, [chassis, ...wheels, ...cons]);
@@ -360,11 +449,13 @@ export function createGame(canvas, opts = {}) {
   // place the whole vehicle: origin (ground point under the centre) at (x, y), rotated by ang (world, CCW)
   function placeVehicle(v, x, y, ang) {
     const c = Math.cos(ang), s = Math.sin(ang);
-    const px = x + c * HULL_C[0] - s * HULL_C[1], py = y + s * HULL_C[0] + c * HULL_C[1];
+    const HC = v.hc;
+    y += v.lift;
+    const px = x + c * HC[0] - s * HC[1], py = y + s * HC[0] + c * HC[1];
     Body.setPosition(v.chassis, { x: px * S, y: -py * S });
     Body.setAngle(v.chassis, -ang);
     for (let i = 0; i < 2; i++) {
-      const w = VEHICLE.wheels[i];
+      const w = v.def.wheels[i];
       const wx = x + c * w.x - s * w.y, wy = y + s * w.x + c * w.y;
       Body.setPosition(v.wheels[i], { x: wx * S, y: -wy * S });
       Body.setAngle(v.wheels[i], 0);
@@ -378,18 +469,30 @@ export function createGame(canvas, opts = {}) {
     if (!trail || !trail.length) throw new Error('game.start needs { trail, stats, seed }');
     teardown();
     const seed = cfg.seed != null && cfg.seed !== '' ? (Number(cfg.seed) | 0) >>> 0 : (trail.seed | 0) >>> 0;
-    const stats = statsArg(cfg.stats);
+    const look0 = cfg.look && typeof cfg.look === 'object' ? cfg.look : {};
+    const def = vehicleDef(cfg.vehicle || look0.vehicle);
+    const upg = statsArg(cfg.stats);
+    const stats = effectiveStats(def, upg);
+    const mutator = mutatorDef(cfg.mutator);
+    const mut = { ...((mutator && mutator.params) || {}) };
     const raceCfg = cfg.race === true ? {} : cfg.race && typeof cfg.race === 'object' ? cfg.race : null;
     const race = !!raceCfg && !!trail.mx;
     // v1.2: a race has math gates (default 4; gates: 0 = none); the AI riders pass through them
-    const course = createCourse(trail, seed, { gates: race ? (cfg.gates == null || cfg.gates === '' ? 4 : cfg.gates) : cfg.gates, race });
+    const course = createCourse(trail, seed, { gates: race ? (cfg.gates == null || cfg.gates === '' ? 4 : cfg.gates) : cfg.gates, race, mirror: race && !!mut.mirror });
     const bd = R.createBackdrop(trail, seed);
+    // v1.5: gravity = the trail's x the mutator's x the Moon Rover's (never below 0.3 g: landings must still happen)
+    const gravity = clamp((Number(trail.gravity) || 1) * (mut.gravity || 1) * (def.special === 'lunar' ? 0.6 : 1), 0.3, 1.5);
+    const g = G * gravity;
     const engine = Engine.create({
-      gravity: { x: 0, y: 1, scale: (G * S) / 1e6 },
+      gravity: { x: 0, y: 1, scale: (g * S) / 1e6 },
       positionIterations: 8, velocityIterations: 8, constraintIterations: 4, enableSleeping: false,
     });
     const r = {
-      trail, stats, seed, course, bd, engine, world: engine.world, race,
+      trail, stats, upg, def, seed, course, bd, engine, world: engine.world, race,
+      mutator, mut, g, gravity, fog: clamp(Number(mut.fog) || Number(trail.fog) || 0, 0, 1), wind: Number(trail.wind) || 0, windNow: 0,
+      crush: !!mut.crush || def.special === 'crush', coinMul: def.special === 'lunar' ? 2 : 1, topMul: mut.topSpeedMul || 1,
+      comboN: 0, comboAt: -99, comboRaw: 0, comboMax: 0, bigAirRaw: 0, turboUsed: false, fell: 0,
+      ghost: parseGhost(cfg.ghost, course), ghostTrace: [], ghostDt: TR.ghostDt, ghostNextT: 0, ghostI: 0, ghostAhead: null,
       trailGrip: trail.grip || 1,
       phase: 'parked', t: 0, realT: 0, rideT: 0, timeScale: 1, slowT: 0, zoomPunch: 1,
       riders: [], me: null, chunkNeed: new Set(),
@@ -412,27 +515,43 @@ export function createGame(canvas, opts = {}) {
       aiRand: mulberry32(hash2(seed, 0xa1)), aiLevel: 0, countdownOn: !raceCfg || raceCfg.countdown !== false,
     };
     for (let i = 0; i < MAX_PARTICLES; i++) r.particles.push({ type: 0, x: 0, y: 0, vx: 0, vy: 0, size: 0, color: '#fff', life: 0, max: 1, alpha: 1, a: 0, extra: 0 });
-    const me = makeRider(r, 0, { me: true, name: (raceCfg && raceCfg.name) || 'You', paint: cfg.paint || 'sage', decal: cfg.decal, helmet: cfg.helmet, stats });
+    const me = makeRider(r, 0, { me: true, name: (raceCfg && raceCfg.name) || 'You', def, paint: cfg.paint || look0.paint || def.look.paint, decal: cfg.decal || look0.decal,
+      helmet: cfg.helmet || look0.helmet, suit: cfg.suit || look0.suit, flag: cfg.flag !== undefined ? cfg.flag : look0.flag, trail: cfg.boostTrail || cfg.trailFx || look0.trail, stats, upg });
     r.me = me;
     r.riders.push(me);
     if (race) {
-      const n = clamp(raceCfg.riders == null ? 3 : Number(raceCfg.riders) | 0, 0, 3);
+      const list = Array.isArray(raceCfg.riders) ? raceCfg.riders.slice(0, 3) : null;
+      const n = list ? list.length : clamp(raceCfg.riders == null ? 3 : Number(raceCfg.riders) | 0, 0, 3);
       const mx = trail.mx;
-      // the AI's upgrade level: halfway between yours and the track's design level, plus a per-track edge (max 9)
-      const lvl = raceCfg.skill != null && Number.isFinite(Number(raceCfg.skill)) ? clamp(Number(raceCfg.skill), 0, 1) * 10 : clamp((statsLevel(stats) + (mx.design || 0)) / 2 + (mx.aiBias || 0), 0, 9);
+      // the AI's Ranger-equivalent level: halfway between yours and the track's design level, plus a per-track
+      // edge; never more than a level under yours (v1.5: your level includes the vehicle's base stats), 9 at least
+      const myLvl = statsLevel(stats);
+      const lvl0 = raceCfg.skill != null && Number.isFinite(Number(raceCfg.skill)) ? clamp(Number(raceCfg.skill), 0, 1) * 10 + Math.max(0, myLvl - 10) * clamp(Number(raceCfg.skill), 0, 1)
+        : clamp((myLvl + (mx.design || 0)) / 2 + (mx.aiBias || 0), 0, Math.max(9, myLvl - 1));
+      // v1.5 rival ladder: race.skillUp (0..0.3, +0.05 per retired rival) is added on top, in tenths of the scale
+      const up = clamp(Number(raceCfg.skillUp) || 0, 0, 0.3) * 10;
+      const lvl = clamp(lvl0 + up, 0, 24);
       r.aiLevel = lvl;
+      const lineup = rivalVehicles(def.tier, 3);
       for (let k = 0; k < n; k++) {
+        const rc = list ? list[k] || {} : {};
+        const rdef = vehicleDef(rc.vehicle || lineup[k]);
+        const edge = Math.pow(TR.tierEdge, rdef.tier - def.tier); // a better vehicle on the grid is a little faster
         const st = levelStats(lvl);
-        st.power *= TR.pace[k] * (mx.aiPace || 1);
-        const ai = makeRider(r, k + 1, { name: (raceCfg.names && raceCfg.names[k]) || TR.names[k], paint: (raceCfg.paints && raceCfg.paints[k]) || TR.paints[k], helmet: TR.helmets[k], stats: st });
-        ai.ai = { skill: clamp(lvl / 10, 0, 1), boostT: 0 };
+        st.power *= TR.pace[k] * (mx.aiPace || 1) * edge;
+        const ai = makeRider(r, k + 1, { name: rc.name || (raceCfg.names && raceCfg.names[k]) || TR.names[k], paint: rc.paint || (raceCfg.paints && raceCfg.paints[k]) || TR.paints[k],
+          helmet: rc.helmet || TR.helmets[k], suit: rc.suit, flag: rc.flag, decal: rc.decal, trail: rc.trail, rivalId: rc.rivalId || rc.id, def: rdef, stats: st, upg: st });
+        ai.ai = { skill: clamp(lvl / 10, 0, 1), boostT: 0, edge };
         ai.startDelay = 0.06 + r.aiRand() * 0.22;
         r.riders.push(ai);
       }
     }
-    for (const v of r.riders) { v.vTop = race ? raceTop(v.stats) : T.vTop * Math.pow(v.stats.power, T.vTopExp); v.fuel = v.tank; }
+    for (const v of r.riders) {
+      v.vTop = race ? (v.ai ? Math.min(TR.vTopCap, raceTop(v.stats) * Math.sqrt(v.ai.edge) * (def.base.topSpeed || 1) * r.topMul) : riderTop(v.upg, v.def, r.topMul)) : T.vTop * Math.pow(v.stats.power, T.vTopExp) * (v.def.base.topSpeed || 1);
+      v.fuel = v.tank;
+    }
     run = r;
-    for (const v of r.riders) buildVehicle(r, v, START_X - (v.ai ? 2.6 * v.i : 0)); // the AI line up in a row behind
+    for (const v of r.riders) buildVehicle(r, v, START_X - (v.ai ? 3.4 * v.i : 0)); // the AI line up in a row behind
     for (const v of r.riders) measure(v);
     manageChunks(r);
     for (const g of r.gates) {
@@ -506,7 +625,7 @@ export function createGame(canvas, opts = {}) {
     r.smashed++;
     emit({ type: 'smash', kind: pr.kind, cash });
     popup(r, '+$' + cash, pr.x, pr.y + def.h + 1.0, '#ffe14a', 0.62, true);
-    if (def.mass > 0) r.slowFactor *= 1 - clamp(def.mass * (r.race ? 0.08 : 0.18), 0.005, 0.1);
+    if (def.mass > 0 && !r.crush) r.slowFactor *= 1 - clamp(def.mass * (r.race ? 0.08 : 0.18), 0.005, 0.1);
     r.shake = Math.max(r.shake, 2 + def.mass * 8);
     const cx = pr.x, cy = pr.y + def.h * 0.5, me = r.me;
     if (def.flat) {
@@ -594,7 +713,7 @@ export function createGame(canvas, opts = {}) {
       const upDiff = wrapPi(v.ang - Math.atan(gsl));
       if (!v.air && !v.crashed && Math.abs(upDiff) < 0.6 && v.vtBefore > 2 && (v.contacts[1] || v.contacts[2]) && !v.contacts[0]) {
         const vtAfter = v.com.vx * gtx + v.com.vy * gty;
-        const loss = vtAfter - v.vtBefore + G * (gsl / gn) * dt;
+        const loss = vtAfter - v.vtBefore + r.g * (gsl / gn) * dt;
         if (loss < 0) { addVelAll(v, gtx * -loss * 0.9, gty * -loss * 0.9); measure(v); }
       }
       if (v.speed > 70) { const f = 70 / v.speed; addVelAll(v, v.com.vx * (f - 1), v.com.vy * (f - 1)); measure(v); }
@@ -678,11 +797,18 @@ export function createGame(canvas, opts = {}) {
     const onWheels = Math.abs(pitch) < 0.9;
     const cosT = 1 / gn;
     const mu = RACE.mu * st.grip * r.trailGrip * sf.grip * (v.inWater ? 0.85 : 1);
-    const aTrac = mu * G * cosT;
+    const aTrac = mu * r.g * cosT;
     const vf = v.vf;
     if (v.bogT > 0) v.bogT -= dt;
     if (v.invulnT > 0) v.invulnT -= dt;
+    if (v.turboT > 0) { v.turboT -= dt; if (v.turboT <= 0 && v.me) popup(r, 'TURBO OVER', 0.5, LANE_SUB, '#7cf2ff', 0.6, false, 0.8, 'boost'); }
     v.spin = 0;
+    // v1.5: the Thunder Rail bounces hard through the whoops (the Rover is always a little bouncy)
+    if (v.special === 'rocket') {
+      const z = r.course.inZone(v.com.x);
+      const want = z && z.type === 'whoops' ? 0.6 : 0;
+      if (v.wheels[0].restitution !== want) for (const w of v.wheels) w.restitution = want;
+    }
     if (grounded && !v.air && onWheels) {
       if (inp.gas && rearDown) {
         let aEng = RACE.driveA * Math.pow(st.power, RACE.driveExp) * Math.max(0, 1 - Math.pow(Math.max(0, vf) / v.vTop, RACE.curve));
@@ -690,7 +816,7 @@ export function createGame(canvas, opts = {}) {
         const drive = Math.min(aEng, aTrac);
         if (aEng > aTrac * 1.02) v.spin = 1;
         addVelAll(v, tx * drive * dt, ty * drive * dt);
-        let wdot = T.wheelie * drive * 0.5;
+        let wdot = T.wheelie * drive * (v.special === 'bigair' ? 2.6 : 0.5);
         if (pitch > 0.3 && !frontDown) wdot -= (pitch - 0.3) * 5 * st.suspension + v.omega * 1.5 * st.suspension;
         setOmegaAll(v, v.omega + wdot * dt);
       } else if (inp.brake) {
@@ -703,15 +829,19 @@ export function createGame(canvas, opts = {}) {
         }
       }
     }
-    if (v.air) airControlRace(r, v, dt, inp);
+    if (v.air) {
+      airControlRace(r, v, dt, inp);
+      if (v.special === 'bigair') addVelAll(v, 0, r.g * 0.12 * dt); // the Dirt Bike floats
+      if (r.wind) addVelAll(v, r.windNow * dt, 0); // Sky Bridge gusts
+    }
     else if (v.contacts[0] && Math.abs(pitch) > 0.9 && Math.abs(pitch) < 2.1 && v.speed < 3) setOmegaAll(v, v.omega - Math.sign(pitch) * 5 * st.suspension * dt);
     else if (rearDown && frontDown && !v.contacts[0]) setOmegaAll(v, v.omega * (1 - Math.min(1, dt * 2 * st.suspension)));
     // boost: thrust along the ground (heading in the air), a little past the top speed
     const wantBoost = (inp.boost && v.fuel > 0) || v.burstT > 0;
     if (wantBoost) {
       if (v.burstT > 0) v.burstT -= dt; else { v.fuel = Math.max(0, v.fuel - dt); if (v.me) r.boostUsed += dt; }
-      const vMax = v.vTop * TR.boostVMul;
-      const a = TR.boostA * st.boostPower * Math.max(0.1, 1 - Math.max(0, vf) / vMax);
+      const vMax = v.vTop * TR.boostVMul * (v.turboT > 0 ? 1.15 : 1);
+      const a = TR.boostA * st.boostPower * (v.turboT > 0 ? 1.4 : 1) * Math.max(0.1, 1 - Math.max(0, vf) / vMax);
       const bx = grounded && onWheels ? tx : v.fx, by = grounded && onWheels ? ty : v.fy;
       addVelAll(v, bx * a * dt, by * a * dt);
     }
@@ -736,7 +866,7 @@ export function createGame(canvas, opts = {}) {
     spinWheels(v, inp);
   }
   function spinWheels(v, inp) {
-    const wr = VEHICLE.wheels[0].r;
+    const wr = v.def.wheels[0].r * v.wheelMul;
     for (let i = 0; i < 2; i++) {
       const touching = v.contacts[i + 1];
       let target = touching ? v.vf / wr : v.wheelSpin[i];
@@ -757,9 +887,10 @@ export function createGame(canvas, opts = {}) {
     const lean = (inp.brake && !v.leanBlockBrake ? 1 : 0) - (inp.gas && !v.leanBlockGas ? 1 : 0); // +1 = back
     let w = v.omega;
     v.lastLean = lean; v.lastW0 = w;
+    const flippy = v.special === 'flippy' ? 1.25 : 1;
     if (lean) {
       v.leaned = true;
-      if (lean > 0 ? w < TR.airLeanMax : w > -TR.airLeanMax) w += TR.airLean * lean * dt;
+      if (lean > 0 ? w < TR.airLeanMax * flippy : w > -TR.airLeanMax * flippy) w += TR.airLean * flippy * lean * dt;
     } else {
       // no lean held: the suspension rights the Ranger toward the nearest wheels-down attitude (it finishes a
       // nearly-round flip), aiming at the landing slope once touchdown is near; a better suspension turns harder
@@ -768,8 +899,8 @@ export function createGame(canvas, opts = {}) {
       const lead = v.ang + w * 0.25;
       const goal = lead - wrapPi(lead - target);
       const err = v.ang - goal;
-      const amax = (v.ai ? TR.assistMax + TR.assistMaxPer : TR.assistMax + TR.assistMaxPer * k01) * (near ? 1 : 0.6);
-      w += clamp(-err * TR.assistK - w * TR.assistD, -amax, amax) * dt;
+      const amax = (v.ai ? TR.assistMax + TR.assistMaxPer : TR.assistMax + TR.assistMaxPer * k01) * (near ? 1 : 0.6) * flippy;
+      w += clamp(-err * TR.assistK * flippy - w * TR.assistD, -amax, amax) * dt;
     }
     setOmegaAll(v, w);
   }
@@ -777,9 +908,10 @@ export function createGame(canvas, opts = {}) {
   function predictImpact(r, v, maxT) {
     const h = 0.03, c = r.course;
     let x = v.com.x, y = v.com.y, vx = v.com.vx, vy = v.com.vy;
+    const g = r.g;
     for (let t = 0; t <= maxT; t += h) {
       if (vy < 0 && y - c.groundY(x) <= v.rideH + 0.15) { v.imp.t = t; v.imp.x = x; v.imp.ok = true; return true; }
-      x += vx * h; y += vy * h - 0.5 * G * h * h; vy -= G * h;
+      x += vx * h; y += vy * h - 0.5 * g * h * h; vy -= g * h;
     }
     v.imp.ok = false;
     return false;
@@ -845,6 +977,7 @@ export function createGame(canvas, opts = {}) {
         r.finishCrossed = true;
         r.finishT = r.t;
         r.timeSec = v.finishTime;
+        r.ghostTrace.push([Math.round(v.finishTime * 100) / 100, Math.round(v.com.x * 100) / 100, Math.round(v.com.y * 100) / 100, Math.round(v.ang * 1000) / 1000]); // the ghost's last sample = its finish
         emit({ type: 'lap', timeSec: Math.round(v.finishTime * 100) / 100 });
         emit({ type: 'finishLine' });
         popup(r, ORD[v.finishOrder - 1] + '!', 0.5, LANE_BIG, v.finishOrder === 1 ? '#ffd23f' : '#ffffff', 1.5, false, 2.2, 'big');
@@ -854,6 +987,11 @@ export function createGame(canvas, opts = {}) {
     if (v.finished) {
       if (!v.stopped && v.speed < 0.3 && !v.air && r.t - (r.goT + v.finishTime) > 1) { v.stopped = true; capturePose(v); v.hold = true; }
       return;
+    }
+    // v1.5 Sky Bridge: dropped into a gap → 'fell' + crash (respawn at the last checkpoint)
+    if (r.course.trail.gaps) {
+      const z = r.course.inZone(v.com.x);
+      if (z && z.type === 'gap' && v.com.y < z.floor + 3.5) { if (v.me) { r.fell++; emit({ type: 'fell', x: Math.round(v.com.x) }); } crash(r, v, false); return; }
     }
     // no stuck state in a race: on the roof / stopped / off the world → it counts as a crash and respawns
     const upCos = Math.cos(v.ang);
@@ -876,8 +1014,10 @@ export function createGame(canvas, opts = {}) {
     const thr = TR.impactThr * st.suspension;
     const roof = v.contacts[0] && !v.contacts[1] && !v.contacts[2];
     const slope = c.groundSlope(v.com.x);
+    const SL = SPECIAL_LAND[v.special];
+    const crashAngle = SL ? SL.crash : TR.crashAngle, roofAngle = SL ? SL.roof : TR.roofAngle;
     let q;
-    if (v.invulnT <= 0 && (err > TR.crashAngle || (roof && err > TR.roofAngle))) q = 'crash';
+    if (v.invulnT <= 0 && (err > crashAngle || (roof && err > roofAngle))) q = 'crash';
     else if (err < TR.perfectAngle && slope < -0.12 && impact < thr && air >= 0.5) q = 'perfect';
     else if (err < TR.goodAngle && impact < thr * 1.6) q = 'good';
     else q = 'hard';
@@ -890,10 +1030,12 @@ export function createGame(canvas, opts = {}) {
       measure(v);
       setOmegaAll(v, clamp(v.omega, -1, 1));
     } else {
-      const vt = Math.max(0, pre.vx * tx + pre.vy * ty) * 0.72;
+      const vt = Math.max(0, pre.vx * tx + pre.vy * ty) * (v.special === 'landsAll' ? 0.85 : 0.72);
       addVelAll(v, tx * vt - v.com.vx, ty * vt - v.com.vy);
       measure(v);
     }
+    // v1.5 Rubber mutator / Moon Rover: the landing springs the rider back up
+    if (v.bounce > 1 && impact > 2) { addVelAll(v, 0, Math.min(9, impact * 0.42 * (v.bounce - 1))); measure(v); }
     // flips: a full turn (minus a little grace) landed wheels-down
     const turns = Math.floor((Math.abs(v.flightRot) + TR.flipGrace) / TAU);
     if (q === 'perfect') v.fuel = Math.min(v.tank, v.fuel + v.tank * TR.perfectFuel);
@@ -906,31 +1048,32 @@ export function createGame(canvas, opts = {}) {
     const m = r.stats.coinMult;
     if (turns >= 1) {
       const kind = v.flightRot > 0 ? 'back' : 'front';
-      r.combo++;
-      const mult = Math.min(TR.comboMax, 1 + TR.comboStep * (r.combo - 1));
-      const raw = TR.flipCash * turns * (turns > 1 ? 2 : 1) * mult;
+      const raw = TR.flipCash * turns * (turns > 1 ? 2 : 1);
       r.flipRaw += raw;
       r.flips += turns;
       v.fuel = Math.min(v.tank, v.fuel + v.tank * TR.flipFuel * turns);
       const cash = Math.round(raw * m);
-      emit({ type: 'flip', kind, count: turns, cash, combo: r.combo });
+      const cb = stunt(r, raw);
+      emit({ type: 'flip', kind, count: turns, cash, combo: cb.count, mult: cb.mult, comboCash: cb.cash });
       const word = turns === 1 ? '' : turns === 2 ? 'DOUBLE ' : turns + 'x ';
       popup(r, word + (kind === 'back' ? 'BACKFLIP!' : 'FRONT FLIP!'), 0.5, LANE_BIG, '#ff5ec4', 1.15, false, 1.4, 'big');
-      popup(r, '+$' + cash + (mult > 1 ? '  x' + mult : ''), 0.5, LANE_SUB, '#ffe14a', 0.75, false, 1.4, 'sub');
+      popup(r, '+$' + cash + (cb.mult > 1 ? '  x' + cb.mult : ''), 0.5, LANE_SUB, '#ffe14a', 0.75, false, 1.4, 'sub');
       slowmo(r);
     } else {
-      if (air >= 0.6) r.combo = 0;
       if (q === 'perfect') popup(r, 'PERFECT!', 0.5, LANE_BIG, '#7dff6b', 1.1, false, 1.2, 'big');
       else if (q === 'hard') popup(r, 'OOF!', 0.5, LANE_BIG, '#ffb36b', 0.95, false, 1.0, 'big');
     }
     if (q === 'perfect') {
       r.perfectRaw += TR.perfectCash;
-      if (turns >= 1) popup(r, 'PERFECT!', 0.5, 0.82, '#7dff6b', 0.7, false, 1.2, 'perf');
+      const cb = stunt(r, TR.perfectCash);
+      if (turns >= 1) popup(r, 'PERFECT!' + (cb.mult > 1 ? ' x' + cb.mult : ''), 0.5, 0.82, '#7dff6b', 0.7, false, 1.2, 'perf');
     }
-    if (q === 'hard') r.combo = 0;
+    if (q === 'hard') { r.comboN = 0; r.comboAt = -99; }
     if (air >= TR.bigAir) {
-      emit({ type: 'bigAir', airTime: Math.round(air * 100) / 100 });
-      if (turns < 1) popup(r, 'BIG AIR!', 0.5, 0.82, '#7cf2ff', 0.8, false, 1.2, 'perf');
+      r.bigAirRaw += TR.bigAirCash;
+      const cb = stunt(r, TR.bigAirCash);
+      emit({ type: 'bigAir', airTime: Math.round(air * 100) / 100, cash: Math.round(TR.bigAirCash * m), combo: cb.count, mult: cb.mult });
+      if (turns < 1) popup(r, 'BIG AIR!' + (cb.mult > 1 ? ' x' + cb.mult : ''), 0.5, 0.82, '#7cf2ff', 0.8, false, 1.2, 'perf');
     }
     const cx = v.com.x;
     for (let k = 0; k < 10; k++) {
@@ -938,6 +1081,23 @@ export function createGame(canvas, opts = {}) {
         0.3 + Math.random() * 0.4, r.bd.style === 'snow' ? '#ffffff' : r.dustCol, 0.6 + Math.random() * 0.5, 0.7);
     }
     r.shake = Math.max(r.shake, clamp(impact * 0.7, 1.5, 14) * (q === 'hard' ? 1.3 : 0.5));
+  }
+
+  // v1.5 combo meter: flips, big airs and perfect landings within comboWindow of each other chain; the chain's
+  // multiplier (x2 .. x5) applies to each stunt's base cash, the extra goes to cash.combo
+  function stunt(r, raw) {
+    r.comboN = r.t - r.comboAt <= TR.comboWindow ? r.comboN + 1 : 1;
+    r.comboAt = r.t;
+    const mult = Math.min(TR.comboMax, r.comboN);
+    const extra = raw * (mult - 1);
+    r.comboRaw += extra;
+    if (r.comboN > r.comboMax) r.comboMax = r.comboN;
+    const cash = Math.round(extra * r.stats.coinMult);
+    if (mult > 1) {
+      emit({ type: 'combo', count: r.comboN, mult, cash });
+      popup(r, 'COMBO x' + mult, 0.5, 0.26, '#ffb3ff', 0.9, false, 1.3, 'combo');
+    }
+    return { count: r.comboN, mult, cash };
   }
 
   // a crash: the Ranger tumbles, the driver and the helmet fly off; respawn at the last checkpoint after crashTime
@@ -953,9 +1113,10 @@ export function createGame(canvas, opts = {}) {
     v.driver = { x: tmp2[0], y: tmp2[1] - 0.5, vx: v.com.vx * 0.6 + dir * 3, vy: 6.5 + Math.random() * 2, rot: 0, spin: -dir * (6 + Math.random() * 3), helmet: false };
     v.helmetObj = { x: tmp2[0], y: tmp2[1], vx: v.com.vx * 0.7 + dir * 3, vy: 6 + Math.random() * 2, rot: 0, spin: -dir * 10, bounces: 0 };
     if (fromLanding) setOmegaAll(v, v.omega + (v.flightRot >= 0 ? 3 : -3));
+    if (v.turboT > 0) v.turboT = 0;
     if (v.me) {
       r.crashes++;
-      r.combo = 0;
+      r.comboN = 0; r.comboAt = -99;
       emit({ type: 'crash' });
       popup(r, 'CRASH!', 0.5, LANE_BIG, '#ff6b5a', 1.25, false, 1.3, 'big');
       r.shake = Math.max(r.shake, 12);
@@ -967,7 +1128,7 @@ export function createGame(canvas, opts = {}) {
     const c = r.course;
     for (const o of [v.driver, v.helmetObj]) {
       if (!o) continue;
-      o.vy -= G * dt;
+      o.vy -= r.g * dt;
       o.x += o.vx * dt; o.y += o.vy * dt;
       o.rot += o.spin * dt;
       const gy = c.groundY(o.x) + (o === v.driver ? 0.45 : 0.2);
@@ -1015,7 +1176,28 @@ export function createGame(canvas, opts = {}) {
     coinsFor(r, v, true);
     wheelFx(r, v, input);
     raceGate(r, v);
+    if (r.wind) r.windNow = r.wind * (0.6 * Math.sin(r.t * 0.5) + 0.4 * Math.sin(r.t * 1.7 + 1));
+    ghostLogic(r, v);
     if (r.finishCrossed && (v.stopped || r.t - r.finishT > 4)) endRun(r, 'finish');
+  }
+  // v1.5 ghost: record the player's run every ghostDt (thinned when it gets long) and track the gap to the ghost
+  function ghostLogic(r, v) {
+    if (r.goT < 0) return;
+    const t = r.t - r.goT;
+    if (!v.finished && t >= r.ghostNextT) {
+      r.ghostNextT = t + r.ghostDt;
+      r.ghostTrace.push([Math.round(t * 100) / 100, Math.round(v.com.x * 100) / 100, Math.round(v.com.y * 100) / 100, Math.round(v.ang * 1000) / 1000]);
+      if (r.ghostTrace.length > TR.ghostMax) { r.ghostTrace = r.ghostTrace.filter((_, i) => i % 2 === 0); r.ghostDt *= 2; }
+    }
+    const gh = r.ghost;
+    if (!gh) return;
+    const gt = ghostTimeAt(gh, v.com.x);
+    const ahead = gt == null ? false : t < gt;
+    if (r.ghostAhead !== null && ahead !== r.ghostAhead && t > 1.5 && !v.finished) {
+      emit({ type: 'ghostPassed', ahead });
+      popup(r, ahead ? 'PASSED YOUR GHOST!' : 'GHOST AHEAD', 0.5, LANE_SUB, ahead ? '#7dff6b' : '#cfd6ff', 0.7, false, 1.2, 'sub');
+    }
+    r.ghostAhead = ahead;
   }
 
   // ---- v1.2 math gates in a race: only the player stops; the race freezes while the question is open ----
@@ -1034,10 +1216,10 @@ export function createGame(canvas, opts = {}) {
     const v = r.me, c = r.course;
     measure(v);
     r.gateEntryV = clamp(Math.max(v.vf, v.speed * 0.8), 6, v.vTop);
-    const a0 = v.ang, cs = Math.cos(a0), sn = Math.sin(a0);
-    const ox = v.chassis.position.x / S - (cs * HULL_C[0] - sn * HULL_C[1]);
-    const oy = -v.chassis.position.y / S - (sn * HULL_C[0] + cs * HULL_C[1]);
-    const x1 = g.x - T.gateStop - VEHICLE.wheels[1].x;
+    const a0 = v.ang, cs = Math.cos(a0), sn = Math.sin(a0), HC = v.hc;
+    const ox = v.chassis.position.x / S - (cs * HC[0] - sn * HC[1]);
+    const oy = -v.chassis.position.y / S - (sn * HC[0] + cs * HC[1]) - v.lift;
+    const x1 = g.x - T.gateStop - v.def.wheels[1].x;
     const dist = Math.max(0.5, x1 - ox);
     r.gateGlide = { t: 0, dur: clamp(dist / Math.max(4, r.gateEntryV * 0.5), 0.35, 1.0), x0: ox, y0: oy, a0, x1, a1: Math.atan(c.groundSlope(x1)), g };
     r.frozen = true;
@@ -1055,7 +1237,7 @@ export function createGame(canvas, opts = {}) {
     const y = G.y0 + (yg - G.y0) * smoothstep(0, 0.6, u);
     const a = G.a0 + wrapPi(Math.atan(c.groundSlope(x)) - G.a0) * smoothstep(0, 0.7, u);
     placeVehicle(v, x, y, a);
-    for (let i = 0; i < 2; i++) Body.setAngle(v.wheels[i], (x - G.x0) / VEHICLE.wheels[i].r);
+    for (let i = 0; i < 2; i++) Body.setAngle(v.wheels[i], (x - G.x0) / (v.def.wheels[i].r * v.wheelMul));
     measure(v);
     if (u >= 1) {
       capturePose(v);
@@ -1127,7 +1309,7 @@ export function createGame(canvas, opts = {}) {
       if (dx * dx + dy * dy < 1.7 * 1.7) {
         r.coinHit[i] = 1;
         r.coins++;
-        const cash = Math.round(T.cash.coin * r.stats.coinMult);
+        const cash = Math.round(T.cash.coin * r.coinMul * r.stats.coinMult);
         v.fuel = Math.min(v.tank, v.fuel + v.tank * (race ? TR.coinFuel : T.fuel.coin));
         emit({ type: 'coin', cash });
         for (let k = 0; k < 6; k++) particle(r, P_SPARK, cn.x, cn.y, v.com.vx * 0.3 + (Math.random() - 0.5) * 5, (Math.random() - 0.3) * 5, 0.06, k % 2 ? '#fff3a0' : '#ffc93c', 0.35, 1);
@@ -1154,9 +1336,11 @@ export function createGame(canvas, opts = {}) {
         if (rooster && Math.random() < 0.4) particle(r, P_DUST, wx, wy, kx * 0.4, ky * 0.4, 0.18 + Math.random() * 0.2, r.dustCol, 0.5, 0.45);
       }
     }
-    if (v.boostOn && Math.random() < 0.6) {
-      localToWorld(v, VEHICLE.exhaust[0] - 0.5, VEHICLE.exhaust[1], tmp2);
-      particle(r, P_DUST, tmp2[0], tmp2[1], v.com.vx * 0.3 - v.fx * 3, v.com.vy * 0.3 - v.fy * 3 + 0.4, 0.2 + Math.random() * 0.2, '#d6d6e0', 0.45, 0.5);
+    if (v.boostOn && Math.random() < (v.turboT > 0 ? 1 : 0.6)) {
+      localToWorld(v, v.def.exhaust[0] - 0.5, v.def.exhaust[1], tmp2);
+      const col = trailColor(v.look, r.realT, (Math.random() * 2) | 0);
+      particle(r, P_DUST, tmp2[0], tmp2[1], v.com.vx * 0.3 - v.fx * 3, v.com.vy * 0.3 - v.fy * 3 + 0.4, 0.2 + Math.random() * 0.2, col, 0.45, 0.6);
+      if (v.turboT > 0 || Math.random() < 0.5) particle(r, P_SPARK, tmp2[0], tmp2[1], v.com.vx * 0.2 - v.fx * (5 + Math.random() * 4), v.com.vy * 0.2 - v.fy * 5 + (Math.random() - 0.5) * 3, 0.07, col, 0.35, 1);
     }
   }
 
@@ -1171,7 +1355,7 @@ export function createGame(canvas, opts = {}) {
     const sf = surfaceGrip(r, v, rearX);
     const cosT = Math.max(0.2, Math.cos(v.ang));
     const mu = T.mu * st.grip * r.trailGrip * sf.grip * (v.inWater ? SURFACES.water.grip : 1);
-    const aTrac = mu * G * cosT;
+    const aTrac = mu * r.g * cosT;
     const vTop = v.vTop;
     const vf = v.vf;
     v.spin = 0;
@@ -1213,7 +1397,7 @@ export function createGame(canvas, opts = {}) {
         if (aEng > aTrac * 1.02) v.spin = 1;
         addVelAll(v, tx * drive * dt, ty * drive * dt);
         const vt = v.com.vx * tx + v.com.vy * ty;
-        if (G * ty > drive * 0.98 && Math.abs(vt) < 1.6) {
+        if (r.g * ty > drive * 0.98 && Math.abs(vt) < 1.6) {
           const k = 1 - Math.exp(-T.stallDamp * dt);
           addVelAll(v, -tx * vt * k, -ty * vt * k);
           v.spin = 1;
@@ -1495,9 +1679,9 @@ export function createGame(canvas, opts = {}) {
     const ta = Math.atan(c.groundSlope(tx));
     const ch = v.chassis;
     const a0 = v.ang;
-    const cs = Math.cos(a0), sn = Math.sin(a0);
-    const ox = ch.position.x / S - (cs * HULL_C[0] - sn * HULL_C[1]);
-    const oy = -ch.position.y / S - (sn * HULL_C[0] + cs * HULL_C[1]);
+    const cs = Math.cos(a0), sn = Math.sin(a0), HC = v.hc;
+    const ox = ch.position.x / S - (cs * HC[0] - sn * HC[1]);
+    const oy = -ch.position.y / S - (sn * HC[0] + cs * HC[1]) - v.lift;
     r.winchAnim = { t: 0, x0: ox, y0: oy, a0, x1: tx, y1: c.groundY(tx) + 0.06, a1: ta, ax: tx + 6.5, ay: c.groundY(tx + 6.5) };
     r.winchShow = r.winchAnim;
     r.winchShowT = r.realT;
@@ -1545,17 +1729,18 @@ export function createGame(canvas, opts = {}) {
   function cashBreakdown(r) {
     const m = r.stats.coinMult;
     const distance = Math.round(T.cash.perM * r.distance * m);
-    const air = Math.round(T.cash.airPerS * r.totalAir * m);
+    const air = Math.round((T.cash.airPerS * r.totalAir + r.bigAirRaw) * m);
     const smash = Math.round(r.smashRaw * m);
     const gates = Math.round(r.gatesRaw * m);
     const quick = Math.round(r.quickRaw * m);
-    const coins = Math.round(T.cash.coin * r.coins * m);
+    const coins = Math.round(T.cash.coin * r.coinMul * r.coins * m);
     const finish = r.finishCrossed ? Math.round(T.cash.finish * m) : 0;
     const flips = Math.round(r.flipRaw * m);
     const perfect = Math.round(r.perfectRaw * m);
     const place = r.race && r.finishCrossed ? Math.round((TR.placeCash[r.me.finishOrder - 1] || 0) * m) : 0;
-    return { distance, air, smash, gates, quick, coins, finish, flips, perfect, place,
-      total: distance + air + smash + gates + quick + coins + finish + flips + perfect + place };
+    const combo = Math.round(r.comboRaw * m);
+    return { distance, air, smash, gates, quick, coins, finish, flips, perfect, place, combo,
+      total: distance + air + smash + gates + quick + coins + finish + flips + perfect + place + combo };
   }
   function ratingOf(r) {
     const L = r.landings;
@@ -1580,7 +1765,7 @@ export function createGame(canvas, opts = {}) {
     return { score, letter: score >= 90 ? 'S' : score >= 75 ? 'A' : score >= 55 ? 'B' : score >= 35 ? 'C' : 'D', medal: null };
   }
   function ridersOut(r) {
-    return r.riders.map((v) => ({ name: v.name, paint: v.look.paint.id, x: Math.round(v.com.x * 10) / 10, place: v.place, finished: v.finished,
+    return r.riders.map((v) => ({ name: v.name, paint: v.look.paint.id, vehicle: v.def.id, rivalId: v.rivalId, x: Math.round(v.com.x * 10) / 10, place: v.place, finished: v.finished,
       timeSec: v.finished ? Math.round(v.finishTime * 100) / 100 : null, me: v.me, crashed: v.crashed }));
   }
   function endRun(r, reason) {
@@ -1619,6 +1804,15 @@ export function createGame(canvas, opts = {}) {
       landings: { ...r.landings },
       gatesTotal: r.gates.length,
       length: r.course.length,
+      // v1.5
+      vehicle: r.def.id,
+      mutator: r.mutator ? r.mutator.id : null,
+      ghostTrace: r.ghostTrace,
+      ghostTime: r.ghost ? Math.round(r.ghost.time * 100) / 100 : null,
+      beatGhost: r.ghost ? (r.finishCrossed ? r.timeSec < r.ghost.time : false) : null,
+      comboMax: r.comboMax,
+      turbo: r.turboUsed,
+      fell: r.fell,
     };
     r.summary = summary;
     emit({ type: 'finish', summary });
@@ -1743,13 +1937,18 @@ export function createGame(canvas, opts = {}) {
     if (bd.night && r.phase !== 'done') {
       for (const v of r.riders) {
         if (v.crashed || v.com.x < vis.x0 - 16 || v.com.x > vis.x1 + 2) continue;
-        localToWorld(v, VEHICLE.headlight[0], VEHICLE.headlight[1], tmp2);
+        localToWorld(v, v.def.headlight[0], v.def.headlight[1], tmp2);
         R.drawHeadlights(ctx, course, tmp2[0], tmp2[1], v.ang, true);
       }
     }
+    // v1.5 ghost: a translucent copy of your best run, behind the riders
+    if (r.ghost && r.goT >= 0 && r.phase !== 'done') {
+      const gp = ghostPose(r.ghost, r.t - r.goT, tmp3);
+      if (gp[0] > vis.x0 - 3 && gp[0] < vis.x1 + 3) drawGhost(r, gp, lw);
+    }
     const ws = r.winchShow;
     if (ws && (r.winchAnim || r.realT - r.winchShowT < T.winchDur + 0.5)) {
-      localToWorld(me, VEHICLE.winchHook[0], VEHICLE.winchHook[1], tmp2);
+      localToWorld(me, me.def.hull[2][0], me.def.hull[2][1], tmp2);
       R.drawWinch(ctx, ws.ax, ws.ay, tmp2[0], tmp2[1], lw, r.winchAnim ? clamp(ws.t / 0.3, 0, 1) : 1 - clamp((r.realT - r.winchShowT - T.winchDur) / 0.5, 0, 1));
     }
     // AI riders: ghosts (they never touch you) with a name tag, then the player on top
@@ -1765,20 +1964,36 @@ export function createGame(canvas, opts = {}) {
     R.drawWater(ctx, course, bd, vis, lw, t);
     R.drawParticles(ctx, r.particles, r.np, vis);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    R.drawWeather(ctx, view, cam, bd, t);
+    if (r.fog > 0) R.drawFog(ctx, view, cam, bd, r.fog, me.com.y, t);
+    R.drawWeather(ctx, view, cam, bd, t, r.windNow);
     const inten = (r.race ? clamp((me.speed - 16.7) / 14, 0, 1) : clamp((me.speed - 14) / 14, 0, 1)) * (r.phase === 'ride' ? 1 : 0);
     if (inten > 0) R.drawSpeedLines(ctx, view, r.speedLines, inten, me.com.vx / (me.speed || 1), me.com.vy / (me.speed || 1));
     R.drawFlash(ctx, view, r.flash, '#ffffff');
     R.drawPopups(ctx, r.popups, toScreen, view);
   }
 
-  const drawState = { t: 0, nitroOn: false, speed: 0, lw: 0.05, wheels: null, lights: false, rim: null, noDriver: false };
+  const drawState = { t: 0, nitroOn: false, speed: 0, lw: 0.05, wheels: null, lights: false, rim: null, noDriver: false, wheelMul: 1, turbo: false };
+  const tmp3 = [0, 0, 0];
+  function drawGhost(r, gp, lw) {
+    const v = r.me;
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    ctx.translate(gp[0], gp[1]);
+    ctx.rotate(gp[2]);
+    ctx.translate(-v.hc[0], -v.hc[1] - v.lift);
+    drawState.t = r.realT; drawState.nitroOn = false; drawState.speed = 0; drawState.lw = lw; drawState.wheels = null;
+    drawState.lights = false; drawState.rim = 'rgba(200,230,255,0.9)'; drawState.noDriver = false; drawState.wheelMul = v.wheelMul; drawState.turbo = false;
+    drawVehicle(ctx, v.look, drawState);
+    ctx.restore();
+    R.drawNameTag(ctx, 'GHOST', gp[0], gp[1] + 1.6, '#dfe8ff');
+  }
   function drawRanger(r, v, lw) {
     const ch = v.chassis;
     const a = -ch.angle;
     const c = Math.cos(a), s = Math.sin(a);
     const px = ch.position.x / S, py = -ch.position.y / S;
-    const ox = px - (c * HULL_C[0] - s * HULL_C[1]), oy = py - (s * HULL_C[0] + c * HULL_C[1]);
+    const HC = v.hc;
+    const ox = px - (c * HC[0] - s * HC[1]), oy = py - (s * HC[0] + c * HC[1]);
     for (let i = 0; i < 2; i++) {
       const w = v.wheels[i];
       const dx = w.position.x / S - ox, dy = -w.position.y / S - oy;
@@ -1796,6 +2011,8 @@ export function createGame(canvas, opts = {}) {
     drawState.lights = r.bd.night;
     drawState.rim = r.bd.night && v.me ? 'rgba(200,215,255,0.3)' : null;
     drawState.noDriver = v.crashed;
+    drawState.wheelMul = v.wheelMul;
+    drawState.turbo = v.turboT > 0;
     drawVehicle(ctx, v.look, drawState);
     ctx.restore();
     if (v.invulnT > 0 && v.me && Math.sin(r.realT * 30) > 0) {
@@ -1887,7 +2104,22 @@ export function createGame(canvas, opts = {}) {
       frozen: !!r.frozen,
       countdown: r.race && r.goT < 0 ? Math.max(0.01, Math.round((TR.goAt - r.cdT) * 100) / 100) : 0,
       length: r.course.length,
+      // v1.5
+      vehicle: r.def.id,
+      mutator: r.mutator ? r.mutator.id : null,
+      combo: { count: r.comboN, mult: Math.min(TR.comboMax, r.comboN), left: r.comboN ? Math.max(0, Math.round((TR.comboWindow - (r.t - r.comboAt)) * 100) / 100) : 0 },
+      turbo: v.turboT > 0 ? Math.round(v.turboT * 100) / 100 : 0,
+      ghostGap: ghostGapNow(r),
+      fog: r.fog,
     };
+  }
+  // seconds behind (+) / ahead (-) of the ghost at the player's distance
+  function ghostGapNow(r) {
+    if (!r.ghost || r.goT < 0) return r.ghost ? 0 : null;
+    const v = r.me;
+    const gt = ghostTimeAt(r.ghost, v.com.x);
+    const t = v.finished ? v.finishTime : r.t - r.goT;
+    return gt == null ? Math.round((t - r.ghost.time) * 100) / 100 : Math.round((t - gt) * 100) / 100;
   }
 
   return {
@@ -1912,9 +2144,11 @@ export function createGame(canvas, opts = {}) {
       if (res.correct) { r.gateCorrect++; raw = T.cash.gate; fuel = T.fuel.correct; }
       if (res.quick) { r.gateQuick++; quick = T.cash.quick; fuel = T.fuel.quick; }
       if (res.fixed) { r.gateFixed++; raw = T.cash.fixed; fuel = r.race ? 0 : T.fuel.fixed; } // a race: no boost for a fixed answer
+      if (v.special === 'turbotank') fuel *= 2; // Turbo RZR-X
       r.gatesRaw += raw;
       r.quickRaw += quick;
       v.fuel = Math.min(v.tank, v.fuel + v.tank * fuel);
+      const turbo = !!result.turbo && r.race && !res.fixed;
       const m = r.stats.coinMult;
       const cash = Math.round(raw * m) + Math.round(quick * m);
       openGateNow(r, g, res);
@@ -1925,9 +2159,12 @@ export function createGame(canvas, opts = {}) {
         const hold = res.fixed ? (Number.isFinite(Number(result.holdSec)) ? clamp(Number(result.holdSec), 0, 10) : 1.5) : 0;
         if (hold > 0) { v.hold = true; v.releaseT = r.t + hold; } else releasePlayer(r);
         if (res.quick) v.burstT = 1.2;
-        emit({ type: 'gateOpen', index: g.index, cash, fuel, correct: res.correct, quick: res.quick, fixed: res.fixed, holdSec: hold });
+        if (turbo) { v.burstT = TR.turboSec; v.turboT = TR.turboSec; r.turboUsed = true; }
+        emit({ type: 'gateOpen', index: g.index, cash, fuel, correct: res.correct, quick: res.quick, fixed: res.fixed, holdSec: hold, turbo });
+        if (turbo) { emit({ type: 'turbo', sec: TR.turboSec }); r.flash = Math.max(r.flash, 0.5); r.zoomPunch = 1.18; }
         if (cash > 0) popup(r, '+$' + cash + (res.quick ? ' QUICK!' : ''), 0.5, LANE_SUB, '#ffe14a', 0.85, false, 1.4, 'sub');
-        if (res.quick) popup(r, 'BOOST!', 0.5, LANE_BIG, '#7cf2ff', 1.2, false, 1.1, 'big');
+        if (turbo) popup(r, 'TURBO!', 0.5, LANE_BIG, '#ff7a1a', 1.5, false, 1.4, 'big');
+        else if (res.quick) popup(r, 'BOOST!', 0.5, LANE_BIG, '#7cf2ff', 1.2, false, 1.1, 'big');
         else if (hold > 0) popup(r, 'WAIT...', 0.5, LANE_BIG, '#ffb36b', 1.0, false, hold, 'big');
         return true;
       }
@@ -1979,12 +2216,14 @@ export function createGame(canvas, opts = {}) {
         surf: SURF_IDS[v.surf], inWater: v.inWater, gateMode: r.gateMode, endReason: r.endReason, upCos: Math.cos(v.ang),
         gates: r.gates.map((g) => ({ x: g.x, done: g.done })), landings: { ...r.landings }, cam: { ...cam }, perf: { ...perf },
         winch: !!r.winchAnim, slope: r.course.groundSlope(v.com.x), groundY: r.course.groundY(v.com.x), view: { W: view.W, H: view.H },
-        timeScale: r.timeScale, aiLevel: r.aiLevel, vTop: v.vTop, lean: v.lastLean, w0: v.lastW0 };
+        timeScale: r.timeScale, aiLevel: r.aiLevel, vTop: v.vTop, lean: v.lastLean, w0: v.lastW0,
+        vehicle: v.def.id, special: v.special, gravity: r.gravity, mutator: r.mutator && r.mutator.id, mirrored: !!r.course.mirrored, wind: r.windNow,
+        combo: r.comboN, comboMax: r.comboMax, turboT: v.turboT, ghostSamples: r.ghostTrace.length, ghostDt: r.ghostDt, stats: r.stats, lift: v.lift, wheelMul: v.wheelMul };
     },
     debugCourse() { return run ? run.course : null; },
     debugRiders() {
       const r = run;
-      return r ? r.riders.map((v) => ({ name: v.name, x: v.com.x, vf: v.vf, air: v.air, crashed: v.crashed, crashes: v.crashes, finished: v.finished, finishTime: v.finishTime, place: v.place, power: v.stats.power, vTop: v.vTop })) : [];
+      return r ? r.riders.map((v) => ({ name: v.name, vehicle: v.def.id, x: v.com.x, vf: v.vf, air: v.air, crashed: v.crashed, crashes: v.crashes, finished: v.finished, finishTime: v.finishTime, place: v.place, power: v.stats.power, vTop: v.vTop })) : [];
     },
     // move the player to x (upright, on the ground) — for tests and screenshots; tilt (rad) drops it rotated from 2.6 m
     debugTeleport(x, vx = 0, tilt = 0) {

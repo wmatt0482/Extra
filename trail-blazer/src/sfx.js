@@ -1,5 +1,5 @@
 // Trail Blazer-only sound effects (countdown beeps, the start gate dropping, the finish cowbell, a water splash, a gate
-// creak), synthesized with WebAudio like Spell
+// creak; v1.5: horns, the star chime, a crate's rattle and burst), synthesized with WebAudio like Spell
 // Jump's audio.js (which owns everything else: engine, boost, landings, coins, music). Its own small context, created
 // and resumed inside the first user gesture (iOS); every call is a safe no-op before that or with sound off.
 const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
@@ -45,6 +45,18 @@ function createSfx() {
     },
     splash() { if (ready()) { noise('lowpass', 2400, 300, 0.7, 0.6, 0.3); noise('bandpass', 900, 3000, 2, 0.25, 0.15, 0.05); } },
     creak() { if (ready()) { tone('square', 180, 120, 0.35, 0.03); noise('bandpass', 700, 500, 12, 0.35, 0.08); } },
+    /** v1.5: a horn: notes [[Hz, s], ...] played one after another */
+    horn(notes = [[660, 0.1]]) {
+      if (!ready()) return;
+      let at = 0;
+      for (const [f, d] of notes) { tone('square', f, f * 0.98, d, 0.06, at); tone('sawtooth', f / 2, f / 2, d, 0.03, at); at += d + 0.03; }
+    },
+    /** a star earned: a bright chime, a step higher for each star (i = 0, 1, 2) */
+    chime(i = 0) { if (ready()) { const f = [1047, 1319, 1568][i % 3]; tone('triangle', f, f, 0.5, 0.09); tone('sine', f * 2, f * 2, 0.35, 0.04, 0.02); } },
+    /** a crate rattling before it opens */
+    rattle() { if (ready()) for (let i = 0; i < 6; i++) noise('bandpass', 1400, 900, 4, 0.06, 0.12, i * 0.09); },
+    /** a crate bursting open */
+    burst() { if (ready()) { noise('highpass', 3000, 800, 0.7, 0.4, 0.3); tone('triangle', 523, 1047, 0.3, 0.08, 0.05); tone('triangle', 784, 1568, 0.35, 0.06, 0.12); } },
     suspend() { if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {}); },
     resume() { if (ctx && ctx.state !== 'running') ctx.resume().catch(() => {}); },
   };

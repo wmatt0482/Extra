@@ -25,7 +25,7 @@ const WATER_W = 17, WATER_D = 1.7, WATER_LEVEL = 0.4; // dip width, depth; water
 const BRIDGE_DEPTH = 5.5;
 
 export function createCourse(trail, seed, opts = {}) {
-  if (opts.race && trail.mx) return createMxCourse(trail, seed, opts);
+  if (opts.race && trail.mx) { const c = createMxCourse(trail, seed, opts); return opts.mirror ? mirrorCourse(c) : c; }
   const L = trail.length;
   const T = trail.terrain || {};
   const rng = mulberry32(hash2(seed | 0, 0x7a11));
@@ -379,6 +379,7 @@ export function levelStats(L) {
 export function raceTop(stats) { return RACE.vTop * Math.pow(stats.power, RACE.vTopExp); }
 const DX = 0.25;
 const G9 = 9.81;
+export const GAP_DEPTH = 11; // v1.5 Sky Bridge: a double whose gap is a pit this deep (falling in = crash + respawn)
 
 function createMxCourse(trail, seed, opts) {
   const L = trail.length;
@@ -415,6 +416,11 @@ function createMxCourse(trail, seed, opts) {
     return y + k(len) * (x0 + len - xPrev);
   }
   const ease01 = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+  // v1.5: low-gravity worlds (Moon Base) fly far: the arcs use the trail's gravity and the takeoffs are shallower
+  const grav = clamp(Number(trail.gravity) || 1, 0.25, 1.5);
+  const gEff = G9 * grav;
+  const lowG = grav < 0.85;
+  let gapsLeft = trail.gaps | 0;
 
   // ---- the design rider (1-D, the engine's race drive model) ----
   const dLvl = mx.design || 0;
@@ -427,7 +433,7 @@ function createMxCourse(trail, seed, opts) {
       const sl = (hAt(x + DX) - hAt(x)) / DX;
       const c = 1 / Math.sqrt(1 + sl * sl), sn = sl * c;
       const aEng = dA * Math.max(0, 1 - Math.pow(v / dTop, RACE.curve));
-      const a = Math.min(aEng, dMu * G9 * c) - G9 * sn - RACE.roll - RACE.drag * v * v;
+      const a = Math.min(aEng, dMu * gEff * c) - gEff * sn - RACE.roll - RACE.drag * v * v;
       v = Math.sqrt(Math.max(0.5, v * v + (2 * a * DX) / c));
     }
   }
@@ -439,7 +445,7 @@ function createMxCourse(trail, seed, opts) {
     for (let t = 0; t < 5; t += h) {
       pts.push(x, y, vx, vy);
       const sp = Math.hypot(vx, vy), k = RACE.drag * sp;
-      vx -= k * vx * h; vy -= (G9 + k * vy) * h;
+      vx -= k * vx * h; vy -= (gEff + k * vy) * h;
       x += vx * h; y += vy * h;
       if (vy < 0 && y < -60) break;
     }
@@ -511,12 +517,12 @@ function createMxCourse(trail, seed, opts) {
 
   function jump(kind) {
     const big = kind === 'big';
-    const ht = big ? 3.2 : kind === 'stepdown' ? 1.1 : 1.6 + rng() * 0.8;
-    const th = ((big ? 30 : kind === 'stepdown' ? 16 : 22 + rng() * 6) * Math.PI) / 180;
+    const ht = (big ? 3.2 : kind === 'stepdown' ? 1.1 : 1.6 + rng() * 0.8) * (lowG ? Math.sqrt(grav) : 1);
+    const th = (((big ? 30 : kind === 'stepdown' ? 16 : 22 + rng() * 6) * Math.PI) / 180) * (lowG ? Math.pow(grav, 0.75) : 1);
     const xStart = x, lvl0 = level;
     const lip = takeoff(ht, th);
     // design lip speed: the sim, a touch under (margin), capped at what the real Ranger reaches between jumps
-    const vd = Math.min(v * 0.96, 24.5 + 0.35 * dLvl);
+    const vd = Math.min(v * 0.96, 24.5 + 0.35 * Math.min(dLvl, 22));
     // the real Ranger leaves a little flatter than the lip (wheelbase, suspension): calibrated from probe flights
     const pts = arc(lip.x, lip.y, vd, th - 0.035);
     arcs.push({ x: lip.x, y: lip.y, v: vd, th, pts });
@@ -536,12 +542,19 @@ function createMxCourse(trail, seed, opts) {
         const xls = xpe - 1.2 - faceLen;
         if (xls > lip.x + backLen + 2) {
           fill(lip.x, lip.x + backLen, (xx) => lip.y - ht * ease01((xx - lip.x) / backLen));
-          fill(lip.x + backLen, xls, () => lvl0);
+          // v1.5 Sky Bridge: some doubles have no ground between the lip and the landing (a pit with steep walls)
+          const pit = gapsLeft > 0 && !big && xls - (lip.x + backLen) > 8 && rng() < 0.75;
+          if (pit) {
+            gapsLeft--;
+            const g0 = lip.x + backLen, g1 = xls;
+            fill(g0, g1, (xx) => lvl0 - GAP_DEPTH * ease01((xx - g0) / 2.5) * ease01((g1 - xx) / 2.5));
+            zones.push({ x0: g0, x1: g1, type: 'gap', floor: lvl0 - GAP_DEPTH });
+          } else fill(lip.x + backLen, xls, () => lvl0);
           fill(xls, xls + faceLen, (xx) => lvl0 + hl * ease01((xx - xls) / faceLen));
           fill(xls + faceLen, xpe, () => yp);
           const yEnd = downslope(xpe, yp, Ld, sd);
           xEnd = xpe + Ld;
-          features.push({ type: big ? 'big' : 'double', x0: xStart, x1: xEnd, lip: lip.x, land: land.x, gap: xls - lip.x });
+          features.push({ type: big ? 'big' : 'double', x0: xStart, x1: xEnd, lip: lip.x, land: land.x, gap: xls - lip.x, pit });
           level = yEnd;
         } else kind = 'table';
       } else kind = 'table';
@@ -739,8 +752,61 @@ function createMxCourse(trail, seed, opts) {
   return {
     trail, seed, length: L, finishX: L, finishLevel: hAt(L), startX: START_X, mx: true, design: dLvl, designTop: dTop,
     pieces: [], zones, waters, bridges, kickers: [], gates, coins, patches, features, checkpoints, berms, arcs,
-    startGateX: 3.3, designFinishSpeed: v,
+    startGateX: 3.3, designFinishSpeed: v, gravity: grav, mirrored: false,
     groundY, terrainY, baseY: groundY, groundSlope, surfaceAt, waterAt, bridgeAt, kickerAt, bermAt, inZone,
+    propsInChunk, terrainXs,
+  };
+}
+
+// =====================================================================================================
+// v1.5 Mirror mutator: the same track ridden backwards (x -> L - x): the finish straight comes first, every landing
+// slope is a takeoff and every takeoff a landing. Pure wrapper over a race course; deterministic like the original.
+// =====================================================================================================
+export function mirrorCourse(c) {
+  const L = c.length;
+  const m = (x) => L - x;
+  const span = (z) => ({ ...z, x0: m(z.x1), x1: m(z.x0) });
+  const y0 = c.groundY(0);
+  const wall = (x) => (x > L + 120 ? 0.08 * (x - L - 120) * (x - L - 120) : 0);
+  const groundY = (x) => (x <= L ? c.groundY(m(x)) : y0 + wall(x));
+  const groundSlope = (x) => (x <= L ? -c.groundSlope(m(x)) : x > L + 120 ? 0.16 * (x - L - 120) : 0);
+  const terrainY = (x) => (x <= L ? c.terrainY(m(x)) : groundY(x));
+  const waters = c.waters.map(span), bridges = c.bridges.map(span), berms = (c.berms || []).map(span), zones = c.zones.map(span);
+  const patches = c.patches.map(span);
+  const features = c.features.map((f) => ({ ...span(f), lip: f.lip != null ? m(f.lip) : undefined, land: f.land != null ? m(f.land) : undefined }));
+  const arcs = c.arcs.map((a) => ({ ...a, x: m(a.x) }));
+  const cps = c.checkpoints.map((p) => m(p.x)).filter((x) => x > 30 && x < L - 15).sort((a, b) => a - b);
+  const checkpoints = [{ index: 0, x: 0, y: groundY(0) }];
+  for (const x of cps) if (x > checkpoints[checkpoints.length - 1].x + 40) checkpoints.push({ index: checkpoints.length, x, y: groundY(x) });
+  const gates = c.gates.map((g) => m(g.x)).sort((a, b) => a - b).map((x, i) => ({ index: i, x, y: groundY(x) }));
+  const coins = c.coins.map((cn) => ({ ...cn, x: m(cn.x) })).sort((p, q) => p.x - q.x);
+  const waterAt = (x) => { for (let i = 0; i < waters.length; i++) { const w = waters[i]; if (x > w.x0 && x < w.x1) return w; } return null; };
+  const bridgeAt = (x) => { for (let i = 0; i < bridges.length; i++) { const b = bridges[i]; if (x > b.x0 && x < b.x1) return b; } return null; };
+  const bermAt = (x) => { for (let i = 0; i < berms.length; i++) { const b = berms[i]; if (x > b.x0 && x < b.x1) return b; } return null; };
+  const inZone = (x, pad = 0) => { for (const z of zones) if (x > z.x0 - pad && x < z.x1 + pad) return z; return null; };
+  const surfaceAt = (x) => (x >= 0 && x <= L ? c.surfaceAt(m(x)) : 0);
+  function propsInChunk(ci) {
+    const x0 = ci * CHUNK, x1 = x0 + CHUNK;
+    const out = [];
+    const j0 = Math.floor(m(x1) / CHUNK), j1 = Math.floor(m(x0) / CHUNK);
+    for (let cj = j0; cj <= j1; cj++) for (const p of c.propsInChunk(cj)) { const x = m(p.x); if (x >= x0 && x < x1) out.push({ ...p, x }); }
+    return out;
+  }
+  function terrainXs(xa, xb) {
+    const out = [];
+    for (let xx = xa; xx < xb - 1e-6; xx += SEG) {
+      const z = inZone(xx + SEG / 2, 1);
+      if (!z || z.type === 'berm' || z.type === 'bridge') { out.push(xx); continue; }
+      for (let u = xx; u < xx + SEG - 1e-6; u += 0.5) out.push(u);
+    }
+    out.push(xb);
+    return out;
+  }
+  return {
+    trail: c.trail, seed: c.seed, length: L, finishX: L, finishLevel: groundY(L), startX: START_X, mx: true, design: c.design, designTop: c.designTop,
+    pieces: [], zones, waters, bridges, kickers: [], gates, coins, patches, features, checkpoints, berms, arcs,
+    startGateX: 3.3, designFinishSpeed: c.designFinishSpeed, gravity: c.gravity, mirrored: true,
+    groundY, terrainY, baseY: groundY, groundSlope, surfaceAt, waterAt, bridgeAt, kickerAt: () => null, bermAt, inZone,
     propsInChunk, terrainXs,
   };
 }

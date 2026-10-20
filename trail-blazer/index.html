@@ -849,6 +849,235 @@ html.math #controls { visibility: hidden; }
 .pz-check-row .grow { flex: 1 1 200px; }
 .pat-list { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
 .pat-list li { padding: 8px 12px; border-radius: 10px; background: var(--ink-2); border: 2px solid var(--line); font-weight: 700; font-size: 14px; }
+/* ===== v1.5 The Season: title (streak, daily card), garage (vehicles row, rider gear), Garage Wall, Cups, crates,
+   results (stars, lines, weekend, cup podium), HUD (ghost, turbo, combo, rivals) ===== */
+.streak-chip { display: inline-flex; align-items: center; gap: 4px; height: 42px; padding: 0 12px 0 8px; border-radius: 999px; flex: none;
+  background: rgba(13,26,22,.82); border: 2px solid var(--line); color: var(--dim); font: 400 18px/1 var(--font-display); }
+.streak-chip svg { width: 22px; height: 22px; }
+.streak-chip small { font: 800 11px/1 var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.streak-chip.lit { border-color: var(--accent); color: #fff; }
+.streak-chip.lit svg { color: var(--accent); filter: drop-shadow(0 0 6px rgba(255,138,31,.8)); }
+.daily-card { display: inline-flex; align-items: center; gap: 10px; max-width: min(560px, 100%); min-height: 52px; margin: 6px 0 12px; padding: 6px 8px 6px 10px; border-radius: 16px; text-align: left;
+  background: rgba(13,26,22,.86); border: 2px solid var(--cyan); box-shadow: 0 5px 0 rgba(3,10,7,.55); }
+.daily-card .dc-ico { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--cyan); color: #032634; }
+.daily-card .dc-ico svg { width: 22px; height: 22px; }
+.dc-txt { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dc-txt small { font: 800 10px/1 var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--cyan); }
+.dc-txt b { font: 800 15px/1.2 var(--font-body); color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dc-go { flex: none; margin-left: auto; padding: 9px 14px; border-radius: 11px; background: var(--cyan); color: #032634; font: 400 15px/1 var(--font-display); text-transform: uppercase; box-shadow: 0 3px 0 var(--cyan-edge); }
+.daily-card.done { border-color: var(--line); }
+.daily-card.done .dc-ico { background: var(--go); }
+.daily-card.done .dc-txt small { color: var(--go); }
+.daily-card.done .dc-go { background: var(--panel-2); color: #fff; box-shadow: 0 3px 0 var(--ink); }
+
+/* garage: vehicles row + gear */
+.garage-side { display: flex; flex-direction: column; gap: 8px; min-height: 0; min-width: 0; }
+.garage-side .upgrades { flex: 1; }
+.veh-row { flex: none; display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 2px 2px 6px; scrollbar-width: none; touch-action: pan-x; overscroll-behavior: contain; }
+.veh-row::-webkit-scrollbar { display: none; }
+.veh-pick { position: relative; flex: none; width: 112px; height: 96px; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 6px 5px; border-radius: 14px;
+  background: var(--panel); border: 2px solid var(--line); box-shadow: 0 4px 0 rgba(3,10,7,.55); }
+.veh-pick canvas { width: 92px; height: 34px; flex: none; }
+.veh-pick .vc-name { font: 400 11px/1.1 var(--font-display); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.vc-tier { position: absolute; top: 4px; left: 6px; font: 800 10px/1 var(--font-body); color: var(--dim); }
+.vc-st { display: inline-flex; align-items: center; gap: 3px; padding: 3px 7px; border-radius: 7px; font: 800 11px/1 var(--font-body); white-space: nowrap; }
+.vc-st .coin { width: 13px; height: 13px; }
+.vc-st.sel { background: var(--go); color: #062a12; } .vc-st.own { background: var(--panel-2); color: #fff; }
+.vc-st.price { background: var(--ink); color: var(--muted); } .vc-st.price.ok { background: var(--accent); color: var(--accent-ink); }
+.vc-more { font: 700 9.5px/1 var(--font-body); color: var(--muted); white-space: nowrap; }
+.veh-pick.on { border-color: var(--go); box-shadow: 0 0 0 2px rgba(47,211,107,.35), 0 4px 0 rgba(3,10,7,.55); }
+.veh-pick.peek { border-color: var(--accent); }
+.veh-pick.locked .vc-name { color: var(--muted); }
+.up-head { flex: none; align-self: flex-start; font: 400 12px/1 var(--font-display); color: var(--muted); text-transform: uppercase; padding: 5px 9px; border-radius: 8px; background: rgba(13,26,22,.82); }
+#btn-wall { font-size: 14px; padding: 0 12px; gap: 6px; overflow: hidden; }
+#btn-wall svg { width: 20px; height: 20px; }
+.veh-special { margin: 2px 0 0; font: 700 12px/1.25 var(--font-body); color: #c9b8ff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.style-tabs { flex: none; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; padding: 2px; margin: 6px 0 0; border-right: 0; touch-action: pan-x; }
+.style-tabs::-webkit-scrollbar { display: none; }
+.style-tab { flex: none; height: 44px; }
+.style-chip .sw.sw-art { background: var(--ink); }
+.sw.sw-trail { border-radius: 14px !important; }
+.badge-n:empty { display: none; }
+.badge-n { min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; background: var(--hot); color: #fff; font: 800 13px/22px var(--font-body); text-align: center; }
+#btn-wall.has-crates { box-shadow: 0 var(--edge) 0 var(--ink), 0 0 0 3px var(--accent); }
+
+/* Garage Wall */
+.wall-body { flex: 1; min-height: 0; padding: 8px 2px 12px; }
+.wall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+.wall-set { padding: 10px 12px; display: flex; flex-direction: column; gap: 7px; }
+.wall-set.done { border-color: #ffd23a; }
+.ws-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ws-head b { font: 400 16px/1 var(--font-display); text-transform: uppercase; }
+.ws-count { font: 400 16px/1 var(--font-display); color: var(--accent); }
+.ws-bar { height: 8px; border-radius: 4px; background: var(--ink-2); overflow: hidden; }
+.ws-bar i { display: block; height: 100%; background: var(--go); border-radius: 4px; }
+.wall-set.done .ws-bar i { background: #ffd23a; }
+.ws-items { display: flex; flex-wrap: wrap; gap: 6px; }
+.wall-item { width: 44px; height: 44px; border-radius: 11px; display: grid; place-items: center; background: var(--ink-2); border: 2px solid var(--line); }
+.wall-item .sw { width: 32px; height: 32px; border-radius: 8px; }
+.wall-item canvas.sw { background: transparent; }
+.wall-item.r-rare.owned { border-color: var(--cyan); } .wall-item.r-legendary.owned { border-color: #ffd23a; }
+.wall-item.on { box-shadow: 0 0 0 3px var(--accent); }
+.wall-item.missing .q { display: grid; place-items: center; background: #0a1511; color: var(--dim); font: 400 16px/1 var(--font-display); font-style: normal; }
+.ws-bonus { display: flex; align-items: center; gap: 8px; font: 700 12px/1.2 var(--font-body); color: var(--muted); }
+.ws-bonus .sw { flex: none; width: 22px; height: 22px; border-radius: 6px; filter: grayscale(.8) brightness(.7); }
+.ws-bonus.got { color: #ffd23a; } .ws-bonus.got .sw { filter: none; }
+
+/* Cups */
+.cup-tabs { flex: none; display: flex; gap: 8px; padding: 4px 0 2px; overflow-x: auto; scrollbar-width: none; }
+.cup-tabs::-webkit-scrollbar { display: none; }
+.cup-tab { position: relative; flex: 1 0 auto; min-width: 128px; min-height: 52px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 3px; padding: 6px 40px 6px 12px;
+  border-radius: 14px; background: var(--ink); border: 2px solid var(--line); text-align: left; }
+.cup-tab b { font: 400 14px/1 var(--font-display); text-transform: uppercase; color: var(--cc); }
+.cup-tab small { font: 800 12px/1 var(--font-body); color: var(--muted); }
+.cup-tab.on { background: var(--panel-2); border-color: var(--cc); box-shadow: 0 0 0 2px color-mix(in srgb, var(--cc) 35%, transparent); }
+.cup-tab.locked b { color: var(--dim); }
+.cup-trophy, .cup-lock { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); width: 24px; height: 24px; }
+.cup-trophy svg, .cup-lock svg { width: 24px; height: 24px; }
+.cup-trophy { color: var(--mc); } .cup-lock { color: var(--dim); }
+.cup-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; margin: 2px 0 10px; }
+.ch-txt { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; font: 800 14px/1.2 var(--font-body); color: var(--muted); }
+.ch-txt > b { font: 400 18px/1 var(--font-display); color: var(--cc); text-transform: uppercase; }
+.ch-mult { padding: 4px 9px; border-radius: 8px; background: var(--cc); color: var(--ink); font: 400 13px/1 var(--font-display); text-transform: uppercase; }
+.ch-txt .medal-badge { font-size: 11px; padding: 3px 9px 3px 3px; } .ch-txt .medal-badge::before { width: 16px; height: 16px; }
+.ch-lock { display: inline-flex; align-items: center; gap: 6px; font: 700 13px/1.25 var(--font-body); color: #fff; }
+.ch-lock svg { width: 18px; height: 18px; color: var(--accent); }
+.wk-strip { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 8px 10px 8px 14px; margin-bottom: 10px; border-color: var(--accent); }
+.wk-txt { font: 700 14px/1.25 var(--font-body); color: var(--muted); } .wk-txt b { color: #fff; }
+.trail-num { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.stars { display: inline-flex; gap: 1px; }
+.stars i { width: 15px; height: 15px; color: #3c5a4c; }
+.stars i svg { width: 15px; height: 15px; }
+.stars i.on { color: #ffd23a; filter: drop-shadow(0 1px 0 #a8820f); }
+
+/* crate moment */
+.crate-ov { position: absolute; inset: 0; z-index: 26; display: flex; align-items: center; justify-content: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l);
+  background: rgba(4,12,9,.74); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+.crate-card { width: min(420px, 100%); max-height: 100%; overflow: auto; padding: 14px 16px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.crate-title { margin: 0; font: 400 24px/1 var(--font-display); color: var(--accent); text-transform: uppercase; }
+.crate-sub { margin: 0; font: 700 13px/1 var(--font-body); color: var(--muted); }
+.crate-stage { position: relative; width: 100%; min-height: 150px; margin-top: 14px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.crate-tap { font: 400 15px/1 var(--font-display); color: #fff; text-transform: uppercase; animation: blink 1s ease-in-out infinite alternate; }
+.crate-box { --c1: #c98a4b; --c2: #8a5a2b; --band: #e0954a; position: relative; display: block; width: 116px; height: 92px; border-radius: 12px;
+  background: repeating-linear-gradient(90deg, var(--c1) 0 22px, var(--c2) 22px 25px); box-shadow: inset 0 -8px 0 rgba(0,0,0,.25), 0 8px 0 rgba(0,0,0,.4); }
+.crate-box.t-silver { --c1: #b9c4cc; --c2: #7d8b98; --band: #f4f8fb; }
+.crate-box.t-gold { --c1: #f2c230; --c2: #a8820f; --band: #fff3b0; }
+.crate-box .cb-lid { position: absolute; left: -6px; right: -6px; top: -12px; height: 26px; border-radius: 10px; background: var(--c2); box-shadow: inset 0 -5px 0 rgba(0,0,0,.25), inset 0 3px 0 rgba(255,255,255,.25); transition: transform .3s cubic-bezier(.3,1.6,.5,1); }
+.crate-box .cb-band { position: absolute; left: 50%; top: -12px; bottom: 0; width: 18px; margin-left: -9px; background: var(--band); box-shadow: inset 0 -6px 0 rgba(0,0,0,.18); }
+.crate-box .cb-lock { position: absolute; left: 50%; top: 4px; width: 22px; height: 20px; margin-left: -11px; border-radius: 5px; background: #2a2d33; box-shadow: inset 0 0 0 3px var(--band); }
+.crate-box.shake { animation: crateShake .65s linear both; }
+@keyframes crateShake { 0%, 100% { transform: none; } 10% { transform: rotate(-6deg); } 25% { transform: rotate(6deg) translateY(-3px); } 40% { transform: rotate(-8deg); } 55% { transform: rotate(8deg) translateY(-4px); } 70% { transform: rotate(-10deg) scale(1.05); } 85% { transform: rotate(10deg) scale(1.08); } }
+.crate-box.open .cb-lid { transform: translateY(-40px) rotate(-24deg); }
+.crate-box.open { animation: cratePop .35s ease-out both; }
+@keyframes cratePop { 0% { transform: scale(1.12); filter: brightness(1.6); } 100% { transform: scale(.94); opacity: .0; } }
+.crate-rays { position: absolute; left: 50%; top: 50%; width: 260px; height: 260px; margin: -130px 0 0 -130px; border-radius: 50%; pointer-events: none;
+  background: repeating-conic-gradient(rgba(255,210,58,.28) 0 12deg, transparent 12deg 30deg); animation: raySpin 8s linear infinite; -webkit-mask: radial-gradient(circle, #000 30%, transparent 70%); mask: radial-gradient(circle, #000 30%, transparent 70%); }
+@keyframes raySpin { to { transform: rotate(360deg); } }
+.crate-prize { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; animation: prizeIn .45s cubic-bezier(.3,1.6,.5,1) both; }
+@keyframes prizeIn { 0% { transform: scale(.2); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.crate-prize .sw.big { width: 92px; height: 92px; border-radius: 20px; box-shadow: 0 6px 0 rgba(0,0,0,.35), inset 0 0 0 3px rgba(255,255,255,.2); }
+.crate-prize canvas.sw.big, .crate-prize .sw.glyph.big { background: var(--ink); }
+.crate-prize .sw.glyph.big svg { width: 70px; height: 70px; }
+.cp-text { display: flex; flex-direction: column; gap: 3px; }
+.cp-text small { font: 800 11px/1 var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+.cp-text b { font: 400 22px/1 var(--font-display); text-transform: uppercase; }
+.crate-prize.r-rare .cp-text small { color: var(--cyan); } .crate-prize.r-legendary .cp-text small { color: #ffd23a; }
+.new-badge { position: absolute; top: -8px; right: -34px; padding: 5px 9px; border-radius: 9px; background: var(--hot); color: #fff; font: 400 14px/1 var(--font-display); transform: rotate(10deg); box-shadow: 0 3px 0 var(--hot-edge); }
+.cp-cash { font: 400 44px/1 var(--font-display); color: var(--accent); text-shadow: 0 4px 0 var(--accent-edge), 0 7px 0 var(--ink); }
+.crate-prize.cash small { font: 700 13px/1.2 var(--font-body); color: var(--muted); }
+.crate-set { margin: 0; padding: 7px 10px; border-radius: 10px; background: rgba(255,210,58,.14); border: 2px solid #ffd23a; font: 800 13px/1.25 var(--font-body); }
+.crate-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+.crate-actions .btn { min-width: 120px; }
+.reduced-motion .crate-box.shake, .reduced-motion .crate-rays, .reduced-motion .crate-prize, .reduced-motion .crate-tap { animation: none; }
+
+/* results: stars, lines, weekend, crate button, cup podium */
+.res-pay > .res-stars, .res-pay > .res-lines, .res-pay > .res-weekend { flex: none; margin-bottom: 8px; }
+.res-stars { display: flex; gap: 6px; flex-wrap: wrap; }
+.rs-star { display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px 4px 5px; border-radius: 10px; background: var(--ink-2); font: 700 11px/1.1 var(--font-body); color: var(--dim); }
+.rs-star i { width: 20px; height: 20px; color: #3c5a4c; } .rs-star i svg { width: 20px; height: 20px; }
+.rs-star.on { color: #fff; } .rs-star.on i { color: #ffd23a; filter: drop-shadow(0 1px 0 #a8820f); }
+.rs-star.pop i { animation: starPop .5s cubic-bezier(.3,1.8,.5,1) both; }
+@keyframes starPop { 0% { transform: scale(2.6) rotate(-40deg); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.res-lines { display: flex; flex-wrap: wrap; gap: 5px; }
+.res-lines:empty { display: none; }
+.res-line { padding: 4px 9px; border-radius: 9px; background: var(--ink-2); border: 2px solid var(--line); font: 800 12px/1.2 var(--font-body); }
+.res-line.l-ghost { border-color: #c9d1ff; } .res-line.l-combo, .res-line.l-turbo { border-color: var(--cyan); } .res-line.l-rival { border-color: var(--violet); }
+.res-line.l-streak, .res-line.l-daily { border-color: var(--accent); } .res-line.l-crate { border-color: #ffd23a; }
+.res-weekend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border-radius: 12px; background: rgba(255,138,31,.12); border: 2px solid var(--accent); font: 800 13px/1.2 var(--font-body); }
+.res-weekend > b { font: 400 13px/1 var(--font-display); color: var(--accent); text-transform: uppercase; }
+.wk-table { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.wk-row.me { color: var(--accent); }
+.crate-btn { flex: none; display: flex; align-items: center; gap: 8px; min-height: 52px; padding: 4px 12px 4px 10px; border-radius: 14px; text-align: left;
+  background: var(--ink); border: 2px solid #ffd23a; box-shadow: 0 4px 0 rgba(0,0,0,.45); }
+.crate-btn .crate-box { animation: crateBob .6s ease-in-out infinite alternate; }
+.crate-btn b { display: block; font: 400 13px/1.1 var(--font-display); text-transform: uppercase; color: #ffd23a; }
+.crate-btn small { display: block; font: 700 11px/1.1 var(--font-body); color: var(--muted); }
+.crate-box.mini { width: 36px; height: 28px; border-radius: 5px; flex: none; margin-top: 6px; }
+.crate-box.mini .cb-lid { top: -6px; height: 10px; left: -2px; right: -2px; border-radius: 4px; }
+.crate-box.mini .cb-band { top: -6px; width: 7px; margin-left: -3.5px; }
+@keyframes crateBob { to { transform: translateY(-3px) rotate(-6deg); } }
+.reduced-motion .crate-btn .crate-box { animation: none; }
+.cup-final { position: absolute; inset: 0; z-index: 9; display: flex; align-items: center; justify-content: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); background: rgba(4,12,9,.78); }
+.cf-card { width: min(520px, 100%); max-height: 100%; overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; border-color: #ffd23a; }
+.cf-card h3 { margin: 0; font: 400 24px/1.05 var(--font-display); color: #ffd23a; text-transform: uppercase; }
+.cf-card[data-trophy="none"] { border-color: var(--line); } .cf-card[data-trophy="none"] h3 { color: #fff; }
+.cf-podium { width: 100%; }
+.cf-podium .pod canvas { height: 48px; }
+.cf-trophy { width: 40px; height: 40px; color: #ffd23a; filter: drop-shadow(0 3px 0 #a8820f); animation: trophyIn .6s cubic-bezier(.3,1.6,.5,1) both; }
+.cf-trophy svg { width: 40px; height: 40px; }
+@keyframes trophyIn { 0% { transform: translateY(-40px) scale(2); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.cf-sub { margin: 0; font: 700 13px/1.3 var(--font-body); color: var(--muted); }
+.cf-bonus { margin: 0; font: 400 16px/1 var(--font-display); color: var(--accent); text-transform: uppercase; }
+.reduced-motion .cf-trophy, .reduced-motion .rs-star.pop i { animation: none; }
+
+/* HUD + gate */
+.hud-ghost { margin-top: 3px; font: 800 11px/1 var(--font-body); color: #c9d1ff; letter-spacing: .04em; text-transform: uppercase; }
+.hud-ghost.ahead { color: var(--go); } .hud-ghost.behind { color: #c9d1ff; }
+#hud:has(#hud-ghost:not([hidden])) .race-bar { top: calc(var(--pad-t) + 86px); }
+.banner.b-turbo > span { color: #fff; background: linear-gradient(var(--cyan), var(--cyan-edge)); text-shadow: 0 4px 0 #064a63, 0 7px 0 var(--ink); }
+.banner.b-combo > span { color: #ffd23a; text-shadow: 0 4px 0 #a8820f, 0 7px 0 var(--ink); font-size: clamp(24px, 3vmin + 2vw, 46px); }
+.banner.b-rival > span { color: #fff; background: linear-gradient(var(--violet), var(--violet-edge)); border-color: #e6dcff; text-shadow: 0 3px 0 rgba(0,0,0,.35); font: 400 clamp(16px, 1.8vmin + 1.2vw, 26px)/1.1 var(--font-display); white-space: normal; text-align: center; }
+.gate.turbo .gp-card { border-color: var(--cyan); }
+.gate.turbo .gp-title { color: var(--cyan); }
+
+@media (orientation: landscape) and (max-height: 500px) {
+  .daily-card { min-height: 46px; margin: 2px 0 8px; padding: 4px 6px 4px 8px; }
+  .daily-card .dc-ico { width: 30px; height: 30px; }
+  .dc-txt b { font-size: 13px; }
+  .veh-row { padding-bottom: 4px; }
+  .veh-pick { height: 76px; width: 104px; padding: 3px 5px 4px; gap: 1px; }
+  .veh-pick canvas { height: 24px; }
+  .garage-side .upgrades { gap: 4px; }
+  .up-head { display: none; }
+  .garage-side { gap: 6px; }
+  .up-row { padding: 3px 8px; }
+  .up-icon { width: 36px; height: 36px; }
+  .pips { margin-top: 4px; }
+  .veh-stage { min-height: 56px; }
+  .veh-name { font-size: 18px; }
+  .veh-tag { font-size: 12px; }
+  .veh-special { display: none; }
+  .veh-actions { margin-top: 6px; }
+  .style-tabs { margin-top: 2px; }
+  .style-strip { margin: 2px 0; }
+  .cup-tab { min-height: 46px; }
+  .res-stars small { display: none; }
+  .crate-stage { min-height: 120px; }
+}
+@media (orientation: portrait) {
+  .streak-chip { order: 3; margin: 6px 0 0; }
+  #screen-title .trails-chip { order: 4; }
+  .garage-side { min-height: auto; }
+  .garage-body { align-content: start; grid-template-rows: none; grid-auto-rows: max-content; }
+  .veh-card { min-height: max-content; }
+  .garage-side .upgrades { flex: none; }
+  .wall-grid { grid-template-columns: 1fr; }
+  .cup-tab { min-width: 0; flex: 1 1 0; padding-right: 30px; }
+  .cup-tab b { font-size: 12px; }
+  .cup-trophy, .cup-lock { right: 6px; }
+  #res-crate { grid-column: 1 / -1; justify-content: center; }
+  #hud:has(#hud-ghost:not([hidden])) .race-bar { top: calc(var(--pad-t) + 160px); }
+}
 </style>
 </head>
 <body>
@@ -906,11 +1135,12 @@ html.math #controls { visibility: hidden; }
   <section class="screen" id="screen-title" data-screen="title" hidden>
     <div class="topbar">
       <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span><b class="lv-pill" id="title-lv">Lv 1</b></button>
-      <span class="trails-chip" id="title-trails"><span data-icon="flag"></span><span id="title-trails-text">Tracks 0 / 6</span></span>
+      <span class="streak-chip" id="title-streak" data-days="0" aria-label="Streak"><span data-icon="flame"></span><b id="title-streak-n">0</b><small id="title-streak-u">days</small></span>
+      <span class="trails-chip" id="title-trails"><span data-icon="trophy"></span><span id="title-trails-text">Rookie Cup: 0 / 6 · 0 ★</span></span>
       <span class="cash-pill" data-cash></span>
     </div>
     <h1 class="logo">Trail<span>Blazer</span></h1>
-    <p class="tagline">Race the trails. Flip it, jump it, win it.</p>
+    <button class="daily-card" id="title-daily" data-sfx><span class="dc-ico" data-icon="calendar"></span><span class="dc-txt"><small>Pit Challenge</small><b id="title-daily-text">Today: Fog on Lake Loop · ×2 cash</b></span><span class="dc-go" id="title-daily-go">Go</span></button>
     <p class="mission-line" id="title-mission"><span data-icon="star"></span><span id="title-mission-text">Today: 0 / 12 math gates</span></p>
     <div class="title-actions">
       <button class="btn btn-orange btn-big" id="btn-ride" data-sfx>Race<span data-icon="right"></span></button>
@@ -931,27 +1161,45 @@ html.math #controls { visibility: hidden; }
     </div>
     <div class="garage-body">
       <div class="card veh-card">
-        <div class="veh-stage"><canvas id="veh-preview" aria-label="Ranger preview"></canvas></div>
-        <div class="style-strip" id="style-strip" role="group" aria-label="Paint and decals"></div>
+        <div class="veh-stage"><canvas id="veh-preview" aria-label="Vehicle preview"></canvas></div>
         <div class="veh-meta">
-          <div style="min-width:0"><h3 class="veh-name">Ranger 150</h3><p class="veh-tag" id="veh-tag">Paint: Sage Green</p></div>
+          <div style="min-width:0"><h3 class="veh-name" id="veh-name">Ranger 150</h3><p class="veh-tag" id="veh-tag">the trusty one</p><p class="veh-special" id="veh-special" hidden></p></div>
         </div>
+        <div class="style-tabs" id="style-tabs" role="tablist" aria-label="Style"></div>
+        <div class="style-strip" id="style-strip" role="group" aria-label="Paint, decals and rider gear"></div>
         <div class="veh-actions">
+          <button class="btn" id="btn-wall" data-sfx><span data-icon="crate"></span>Garage Wall<b class="badge-n" aria-label="crates waiting"></b></button>
           <button class="btn btn-green" id="btn-garage-ride" data-sfx>Race<span data-icon="right"></span></button>
         </div>
       </div>
-      <div class="upgrades" id="upgrades"></div>
+      <div class="garage-side">
+        <div class="veh-row" id="veh-row" role="group" aria-label="Vehicles"></div>
+        <div class="up-head" id="up-head">Upgrades · Ranger 150</div>
+        <div class="upgrades" id="upgrades"></div>
+      </div>
     </div>
   </section>
 
-  <!-- ===== Trail select ===== -->
+  <!-- ===== Garage Wall (src/ui/wall.js): every collectible in sets ===== -->
+  <section class="screen" id="screen-wall" data-screen="wall" hidden>
+    <div class="topbar">
+      <button class="btn icon-btn" data-back="garage" aria-label="Back" data-sfx><span data-icon="back"></span></button>
+      <h2>Garage Wall</h2>
+      <button class="btn btn-sm btn-orange" id="wall-open" data-sfx hidden>Open crate<b class="badge-n"></b></button>
+      <span class="cash-pill" data-cash></span>
+    </div>
+    <div class="wall-body scroll"><div class="wall-grid" id="wall-grid"></div></div>
+  </section>
+
+  <!-- ===== Cups (was the trail select; src/ui/trails.js) ===== -->
   <section class="screen" id="screen-trails" data-screen="trails" hidden>
     <div class="topbar">
       <button class="btn icon-btn" data-back="title" aria-label="Back" data-sfx><span data-icon="back"></span></button>
-      <h2>Pick a track</h2>
+      <h2>Cups</h2>
       <span class="cash-pill" data-cash></span>
     </div>
-    <div class="trails-body"><div class="trail-grid" id="trail-grid"></div></div>
+    <div class="cup-tabs" id="cup-tabs" role="tablist" aria-label="Cups"></div>
+    <div class="trails-body" id="cups-body"></div>
   </section>
 
   <!-- ===== Fact Grid (src/ui/grid.js) ===== -->
@@ -975,7 +1223,7 @@ html.math #controls { visibility: hidden; }
   <div id="hud" hidden>
     <div class="hud-top">
       <div class="hud-left hud-box hud-pos" id="hud-pos" aria-live="polite"><b id="hud-place">4</b><span class="pos-sfx" id="hud-place-sfx">th</span><small id="hud-of">/ 4</small></div>
-      <div class="hud-mid hud-box" id="hud-time-box"><div class="hud-label">Time</div><div class="hud-num" id="hud-time">0:00.0</div><div class="hud-facts" id="hud-facts">Facts 0 / 12</div></div>
+      <div class="hud-mid hud-box" id="hud-time-box"><div class="hud-label">Time</div><div class="hud-num" id="hud-time">0:00.0</div><div class="hud-facts" id="hud-facts">Facts 0 / 12</div><div class="hud-ghost" id="hud-ghost" hidden>vs your best</div></div>
       <div class="hud-right">
         <div class="hud-box">
           <div class="hud-num"><span id="hud-speed">0</span><small>km/h</small></div>
@@ -1009,6 +1257,9 @@ html.math #controls { visibility: hidden; }
   <!-- 3-2-1 and the gate drop -->
   <div class="countdown" id="countdown" hidden aria-live="assertive"><div class="cd-gate" id="cd-gate"></div><span class="cd-n" id="countdown-n">3</span></div>
 
+  <!-- ===== the crate moment (src/ui/crate.js), over the results or the Garage Wall ===== -->
+  <div class="crate-ov" id="crate" hidden role="dialog" aria-label="Crate"></div>
+
   <div id="coach" hidden role="dialog" aria-labelledby="coach-h">
     <div class="card coach-card">
       <h3 id="coach-h">How to race</h3>
@@ -1030,15 +1281,23 @@ html.math #controls { visibility: hidden; }
         <div class="podium" id="res-podium" aria-label="Podium"></div>
         <div class="res-time"><div class="big" id="res-time">0:00.0</div><span class="medal-badge" id="res-medal" hidden></span><span class="record" id="res-record" hidden>New best!</span></div>
         <div class="res-sub" id="res-sub"></div>
+
         <div class="res-facts" id="res-facts" aria-label="Facts this race"></div>
       </div>
-      <div class="card res-pay scroll"><table class="pay" id="res-pay"></table></div>
+      <div class="card res-pay scroll">
+        <div class="res-weekend" id="res-weekend" hidden></div>
+        <div class="res-stars" id="res-stars" hidden></div>
+        <div class="res-lines" id="res-lines"></div>
+        <table class="pay" id="res-pay"></table>
+      </div>
     </div>
     <div class="res-moment" id="res-moment" hidden aria-live="polite"></div>
+    <div class="cup-final" id="cup-final" hidden role="dialog" aria-label="Cup podium"></div>
     <div class="results-foot">
+      <button class="crate-btn" id="res-crate" data-sfx hidden></button>
       <button class="btn" id="res-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
       <button class="btn btn-orange" id="res-again" data-sfx><span data-icon="retry"></span>Race again</button>
-      <button class="btn btn-green" id="res-next" data-sfx>Next track<span data-icon="right"></span></button>
+      <button class="btn btn-green" id="res-next" data-sfx><span id="res-next-text">Next trail</span><span data-icon="right"></span></button>
     </div>
   </section>
 

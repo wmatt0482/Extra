@@ -19,6 +19,12 @@
 //   Math: results list the race's facts (⚡ / ✓ / ↻), the HUD and the title count the daily mission, the Fact Grid (×
 //   and ÷ views, statuses, tap to hear), Parent Zone Facts this week (families, ÷, + and −, custom lines with a bad line
 //   reported), Options (math gates per race, facts aloud, voice), Report (+ Copy report), and the facts data persist.
+// v1.5 (The Season): the race starts with the rival trio (names, vehicles) and the vehicle; a crate opens on the
+//   results (tap: shake, burst, NEW! or +$); the Garage Wall counts what was won; buying the Dune Quad in the garage's
+//   Vehicles row; upgrades per vehicle (the Quad's cost × 1.6, the Ranger keeps its levels); the Cups screen (3 tabs);
+//   the streak flame and the daily Pit Challenge card on the title (a daily race: the mutator, ×2 cash, a bronze
+//   crate); a championship weekend (3 races, standings between them) to the cup podium with the gold trophy, stars
+//   on the results and the trail card; the Parent Zone Report's play line; a v2 save migrates to v3.
 // Every screen: no horizontal overflow, buttons ≥ 44 px and clear of the safe-area insets, no native inputs outside
 // the Parent Zone, no links to another origin; no console errors. Screenshots of every state go to SHOTS_DIR.
 import { execSync, spawn } from 'node:child_process';
@@ -126,10 +132,17 @@ const waitGate = (page, timeout = 15000) => page.waitForFunction(() => window.__
 async function raceToResults(page, timeout = 30000) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
-    const st = await J(page, () => { const g = window.__trailBlazer.gate; return { results: window.__trailBlazer.screen === 'results', gate: g.open && g.state === 'ask', answer: g.answer }; });
+    const st = await J(page, () => { const g = window.__trailBlazer.gate; return { results: window.__trailBlazer.screen === 'results', gate: g.open && g.state === 'ask', answer: g.answer, index: g.index }; });
     if (st.results) return true;
-    if (st.gate) { await typeAnswer(page, st.answer); await page.waitForFunction(() => !window.__trailBlazer.gatePanel.isOpen, null, { timeout: 4000 }); }
-    else await page.waitForTimeout(120);
+    if (st.gate) {
+      await typeAnswer(page, st.answer);
+      // closed, or the answer was taken (the next gate can open in the same frame)
+      await page.waitForFunction((i) => !window.__trailBlazer.gatePanel.isOpen || window.__trailBlazer.gate.index > i, st.index, { timeout: 4000 }).catch(async (e) => {
+        await page.screenshot({ path: path.join(SHOTS, 'debug-gate.png') });
+        console.log('  gate did not close:', JSON.stringify(await J(page, () => ({ screen: window.__trailBlazer.screen, gate: window.__trailBlazer.gate, msg: document.querySelector('#gp-msg').textContent, top: (() => { const k = document.querySelector('#gate .np-key[data-key="4"]'); const r = k.getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e && (e.id || e.className); })(), active: document.activeElement && document.activeElement.id, tiles: document.querySelector('#gp-tiles').textContent }))));
+        throw e;
+      });
+    } else await page.waitForTimeout(120);
   }
   return false;
 }
@@ -225,16 +238,38 @@ async function runLayout(browser, layout) {
   await page.waitForTimeout(300);
   await shot(page, layout, '04-title');
   await audit(page, layout.insets, 'title');
-  check(await J(page, () => document.querySelector('#title-trails-text').textContent === 'Tracks 0 / 6' && /race/i.test(document.querySelector('#btn-ride').textContent)), 'title: "Tracks 0 / 6" and a RACE button');
+  check(await J(page, () => document.querySelector('#title-trails-text').textContent === 'Rookie Cup: 0 / 6 · 0 ★' && /race/i.test(document.querySelector('#btn-ride').textContent)), 'title: "Rookie Cup: 0 / 6 · 0 ★" and a RACE button');
+  const t0 = await J(page, () => ({ days: document.querySelector('#title-streak').dataset.days, lit: document.querySelector('#title-streak').classList.contains('lit'), daily: document.querySelector('#title-daily-text').textContent, shown: !document.querySelector('#title-daily').hidden }));
+  check(t0.days === '0' && !t0.lit, 'title: the streak flame is out before the first race (0 days)');
+  check(t0.shown && /^Today: .+ on Pine Ridge · ×2 cash$/.test(t0.daily), `title: the daily Pit Challenge card ("${t0.daily}")`);
+  // a v2 save (one vehicle, top-level upgrade levels) migrates to v3: the Ranger owned with those levels, the rest empty
+  const mig = await J(page, async () => {
+    const S = await import('/trail-blazer/src/meta/save.js');
+    localStorage.setItem('trailBlazer.legacy.save', JSON.stringify({ v: 2, cash: 4321, levels: { engine: 3, tires: 1, suspension: 0, boost: 2 }, paint: 'orange', decal: 'mud', best: { 'pine-ridge': 600 },
+      bestPlace: { 'pine-ridge': 1 }, bestTime: { 'pine-ridge': 41.2 }, medals: { 'pine-ridge': 'gold' }, finished: { 'pine-ridge': 2 }, records: { rides: 5, wins: 1 }, seen: { coach: true } }));
+    const m = S.loadSave('legacy');
+    localStorage.removeItem('trailBlazer.legacy.save');
+    return { v: m.v, cash: m.cash, vehicle: m.vehicle, ranger: m.vehicles.ranger150, n: Object.keys(m.vehicles).length, levels: 'levels' in m, cups: m.cups, stars: m.stars, crates: m.crates.queue.length,
+      eq: m.cosmetics.equipped, streak: !!m.streak, rivals: m.rivals.retired.length, ghosts: m.ghosts, daily: m.daily.day, paint: m.paint, medal: m.medals['pine-ridge'] };
+  });
+  check(mig.v === 3 && mig.cash === 4321 && mig.vehicle === 'ranger150' && mig.ranger.owned && mig.ranger.levels.engine === 3 && mig.ranger.levels.boost === 2 && mig.n === 1 && !mig.levels
+    && !Object.keys(mig.cups).length && !Object.keys(mig.stars).length && mig.crates === 0 && mig.eq.helmet === 'classic' && mig.streak && mig.rivals === 0 && !Object.keys(mig.ghosts).length && mig.daily === ''
+    && mig.paint === 'orange' && mig.medal === 'gold', `a v2 save migrates to v3 (Ranger owned with Engine ${mig.ranger.levels.engine} / Boost ${mig.ranger.levels.boost}, cash, paint and medals kept; cups, stars, crates, gear, ghosts empty)`);
 
   // ---------- track select ----------
   await page.click('#btn-ride');
   await page.waitForSelector(visibleSel('#screen-trails'));
-  const cards = await J(page, () => [...document.querySelectorAll('[data-trail]')].map((c) => ({ id: c.dataset.trail, locked: c.classList.contains('locked'), num: c.querySelector('.trail-num').textContent })));
-  check(cards.length === 6 && !cards[0].locked && cards.slice(1).every((c) => c.locked), `track select: 6 tracks, ${cards[0] && cards[0].id} open, the rest locked`);
-  check(cards[0].num === 'Track 1', `cards say "Track" (${cards[0].num})`);
-  await shot(page, layout, '05-tracks');
-  await audit(page, layout.insets, 'track select');
+  const cards = await J(page, () => [...document.querySelectorAll('#trail-grid [data-trail]')].map((c) => ({ id: c.dataset.trail, locked: c.classList.contains('locked'), num: c.querySelector('.trail-num').textContent, stars: c.querySelectorAll('.stars i').length })));
+  check(cards.length === 6 && !cards[0].locked && cards.slice(1).every((c) => c.locked), `Cups → Rookie Cup: 6 trails, ${cards[0] && cards[0].id} open, the rest locked`);
+  check(cards[0].num === 'Trail 1' && cards.every((c) => c.stars === 3), `cards say "Trail 1" and show 3 stars each (${cards[0].num})`);
+  const tabs = await J(page, () => [...document.querySelectorAll('#cup-tabs [data-cup]')].map((t) => t.dataset.cup + (t.classList.contains('locked') ? ':locked' : '')));
+  check(tabs.join(',') === 'rookie,pro:locked,legend:locked', `Cups screen: 3 tabs, Pro and Legend locked (${tabs.join(', ')})`);
+  check(await J(page, () => document.querySelector('#cup-race').dataset.ready === 'false' && /1 \/ 6 open/.test(document.querySelector('#cup-race').textContent)), '"Race the cup" waits until every Rookie trail is open (1 / 6 open)');
+  await shot(page, layout, '05-cups');
+  await audit(page, layout.insets, 'Cups');
+  await page.click('#cup-tabs [data-cup="pro"]');
+  check(await J(page, () => /^Pro Cup: a Rookie trophy \+ 12 ★ · trophy — · 0 \/ 12 ★$/.test(document.querySelector('.ch-lock').textContent) && document.querySelectorAll('#trail-grid [data-trail].locked').length === 6), 'the Pro Cup tab: locked ("Pro Cup: a Rookie trophy + 12 ★ · trophy — · 0 / 12 ★"), its 6 trails locked');
+  await page.click('#cup-tabs [data-cup="rookie"]');
   await page.click(`[data-trail="${cards[1].id}"]`);
   await page.waitForTimeout(150);
   check(await J(page, () => window.__trailBlazer.screen === 'trails'), 'a locked track does not start');
@@ -243,7 +278,7 @@ async function runLayout(browser, layout) {
   await J(page, () => {
     const g = window.__trailBlazer.game;
     window.__starts = [];
-    const s = g.start; g.start = (cfg) => { window.__starts.push({ trail: cfg.trail.id, gates: cfg.gates, paint: cfg.paint, decal: cfg.decal, stats: cfg.stats, race: cfg.race }); return s(cfg); };
+    const s = g.start; g.start = (cfg) => { window.__starts.push({ trail: cfg.trail.id, gates: cfg.gates, paint: cfg.paint, decal: cfg.decal, stats: cfg.stats, race: cfg.race, vehicle: cfg.vehicle, look: cfg.look, mutator: cfg.mutator, ghost: cfg.ghost ? cfg.ghost.length : 0 }); return s(cfg); };
     window.__opened = [];
     const o = g.openGate; g.openGate = (res) => { window.__opened.push({ ...res, timeAt: g.getState().timeSec }); return o(res); };
     // what the player sees: countdown numbers, banners, position badge values (in order)
@@ -263,8 +298,10 @@ async function runLayout(browser, layout) {
   await page.click('#pit-later');
   await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
   const st = await J(page, () => window.__starts[0]);
-  check(st && st.trail === 'pine-ridge' && st.gates === 4 && st.race && st.race.riders === 3 && st.race.name === 'Mia' && st.paint === 'sage',
-    `race starts Pine Ridge with 4 Math Gates (the default), race: { riders: 3, name }, stock paint (gates ${st && st.gates})`);
+  check(st && st.trail === 'pine-ridge' && st.gates === 4 && st.race && Array.isArray(st.race.riders) && st.race.riders.length === 3 && st.race.name === 'Mia' && st.paint === 'sage',
+    `race starts Pine Ridge with 4 Math Gates (the default), race: { riders: [3], name }, stock paint (gates ${st && st.gates})`);
+  check(st.vehicle === 'ranger150' && st.race.riders.map((x) => x.name).join(',') === 'Dusty,Blaze,Nitro' && st.race.riders.every((x) => x.vehicle && x.paint && x.helmet) && st.look && st.look.helmet === 'classic' && st.stats.coinMult === 1 && !st.mutator,
+    `v1.5: the Ranger, the rival trio (${st.race.riders.map((x) => `${x.name} in the ${x.vehicle}`).join(', ')}), the rider's look, Rookie Cup ×1 cash, no mutator`);
   await page.waitForSelector(visibleSel('#coach'));
   check(await J(page, () => /backflip/i.test(document.querySelector('#coach').textContent) && /downslope/i.test(document.querySelector('#coach').textContent)), 'coach: GAS to go, BRAKE = backflip, land on the downslope');
   await shot(page, layout, '06-coach');
@@ -366,7 +403,7 @@ async function runLayout(browser, layout) {
   check(save1.bestPlace['pine-ridge'] === 2 && save1.bestTime['pine-ridge'] === res.last.summary.timeSec && save1.medals['pine-ridge'] === res.medal,
     `saved: best place 2, best time ${save1.bestTime['pine-ridge']} s, medal ${save1.medals['pine-ridge']}`);
   check(res.callouts.includes('unlock') && res.callouts.some((c) => /^paint:.*\borange\b/.test(c)) && res.callouts.includes('decal:mud') && res.callouts.includes('medal'), `callouts: ${res.callouts.join(', ')}`);
-  check(res.next, '2nd place unlocks "Next track"');
+  check(res.next, '2nd place unlocks "Next trail"');
   const rf = await J(page, () => [...document.querySelectorAll('#res-facts .rf')].map((x) => ({ fact: x.dataset.fact, kind: x.dataset.kind, text: x.textContent })));
   check(rf.length === 4 && rf[0].kind === 'quick' && rf[1].kind === 'fixed' && rf.every((x) => /= \d+/.test(x.text)) && rf[0].text.includes('⚡') && rf[1].text.includes('↻'),
     `the race's facts: ${rf.map((x) => x.text).join(' · ')}`);
@@ -378,6 +415,30 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '10-results');
   await audit(page, layout.insets, 'results (podium)');
 
+  // ---------- v1.5: the crate on the results (podium + 3 gates right = a bronze crate), the streak ----------
+  const s15 = await readSave(page);
+  const rc = await J(page, () => ({ shown: !document.querySelector('#res-crate').hidden, tier: document.querySelector('#res-crate').dataset.tier, lines: [...document.querySelectorAll('#res-lines [data-line]')].map((x) => x.dataset.line + ':' + x.textContent) }));
+  check(rc.shown && rc.tier === 'bronze' && s15.crates.queue[0] === 'bronze' && rc.lines.some((x) => /^crate:Bronze crate: podium/.test(x)), `a bronze crate waits on the results (${rc.lines.filter((x) => x.startsWith('crate')).join(' · ')})`);
+  check(s15.streak.count === 1 && rc.lines.some((x) => x === 'streak:Streak: 1 day!'), 'the first finished race counts the day: "Streak: 1 day!"');
+  check(rc.lines.some((x) => /^rival:Dusty/.test(x)), `a rival line (${rc.lines.find((x) => x.startsWith('rival'))})`);
+  check(s15.v === 3 && s15.play && Object.values(s15.play)[0].races === 1, 'save v3 with the day\'s play log (1 race)');
+  await page.click('#res-crate');
+  await page.waitForSelector('#crate:not([hidden]) #crate-open');
+  await shot(page, layout, '10b-crate', 300);
+  await audit(page, layout.insets, 'crate');
+  await page.click('#crate-open');
+  await page.waitForFunction(() => document.querySelector('#crate .crate-card[data-state="open"]'), null, { timeout: 4000 });
+  await page.waitForTimeout(500);
+  const won = await J(page, () => { const p = document.querySelector('#crate .crate-prize'); return { item: p.dataset.item || null, cash: p.dataset.cash || null, text: p.textContent, newBadge: !!p.querySelector('.new-badge') }; });
+  check((won.item && won.newBadge && /NEW!/.test(won.text)) || (won.cash && /\+\$/.test(won.text)), `tap: shake, burst, and the prize: ${won.item ? won.item + ' NEW!' : '+$' + won.cash}`);
+  await shot(page, layout, '10c-crate-open', 0);
+  const s16 = await readSave(page);
+  const [wk, wid] = (won.item || ':').split(':');
+  check(s16.crates.queue.length === s15.crates.queue.length - 1 && s16.crates.opened === 1 && (!won.item || ['paint', 'decal'].includes(wk) || s16.cosmetics.owned[wk].includes(wid)), `the crate is opened and the prize is saved (${won.item || 'cash'})`);
+  await page.click(s16.crates.queue.length ? '#crate-later' : '#crate-done').catch(() => page.click('#crate-done'));
+  await page.waitForTimeout(200);
+  if (await J(page, () => !document.querySelector('#crate').hidden)) await page.click('#crate .crate-actions .btn-orange');
+
   // ---------- garage ----------
   await page.click('#res-garage');
   await page.waitForSelector(visibleSel('#screen-garage'));
@@ -388,7 +449,7 @@ async function runLayout(browser, layout) {
   const cash0 = (await readSave(page)).cash;
   await page.click('[data-upgrade="engine"]');
   const save2 = await readSave(page);
-  check(save2.levels.engine === 1 && save2.cash === cash0 - 300, `Engine upgrade: level 1 for $300 (cash ${cash0} → ${save2.cash}), saved`);
+  check(save2.vehicles.ranger150.levels.engine === 1 && save2.cash === cash0 - 300, `Engine upgrade: level 1 for $300 (cash ${cash0} → ${save2.cash}), saved on the Ranger`);
   await page.click('.style-chip[data-paint="orange"]');
   check((await readSave(page)).paint === 'orange', 'Blaze Orange paint (Pine Ridge finished) equips and is saved');
   const medalPaint = { gold: 'gold', silver: 'sky', bronze: 'pine' }[res.medal];
@@ -398,6 +459,38 @@ async function runLayout(browser, layout) {
   check((await readSave(page)).decal === 'mud', 'Mud Splats decal equips and is saved');
   check(await J(page, () => document.querySelector('.style-chip[data-decal="flames"]').classList.contains('locked') && /10 flips/.test(document.querySelector('.style-chip[data-decal="flames"]').textContent)), 'Flames decal locked: "Land 10 flips"');
   await shot(page, layout, '12-garage-after');
+
+  // ---------- v1.5: the Vehicles row: buy the Dune Quad, its own upgrades, back to the Ranger ----------
+  const vrow = await J(page, () => [...document.querySelectorAll('#veh-row [data-vehicle]')].map((c) => ({ id: c.dataset.vehicle, on: c.classList.contains('on'), text: c.textContent })));
+  check(vrow.length === 8 && vrow[0].id === 'ranger150' && vrow[0].on && /Driving/.test(vrow[0].text) && /Earn \$[\d,]+ more/.test(vrow[1].text), `Vehicles row: 8 cards, the Ranger driving, locked ones say "Earn $X more" (${vrow[1].text})`);
+  await page.click('[data-vehicle="quad"]');
+  check(await J(page, () => document.querySelector('#btn-garage-ride').dataset.mode === 'buy' && /Earn \$[\d,]+ more/.test(document.querySelector('#btn-garage-ride').textContent) && document.querySelector('#veh-name').textContent === 'Dune Quad'), 'tap a locked vehicle: it shows on the stage with "Earn $X more"');
+  await J(page, () => { const a = window.__trailBlazer.app; a.save.cash += 170000 + 480; a.persist(); a.go('garage'); });
+  await page.click('[data-vehicle="quad"]');
+  check(await J(page, () => document.querySelector('#btn-garage-ride').dataset.mode === 'buy' && /Buy/.test(document.querySelector('#btn-garage-ride').textContent)), 'with the cash: "Buy $170,000"');
+  await shot(page, layout, '12b-garage-vehicles', 300);
+  await audit(page, layout.insets, 'garage (Vehicles row)');
+  const cashQ = (await readSave(page)).cash;
+  await page.click('#btn-garage-ride');
+  const sq = await readSave(page);
+  check(sq.vehicle === 'quad' && sq.vehicles.quad.owned && sq.cash === cashQ - 170000 && /Driving/.test(await J(page, () => document.querySelector('[data-vehicle="quad"]').textContent)), `bought the Dune Quad for $170,000 and it is the one driving (cash ${cashQ} → ${sq.cash})`);
+  check(await J(page, () => document.querySelector('[data-row="engine"] [data-level]').dataset.level === '0' && /480/.test(document.querySelector('[data-upgrade="engine"]').textContent)), 'upgrades are per vehicle: the Quad starts at Engine 0, its level 1 costs $480 (× 1.6)');
+  await page.click('[data-upgrade="engine"]');
+  const sq2 = await readSave(page);
+  check(sq2.vehicles.quad.levels.engine === 1 && sq2.vehicles.ranger150.levels.engine === 1 && sq2.cash === sq.cash - 480, 'the Quad\'s Engine level 1 for $480; the Ranger keeps its own level');
+  await page.click('[data-vehicle="ranger150"]');
+  check((await readSave(page)).vehicle === 'ranger150' && await J(page, () => document.querySelector('[data-row="engine"] [data-level]').dataset.level === '1'), 'tap the Ranger: driving it again, its upgrades show');
+  // the Garage Wall counts what the crate gave
+  await page.click('#btn-wall');
+  await page.waitForSelector(visibleSel('#screen-wall'));
+  const wallSt = await J(page, () => [...document.querySelectorAll('.wall-set')].map((w) => ({ kind: w.dataset.set, have: +w.querySelector('.ws-count').dataset.have, total: +w.querySelector('.ws-count').dataset.total, owned: w.querySelectorAll('.wall-item.owned').length })));
+  check(wallSt.map((w) => w.kind).join(',') === 'helmet,suit,horn,trail,flag,paint,decal' && wallSt.every((w) => w.have === w.owned) && wallSt.find((w) => w.kind === 'helmet').total === 12 && wallSt.find((w) => w.kind === 'flag').total === 6,
+    `Garage Wall: 7 sets, counts match what is owned (${wallSt.map((w) => `${w.kind} ${w.have}/${w.total}`).join(', ')})`);
+  if (won.item) check(await J(page, (id) => !!document.querySelector(`.wall-item.owned[data-item="${id}"]`), won.item), `the crate's ${won.item} is on the wall`);
+  await shot(page, layout, '12c-garage-wall');
+  await audit(page, layout.insets, 'Garage Wall');
+  await page.click('#screen-wall [data-back="garage"]');
+  await page.waitForSelector(visibleSel('#screen-garage'));
 
   // ---------- race 2: Granite Gap, pause + resume, finish 4th → the next track stays locked ----------
   await page.click('#btn-garage-ride');
@@ -497,7 +590,7 @@ async function runLayout(browser, layout) {
   const res2 = await results(page);
   const sum2 = res2.rows.filter((r) => r.key).reduce((a, r) => a + r.value, 0);
   check(res2.title === 'Race over' && res2.last.place === 4 && sum2 === res2.total && !res2.rows.some((r) => r.key === 'place'), `4th place → "${res2.title}", no position bonus, rows add up (${sum2} = ${res2.total})`);
-  check(!res2.next && res2.callouts.includes('need-podium'), 'the next track stays locked: "Finish 3rd or better to open the next track"');
+  check(!res2.next && res2.callouts.includes('need-podium'), 'the next trail stays locked: "Finish 3rd or better to open the next trail"');
   const save3 = await readSave(page);
   check(save3.cash === save2.cash + res2.total && save3.bestPlace['granite-gap'] === 4, `banked ${res2.total} (cash ${save3.cash}); Granite Gap best place 4`);
   await shot(page, layout, '15-results-4th');
@@ -551,13 +644,82 @@ async function runLayout(browser, layout) {
   const vz = await J(page, () => { const d = window.__trailBlazer.facts; return { vouched: Object.keys(d.vouched || {}), scouts: d.scouts, fr: d.frontier.families.join(' '), hist: d.frontier.history.map((h) => `${h.from.join(' ')} → ${h.families.join(' ')}: ${h.why}`) }; });
   check(/x8/.test(fr0) && scoutsSeen.filter((r) => r === 'scout').length >= 2 && vz.vouched.length >= 1, `frontier after the check ${fr0}: scout gates every race; vouched within 3 full races: ${vz.vouched.join(' ')} (${JSON.stringify(vz.scouts)})`);
   check(vz.fr !== fr0 && vz.hist.length >= 1, `the frontier moves (${fr0} → ${vz.fr}; ${vz.hist.slice(-2).join(' | ')})`);
-  const cashAfter = (await readSave(page)).cash;
 
-  // ---------- Parent Zone from the title ----------
+  // ---------- v1.5: the daily Pit Challenge from the title card: the mutator, ×2 cash, a bronze crate once ----------
   await page.click('#res-garage');
   await page.click('[data-back="title"]');
   await page.waitForSelector(visibleSel('#screen-title'));
-  check(await J(page, () => document.querySelector('#title-trails-text').textContent === 'Tracks 1 / 6'), 'title: "Tracks 1 / 6" (podiums)');
+  const t1s = await J(page, () => ({ days: document.querySelector('#title-streak').dataset.days, lit: document.querySelector('#title-streak').classList.contains('lit'), text: document.querySelector('#title-trails-text').textContent }));
+  check(t1s.days === '1' && t1s.lit, 'title: the streak flame is lit (1 day)');
+  check(/^Rookie Cup: 1 \/ 6 · \d+ ★$/.test(t1s.text), `title: cup progress "${t1s.text}" (podiums · stars)`);
+  await shot(page, layout, '16-title-daily');
+  await audit(page, layout.insets, 'title (daily card, streak)');
+  const daily = await J(page, () => window.__trailBlazer.app.save.daily);
+  const q0 = (await readSave(page)).crates.queue.length;
+  await J(page, () => { window.__mockScript = { noCrash: true }; });
+  await page.click('#title-daily');
+  await page.waitForFunction(() => window.__trailBlazer.screen === 'ride' || !document.querySelector('#pit-offer').hidden);
+  if (await J(page, () => !document.querySelector('#pit-offer').hidden)) { await page.click('#pit-later'); await page.waitForFunction(() => window.__trailBlazer.screen === 'ride'); }
+  const std = await J(page, () => window.__starts[window.__starts.length - 1]);
+  check(std.trail === daily.trailId && std.mutator === daily.mutator && !!std.mutator && Math.abs(std.stats.coinMult - 2) < 1e-9, `the card starts today's trail with its twist (${std.mutator}) and ×2 cash (coinMult ${std.stats.coinMult})`);
+  check(await raceToResults(page), 'the Pit Challenge race ends');
+  await page.waitForTimeout(1300);
+  const rd = await J(page, () => ({ mult: (document.querySelector('#res-pay tr.total .mult') || {}).textContent || '', lines: [...document.querySelectorAll('#res-lines [data-line]')].map((x) => x.textContent) }));
+  const sd = await readSave(page);
+  check(/Pit Challenge ×2/.test(rd.mult) && rd.lines.includes('Pit Challenge done! Bronze crate') && sd.daily.done && sd.crates.queue.length >= q0 + 1, `results: the total row says "${rd.mult.replace(/^ · /, '')}", "Pit Challenge done! Bronze crate"`);
+  await page.click('#res-garage');
+  await page.click('[data-back="title"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  check(await J(page, () => document.querySelector('#title-daily').classList.contains('done') && /^Done today!/.test(document.querySelector('#title-daily-text').textContent)), 'the card says "Done today! New one tomorrow"');
+
+  // ---------- v1.5: a championship weekend: every Rookie trail open → 3 races → standings → the cup podium ----------
+  await J(page, () => { const a = window.__trailBlazer.app; for (const t of a.trails.filter((x) => x.cup === 'rookie')) a.save.bestPlace[t.id] = Math.min(a.save.bestPlace[t.id] || 3, 3); a.persist(); window.__mockScript = { noCrash: true, aiTimes: [9, 9.6, 10.4] }; });
+  await page.click('#btn-ride');
+  await page.waitForSelector(visibleSel('#screen-trails'));
+  check(await J(page, () => document.querySelector('#cup-race').dataset.ready === 'true'), 'every Rookie trail open: "Race the cup" is ready');
+  await page.click('#cup-race');
+  const wkTrails = await J(page, () => window.__trailBlazer.app.save.weekend.trails);
+  check(wkTrails.join(',') === 'snow-pass,desert-wash,night-ride', `the weekend runs the cup's last 3 trails (${wkTrails.join(', ')})`);
+  for (let k = 0; k < 3; k++) {
+    await page.waitForFunction(() => window.__trailBlazer.screen === 'ride' || !document.querySelector('#pit-offer').hidden, null, { timeout: 5000 });
+    if (await J(page, () => !document.querySelector('#pit-offer').hidden)) { await page.click('#pit-later'); await page.waitForFunction(() => window.__trailBlazer.screen === 'ride', null, { timeout: 5000 }); }
+    check(await raceToResults(page), `weekend race ${k + 1} ends`);
+    await page.waitForTimeout(1400);
+    if (k < 2) {
+      const wr = await J(page, () => ({ txt: document.querySelector('#res-weekend').textContent, table: document.querySelector('#res-weekend .wk-table').dataset.table, next: document.querySelector('#res-next-text').textContent }));
+      check(new RegExp(`race ${k + 1} of 3`).test(wr.txt) && /You \d+/.test(wr.txt) && wr.next === 'Next race', `standings after race ${k + 1}: "${wr.txt}"`);
+      if (k === 0) {
+        const stars = await J(page, () => [...document.querySelectorAll('#res-stars [data-star]')].map((x) => x.dataset.on));
+        check(stars.filter((x) => x === 'true').length >= 2, `stars on the results: 1st + every gate right (${stars.join(', ')})`);
+        await shot(page, layout, '16b-weekend-standings', 600);
+        await audit(page, layout.insets, 'results (weekend)');
+      }
+      await page.click('#res-next');
+    }
+  }
+  await page.waitForSelector('#cup-final:not([hidden])', { timeout: 5000 });
+  await page.waitForTimeout(700);
+  const cf = await J(page, () => ({ title: document.querySelector('.cf-card h3').textContent, trophy: document.querySelector('.cf-card').dataset.trophy, first: (document.querySelector('.cf-podium .pod.p1') || {}).dataset || {}, table: [...document.querySelectorAll('.cf-card .cf-sub')].map((x) => x.textContent).find((t) => /^You \d+/.test(t)) || '', cup: JSON.parse(localStorage.getItem(`trailBlazer.${window.__trailBlazer.app.currentPlayerId}.save`)).cups.rookie }));
+  check(cf.table.split(' · ').length === 4, `the standings keep the same 4 riders all weekend (${cf.table})`);
+  check(cf.title === 'Rookie Cup champion!' && cf.trophy === 'gold' && cf.first.name === 'Mia' && cf.cup && cf.cup.trophy === 'gold' && cf.cup.weekends === 1, `the cup podium: "${cf.title}", the gold trophy on 1st, saved (${JSON.stringify(cf.cup)})`);
+  await shot(page, layout, '16c-cup-podium', 0);
+  await audit(page, layout.insets, 'cup podium');
+  await page.click('#cup-final-ok');
+  check(await J(page, () => { const s = window.__trailBlazer.app.save; return !s.weekend && (s.stars['snow-pass'] || []).filter(Boolean).length >= 2; }), 'the weekend is over; stars saved on the trail');
+  await page.click('#res-garage');
+  await page.click('[data-back="title"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const cashAfter = (await readSave(page)).cash;
+  const podiums = await J(page, () => window.__trailBlazer.app.trailsDoneFor(window.__trailBlazer.app.currentPlayerId));
+
+  // the next cup needs BOTH a trophy and the stars (12 for Pro): the trophy alone does not open it
+  const st12 = await J(page, () => { const s = window.__trailBlazer.app.save; return Object.values(s.stars).reduce((a, v) => a + v.filter(Boolean).length, 0); });
+  const tt = await J(page, () => document.querySelector('#title-trails-text').textContent);
+  check(st12 >= 12 ? /^Pro Cup: / .test(tt) : /^Rookie Cup: /.test(tt), `with the trophy and ${st12} ★ the Pro Cup is ${st12 >= 12 ? 'open' : 'still locked'} ("${tt}")`);
+  await J(page, () => { const a = window.__trailBlazer.app; for (const t of a.trails.filter((x) => x.cup === 'rookie')) a.save.stars[t.id] = [true, true, (a.save.stars[t.id] || [])[2] || false]; a.persist(); a.go('title'); });
+
+  // ---------- Parent Zone from the title ----------
+  check(await J(page, () => /^Pro Cup: 0 \/ 6 · 0 ★$/.test(document.querySelector('#title-trails-text').textContent)), `title: a Rookie trophy + 12 ★ opened the Pro Cup ("${await J(page, () => document.querySelector('#title-trails-text').textContent)}")`);
   await shot(page, layout, '16-title-after');
   const today = await J(page, () => window.__trailBlazer.facts.today.count);
   check(await J(page, (n) => document.querySelector('#title-mission-text').textContent === (n >= 12 ? 'Mission complete! Race on' : `Today: ${n} / 12 math gates`) && /^Lv \d+$/.test(document.querySelector('#title-lv').textContent), today) && today >= 9,
@@ -601,7 +763,7 @@ async function runLayout(browser, layout) {
   const where = await J(page, () => ({ line: document.querySelector('#facts-where-line').textContent, label: document.querySelector('#facts-where .label').textContent,
     dial: document.querySelector('#facts-dial').textContent, vouched: (document.querySelector('#facts-vouched') || {}).textContent || '', states: [...document.querySelectorAll('#facts-ladder [data-state]')].map((x) => x.dataset.state) }));
   check(where.label === 'Where Mia B is' || where.label === 'Where Mia is', `"${where.label}"`);
-  check(/^Tier \d · ×\d+( ×\d+)? · placed [A-Z][a-z]{2} \d+ · re-check in \d+ days?$/.test(where.line), `"${where.line}"`);
+  check(/^Tier \d · [×÷]\d+( [×÷]\d+)? · placed [A-Z][a-z]{2} \d+ · re-check in \d+ days?$/.test(where.line), `"${where.line}"`);
   check(/^Right now: (on target|a bit easy: moving up|a bit hard: stepping back) \(\d+ of \d+ right\)$/.test(where.dial) && /Vouched by scouts: ×/.test(where.vouched), `"${where.dial}" · "${where.vouched}"`);
   check(where.states.includes('vouched') && where.states.includes('secure'), `the ladder shows secure and vouched families (${[...new Set(where.states)].join(', ')})`);
   await shot(page, layout, '19-pz-auto');
@@ -630,6 +792,8 @@ async function runLayout(browser, layout) {
   await page.click('.pz-tabs [data-tab="report"]');
   const rp = await J(page, () => ({ rows: [...document.querySelectorAll('#report-table tbody tr')].map((r) => r.dataset.op), summary: document.querySelector('#report-summary').textContent, races: document.querySelector('#report-races').textContent }));
   check(rp.rows.includes('x') && rp.rows.includes('/') && /practiced/.test(rp.summary) && /Pine Ridge/.test(rp.races), `Report: per operation counts (${rp.rows.join(' ')}), this week's races`);
+  const play = await J(page, () => [...document.querySelectorAll('#report-play li')].map((x) => x.textContent));
+  check(play.length === 1 && /· Play: \d+ races · \d+ stars? · \d+ crates? · streak 1 day$/.test(play[0]), `Report: the play line ("${play[0]}")`);
   const pat = await J(page, () => [...document.querySelectorAll('#report-patterns li')].map((x) => ({ kind: x.dataset.kind, text: x.textContent })));
   const patEmpty = await J(page, () => (document.querySelector('div#report-patterns') || {}).textContent || '');
   check(pat.every((x) => x.text.length > 10) && (pat.length > 0 || /No patterns this week yet/.test(patEmpty)),
@@ -658,7 +822,7 @@ async function runLayout(browser, layout) {
   await page.click(`[data-rename="${pid}"]`);
   const fam2 = await family(page);
   check(fam2.players[0].name === 'Mia B', 'Players: rename goes to the family record (profiles.renamePlayer)');
-  check(await J(page, () => /1 of 6 tracks/.test(document.querySelector('.pz-player .sub').textContent)), 'Players: shows tracks on the podium on this device');
+  check(await J(page, (n) => new RegExp(`^${n} of \\d+ trails on the podium`).test(document.querySelector('.pz-player .sub').textContent), podiums), `Players: shows trails on the podium on this device (${podiums})`);
   check(await J(page, (id) => !!document.querySelector(`#pz-reset-facts-${id}`), pid), 'Players: Reset facts data');
   await shot(page, layout, '22-pz-players');
   await audit(page, layout.insets, 'Parent Zone (Players)');
@@ -668,12 +832,13 @@ async function runLayout(browser, layout) {
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForSelector(visibleSel('#screen-players'));
   const tile = await J(page, (id) => { const t = document.querySelector(`[data-player="${id}"]`); return t && { name: t.querySelector('.pl-name').textContent, trails: t.querySelector('[data-trails]').dataset.trails }; }, pid);
-  check(tile && tile.name === 'Mia B' && tile.trails === '1', `after a reload the picker shows ${tile && tile.name} with 1 track on the podium`);
+  check(tile && tile.name === 'Mia B' && tile.trails === String(podiums), `after a reload the picker shows ${tile && tile.name} with ${podiums} trails on the podium`);
   await shot(page, layout, '23-players-reload');
   await page.click(`[data-player="${pid}"]`);
   await page.waitForSelector(visibleSel('#screen-title'));
   const save4 = await readSave(page);
-  check(save4.cash === cashAfter && save4.levels.engine === 1 && save4.paint === 'orange' && save4.medals['pine-ridge'] === res.medal, `progress persists (cash ${save4.cash}, Engine ${save4.levels.engine}, paint ${save4.paint}, ${save4.medals['pine-ridge']} medal)`);
+  check(save4.cash === cashAfter && save4.vehicles.ranger150.levels.engine === 1 && save4.vehicles.quad.owned && save4.cups.rookie.trophy === 'gold' && save4.paint === 'orange' && save4.medals['pine-ridge'] === res.medal,
+    `progress persists (cash ${save4.cash}, Ranger Engine ${save4.vehicles.ranger150.levels.engine}, the Quad, the Rookie trophy, paint ${save4.paint}, ${save4.medals['pine-ridge']} medal)`);
   check(await J(page, () => !!localStorage.getItem('trailBlazer.' + window.__trailBlazer.app.currentPlayerId + '.save') && !Object.keys(localStorage).some((k) => /^spellJump\.[^.]+\.save$/.test(k))), 'Trail Blazer writes only its own save key (no spellJump.<id>.save)');
   const fd4 = await J(page, () => { const S = window.__trailBlazer; return { recs: Object.keys(S.facts.records).length, xp: S.facts.xp, gates: S.facts.opts.gates, count: S.facts.today.count, custom: S.facts.sets.custom.length }; });
   const fd4p = await J(page, () => { const S = window.__trailBlazer; return { placement: !!S.facts.placement, mode: S.facts.sets.mode, fr: S.facts.frontier.families.length }; });

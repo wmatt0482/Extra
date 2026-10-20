@@ -442,3 +442,122 @@ believes what it sees. A child who knows a family cold should be past it within 
     history of the dial. Tests: the three bands from synthetic answer streams (all right + quick → secure + 2
     scouts; 5 of 12 → one family, no scouts, the lower neighbour re-enters; the band boundaries), and that no
     stream can leave the frontier empty.
+
+## v1.5 — The Season (Matt, Oct 20: "super fun addictive elements and a longer runway for more play: car upgrades
+## and tracks etc")
+
+Two agents in parallel: the **engine agent** owns `src/game/*`, `src/data/trails.js`, `src/data/vehicles.js` (new),
+`src/data/mutators.js` (new), `tools/engine-smoke.mjs`, `dev.html`; the **app agent** owns everything else (`src/ui/*`,
+`src/meta/*`, `src/data/cups.js`, `src/data/cosmetics.js`, `src/data/rivals.js`, `src/main.js`, `index.html`, `sw.js`,
+`tools/ui-smoke.mjs`, `tools/economy-sim.mjs` (new), docs, site card). Neither touches `car-jump/`. The math layer
+(`src/facts/*`, gate panel, governor) is unchanged except where noted. Kid rules stand: no lives, no energy, no timers on
+screen, no pressure text, nothing that punishes stopping; the loops below reward coming back, never leaving.
+
+### 1. Vehicles (engine: physics + art; app: garage, buying, per-vehicle upgrades)
+`src/data/vehicles.js` exports `VEHICLES` (ladder order) and `VEHICLE_BY_ID`; each `{ id, name, tier (1-8), price,
+blurb, feel (one line for the card), hull (polygon, m), wheels [{ x, y, r }], seat, exhaust, mass, base: { power,
+topSpeed, grip, suspension, boostPower, boostCapacity, weight }, special, look: { paint, trim } }`. The engine takes
+`start({ vehicle: id, ... })` and builds the body from that definition (the Ranger is `VEHICLES[0]`, unchanged in
+feel). `drawVehicle(ctx, look, state)` draws by `look.vehicle`. Lineup (names are ours, not brands):
+| # | id | name | price | feel | special |
+|---|----|------|-------|------|---------|
+| 1 | ranger150 | Ranger 150 | $0 | the trusty one | — |
+| 2 | quad | Dune Quad | $9,000 | light and flippy | +25 % flip rate, air control |
+| 3 | dirtbike | Dirt Bike 85 | $25,000 | two wheels, huge air | longest air, wheelies on gas, falls easier |
+| 4 | buggy | Rock Bawler | $70,000 | long-travel suspension | lands anything; hard landings never crash |
+| 5 | mudtruck | Mud Monster | $180,000 | giant wheels | drives over logs, rocks and cones without slowing (smash cash still paid) |
+| 6 | turbo | Turbo RZR-X | $450,000 | fast and loud | boost tank refills 2× faster from gates |
+| 7 | rail | Thunder Rail | $1,100,000 | a rocket on wheels | top speed ×1.5; whoops bounce it hard |
+| 8 | rover | Moon Rover | $3,000,000 | ultra low grip, big bounce | gravity 0.6 on every trail, coins ×2 |
+Base stats climb ~12 % a tier (power, topSpeed, grip, suspension) so a new vehicle feels like a jump; the four
+upgrades (`upgrades.js`) are **per vehicle** (`save.vehicles[id].levels`), costs `COST_BASE × 1.45^level × tierMul`
+(tierMul 1, 1.6, 2.5, 4, 7, 12, 20, 35). Garage: a **Vehicles** row (cards: name, feel, price or Owned / Selected,
+locked ones show the price and "Earn $X more"; tap a card to select), the upgrade list for the selected vehicle, then
+Paint / Decal / Rider rows. The title hero draws the selected vehicle. The AI rivals drive the same lineup (a rival's
+vehicle = the player's tier ± 1, never above tier 8) so a better vehicle is visible on the start grid.
+
+### 2. Worlds: 18 trails in 3 cups (engine: terrain styles, props, art; app: cup screens, unlocks)
+`trails.js` grows to 18 with `cup: 'rookie' | 'pro' | 'legend'`, `style`, `gravity?`, `grip?`, and new render styles
+with their own sky, ground, far / mid layers, props and particles:
+- **Rookie Cup** (as now): Pine Ridge, Granite Gap, Lake Loop, Snow Pass, Desert Wash, Night Ride.
+- **Pro Cup**: Jungle Rumble (vines, mud, parrots), Canyon Run (red rock, long doubles), Beach Blast (sand, surf,
+  crabs), Volcano Vent (ash, lava glow, rolling boulders), Swamp Stomp (soft ground, logs, frogs), Glacier Gorge (ice
+  grip 0.7, snow ramps).
+- **Legend Cup**: Neon City (night, rooftops, billboards), Dino Dunes (bones, eggs, a T-rex in the far layer), Sky
+  Bridge (clouds, gaps, wind), Haunted Hollow (fog, pumpkins, bats), Moon Base (gravity 0.4, craters, Earth in the sky),
+  Rainbow Ridge (everything at once, finale).
+Lengths 600 → 4,000 m; MEDAL_TIMES for all; obstacle kinds per world. Unlock: 3rd or better on the previous trail
+(as now) inside a cup; the **next cup** opens with the cup trophy (below) *or* 12 stars (§5). `trailGates` keeps ~1 per
+140 m, capped by the parent's setting.
+
+### 3. Cups and championship weekends (app; engine reports nothing new)
+`src/data/cups.js`: the 3 cups, their trails, trophy, points `[10, 6, 3, 1]` by place. **Championship weekend**: from
+the cup screen, "Race the cup": 3 races in a row on the cup's unlocked trails (the player's pick order), standings
+between races ("You 16 · Blaze 13 · Dusty 9 · Nitro 4"), a podium at the end with the cup trophy on first (saved
+`save.cups[id] = { best: points, trophy: 'gold' | 'silver' | 'bronze', weekends }`), cash bonus $2k / $1k / $500 ×
+cup multiplier. Each cup pays more: cash multiplier ×1 / ×3 / ×8 on every race in it (the engine's `coinMult` input
+× the cup multiplier; the results show "Pro Cup ×3" on the total row).
+
+### 4. Crates, collections, rider gear (app)
+Reuse Spell Jump's crate logic (`car-jump/src/meta/engagement.js`: `rollCrate` / `openCrate` with a pity counter)
+by import, with Trail Blazer's own tables in `src/data/cosmetics.js`: **helmets** (12: Classic, Stripe, Flames, Skull,
+Dino, Astronaut, Shark, Rainbow, Chrome, Galaxy, Lightning, Crown), **suits** (8), **horns** (6, a short sfx each),
+**boost trails** (8: the particle colour behind the vehicle), **flags** (6, on a whip antenna), plus the existing
+paints and decals as drops. A crate comes from: finishing on the podium with ≥ 3 gates right (bronze crate), every
+gate quick that race (silver crate), a cup trophy or a star set (gold crate), every XP level (bronze), streak days
+(§6). Crate tiers change the drop table (gold: a legendary at ≥ 20 %); cash fallback when nothing new. Open with a
+tap: a shake, a burst, the item, "NEW!" or "+$". The **Garage Wall** screen: every item in sets with "7 / 12", a set
+bonus (complete a set → a unique paint). The rider is drawn with helmet + suit (engine `drawRider` takes the look),
+the flag on the roll cage, the boost trail colour from the look.
+
+### 5. Stars, rivals, ghosts (engine: ghost replay + rival names on riders; app: stars, rivals' story)
+**Stars**: 3 per trail, shown on its card: ★ finish 1st, ★ every gate right, ★ a trail-specific stunt ("2 flips",
+"5 s of air", "no crashes", "beat the gold time"). 54 in all; 12 open the Pro Cup, 30 the Legend Cup; star sets
+(all 3 on a trail) give a gold crate. **Rivals** (`src/data/rivals.js`): Dusty, Blaze, Nitro, Zed, Ace, Vex, Storm,
+Nova, each with a paint, a helmet, a one-line taunt and a one-line cheer (HUD banner at the start and the finish, kid
+tone, never mean: "Blaze: Catch me if you can!" / "Blaze: Nice flips!"). The three on the grid are the current
+**rival trio**; beating the trio's leader 3 times retires them to the Hall of Rivals and brings the next one in, one
+tier faster (`race.skill` steps up). **Ghost**: the engine takes `start({ ghost: [[t, x, angle] …] })` (the player's
+best run on that trail, sampled every 0.1 s, kept in `save.ghosts[trailId]` ≤ 1,500 samples) and draws it as a
+translucent copy of the vehicle; the HUD shows "vs your best" and the results "Beat your ghost by 1.3 s!". The engine's
+summary gains `ghostTrace` (the sampled run) and `beatGhost: boolean | null`.
+
+### 6. Daily loops (app)
+- **Streak**: Spell Jump's streak with the weekly shield (`engagement.js` by import; `save.streak`): a day counts on
+  the first finished race; the title shows the flame and days; rewards at 3 / 7 / 14 / 30 days (crates, then a
+  Streak paint and the Lightning helmet).
+- **Pit Challenge of the day** (`src/data/mutators.js`, engine-owned effects): one trail + one mutator a day
+  (seeded by the date): *Moon Boots* (gravity 0.5), *Mega Boost* (tank ×3), *Fog* (near-layer fog, horizon hidden),
+  *Giant Wheels* (wheel r ×1.6, crush everything), *Tailwind* (+20 % top speed), *Mirror* (the trail reversed),
+  *Rubber* (bounce ×2). Double cash and a bronze crate; the card on the title "Today: Fog on Lake Loop · ×2 cash".
+- **Turbo Gate**: the race's last gate is marked; a quick answer there fires a rocket boost to the finish (engine:
+  `openGate({ turbo: true })` → 3 s full boost, the HUD "TURBO!"). Math is still the engine of the fun.
+- **Combo meter** (engine): flips, big airs and perfect landings within 3 s chain into a combo ×2 … ×5 on their cash
+  (`summary.cash.combo`, `combo` event with the count); the HUD shows "COMBO ×3".
+
+### 7. Economy (app: `tools/economy-sim.mjs`, like Spell Jump's)
+Simulate a decent 4th grader (3rd-or-better by the 3rd attempt on a trail, 70 % gates right, half quick, 12 min of
+play = ~6 races) and print the runs / hours to each vehicle, each cup, each star count, and the crate flow. Targets:
+Dune Quad in ~1 h, Pro Cup open by ~3 h, Mud Monster ~8 h, Legend Cup ~12 h, Thunder Rail ~25 h, Moon Rover ~50 h;
+a crate every 2-3 races early, every race once quick answers are common; never a stretch of 10 races with nothing
+new (a vehicle, an upgrade, a crate item, a star, a trail). Tune cup multipliers, prices and `tierMul` until it
+holds, and write the table into README.
+
+### 8. Screens and flow (app)
+Title: hero vehicle, the daily Pit Challenge card, streak flame, cup progress ("Rookie Cup: 4 / 6 · 9 ★"). Tracks
+screen becomes **Cups**: three tabs, trail cards with stars and medals, "Race the cup" per cup. Garage: vehicles,
+upgrades, Paint / Decal / Rider rows, Garage Wall button. Results: combo and ghost lines, the crate (opens on the
+results with its own moment), stars earned with a chime each, cup standings during a weekend, rival line. Parent
+Zone unchanged except a **Report** line "Play: 6 races · 2 stars · 1 crate · streak 4 days" per day.
+
+### 9. Data and tests
+`save.v` 3: `vehicles: { [id]: { owned, levels } }`, `vehicle: id`, `cups`, `stars: { [trailId]: [bool×3] }`,
+`crates`, `cosmetics` (owned + equipped: helmet, suit, horn, trail, flag), `streak`, `rivals: { retired: [], tier }`,
+`ghosts`, `daily: { day, trailId, mutator, done }`; migrate v2 saves (Ranger owned with the old levels, everything
+else empty). Engine-smoke: every vehicle finishes Pine Ridge with the AI; every trail finishes with a tier-matched
+vehicle at upgrade 5; the ghost draws; each mutator runs; the turbo gate boosts; combos count; perf stays ≤ 12 ms.
+UI-smoke: buy a vehicle, upgrades per vehicle, a crate opens on the results, Garage Wall counts, stars appear, a
+championship weekend to the podium, the daily challenge card, the streak flame, migration of a v2 save. Facts-tests
+unchanged + the economy-sim prints its table. Version 1.5.0, sw.js `trail-blazer-v1.5.0`. Docs: README (the runway
+table), LEARNING-DESIGN (one row: rewards never gate the math, the math gates the rewards; the daily loop is a
+habit cue, not a punishment), the site card ("18 worlds, 8 vehicles, cups").

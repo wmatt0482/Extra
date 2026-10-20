@@ -5,7 +5,10 @@
 // Most checks step the simulation deterministically with game.debugStep (sim seconds, not wall clock).
 // Part 1 (?race=0): the v1 trail ride (gates, stuck + winch, gates: 0). Part 2 (default): the v1.1 motocross race
 // (countdown, AI riders, positions, checkpoints, flips, crash + respawn, cash, medals, perf with 4 riders), then the
-// v1.2 math gates in a race (park + freeze, quick / correct / fixed, AI pass through).
+// v1.2 math gates in a race (park + freeze, quick / correct / fixed, AI pass through). Part 3 (v1.5, The Season):
+// every vehicle finishes Pine Ridge against the AI, every trail finishes with a tier-matched vehicle at upgrade 5,
+// the ghost draws, each mutator runs a race, the turbo gate boosts, combos count, perf on the heaviest world.
+// Env ONLY=v15 runs part 3 alone (plus perf); ONLY=v1 skips it.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -45,7 +48,11 @@ const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`);
 const TRAIL_IDS = ['pine-ridge', 'granite-gap', 'lake-loop', 'snow-pass', 'desert-wash', 'night-ride'];
 const STATE_KEYS = 'airTime,boost,cash,distance,finishCrossed,flips,gateIndex,gatesTotal,phase,smashed,speedKmh,stuck,upsideDown';
 const SUMMARY_KEYS = ['distance', 'durationSec', 'airTime', 'flips', 'smashed', 'coins', 'maxSpeedKmh', 'gates', 'winches', 'finishCrossed', 'cash', 'rating', 'ratingScore'];
-const sumOK = (c) => c.total === c.distance + c.air + c.smash + c.gates + c.quick + c.coins + (c.finish || 0) + (c.flips || 0) + (c.perfect || 0) + (c.place || 0);
+const sumOK = (c) => c.total === c.distance + c.air + c.smash + c.gates + c.quick + c.coins + (c.finish || 0) + (c.flips || 0) + (c.perfect || 0) + (c.place || 0) + (c.combo || 0);
+const { VEHICLES } = await import('../src/data/vehicles.js');
+const { TRAILS, MEDAL_TIMES, trailTier } = await import('../src/data/trails.js');
+const { MUTATORS } = await import('../src/data/mutators.js');
+const ONLY = process.env.ONLY || '';
 
 async function open(browser, params) {
   const context = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, hasTouch: true });
@@ -86,6 +93,7 @@ const events = (page, type) => page.evaluate((t) => window.__tb.events.filter((e
 await ensureServer();
 const browser = await chromium.launch();
 try {
+  if (ONLY === 'v15') throw { skipTo: 'v15' };
   // ======== v1 trail mode (start() without `race`): gates, stuck + winch ========
   // ---- 1. stock hold-GAS on Pine Ridge with gates: reaches the first gate and parks; openGate pays $120 ----
   {
@@ -472,13 +480,205 @@ try {
     check(errors.length === 0, `no page errors (${errors.join(' | ')})`);
     await context.close();
   }
-  // ---- R7. perf: a Night Ride race with 4 riders, 4x CPU throttle, real-time frames ----
-  if (!process.env.SKIP_PERF) {
+} catch (e) {
+  if (!e || e.skipTo !== 'v15') { failures.push('exception: ' + e.message); console.error(e); }
+}
+try {
+  if (ONLY === 'v1') throw { skipTo: 'perf' };
+  // ======== v1.5 The Season ========
+  const racePolicy = "({ gas: s.countdown === 0, boost: s.countdown === 0 && s.boost > 0.3 })";
+  async function raceDrive(page, { until = 'false', maxSec = 300, policy = racePolicy, auto = false } = {}) {
+    return page.evaluate(({ until, maxSec, policy, auto }) => {
+      const tb = window.__tb, g = tb.game;
+      const cond = new Function('s', 'd', 'ev', 'return (' + until + ');');
+      const pol = new Function('s', 'd', 'return ' + policy + ';');
+      let s = g.getState(), i = 0, hit = false, gateWait = 0;
+      for (; i < 60 * maxSec; i++) {
+        if (auto && s.phase === 'gate' && ++gateWait > 12) { gateWait = 0; g.openGate({ correct: true, quick: s.gateIndex % 2 === 0 }); }
+        g.setInput(pol(s, g.debugInfo()));
+        s = g.debugStep(1);
+        if (cond(s, g.debugInfo(), tb.events)) { hit = true; break; }
+        if (tb.finished) break;
+      }
+      return { hit, sec: i / 60, state: g.getState(), info: g.debugInfo(), finished: tb.finished };
+    }, { until, maxSec, policy, auto });
+  }
+  const comboSeen = { events: 0, maxCount: 0, cash: 0 };
+  // ---- V1. every vehicle finishes Pine Ridge against the AI (rivals on the tier ± 1 lineup) ----
+  const SHOT_VEHICLES = ['quad', 'dirtbike', 'mudtruck', 'rail'];
+  for (const v of VEHICLES) {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '0', gates: '0', vehicle: v.id, helmet: 'flames', suit: 'racer', flag: 'checker', trailfx: 'blue' });
+    const s0 = await page.evaluate(() => window.__tb.game.getState());
+    const rv = s0.riders.filter((x) => !x.me).map((x) => x.vehicle);
+    const tiers = rv.map((id) => VEHICLES.find((q) => q.id === id).tier);
+    check(s0.vehicle === v.id && rv.length === 3 && tiers.every((t) => Math.abs(t - v.tier) <= 2), `${v.id}: the grid has 3 rivals on the tier ± 1 lineup (${rv.join(', ')})`);
+    if (SHOT_VEHICLES.includes(v.id)) {
+      await raceDrive(page, { until: 's.countdown === 0 && s.timeSec > 2.2 && s.speedKmh > 30', maxSec: 20 });
+      await shot(page, `v15-vehicle-${v.id}`);
+    }
+    const fin = await raceDrive(page, { maxSec: 240 });
+    const S = fin.finished;
+    const cb = await events(page, 'combo');
+    if (S) { comboSeen.events += cb.length; comboSeen.maxCount = Math.max(comboSeen.maxCount, S.comboMax || 0); comboSeen.cash += S.cash.combo || 0; }
+    console.log(`    ${v.id.padEnd(9)} Pine Ridge: place ${S && S.place}, ${S && S.timeSec} s, crashes ${S && S.crashes}, flips ${S && S.flips}, combo max x${S && S.comboMax}, $${S && S.cash.total} (combo $${S && S.cash.combo}), max ${S && S.maxSpeedKmh} km/h, rivals ${S && S.riders.filter((x) => !x.me).map((x) => x.name + (x.timeSec ? ' ' + x.timeSec + 's' : ' ' + Math.round(x.x) + 'm')).join(' · ')}`);
+    check(!!S && S.finishCrossed && S.vehicle === v.id && S.place >= 1 && S.place <= 4, `${v.id}: finishes Pine Ridge against the AI (place ${S && S.place}, ${S && S.timeSec} s)`);
+    check(!!S && sumOK(S.cash) && (S.cash.combo || 0) >= 0, `${v.id}: cash parts add up incl. combo (${S && JSON.stringify(S.cash)})`);
+    if (v.id === 'ranger150') check(S && S.place === 1, `the stock Ranger still wins Pine Ridge with clean riding (place ${S && S.place})`);
+    if (v.id === 'rover') check(fin.info.gravity < 0.65 && fin.info.gravity > 0.55, `the Moon Rover rides at 0.6 g (${fin.info.gravity})`);
+    check(errors.length === 0, `${v.id}: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  check(comboSeen.events >= 1 && comboSeen.maxCount >= 2 && comboSeen.cash > 0, `combos chain across the vehicle races: ${comboSeen.events} combo events, best x${comboSeen.maxCount}, $${comboSeen.cash} combo cash`);
+  // ---- V2. every trail finishes with a tier-matched vehicle at upgrade 5 (4 gates, auto-answered) ----
+  const SHOT_WORLDS = { 'jungle-rumble': 1, 'volcano-vent': 1, 'neon-city': 1, 'sky-bridge': 1, 'moon-base': 1, 'rainbow-ridge': 1, 'canyon-run': 1, 'beach-blast': 1, 'swamp-stomp': 1, 'glacier-gorge': 1, 'dino-dunes': 1, 'haunted-hollow': 1 };
+  for (const trail of TRAILS) {
+    const tier = trailTier(trail), vid = VEHICLES[tier - 1].id;
+    const { page, context, errors } = await open(browser, { trail: trail.id, lvl: '5', gates: '4', vehicle: vid, suit: 'stars', helmet: 'astronaut', flag: 'rainbow' });
+    if (SHOT_WORLDS[trail.id]) {
+      const m = await raceDrive(page, { until: 's.distance > 300 && d.air && s.airTime > 0.3', maxSec: 60, auto: true });
+      await shot(page, `v15-world-${trail.id}`);
+      check(m.hit, `${trail.id}: ${vid} races to 300 m and jumps (${m.state.distance} m)`);
+    }
+    const fin = await raceDrive(page, { maxSec: 420, auto: true });
+    const S = fin.finished;
+    const mt = MEDAL_TIMES[trail.id];
+    console.log(`    ${trail.id.padEnd(15)} ${vid.padEnd(9)} lvl 5: place ${S && S.place}, ${S && S.timeSec} s (gold ${mt.gold} / bronze ${mt.bronze}), medal ${S && S.medal}, crashes ${S && S.crashes}, fell ${S && S.fell}, flips ${S && S.flips}, max ${S && S.maxSpeedKmh} km/h, gates ${S && S.gates.correct}/${S && S.gates.answered}, $${S && S.cash.total}`);
+    check(!!S && S.finishCrossed && S.gates.answered === 4 && sumOK(S.cash), `${trail.id}: ${vid} at upgrade 5 finishes (${S && S.timeSec} s, place ${S && S.place})`);
+    check(!!S && S.timeSec <= mt.bronze * 1.25, `${trail.id}: a clean scripted run is within 25 % of the bronze time (${S && S.timeSec} s vs ${mt.bronze} s)`);
+    if (trail.id === 'moon-base') check(Math.abs(fin.info.gravity - 0.3) < 0.01, `Moon Base (0.4 g) with the Moon Rover (x0.6) rides at the 0.3 g floor (${fin.info.gravity})`);
+    if (trail.id === 'sky-bridge') check(S && S.fell >= 0 && (await page.evaluate(() => window.__tb.game.debugCourse().zones.filter((z) => z.type === 'gap').length)) >= 3, `Sky Bridge has gap pits (fell ${S && S.fell} times)`);
+    check(errors.length === 0, `${trail.id}: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- V3. ghost: a finished run's trace replays as a translucent ghost; beatGhost + ghostGap ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '3', gates: '0', vehicle: 'quad', ghost: '1' });
+    const first = await raceDrive(page, { maxSec: 200 });
+    const S1 = first.finished;
+    const tr = S1 && S1.ghostTrace;
+    check(!!tr && tr.length >= 100 && tr.length <= 1500 && tr.every((p) => p.length === 4), `summary.ghostTrace: ${tr && tr.length} samples of [t, x, y, angle] (${tr && JSON.stringify(tr[10])})`);
+    check(!!tr && Math.abs(tr[11][0] - tr[10][0] - 0.1) < 0.011 && S1.beatGhost === null && S1.ghostTime === null, `samples every 0.1 s; no ghost this run → beatGhost null`);
+    // the dev page stores the trace in sessionStorage; a reload with ghost=1 replays it
+    await page.reload();
+    await page.waitForFunction(() => window.__tb && window.__tb.game && window.__tb.game.getState().phase === 'parked');
+    await page.evaluate(() => window.__tb.game.pause());
+    const has = await page.evaluate(() => !!window.__tb.ghost && window.__tb.ghost.length);
+    check(!!has, `start({ ghost }) takes the stored trace (${has} samples)`);
+    await raceDrive(page, { until: 's.timeSec > 4', maxSec: 20 });
+    const gap0 = (await page.evaluate(() => window.__tb.game.getState())).ghostGap;
+    await shot(page, 'v15-ghost');
+    // a slower ride (no boost) loses to the ghost
+    const fin = await raceDrive(page, { maxSec: 200, policy: '({ gas: s.countdown === 0 })' });
+    const S2 = fin.finished;
+    const passed = await events(page, 'ghostPassed');
+    console.log(`    ghost: first run ${S1 && S1.timeSec} s, second (no boost) ${S2 && S2.timeSec} s, gap at 4 s ${gap0}, beatGhost ${S2 && S2.beatGhost}, ghostPassed x${passed.length}`);
+    check(typeof gap0 === 'number' && S2 && S2.ghostTime === S1.timeSec, `state.ghostGap is a number (${gap0}) and summary.ghostTime is the ghost's time (${S2 && S2.ghostTime})`);
+    check(S2 && S2.beatGhost === (S2.timeSec < S1.timeSec), `beatGhost ${S2 && S2.beatGhost} matches the times (${S2 && S2.timeSec} vs ${S1 && S1.timeSec})`);
+    check(errors.length === 0, `ghost: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- V4. each mutator runs a Pine Ridge race to the finish; its effect is visible ----
+  let baseTop = 0;
+  for (const m of [null, ...MUTATORS]) {
+    const id = m ? m.id : null;
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '4', gates: '0', vehicle: 'buggy', ...(id ? { mutator: id } : {}) });
+    const info0 = await page.evaluate(() => window.__tb.game.debugInfo());
+    const s0 = await page.evaluate(() => window.__tb.game.getState());
+    if (!id) baseTop = info0.vTop;
+    if (id === 'fog') { await raceDrive(page, { until: 's.timeSec > 3', maxSec: 20 }); await shot(page, 'v15-mutator-fog'); }
+    if (id === 'mirror') { await raceDrive(page, { until: 's.timeSec > 2', maxSec: 20 }); await shot(page, 'v15-mutator-mirror'); }
+    if (id === 'giantwheels') { await raceDrive(page, { until: 's.timeSec > 2', maxSec: 20 }); await shot(page, 'v15-mutator-giantwheels'); }
+    const fin = await raceDrive(page, { maxSec: 240 });
+    const S = fin.finished;
+    console.log(`    mutator ${String(id).padEnd(11)}: place ${S && S.place}, ${S && S.timeSec} s, crashes ${S && S.crashes}, gravity ${info0.gravity}, tank ${info0.tank.toFixed(2)}, vTop ${info0.vTop.toFixed(1)}, wheels x${info0.wheelMul}, mirrored ${info0.mirrored}, fog ${s0.fog}`);
+    check(!!S && S.finishCrossed && S.mutator === id && sumOK(S.cash), `mutator ${id}: the race finishes (${S && S.timeSec} s) with summary.mutator = ${S && S.mutator}`);
+    if (id === 'moonboots') check(Math.abs(info0.gravity - 0.5) < 0.01, `Moon Boots: gravity 0.5 (${info0.gravity})`);
+    if (id === 'megaboost') check(Math.abs(info0.tank / (1.8 * (1 + 0.15 * 4) * VEHICLES[3].base.boostCapacity) - 3) < 0.05, `Mega Boost: tank x3 (${info0.tank.toFixed(2)} s)`);
+    if (id === 'fog') check(s0.fog === 1, `Fog: state.fog = 1`);
+    if (id === 'giantwheels') check(info0.wheelMul === 1.6 && info0.lift > 0.2, `Giant Wheels: wheel radius x1.6, the chassis sits ${info0.lift.toFixed(2)} m higher`);
+    if (id === 'tailwind') check(Math.abs(info0.vTop / baseTop - 1.2) < 0.01, `Tailwind: top speed x1.2 (${info0.vTop.toFixed(1)} vs ${baseTop.toFixed(1)} m/s)`);
+    if (id === 'mirror') check(info0.mirrored === true, 'Mirror: the course is mirrored');
+    check(errors.length === 0, `mutator ${id}: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- V5. the turbo gate: a quick answer at the last gate with turbo: true → 3 s rocket boost ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '2', gates: '4', vehicle: 'turbo' });
+    // answer the first three gates correct (not quick), park at the last one
+    const r = await raceDrive(page, { until: "s.phase === 'gate' && s.gateIndex === 3", maxSec: 120, policy: '({ gas: s.countdown === 0 })', auto: false, ...{} }).then(async (x) => x.hit ? x : x);
+    const parked = await page.evaluate(() => {
+      const g = window.__tb.game; let s = g.getState(), i = 0;
+      for (; i < 60 * 150; i++) { if (s.phase === 'gate') { if (s.gateIndex === 3) break; g.openGate({ correct: true }); } g.setInput({ gas: s.countdown === 0 }); s = g.debugStep(1); }
+      return { s, fuelBefore: g.debugInfo().fuel, vTop: g.debugInfo().vTop };
+    });
+    check(parked.s.phase === 'gate' && parked.s.gateIndex === 3, `parked at the last gate (index ${parked.s.gateIndex})`);
+    const tq = await page.evaluate(() => {
+      const g = window.__tb.game;
+      const ok = g.openGate({ correct: true, quick: true, turbo: true });
+      const s1 = g.getState();
+      let maxV = 0, turboAt1 = 0, turboAt3 = 0, i = 0;
+      for (; i < 60 * 4; i++) { g.setInput({ gas: true, boost: false }); const s = g.debugStep(1); const d = g.debugInfo(); maxV = Math.max(maxV, d.vf); if (i === 60) turboAt1 = s.turbo; if (i === 185) turboAt3 = s.turbo; }
+      return { ok, turbo0: s1.turbo, turboAt1, turboAt3, maxV, ev: window.__tb.events.filter((e) => e.type === 'turbo'), go: window.__tb.events.filter((e) => e.type === 'gateOpen').pop() };
+    });
+    console.log(`    turbo gate: turbo ${tq.turbo0} s at the drop, ${tq.turboAt1} s after 1 s, ${tq.turboAt3} s after 3.1 s; max ${(tq.maxV * 3.6).toFixed(0)} km/h (top ${(parked.vTop * 3.6).toFixed(0)}) ${JSON.stringify(tq.ev[0])}`);
+    check(tq.ok && tq.ev.length === 1 && tq.ev[0].sec === 3 && tq.go.turbo === true, `openGate({ turbo: true }) → 'turbo' event {sec: 3} and gateOpen.turbo (${JSON.stringify(tq.ev[0])})`);
+    check(tq.turbo0 === 3 && tq.turboAt1 > 1.8 && tq.turboAt1 < 2.1 && tq.turboAt3 < 0.6, `state.turbo counts down from 3 s in sim time (${tq.turbo0} → ${tq.turboAt1} → ${tq.turboAt3}; a slow-mo flip stretches it)`);
+    check(tq.maxV > parked.vTop * 1.05, `the rocket boost pushes past the top speed without BOOST held (${(tq.maxV * 3.6).toFixed(0)} km/h > ${(parked.vTop * 3.6).toFixed(0)})`);
+    const fin = await raceDrive(page, { maxSec: 120 });
+    check(fin.finished && fin.finished.turbo === true && sumOK(fin.finished.cash), `summary.turbo is true and cash adds up`);
+    check(errors.length === 0, `turbo: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- V6. combo meter: three stunts inside 3 s → combo x2, x3 with the extra in cash.combo ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '2', gates: '0', vehicle: 'quad', riders: '0', mutator: 'moonboots' });
+    const r = await page.evaluate(() => {
+      const g = window.__tb.game, c = g.debugCourse();
+      const f = c.features.find((f) => f.type === 'big');
+      const a = c.arcs.find((a) => Math.abs(a.x - f.lip) < 1);
+      g.debugTeleport(f.x0 - 30, a.v);
+      // lean back through two full turns at half gravity, then let the assist land it
+      let s, i = 0;
+      for (; i < 60 * 12; i++) { const d = g.debugInfo(); g.setInput({ gas: !d.air, brake: d.air && Math.abs(d.flightRot) < Math.PI * 4 - 2.0 }); s = g.debugStep(1); if (window.__tb.events.some((e) => e.type === 'land' || e.type === 'crash')) break; }
+      return { ev: window.__tb.events.filter((e) => ['flip', 'bigAir', 'combo', 'land', 'crash'].includes(e.type)), s: g.getState() };
+    });
+    const combos = r.ev.filter((e) => e.type === 'combo');
+    console.log(`    combo: ${JSON.stringify(r.ev)}`);
+    check(r.ev.some((e) => e.type === 'flip') && r.ev.some((e) => e.type === 'bigAir') && combos.length >= 1 && combos[0].count === 2 && combos[0].mult === 2, `a double flip + big air within 3 s chains: combo {count: 2, mult: 2} (${JSON.stringify(combos[0])})`);
+    check(r.s.combo && r.s.combo.count >= 2 && r.s.combo.left > 0, `getState().combo shows the live chain (${JSON.stringify(r.s.combo)})`);
+    const stp = await page.evaluate(() => { window.__tb.game.stop(); return window.__tb.finished; });
+    check(stp && stp.cash.combo > 0 && stp.cash.combo === combos.reduce((a, e) => a + e.cash, 0) && sumOK(stp.cash) && stp.comboMax >= 2, `summary.cash.combo ($${stp && stp.cash.combo}) = the combo events' cash; parts add up; comboMax ${stp && stp.comboMax}`);
+    check(errors.length === 0, `combo: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- V7. drawRider / drawHelmet / drawVehicle: every helmet, suit, flag and vehicle draws without throwing ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '0', gates: '0', riders: '0' });
+    const res = await page.evaluate(async () => {
+      const m = await import('./src/game/vehicle.js');
+      const cv = document.createElement('canvas'); cv.width = 400; cv.height = 200;
+      const ctx = cv.getContext('2d');
+      let n = 0;
+      for (const v of m.VEHICLES) for (const h of m.HELMETS) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, 400, 200); m.drawVehiclePreview(ctx, { vehicle: v.id, paint: 'rainbow', decal: 'flames', helmet: h.id, suit: m.SUITS[n % 8].id, flag: m.FLAGS[n % 6].id, trail: m.TRAIL_FX[n % 8].id }, { x: 200, y: 160, scale: 40, t: 1 }); n++; }
+      for (const s of m.SUITS) { ctx.setTransform(40, 0, 0, -40, 200, 160); m.drawRider(ctx, { suit: s.id, helmet: 'crown' }); }
+      const px = ctx.getImageData(0, 0, 400, 200).data; let lit = 0; for (let i = 3; i < px.length; i += 4) if (px[i] > 0) lit++;
+      return { n, lit, helmets: m.HELMETS.length, suits: m.SUITS.length, flags: m.FLAGS.length, fx: m.TRAIL_FX.length };
+    });
+    check(res.n === 96 && res.helmets === 12 && res.suits === 8 && res.flags === 6 && res.fx === 8 && res.lit > 2000, `8 vehicles x 12 helmets + 8 suits + 6 flags + 8 trails draw (${res.n} previews, ${res.lit} px)`);
+    check(errors.length === 0, `art: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+} catch (e) {
+  if (!e || e.skipTo !== 'perf') { failures.push('exception: ' + e.message); console.error(e); }
+}
+try {
+  // ---- R7. perf: a Night Ride race with 4 riders, 4x CPU throttle, real-time frames; v1.5: Haunted Hollow in the fog ----
+  for (const [trail, extra] of [['night-ride', ''], ['haunted-hollow', '&mutator=fog&vehicle=turbo']]) if (!process.env.SKIP_PERF) {
     const context = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, hasTouch: true });
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    await page.goto(`${BASE}${DEV}?ui=0&trail=night-ride&lvl=4&gates=0`);
+    await page.goto(`${BASE}${DEV}?ui=0&trail=${trail}&lvl=4&gates=0${extra}`);
     await page.waitForFunction(() => window.__tb && window.__tb.game);
     const cdp = await context.newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
@@ -502,13 +702,13 @@ try {
       requestAnimationFrame(tick);
     }));
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
-    console.log(`    perf (4x throttle, Night Ride race, ${res.riders} riders): ${res.frames} frames, per 60 Hz frame avg ${res.norm.avg.toFixed(2)} ms (p95 ${res.norm.p95.toFixed(2)}), per rendered frame avg ${res.raw.avg.toFixed(2)} ms, rode ${res.dist} m`);
+    console.log(`    perf (4x throttle, ${trail} race${extra}, ${res.riders} riders): ${res.frames} frames, per 60 Hz frame avg ${res.norm.avg.toFixed(2)} ms (p95 ${res.norm.p95.toFixed(2)}), per rendered frame avg ${res.raw.avg.toFixed(2)} ms, rode ${res.dist} m`);
     // budget 8 ms on the reference box (measured 4.6-6.3 ms there); this VM has since slowed by ~1.7x and the committed
     // v1.1 tree measures 10-11 ms on it, so the hard limit is 12 ms and anything over 8 is printed as a warning
     const PERF_MS = Number(process.env.PERF_MS || 12);
     if (res.norm.avg >= 8) console.log(`    perf WARNING: ${res.norm.avg.toFixed(2)} ms per frame is over the 8 ms reference budget (machine speed varies; hard limit ${PERF_MS} ms)`);
-    check(res.riders === 4 && res.norm.avg < PERF_MS, `perf: game code per 60 Hz frame avg ${res.norm.avg.toFixed(2)} ms < ${PERF_MS} ms at 4x CPU throttle with 4 riders`);
-    check(errors.length === 0, `perf: no page errors (${errors.join(' | ')})`);
+    check(res.riders === 4 && res.norm.avg < PERF_MS, `perf ${trail}: game code per 60 Hz frame avg ${res.norm.avg.toFixed(2)} ms < ${PERF_MS} ms at 4x CPU throttle with 4 riders`);
+    check(errors.length === 0, `perf ${trail}: no page errors (${errors.join(' | ')})`);
     await context.close();
   }
 } catch (e) {

@@ -5,6 +5,7 @@
 // ×12 families, "÷ too", "+ and − within 20", Custom problems one per line with per-line errors) · Options (per player:
 // math gates per race, new facts per day, facts aloud, the voice as set in Spell Jump; this device's sound, music,
 // motion, shake; Change PIN) · Report (per operation the status counts, slowest facts, this week's races, Copy report)
+// v1.5: the Report adds "Play, day by day" (races · stars · crates earned · streak, from save.play).
 // · Players (rename, reset facts data, reset Trail Blazer progress, remove). A one-line family sync status sits under
 // v1.3: Facts this week has three modes: Auto (recommended: the frontier and its reason, every family's state on the
 // ladder, ÷ / + − allowed, the Pit Crew Check: last result, "Run the check again") · Pick families (v1.2 toggles) ·
@@ -22,6 +23,7 @@ import { autoFamilies, famInfo, ladder, tierOf } from '../facts/adaptive.js';
 import { dial, dialText, steppedText } from '../facts/governor.js';
 import { recheckInDays, scoutFamily } from '../facts/scouts.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
+import { playLines } from '../meta/season.js';
 import { icon } from './tbIcons.js';
 import { drawAvatar } from './vehiclePreview.js';
 
@@ -339,7 +341,9 @@ export function createParentZone(app) {
       h('tbody', {}, ...ops.map(([op, o]) => h('tr', { 'data-op': op, 'data-total': String(o.total) },
         h('td', { class: 'op' }, OP_SHORT[op], h('small', {}, `${o.total} facts`)), ...STATUSES.map((st) => h('td', { 'data-status': st }, String(o[st]))))))));
     const tName = (id) => (app.trails.find((t) => t.id === id) || { name: id }).name;
-    const text = reportText(d, p.name, now, tName);
+    const play = app.saveOf ? playLines(app.saveOf(p.id)) : [];
+    const dayName = (k) => new Date(k + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+    const text = reportText(d, p.name, now, tName) + (play.length ? `\n\nPlay (v1.5)\n${play.map((x) => `${dayName(x.day)}: ${x.text}`).join('\n')}` : '');
     const pre = h('pre', { class: 'pz-report-text', id: 'report-text', hidden: true }, text);
     const copy = h('button', { class: 'btn btn-sm btn-cyan', id: 'report-copy', 'data-sfx': '' }, 'Copy report');
     copy.addEventListener('click', async () => {
@@ -368,6 +372,9 @@ export function createParentZone(app) {
       h('div', { class: 'pz-help', id: 'report-slow' }, r.slowest.length ? r.slowest.map((x) => `${factText(x.fact)} (${(x.avgMs / 1000).toFixed(1)} s)`).join(' · ') : 'Not enough answers yet.'),
       h('div', { class: 'hud-label pz-sec' }, "This week's races"),
       h('div', { class: 'pz-help', id: 'report-races' }, r.races.length ? r.races.slice(-8).map((x) => `${new Date(x.at).toLocaleDateString('en-US', { weekday: 'short' })} ${tName(x.trail)}: ${x.correct}/${x.asked} right, ${x.quick} quick, ${x.fixed} fixed`).join(' · ') : 'No races this week yet.'),
+      h('div', { class: 'hud-label pz-sec' }, 'Play, day by day'),
+      play.length ? h('ul', { class: 'pat-list', id: 'report-play' }, ...play.map((x) => h('li', { 'data-day': x.day }, `${dayName(x.day)} · ${x.text}`)))
+        : h('div', { class: 'pz-help', id: 'report-play' }, 'No races yet.'),
       h('div', { class: 'pz-actions' }, copy), pre,
     ];
   }
@@ -498,11 +505,11 @@ export function createParentZone(app) {
         if (renamePlayer(app.family, p.id, input.value)) { app.toast('Name saved'); app.onFamilyChanged(); render(); } else { app.audio.error(); app.toast('Type a name (letters only)'); }
       });
       const card = h('div', { class: 'pz-player', 'data-player': p.id, style: { '--c': p.color } },
-        h('div', { class: 'pz-player-head' }, cv, h('div', { class: 'name' }, p.name, h('div', { class: 'sub' }, `${app.trailsDoneFor(p.id)} of ${app.trails.length} tracks on the podium, on this device`))),
+        h('div', { class: 'pz-player-head' }, cv, h('div', { class: 'name' }, p.name, h('div', { class: 'sub' }, `${app.trailsDoneFor(p.id)} of ${app.trails.length} trails on the podium, on this device`))),
         h('div', { class: 'pz-rename' }, input, save),
         ...confirmRow('Reset facts data', `Every fact back to New for ${p.name} (this week's set, the options and the level stay).`, 'Reset',
           `Reset ${p.name}'s math facts progress?`, 'Reset facts', () => { app.resetFactsFor(p.id); app.toast('Facts data reset'); render(); }, `pz-reset-facts-${p.id}`),
-        ...confirmRow('Reset Trail Blazer progress', `Cash, upgrades, medals and tracks back to the start for ${p.name} on this device. Spell Jump is not touched.`, 'Reset',
+        ...confirmRow('Reset Trail Blazer progress', `Cash, vehicles, upgrades, medals, cups and gear back to the start for ${p.name} on this device. Spell Jump is not touched.`, 'Reset',
           `Reset ${p.name}'s Trail Blazer progress?`, 'Reset', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-${p.id}`),
         ...confirmRow('Remove player', `Removes ${p.name} from the family in both games, on every device, with all of ${p.name}'s data.`, 'Remove',
           `Remove ${p.name} for good, in Trail Blazer and Spell Jump?`, 'Remove', () => { app.removePlayer(p.id); render(); }, `pz-remove-${p.id}`));

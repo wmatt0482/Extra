@@ -1,33 +1,84 @@
-// Garage: the Ranger (procedural preview), a Paint / Decals strip and the four upgrades (10 levels each, bought with
-// race cash). Paints and decals are never bought: finished tracks and medals unlock paints, flips, a long race and a
-// win unlock decals (src/data/paints.js); locked chips say how to earn them.
+// Garage (SPEC v1.5 §1, §8): the Vehicles row (8 cards: name, feel, Owned / Selected, or the price with "Earn $X
+// more"; tap an owned one to drive it, tap a locked one to look at it on the stage with its Buy button), the selected
+// vehicle's four upgrades (per vehicle, costs × its tier), and the style rows: Paint, Decal, then the rider's Helmet,
+// Suit, Flag, Boost trail and Horn. Paints and decals come from racing and crates; rider gear only from crates, the
+// streak and set bonuses (src/data/cosmetics.js); locked chips say how to earn them. The Garage Wall button shows the
+// whole collection (and opens waiting crates).
 import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
 import { DECALS, PAINTS, PAINT_BY_ID, decalHint, paintHint } from '../data/paints.js';
-import { buyUpgrade, canAfford, nextUpgradeCost, ownsDecal, ownsPaint } from '../meta/economy.js';
+import { BY_KIND, STOCK } from '../data/cosmetics.js';
+import {
+  buyUpgrade, buyVehicle, canAfford, levelsOf, nextUpgradeCost, ownsDecal, ownsPaint, ownsVehicle, priceOf, selectVehicle,
+} from '../meta/economy.js';
+import { equip, owns, unopened } from '../meta/crates.js';
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { COIN } from '../../../spell-jump/src/ui/icons.js';
 import { icon } from './tbIcons.js';
-import { drawPreview } from './vehiclePreview.js';
+import { drawPreview, playerLook } from './vehiclePreview.js';
+import { itemSwatch } from './items.js';
 
-const DECAL_SW = {
-  none: '<svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="6" fill="none" stroke="#b2d3c2" stroke-width="2"/><path d="M5.5 14.5l9-9" stroke="#b2d3c2" stroke-width="2"/></svg>',
-  mud: '<svg viewBox="0 0 20 20"><circle cx="7" cy="8" r="4" fill="#8a5a32"/><circle cx="13.5" cy="12.5" r="3" fill="#8a5a32"/><circle cx="14" cy="5" r="1.6" fill="#8a5a32"/></svg>',
-  flames: '<svg viewBox="0 0 20 20"><path d="M10 2c3 4 5 6 5 10a5 5 0 0 1-10 0c0-2 1-3.4 2-4.4.4 1.5 1.3 2.4 2.3 2.4C9 7 9.5 4.4 10 2z" fill="#ff8a1f"/><path d="M10 9c1.3 1.6 2 2.6 2 4a2 2 0 0 1-4 0c0-1 .8-2.2 2-4z" fill="#ffd23a"/></svg>',
-  stars: '<svg viewBox="0 0 20 20"><path d="M10 2l2.3 5 5.4.6-4 3.6 1.1 5.3L10 13.8l-4.8 2.7 1.1-5.3-4-3.6 5.4-.6z" fill="#ffd23a"/></svg>',
-  checkers: '<svg viewBox="0 0 20 20"><rect width="20" height="20" fill="#fff"/><path d="M0 0h5v5H0zM10 0h5v5h-5zM5 5h5v5H5zM15 5h5v5h-5zM0 10h5v5H0zM10 10h5v5h-5zM5 15h5v5H5zM15 15h5v5h-5z" fill="#111"/></svg>',
-};
+const TABS = [
+  { id: 'paint', name: 'Paint' }, { id: 'decal', name: 'Decal' }, { id: 'helmet', name: 'Helmet' }, { id: 'suit', name: 'Suit' },
+  { id: 'flag', name: 'Flag' }, { id: 'trail', name: 'Trail' }, { id: 'horn', name: 'Horn' },
+];
+const GEAR_HINT = { crate: 'From a crate', streak: (d) => `${d}-day streak`, set: 'Set bonus' };
 
 export function createGarage(app) {
   const canvas = $('#veh-preview');
-  const ui = { upgrades: $('#upgrades'), style: $('#style-strip'), tag: $('#veh-tag') };
-  let raf = 0, styleTab = 'paint';
+  const ui = {
+    upgrades: $('#upgrades'), style: $('#style-strip'), tabs: $('#style-tabs'), tag: $('#veh-tag'), name: $('#veh-name'), special: $('#veh-special'),
+    row: $('#veh-row'), upHead: $('#up-head'), main: $('#btn-garage-ride'), wall: $('#btn-wall'),
+  };
+  let raf = 0, styleTab = 'paint', previewId = null;
+  const vehicles = () => app.vehicles || [];
+  const shown = () => vehicles().find((v) => v.id === (previewId || app.save.vehicle)) || vehicles()[0];
 
-  $('#btn-garage-ride').addEventListener('click', () => app.go('trails'));
+  ui.main.addEventListener('click', () => {
+    const v = shown();
+    if (!v || ownsVehicle(app.save, v.id)) { app.go('trails'); return; }
+    const r = buyVehicle(app.save, vehicles(), v.id);
+    if (r.ok) {
+      previewId = null;
+      app.persist(); app.audio.cash(); setTimeout(() => app.audio.fanfare(), 250);
+      app.toast(`${v.name} is yours!`);
+      app.onLookChanged();
+      render();
+    } else { app.audio.error(); app.toast(r.reason === 'cash' ? `Earn $${money(r.need)} more` : 'Already yours'); }
+  });
+  ui.wall.addEventListener('click', () => app.go('wall'));
 
+  // ---------- vehicles ----------
+  function vehCard(v) {
+    const s = app.save;
+    const own = ownsVehicle(s, v.id);
+    const sel = s.vehicle === v.id;
+    const price = priceOf(v);
+    const afford = canAfford(s, price);
+    const cv = h('canvas', { 'aria-hidden': 'true' });
+    const status = sel ? h('span', { class: 'vc-st sel' }, 'Driving')
+      : own ? h('span', { class: 'vc-st own' }, 'Owned')
+        : h('span', { class: 'vc-st price' + (afford ? ' ok' : ''), html: `${COIN}<span>${money(price)}</span>` });
+    const more = !own && !afford ? h('span', { class: 'vc-more' }, `Earn $${money(price - s.cash)} more`) : null;
+    const card = h('button', {
+      class: `veh-pick${own ? ' owned' : ' locked'}${sel ? ' on' : ''}${previewId === v.id ? ' peek' : ''}`, 'data-vehicle': v.id, 'data-sfx': '',
+      'aria-pressed': String(sel), 'aria-label': `${v.name}, ${v.feel || ''}${sel ? ', driving' : own ? ', owned' : `, $${money(price)}`}`,
+    }, h('span', { class: 'vc-tier' }, `T${v.tier}`), cv, h('b', { class: 'vc-name' }, v.name), status, more);
+    card.addEventListener('click', () => {
+      if (own) {
+        previewId = null;
+        if (!sel) { selectVehicle(s, v.id); app.persist(); app.onLookChanged(); app.toast(`${v.name}: ${v.feel}`); }
+      } else previewId = previewId === v.id ? null : v.id;
+      render();
+    });
+    requestAnimationFrame(() => drawPreview(cv, { ...playerLook(s), vehicle: v.id, flag: null }, { floor: false, alpha: own ? 1 : 0.55 }));
+    return card;
+  }
+
+  // ---------- upgrades (the selected vehicle's) ----------
   function upgradeRow(u) {
     const s = app.save;
-    const lv = s.levels[u.id] || 0;
-    const cost = nextUpgradeCost(s, u.id);
+    const lv = levelsOf(s)[u.id] || 0;
+    const cost = nextUpgradeCost(s, u.id, vehicles());
     const pips = h('div', { class: 'pips', 'aria-label': `Level ${lv} of ${MAX_LEVEL}` });
     for (let i = 0; i < MAX_LEVEL; i++) pips.append(h('i', { class: i < lv ? 'on' : '' }));
     let btn;
@@ -36,9 +87,9 @@ export function createGarage(app) {
       const afford = canAfford(s, cost);
       btn = h('button', { class: 'btn btn-sm ' + (afford ? 'btn-orange' : 'btn-poor'), 'data-upgrade': u.id, 'aria-label': `Upgrade ${u.name} for $${money(cost)}`, html: `${COIN}<span>${money(cost)}</span>` });
       btn.addEventListener('click', () => {
-        const r = buyUpgrade(app.save, u.id);
+        const r = buyUpgrade(app.save, u.id, vehicles());
         if (r.ok) { app.audio.cash(); app.persist(); app.toast(`${u.name} level ${r.level}!`); render(); }
-        else { app.audio.error(); app.toast(r.reason === 'cash' ? `Need $${money(cost - app.save.cash)} more` : 'Maxed out'); }
+        else { app.audio.error(); app.toast(r.reason === 'cash' ? `Earn $${money(cost - app.save.cash)} more` : 'Maxed out'); }
       });
     }
     return h('div', { class: 'card up-row', 'data-row': u.id },
@@ -47,27 +98,40 @@ export function createGarage(app) {
       btn);
   }
 
-  function tabBtn(id, text, count) {
-    const on = styleTab === id;
-    const b = h('button', { class: 'style-tab' + (on ? ' on' : ''), role: 'tab', 'aria-selected': String(on), 'data-style-tab': id, 'data-sfx': '' }, text, h('b', {}, String(count)));
-    b.addEventListener('click', () => { if (styleTab !== id) { styleTab = id; renderStyle(); ui.style.scrollLeft = 0; } });
+  // ---------- style: paint, decal, rider gear ----------
+  const has = (kind, id) => (kind === 'paint' ? ownsPaint(app.save, app.trails, id) : kind === 'decal' ? ownsDecal(app.save, id) : owns(app.save, kind, id));
+  const isOn = (kind, id) => {
+    const s = app.save;
+    if (kind === 'paint') return s.paint === id;
+    if (kind === 'decal') return s.decal === id;
+    return (s.cosmetics.equipped[kind] || STOCK[kind]) === id;
+  };
+  const listOf = (kind) => (kind === 'paint' ? PAINTS : kind === 'decal' ? DECALS : BY_KIND[kind]);
+  function hintOf(kind, item) {
+    if (kind === 'paint') return paintHint(item, app.trails);
+    if (kind === 'decal') return decalHint(item);
+    return item.source === 'streak' ? GEAR_HINT.streak(item.days) : GEAR_HINT[item.source] || 'From a crate';
+  }
+  function tabBtn(t) {
+    const on = styleTab === t.id;
+    const n = listOf(t.id).filter((x) => has(t.id, x.id)).length;
+    const b = h('button', { class: 'style-tab' + (on ? ' on' : ''), role: 'tab', 'aria-selected': String(on), 'data-style-tab': t.id, 'data-sfx': '' }, t.name, h('b', {}, String(n)));
+    b.addEventListener('click', () => { if (styleTab !== t.id) { styleTab = t.id; renderStyle(); ui.style.scrollLeft = 0; } });
     return b;
   }
   function chip(kind, item) {
     const s = app.save;
-    const has = kind === 'paint' ? ownsPaint(s, app.trails, item.id) : ownsDecal(s, item.id);
-    const on = (kind === 'paint' ? s.paint : s.decal) === item.id;
-    const hint = kind === 'paint' ? paintHint(item, app.trails) : decalHint(item);
-    const sw = kind === 'paint'
-      ? h('i', { class: 'sw', style: { background: item.swatch || `linear-gradient(135deg, ${item.body} 0 60%, #ff8a1f 60% 70%, ${item.trim} 70%)` } })
-      : h('i', { class: 'sw glyph', html: DECAL_SW[item.id] || '' });
-    const b = h('button', { class: `style-chip ${kind}${has ? ' owned' : ' locked'}${on ? ' on' : ''}`, [`data-${kind}`]: item.id, 'data-sfx': '', 'aria-pressed': String(on),
-      'aria-label': `${item.name}${has ? (on ? ', on' : '') : ', locked: ' + hint}` },
-    sw, h('span', {}, has ? item.name : hint), has ? null : h('span', { class: 'sc-lock', html: icon('lock') }));
+    const got = has(kind, item.id);
+    const on = isOn(kind, item.id);
+    const hint = hintOf(kind, item);
+    const b = h('button', { class: `style-chip ${kind}${got ? ' owned' : ' locked'}${on ? ' on' : ''}`, [`data-${kind}`]: item.id, 'data-sfx': '', 'aria-pressed': String(on),
+      'aria-label': `${item.name}${got ? (on ? ', on' : '') : ', locked: ' + hint}` },
+    itemSwatch(kind, item.id), h('span', {}, got ? item.name : hint), got ? null : h('span', { class: 'sc-lock', html: icon('lock') }));
     b.addEventListener('click', () => {
-      if (!has) { app.audio.error(); app.toast(`${item.name}: ${hint}`); return; }
+      if (!got) { app.audio.error(); app.toast(`${item.name}: ${hint}`); return; }
+      if (kind === 'horn') app.sfx.horn(item.notes);
       if (on) return;
-      if (kind === 'paint') s.paint = item.id; else s.decal = item.id;
+      if (kind === 'paint') s.paint = item.id; else if (kind === 'decal') s.decal = item.id; else equip(s, kind, item.id);
       app.persist();
       app.onLookChanged();
       renderStyle();
@@ -75,33 +139,57 @@ export function createGarage(app) {
     return b;
   }
   function renderStyle() {
-    const s = app.save;
     const keep = ui.style.scrollLeft;
-    const owned = (kind, list) => list.filter((x) => (kind === 'paint' ? ownsPaint(s, app.trails, x.id) : ownsDecal(s, x.id)));
-    const sorted = (kind, list) => [...owned(kind, list), ...list.filter((x) => !owned(kind, list).includes(x))];
-    const list = styleTab === 'paint' ? sorted('paint', PAINTS) : sorted('decal', DECALS);
-    ui.style.replaceChildren(
-      h('div', { class: 'style-tabs', role: 'tablist', 'aria-label': 'Style' }, tabBtn('paint', 'Paint', owned('paint', PAINTS).length), tabBtn('decal', 'Decals', owned('decal', DECALS).length - 1)),
-      ...list.map((x) => chip(styleTab, x)));
+    const list = listOf(styleTab).filter((x) => !(styleTab === 'paint' && x.unlock && x.unlock.set && !has('paint', x.id)));
+    const sorted = [...list.filter((x) => has(styleTab, x.id)), ...list.filter((x) => !has(styleTab, x.id))];
+    ui.tabs.replaceChildren(...TABS.map(tabBtn));
+    ui.style.replaceChildren(...sorted.map((x) => chip(styleTab, x)));
     ui.style.scrollLeft = keep;
-    ui.tag.textContent = `Paint: ${(PAINT_BY_ID[s.paint] || PAINTS[0]).name}`;
   }
 
+  function renderMeta() {
+    const s = app.save;
+    const v = shown();
+    if (!v) return;
+    const own = ownsVehicle(s, v.id);
+    ui.name.textContent = v.name;
+    ui.tag.textContent = own ? `${v.feel} · Paint: ${(PAINT_BY_ID[s.paint] || PAINTS[0]).name}` : v.blurb || v.feel || '';
+    ui.special.hidden = !v.specialName;
+    ui.special.textContent = v.specialName ? `${v.specialName}: ${v.specialText || ''}` : '';
+    const price = priceOf(v);
+    const n = unopened(s);
+    ui.wall.querySelector('.badge-n').textContent = n ? String(n) : '';
+    ui.wall.classList.toggle('has-crates', n > 0);
+    if (own) {
+      ui.main.className = 'btn btn-green'; ui.main.dataset.mode = 'race';
+      ui.main.innerHTML = `Race${icon('right')}`;
+    } else {
+      const afford = canAfford(s, price);
+      ui.main.className = 'btn ' + (afford ? 'btn-orange' : 'btn-poor'); ui.main.dataset.mode = 'buy';
+      ui.main.innerHTML = afford ? `Buy ${COIN}<span>${money(price)}</span>` : `<span>Earn $${money(price - s.cash)} more</span>`;
+    }
+    ui.upHead.textContent = `Upgrades · ${(vehicles().find((x) => x.id === s.vehicle) || { name: 'Ranger 150' }).name}`;
+  }
   function render() {
+    ui.row.replaceChildren(...vehicles().map(vehCard));
     ui.upgrades.replaceChildren(...UPGRADES.map(upgradeRow));
     renderStyle();
+    renderMeta();
     app.refreshCash();
     paint();
+    const on = ui.row.querySelector('.peek') || ui.row.querySelector('.on');
+    if (on) { try { on.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) { /* older engines */ } }
   }
   function paint() {
     const rm = app.settings.reducedMotion;
     const now = performance.now();
-    drawPreview(canvas, { paint: app.save.paint, decal: app.save.decal }, { t: 0, bob: rm ? 0 : Math.sin(now / 90) * 0.6 });
+    const v = shown();
+    drawPreview(canvas, { ...playerLook(app.save), vehicle: v ? v.id : app.save.vehicle }, { t: rm ? 0 : now / 1000, bob: rm ? 0 : Math.sin(now / 90) * 0.6, alpha: v && !ownsVehicle(app.save, v.id) ? 0.8 : 1 });
   }
   function loop() { paint(); raf = requestAnimationFrame(loop); }
 
   return {
-    show() { render(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); },
+    show() { previewId = null; render(); cancelAnimationFrame(raf); raf = requestAnimationFrame(loop); },
     hide() { cancelAnimationFrame(raf); raf = 0; },
     render,
   };

@@ -1,6 +1,7 @@
 // Race HUD: the position badge (1st-4th, bumps when it changes), the race time, speed, the boost gauge (also the BOOST
 // button's fill), a thin track bar with a dot per rider (the player's ringed, the AI riders in their paints), and one
-// banner at a time in the band under the top bar (FLIP!, BIG AIR, PERFECT, CRASH, "You're 2nd!" ...). Writes the DOM
+// banner at a time in the band under the top bar (FLIP!, BIG AIR, PERFECT, CRASH, "You're 2nd!" ...). v1.5: "vs your
+// best" under the time when the ghost races along; TURBO!, COMBO ×3 and the rivals' lines come in as banners. Writes the DOM
 // only when a shown value changes, so update() can run every frame.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { fmtTime, ordinal } from '../data/medals.js';
@@ -13,7 +14,7 @@ export function createHud({ paintColor = (id) => COLOR_BY_PAINT[id] || '#c9d1d6'
   const el = {
     pos: $('#hud-pos'), place: $('#hud-place'), placeSfx: $('#hud-place-sfx'), of: $('#hud-of'), time: $('#hud-time'), speed: $('#hud-speed'),
     boost: $('#hud-boost'), boostFill: $('#ctl-boost-fill'), boostBtn: $('#ctl-boost'), dots: $('#race-dots'),
-    banner: $('#banner'), bannerText: $('#banner-text'),
+    banner: $('#banner'), bannerText: $('#banner-text'), ghost: $('#hud-ghost'),
   };
   let last = {}, length = 600, dots = [], me = null, bannerQ = [], bannerTimer = 0, bannerOn = false;
   const set = (k, v, fn) => { if (last[k] !== v) { last[k] = v; fn(v); } };
@@ -40,9 +41,12 @@ export function createHud({ paintColor = (id) => COLOR_BY_PAINT[id] || '#c9d1d6'
 
   return {
     /** trail: the track; playerColor: the player's paint color */
-    reset(trail, playerColor) {
+    reset(trail, playerColor, { ghost = false } = {}) {
       length = Math.max(1, (trail && trail.length) || 600);
       last = {};
+      el.ghost.hidden = !ghost;
+      el.ghost.textContent = 'vs your best';
+      el.ghost.className = 'hud-ghost';
       buildDots([], playerColor);
       this.clearBanners();
       el.pos.classList.remove('bump', 'p1');
@@ -70,6 +74,13 @@ export function createHud({ paintColor = (id) => COLOR_BY_PAINT[id] || '#c9d1d6'
       const b = Math.max(0, Math.min(1, s.boost == null ? 0 : s.boost));
       set('b', Math.round(b * 100), (v) => { el.boost.style.transform = `scaleX(${v / 100})`; el.boostFill.style.transform = `scaleY(${v / 100})`; el.boostBtn.classList.toggle('empty', v < 2); });
       set('me', pct(s.distance || 0), (v) => { me.style.left = v; });
+      // v1.5: the ghost of the best run (the engine's ghostGap: seconds behind (+) or ahead (-) of it, when it says)
+      if (!el.ghost.hidden && Number.isFinite(s.ghostGap)) {
+        set('g', Math.round(s.ghostGap * 10), (v) => {
+          el.ghost.textContent = v === 0 ? 'vs your best: even' : `vs your best ${v < 0 ? '−' : '+'}${Math.abs(v / 10).toFixed(1)} s`;
+          el.ghost.className = 'hud-ghost ' + (v <= 0 ? 'ahead' : 'behind');
+        });
+      }
       riders.forEach((r, i) => set('r' + i, pct((r.x || 0) - offset), (v) => { dots[i].style.left = v; }));
     },
     /** the position badge pops (call when the place changes) */

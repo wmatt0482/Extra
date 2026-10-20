@@ -1,4 +1,4 @@
-// The Ranger 150 preview (garage, title hero, player avatars). The engine agent's src/game/vehicle.js
+// The vehicle preview (garage, title hero, player avatars, podiums): any vehicle, paint and rider gear (v1.5). The engine agent's src/game/vehicle.js
 // (`drawVehicle(ctx, look, state)`, `PAINTS`, `DECALS`, `VEHICLE`) is the real art, shared with the ride; it is loaded
 // with a guarded dynamic import, and until it exists (or if it throws) drawRanger() below draws a simpler Ranger:
 // sage-green body, black roll cage, orange stripe + "150", knobby tires, cargo bed, mesh door.
@@ -108,6 +108,39 @@ export function drawRanger(ctx, look = {}, { width = 160, t = 0, speed = 0 } = {
   ctx.restore();
 }
 
+const boundsCache = new Map();
+/** The vehicle's drawn box in vehicle-local meters (hull + wheels, and the flag when it has one). */
+function boundsOf(real, look) {
+  const key = `${look.vehicle || ''}|${look.flag && look.flag !== 'none' ? 1 : 0}`;
+  if (boundsCache.has(key)) return boundsCache.get(key);
+  let b = real.VEHICLE ? { minX: real.VEHICLE.minX, maxX: real.VEHICLE.maxX, maxY: real.VEHICLE.maxY } : { minX: -1.36, maxX: 1.47, maxY: 2.08 };
+  const def = look.vehicle && typeof real.vehicleDef === 'function' ? real.vehicleDef(look.vehicle) : null;
+  if (def && Array.isArray(def.hull) && def.hull.length) {
+    const xs = def.hull.map((p) => p[0]), ys = def.hull.map((p) => p[1]);
+    for (const w of def.wheels || []) { xs.push(w.x - w.r, w.x + w.r); ys.push(w.y + w.r); }
+    if (Array.isArray(def.seat)) ys.push(def.seat[1] + 0.95);   // the rider's helmet on the open vehicles
+    b = { minX: Math.min(...xs), maxX: Math.max(...xs), maxY: Math.max(...ys) + 0.1 };
+  }
+  if (look.flag && look.flag !== 'none') {
+    const fp = (def && def.flagPost) || [-0.58, 2.0];
+    b = { ...b, minX: Math.min(b.minX, fp[0] - 0.7), maxY: Math.max(b.maxY, fp[1] + 0.75) };
+  }
+  boundsCache.set(key, b);
+  return b;
+}
+/** A paint for the engine: its own id when the engine draws it, else the app's colours as an object. */
+export function enginePaint(id) {
+  const m = vehicleMod;
+  if (m && m.PAINT_BY_ID && m.PAINT_BY_ID[id]) return id;
+  const p = PAINT_BY_ID[id];
+  return p ? { id: p.id, name: p.name, body: p.body, stripe: p.trim } : id;
+}
+/** The player's whole look (vehicle, paint, decal and the rider gear) from the save. */
+export function playerLook(save) {
+  const eq = (save.cosmetics && save.cosmetics.equipped) || {};
+  return { vehicle: save.vehicle, paint: save.paint, decal: save.decal, helmet: eq.helmet, suit: eq.suit, flag: eq.flag && eq.flag !== 'none' ? eq.flag : null, trail: eq.trail };
+}
+
 /** Draw the Ranger into a canvas, centered, sized to fit. opts: { t, bob, floor (ground line + shadow), dx, alpha } */
 export function drawPreview(canvas, look = {}, { t = 0, bob = 0, floor = true, dx = 0, alpha = 1 } = {}) {
   const r = canvas.getBoundingClientRect();
@@ -129,11 +162,14 @@ export function drawPreview(canvas, look = {}, { t = 0, bob = 0, floor = true, d
   const real = vehicleMod && !realFailed && typeof vehicleMod.drawVehiclePreview === 'function' ? vehicleMod : null;
   let drawn = false;
   if (real) {
-    // the engine's art: vehicle-local meters (VEHICLE.minX..maxX wide, maxY tall), (0, 0) = the ground under its centre
-    const V = real.VEHICLE || { minX: -1.36, maxX: 1.47, maxY: 2.08 };
+    // the engine's art: vehicle-local meters, (0, 0) = the ground under its centre; sized to the vehicle's own box
+    const V = boundsOf(real, look);
     const scale = Math.min((W * 0.9) / (V.maxX - V.minX + 0.1), (H * (floor ? 0.84 : 0.94)) / (V.maxY + 0.05));
-    const paint = look.color ? { id: 'player', body: look.color, stripe: '#ff8a1f' } : look.paint;
-    try { real.drawVehiclePreview(ctx, { paint, decal: look.decal }, { x: -((V.maxX + V.minX) / 2) * scale, y: 0, scale, t, speed: 0 }); drawn = true; } catch (e) { realFailed = true; console.warn('[vehiclePreview] drawVehiclePreview failed, using the built-in Ranger', e); }
+    const paint = look.color ? { id: 'player', body: look.color, stripe: '#ff8a1f' } : enginePaint(look.paint);
+    try {
+      real.drawVehiclePreview(ctx, { ...look, paint, decal: look.decal }, { x: -((V.maxX + V.minX) / 2) * scale, y: 0, scale, t, speed: 0 });
+      drawn = true;
+    } catch (e) { realFailed = true; console.warn('[vehiclePreview] drawVehiclePreview failed, using the built-in Ranger', e); }
   }
   if (!drawn) drawRanger(ctx, look, { width, t });
   ctx.restore();

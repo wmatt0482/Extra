@@ -1,8 +1,8 @@
 # Trail Blazer
 
 Learning Lab's second game, at **learninglab.fun/trail-blazer/**. A **motocross-style race** in the **Ranger 150**, a
-kid-size sage-green side-by-side, against three rivals (Max, Zoe, Kai) on six tracks (Pine Ridge, Granite Gap, Lake
-Loop, Snow Pass, Desert Wash, Night Ride). A 3-2-1 gate drop starts each race; in the air BRAKE is a backflip and GAS a
+kid-size sage-green side-by-side (v1.5: one of 8 vehicles), against three rivals on six tracks (Pine Ridge, Granite
+Gap, Lake Loop, Snow Pass, Desert Wash, Night Ride; v1.5: 18 trails in 3 cups). A 3-2-1 gate drop starts each race; in the air BRAKE is a backflip and GAS a
 front flip; land on the downslope for a PERFECT; a crash respawns at the last checkpoint. Finishing 3rd or better
 opens the next track; medals follow the place (1st gold, 2nd silver, 3rd bronze; beating a track's target time can
 only raise it, so a 2nd under the gold time is gold); cash buys Engine, Tires, Suspension and Boost
@@ -29,6 +29,41 @@ it simply asks again next time), locates from ×6 ×9 and zooms in; a family the
 the same day ("secure"); one scout gate a race reaches a tier ahead (3 quick scouts vouch a family); re-checks offer
 themselves after 14 days or when the placement looks stale; and a difficulty governor keeps the gates at the learning
 level ("Right now: on target (10 of 12 right)"), stepping back to an easier family when it is a bit hard.
+
+**v1.5 "The Season" adds the long runway** (`SPEC.md` "v1.5"): **8 vehicles** (Ranger 150, Dune Quad, Dirt Bike 85,
+Rock Bawler, Mud Monster, Turbo RZR-X, Thunder Rail, Moon Rover; each with its own feel and special, bought with race
+cash in the garage's Vehicles row, upgrades per vehicle at its tier's cost), **18 trails in 3 cups** (Rookie, Pro,
+Legend: each pays more, ×1 / ×2 / ×4; the next cup opens with a trophy from the cup's weekend AND stars: "Pro Cup: a
+Rookie trophy + 12 ★", Legend 30 ★), **championship
+weekends** (3 races on the cup's last 3 trails once all are open, points 10 / 6 / 3 / 1, standings between races, a
+podium with the trophy and a cash bonus), **stars** (3 a trail: 1st, every gate right, the trail's stunt), **crates**
+(bronze / silver / gold, opened with a tap on the results or the **Garage Wall**: helmets, suits, horns, boost trails,
+flags, paints, decals, a set bonus paint for each completed set), **rivals** (the trio on the grid; beat the leader 3
+times and they retire to the Hall of Rivals), the **ghost** of the best run, the **streak** (Spell Jump's, with the
+weekly shield) and the daily **Pit Challenge** (one trail + one twist, double cash, a bronze crate). The math is never
+behind a reward: every race has its gates whatever the child owns (`docs/LEARNING-DESIGN.md` row 21).
+
+The runway, from `node trail-blazer/tools/economy-sim.mjs` (40 simulated 4th graders: 12-minute sessions of ~6 races,
+3rd or better by the 3rd try, 70 % of gates right, half of them quick; prices and multipliers in `src/data/runway.js`):
+
+| Milestone | Price / rule | Races | Hours | Target |
+|---|---|---|---|---|
+| Dune Quad | $170,000 | 30 | 1.0 h | ~1 h |
+| Dirt Bike 85 | $700,000 | 67 | 2.2 h |  |
+| Rock Bawler | $2,400,000 | 127 | 4.2 h |  |
+| Mud Monster | $5,500,000 | 220 | 7.3 h | ~8 h |
+| Turbo RZR-X | $15,000,000 | 426 | 14.2 h |  |
+| Thunder Rail | $22,000,000 | 729 | 24.3 h | ~25 h |
+| Moon Rover | $56,000,000 | 1480 | 49.3 h | ~50 h |
+| Pro Cup open | a Rookie trophy + 12 ★ | 32 | 1.1 h | ~3 h ✗ |
+| Legend Cup open | a Pro trophy + 30 ★ | 99 | 3.3 h | ~12 h ✗ |
+| 12 stars |  | 26 | 0.9 h |  |
+| 30 stars |  | 89 | 3.0 h |  |
+| 54 stars |  | 209 | 7.0 h |  |
+
+Crates: 0.78 a race in the first 60 races (one every 1.3), 0.86 a race in races 600-900.
+Longest stretch with nothing new (a vehicle, an upgrade, a crate, a star, a trail): 7 races (target < 10).
+Upgrade multiplier per tier: 1 / 1.6 / 2.5 / 4 / 7 / 12 / 20 / 35 · cup cash: ×1 / ×2 / ×4
 
 Same house style and kid-proofing as Spell Jump: no external links, no native text inputs outside the Parent Zone,
 no ads, no accounts, no lives, works offline after the first load, updates itself on a safe screen, and plays in
@@ -127,22 +162,35 @@ trail-blazer/
   src/facts/patterns.js   error patterns: classify a miss, pattern-shaped hints, the Report's Patterns
   src/facts/scouts.js     scout gates (family, fact, vouching) and the re-check triggers
   src/facts/governor.js   the difficulty governor: the dial over the last 12 gates, the race quota, step-back
-  src/sfx.js              Trail Blazer-only sounds (countdown beeps, gate drop, finish cowbell, splash, gate creak)
+  src/sfx.js              Trail Blazer-only sounds (countdown beeps, gate drop, finish cowbell, splash, gate creak,
+                          v1.5: horns, the star chime, a crate's rattle and burst)
   src/data/upgrades.js    the 4 upgrades, costs (300 × 1.45^level), resolveStats()
   src/data/paints.js      paints (finished tracks, medals) and decals (a 250 m race, 10 / 50 flips, a win)
   src/data/medals.js      medal times (MEDAL_TIMES from data/trails.js, with a fallback), raceMedal (place, then time), formatting
   src/data/fallbackTrails.js  the 6 trails for the menus if data/trails.js fails to load
-  src/data/trails.js      the trails (engine-owned)
+  src/data/fallbackVehicles.js  the 8 vehicles for the menus if data/vehicles.js fails to load
+  src/data/runway.js      the economy knobs (vehicle prices, tier multipliers, cup cash, weekend bonus, stars to open a
+                          cup, daily ×2), tuned with tools/economy-sim.mjs
+  src/data/cups.js        the 3 cups, points 10 / 6 / 3 / 1, trophies, cupOf / cupMult
+  src/data/cosmetics.js   rider gear (12 helmets, 8 suits, 6 horns, 8 boost trails, 6 flags) + paints / decals as
+                          Garage Wall items, crate tiers, set bonuses, streak rewards
+  src/data/rivals.js      the 8 rivals (paint, helmet, taunt, cheer), the trio, retiring the leader
+  src/data/trails.js, vehicles.js, mutators.js  the 18 trails, 8 vehicles and 7 Pit Challenge twists (engine-owned)
   src/game/*              the engine, course, renderer, vehicle art (engine-owned)
   src/meta/save.js        save + device settings, normalize + versioning
   src/meta/economy.js     upgrades, unlock chain (3rd or better), banking a race (place, time, medal), cash rows that
                           add up, paints / decals owned
   src/meta/selfUpdate.js  reload-on-a-safe-screen guard for new versions
   src/meta/mockEngine.js  scripted race with the same contract (?mock=1, tests, fallback)
+  src/meta/crates.js      earning, rolling (weighted, pity, cash when nothing is new) and opening crates; the Garage Wall
+  src/meta/season.js      stars, the streak (Spell Jump's engagement.js), the daily Pit Challenge, weekends, the play log
   src/ui/players.js       player picker + new player (on-screen keyboard)
   src/ui/keyboard.js      the on-screen keyboard (same as Spell Jump's)
-  src/ui/garage.js        upgrades, paint + decal strip, Ranger preview
-  src/ui/trails.js        track select (mini-landscape cards, lock state, medal, best time)
+  src/ui/garage.js        the Vehicles row (buy / select), per-vehicle upgrades, Paint / Decal / rider gear strip
+  src/ui/trails.js        the Cups screen (3 tabs, trail cards with stars / medal / best time, Race the cup)
+  src/ui/wall.js          the Garage Wall (every set "7 / 12", set bonuses, wear an item, open crates)
+  src/ui/crate.js         the crate moment (tap: shake, burst, NEW! or +$)
+  src/ui/items.js         small pictures of every collectible
   src/ui/hud.js           race HUD (position badge, timer, track bar with every rider, speed, boost gauge, banners)
   src/ui/results.js       results (podium, time + medal + best, the race's facts ⚡ ✓ ↻, cash rows, mastered / mission /
                           XP / unlock callouts, level-up stamp)
@@ -151,7 +199,8 @@ trail-blazer/
   src/ui/grid.js          the Fact Grid (× and ÷ views, status colors, tap to hear)
   src/ui/pitCheck.js      the Pit Crew Check card before a race, the check run in the gate panel, the Start line screen
   src/ui/parentZone.js    Parent Zone (PIN, Family code, Facts this week, Options, Report, Players)
-  src/ui/vehiclePreview.js  Ranger previews (the engine's vehicle art, with a built-in fallback)
+  src/ui/vehiclePreview.js  vehicle previews with the rider's gear (the engine's art, with a built-in Ranger fallback)
   src/ui/tbIcons.js       extra icons (tire, trail) on top of Spell Jump's set
   tools/ui-smoke.mjs      UI smoke test; tools/facts-tests.mjs math-layer tests; tools/make-icons.mjs icon renderer
+  tools/economy-sim.mjs   the economy simulator (the runway table above)
 ```
