@@ -907,6 +907,36 @@ test('a facts reset on one device wins whole; no record is lost otherwise (every
   assert.equal(Object.keys(m.records).length, 0); assert.equal(m.resetAt, T0 + 30);
 });
 
+console.log('v1.6.2: the week\'s progress (Parent Zone)');
+const PG = await import('../src/facts/progress.js');
+test('weekProgress: a new player is 0 % of the ladder with no races this week (rightPct null → a dash)', () => {
+  const w = PG.weekProgress(defaultFacts(T0), T0);
+  assert.equal(w.secureFamilies, 0); assert.equal(w.ladderPct, 0); assert.ok(w.ladderFamilies >= 12);
+  assert.equal(w.gatesThisWeek, 0); assert.equal(w.rightPct, null); assert.deepEqual(w.movedUp, []);
+  assert.deepEqual(PG.weekProgressLines(w), [`Ladder: 0 % of families secure (0 of ${w.ladderFamilies})`, 'This week: no races this week']);
+});
+test('weekProgress: a family answered right and quick is secure; a scout-vouched family counts and "moved up" when vouched this week', () => {
+  const d = defaultFacts(T0);
+  for (const f of familyMembers('x2')) recordAnswer(d, f, { correct: true, quick: true, ms: 1200 }, T0);
+  d.vouched = { x9: T0 - 2 * DAY_MS, x11: T0 - 20 * DAY_MS };
+  const w = PG.weekProgress(d, T0 + 1000);
+  assert.equal(w.secureFamilies, 3, 'x2 (secure) + x9 + x11 (vouched)');
+  assert.equal(w.ladderPct, Math.round((3 / w.ladderFamilies) * 100));
+  assert.deepEqual(w.movedUp, ['x2', 'x9'], 'x2 left the frontier today, x9 vouched 2 days ago: moved up; x11 vouched 20 days ago: not this week');
+});
+test('weekProgress: gates this week only (an older race does not count), rounded; moved up from the frontier history', () => {
+  const d = defaultFacts(T0);
+  noteRace(d, { at: T0 - 2 * DAY_MS, trail: 'pine-ridge', asked: 4, correct: 3, quick: 1, fixed: 1 });
+  noteRace(d, { at: T0 - 1 * DAY_MS, trail: 'lake-loop', asked: 6, correct: 6, quick: 3, fixed: 0 });
+  noteRace(d, { at: T0 - 10 * DAY_MS, trail: 'granite-gap', asked: 4, correct: 0, quick: 0, fixed: 4 });
+  for (const f of familyMembers('x2')) recordAnswer(d, f, { correct: true, quick: true, ms: 1200 }, T0 - DAY_MS);
+  d.frontier.history = [{ at: T0 - DAY_MS, from: ['x2', 'x5'], families: ['x5', 'x10'], why: 'x2 secure' }, { at: T0 - 9 * DAY_MS, from: ['x10'], families: ['x2'], why: 'old' }];
+  const w = PG.weekProgress(d, T0);
+  assert.equal(w.gatesThisWeek, 10); assert.equal(w.rightThisWeek, 9); assert.equal(w.rightPct, 90);
+  assert.deepEqual(w.movedUp, ['x2']);
+  assert.equal(PG.weekProgressLines(w)[1], 'This week: 90 % right at the gates (9 of 10) · moved up: ×2');
+});
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('FAILED:\n - ' + failures.join('\n - ')); process.exit(1); }
 console.log('ALL FACTS TESTS PASSED');

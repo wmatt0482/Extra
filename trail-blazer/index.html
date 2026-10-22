@@ -849,6 +849,17 @@ html.math #controls { visibility: hidden; }
 .pz-check-row .grow { flex: 1 1 200px; }
 .pat-list { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
 .pat-list li { padding: 8px 12px; border-radius: 10px; background: var(--ink-2); border: 2px solid var(--line); font-weight: 700; font-size: 14px; }
+/* v1.6.2 the week's progress (Parents → Report, Family code) */
+.pz-week { margin: 2px 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--ink-2); border: 2px solid var(--line); display: grid; gap: 6px; }
+.pz-week .pw-big { font: 400 18px/1.1 var(--font-display); text-transform: uppercase; }
+.pw-bar, .pw-mini { height: 12px; border-radius: 6px; background: rgba(0,0,0,.35); overflow: hidden; }
+.pw-bar i, .pw-mini i { display: block; height: 100%; border-radius: 6px; background: var(--go); }
+.pz-week .pw-small { font-size: 13px; font-weight: 700; color: var(--muted); }
+.pz-week-list { display: grid; gap: 8px; }
+.pz-week-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 10px; padding: 8px 10px; border-radius: 10px; background: var(--ink-2); border-left: 5px solid var(--c, var(--line)); }
+.pz-week-row b { font-weight: 800; }
+.pz-week-row .pw-strip { font-size: 13px; font-weight: 700; color: var(--muted); }
+.pz-week-row .pw-mini { grid-column: 1 / -1; height: 8px; }
 /* ===== v1.5 The Season: title (streak, daily card), garage (vehicles row, rider gear), Garage Wall, Cups, crates,
    results (stars, lines, weekend, cup podium), HUD (ghost, turbo, combo, rivals) ===== */
 .streak-chip { display: inline-flex; align-items: center; gap: 4px; height: 42px; padding: 0 12px 0 8px; border-radius: 999px; flex: none;

@@ -75,6 +75,8 @@ puts it all on the clipboard for a teacher. **Why this works** lists the researc
 Until a parent saves a list, a 15-word **built-in list** (this week's long-o words, with sentences) is active and labeled on the
 title and in the Parent Zone.
 
+**This week (v3.7.1).** Parents → Report opens with each child's week on the active list ("This week: 60 % mastered", a bar, and "Right on last try 15 / 18 (83 %) · pretest 6 / 18 → now 15 / 18"; `weekProgress` in `src/spelling/wordStore.js`), and the Family code tab shows a strip per child ("Spelling this week · 60 % mastered"). Parent-facing only, never on the kid's screens.
+
 ### Class lists (v3.7)
 
 The weekly spelling list from the class teacher ships inside the game for every family (`src/data/classLists.js`).

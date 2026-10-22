@@ -20,7 +20,7 @@ import { formatList, parseList, MAX_WORDS } from '../spelling/words.js';
 import { SAMPLE_PRESENTATION, SYSTEM_VOICE, VOICE_TIP, buildPresentation, voiceQuality } from '../spelling/tts.js';
 import { CLOUD_VOICES, cloudVoiceInfo } from '../tts/voices.js';
 import {
-  activeList, applyClassList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList, stopFollowing,
+  activeList, applyClassList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList, stopFollowing, weekProgress,
 } from '../spelling/wordStore.js';
 import { newestClassList } from '../data/classLists.js';
 import { WHY_INTRO, WHY_ROWS, WHY_SOURCES } from '../spelling/why.js';
@@ -340,6 +340,27 @@ export function createParentZone(app) {
     ];
   }
 
+  // v3.7.1: the week's progress (parent-facing only): a big line + bar on the Report, a strip per child on Family
+  const pctText = (v) => (v == null ? '—' : `${v} %`);
+  const bar = (v, cls) => h('div', { class: cls, role: 'img', 'aria-label': v == null ? 'no progress yet' : `${v} percent` }, h('i', { style: { width: `${v || 0}%` } }));
+  function weekBlock(d) {
+    const w = weekProgress(d, Date.now());
+    const small = !w.practiced ? `No practice yet on these ${w.words} words`
+      : `Right on last try ${w.rightLastTry} / ${w.words} (${w.rightLastTryPct} %)${w.pretest ? ` · pretest ${w.pretest.right} / ${w.pretest.total} → now ${w.rightLastTry} / ${w.words}` : ''}${w.testScore ? ` · Friday Test ${w.testScore.right} / ${w.testScore.total}` : ''}`;
+    return h('div', { class: 'pz-week', id: 'pz-week', 'data-pct': w.practiced ? String(w.masteredPct) : '' },
+      h('div', { class: 'pw-big' }, `This week: ${w.practiced ? pctText(w.masteredPct) : '—'} mastered`), bar(w.practiced ? w.masteredPct : null, 'pw-bar'), h('div', { class: 'pw-small' }, small));
+  }
+  function familyWeek() {
+    const players = app.family.players;
+    if (!players.length) return [];
+    return [h('div', { class: 'hud-label pz-sec' }, 'THIS WEEK'),
+      h('div', { class: 'pz-week-list', id: 'pz-week-list' }, ...players.map((p) => {
+        const w = weekProgress(app.wordsFor(p.id), Date.now());
+        const v = w.practiced ? w.masteredPct : null;
+        return h('div', { class: 'pz-week-row', 'data-player': p.id, 'data-pct': v == null ? '' : String(v), style: { '--c': p.color } },
+          h('b', {}, p.name), h('span', { class: 'pw-strip' }, `Spelling this week · ${v == null ? '— (no practice yet)' : `${v} % mastered`}`), bar(v, 'pw-mini'));
+      }))];
+  }
   function reportTab(p) {
     const d = app.wordsFor(p.id);
     const r = report(d);
@@ -361,6 +382,7 @@ export function createParentZone(app) {
     const why = h('button', { class: 'btn btn-sm', 'data-sfx': '', id: 'pz-why-2' }, 'Why this works');
     why.addEventListener('click', () => { view = 'why'; render(); });
     return [
+      weekBlock(d),
       h('div', { class: 'pz-scores' },
         h('div', { class: 'stat', 'data-score': 'pretest' }, score(r.pretest), h('span', {}, 'Pretest (Qualifier)')),
         h('div', { class: 'stat', 'data-score': 'latest' }, score(r.latest), h('span', {}, 'Latest Friday Test')),
@@ -714,6 +736,7 @@ export function createParentZone(app) {
         msg,
       );   // "Not synced" is already the line under the title
     }
+    out.push(...familyWeek());
     out.push(h('div', { class: 'hud-label pz-sec' }, 'PRIVACY'), h('p', { class: 'pz-help pz-privacy', id: 'sync-privacy' }, PRIVACY));
     out.push(transferSection());
     return out;

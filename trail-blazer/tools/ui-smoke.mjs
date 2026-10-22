@@ -758,6 +758,12 @@ async function runLayout(browser, layout) {
   await pinIn(page, '1234');
   await page.waitForSelector('.pz-content[data-tab="sync"]');
   check(true, 'the shared PIN opens the Parent Zone');
+  // v1.6.2: Family code tab: a strip per child, "Math this week · n % of the ladder · n % right", a mini bar
+  const strips = await J(page, () => [...document.querySelectorAll('#pz-week-list .pz-week-row')].map((r) => ({ name: r.querySelector('b').textContent, text: r.querySelector('.pw-strip').textContent, bar: !!r.querySelector('.pw-mini i') })));
+  check(strips.length === 1 && strips[0].bar && /^Math this week · \d+ % of the ladder · \d+ % right$/.test(strips[0].text), `Family tab: a strip per child (${strips.map((x) => `${x.name}: ${x.text}`).join(' | ')})`);
+  await page.locator('#pz-week-list').scrollIntoViewIfNeeded();
+  await shot(page, layout, '19z-pz-family-week');
+  await audit(page, layout.insets, 'Parent Zone (Family: this week)');
   check((await J(page, () => [...document.querySelectorAll('.pz-tabs [data-tab]')].map((t) => t.dataset.tab))).join(',') === 'sync,facts,options,report,players', 'tabs: Family code · Facts this week · Options · Report · Players');
   await page.click('.pz-tabs [data-tab="facts"]');
   const au = await J(page, () => ({ mode: document.querySelector('#facts-mode .seg-btn.on').dataset.value, fr: document.querySelector('#facts-frontier').dataset.families, reason: document.querySelector('#facts-reason').textContent,
@@ -810,6 +816,19 @@ async function runLayout(browser, layout) {
   await page.click('#report-copy');
   await page.waitForTimeout(150);
   check(await J(page, () => !document.querySelector('#report-text').hidden && /Multiplication \(×\): New \d+ · Learning/.test(document.querySelector('#report-text').textContent)), 'Copy report: the plain-text report');
+  // v1.6.2: the week's progress on top of the Report: "Ladder: n % of families secure", a bar, this week's gates
+  const wkr = await J(page, async () => {
+    const P = await import('/trail-blazer/src/facts/progress.js');
+    const w = P.weekProgress(window.__trailBlazer.facts, Date.now());
+    const el = document.querySelector('#report-week');
+    return { w, first: document.querySelector('.pz-content').firstElementChild.id, big: el.querySelector('.pw-big').textContent, small: el.querySelector('.pw-small').textContent, bar: el.querySelector('.pw-bar i').style.width,
+      copied: document.querySelector('#report-text').textContent };
+  });
+  check(wkr.first === 'report-week' && wkr.big === `Ladder: ${wkr.w.ladderPct} % of families secure` && wkr.bar === `${wkr.w.ladderPct}%`
+    && wkr.small.startsWith(`This week: ${wkr.w.rightPct} % right at the gates (${wkr.w.rightThisWeek} of ${wkr.w.gatesThisWeek})`) && wkr.w.gatesThisWeek > 0,
+    `Report: "${wkr.big}" with a bar, "${wkr.small}"`);
+  check(wkr.copied.includes(wkr.big) && wkr.copied.includes(wkr.small.split(' · ')[0]), 'Copy report includes the week\'s progress');
+  await J(page, () => document.querySelector('#report-week').scrollIntoView({ block: 'start' }));
   await shot(page, layout, '20-pz-report');
   await audit(page, layout.insets, 'Parent Zone (Report)');
   await page.click('.pz-tabs [data-tab="options"]');

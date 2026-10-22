@@ -831,6 +831,17 @@ async function runLayout(browser, layout) {
     rows: document.querySelectorAll('#pz-table tbody tr').length, hist: document.querySelectorAll('.pz-hist .row').length,
   }));
   check(/^3 \/ 4/.test(rep.pre) && /^3 \/ 4/.test(rep.latest) && rep.rows === 4 && rep.hist === 2, `report: pretest ${rep.pre}, latest ${rep.latest}, ${rep.rows} word rows, ${rep.hist} tests`);
+  // v3.7.1: the week's progress on top (parent-facing): "This week: n % mastered", a bar, right on last try · pretest → now
+  const wk = await J(page, async () => {
+    const W = await import('/src/spelling/wordStore.js');
+    const w = W.weekProgress(window.__spellJump.words, Date.now());
+    const el = document.querySelector('#pz-week');
+    return { w, first: document.querySelector('.pz-content').firstElementChild.id, big: el.querySelector('.pw-big').textContent, small: el.querySelector('.pw-small').textContent,
+      bar: el.querySelector('.pw-bar i').style.width };
+  });
+  check(wk.first === 'pz-week' && wk.big === `This week: ${wk.w.masteredPct} % mastered` && wk.bar === `${wk.w.masteredPct}%`
+    && wk.small.startsWith(`Right on last try ${wk.w.rightLastTry} / ${wk.w.words} (${wk.w.rightLastTryPct} %) · pretest 3 / 4 → now ${wk.w.rightLastTry} / 4`),
+    `report: "${wk.big}" with a bar, "${wk.small}"`);
   await shot(page, layout, '34-pz-report');
   await layoutAudit(page, layout.insets, 'parent zone (report)');
   if (!layout.clipboard) await J(page, () => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } }));
@@ -838,12 +849,22 @@ async function runLayout(browser, layout) {
   await page.waitForTimeout(400);
   if (layout.clipboard) {
     const clip = await J(page, () => navigator.clipboard.readText());
-    check(/Spell Jump report: Sam/.test(clip) && /Pretest \(Qualifier\): 3\/4/.test(clip), 'Copy report → clipboard');
+    check(/Spell Jump report: Sam/.test(clip) && /Pretest \(Qualifier\): 3\/4/.test(clip) && /\nThis week: \d+ % mastered/.test(clip), 'Copy report → clipboard (with the "This week" line)');
   } else {
     const fb = await J(page, () => ({ shown: !document.querySelector('#pz-report-text').hidden, sel: String(window.getSelection()) }));
     check(fb.shown && /Spell Jump report: Sam/.test(fb.sel), 'Copy report: clipboard unavailable → the report text is shown selected');
     await shot(page, layout, '35-pz-report-fallback');
   }
+  // v3.7.1: Family code tab: a strip per child, "Spelling this week · n % mastered" with a mini bar
+  await page.click('.pz-tabs [data-tab="sync"]');
+  await page.waitForSelector('#pz-week-list');
+  const strips = await J(page, () => [...document.querySelectorAll('#pz-week-list .pz-week-row')].map((r) => ({ id: r.dataset.player, name: r.querySelector('b').textContent, text: r.querySelector('.pw-strip').textContent, bar: !!r.querySelector('.pw-mini i') })));
+  const famIds = await J(page, () => window.__spellJump.app.family.players.map((p) => p.id));
+  check(strips.length === famIds.length && strips.every((x) => x.bar && /^Spelling this week · (\d+ % mastered|— \(no practice yet\))$/.test(x.text)) && strips.some((x) => /^Spelling this week · \d+ % mastered$/.test(x.text)),
+    `Family tab: a strip per child (${strips.map((x) => `${x.name}: ${x.text}`).join(' | ')})`);
+  await page.locator('#pz-week-list').scrollIntoViewIfNeeded();
+  await shot(page, layout, '34b-pz-family-week');
+  await layoutAudit(page, layout.insets, 'parent zone (family: this week)');
   await page.click('.pz-tabs [data-tab="options"]');
   await page.waitForSelector('#opt-case');
   await shot(page, layout, '36-pz-options');

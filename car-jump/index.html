@@ -855,6 +855,17 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 .pz-active .sub { font-size: 13px; color: var(--muted); font-weight: 700; margin-top: 4px; }
 .tag { padding: 3px 7px; border-radius: 6px; background: var(--accent); color: var(--accent-ink); font: 400 11px/1 var(--font-display); }
 .pz-copy { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+/* v3.7.1 the week's progress (Parents → Report, Family code) */
+.pz-week { margin-bottom: 12px; padding: 10px 12px; border-radius: 12px; background: var(--ink-2); display: grid; gap: 6px; }
+.pz-week .pw-big { font: 400 20px/1.1 var(--font-display); text-transform: uppercase; }
+.pw-bar, .pw-mini { height: 12px; border-radius: 6px; background: rgba(0,0,0,.35); overflow: hidden; }
+.pw-bar i, .pw-mini i { display: block; height: 100%; border-radius: 6px; background: var(--go); }
+.pz-week .pw-small { font-size: 13px; font-weight: 700; color: var(--muted); }
+.pz-week-list { display: grid; gap: 8px; }
+.pz-week-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 10px; padding: 8px 10px; border-radius: 10px; background: var(--ink-2); border-left: 5px solid var(--c, var(--cyan)); }
+.pz-week-row b { font-weight: 800; }
+.pz-week-row .pw-strip { font-size: 13px; font-weight: 700; color: var(--muted); }
+.pz-week-row .pw-mini { grid-column: 1 / -1; height: 8px; }
 /* v3.7 class list card (Parents → Words) */
 .pz-class { margin-bottom: 12px; padding: 10px 12px; border-radius: 12px; background: var(--ink-2); border: 2px solid var(--cyan); display: grid; gap: 6px; }
 .pz-class .pc-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }

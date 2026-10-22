@@ -24,6 +24,7 @@ import { dial, dialText, steppedText } from '../facts/governor.js';
 import { recheckInDays, scoutFamily } from '../facts/scouts.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { playLines } from '../meta/season.js';
+import { famText, weekProgress, weekProgressLines } from '../facts/progress.js';
 import { icon } from './tbIcons.js';
 import { drawAvatar } from './vehiclePreview.js';
 
@@ -331,6 +332,26 @@ export function createParentZone(app) {
       h('div', { class: 'sub', id: 'facts-check-text' }, text)), btn);
   }
 
+  // ---------- v1.6.2: the week's progress (parent-facing only) ----------
+  const bar = (v, cls) => h('div', { class: cls, role: 'img', 'aria-label': v == null ? 'nothing yet' : `${v} percent` }, h('i', { style: { width: `${v || 0}%` } }));
+  function weekBlock(w) {
+    const small = w.gatesThisWeek ? `This week: ${w.rightPct} % right at the gates (${w.rightThisWeek} of ${w.gatesThisWeek})${w.movedUp.length ? ` · moved up: ${famText(w.movedUp)}` : ''}`
+      : `This week: no races this week${w.movedUp.length ? ` · moved up: ${famText(w.movedUp)}` : ''}`;
+    return h('div', { class: 'pz-week', id: 'report-week', 'data-pct': String(w.ladderPct) },
+      h('div', { class: 'pw-big' }, `Ladder: ${w.ladderPct == null ? '—' : `${w.ladderPct} %`} of families secure`), bar(w.ladderPct, 'pw-bar'), h('div', { class: 'pw-small' }, small));
+  }
+  function familyWeek() {
+    const players = app.family.players;
+    if (!players.length) return [];
+    return [h('div', { class: 'hud-label pz-sec' }, 'This week'),
+      h('div', { class: 'pz-week-list', id: 'pz-week-list' }, ...players.map((p) => {
+        const w = weekProgress(app.factsFor(p.id), Date.now());
+        return h('div', { class: 'pz-week-row', 'data-player': p.id, 'data-pct': String(w.ladderPct), style: { '--c': p.color } },
+          h('b', {}, p.name), h('span', { class: 'pw-strip' }, `Math this week · ${w.ladderPct == null ? '—' : `${w.ladderPct} %`} of the ladder · ${w.rightPct == null ? 'no races this week' : `${w.rightPct} % right`}`),
+          bar(w.ladderPct, 'pw-mini'));
+      }))];
+  }
+
   // ---------- Report ----------
   const OP_SHORT = { x: '× Multiply', '/': '÷ Divide', '+': '+ Add', '-': '− Subtract' };
   function reportTab(p) {
@@ -345,7 +366,10 @@ export function createParentZone(app) {
     const tName = (id) => (app.trails.find((t) => t.id === id) || { name: id }).name;
     const play = app.saveOf ? playLines(app.saveOf(p.id)) : [];
     const dayName = (k) => new Date(k + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-    const text = reportText(d, p.name, now, tName) + (play.length ? `\n\nPlay (v1.5)\n${play.map((x) => `${dayName(x.day)}: ${x.text}`).join('\n')}` : '');
+    const wk = weekProgress(d, now);
+    const base = reportText(d, p.name, now, tName).split('\n');
+    base.splice(1, 0, ...weekProgressLines(wk));          // v1.6.2: the week's progress right under the title line
+    const text = base.join('\n') + (play.length ? `\n\nPlay (v1.5)\n${play.map((x) => `${dayName(x.day)}: ${x.text}`).join('\n')}` : '');
     const pre = h('pre', { class: 'pz-report-text', id: 'report-text', hidden: true }, text);
     const copy = h('button', { class: 'btn btn-sm btn-cyan', id: 'report-copy', 'data-sfx': '' }, 'Copy report');
     copy.addEventListener('click', async () => {
@@ -357,6 +381,7 @@ export function createParentZone(app) {
       app.toast('Report selected: use Copy');
     });
     return [
+      weekBlock(wk),
       h('div', { class: 'pz-help pz-first', id: 'report-summary' }, `${r.totals.mastered} mastered · ${r.totals.fluent} fluent (mastered and answered in 3 s or less on 2 days) · ${r.totals.seen} of ${r.totals.facts} facts practiced`),
       table,
       h('div', { class: 'hud-label pz-sec' }, 'Patterns'),
@@ -435,6 +460,7 @@ export function createParentZone(app) {
         h('div', { class: 'pz-help' }, 'Already set up in Spell Jump? Type the family code shown there (Parents → Family code). Progress already on this device is merged with the family\'s, never lost.'),
         msg);
     }
+    out.push(...familyWeek());
     out.push(h('p', { class: 'pz-note', id: 'pz-save-note' }, SAVE_NOTE));
     return out;
   }

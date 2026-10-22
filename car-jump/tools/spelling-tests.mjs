@@ -183,7 +183,8 @@ test('missed words never crowd out new ones (an all-wrong child still meets new 
 test('free play draws new words too while the daily cap allows', () => {
   const d = dataWith(['ant', 'bat', 'cat', 'dog', 'elk', 'fox', 'gnu', 'hen', 'ibis', 'jay', 'kiwi', 'lark']);
   const s = createSession();
-  for (let i = 0; i < 20; i++) { const w = nextWord(d, T0 + i * 60000, s, { newPerDay: 99 }, Math.random); recordSpell(d, w.word, { firstTry: true }, T0 + i * 60000, s); }
+  const rnd = mulberry32(20261022);   // seeded: with Math.random it occasionally reached only 9 of 12 and failed
+  for (let i = 0; i < 20; i++) { const w = nextWord(d, T0 + i * 60000, s, { newPerDay: 99 }, rnd); recordSpell(d, w.word, { firstTry: true }, T0 + i * 60000, s); }
   assert.ok(new Set(s.history).size >= 10, `20 picks reached ${new Set(s.history).size} of 12 words`);
 });
 
@@ -777,6 +778,41 @@ console.log('class lists (v3.7)');
     const c = JSON.parse(JSON.stringify(b)); W.stopFollowing(c, T0 + 9000);
     const m3 = mergeW({ updatedAt: T0 + 9000, data: c }, { updatedAt: T0 + 4000, data: b }, T0 + 9500);
     assert.ok(!m3.lists[0].classId);
+  });
+}
+console.log('week progress (v3.7.1)');
+{
+  const W = await import('../src/spelling/wordStore.js');
+  const S = await import('../src/spelling/scheduler.js');
+  const DAYMS = 86400000;
+  const listOf = (n) => parseList(Array.from({ length: n }, (_, i) => 'word' + 'abcdefghijklmnopqrst'[i]).join('\n')).words;
+  test('weekProgress: an untouched list is all dashes (nulls), never NaN', () => {
+    const d = W.defaultWords(T0); W.saveNewList(d, listOf(5), '', T0);
+    const w = W.weekProgress(d, T0);
+    assert.deepEqual(w, { words: 5, mastered: 0, masteredPct: 0, practiced: 0, rightLastTry: 0, rightLastTryPct: null, pretest: null, testScore: null, newThisWeek: 0 });
+    assert.match(W.weekProgressText(w), /no practice yet/);
+  });
+  test('weekProgress: partial progress (a pretest, 2 mastered of 5, a word missed last): rounded whole percentages', () => {
+    const d = W.defaultWords(T0); W.saveNewList(d, listOf(5), '', T0);
+    const ws = W.activeList(d).words.map((x) => x.word);
+    W.recordQualifier(d, ws.map((word, i) => ({ word, correct: i < 2 })), T0);
+    for (const word of ws.slice(0, 2)) { const r = d.records[word]; for (let k = 1; k <= 3; k++) S.applyResult(r, true, T0 + k * 2 * DAYMS); }
+    S.applyResult(d.records[ws[2]], true, T0 + DAYMS); S.applyResult(d.records[ws[3]], false, T0 + DAYMS);
+    const w = W.weekProgress(d, T0 + 7 * DAYMS);
+    assert.equal(w.mastered, 2); assert.equal(w.masteredPct, 40); assert.deepEqual(w.pretest, { right: 2, total: 5 });
+    assert.equal(w.rightLastTry, 3, 'two mastered + one right; the last miss and the never-right word do not count'); assert.equal(w.rightLastTryPct, 60);
+    assert.equal(w.practiced, 5); assert.equal(w.testScore, null);
+    assert.match(W.weekProgressText(w), /^This week: 40 % mastered \(2 \/ 5\) · right on last try 3 \/ 5 \(60 %\) · pretest 2 \/ 5 → now 3 \/ 5$/);
+  });
+  test('weekProgress: all mastered with a Friday Test = 100 %; newThisWeek counts words first practiced in the last 7 days', () => {
+    const d = W.defaultWords(T0); W.saveNewList(d, listOf(3), '', T0);
+    const ws = W.activeList(d).words.map((x) => x.word);
+    for (const word of ws) { const r = d.records[word]; for (let k = 0; k < 3; k++) S.applyResult(r, true, T0 + k * 3 * DAYMS); }
+    W.recordFriday(d, ws.map((word) => ({ word, correct: true })), T0 + 7 * DAYMS);
+    const w = W.weekProgress(d, T0 + 7 * DAYMS);
+    assert.equal(w.masteredPct, 100); assert.equal(w.rightLastTryPct, 100); assert.deepEqual(w.testScore, { right: 3, total: 3 });
+    assert.equal(w.newThisWeek, 0, 'first practiced 7 days ago: not this week');
+    assert.equal(W.weekProgress(d, T0 + 2 * DAYMS).newThisWeek, 3);
   });
 }
 console.log('sync: protocol (create / get / put / rev checks)');

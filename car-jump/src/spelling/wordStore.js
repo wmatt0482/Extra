@@ -352,6 +352,41 @@ export function report(d) {
   return { list: l, pretest, latest, rows, history, counts, streak: d.streak, bestStreak: d.bestStreak };
 }
 
+/**
+ * v3.7.1: the week's progress on the active list, for the Parent Zone (never shown to the child).
+ * { words, mastered, masteredPct (mastered / words, a whole number; null with no words), rightLastTry (words whose
+ *   last attempt was right: practiced and box ≥ 1, since every miss sends a word to box 0), rightLastTryPct,
+ *   practiced (words tried at least once), pretest { right, total } | null (the Qualifier on this list), testScore
+ *   { right, total } | null (the latest Friday Test on it), newThisWeek (words first practiced in the last 7 days) }
+ */
+export function weekProgress(d, now = Date.now()) {
+  const l = activeList(d);
+  const words = l ? l.words.map((w) => w.word) : [];
+  const recs = words.map((w) => d.records[w]).filter(Boolean);
+  const seen = recs.filter((r) => r.seenCount > 0);
+  const mastered = recs.filter((r) => isMastered(r)).length;
+  const rightLastTry = seen.filter((r) => r.box >= 1).length;
+  const tests = l ? (d.tests || []).filter((t) => t.listId === l.id) : [];
+  const q = tests.find((t) => t.kind === 'qualifier');
+  const fridays = tests.filter((t) => t.kind === 'friday');
+  const f = fridays.length ? fridays[fridays.length - 1] : null;
+  const weekAgo = dayKey(now - 6 * 86400000);
+  const pctOf = (a, b) => (b ? Math.round((a / b) * 100) : null);
+  return {
+    words: words.length, mastered, masteredPct: pctOf(mastered, words.length), practiced: seen.length,
+    rightLastTry, rightLastTryPct: seen.length ? pctOf(rightLastTry, words.length) : null,
+    pretest: q ? { right: q.correct, total: q.total } : null,
+    testScore: f ? { right: f.correct, total: f.total } : null,
+    newThisWeek: seen.filter((r) => (r.daysSeen || []).length && r.daysSeen.slice().sort()[0] >= weekAgo).length,
+  };
+}
+/** The one-line text of weekProgress (the Report, Copy report). */
+export function weekProgressText(w) {
+  if (!w.practiced) return `This week: no practice yet on these ${w.words} words`;
+  return `This week: ${w.masteredPct} % mastered (${w.mastered} / ${w.words}) · right on last try ${w.rightLastTry} / ${w.words} (${w.rightLastTryPct} %)`
+    + (w.pretest ? ` · pretest ${w.pretest.right} / ${w.pretest.total} → now ${w.rightLastTry} / ${w.words}` : '')
+    + (w.testScore ? ` · Friday Test ${w.testScore.right} / ${w.testScore.total}` : '');
+}
 export function reportText(d, playerName) {
   const r = report(d);
   const score = (t) => (t ? `${t.correct}/${t.total} (${pct(t.correct, t.total)}%)` : 'not taken yet');
@@ -361,6 +396,7 @@ export function reportText(d, playerName) {
     `Pretest (Qualifier): ${score(r.pretest)}`,
     `Latest Friday Test: ${score(r.latest)}`,
     `Status: ${['Mastered', 'Almost', 'Learning', 'Focus', 'New'].map((s) => `${s} ${r.counts[s] || 0}`).join(', ')}`,
+    weekProgressText(weekProgress(d)),
     '',
     'Word | Status | Attempts | First-try % | Last practiced | Days practiced',
     ...r.rows.map((w) => `${w.word} | ${w.status} | ${w.attempts} | ${w.firstTryPct == null ? '—' : w.firstTryPct + '%'} | ${fmtDate(w.lastPracticed)} | ${w.daysPracticed}`),
