@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Lights On</title>
+<meta name="theme-color" content="#0d1230">
+<link rel="icon" type="image/png" href="/spell-jump/icons/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&family=Rubik:wght@400;500;700;800&display=swap">
+<style>
+/* The lights-on counter's page (Spell Jump 3.7.2): not linked from anywhere, reached by URL. It reads
+   GET /api/stats?key=<STATS_KEY>&days=30 (netlify/functions/stats.mjs) and shows anonymous daily counts.
+   The key stays in this tab's sessionStorage only. Same look as the home page (site/index.html). */
+:root {
+  --ink: #0d1230;
+  --ink-2: #151c45;
+  --panel: #1b2357;
+  --panel-2: #24307a;
+  --line: #34418f;
+  --text: #ffffff;
+  --muted: #aab4ee;
+  --dim: #6f7bc0;
+  --accent: #ffcf1a;
+  --accent-edge: #b98200;
+  --accent-ink: #2a1a00;
+  --hot: #ff3b5c;
+  --go: #2fd36b;
+  --cyan: #22d3ff;
+  --tb: #ff8a1f;
+  --font-display: 'Bungee', 'Arial Black', 'Helvetica Neue', Impact, system-ui, sans-serif;
+  --font-body: 'Rubik', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --r: 16px;
+  --gutter: max(16px, env(safe-area-inset-left, 0px));
+  --gutter-r: max(16px, env(safe-area-inset-right, 0px));
+  --max: 1040px;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--ink); color: var(--text); font: 400 16px/1.5 var(--font-body); overflow-x: hidden; }
+h1, h2 { font-family: var(--font-display); font-weight: 400; text-transform: uppercase; letter-spacing: .02em; margin: 0; }
+.wrap { width: 100%; max-width: var(--max); margin: 0 auto; padding: 0 var(--gutter-r) 0 var(--gutter); }
+header { padding: 40px 0 8px; }
+h1 { font-size: clamp(30px, 8vw, 46px); line-height: 1; color: var(--accent); text-shadow: 0 4px 0 rgba(0,0,0,.4); }
+.sub { margin: 10px 0 0; color: var(--muted); max-width: 60ch; }
+.card { background: var(--panel); border: 2px solid var(--line); border-radius: var(--r); box-shadow: 0 6px 0 rgba(5,7,25,.55); padding: 18px; }
+section { margin-top: 24px; }
+h2 { font-size: 15px; letter-spacing: .06em; color: var(--accent); margin-bottom: 12px; }
+form { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+label { display: grid; gap: 6px; font-weight: 700; font-size: 14px; color: var(--muted); flex: 1 1 240px; }
+input { font: 500 17px/1.2 var(--font-body); color: var(--text); background: var(--ink); border: 2px solid var(--line); border-radius: 12px; padding: 12px 14px; min-height: 48px; width: 100%; }
+input:focus-visible, button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 2px; }
+button { font: 400 17px/1 var(--font-display); text-transform: uppercase; color: var(--accent-ink); background: var(--accent); border: 0; border-radius: 14px;
+  min-height: 48px; padding: 0 24px; cursor: pointer; box-shadow: 0 5px 0 var(--accent-edge); }
+button:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--accent-edge); }
+button[disabled] { opacity: .6; cursor: progress; }
+.status { margin: 12px 0 0; min-height: 1.5em; color: var(--muted); font-weight: 500; }
+.status.err { color: var(--hot); }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--ink-2); border: 2px solid var(--line); border-radius: 14px; padding: 12px 14px; }
+.tile .k { font-size: 13px; font-weight: 700; color: var(--muted); }
+.tile .v { font: 400 26px/1.15 var(--font-display); margin-top: 4px; font-variant-numeric: tabular-nums; }
+.tile .s { font-size: 13px; color: var(--dim); font-weight: 700; margin-top: 2px; }
+.sj { color: var(--cyan); }
+.tb { color: var(--tb); }
+.period { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.period h3 { margin: 0 0 8px; font: 700 14px/1 var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.period dl { margin: 0; display: grid; grid-template-columns: auto auto; gap: 4px 12px; }
+.period dt { color: var(--muted); }
+.period dd { margin: 0; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 560px; }
+th, td { padding: 8px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; position: sticky; top: 0; background: var(--panel); }
+th:first-child, td:first-child { text-align: left; }
+td.zero { color: var(--dim); }
+tr.today td { background: rgba(255, 207, 26, .08); }
+.versions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.versions ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.versions li { display: grid; grid-template-columns: 70px 1fr 48px; gap: 10px; align-items: center; font-variant-numeric: tabular-nums; }
+.versions .bar { height: 10px; border-radius: 6px; background: var(--ink); overflow: hidden; }
+.versions .bar i { display: block; height: 100%; border-radius: 6px; }
+.versions .n { text-align: right; font-weight: 700; }
+.note { color: var(--dim); font-size: 14px; margin: 14px 0 0; }
+footer { margin: 40px 0 0; padding: 20px 0 max(24px, env(safe-area-inset-bottom, 0px)); background: var(--ink-2); border-top: 2px solid var(--line); color: var(--muted); font-size: 14px; }
+footer p { margin: 0; max-width: 70ch; }
+[hidden] { display: none !important; }
+@media (max-width: 620px) {
+  .period, .versions { grid-template-columns: 1fr; }
+  .tile .v { font-size: 22px; }
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Lights on</h1>
+    <p class="sub">Anonymous daily counts for learninglab.fun: devices, runs, races and active families. No names, no ids.</p>
+  </div>
+</header>
+<main class="wrap">
+  <section class="card" aria-labelledby="key-h">
+    <h2 id="key-h">Stats key</h2>
+    <form id="form" autocomplete="off">
+      <label>STATS_KEY
+        <input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="the key set in Netlify">
+      </label>
+      <button id="load" type="submit">Load</button>
+    </form>
+    <p class="status" id="status" role="status"></p>
+  </section>
+
+  <div id="out" hidden>
+    <section aria-labelledby="tot-h">
+      <h2 id="tot-h">At a glance</h2>
+      <div class="tiles" id="tiles"></div>
+    </section>
+
+    <section class="card" aria-labelledby="per-h">
+      <h2 id="per-h">Totals</h2>
+      <div class="period" id="periods"></div>
+      <p class="note">Devices are device-days: a device counts once per game per UTC day. Families are distinct family codes (hashed) across the period.</p>
+    </section>
+
+    <section class="card" aria-labelledby="days-h">
+      <h2 id="days-h">Last 30 days</h2>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th scope="col">Day (UTC)</th><th scope="col">Devices <span class="sj">SJ</span> / <span class="tb">TB</span></th><th scope="col">Runs</th><th scope="col">Races</th><th scope="col">Checks</th><th scope="col">Families <span class="sj">SJ</span> / <span class="tb">TB</span></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="ver-h">
+      <h2 id="ver-h">Versions (device-days, 30 days)</h2>
+      <div class="versions" id="versions"></div>
+    </section>
+    <p class="note" id="generated"></p>
+  </div>
+</main>
+<footer>
+  <div class="wrap"><p>A daily anonymous count of devices, runs and races (no names, no ids) tells us the site is being used.</p></div>
+</footer>
+<script>
+(function () {
+  var KEY = 'learningLab.statsKey';
+  var $ = function (id) { return document.getElementById(id); };
+  var el = function (tag, attrs, kids) {
+    var n = document.createElement(tag);
+    if (attrs) for (var k in attrs) { if (k === 'class') n.className = attrs[k]; else if (k === 'style') n.setAttribute('style', attrs[k]); else n.setAttribute(k, attrs[k]); }
+    [].concat(kids == null ? [] : kids).forEach(function (c) { n.append(c instanceof Node ? c : document.createTextNode(String(c))); });
+    return n;
+  };
+  var fmt = function (n) { return n == null ? '—' : Number(n).toLocaleString('en-US'); };
+  try { var saved = sessionStorage.getItem(KEY); if (saved) $('key').value = saved; } catch (e) { /* no storage: type it each time */ }
+
+  function status(text, err) { var s = $('status'); s.textContent = text; s.className = 'status' + (err ? ' err' : ''); }
+
+  function tile(k, v, s, cls) { return el('div', { class: 'tile' }, [el('div', { class: 'k' }, k), el('div', { class: 'v' + (cls ? ' ' + cls : '') }, v), s ? el('div', { class: 's' }, s) : null].filter(Boolean)); }
+  function period(title, t) {
+    var rows = [
+      ['Spell Jump devices', t.sj.devices], ['Trail Blazer devices', t.tb.devices], ['Runs', t.sj.runs], ['Friday tests', t.sj.tests],
+      ['Lists saved', t.sj.lists], ['Races', t.tb.races], ['Pit Crew Checks', t.tb.checks], ['Families active', t.families],
+    ];
+    var dl = el('dl');
+    rows.forEach(function (r) { dl.append(el('dt', null, r[0]), el('dd', null, fmt(r[1]))); });
+    return el('div', null, [el('h3', null, title), dl]);
+  }
+  function versionList(name, cls, color, map) {
+    var entries = Object.keys(map || {}).map(function (v) { return [v, map[v]]; }).sort(function (a, b) { return b[1] - a[1]; });
+    var max = entries.reduce(function (m, e) { return Math.max(m, e[1]); }, 0) || 1;
+    var ul = el('ul');
+    if (!entries.length) ul.append(el('li', null, [el('span', { class: 'n' }, '—')]));
+    entries.forEach(function (e) {
+      ul.append(el('li', null, [el('span', null, 'v' + e[0]), el('span', { class: 'bar' }, el('i', { style: 'width:' + Math.max(4, Math.round(100 * e[1] / max)) + '%;background:' + color })), el('span', { class: 'n' }, fmt(e[1]))]));
+    });
+    return el('div', null, [el('h3', { class: cls, style: 'margin:0 0 8px;font:700 14px/1 var(--font-body);text-transform:uppercase;letter-spacing:.05em' }, name), ul]);
+  }
+  function cell(n) { return el('td', n ? null : { class: 'zero' }, fmt(n)); }
+
+  function render(j) {
+    var t7 = j.totals.last7, t30 = j.totals.last30, today = j.days[0];
+    $('tiles').replaceChildren(
+      tile('Devices today', fmt(today.sj.devices + today.tb.devices), 'SJ ' + fmt(today.sj.devices) + ' · TB ' + fmt(today.tb.devices)),
+      tile('Runs · 7 days', fmt(t7.sj.runs), 'Spell Jump', 'sj'),
+      tile('Races · 7 days', fmt(t7.tb.races), 'Trail Blazer', 'tb'),
+      tile('Families · 7 days', fmt(t7.families), 'active (hashed codes)'),
+      tile('Families total', fmt(j.families && j.families.total), 'family codes created'));
+    $('periods').replaceChildren(period('Last 7 days', t7), period('Last 30 days', t30));
+    $('rows').replaceChildren.apply($('rows'), j.days.map(function (d, i) {
+      var tr = el('tr', i === 0 ? { class: 'today' } : null, [
+        el('td', null, d.day),
+        el('td', (d.sj.devices + d.tb.devices) ? null : { class: 'zero' }, [el('span', { class: 'sj' }, fmt(d.sj.devices)), ' / ', el('span', { class: 'tb' }, fmt(d.tb.devices))]),
+        cell(d.sj.runs), cell(d.tb.races), cell(d.tb.checks),
+        el('td', (d.famsSj + d.famsTb) ? null : { class: 'zero' }, fmt(d.famsSj) + ' / ' + fmt(d.famsTb)),
+      ]);
+      return tr;
+    }));
+    $('versions').replaceChildren(versionList('Spell Jump', 'sj', 'var(--cyan)', j.versions && j.versions.sj), versionList('Trail Blazer', 'tb', 'var(--tb)', j.versions && j.versions.tb));
+    $('generated').textContent = 'Generated ' + new Date(j.generatedAt).toLocaleString() + '. Families active per day: Spell Jump / Trail Blazer.';
+    $('out').hidden = false;
+  }
+
+  $('form').addEventListener('submit', function (ev) {
+    ev.preventDefault();
+    var key = $('key').value.trim();
+    if (!key) { status('Type the stats key first.', true); return; }
+    try { sessionStorage.setItem(KEY, key); } catch (e) { /* ignore */ }
+    $('load').disabled = true;
+    status('Loading…');
+    fetch('/api/stats?days=30&key=' + encodeURIComponent(key), { cache: 'no-store' })
+      .then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (j) { return { res: res, j: j }; });
+      })
+      .then(function (r) {
+        if (r.res.status === 403) { status('That key is not right.', true); $('out').hidden = true; return; }
+        if (r.res.status === 503) { status('The stats key is not set up on the server yet (STATS_KEY in the Netlify UI).', true); return; }
+        if (!r.res.ok || !r.j.days) { status('The stats did not load (' + r.res.status + '). Try again.', true); return; }
+        render(r.j);
+        status('Loaded ' + r.j.days.length + ' days.');
+      })
+      .catch(function () { status('Offline? The stats did not load.', true); })
+      .then(function () { $('load').disabled = false; });
+  });
+  if ($('key').value) $('form').requestSubmit ? $('form').requestSubmit() : $('load').click();
+})();
+</script>
+</body>
+</html>

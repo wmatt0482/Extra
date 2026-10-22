@@ -258,6 +258,7 @@ export function createParentZone(app) {
       saveNewList(d, r.words, pat.value, Date.now());
       app.saveWordsFor(p.id, d);
       if (app.cloudPrepareFor) app.cloudPrepareFor(p.id);    // natural voice: make this list's clips now
+      if (app.ping) app.ping('list');                         // v3.7.2: the anonymous counter (no words, no names)
       app.toast('List saved');
       render();
       const m = $('#pz-msg');
@@ -274,6 +275,7 @@ export function createParentZone(app) {
           saveNewList(od, list.words, list.pattern, Date.now());
           app.saveWordsFor(o.id, od);
           if (app.cloudPrepareFor) app.cloudPrepareFor(o.id);
+          if (app.ping) app.ping('list');
           app.toast(`Copied to ${o.name}`);
         });
         return b;
@@ -292,6 +294,7 @@ export function createParentZone(app) {
           app.saveWordsFor(id, wd);
           if (app.cloudPrepareFor) app.cloudPrepareFor(id);
         }
+        if (app.ping) app.ping('list');
       };
       const actions = following
         ? [h('div', { class: 'pc-follow', id: 'pz-class-following' }, 'Following the class lists ✓ · each new week applies on its own'),

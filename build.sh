@@ -33,7 +33,7 @@ copy_game() {
 copy_game "$root/car-jump" "$out/spell-jump"
 copy_game "$root/trail-blazer" "$out/trail-blazer"
 
-for required in index.html why/index.html spell-jump/index.html spell-jump/sw.js spell-jump/manifest.webmanifest spell-jump/icons/favicon.png \
+for required in index.html why/index.html stats/index.html spell-jump/index.html spell-jump/sw.js spell-jump/manifest.webmanifest spell-jump/icons/favicon.png \
     trail-blazer/index.html trail-blazer/sw.js trail-blazer/manifest.webmanifest trail-blazer/icons/favicon.png; do
   [[ -f "$out/$required" ]] || { echo "build.sh: missing dist/$required" >&2; exit 1; }
 done

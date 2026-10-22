@@ -558,6 +558,12 @@ async function runLayout(browser, layout) {
   const res2 = await J(page, () => window.__spellJump.lastResult.spell);
   check(res2 && !res2.firstTry && res2.fixed && res2.bonus === 0, 'results: fixed, no bonus');
   await payoutCheck(page, 'run 2', save);
+  // v3.7.2: the lights-on counter stays quiet on localhost, window.__pings records what would be sent: one 'day' ping
+  // for this device today, a 'run' ping per finished run, and only { game, v, kind, fam } (no names, no ids)
+  const { pings, ver } = await J(page, () => ({ pings: window.__pings || [], ver: (window.__spellJump || window.__trailBlazer).app.version }));
+  check(pings.filter((p) => p.kind === 'day').length === 1 && pings.filter((p) => p.kind === 'run').length >= 2
+    && pings.every((p) => p.game === 'spell-jump' && p.v === ver && p.fam === '' && Object.keys(p).join() === 'game,v,kind,fam'),
+    `pings: one day ping, a run ping per run, nothing else in them (${pings.map((p) => p.kind).join(', ')})`);
 
   // ---------- run 3: miss, Cover miss, Cover miss → go anyway; the word returns after 2 other words ----------
   await page.click('#res-retry');

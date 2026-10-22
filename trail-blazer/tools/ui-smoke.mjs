@@ -384,6 +384,12 @@ async function runLayout(browser, layout) {
   check(await raceToResults(page), 'gates 3 and 4 answered, the race reaches the finish');
   const seen = await J(page, () => window.__seen);
   const sum1 = await J(page, () => window.__trailBlazer.lastResult && window.__trailBlazer.lastResult.summary);
+  // v1.6.3: the lights-on counter (quiet on localhost; window.__pings records what would be sent): one 'day' ping,
+  // a 'race' ping for the finished race, and only { game, v, kind, fam }
+  const { pings, ver } = await J(page, () => ({ pings: window.__pings || [], ver: (window.__spellJump || window.__trailBlazer).app.version }));
+  check(pings.filter((p) => p.kind === 'day').length === 1 && pings.filter((p) => p.kind === 'race').length === 1
+    && pings.every((p) => p.game === 'trail-blazer' && p.v === ver && p.fam === '' && Object.keys(p).join() === 'game,v,kind,fam'),
+    `pings: one day ping and a race ping, nothing else in them (${pings.map((p) => p.kind).join(', ')})`);
   check(sum1 && sum1.flips >= 1 && sum1.crashes >= 1 && sum1.airTime >= 1.5, `the race had a landed flip, big air and a crash (flips ${sum1 && sum1.flips}, crashes ${sum1 && sum1.crashes}, air ${sum1 && sum1.airTime} s)`);
   check(!['Backflip!', 'Big air!', 'Perfect!', 'Crash!'].some((b) => seen.banners.includes(b)), `no HUD banner doubles the engine's in-world stunt text (${seen.banners.join(' · ')})`);
   check(seen.banners.includes('Back on track!'), '"Back on track!" after the crash');

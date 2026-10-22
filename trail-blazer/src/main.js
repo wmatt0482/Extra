@@ -24,6 +24,7 @@
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
+import { createPinger } from '../../spell-jump/src/meta/pings.js';
 import { registerTrailBlazerSync } from './meta/sync.js';
 import { Audio } from '../../spell-jump/src/audio.js';
 import { $, $$, h, money } from '../../spell-jump/src/ui/dom.js';
@@ -72,7 +73,7 @@ import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, vehicleM
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.6.2';
+const VERSION = '1.6.3';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -158,6 +159,8 @@ async function boot() {
     onApply: (k) => syncApplied(k),
     onStatus: () => { playersUI.refreshSyncChip(); pz.onSyncStatus(); },
   });
+  // v1.6.3: the anonymous lights-on counter (Spell Jump's src/meta/pings.js): 'day' / 'race' / 'check', no names or ids
+  const pingNow = createPinger('trail-blazer', { version: VERSION, getCode: () => sync.code });
   const family = Profiles.loadFamily();
   const save = defaultSave();           // replaced in place when a player is picked (screens hold this reference)
   let currentPlayerId = null;
@@ -177,6 +180,8 @@ async function boot() {
     save, settings, sync, trails, trailSource, medalTable, vehicles, mutators,
     audio: Audio, sfx: Sfx,
     version: VERSION,
+    ping: pingNow,
+    onCheckDone: () => pingNow('check'),
     engineName: engineMod.name,
     get family() { return family; },
     get currentPlayerId() { return currentPlayerId; },
@@ -716,6 +721,7 @@ async function boot() {
     const bank = bankRide(save, trails, r.trail.id, summary, medalTimes);
     save.seen.coach = true;
     app.persist();
+    pingNow('race');
     let probeStarted = false;
     if (facts) {
       if (r.facts.length) {
@@ -957,6 +963,7 @@ async function boot() {
   try { resumeId = sessionStorage.getItem(RESUME_KEY); sessionStorage.removeItem(RESUME_KEY); } catch (_) { /* ignore */ }
   if (resumeId && Profiles.playerById(family, resumeId)) selectPlayer(resumeId);
   sync.start();                       // first pull after the picker is on screen (never blocks it)
+  pingNow('day');                     // v1.6.3: once per device per UTC day (fire and forget)
   window.__trailBlazer = {
     app, hud, pz, sync, controls, gatePanel, tts, get facts() { return facts; }, get session() { return session; },
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; },

@@ -277,6 +277,7 @@ child's Trail Blazer progress (cash, vehicles, medals, gear, math facts) is stor
 **Privacy.** What's stored online: player first names, word lists, spelling progress and the parent PIN (hashed).
 No emails or accounts. Anyone with the family code can see and change these, so keep it private. Word lists and
 sentences are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is.
+A daily anonymous count of devices, runs and races (no names, no ids) tells us the site is being used.
 
 **When two devices changed the same thing** before syncing (`src/sync/merge.js`):
 
@@ -386,6 +387,40 @@ call (`POST https://texttospeech.googleapis.com/v1/text:synthesize?key=…`, `{ 
 
 JSON answers carry `Cache-Control: no-store`. The service worker sends `/api/tts/status` and `/api/tts/prepare` (and
 `/api/family`) straight to the network and keeps clips cache-first.
+
+## Usage counter (v3.7.2)
+
+The "lights-on counter" tells us the site is being used, without knowing who uses it. Both games send small anonymous
+pings (`src/meta/pings.js`, fire and forget, `fetch` with `keepalive`, errors swallowed) to `POST /api/stats/ping`;
+`netlify/functions/stats.mjs` adds them up in the Blobs store `stats`, one JSON doc per UTC day (`day/<yyyy-mm-dd>`):
+`{ sj: { devices, runs, tests, lists, versions }, tb: { devices, races, checks, versions }, fams: { sj: [hash], tb: [hash] } }`.
+Counts are approximate by design: a write races another one with a conditional set on the ETag, up to 4 tries, then
+the ping is dropped. All request handling is in `src/stats/server.mjs` (pure, unit-tested in `tools/spelling-tests.mjs`).
+
+**The ping**, at most 1 KB: `{ game: 'spell-jump' | 'trail-blazer', v: '3.7.2', kind, fam }` → 204 (400 on bad input).
+
+| kind | When |
+| --- | --- |
+| `day` | the first launch of the UTC day on this device, per game (`localStorage` `learningLab.ping.<game>` holds the day) |
+| `run` · `test` · `list` | Spell Jump: a finished run · a Friday test · a list saved or copied, or a class list applied |
+| `race` · `check` | Trail Blazer: a finished race · a Pit Crew Check |
+
+`fam` is the first 8 hex digits of SHA-256(family code) when the device is in a family, `''` otherwise; it only lets
+the page count "families active" (at most 500 a day per game). **Never sent or stored:** names, player ids, the family
+code itself, words, answers, cookies, IP addresses, user agents. No ping leaves `localhost` / `127.0.0.1` unless the
+URL has `?pings=1`; `window.__pings` records what would be sent (the ui-smokes check it).
+
+**Reading the counts.** Set the key once in the Netlify UI: Site configuration → Environment variables → Add a
+variable → `STATS_KEY` = a long random string (for example `openssl rand -hex 24`), scope Functions, then redeploy.
+Open `https://learninglab.fun/stats/` (linked from nowhere, `noindex`), paste the key (kept in that tab's
+sessionStorage only) and tap Load: the last 30 days (devices SJ / TB, runs, races, checks, families active), 7- and
+30-day totals, the number of family codes ever created and the version spread. The same as JSON:
+
+```sh
+curl -s "https://learninglab.fun/api/stats?key=$STATS_KEY&days=30"
+# → { days: [{ day, sj, tb, famsSj, famsTb }], totals: { last7, last30 }, families: { total }, versions, generatedAt }
+#   503 { error: 'no-key' } while STATS_KEY is unset · 403 for a wrong key · days 1-90 · Cache-Control: no-store
+```
 
 ## Coming back every day (v3.3)
 
@@ -500,7 +535,8 @@ node tools/spelling-tests.mjs   # Node unit tests: intervals, mastery (2 distinc
                                 # in-memory Map store, family codes, and every merge rule incl. both-changed cases;
                                 # natural voice: the server (in-memory stores + fake synthesize: 403, allowlist,
                                 # caching by id, 20k/day cap 429, no key 503, the TexttoVoice alias, clip 404 / 200),
-                                # the client's texts / batches / status lines, the engine choice + fallback in tts.js
+                                # the client's texts / batches / status lines, the engine choice + fallback in tts.js;
+                                # usage counter: /api/stats validation, counters, family hashes, ETag retry, key checks
 node tools/ui-smoke.mjs         # Playwright, 844×390 + 390×844, mock engine + fake speechSynthesis: players, PIN,
                                 # word list, Qualifier, every spell-panel path, mission, Friday Test + Mega Run,
                                 # report, voices (incl. system default), Run speech check log + Copy log,
@@ -521,6 +557,7 @@ node tools/sync-smoke.mjs       # family sync end to end: two Playwright context
 node tools/sync-function-check.mjs  # the real Netlify Function + @netlify/blobs against Blobs' local server
                                 # (needs `npm install` at the repo root)
 node tools/tts-function-check.mjs   # the real natural-voice function the same way, with fetch stubbed for Google
+node tools/stats-function-check.mjs # the real usage-counter function the same way (pings, day doc, key checks)
 node tools/economy-sim.mjs --speller 0.75   # headless economy simulation (75 % first-try speller, 8 runs a day)
 node tools/make-icons.mjs       # re-renders icons/*.png (a car jumping over letter tiles)
 ```
@@ -588,13 +625,14 @@ car-jump/
       why.js              "Why this works" table (copy of docs/LEARNING-DESIGN.md)
     meta/                 save, economy, goals, achievements, daily, rng, mockEngine,
                           engagement (v3.3 streak / XP / crates / trophies / family board rules, pure),
-                          transfer (progress transfer code)
+                          transfer (progress transfer code), pings (the anonymous usage counter, v3.7.2)
+    stats/server.mjs      the usage counter API as a pure request handler (used by netlify/functions/stats.mjs)
     ui/                   players (picker + family board), parentZone, garage (+ Style row), tracks, results,
                           panels (badges, streak, trophies), crates (crate opening), HUD, controls, icons,
                           car preview, title hero, fireworks
   dev.html                engine harness (keyboard + on-screen buttons, no meta)
   tools/                  spelling-tests, ui-smoke, engine-smoke, integration-smoke, sync-smoke,
-                          sync-function-check, economy-sim, make-icons
+                          sync-function-check, tts-function-check, stats-function-check, economy-sim, make-icons
 ```
 
 ## Wrap as a native App Store build (Capacitor)

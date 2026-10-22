@@ -1604,6 +1604,120 @@ test('options: cloudVoice is kept when it is an allowlisted voice or "" (device)
   assert.equal(Profiles.normalizeFamily({ ...f, options: { pmia: { cloudVoice: 'en-US-Studio-O' } } }).options.pmia.cloudVoice, 'en-US-Studio-O');
 });
 
+// ---------- the lights-on counter (v3.7.2): src/stats/server.mjs ----------
+console.log('lights-on counter: /api/stats (server)');
+const ST = await import('../src/stats/server.mjs');
+const ST_NOW = Date.UTC(2026, 9, 22, 15, 0, 0);
+const stDeps = (extra = {}) => ({ store: ST.memoryStatsStore(), families: ST.memoryFamilyCount(3), key: 'sekret-key', now: () => ST_NOW, ...extra });
+async function scall(deps, method, path, body, { raw = false, search = '', contentLength } = {}) {
+  const res = await ST.handleStats({ method, path, search, contentLength, body: body === undefined ? null : raw ? body : JSON.stringify(body) }, deps);
+  return { ...res, json: typeof res.body === 'string' && res.body ? JSON.parse(res.body) : null };
+}
+const pingBody = (o = {}) => ({ game: 'spell-jump', v: '3.7.2', kind: 'day', fam: '', ...o });
+const dayDoc = (deps, ms = ST_NOW) => deps.store.getJSON(`day/${new Date(ms).toISOString().slice(0, 10)}`).then((r) => r && r.value);
+await atest('ping validation: game, kind per game, version, fam; the 1 KB cap; bad JSON → 400; a good ping → 204 with no body', async () => {
+  const deps = stDeps();
+  for (const b of [pingBody({ game: 'mario' }), pingBody({ kind: 'race' }), pingBody({ game: 'trail-blazer', kind: 'run' }), pingBody({ kind: 'jump' }),
+    pingBody({ v: '' }), pingBody({ v: '3.7.2<script>' }), pingBody({ fam: 'ABCDEF12' }), pingBody({ fam: '1234567' }), pingBody({ fam: 42 }), [1, 2], 'day']) {
+    assert.equal((await scall(deps, 'POST', '/api/stats/ping', b)).status, 400, JSON.stringify(b));
+  }
+  assert.equal((await scall(deps, 'POST', '/api/stats/ping', '{nope', { raw: true })).status, 400, 'bad JSON');
+  assert.equal((await scall(deps, 'POST', '/api/stats/ping', null, { raw: true })).status, 400, 'no body');
+  const big = JSON.stringify({ ...pingBody(), pad: 'x'.repeat(1100) });
+  assert.equal((await scall(deps, 'POST', '/api/stats/ping', big, { raw: true })).status, 400, 'body over 1 KB');
+  assert.equal((await scall(deps, 'POST', '/api/stats/ping', pingBody(), { contentLength: '5000' })).status, 400, 'content-length over 1 KB');
+  assert.equal(deps.store.map.size, 0, 'nothing written for bad pings');
+  const r = await scall(deps, 'POST', '/api/stats/ping', pingBody());
+  assert.equal(r.status, 204); assert.equal(r.body, null);
+  assert.equal((await scall(deps, 'GET', '/api/stats/ping')).status, 405);
+  assert.equal((await scall(deps, 'POST', '/api/stats', pingBody())).status, 405);
+  assert.equal((await scall(deps, 'GET', '/api/stats/nope')).status, 404);
+  assert.equal(ST.MAX_BODY, 1024);
+});
+await atest('counters and the version spread: one doc per UTC day (day/<yyyy-mm-dd>), day pings count devices + versions', async () => {
+  const deps = stDeps();
+  const send = (o) => scall(deps, 'POST', '/api/stats/ping', pingBody(o));
+  await send({}); await send({}); await send({ v: '3.7.1' });
+  await send({ kind: 'run' }); await send({ kind: 'run' }); await send({ kind: 'test' }); await send({ kind: 'list' });
+  await send({ game: 'trail-blazer', v: '1.6.3' }); await send({ game: 'trail-blazer', v: '1.6.3', kind: 'race' }); await send({ game: 'trail-blazer', v: '1.6.3', kind: 'check' });
+  const d = await dayDoc(deps);
+  assert.deepEqual(d.sj, { devices: 3, runs: 2, tests: 1, lists: 1, versions: { '3.7.2': 2, '3.7.1': 1 } });
+  assert.deepEqual(d.tb, { devices: 1, races: 1, checks: 1, versions: { '1.6.3': 1 } });
+  assert.deepEqual(d.fams, { sj: [], tb: [] });
+  assert.deepEqual([...deps.store.map.keys()], ['day/2026-10-22']);
+  // the next UTC day is a new doc
+  const deps2 = { ...deps, now: () => ST_NOW + 86400000 };
+  await scall(deps2, 'POST', '/api/stats/ping', pingBody());
+  assert.deepEqual([...deps.store.map.keys()].sort(), ['day/2026-10-22', 'day/2026-10-23']);
+  // a run ping does not touch the version spread
+  assert.deepEqual(Object.keys(d.sj.versions).sort(), ['3.7.1', '3.7.2']);
+});
+await atest('families: hashes dedupe per game and cap at 500 a day; the stored doc holds no names, ids or codes', async () => {
+  const deps = stDeps();
+  const h = await ST.famHashOf('K7QX-M2PA');
+  assert.match(h, /^[0-9a-f]{8}$/);
+  const { createHash } = await import('node:crypto');
+  assert.equal(h, createHash('sha256').update('K7QX-M2PA').digest('hex').slice(0, 8));
+  await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h }));
+  await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h, kind: 'run' }));
+  await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h, game: 'trail-blazer', kind: 'race' }));
+  let d = await dayDoc(deps);
+  assert.deepEqual(d.fams, { sj: [h], tb: [h] });
+  for (let i = 0; i < 520; i++) await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: i.toString(16).padStart(8, '0'), kind: 'run' }));
+  d = await dayDoc(deps);
+  assert.equal(d.fams.sj.length, 500, 'capped at 500'); assert.equal(new Set(d.fams.sj).size, 500);
+  assert.equal(d.sj.runs, 521, 'pings past the cap still count');
+  assert.ok(!JSON.stringify(d).includes('K7QX'));
+});
+await atest('concurrent writes: a conditional set that fails is retried on a fresh read; 4 failures → given up silently (204)', async () => {
+  const base = ST.memoryStatsStore();
+  let fail = 1;
+  const flaky = { map: base.map, getJSON: (k) => base.getJSON(k),
+    async setJSON(k, v, cond) {
+      if (fail > 0) { fail--; await base.setJSON(k, ST.applyPing(ST.normalizeDay((await base.getJSON(k) || {}).value), { game: 'sj', kind: 'run', counter: 'runs', v: '3.7.2', fam: '' }), {}); return { modified: false }; }
+      return base.setJSON(k, v, cond);
+    } };
+  const deps = stDeps({ store: flaky });
+  assert.equal((await scall(deps, 'POST', '/api/stats/ping', pingBody())).status, 204);
+  const d = (await base.getJSON('day/2026-10-22')).value;
+  assert.equal(d.sj.runs, 1, "the other device's write is kept"); assert.equal(d.sj.devices, 1, 'and this ping counted on the retry');
+  let sets = 0;
+  const busy = { getJSON: (k) => base.getJSON(k), async setJSON() { sets++; return { modified: false }; } };
+  assert.equal((await scall(stDeps({ store: busy }), 'POST', '/api/stats/ping', pingBody())).status, 204);
+  assert.equal(sets, 4, '4 attempts, then give up');
+  const down = { async getJSON() { throw new Error('blobs down'); }, async setJSON() { throw new Error('blobs down'); } };
+  assert.equal((await scall(stDeps({ store: down }), 'POST', '/api/stats/ping', pingBody())).status, 204, 'a store error never reaches the game');
+});
+await atest('GET /api/stats: no STATS_KEY → 503 no-key; a wrong key → 403; the right key → days, totals, families total, versions', async () => {
+  let r = await scall(stDeps({ key: '' }), 'GET', '/api/stats', undefined, { search: '?key=x' });
+  assert.equal(r.status, 503); assert.equal(r.json.error, 'no-key');
+  const deps = stDeps();
+  r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-kez' }); assert.equal(r.status, 403);
+  r = await scall(deps, 'GET', '/api/stats', undefined, { search: '' }); assert.equal(r.status, 403, 'no key given');
+  assert.equal(await ST.sameKey('abc', 'abc'), true); assert.equal(await ST.sameKey('abc', 'abcd'), false);
+  const h = await ST.famHashOf('K7QX-M2PA');
+  await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h }));
+  await scall(deps, 'POST', '/api/stats/ping', pingBody({ kind: 'run', fam: h }));
+  await scall(deps, 'POST', '/api/stats/ping', pingBody({ game: 'trail-blazer', v: '1.6.3', fam: h }));
+  const old = { ...deps, now: () => ST_NOW - 10 * 86400000 };       // 10 days ago: in last30, not in last7
+  await scall(old, 'POST', '/api/stats/ping', pingBody({ v: '3.7.1', fam: 'aaaaaaaa' }));
+  r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=30' });
+  assert.equal(r.status, 200); assert.equal(r.headers['cache-control'], 'no-store');
+  const j = r.json;
+  assert.equal(j.days.length, 30); assert.equal(j.days[0].day, '2026-10-22', 'newest first'); assert.equal(j.days[29].day, '2026-09-23');
+  assert.deepEqual(j.days[0].sj, { devices: 1, runs: 1, tests: 0, lists: 0, versions: { '3.7.2': 1 } });
+  assert.equal(j.days[0].famsSj, 1); assert.equal(j.days[0].famsTb, 1); assert.equal(j.days[10].sj.devices, 1);
+  assert.equal(j.totals.last7.sj.devices, 1); assert.equal(j.totals.last30.sj.devices, 2); assert.equal(j.totals.last7.tb.devices, 1);
+  assert.equal(j.totals.last7.families, 1, 'the same family in both games counts once'); assert.equal(j.totals.last30.families, 2);
+  assert.deepEqual(j.families, { total: 3 });
+  assert.deepEqual(j.versions, { sj: { '3.7.2': 1, '3.7.1': 1 }, tb: { '1.6.3': 1 } });
+  assert.equal(j.generatedAt, new Date(ST_NOW).toISOString());
+  r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=7' });
+  assert.equal(r.json.days.length, 7); assert.equal(r.json.totals.last30.sj.devices, 2, 'last30 is still 30 days');
+  r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=999' });
+  assert.equal(r.json.days.length, 90, 'at most 90 days');
+});
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('FAILED:\n- ' + failures.join('\n- ')); process.exit(1); }
 console.log('ALL SPELLING TESTS PASSED');

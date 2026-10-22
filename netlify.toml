@@ -1,9 +1,10 @@
 # Netlify deploys learninglab.fun: a static home page (site/) with the Spell Jump game under /spell-jump/
 # (car-jump/) and the Trail Blazer game under /trail-blazer/ (trail-blazer/), assembled into dist/ by build.sh
-# (plain bash, no dependencies), plus two Netlify Functions:
+# (plain bash, no dependencies), plus three Netlify Functions:
 # netlify/functions/family.mjs (Netlify Blobs) for cross-device family sync, and netlify/functions/tts.mjs (Google
 # Cloud Text-to-Speech → Netlify Blobs) for the natural voice; it reads the key from the GOOGLE_TTS_API_KEY (or
-# TexttoVoice) environment variable set in the Netlify UI, never from this file.
+# TexttoVoice) environment variable set in the Netlify UI, never from this file; and netlify/functions/stats.mjs (Netlify
+# Blobs) for the anonymous lights-on counter, read with the STATS_KEY environment variable at /stats/.
 # The Next.js inbox app at the repo root is not part of this site.
 
 [build]
@@ -20,7 +21,8 @@
   NETLIFY_NEXT_PLUGIN_SKIP = "true"
   NODE_VERSION = "22"
 
-# Family sync API: /api/family/:code[/:key]; natural voice API: /api/tts/status, /api/tts/prepare, /api/tts/clip/:id
+# Family sync API: /api/family/:code[/:key]; natural voice API: /api/tts/status, /api/tts/prepare, /api/tts/clip/:id;
+# lights-on counter: /api/stats/ping, /api/stats
 # (routes are declared in each function's own `config.path`)
 [functions]
   directory = "netlify/functions"

@@ -40,8 +40,9 @@ import { createCrateOpener } from './ui/crates.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { createSyncClient } from './sync/client.js';
 import { applyImport, decodeTransfer, encodeTransfer } from './meta/transfer.js';
+import { createPinger } from './meta/pings.js';
 
-const VERSION = '3.7.1';
+const VERSION = '3.7.2';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
@@ -94,6 +95,8 @@ async function boot() {
     onApply: (k) => syncApplied(k),
     onStatus: () => { playersUI.refreshSyncChip(); pz.onSyncStatus(); if (currentPlayerId && cloud) { if (cloud.active) pz.onCloudStatus(); else cloudDefault(currentPlayerId); } },
   });
+  // v3.7.2: the anonymous lights-on counter (src/meta/pings.js): 'day' / 'run' / 'test' / 'list', no names or ids
+  const pingNow = createPinger('spell-jump', { version: VERSION, getCode: () => sync.code });
   const family = Profiles.loadFamily();
   const save = defaultSave();          // replaced in place when a player is picked (screens hold this reference)
   let words = null;                    // the current player's spelling data
@@ -121,6 +124,7 @@ async function boot() {
     tts,
     sync,
     version: VERSION,
+    ping: pingNow,
     engineName: engineMod.name,
     get family() { return family; },
     get currentPlayerId() { return currentPlayerId; },
@@ -342,7 +346,7 @@ async function boot() {
     app.persist();
     app.persistWords();
     go('title');
-    if (classList) toast(`New class list: ${classList.name}`);
+    if (classList) { toast(`New class list: ${classList.name}`); pingNow('list'); }
   }
   // test hook (like window.__ttsBackend): window.__noClassLists = true keeps the built-in list (the pre-3.7 UI paths)
   const classOverride = () => (window.__noClassLists ? null : undefined);
@@ -353,6 +357,7 @@ async function boot() {
     if (!l) return;
     session = createSession();
     app.persistWords();
+    pingNow('list');
     toast(`New class list: ${l.name}`);
     if (screen === 'title') refreshTitle();
   }
@@ -559,6 +564,7 @@ async function boot() {
           };
         }
         const ft = WS.recordFriday(words, results, now);
+        pingNow('test');
         const score = total ? correct / total : 0;
         const paid = earn(save, correct * MEGA_PAY);
         // v3.3: XP per correct word, trophies for words the test mastered, and the test counts as a streak day
@@ -981,6 +987,7 @@ async function boot() {
       else if (r.def.check(summary)) { save.daily.done = true; dailyReward = earn(save, r.def.reward); }
     }
     app.persist();
+    pingNow('run');
     const result = lastResult = {
       trackId: r.trackId, daily: r.daily, carId: r.carId, stats: r.stats, summary, bank, goals,
       dailyReward, dailyAlreadyDone, dailyGoalText: r.def && r.def.goal.text, dailyValue: r.def && r.def.value(summary),
@@ -1140,6 +1147,7 @@ async function boot() {
   try { resumeId = sessionStorage.getItem(RESUME_KEY); sessionStorage.removeItem(RESUME_KEY); } catch (_) { /* ignore */ }
   if (resumeId && Profiles.playerById(family, resumeId)) selectPlayer(resumeId);
   sync.start();                        // first pull after the picker is on screen (never blocks it)
+  pingNow('day');                      // v3.7.2: once per device per UTC day (fire and forget)
   window.__spellJump = window.__rampRage = {
     app, hud, hero, spellPanel, testScreen, pz, tts, sync,
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; },

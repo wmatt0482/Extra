@@ -77,6 +77,8 @@ size) and `tools/sync-smoke.mjs` (two devices on one in-memory server, plus Spel
 
 **v1.6.2:** Parents → Report opens with each child's week ("Ladder: 58 % of families secure", a bar, and "This week: 91 % right at the gates (42 of 46) · moved up: ×6 ×9"; `src/facts/progress.js`), and the Family code tab shows a strip per child ("Math this week · 58 % of the ladder · 91 % right"). Parent-facing only, never on the kid's screens.
 
+**v1.6.3:** the anonymous lights-on counter (Spell Jump's `src/meta/pings.js`): a `day` ping once per device per UTC day, a `race` ping per finished race and a `check` ping per Pit Crew Check, carrying only `{ game, v, kind, fam }` (no names, no ids; see Spell Jump's README, "Usage counter").
+
 Same house style and kid-proofing as Spell Jump: no external links, no native text inputs outside the Parent Zone,
 no ads, no accounts, no lives, works offline after the first load, updates itself on a safe screen, and plays in
 landscape or portrait, with touch or a keyboard (→ / Space = GAS / front flip, ← = BRAKE / backflip, ↑ / Shift =
