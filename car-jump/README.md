@@ -411,7 +411,9 @@ code itself, words, answers, cookies, IP addresses, user agents. No ping leaves 
 URL has `?pings=1`; `window.__pings` records what would be sent (the ui-smokes check it).
 
 **Reading the counts.** Set the key once in the Netlify UI: Site configuration → Environment variables → Add a
-variable → `STATS_KEY` = a long random string (for example `openssl rand -hex 24`), scope Functions, then redeploy.
+variable → `STATS_KEY` = a long random string (for example `openssl rand -hex 24`), scope Functions, then **redeploy**:
+functions pick up a new or changed variable only on their next deploy (Deploys → Trigger deploy, or any push), so the
+stats page says "not set up" until then.
 Open `https://learninglab.fun/stats/` (linked from nowhere, `noindex`), paste the key (kept in that tab's
 sessionStorage only) and tap Load: the last 30 days (devices SJ / TB, runs, races, checks, families active), 7- and
 30-day totals, the number of family codes ever created and the version spread. The same as JSON:
