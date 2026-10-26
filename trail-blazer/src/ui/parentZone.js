@@ -29,7 +29,7 @@ import { icon } from './tbIcons.js';
 import { drawAvatar } from './vehiclePreview.js';
 
 const HOLD_MS = 3000;
-export const SAVE_NOTE = "One family code syncs both games: the players and the PIN, each child's Spell Jump progress and their Trail Blazer progress (cash, vehicles, upgrades, medals, cups, gear and the math facts). Nothing is lost when two devices played offline: the progress is merged.";
+export const SAVE_NOTE = "One family code syncs all three games: the players and the PIN, each child's Spell Jump progress and their Trail Blazer progress (cash, vehicles, upgrades, medals, cups, gear and the math facts). Nothing is lost when two devices played offline: the progress is merged.";
 /** v1.6: the Parent Zone line when synced and well. */
 export const SYNCED_LINE = 'Synced · players, Spell Jump and Trail Blazer progress';
 
@@ -540,7 +540,7 @@ export function createParentZone(app) {
           `Reset ${p.name}'s math facts progress?`, 'Reset facts', () => { app.resetFactsFor(p.id); app.toast('Facts data reset'); render(); }, `pz-reset-facts-${p.id}`),
         ...confirmRow('Reset Trail Blazer progress', `Cash, vehicles, upgrades, medals, cups and gear back to the start for ${p.name} on this device. Spell Jump is not touched.`, 'Reset',
           `Reset ${p.name}'s Trail Blazer progress?`, 'Reset', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-${p.id}`),
-        ...confirmRow('Remove player', `Removes ${p.name} from the family in both games, on every device, with all of ${p.name}'s data.`, 'Remove',
+        ...confirmRow('Remove player', `Removes ${p.name} from the family in every game, on every device, with all of ${p.name}'s data.`, 'Remove',
           `Remove ${p.name} for good, in Trail Blazer and Spell Jump?`, 'Remove', () => { app.removePlayer(p.id); render(); }, `pz-remove-${p.id}`));
       drawAvatar(cv, p.color);
       return card;

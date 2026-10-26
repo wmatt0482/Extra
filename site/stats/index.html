@@ -31,6 +31,7 @@
   --go: #2fd36b;
   --cyan: #22d3ff;
   --tb: #ff8a1f;
+  --ff: #9dff3a;
   --font-display: 'Bungee', 'Arial Black', 'Helvetica Neue', Impact, system-ui, sans-serif;
   --font-body: 'Rubik', ui-rounded, 'SF Pro Rounded', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --r: 16px;
@@ -66,19 +67,20 @@ button[disabled] { opacity: .6; cursor: progress; }
 .tile .s { font-size: 13px; color: var(--dim); font-weight: 700; margin-top: 2px; }
 .sj { color: var(--cyan); }
 .tb { color: var(--tb); }
+.ff { color: var(--ff); }
 .period { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .period h3 { margin: 0 0 8px; font: 700 14px/1 var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .period dl { margin: 0; display: grid; grid-template-columns: auto auto; gap: 4px 12px; }
 .period dt { color: var(--muted); }
 .period dd { margin: 0; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 12px; }
-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 560px; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; min-width: 720px; }
 th, td { padding: 8px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
 th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; position: sticky; top: 0; background: var(--panel); }
 th:first-child, td:first-child { text-align: left; }
 td.zero { color: var(--dim); }
 tr.today td { background: rgba(255, 207, 26, .08); }
-.versions { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.versions { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
 .versions ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .versions li { display: grid; grid-template-columns: 70px 1fr 48px; gap: 10px; align-items: center; font-variant-numeric: tabular-nums; }
 .versions .bar { height: 10px; border-radius: 6px; background: var(--ink); overflow: hidden; }
@@ -98,7 +100,7 @@ footer p { margin: 0; max-width: 70ch; }
 <header>
   <div class="wrap">
     <h1>Lights on</h1>
-    <p class="sub">Anonymous daily counts for learninglab.fun: devices, runs, races and active families. No names, no ids.</p>
+    <p class="sub">Anonymous daily counts for learninglab.fun: devices, runs, races, waves and active families. No names, no ids.</p>
   </div>
 </header>
 <main class="wrap">
@@ -129,7 +131,7 @@ footer p { margin: 0; max-width: 70ch; }
       <h2 id="days-h">Last 30 days</h2>
       <div class="table-scroll">
         <table>
-          <thead><tr><th scope="col">Day (UTC)</th><th scope="col">Devices <span class="sj">SJ</span> / <span class="tb">TB</span></th><th scope="col">Runs</th><th scope="col">Races</th><th scope="col">Checks</th><th scope="col">Families <span class="sj">SJ</span> / <span class="tb">TB</span></th></tr></thead>
+          <thead><tr><th scope="col">Day (UTC)</th><th scope="col">Devices <span class="sj">SJ</span> / <span class="tb">TB</span> / <span class="ff">FF</span></th><th scope="col">Runs</th><th scope="col">Races</th><th scope="col">Waves</th><th scope="col">Checks</th><th scope="col">Labs</th><th scope="col">Families <span class="sj">SJ</span> / <span class="tb">TB</span> / <span class="ff">FF</span></th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
@@ -161,10 +163,12 @@ footer p { margin: 0; max-width: 70ch; }
   function status(text, err) { var s = $('status'); s.textContent = text; s.className = 'status' + (err ? ' err' : ''); }
 
   function tile(k, v, s, cls) { return el('div', { class: 'tile' }, [el('div', { class: 'k' }, k), el('div', { class: 'v' + (cls ? ' ' + cls : '') }, v), s ? el('div', { class: 's' }, s) : null].filter(Boolean)); }
+  var ffOf = function (x) { return (x && x.ff) || { devices: 0, waves: 0, labs: 0, checks: 0 }; };
   function period(title, t) {
+    var f = ffOf(t);
     var rows = [
-      ['Spell Jump devices', t.sj.devices], ['Trail Blazer devices', t.tb.devices], ['Runs', t.sj.runs], ['Friday tests', t.sj.tests],
-      ['Lists saved', t.sj.lists], ['Races', t.tb.races], ['Pit Crew Checks', t.tb.checks], ['Families active', t.families],
+      ['Spell Jump devices', t.sj.devices], ['Trail Blazer devices', t.tb.devices], ['Fraction Fright devices', f.devices], ['Runs', t.sj.runs], ['Friday tests', t.sj.tests],
+      ['Lists saved', t.sj.lists], ['Races', t.tb.races], ['Pit Crew Checks', t.tb.checks], ['Waves', f.waves], ['Zombie Labs', f.labs], ['Lab Checks', f.checks], ['Families active', t.families],
     ];
     var dl = el('dl');
     rows.forEach(function (r) { dl.append(el('dt', null, r[0]), el('dd', null, fmt(r[1]))); });
@@ -183,25 +187,28 @@ footer p { margin: 0; max-width: 70ch; }
   function cell(n) { return el('td', n ? null : { class: 'zero' }, fmt(n)); }
 
   function render(j) {
-    var t7 = j.totals.last7, t30 = j.totals.last30, today = j.days[0];
+    var t7 = j.totals.last7, t30 = j.totals.last30, today = j.days[0], f0 = ffOf(today);
     $('tiles').replaceChildren(
-      tile('Devices today', fmt(today.sj.devices + today.tb.devices), 'SJ ' + fmt(today.sj.devices) + ' · TB ' + fmt(today.tb.devices)),
+      tile('Devices today', fmt(today.sj.devices + today.tb.devices + f0.devices), 'SJ ' + fmt(today.sj.devices) + ' · TB ' + fmt(today.tb.devices) + ' · FF ' + fmt(f0.devices)),
       tile('Runs · 7 days', fmt(t7.sj.runs), 'Spell Jump', 'sj'),
       tile('Races · 7 days', fmt(t7.tb.races), 'Trail Blazer', 'tb'),
+      tile('Waves · 7 days', fmt(ffOf(t7).waves), 'Fraction Fright', 'ff'),
       tile('Families · 7 days', fmt(t7.families), 'active (hashed codes)'),
       tile('Families total', fmt(j.families && j.families.total), 'family codes created'));
     $('periods').replaceChildren(period('Last 7 days', t7), period('Last 30 days', t30));
     $('rows').replaceChildren.apply($('rows'), j.days.map(function (d, i) {
+      var f = ffOf(d), famsFf = d.famsFf || 0;
       var tr = el('tr', i === 0 ? { class: 'today' } : null, [
         el('td', null, d.day),
-        el('td', (d.sj.devices + d.tb.devices) ? null : { class: 'zero' }, [el('span', { class: 'sj' }, fmt(d.sj.devices)), ' / ', el('span', { class: 'tb' }, fmt(d.tb.devices))]),
-        cell(d.sj.runs), cell(d.tb.races), cell(d.tb.checks),
-        el('td', (d.famsSj + d.famsTb) ? null : { class: 'zero' }, fmt(d.famsSj) + ' / ' + fmt(d.famsTb)),
+        el('td', (d.sj.devices + d.tb.devices + f.devices) ? null : { class: 'zero' }, [el('span', { class: 'sj' }, fmt(d.sj.devices)), ' / ', el('span', { class: 'tb' }, fmt(d.tb.devices)), ' / ', el('span', { class: 'ff' }, fmt(f.devices))]),
+        cell(d.sj.runs), cell(d.tb.races), cell(f.waves), cell(d.tb.checks + f.checks), cell(f.labs),
+        el('td', (d.famsSj + d.famsTb + famsFf) ? null : { class: 'zero' }, fmt(d.famsSj) + ' / ' + fmt(d.famsTb) + ' / ' + fmt(famsFf)),
       ]);
       return tr;
     }));
-    $('versions').replaceChildren(versionList('Spell Jump', 'sj', 'var(--cyan)', j.versions && j.versions.sj), versionList('Trail Blazer', 'tb', 'var(--tb)', j.versions && j.versions.tb));
-    $('generated').textContent = 'Generated ' + new Date(j.generatedAt).toLocaleString() + '. Families active per day: Spell Jump / Trail Blazer.';
+    $('versions').replaceChildren(versionList('Spell Jump', 'sj', 'var(--cyan)', j.versions && j.versions.sj), versionList('Trail Blazer', 'tb', 'var(--tb)', j.versions && j.versions.tb),
+      versionList('Fraction Fright', 'ff', 'var(--ff)', j.versions && j.versions.ff));
+    $('generated').textContent = 'Generated ' + new Date(j.generatedAt).toLocaleString() + '. Families active per day: Spell Jump / Trail Blazer / Fraction Fright. Checks = Pit Crew Checks + Lab Checks.';
     $('out').hidden = false;
   }
 

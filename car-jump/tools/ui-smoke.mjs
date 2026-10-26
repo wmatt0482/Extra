@@ -1048,7 +1048,8 @@ async function engagement(browser, layout) {
     localStorage.setItem('spellJump.pleo.save', JSON.stringify({ v: 2, cash: 500, xp: 300, seen: { coach: true, ach: 0 },
       streak: { count: 4, best: 6, lastDay: dk(now - DAY), days: [dk(now - DAY)], shieldUsedDays: [] }, weekBest: { week: E.isoWeek(now), distance: 350 } }));
     localStorage.setItem('spellJump.pleo.words', JSON.stringify(words('L2', ['cat', 'dog', 'sun'], { cat: done('cat', 'L2'), dog: done('dog', 'L2'), sun: done('sun', 'L2') }, { date: '', count: 0, newCount: 0, missionPaid: false })));
-    return { yesterday: dk(now - DAY), sameMonth: new Date(now - DAY).getMonth() === new Date(now).getMonth() };
+    // the calendar shows this (Monday-start) week: on a Monday, yesterday belongs to last week and is not drawn
+    return { yesterday: dk(now - DAY), sameMonth: new Date(now - DAY).getMonth() === new Date(now).getMonth(), sameWeek: new Date(now).getUTCDay() !== 1 };
   });
   await page.reload({ waitUntil: 'networkidle' });
   await page.evaluate(() => document.fonts && document.fonts.ready);
@@ -1088,7 +1089,7 @@ async function engagement(browser, layout) {
   const sp = await J(page, (y) => ({ cur: document.querySelector('#streak-cur b').textContent, next: (document.querySelector('#streak-next') || {}).textContent, played: document.querySelectorAll('.cal-day.played').length,
     shield: !!document.querySelector(`.cal-day.shield[data-day="${y}"]`), line: document.querySelector('#shield-line').textContent }), seed.yesterday);
   check(sp.cur === '2' && sp.next === '1 day to a crate', `Streak panel: ${sp.cur} days, "${sp.next}"`);
-  check(!seed.sameMonth || (sp.shield && /used/.test(sp.line)), `calendar marks the shield day (${seed.yesterday}): ${sp.shield}, "${sp.line}"`);
+  check(!seed.sameMonth || !seed.sameWeek || (sp.shield && /used/.test(sp.line)), `calendar marks the shield day (${seed.yesterday}): ${sp.shield}, "${sp.line}"${seed.sameWeek ? '' : ' (Monday: yesterday is last week, not drawn)'}`);
   await shot(page, layout, 'e03-streak-panel');
   await layoutAudit(page, layout.insets, 'streak panel');
   await page.click('#panel-streak [data-close]');

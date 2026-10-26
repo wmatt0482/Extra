@@ -822,7 +822,7 @@ await atest('POST creates a family (201); GET returns it with its players; a sec
   assert.equal(r.status, 201); assert.equal(r.json.rev, 1);
   const g = await call(st, 'GET', `/api/family/${CODE}`);
   assert.equal(g.status, 200); assert.equal(g.json.family.rev, 1); assert.equal(g.json.family.data.players[0].name, 'Mia');
-  assert.deepEqual(g.json.players, { pmia: { save: null, words: null, tb: null, facts: null } });
+  assert.deepEqual(g.json.players, { pmia: { save: null, words: null, tb: null, facts: null, ff: null, fracs: null } });
   assert.equal((await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()))).status, 409);
   assert.equal((await call(memoryStore(), 'POST', `/api/family/${CODE}`, doc(2, famData()))).status, 400, 'a new family starts at rev 1');
 });
@@ -879,10 +879,22 @@ await atest('v3.6.3: Trail Blazer keys <id>.tb and <id>.facts store with the sam
   assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.tb`, doc(2, { cash: 950 }))).status, 200);
   assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(1, { cash: 5 }))).status, 200);
   const g = await call(st, 'GET', `/api/family/${CODE}`);
-  assert.deepEqual(Object.keys(g.json.players.pmia), ['save', 'words', 'tb', 'facts']);
+  assert.deepEqual(Object.keys(g.json.players.pmia), ['save', 'words', 'tb', 'facts', 'ff', 'fracs']);
   assert.equal(g.json.players.pmia.tb.data.cash, 950); assert.equal(g.json.players.pmia.tb.rev, 2); assert.equal(g.json.players.pmia.facts.data.v, 4);
   assert.equal(g.json.players.pmia.save.data.cash, 5, "Spell Jump's save is untouched by the Trail Blazer keys");
-  assert.deepEqual(g.json.players.pleo, { save: null, words: null, tb: null, facts: null });
+  assert.deepEqual(g.json.players.pleo, { save: null, words: null, tb: null, facts: null, ff: null, fracs: null });
+});
+await atest('Fraction Fright keys <id>.ff and <id>.fracs: PUT accepted with the same rev rules; GET carries them next to the others', async () => {
+  const st = memoryStore();
+  await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData([{ id: 'pmia', name: 'Mia' }])));
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.ff`, doc(1, { v: 1, cash: 240, cures: 12 }))).status, 200);
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.fracs`, doc(1, { v: 1, records: {} }))).status, 200);
+  const stale = await call(st, 'PUT', `/api/family/${CODE}/pmia.ff`, doc(1, { cash: 1 }));
+  assert.equal(stale.status, 409); assert.equal(stale.json.doc.data.cash, 240);
+  assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.ff`, doc(2, { v: 1, cash: 360, cures: 15 }))).status, 200);
+  const g = await call(st, 'GET', `/api/family/${CODE}`);
+  assert.equal(g.json.players.pmia.ff.rev, 2); assert.equal(g.json.players.pmia.ff.data.cash, 360); assert.equal(g.json.players.pmia.fracs.data.v, 1);
+  assert.equal(g.json.players.pmia.tb, null); assert.equal(g.json.players.pmia.save, null);
 });
 console.log('sync: protocol validation (400) and size cap');
 await atest('bad family codes are 400', async () => {
@@ -893,7 +905,7 @@ await atest('bad family codes are 400', async () => {
 await atest('bad keys are 400 (family | <id>.save | .words | .tb | .facts, id a-z 0-9 _ - up to 32)', async () => {
   const st = memoryStore();
   await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()));
-  for (const k of ['Mia.save', 'pmia.notes', 'pmia', 'a'.repeat(33) + '.save', 'p mia.words', '.save', 'families', 'Mia.tb', 'pmia.fact', '.facts', 'pmia.tbx']) {
+  for (const k of ['Mia.save', 'pmia.notes', 'pmia', 'a'.repeat(33) + '.save', 'p mia.words', '.save', 'families', 'Mia.tb', 'pmia.fact', '.facts', 'pmia.tbx', 'pmia.ffx', 'Mia.ff', 'pmia.frac', '.fracs']) {
     assert.equal((await call(st, 'PUT', `/api/family/${CODE}/${encodeURIComponent(k)}`, doc(1, {}))).status, 400, k);
   }
   assert.equal((await call(st, 'PUT', `/api/family/${CODE}/${'a'.repeat(32)}.save`, doc(1, {}))).status, 200, '32 chars is fine');
@@ -1643,7 +1655,8 @@ await atest('counters and the version spread: one doc per UTC day (day/<yyyy-mm-
   const d = await dayDoc(deps);
   assert.deepEqual(d.sj, { devices: 3, runs: 2, tests: 1, lists: 1, versions: { '3.7.2': 2, '3.7.1': 1 } });
   assert.deepEqual(d.tb, { devices: 1, races: 1, checks: 1, versions: { '1.6.3': 1 } });
-  assert.deepEqual(d.fams, { sj: [], tb: [] });
+  assert.deepEqual(d.ff, { devices: 0, waves: 0, labs: 0, checks: 0, versions: {} });
+  assert.deepEqual(d.fams, { sj: [], tb: [], ff: [] });
   assert.deepEqual([...deps.store.map.keys()], ['day/2026-10-22']);
   // the next UTC day is a new doc
   const deps2 = { ...deps, now: () => ST_NOW + 86400000 };
@@ -1662,7 +1675,7 @@ await atest('families: hashes dedupe per game and cap at 500 a day; the stored d
   await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h, kind: 'run' }));
   await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h, game: 'trail-blazer', kind: 'race' }));
   let d = await dayDoc(deps);
-  assert.deepEqual(d.fams, { sj: [h], tb: [h] });
+  assert.deepEqual(d.fams, { sj: [h], tb: [h], ff: [] });
   for (let i = 0; i < 520; i++) await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: i.toString(16).padStart(8, '0'), kind: 'run' }));
   d = await dayDoc(deps);
   assert.equal(d.fams.sj.length, 500, 'capped at 500'); assert.equal(new Set(d.fams.sj).size, 500);
@@ -1688,6 +1701,23 @@ await atest('concurrent writes: a conditional set that fails is retried on a fre
   const down = { async getJSON() { throw new Error('blobs down'); }, async setJSON() { throw new Error('blobs down'); } };
   assert.equal((await scall(stDeps({ store: down }), 'POST', '/api/stats/ping', pingBody())).status, 204, 'a store error never reaches the game');
 });
+await atest('Fraction Fright pings: day / wave / lab / check counted under ff (versions, family hashes); its kinds only; an older doc reads with an empty ff', async () => {
+  const deps = stDeps();
+  const ff = (o) => scall(deps, 'POST', '/api/stats/ping', { game: 'fraction-fright', v: '1.0.0', kind: 'day', fam: '', ...o });
+  assert.equal((await ff({})).status, 204);
+  await ff({ kind: 'wave', fam: '0badcafe' }); await ff({ kind: 'wave' }); await ff({ kind: 'lab' }); await ff({ kind: 'check' });
+  assert.equal((await ff({ kind: 'race' })).status, 400, 'a Trail Blazer kind from Fraction Fright');
+  assert.equal((await ff({ kind: 'run' })).status, 400);
+  assert.equal((await scall(deps, 'POST', '/api/stats/ping', pingBody({ game: 'trail-blazer', kind: 'wave' }))).status, 400, 'wave is Fraction Fright only');
+  const d = await dayDoc(deps);
+  assert.deepEqual(d.ff, { devices: 1, waves: 2, labs: 1, checks: 1, versions: { '1.0.0': 1 } });
+  assert.deepEqual(d.fams.ff, ['0badcafe']);
+  assert.deepEqual(ST.normalizeDay({ sj: { devices: 2 }, tb: {}, fams: { sj: [], tb: [] } }).ff, { devices: 0, waves: 0, labs: 0, checks: 0, versions: {} });
+  const r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=7' });
+  assert.equal(r.json.days[0].ff.waves, 2); assert.equal(r.json.days[0].famsFf, 1);
+  assert.equal(r.json.totals.last7.ff.labs, 1); assert.equal(r.json.totals.last7.famsFf, 1); assert.equal(r.json.totals.last7.families, 1);
+  assert.deepEqual(r.json.versions.ff, { '1.0.0': 1 });
+});
 await atest('GET /api/stats: no STATS_KEY → 503 no-key; a wrong key → 403; the right key → days, totals, families total, versions', async () => {
   let r = await scall(stDeps({ key: '' }), 'GET', '/api/stats', undefined, { search: '?key=x' });
   assert.equal(r.status, 503); assert.equal(r.json.error, 'no-key');
@@ -1710,7 +1740,7 @@ await atest('GET /api/stats: no STATS_KEY → 503 no-key; a wrong key → 403; t
   assert.equal(j.totals.last7.sj.devices, 1); assert.equal(j.totals.last30.sj.devices, 2); assert.equal(j.totals.last7.tb.devices, 1);
   assert.equal(j.totals.last7.families, 1, 'the same family in both games counts once'); assert.equal(j.totals.last30.families, 2);
   assert.deepEqual(j.families, { total: 3 });
-  assert.deepEqual(j.versions, { sj: { '3.7.2': 1, '3.7.1': 1 }, tb: { '1.6.3': 1 } });
+  assert.deepEqual(j.versions, { sj: { '3.7.2': 1, '3.7.1': 1 }, tb: { '1.6.3': 1 }, ff: {} });
   assert.equal(j.generatedAt, new Date(ST_NOW).toISOString());
   r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=7' });
   assert.equal(r.json.days.length, 7); assert.equal(r.json.totals.last30.sj.devices, 2, 'last30 is still 30 days');

@@ -41,7 +41,11 @@ try {
   const doc = await getStore({ name: 'stats', consistency: 'strong' }).get(`day/${today}`, { type: 'json' });
   ok(doc && doc.sj.devices === 1 && doc.sj.runs === 1 && doc.sj.versions['3.7.2'] === 1 && doc.tb.devices === 1 && doc.tb.races === 1,
     `day/${today} counts devices, runs and races (${JSON.stringify({ sj: doc && doc.sj, tb: doc && doc.tb })})`);
-  ok(JSON.stringify(doc.fams) === JSON.stringify({ sj: [fam], tb: [] }), 'the family hash is kept once, under Spell Jump');
+  ok(JSON.stringify(doc.fams) === JSON.stringify({ sj: [fam], tb: [], ff: [] }), 'the family hash is kept once, under Spell Jump');
+  await call('POST', '/api/stats/ping', { game: 'fraction-fright', v: '1.0.0', kind: 'day', fam });
+  await call('POST', '/api/stats/ping', { game: 'fraction-fright', v: '1.0.0', kind: 'wave', fam });
+  const doc2 = await getStore({ name: 'stats', consistency: 'strong' }).get(`day/${today}`, { type: 'json' });
+  ok(doc2.ff.devices === 1 && doc2.ff.waves === 1 && doc2.ff.versions['1.0.0'] === 1 && JSON.stringify(doc2.fams.ff) === JSON.stringify([fam]), 'Fraction Fright pings count under ff (devices, waves, version, family hash)');
   r = await call('POST', '/api/stats/ping', { game: 'spell-jump', v: '3.7.2', kind: 'race', fam: '' }); ok(r.status === 400, 'a Trail Blazer kind from Spell Jump → 400');
   r = await call('POST', '/api/stats/ping', JSON.stringify({ game: 'spell-jump', v: '3.7.2', kind: 'day', pad: 'x'.repeat(2000) })); ok(r.status === 400, 'a body over 1 KB → 400');
   delete process.env.STATS_KEY;
@@ -55,7 +59,8 @@ try {
   ok(r.status === 200 && r.cc === 'no-store' && r.json.days.length === 30 && r.json.days[0].day === today, 'the right key → 200, 30 days newest first, no-store');
   ok(r.json.days[0].sj.devices === 1 && r.json.days[0].famsSj === 1 && r.json.totals.last7.tb.races === 1 && r.json.totals.last30.families === 1, 'days and totals carry the counts');
   ok(r.json.families.total === 2, `families total counts the <CODE>/family keys (${r.json.families.total})`);
-  ok(r.json.versions.sj['3.7.2'] === 1 && r.json.versions.tb['1.6.3'] === 1, 'the version spread');
+  ok(r.json.versions.sj['3.7.2'] === 1 && r.json.versions.tb['1.6.3'] === 1 && r.json.versions.ff['1.0.0'] === 1, 'the version spread (all three games)');
+  ok(r.json.days[0].ff.waves === 1 && r.json.days[0].famsFf === 1 && r.json.totals.last7.ff.devices === 1, 'Fraction Fright in days and totals');
 } finally {
   await server.stop();
   rmSync(dir, { recursive: true, force: true });

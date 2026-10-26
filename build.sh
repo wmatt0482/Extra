@@ -4,6 +4,7 @@
 #   car-jump/      -> dist/spell-jump/    (the Spell Jump game, minus dev-only files)
 #   trail-blazer/  -> dist/trail-blazer/  (the Trail Blazer game, same excludes; it imports a few Spell Jump modules
 #                                          from /spell-jump/ at runtime)
+#   fraction-fright/ -> dist/fraction-fright/ (the Fraction Fright game, same excludes; same shared Spell Jump modules)
 # The repo-root `spell-jump -> car-jump` symlink is for local dev servers only: it is never followed or copied here.
 # Netlify runs this as the build command (netlify.toml); run it locally the same way: bash build.sh
 set -euo pipefail
@@ -32,9 +33,12 @@ copy_game() {
 }
 copy_game "$root/car-jump" "$out/spell-jump"
 copy_game "$root/trail-blazer" "$out/trail-blazer"
+copy_game "$root/fraction-fright" "$out/fraction-fright"
 
 for required in index.html why/index.html stats/index.html spell-jump/index.html spell-jump/sw.js spell-jump/manifest.webmanifest spell-jump/icons/favicon.png \
-    trail-blazer/index.html trail-blazer/sw.js trail-blazer/manifest.webmanifest trail-blazer/icons/favicon.png; do
+    trail-blazer/index.html trail-blazer/sw.js trail-blazer/manifest.webmanifest trail-blazer/icons/favicon.png \
+    fraction-fright/index.html fraction-fright/sw.js fraction-fright/manifest.webmanifest fraction-fright/icons/favicon.png \
+    fraction-fright/src/main.js fraction-fright/src/game/engine.js; do
   [[ -f "$out/$required" ]] || { echo "build.sh: missing dist/$required" >&2; exit 1; }
 done
 

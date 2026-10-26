@@ -133,7 +133,7 @@ Nothing has to be set up twice.
   ×11"), the dial race by race, what auto mode is working on, the slowest
   facts, this week's races (right / quick / fixed), and **Copy report** (plain text for a teacher).
 - **Players**: rename, reset a player's facts data, reset their Trail Blazer progress on this device, or remove a
-  player (removes them from the family in both games).
+  player (removes them from the family in every game).
 
 Trail Blazer's own progress is stored per device: `trailBlazer.<playerId>.save` (cash, upgrades, medals, best times,
 paint) and `trailBlazer.<playerId>.facts` (this week's set, every fact's record, today's mission, XP, the math
