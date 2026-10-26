@@ -14,6 +14,32 @@ import { dayKey } from '../spelling/scheduler.js';
 
 const WEEKS = [
   {
+    id: 'class-2026-10-26',
+    name: 'Week of Oct 26 · digraphs',
+    weekOf: '2026-10-26',
+    pattern: 'tch ch th sh wh ph',
+    words: `
+thirty | thir/ty | My aunt turned thirty last week.
+width | width | Measure the width of the table.
+fifth | fifth | She finished in fifth place.
+choose | choose | You can choose any book you like.
+touch | touch | Please don't touch the wet paint.
+chef | chef | The chef made a giant pizza.
+chance | chance | Give me one more chance to try.
+pitcher | pitch/er | The pitcher threw a fast ball.
+kitchen | kitch/en | We baked cookies in the kitchen.
+snatch | snatch | The seagull tried to snatch my sandwich.
+stretch | stretch | Stretch your legs before the race.
+rush | rush | Don't rush, we have plenty of time.
+whine | whine | The puppy began to whine at the door.
+whirl | whirl | The leaves whirl in the wind.
+graph | graph | We made a graph of our favorite fruits.
+ground | ground | The ball rolled across the ground.
+fall | fall | Leaves fall from the trees in October.
+music | mu/sic | We played music at the party.
+`,
+  },
+  {
     id: 'class-2026-10-19',
     name: 'Week of Oct 19 · prefixes',
     weekOf: '2026-10-19',
