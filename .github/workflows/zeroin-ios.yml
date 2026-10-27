@@ -74,8 +74,9 @@ jobs:
       - name: Simulator screenshots
         run: bash tools/simulator_screenshots.sh build
 
+      # Only manual runs commit screenshots, so ordinary pushes don't add a commit each time.
       - name: Commit screenshots to the branch
-        if: success()
+        if: success() && github.event_name == 'workflow_dispatch'
         run: |
           mkdir -p docs/screenshots/ci
           cp screenshots/*.png docs/screenshots/ci/
