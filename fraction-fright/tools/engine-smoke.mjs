@@ -9,12 +9,15 @@
 //   4. big wave (3 at once + bigWave) and final wave (finalWave), reduced motion (no slow-mo);
 //   5. a zombie that reaches the fence: knock → reached (a pumpkin), the wave continues, stop() → waveEnd stopped;
 //   6. the 0–3 road: every whole + ½ labelled, throwAt maps across the span; a portrait pass; perf at 4x CPU throttle;
+//  11. Blast (SPEC §15, 1.3): a hit squashes the zombie and blasts it into parts that bounce and fade, the heap melts into
+//      a puddle, blast words, frost shatters into the blast, the boss loses its hat then an arm then blasts big, the
+//      finale is a goo lake with the hats; gentle=1 keeps the cure; a kid-rule word audit over the sources;
 //   7. the Horde (SPEC §13): columns (x01 = target), hidden before EMERGE / seen after, the fog flag, multi-live
 //      resolution (a throw at a non-focused zombie's spot cures it), twins cured by one throw, setFocus, the boss (3 hits,
 //      forms, bossHit, knock-back), combo counting / reset / mega, every grenade type + dog + lantern, the finale.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -469,6 +472,114 @@ try {
     if (grenade === 'frost') { const z = (await info(page)).zombies; check(z.some((q) => q.state === 'thanks' || q.state === 'home' || q.state === 'gone') || true, 'frost: the frozen zombie shattered into the neighbour'); }
     check(errors.length === 0, `${grenade}: no console errors (${errors.join(' | ')})`);
     await context.close();
+  }
+  // ======== 11. Blast (1.3, SPEC §15): the squash, the parts, the heap and puddle, the words; frost; the boss; Gentle ========
+  {
+    const { page, context, errors } = await open(browser, { n: '3' });
+    check((await state(page)).gentle === false && (await info(page)).gentle === false, 'Blast is the default: getState().gentle false');
+    await stepUntil(page, 'i >= 60 * 13', 14);
+    const e = await throwAndLand(page, 0.75);
+    await stepUntil(page, "ev.some((e) => e.type === 'cured')", 3);
+    const d0 = await info(page);
+    const z0 = d0.zombies.find((z) => z.item === 'q34');
+    const snd = (await events(page, 'sound')).map((x) => x.name);
+    check(e && e.result === 'bull' && snd.includes('blastBig') && !snd.includes('cure'), `a bull blasts: sound blastBig, no cure sound (${snd.filter((n) => ['blast', 'blastBig', 'cure'].includes(n)).join(',')})`);
+    check(z0 && (z0.state === 'blast' || z0.state === 'heap') && d0.parts.length >= 6 && ['hat', 'boot0', 'boot1', 'armL', 'armR', 'head'].every((k) => d0.parts.some((p) => p.kind === k)), `the zombie squashes (${z0 && z0.state}) and its parts fly: ${d0.parts.map((p) => p.kind).join(', ')}`);
+    check(d0.popups.some((t) => /^(ZAPPED!|SPLAT!|BLASTED!)$/.test(t)), `a blast word pops (${d0.popups.join(' | ')})`);
+    await stepUntil(page, 'i >= 12', 1);
+    await shot(page, '24-blast');
+    const dm = await stepUntil(page, "d.zombies.some((z) => z.item === 'q34' && z.state === 'heap')", 1);
+    check(dm.hit && (await events(page, 'sound')).some((x) => x.name === 'melt'), 'then the heap melts (sound melt)');
+    await stepUntil(page, 'i >= 40', 1);
+    await shot(page, '25-blast-melt');
+    const dp = await stepUntil(page, 'd.puddles.length >= 1', 2);
+    const d1 = await info(page);
+    check(dp.hit && d1.puddles.length === 1 && !d1.zombies.some((z) => z.item === 'q34'), `a puddle stays on the lane and the zombie is gone (${d1.puddles.length} puddle)`);
+    check(d1.parts.some((p) => p.bounced) && (await events(page, 'sound')).some((x) => x.name === 'part'), 'the parts bounced on the lane (sound part)');
+    const partSounds = (await events(page, 'sound')).filter((x) => x.name === 'part').length;
+    check(partSounds <= 3, `≤ 3 part sounds per blast (${partSounds})`);
+    await stepUntil(page, 'd.parts.length === 0', 3);
+    check((await info(page)).parts.length === 0, 'the parts fade away');
+    check(!d1.zombies.some((z) => z.state === 'thanks' || z.state === 'home'), 'no neighbour walks home in Blast');
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // frost in Blast: the freeze first, then the shatter blasts
+  {
+    const { page, context, errors } = await open(browser, { grenade: 'frost', n: '3' });
+    await stepUntil(page, 'i >= 60 * 13', 14);
+    await throwAndLand(page, 0.75);
+    await stepUntil(page, "ev.some((e) => e.type === 'cured')", 3);
+    const dz = (await info(page)).zombies.find((z) => z.item === 'q34');
+    check(dz && dz.state === 'freeze' && (await info(page)).parts.length === 0, `frost: frozen first (${dz && dz.state}), no parts yet`);
+    await stepUntil(page, "ev.some((e) => e.type === 'sound' && e.name === 'shatter')", 2);
+    await stepUntil(page, 'i >= 3', 1);
+    const d2 = await info(page);
+    const names = (await events(page, 'sound')).map((x) => x.name);
+    check(d2.parts.length >= 6 && names.includes('shatter') && (names.includes('blast') || names.includes('blastBig')), `the shatter blasts: ${d2.parts.length} parts, sounds ${names.filter((n) => ['frost', 'shatter', 'blast', 'blastBig'].includes(n)).join(',')}`);
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // the boss in Blast: hat off, arm off, then the big blast with the sash; the finale lake
+  {
+    const { page, context, errors } = await open(browser, { boss: '1', n: '2', final: '1' });
+    await page.evaluate(() => window.__ff.game.setFocus('boss'));
+    await stepUntil(page, 'i >= 60 * 9', 10);
+    await throwAndLand(page, 0.9);
+    await stepUntil(page, "ev.some((e) => e.type === 'bossHit')", 2);
+    const dh = await info(page);
+    check(dh.parts.some((p) => p.kind === 'hat') && dh.popups.includes('HAT OFF!'), `hit 1: the hat flies off (${dh.parts.map((p) => p.kind).join(',')})`);
+    await stepUntil(page, 's.live.some((z) => z.boss && z.seen)', 25);
+    await throwAndLand(page, 0.9);
+    await stepUntil(page, "ev.filter((e) => e.type === 'bossHit').length >= 2", 2);
+    const da = await info(page);
+    check(da.parts.some((p) => p.kind === 'armL') && da.popups.includes('ARM OFF!'), `hit 2: an arm flies off (${da.parts.map((p) => p.kind).join(',')})`);
+    await stepUntil(page, 'i >= 60', 2);
+    await stepUntil(page, "s.phase === 'wave' && !s.inFlight", 3);
+    await throwAndLand(page, 0.9);
+    await stepUntil(page, "ev.some((e) => e.type === 'cured' && e.item.id === 'boss')", 2);
+    await stepUntil(page, 'i >= 8', 1);
+    const db = await info(page);
+    const bsnd = (await events(page, 'sound')).map((x) => x.name);
+    check(db.parts.some((p) => p.kind === 'sash') && db.parts.some((p) => p.kind === 'head') && !db.parts.some((p) => p.kind === 'hat' && p.y < 0) && bsnd.includes('blastBig') && db.popups.includes('BLASTED!'), `hit 3: the big blast (sash + head fly, blastBig, BLASTED!)`);
+    await shot(page, '26-boss-blast');
+    // the other zombie: the finale is a goo lake with the hats
+    await page.evaluate(() => new Promise((resolve) => {
+      const g = window.__ff.game;
+      for (let i = 0; i < 60 * 40; i++) { const s = g.debugStep(1); if (s.phase === 'wave' && s.target && !s.inFlight) g.throwAt((s.target.target - s.road.from) / (s.road.to - s.road.from)); if (s.phase === 'finale') { g.debugStep(100); break; } }
+      resolve();
+    }));
+    const df = await info(page);
+    check(df.phase === 'finale' && df.blastHats >= 1 && df.puddles.length >= 1, `the finale: a goo lake with ${df.blastHats} hat(s) bobbing, ${df.puddles.length} puddle(s)`);
+    await shot(page, '27-finale-lake');
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // Gentle mode: exactly the cure
+  {
+    const { page, context, errors } = await open(browser, { n: '3', gentle: '1' });
+    check((await state(page)).gentle === true, 'gentle=1: getState().gentle true');
+    await stepUntil(page, 'i >= 60 * 13', 14);
+    await throwAndLand(page, 0.75);
+    await stepUntil(page, "ev.some((e) => e.type === 'cured')", 3);
+    const dg = await info(page);
+    const gz = dg.zombies.find((z) => z.item === 'q34');
+    const gs = (await events(page, 'sound')).map((x) => x.name);
+    check(gz && gz.state === 'cure' && dg.parts.length === 0 && gs.includes('cure') && !gs.includes('blast') && !gs.includes('blastBig'), `Gentle: the cure launch, no parts, sound cure (${gz && gz.state})`);
+    const gh = await stepUntil(page, "d.zombies.some((z) => z.item === 'q34' && (z.state === 'thanks' || z.state === 'home'))", 3);
+    check(gh.hit && (await info(page)).puddles.length === 0, 'Gentle: the neighbour says thanks and walks home, no puddle');
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // the kid-rule word audit over everything the engine side can draw
+  {
+    const files = ['src/game/engine.js', 'src/game/zombies.js', 'src/game/render.js', 'src/game/road.js', 'src/game/bonus.js', 'src/game/critters.js', 'src/data/zombies.js'];
+    // string literals only (comments stripped), minus console messages (never drawn)
+    const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/([;{}])\s*\/\/.*$/gm, '$1');
+    const strings = files.flatMap((f) => [...strip(readFileSync(path.join(REPO, 'fraction-fright', f), 'utf8')).matchAll(/(['"`])((?:\\.|(?!\1).)*)\1/g)].map((m) => m[2])).filter((s) => !/^\[(engine|bonus)\]/.test(s));
+    const BANNED_SRC = /\b(kill(s|ed|ing)?|die[sd]?|dying|dead|death|blood|gore|lives|wrong|timer|countdown|hurry|game over|lose|lost|fail(ed)?)\b/i;
+    const bad = strings.filter((s) => BANNED_SRC.test(s));
+    check(bad.length === 0, `kid-rule word audit over the engine, zombies, bonus and critters strings (${bad.length ? bad.join(' | ') : 'clean'})`);
   }
 } catch (e) {
   failures.push('exception: ' + e.message);

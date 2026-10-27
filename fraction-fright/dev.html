@@ -88,7 +88,7 @@ if (q.get('boss') === '1') items.push({ id: 'boss', kind: 'boss', name: 'Mayor M
 const road = roadTo === 3
   ? { from: 0, to: 3, labels: ['0', '½', '1', '2', '3'], ticks: [0.25, 0.75, 1.25, 1.5, 1.75, 2.25, 2.5, 2.75].map((at) => ({ at })), landmarks: [{ at: 0.5, kind: 'grave' }, { at: 1.5, kind: 'lantern' }, { at: 2.5, kind: 'tree' }] }
   : { from: 0, to: 1, labels: ['0', '½', '1'], ticks: [0.125, 0.25, 0.375, 0.625, 0.75, 0.875].map((at) => ({ at })), landmarks: [{ at: 0.15, kind: 'grave' }, { at: 0.86, kind: 'tree' }] };
-const look = { goo: q.get('goo') || '#8cff1a', fence: q.get('fence') || 'iron', pumpkins: 5, grenade: q.get('grenade') || 'slime', dog: q.get('dog') === '1', lantern: q.get('lantern') === '1' };
+const look = { goo: q.get('goo') || '#8cff1a', fence: q.get('fence') || 'iron', pumpkins: 5, grenade: q.get('grenade') || 'slime', dog: q.get('dog') === '1', lantern: q.get('lantern') === '1', gentle: q.get('gentle') === '1' };
 const wave = { street: { id: roadTo === 3 ? 'pumpkin-hill' : 'maple', name: roadTo === 3 ? 'Pumpkin Hill' : 'Maple Street', weather: q.get('weather') || 'bats' }, number: num('wave', 1), zombies: items, big: q.get('big') === '1', final: q.get('final') === '1' };
 if (q.get('live') != null) wave.live = num('live', 2);
 const stats = { radius: tol, power: num('power', 1) };

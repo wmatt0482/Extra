@@ -58,6 +58,12 @@
 //            bestCombo, results: [{ id, kind, show, say, target, attempts, result, pae, bestPae, cured, reached, bull,
 //            results, seen }], cash: { cure, bull, effort, final, total } (parts add up; the app computes its own cash
 //            rows from the `throw` events and ignores this summary's cash), pumpkins, pumpkinsTaken, durationSec, stopped }
+//   1.3 Blast (SPEC §15): look.gentle (default false). Blast: a hit squashes the zombie and blasts it into cartoon parts
+//   (hat, boots, arms, head; the boss's sash) that bounce on the lane and fade; the torso melts into a goo puddle that
+//   stays for the wave (max 8); popups ZAPPED! / SPLAT! / BLASTED!; the boss loses its hat on hit 1 and an arm on hit 2;
+//   the finale is a goo lake with the hats bobbing. Gentle: the cure, the walk home, the neighbour line-up. Same
+//   events and cash either way; getState().gentle echoes the mode. Sounds added: blast, blastBig (boss / bull), melt,
+//   part (a part lands; ≤ 3 per blast).
 //   sound { name, vol }     audio hooks (the app owns audio): toss, boing, thunkBig, thunk, thunkSmall, plop, splat,
 //                           cure, knock, pumpkin, bigWave, finalWave, calm, waveEnd, lava, frost, shatter, disco, combo,
 //                           mega, bossStomp, bossHit, fireworks, mutter, bark.
@@ -72,7 +78,7 @@
 import { TAU, clamp, lerp, mulberry32, hashStr, withAlpha, shade, easeOut, denominatorOf } from './util.js';
 import { makeRoad, ticksForItem, drawRoadBand, drawNumberLine, drawRoadLabels, drawLandmarks, drawReticle, drawFlag, jumpPlan, drawJumps, drawNudge, roadPalette } from './road.js';
 import { planThrow, grenadeAt, arcPreview } from './grenade.js';
-import { makeZombie, stepZombie, cureZombie, drawZombie, drawCallMarker, drawBubble, pickLooks, MUTTERS, THANKS, BOSS_LINES } from './zombies.js';
+import { makeZombie, stepZombie, cureZombie, drawZombie, drawCallMarker, drawBubble, pickLooks, MUTTERS, THANKS, BOSS_LINES, blastZombie, makeParts, stepParts, drawParts, drawPuddle, drawHat, nextBlastWord } from './zombies.js';
 import * as R from './render.js';
 
 const STEP = 1 / 60;
@@ -85,6 +91,7 @@ const GRENADES = ['slime', 'lava', 'frost', 'disco'];
 const TYPE_COLOR = { lava: '#ff7a1a', frost: '#9fe8ff', disco: '#ff3cac' };
 
 export const TUNING = {
+  maxPuddles: 8,
   bull: 0.015, tolerance: 0.10,
   shuffleSec: 20, shuffleStep: 1.5, shuffleMin: 14, bossSec: 45,
   emerge: 0.6, bossEmerge: 0.5, fadeP: 0.08,
@@ -215,7 +222,8 @@ export function createGame(canvas, opts = {}) {
     const items = [];
     for (let i = 0; i < (Array.isArray(wave.zombies) ? wave.zombies.length : 0); i++) { const it = itemArg(wave.zombies[i], i); if (it) items.push(it); }
     const number = clamp(Math.round(num(wave.number, 1)), 1, 99);
-    const look = { goo: '#8cff1a', fence: 'iron', pumpkins: 5, grenade: 'slime', dog: false, lantern: false, ...(cfg.look || {}) };
+    const look = { goo: '#8cff1a', fence: 'iron', pumpkins: 5, grenade: 'slime', dog: false, lantern: false, gentle: false, ...(cfg.look || {}) };
+    look.gentle = !!look.gentle;   // 1.3 (SPEC §15): Gentle mode cures; the default blasts
     if (typeof look.goo !== 'string') look.goo = '#8cff1a';
     if (!GRENADES.includes(look.grenade)) look.grenade = 'slime';
     const stats = { radius: clamp(num(cfg.stats && cfg.stats.radius, T.tolerance), 0.01, 0.5), power: clamp(num(cfg.stats && cfg.stats.power, 1), 0.6, 2) };
@@ -231,7 +239,7 @@ export function createGame(canvas, opts = {}) {
       target: null, targetKey: '', focusId: null, calmT: 0, finaleT: 0,
       throws: [], cured: 0, reached: 0, bulls: 0, hits: 0, nears: 0, misses: 0, cash: { cure: 0, bull: 0, effort: 0 }, combo: 0, bestCombo: 0,
       pumpkins: Math.max(0, Math.round(num(look.pumpkins, 5))), pumpkinsTaken: 0, pumpkinGlow: 0,
-      popups: [], particles: R.makeParticles(MAX_PARTICLES), splats: [], curedLooks: [],
+      popups: [], particles: R.makeParticles(MAX_PARTICLES), splats: [], curedLooks: [], parts: [], puddles: [], blastHats: [],
       shake: 0, sx: 0, sy: 0, flash: 0, flashCol: '#ffffff', banner: null, bubble: null, megaT: 0, bark: 0, fireT: 0,
       kidArm: 0, kidArmT: -1, ticksAlpha: 0, ticksCache: null, previewPlan: null, nudge: null, summary: null, ended: false, lastThrow: null,
       road: null, pal: null, scene: null, bd: null, fl: null, lw: 2, zh: 60, laneY: 0, farY: 0, kid: null, gr: 10,
@@ -452,6 +460,15 @@ export function createGame(canvas, opts = {}) {
       z.say = { text: BOSS_LINES[(it.hits - it.hitsLeft - 1) % BOSS_LINES.length], t: 0, life: 1.4 };
       sound('bossHit');
       const x = zx(r, z), y = yAt(r, z.p), h = zh(r, z);
+      if (!r.look.gentle) { // Blast: the first hit knocks the hat off, the second an arm
+        const lost = !z.hatGone ? 'hat' : !z.armGone ? 'armL' : null;
+        if (lost) {
+          const parts = makeParts(z, x, y, h, r.rand, true, y + 2).filter((q) => q.kind === lost);
+          if (lost === 'hat') z.hatGone = true; else z.armGone = true;
+          r.parts.push(...parts);
+          popup(r, lost === 'hat' ? 'HAT OFF!' : 'ARM OFF!', x - h * 0.4, y - h - 6, '#9dff2e', 0.9, 1.1, 24, -0.06);
+        }
+      }
       popup(r, `${it.hitsLeft} TO GO`, x, y - h - 26, '#ff8a1f', 1.1, 1.3, 26, 0.05);
       burst(r, x, y - h * 0.5, reducedMotion ? 8 : 18, gooOf(r), y + 2, 240);
       if (!reducedMotion) r.shake = Math.max(r.shake, 0.6);
@@ -463,6 +480,7 @@ export function createGame(canvas, opts = {}) {
   }
   function cureNow(r, z, result, pae) {
     if (!targetable(z)) return;
+    if (!r.look.gentle) { blastNow(r, z, result, pae); return; }
     const x = zx(r, z), h = zh(r, z), y = yAt(r, z.p);
     const type = r.look.grenade;
     cureZombie(z, { x, y: y - h * 1.05 }, { freeze: type === 'frost', dance: type === 'disco', big: z.boss });
@@ -479,6 +497,42 @@ export function createGame(canvas, opts = {}) {
     for (let i = 0; i < n; i++) { const a = r.rand() * TAU, v = 60 + r.rand() * 160; R.spawnParticle(ps, i % 3 === 0 ? R.P_STAR : type === 'disco' ? R.P_CONFETTI : R.P_GOO, x, y - h * 0.5, Math.cos(a) * v, Math.sin(a) * v - 80, 0.6 + r.rand() * 0.4, i % 3 === 0 ? 5 : 2 + r.rand() * 3, i % 3 === 0 ? '#ffd23f' : col || RAINBOW[i % RAINBOW.length], 500, y + 2); }
     emit({ type: 'cured', item: itemOut(z.item), result, pae });
     resolveZombieItem(r);
+  }
+  // 1.3 Blast (SPEC §15.1): the zombie squashes, bursts into cartoon parts and melts into a puddle. Same events and
+  // cash as the cure; frost freezes first and the parts fly at the shatter.
+  function blastNow(r, z, result, pae) {
+    const x = zx(r, z), h = zh(r, z), y = yAt(r, z.p);
+    const type = r.look.grenade;
+    blastZombie(z, { freeze: type === 'frost', big: z.boss, goo: gooOf(r), floorY: y + 2 });
+    if (z.boss) z.item.hitsLeft = 0;
+    r.cured++;
+    z.item.cured = true;
+    r.curedLooks.push(z.look);
+    r.blastHats.push({ hat: z.hat, look: z.look, x, u: h / 60 });
+    if (type === 'frost') sound('frost');
+    else blastFx(r, z, result, x, y, h);
+    emit({ type: 'cured', item: itemOut(z.item), result, pae });
+    resolveZombieItem(r);
+  }
+  function blastFx(r, z, result, x, y, h) {
+    const big = !!z.boss, type = r.look.grenade, goo = gooOf(r);
+    r.parts.push(...makeParts(z, x, y, h, r.rand, big, y + 2));
+    if (r.parts.length > 60) r.parts.splice(0, r.parts.length - 60);
+    z.partSounds = 0;
+    sound(big || result === 'bull' ? 'blastBig' : 'blast');
+    if (type === 'disco') sound('disco');
+    if (type === 'lava') sound('lava', 0.6);
+    const ps = r.particles, n = (reducedMotion ? 10 : 22) * (big ? 1.6 : 1);
+    for (let i = 0; i < n; i++) {
+      const a = -Math.PI * (0.05 + r.rand() * 0.9), v = (120 + r.rand() * 260) * (big ? 1.3 : 1);
+      if (type === 'disco') R.spawnParticle(ps, R.P_CONFETTI, x, y - h * 0.5, Math.cos(a) * v, Math.sin(a) * v, 0.9 + r.rand() * 0.6, 3 + r.rand() * 3, RAINBOW[i % RAINBOW.length], 500, y + 2);
+      else R.spawnParticle(ps, R.P_GOO, x, y - h * 0.5, Math.cos(a) * v, Math.sin(a) * v, 0.6 + r.rand() * 0.5, 2.5 + r.rand() * 3.5, i % 4 === 0 ? shade(goo, -0.35) : goo, 900, y + 2);
+    }
+    for (let i = 0; i < (reducedMotion ? 4 : 10) * (big ? 2 : 1); i++) { const a = r.rand() * TAU, v = 100 + r.rand() * 200; R.spawnParticle(ps, R.P_STAR, x, y - h * 0.5, Math.cos(a) * v, Math.sin(a) * v - 60, 0.5 + r.rand() * 0.4, 4, '#ffd23f', 500, y + 2); }
+    R.spawnParticle(ps, R.P_RING, x, y - h * 0.45, 0, 0, 0.45, h * (big ? 1.4 : 0.9), goo, 0);
+    if (!reducedMotion) r.shake = Math.max(r.shake, big ? 0.9 : 0.5);
+    if (result === 'bull' || big) { r.flash = Math.max(r.flash, 0.3); r.flashCol = '#e9ffd0'; }
+    popup(r, big ? 'BLASTED!' : nextBlastWord(), x, y - h - 22, big ? '#ff8a1f' : '#9dff2e', big ? 1.5 : 1.15, 1.3, 30, (r.rand() - 0.5) * 0.16);
   }
   // the explosion reaches up the column from the road to the zombie: a goo geyser
   function geyser(r, x, y, z) {
@@ -643,10 +697,18 @@ export function createGame(canvas, opts = {}) {
         resolveZombieItem(r);
         focusChanged = true;
       } else if (ev === 'shatter') {
-        // frost: the ice block shatters into the neighbour
+        // frost: the ice block shatters into the neighbour (Gentle) or into parts (Blast)
         sound('shatter');
         const x = zx(r, z), y = yAt(r, z.p), h = zh(r, z);
         for (let k = 0; k < (reducedMotion ? 8 : 18); k++) { const a = r.rand() * TAU, v = 80 + r.rand() * 180; R.spawnParticle(r.particles, R.P_STAR, x, y - h * 0.5, Math.cos(a) * v, Math.sin(a) * v - 60, 0.5 + r.rand() * 0.4, 3 + r.rand() * 4, k % 2 ? '#ffffff' : '#9fe8ff', 700, y + 2); }
+        if (z.state === 'blast') blastFx(r, z, 'hit', x, y, h);
+      } else if (ev === 'melt') {
+        sound('melt', 0.7);
+      } else if (ev === 'puddle') {
+        const x = zx(r, z), h = zh(r, z);
+        r.puddles.push({ x, y: z.floorY, r: h * 0.42 * (z.big ? 1.5 : 1), goo: z.goo, t: 0, life: 0 });
+        while (r.puddles.filter((q) => !q.life).length > T.maxPuddles) { const old = r.puddles.find((q) => !q.life); old.life = old.t + 1; }
+        r.zombies.splice(i, 1); i--; continue;
       } else if (ev === 'gone') { r.zombies.splice(i, 1); i--; continue; }
       // chatter: visible zombies mutter every 5–9 s; a cured neighbour says its line once
       if (z.state === 'walk' && isSeen(z) && !z.say) {
@@ -697,6 +759,13 @@ export function createGame(canvas, opts = {}) {
     for (let i = 0; i < r.popups.length; i++) { const p = r.popups[i]; p.t += dt; if (p.t >= p.life) { r.popups.splice(i, 1); i--; } }
     for (let i = 0; i < r.splats.length; i++) { const sp = r.splats[i]; sp.t += dt; if (sp.t >= sp.life) { r.splats.splice(i, 1); i--; } }
     R.stepParticles(r.particles, dt);
+    if (r.parts.length) {
+      const landed = stepParts(r.parts, dt);
+      if (landed) { r.partSounds = (r.partSounds || 0) + landed; if (r.partSounds <= 3) sound('part', 0.5); }
+      for (let i = 0; i < r.parts.length; i++) if (r.parts[i].t >= r.parts[i].life) { r.parts.splice(i, 1); i--; }
+      if (!r.parts.length) r.partSounds = 0;
+    }
+    for (let i = 0; i < r.puddles.length; i++) { const q = r.puddles[i]; q.t += dt; if (q.life && q.t >= q.life) { r.puddles.splice(i, 1); i--; } }
     if (r.kidArmT >= 0) { r.kidArmT += STEP; r.kidArm = clamp(r.kidArmT / 0.35, 0, 1); if (r.kidArmT > 0.9) { r.kidArmT = -1; r.kidArm = 0; } }
     const want = r.target && hintFor(r.target) === 'ticks' && r.phase === 'wave' ? 1 : 0;
     r.ticksAlpha += (want - r.ticksAlpha) * Math.min(1, STEP * 6);
@@ -723,6 +792,9 @@ export function createGame(canvas, opts = {}) {
     if (r.bubble) { const k = r.bubble.t < 0.3 ? r.bubble.t / 0.3 : r.bubble.t > r.bubble.life - 0.25 ? (r.bubble.life - r.bubble.t) / 0.25 : 1; drawBubble(ctx, r.bubble.text, g.x + 74, g.y - g.h + 4, road.fontPx * 0.95, k, lw); } // beside the crow, clear of the HUD's street box
     if (r.final) drawGateFlag(ctx, g.x + 23, g.y - g.h - 2, t, lw);
     drawLandmarks(ctx, road, r.pal, t, lw);
+    // Blast: the puddles on the lane (under the zombies); the finale's goo lake
+    for (const q of r.puddles) drawPuddle(ctx, q, lw, t);
+    if (!r.look.gentle && (r.phase === 'finale' || (r.phase === 'calm' && r.final && r.blastHats.length))) drawGooLake(r, t, lw);
     // zombies in their columns, far ones first (hidden while p < EMERGE: drawZombie draws nothing at alpha 0)
     const cur = r.phase === 'wave' || r.phase === 'beat' ? focusZombie(r) : null;
     const order = r.zombies.slice().sort((a, b) => a.p - b.p);
@@ -771,7 +843,7 @@ export function createGame(canvas, opts = {}) {
       R.drawDog(ctx, dx, dy, clamp(r.zh * 0.34, 16, 30), t, lw, r.bark > 0);
       if (r.bark > 0) drawBubble(ctx, 'Woof!', dx, dy - r.zh * 0.36 - 8, road.fontPx * 0.7, r.bark / 0.9 > 0.7 ? (0.9 - r.bark) / 0.27 : 1, lw, view.W);
     }
-    if (r.phase === 'finale' || (r.phase === 'calm' && r.final && r.curedLooks.length)) drawNeighbours(r, t, lw);
+    if (r.look.gentle && (r.phase === 'finale' || (r.phase === 'calm' && r.final && r.curedLooks.length))) drawNeighbours(r, t, lw);
     const hop = r.phase === 'finale' ? Math.abs(Math.sin(t * 7)) * r.kid.h * 0.12 : 0;
     R.drawKid(ctx, r.kid.x, r.kid.y - hop, r.kid.h, lw, r.kidArm, t, r.look.kid || {}, r.look.goo, r.phase === 'finale');
     // aim preview + grenade
@@ -788,6 +860,7 @@ export function createGame(canvas, opts = {}) {
       ctx.beginPath(); ctx.ellipse(gpos.x, road.y, r.gr * 0.9, r.gr * 0.35, 0, 0, TAU); ctx.fill();
       R.drawGrenade(ctx, gpos.x, gpos.y, r.gr, gpos.rot, r.look.goo, lw, t, r.look.grenade);
     }
+    if (r.parts.length) drawParts(ctx, r.parts, lw, t);
     drawParticlePass(r, false);
     // the true-spot flag reads above every effect
     if (fb) { const fade = fb.t > T.feedbackSec ? 1 - (fb.t - T.feedbackSec) / T.jumpsSec : 1; ctx.globalAlpha = clamp(fade, 0, 1); drawFlag(ctx, road, fb.target, fb.show, clamp(fb.t / T.flagSec, 0, 1), r.pal, lw, t); ctx.globalAlpha = 1; }
@@ -802,6 +875,31 @@ export function createGame(canvas, opts = {}) {
       ctx.fillStyle = withAlpha('#0d0820', 0.25 * easeOut(k));
       ctx.fillRect(0, 0, view.W, view.H);
     }
+  }
+  // the finale in Blast: the lane is a goo lake with the blasted zombies' hats bobbing in it
+  function drawGooLake(r, t, lw) {
+    const road = r.road, goo = gooOf(r), y = r.laneY + 2, hh = r.zh * 0.3;
+    const k = r.phase === 'finale' ? clamp(r.finaleT / 0.8, 0, 1) : 1;
+    const x0 = road.x0 - 20, x1 = road.x1 + 20;
+    ctx.save();
+    ctx.lineJoin = 'round'; ctx.lineWidth = lw * 1.2; ctx.strokeStyle = R.OUT;
+    for (const [col, dy, amp] of [[shade(goo, -0.3), 0, 1], [goo, -3, 0.7]]) {
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.moveTo(x0, y + 4);
+      for (let x = x0; x <= x1; x += 18) ctx.lineTo(x, y + dy - hh * k * (0.6 + 0.4 * Math.sin(x * 0.05 + t * 2.2) * amp));
+      ctx.lineTo(x1, y + 4); ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    // bubbles
+    for (let i = 0; i < 6; i++) { const b = (t * 0.5 + i * 0.17) % 1; const bx = lerp(x0 + 30, x1 - 30, ((i * 0.37 + 0.1) % 1)); ctx.fillStyle = withAlpha(shade(goo, 0.3), 0.8 * (1 - b)); ctx.beginPath(); ctx.arc(bx, y - hh * k * 0.5 - b * 8, 2 + b * 4, 0, TAU); ctx.fill(); }
+    // the hats bob on the surface
+    const hats = r.blastHats.slice(-10), n = hats.length;
+    for (let i = 0; i < n; i++) {
+      const hx = clamp(hats[i].x, road.x0 + 10, road.x1 - 10), hy = y - hh * k * 0.8 + Math.sin(t * 2.4 + i) * 3;
+      ctx.save(); ctx.translate(hx, hy); ctx.rotate(Math.sin(t * 1.7 + i) * 0.12); ctx.lineWidth = lw * 1.3; ctx.strokeStyle = R.OUT;
+      drawHat(ctx, hats[i].hat, 0, 0, hats[i].u * 0.9, lw, t, hats[i].look);
+      ctx.restore();
+    }
+    ctx.restore();
   }
   // the finale: the wave's cured neighbours line up along the fence, waving
   function drawNeighbours(r, t, lw) {
@@ -871,7 +969,7 @@ export function createGame(canvas, opts = {}) {
   // ---------- public API ----------
   function getState() {
     const r = run;
-    if (!r) return { phase: 'idle', street: null, number: 0, big: false, final: false, total: 0, resolved: 0, cured: 0, reached: 0, throws: 0, bulls: 0, hits: 0, pae: 0, accuracy: 0, cash: 0, pumpkins: 0, aim: null, aimValue: null, target: null, combo: 0, roadPx: { left: 0, right: view.W, y: Math.round(view.H * 0.64) }, road: { from: 0, to: 1 }, live: [], lastThrow: null, inFlight: false, timeSec: 0 };
+    if (!r) return { phase: 'idle', street: null, number: 0, big: false, final: false, total: 0, resolved: 0, cured: 0, reached: 0, throws: 0, bulls: 0, hits: 0, pae: 0, accuracy: 0, cash: 0, pumpkins: 0, aim: null, aimValue: null, target: null, combo: 0, gentle: false, roadPx: { left: 0, right: view.W, y: Math.round(view.H * 0.64) }, road: { from: 0, to: 1 }, live: [], lastThrow: null, inFlight: false, timeSec: 0 };
     const n = r.throws.length;
     const meanPae = n ? r.throws.reduce((a, t) => a + t.pae, 0) / n : 0;
     const base = r.cash.cure + r.cash.bull + r.cash.effort;
@@ -882,7 +980,7 @@ export function createGame(canvas, opts = {}) {
       cured: r.cured, reached: r.reached, throws: n, bulls: r.bulls, hits: r.hits,
       pae: Math.round(meanPae * 10) / 10, accuracy: n ? clamp(Math.round(100 - meanPae), 0, 100) : 0,
       cash: base + (r.final ? base : 0), pumpkins: r.pumpkins,
-      aim: r.aim, aimValue: r.aimValue, target: r.target ? itemOut(r.target) : null, combo: r.combo,
+      aim: r.aim, aimValue: r.aimValue, target: r.target ? itemOut(r.target) : null, combo: r.combo, gentle: !!r.look.gentle,
       roadPx: { left: Math.round(r.road.x0), right: Math.round(r.road.x1), y: Math.round(r.road.y) },
       road: { from: r.road.from, to: r.road.to },
       live: r.zombies.map((z) => ({ id: z.id, item: z.item.id, p: Math.round(z.p * 1000) / 1000, state: z.state, look: z.look.id, hat: z.hat, cured: z.cured, x01: Math.round(r.road.toX01(z.item.target) * 1000) / 1000, target: z.item.target, seen: isSeen(z), focus: z === cur, boss: !!z.boss, hitsLeft: z.item.hitsLeft })),
@@ -953,6 +1051,7 @@ export function createGame(canvas, opts = {}) {
         t: r.t, phase: r.phase, timeScale: r.timeScale, combo: r.combo, bestCombo: r.bestCombo, focusId: r.focusId,
         zombies: r.zombies.map((z) => ({ id: z.id, item: z.item.id, p: z.p, state: z.state, alive: z.alive, resolved: z.resolved, look: z.look.id, hat: z.hat, seen: isSeen(z), x: zx(r, z), y: yAt(r, z.p), boss: !!z.boss, hitsLeft: z.item.hitsLeft, form: z.item.form, dizzy: z.dizzyT })),
         nextSpawn: r.nextSpawn, liveTarget: r.liveTarget, shuffleSec: r.shuffleSec, particles: r.particles.n, splats: r.splats.length, popups: r.popups.map((p) => p.text),
+        gentle: !!r.look.gentle, parts: r.parts.map((q) => ({ kind: q.kind, x: Math.round(q.x), y: Math.round(q.y), bounced: q.bounced })), puddles: r.puddles.map((q) => ({ x: Math.round(q.x), y: Math.round(q.y), r: Math.round(q.r) })), blastHats: r.blastHats.length,
         throwState: r.throwState ? { t: r.throwState.t, total: r.throwState.plan.total, touchdowns: r.throwState.plan.touchdowns.map((h) => ({ t: h.t, x: h.x, v: r.road.fromPx(h.x) })), hops: r.throwState.plan.segs.length - 1, aimed: r.throwState.aimed, land: r.throwState.plan.land, seen: r.throwState.seen } : null,
         grenade: r.throwState ? { ...grenadeAt(r.throwState.plan, r.throwState.t, {}) } : null,
         feedback: r.feedback ? { t: r.feedback.t, target: r.feedback.target, landed: r.feedback.landed, result: r.feedback.result, jumps: r.feedback.plan ? r.feedback.plan.arcs.length : 0, unit: r.feedback.plan ? r.feedback.plan.unit : null, item: r.feedback.item.id } : null,

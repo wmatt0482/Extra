@@ -1,6 +1,7 @@
 // Fraction Fright bonus round: the Critter Stampede (SPEC §14). A short pure-arcade reward the math earns: zombie
 // critters (squirrels, raccoons, bunnies, chickens, bats, crows) pour across the same yard; the kid holds a finger
-// down and the Slime Sprayer streams goo pellets at the finger; a pellet that touches a zombie critter cures it (pop,
+// down and the Slime Sprayer streams goo pellets at the finger; a pellet that touches a zombie critter pops it (Blast,
+// the default since 1.3: a goo burst, a puff of fur or feathers, one leftover part spinning off; look.gentle = the cure:
 // goo burst, a party hat, a happy scamper off). The round ends when the stampede has passed: no timer, no countdown,
 // no ammo or energy gauge, no pressure text, nothing stops a critter from running on.
 //
@@ -14,6 +15,9 @@
 //   destroy()           cancels the loop.
 //   getState() → { phase: 'idle'|'intro'|'run'|'outro'|'done', cured, total, passed, cash, gold, combo, bestCombo,
 //     firing, aim: { x, y } | null, timeSec, critters: [{ kind, x, y, zombie }] }
+// 1.3 Blast (SPEC §15): look.gentle (default false). Blast: a popped critter is gone at once in a goo burst + a puff of
+// fur or feathers, a POP! ring and one leftover part (ear / comb / wing / tail / feather) spinning off; the tally reads
+// POPPED. Gentle: the cure look, the party hat, the scamper off. Same events and cash; getState().gentle; sound poof.
 // Events (onEvent): bonusStart, cure { kind, gold, cash, combo, cured, total }, bonusEnd { cured, total, cash, gold,
 //   bestCombo, durationSec, stopped }, sound { name, vol } with names bonusStart, stampede, sprayOn, sprayOff (the app
 //   loops the spray between them), pop, gold, bonusEnd.
@@ -26,7 +30,7 @@
 import { TAU, clamp, lerp, mulberry32, hashStr, withAlpha, shade, easeOut } from './util.js';
 import { makeRoad, drawRoadBand, drawNumberLine, roadPalette } from './road.js';
 import * as R from './render.js';
-import { KINDS, AIR, drawCritter, hitRadius } from './critters.js';
+import { KINDS, AIR, drawCritter, hitRadius, drawPart, puffColor, FEATHERED } from './critters.js';
 
 const STEP = 1 / 60;
 const MAX_STEPS_PER_FRAME = 4;
@@ -119,8 +123,9 @@ export function createBonus(canvas, opts = {}) {
   function start(cfg = {}) {
     const seed = Number.isFinite(Number(cfg.seed)) ? Number(cfg.seed) >>> 0 : hashStr('stampede:' + String(cfg.street && cfg.street.id));
     const rand = mulberry32(seed);
-    const look = { goo: '#8cff1a', fence: 'iron', pumpkins: 5, ...(cfg.look || {}) };
+    const look = { goo: '#8cff1a', fence: 'iron', pumpkins: 5, gentle: false, ...(cfg.look || {}) };
     if (typeof look.goo !== 'string') look.goo = '#8cff1a';
+    look.gentle = !!look.gentle;   // 1.3 (SPEC §15): Gentle mode keeps the cure + party hats; the default pops them
     const st = cfg.stampede || {};
     const count = clamp(Math.round(num(st.count, T.count)), 1, 120);
     const goldAt = clamp(num(st.goldAt, T.goldAt), 0, 1);
@@ -128,7 +133,7 @@ export function createBonus(canvas, opts = {}) {
       seed, rand, look, street: cfg.street || { id: 'maple', name: 'Maple Street' },
       phase: 'intro', t: 0, phaseT: 0, realT: 0,
       count, goldIndex: Math.min(count - 1, Math.floor(goldAt * count)), herdSec: T.herdSec * (count / T.count),
-      spawned: 0, nextSpawnAt: 0, critters: [], pellets: [], splats: [],
+      spawned: 0, nextSpawnAt: 0, critters: [], pellets: [], splats: [], parts: [],
       cured: 0, passed: 0, cash: 0, gold: false, goldOut: false, combo: 0, bestCombo: 0, lastCureAt: -1,
       aim: null, firing: false, pelletAcc: 0, sprayOn: false, kidArm: 0,
       popups: [], particles: R.makeParticles(MAX_PARTICLES), shake: 0, sx: 0, sy: 0, flash: 0, flashCol: '#ffffff',
@@ -185,6 +190,7 @@ export function createBonus(canvas, opts = {}) {
   function cureCritter(r, c, px, py) {
     c.zombie = false; c.cured = true; c.popT = 0;
     const gold = c.gold;
+    if (!r.look.gentle) popCritter(r, c);
     const cash = gold ? T.cash.gold : T.cash.cure;
     r.cured++;
     r.cash += cash;
@@ -210,6 +216,43 @@ export function createBonus(canvas, opts = {}) {
     if (r.combo >= T.comboPopFrom) popup(r, `×${r.combo}`, cx + c.s * 0.5, cy - c.s * 1.1, '#ff3cac', 1.05, 0.9, 24, -0.08);
     emit({ type: 'cure', kind: c.kind, gold, cash, combo: r.combo, cured: r.cured, total: r.count });
     void px; void py;
+  }
+  // 1.3 Blast: the critter pops out of existence: a puff of fur / feathers, a "POP!" ring, one leftover part spins off
+  function popCritter(r, c) {
+    c.gone = true;
+    const ps = r.particles, few = reducedMotion ? 0.5 : 1;
+    const cx = c.x, cy = c.air ? c.y : c.y - c.s * 0.35, col = c.gold ? '#f2c231' : puffColor(c.kind);
+    const feathers = !!FEATHERED[c.kind];
+    for (let i = 0; i < 12 * few; i++) {
+      const a = r.rand() * TAU, s = 60 + r.rand() * 160;
+      if (feathers) R.spawnParticle(ps, R.P_CONFETTI, cx, cy, Math.cos(a) * s, Math.sin(a) * s - 40, 0.9 + r.rand() * 0.6, 3 + r.rand() * 3, i % 3 ? col : '#ffffff', 260, c.air ? 1e9 : c.baseY + 2);
+      else R.spawnParticle(ps, R.P_DUST, cx, cy, Math.cos(a) * s, Math.sin(a) * s - 40, 0.5 + r.rand() * 0.4, 3 + r.rand() * 4, withAlpha(col, 0.85), 140, c.air ? 1e9 : c.baseY + 2);
+    }
+    R.spawnParticle(ps, R.P_RING, cx, cy, 0, 0, 0.3, c.s * 0.9, '#ffffff', 0);
+    popup(r, 'POP!', cx, cy - c.s * 0.2, '#ffffff', 0.8, 0.6, 18, (r.rand() - 0.5) * 0.2);
+    const a = -Math.PI * (0.2 + r.rand() * 0.6), v = 160 + r.rand() * 180;
+    r.parts.push({ kind: c.kind, x: cx, y: cy, vx: Math.cos(a) * v * c.dir, vy: Math.sin(a) * v, rot: 0, vr: (r.rand() - 0.5) * 20, t: 0, life: 1.4, s: c.s, floorY: c.air ? r.lanes.front + 2 : c.baseY + 2, bounced: false });
+    if (r.parts.length > 24) r.parts.shift();
+    sound('poof', 0.8);
+  }
+  function stepParts(r, dt) {
+    for (let i = 0; i < r.parts.length; i++) {
+      const p = r.parts[i];
+      p.t += dt;
+      if (p.t >= p.life) { r.parts.splice(i, 1); i--; continue; }
+      p.vy += 1000 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+      if (p.y >= p.floorY) { p.y = p.floorY; if (!p.bounced) { p.bounced = true; p.vy *= -0.35; p.vx *= 0.6; p.vr *= 0.5; } else { p.vy = 0; p.vx *= 0.9; p.vr *= 0.85; } }
+    }
+  }
+  function drawParts(r, lw) {
+    for (const p of r.parts) {
+      const k = p.t / p.life;
+      ctx.save(); ctx.globalAlpha = k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1;
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+      drawPart(ctx, p.kind, p.s, lw);
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
   }
 
   // ---------- the sprayer ----------
@@ -282,7 +325,7 @@ export function createBonus(canvas, opts = {}) {
   function beginOutro(r) {
     r.phase = 'outro'; r.phaseT = 0;
     r.aim = null; setFiring(r, false);
-    banner(r, 'STAMPEDE OVER', '#9dff2e', `${r.cured} cured · $${r.cash}`, T.outroSec);
+    banner(r, 'STAMPEDE OVER', '#9dff2e', `${r.cured} ${r.look.gentle ? 'cured' : 'popped'} · $${r.cash}`, T.outroSec);
   }
   function finish(r, stopped) {
     if (r.ended) return;
@@ -326,6 +369,7 @@ export function createBonus(canvas, opts = {}) {
     } else if (r.phase === 'outro' && r.phaseT >= T.outroSec) { finish(r, false); return; }
     for (let i = 0; i < r.critters.length; i++) { const c = r.critters[i]; stepCritter(r, c, dt); if (c.gone) { r.critters.splice(i, 1); i--; } }
     stepPellets(r, dt);
+    stepParts(r, dt);
     for (let i = 0; i < r.splats.length; i++) { const sp = r.splats[i]; sp.t += dt; if (sp.t >= sp.life) { r.splats.splice(i, 1); i--; } }
     for (let i = 0; i < r.popups.length; i++) { const p = r.popups[i]; p.t += dt; if (p.t >= p.life) { r.popups.splice(i, 1); i--; } }
     if (r.banner) { r.banner.t += dt; if (r.banner.t >= r.banner.life) r.banner = null; }
@@ -358,6 +402,7 @@ export function createBonus(canvas, opts = {}) {
     drawNumberLine(ctx, road, r.pal, null, 0, lw);
     for (const sp of r.splats) drawStray(ctx, sp, r.look.goo, lw);
     for (const c of front) drawCritter(ctx, c, c.x, c.y, c.s, t, lw);
+    if (r.parts.length) drawParts(r, lw);
     R.drawFence(ctx, view, road, r.fl, r.scene, r.look.fence, r.pumpkins, lw, t, 0.4);
     R.drawKid(ctx, r.kid.x, r.kid.y, r.kid.h, lw, r.kidArm, t, r.look.kid || {}, r.look.goo, r.phase === 'outro');
     // the stream: pellets (+ a muzzle pulse while firing) and the aim mark
@@ -404,7 +449,7 @@ export function createBonus(canvas, opts = {}) {
     if (r.phase === 'idle') return;
     const fz = clamp(Math.min(view.W, view.H) * 0.06, 14, 24);
     const x = view.W / 2, y = Math.max(18, fz * 0.9) + (r.road.portrait ? 52 : 0);
-    const text = `CURED ${r.cured} / ${r.count}`;
+    const text = `${r.look.gentle ? 'CURED' : 'POPPED'} ${r.cured} / ${r.count}`;
     const w = R.textWidth(text, fz) + fz * 1.2, h = fz * 1.6;
     ctx.fillStyle = withAlpha(R.OUT, 0.6); ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x - w / 2, y - h / 2, w, h, 6) : ctx.rect(x - w / 2, y - h / 2, w, h); ctx.fill();
     R.spriteText(ctx, text, fz, x, y, r.cured && r.phase !== 'intro' ? '#9dff2e' : '#ffffff', true);
@@ -447,9 +492,9 @@ export function createBonus(canvas, opts = {}) {
   // ---------- public API ----------
   function getState() {
     const r = run;
-    if (!r) return { phase: 'idle', cured: 0, total: 0, passed: 0, cash: 0, gold: false, combo: 0, bestCombo: 0, firing: false, aim: null, timeSec: 0, critters: [] };
+    if (!r) return { phase: 'idle', cured: 0, total: 0, passed: 0, cash: 0, gold: false, combo: 0, bestCombo: 0, firing: false, aim: null, timeSec: 0, critters: [], gentle: false };
     return {
-      phase: r.phase, cured: r.cured, total: r.count, passed: r.passed, cash: r.cash, gold: r.gold, combo: r.combo, bestCombo: r.bestCombo,
+      phase: r.phase, cured: r.cured, total: r.count, passed: r.passed, cash: r.cash, gold: r.gold, combo: r.combo, bestCombo: r.bestCombo, gentle: !!r.look.gentle,
       firing: r.firing, aim: r.aim ? { x: r.aim.x, y: r.aim.y } : null, timeSec: Math.round(r.t * 100) / 100,
       critters: r.critters.map((c) => ({ kind: c.kind, x: Math.round(c.x), y: Math.round(c.air ? c.y : c.y - c.s * 0.4), zombie: c.zombie, gold: c.gold })),
     };
@@ -473,7 +518,7 @@ export function createBonus(canvas, opts = {}) {
     debugInfo() {
       const r = run;
       if (!r) return null;
-      return { t: r.t, phase: r.phase, spawned: r.spawned, count: r.count, goldIndex: r.goldIndex, critters: r.critters.map((c) => ({ id: c.id, kind: c.kind, x: c.x, y: c.y, s: c.s, zombie: c.zombie, gold: c.gold, air: c.air, lane: c.lane, dir: c.dir, speed: c.speed })), pellets: r.pellets.length, splats: r.splats.length, particles: r.particles.n, lanes: r.lanes, hand: r.kid.hand, view: { W: view.W, H: view.H }, summary: r.summary, perf: { ...perf } };
+      return { t: r.t, phase: r.phase, spawned: r.spawned, count: r.count, goldIndex: r.goldIndex, gentle: !!r.look.gentle, parts: r.parts.map((p) => ({ kind: p.kind, x: Math.round(p.x), y: Math.round(p.y) })), critters: r.critters.map((c) => ({ id: c.id, kind: c.kind, x: c.x, y: c.y, s: c.s, zombie: c.zombie, gold: c.gold, air: c.air, lane: c.lane, dir: c.dir, speed: c.speed })), pellets: r.pellets.length, splats: r.splats.length, particles: r.particles.n, lanes: r.lanes, hand: r.kid.hand, view: { W: view.W, H: view.H }, summary: r.summary, perf: { ...perf } };
     },
   };
 }

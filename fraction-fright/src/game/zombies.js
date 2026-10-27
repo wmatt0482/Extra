@@ -1,5 +1,6 @@
 // Zombies: the slow lurchers that rise out of the graveyard fog at their fraction's spot and shuffle straight toward
-// the road (SPEC §13.1), and the neighbours they turn back into.
+// the road (SPEC §13.1), and the neighbours they turn back into (Gentle mode) or the cartoon parts and goo puddles
+// they are blasted into (Blast, the default since 1.3; SPEC §15).
 // Entity logic (spawn hidden, the column walk with a limp, emergence from the fog, the polite knock at the fence,
 // taking a jack-o'-lantern, shuffling off sideways; the cure under the grenade: a launch with a spin, the hat flies,
 // a shocked face and a line, then the walk home into the fog; frost freezes first, disco dances home; the boss takes
@@ -31,7 +32,8 @@ export function makeZombie(item, index, rand, opts = {}) {
   const hats = Array.isArray(opts.hats) && opts.hats.length ? opts.hats : null;
   return {
     id: 'z' + index, item, index, look, hat: opts.boss ? 'top' : hats && rand() < 0.5 ? hats[index % hats.length] : look.hat,
-    state: 'walk', // walk | knock | take | leave | freeze | cure | thanks | home | gone
+    state: 'walk', // walk | knock | take | leave | freeze | cure | thanks | home | blast | heap | gone
+    hatGone: false, armGone: false, blastPending: false, goo: '#8cff1a', floorY: 0,
     p: -0.02, t: 0, dx: 0,
     walkSec: opts.walkSec || 20,
     emerge: Number.isFinite(opts.emerge) ? opts.emerge : 0.6,
@@ -63,7 +65,16 @@ export function stepZombie(z, dt) {
       if (z.t >= ZT.leaveSec) { z.state = 'gone'; return 'gone'; }
       return null;
     case 'freeze':
-      if (z.t >= ZT.freezeSec) { z.state = 'cure'; z.t = 0; z.hatFly = z.hatPending; z.hatPending = null; return 'shatter'; }
+      if (z.t >= ZT.freezeSec) {
+        if (z.blastPending) { z.blastPending = false; z.state = 'blast'; z.t = 0; return 'shatter'; }
+        z.state = 'cure'; z.t = 0; z.hatFly = z.hatPending; z.hatPending = null; return 'shatter';
+      }
+      return null;
+    case 'blast': // the squash (1.3 Blast): then the body is a heap that melts into a puddle
+      if (z.t >= BLAST.squashSec) { z.state = 'heap'; z.t = 0; return 'melt'; }
+      return null;
+    case 'heap':
+      if (z.t >= BLAST.heapSec) { z.state = 'gone'; return 'puddle'; }
       return null;
     case 'cure':
       flyHat(z, dt);
@@ -93,6 +104,94 @@ export function cureZombie(z, hatFrom, opts = {}) {
   if (opts.freeze) { z.state = 'freeze'; z.hatPending = hat; } else { z.state = 'cure'; z.hatFly = hat; }
   return true;
 }
+// ---------- 1.3 Blast (SPEC §15): parts, the heap, the puddle ----------
+export const BLAST = { squashSec: 0.12, heapSec: 1.2, partLife: 1.7, partG: 1100 };
+const BLAST_WORDS = ['ZAPPED!', 'SPLAT!', 'BLASTED!'];
+let blastIdx = 0;
+export const nextBlastWord = () => BLAST_WORDS[blastIdx++ % BLAST_WORDS.length];
+/** The blast: the zombie squashes, bursts into parts (the engine makes them) and melts. freeze = frost first. */
+export function blastZombie(z, opts = {}) {
+  if (!z.alive) return false;
+  z.alive = false; z.cured = true; z.resolved = true;
+  z.t = 0; z.say = null; z.dizzyT = 0; z.hatFly = null; z.hatPending = null;
+  z.big = !!opts.big; z.goo = opts.goo || z.goo; z.floorY = Number.isFinite(opts.floorY) ? opts.floorY : z.floorY;
+  if (opts.freeze) { z.state = 'freeze'; z.blastPending = true; } else z.state = 'blast';
+  return true;
+}
+/** The flying parts of a blast at feet (x, y), height h: hat, both boots, both arms, the head (+ the boss's sash). */
+export function makeParts(z, x, y, h, rand, big = false, floorY = y + 2) {
+  const u = h / 60;
+  const kinds = ['boot0', 'boot1', 'armR', 'head'];
+  if (!z.hatGone) kinds.unshift('hat');
+  if (!z.armGone) kinds.push('armL');
+  if (z.boss) kinds.push('sash');
+  const sp = big ? 1.35 : 1;
+  const out = [];
+  for (const kind of kinds) {
+    const a = -Math.PI * (0.12 + rand() * 0.76), v = (170 + rand() * 230) * sp;
+    const oy = kind === 'hat' ? -60 * u : kind === 'head' ? -46 * u : kind.startsWith('arm') ? -32 * u : kind === 'sash' ? -20 * u : -4 * u;
+    out.push({ kind, x: x + (rand() - 0.5) * 12 * u, y: y + oy, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 80, rot: (rand() - 0.5) * 0.6, vr: (rand() - 0.5) * 18, t: 0,
+      life: BLAST.partLife + rand() * 0.5, bounced: false, u, floorY, look: z.look, hat: z.hat, face: z.face, wobble: z.wobble });
+  }
+  return out;
+}
+/** Parts fall, bounce once on their floor, slide and fade. Returns how many landed this tick. */
+export function stepParts(parts, dt) {
+  let landed = 0;
+  for (const p of parts) {
+    p.t += dt;
+    if (p.t >= p.life) continue;
+    p.vy += BLAST.partG * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.rot += p.vr * dt;
+    if (p.y >= p.floorY) {
+      p.y = p.floorY;
+      if (!p.bounced) { p.bounced = true; p.vy *= -0.38; p.vx *= 0.6; p.vr *= 0.5; landed++; }
+      else { p.vy = 0; p.vx *= 0.88; p.vr *= 0.8; }
+    }
+  }
+  return landed;
+}
+export function drawParts(ctx, parts, lw, t) {
+  for (const p of parts) {
+    const k = p.t / p.life;
+    if (k >= 1) continue;
+    const u = p.u, look = p.look;
+    ctx.save();
+    ctx.globalAlpha = k > 0.7 ? 1 - (k - 0.7) / 0.3 : 1;
+    ctx.translate(p.x, p.y); ctx.rotate(p.rot);
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.lineWidth = lw * 1.3; ctx.strokeStyle = OUT;
+    switch (p.kind) {
+      case 'hat': drawHat(ctx, p.hat, 0, 2 * u, u, lw, t, look); break;
+      case 'boot0': ctx.fillStyle = look.boots[0]; roundRect(ctx, -6 * u, -3.5 * u, 11 * u, 7 * u, 2 * u); ctx.fill(); ctx.stroke(); break;
+      case 'boot1': ctx.fillStyle = look.boots[1]; roundRect(ctx, -6 * u, -2.5 * u, 12 * u, 5 * u, 2 * u); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#e8e4dc'; ctx.fillRect(-4 * u, -1.5 * u, 8 * u, 1.5 * u); break;
+      case 'armL': case 'armR': arm(ctx, 0, -11 * u, 0.2, 0.3, u, lw, look.jacket, look.skin, false, p.kind === 'armR'); break;
+      case 'sash': ctx.fillStyle = '#c9201f'; ctx.beginPath(); ctx.moveTo(-9 * u, -3 * u); ctx.lineTo(9 * u, -6 * u); ctx.lineTo(10 * u, 3 * u); ctx.lineTo(-8 * u, 6 * u); ctx.closePath(); ctx.fill(); ctx.stroke(); ctx.fillStyle = '#ffd23f'; ctx.beginPath(); ctx.arc(4 * u, 0, 3 * u, 0, TAU); ctx.fill(); ctx.stroke(); break;
+      default: { // the head: skull, ear, the goofy face, hair (the hat flew on its own)
+        ctx.fillStyle = look.skin;
+        ctx.beginPath(); ctx.moveTo(-11 * u, -6 * u); ctx.quadraticCurveTo(-11 * u, -14 * u, 0, -14 * u); ctx.quadraticCurveTo(11 * u, -14 * u, 11 * u, -6 * u); ctx.lineTo(9 * u, 6 * u); ctx.quadraticCurveTo(7 * u, 11 * u, 0, 11 * u); ctx.quadraticCurveTo(-7 * u, 11 * u, -9 * u, 6 * u); ctx.closePath(); ctx.fill(); ctx.stroke();
+        ctx.fillStyle = look.skinDark; ctx.beginPath(); ctx.arc(-5 * u, 4 * u, 3.5 * u, 0, TAU); ctx.fill();
+        ctx.fillStyle = look.skin; ctx.beginPath(); ctx.arc(-10 * u, -1 * u, 2.4 * u, 0, TAU); ctx.fill(); ctx.stroke();
+        drawFace(ctx, look, false, u, t, lw, { wobble: p.wobble, zombie: true });
+        ctx.fillStyle = look.hair; ctx.beginPath(); ctx.moveTo(-8 * u, -12 * u); ctx.lineTo(-5 * u, -17 * u); ctx.lineTo(-1 * u, -13 * u); ctx.lineTo(3 * u, -18 * u); ctx.lineTo(6 * u, -12 * u); ctx.closePath(); ctx.fill(); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+/** A goo puddle on the lane: { x, y, r, goo, t, life }; fades in over 0.3 s and out over its last second. */
+export function drawPuddle(ctx, pd, lw, t) {
+  const k = clamp(pd.t / 0.3, 0, 1), out = pd.life ? clamp((pd.life - pd.t) / 1, 0, 1) : 1;
+  if (out <= 0) return;
+  ctx.save(); ctx.globalAlpha = 0.95 * k * out;
+  ctx.fillStyle = shade(pd.goo, -0.3); ctx.strokeStyle = OUT; ctx.lineWidth = lw;
+  ctx.beginPath(); ctx.ellipse(pd.x, pd.y, pd.r * (0.6 + 0.4 * k), pd.r * 0.32 * (0.6 + 0.4 * k), 0, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = pd.goo; ctx.beginPath(); ctx.ellipse(pd.x - pd.r * 0.1, pd.y - pd.r * 0.05, pd.r * 0.72 * k, pd.r * 0.2 * k, 0, 0, TAU); ctx.fill();
+  ctx.fillStyle = withAlpha('#ffffff', 0.35); ctx.beginPath(); ctx.ellipse(pd.x - pd.r * 0.35, pd.y - pd.r * 0.12, pd.r * 0.18, pd.r * 0.06, 0, 0, TAU); ctx.fill();
+  const b = (t * 0.7 + pd.x * 0.01) % 1;
+  ctx.fillStyle = withAlpha(shade(pd.goo, 0.3), 0.8 * (1 - b)); ctx.beginPath(); ctx.arc(pd.x + pd.r * 0.25, pd.y - pd.r * 0.04 - b * pd.r * 0.15, pd.r * 0.07 * (0.5 + b), 0, TAU); ctx.fill();
+  ctx.restore();
+}
+
 // 0 while hidden in the fog (p < emerge), fading in over fadeP; out again when leaving or walking home into the fog
 export function zombieAlpha(z) {
   if (z.state === 'leave') return 1 - easeInOut(clamp(z.t / ZT.leaveSec, 0, 1));
@@ -106,7 +205,7 @@ export function zombieAlpha(z) {
 // draw at feet (x, y), height h, facing z.face; t = animation time.
 export function drawZombie(ctx, z, x, y, h, t, lw) {
   const look = z.look;
-  const cured = z.cured;
+  const cured = z.cured && z.state !== 'blast';   // the squash still shows the zombie look (1.3 Blast)
   const walking = z.state === 'walk' || z.state === 'leave' || z.state === 'home';
   const home = z.state === 'home';
   const ph = z.wobble + t * (home ? 9 : 3.6 * z.gait);
@@ -120,8 +219,10 @@ export function drawZombie(ctx, z, x, y, h, t, lw) {
   const alpha = zombieAlpha(z);
   if (alpha <= 0.01) return;
   const u = h / 60;
+  if (z.state === 'heap') { drawHeap(ctx, z, x, y, u, lw, t); return; }
   ctx.save();
   ctx.globalAlpha = alpha;
+  if (z.state === 'blast') { const k = clamp(z.t / BLAST.squashSec, 0, 1); ctx.translate(x, y); ctx.scale(1 + 0.6 * k, 1 - 0.6 * k); ctx.translate(-x, -y); }
   // the launch: a hop up with a full spin (bigger for the boss); the dance: a bounce and a sway on the way home
   const ck = z.state === 'cure' ? clamp(z.t / ZT.cureSec, 0, 1) : 0;
   const hop = ck ? Math.sin(ck * Math.PI) * h * (z.big ? 1.2 : 0.8) : 0;
@@ -184,9 +285,9 @@ export function drawZombie(ctx, z, x, y, h, t, lw) {
     arm(ctx, -8 * u, -27 * u, 0.25, 0.1, u, lw, jacket, skin, true); // the dangling one
     arm(ctx, 8 * u, -27 * u, -1.9 + k * 0.5, -0.9 + k * 0.6, u, lw, jacket, skin, false, true);
   } else {
-    // one arm reaches forward (upper arm then forearm), the other dangles and sways
+    // one arm reaches forward (upper arm then forearm), the other dangles and sways (unless the boss lost it)
     const sway = Math.sin(t * 2.2 + z.wobble) * 0.12;
-    arm(ctx, -8 * u, -27 * u, 0.22 + sway, 0.08, u, lw, jacket, skin, true);
+    if (!z.armGone) arm(ctx, -8 * u, -27 * u, 0.22 + sway, 0.08, u, lw, jacket, skin, true);
     const reach = Math.sin(t * 3 + z.wobble) * 0.1;
     arm(ctx, 8 * u, -27 * u, -1.35 + reach, -0.25, u, lw, jacket, skin, false, true);
     if (z.pumpkin) { ctx.save(); ctx.translate(26 * u, -22 * u); drawPumpkin(ctx, 0, 0, 6 * u, lw, 0.6, t); ctx.restore(); }
@@ -207,7 +308,7 @@ export function drawZombie(ctx, z, x, y, h, t, lw) {
   ctx.fillStyle = skin; ctx.beginPath(); ctx.arc(-10 * u, -1 * u, 2.4 * u, 0, TAU); ctx.fill(); ctx.stroke();
   drawFace(ctx, look, cured, u, t, lw, z);
   // hair / hat (unless it flew)
-  if (!z.hatFly) drawHat(ctx, z.hat, 0, -13 * u, u, lw, t, look);
+  if (!z.hatFly && !z.hatGone) drawHat(ctx, z.hat, 0, -13 * u, u, lw, t, look);
   else { ctx.fillStyle = look.hair; ctx.beginPath(); ctx.moveTo(-8 * u, -12 * u); ctx.lineTo(-5 * u, -17 * u); ctx.lineTo(-1 * u, -13 * u); ctx.lineTo(3 * u, -18 * u); ctx.lineTo(6 * u, -12 * u); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   ctx.restore();
   ctx.restore(); // torso
@@ -234,6 +335,26 @@ export function drawZombie(ctx, z, x, y, h, t, lw) {
     ctx.save(); ctx.globalAlpha = alpha; ctx.translate(f.x, f.y); ctx.rotate(f.rot); ctx.lineWidth = lw * 1.3; ctx.strokeStyle = OUT; ctx.lineJoin = 'round';
     drawHat(ctx, z.hat, 0, 0, u, lw, t, z.look); ctx.restore();
   }
+}
+// the heap (1.3 Blast): the torso slumped on the lane, melting into a steaming goo puddle over BLAST.heapSec
+function drawHeap(ctx, z, x, y, u, lw, t) {
+  const k = clamp(z.t / BLAST.heapSec, 0, 1), big = z.big ? 1.4 : 1;
+  const mound = 1 - easeInOut(k);
+  ctx.save(); ctx.translate(x, y);
+  ctx.lineJoin = 'round'; ctx.lineWidth = lw * 1.2; ctx.strokeStyle = OUT;
+  ctx.fillStyle = shade(z.goo, -0.3); ctx.beginPath(); ctx.ellipse(0, 1 * u, 22 * u * big * (0.3 + 0.7 * k), 7 * u * big * (0.3 + 0.7 * k), 0, 0, TAU); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = z.goo; ctx.beginPath(); ctx.ellipse(-2 * u, 0, 16 * u * big * (0.3 + 0.7 * k), 4.5 * u * big * (0.3 + 0.7 * k), 0, 0, TAU); ctx.fill();
+  if (mound > 0.03) {
+    ctx.fillStyle = z.look.jacket; ctx.beginPath();
+    ctx.moveTo(-14 * u * big, 0); ctx.quadraticCurveTo(-10 * u * big, -22 * u * big * mound, 0, -20 * u * big * mound); ctx.quadraticCurveTo(11 * u * big, -18 * u * big * mound, 14 * u * big, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = z.look.shirt; ctx.beginPath(); ctx.ellipse(1 * u * big, -8 * u * big * mound, 4 * u * big, 5 * u * big * mound, 0, 0, TAU); ctx.fill();
+  }
+  for (let i = 0; i < 3; i++) {
+    const w = ((t * 0.6 + i * 0.33) % 1);
+    ctx.fillStyle = withAlpha('#d9ffd0', 0.35 * (1 - w) * (0.4 + 0.6 * k));
+    ctx.beginPath(); ctx.arc((i - 1) * 7 * u * big + Math.sin((t + i) * 3) * 2 * u, -4 * u - w * 22 * u * big, (2 + w * 3) * u, 0, TAU); ctx.fill();
+  }
+  ctx.restore();
 }
 // an arm: upper from the shoulder at angle a1 (0 = straight down), forearm bent by a2; a sleeve, then a hand
 function arm(ctx, sx, sy, a1, a2, u, lw, sleeve, skin, dangle, open = false) {

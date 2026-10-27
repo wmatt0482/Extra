@@ -32,6 +32,39 @@ export function paletteFor(kind, { zombie, gold }) {
   return c;
 }
 
+/** 1.3 Blast: the puff colour (fur or feathers) and the one leftover part of a popped critter. */
+export const FEATHERED = Object.freeze({ chicken: true, bat: true, crow: true });
+export function puffColor(kind) { const c = COLORS[kind] || COLORS.squirrel; return c.body; }
+/** Draw the leftover part at (0, 0) rotated by the caller: a bunny ear, a chicken comb, a bat wing, a squirrel tail,
+ *  a raccoon tail, a crow feather. s = the critter's size. */
+export function drawPart(ctx, kind, s, lw) {
+  const pal = COLORS[kind] || COLORS.squirrel;
+  ctx.lineJoin = 'round'; ctx.lineCap = 'round'; ctx.lineWidth = lw * 1.2; ctx.strokeStyle = OUT;
+  ctx.fillStyle = pal.body;
+  switch (kind) {
+    case 'bunny':
+      roundRect(ctx, -s * 0.06, -s * 0.22, s * 0.12, s * 0.44, s * 0.06); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = withAlpha('#ff9fb6', 0.6); roundRect(ctx, -s * 0.03, -s * 0.16, s * 0.06, s * 0.3, s * 0.03); ctx.fill();
+      break;
+    case 'chicken':
+      ctx.fillStyle = '#e8463a';
+      ctx.beginPath(); ctx.moveTo(-s * 0.14, s * 0.08); for (let i = 0; i < 3; i++) { ctx.lineTo(-s * 0.1 + i * s * 0.1, -s * 0.12 - (i % 2) * s * 0.04); ctx.lineTo(-s * 0.05 + i * s * 0.1, s * 0.02); } ctx.lineTo(s * 0.14, s * 0.08); ctx.closePath(); ctx.fill(); ctx.stroke();
+      break;
+    case 'bat':
+      ctx.beginPath(); ctx.moveTo(-s * 0.3, 0); ctx.lineTo(s * 0.2, -s * 0.28); ctx.lineTo(s * 0.38, -s * 0.05); ctx.lineTo(s * 0.2, s * 0.1); ctx.lineTo(s * 0.02, s * 0.02); ctx.lineTo(-s * 0.12, s * 0.16); ctx.closePath(); ctx.fill(); ctx.stroke();
+      break;
+    case 'crow':
+      ctx.beginPath(); ctx.moveTo(-s * 0.3, s * 0.04); ctx.quadraticCurveTo(-s * 0.05, -s * 0.16, s * 0.3, -s * 0.08); ctx.quadraticCurveTo(s * 0.05, s * 0.02, -s * 0.3, s * 0.04); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-s * 0.28, s * 0.03); ctx.lineTo(s * 0.26, -s * 0.07); ctx.stroke();
+      break;
+    case 'raccoon':
+      for (let i = 0; i < 4; i++) { ctx.fillStyle = i % 2 ? pal.dark : pal.body; roundRect(ctx, -s * 0.3 + i * s * 0.15, -s * 0.08, s * 0.16, s * 0.16, s * 0.05); ctx.fill(); ctx.stroke(); }
+      break;
+    default: // the squirrel's tail
+      ctx.beginPath(); ctx.moveTo(-s * 0.3, s * 0.1); ctx.quadraticCurveTo(-s * 0.5, -s * 0.3, -s * 0.1, -s * 0.4); ctx.quadraticCurveTo(s * 0.3, -s * 0.45, s * 0.2, -s * 0.05); ctx.quadraticCurveTo(0, s * 0.15, -s * 0.3, s * 0.1); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+}
+
 /** Hit radius (css px) for a critter of size s. */
 export const hitRadius = (kind, s) => (AIR[kind] ? s * 0.42 : s * 0.5);
 

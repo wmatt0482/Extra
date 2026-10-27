@@ -44,7 +44,7 @@ async function ensureServer() {
 const failures = [];
 let passes = 0;
 const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`); if (cond) passes++; else failures.push(msg); };
-const STATE_KEYS = 'aim,bestCombo,cash,combo,critters,cured,firing,gold,passed,phase,timeSec,total';
+const STATE_KEYS = 'aim,bestCombo,cash,combo,critters,cured,firing,gentle,gold,passed,phase,timeSec,total';
 const BANNED = /\b(kill(s|ed|ing)?|die[sd]?|dying|dead|death|lives|life left|wrong|timer|countdown|hurry|time'?s up|seconds? left|game over|lose|lost|fail(ed)?)\b/i;
 
 async function open(browser, params, viewport = { width: 844, height: 390 }) {
@@ -191,6 +191,46 @@ try {
     for (let i = 0; i < 160; i++) { s = await page.evaluate(() => window.__auto(30)); if (s.phase === 'done') break; if (i === 8) await shot(page, '6-portrait'); }
     const end = await page.evaluate(() => window.__ev('bonusEnd')[0]);
     check(s.phase === 'done' && end && end.cured >= 6 && errors.length === 0, `portrait: a full round (${end && end.cured}/${end && end.total} cured), no errors`);
+    await context.close();
+  }
+  // ---------- 6. Blast (1.3, SPEC §15): the pop; Gentle keeps the party hats ----------
+  {
+    const { context, page, errors } = await open(browser, { seed: '11', count: '24' });
+    check((await S(page)).gentle === false, 'Blast is the default: getState().gentle false');
+    await page.evaluate(() => window.__step(80));
+    let cured = null;
+    for (let i = 0; i < 400 && !cured; i++) {
+      const s = await S(page);
+      const z = s.critters.find((c) => c.zombie && c.x > 60 && c.x < 780);
+      if (z) await page.evaluate(() => window.__auto(3)); else await page.evaluate(() => window.__step(3));
+      cured = await page.evaluate(() => window.__ev('cure')[0] || null);
+    }
+    const d = await page.evaluate(() => window.__bonus.game.debugInfo());
+    const snd = await page.evaluate(() => window.__sounds());
+    check(!!cured && cured.cash === 15 && d.parts.length === 1 && d.parts[0].kind === cured.kind && !d.critters.some((c) => !c.zombie), `a sprayed ${cured && cured.kind} pops: gone at once, one ${d.parts[0] && d.parts[0].kind} part spins off, cash $15`);
+    check(snd.includes('pop') && snd.includes('poof'), 'sounds pop + poof');
+    await page.evaluate(() => window.__step(6));
+    await shot(page, '7-pop');
+    await page.evaluate(() => { window.__bonus.game.fire(false); window.__step(130); });
+    check((await page.evaluate(() => window.__bonus.game.debugInfo())).parts.length === 0, 'the part fades');
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  {
+    const { context, page, errors } = await open(browser, { seed: '11', count: '24', gentle: '1' });
+    check((await S(page)).gentle === true, 'gentle=1: getState().gentle true');
+    await page.evaluate(() => window.__step(80));
+    let cured = null;
+    for (let i = 0; i < 400 && !cured; i++) {
+      const s = await S(page);
+      const z = s.critters.find((c) => c.zombie && c.x > 60 && c.x < 780);
+      if (z) await page.evaluate(() => window.__auto(3)); else await page.evaluate(() => window.__step(3));
+      cured = await page.evaluate(() => window.__ev('cure')[0] || null);
+    }
+    const d = await page.evaluate(() => window.__bonus.game.debugInfo());
+    const snd = await page.evaluate(() => window.__sounds());
+    check(!!cured && d.parts.length === 0 && d.critters.some((c) => !c.zombie) && !snd.includes('poof'), `Gentle: the cured ${cured && cured.kind} keeps scampering (party hat), no part, no poof`);
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
     await context.close();
   }
   if (!process.env.SKIP_PERF) {

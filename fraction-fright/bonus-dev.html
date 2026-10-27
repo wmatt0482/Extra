@@ -19,7 +19,7 @@
 <div id="side"><button id="restartBtn">Restart</button><button id="stopBtn">Stop</button></div>
 <script type="module">
 // Bonus-round playground. URL params: seed, count (critters, default 30), goldAt (0..1), rm=1 (reduced motion),
-// sim (speed), ui=0 (no overlays), grenade, fence, sound=0. Hold the finger / mouse to spray; r restarts.
+// sim (speed), ui=0 (no overlays), grenade, fence, sound=0, gentle=1 (the cure + party hats instead of the pop). Hold the finger / mouse to spray; r restarts.
 import { createBonus } from './src/game/bonus.js';
 const q = new URLSearchParams(location.search);
 if (q.get('ui') === '0') document.body.classList.add('noui');
@@ -44,7 +44,7 @@ function start() {
   events.length = 0;
   game.start({
     seed: Number(q.get('seed')) || 7,
-    look: { goo: q.get('goo') || '#a6ff2e', fence: q.get('fence') || 'picket', fenceColor: q.get('fence') === 'iron' ? '#26252b' : '#b7b0a1', grenade: q.get('grenade') || 'slime', pumpkins: 5 },
+    look: { goo: q.get('goo') || '#a6ff2e', fence: q.get('fence') || 'picket', fenceColor: q.get('fence') === 'iron' ? '#26252b' : '#b7b0a1', grenade: q.get('grenade') || 'slime', pumpkins: 5, gentle: q.get('gentle') === '1' },
     stampede: { count: Number(q.get('count')) || 30, goldAt: q.get('goldAt') != null ? Number(q.get('goldAt')) : 0.6 },
     street: { id: 'maple', name: 'Maple Street' },
   });
