@@ -26,6 +26,15 @@ Nothing leaves the device. There are no accounts, no ads and no network calls.
 - **Settings** — angular unit (MOA, MIL, IPHY), distance (yards or meters), linear unit (inches or cm), the
   default sight-in distance and default click value for new setups, and a reminder of how corrections are signed.
 
+## Screenshots
+
+![ZeroIn screens](docs/screenshots/00-overview.png)
+
+These are **mockups**, not device captures: the app has not been built yet (see Build status below), so each
+screen was rendered from the SwiftUI view code with real solver output (Tikka T3x, .308 Win, Federal Gold Medal
+Match 168 gr, 100 yd zero). Individual screens, including light-mode and scrolled variants, are in
+[`docs/screenshots/`](docs/screenshots/). Replace them with simulator captures once the project builds.
+
 ## The sight-in flow
 
 1. Pick (or create) a profile in **Library**. Check its zero range, click value and sight height.
