@@ -28,12 +28,21 @@ Nothing leaves the device. There are no accounts, no ads and no network calls.
 
 ## Screenshots
 
-![ZeroIn screens](docs/screenshots/00-overview.png)
+Simulator captures from CI (iPhone 16 Pro, Xcode 16.4), launched with `-seedDemo -uiTab <tab>`:
 
-These are **mockups**, not device captures: the app has not been built yet (see Build status below), so each
-screen was rendered from the SwiftUI view code with real solver output (Tikka T3x, .308 Win, Federal Gold Medal
-Match 168 gr, 100 yd zero). Individual screens, including light-mode and scrolled variants, are in
-[`docs/screenshots/`](docs/screenshots/). Replace them with simulator captures once the project builds.
+| Range | Library | Ballistics | Settings |
+|---|---|---|---|
+| ![Range](docs/screenshots/ci/01-range.png) | ![Library](docs/screenshots/ci/02-library.png) | ![Ballistics](docs/screenshots/ci/03-ballistics.png) | ![Settings](docs/screenshots/ci/04-settings.png) |
+
+The `ZeroIn iOS` workflow refreshes these on every push that touches `zero-in/`
+(see [`.github/workflows/zeroin-ios.yml`](../.github/workflows/zeroin-ios.yml)).
+
+The sight-in capture flow needs a camera and a target photo, so it is not captured in CI. The contact sheet below
+is a **mockup** of the whole app rendered from the SwiftUI view code with real solver output (Tikka T3x, .308 Win,
+Federal Gold Medal Match 168 gr, 100 yd zero); the individual mockup frames are in
+[`docs/screenshots/`](docs/screenshots/).
+
+![ZeroIn screens (mockup)](docs/screenshots/00-overview.png)
 
 ## The sight-in flow
 
@@ -58,11 +67,11 @@ from 3 o'clock gives negative drift).
 
 ## Build and run
 
-> **Build status (v0.1):** this code was written and reviewed without an Xcode or Swift toolchain available, so
-> nothing here has been compiled yet. Expect a first round of compile fixes in Xcode 16. The ballistics math was
-> verified numerically through its Python mirror (`tools/ballistics_reference.py`) against py-ballisticcalc, and
-> the catalog JSON through `tools/validate_catalog.py`; the Swift unit tests in `ZeroInCore/Tests` encode those
-> same checks for `swift test`.
+> **Build status (v0.1):** builds and runs on the iOS 18 simulator under Xcode 16.4 via the `ZeroIn iOS` GitHub
+> Actions workflow, which also runs the 70 `ZeroInCore` unit tests. It has not yet been run on a physical
+> iPhone, so the camera path of the sight-in flow is untested on hardware. The ballistics math was verified
+> numerically through its Python mirror (`tools/ballistics_reference.py`) against py-ballisticcalc, and the
+> catalog JSON through `tools/validate_catalog.py`.
 
 Requirements: Xcode 16 or later, an iPhone running iOS 17 or later (the camera is needed for the sight-in flow, so
 run on a device; the simulator can still pick photos).
