@@ -5,7 +5,7 @@
 // wrapped (a blocked or corrupt store never breaks boot), a corrupt save is kept aside at `<key>.corrupt`, a save from
 // a newer version is not misread, writes tell the family sync (Spell Jump's notify.js localWrite), and `resetAt`
 // (Parents → Reset) is kept so a reset on one device wins the merge (src/skills/sync.js).
-import { STOCK, YARD_KINDS, itemOf } from '../data/looks.js';
+import { EXTRAS, STOCK, YARD_KINDS, itemOf } from '../data/looks.js';
 import { STREETS } from '../data/streets.js';
 import { SKILLS_VERSION, defaultSkills, normalizeSkills, skillsKey } from '../skills/store.js';
 import { localWrite } from '../../../spell-jump/src/sync/notify.js';
@@ -24,7 +24,7 @@ export function defaultSave() {
     pumpkins: 0,              // planted in the calm beat after each final wave
     waves: 0,                 // waves played (stopped ones too)
     streets: {},              // streetId -> { wave: the next wave 1-5, cleared: times all 5 waves were played }
-    yard: { owned: { goo: [], fence: [] }, goo: STOCK.goo, fence: STOCK.fence },
+    yard: { owned: { grenade: [], goo: [], fence: [], extra: [] }, grenade: STOCK.grenade, goo: STOCK.goo, fence: STOCK.fence, dog: false, lantern: false },
     records: { lifetimeCash: 0, throws: 0, reached: 0, bestWave: 0 },
     seen: { coach: false },
     play: {},                 // 'YYYY-MM-DD' -> { waves, cures } (the last 14 days)
@@ -50,6 +50,8 @@ export function normalize(raw) {
     const eq = y[kind];
     s.yard[kind] = itemOf(kind, eq) && (eq === STOCK[kind] || s.yard.owned[kind].includes(eq)) ? eq : STOCK[kind];
   }
+  s.yard.owned.extra = [...new Set(((y.owned && y.owned.extra) || []).filter((id) => EXTRAS.some((x) => x.id === id)))];
+  for (const x of EXTRAS) s.yard[x.id] = s.yard.owned.extra.includes(x.id) && y[x.id] === true;
   if (raw.records && typeof raw.records === 'object') for (const k of Object.keys(s.records)) s.records[k] = int0(raw.records[k]);
   const seen = raw.seen && typeof raw.seen === 'object' ? raw.seen : {};
   s.seen.coach = typeof seen.coach === 'boolean' ? seen.coach : s.waves > 0;

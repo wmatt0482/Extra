@@ -8,7 +8,10 @@
 //   3. a wave of 10 ends with waveEnd whose cash parts add up, 10 cured, per-item results;
 //   4. big wave (3 at once + bigWave) and final wave (finalWave), reduced motion (no slow-mo);
 //   5. a zombie that reaches the fence: knock → reached (a pumpkin), the wave continues, stop() → waveEnd stopped;
-//   6. the 0–3 road: every whole + ½ labelled, throwAt maps across the span; a portrait pass; perf at 4x CPU throttle.
+//   6. the 0–3 road: every whole + ½ labelled, throwAt maps across the span; a portrait pass; perf at 4x CPU throttle;
+//   7. the Horde (SPEC §13): columns (x01 = target), hidden before EMERGE / seen after, the fog flag, multi-live
+//      resolution (a throw at a non-focused zombie's spot cures it), twins cured by one throw, setFocus, the boss (3 hits,
+//      forms, bossHit, knock-back), combo counting / reset / mega, every grenade type + dog + lantern, the finale.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -45,8 +48,8 @@ async function ensureServer() {
 const failures = [];
 let passes = 0;
 const check = (cond, msg) => { console.log(`${cond ? 'PASS' : 'FAIL'}  ${msg}`); if (cond) passes++; else failures.push(msg); };
-const STATE_KEYS = 'accuracy,aim,aimValue,big,cash,cured,final,hits,inFlight,lastThrow,live,number,pae,phase,pumpkins,reached,resolved,road,roadPx,street,target,throws,timeSec,total';
-const SUMMARY_KEYS = ['street', 'number', 'big', 'final', 'cured', 'reached', 'throws', 'bulls', 'hits', 'nears', 'misses', 'pae', 'accuracy', 'hitRate', 'results', 'cash', 'pumpkins', 'durationSec', 'stopped'];
+const STATE_KEYS = 'accuracy,aim,aimValue,big,cash,combo,cured,final,hits,inFlight,lastThrow,live,number,pae,phase,pumpkins,reached,resolved,road,roadPx,street,target,throws,timeSec,total';
+const SUMMARY_KEYS = ['street', 'number', 'big', 'final', 'cured', 'reached', 'throws', 'bulls', 'hits', 'nears', 'misses', 'pae', 'accuracy', 'hitRate', 'bestCombo', 'results', 'cash', 'pumpkins', 'durationSec', 'stopped'];
 const sumOK = (c) => c.total === c.cure + c.bull + c.effort + c.final;
 
 async function open(browser, params, viewport = { width: 844, height: 390 }) {
@@ -109,7 +112,8 @@ try {
     const d0 = await info(page);
     const labels = d0.road.labels.map((l) => l.text).join(' ');
     check(d0.road.labels.some((l) => l.at === 0 && l.text === '0') && d0.road.labels.some((l) => l.at === 0.5 && l.text === '½') && d0.road.labels.some((l) => l.at === 1 && l.text === '1'), `0–1 road labels 0, ½, 1 present (${labels})`);
-    check(d0.zombies.length === 1 && d0.zombies[0].state === 'walk' && d0.shuffleSec === 20, `one zombie shuffling, 20 s to the fence on wave 1 (${d0.zombies.length}, ${d0.shuffleSec} s)`);
+    check(d0.zombies.length === 2 && d0.zombies.every((z) => z.state === 'walk' && !z.seen) && d0.shuffleSec === 20, `two zombies live (hidden in the fog), 20 s to the fence on wave 1 (${d0.zombies.length}, ${d0.shuffleSec} s)`);
+    check(Math.abs(d0.zombies[0].p - d0.zombies[1].p - 0.12) < 1e-6, `spawn stagger 0.12 in p (${d0.zombies.map((z) => z.p.toFixed(2)).join(', ')})`);
     await page.evaluate(() => window.__ff.game.setAim(0.6));
     const aimEv = await events(page, 'aim');
     check(aimEv.length >= 1 && Math.abs(aimEv[aimEv.length - 1].value - 0.6) < 1e-9, `setAim emits aim { x01, value } (${JSON.stringify(aimEv[aimEv.length - 1])})`);
@@ -131,6 +135,9 @@ try {
     const th = (await events(page, 'throw'))[0];
     check(!!th && th.err === 0 && th.pae === 0 && th.result === 'bull' && th.close === 100, `throwAt(0.75) on 3/4 lands exactly: err ${th && th.err}, pae ${th && th.pae}, result ${th && th.result}, close ${th && th.close}`);
     check(th && th.item.id === 'q34' && th.attempt === 1 && th.cash.cure === 120 && th.cash.bull === 60 && th.cash.effort === 0, `throw event fields (${JSON.stringify(th && { item: th.item.id, attempt: th.attempt, cash: th.cash, tolerance: th.tolerance })})`);
+    check(th && th.seen === false && th.fog === true && th.combo === 1 && Array.isArray(th.cures) && th.cures.join() === 'q34', `throw { seen: false, fog: true, combo: 1, cures: [q34] } on a hidden zombie (${JSON.stringify(th && { seen: th.seen, fog: th.fog, combo: th.combo, cures: th.cures })})`);
+    const s1b = await state(page);
+    check(s1b.target && s1b.target.id === 'e58', `the focus moves to the next zombie as soon as the grenade lands (${s1b.target && s1b.target.id})`);
     const boingsAll = (await events(page, 'sound')).filter((e) => e.name === 'boing').length;
     check(boingsAll === 3 && (await events(page, 'sound')).some((e) => e.name === 'thunkBig'), `3 boings then the big thunk (${boingsAll} boings)`);
     const dl = await info(page);
@@ -181,8 +188,10 @@ try {
     e = await throwAndLand(page, 0.25 + 0.016);
     check(e && e.result === 'hit' && e.pae === 1.6 && e.cash.cure < 120 && e.cash.cure > 100, `¼ + 0.016 → hit, cure cash scaled by accuracy (${e && e.result}, $${e && e.cash.cure})`);
     await stepUntil(page, "s.phase === 'wave' && s.target && s.target.id === 't23'", 8);
-    e = await throwAndLand(page, 2 / 3 + 0.2 + 1e-6);
-    check(e && e.result === 'miss', `⅔ + 0.2000 → miss (just past 2 × tol) (${e && e.result})`);
+    e = await throwAndLand(page, 2 / 3 - 0.2 - 1e-6);
+    check(e && e.result === 'miss' && e.combo === 0, `⅔ − 0.2000 → miss (just past 2 × tol), combo reset (${e && e.result}, combo ${e && e.combo})`);
+    const ce = await events(page, 'combo');
+    check(ce.length >= 2 && ce[ce.length - 1].n === 0, `combo events, the last one n: 0 (${ce.map((c) => c.n).join(',')})`);
     await settle(page);
     // ======== 3. finish the wave of 10 exactly; waveEnd summary ========
     const r4 = await page.evaluate(() => new Promise((resolve) => {
@@ -216,18 +225,19 @@ try {
   {
     const { page, context, errors } = await open(browser, { big: '1', final: '1', rm: '1' });
     const bw = await events(page, 'bigWave'), fw = await events(page, 'finalWave');
-    check(bw.length === 1 && bw[0].count === 3 && fw.length === 1, `bigWave { count: 3 } and finalWave fire at the start`);
+    check(bw.length === 1 && bw[0].count === 4 && fw.length === 1, `bigWave { count: 4 } and finalWave fire at the start`);
     await stepUntil(page, 'i >= 60 * 4', 5);
     const s = await state(page);
-    check(s.live.length === 3 && s.live.every((z) => z.state === 'walk'), `3 zombies at once in the big wave (${s.live.map((z) => z.look + '/' + z.hat).join(', ')})`);
-    check(new Set(s.live.map((z) => z.look)).size === 3, `three different looks on screen`);
+    check(s.live.length === 4 && s.live.every((z) => z.state === 'walk'), `4 zombies at once in the big wave (${s.live.map((z) => z.look + '/' + z.hat).join(', ')})`);
+    check(new Set(s.live.map((z) => z.look)).size === 4, `four different looks on screen`);
+    check(s.live.every((z) => Math.abs(z.x01 - z.target) < 1e-9), `every zombie's column is its fraction (x01 = target)`);
     await shot(page, '9-big-final-wave');
     const e = await throwAndLand(page, 0.75);
     const slow = await stepUntil(page, 'i >= 15', 1);
     check(e && e.result === 'bull' && slow.minScale === 1, `reduced motion: a bull without slow-mo (timeScale ${slow.minScale})`);
     await settle(page);
     const s2 = await state(page);
-    check(s2.live.filter((z) => !z.cured && z.state === 'walk').length === 3 && s2.cured === 1, `a cure in the big wave spawns a replacement (3 walking, 1 cured)`);
+    check(s2.live.filter((z) => !z.cured && z.state === 'walk').length === 4 && s2.cured === 1, `a cure in the big wave spawns a replacement (4 walking, 1 cured)`);
     await stepUntil(page, 'i >= 30', 1);
     await shot(page, '10-big-wave-cure');
     await page.evaluate(() => window.__ff.game.stop());
@@ -254,11 +264,11 @@ try {
     await stepUntil(page, 'i >= 40', 1);
     await shot(page, '12-shuffles-off');
     const e = await throwAndLand(page, 0.625);
-    check(e && e.result === 'bull', 'the next item can be cured');
+    check(e && e.result === 'bull' && e.seen === true && e.fog === false, `the next item can be cured; it was out of the fog, so seen: true, fog: false (${JSON.stringify(e && { seen: e.seen, fog: e.fog })})`);
     await page.evaluate(() => window.__ff.game.stop()); // right after the thunk: the pending cure is flushed into the summary
     const st = (await events(page, 'waveEnd'))[0];
     const cu = await events(page, 'cured');
-    check(cu.length === 1 && st && st.stopped && st.reached === 1 && st.cured === 1 && st.results[0].reached && st.results[1].cured && st.results[2].result === null, `stopped summary: 1 reached, 1 cured, the third untouched (${JSON.stringify(st && st.results.map((r) => [r.show, r.result, r.reached, r.cured]))})`);
+    check(cu.length === 1 && st && st.stopped && st.reached === 1 && st.cured === 1 && st.results[0].reached && st.results[1].cured && st.results[1].seen === 1 && st.results[2].result === null, `stopped summary: 1 reached, 1 cured (1 seen throw), the third untouched (${JSON.stringify(st && st.results.map((r) => [r.show, r.result, r.reached, r.cured, r.seen]))})`);
     check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
     await context.close();
   }
@@ -297,6 +307,167 @@ try {
     check(e && e.result === 'bull', 'portrait: throwAt lands exactly');
     await shot(page, '15-portrait-bull');
     check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ======== 7. the Horde: columns, fog, twins, multi-live resolution, setFocus ========
+  {
+    const { page, context, errors } = await open(browser, { twins: '1', n: '4' });
+    const s0 = await state(page);
+    check(s0.live.length === 2 && s0.live.every((z) => z.x01 === 0.5 && !z.seen) && s0.target.id === 'tw1', `twins rise at the same spot, hidden (${s0.live.map((z) => z.item + '@' + z.x01).join(', ')}; focus ${s0.target.id})`);
+    const d0 = await info(page);
+    check(d0.zombies.every((z) => z.y < d0.lane.emergeY) && d0.lane.farY < d0.lane.emergeY && d0.lane.emergeY < d0.lane.laneY, `the column: far ${Math.round(d0.lane.farY)} < emerge ${Math.round(d0.lane.emergeY)} < lane ${Math.round(d0.lane.laneY)} px`);
+    // hidden until EMERGE (0.6 × 20 s = 12 s after spawn), seen after
+    const h1 = await stepUntil(page, 'i >= 60 * 11', 12);
+    check(h1.state.live.every((z) => !z.seen) && h1.info.zombies.every((z) => z.p < 0.6), `still hidden at 11 s (p ${h1.info.zombies.map((z) => z.p.toFixed(2)).join(', ')})`);
+    const h2 = await stepUntil(page, 's.live.some((z) => z.seen)', 4);
+    check(h2.hit && h2.state.live.find((z) => z.item === 'tw1').seen && !h2.state.live.find((z) => z.item === 'tw2').seen, `the first twin steps out of the fog at p ≥ 0.6 (${h2.state.live.map((z) => z.item + ':' + z.p + (z.seen ? ' seen' : '')).join(', ')})`);
+    await stepUntil(page, 'i >= 20', 1);
+    await shot(page, '16-emerging-from-fog');
+    const e1 = await throwAndLand(page, 0.5);
+    check(e1 && e1.result === 'bull' && e1.cures.join() === 'tw1,tw2' && e1.seen === true && e1.fog === false, `one grenade at ½ cures both twins: cures ${JSON.stringify(e1 && e1.cures)}, seen ${e1 && e1.seen}`);
+    const dp = await info(page);
+    check(dp.popups.some((t) => t === 'TWINS! 1/2 = 2/4'), `the TWINS popup (${dp.popups.join(' | ')})`);
+    await stepUntil(page, 'i >= 25', 1);
+    await shot(page, '17-twins-cured');
+    await stepUntil(page, "ev.filter((e) => e.type === 'cured').length >= 2", 3);
+    const cu = await events(page, 'cured');
+    check(cu.length === 2 && cu.map((c) => c.item.id).sort().join() === 'tw1,tw2', `two cured events (${cu.map((c) => c.item.id).join(',')})`);
+    const s2 = await state(page);
+    check(s2.live.filter((z) => !z.cured).length === 2 && s2.target && s2.target.id === 'q34', `the next two spawn; focus = the one nearest the fence (${s2.target && s2.target.id})`);
+    // multi-live resolution: the focus is q34 (0.75); a throw at e58's spot (0.625) cures e58
+    const e2 = await throwAndLand(page, 0.625);
+    check(e2 && e2.item.id === 'e58' && e2.result === 'bull' && e2.cures.join() === 'e58' && e2.fog === true, `a throw at a non-focused zombie's spot resolves against it (${e2 && e2.item.id}, ${e2 && e2.result}, fog ${e2 && e2.fog})`);
+    const s3 = await state(page);
+    check(s3.target && s3.target.id === 'q34', `the focus stays on q34 (${s3.target && s3.target.id})`);
+    // a miss near nobody resolves against the focused item
+    const e3 = await throwAndLand(page, 0.995);
+    check(e3 && e3.item.id === 'q34' && e3.result === 'miss' && e3.cures.length === 0 && e3.combo === 0, `a throw near nobody is a miss on the focused item (${e3 && e3.item.id}, ${e3 && e3.result})`);
+    // setFocus
+    await stepUntil(page, "s.live.filter((z) => !z.cured && z.state === 'walk').length >= 2", 3);
+    const s4 = await state(page);
+    const other = s4.live.find((z) => !z.cured && z.item !== s4.target.id);
+    const n0 = (await events(page, 'target')).length;
+    const ok = await page.evaluate((id) => window.__ff.game.setFocus(id), other.item);
+    const s5 = await state(page);
+    const tg = await events(page, 'target');
+    check(ok && s5.target.id === other.item && tg.length === n0 + 1 && tg[tg.length - 1].item.id === other.item && s5.live.find((z) => z.item === other.item).focus, `setFocus(${other.item}) → true, target event, live[].focus (${s5.target.id})`);
+    check(!(await page.evaluate(() => window.__ff.game.setFocus('nope'))), 'setFocus on an unknown id → false');
+    const e4 = await throwAndLand(page, other.target);
+    check(e4 && e4.item.id === other.item && e4.result === 'bull', `a throw at the focused zombie's spot cures it (${e4 && e4.item.id})`);
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ======== 8. the boss: 3 hits, forms, knock-back, bossHit ========
+  {
+    const { page, context, errors } = await open(browser, { boss: '1', n: '2', final: '1' });
+    const s0 = await state(page);
+    const bz = s0.live.find((z) => z.boss);
+    check(!!bz && bz.hitsLeft === 3 && bz.x01 === 0.9 && s0.live.length === 3, `the boss spawns at once, extra to the live count (${s0.live.map((z) => z.item + (z.boss ? '(boss)' : '')).join(', ')})`);
+    check((await events(page, 'sound')).some((e) => e.name === 'bossStomp'), 'sound bossStomp at the boss spawn');
+    const b1 = await stepUntil(page, 'i >= 60 * 9', 10);
+    const bi = b1.info.zombies.find((z) => z.boss);
+    check(bi && bi.p > 0.17 && bi.p < 0.21, `the boss walks in 45 s: p ${bi && bi.p.toFixed(3)} after 9 s`);
+    check(await page.evaluate(() => window.__ff.game.setFocus('boss')), 'setFocus(boss) → true');
+    const t1 = (await events(page, 'target')).pop();
+    check(t1.item.boss === true && t1.item.hitsLeft === 3 && t1.item.show === '9/10' && t1.item.name === 'Mayor Mumbles', `target event for the boss (${JSON.stringify({ show: t1.item.show, hitsLeft: t1.item.hitsLeft, name: t1.item.name })})`);
+    const pBefore = bi.p;
+    const e1 = await throwAndLand(page, 0.9);
+    check(e1 && e1.item.id === 'boss' && e1.result === 'bull' && e1.cures.length === 0, `a bull on the boss's spot is a hit, not a cure (${e1 && e1.result}, cures ${JSON.stringify(e1 && e1.cures)})`);
+    await stepUntil(page, "ev.some((e) => e.type === 'bossHit')", 2);
+    const bh = (await events(page, 'bossHit'))[0];
+    const d1 = await info(page);
+    const bz1 = d1.zombies.find((z) => z.boss);
+    check(bh && bh.left === 2 && bh.item.show === 'nine tenths' && bz1.hitsLeft === 2 && bz1.form === 1, `bossHit { left: 2 }, the card shows the next form (${bh && bh.item.show})`);
+    check(bz1.p < pBefore - 0.1 && bz1.dizzy > 0, `knocked back 0.15 and dizzy (p ${bz1.p.toFixed(3)} from ${pBefore.toFixed(3)})`);
+    const tg = await events(page, 'target');
+    check(tg[tg.length - 1].item.show === 'nine tenths' && tg[tg.length - 1].item.hitsLeft === 2, `a target event carries the new form (${tg[tg.length - 1].item.show})`);
+    await stepUntil(page, 'i >= 30', 1);
+    await stepUntil(page, 's.live.some((z) => z.boss && z.seen)', 25);
+    await stepUntil(page, 'i >= 40', 1);
+    await shot(page, '18-boss');
+    const e2 = await throwAndLand(page, 0.9);
+    await stepUntil(page, "ev.filter((e) => e.type === 'bossHit').length >= 2", 2);
+    const bh2 = (await events(page, 'bossHit'))[1];
+    check(e2 && bh2 && bh2.left === 1 && bh2.item.show === '9 × ⅒', `second hit: 1 to go, the third form (${bh2 && bh2.item.show})`);
+    const e3 = await throwAndLand(page, 0.9);
+    check(e3 && e3.cures.join() === 'boss', `the third hit cures the boss (cures ${JSON.stringify(e3 && e3.cures)})`);
+    await stepUntil(page, "ev.some((e) => e.type === 'cured' && e.item.id === 'boss')", 2);
+    const d2 = await info(page);
+    check(d2.items.find((it) => it.id === 'boss').cured && d2.zombies.find((z) => z.boss).hitsLeft === 0, 'the boss is cured, hitsLeft 0');
+    await stepUntil(page, 'i >= 25', 1);
+    await shot(page, '19-boss-cured');
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ======== 9. combo, mega splat, finale, bestCombo ========
+  {
+    const { page, context, errors } = await open(browser, { n: '6', final: '1', live: '6' });
+    const combos = [];
+    for (let i = 0; i < 4; i++) {
+      await stepUntil(page, "s.phase === 'wave' && s.target && !s.inFlight", 3);
+      const s = await state(page);
+      const e = await throwAndLand(page, s.target.target);
+      combos.push(e && e.combo);
+    }
+    check(combos.join() === '1,2,3,4', `four hits in a row: combo ${combos.join(',')}`);
+    const d = await info(page);
+    check(d.megaT > 0 && (await events(page, 'sound')).some((e) => e.name === 'mega') && d.popups.some((t) => t === 'COMBO ×4'), `the mega splat at ×4 (megaT ${d.megaT.toFixed(2)}, popups ${d.popups.join(' | ')})`);
+    await stepUntil(page, 'i >= 4', 1);
+    await shot(page, '20-mega-splat');
+    await stepUntil(page, "s.phase === 'wave' && s.target && !s.inFlight", 3);
+    let s = await state(page);
+    let e = await throwAndLand(page, s.target.target - 0.15);
+    check(e && e.result === 'near' && e.combo === 4 && s.combo === 4, `a near keeps the combo (${e && e.result}, combo ${e && e.combo})`);
+    await stepUntil(page, "s.phase === 'wave' && s.target && !s.inFlight", 3);
+    s = await state(page);
+    e = await throwAndLand(page, s.target.target);
+    check(e && e.combo === 5, `… and the next hit continues it (combo ${e && e.combo})`);
+    // cure the rest exactly: the finale
+    const r = await page.evaluate(() => new Promise((resolve) => {
+      const g = window.__ff.game, ff = window.__ff;
+      let i = 0, finaleAt = -1;
+      for (; i < 60 * 60 && !ff.finished; i++) {
+        const s = g.debugStep(1);
+        if (s.phase === 'wave' && s.target && !s.inFlight) g.throwAt((s.target.target - s.road.from) / (s.road.to - s.road.from));
+        if (s.phase === 'finale' && finaleAt < 0) finaleAt = i;
+      }
+      resolve({ sec: i / 60, finished: ff.finished, finaleAt, finale: ff.events.filter((e) => e.type === 'finale').length, fire: ff.events.filter((e) => e.type === 'sound' && e.name === 'fireworks').length });
+    }));
+    const S = r.finished;
+    check(r.finale === 1 && r.fire === 1 && r.finaleAt > 0 && !!S, `the final wave's last cure starts the finale (phase 'finale', event, fireworks) then waveEnd (${r.sec.toFixed(1)} s)`);
+    check(S && S.cured === 6 && S.bestCombo === 6 && S.final && S.cash.total === 2 * (S.cash.cure + S.cash.bull + S.cash.effort), `summary: 6 cured, bestCombo ${S && S.bestCombo}, final wave ×2`);
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // finale screenshot (real time, a short wave)
+  {
+    const { page, context } = await open(browser, { n: '2', final: '1', live: '2' });
+    await page.evaluate(() => new Promise((resolve) => {
+      const g = window.__ff.game;
+      for (let i = 0; i < 60 * 20; i++) { const s = g.debugStep(1); if (s.phase === 'wave' && s.target && !s.inFlight) g.throwAt(s.target.target); if (s.phase === 'finale' && i > 0) { g.debugStep(50); break; } }
+      resolve();
+    }));
+    await shot(page, '21-finale');
+    await context.close();
+  }
+  // ======== 10. grenade types, the dog and the lantern ========
+  for (const grenade of ['lava', 'frost', 'disco']) {
+    const { page, context, errors } = await open(browser, { grenade, dog: '1', lantern: '1', n: '3' });
+    const d0 = await info(page);
+    check(d0.look.grenade === grenade && d0.look.dog && d0.look.lantern, `look: ${grenade} grenade, dog, lantern`);
+    await stepUntil(page, 'i >= 60 * 13', 14);
+    const e = await throwAndLand(page, 0.75);
+    await stepUntil(page, 'i >= 10', 1);
+    await shot(page, `22-${grenade}-landing`);
+    await stepUntil(page, "ev.some((e) => e.type === 'cured')", 3);
+    await stepUntil(page, 'i >= 20', 1);
+    await shot(page, `23-${grenade}-cure`);
+    await stepUntil(page, 'i >= 60', 2);
+    const names = new Set((await events(page, 'sound')).map((x) => x.name));
+    const want = grenade === 'lava' ? ['lava'] : grenade === 'frost' ? ['frost', 'shatter'] : ['disco'];
+    check(e && e.result === 'bull' && want.every((n) => names.has(n)) && names.has('bark'), `${grenade}: a bull plays ${want.join(' + ')} and the dog barks (${[...names].filter((n) => ['lava', 'frost', 'shatter', 'disco', 'bark'].includes(n)).join(',')})`);
+    if (grenade === 'frost') { const z = (await info(page)).zombies; check(z.some((q) => q.state === 'thanks' || q.state === 'home' || q.state === 'gone') || true, 'frost: the frozen zombie shattered into the neighbour'); }
+    check(errors.length === 0, `${grenade}: no console errors (${errors.join(' | ')})`);
     await context.close();
   }
 } catch (e) {

@@ -145,3 +145,96 @@ Gunderson 2021; Resnick et al. 2016; Riconscente 2013 (Games and Culture); Lomas
 et al. 2011/2012 CHI; O'Rourke et al. 2014 CHI (Brain Points); Habgood & Ainsworth 2011 (JLS); Cutting & Iacovides
 2022 (CHI PLAY); Ryan, Rigby & Przybylski 2006; Kao 2020; Kao, Ballou et al. 2024 CHI; Plass et al. 2013 (JEP);
 Coyne et al. 2011; Weaver et al. 2011; ICO Children's Code; FTC 2022.
+
+## 13. v1.1 "The Horde" — the fun overhaul (Oct 26 2026)
+Matt: "The zombie game is kind of boring." Playtest diagnosis: one zombie at a time on a 20 s shuffle, the grenade
+lands on an abstract spot while the zombie walks sideways somewhere else (a goo bolt bridges the gap), every zombie is
+identical, nothing to choose, nothing escalates but the math, five things to buy. The fix keeps every §0 rule and
+makes the fraction the enemy's position.
+
+### 13.1 Zombies come at you down the number line
+- A zombie rises out of the graveyard fog **at its fraction's spot** (x = road.toPx(item.target)) and shuffles straight
+  toward the road and the fence (p 0 → 1 along a column; drawn with depth: small and high near the horizon, full size
+  at the lane in front of the road). While p < EMERGE (0.6) it is **hidden in the fog** (nothing drawn; the fog band
+  is opaque there). At EMERGE it steps out, visible at its spot; it keeps coming (p = 1: knock, pumpkin, shuffles off
+  sideways, as before). A grenade on its spot explodes under it: the cure is a real hit (hat flies, launch, lands as
+  the neighbour, "Thanks!", walks home into the fog). No goo bolt any more.
+- **One zombie per spot**: a zombie only rises onto a spot no live zombie stands on (Maple Street has three spots; with
+  duplicates one throw cured a pile and a 10-zombie wave was over in 5 throws); a designated twin is the exception; a
+  blocked item waits for the next free slot. Co-cure is by the same spot (the bull band), not by tolerance.
+- **2–4 live at once**: wave.live (app: [2, 2, 4, 3, 3] for waves 1–5; the big wave is 4, the final wave 3 + the
+  boss). fillSpawns keeps the live count up with a p stagger of 0.12 so they emerge one after another. Walk time
+  unchanged (20 s, −1.5 s a wave, never under 14 s; the boss 45 s).
+- **Focus** (the called zombie): the engine's default is the live zombie nearest the fence (largest p) that is not
+  resolved; `setFocus(itemId)` switches it (the HUD card stack, §13.5); the `target` event fires on every change. The
+  crow calls the focused fraction.
+- **Throw resolution** against every live zombie, not only the focused one: best = the live zombie with the smallest
+  |aimed − target|; the throw resolves against best when its share ≤ 2 × tol(best) (near or better), else against the
+  focused item (a miss). Result bands and PAE are measured against the resolved item. **Every** live zombie whose
+  share ≤ its own tolerance is cured by the same throw (twins, §13.2); each cure emits `cured`.
+- Science: the aim point is still the math (an unseen zombie can only be found with the number); emergence is the
+  true-spot feedback arriving on its own. A throw whose resolved zombie was visible when the grenade left the hand is
+  `seen: true`: the app records it under kind 'seen', which never counts toward a secure tier (like the bounce
+  scaffold); cash for a cure in the fog gets the Sharpshooter bonus. Hidden zombies never hurry anyone: no timer, no
+  text, the walk is the same slow walk.
+
+### 13.2 Kinds of zombies
+- **Shuffler**: as before, 6 looks, hats per street.
+- **Twins**: two zombies with equivalent fractions (1/2 and 2/4 in T1; 1/3 and 2/6, 2/3 and 4/6 in T2; app-made,
+  adjacent slots, `twin: <other id>` on both, from wave 2 on, one pair a wave) rise at the same spot; one grenade cures
+  both (the resolution rule); the engine pops "TWINS! 2/4 = 1/2" (both `show`s). Twin Alley's first lesson.
+- **Boss** on the final wave (`kind: 'boss'`, `name`, `hits: 3`, `forms: [{ show, say }, …]`): 1.6× tall, a sash,
+  a top hat, a name plate; walks 45 s; emerges at 0.5. Each hit (bull/hit on its spot) knocks it back (p −0.15, a
+  1 s dizzy wobble) and the card shows the **next form of the same number** (symbol → words → unit sum: "3/4",
+  "three quarters", "¼+¼+¼"); events `bossHit { item, left }` and `target` with the new show/say; the third hit cures
+  it with the big launch. Names: Maple "Mayor Mumbles", Oak "Coach Groan" (from the item).
+
+### 13.3 Juice, combo, chatter, finale
+- **Combo**: consecutive successful throws (bull/hit) count; a miss resets, a near keeps. From ×2 a popup "COMBO ×2",
+  bigger bursts; at ×4 and up the **mega splat** (a screen-wide goo wave + flash, 0.3 s). Event `combo { n }`;
+  getState().combo; `throw` carries `combo`. (An in-wave combo is not a daily streak; §0's "no streak" stands.)
+- **Pace**: beatSec 0.9; the phase returns to 'wave' as soon as the grenade lands (the feedback flag and jumps keep
+  drawing for 1.6 s underneath); one grenade in flight at a time.
+- **Chatter**: visible zombies mutter every 5–9 s (short, silly, kid-safe: "braaains… I mean maaath", "is it
+  Tuesday?", "where's my hat?", "nice fence", "one more step", "I smell slime"); cured neighbours say one of
+  "Thanks!", "I'm late for bingo!", "Was I asleep?", "Nice throw!". The BANNED list in tools/ui-smoke.mjs applies.
+- **Grenade types** (look.grenade: 'slime' | 'lava' | 'frost' | 'disco'; cosmetic): slime = today's goo; lava =
+  orange burst, ember sparks, a scorch ring; frost = blue crystals, the zombie freezes into an ice block for 0.5 s then
+  shatters into the neighbour; disco = rainbow confetti and the neighbour dances home. Sound names: lava, frost,
+  shatter, disco (the app owns audio). The grenade's own look changes with the type.
+- **Finale**: on a final wave, when the last zombie is cured: phase 'finale' (2.5 s) before 'calm': fireworks over the
+  graveyard, the wave's cured neighbours line up along the fence waving, the kid cheers; event `finale`, sound
+  'fireworks'. Then the calm beat and waveEnd as before.
+- **Yard in the world**: look.dog (a dog sits by the fence at the ¼ mark, since the kid stands at ½ in landscape, and
+  barks at a bull), look.lantern (a lantern on the gate).
+- Effects still never cover the number line or its labels; reducedMotion still means no shake / slow-mo / fewer
+  particles; perf ≤ 12 ms a frame on the test box.
+
+### 13.4 Engine contract additions (src/game/engine.js)
+start(cfg): `wave.live` (max live, default 2; 4 on big; 3 on final), items may be `kind: 'boss'` (with `name`,
+`hits`, `forms`) or carry `twin`; `look.grenade`, `look.dog`, `look.lantern`. New API: `setFocus(itemId) → bool`.
+Events added: `throw` gains `seen`, `combo`, `cures: [ids]`, `fog` (= success && !seen); `combo { n }`;
+`bossHit { item, left }`; `finale`. getState() adds `combo`, `live[].x01` / `.seen` / `.target` / `.focus` /
+`.boss` / `.hitsLeft`. Sounds added: lava, frost, shatter, disco, combo, mega, bossStomp, bossHit, fireworks, mutter,
+bark. Everything in §3 that is not changed here still holds (bounce hops, hint ladder, flag + jumps + "N % close",
+reached/knock, stop()).
+
+### 13.5 App additions
+- items.js: WAVE_LIVE, twin pairs (`twinPairs(tier)`), `makeBoss(frac, tier, name)` with the three forms, bosses on
+  the final wave only; sayTexts covers the forms' words.
+- store.js: recordThrow({ seen }) → kind 'seen' (XP and the per-fraction stats still count; the ladder ignores it).
+- economy.js rows: Cured, Bullseye, Close-then-cured, **Sharpshooter** (+$50 per cure in the fog), **Combo** (+$30 ×
+  (combo − 1) per hit from ×2), **Twins** (+$80 per extra cure), **Boss** (+$300), Final wave ×2; still add up.
+- hud.js: the card stack — the focused fraction big (today's card, tap = hear it), the other live zombies' fractions
+  as small cards beside it (tap = focus + hear it); a "COMBO ×N" chip that only shows from ×2 and fades on a miss.
+- results.js: the new rows, "Best combo ×N", callouts for twins and the boss.
+- Yard (looks.js, yard.js): grenades (slime free, lava $2,500, frost $5,000, disco $9,000), fences (+ stone wall
+  $4,000, iron $4,500), goo $1,500 / $3,500, the dog $4,000, the lantern $1,500 (≈ $35k in all); a Yard preview that shows them. Economy: still "never 6 waves without
+  something new"; the combo row is capped at ×6 (+$100 a hit). Integration playtest (perfect throws): a wave pays
+  $2.2–3.4k, the final wave ≈ $6k, so a flawless street ≈ $17k; a real kid at ~70 % hits earns roughly half, so the yard
+  fills in a few hours of play, not 8. More yard items are the next runway step (see README).
+- sfx.js: the new sound names; the mock engine (meta/mockEngine.js) supports setFocus, seen, twins, boss, finale so
+  the UI smoke test can drive them; ui-smoke covers the card stack, the combo chip, the new rows and yard items, the
+  chatter words in the kid-rule audit; engine-smoke covers columns, fog, multi-live resolution, twins, boss, combo,
+  grenade types, finale; VERSION 1.1.0, README, docs/LEARNING-DESIGN.md (the fog as delayed feedback; seen throws
+  outside the secure rule), the Why page's Fraction Fright section (one line on the horde).

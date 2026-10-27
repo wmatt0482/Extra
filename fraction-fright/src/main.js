@@ -9,8 +9,9 @@
 // The app owns the math: it builds each wave's items (src/skills/items.js), maps the finger on the road to setAim()
 // (getState().roadPx), speaks the called fraction ('target'), records every 'throw' event in the skills store
 // (src/skills/store.js), plays the engine's 'sound' events (src/sfx.js), and computes the cash rows from the throws
-// (src/meta/economy.js), so the rows always add up whatever the engine shows. The zombie's lane is deliberately not its
-// fraction: slime on the called spot fires a goo bolt that cures the called zombie wherever it stands.
+// (src/meta/economy.js), so the rows always add up whatever the engine shows. 1.1 (SPEC §13): zombies rise out of the fog
+// at their fraction's spot; the HUD's card stack lets the kid call any live zombie (app.focus → game.setFocus); a throw
+// at a zombie already out of the fog is recorded as 'seen' (never counted toward secure).
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -41,7 +42,7 @@ import { createResults } from './ui/results.js';
 import { createYard } from './ui/yard.js';
 import { createParentZone } from './ui/parentZone.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const GAME = 'fraction-fright';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'fractionFright.resumePlayer';   // sessionStorage: the player to come back to after an update reload
@@ -145,7 +146,7 @@ async function boot() {
     say(text) { if (!skills || !skills.opts.aloud || !tts.available || !text) return; try { tts.cancel(); tts.say(text); } catch (_) { /* ignore */ } },
     gooColor: () => (itemOf('goo', save.yard.goo) || itemOf('goo', 'lime')).color,
     reducedMotion: () => !!settings.reducedMotion,
-    go, toast, refreshCash, selectPlayer, setSetting, startWave,
+    go, toast, refreshCash, selectPlayer, setSetting, startWave, focus,
     // ----- the Zombie Lab -----
     labDone: () => !!(skills && skills.lab.done),
     recordLabThrow({ n, d, pae, result }) {
@@ -190,7 +191,7 @@ async function boot() {
 
   // ---------- UI ----------
   const playersUI = createPlayers(app);
-  const hud = createHud();
+  const hud = createHud({ onFocus: (id) => focus(id) });
   const lab = createLab(app);
   const results = createResults(app);
   const screens = { players: playersUI.players, newplayer: playersUI.newplayer, lab, streets: createStreets(app), results, yard: createYard(app) };
@@ -327,18 +328,19 @@ async function boot() {
     const state = tierState(skills, tier);
     const rv = reviewTierOf(tier);
     const seed = hashString(`${currentPlayerId}:${streetId}:${save.waves}:${number}`);
-    const w = buildWave({ tier, number, state, reviewTier: rv, reviewState: rv ? tierState(skills, rv) : 'secure', more: moreDenominators(skills, tier), rng: rngFrom(seed) });
-    const goo = itemOf('goo', save.yard.goo), fence = itemOf('fence', save.yard.fence);
+    const w = buildWave({ tier, number, state, reviewTier: rv, reviewState: rv ? tierState(skills, rv) : 'secure', more: moreDenominators(skills, tier), rng: rngFrom(seed), bossName: street.boss });
+    const goo = itemOf('goo', save.yard.goo), fence = itemOf('fence', save.yard.fence), grenade = itemOf('grenade', save.yard.grenade) || itemOf('grenade', 'slime');
     run = { street: streetId, streetName: street.name, tier, number, big: w.big, final: w.final, items: w.items, byId: new Map(w.items.map((it) => [it.id, it])),
-      throws: [], targetId: null, ended: false, cured: 0, reached: 0, curedIds: new Set(), reachedIds: new Set(), opened: [], at: Date.now() };
+      throws: [], targetKey: '', ended: false, cured: 0, reached: 0, curedIds: new Set(), reachedIds: new Set(), opened: [], bestCombo: 0, bossCured: false, at: Date.now() };
     go('wave');
     hud.reset(street.name, number, { big: w.big, final: w.final });
     paused = false;
     try {
       game.start({
         road: roadFor(tier),
-        wave: { street: { id: streetId, name: street.name, weather: street.look.weather }, number, zombies: w.items, big: w.big, final: w.final },
-        look: { goo: goo.color, fence: fence.id, fenceColor: fence.color, pumpkins: Math.max(3, Math.min(12, 3 + save.pumpkins)), sky: street.sky, landmark: street.look.landmark, hats: street.look.hats },
+        wave: { street: { id: streetId, name: street.name, weather: street.look.weather }, number, zombies: w.items, big: w.big, final: w.final, live: w.live },
+        look: { goo: goo.color, fence: fence.id, fenceColor: fence.color, pumpkins: Math.max(3, Math.min(12, 3 + save.pumpkins)), sky: street.sky, landmark: street.look.landmark, hats: street.look.hats,
+          grenade: grenade.id, dog: !!save.yard.dog, lantern: !!save.yard.lantern },
         stats: { radius: toleranceFor(state), power: 1 },
         seed,
       });
@@ -351,11 +353,26 @@ async function boot() {
     hudRaf = requestAnimationFrame(hudLoop);
     if (!save.seen.coach) showCoach();
   }
-  function setTarget(item) {
-    if (!run || !item || item.id === run.targetId) return;
-    run.targetId = item.id;
-    hud.setTarget(item);
-    app.say(`${item.say}.`);
+  // the called item changed (another zombie, or the boss's next form): the card and the voice follow
+  function setTarget(item, live) {
+    if (!run || !item) return;
+    const lz = Array.isArray(live) ? live.find((z) => z.item === item.id) : null;
+    const hitsLeft = lz && Number.isFinite(lz.hitsLeft) ? lz.hitsLeft : item.hitsLeft;
+    const key = `${item.id}:${item.show}:${hitsLeft ?? ''}`;
+    if (key === run.targetKey) return;
+    const sameZombie = run.targetKey.startsWith(`${item.id}:`);
+    const sameForm = run.targetKey.startsWith(`${item.id}:${item.show}:`);
+    run.targetKey = key;
+    hud.setTarget({ ...item, hitsLeft });
+    if (!sameZombie || !sameForm) app.say(`${item.say}.`);
+  }
+  /** The kid taps a small card: call that zombie instead (the engine's 'target' event updates the card). */
+  function focus(id) {
+    if (!run || run.ended || !game || typeof game.setFocus !== 'function') return false;
+    let ok = false;
+    try { ok = game.setFocus(id) !== false; } catch (_) { ok = false; }
+    if (ok) Audio.click();
+    return ok;
   }
   function hudLoop() {
     if (!run || run.ended) return;
@@ -364,7 +381,21 @@ async function boot() {
     try { s = game.getState(); } catch (_) { /* between waves */ }
     if (!s) return;
     run.state = s;
-    if (s.target) setTarget(s.target);
+    // the engine's live list names items by id; the stack needs their fraction text (a boss shows its current form)
+    const live = (s.live || []).map((z) => {
+      const it = run.byId.get(z.item);
+      if (!it) return z;
+      let show = it.show, say = it.say;
+      if (it.kind === 'boss' && Array.isArray(it.forms) && it.forms.length) {
+        const hits = Number(it.hits) || it.forms.length, left = Number.isFinite(z.hitsLeft) ? z.hitsLeft : hits;
+        const f = it.forms[Math.max(0, Math.min(it.forms.length - 1, hits - left))];
+        if (f) { show = f.show; say = f.say; }
+      }
+      return { ...z, show: z.show || show, say: z.say || say, name: z.name || it.name };
+    });
+    if (s.target) setTarget(s.target, live);
+    hud.setLive(live, s.target);
+    if (Number.isFinite(s.combo)) hud.setCombo(s.combo);
   }
 
   // the finger on the road: drag to aim (setAim), let go to throw
@@ -401,10 +432,12 @@ async function boot() {
   function onEvent(evt) {
     if (!evt || !run || run.ended) return;
     switch (evt.type) {
-      case 'target': setTarget(evt.item); break;
+      case 'target': setTarget(evt.item, run.state && run.state.live); break;
       case 'throw': onThrow(evt); break;
       case 'sound': Sfx.play(evt.name, evt.vol); break;
-      case 'cured': run.cured++; if (evt.item) run.curedIds.add(evt.item.id); break;
+      case 'cured': run.cured++; if (evt.item) { run.curedIds.add(evt.item.id); if (evt.item.kind === 'boss') run.bossCured = true; } break;
+      case 'combo': hud.setCombo(evt.n); run.bestCombo = Math.max(run.bestCombo, Number(evt.n) || 0); break;
+      case 'bossHit': case 'finale': break;   // the engine draws and sounds these itself; the boss's next form comes as 'target'
       case 'reached': run.reached++; if (evt.item) run.reachedIds.add(evt.item.id); break;
       // the engine draws 'BIG WAVE!' / 'FINAL WAVE!' in the world itself (and plays their sound)
       case 'waveEnd': endWave(evt); break;
@@ -416,8 +449,15 @@ async function boot() {
     const item = { ...(evt.item || {}), ...(run.byId.get(evt.item && evt.item.id) || {}) };
     const pae = Number.isFinite(evt.pae) ? evt.pae : 100;
     const result = ['bull', 'hit', 'near', 'miss'].includes(evt.result) ? evt.result : 'miss';
-    run.throws.push({ item: { id: item.id, show: item.show, say: item.say }, result, pae });
-    const out = recordThrow(skills, { tier: item.tier || run.tier, kind: item.kind || 'locate', show: item.show, pae, result, at: Date.now() });
+    const seen = !!evt.seen, combo = Math.max(0, Math.floor(Number(evt.combo) || 0));
+    const cures = Array.isArray(evt.cures) ? evt.cures.map(String) : undefined;
+    run.throws.push({ item: { id: item.id, show: item.show, say: item.say, kind: item.kind || 'locate' }, result, pae, seen, combo, cures });
+    run.bestCombo = Math.max(run.bestCombo, combo);
+    hud.setCombo(combo);
+    // the boss's forms are the same number: its throws are recorded as plain locate throws at that fraction
+    const kind = item.kind === 'boss' ? 'locate' : item.kind || 'locate';
+    const show = item.kind === 'boss' && item.n && item.d ? `${item.n}/${item.d}` : item.show;
+    const out = recordThrow(skills, { tier: item.tier || run.tier, kind, show, pae, result, at: Date.now(), seen });
     run.opened.push(...out.opened);
     app.persistSkills();
   }
@@ -439,12 +479,16 @@ async function boot() {
     // next one in line) / reached the fence / still out (stopped early); the best throw at it, for the chip
     const by = new Map();
     for (const t of r.throws) { const x = by.get(t.item.id); if (!x || (isHit(t.result) && !isHit(x)) || (t.result === 'bull')) by.set(t.item.id, t.result); }
+    // a throw's `cures` (twins at one spot) count for the twin too
+    for (const t of r.throws) for (const cid of t.cures || []) if (cid !== t.item.id && !by.has(cid)) by.set(cid, 'hit');
     const items = r.items.map((it) => {
       const best = by.get(it.id) || null;
-      const outcome = r.curedIds.has(it.id) || (best && isHit(best) && !r.reachedIds.has(it.id)) ? 'cured' : r.reachedIds.has(it.id) ? 'reached' : 'out';
-      return { id: it.id, show: it.show, say: it.say, result: outcome === 'cured' && best && isHit(best) ? best : outcome === 'cured' ? 'hit' : null, outcome };
+      const hitsOn = it.kind === 'boss' ? r.throws.filter((t) => t.item.id === it.id && isHit(t.result)).length : 0;
+      const outcome = r.curedIds.has(it.id) || (it.kind === 'boss' ? hitsOn >= (it.hits || 3) : best && isHit(best) && !r.reachedIds.has(it.id)) ? 'cured' : r.reachedIds.has(it.id) ? 'reached' : 'out';
+      return { id: it.id, show: it.show, say: it.say, kind: it.kind, name: it.name, twin: !!it.twin, result: outcome === 'cured' && best && isHit(best) ? best : outcome === 'cured' ? 'hit' : null, outcome };
     }).filter((x) => x.outcome !== 'out' || by.has(x.id));
-    const result = lastResult = { street: r.street, streetName: r.streetName, number: r.number, stopped, cleared: bank.cleared, cash, bank, accuracy: accuracyOf(r.throws), items, opened: r.opened, throws: r.throws.length };
+    const result = lastResult = { street: r.street, streetName: r.streetName, number: r.number, stopped, cleared: bank.cleared, cash, bank, accuracy: accuracyOf(r.throws), items, opened: r.opened, throws: r.throws.length,
+      bestCombo: Math.max(r.bestCombo, cash.bestCombo || 0), boss: !!(cash.boss || r.bossCured), twins: cash.twins || 0, sharps: cash.sharps || 0 };
     run = null;
     setTimeout(() => {
       go('results', result);
@@ -570,6 +614,7 @@ async function boot() {
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get screen() { return screen; },
     get skills() { return skills; }, get save() { return save; }, get paused() { return paused; }, get coaching() { return coaching; },
     throwAt(x01) { if (!canAim()) return false; try { game.setAim(x01); } catch (_) { return false; } return throwNow(); },
+    focus,
   }; // debugging / smoke tests
   registerSW();
 }

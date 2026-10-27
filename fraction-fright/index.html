@@ -212,6 +212,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .hud-street { font: 400 16px/1.1 var(--font-display); text-transform: uppercase; }
 .hud-right { justify-self: end; display: flex; gap: 10px; align-items: flex-start; }
 #btn-pause, #btn-say { pointer-events: auto; }
+.hud-mid { justify-self: center; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
 /* the called fraction: big, read aloud; tap to hear it again */
 .frac-card { justify-self: center; pointer-events: auto; display: grid; grid-template-columns: auto auto; align-items: center; gap: 2px 12px; padding: 6px 16px 8px 10px; border-radius: 6px;
   background: rgba(236,231,218,.96); color: #16151a; border: 3px solid var(--gold); box-shadow: 0 5px 0 rgba(0,0,0,.5); }
@@ -222,6 +223,31 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .fc-say { font: 800 15px/1.1 var(--font-body); text-align: left; max-width: 170px; }
 .fc-hear { justify-self: start; display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding: 0 10px; border-radius: 3px; background: #16151a; color: #fff; font: 800 12px/1 var(--font-body); text-transform: uppercase; letter-spacing: .04em; }
 .fc-hear svg { width: 14px; height: 14px; }
+.fc-big.fc-words { font: 400 22px/1 var(--font-display); max-width: 150px; text-align: center; }
+.fc-big.fc-words .fc-n { border-bottom: 0; padding: 0; }
+.fc-big.fc-words .fc-d { display: none; }
+.frac-card[data-kind="boss"] { border-color: var(--pumpkin); }
+.fc-boss { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 2px; padding-top: 4px; border-top: 2px dashed rgba(22,21,26,.25); }
+.fc-boss-name { font: 400 14px/1 var(--font-display); color: #7a2e0b; text-transform: uppercase; letter-spacing: .05em; }
+.fc-boss-dots { display: inline-flex; gap: 4px; }
+.fc-boss-dots i { width: 11px; height: 11px; border-radius: 50%; background: rgba(22,21,26,.18); border: 2px solid #7a2e0b; }
+.fc-boss-dots i.on { background: var(--pumpkin); }
+/* the card stack: the other live zombies' fractions; tap one to call it instead */
+.hud-stack { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; pointer-events: auto; max-width: min(92vw, 420px); }
+.hud-stack:empty { display: none; }
+.mini-card { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; min-width: 48px; min-height: 44px; padding: 3px 10px; border-radius: 4px;
+  border: 2px solid #c9b98f; background: var(--grit), rgba(236,231,218,.92); color: #16151a; box-shadow: 0 3px 0 rgba(0,0,0,.5); font: 400 18px/1 var(--font-display); letter-spacing: .03em; }
+.mini-card:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.5); }
+.mini-card.boss { border-color: var(--pumpkin); }
+.mini-card .mc-sub { font: 800 9px/1 var(--font-body); text-transform: uppercase; letter-spacing: .06em; color: #7a2e0b; margin-top: 2px; }
+/* the combo chip: from ×2 only; fades on a miss */
+.combo-chip { position: absolute; right: calc(var(--pad-r) + 2px); top: calc(var(--pad-t) + 60px); z-index: 4; padding: 4px 12px 5px; border-radius: 3px; background: var(--ink); border: 2px solid var(--gold); color: var(--gold); font: 400 15px/1 var(--font-display); letter-spacing: .08em; text-transform: uppercase; box-shadow: 0 3px 0 rgba(0,0,0,.5); transform: rotate(-2deg); }
+.combo-chip b { font-size: 19px; color: #fff; }
+.combo-chip.show { animation: comboPop .35s cubic-bezier(.2,1.6,.4,1); }
+.combo-chip.fade { animation: comboFade .7s ease forwards; }
+@keyframes comboPop { 0% { transform: rotate(-2deg) scale(.6); } 100% { transform: rotate(-2deg) scale(1); } }
+@keyframes comboFade { 0% { opacity: 1; } 100% { opacity: 0; transform: rotate(-2deg) translateY(8px); } }
+.reduced-motion .combo-chip.show, .reduced-motion .combo-chip.fade { animation: none; }
 .aim-help { position: absolute; left: 50%; bottom: calc(var(--pad-b) + 4px); transform: translateX(-50%); padding: 6px 12px; border-radius: 4px; background: rgba(14,13,16,.72); font: 800 13px/1.2 var(--font-body); color: var(--muted); white-space: nowrap; }
 .banner { position: absolute; left: 0; right: 0; top: 22%; z-index: 6; display: flex; justify-content: center; pointer-events: none; }
 .banner > span { display: inline-block; max-width: calc(100vw - 24px); padding: 8px 30px 11px; white-space: nowrap; text-transform: uppercase;
@@ -252,7 +278,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .results-head h2 { margin: 0; font: 400 28px/1 var(--font-display); color: var(--accent); text-shadow: 0 3px 0 var(--ink); transform: rotate(-2deg); }
 .results-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; padding: 8px 0 12px; }
 .res-main { position: relative; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; min-height: 0; overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain; }
-.stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.stat.gold b { color: var(--gold); }
 .stat { padding: 8px 10px; border-radius: 4px; background: var(--ink-2); }
 .stat b { display: block; font: 400 24px/1.1 var(--font-display); white-space: nowrap; }
 .stat span { display: block; font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -274,6 +301,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .res-throws { display: flex; flex-wrap: wrap; gap: 6px; }
 .rt { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 3px; background: var(--ink-2); border: 2px solid var(--line); font: 400 13px/1 var(--font-display); }
 .rt.bull { border-color: var(--gold); color: var(--gold); } .rt.hit { border-color: var(--accent); } .rt.reached { opacity: .6; border-style: dashed; }
+.rt.boss { border-color: var(--pumpkin); } .rt small { font: 800 9px/1 var(--font-body); color: var(--pumpkin); letter-spacing: .06em; } .rt.twin { border-style: double; border-width: 3px; }
 .res-callouts { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; }
 .res-callouts:empty { display: none; }
 .callout { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 4px; background: var(--accent); color: var(--accent-ink); font: 400 12px/1.1 var(--font-display); box-shadow: 0 3px 0 var(--accent-edge); }
@@ -462,7 +490,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   .results-foot .btn { min-width: 0; padding: 0 10px; }
   #res-next { grid-column: 1 / -1; grid-row: 1; min-height: 60px; font-size: 22px; }
   .hud-top { grid-template-columns: 1fr auto; }
-  .frac-card { grid-column: 1 / -1; grid-row: 2; }
+  .hud-mid { grid-column: 1 / -1; grid-row: 2; }
   .yard-body { grid-template-columns: 1fr; grid-template-rows: 170px minmax(0, 1fr); }
   .pz { padding-left: max(8px, var(--sal)); padding-right: max(8px, var(--sar)); }
   .pz-sheet { padding: 10px 10px 12px; }
@@ -633,11 +661,16 @@ body { font-weight: 600; letter-spacing: .01em; }
   <div id="hud" hidden>
     <div class="hud-top">
       <div class="hud-left hud-box"><div class="hud-label" id="hud-wave">Wave 1</div><div class="hud-street" id="hud-street">Maple Street</div></div>
-      <button class="frac-card" id="btn-say" aria-label="Hear the fraction again" data-empty>
-        <span class="fc-big" id="fc-big"><span class="fc-n" id="fc-n">3</span><span class="fc-d" id="fc-d">4</span></span>
-        <span class="fc-say" id="fc-say">three quarters</span>
-        <span class="fc-hear"><span data-icon="sound"></span>Hear it</span>
-      </button>
+      <div class="hud-mid">
+        <button class="frac-card" id="btn-say" aria-label="Hear the fraction again" data-empty>
+          <span class="fc-big" id="fc-big"><span class="fc-n" id="fc-n">3</span><span class="fc-d" id="fc-d">4</span></span>
+          <span class="fc-say" id="fc-say">three quarters</span>
+          <span class="fc-hear"><span data-icon="sound"></span>Hear it</span>
+          <span class="fc-boss" id="fc-boss" hidden><span class="fc-boss-name" id="fc-boss-name">Mayor Mumbles</span><span class="fc-boss-dots" id="fc-boss-dots" aria-hidden="true"></span></span>
+        </button>
+        <div class="hud-stack" id="hud-stack" aria-label="Other zombies on the road"></div>
+        <div class="combo-chip" id="hud-combo" hidden aria-live="polite">COMBO <b id="hud-combo-n">×2</b></div>
+      </div>
       <div class="hud-right"><button class="btn icon-btn" id="btn-pause" aria-label="Pause"><span data-icon="pause"></span></button></div>
     </div>
     <div class="banner" id="banner" hidden aria-live="polite"><span id="banner-text"></span></div>
@@ -650,7 +683,8 @@ body { font-weight: 600; letter-spacing: .01em; }
       <ol class="coach-tips">
         <li><span class="tip-n">1</span><span>The scout calls a fraction. Like <b>three quarters</b>.</span></li>
         <li><span class="tip-n">2</span><span>Drag along the road to aim. The road is a number line: 0, ½, 1.</span></li>
-        <li><span class="tip-n">3</span><span>Let go. Slime on the called spot fixes that zombie, wherever it shuffles.</span></li>
+        <li><span class="tip-n">3</span><span>Let go. The zombie is hiding in the fog right at that spot. Slime on the spot cures it.</span></li>
+        <li><span class="tip-n">4</span><span>More than one coming? Tap a small card to call a different zombie.</span></li>
       </ol>
       <p class="coach-go">Tap when ready. Zombies incoming.</p>
     </div>

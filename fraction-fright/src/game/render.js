@@ -3,8 +3,8 @@
 // The backdrop (sky, big moon, hills, graves, the iron gate, the graveyard lane and the cracked asphalt road band)
 // is drawn once per size into a bitmap; text comes from a sprite cache (condensed, gritty); per-frame layers are a
 // low fog, moon wisps, puddle glints, the occasional lightning, and the actors.
-// Layers (engine.js render()): backdrop -> storm/weather -> landmarks -> zombies (the lane behind the road) -> low
-// fog -> splats and ground effects -> number line + markers -> jumps / nudge / reticle -> metal signs (always above
+// Layers (engine.js render()): backdrop -> storm/weather -> landmarks -> zombies (in their columns, far first) -> the
+// fog bank -> low fog -> splats and ground effects -> number line + markers -> jumps / nudge / reticle -> metal signs (always above
 // effects) -> iron fence + jack-o'-lanterns -> kid with the slime cannon -> grenade -> airborne particles -> flag ->
 // popups.
 
@@ -201,6 +201,66 @@ export function drawLowFog(ctx, view, road, t, pal) {
     ctx.beginPath(); ctx.ellipse(x, y + (i % 2) * 5, w, 9 + (i % 2) * 4, 0, 0, TAU); ctx.fill();
   }
 }
+// the fog bank the zombies rise out of: layered drifting banks from yTop (thick) to yBottom (thin), full width
+export function drawFogBank(ctx, view, yTop, yBottom, t, pal) {
+  const h = Math.max(10, yBottom - yTop);
+  const g = ctx.createLinearGradient(0, yTop, 0, yBottom);
+  g.addColorStop(0, withAlpha(pal.fog, 0.5)); g.addColorStop(0.5, withAlpha(pal.fog, 0.34)); g.addColorStop(1, withAlpha(pal.fog, 0));
+  ctx.fillStyle = g; ctx.fillRect(0, yTop - 10, view.W, h + 10);
+  for (let i = 0; i < 7; i++) {
+    const w = 110 + (i % 4) * 45, yy = yTop + h * (0.15 + 0.7 * ((i * 0.37) % 1));
+    const x = ((t * (5 + i * 2.2) * (i % 2 ? 1 : -1) + i * 210 + 4000) % (view.W + w * 2)) - w;
+    ctx.fillStyle = withAlpha(pal.fog, 0.16 + 0.05 * (i % 3));
+    ctx.beginPath(); ctx.ellipse(x, yy, w, 10 + (i % 3) * 5, 0, 0, TAU); ctx.fill();
+  }
+}
+// the mega splat: a goo wave across the whole road (k = 0..1)
+export function drawMegaWave(ctx, view, road, k, goo, t) {
+  const a = k < 0.2 ? k / 0.2 : 1 - (k - 0.2) / 0.8;
+  const amp = road.band * (0.8 + 0.6 * k);
+  ctx.globalAlpha = Math.max(0, a) * 0.85;
+  ctx.fillStyle = goo;
+  ctx.beginPath(); ctx.moveTo(-4, road.y + road.band);
+  for (let x = -4; x <= view.W + 4; x += 18) ctx.lineTo(x, road.y - amp * (0.5 + 0.5 * Math.sin(x * 0.04 + t * 30 + k * 12)));
+  ctx.lineTo(view.W + 4, road.y + road.band); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = 1;
+}
+// a lantern on the graveyard gate (look.lantern): warm glow, an iron box
+export function drawGateLantern(ctx, x, y, s, t, lw) {
+  const g = 0.75 + 0.25 * Math.sin(t * 6 + Math.sin(t * 11));
+  ctx.fillStyle = withAlpha('#ff9a2e', 0.22 * g); ctx.beginPath(); ctx.arc(x, y, s * 2.4, 0, TAU); ctx.fill();
+  ctx.lineWidth = lw * 1.3; ctx.strokeStyle = OUT; ctx.lineJoin = 'round';
+  ctx.beginPath(); ctx.moveTo(x - s * 0.9, y - s * 1.6); ctx.lineTo(x - s * 0.9, y - s * 2.2); ctx.lineTo(x, y - s * 2.2); ctx.stroke();
+  ctx.fillStyle = '#1b1a24'; roundRect(ctx, x - s * 0.5, y - s * 0.9, s, s * 1.6, s * 0.12); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = withAlpha('#ffb13b', 0.9 * g); roundRect(ctx, x - s * 0.3, y - s * 0.6, s * 0.6, s * 1.0, 1); ctx.fill();
+  ctx.fillStyle = OUT; roundRect(ctx, x - s * 0.6, y - s * 1.2, s * 1.2, s * 0.32, 2); ctx.fill(); ctx.fillRect(x - s * 0.1, y - s * 1.6, s * 0.2, s * 0.45);
+}
+// the yard dog (look.dog): sits by the ½ post, tail wagging; barks (mouth open, ears up) on a bull
+export function drawDog(ctx, x, y, s, t, lw, bark) {
+  ctx.save(); ctx.translate(x, y);
+  ctx.lineJoin = 'round'; ctx.lineWidth = lw * 1.3; ctx.strokeStyle = OUT;
+  ctx.fillStyle = withAlpha('#000000', 0.25); ctx.beginPath(); ctx.ellipse(0, 1, s * 0.9, s * 0.22, 0, 0, TAU); ctx.fill();
+  const wag = Math.sin(t * (bark ? 26 : 9)) * 0.5;
+  ctx.strokeStyle = OUT; ctx.lineWidth = lw * 2.6; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(-s * 0.7, -s * 0.5); ctx.quadraticCurveTo(-s * 1.1, -s * 0.9 + wag * s * 0.3, -s * 1.0 - wag * s * 0.2, -s * 1.3); ctx.stroke();
+  ctx.strokeStyle = '#8b5a2b'; ctx.lineWidth = lw * 1.4;
+  ctx.beginPath(); ctx.moveTo(-s * 0.7, -s * 0.5); ctx.quadraticCurveTo(-s * 1.1, -s * 0.9 + wag * s * 0.3, -s * 1.0 - wag * s * 0.2, -s * 1.3); ctx.stroke();
+  ctx.lineWidth = lw * 1.3; ctx.strokeStyle = OUT;
+  ctx.fillStyle = '#8b5a2b'; // sitting body
+  ctx.beginPath(); ctx.moveTo(-s * 0.8, 0); ctx.quadraticCurveTo(-s * 0.9, -s * 1.1, 0, -s * 1.1); ctx.quadraticCurveTo(s * 0.7, -s * 1.1, s * 0.6, 0); ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#d9c3a0'; roundRect(ctx, -s * 0.25, -s * 0.55, s * 0.6, s * 0.55, s * 0.15); ctx.fill(); // chest
+  ctx.fillStyle = '#8b5a2b'; roundRect(ctx, -s * 0.5, -s * 0.35, s * 0.32, s * 0.4, s * 0.1); ctx.fill(); ctx.stroke(); roundRect(ctx, s * 0.2, -s * 0.35, s * 0.32, s * 0.4, s * 0.1); ctx.fill(); ctx.stroke(); // paws
+  const hy = -s * 1.35 - (bark ? s * 0.1 : 0);
+  ctx.beginPath(); ctx.ellipse(s * 0.15, hy, s * 0.55, s * 0.48, 0, 0, TAU); ctx.fill(); ctx.stroke(); // head
+  ctx.fillStyle = '#5a3a1e'; // ears
+  ctx.save(); ctx.translate(-s * 0.3, hy - s * 0.3); ctx.rotate(bark ? -0.6 : 0.3); roundRect(ctx, -s * 0.18, -s * 0.1, s * 0.36, s * 0.6, s * 0.15); ctx.fill(); ctx.stroke(); ctx.restore();
+  ctx.save(); ctx.translate(s * 0.55, hy - s * 0.3); ctx.rotate(bark ? 0.6 : -0.1); roundRect(ctx, -s * 0.18, -s * 0.1, s * 0.36, s * 0.6, s * 0.15); ctx.fill(); ctx.stroke(); ctx.restore();
+  ctx.fillStyle = '#d9c3a0'; ctx.beginPath(); ctx.ellipse(s * 0.45, hy + s * 0.12, s * 0.3, s * 0.22, 0, 0, TAU); ctx.fill(); ctx.stroke(); // muzzle
+  ctx.fillStyle = OUT; ctx.beginPath(); ctx.arc(s * 0.68, hy + s * 0.02, s * 0.1, 0, TAU); ctx.fill(); // nose
+  ctx.beginPath(); ctx.arc(s * 0.12, hy - s * 0.1, s * 0.07, 0, TAU); ctx.fill(); // eye
+  if (bark) { ctx.fillStyle = '#c0392b'; ctx.beginPath(); ctx.ellipse(s * 0.5, hy + s * 0.3, s * 0.16, s * 0.1, 0, 0, TAU); ctx.fill(); ctx.stroke(); }
+  ctx.restore();
+}
 // puddles catch the moon (a slow shimmer)
 export function drawPuddleGlints(ctx, puddles, t) {
   for (let i = 0; i < puddles.length; i++) {
@@ -296,7 +356,7 @@ export function kidMuzzle(kid) {
   const u = kid.h / 60;
   return { x: kid.x + 24 * u, y: kid.y - 62 * u };
 }
-export function drawKid(ctx, x, y, h, lw, armK, t, look = {}, goo = '#8cff1a') {
+export function drawKid(ctx, x, y, h, lw, armK, t, look = {}, goo = '#8cff1a', cheer = false) {
   const u = h / 60;
   const hood = look.shirt || '#4d4470', hoodLight = shade(hood, 0.22);
   const recoil = armK > 0 ? Math.sin(Math.min(1, armK) * Math.PI) : 0;
@@ -314,7 +374,7 @@ export function drawKid(ctx, x, y, h, lw, armK, t, look = {}, goo = '#8cff1a') {
   roundRect(ctx, -13 * u, -44 * u, 26 * u, 24 * u, 5 * u); ctx.fill(); ctx.stroke();
   ctx.fillStyle = hoodLight; roundRect(ctx, -9 * u, -44 * u, 18 * u, 7 * u, 3 * u); ctx.fill(); ctx.stroke(); // the hood bunched at the neck
   ctx.fillStyle = hood;
-  ctx.save(); ctx.translate(-12 * u, -40 * u); ctx.rotate(0.35); roundRect(ctx, -3.5 * u, 0, 7 * u, 17 * u, 3 * u); ctx.fill(); ctx.stroke();
+  ctx.save(); ctx.translate(-12 * u, -40 * u); ctx.rotate(cheer ? 2.6 + Math.sin(t * 9) * 0.3 : 0.35); roundRect(ctx, -3.5 * u, 0, 7 * u, 17 * u, 3 * u); ctx.fill(); ctx.stroke();
   ctx.fillStyle = '#2a2430'; roundRect(ctx, -3.5 * u, 15 * u, 7 * u, 5 * u, 2 * u); ctx.fill(); ctx.stroke(); // glove
   ctx.fillStyle = look.skin || '#f3c9a6'; roundRect(ctx, -3 * u, 19 * u, 6 * u, 3 * u, 1.5 * u); ctx.fill(); ctx.stroke(); ctx.restore();
   // backpack tank (on the back: we see the kid from behind)
@@ -353,9 +413,39 @@ export function drawKid(ctx, x, y, h, lw, armK, t, look = {}, goo = '#8cff1a') {
   ctx.restore();
 }
 // the slime grenade: a glass flask of sloshing goo with a metal cap and a blinking light
-export function drawGrenade(ctx, x, y, r, rot, goo, lw, t) {
+export function drawGrenade(ctx, x, y, r, rot, goo, lw, t, type = 'slime') {
   ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
   ctx.lineWidth = lw * 1.3; ctx.strokeStyle = OUT; ctx.lineJoin = 'round';
+  if (type === 'lava') { // an iron ball with glowing cracks and a sparking fuse
+    const g = 0.7 + 0.3 * Math.sin(t * 18);
+    ctx.fillStyle = withAlpha('#ff7a1a', 0.25 * g); ctx.beginPath(); ctx.arc(0, 0, r * 1.5, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#2f2b3a'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = `rgba(255,${120 + Math.round(80 * g)},30,1)`; ctx.lineWidth = lw * 1.1;
+    ctx.beginPath(); ctx.moveTo(-r * 0.6, -r * 0.2); ctx.lineTo(-r * 0.1, 0); ctx.lineTo(-r * 0.3, r * 0.5); ctx.moveTo(r * 0.1, -r * 0.6); ctx.lineTo(r * 0.3, -r * 0.1); ctx.lineTo(r * 0.7, r * 0.2); ctx.stroke();
+    ctx.strokeStyle = OUT; ctx.lineWidth = lw * 1.3;
+    ctx.fillStyle = '#6a6a7a'; roundRect(ctx, -r * 0.25, -r * 1.35, r * 0.5, r * 0.45, r * 0.1); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#a0866b'; ctx.lineWidth = lw; ctx.beginPath(); ctx.moveTo(0, -r * 1.35); ctx.quadraticCurveTo(r * 0.4, -r * 1.8, r * 0.2, -r * 2.1); ctx.stroke();
+    ctx.fillStyle = Math.sin(t * 30) > 0 ? '#ffd23f' : '#ff8a1f'; ctx.beginPath(); ctx.arc(r * 0.2, -r * 2.1, r * 0.22, 0, TAU); ctx.fill();
+    ctx.restore(); return;
+  }
+  if (type === 'frost') { // a crystal ball with a snowflake inside
+    ctx.fillStyle = withAlpha('#9fe8ff', 0.2); ctx.beginPath(); ctx.arc(0, 0, r * 1.4, 0, TAU); ctx.fill();
+    ctx.fillStyle = '#4a4658'; roundRect(ctx, -r * 0.35, -r * 1.45, r * 0.7, r * 0.6, r * 0.12); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = withAlpha('#cfefff', 0.75); ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = '#ffffff'; ctx.lineWidth = lw * 0.9;
+    for (let i = 0; i < 3; i++) { const a = (i / 3) * Math.PI + t * 2; ctx.beginPath(); ctx.moveTo(Math.cos(a) * r * 0.6, Math.sin(a) * r * 0.6); ctx.lineTo(-Math.cos(a) * r * 0.6, -Math.sin(a) * r * 0.6); ctx.stroke(); }
+    ctx.fillStyle = withAlpha('#ffffff', 0.6); ctx.beginPath(); ctx.ellipse(-r * 0.4, -r * 0.4, r * 0.25, r * 0.15, -0.7, 0, TAU); ctx.fill();
+    ctx.restore(); return;
+  }
+  if (type === 'disco') { // a mirror ball that throws sparkles
+    ctx.fillStyle = '#4a4658'; roundRect(ctx, -r * 0.25, -r * 1.45, r * 0.5, r * 0.6, r * 0.1); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#c8ccd6'; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill(); ctx.stroke();
+    const cols = ['#ff3cac', '#ffd23f', '#4dd2ff', '#9dff2e', '#c77dff'];
+    for (let i = 0; i < 9; i++) { const a = (i / 9) * TAU + t * 4, rr = r * 0.55; ctx.fillStyle = cols[i % cols.length]; ctx.fillRect(Math.cos(a) * rr - r * 0.14, Math.sin(a) * rr - r * 0.14, r * 0.28, r * 0.28); }
+    ctx.fillStyle = withAlpha('#ffffff', 0.9);
+    for (let i = 0; i < 3; i++) { const a = t * 6 + i * 2.1, d = r * 1.7; ctx.beginPath(); ctx.arc(Math.cos(a) * d, Math.sin(a) * d, r * 0.12, 0, TAU); ctx.fill(); }
+    ctx.restore(); return;
+  }
   ctx.fillStyle = '#4a4658';
   roundRect(ctx, -r * 0.35, -r * 1.45, r * 0.7, r * 0.6, r * 0.12); ctx.fill(); ctx.stroke();
   ctx.fillStyle = withAlpha('#9fd8ff', 0.35);
@@ -403,9 +493,9 @@ export function drawSplat(ctx, sp, lw) {
   };
   ctx.fillStyle = rim; blob(1); ctx.fill(); ctx.stroke();
   ctx.fillStyle = sp.goo; blob(0.8); ctx.fill();
-  // drips hang down over time
+  // drips hang down over time (frost freezes: no drips)
   const dripK = clamp(sp.t / 1.4, 0, 1);
-  const nd = sp.kind === 'plop' ? 1 : 3;
+  const nd = sp.type === 'frost' ? 0 : sp.kind === 'plop' ? 1 : 3;
   for (let i = 0; i < nd; i++) {
     const dx = sp.x + (rand() - 0.5) * r * 1.6, len = (r * 0.4 + rand() * r * 0.7) * dripK, w = 2 + rand() * 2.5;
     ctx.strokeStyle = OUT; ctx.lineWidth = w + lw * 1.6; ctx.lineCap = 'round';
@@ -425,7 +515,7 @@ export function drawSplat(ctx, sp, lw) {
 }
 
 // ---------- particles ----------
-export const P_GOO = 0, P_CONFETTI = 1, P_RING = 2, P_DUST = 3, P_SPARK = 4, P_STAR = 5, P_CRACK = 6;
+export const P_GOO = 0, P_CONFETTI = 1, P_RING = 2, P_DUST = 3, P_SPARK = 4, P_STAR = 5, P_CRACK = 6, P_SCORCH = 7;
 export function makeParticles(max) {
   const parts = [];
   for (let i = 0; i < max; i++) parts.push({ x: 0, y: 0, vx: 0, vy: 0, life: 0, max: 1, size: 1, color: '#fff', type: 0, a: 0, va: 0, g: 0, extra: 0, floor: 0 });
@@ -467,6 +557,11 @@ export function drawParticles(ctx, ps, lw) {
       ctx.beginPath();
       for (let j = 0; j <= 14; j++) { const a = (j / 14) * TAU, jit = 1 + ((j * 7919) % 5) * 0.03; const px = p.x + Math.cos(a) * R * jit, py = p.y + Math.sin(a) * R * 0.45 * jit; if (j === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py); }
       ctx.stroke();
+    } else if (p.type === P_SCORCH) {
+      // a lava scorch ring on the asphalt (fades slowly)
+      ctx.globalAlpha = Math.min(0.7, k * 1.4);
+      ctx.fillStyle = p.color; ctx.beginPath(); ctx.ellipse(p.x, p.y, p.size, p.size * 0.42, 0, 0, TAU); ctx.fill();
+      ctx.strokeStyle = withAlpha('#ff7a1a', 0.5 * k); ctx.lineWidth = lw * 1.4; ctx.beginPath(); ctx.ellipse(p.x, p.y, p.size * 0.85, p.size * 0.36, 0, 0, TAU); ctx.stroke();
     } else if (p.type === P_CRACK) {
       // asphalt cracks radiating from the thunk (fade slowly)
       ctx.strokeStyle = p.color; ctx.lineWidth = lw * 1.1; ctx.lineJoin = 'round';

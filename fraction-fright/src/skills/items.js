@@ -23,6 +23,11 @@ export const BIG_WAVE = 3;
 export const FINAL_WAVE = 5;
 /** Share of a wave drawn from the tier before (spaced review), from wave 2 of a street on. */
 export const REVIEW_SHARE = 0.2;
+/** Live zombies at once per wave (SPEC §13.1): 2, 2, 4 (the big wave), 3, 3 (+ the boss on the final wave). */
+export const WAVE_LIVE = Object.freeze([2, 2, 4, 3, 3]);
+export const BOSS_HITS = 3;
+/** Twin pairs (equivalent fractions that rise at the same spot; one grenade cures both): per tier (SPEC §13.2). */
+export const TWINS = Object.freeze({ T1: [[[1, 2], [2, 4]]], T2: [[[1, 3], [2, 6]], [[2, 3], [4, 6]]] });
 
 export const TIERS = Object.freeze([
   { id: 'T1', street: 'maple', name: 'Maple Street', what: 'halves and quarters', dens: [2, 4], playable: true },
@@ -56,6 +61,9 @@ export function fracName(n, d) {
   return `${numberWord(n)} ${n === 1 ? w[0] : w[1]}`;
 }
 export const fracText = (n, d) => `${n}/${d}`;
+const UNIT_GLYPH = { 2: '½', 3: '⅓', 4: '¼', 5: '⅕', 6: '⅙', 8: '⅛', 10: '⅒', 12: '1/12', 100: '1/100' };
+/** The unit fraction as a glyph ('¼'), or '1/d'. */
+export const unitGlyph = (d) => UNIT_GLYPH[d] || `1/${d}`;
 export const gcd = (a, b) => (b ? gcd(b, a % b) : Math.abs(a));
 /** The fraction from its text ('3/4' → { n: 3, d: 4 }), or null. */
 export function parseFrac(s) {
@@ -125,6 +133,26 @@ export function makeItem(frac, { kind = 'locate', tolerance = TOL_STEPS.start, i
   return item;
 }
 
+/** The tier's twin pairs whose two fractions are both in the pool: [[{ n, d }, { n, d }], …]. */
+export function twinPairs(tierId, { more = false } = {}) {
+  const pool = new Set(fractionsOf(tierId, { more }).map((f) => fracText(f.n, f.d)));
+  return (TWINS[tierId] || []).filter((pr) => pr.every(([n, d]) => pool.has(fracText(n, d)))).map((pr) => pr.map(([n, d]) => ({ n, d })));
+}
+/** The boss (SPEC §13.2): the same number three ways (symbol → words → unit sum), 3 hits, a name. */
+export function makeBoss(frac, { tier = tierOfDen(frac.d), name = 'The Mayor', tolerance = TOL_STEPS.start, id = '' } = {}) {
+  const { n, d } = frac;
+  const words = fracName(n, d);
+  const unitSay = Array(n).fill(fracName(1, d)).join(' plus ');
+  const forms = [
+    { show: fracText(n, d), say: words },
+    { show: words, say: words },
+    { show: Array(n).fill(unitGlyph(d)).join('+'), say: unitSay },
+  ];
+  return { id: id || `${tier}-boss-${n}-${d}`, kind: 'boss', name, hits: BOSS_HITS, forms, say: forms[0].say, show: forms[0].show, target: n / d, n, d, tier, tolerance, hints: [...HINTS] };
+}
+/** Boss names per street tier. */
+export const BOSS_NAMES = Object.freeze({ T1: 'Mayor Mumbles', T2: 'Coach Groan' });
+
 /** Share of bounce items by tier state: the scaffold early, plain locate once the tier works, none when secure. */
 export const bounceShare = (state) => (state === 'secure' ? 0 : state === 'working' ? 0.3 : 0.7);
 
@@ -147,10 +175,13 @@ export function hashString(s) {
 
 /**
  * A wave's items. opts: { tier, number (1–5), state (the tier's state), reviewTier (the tier before, or null),
- * reviewState, more (T2: fifths, tenths, twelfths too), rng }. Never the same fraction twice in a row.
+ * reviewState, more (T2: fifths, tenths, twelfths too), rng, bossName }. Never the same fraction twice in a row.
+ * From wave 2 on, one twin pair (SPEC §13.2) takes two adjacent slots (never the first two); the final wave appends
+ * the boss as its last item. → { items, size, live, big, final }.
  */
-export function buildWave({ tier, number = 1, state = 'new', reviewTier = null, reviewState = 'secure', more = false, rng = Math.random }) {
-  const size = WAVE_SIZES[Math.max(0, Math.min(WAVE_SIZES.length - 1, number - 1))];
+export function buildWave({ tier, number = 1, state = 'new', reviewTier = null, reviewState = 'secure', more = false, rng = Math.random, bossName = BOSS_NAMES[tier] } = {}) {
+  const wi = Math.max(0, Math.min(WAVE_SIZES.length - 1, number - 1));
+  const size = WAVE_SIZES[wi];
   const pool = fractionsOf(tier, { more });
   const review = reviewTier && number > 1 ? fractionsOf(reviewTier) : [];
   const nReview = review.length ? Math.round(size * REVIEW_SHARE) : 0;
@@ -158,26 +189,68 @@ export function buildWave({ tier, number = 1, state = 'new', reviewTier = null, 
   // review slots spread through the wave (never the first two)
   const reviewAt = new Set();
   for (let k = 0; k < nReview; k++) reviewAt.add(2 + Math.floor(((k + 0.5) * (size - 2)) / nReview));
+  // the twin pair: two adjacent plain slots from the third on
+  const pairs = number > 1 ? twinPairs(tier, { more }) : [];
+  let twinAt = -1, pair = null;
+  if (pairs.length) {
+    pair = pairs[Math.floor(rng() * pairs.length) % pairs.length];
+    const free = slots.filter((i) => i >= 2 && i + 1 < size && !reviewAt.has(i) && !reviewAt.has(i + 1));
+    if (free.length) twinAt = free[Math.floor(rng() * free.length) % free.length];
+  }
   const items = [];
+  // zombies live at once should stand at different spots when the pool allows (two at one spot are cured by one
+  // throw: that is the twins' trick, not every wave's); the window is by target value (1/2 and 2/4 share a spot)
+  const live = WAVE_LIVE[wi];
+  const spots = new Set(pool.map((f) => Math.round((f.n / f.d) * 1e6))).size;
+  const window = Math.max(1, Math.min(live - 1, spots - 1));
+  const recent = [];
+  const spotOf = (f) => Math.round((f.n / f.d) * 1e6);
+  const clash = (f) => recent.slice(-window).includes(spotOf(f));
   let prev = '';
   for (const i of slots) {
+    if (twinAt >= 0 && (i === twinAt || i === twinAt + 1)) {
+      const f = pair[i - twinAt];
+      const it = makeItem(f, { kind: 'locate', tolerance: toleranceFor(state), id: `w${number}-${i + 1}`, tier });
+      it.twin = `w${number}-${i === twinAt ? i + 2 : i}`;
+      items.push(it);
+      prev = fracText(f.n, f.d);
+      recent.push(spotOf(f));
+      continue;
+    }
     const fromReview = reviewAt.has(i);
     const list = fromReview ? review : pool;
     const st = fromReview ? reviewState : state;
     let k = Math.floor(rng() * list.length) % list.length;
     if (fracText(list[k].n, list[k].d) === prev) k = (k + 1 + Math.floor(rng() * (list.length - 1))) % list.length;
+    // not at a spot one of the last `window` zombies stands at (when another spot exists); the fraction before a twin
+    // pair is neither of the twins (a third at the same spot is not a twin), nor prev
+    const avoid = new Set([prev]);
+    if (twinAt >= 0 && i === twinAt - 1) for (const pf of pair) avoid.add(fracText(pf.n, pf.d));
+    const bad = (f) => avoid.has(fracText(f.n, f.d)) || (!fromReview && clash(f)) || (twinAt >= 0 && i === twinAt - 1 && spotOf(f) === spotOf(pair[0]));
+    for (let tries = 0; bad(list[k]) && tries < list.length; tries++) k = (k + 1) % list.length;
+    if (bad(list[k])) for (let tries = 0; avoid.has(fracText(list[k].n, list[k].d)) && tries < list.length; tries++) k = (k + 1) % list.length;
     const f = list[k];
     prev = fracText(f.n, f.d);
+    recent.push(spotOf(f));
     const kind = rng() < bounceShare(st) ? 'bounce' : 'locate';
     items.push(makeItem(f, { kind, tolerance: toleranceFor(st), id: `w${number}-${i + 1}`, tier: fromReview ? reviewTier : tier }));
   }
-  return { items, size, big: number === BIG_WAVE, final: number === FINAL_WAVE };
+  const final = number === FINAL_WAVE;
+  if (final && pool.length) {
+    let k = Math.floor(rng() * pool.length) % pool.length;
+    if (fracText(pool[k].n, pool[k].d) === prev) k = (k + 1) % pool.length;
+    items.push(makeBoss(pool[k], { tier, name: bossName || 'The Mayor', tolerance: toleranceFor(state), id: `w${number}-boss` }));
+  }
+  return { items, size, live: WAVE_LIVE[wi], big: number === BIG_WAVE, final };
 }
 
-/** Every text the voice may read in 1.0 (the natural voice prepares them as clips: a finite set). */
+/** Every text the voice may read (the fractions and the bosses' forms; the natural voice prepares them as clips: a finite set). */
 export function sayTexts() {
   const out = new Set();
-  for (const t of PLAYABLE) for (const f of fractionsOf(t, { more: true })) out.add(`${fracName(f.n, f.d)}.`);
+  for (const t of PLAYABLE) for (const f of fractionsOf(t, { more: true })) {
+    out.add(`${fracName(f.n, f.d)}.`);
+    for (const form of makeBoss(f, { tier: t }).forms) out.add(`${form.say}.`);
+  }
   out.add('one half.');
   return [...out];
 }

@@ -21,7 +21,8 @@ export const MOVES_KEPT = 20;
 export const LAB_XP = 100;
 export const XP_FOR = Object.freeze({ bull: 3, hit: 2, near: 1, miss: 1 });
 const CODES = { bull: 'b', hit: 'h', near: 'n', miss: 'm' };
-const KINDS = ['bounce', 'locate', 'compare', 'equivalent', 'sum', 'decimal'];
+// 'seen': a throw at a zombie that had stepped out of the fog (SPEC §13.1): recorded, never counted toward secure
+const KINDS = ['bounce', 'locate', 'seen', 'compare', 'equivalent', 'sum', 'decimal'];
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const r1 = (x) => Math.round(num(x) * 10) / 10;
@@ -98,13 +99,14 @@ function openStreets(d, now) {
 }
 
 /**
- * One throw: { tier, kind, show, pae, result, at }. Updates the records, the fraction's stats, the day, the XP, the
+ * One throw: { tier, kind, show, pae, result, at, seen }. A seen throw (the zombie was out of the fog) is kept under
+ * kind 'seen', which the ladder's secure rule ignores. Updates the records, the fraction's stats, the day, the XP, the
  * tier state (a move up or back is logged) and the streets that open. → { before, after, movedUp, opened, xp }.
  */
-export function recordThrow(d, { tier, kind = 'locate', show = '', pae = 0, result = 'miss', at = Date.now() }) {
+export function recordThrow(d, { tier, kind = 'locate', show = '', pae = 0, result = 'miss', at = Date.now(), seen = false }) {
   if (!TIER_BY_ID[tier]) return { before: 'new', after: 'new', movedUp: false, opened: [], xp: 0 };
   const before = tierState(d, tier);
-  const key = `${tier}.${KINDS.includes(kind) ? kind : 'locate'}`;
+  const key = `${tier}.${seen ? 'seen' : KINDS.includes(kind) ? kind : 'locate'}`;
   const code = CODES[result] || 'm';
   const p = Math.max(0, Math.min(100, r1(pae)));
   d.records[key] = [...(d.records[key] || []), [at, p, code]].slice(-RECORD_KEPT);

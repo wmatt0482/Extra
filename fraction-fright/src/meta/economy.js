@@ -3,39 +3,81 @@
 //   cure     $120 for each neighbour cured (the throw that cured it was a hit or a bull)
 //   bull     +$60 for each cure that was a bullseye (a bull pays 1.5 × the cure)
 //   effort   +$40 for each zombie where a near throw was followed by a throw on target (Brain Points: the effort counts)
+//   sharp    +$50 for each cure while the zombie was still in the fog (Sharpshooter; SPEC §13.1)
+//   combo    +$20 × (combo − 1) for each hit from combo ×2 on, capped at ×6 (+$100 a hit); a miss resets, a near keeps
+//   twins    +$80 for every extra neighbour one throw cured (twins at the same spot)
+//   boss     +$300 when the boss is cured (its third hit)
 //   final    the final wave (wave 5) pays everything twice: one more row the size of the subtotal
 // A wave stopped early banks what it earned (nothing punishes stopping). A street's next wave moves on 1 → 5; after
 // the final wave the street counts as cleared once, a pumpkin is planted in the yard (the calm beat), and it starts
 // again at wave 1. Every 10 cures, a new neighbour moves onto the title's street (the Cure Counter).
 import { isHit } from '../skills/items.js';
-import { itemOf, STOCK } from '../data/looks.js';
+import { extraOf, itemOf, STOCK } from '../data/looks.js';
 import { dayKey } from '../skills/store.js';
 
 export const CURE_CASH = 120;
 export const BULL_BONUS = 60;
 export const EFFORT_BONUS = 40;
+export const SHARP_BONUS = 50;
+export const COMBO_STEP = 20;
+export const COMBO_CAP = 6;
+export const TWIN_BONUS = 80;
+export const BOSS_BONUS = 300;
 export const FINAL_MULT = 2;
 export const CURES_PER_NEIGHBOUR = 10;
 
-/** throws: [{ item: { id }, result }] in order. → { rows: [{ id, label, count, amount }], total, cured, bulls, efforts }. */
+/**
+ * throws: [{ item: { id, kind? }, result, seen?, combo?, cures?: [ids] }] in order (the 'throw' events as the app
+ * records them). A throw's `cures` are the zombies it cured (its own item and any twin at the spot); without it a hit
+ * cures its own item. A boss item (kind 'boss') is cured by its third hit.
+ * → { rows: [{ id, label, count, amount }], total, cured, bulls, efforts, sharps, twins, bestCombo, boss }.
+ */
 export function waveCash(throws, { final = false } = {}) {
   const cured = new Map();         // item id -> the curing result
   const near = new Set(), effort = new Set();
+  const bossHits = new Map();
+  let sharps = 0, twins = 0, comboCash = 0, bestCombo = 0, boss = false;
   for (const t of throws || []) {
     const id = t && t.item && t.item.id;
-    if (!id || cured.has(id)) continue;
-    if (isHit(t.result)) { cured.set(id, t.result); if (near.has(id)) effort.add(id); }
-    else if (t.result === 'near') near.add(id);
+    if (!id) continue;
+    const hit = isHit(t.result);
+    if (hit) {
+      const combo = Math.max(0, Math.floor(Number(t.combo) || 0));
+      if (combo >= 2) comboCash += (Math.min(COMBO_CAP, combo) - 1) * COMBO_STEP;
+      bestCombo = Math.max(bestCombo, combo);
+    }
+    if (t.item.kind === 'boss') {
+      if (hit && !cured.has(id)) {
+        const k = (bossHits.get(id) || 0) + 1;
+        bossHits.set(id, k);
+        if (k >= 3) { cured.set(id, t.result); boss = true; if (!t.seen) sharps++; }
+      }
+      continue;
+    }
+    const list = Array.isArray(t.cures) && t.cures.length ? t.cures : hit ? [id] : [];
+    let fresh = 0;
+    for (const cid of list) {
+      if (cured.has(cid)) continue;
+      cured.set(cid, cid === id ? t.result : 'hit');
+      fresh++;
+      if (cid === id && near.has(cid)) effort.add(cid);
+    }
+    if (fresh) { if (!t.seen) sharps += fresh; twins += Math.max(0, fresh - 1); }
+    if (!hit && t.result === 'near' && !cured.has(id)) near.add(id);
   }
   const n = cured.size, bulls = [...cured.values()].filter((r) => r === 'bull').length, efforts = effort.size;
   const rows = [
     { id: 'cure', label: 'Neighbours cured', count: n, amount: n * CURE_CASH },
     { id: 'bull', label: 'Bullseyes', count: bulls, amount: bulls * BULL_BONUS },
     { id: 'effort', label: 'Close, then cured', count: efforts, amount: efforts * EFFORT_BONUS },
+    { id: 'sharp', label: 'Sharpshooter (cured in the fog)', count: sharps, amount: sharps * SHARP_BONUS },
+    { id: 'combo', label: 'Combo', count: bestCombo >= 2 ? bestCombo : 0, amount: comboCash },
+    { id: 'twins', label: 'Twins', count: twins, amount: twins * TWIN_BONUS },
+    { id: 'boss', label: 'Boss cured', count: boss ? 1 : 0, amount: boss ? BOSS_BONUS : 0 },
   ];
   const sub = rows.reduce((a, r) => a + r.amount, 0);
   if (final) rows.push({ id: 'final', label: 'Final wave ×2', count: 1, amount: sub * (FINAL_MULT - 1) });
-  return { rows, total: rows.reduce((a, r) => a + r.amount, 0), cured: n, bulls, efforts };
+  return { rows, total: rows.reduce((a, r) => a + r.amount, 0), cured: n, bulls, efforts, sharps, twins, bestCombo, boss };
 }
 
 /** Mean closeness of a wave's throws ("accuracy 86 %"): 100 − the mean PAE, rounded; null without throws. */
@@ -79,8 +121,21 @@ export const nextWaveOf = (save, street) => (save.streets[street] && save.street
 
 // ---------- the yard ----------
 export const owns = (save, kind, id) => id === STOCK[kind] || (save.yard.owned[kind] || []).includes(id);
-/** Buy (and wear) a yard item: → 'bought' | 'owned' | 'poor' | 'unknown'. */
+/**
+ * Buy (and wear) a yard item: → 'bought' | 'owned' | 'poor' | 'unknown'. kind 'extra' (the dog, the lantern): bought
+ * once and switched on; owned → toggled on / off ('owned').
+ */
 export function buyYard(save, kind, id) {
+  if (kind === 'extra') {
+    const x = extraOf(id);
+    if (!x) return 'unknown';
+    if (owns(save, kind, id)) { save.yard[id] = !save.yard[id]; return 'owned'; }
+    if (save.cash < x.price) return 'poor';
+    save.cash -= x.price;
+    save.yard.owned.extra = [...(save.yard.owned.extra || []), id];
+    save.yard[id] = true;
+    return 'bought';
+  }
   const it = itemOf(kind, id);
   if (!it) return 'unknown';
   if (owns(save, kind, id)) { save.yard[kind] = id; return 'owned'; }

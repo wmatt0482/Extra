@@ -69,13 +69,46 @@ test('sayTexts: the finite set the natural voice prepares (every 1.0 fraction, w
 });
 
 console.log('waves');
-test('5 waves of 8-12: sizes 8, 9, 10, 10, 12; the 3rd is big, the 5th final', () => {
+test('5 waves of 8-12: sizes 8, 9, 10, 10, 12 (+ the boss on the 5th); the 3rd is big, the 5th final; live 2, 2, 4, 3, 3', () => {
   const rng = I.rngFrom(7);
   const sizes = [1, 2, 3, 4, 5].map((n) => I.buildWave({ tier: 'T1', number: n, rng }));
-  assert.deepEqual(sizes.map((w) => w.items.length), [8, 9, 10, 10, 12]);
+  assert.deepEqual(sizes.map((w) => w.items.length), [8, 9, 10, 10, 13]);
+  assert.deepEqual(sizes.map((w) => w.size), [8, 9, 10, 10, 12]);
+  assert.deepEqual(sizes.map((w) => w.live), [2, 2, 4, 3, 3]);
   assert.deepEqual(sizes.map((w) => [w.big, w.final]), [[false, false], [false, false], [true, false], [false, false], [false, true]]);
+  assert.equal(sizes[4].items.at(-1).kind, 'boss');
+  assert.ok(sizes.slice(0, 4).every((w) => w.items.every((x) => x.kind !== 'boss')), 'a boss only on the final wave');
 });
-test('never the same fraction twice in a row; ids unique; the scaffold early, plain locate when secure', () => {
+test('twins: one pair from wave 2 on, adjacent, at the same spot, twin ids cross-linked; none on wave 1', () => {
+  assert.deepEqual(I.twinPairs('T1').map((p) => p.map((f) => `${f.n}/${f.d}`)), [['1/2', '2/4']]);
+  assert.deepEqual(I.twinPairs('T2').map((p) => p.map((f) => `${f.n}/${f.d}`)), [['1/3', '2/6'], ['2/3', '4/6']]);
+  assert.equal(I.buildWave({ tier: 'T1', number: 1, rng: I.rngFrom(3) }).items.filter((x) => x.twin).length, 0);
+  for (let seed = 1; seed < 30; seed++) for (const tier of ['T1', 'T2']) {
+    const w = I.buildWave({ tier, number: 2 + (seed % 4), reviewTier: tier === 'T2' ? 'T1' : null, rng: I.rngFrom(seed) });
+    const tw = w.items.filter((x) => x.twin);
+    assert.equal(tw.length, 2, `${tier} seed ${seed}`);
+    const [a, b] = tw;
+    assert.equal(w.items.indexOf(b), w.items.indexOf(a) + 1, 'adjacent');
+    assert.ok(w.items.indexOf(a) >= 2, 'never in the first two');
+    assert.equal(a.twin, b.id); assert.equal(b.twin, a.id);
+    assert.ok(Math.abs(a.target - b.target) < 1e-9 && a.show !== b.show, 'the same spot, two spellings');
+    assert.ok(a.kind === 'locate' && b.kind === 'locate');
+    const before = w.items[w.items.indexOf(a) - 1];
+    assert.ok(Math.abs(before.target - a.target) > 1e-9, 'the fraction before the pair is elsewhere');
+  }
+});
+test('the boss: three forms of the same number (symbol, words, unit sum), 3 hits, a name per street; the voice knows the forms', () => {
+  const b = I.makeBoss({ n: 3, d: 4 }, { name: 'Mayor Mumbles', tolerance: 0.1, id: 'w5-boss' });
+  assert.equal(b.kind, 'boss'); assert.equal(b.hits, 3); assert.equal(b.name, 'Mayor Mumbles'); assert.equal(b.target, 0.75); assert.equal(b.tier, 'T1');
+  assert.deepEqual(b.forms, [{ show: '3/4', say: 'three quarters' }, { show: 'three quarters', say: 'three quarters' }, { show: '¼+¼+¼', say: 'one quarter plus one quarter plus one quarter' }]);
+  assert.equal(b.show, '3/4'); assert.equal(b.say, 'three quarters');
+  assert.deepEqual(I.makeBoss({ n: 2, d: 3 }).forms[2], { show: '⅓+⅓', say: 'one third plus one third' });
+  const w5 = I.buildWave({ tier: 'T2', number: 5, rng: I.rngFrom(9) });
+  assert.equal(w5.items.at(-1).name, 'Coach Groan');
+  assert.equal(I.buildWave({ tier: 'T1', number: 5, rng: I.rngFrom(9) }).items.at(-1).name, 'Mayor Mumbles');
+  assert.ok(I.sayTexts().includes('one quarter plus one quarter plus one quarter.'));
+});
+test('never the same fraction twice in a row (twins excepted: two spellings); ids unique; the scaffold early, plain locate when secure', () => {
   for (let seed = 1; seed < 40; seed++) {
     const w = I.buildWave({ tier: 'T1', number: 5, rng: I.rngFrom(seed) });
     for (let i = 1; i < w.items.length; i++) assert.notEqual(w.items[i].show, w.items[i - 1].show, `seed ${seed}`);
@@ -249,16 +282,35 @@ test('ladder steps (started / working / secure per street) and this week\'s accu
 });
 
 console.log('cash, banking, the yard');
-const thr = (id, result, pae = 5) => ({ item: { id }, result, pae });
+const thr = (id, result, pae = 5, extra = {}) => ({ item: { id }, result, pae, seen: true, ...extra });
+const rowsOf = (c) => Object.fromEntries(c.rows.map((r) => [r.id, r.amount]));
 test('cash rows add up: cure $120, bull +$60, close-then-cured +$40; a zombie counts once', () => {
   const c = E.waveCash([thr('a', 'bull'), thr('b', 'near'), thr('b', 'miss'), thr('b', 'hit'), thr('c', 'miss'), thr('d', 'hit'), thr('d', 'hit')]);
-  assert.deepEqual(c.rows.map((r) => [r.id, r.count, r.amount]), [['cure', 3, 360], ['bull', 1, 60], ['effort', 1, 40]]);
+  assert.deepEqual(c.rows.filter((r) => r.amount).map((r) => [r.id, r.count, r.amount]), [['cure', 3, 360], ['bull', 1, 60], ['effort', 1, 40]]);
   assert.equal(c.total, 460);
   assert.equal(c.total, c.rows.reduce((a, r) => a + r.amount, 0));
+  assert.deepEqual(c.rows.map((r) => r.id), ['cure', 'bull', 'effort', 'sharp', 'combo', 'twins', 'boss']);
+});
+test('sharpshooter (+$50 per cure in the fog), combo (+$20 × (combo − 1) from ×2, capped at ×6), twins (+$80 per extra cure), boss (+$300 on its third hit)', () => {
+  const c = E.waveCash([
+    thr('a', 'hit', 5, { seen: false, combo: 1 }),                          // in the fog: sharp
+    thr('b', 'bull', 1, { seen: false, combo: 2, cures: ['b', 'c'] }),      // twins at one spot, combo ×2
+    thr('d', 'near', 15, { combo: 2 }),                                     // a near keeps the combo
+    thr('d', 'hit', 4, { combo: 3 }),                                        // seen; combo ×3; close-then-cured
+    thr('e', 'miss', 30, { combo: 0 }),
+    { item: { id: 'z', kind: 'boss' }, result: 'hit', pae: 3, seen: false, combo: 1 },
+    { item: { id: 'z', kind: 'boss' }, result: 'hit', pae: 3, seen: true, combo: 2 },
+    { item: { id: 'z', kind: 'boss' }, result: 'bull', pae: 1, seen: true, combo: 3 },
+  ]);
+  assert.deepEqual(rowsOf(c), { cure: 5 * 120, bull: 2 * 60, effort: 40, sharp: 3 * 50, combo: 20 + 40 + 20 + 40, twins: 80, boss: 300 });
+  assert.equal(c.total, c.rows.reduce((a, r) => a + r.amount, 0));
+  assert.deepEqual([c.cured, c.bulls, c.sharps, c.twins, c.bestCombo, c.boss], [5, 2, 3, 1, 3, true]);
+  const half = E.waveCash([{ item: { id: 'z', kind: 'boss' }, result: 'hit', pae: 3 }, { item: { id: 'z', kind: 'boss' }, result: 'hit', pae: 3 }]);
+  assert.equal(half.total, 0, 'two hits on the boss cure nothing yet'); assert.equal(half.boss, false);
 });
 test('the final wave pays everything twice (a final row the size of the subtotal); nothing cured = $0', () => {
   const c = E.waveCash([thr('a', 'bull'), thr('b', 'hit')], { final: true });
-  assert.deepEqual(c.rows.map((r) => r.amount), [240, 60, 0, 300]);
+  assert.deepEqual(c.rows.map((r) => r.amount), [240, 60, 0, 0, 0, 0, 0, 300]);
   assert.equal(c.total, 600);
   assert.equal(E.waveCash([thr('a', 'miss')]).total, 0);
   assert.equal(E.accuracyOf([thr('a', 'hit', 4), thr('b', 'miss', 30)]), 83);
@@ -277,19 +329,34 @@ test('bankWave: cash, cures, next wave 1 → 5, the final clears the street (a p
   assert.deepEqual(s.play[S.dayKey(T0)], { waves: 6, cures: 20 });
 });
 test('the yard: buy (cash down, owned, worn), wear an owned one again free, too little cash = poor; stock is free', () => {
-  const s = defaultSave(); s.cash = 1300;
+  const s = defaultSave(); s.cash = 1600;
   assert.equal(E.buyYard(s, 'goo', 'tangerine'), 'poor');
   assert.equal(E.buyYard(s, 'goo', 'grape'), 'bought'); assert.equal(s.cash, 100); assert.equal(s.yard.goo, 'grape');
   assert.equal(E.buyYard(s, 'goo', 'lime'), 'owned'); assert.equal(s.yard.goo, 'lime');
   assert.equal(E.buyYard(s, 'goo', 'grape'), 'owned'); assert.equal(s.cash, 100);
   assert.equal(E.buyYard(s, 'fence', 'castle'), 'unknown');
+  assert.equal(E.buyYard(s, 'grenade', 'slime'), 'owned'); assert.equal(s.yard.grenade, 'slime');
+  s.cash = 2500;
+  assert.equal(E.buyYard(s, 'grenade', 'lava'), 'bought'); assert.equal(s.yard.grenade, 'lava'); assert.equal(s.cash, 0);
+});
+test('yard extras: the dog and the lantern are bought once, then switched on and off', () => {
+  const s = defaultSave(); s.cash = 4200;
+  assert.equal(E.buyYard(s, 'extra', 'dog'), 'bought'); assert.equal(s.yard.dog, true); assert.equal(s.cash, 200);
+  assert.equal(E.buyYard(s, 'extra', 'dog'), 'owned'); assert.equal(s.yard.dog, false);
+  assert.equal(E.buyYard(s, 'extra', 'dog'), 'owned'); assert.equal(s.yard.dog, true);
+  assert.equal(E.buyYard(s, 'extra', 'lantern'), 'poor'); assert.equal(s.yard.lantern, false);
+  assert.equal(E.buyYard(s, 'extra', 'cat'), 'unknown');
+  assert.deepEqual(s.yard.owned.extra, ['dog']);
 });
 test('save normalize: junk dropped, equipped only when owned, a wave number clamped', () => {
   const s = normalizeSave({ cash: -4, cures: 12.7, streets: { maple: { wave: 9, cleared: 2 }, mars: { wave: 1 } }, yard: { owned: { goo: ['grape', 'nope', 'lime'] }, goo: 'tangerine', fence: 'iron' }, resetAt: 5 });
   assert.equal(s.cash, 0); assert.equal(s.cures, 12);
   assert.deepEqual(s.streets, { maple: { wave: 5, cleared: 2 } });
-  assert.deepEqual(s.yard, { owned: { goo: ['grape'], fence: [] }, goo: 'lime', fence: 'picket' });
+  assert.deepEqual(s.yard, { owned: { grenade: [], goo: ['grape'], fence: [], extra: [] }, grenade: 'slime', goo: 'lime', fence: 'picket', dog: false, lantern: false });
   assert.equal(s.resetAt, 5);
+  const t = normalizeSave({ yard: { owned: { grenade: ['frost', 'x'], extra: ['lantern', 'cat'] }, grenade: 'frost', dog: true, lantern: true } });
+  assert.deepEqual(t.yard, { owned: { grenade: ['frost'], goo: [], fence: [], extra: ['lantern'] }, grenade: 'frost', goo: 'lime', fence: 'picket', dog: false, lantern: true }, 'an extra is on only when owned');
+  assert.deepEqual(normalizeSave(defaultSave()), defaultSave(), 'a 1.0 save without the new fields normalizes to the stock');
 });
 
 console.log('sync merge rules');
@@ -299,7 +366,7 @@ test("ff: max counts, union of yard purchases, the later doc's goo, streets by w
   const b = defaultSave(); b.cash = 300; b.cures = 41; b.yard.owned.fence = ['iron']; b.yard.fence = 'iron'; b.streets.maple = { wave: 2, cleared: 1 }; b.streets.oak = { wave: 3, cleared: 0 }; b.play['2026-10-26'] = { waves: 3, cures: 4 };
   const m = mergeFf(doc(2, a), doc(1, b));
   assert.equal(m.cash, 500); assert.equal(m.cures, 41);
-  assert.deepEqual(m.yard.owned, { goo: ['grape'], fence: ['iron'] });
+  assert.deepEqual(m.yard.owned, { grenade: [], goo: ['grape'], fence: ['iron'], extra: [] });
   assert.equal(m.yard.goo, 'grape'); assert.equal(m.yard.fence, 'picket', 'the later doc wore the picket');
   assert.deepEqual(m.streets, { maple: { wave: 2, cleared: 1 }, oak: { wave: 3, cleared: 0 } });
   assert.deepEqual(m.play['2026-10-26'], { waves: 3, cures: 9 });

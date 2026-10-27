@@ -2,14 +2,17 @@
 
 The third game on [learninglab.fun](https://learninglab.fun/) (after Spell Jump and Trail Blazer): a kid-safe zombie
 "shooter" that teaches **fractions as numbers on a number line** (Grade 4, CCSS 4.NF). Lanky, creepy-funny zombies
-shuffle down a cracked road toward the kid's fence, and the road is the number line. The scout calls a fraction
-("three quarters!"); the kid drags along the road and lobs a slime grenade. On the spot: THUNK, a goo bolt, and the
-called zombie turns back into a slightly embarrassed neighbour and walks home. Off the spot: a plop, and the true spot
-lights up with the fraction drawn as jumps from 0. No one is ever hurt; no lives, no timers.
+rise out of the graveyard fog **at their fraction's spot** and shuffle toward the kid's fence, and the road is the
+number line. The scout calls a fraction ("three quarters!"); the kid drags along the road and lobs a slime grenade. On
+the spot: THUNK, the zombie hiding there turns back into a slightly embarrassed neighbour and walks home. Off the spot:
+a plop, and the true spot lights up with the fraction drawn as jumps from 0. No one is ever hurt; no lives, no timers.
 
 `SPEC.md` is the design (§0 holds the non-negotiables from the research); `docs/LEARNING-DESIGN.md` maps every
 technique to its source and its code. Version **1.0** = the Zombie Lab, Maple Street and Oak Lane, waves, results, the
-yard basics, the Cure Counter, the Parent Zone with the weekly %, family sync, pings and the voice.
+yard basics, the Cure Counter, the Parent Zone with the weekly %, family sync, pings and the voice. Version **1.1 "The
+Horde"** (SPEC §13) = zombies in the fog at their spot, 2–4 at once with a card stack to call any of them, twins
+(two spellings of one number at one spot, one grenade cures both), a boss on every final wave (3 hits, the same number
+three ways), the combo, chatter, grenade types, the finale, a yard dog and a gate lantern, and the new cash rows.
 
 ## Run it
 
@@ -42,12 +45,21 @@ open http://localhost:8080/fraction-fright/?mock=1     # the mock engine (src/me
 - **Zombie Lab** (`src/ui/lab.js`): about a minute; a fraction is a number on the road, cut it into equal jumps, lob at
   ¾ and ⅔, ½ in the same spot on every road, lob at 4/8. +100 XP · Streets open.
 - **Streets** (`src/ui/streets.js`): street names on rusted signs; the ★ suggests one, the kid picks among the open ones.
-- **A wave**: 5 waves per street (8, 9, 10, 10, 12 zombies); the 3rd is the big wave (3 at once), the 5th the final wave
-  (pays ×2), then a calm beat plants a jack-o'-lantern. The HUD shows the called fraction (big, read aloud, "Hear it"),
-  the street and pause. Nothing else: no timer, no bar, no counter.
-- **Results**: cured, accuracy (mean closeness), bullseyes, cash rows that add up (cure $120, bullseye +$60,
-  close-then-cured +$40, final wave ×2), the wave's fractions, the tally board.
-- **Yard**: 3 goo colours and 2 fences, cosmetics only (never a "scope" that shows ticks).
+- **A wave**: 5 waves per street (8, 9, 10, 10, 12 zombies, plus the boss on the 5th); 2, 2, 4, 3, 3 live at once;
+  the 3rd is the big wave, the 5th the final wave (pays ×2, ends with the finale), then a calm beat plants a
+  jack-o'-lantern. Each zombie rises out of the fog at its fraction's spot and is hidden until it has walked 60 % of
+  the way; a throw at a zombie already out of the fog is recorded as "seen" (it never counts toward a secure street).
+  From wave 2 a twin pair (1/2 and 2/4; 1/3 and 2/6, 2/3 and 4/6) rises at one spot: one grenade cures both. The HUD
+  shows the called fraction (big, read aloud, "Hear it"), the other live zombies' fractions as small cards (tap one to
+  call it), the COMBO chip from ×2 (consecutive hits; a miss resets it), the street and pause. Nothing else: no timer,
+  no bar, no counter. The final wave's boss (Mayor Mumbles on Maple Street, Coach Groan on Oak Lane) takes 3 hits and
+  shows its number three ways (3/4 → "three quarters" → ¼+¼+¼); its card shows its name and hits left as dots.
+- **Results**: cured, accuracy (mean closeness), bullseyes, best combo, cash rows that add up (cure $120, bullseye
+  +$60, close-then-cured +$40, sharpshooter +$50 per cure in the fog, combo +$20 × (combo − 1) per hit from ×2 (capped at ×6), twins
+  +$80 per extra cure, boss +$300, final wave ×2), the wave's fractions (twins and the boss marked), the tally board.
+- **Yard**: 4 grenade types (slime, lava, frost, disco), 3 goo colours, 3 fences, a yard dog and a gate lantern,
+  cosmetics only (never a "scope" that shows ticks); about $35k in all, a few hours of play. More yard items are the next
+  runway step.
 
 ## How it is built
 

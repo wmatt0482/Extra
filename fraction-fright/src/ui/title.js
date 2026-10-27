@@ -31,6 +31,11 @@ function neighbour(i, x, y, s) {
 }
 function fence(style, y) {
   const f = itemOf('fence', style) || itemOf('fence', 'picket');
+  if (style === 'stone') {
+    let out = '';
+    for (let row = 0; row < 3; row++) for (let x = row % 2 ? -30 : 0; x < 1600; x += 60) out += `<rect x="${x + 2}" y="${y - 28 + row * 30}" width="56" height="27" rx="4" fill="${row % 2 ? '#6f6a66' : '#7d7773'}" stroke="#3a3734" stroke-width="3"/>`;
+    return out;
+  }
   if (style === 'iron') {
     let out = `<rect x="0" y="${y - 22}" width="1600" height="7" fill="#26252b"/><rect x="0" y="${y + 22}" width="1600" height="7" fill="#26252b"/>`;
     for (let x = 6; x < 1600; x += 30) out += `<rect x="${x}" y="${y - 34}" width="6" height="96" fill="#26252b"/><path d="M${x - 4} ${y - 32} L${x + 3} ${y - 50} L${x + 10} ${y - 32} Z" fill="#26252b"/>`;
@@ -79,6 +84,9 @@ export function yardSvg(save) {
   const pk = Math.min(12, save.pumpkins);
   for (let i = 0; i < pk; i++) s += pumpkin(120 + i * 120, 880, 1);
   s += `<g opacity=".85"><ellipse cx="1460" cy="872" rx="38" ry="12" fill="${goo}"/><ellipse cx="1502" cy="886" rx="14" ry="6" fill="${goo}"/></g>`;
+  // yard extras (SPEC §13.5): the gate lantern, the dog
+  if (save.yard.lantern) s += '<g class="lantern"><rect x="1536" y="640" width="10" height="180" fill="#2a2730"/><rect x="1522" y="618" width="38" height="44" rx="5" fill="#3a3530" stroke="#111" stroke-width="3"/><rect x="1529" y="626" width="24" height="28" fill="#ffd25a"/><circle cx="1541" cy="640" r="70" fill="#ffd25a" opacity=".14"/></g>';
+  if (save.yard.dog) s += '<g class="dog"><ellipse cx="820" cy="868" rx="40" ry="22" fill="#c9a36b" stroke="#3a2a14" stroke-width="3"/><circle cx="858" cy="846" r="18" fill="#c9a36b" stroke="#3a2a14" stroke-width="3"/><path d="M844 832 l-8 -17 l17 9 Z M870 832 l8 -17 l-17 9 Z" fill="#8a6a3a" stroke="#3a2a14" stroke-width="2.5"/><circle cx="864" cy="846" r="3" fill="#111"/><circle cx="875" cy="851" r="4.5" fill="#111"/><path d="M782 860 q-18 -26 4 -36" stroke="#c9a36b" stroke-width="8" fill="none" stroke-linecap="round"/></g>';
   return { svg: s, neighbours: n, shown };
 }
 

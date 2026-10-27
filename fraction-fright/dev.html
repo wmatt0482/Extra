@@ -31,7 +31,7 @@
 <pre id="state"></pre>
 <pre id="log"></pre>
 <div id="call"></div>
-<div id="hint">drag on the road or ← → to aim · space / tap to throw · r restart</div>
+<div id="hint">drag on the road or ← → to aim · space / tap to throw · f focus next · r restart</div>
 <div id="side"><button id="restartBtn">Restart</button></div>
 <div id="results"><h2>Wave over</h2><pre id="resText"></pre><button id="retry">Again</button></div>
 
@@ -39,7 +39,8 @@
 // Engine playground. URL params: road=1|3 (0–1 or 0–3 road + its item list), n (zombies, default 10), big=1, final=1,
 // wave (number 1..5), seed, rm=1 (reduced motion), ui=0 (no overlays), sim (speed), tol (tolerance share, default 0.10),
 // goo (css colour), fence=iron|picket|stone, weather=clear|fog|bats|stars|rain, auto=1 (throw exactly every 2.4 s),
-// sound=0 (mute the WebAudio feel sounds).
+// sound=0 (mute the WebAudio feel sounds), live (max live at once), twins=1, boss=1, grenade=slime|lava|frost|disco,
+// dog=1, lantern=1. Keys: f = focus the next zombie.
 import { createGame } from './src/game/engine.js';
 
 const q = new URLSearchParams(location.search);
@@ -77,12 +78,19 @@ const ITEMS_03 = [
 ];
 const roadTo = num('road', 1) === 3 ? 3 : 1;
 const n = Math.max(1, Math.min(12, num('n', 10)));
-const items = (roadTo === 3 ? ITEMS_03 : ITEMS_01).slice(0, n).map((it) => ({ ...it, tolerance: tol }));
+let items = (roadTo === 3 ? ITEMS_03 : ITEMS_01).slice(0, n).map((it) => ({ ...it, tolerance: tol }));
+// twins=1: a pair of equivalent fractions at the same spot in front; boss=1: a 3-hit boss (final-wave style) at the end
+if (q.get('twins') === '1') items = [
+  { id: 'tw1', kind: 'locate', say: 'one half', show: '1/2', target: 0.5, twin: 'tw2', tolerance: tol },
+  { id: 'tw2', kind: 'locate', say: 'two quarters', show: '2/4', target: 0.5, twin: 'tw1', tolerance: tol }, ...items.filter((it) => it.target !== 0.5)];
+if (q.get('boss') === '1') items.push({ id: 'boss', kind: 'boss', name: 'Mayor Mumbles', hits: 3, say: 'nine tenths', show: '9/10', target: 0.9, tolerance: tol,
+  forms: [{ show: '9/10', say: 'nine tenths' }, { show: 'nine tenths', say: 'nine tenths' }, { show: '9 × ⅒', say: 'nine times one tenth' }] });
 const road = roadTo === 3
   ? { from: 0, to: 3, labels: ['0', '½', '1', '2', '3'], ticks: [0.25, 0.75, 1.25, 1.5, 1.75, 2.25, 2.5, 2.75].map((at) => ({ at })), landmarks: [{ at: 0.5, kind: 'grave' }, { at: 1.5, kind: 'lantern' }, { at: 2.5, kind: 'tree' }] }
   : { from: 0, to: 1, labels: ['0', '½', '1'], ticks: [0.125, 0.25, 0.375, 0.625, 0.75, 0.875].map((at) => ({ at })), landmarks: [{ at: 0.15, kind: 'grave' }, { at: 0.86, kind: 'tree' }] };
-const look = { goo: q.get('goo') || '#8cff1a', fence: q.get('fence') || 'iron', pumpkins: 5 };
+const look = { goo: q.get('goo') || '#8cff1a', fence: q.get('fence') || 'iron', pumpkins: 5, grenade: q.get('grenade') || 'slime', dog: q.get('dog') === '1', lantern: q.get('lantern') === '1' };
 const wave = { street: { id: roadTo === 3 ? 'pumpkin-hill' : 'maple', name: roadTo === 3 ? 'Pumpkin Hill' : 'Maple Street', weather: q.get('weather') || 'bats' }, number: num('wave', 1), zombies: items, big: q.get('big') === '1', final: q.get('final') === '1' };
+if (q.get('live') != null) wave.live = num('live', 2);
 const stats = { radius: tol, power: num('power', 1) };
 const auto = q.get('auto') === '1';
 
@@ -126,6 +134,17 @@ const SFX = {
   finalWave: () => beep(147, 0.8, 'sawtooth', 0.14, 100),
   calm: () => beep(392, 0.8, 'sine', 0.12),
   waveEnd: () => { beep(523, 0.2, 'triangle', 0.15); setTimeout(() => beep(784, 0.4, 'triangle', 0.15), 200); },
+  lava: () => { beep(70, 0.4, 'sawtooth', 0.3, -30); noise(0.3, 0.3); },
+  frost: () => beep(1200, 0.3, 'sine', 0.15, 600),
+  shatter: () => { noise(0.12, 0.3); beep(1600, 0.15, 'triangle', 0.12, -800); },
+  disco: () => { [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, 0.12, 'square', 0.1), i * 90)); },
+  combo: (v) => beep(440 + 120 * v, 0.15, 'triangle', 0.15, 200),
+  mega: () => { beep(60, 0.6, 'sawtooth', 0.35, -20); noise(0.5, 0.4); },
+  bossStomp: () => { beep(55, 0.5, 'sine', 0.5, -15); noise(0.2, 0.3); },
+  bossHit: () => { beep(130, 0.3, 'square', 0.2, -60); noise(0.15, 0.2); },
+  fireworks: () => { [0, 200, 420, 600].forEach((d) => setTimeout(() => { noise(0.15, 0.25); beep(900, 0.2, 'triangle', 0.1, 300); }, d)); },
+  mutter: () => beep(150, 0.12, 'sawtooth', 0.05, -30),
+  bark: () => { beep(420, 0.08, 'square', 0.15, -100); setTimeout(() => beep(400, 0.08, 'square', 0.15, -100), 120); },
 };
 
 // ---- the harness ----
@@ -197,6 +216,11 @@ addEventListener('keydown', (e) => {
   }
   if (e.key === ' ') { game.throw(); e.preventDefault(); }
   if (e.key === 'r') restart();
+  if (e.key === 'f') { // focus the next live zombie
+    const live = game.getState().live.filter((z) => !z.cured && z.state === 'walk' || z.state === 'knock');
+    const i = live.findIndex((z) => z.focus);
+    if (live.length) game.setFocus(live[(i + 1) % live.length].item);
+  }
   if (e.key === 'p') { if (window.__paused) game.resume(); else game.pause(); window.__paused = !window.__paused; }
   if (e.key === 's') game.stop();
 });

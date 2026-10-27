@@ -2,7 +2,8 @@
 // the rest (music, clicks, cash, fanfare). The engine says what happened with 'sound' { name, vol } events and the app
 // plays them here (play(name, vol)): toss, boing (a bounce-scaffold hop), thunkBig / thunk / thunkSmall (the landing:
 // bull / hit / near), plop (a miss), splat, cure, knock (a zombie at the fence), pumpkin (it takes one), bigWave,
-// finalWave, calm (the calm beat: plant a pumpkin), waveEnd. Its own small context, created and resumed inside the
+// finalWave, calm (the calm beat: plant a pumpkin), waveEnd; 1.1 (SPEC §13.4): lava, frost, shatter, disco, combo, mega,
+// bossStomp, bossHit, fireworks, mutter, bark. Its own small context, created and resumed inside the
 // first user gesture (iOS); every call is a safe no-op before that or with sound off.
 // Big sounds only on success (SPEC §0, Kao 2024): the thunk's size follows the result; a miss is a soft plop.
 const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
@@ -65,6 +66,29 @@ function createSfx() {
     plant() { if (ready()) { noise('lowpass', 500, 150, 0.8, 0.3, 0.2); tone('triangle', 523, 784, 0.4, 0.06, 0.25); } },
     /** the big / final wave arriving: a spooky (silly) horn */
     horde() { if (ready()) { tone('sawtooth', 196, 185, 0.5, 0.05); tone('sawtooth', 147, 139, 0.6, 0.05, 0.1); } },
+    // ---- 1.1 (SPEC §13): grenade types, the combo, the boss, the finale, chatter, the dog ----
+    /** the lava grenade: a whoomp, embers crackling */
+    lava() { if (ready()) { noise('lowpass', 1200, 90, 0.8, 0.5, 0.4); tone('sawtooth', 90, 40, 0.5, 0.18); for (let i = 0; i < 5; i++) noise('bandpass', 2600 + i * 400, 1800, 8, 0.05, 0.08, 0.12 + i * 0.07); } },
+    /** the frost grenade: a falling shimmer and a crystalline chime */
+    frost() { if (ready()) { tone('sine', 2200, 600, 0.45, 0.07); tone('triangle', 1760, 1760, 0.3, 0.05, 0.08); tone('triangle', 2637, 2637, 0.4, 0.04, 0.16); noise('highpass', 5000, 7000, 1, 0.3, 0.05); } },
+    /** the ice block shatters */
+    shatter() { if (ready()) { noise('highpass', 3000, 6000, 1, 0.25, 0.3); for (let i = 0; i < 6; i++) tone('triangle', 1500 + ((i * 731) % 1800), 2400, 0.12, 0.05, 0.02 + i * 0.03); } },
+    /** the disco grenade: a quick rising arpeggio */
+    disco() { if (ready()) [523, 659, 784, 1047, 1319].forEach((f, i) => tone('square', f, f, 0.14, 0.04, i * 0.06)); },
+    /** combo up: two rising notes, higher with the count (vol carries the count / 10) */
+    combo(v = 1) { if (ready()) { const k = Math.min(1.6, 0.9 + v * 0.15); tone('triangle', 660 * k, 660 * k, 0.1, 0.07); tone('triangle', 990 * k, 990 * k, 0.18, 0.07, 0.09); } },
+    /** the mega splat: boom + a long sweep */
+    mega() { if (ready()) { tone('sine', 80, 30, 0.7, 0.5); noise('lowpass', 1500, 100, 0.6, 0.9, 0.45); tone('sawtooth', 200, 2400, 0.5, 0.05, 0.05); tone('triangle', 1047, 2093, 0.4, 0.07, 0.3); } },
+    /** the boss stomping in: two slow thuds */
+    bossStomp() { if (ready()) for (const at of [0, 0.42]) { tone('sine', 70, 30, 0.35, 0.45, at); noise('lowpass', 400, 60, 0.8, 0.3, 0.3, at); } },
+    /** a hit on the boss: a gong */
+    bossHit() { if (ready()) { tone('sine', 330, 300, 0.7, 0.2); tone('triangle', 495, 480, 0.6, 0.08, 0.02); noise('bandpass', 700, 300, 3, 0.25, 0.2); } },
+    /** fireworks: a whistle up, a pop and crackle */
+    fireworks() { if (ready()) { tone('sine', 400, 1600, 0.5, 0.05); noise('lowpass', 2000, 300, 0.8, 0.35, 0.35, 0.5); for (let i = 0; i < 8; i++) noise('bandpass', 3000, 2500, 8, 0.04, 0.06, 0.6 + i * 0.06); } },
+    /** a zombie mutters: a low wobbly tone */
+    mutter() { if (ready()) { tone('sawtooth', 110, 95, 0.22, 0.03); tone('sawtooth', 130, 105, 0.2, 0.03, 0.2); } },
+    /** the yard dog: two short yaps */
+    bark() { if (ready()) for (const at of [0, 0.18]) { tone('square', 520, 360, 0.09, 0.05, at); noise('bandpass', 1200, 700, 4, 0.08, 0.08, at); } },
     /** play an engine 'sound' event by name */
     play(name, vol = 1) {
       const v = Math.max(0.1, Math.min(1.5, Number(vol) || 1));
@@ -81,6 +105,17 @@ function createSfx() {
         case 'pumpkin': this.pumpkin(); break;
         case 'bigWave': case 'finalWave': this.horde(); break;
         case 'calm': this.plant(); break;
+        case 'lava': this.lava(); break;
+        case 'frost': this.frost(); break;
+        case 'shatter': this.shatter(); break;
+        case 'disco': this.disco(); break;
+        case 'combo': this.combo(v); break;
+        case 'mega': this.mega(); break;
+        case 'bossStomp': this.bossStomp(); break;
+        case 'bossHit': this.bossHit(); break;
+        case 'fireworks': this.fireworks(); break;
+        case 'mutter': this.mutter(); break;
+        case 'bark': this.bark(); break;
         default: break;
       }
     },
