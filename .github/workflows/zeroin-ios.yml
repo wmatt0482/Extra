@@ -1,0 +1,88 @@
+name: ZeroIn iOS
+
+# Builds the ZeroIn iPhone app on a macOS runner (the only place SwiftUI
+# compiles), runs the ZeroInCore package tests, and captures real simulator
+# screenshots as an artifact. Triggered manually or by pushes that touch zero-in/.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "zero-in/**"
+      - ".github/workflows/zeroin-ios.yml"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: zero-in
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select newest Xcode 16
+        run: |
+          ls -d /Applications/Xcode*.app
+          XC="$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
+          echo "using $XC"
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+          swift --version
+
+      - name: Core package tests
+        working-directory: zero-in/ZeroInCore
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee ../core-tests.log | tail -40
+
+      - name: Build app (committed Xcode project)
+        id: build_committed
+        continue-on-error: true
+        run: |
+          if xcodebuild -project ZeroIn.xcodeproj -scheme ZeroIn \
+               -destination 'generic/platform=iOS Simulator' -configuration Debug \
+               -derivedDataPath build CODE_SIGNING_ALLOWED=NO build > build-committed.log 2>&1; then
+            echo "committed project built"; grep -c "warning:" build-committed.log || true
+          else
+            echo "::warning::committed project failed; errors follow"
+            grep -E "error:" build-committed.log | sort -u | head -80
+            tail -20 build-committed.log
+            exit 1
+          fi
+
+      - name: Build app (regenerated with XcodeGen)
+        if: steps.build_committed.outcome == 'failure'
+        run: |
+          brew install xcodegen
+          rm -rf ZeroIn.xcodeproj build
+          xcodegen generate
+          if xcodebuild -project ZeroIn.xcodeproj -scheme ZeroIn \
+               -destination 'generic/platform=iOS Simulator' -configuration Debug \
+               -derivedDataPath build CODE_SIGNING_ALLOWED=NO build > build-xcodegen.log 2>&1; then
+            echo "xcodegen project built"; grep -c "warning:" build-xcodegen.log || true
+          else
+            grep -E "error:" build-xcodegen.log | sort -u | head -120
+            tail -20 build-xcodegen.log
+            exit 1
+          fi
+
+      - name: Simulator screenshots
+        run: bash tools/simulator_screenshots.sh build
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zeroin-screenshots
+          path: zero-in/screenshots/*.png
+          if-no-files-found: ignore
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zeroin-build-logs
+          path: |
+            zero-in/core-tests.log
+            zero-in/build-*.log
+          if-no-files-found: ignore
