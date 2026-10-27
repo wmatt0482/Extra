@@ -49,6 +49,12 @@ from 3 o'clock gives negative drift).
 
 ## Build and run
 
+> **Build status (v0.1):** this code was written and reviewed without an Xcode or Swift toolchain available, so
+> nothing here has been compiled yet. Expect a first round of compile fixes in Xcode 16. The ballistics math was
+> verified numerically through its Python mirror (`tools/ballistics_reference.py`) against py-ballisticcalc, and
+> the catalog JSON through `tools/validate_catalog.py`; the Swift unit tests in `ZeroInCore/Tests` encode those
+> same checks for `swift test`.
+
 Requirements: Xcode 16 or later, an iPhone running iOS 17 or later (the camera is needed for the sight-in flow, so
 run on a device; the simulator can still pick photos).
 

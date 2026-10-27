@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import ZeroInCore
 
 /// Atmosphere, wind and inclination inputs for the Ballistics tab.

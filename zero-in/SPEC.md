@@ -93,7 +93,8 @@ sight-in before the trip. Always finish with a group at the real zero range.
 ## 5. Ballistics model
 
 - 3-DOF point-mass in a frame with x downrange along the line of sight, y up, z right. Gravity 32.174 ft/s²,
-  with the inclination angle cos-scaling the gravity component.
+  rotated into that frame by the inclination angle (integrated, not the rifleman's rule), with a fixed 0.0005 s
+  RK4 step (about 0.5 yd).
 - Drag from the standard G1 or G7 tables (Cd versus Mach, linearly interpolated); retardation scales with
   `1/BC` (lb/in²) and the air density ratio. Integrated with RK4 at about 0.5 yd steps.
 - Atmosphere: station pressure, temperature and humidity give density (vapor-pressure correction) and speed of
@@ -101,7 +102,13 @@ sight-in before the trip. Always finish with a group at the real zero range.
 - Wind by integrating velocity relative to the air mass. Direction is where the wind blows *from*, clockwise from
   the line of fire: 0 headwind, 90 from the right (3 o'clock), 180 tailwind, 270 from the left. A wind from the
   right pushes the bullet left (negative `windageInches`).
-- The zero is always solved in calm air; wind is applied only to the trajectory.
+- The zero is always solved in calm air on level ground, in the shot's atmosphere. That is what a shooter does
+  at the range; wind and inclination apply only to the trajectory, so an uphill DOPE table shows how far a
+  flat-zeroed rifle prints high on the slope (py-ballisticcalc, by contrast, re-zeroes on the slope).
+- Validated against py-ballisticcalc (`tools/ballistics_reference.py`): path within 0.11 in and drift within
+  0.07 in out to 800 yd for the supersonic rifle cases; the .22 LR case differs by up to 1.5 in at 800 yd
+  because the reference varies air density with bullet height. The script regenerates the test vectors in
+  `BallisticsTests.swift`.
 - Line of sight starts at (0, −sightHeight); the bullet starts at (0, 0) with the zero launch angle above the line
   of sight.
 - Come-up for a row is `−path` converted to the chosen angular unit; wind hold is `−windage`. Clicks are

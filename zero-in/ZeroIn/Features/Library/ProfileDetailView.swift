@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import UIKit
 import ZeroInCore
 
 /// Read-only summary of one profile with Edit / Make active actions.

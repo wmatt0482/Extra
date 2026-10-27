@@ -19,7 +19,16 @@ struct ProfileEditorView: View {
         self.profile = profile
         let raw = UserDefaults.standard.string(forKey: AppSettings.distanceUnitKey) ?? ""
         let unit = DistanceUnit(rawValue: raw) ?? .yards
-        _draft = State(initialValue: ProfileDraft(profile: profile, defaultZeroYards: unit.toYards(100)))
+        var initial = ProfileDraft(profile: profile, defaultZeroYards: unit.toYards(100))
+        if profile == nil {
+            // Settings > "Defaults for new setups" click value (0.1 is the common MIL click).
+            let click = AppSettings.defaultClickValue()
+            initial.clickValue = click
+            if !ClickOptions.values(for: .moa).contains(click) && ClickOptions.values(for: .mil).contains(click) {
+                initial.clickUnit = .mil
+            }
+        }
+        _draft = State(initialValue: initial)
     }
 
     private var distanceUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .yards }

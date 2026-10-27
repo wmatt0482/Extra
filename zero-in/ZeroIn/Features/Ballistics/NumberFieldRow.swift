@@ -25,6 +25,7 @@ struct NumberFieldRow: View {
 }
 
 /// Dismisses the keyboard (used by the keyboard toolbar's Done button).
+@MainActor
 func dismissKeyboard() {
     UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                     to: nil, from: nil, for: nil)
