@@ -32,7 +32,8 @@ import { STREET_BY_ID } from './data/streets.js';
 import { itemOf } from './data/looks.js';
 import { buildWave, hashString, isHit, rngFrom, roadFor, sayTexts, tierOfDen, toleranceFor } from './skills/items.js';
 import { isUnlocked, moreDenominators, reviewTierOf, tierState } from './skills/ladder.js';
-import { finishLab, levelFor, noteWave, recordThrow, resetSkills } from './skills/store.js';
+import { finishLab, levelFor, notePace, noteWave, recordThrow, resetSkills } from './skills/store.js';
+import { KNOWN_AFTER, medianOf, planPace } from './skills/pace.js';
 import { createPlayers, drawAvatar } from './ui/players.js';
 import { drawYard, tallySvg } from './ui/title.js';
 import { createLab } from './ui/lab.js';
@@ -42,7 +43,7 @@ import { createResults } from './ui/results.js';
 import { createYard } from './ui/yard.js';
 import { createParentZone } from './ui/parentZone.js';
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const GAME = 'fraction-fright';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'fractionFright.resumePlayer';   // sessionStorage: the player to come back to after an update reload
@@ -300,7 +301,7 @@ async function boot() {
 
   // ---------- settings (this device) ----------
   function setSetting(key, value) {
-    settings[key] = !!value;
+    settings[key] = key === 'pace' ? (['auto', 'calm', 'quick'].includes(value) ? value : 'auto') : !!value;
     writeSettings(settings);
     if (key === 'sound') { Audio.setSound(settings.sound); Sfx.setSound(settings.sound); }
     if (key === 'music') Audio.music(settings.music);
@@ -352,7 +353,9 @@ async function boot() {
     const w = buildWave({ tier, number, state, reviewTier: rv, reviewState: rv ? tierState(skills, rv) : 'secure', more: moreDenominators(skills, tier), rng: rngFrom(seed), bossName: street.boss });
     const goo = itemOf('goo', save.yard.goo), fence = itemOf('fence', save.yard.fence), grenade = itemOf('grenade', save.yard.grenade) || itemOf('grenade', 'slime');
     run = { street: streetId, streetName: street.name, tier, number, big: w.big, final: w.final, items: w.items, byId: new Map(w.items.map((it) => [it.id, it])),
-      throws: [], targetKey: '', ended: false, cured: 0, reached: 0, curedIds: new Set(), reachedIds: new Set(), opened: [], bestCombo: 0, bossCured: false, at: Date.now() };
+      throws: [], targetKey: '', ended: false, cured: 0, reached: 0, curedIds: new Set(), reachedIds: new Set(), opened: [], bestCombo: 0, bossCured: false, at: Date.now(),
+      thinks: [], calledAt: 0, plan: null };   // §16: the think times this wave, when the current call showed, the pace plan
+    run.plan = pacePlan(run);
     go('wave');
     hud.reset(street.name, number, { big: w.big, final: w.final });
     paused = false;
@@ -361,7 +364,7 @@ async function boot() {
     try {
       game.start({
         road: roadFor(tier),
-        wave: { street: { id: streetId, name: street.name, weather: street.look.weather }, number, zombies: w.items, big: w.big, final: w.final, live: w.live },
+        wave: { street: { id: streetId, name: street.name, weather: street.look.weather }, number, zombies: w.items, big: w.big, final: w.final, live: run.plan.live, shuffleSec: run.plan.walkSec },
         look: { ...run.look },
         stats: { radius: toleranceFor(state), power: 1 },
         seed,
@@ -385,6 +388,7 @@ async function boot() {
     const sameZombie = run.targetKey.startsWith(`${item.id}:`);
     const sameForm = run.targetKey.startsWith(`${item.id}:${item.show}:`);
     run.targetKey = key;
+    if (!sameZombie || !sameForm) run.calledAt = performance.now();   // §16: the think time starts when a new call shows
     hud.setTarget({ ...item, hitsLeft });
     if (!sameZombie || !sameForm) app.say(`${item.say}.`);
   }
@@ -455,6 +459,7 @@ async function boot() {
     if (!evt || !run || run.ended) return;
     switch (evt.type) {
       case 'target': setTarget(evt.item, run.state && run.state.live); break;
+      case 'toss': onToss(); break;
       case 'throw': onThrow(evt); break;
       case 'sound': Sfx.play(evt.name, evt.vol); break;
       case 'cured': run.cured++; if (evt.item) { run.curedIds.add(evt.item.id); if (evt.item.kind === 'boss') run.bossCured = true; } break;
@@ -464,6 +469,34 @@ async function boot() {
       // the engine draws 'BIG WAVE!' / 'FINAL WAVE!' in the world itself (and plays their sound)
       case 'waveEnd': endWave(evt); break;
       default: break;
+    }
+  }
+  // ---------- §16 the Pace Director ----------
+  /** The last 12 throws' hit rate from the skills records (every tier and kind), or null with fewer than 4. */
+  function recentHitRate() {
+    const all = Object.values(skills.records || {}).flat().sort((a, b) => a[0] - b[0]).slice(-12);
+    if (all.length < 4) return null;
+    return all.filter((x) => x[2] === 'b' || x[2] === 'h').length / all.length;
+  }
+  function pacePlan(r) {
+    const med = r.thinks.length >= KNOWN_AFTER ? medianOf(r.thinks) : null;
+    const stored = skills.pace && skills.pace.n > 0 ? skills.pace.think : null;
+    const known = med != null || (stored != null && skills.pace.n >= KNOWN_AFTER);
+    const think = med != null ? med : stored != null ? stored : undefined;
+    return planPace({ think, known, hitRate: recentHitRate(), number: r.number, big: r.big, final: r.final, mode: settings.pace || 'auto' });
+  }
+  /** The grenade left the hand: measure the think time, fold it in, re-plan the horde when the plan changed. */
+  function onToss() {
+    if (!run || run.ended) return;
+    if (run.calledAt > 0) {
+      const secs = (performance.now() - run.calledAt) / 1000;
+      run.calledAt = 0;
+      if (secs >= 0.3 && secs <= 90) { run.thinks.push(secs); notePace(skills, secs, Date.now()); }
+    }
+    const plan = pacePlan(run);
+    if (!run.plan || plan.live !== run.plan.live || Math.abs(plan.walkSec - run.plan.walkSec) >= 1) {
+      run.plan = plan;
+      try { if (typeof game.setPace === 'function') game.setPace({ live: plan.live, walkSec: plan.walkSec }); } catch (_) { /* older engine */ }
     }
   }
   function onThrow(evt) {
@@ -686,6 +719,7 @@ async function boot() {
     app, hud, pz, sync, lab, results, tts,
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get screen() { return screen; },
     get bonus() { return bonus; }, get bonusMod() { return bonusMod; },
+    pacePlan: () => (run ? pacePlan(run) : null),
     get skills() { return skills; }, get save() { return save; }, get paused() { return paused; }, get coaching() { return coaching; },
     throwAt(x01) { if (!canAim()) return false; try { game.setAim(x01); } catch (_) { return false; } return throwNow(); },
     focus,

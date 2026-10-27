@@ -358,6 +358,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .row .label { font-weight: 700; }
 .row .sub { font-size: 12px; color: var(--muted); font-weight: 700; margin-top: 2px; }
 .toggle { position: relative; width: 76px; height: 46px; flex: none; }
+.seg { display: inline-flex; flex: none; gap: 4px; padding: 3px; border-radius: 6px; background: var(--ink); }
+.seg-btn { min-height: 40px; padding: 0 12px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 800 13px/1 var(--font-body); }
+.seg-btn.on { background: var(--accent); color: var(--accent-ink); }
 .toggle::before { content: ''; position: absolute; inset: 5px 4px; border-radius: 4px; background: var(--ink-2); border: 2px solid var(--line); }
 .toggle::after { content: ''; position: absolute; top: 10px; left: 9px; width: 26px; height: 26px; border-radius: 50%; background: var(--dim); transition: transform .15s; }
 .toggle[aria-checked="true"]::before { background: var(--go); border-color: var(--go-edge); }

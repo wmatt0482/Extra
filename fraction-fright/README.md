@@ -24,7 +24,12 @@ No timer, countdown, ammo or energy on screen: the round ends when the stampede 
 what was cured. Its cash is a separate "Bonus round" row on the Results (the rows still add up) and a callout
 "Critter Stampede: N cured". Parents → Options → **Bonus round** turns it off. The module is `src/game/bonus.js` (its
 own canvas `#bonus-stage`, harness `bonus-dev.html`, test `tools/bonus-smoke.mjs`); a missing or broken module only
-means no bonus rounds.
+means no bonus rounds. Version **1.3 "Blast"** (SPEC §15) = zombies are blasted into goo by default, **Gentle mode**
+(Parents → Options) keeps the cure. Version **1.4 "Pace Director"** (SPEC §16) = the horde follows the kid: each
+throw's think time (the call → the throw) sets how many zombies walk at once and how slowly (about 2.2 × think + 2 s
+per zombie; a new player meets one at a time; under 70 % hits the horde thins and slows), zombies dawdle in the last
+stretch, a reached fence buys a pause; Parents → Options → **Pace** (Auto · Calm · Quick); Parents → Fractions shows
+the measured pace. No clock, bar or pace is ever shown to the kid.
 
 ## Run it
 

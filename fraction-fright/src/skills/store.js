@@ -8,10 +8,11 @@
 //     days: { 'YYYY-MM-DD': { throws, hits, bulls, pae } }   the last 21 days (the Report's week)
 //     waves: [{ at, street, number, cured, reached, throws, hits, bulls, pae, stopped? }]   the last 40 waves
 //     moves: [{ at, tier, from, to }]               tier state changes (the Report's "moved up")
-//     opts: { aloud, updatedAt }, resetAt? }
+//     opts: { aloud, updatedAt }, pace: { think (s, an EMA of the think time per throw), n, updatedAt } (§16), resetAt? }
 // Accuracy, never speed, is recorded (SPEC §0): no times are kept.
 import { PLAYABLE, TIER_BY_ID, closeText, isHit, parseFrac } from './items.js';
 import { RECORD_KEPT, STATES, ladderView, reviewTierOf, tierState, tierStats } from './ladder.js';
+import { updateThink } from './pace.js';
 
 export const SKILLS_VERSION = 1;
 export const skillsKey = (playerId) => `fractionFright.${playerId}.skills`;
@@ -32,7 +33,7 @@ export const dayKey = (ms) => { const t = new Date(ms); return `${t.getFullYear(
 const DAY_RE = /^\d{4}-\d\d-\d\d$/;
 
 export function defaultSkills() {
-  return { v: SKILLS_VERSION, updatedAt: 0, xp: 0, lab: { done: 0, runs: 0 }, opened: {}, records: {}, fracs: {}, days: {}, waves: [], moves: [], opts: { aloud: true, updatedAt: 0 } };
+  return { v: SKILLS_VERSION, updatedAt: 0, xp: 0, lab: { done: 0, runs: 0 }, opened: {}, records: {}, fracs: {}, days: {}, waves: [], moves: [], opts: { aloud: true, updatedAt: 0 }, pace: { think: 0, n: 0, updatedAt: 0 } };
 }
 
 /** Coerce whatever was read into valid skills (unknown fields dropped, lists capped). */
@@ -83,6 +84,8 @@ export function normalizeSkills(raw) {
   }
   const o = raw.opts && typeof raw.opts === 'object' ? raw.opts : {};
   d.opts = { aloud: typeof o.aloud === 'boolean' ? o.aloud : true, updatedAt: Math.max(0, num(o.updatedAt)) };
+  const pc = raw.pace && typeof raw.pace === 'object' ? raw.pace : {};
+  d.pace = { think: Math.max(0, Math.min(40, r1(num(pc.think)))), n: Math.max(0, Math.floor(num(pc.n))), updatedAt: Math.max(0, num(pc.updatedAt)) };
   if (num(raw.resetAt) > 0) d.resetAt = num(raw.resetAt);
   return d;
 }
@@ -139,6 +142,12 @@ export function finishLab(d, at = Date.now()) {
 }
 
 /** A wave ended (stopped early too: nothing is lost by stopping). */
+/** §16: one measured think time (seconds from the call to the throw) folded into the player's pace record. */
+export function notePace(d, seconds, at = Date.now()) {
+  d.pace = updateThink(d.pace, seconds, at);
+  d.updatedAt = Math.max(d.updatedAt, at);
+  return d.pace;
+}
 export function noteWave(d, w) {
   const x = normalizeSkills({ waves: [w] }).waves[0];
   if (!x) return;

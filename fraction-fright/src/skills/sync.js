@@ -80,6 +80,7 @@ export function mergeFracs(local, remote) {
   d.waves = byAt([...d.waves, ...o.waves], WAVES_KEPT);
   d.moves = byAt([...d.moves, ...o.moves], MOVES_KEPT);
   if (o.opts.updatedAt > d.opts.updatedAt) d.opts = clone(o.opts);
+  if (o.pace && (o.pace.updatedAt > (d.pace || {}).updatedAt || 0)) d.pace = clone(o.pace);   // §16: the later think-time record
   d.updatedAt = Math.max(num(d.updatedAt), num(o.updatedAt));
   return normalizeSkills(d);
 }

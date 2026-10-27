@@ -59,7 +59,7 @@ export function createGame(canvas, opts = {}) {
     run = {
       cfg, road, wave, queue: (wave.zombies || []).slice(), active: [], total: (wave.zombies || []).length, maxActive: live,
       t: 0, phase: 'wave', aim: 0.5, cured: 0, reached: 0, throws: [], perItem: {}, flight: null, beat: null, calm: 0, finale: 0, ended: false,
-      targetId: null, focusId: null, combo: 0, confetti: [], walkSec: sec('walkSec', 20), spawned: 0, pumpkins: Math.max(3, Math.min(12, Number(look.pumpkins) || 5)),
+      targetId: null, focusId: null, combo: 0, confetti: [], walkSec: sec('walkSec', Number(wave.shuffleSec) > 0 ? Math.max(10, Math.min(90, Number(wave.shuffleSec))) : 20),   // the test script's walkSec wins; else the app's plan (§16); else 20 spawned: 0, pumpkins: Math.max(3, Math.min(12, Number(look.pumpkins) || 5)),
       goo: (typeof look.goo === 'string' && look.goo.startsWith('#') ? look.goo : '#a6ff2e'), grenade: GRENADE_COLORS[look.grenade] || null, dog: !!look.dog, lantern: !!look.lantern,
       banner: null, fence: look.fenceColor || '#f4efe2', sky: look.sky || ['#0c0b14', '#3a2430', '#8a3a14'],
     };
@@ -386,6 +386,7 @@ export function createGame(canvas, opts = {}) {
     start,
     setAim,
     setFocus,
+    setPace({ live, walkSec } = {}) { if (!run) return false; if (Number.isFinite(Number(live))) run.maxActive = Math.max(1, Math.min(6, Math.round(Number(live)))); if (Number(walkSec) > 0) run.walkSec = Math.max(10, Math.min(90, Number(walkSec))); spawn(); return true; },
     throw: doThrow,
     throwAt(x) { setAim(x); return doThrow(); },
     getState() {
@@ -397,7 +398,7 @@ export function createGame(canvas, opts = {}) {
       return {
         phase: r.phase, target: z ? itemOut(z) : null, aim: r.aim, combo: r.combo, cured: r.cured, reached: r.reached, total: r.total,
         left: r.queue.length + liveList().length, hint: z ? z.hint || null : null,
-        live, zombies: live.filter((x) => !x.cured),
+        live, zombies: live.filter((x) => !x.cured), pace: { live: r.maxActive, walkSec: r.walkSec },
         last: r.throws.length ? { ...r.throws[r.throws.length - 1], item: undefined, show: r.throws[r.throws.length - 1].item.show } : null,
         roadPx: roadPx(), bull: BULL,
       };

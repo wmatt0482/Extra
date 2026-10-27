@@ -323,3 +323,26 @@ settings.gentle (default false); `look.gentle` passed to the engine and the bonu
 row labels ("Zombies zapped" / "Neighbours cured"), the coach card and the Lab's last line ("the zombie gets
 blasted" / "turns back into a neighbour"); the Why page and the README say both modes exist and what the default
 is; the kid-rule audit (ui-smoke BANNED) still passes in both modes; engine-smoke / bonus-smoke run both modes.
+
+## 16. v1.4 "Pace Director" — the horde follows the kid (Oct 27 2026)
+Matt: "The fraction game is a little too fast now. I think it has to be adaptive." With 2–4 zombies walking at once
+(§13) the horde set the tempo; §0 says accuracy, never speed. Research (docs/LEARNING-DESIGN.md, technique 16): flow
+needs challenge matched to skill and the match should follow the player (Csikszentmihalyi; Chen 2006); L4D's director
+watches stress and backs off (peaks and valleys); Hunicke's Hamlet treats difficulty as supply and demand and steps in
+before the bad state; Rosenshine's ~80 % success during practice; time pressure loads working memory (contested in
+the literature, but our rule stands).
+- **Think time**: seconds from a new call showing (the card) to the throw; each throw's time goes into the player's
+  record `skills.pace = { think (an EMA, α 0.3), n, updatedAt }` (synced: the later record wins) and into the wave's
+  list (median when ≥ 4).
+- **The plan** (`src/skills/pace.js` `planPace`): per zombie the kid needs `2.2 × think + 2` s; with L at once and W
+  seconds a walk the kid has W / L per zombie, so `L = min(max for the wave, floor(60 / per))`, `W = L × per`,
+  clamped to 16–60 s; an unknown think time (fewer than 4 throws ever) → single file; the last 12 throws under 70 %
+  hits → one fewer at once and a 25 % slower walk (the valley). Max at once stays the 1.1 shape (2 / big 4 / final 3).
+  Speed is never a reward: a quick, accurate kid gets more zombies, never faster ones.
+- **Engine**: `setPace({ live, walkSec })` for the spawns from now on (a slower walk also slows the walkers already
+  out, never faster); the **dawdle** (the first 80 % of the road in 70 % of the walk, the last 20 % in 30 %: the same
+  total, a slower final stretch); the **relax beat**: no new walker for 2.5 s after one reached the fence.
+  `getState().pace`.
+- **App**: the plan at the wave start (`wave.live`, `wave.shuffleSec`) and after every throw (`setPace` when it
+  changed); Parents → Options → **Pace**: Auto (default) · Calm (one slow zombie at a time) · Quick (the 1.1 horde);
+  Parents → Fractions: "Pace: about N s a throw · L at once, M s each". No pace is ever shown to the kid.

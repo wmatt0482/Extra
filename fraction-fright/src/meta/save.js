@@ -30,7 +30,8 @@ export function defaultSave() {
     play: {},                 // 'YYYY-MM-DD' -> { waves, cures } (the last 14 days)
   };
 }
-export const defaultSettings = () => ({ sound: true, music: true, reducedMotion: false, bonus: true, gentle: false });   // bonus: the Critter Stampede (§14); gentle: cure instead of blast (§15)
+export const defaultSettings = () => ({ sound: true, music: true, reducedMotion: false, bonus: true, gentle: false, pace: 'auto' });   // bonus: the Critter Stampede (§14); gentle: cure instead of blast (§15); pace: 'auto' | 'calm' | 'quick' (§16)
+export const PACES = Object.freeze(['auto', 'calm', 'quick']);
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const int0 = (v) => Math.max(0, Math.floor(num(v)));
@@ -98,7 +99,8 @@ export function loadSettings() {
   if (!text) return d;
   try {
     const raw = JSON.parse(text);
-    for (const k of Object.keys(d)) if (typeof raw[k] === 'boolean') d[k] = raw[k];
+    for (const k of Object.keys(d)) if (typeof raw[k] === 'boolean' && typeof d[k] === 'boolean') d[k] = raw[k];
+    if (PACES.includes(raw.pace)) d.pace = raw.pace;
   } catch (_) { /* defaults */ }
   return d;
 }

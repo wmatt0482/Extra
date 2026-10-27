@@ -15,6 +15,7 @@ import { TIER_BY_ID, closeText, toleranceFor } from '../skills/items.js';
 import { ladderView, recommended, tierStats } from '../skills/ladder.js';
 import { moveText, report, reportText, stateWord } from '../skills/store.js';
 import { weekProgress, weekProgressLines } from '../skills/progress.js';
+import { KNOWN_AFTER, paceText, planPace } from '../skills/pace.js';
 import { playLines } from '../meta/economy.js';
 import { drawAvatar } from './players.js';
 
@@ -191,6 +192,13 @@ export function createParentZone(app) {
   }
 
   // ---------- Fractions: where the child is on the ladder ----------
+  // §16: how long each throw takes and what the horde gives (the pace the director plans for a plain wave)
+  function paceLine(d) {
+    const pc = d.pace || { n: 0 };
+    if (!pc.n) return 'Pace: not measured yet · the first zombies come one at a time';
+    const plan = planPace({ think: pc.think, known: pc.n >= KNOWN_AFTER, mode: app.settings.pace || 'auto' });
+    return `Pace: ${paceText(plan)}${(app.settings.pace || 'auto') !== 'auto' ? ` (${app.settings.pace})` : ''}`;
+  }
   function fracsTab(p) {
     const d = app.skillsFor(p.id);
     const lv = ladderView(d);
@@ -200,7 +208,8 @@ export function createParentZone(app) {
       h('div', { class: 'label' }, `Where ${p.name} is`),
       h('div', { class: 'where-line', id: 'fracs-where-line' }, !d.lab.done ? 'Zombie Lab not done yet: it comes before the first street'
         : `${TIER_BY_ID[rec].name} (★ recommended) · ${stateWord(lv.find((t) => t.id === rec).state)} · aiming zone ±${Math.round(toleranceFor(lv.find((t) => t.id === rec).state) * 100)} % of the road`),
-      h('div', { class: 'pz-help' }, d.lab.done ? `Zombie Lab done ${new Date(d.lab.done).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${d.lab.runs > 1 ? ` (played ${d.lab.runs} times)` : ''} · ${d.xp} XP` : `${d.xp} XP`));
+      h('div', { class: 'pz-help' }, d.lab.done ? `Zombie Lab done ${new Date(d.lab.done).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${d.lab.runs > 1 ? ` (played ${d.lab.runs} times)` : ''} · ${d.xp} XP` : `${d.xp} XP`),
+      h('div', { class: 'pz-help', id: 'fracs-pace' }, paceLine(d)));
     const chips = lv.map((t) => h('span', { class: `lad st-${t.state}`, 'data-tier': t.id, 'data-state': t.state, title: `${t.name}: ${stateWord(t.state)}` }, t.name, h('small', {}, t.playable ? (t.open ? stateWord(t.state) : 'locked') : 'coming later')));
     const rows = lv.filter((t) => t.playable).map((t) => {
       const s = tierStats(d, t.id);
@@ -382,6 +391,9 @@ export function createParentZone(app) {
       toggle('Reduced motion', 'No slow-mo or shake; calmer splats', st.reducedMotion, (v) => app.setSetting('reducedMotion', v), 'opt-motion'),
       toggle('Bonus round', 'The Critter Stampede after a great wave (80 % hits, or the boss)', st.bonus !== false, (v) => app.setSetting('bonus', v), 'opt-bonus'),
       toggle('Gentle mode', 'Zombies are cured and walk home instead of being blasted into goo', !!st.gentle, (v) => app.setSetting('gentle', v), 'opt-gentle'),
+      h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Pace'), h('div', { class: 'sub' }, 'Auto follows how long each throw takes; Calm is one slow zombie at a time; Quick is the full horde')),
+        h('div', { class: 'seg', id: 'opt-pace', role: 'radiogroup', 'aria-label': 'Pace' }, ...[['auto', 'Auto'], ['calm', 'Calm'], ['quick', 'Quick']].map(([id, text]) =>
+          h('button', { class: `seg-btn${(st.pace || 'auto') === id ? ' on' : ''}`, 'data-pace': id, role: 'radio', 'aria-checked': String((st.pace || 'auto') === id), 'data-sfx': '', onclick: () => { app.setSetting('pace', id); render(); } }, text)))),
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with Spell Jump and Trail Blazer')),
         h('button', { class: 'btn btn-sm', id: 'opt-pin', onclick: () => { pinMode = 'reset'; pinEntry = ''; view = 'pin'; render(); } }, 'Change PIN')),

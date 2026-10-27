@@ -269,6 +269,9 @@ async function runLayout(browser, layout) {
   check(await J(page, () => window.__fractionFright.screen) === 'streets', 'a locked street does not start');
 
   // ---------- wave 1: a bull, a hit, a near, a miss ----------
+  // v1.4 (SPEC §16): a brand-new player would start single file; seed a known, quick think time so the wave-1 checks see the 2-at-once horde
+  const fresh = await J(page, () => { const g = window.__fractionFright; const p0 = g.app.pacePlan; const before = { pace: g.skills.pace }; g.skills.pace = { think: 3, n: 8, updatedAt: Date.now() }; g.app.persistSkills(); return before; });
+  check(fresh.pace && fresh.pace.n === 0, 'a new player has no think time yet (the first wave would come one at a time)');
   await page.click('[data-street="maple"]');
   await page.waitForSelector(visibleSel('#coach'));
   check(true, 'the first wave opens with the coach card');
@@ -388,6 +391,10 @@ async function runLayout(browser, layout) {
   const big = await J(page, () => ({ big: window.__fractionFright.run.big, z: window.__fractionFright.game.getState().zombies.length, wave: document.querySelector('#hud-wave').textContent, cards: document.querySelectorAll('#hud-stack .mini-card').length }));
   check(big.big && big.z === 4 && /big wave/i.test(big.wave) && big.cards === 3, `wave 3 is the big wave: 4 zombies on the road at once, 3 small cards ("${big.wave}")`);
   await shot(page, layout, '12-big-wave', 0);
+  // v1.4 (SPEC §16): the Pace Director: the wave started on the plan (live, walk) and re-plans after every throw;
+  // Options → Pace: Calm = one at a time
+  const pace0 = await J(page, () => { const g = window.__fractionFright; const s = g.game.getState(); return { plan: g.run.plan, pace: s.pace, thinks: g.run.thinks.length, stored: g.skills.pace, seg: [...document.querySelectorAll('#opt-pace .seg-btn')].map((b) => b.dataset.pace + (b.classList.contains('on') ? '*' : '')) }; });
+  check(pace0.plan && pace0.pace && pace0.plan.live === pace0.pace.live && pace0.pace.walkSec > 0 && pace0.stored.n >= 4 && pace0.stored.think > 0, `the pace plan drives the horde (${pace0.plan.live} at once, ${pace0.plan.walkSec} s walk planned; the mock walks ${pace0.pace.walkSec} s under the test script; think ≈ ${pace0.stored.think} s over ${pace0.stored.n} throws)`);
   // v1.2: every throw on the big wave was a bull → the Critter Stampede (SPEC §14) before the results
   const seenBonus = (await playOut(page, 30000, true)) === 'bonus';
   check(seenBonus, 'wave 3: ≥ 80 % hits → the bonus round opens (screen "bonus")');
@@ -402,10 +409,13 @@ async function runLayout(browser, layout) {
   const p3 = await payCheck(page, 'wave 3');
   check(p3.rows.some((r) => r.id === 'bonus' && r3.bonus && r.amount === r3.bonus.cash) && !!(await J(page, () => document.querySelector('#res-bonus'))), 'the Bonus round row pays the stampede and the results call it out');
   await shot(page, layout, '12c-bonus-results', 0);
-  // Options → Bonus round off: a perfect wave 4 goes straight to the results
-  await J(page, () => window.__fractionFright.app.setSetting('bonus', false));
+  // Options → Bonus round off: a perfect wave 4 goes straight to the results; Pace → Calm: one zombie at a time
+  await J(page, () => { window.__fractionFright.app.setSetting('bonus', false); window.__fractionFright.app.setSetting('pace', 'calm'); });
   await page.click('#res-next');
   await waitPhase(page);
+  const calm = await J(page, () => ({ plan: window.__fractionFright.run.plan, live: window.__fractionFright.game.getState().live.length }));
+  check(calm.plan.live === 1 && calm.plan.mode === 'calm' && calm.live === 1 && calm.plan.walkSec >= 24, `Pace → Calm: wave 4 starts with one zombie at a time, ${calm.plan.walkSec} s walk`);
+  await J(page, () => window.__fractionFright.app.setSetting('pace', 'auto'));
   check(await playOut(page), 'wave 4 played out');
   check(!(await J(page, () => window.__fractionFright.lastResult.bonus)), 'bonus round off (Options): no stampede after wave 4');
   await J(page, () => window.__fractionFright.app.setSetting('bonus', true));
@@ -499,7 +509,7 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '16-pz-fractions');
   await audit(page, layout.insets, 'Parent Zone (Fractions)');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.3\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
+  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.4\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
   await page.click('.pz-tabs [data-tab="report"]');
   const rep = await J(page, () => ({ big: document.querySelector('#report-week .pw-big').textContent, small: document.querySelector('#report-week .pw-small').textContent, pct: document.querySelector('#report-week').dataset.pct,
     bar: document.querySelector('#report-week .pw-bar i').style.width, streets: document.querySelectorAll('#report-streets li').length }));

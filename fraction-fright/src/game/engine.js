@@ -26,6 +26,8 @@
 //     land as the neighbour, a line, walk home into the fog.
 //   Focus: the called zombie = the unresolved live one nearest the fence (largest p) unless setFocus(itemId) picked
 //     another; `target` fires on every change (and on a boss form change). setFocus(itemId) → bool.
+//   setPace({ live, walkSec }) → bool (§16): the live cap and the walk time for the spawns from now on; a slower walk
+//     also slows the walkers already out (never faster). getState().pace = { live, walkSec }.
 //   setAim(x01): the reticle on the road at x01 (0 = road.from, 1 = road.to); emits aim { x01, value }.
 //   throw() → bool: throws the aimed grenade (phase 'wave', an aim set, nothing in flight). throwAt(x01) → bool.
 //   Resolution (§13.1): the landing spot is measured against EVERY live zombie: best = the smallest |aimed − target|;
@@ -99,6 +101,7 @@ export const TUNING = {
   slowmo: 0.3, slowmoSec: 0.4,
   cash: { cure: 120, bull: 60, effort: 40 },
   live: 2, bigLive: 4, finalLive: 3, staggerP: 0.12,
+  relaxSec: 2.5,   // §16: no new walker for a moment after one reached the fence (a valley after a peak)
   bossKnock: 0.15, bossDizzy: 1.0, megaCombo: 4,
   flagSec: 0.35, jumpsSec: 0.75,
 };
@@ -235,7 +238,7 @@ export function createGame(canvas, opts = {}) {
       looks: pickLooks(rand, items.length),
       phase: 'wave', t: 0, realT: 0, timeScale: 1, slowmoT: 0,
       zombies: [], nextSpawn: 0, liveTarget: clamp(Math.round(num(wave.live, big ? T.bigLive : final ? T.finalLive : T.live)), 1, 6),
-      aim: null, aimValue: null, throwState: null, feedback: null, pending: [],
+      aim: null, aimValue: null, throwState: null, feedback: null, pending: [], spawnHold: 0,   // spawnHold: no new walker before this sim time (the relax beat after a reach, §16)
       target: null, targetKey: '', focusId: null, calmT: 0, finaleT: 0,
       throws: [], cured: 0, reached: 0, bulls: 0, hits: 0, nears: 0, misses: 0, cash: { cure: 0, bull: 0, effort: 0 }, combo: 0, bestCombo: 0,
       pumpkins: Math.max(0, Math.round(num(look.pumpkins, 5))), pumpkinsTaken: 0, pumpkinGlow: 0,
@@ -272,6 +275,7 @@ export function createGame(canvas, opts = {}) {
     let k = 0;
     for (let i = r.nextSpawn; i < r.items.length; i++) if (r.items[i].boss && !r.items[i].spawned) { r.items[i].spawned = true; spawnOne(r, i, 0); }
     const taken = (it) => r.zombies.some((z) => z.alive && !z.resolved && !z.boss && Math.abs(z.item.target - it.target) < 1e-6 && !(it.twin && it.twin === z.item.id));
+    if (r.t < r.spawnHold) return;   // the relax beat: the horde pauses a moment after one reached the fence (tick() fills the road when it ends)
     while (liveCount(r) < r.liveTarget) {
       let i = -1;
       for (let j = r.nextSpawn; j < r.items.length; j++) { const it = r.items[j]; if (!it.spawned && !it.boss && !taken(it)) { i = j; break; } }
@@ -681,6 +685,8 @@ export function createGame(canvas, opts = {}) {
     r.t += dt;
     // pending timed callbacks
     for (let i = 0; i < r.pending.length; i++) if (r.t >= r.pending[i].at) { const p = r.pending[i]; r.pending.splice(i, 1); i--; p.fn(); }
+    // the relax beat is over: fill the road again (§16)
+    if (r.spawnHold && r.t >= r.spawnHold && (r.phase === 'wave' || r.phase === 'beat')) { r.spawnHold = 0; resolveZombieItem(r); }
     // zombies
     let focusChanged = false;
     for (let i = 0; i < r.zombies.length; i++) {
@@ -694,6 +700,7 @@ export function createGame(canvas, opts = {}) {
         z.item.reached = true;
         if (z.boss) z.item.hitsLeft = 0;
         emit({ type: 'reached', item: itemOut(z.item), pumpkins: r.pumpkins });
+        r.spawnHold = r.t + T.relaxSec;
         resolveZombieItem(r);
         focusChanged = true;
       } else if (ev === 'shatter') {
@@ -981,6 +988,7 @@ export function createGame(canvas, opts = {}) {
       pae: Math.round(meanPae * 10) / 10, accuracy: n ? clamp(Math.round(100 - meanPae), 0, 100) : 0,
       cash: base + (r.final ? base : 0), pumpkins: r.pumpkins,
       aim: r.aim, aimValue: r.aimValue, target: r.target ? itemOut(r.target) : null, combo: r.combo, gentle: !!r.look.gentle,
+      pace: { live: r.liveTarget, walkSec: r.shuffleSec },
       roadPx: { left: Math.round(r.road.x0), right: Math.round(r.road.x1), y: Math.round(r.road.y) },
       road: { from: r.road.from, to: r.road.to },
       live: r.zombies.map((z) => ({ id: z.id, item: z.item.id, p: Math.round(z.p * 1000) / 1000, state: z.state, look: z.look.id, hat: z.hat, cured: z.cured, x01: Math.round(r.road.toX01(z.item.target) * 1000) / 1000, target: z.item.target, seen: isSeen(z), focus: z === cur, boss: !!z.boss, hitsLeft: z.item.hitsLeft })),
@@ -999,6 +1007,19 @@ export function createGame(canvas, opts = {}) {
       emit({ type: 'aim', x01: u, value: r.aimValue });
     },
     throw() { const r = run; return !!r && r.aim != null && doThrow(r, r.aim); },
+    /** §16 the Pace Director: how many walk at once and how slowly, for the spawns from now on. A slower walk also
+     *  slows the zombies already on the road (never faster: speed is never a reward). The boss keeps its own pace. */
+    setPace({ live, walkSec } = {}) {
+      const r = run;
+      if (!r || r.phase === 'done') return false;
+      if (Number.isFinite(Number(live))) r.liveTarget = clamp(Math.round(Number(live)), 1, 6);
+      if (Number(walkSec) > 0) {
+        r.shuffleSec = clamp(Number(walkSec), 10, 90);
+        for (const z of r.zombies) if (z.alive && !z.boss && z.state === 'walk' && z.walkSec < r.shuffleSec) z.walkSec = r.shuffleSec;
+      }
+      if (r.phase === 'wave' || r.phase === 'beat') fillSpawns(r);
+      return true;
+    },
     throwAt(x01) { return doThrow(run, x01); },
     setFocus(itemId) {
       const r = run;
@@ -1049,7 +1070,7 @@ export function createGame(canvas, opts = {}) {
       if (!r) return null;
       return {
         t: r.t, phase: r.phase, timeScale: r.timeScale, combo: r.combo, bestCombo: r.bestCombo, focusId: r.focusId,
-        zombies: r.zombies.map((z) => ({ id: z.id, item: z.item.id, p: z.p, state: z.state, alive: z.alive, resolved: z.resolved, look: z.look.id, hat: z.hat, seen: isSeen(z), x: zx(r, z), y: yAt(r, z.p), boss: !!z.boss, hitsLeft: z.item.hitsLeft, form: z.item.form, dizzy: z.dizzyT })),
+        zombies: r.zombies.map((z) => ({ id: z.id, item: z.item.id, p: z.p, state: z.state, alive: z.alive, resolved: z.resolved, look: z.look.id, hat: z.hat, seen: isSeen(z), x: zx(r, z), y: yAt(r, z.p), boss: !!z.boss, hitsLeft: z.item.hitsLeft, form: z.item.form, dizzy: z.dizzyT, walkSec: z.walkSec })),
         nextSpawn: r.nextSpawn, liveTarget: r.liveTarget, shuffleSec: r.shuffleSec, particles: r.particles.n, splats: r.splats.length, popups: r.popups.map((p) => p.text),
         gentle: !!r.look.gentle, parts: r.parts.map((q) => ({ kind: q.kind, x: Math.round(q.x), y: Math.round(q.y), bounced: q.bounced })), puddles: r.puddles.map((q) => ({ x: Math.round(q.x), y: Math.round(q.y), r: Math.round(q.r) })), blastHats: r.blastHats.length,
         throwState: r.throwState ? { t: r.throwState.t, total: r.throwState.plan.total, touchdowns: r.throwState.plan.touchdowns.map((h) => ({ t: h.t, x: h.x, v: r.road.fromPx(h.x) })), hops: r.throwState.plan.segs.length - 1, aimed: r.throwState.aimed, land: r.throwState.plan.land, seen: r.throwState.seen } : null,

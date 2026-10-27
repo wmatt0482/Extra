@@ -15,6 +15,7 @@ import { weekProgress, weekProgressLines } from '../src/skills/progress.js';
 import * as E from '../src/meta/economy.js';
 import { defaultSave, normalize as normalizeSave } from '../src/meta/save.js';
 import { mergeFf, mergeFracs } from '../src/skills/sync.js';
+import * as P from '../src/skills/pace.js';
 
 let passed = 0;
 const failures = [];
@@ -338,6 +339,33 @@ test('the yard: buy (cash down, owned, worn), wear an owned one again free, too 
   assert.equal(E.buyYard(s, 'grenade', 'slime'), 'owned'); assert.equal(s.yard.grenade, 'slime');
   s.cash = 2500;
   assert.equal(E.buyYard(s, 'grenade', 'lava'), 'bought'); assert.equal(s.yard.grenade, 'lava'); assert.equal(s.cash, 0);
+});
+test('v1.4 pace (SPEC §16): the plan follows the think time, single file for a new player, a valley under 70 % hits, Calm / Quick', () => {
+  const p3 = P.planPace({ think: 3 }), p8 = P.planPace({ think: 8 }), p20 = P.planPace({ think: 20 });
+  assert.deepEqual([p3.live, p8.live, p20.live], [2, 2, 1]);
+  assert.ok(p3.walkSec < p8.walkSec && p8.walkSec < 60 && p20.walkSec >= 2.2 * 20 + 2, 'a longer think time means a slower walk, one at a time when the road would be too short');
+  for (const p of [p3, p8, p20]) assert.ok(p.walkSec / p.live >= 2.2 * p.think + 2 - 1e-9, 'every plan gives the kid 2.2 × think + 2 s per zombie');
+  assert.equal(P.planPace({ think: 8, big: true }).live, 3); assert.equal(P.planPace({ think: 3, big: true }).live, 4);
+  assert.equal(P.planPace({ known: false }).live, 1, 'an unknown think time: single file');
+  const low = P.planPace({ think: 5, hitRate: 0.5 }), ok = P.planPace({ think: 5, hitRate: 0.9 });
+  assert.ok(low.live === ok.live - 1 && low.walkSec >= 1.25 * (2.2 * 5 + 2) - 1e-9, 'under 70 % hits: one fewer at once and a 25 % slower walk');
+  assert.deepEqual([P.planPace({ think: 5, mode: 'calm' }).live, P.planPace({ think: 2, mode: 'calm' }).walkSec], [1, 24]);
+  const q = P.planPace({ think: 5, mode: 'quick', number: 3, big: true });
+  assert.deepEqual([q.live, q.walkSec], [4, 17], 'Quick is the 1.1 horde');
+  assert.equal(P.planPace({ think: 999 }).live, 1); assert.equal(P.planPace({ think: 999 }).walkSec, 60);
+  // the think-time record: an EMA, clamped, the first sample sets it
+  let pc = P.updateThink(null, 6, 10); assert.deepEqual(pc, { think: 6, n: 1, updatedAt: 10 });
+  pc = P.updateThink(pc, 16, 20); assert.equal(pc.think, 9); assert.equal(pc.n, 2);
+  pc = P.updateThink(pc, 400, 30); assert.ok(pc.think <= 40 && pc.think > 9, 'a long pause is clamped');
+  assert.equal(P.medianOf([5, 1, 9, 3]), 4); assert.equal(P.medianOf([]), null);
+  // the store and the sync
+  const d = S.defaultSkills(); assert.deepEqual(d.pace, { think: 0, n: 0, updatedAt: 0 });
+  S.notePace(d, 7, T0); S.notePace(d, 9, T0 + 1000); assert.equal(d.pace.n, 2); assert.equal(d.pace.think, 7.6); assert.equal(d.updatedAt, T0 + 1000);
+  assert.deepEqual(S.normalizeSkills({ pace: { think: 5.26, n: 2.7, updatedAt: 3 } }).pace, { think: 5.3, n: 2, updatedAt: 3 }); assert.deepEqual(S.normalizeSkills({ pace: 'junk' }).pace, { think: 0, n: 0, updatedAt: 0 });
+  const other = S.defaultSkills(); S.notePace(other, 12, T0 + 5000);
+  const m = mergeFracs({ updatedAt: T0 + 1000, data: d }, { updatedAt: T0 + 5000, data: other });
+  assert.equal(m.pace.think, 12, 'the later pace record wins the merge');
+  assert.ok(/about 7\.6 s a throw · 2 at once/.test(P.paceText(P.planPace({ think: 7.6 }))), P.paceText(P.planPace({ think: 7.6 })));
 });
 test('yard extras: the dog and the lantern are bought once, then switched on and off', () => {
   const s = defaultSave(); s.cash = 4200;

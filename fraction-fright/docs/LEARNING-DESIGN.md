@@ -38,6 +38,18 @@ number three ways (symbol, words, unit sum) over its three hits. The combo, the 
 finale are juice; big effects still only follow success (technique 13). Throws at a zombie already out of the fog are
 kept apart as `seen` and never count toward a secure street (technique 2).
 
+## The Pace Director (1.4, SPEC §16)
+
+| # | Technique | Evidence | In the game | Code |
+|---|---|---|---|---|
+| 16 | **The horde follows the kid** (the pace adapts to think time, never the reverse) | Flow needs challenge matched to skill (Csikszentmihalyi; Chen 2006, *Flow in Games*: the adjustment should follow the player); Hunicke & Chapman 2004 (Hamlet: difficulty as supply and demand, intervene before the bad state); Valve's L4D director (peaks and valleys, back off under stress); Rosenshine 2012 (~80 % success in practice); time pressure and working memory (Boaler 2012; Tsui & Mazzocco 2009; contested, see below) | Each throw's think time (the call → the throw) feeds an EMA per player; the plan gives the kid about 2.2 × think + 2 s per zombie by choosing how many walk at once and how slowly (16–60 s); a new player meets one zombie at a time; under 70 % hits the horde thins and slows; zombies dawdle in the last stretch; a reached fence buys a 2.5 s pause; a quick, accurate kid gets more zombies, never faster ones; parents can pin Calm or Quick | `src/skills/pace.js`, `store.js` `notePace`, `main.js` `onToss` / `pacePlan`, the engine's `setPace`, `zombies.js` (the dawdle) |
+
+The time-pressure literature is not settled: Boaler argues timed work drives math anxiety through working memory,
+Fuchs's work finds timed practice can build fluency, and Tsui & Mazzocco found the timed/untimed gap depends on order.
+We do not need to settle it: §0 already says accuracy, never speed, so the pace must follow the kid. The director
+never shows the kid a clock, a bar or a pace; it only decides how many zombies are on the road and how slowly they
+walk. (Sources consulted through abstracts and secondary summaries.)
+
 ## The bonus round (1.2, SPEC §14)
 
 The Critter Stampede is pure arcade, on purpose: a short reward the math earns, never a loop a child can grind. It

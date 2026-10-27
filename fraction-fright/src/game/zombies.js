@@ -16,7 +16,8 @@ import { OUT, spriteText, textWidth, drawPumpkin } from './render.js';
 import { roundRect } from './road.js';
 
 export const ZT = {
-  knockSec: 1.1, takeSec: 0.7, leaveSec: 1.4, cureSec: 0.55, thanksSec: 1.1, homeSec: 3.0, freezeSec: 0.5, spawnStagger: 0.55,
+  // §16 the dawdle: a zombie hesitates and knocks at the fence for 3 s (it can still be hit) before it takes a pumpkin
+  knockSec: 3.0, takeSec: 0.7, leaveSec: 1.4, cureSec: 0.55, thanksSec: 1.1, homeSec: 3.0, freezeSec: 0.5, spawnStagger: 0.55,
   fadeP: 0.08, homeSpeed: 0.28, leaveSpeed: 70,
 };
 // kid-safe chatter (SPEC §13.3): short, silly, never the banned words

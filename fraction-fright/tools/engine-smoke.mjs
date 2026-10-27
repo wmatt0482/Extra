@@ -360,6 +360,35 @@ try {
     check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
     await context.close();
   }
+  // ======== 7b. v1.4 (SPEC §16): setPace, the dawdle, the relax beat ========
+  {
+    const { page, context } = await open(browser, { n: '3', seed: '5', live: '1' });
+    const s0 = await state(page);
+    check(s0.pace && s0.pace.live === 1 && s0.pace.walkSec === 20, `getState().pace = { live 1, walkSec 20 } (${JSON.stringify(s0.pace)})`);
+    const ok = await page.evaluate(() => window.__ff.game.setPace({ live: 1, walkSec: 40 }));
+    const s1 = await state(page);
+    const d1 = await page.evaluate(() => window.__ff.game.debugInfo());
+    check(ok && s1.pace.live === 1 && s1.pace.walkSec === 40 && d1.zombies.filter((z) => z.alive && z.state === 'walk').every((z) => z.walkSec === 40), 'setPace({ live: 1, walkSec: 40 }): the cap and the walk time change, the walkers already out slow down too');
+    const ok2 = await page.evaluate(() => window.__ff.game.setPace({ walkSec: 20 }));
+    const d2 = await page.evaluate(() => window.__ff.game.debugInfo());
+    check(ok2 && d2.shuffleSec === 20 && d2.zombies.filter((z) => z.alive && z.state === 'walk').every((z) => z.walkSec === 40), 'a quicker walk applies to new spawns only: the walkers already out are never sped up');
+    await page.evaluate(() => window.__ff.game.setPace({ live: 1, walkSec: 20 }));
+    await context.close();
+    // a fresh page for the dawdle and the relax beat: one walker, a 20 s walk
+    const p2 = await open(browser, { n: '3', seed: '5', live: '1' });
+    const k = await stepUntil(p2.page, "ev.some((e) => e.type === 'knock')", 25);
+    check(k.hit && k.sec > 19 && k.sec < 21.5, `the fence after ${k.sec.toFixed(1)} s of a 20 s walk (the walk itself is unchanged)`);
+    const rk = await stepUntil(p2.page, "ev.some((e) => e.type === 'reached')", 6);
+    check(rk.hit && rk.sec > 3.4 && rk.sec < 4.2, `the dawdle: it knocks for ${rk.sec.toFixed(1)} s before taking a pumpkin (3 s knock + the take)`);
+    const d3 = await p2.page.evaluate(() => { const i = window.__ff.game.debugInfo(); return { t: i.t, live: i.zombies.filter((z) => z.alive).length }; });
+    await p2.page.evaluate(() => window.__ff.game.debugStep(60));
+    const d4 = await p2.page.evaluate(() => { const i = window.__ff.game.debugInfo(); return { t: i.t, live: i.zombies.filter((z) => z.alive).length }; });
+    await p2.page.evaluate(() => window.__ff.game.debugStep(120));
+    const d5 = await p2.page.evaluate(() => { const i = window.__ff.game.debugInfo(); return { t: i.t, live: i.zombies.filter((z) => z.alive).length }; });
+    check(d3.live === 0 && d4.live === 0 && d5.live === 1, `the relax beat: no new walker for 2.5 s after one reached the fence (live ${d3.live} → ${d4.live} after 1 s → ${d5.live} after 3 s)`);
+    await p2.context.close();
+  }
+
   // ======== 8. the boss: 3 hits, forms, knock-back, bossHit ========
   {
     const { page, context, errors } = await open(browser, { boss: '1', n: '2', final: '1' });
