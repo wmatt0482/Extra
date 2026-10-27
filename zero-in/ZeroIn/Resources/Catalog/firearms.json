@@ -1,0 +1,1673 @@
+[
+  {
+    "id": "ruger-american-rifle-243-win",
+    "make": "Ruger",
+    "model": "American Rifle",
+    "category": "boltAction",
+    "caliberID": "243-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-6mm-creedmoor",
+    "make": "Ruger",
+    "model": "American Rifle",
+    "category": "boltAction",
+    "caliberID": "6mm-creedmoor",
+    "barrelLengthInches": 22,
+    "twistInches": 7.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-65-creedmoor",
+    "make": "Ruger",
+    "model": "American Rifle",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 22,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-7mm-08",
+    "make": "Ruger",
+    "model": "American Rifle",
+    "category": "boltAction",
+    "caliberID": "7mm-08",
+    "barrelLengthInches": 22,
+    "twistInches": 9.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-270-win",
+    "make": "Ruger",
+    "model": "American Rifle",
+    "category": "boltAction",
+    "caliberID": "270-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-308-win",
+    "make": "Ruger",
+    "model": "American Rifle",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-30-06",
+    "make": "Ruger",
+    "model": "American Rifle",
+    "category": "boltAction",
+    "caliberID": "30-06",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-223-rem",
+    "make": "Ruger",
+    "model": "American Rifle",
+    "category": "boltAction",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 22,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-300-win-mag",
+    "make": "Ruger",
+    "model": "American Rifle",
+    "category": "boltAction",
+    "caliberID": "300-win-mag",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-ranch-300-blk",
+    "make": "Ruger",
+    "model": "American Rifle Ranch",
+    "category": "boltAction",
+    "caliberID": "300-blk",
+    "barrelLengthInches": 16.1,
+    "twistInches": 7,
+    "typicalSightHeightInches": 1.5,
+    "notes": "Threaded, short barrel."
+  },
+  {
+    "id": "ruger-american-rifle-ranch-65-grendel",
+    "make": "Ruger",
+    "model": "American Rifle Ranch",
+    "category": "boltAction",
+    "caliberID": "65-grendel",
+    "barrelLengthInches": 16.1,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-ranch-350-legend",
+    "make": "Ruger",
+    "model": "American Rifle Ranch",
+    "category": "boltAction",
+    "caliberID": "350-legend",
+    "barrelLengthInches": 16.1,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-american-rifle-ranch-762x39",
+    "make": "Ruger",
+    "model": "American Rifle Ranch",
+    "category": "boltAction",
+    "caliberID": "762x39",
+    "barrelLengthInches": 16.1,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-precision-rifle-65-creedmoor",
+    "make": "Ruger",
+    "model": "Precision Rifle",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 24,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.8
+  },
+  {
+    "id": "ruger-precision-rifle-6mm-creedmoor",
+    "make": "Ruger",
+    "model": "Precision Rifle",
+    "category": "boltAction",
+    "caliberID": "6mm-creedmoor",
+    "barrelLengthInches": 24,
+    "twistInches": 7.5,
+    "typicalSightHeightInches": 1.8
+  },
+  {
+    "id": "ruger-precision-rifle-308-win",
+    "make": "Ruger",
+    "model": "Precision Rifle",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 20,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.8
+  },
+  {
+    "id": "ruger-precision-rifle-65-prc",
+    "make": "Ruger",
+    "model": "Precision Rifle",
+    "category": "boltAction",
+    "caliberID": "65-prc",
+    "barrelLengthInches": 24,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.8
+  },
+  {
+    "id": "ruger-precision-rifle-300-prc",
+    "make": "Ruger",
+    "model": "Precision Rifle",
+    "category": "boltAction",
+    "caliberID": "300-prc",
+    "barrelLengthInches": 26,
+    "twistInches": 8.5,
+    "typicalSightHeightInches": 1.8
+  },
+  {
+    "id": "ruger-precision-rifle-338-lapua",
+    "make": "Ruger",
+    "model": "Precision Rifle",
+    "category": "boltAction",
+    "caliberID": "338-lapua",
+    "barrelLengthInches": 26,
+    "twistInches": 9.5,
+    "typicalSightHeightInches": 1.8
+  },
+  {
+    "id": "tikka-t3x-lite-243-win",
+    "make": "Tikka",
+    "model": "T3x Lite",
+    "category": "boltAction",
+    "caliberID": "243-win",
+    "barrelLengthInches": 22.4,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "tikka-t3x-lite-65-creedmoor",
+    "make": "Tikka",
+    "model": "T3x Lite",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 24.3,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "tikka-t3x-lite-65-prc",
+    "make": "Tikka",
+    "model": "T3x Lite",
+    "category": "boltAction",
+    "caliberID": "65-prc",
+    "barrelLengthInches": 24.3,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "tikka-t3x-lite-270-win",
+    "make": "Tikka",
+    "model": "T3x Lite",
+    "category": "boltAction",
+    "caliberID": "270-win",
+    "barrelLengthInches": 22.4,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "tikka-t3x-lite-308-win",
+    "make": "Tikka",
+    "model": "T3x Lite",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22.4,
+    "twistInches": 11,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "tikka-t3x-lite-30-06",
+    "make": "Tikka",
+    "model": "T3x Lite",
+    "category": "boltAction",
+    "caliberID": "30-06",
+    "barrelLengthInches": 22.4,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "tikka-t3x-lite-7mm-rem-mag",
+    "make": "Tikka",
+    "model": "T3x Lite",
+    "category": "boltAction",
+    "caliberID": "7mm-rem-mag",
+    "barrelLengthInches": 24.3,
+    "twistInches": 9.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "tikka-t3x-lite-300-win-mag",
+    "make": "Tikka",
+    "model": "T3x Lite",
+    "category": "boltAction",
+    "caliberID": "300-win-mag",
+    "barrelLengthInches": 24.3,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "tikka-t3x-ctr-65-creedmoor",
+    "make": "Tikka",
+    "model": "T3x CTR",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 24,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.6
+  },
+  {
+    "id": "tikka-t3x-ctr-308-win",
+    "make": "Tikka",
+    "model": "T3x CTR",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 20,
+    "twistInches": 11,
+    "typicalSightHeightInches": 1.6
+  },
+  {
+    "id": "remington-700-sps-243-win",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "243-win",
+    "barrelLengthInches": 24,
+    "twistInches": 9.125,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-700-sps-223-rem",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 24,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-700-sps-22-250",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "22-250",
+    "barrelLengthInches": 24,
+    "twistInches": 14,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-700-sps-260-rem",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "260-rem",
+    "barrelLengthInches": 24,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-700-sps-270-win",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "270-win",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-700-sps-308-win",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 24,
+    "twistInches": 12,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-700-sps-30-06",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "30-06",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-700-sps-7mm-rem-mag",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "7mm-rem-mag",
+    "barrelLengthInches": 26,
+    "twistInches": 9.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-700-sps-300-win-mag",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "300-win-mag",
+    "barrelLengthInches": 26,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-700-sps-300-wsm",
+    "make": "Remington",
+    "model": "700 SPS",
+    "category": "boltAction",
+    "caliberID": "300-wsm",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-axis-204-ruger",
+    "make": "Savage",
+    "model": "Axis",
+    "category": "boltAction",
+    "caliberID": "204-ruger",
+    "barrelLengthInches": 22,
+    "twistInches": 12,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-axis-223-rem",
+    "make": "Savage",
+    "model": "Axis",
+    "category": "boltAction",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 22,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-axis-243-win",
+    "make": "Savage",
+    "model": "Axis",
+    "category": "boltAction",
+    "caliberID": "243-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-axis-65-creedmoor",
+    "make": "Savage",
+    "model": "Axis",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 22,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-axis-308-win",
+    "make": "Savage",
+    "model": "Axis",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-110-hunter-25-06",
+    "make": "Savage",
+    "model": "110 Hunter",
+    "category": "boltAction",
+    "caliberID": "25-06",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-110-hunter-6mm-arc",
+    "make": "Savage",
+    "model": "110 Hunter",
+    "category": "boltAction",
+    "caliberID": "6mm-arc",
+    "barrelLengthInches": 22,
+    "twistInches": 7.5,
+    "typicalSightHeightInches": 1.5,
+    "notes": "Typical values; verify on your rifle."
+  },
+  {
+    "id": "savage-110-hunter-65-prc",
+    "make": "Savage",
+    "model": "110 Hunter",
+    "category": "boltAction",
+    "caliberID": "65-prc",
+    "barrelLengthInches": 24,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-110-hunter-7mm-prc",
+    "make": "Savage",
+    "model": "110 Hunter",
+    "category": "boltAction",
+    "caliberID": "7mm-prc",
+    "barrelLengthInches": 24,
+    "twistInches": 8.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-110-hunter-300-prc",
+    "make": "Savage",
+    "model": "110 Hunter",
+    "category": "boltAction",
+    "caliberID": "300-prc",
+    "barrelLengthInches": 24,
+    "twistInches": 8.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "savage-110-elite-precision-338-lapua",
+    "make": "Savage",
+    "model": "110 Elite Precision",
+    "category": "boltAction",
+    "caliberID": "338-lapua",
+    "barrelLengthInches": 26,
+    "twistInches": 9.5,
+    "typicalSightHeightInches": 1.8
+  },
+  {
+    "id": "winchester-model-70-featherweight-270-win",
+    "make": "Winchester",
+    "model": "Model 70 Featherweight",
+    "category": "boltAction",
+    "caliberID": "270-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "winchester-model-70-featherweight-30-06",
+    "make": "Winchester",
+    "model": "Model 70 Featherweight",
+    "category": "boltAction",
+    "caliberID": "30-06",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "winchester-model-70-featherweight-308-win",
+    "make": "Winchester",
+    "model": "Model 70 Featherweight",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22,
+    "twistInches": 12,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "winchester-model-70-extreme-weather-300-wsm",
+    "make": "Winchester",
+    "model": "Model 70 Extreme Weather",
+    "category": "boltAction",
+    "caliberID": "300-wsm",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "winchester-model-70-extreme-weather-338-win-mag",
+    "make": "Winchester",
+    "model": "Model 70 Extreme Weather",
+    "category": "boltAction",
+    "caliberID": "338-win-mag",
+    "barrelLengthInches": 26,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "winchester-model-70-sporter-25-06",
+    "make": "Winchester",
+    "model": "Model 70 Sporter",
+    "category": "boltAction",
+    "caliberID": "25-06",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "winchester-xpr-350-legend",
+    "make": "Winchester",
+    "model": "XPR",
+    "category": "boltAction",
+    "caliberID": "350-legend",
+    "barrelLengthInches": 22,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "winchester-xpr-65-prc",
+    "make": "Winchester",
+    "model": "XPR",
+    "category": "boltAction",
+    "caliberID": "65-prc",
+    "barrelLengthInches": 24,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "winchester-model-94-30-30",
+    "make": "Winchester",
+    "model": "Model 94",
+    "category": "leverAction",
+    "caliberID": "30-30",
+    "barrelLengthInches": 20,
+    "twistInches": 12,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "winchester-model-94-short-rifle-360-buckhammer",
+    "make": "Winchester",
+    "model": "Model 94 Short Rifle",
+    "category": "leverAction",
+    "caliberID": "360-buckhammer",
+    "barrelLengthInches": 20,
+    "twistInches": 12,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Typical values; verify on your rifle."
+  },
+  {
+    "id": "browning-x-bolt-hunter-65-creedmoor",
+    "make": "Browning",
+    "model": "X-Bolt Hunter",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 22,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "browning-x-bolt-hunter-308-win",
+    "make": "Browning",
+    "model": "X-Bolt Hunter",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22,
+    "twistInches": 11,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "browning-x-bolt-hunter-7mm-rem-mag",
+    "make": "Browning",
+    "model": "X-Bolt Hunter",
+    "category": "boltAction",
+    "caliberID": "7mm-rem-mag",
+    "barrelLengthInches": 26,
+    "twistInches": 9.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "browning-x-bolt-hunter-300-wsm",
+    "make": "Browning",
+    "model": "X-Bolt Hunter",
+    "category": "boltAction",
+    "caliberID": "300-wsm",
+    "barrelLengthInches": 23,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "browning-x-bolt-hunter-300-prc",
+    "make": "Browning",
+    "model": "X-Bolt Hunter",
+    "category": "boltAction",
+    "caliberID": "300-prc",
+    "barrelLengthInches": 26,
+    "twistInches": 8.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "browning-bar-mark-ii-308-win",
+    "make": "Browning",
+    "model": "BAR Mark II",
+    "category": "semiAuto",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22,
+    "twistInches": 12,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "browning-bar-mark-ii-30-06",
+    "make": "Browning",
+    "model": "BAR Mark II",
+    "category": "semiAuto",
+    "caliberID": "30-06",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "browning-bar-mark-ii-300-win-mag",
+    "make": "Browning",
+    "model": "BAR Mark II",
+    "category": "semiAuto",
+    "caliberID": "300-win-mag",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "browning-t-bolt-22-lr",
+    "make": "Browning",
+    "model": "T-Bolt",
+    "category": "rimfire",
+    "caliberID": "22-lr",
+    "barrelLengthInches": 22,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "bergara-b-14-hunter-65-creedmoor",
+    "make": "Bergara",
+    "model": "B-14 Hunter",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 22,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "bergara-b-14-hunter-308-win",
+    "make": "Bergara",
+    "model": "B-14 Hunter",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "bergara-b-14-hunter-65-prc",
+    "make": "Bergara",
+    "model": "B-14 Hunter",
+    "category": "boltAction",
+    "caliberID": "65-prc",
+    "barrelLengthInches": 24,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "bergara-b-14-ridge-7mm-prc",
+    "make": "Bergara",
+    "model": "B-14 Ridge",
+    "category": "boltAction",
+    "caliberID": "7mm-prc",
+    "barrelLengthInches": 24,
+    "twistInches": 8.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "bergara-b-14-ridge-300-win-mag",
+    "make": "Bergara",
+    "model": "B-14 Ridge",
+    "category": "boltAction",
+    "caliberID": "300-win-mag",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "christensen-arms-mesa-65-prc",
+    "make": "Christensen Arms",
+    "model": "Mesa",
+    "category": "boltAction",
+    "caliberID": "65-prc",
+    "barrelLengthInches": 24,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "christensen-arms-mesa-300-prc",
+    "make": "Christensen Arms",
+    "model": "Mesa",
+    "category": "boltAction",
+    "caliberID": "300-prc",
+    "barrelLengthInches": 26,
+    "twistInches": 8.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "christensen-arms-ridgeline-65-creedmoor",
+    "make": "Christensen Arms",
+    "model": "Ridgeline",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 22,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "christensen-arms-ridgeline-280-ai",
+    "make": "Christensen Arms",
+    "model": "Ridgeline",
+    "category": "boltAction",
+    "caliberID": "280-ai",
+    "barrelLengthInches": 24,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.5,
+    "notes": "Typical values; verify on your rifle."
+  },
+  {
+    "id": "weatherby-vanguard-243-win",
+    "make": "Weatherby",
+    "model": "Vanguard",
+    "category": "boltAction",
+    "caliberID": "243-win",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "weatherby-vanguard-270-win",
+    "make": "Weatherby",
+    "model": "Vanguard",
+    "category": "boltAction",
+    "caliberID": "270-win",
+    "barrelLengthInches": 24,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "weatherby-vanguard-7mm-08",
+    "make": "Weatherby",
+    "model": "Vanguard",
+    "category": "boltAction",
+    "caliberID": "7mm-08",
+    "barrelLengthInches": 24,
+    "twistInches": 9.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "weatherby-vanguard-338-win-mag",
+    "make": "Weatherby",
+    "model": "Vanguard",
+    "category": "boltAction",
+    "caliberID": "338-win-mag",
+    "barrelLengthInches": 26,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "howa-1500-223-rem",
+    "make": "Howa",
+    "model": "1500",
+    "category": "boltAction",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 22,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "howa-1500-22-250",
+    "make": "Howa",
+    "model": "1500",
+    "category": "boltAction",
+    "caliberID": "22-250",
+    "barrelLengthInches": 22,
+    "twistInches": 14,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "howa-1500-65-grendel",
+    "make": "Howa",
+    "model": "1500",
+    "category": "boltAction",
+    "caliberID": "65-grendel",
+    "barrelLengthInches": 20,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "howa-1500-65-creedmoor",
+    "make": "Howa",
+    "model": "1500",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 22,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "howa-1500-308-win",
+    "make": "Howa",
+    "model": "1500",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "cz-457-varmint-22-lr",
+    "make": "CZ",
+    "model": "457 Varmint",
+    "category": "rimfire",
+    "caliberID": "22-lr",
+    "barrelLengthInches": 20.5,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "cz-457-varmint-22-wmr",
+    "make": "CZ",
+    "model": "457 Varmint",
+    "category": "rimfire",
+    "caliberID": "22-wmr",
+    "barrelLengthInches": 20.5,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "cz-457-varmint-17-hmr",
+    "make": "CZ",
+    "model": "457 Varmint",
+    "category": "rimfire",
+    "caliberID": "17-hmr",
+    "barrelLengthInches": 20.5,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "cz-557-30-06",
+    "make": "CZ",
+    "model": "557",
+    "category": "boltAction",
+    "caliberID": "30-06",
+    "barrelLengthInches": 23.6,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "cz-600-alpha-308-win",
+    "make": "CZ",
+    "model": "600 Alpha",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 20.5,
+    "twistInches": 11,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-10-22-22-lr",
+    "make": "Ruger",
+    "model": "10/22",
+    "category": "rimfire",
+    "caliberID": "22-lr",
+    "barrelLengthInches": 18.5,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.0
+  },
+  {
+    "id": "ruger-10-22-target-22-lr",
+    "make": "Ruger",
+    "model": "10/22 Target",
+    "category": "rimfire",
+    "caliberID": "22-lr",
+    "barrelLengthInches": 20,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.0
+  },
+  {
+    "id": "ruger-77-17-17-hmr",
+    "make": "Ruger",
+    "model": "77/17",
+    "category": "rimfire",
+    "caliberID": "17-hmr",
+    "barrelLengthInches": 22,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.0
+  },
+  {
+    "id": "ruger-american-rimfire-22-wmr",
+    "make": "Ruger",
+    "model": "American Rimfire",
+    "category": "rimfire",
+    "caliberID": "22-wmr",
+    "barrelLengthInches": 22,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.0
+  },
+  {
+    "id": "savage-mark-ii-22-lr",
+    "make": "Savage",
+    "model": "Mark II",
+    "category": "rimfire",
+    "caliberID": "22-lr",
+    "barrelLengthInches": 21,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.0
+  },
+  {
+    "id": "savage-93r17-17-hmr",
+    "make": "Savage",
+    "model": "93R17",
+    "category": "rimfire",
+    "caliberID": "17-hmr",
+    "barrelLengthInches": 21,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.0
+  },
+  {
+    "id": "tikka-t1x-22-lr",
+    "make": "Tikka",
+    "model": "T1x",
+    "category": "rimfire",
+    "caliberID": "22-lr",
+    "barrelLengthInches": 20,
+    "twistInches": 16,
+    "typicalSightHeightInches": 1.0
+  },
+  {
+    "id": "marlin-model-60-22-lr",
+    "make": "Marlin",
+    "model": "Model 60",
+    "category": "rimfire",
+    "caliberID": "22-lr",
+    "barrelLengthInches": 19,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Tube-fed semi-auto; iron sights."
+  },
+  {
+    "id": "henry-golden-boy-22-lr",
+    "make": "Henry",
+    "model": "Golden Boy",
+    "category": "leverAction",
+    "caliberID": "22-lr",
+    "barrelLengthInches": 20,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "marlin-336-30-30",
+    "make": "Marlin",
+    "model": "336",
+    "category": "leverAction",
+    "caliberID": "30-30",
+    "barrelLengthInches": 20,
+    "twistInches": 10,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "marlin-336-35-rem",
+    "make": "Marlin",
+    "model": "336",
+    "category": "leverAction",
+    "caliberID": "35-rem",
+    "barrelLengthInches": 20,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "marlin-1895-45-70",
+    "make": "Marlin",
+    "model": "1895",
+    "category": "leverAction",
+    "caliberID": "45-70",
+    "barrelLengthInches": 22,
+    "twistInches": 20,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "marlin-1894-44-mag",
+    "make": "Marlin",
+    "model": "1894",
+    "category": "leverAction",
+    "caliberID": "44-mag",
+    "barrelLengthInches": 20,
+    "twistInches": 38,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "marlin-1894-357-mag",
+    "make": "Marlin",
+    "model": "1894",
+    "category": "leverAction",
+    "caliberID": "357-mag",
+    "barrelLengthInches": 20,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "henry-big-boy-44-mag",
+    "make": "Henry",
+    "model": "Big Boy",
+    "category": "leverAction",
+    "caliberID": "44-mag",
+    "barrelLengthInches": 20,
+    "twistInches": 38,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "henry-big-boy-357-mag",
+    "make": "Henry",
+    "model": "Big Boy",
+    "category": "leverAction",
+    "caliberID": "357-mag",
+    "barrelLengthInches": 20,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "henry-long-ranger-308-win",
+    "make": "Henry",
+    "model": "Long Ranger",
+    "category": "leverAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 20,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5,
+    "notes": "Scope mounted."
+  },
+  {
+    "id": "auto-ordnance-m1-carbine-30-carbine",
+    "make": "Auto-Ordnance",
+    "model": "M1 Carbine",
+    "category": "semiAuto",
+    "caliberID": "30-carbine",
+    "barrelLengthInches": 18,
+    "twistInches": 20,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "mossberg-patriot-65-prc",
+    "make": "Mossberg",
+    "model": "Patriot",
+    "category": "boltAction",
+    "caliberID": "65-prc",
+    "barrelLengthInches": 24,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "mossberg-patriot-308-win",
+    "make": "Mossberg",
+    "model": "Patriot",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "mossberg-patriot-270-win",
+    "make": "Mossberg",
+    "model": "Patriot",
+    "category": "boltAction",
+    "caliberID": "270-win",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "mossberg-500-slug-12-ga-slug",
+    "make": "Mossberg",
+    "model": "500 Slug",
+    "category": "shotgun",
+    "caliberID": "12-ga-slug",
+    "barrelLengthInches": 24,
+    "typicalSightHeightInches": 1.6,
+    "notes": "Rifled slug barrel; smoothbore slug guns have no twist."
+  },
+  {
+    "id": "mossberg-930-slug-12-ga-slug",
+    "make": "Mossberg",
+    "model": "930 Slug",
+    "category": "shotgun",
+    "caliberID": "12-ga-slug",
+    "barrelLengthInches": 24,
+    "typicalSightHeightInches": 1.6
+  },
+  {
+    "id": "remington-870-express-slug-12-ga-slug",
+    "make": "Remington",
+    "model": "870 Express Slug",
+    "category": "shotgun",
+    "caliberID": "12-ga-slug",
+    "barrelLengthInches": 20,
+    "typicalSightHeightInches": 1.6
+  },
+  {
+    "id": "remington-model-7400-30-06",
+    "make": "Remington",
+    "model": "Model 7400",
+    "category": "semiAuto",
+    "caliberID": "30-06",
+    "barrelLengthInches": 22,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "remington-model-7400-243-win",
+    "make": "Remington",
+    "model": "Model 7400",
+    "category": "semiAuto",
+    "caliberID": "243-win",
+    "barrelLengthInches": 22,
+    "twistInches": 9.125,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "benelli-super-black-eagle-3-slug-12-ga-slug",
+    "make": "Benelli",
+    "model": "Super Black Eagle 3 Slug",
+    "category": "shotgun",
+    "caliberID": "12-ga-slug",
+    "barrelLengthInches": 24,
+    "typicalSightHeightInches": 1.6
+  },
+  {
+    "id": "springfield-armory-m1a-308-win",
+    "make": "Springfield Armory",
+    "model": "M1A",
+    "category": "semiAuto",
+    "caliberID": "308-win",
+    "barrelLengthInches": 22,
+    "twistInches": 11,
+    "typicalSightHeightInches": 2.2
+  },
+  {
+    "id": "springfield-armory-saint-223-rem",
+    "make": "Springfield Armory",
+    "model": "Saint",
+    "category": "semiAuto",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 16,
+    "twistInches": 8,
+    "typicalSightHeightInches": 2.6
+  },
+  {
+    "id": "smith-and-wesson-mandp15-sport-ii-223-rem",
+    "make": "Smith & Wesson",
+    "model": "M&P15 Sport II",
+    "category": "semiAuto",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 16,
+    "twistInches": 9,
+    "typicalSightHeightInches": 2.6
+  },
+  {
+    "id": "smith-and-wesson-mandp10-65-creedmoor",
+    "make": "Smith & Wesson",
+    "model": "M&P10",
+    "category": "semiAuto",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 20,
+    "twistInches": 8,
+    "typicalSightHeightInches": 2.6
+  },
+  {
+    "id": "smith-and-wesson-mandp10-308-win",
+    "make": "Smith & Wesson",
+    "model": "M&P10",
+    "category": "semiAuto",
+    "caliberID": "308-win",
+    "barrelLengthInches": 18,
+    "twistInches": 10,
+    "typicalSightHeightInches": 2.6
+  },
+  {
+    "id": "daniel-defense-ddm4-v7-223-rem",
+    "make": "Daniel Defense",
+    "model": "DDM4 V7",
+    "category": "semiAuto",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 16,
+    "twistInches": 7,
+    "typicalSightHeightInches": 2.6
+  },
+  {
+    "id": "daniel-defense-dd5-v1-308-win",
+    "make": "Daniel Defense",
+    "model": "DD5 V1",
+    "category": "semiAuto",
+    "caliberID": "308-win",
+    "barrelLengthInches": 16,
+    "twistInches": 10,
+    "typicalSightHeightInches": 2.6
+  },
+  {
+    "id": "sig-sauer-mcx-300-blk",
+    "make": "Sig Sauer",
+    "model": "MCX",
+    "category": "semiAuto",
+    "caliberID": "300-blk",
+    "barrelLengthInches": 16,
+    "twistInches": 7,
+    "typicalSightHeightInches": 2.6
+  },
+  {
+    "id": "sig-sauer-cross-65-creedmoor",
+    "make": "Sig Sauer",
+    "model": "Cross",
+    "category": "boltAction",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 16,
+    "twistInches": 8,
+    "typicalSightHeightInches": 1.6
+  },
+  {
+    "id": "sig-sauer-cross-308-win",
+    "make": "Sig Sauer",
+    "model": "Cross",
+    "category": "boltAction",
+    "caliberID": "308-win",
+    "barrelLengthInches": 16,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.6
+  },
+  {
+    "id": "colt-ar-15-le6920-223-rem",
+    "make": "Colt",
+    "model": "AR-15 LE6920",
+    "category": "semiAuto",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 16.1,
+    "twistInches": 7,
+    "typicalSightHeightInches": 2.6
+  },
+  {
+    "id": "ruger-ar-556-mpr-223-rem",
+    "make": "Ruger",
+    "model": "AR-556 MPR",
+    "category": "semiAuto",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 16.1,
+    "twistInches": 8,
+    "typicalSightHeightInches": 2.6
+  },
+  {
+    "id": "ruger-mini-14-223-rem",
+    "make": "Ruger",
+    "model": "Mini-14",
+    "category": "semiAuto",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 18.5,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.9
+  },
+  {
+    "id": "ruger-mini-30-762x39",
+    "make": "Ruger",
+    "model": "Mini-30",
+    "category": "semiAuto",
+    "caliberID": "762x39",
+    "barrelLengthInches": 18.5,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.9
+  },
+  {
+    "id": "generic-ak-pattern-rifle-762x39",
+    "make": "Generic",
+    "model": "AK-pattern rifle",
+    "category": "semiAuto",
+    "caliberID": "762x39",
+    "barrelLengthInches": 16.3,
+    "twistInches": 9.5,
+    "typicalSightHeightInches": 2.0,
+    "notes": "Typical AK-pattern values."
+  },
+  {
+    "id": "generic-ar-15-224-valkyrie-224-valkyrie",
+    "make": "Generic",
+    "model": "AR-15 .224 Valkyrie",
+    "category": "semiAuto",
+    "caliberID": "224-valkyrie",
+    "barrelLengthInches": 20,
+    "twistInches": 7,
+    "typicalSightHeightInches": 2.6,
+    "notes": "Typical values; verify on your rifle."
+  },
+  {
+    "id": "generic-ar-15-6mm-arc-6mm-arc",
+    "make": "Generic",
+    "model": "AR-15 6mm ARC",
+    "category": "semiAuto",
+    "caliberID": "6mm-arc",
+    "barrelLengthInches": 18,
+    "twistInches": 7.5,
+    "typicalSightHeightInches": 2.6,
+    "notes": "Typical values; verify on your rifle."
+  },
+  {
+    "id": "generic-ar-15-68-spc-68-spc",
+    "make": "Generic",
+    "model": "AR-15 6.8 SPC",
+    "category": "semiAuto",
+    "caliberID": "68-spc",
+    "barrelLengthInches": 16,
+    "twistInches": 10,
+    "typicalSightHeightInches": 2.6,
+    "notes": "Typical values; verify on your rifle."
+  },
+  {
+    "id": "generic-ar-15-450-bushmaster-450-bushmaster",
+    "make": "Generic",
+    "model": "AR-15 .450 Bushmaster",
+    "category": "semiAuto",
+    "caliberID": "450-bushmaster",
+    "barrelLengthInches": 18,
+    "twistInches": 16,
+    "typicalSightHeightInches": 2.6,
+    "notes": "Typical values; verify on your rifle."
+  },
+  {
+    "id": "generic-ar-15-350-legend-350-legend",
+    "make": "Generic",
+    "model": "AR-15 .350 Legend",
+    "category": "semiAuto",
+    "caliberID": "350-legend",
+    "barrelLengthInches": 16,
+    "twistInches": 16,
+    "typicalSightHeightInches": 2.6,
+    "notes": "Typical values; verify on your rifle."
+  },
+  {
+    "id": "generic-ar-10-65-creedmoor-65-creedmoor",
+    "make": "Generic",
+    "model": "AR-10 6.5 Creedmoor",
+    "category": "semiAuto",
+    "caliberID": "65-creedmoor",
+    "barrelLengthInches": 20,
+    "twistInches": 8,
+    "typicalSightHeightInches": 2.6,
+    "notes": "Typical values; verify on your rifle."
+  },
+  {
+    "id": "ruger-no-1-25-06",
+    "make": "Ruger",
+    "model": "No. 1",
+    "category": "singleShot",
+    "caliberID": "25-06",
+    "barrelLengthInches": 26,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "ruger-no-1-300-win-mag",
+    "make": "Ruger",
+    "model": "No. 1",
+    "category": "singleShot",
+    "caliberID": "300-win-mag",
+    "barrelLengthInches": 26,
+    "twistInches": 10,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "thompson-center-encore-pro-hunter-7mm-08",
+    "make": "Thompson/Center",
+    "model": "Encore Pro Hunter",
+    "category": "singleShot",
+    "caliberID": "7mm-08",
+    "barrelLengthInches": 24,
+    "twistInches": 9.5,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "thompson-center-encore-pro-hunter-308-win",
+    "make": "Thompson/Center",
+    "model": "Encore Pro Hunter",
+    "category": "singleShot",
+    "caliberID": "308-win",
+    "barrelLengthInches": 24,
+    "twistInches": 12,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "handr-handi-rifle-223-rem",
+    "make": "H&R",
+    "model": "Handi-Rifle",
+    "category": "singleShot",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 22,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "henry-single-shot-45-70",
+    "make": "Henry",
+    "model": "Single Shot",
+    "category": "singleShot",
+    "caliberID": "45-70",
+    "barrelLengthInches": 22,
+    "twistInches": 20,
+    "typicalSightHeightInches": 0.8,
+    "notes": "Iron sights."
+  },
+  {
+    "id": "cva-wolf-v2-50-cal-muzzleloader",
+    "make": "CVA",
+    "model": "Wolf V2",
+    "category": "muzzleloader",
+    "caliberID": "50-cal-muzzleloader",
+    "barrelLengthInches": 24,
+    "twistInches": 28,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "cva-accura-v2-50-cal-muzzleloader",
+    "make": "CVA",
+    "model": "Accura V2",
+    "category": "muzzleloader",
+    "caliberID": "50-cal-muzzleloader",
+    "barrelLengthInches": 26,
+    "twistInches": 26,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "traditions-pursuit-xt-50-cal-muzzleloader",
+    "make": "Traditions",
+    "model": "Pursuit XT",
+    "category": "muzzleloader",
+    "caliberID": "50-cal-muzzleloader",
+    "barrelLengthInches": 26,
+    "twistInches": 28,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "thompson-center-impact-50-cal-muzzleloader",
+    "make": "Thompson/Center",
+    "model": "Impact!",
+    "category": "muzzleloader",
+    "caliberID": "50-cal-muzzleloader",
+    "barrelLengthInches": 26,
+    "twistInches": 28,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "glock-19-9mm",
+    "make": "Glock",
+    "model": "19",
+    "category": "handgun",
+    "caliberID": "9mm",
+    "barrelLengthInches": 4.02,
+    "twistInches": 9.84,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "glock-17-9mm",
+    "make": "Glock",
+    "model": "17",
+    "category": "handgun",
+    "caliberID": "9mm",
+    "barrelLengthInches": 4.49,
+    "twistInches": 9.84,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "glock-20-10mm",
+    "make": "Glock",
+    "model": "20",
+    "category": "handgun",
+    "caliberID": "10mm",
+    "barrelLengthInches": 4.6,
+    "twistInches": 9.84,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "glock-22-40-sw",
+    "make": "Glock",
+    "model": "22",
+    "category": "handgun",
+    "caliberID": "40-sw",
+    "barrelLengthInches": 4.49,
+    "twistInches": 15.75,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "glock-21-45-acp",
+    "make": "Glock",
+    "model": "21",
+    "category": "handgun",
+    "caliberID": "45-acp",
+    "barrelLengthInches": 4.6,
+    "twistInches": 15.75,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "sig-sauer-p320-9mm",
+    "make": "Sig Sauer",
+    "model": "P320",
+    "category": "handgun",
+    "caliberID": "9mm",
+    "barrelLengthInches": 4.7,
+    "twistInches": 10,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "sig-sauer-p320-45-acp",
+    "make": "Sig Sauer",
+    "model": "P320",
+    "category": "handgun",
+    "caliberID": "45-acp",
+    "barrelLengthInches": 4.7,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "smith-and-wesson-mandp9-9mm",
+    "make": "Smith & Wesson",
+    "model": "M&P9",
+    "category": "handgun",
+    "caliberID": "9mm",
+    "barrelLengthInches": 4.25,
+    "twistInches": 10,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "smith-and-wesson-mandp40-40-sw",
+    "make": "Smith & Wesson",
+    "model": "M&P40",
+    "category": "handgun",
+    "caliberID": "40-sw",
+    "barrelLengthInches": 4.25,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "springfield-armory-xd-9-9mm",
+    "make": "Springfield Armory",
+    "model": "XD-9",
+    "category": "handgun",
+    "caliberID": "9mm",
+    "barrelLengthInches": 4,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "springfield-armory-xd-m-45-acp",
+    "make": "Springfield Armory",
+    "model": "XD-M",
+    "category": "handgun",
+    "caliberID": "45-acp",
+    "barrelLengthInches": 4.5,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "ruger-gp100-357-mag",
+    "make": "Ruger",
+    "model": "GP100",
+    "category": "handgun",
+    "caliberID": "357-mag",
+    "barrelLengthInches": 4.2,
+    "twistInches": 18.75,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "smith-and-wesson-629-44-mag",
+    "make": "Smith & Wesson",
+    "model": "629",
+    "category": "handgun",
+    "caliberID": "44-mag",
+    "barrelLengthInches": 6.5,
+    "twistInches": 18.75,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "ruger-super-blackhawk-44-mag",
+    "make": "Ruger",
+    "model": "Super Blackhawk",
+    "category": "handgun",
+    "caliberID": "44-mag",
+    "barrelLengthInches": 7.5,
+    "twistInches": 20,
+    "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "colt-government-1911-45-acp",
+    "make": "Colt",
+    "model": "Government 1911",
+    "category": "handgun",
+    "caliberID": "45-acp",
+    "barrelLengthInches": 5,
+    "twistInches": 16,
+    "typicalSightHeightInches": 0.5
+  }
+]

@@ -1,0 +1,399 @@
+[
+  {
+    "id": "17-hmr",
+    "name": ".17 HMR",
+    "bulletDiameterInches": 0.172,
+    "aliases": [
+      "17 hornady magnum rimfire"
+    ]
+  },
+  {
+    "id": "22-lr",
+    "name": ".22 LR",
+    "bulletDiameterInches": 0.223,
+    "aliases": [
+      "22 long rifle",
+      "22lr"
+    ]
+  },
+  {
+    "id": "22-wmr",
+    "name": ".22 WMR",
+    "bulletDiameterInches": 0.224,
+    "aliases": [
+      "22 magnum",
+      "22 winchester magnum rimfire"
+    ]
+  },
+  {
+    "id": "204-ruger",
+    "name": ".204 Ruger",
+    "bulletDiameterInches": 0.204
+  },
+  {
+    "id": "223-rem",
+    "name": ".223 Remington",
+    "bulletDiameterInches": 0.224,
+    "aliases": [
+      "5.56",
+      "5.56x45",
+      "5.56 NATO",
+      "223"
+    ]
+  },
+  {
+    "id": "22-250",
+    "name": ".22-250 Remington",
+    "bulletDiameterInches": 0.224,
+    "aliases": [
+      "22-250 rem"
+    ]
+  },
+  {
+    "id": "224-valkyrie",
+    "name": ".224 Valkyrie",
+    "bulletDiameterInches": 0.224,
+    "aliases": [
+      "224 valk"
+    ]
+  },
+  {
+    "id": "243-win",
+    "name": ".243 Winchester",
+    "bulletDiameterInches": 0.243,
+    "aliases": [
+      "243"
+    ]
+  },
+  {
+    "id": "6mm-creedmoor",
+    "name": "6mm Creedmoor",
+    "bulletDiameterInches": 0.243,
+    "aliases": [
+      "6 creed",
+      "6mm CM"
+    ]
+  },
+  {
+    "id": "6mm-arc",
+    "name": "6mm ARC",
+    "bulletDiameterInches": 0.243,
+    "aliases": [
+      "6 arc"
+    ]
+  },
+  {
+    "id": "25-06",
+    "name": ".25-06 Remington",
+    "bulletDiameterInches": 0.257,
+    "aliases": [
+      "25-06 rem"
+    ]
+  },
+  {
+    "id": "65-grendel",
+    "name": "6.5 Grendel",
+    "bulletDiameterInches": 0.264,
+    "aliases": [
+      "6.5 grendel",
+      "65 grendel"
+    ]
+  },
+  {
+    "id": "65-creedmoor",
+    "name": "6.5 Creedmoor",
+    "bulletDiameterInches": 0.264,
+    "aliases": [
+      "6.5 creed",
+      "6.5 CM",
+      "65 creedmoor"
+    ]
+  },
+  {
+    "id": "65-prc",
+    "name": "6.5 PRC",
+    "bulletDiameterInches": 0.264,
+    "aliases": [
+      "6.5 precision rifle cartridge",
+      "65 prc"
+    ]
+  },
+  {
+    "id": "260-rem",
+    "name": ".260 Remington",
+    "bulletDiameterInches": 0.264,
+    "aliases": [
+      "260",
+      "6.5-260"
+    ]
+  },
+  {
+    "id": "68-spc",
+    "name": "6.8 SPC",
+    "bulletDiameterInches": 0.277,
+    "aliases": [
+      "6.8x43",
+      "6.8 western"
+    ]
+  },
+  {
+    "id": "270-win",
+    "name": ".270 Winchester",
+    "bulletDiameterInches": 0.277,
+    "aliases": [
+      "270"
+    ]
+  },
+  {
+    "id": "7mm-08",
+    "name": "7mm-08 Remington",
+    "bulletDiameterInches": 0.284,
+    "aliases": [
+      "7mm08",
+      "7-08"
+    ]
+  },
+  {
+    "id": "280-ai",
+    "name": ".280 Ackley Improved",
+    "bulletDiameterInches": 0.284,
+    "aliases": [
+      "280 AI",
+      "280 ackley"
+    ]
+  },
+  {
+    "id": "7mm-rem-mag",
+    "name": "7mm Remington Magnum",
+    "bulletDiameterInches": 0.284,
+    "aliases": [
+      "7mm rem mag",
+      "7mm mag"
+    ]
+  },
+  {
+    "id": "7mm-prc",
+    "name": "7mm PRC",
+    "bulletDiameterInches": 0.284,
+    "aliases": [
+      "7 prc"
+    ]
+  },
+  {
+    "id": "30-carbine",
+    "name": ".30 Carbine",
+    "bulletDiameterInches": 0.308,
+    "aliases": [
+      "30 carbine",
+      "7.62x33"
+    ]
+  },
+  {
+    "id": "300-blk",
+    "name": ".300 AAC Blackout",
+    "bulletDiameterInches": 0.308,
+    "aliases": [
+      "300 blackout",
+      "300 BLK",
+      "7.62x35"
+    ]
+  },
+  {
+    "id": "308-win",
+    "name": ".308 Winchester",
+    "bulletDiameterInches": 0.308,
+    "aliases": [
+      "7.62x51",
+      "7.62 NATO",
+      "308"
+    ]
+  },
+  {
+    "id": "30-06",
+    "name": ".30-06 Springfield",
+    "bulletDiameterInches": 0.308,
+    "aliases": [
+      "30-06",
+      "3006",
+      "30.06"
+    ]
+  },
+  {
+    "id": "300-win-mag",
+    "name": ".300 Winchester Magnum",
+    "bulletDiameterInches": 0.308,
+    "aliases": [
+      "300 win mag",
+      "300 WM"
+    ]
+  },
+  {
+    "id": "300-prc",
+    "name": ".300 PRC",
+    "bulletDiameterInches": 0.308,
+    "aliases": [
+      "300 precision rifle cartridge"
+    ]
+  },
+  {
+    "id": "300-wsm",
+    "name": ".300 Winchester Short Magnum",
+    "bulletDiameterInches": 0.308,
+    "aliases": [
+      "300 WSM"
+    ]
+  },
+  {
+    "id": "30-30",
+    "name": ".30-30 Winchester",
+    "bulletDiameterInches": 0.308,
+    "aliases": [
+      "30-30 win",
+      "3030",
+      "30 WCF"
+    ]
+  },
+  {
+    "id": "338-lapua",
+    "name": ".338 Lapua Magnum",
+    "bulletDiameterInches": 0.338,
+    "aliases": [
+      "338 lapua",
+      "338 LM"
+    ]
+  },
+  {
+    "id": "338-win-mag",
+    "name": ".338 Winchester Magnum",
+    "bulletDiameterInches": 0.338,
+    "aliases": [
+      "338 win mag",
+      "338 WM"
+    ]
+  },
+  {
+    "id": "35-rem",
+    "name": ".35 Remington",
+    "bulletDiameterInches": 0.358,
+    "aliases": [
+      "35 rem"
+    ]
+  },
+  {
+    "id": "350-legend",
+    "name": ".350 Legend",
+    "bulletDiameterInches": 0.357,
+    "aliases": [
+      "350 legend"
+    ]
+  },
+  {
+    "id": "360-buckhammer",
+    "name": ".360 Buckhammer",
+    "bulletDiameterInches": 0.358,
+    "aliases": [
+      "360 buckhammer"
+    ]
+  },
+  {
+    "id": "45-70",
+    "name": ".45-70 Government",
+    "bulletDiameterInches": 0.458,
+    "aliases": [
+      "45-70 gov",
+      "4570"
+    ]
+  },
+  {
+    "id": "450-bushmaster",
+    "name": ".450 Bushmaster",
+    "bulletDiameterInches": 0.452,
+    "aliases": [
+      "450 bushy"
+    ]
+  },
+  {
+    "id": "762x39",
+    "name": "7.62x39mm",
+    "bulletDiameterInches": 0.311,
+    "aliases": [
+      "7.62x39",
+      "762x39",
+      "7.62 russian"
+    ]
+  },
+  {
+    "id": "9mm",
+    "name": "9mm Luger",
+    "bulletDiameterInches": 0.355,
+    "aliases": [
+      "9x19",
+      "9mm parabellum",
+      "9mm"
+    ]
+  },
+  {
+    "id": "40-sw",
+    "name": ".40 S&W",
+    "bulletDiameterInches": 0.4,
+    "aliases": [
+      "40 cal",
+      "40 smith"
+    ]
+  },
+  {
+    "id": "45-acp",
+    "name": ".45 ACP",
+    "bulletDiameterInches": 0.451,
+    "aliases": [
+      "45 auto",
+      "45acp"
+    ]
+  },
+  {
+    "id": "10mm",
+    "name": "10mm Auto",
+    "bulletDiameterInches": 0.4,
+    "aliases": [
+      "10mm"
+    ]
+  },
+  {
+    "id": "357-mag",
+    "name": ".357 Magnum",
+    "bulletDiameterInches": 0.357,
+    "aliases": [
+      "357 mag",
+      "357 magnum"
+    ]
+  },
+  {
+    "id": "44-mag",
+    "name": ".44 Magnum",
+    "bulletDiameterInches": 0.429,
+    "aliases": [
+      "44 mag",
+      "44 remington magnum"
+    ]
+  },
+  {
+    "id": "12-ga-slug",
+    "name": "12 Gauge Slug",
+    "bulletDiameterInches": 0.69,
+    "aliases": [
+      "12 gauge",
+      "12ga",
+      "12 ga"
+    ]
+  },
+  {
+    "id": "50-cal-muzzleloader",
+    "name": ".50 Cal Muzzleloader (sabot)",
+    "bulletDiameterInches": 0.452,
+    "aliases": [
+      "50 cal",
+      "50 caliber muzzleloader",
+      "sabot"
+    ]
+  }
+]

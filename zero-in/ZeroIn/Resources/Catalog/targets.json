@@ -1,0 +1,99 @@
+[
+  {
+    "id": "letter-paper",
+    "name": "Letter paper 8.5 x 11",
+    "widthInches": 8.5,
+    "heightInches": 11,
+    "gridSpacingInches": 1,
+    "notes": "Plain US letter sheet; use a 1 in grid or draw your own aiming dot."
+  },
+  {
+    "id": "grid-1in-12x18",
+    "name": "1-inch grid 12 x 18",
+    "widthInches": 12,
+    "heightInches": 18,
+    "gridSpacingInches": 1,
+    "notes": "Common printed 1 in grid sight-in target."
+  },
+  {
+    "id": "splatterburst-12x18",
+    "name": "Splatterburst 12 x 18",
+    "widthInches": 12,
+    "heightInches": 18,
+    "gridSpacingInches": 1,
+    "bullDiameterInches": 1.0,
+    "notes": "Reactive adhesive target with 1 in grid; size approx."
+  },
+  {
+    "id": "shoot-n-c-8in",
+    "name": "Shoot-N-C 8 in bull",
+    "widthInches": 8.0,
+    "heightInches": 8.0,
+    "bullDiameterInches": 8.0,
+    "notes": "Birchwood Casey Shoot-N-C 8 in self-adhesive bull; sheet size approx."
+  },
+  {
+    "id": "sight-in-12x12-grid",
+    "name": "Sight-in 12 x 12 (1 in grid)",
+    "widthInches": 12,
+    "heightInches": 12,
+    "gridSpacingInches": 1,
+    "bullDiameterInches": 1.0,
+    "notes": "Square sight-in with 1 in grid and center aiming dot."
+  },
+  {
+    "id": "nra-sr-1",
+    "name": "NRA SR-1 (100 yd smallbore)",
+    "widthInches": 21,
+    "heightInches": 21,
+    "bullDiameterInches": 8.0,
+    "notes": "Approx. dimensions; bull diameter approx."
+  },
+  {
+    "id": "nra-b-8",
+    "name": "NRA B-8 (50 yd bull)",
+    "widthInches": 10.5,
+    "heightInches": 12,
+    "bullDiameterInches": 5.54,
+    "notes": "Repair-center style 50 yd bull; bull 5.54 in."
+  },
+  {
+    "id": "uspsa-metric",
+    "name": "IPSC / USPSA metric",
+    "widthInches": 18,
+    "heightInches": 30,
+    "notes": "Approx. 18 x 30 in silhouette cardboard target."
+  },
+  {
+    "id": "diamond-100yd",
+    "name": "100-yd sight-in diamond",
+    "widthInches": 11,
+    "heightInches": 11,
+    "bullDiameterInches": 1.0,
+    "notes": "Diamond aiming points; sheet size approx."
+  },
+  {
+    "id": "circle-3in",
+    "name": "3 in circle",
+    "widthInches": 3,
+    "heightInches": 3,
+    "bullDiameterInches": 3.0,
+    "notes": "Single 3 in aiming circle."
+  },
+  {
+    "id": "circle-5in",
+    "name": "5 in circle",
+    "widthInches": 5,
+    "heightInches": 5,
+    "bullDiameterInches": 5.0,
+    "notes": "Single 5 in aiming circle."
+  },
+  {
+    "id": "circle-8in",
+    "name": "8 in circle",
+    "widthInches": 8,
+    "heightInches": 8,
+    "bullDiameterInches": 8.0,
+    "notes": "Paper-plate size aiming circle."
+  }
+]
