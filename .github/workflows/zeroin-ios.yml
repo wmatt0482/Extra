@@ -8,7 +8,11 @@ on:
   push:
     paths:
       - "zero-in/**"
+      - "!zero-in/docs/screenshots/**"
       - ".github/workflows/zeroin-ios.yml"
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -42,7 +46,8 @@ jobs:
           if xcodebuild -project ZeroIn.xcodeproj -scheme ZeroIn \
                -destination 'generic/platform=iOS Simulator' -configuration Debug \
                -derivedDataPath build CODE_SIGNING_ALLOWED=NO build > build-committed.log 2>&1; then
-            echo "committed project built"; grep -c "warning:" build-committed.log || true
+            echo "committed project built"
+            grep -E "warning:" build-committed.log | sort -u | head -20 || true
           else
             echo "::warning::committed project failed; errors follow"
             grep -E "error:" build-committed.log | sort -u | head -80
@@ -68,6 +73,18 @@ jobs:
 
       - name: Simulator screenshots
         run: bash tools/simulator_screenshots.sh build
+
+      - name: Commit screenshots to the branch
+        if: success()
+        run: |
+          mkdir -p docs/screenshots/ci
+          cp screenshots/*.png docs/screenshots/ci/
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/screenshots/ci
+          if git diff --cached --quiet; then echo "screenshots unchanged"; exit 0; fi
+          git commit -m "ZeroIn: simulator screenshots from CI run ${{ github.run_number }} [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
 
       - name: Upload screenshots
         if: always()
