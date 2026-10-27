@@ -124,9 +124,20 @@ function createSfx() {
         case 'stampede': this.stampede(); break;
         case 'bonusStart': this.bonusStart(); break;
         case 'bonusEnd': this.bonusEnd(); break;
+        // ---- 1.3 (SPEC §15): Blast ----
+        case 'blast': this.blast(1); break;
+        case 'blastBig': this.blast(2); break;
+        case 'melt': this.melt(); break;
+        case 'part': this.part(); break;
+        case 'poof': this.poof(); break;
         default: break;
       }
     },
+    // ---- 1.3 (SPEC §15): the blast (a fat squelch + a low thump), the melt, a part landing, the critter poof ----
+    blast(k = 1) { if (ready()) { noise('lowpass', 900, 120, 0.7, 0.28 * k, 0.35); tone('sine', 110, 40, 0.22 * k, 0.2); noise('bandpass', 1800, 300, 2, 0.18, 0.1, 0.03); if (k > 1) { tone('sawtooth', 70, 30, 0.45, 0.12, 0.05); noise('lowpass', 400, 60, 0.6, 0.5, 0.2, 0.08); } } },
+    melt() { if (ready()) { noise('lowpass', 700, 200, 0.5, 0.9, 0.05); tone('sine', 330, 180, 0.8, 0.03, 0.1); } },
+    part() { if (ready()) { noise('bandpass', 1200, 700, 5, 0.06, 0.05); tone('triangle', 420, 260, 0.07, 0.04); } },
+    poof() { if (ready()) { noise('bandpass', 1600, 500, 1.5, 0.16, 0.1); tone('sine', 520, 220, 0.12, 0.05); } },
     // ---- 1.2 (SPEC §14): the Slime Sprayer loop and the critter pops ----
     /** the sprayer: a looped, filtered hiss with a fast flutter while the finger is down */
     sprayOn() {

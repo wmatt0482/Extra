@@ -46,6 +46,16 @@ only follows a wave, and only a wave with ≥ 80 % hits (or a cured boss), so th
 aim, the zone or the records, and it has no timer, countdown, ammo or energy on screen (the kid rules in SPEC §0): the
 round ends when the stampede has passed. Parents can turn it off (Options → Bonus round).
 
+## Blast and Gentle mode (1.3, SPEC §15)
+
+1.0 "cured" zombies because we read the kid rules as "nothing is destroyed". Playtesting with a 9-year-old said the
+cure was the least satisfying part of the game. The rules that matter for other families are narrower and they
+stay: no blood, no bones, no gore, never the words kill / die / dead / death on screen. So the default is now the
+Plants-vs-Zombies line: a hit blasts the zombie apart into cartoon parts and green goo and the rest melts into a
+puddle; critters pop into goo and fur. **Gentle mode** (Parents → Options) restores the cure, the neighbours and the
+party hats for a parent who prefers them. The learning layer is untouched: the aim, the zone, the feedback flag and
+the records are the same in both modes.
+
 ## What comes next (SPEC §11)
 
 Twin Alley (compare and equivalent, ≥ 30 % incongruent pairs: Braithwaite & Siegler 2018), Sum Street (estimate before

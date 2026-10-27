@@ -342,7 +342,11 @@ async function runLayout(browser, layout) {
   check(/^cure,bull,effort,sharp,combo,twins,boss(,bonus)?$/.test(p1.rows.map((r) => r.id).join()), `the rows: ${p1.rows.map((r) => r.id).join(', ')}`);
   check(p1.rows.find((r) => r.id === 'sharp').amount >= 50 && p1.rows.find((r) => r.id === 'combo').amount >= 30, `sharpshooter ($${p1.rows.find((r) => r.id === 'sharp').amount}) and combo ($${p1.rows.find((r) => r.id === 'combo').amount}) paid`);
   check(await J(page, () => document.querySelector('#res-combo').dataset.n) >= '2', 'results show the best combo');
-  check(await J(page, () => document.querySelector('#res-counter').textContent.includes('Neighbours cured: 8')), 'the Cure Counter shows the total');
+  check(await J(page, () => document.querySelector('#res-counter').textContent.includes('Zombies zapped: 8') && document.querySelector('#res-cured span').textContent === 'Zapped' && document.querySelector('[data-row="cure"] td').textContent.startsWith('Zombies zapped')), 'the counter shows the total (Blast words: "Zombies zapped")');
+  await J(page, () => window.__fractionFright.app.setSetting('gentle', true));
+  await J(page, () => window.__fractionFright.results.show(window.__fractionFright.lastResult));
+  check(await J(page, () => document.querySelector('#res-counter').textContent.includes('Neighbours cured: 8') && document.querySelector('#res-cured span').textContent === 'Cured'), 'Gentle mode (Options): the same results read "Neighbours cured"');
+  await J(page, () => window.__fractionFright.app.setSetting('gentle', false));
   await shot(page, layout, '11-results');
   await audit(page, layout.insets, 'results');
   texts.push(await kidText(page));
@@ -394,7 +398,7 @@ async function runLayout(browser, layout) {
   }
   check(await playOut(page), 'wave 3 played out');
   const r3 = await J(page, () => window.__fractionFright.lastResult);
-  check(!!r3.bonus && r3.bonus.cured >= 1 && r3.bonus.cash === 15 * r3.bonus.cured + (r3.bonus.gold ? 150 : 0), `bonus: ${r3.bonus && r3.bonus.cured} of ${r3.bonus && r3.bonus.total} critters cured, $${r3.bonus && r3.bonus.cash}${r3.bonus && r3.bonus.gold ? ', the golden one' : ''}`);
+  check(!!r3.bonus && r3.bonus.cured >= 1 && r3.bonus.cash === 15 * (r3.bonus.cured - (r3.bonus.gold ? 1 : 0)) + (r3.bonus.gold ? 150 : 0), `bonus: ${r3.bonus && r3.bonus.cured} of ${r3.bonus && r3.bonus.total} critters cured, $${r3.bonus && r3.bonus.cash}${r3.bonus && r3.bonus.gold ? ', the golden one' : ''}`);
   const p3 = await payCheck(page, 'wave 3');
   check(p3.rows.some((r) => r.id === 'bonus' && r3.bonus && r.amount === r3.bonus.cash) && !!(await J(page, () => document.querySelector('#res-bonus'))), 'the Bonus round row pays the stampede and the results call it out');
   await shot(page, layout, '12c-bonus-results', 0);
@@ -495,7 +499,7 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '16-pz-fractions');
   await audit(page, layout.insets, 'Parent Zone (Fractions)');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.2\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
+  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.3\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
   await page.click('.pz-tabs [data-tab="report"]');
   const rep = await J(page, () => ({ big: document.querySelector('#report-week .pw-big').textContent, small: document.querySelector('#report-week .pw-small').textContent, pct: document.querySelector('#report-week').dataset.pct,
     bar: document.querySelector('#report-week .pw-bar i').style.width, streets: document.querySelectorAll('#report-streets li').length }));
@@ -554,6 +558,8 @@ async function realEngine(browser) {
   await page.goto(URL_REAL, { waitUntil: 'networkidle' });
   await page.waitForSelector(visibleSel('#screen-players'));
   check(await J(page, () => window.__fractionFright.app.engineName) === '', 'the real engine loaded (no mock fallback)');
+  // v1.3 (SPEC §15): Blast is the default; Gentle mode is a device setting
+  check(await J(page, () => window.__fractionFright.app.gentle === false && !!document.querySelector('#opt-gentle') === false), 'Blast is the default (Gentle mode off; its toggle lives in Parents → Options)');
   await page.click('#pl-add');
   for (const k of 'leo') await page.click(`#np-keyboard .kb-key[data-key="${k}"]`);
   await page.click('#np-keyboard .kb-enter');

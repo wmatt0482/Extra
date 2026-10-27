@@ -42,7 +42,7 @@ import { createResults } from './ui/results.js';
 import { createYard } from './ui/yard.js';
 import { createParentZone } from './ui/parentZone.js';
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 const GAME = 'fraction-fright';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'fractionFright.resumePlayer';   // sessionStorage: the player to come back to after an update reload
@@ -156,6 +156,9 @@ async function boot() {
     /** Read a line aloud (fractions aloud on, a voice available). */
     say(text) { if (!skills || !skills.opts.aloud || !tts.available || !text) return; try { tts.cancel(); tts.say(text); } catch (_) { /* ignore */ } },
     gooColor: () => (itemOf('goo', save.yard.goo) || itemOf('goo', 'lime')).color,
+    /** v1.3 (§15): the words for what a hit does. Blast (default): zapped / popped; Gentle mode: cured. */
+    get gentle() { return !!settings.gentle; },
+    verb() { const g = !!settings.gentle; return { past: g ? 'cured' : 'zapped', Past: g ? 'Cured' : 'Zapped', total: g ? 'Neighbours cured' : 'Zombies zapped', critter: g ? 'cured' : 'popped', boss: g ? 'cured' : 'blasted', more: g ? 'more and someone new moves in' : 'more and the street grows' }; },
     reducedMotion: () => !!settings.reducedMotion,
     go, toast, refreshCash, selectPlayer, setSetting, startWave, focus,
     // ----- the Zombie Lab -----
@@ -247,6 +250,8 @@ async function boot() {
     drawAvatar($('#title-avatar'), p.color);
     $('#title-lv').textContent = `Lv ${levelFor(skills.xp)}`;
     $('#title-cures-n').textContent = money(save.cures);
+    $('#title-cures .tb-label').textContent = app.verb().Past;
+    $('#title-cures').setAttribute('aria-label', app.verb().total);
     $('#title-tally').innerHTML = tallySvg(save.cures);
     const labDone = app.labDone();
     $('#title-lab-note').hidden = labDone;
@@ -299,6 +304,7 @@ async function boot() {
     writeSettings(settings);
     if (key === 'sound') { Audio.setSound(settings.sound); Sfx.setSound(settings.sound); }
     if (key === 'music') Audio.music(settings.music);
+    if (key === 'gentle') { if (bonus && screen !== 'bonus') { try { bonus.destroy(); } catch (_) { /* ignore */ } bonus = null; } if (screen === 'title') refreshTitle(); }
     if (key === 'reducedMotion') {
       document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);
       if (!run) { try { game && game.destroy(); } catch (_) { /* ignore */ } makeGame(); }
@@ -351,7 +357,7 @@ async function boot() {
     hud.reset(street.name, number, { big: w.big, final: w.final });
     paused = false;
     run.look = { goo: goo.color, fence: fence.id, fenceColor: fence.color, pumpkins: Math.max(3, Math.min(12, 3 + save.pumpkins)), sky: street.sky, landmark: street.look.landmark, hats: street.look.hats,
-      grenade: grenade.id, dog: !!save.yard.dog, lantern: !!save.yard.lantern };   // the bonus round plays in the same yard
+      grenade: grenade.id, dog: !!save.yard.dog, lantern: !!save.yard.lantern, gentle: !!settings.gentle };   // the bonus round plays in the same yard; gentle = cure, not blast (§15)
     try {
       game.start({
         road: roadFor(tier),
@@ -483,7 +489,7 @@ async function boot() {
     r.ended = true;
     cancelAnimationFrame(hudRaf);
     const stopped = !!(summary && summary.stopped);
-    const cash = waveCash(r.throws, { final: r.final && !stopped });
+    const cash = waveCash(r.throws, { final: r.final && !stopped, gentle: !!settings.gentle });
     const at = Date.now();
     const bank = bankWave(save, { street: r.street, number: r.number, cash: cash.total, cured: cash.cured, bulls: cash.bulls, reached: r.reached, throws: r.throws.length, final: r.final, stopped, at });
     if (!save.seen.coach) save.seen.coach = true;
@@ -600,7 +606,7 @@ async function boot() {
   $('#btn-say').addEventListener('click', () => { if (hud.target) app.say(`${hud.target.say}.`); });
 
   // ---------- first-wave coach ----------
-  function showCoach() { coaching = true; try { game.pause(); } catch (_) { /* ignore */ } $('#coach').hidden = false; }
+  function showCoach() { coaching = true; const cv = $('#coach-verb'); if (cv) cv.textContent = settings.gentle ? 'cures it' : 'blasts it'; try { game.pause(); } catch (_) { /* ignore */ } $('#coach').hidden = false; }
   function hideCoach() { if (!coaching) return; coaching = false; $('#coach').hidden = true; }
   function dismissCoach(e) {
     if (!coaching) return;

@@ -32,7 +32,7 @@ export const CURES_PER_NEIGHBOUR = 10;
  * cures its own item. A boss item (kind 'boss') is cured by its third hit.
  * → { rows: [{ id, label, count, amount }], total, cured, bulls, efforts, sharps, twins, bestCombo, boss }.
  */
-export function waveCash(throws, { final = false } = {}) {
+export function waveCash(throws, { final = false, gentle = false } = {}) {
   const cured = new Map();         // item id -> the curing result
   const near = new Set(), effort = new Set();
   const bossHits = new Map();
@@ -67,13 +67,13 @@ export function waveCash(throws, { final = false } = {}) {
   }
   const n = cured.size, bulls = [...cured.values()].filter((r) => r === 'bull').length, efforts = effort.size;
   const rows = [
-    { id: 'cure', label: 'Neighbours cured', count: n, amount: n * CURE_CASH },
+    { id: 'cure', label: gentle ? 'Neighbours cured' : 'Zombies zapped', count: n, amount: n * CURE_CASH },
     { id: 'bull', label: 'Bullseyes', count: bulls, amount: bulls * BULL_BONUS },
-    { id: 'effort', label: 'Close, then cured', count: efforts, amount: efforts * EFFORT_BONUS },
-    { id: 'sharp', label: 'Sharpshooter (cured in the fog)', count: sharps, amount: sharps * SHARP_BONUS },
+    { id: 'effort', label: gentle ? 'Close, then cured' : 'Close, then zapped', count: efforts, amount: efforts * EFFORT_BONUS },
+    { id: 'sharp', label: gentle ? 'Sharpshooter (cured in the fog)' : 'Sharpshooter (zapped in the fog)', count: sharps, amount: sharps * SHARP_BONUS },
     { id: 'combo', label: 'Combo', count: bestCombo >= 2 ? bestCombo : 0, amount: comboCash },
     { id: 'twins', label: 'Twins', count: twins, amount: twins * TWIN_BONUS },
-    { id: 'boss', label: 'Boss cured', count: boss ? 1 : 0, amount: boss ? BOSS_BONUS : 0 },
+    { id: 'boss', label: gentle ? 'Boss cured' : 'Boss blasted', count: boss ? 1 : 0, amount: boss ? BOSS_BONUS : 0 },
   ];
   const sub = rows.reduce((a, r) => a + r.amount, 0);
   if (final) rows.push({ id: 'final', label: 'Final wave ×2', count: 1, amount: sub * (FINAL_MULT - 1) });

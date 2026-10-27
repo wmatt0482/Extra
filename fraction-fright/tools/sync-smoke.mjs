@@ -88,7 +88,7 @@ const mem = (page) => J(page, () => { const F = window.__fractionFright; return 
 
 /** one mock wave on Maple Street, every zombie cured dead on */
 async function wave(page) {
-  await J(page, () => { const a = window.__fractionFright.app; a.save.seen.coach = true; a.startWave('maple'); });
+  await J(page, () => { const a = window.__fractionFright.app; a.save.seen.coach = true; a.setSetting('bonus', false); a.startWave('maple'); });   // no bonus round here: this test is about the sync
   await page.waitForFunction(() => window.__fractionFright.screen === 'wave');
   const end = Date.now() + 30000;
   while (Date.now() < end) {

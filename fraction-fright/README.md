@@ -4,8 +4,10 @@ The third game on [learninglab.fun](https://learninglab.fun/) (after Spell Jump 
 "shooter" that teaches **fractions as numbers on a number line** (Grade 4, CCSS 4.NF). Lanky, creepy-funny zombies
 rise out of the graveyard fog **at their fraction's spot** and shuffle toward the kid's fence, and the road is the
 number line. The scout calls a fraction ("three quarters!"); the kid drags along the road and lobs a slime grenade. On
-the spot: THUNK, the zombie hiding there turns back into a slightly embarrassed neighbour and walks home. Off the spot:
-a plop, and the true spot lights up with the fraction drawn as jumps from 0. No one is ever hurt; no lives, no timers.
+the spot: THUNK, the zombie hiding there is **blasted into goo** (hat, boots and arms fly, the rest melts into a
+steaming puddle; cartoon green goo, never blood, never the words kill / die / dead). **Gentle mode** (Parents →
+Options) turns that into the 1.0 cure: the zombie turns back into a slightly embarrassed neighbour and walks home.
+Off the spot: a plop, and the true spot lights up with the fraction drawn as jumps from 0. No lives, no timers.
 
 `SPEC.md` is the design (§0 holds the non-negotiables from the research); `docs/LEARNING-DESIGN.md` maps every
 technique to its source and its code. Version **1.0** = the Zombie Lab, Maple Street and Oak Lane, waves, results, the
@@ -16,7 +18,8 @@ three ways), the combo, chatter, grenade types, the finale, a yard dog and a gat
 Version **1.2 "Critter Stampede"** (SPEC §14) = a bonus round the math earns: after a wave with ≥ 80 % hits (or the
 boss cured), ≈ 24 zombie critters (squirrels, raccoons, bunnies, chickens, bats, crows) pour across the yard for about
 20 seconds and the kid holds a finger down to spray slime at them (the **Slime Sprayer**, ≈ 12 pellets a second); a hit
-pops a critter back to normal and it scampers off, $15 each, the one **golden critter** $150, a combo popup from ×3.
+pops a critter into goo and a puff of fur or feathers (in Gentle mode it gets a party hat and scampers off), $15 each,
+the one **golden critter** $150 instead, a combo popup from ×3.
 No timer, countdown, ammo or energy on screen: the round ends when the stampede has passed; a tap on pause ends it with
 what was cured. Its cash is a separate "Bonus round" row on the Results (the rows still add up) and a callout
 "Critter Stampede: N cured". Parents → Options → **Bonus round** turns it off. The module is `src/game/bonus.js` (its
