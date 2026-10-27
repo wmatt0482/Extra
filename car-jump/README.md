@@ -90,7 +90,10 @@ The applied list has the class list's id on every device, so two devices applyin
 **Adding a week:** one entry at the top of `WEEKS` in `src/data/classLists.js`: `id: 'class-2026-10-26'`, `name: 'Week
 of Oct 26 · topic'`, `weekOf: '2026-10-26'`, an optional `pattern` (`'un- re- pre-'`, `'-tion'`) and the words in the
 Parent Zone format, one per line: `word | syl/la/bles | a sentence`. It becomes the newest list two days before its
-week starts, so it can ship over the weekend; bump `VERSION` in `src/main.js` and `sw.js` as for any release.
+week starts, so it can ship over the weekend. Since v3.7.4 the class-list file is network-first in the service worker
+(like `index.html` and `src/main.js`), so shipping a week needs **no version bump**: the next launch while online shows
+it. **Parents → Options → Reload now** forces it on the spot (it saves, asks the worker for a newer version and
+reloads); the Options tab also shows the version.
 
 ## The spell panel ("Spell to Launch")
 

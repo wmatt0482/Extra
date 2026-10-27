@@ -661,6 +661,8 @@ export function createParentZone(app) {
       }, 'opt-remove'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN')),
         h('button', { class: 'btn btn-sm', id: 'opt-pin', onclick: () => { pinMode = 'reset'; pinEntry = ''; view = 'pin'; render(); } }, 'Change PIN')),
+      h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Newest version'), h('div', { class: 'sub' }, 'Reloads the game and brings this week\'s class list and the latest version')),
+        h('button', { class: 'btn btn-sm', id: 'opt-reload', 'data-sfx': '', onclick: () => { app.toast('Reloading…'); app.reloadNow(); } }, 'Reload now')),
       h('div', { class: 'ver' }, `Spell Jump ${app.version}${app.engineName ? ' · ' + app.engineName : ''} · voice: ${app.tts.available ? (app.tts.systemVoice ? 'system default' : app.tts.voiceName || 'system') : 'not available'}`),
     ];
   }

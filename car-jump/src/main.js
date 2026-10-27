@@ -42,7 +42,7 @@ import { createSyncClient } from './sync/client.js';
 import { applyImport, decodeTransfer, encodeTransfer } from './meta/transfer.js';
 import { createPinger } from './meta/pings.js';
 
-const VERSION = '3.7.3';
+const VERSION = '3.7.4';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
@@ -166,6 +166,15 @@ async function boot() {
     },
     persistWords: () => { if (currentPlayerId && words) Profiles.writeWords(currentPlayerId, words); },
     persistFamily: () => Profiles.writeFamily(family),
+    /** v3.7.4: Parents → Options → "Reload now": save, ask the service worker for a newer version, then reload. The page,
+     *  main.js and the class lists are network-first, so the reload alone brings this week's list and the newest code. */
+    async reloadNow() {
+      app.persist(); app.persistWords();
+      try {
+        if (swUsable) { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await Promise.race([reg.update(), new Promise((r) => setTimeout(r, 2500))]); }
+      } catch (_) { /* offline or no worker: a plain reload still works */ }
+      location.reload();
+    },
     go,
     toast,
     refreshCash,

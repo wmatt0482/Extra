@@ -658,6 +658,7 @@ async function runLayout(browser, layout) {
     z = await pzState(page);
     check(z.line === 'Not synced · tap to set up family sync' && z.lineUnderTitle, `${t} tab: status line under the title`);
   }
+  check(await J(page, () => { const b = document.querySelector('#opt-reload'); return !!b && b.textContent === 'Reload now' && typeof window.__spellJump.app.reloadNow === 'function'; }), 'options tab: a "Reload now" button (v3.7.4: the newest version and this week\'s class list)');
   await page.click('.pz-tabs [data-tab="words"]');
   await page.waitForSelector('#pz-words');
   await shot(page, layout, '17-pz-words');

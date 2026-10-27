@@ -1,13 +1,13 @@
 // Spell Jump service worker: the app works offline after the first load.
-// index.html (every navigation) and src/main.js are network-first (3 s timeout, then the cache), so a launch
-// while online picks up a new version at once. Every other same-origin file is cache-first and refreshed in the
+// index.html (every navigation), src/main.js and the weekly class lists (src/data/classLists.js) are network-first
+// (3 s timeout, then the cache), so a launch while online picks up a new version, and a new week's list, at once. Every other same-origin file is cache-first and refreshed in the
 // background (stale-while-revalidate). Bump VERSION on every deploy: the new worker installs, takes over at once
 // (skipWaiting + clients.claim) and the page reloads itself on the next safe screen (src/meta/selfUpdate.js).
 // The family sync API and the natural voice's prepare / status calls (/api/...) are network only: never cached, never
 // answered from the cache. The natural voice's clips (/api/tts/clip/<id>, v3.4) are content-addressed (a clip never
 // changes), so they are cache-first in their own cache, TTS_CACHE, which survives version updates: a clip played once
 // plays offline afterwards.
-const VERSION = 'spell-jump-v3.7.3';
+const VERSION = 'spell-jump-v3.7.4';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
@@ -126,7 +126,8 @@ const relPath = (url) => {
   return url.pathname.startsWith(scope) ? url.pathname.slice(scope.length) : url.pathname;
 };
 const isPage = (req, url) => req.mode === 'navigate' || (url.origin === self.location.origin && (relPath(url) === '' || relPath(url) === 'index.html'));
-const isNetworkFirst = (req, url) => isPage(req, url) || (url.origin === self.location.origin && relPath(url) === 'src/main.js');
+const NETWORK_FIRST = ['src/main.js', 'src/data/classLists.js'];   // v3.7.4: a new class-list week needs no version bump
+const isNetworkFirst = (req, url) => isPage(req, url) || (url.origin === self.location.origin && NETWORK_FIRST.includes(relPath(url)));
 const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
 
 self.addEventListener('fetch', (event) => {
