@@ -238,6 +238,9 @@ Per player:
 - **Report**: Qualifier vs latest Friday Test, a per-word table (status New / Focus / Learning / Almost / Mastered,
   attempts, first-try %, last practiced, days practiced), test history, **Copy report** (clipboard, or the text shown
   selected when the clipboard is unavailable), and **Why this works** (the LEARNING-DESIGN table, in the app).
+  v3.7.5: a **week picker** on top (This week · each archived week · All words): a past week shows that week's
+  report, and **All words** is the running list of every word across every week with its status today (filters All /
+  Needs work / Mastered, a word that repeats counted once under the newer week), with **Copy all words**.
 - **Options**: speech on / off with **Test voice**, **Speech check** (timestamped log, **Copy log**; it says which
   engine played), speech rate (very slow / slow / normal), voice in two groups: **Natural voices (online)** (six
   Google voices with ▶ Test and a status line) and **Device voices** (Automatic, Use default system voice, or a

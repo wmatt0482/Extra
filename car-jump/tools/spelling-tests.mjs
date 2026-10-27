@@ -21,7 +21,7 @@ import {
 import { diffAttempt, formatList, normalizeWord, parseList, patternRanges, ringLetters, syllableBreaks, SAMPLE_WORDS } from '../src/spelling/words.js';
 import {
   activeList, archivedLists, defaultWords, deleteList, missionState, nextWord, normalizeWordsData, qualifierDue, recordFriday,
-  recordQualifier, recordSpell, report, reportText, resetSpelling, restoreList, saveNewList, setLaunch, spellBonus, wordInfo, DEFAULT_OPTIONS, WORDS_PER_RACE,
+  recordQualifier, recordSpell, report, reportText, resetSpelling, restoreList, saveNewList, setLaunch, spellBonus, wordInfo, DEFAULT_OPTIONS, WORDS_PER_RACE, allWords, allWordsText, weekProgress,
 } from '../src/spelling/wordStore.js';
 
 let passed = 0;
@@ -353,6 +353,25 @@ test('report: pretest vs latest Friday, statuses, copy text', () => {
   assert.equal(r.rows.find((w) => w.word === 'gamma').status, 'Focus');
   const txt = reportText(d, 'Sam');
   assert.ok(/Pretest \(Qualifier\): 1\/3/.test(txt) && /Latest Friday Test: 2\/3/.test(txt) && /missed: gamma/.test(txt), txt);
+});
+test('v3.7.5: the report on a prior week, and the running list of all words across weeks', () => {
+  const d = defaultWords(T0);
+  const l1 = saveNewList(d, parseList('alpha\nbeta\ngamma').words, '', T0);
+  recordQualifier(d, [{ word: 'alpha', correct: true }, { word: 'beta', correct: false }, { word: 'gamma', correct: false }], T0);
+  recordFriday(d, [{ word: 'alpha', correct: true }, { word: 'beta', correct: true }, { word: 'gamma', correct: false }], day(4));
+  const l2 = saveNewList(d, parseList('delta\ngamma').words, '', day(7));   // gamma carries over into the new week
+  const r1 = report(d, l1.id);
+  assert.equal(r1.list.id, l1.id); assert.equal(r1.archived, true); assert.equal(r1.pretest.correct, 1); assert.equal(r1.latest.correct, 2); assert.equal(r1.rows.length, 3);
+  assert.equal(report(d).list.id, l2.id); assert.equal(report(d).archived, false); assert.equal(report(d, 'nope').list.id, l2.id, 'an unknown id falls back to the active list');
+  assert.equal(weekProgress(d, day(8), l1.id).words, 3); assert.equal(weekProgress(d, day(8)).words, 2);
+  assert.ok(/^Week of .*: /m.test(reportText(d, 'Sam', l1.id)) && /Pretest \(Qualifier\): 1\/3/.test(reportText(d, 'Sam', l1.id)), 'a past week\'s text names the week instead of "This week"');
+  const a = allWords(d);
+  assert.deepEqual(a.rows.map((w) => w.word), ['delta', 'gamma', 'alpha', 'beta'], 'the active list first, then the archive; a repeated word once, under the newer list');
+  assert.equal(a.words, 4); assert.deepEqual(a.lists.map((l) => [l.id, l.active, l.words]), [[l2.id, true, 2], [l1.id, false, 2]]);
+  assert.equal(a.rows.find((w) => w.word === 'gamma').listId, l2.id);
+  assert.equal(a.rows.find((w) => w.word === 'gamma').status, 'Focus', 'gamma (missed twice) is Focus'); assert.ok(a.counts.Focus >= 1 && a.counts.New >= 1);
+  const t = allWordsText(d, 'Sam');
+  assert.ok(/^Spell Jump, all words: Sam\n4 words across 2 lists/.test(t) && /\(this week\)/.test(t) && /  gamma \| Focus/.test(t), t);
 });
 test('set launch power: 0.65 + 0.35 × c/n, nitro 1 + 0.25 × c/n (n = 1 reproduces 100/125 vs 65/100)', () => {
   assert.deepEqual(setLaunch(1, 1), { powerScale: 1, nitroScale: 1.25 });

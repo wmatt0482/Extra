@@ -846,7 +846,7 @@ async function runLayout(browser, layout) {
     return { w, first: document.querySelector('.pz-content').firstElementChild.id, big: el.querySelector('.pw-big').textContent, small: el.querySelector('.pw-small').textContent,
       bar: el.querySelector('.pw-bar i').style.width };
   });
-  check(wk.first === 'pz-week' && wk.big === `This week: ${wk.w.masteredPct} % mastered` && wk.bar === `${wk.w.masteredPct}%`
+  check(wk.first === 'pz-weeks' && wk.big === `This week: ${wk.w.masteredPct} % mastered` && wk.bar === `${wk.w.masteredPct}%`
     && wk.small.startsWith(`Right on last try ${wk.w.rightLastTry} / ${wk.w.words} (${wk.w.rightLastTryPct} %) · pretest 3 / 4 → now ${wk.w.rightLastTry} / 4`),
     `report: "${wk.big}" with a bar, "${wk.small}"`);
   await shot(page, layout, '34-pz-report');
@@ -862,6 +862,28 @@ async function runLayout(browser, layout) {
     check(fb.shown && /Spell Jump report: Sam/.test(fb.sel), 'Copy report: clipboard unavailable → the report text is shown selected');
     await shot(page, layout, '35-pz-report-fallback');
   }
+  // v3.7.5: the week picker (This week · prior weeks · All words) and the running list of all words
+  const chips0 = await J(page, () => [...document.querySelectorAll('#pz-weeks .chip')].map((c) => c.dataset.week));
+  check(chips0[0] === 'active' && chips0[chips0.length - 1] === 'all', `report: week chips (${chips0.join(' · ')})`);
+  const prior = chips0.filter((c) => c !== 'active' && c !== 'all');
+  if (prior.length) {
+    await page.click(`#pz-weeks .chip[data-week="${prior[0]}"]`);
+    await page.waitForSelector('#pz-table');
+    const pw = await J(page, () => ({ list: document.querySelector('.pz-listname').dataset.list, big: document.querySelector('#pz-week .pw-big').textContent, past: /a past week/.test(document.querySelector('.pz-listname').textContent) }));
+    check(pw.list === prior[0] && !pw.big.startsWith('This week') && pw.past, `report: a prior week's report ("${pw.big}")`);
+  }
+  await page.click('#pz-weeks .chip[data-week="all"]');
+  await page.waitForSelector('#pz-all-sum');
+  const all = await J(page, async () => { const W = await import('/src/spelling/wordStore.js'); const a = W.allWords(window.__spellJump.words); return { a: a.words, lists: a.lists.length, rows: document.querySelectorAll('#pz-all-table tbody tr').length, sum: document.querySelector('#pz-all-sum').dataset.words, big: document.querySelector('#pz-all-sum .pw-big').textContent, filters: document.querySelectorAll('#pz-all-filters .chip').length }; });
+  check(all.rows === all.a && all.sum === String(all.a) && all.big === `All words: ${all.a} across ${all.lists} week${all.lists === 1 ? '' : 's'}` && all.filters === 3, `report: All words (${all.a} words, ${all.lists} lists, 3 filters)`);
+  await page.click('#pz-all-filters .chip[data-filter="mastered"]');
+  const onlyM = await J(page, () => [...document.querySelectorAll('#pz-all-table tbody tr .st')].every((s) => s.textContent === 'Mastered'));
+  check(onlyM, 'All words: the Mastered filter shows only mastered words');
+  await shot(page, layout, '34b-pz-all-words');
+  await layoutAudit(page, layout.insets, 'parent zone (all words)');
+  await page.click('#pz-all-filters .chip[data-filter="all"]');
+  await page.click('#pz-weeks .chip[data-week="active"]');
+  await page.waitForSelector('#pz-table');
   // v3.7.1: Family code tab: a strip per child, "Spelling this week · n % mastered" with a mini bar
   await page.click('.pz-tabs [data-tab="sync"]');
   await page.waitForSelector('#pz-week-list');

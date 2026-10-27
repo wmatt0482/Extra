@@ -336,8 +336,9 @@ export function masteredCount(d) {
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
 const fmtDate = (ms) => (ms ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—');
 
-export function report(d) {
-  const l = activeList(d);
+/** The report on a list: the active one, or a prior week by its id (v3.7.5). */
+export function report(d, listId = null) {
+  const l = (listId && listById(d, listId)) || activeList(d);
   const tests = d.tests.filter((t) => t.listId === l.id);
   const pretest = tests.find((t) => t.kind === 'qualifier') || null;
   const fridays = tests.filter((t) => t.kind === 'friday');
@@ -349,7 +350,7 @@ export function report(d) {
   const history = d.tests.slice().reverse().map((t) => ({ ...t, listName: (listById(d, t.listId) || { name: 'deleted list' }).name }));
   const counts = {};
   for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
-  return { list: l, pretest, latest, rows, history, counts, streak: d.streak, bestStreak: d.bestStreak };
+  return { list: l, pretest, latest, rows, history, counts, streak: d.streak, bestStreak: d.bestStreak, archived: l.id !== d.activeId };
 }
 
 /**
@@ -359,8 +360,8 @@ export function report(d) {
  *   practiced (words tried at least once), pretest { right, total } | null (the Qualifier on this list), testScore
  *   { right, total } | null (the latest Friday Test on it), newThisWeek (words first practiced in the last 7 days) }
  */
-export function weekProgress(d, now = Date.now()) {
-  const l = activeList(d);
+export function weekProgress(d, now = Date.now(), listId = null) {
+  const l = (listId && listById(d, listId)) || activeList(d);
   const words = l ? l.words.map((w) => w.word) : [];
   const recs = words.map((w) => d.records[w]).filter(Boolean);
   const seen = recs.filter((r) => r.seenCount > 0);
@@ -387,8 +388,8 @@ export function weekProgressText(w) {
     + (w.pretest ? ` · pretest ${w.pretest.right} / ${w.pretest.total} → now ${w.rightLastTry} / ${w.words}` : '')
     + (w.testScore ? ` · Friday Test ${w.testScore.right} / ${w.testScore.total}` : '');
 }
-export function reportText(d, playerName) {
-  const r = report(d);
+export function reportText(d, playerName, listId = null) {
+  const r = report(d, listId);
   const score = (t) => (t ? `${t.correct}/${t.total} (${pct(t.correct, t.total)}%)` : 'not taken yet');
   const lines = [
     `Spell Jump report: ${playerName}`,
@@ -396,7 +397,7 @@ export function reportText(d, playerName) {
     `Pretest (Qualifier): ${score(r.pretest)}`,
     `Latest Friday Test: ${score(r.latest)}`,
     `Status: ${['Mastered', 'Almost', 'Learning', 'Focus', 'New'].map((s) => `${s} ${r.counts[s] || 0}`).join(', ')}`,
-    weekProgressText(weekProgress(d)),
+    weekProgressText(weekProgress(d, Date.now(), r.list.id)).replace(/^This week/, r.archived ? r.list.name : 'This week'),
     '',
     'Word | Status | Attempts | First-try % | Last practiced | Days practiced',
     ...r.rows.map((w) => `${w.word} | ${w.status} | ${w.attempts} | ${w.firstTryPct == null ? '—' : w.firstTryPct + '%'} | ${fmtDate(w.lastPracticed)} | ${w.daysPracticed}`),
@@ -405,6 +406,52 @@ export function reportText(d, playerName) {
     ...(r.history.length ? r.history.map((t) => `${fmtDate(t.at)} ${t.kind === 'qualifier' ? 'Qualifier' : 'Friday Test'} (${t.listName}): ${t.correct}/${t.total}${t.missed.length ? `, missed: ${t.missed.join(', ')}` : ''}`) : ['none yet']),
   ];
   return lines.join('\n');
+}
+
+/** Statuses a parent would call "needs work" (the running list's filter). */
+export const NEEDS_WORK = Object.freeze(['Focus', 'Learning']);
+/**
+ * v3.7.5: the running list of every word the player has had, across this week and every archived week, with its
+ * status today. A word that appears in two lists is counted once, under the most recent list (the active one first,
+ * then the archive newest first). { rows: [{ word, status, attempts, firstTryPct, lastPracticed, daysPracticed,
+ * listId, listName, active }], lists: [{ id, name, active, words, counts, masteredPct }], counts, words }.
+ */
+export function allWords(d) {
+  const lists = [activeList(d), ...archivedLists(d)].filter(Boolean);
+  const seen = new Set();
+  const rows = [], perList = [];
+  for (const l of lists) {
+    const counts = {};
+    let n = 0;
+    for (const { word } of l.words) {
+      if (seen.has(word)) continue;
+      seen.add(word);
+      const r = d.records[word] || newRecord(word, l.id);
+      const st = status(r);
+      rows.push({ word, status: st, attempts: r.attempts, firstTryPct: r.attempts ? pct(r.firstTry, r.attempts) : null, lastPracticed: r.lastSeen, daysPracticed: (r.daysSeen || []).length, listId: l.id, listName: l.name, active: l.id === d.activeId });
+      counts[st] = (counts[st] || 0) + 1;
+      n++;
+    }
+    perList.push({ id: l.id, name: l.name, active: l.id === d.activeId, words: n, counts, masteredPct: n ? pct(counts.Mastered || 0, n) : null });
+  }
+  const counts = {};
+  for (const r of rows) counts[r.status] = (counts[r.status] || 0) + 1;
+  return { rows, lists: perList, counts, words: rows.length };
+}
+/** The running list as text (Copy all words). */
+export function allWordsText(d, playerName) {
+  const a = allWords(d);
+  const lines = [
+    `Spell Jump, all words: ${playerName}`,
+    `${a.words} words across ${a.lists.length} list${a.lists.length === 1 ? '' : 's'} · ${['Mastered', 'Almost', 'Learning', 'Focus', 'New'].map((s) => `${s} ${a.counts[s] || 0}`).join(', ')}`,
+    '',
+  ];
+  for (const l of a.lists) {
+    lines.push(`${l.name}${l.active ? ' (this week)' : ''}: ${l.words} words, ${l.masteredPct == null ? '—' : l.masteredPct + '%'} mastered`);
+    for (const w of a.rows) if (w.listId === l.id) lines.push(`  ${w.word} | ${w.status} | ${w.attempts} tries | ${w.firstTryPct == null ? '—' : w.firstTryPct + '%'} first try | ${fmtDate(w.lastPracticed)}`);
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd();
 }
 
 export { buildMission, status, isMastered, MISSION_SIZE };

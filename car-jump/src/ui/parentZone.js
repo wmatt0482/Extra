@@ -20,7 +20,7 @@ import { formatList, parseList, MAX_WORDS } from '../spelling/words.js';
 import { SAMPLE_PRESENTATION, SYSTEM_VOICE, VOICE_TIP, buildPresentation, voiceQuality } from '../spelling/tts.js';
 import { CLOUD_VOICES, cloudVoiceInfo } from '../tts/voices.js';
 import {
-  activeList, applyClassList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList, stopFollowing, weekProgress,
+  NEEDS_WORK, activeList, allWords, allWordsText, applyClassList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList, stopFollowing, weekProgress,
 } from '../spelling/wordStore.js';
 import { newestClassList } from '../data/classLists.js';
 import { WHY_INTRO, WHY_ROWS, WHY_SOURCES } from '../spelling/why.js';
@@ -72,6 +72,7 @@ export function createParentZone(app) {
   root.replaceChildren(sheet);
 
   let view = 'pin', tab = 'sync', playerId = null, unlockedUntil = 0;
+  let reportList = null, reportAll = false, allFilter = 'all';   // v3.7.5: the Report's week picker and the running list
   let lineTimer = 0;                   // keeps "synced 2 min ago" current while the zone is open
   let joined = null;                   // players shown after a Join (merged list)
   let pinMode = 'enter', pinFirst = '', pinEntry = '', mathQ = null, mathEntry = '';
@@ -346,12 +347,14 @@ export function createParentZone(app) {
   // v3.7.1: the week's progress (parent-facing only): a big line + bar on the Report, a strip per child on Family
   const pctText = (v) => (v == null ? '—' : `${v} %`);
   const bar = (v, cls) => h('div', { class: cls, role: 'img', 'aria-label': v == null ? 'no progress yet' : `${v} percent` }, h('i', { style: { width: `${v || 0}%` } }));
-  function weekBlock(d) {
-    const w = weekProgress(d, Date.now());
+  function weekBlock(d, listId = null) {
+    const w = weekProgress(d, Date.now(), listId);
+    const l = (listId && listById(d, listId)) || activeList(d);
+    const label = l.id === d.activeId ? 'This week' : l.name.replace(/^Week of /, '');
     const small = !w.practiced ? `No practice yet on these ${w.words} words`
       : `Right on last try ${w.rightLastTry} / ${w.words} (${w.rightLastTryPct} %)${w.pretest ? ` · pretest ${w.pretest.right} / ${w.pretest.total} → now ${w.rightLastTry} / ${w.words}` : ''}${w.testScore ? ` · Friday Test ${w.testScore.right} / ${w.testScore.total}` : ''}`;
-    return h('div', { class: 'pz-week', id: 'pz-week', 'data-pct': w.practiced ? String(w.masteredPct) : '' },
-      h('div', { class: 'pw-big' }, `This week: ${w.practiced ? pctText(w.masteredPct) : '—'} mastered`), bar(w.practiced ? w.masteredPct : null, 'pw-bar'), h('div', { class: 'pw-small' }, small));
+    return h('div', { class: 'pz-week', id: 'pz-week', 'data-pct': w.practiced ? String(w.masteredPct) : '', 'data-list': l.id },
+      h('div', { class: 'pw-big' }, `${label}: ${w.practiced ? pctText(w.masteredPct) : '—'} mastered`), bar(w.practiced ? w.masteredPct : null, 'pw-bar'), h('div', { class: 'pw-small' }, small));
   }
   function familyWeek() {
     const players = app.family.players;
@@ -364,9 +367,46 @@ export function createParentZone(app) {
           h('b', {}, p.name), h('span', { class: 'pw-strip' }, `Spelling this week · ${v == null ? '— (no practice yet)' : `${v} % mastered`}`), bar(v, 'pw-mini'));
       }))];
   }
+  // v3.7.5: the week picker (this week · each archived week · All words)
+  function weekChips(d) {
+    const chip = (text, on, attrs, onclick) => h('button', { class: `chip${on ? ' on' : ''}`, 'data-sfx': '', 'aria-pressed': String(on), ...attrs, onclick }, text);
+    const prior = archivedLists(d);
+    if (reportList && !listById(d, reportList)) reportList = null;
+    return h('div', { class: 'pz-chips', id: 'pz-weeks' },
+      chip('This week', !reportAll && !reportList, { 'data-week': 'active' }, () => { reportAll = false; reportList = null; render(); }),
+      ...prior.map((l) => chip(l.name.replace(/^Week of /, ''), !reportAll && reportList === l.id, { 'data-week': l.id }, () => { reportAll = false; reportList = l.id; render(); })),
+      chip('All words', reportAll, { 'data-week': 'all' }, () => { reportAll = true; render(); }));
+  }
+  function allWordsView(p, d) {
+    const a = allWords(d);
+    const want = (w) => allFilter === 'all' || (allFilter === 'work' ? NEEDS_WORK.includes(w.status) : w.status === 'Mastered');
+    const rows = a.rows.filter(want);
+    const fchip = (id, text) => h('button', { class: `chip sm${allFilter === id ? ' on' : ''}`, 'data-sfx': '', 'data-filter': id, 'aria-pressed': String(allFilter === id), onclick: () => { allFilter = id; render(); } }, text);
+    const table = h('table', { class: 'pz-table', id: 'pz-all-table' },
+      h('thead', {}, h('tr', {}, ...['Word', 'Status', 'Week', 'Tries', '1st try', 'Last'].map((t) => h('th', {}, t)))),
+      h('tbody', {}, ...rows.map((w) => h('tr', { 'data-word': w.word, 'data-list': w.listId },
+        h('td', {}, w.word), h('td', {}, h('span', { class: 'st st-' + w.status.toLowerCase() }, w.status)), h('td', { class: 'muted' }, w.active ? 'This week' : w.listName.replace(/^Week of /, '')),
+        h('td', {}, String(w.attempts)), h('td', {}, w.firstTryPct == null ? '—' : w.firstTryPct + '%'), h('td', {}, fmtShort(w.lastPracticed))))));
+    const out = h('pre', { class: 'pz-report-text', id: 'pz-all-text', hidden: true });
+    const copyBtn = h('button', { class: 'btn btn-cyan', id: 'pz-copy-all', 'data-sfx': '' }, 'Copy all words');
+    copyBtn.addEventListener('click', async () => { if (await copyText(allWordsText(d, p.name), out, 'All words')) out.hidden = true; });
+    const needsWork = (a.counts.Focus || 0) + (a.counts.Learning || 0);
+    return [
+      h('div', { class: 'pz-week', id: 'pz-all-sum', 'data-words': String(a.words), 'data-mastered': String(a.counts.Mastered || 0) },
+        h('div', { class: 'pw-big' }, `All words: ${a.words} across ${a.lists.length} week${a.lists.length === 1 ? '' : 's'}`),
+        bar(a.words ? pct(a.counts.Mastered || 0, a.words) : null, 'pw-bar'),
+        h('div', { class: 'pw-small' }, `Mastered ${a.counts.Mastered || 0} · Almost ${a.counts.Almost || 0} · Learning ${a.counts.Learning || 0} · Focus ${a.counts.Focus || 0} · New ${a.counts.New || 0}`)),
+      h('div', { class: 'pz-chips', id: 'pz-all-filters' }, fchip('all', `All ${a.words}`), fchip('work', `Needs work ${needsWork}`), fchip('mastered', `Mastered ${a.counts.Mastered || 0}`)),
+      h('div', { class: 'pz-table-wrap' }, rows.length ? table : h('div', { class: 'sub muted', style: { padding: '12px' } }, 'No words here yet.')),
+      h('div', { class: 'pz-actions' }, copyBtn),
+      out,
+    ];
+  }
   function reportTab(p) {
     const d = app.wordsFor(p.id);
-    const r = report(d);
+    const chips = weekChips(d);
+    if (reportAll) return [chips, ...allWordsView(p, d)];
+    const r = report(d, reportList);
     const score = (t) => (t ? h('b', {}, `${t.correct} / ${t.total}`, h('small', {}, ` ${pct(t.correct, t.total)}%`)) : h('b', { class: 'muted' }, '—'));
     const table = h('table', { class: 'pz-table', id: 'pz-table' },
       h('thead', {}, h('tr', {}, ...['Word', 'Status', 'Tries', '1st try', 'Last', 'Days'].map((t) => h('th', {}, t)))),
@@ -380,18 +420,19 @@ export function createParentZone(app) {
     const copyBtn = h('button', { class: 'btn btn-cyan', id: 'pz-copy-report', 'data-sfx': '' }, 'Copy report');
     copyBtn.addEventListener('click', async () => {
       // fallback: the text is shown selected so the parent can copy it from the system menu
-      if (await copyText(reportText(d, p.name), out, 'Report')) out.hidden = true;
+      if (await copyText(reportText(d, p.name, r.list.id), out, 'Report')) out.hidden = true;
     });
     const why = h('button', { class: 'btn btn-sm', 'data-sfx': '', id: 'pz-why-2' }, 'Why this works');
     why.addEventListener('click', () => { view = 'why'; render(); });
     return [
-      weekBlock(d),
+      chips,
+      weekBlock(d, r.list.id),
       h('div', { class: 'pz-scores' },
         h('div', { class: 'stat', 'data-score': 'pretest' }, score(r.pretest), h('span', {}, 'Pretest (Qualifier)')),
         h('div', { class: 'stat', 'data-score': 'latest' }, score(r.latest), h('span', {}, 'Latest Friday Test')),
         h('div', { class: 'stat' }, h('b', {}, String(r.counts.Mastered || 0)), h('span', {}, 'Mastered')),
         h('div', { class: 'stat' }, h('b', {}, String(r.streak)), h('span', {}, 'First-try streak'))),
-      h('div', { class: 'sub pz-listname' }, `${r.list.name}${r.list.sample ? ' (sample)' : ''} · ${r.rows.length} words · ` + ['Mastered', 'Almost', 'Learning', 'Focus', 'New'].map((s) => `${s} ${r.counts[s] || 0}`).join(' · ')),
+      h('div', { class: 'sub pz-listname', 'data-list': r.list.id }, `${r.list.name}${r.list.sample ? ' (sample)' : ''}${r.archived ? ' · a past week' : ''} · ${r.rows.length} words · ` + ['Mastered', 'Almost', 'Learning', 'Focus', 'New'].map((s) => `${s} ${r.counts[s] || 0}`).join(' · ')),
       h('div', { class: 'pz-table-wrap' }, table),
       h('div', { class: 'hud-label pz-sec' }, 'TEST HISTORY'),
       hist,

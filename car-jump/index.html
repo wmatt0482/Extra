@@ -887,6 +887,10 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 .pz-tabs { display: flex; width: 100%; margin-bottom: 8px; }
 .pz-tabs .seg-btn { flex: 1; min-height: 44px; white-space: normal; line-height: 1.1; padding: 0 6px; }
 #toasts { top: calc(var(--pad-t) + 58px); }
+.pz-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.pz-chips .chip { min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 2px solid var(--line); background: var(--ink-2); color: var(--muted); font: 800 12px/1 var(--font-body); }
+.pz-chips .chip.sm { padding: 8px 12px; }
+.pz-chips .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .pz-scores { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .pz-scores .stat b small { font-size: .6em; color: var(--muted); }
 .pz-listname { margin: 8px 0; font-size: 12px; color: var(--muted); font-weight: 700; }
