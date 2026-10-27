@@ -26,6 +26,10 @@ struct ResultsStepView: View {
                     legend
                 }
 
+                if let note = model.demoNote {
+                    DemoNoteLabel(text: note)
+                }
+
                 if let line = expectedLine {
                     Label(line, systemImage: "scope")
                         .font(.callout)

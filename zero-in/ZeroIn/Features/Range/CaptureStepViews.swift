@@ -46,6 +46,21 @@ struct PhotoStepView: View {
                 .buttonStyle(.bordered)
             }
             .font(.headline)
+
+            VStack(spacing: 4) {
+                Button {
+                    loadError = nil
+                    model.useSampleTarget()
+                } label: {
+                    Label("Use a sample target", systemImage: "target").frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .font(.subheadline.weight(.semibold))
+                .disabled(isLoading)
+                Text("Practice the flow on a printed-style target")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding()
         .fullScreenCover(isPresented: $showCamera) {
@@ -225,5 +240,19 @@ struct MarkStepView: View {
         if let message = model.detectionMessage {
             Text(message).font(.footnote).foregroundStyle(.secondary)
         }
+        if let note = model.demoNote {
+            DemoNoteLabel(text: note)
+        }
+    }
+}
+
+/// The `-demoCapture` caption: what auto-detect found on the sample target.
+struct DemoNoteLabel: View {
+    let text: String
+
+    var body: some View {
+        Label(text, systemImage: "wand.and.stars")
+            .font(.caption)
+            .foregroundStyle(.secondary)
     }
 }

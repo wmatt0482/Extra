@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # Boots an iPhone simulator, installs the Debug build of ZeroIn and captures one
-# screenshot per tab (dark mode, plus a light-mode Range shot) into ./screenshots.
+# screenshot per tab (dark mode, plus a light-mode Range shot) into ./screenshots,
+# then the capture flow on the built-in sample target at several steps.
 # Usage: bash tools/simulator_screenshots.sh <derivedDataPath>   (run from zero-in/)
 # The app is launched with -seedDemo so the screens have data, and -uiTab <tab>
-# to open each tab (see ZeroIn/App/LaunchOptions.swift).
+# to open each tab, plus -demoCapture <step> for the capture-flow shots
+# (see ZeroIn/App/LaunchOptions.swift).
 set -euo pipefail
 
 DERIVED="${1:-build}"
@@ -31,13 +33,19 @@ xcrun simctl status_bar "$UDID" override --time "9:41" --batteryLevel 100 --batt
 xcrun simctl install "$UDID" "$APP"
 mkdir -p "$OUT"
 
-capture() {  # capture <appearance> <tab> <file>
-  xcrun simctl ui "$UDID" appearance "$1"
-  xcrun simctl launch "$UDID" "$BUNDLE_ID" -seedDemo -uiTab "$2" >/dev/null
-  sleep 5
-  xcrun simctl io "$UDID" screenshot "$OUT/$3" >/dev/null
+capture() {  # capture <appearance> <tab> <file> [extra launch args...]
+  local appearance="$1" tab="$2" file="$3"
+  shift 3
+  # Extra args open the capture flow, which renders the sample target and runs
+  # Vision auto-detect, so give those launches a little longer.
+  local delay=5
+  if [[ $# -gt 0 ]]; then delay=7; fi
+  xcrun simctl ui "$UDID" appearance "$appearance"
+  xcrun simctl launch "$UDID" "$BUNDLE_ID" -seedDemo -uiTab "$tab" "$@" >/dev/null
+  sleep "$delay"
+  xcrun simctl io "$UDID" screenshot "$OUT/$file" >/dev/null
   xcrun simctl terminate "$UDID" "$BUNDLE_ID" || true
-  echo "captured $OUT/$3"
+  echo "captured $OUT/$file"
 }
 
 capture dark range 01-range.png
@@ -45,6 +53,10 @@ capture dark library 02-library.png
 capture dark ballistics 03-ballistics.png
 capture dark settings 04-settings.png
 capture light range 05-range-light.png
+capture dark range 06-capture-calibrate.png -demoCapture calibrate
+capture dark range 07-capture-holes.png -demoCapture holes
+capture dark range 08-capture-results.png -demoCapture results
+capture light range 09-capture-results-light.png -demoCapture results
 
 xcrun simctl shutdown "$UDID" || true
 ls -la "$OUT"

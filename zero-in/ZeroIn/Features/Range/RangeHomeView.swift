@@ -14,6 +14,9 @@ struct RangeHomeView: View {
     @State private var pickerSelection: RifleProfile?
     @State private var showNewSession = false
     @State private var createdSession: SightInSession?
+    /// `-demoCapture`: the session whose capture flow is shown on the sample target.
+    @State private var demoCaptureSession: SightInSession?
+    @State private var didStartDemoCapture = false
 
     private var activeProfile: RifleProfile? { profiles.first { $0.id.uuidString == activeProfileID } }
     private var distanceUnit: DistanceUnit { DistanceUnit(rawValue: distanceRaw) ?? .yards }
@@ -37,7 +40,11 @@ struct RangeHomeView: View {
                     NewSessionSheet(profile: profile) { session in createdSession = session }
                 }
             }
+            .sheet(item: $demoCaptureSession) { session in
+                GroupCaptureFlow(session: session, demoStep: LaunchOptions.demoCaptureStep)
+            }
         }
+        .task { await presentDemoCaptureIfRequested() }
     }
 
     // MARK: Content
@@ -144,6 +151,22 @@ struct RangeHomeView: View {
         guard let session = createdSession else { return }
         createdSession = nil
         path.append(session)
+    }
+
+    /// `-demoCapture <step>`: once per launch, after RootView's `-seedDemo`
+    /// task has run, open the capture flow for the active profile's newest
+    /// session (the seeded 100 yd one). Retries briefly while the seed lands.
+    @MainActor
+    private func presentDemoCaptureIfRequested() async {
+        guard LaunchOptions.demoCaptureStep != nil, !didStartDemoCapture else { return }
+        didStartDemoCapture = true
+        for _ in 0..<10 {
+            try? await Task.sleep(for: .milliseconds(500))
+            if let session = activeProfile?.sortedSessions.first {
+                demoCaptureSession = session
+                return
+            }
+        }
     }
 
     private func presentPicker() {

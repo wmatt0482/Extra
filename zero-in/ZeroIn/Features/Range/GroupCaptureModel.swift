@@ -59,6 +59,9 @@ final class GroupCaptureModel {
     var holes: [Hole] = []
     var isDetecting = false
     var detectionMessage: String?
+    /// Set only by `applyDemo(step:)`: what auto-detect found on the sample
+    /// target, shown on the Holes and Results steps (CI screenshots).
+    var demoNote: String?
 
     // After saving
     var savedRecord: ShotGroupRecord?
@@ -86,13 +89,24 @@ final class GroupCaptureModel {
         }
     }
 
-    func setPhoto(_ source: UIImage) {
-        image = Self.prepared(source)
+    /// `prepare: false` keeps the image exactly as given (it must already be
+    /// upright and at scale 1); used for the sample target, whose ground-truth
+    /// pixel positions must not be rescaled.
+    func setPhoto(_ source: UIImage, prepare: Bool = true) {
+        image = prepare ? Self.prepared(source) : source
         calibrationPoints = []
         poaPixel = nil
         holes = []
         detectionMessage = nil
+        demoNote = nil
         savedRecord = nil
+    }
+
+    /// Loads the synthetic practice target (`SampleTarget`) as the photo and
+    /// moves on to calibration, as if the shooter had taken that picture.
+    func useSampleTarget() {
+        setPhoto(SampleTarget.render(), prepare: false)
+        step = .calibrate
     }
 
     // MARK: Calibration
@@ -288,5 +302,54 @@ final class GroupCaptureModel {
 
     func clearSuggestions() {
         holes.removeAll { $0.isSuggested }
+    }
+
+    // MARK: Demo (`-demoCapture <step>`)
+
+    /// Loads the sample target and fills in its ground truth up to `name`
+    /// ("photo", "calibrate", "aim", "holes" or "results"), then shows that
+    /// step. Holes come from the real auto-detect; only if it finds nothing are
+    /// the sample's known hole positions used. Unknown names do nothing.
+    @MainActor
+    func applyDemo(step name: String) async {
+        let target: Step
+        switch name.lowercased() {
+        case "photo": target = .photo
+        case "calibrate", "scale": target = .calibrate
+        case "aim": target = .aim
+        case "holes": target = .holes
+        case "results": target = .results
+        default: return
+        }
+
+        setPhoto(SampleTarget.render(), prepare: false)
+        step = .photo
+        guard target.rawValue >= Step.calibrate.rawValue else { return }
+
+        // Two grid intersections 1.00 in apart.
+        setMethod(.knownDistance)
+        knownInches = SampleTarget.calibrationInches
+        calibrationPoints = SampleTarget.calibrationPixels
+        step = .calibrate
+        guard target.rawValue >= Step.aim.rawValue else { return }
+
+        poaPixel = SampleTarget.poaPixel
+        step = .aim
+        guard target.rawValue >= Step.holes.rawValue else { return }
+
+        await autoDetect()
+        let found = holes.count
+        if found == 0 {
+            holes = SampleTarget.shotPixels.map { Hole(pixel: $0, isSuggested: false) }
+            demoNote = "Auto-detect found 0 holes · using sample positions"
+        } else {
+            let tolerance = 0.15 * SampleTarget.pixelsPerInch
+            let matched = SampleTarget.shotPixels.filter { truth in
+                holes.contains { $0.pixel.distance(to: truth) <= tolerance }
+            }.count
+            demoNote = "Auto-detect found \(found) hole\(found == 1 ? "" : "s") · "
+                + "\(matched) of \(SampleTarget.shotPixels.count) match the sample"
+        }
+        step = target
     }
 }

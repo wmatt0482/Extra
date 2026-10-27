@@ -34,10 +34,18 @@ Simulator captures from CI (iPhone 16 Pro, Xcode 16.4), launched with `-seedDemo
 |---|---|---|---|
 | ![Range](docs/screenshots/ci/01-range.png) | ![Library](docs/screenshots/ci/02-library.png) | ![Ballistics](docs/screenshots/ci/03-ballistics.png) | ![Settings](docs/screenshots/ci/04-settings.png) |
 
+The capture flow on the built-in sample target, launched with `-seedDemo -uiTab range -demoCapture <step>`
+(calibration placed on the grid, point of aim on the bull, holes from the real Vision auto-detect; each screen notes
+how many holes auto-detect found):
+
+| Calibrate | Holes | Results | Results (light) |
+|---|---|---|---|
+| ![Calibrate](docs/screenshots/ci/06-capture-calibrate.png) | ![Holes](docs/screenshots/ci/07-capture-holes.png) | ![Results](docs/screenshots/ci/08-capture-results.png) | ![Results, light](docs/screenshots/ci/09-capture-results-light.png) |
+
 The `ZeroIn iOS` workflow refreshes these on every push that touches `zero-in/`
 (see [`.github/workflows/zeroin-ios.yml`](../.github/workflows/zeroin-ios.yml)).
 
-The sight-in capture flow needs a camera and a target photo, so it is not captured in CI. The contact sheet below
+The camera path of the capture flow cannot be exercised in CI. The contact sheet below
 is a **mockup** of the whole app rendered from the SwiftUI view code with real solver output (Tikka T3x, .308 Win,
 Federal Gold Medal Match 168 gr, 100 yd zero); the individual mockup frames are in
 [`docs/screenshots/`](docs/screenshots/).
@@ -51,7 +59,9 @@ Federal Gold Medal Match 168 gr, 100 yd zero); the individual mockup frames are 
    the bullet may print a little high or low at 25 yd and corrects toward that point, not toward the bullseye
    (`SPEC.md` "Sighting in at another distance").
 3. Fire a group (3 to 5 shots is plenty). Photograph the target square-on if you can; the four-corner calibration
-   corrects an off-angle photo.
+   corrects an off-angle photo. To learn the steps before a range trip, choose **Use a sample target** on the Photo
+   step: it loads a printed-style 12 × 18 in target with a five-shot group (UP 6 / RIGHT 3 clicks at 100 yd on a
+   1/4-MOA scope) that you calibrate and mark like a real photo.
 4. Calibrate, mark the point of aim, mark the holes. The review screen shows group size (extreme spread and mean
    radius in inches and MOA/MIL), the group center, and the correction.
 5. Dial the correction, shoot another group, repeat until the group is centered. Then **confirm your zero on
@@ -68,7 +78,7 @@ from 3 o'clock gives negative drift).
 ## Build and run
 
 > **Build status (v0.1):** builds and runs on the iOS 18 simulator under Xcode 16.4 via the `ZeroIn iOS` GitHub
-> Actions workflow, which also runs the 70 `ZeroInCore` unit tests. It has not yet been run on a physical
+> Actions workflow, which also runs the 73 `ZeroInCore` unit tests. It has not yet been run on a physical
 > iPhone, so the camera path of the sight-in flow is untested on hardware. The ballistics math was verified
 > numerically through its Python mirror (`tools/ballistics_reference.py`) against py-ballisticcalc, and the
 > catalog JSON through `tools/validate_catalog.py`.

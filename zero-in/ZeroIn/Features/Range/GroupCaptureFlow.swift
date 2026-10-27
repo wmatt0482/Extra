@@ -6,14 +6,18 @@ import ZeroInCore
 /// Multi-step sheet: photo → scale → point of aim → holes → results/save.
 struct GroupCaptureFlow: View {
     let session: SightInSession
+    /// `-demoCapture <step>` (CI screenshots): open on the sample target at that step.
+    let demoStep: String?
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var context
     @State private var model: GroupCaptureModel
     @State private var saveError: String?
+    @State private var didApplyDemo = false
 
-    init(session: SightInSession) {
+    init(session: SightInSession, demoStep: String? = nil) {
         self.session = session
+        self.demoStep = demoStep
         _model = State(initialValue: GroupCaptureModel(distanceYards: session.distanceYards,
                                                        expectedImpact: Self.expectedImpact(for: session),
                                                        scope: session.profile?.scope ?? ScopeSpec()))
@@ -58,6 +62,11 @@ struct GroupCaptureFlow: View {
             }
         }
         .interactiveDismissDisabled(model.image != nil && model.savedRecord == nil)
+        .task {
+            guard let demoStep, !didApplyDemo else { return }
+            didApplyDemo = true
+            await model.applyDemo(step: demoStep)
+        }
     }
 
     @ViewBuilder
