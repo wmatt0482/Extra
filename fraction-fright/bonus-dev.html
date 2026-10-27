@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Critter Stampede Harness</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; color: #f4f1ff; overflow: hidden; font: 12px/1.35 system-ui, sans-serif; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; overscroll-behavior: none; }
+  #stage { position: fixed; inset: 0; touch-action: none; }
+  #log { position: fixed; z-index: 4; right: max(6px, env(safe-area-inset-right)); top: max(6px, env(safe-area-inset-top)); max-width: 44vw; max-height: 40vh; overflow: hidden; background: rgba(20,18,30,.78); border-radius: 8px; padding: 6px 8px; font: 11px/1.3 ui-monospace, Menlo, monospace; white-space: pre-wrap; pointer-events: none; }
+  #side { position: fixed; z-index: 6; left: max(10px, env(safe-area-inset-left)); bottom: max(10px, env(safe-area-inset-bottom)); display: flex; gap: 8px; }
+  #side button { font: 800 13px system-ui; padding: 8px 12px; border-radius: 8px; border: 0; background: #7cff4d; color: #0d2a00; }
+  body.noui #log, body.noui #side { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<pre id="log"></pre>
+<div id="side"><button id="restartBtn">Restart</button><button id="stopBtn">Stop</button></div>
+<script type="module">
+// Bonus-round playground. URL params: seed, count (critters, default 30), goldAt (0..1), rm=1 (reduced motion),
+// sim (speed), ui=0 (no overlays), grenade, fence, sound=0. Hold the finger / mouse to spray; r restarts.
+import { createBonus } from './src/game/bonus.js';
+const q = new URLSearchParams(location.search);
+if (q.get('ui') === '0') document.body.classList.add('noui');
+const canvas = document.getElementById('c');
+const log = document.getElementById('log');
+const lines = [];
+const events = [];
+function say(s) { lines.push(s); while (lines.length > 14) lines.shift(); log.textContent = lines.join('\n'); }
+const game = createBonus(canvas, {
+  reducedMotion: q.get('rm') === '1',
+  simSpeed: Number(q.get('sim')) || 1,
+  onEvent: (e) => {
+    events.push(e);
+    if (events.length > 400) events.shift();
+    if (e.type === 'sound') return;
+    if (e.type === 'cure') say(`cure ${e.kind}${e.gold ? ' GOLD' : ''} +$${e.cash} ×${e.combo} (${e.cured}/${e.total})`);
+    else if (e.type === 'bonusEnd') say(`bonusEnd cured ${e.cured}/${e.total} $${e.cash}${e.gold ? ' gold' : ''} best ×${e.bestCombo}${e.stopped ? ' (stopped)' : ''}`);
+    else say(e.type);
+  },
+});
+function start() {
+  events.length = 0;
+  game.start({
+    seed: Number(q.get('seed')) || 7,
+    look: { goo: q.get('goo') || '#a6ff2e', fence: q.get('fence') || 'picket', fenceColor: q.get('fence') === 'iron' ? '#26252b' : '#b7b0a1', grenade: q.get('grenade') || 'slime', pumpkins: 5 },
+    stampede: { count: Number(q.get('count')) || 30, goldAt: q.get('goldAt') != null ? Number(q.get('goldAt')) : 0.6 },
+    street: { id: 'maple', name: 'Maple Street' },
+  });
+}
+const stage = document.getElementById('stage');
+const xy = (e) => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+stage.addEventListener('pointerdown', (e) => { stage.setPointerCapture(e.pointerId); game.aim(...xy(e)); game.fire(true); });
+stage.addEventListener('pointermove', (e) => { game.aim(...xy(e)); });
+stage.addEventListener('pointerup', () => game.fire(false));
+stage.addEventListener('pointercancel', () => game.fire(false));
+window.addEventListener('keydown', (e) => { if (e.key === 'r') start(); });
+document.getElementById('restartBtn').addEventListener('click', start);
+document.getElementById('stopBtn').addEventListener('click', () => game.stop());
+start();
+window.__bonus = { game, events, restart: start };
+</script>
+</body>
+</html>

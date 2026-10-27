@@ -38,6 +38,14 @@ number three ways (symbol, words, unit sum) over its three hits. The combo, the 
 finale are juice; big effects still only follow success (technique 13). Throws at a zombie already out of the fog are
 kept apart as `seen` and never count toward a secure street (technique 2).
 
+## The bonus round (1.2, SPEC §14)
+
+The Critter Stampede is pure arcade, on purpose: a short reward the math earns, never a loop a child can grind. It
+only follows a wave, and only a wave with ≥ 80 % hits (or a cured boss), so the big effects still belong to success
+(technique 13; Kao et al. 2024). It is ≈ 20 s against ≈ 2–3 minutes of fraction practice a wave, it never changes the
+aim, the zone or the records, and it has no timer, countdown, ammo or energy on screen (the kid rules in SPEC §0): the
+round ends when the stampede has passed. Parents can turn it off (Options → Bonus round).
+
 ## What comes next (SPEC §11)
 
 Twin Alley (compare and equivalent, ≥ 30 % incongruent pairs: Braithwaite & Siegler 2018), Sum Street (estimate before

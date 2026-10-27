@@ -71,6 +71,9 @@ button { font: inherit; color: inherit; border: 0; background: none; padding: 0;
 button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 #app { position: fixed; inset: 0; overflow: hidden; }
 #stage { position: absolute; inset: 0; touch-action: none; }
+#bonus-stage { position: absolute; inset: 0; touch-action: none; z-index: 2; }
+#bonus-stage[hidden] { display: none; }
+.in-bonus #hud .hud-left, .in-bonus #hud .hud-mid, .in-bonus #aim-help { visibility: hidden; }
 #game { display: block; width: 100%; height: 100%; touch-action: none; }
 
 /* ---------- menu backdrop: the yard at dusk (src/ui/title.js draws the town into #yard-scene) ---------- */
@@ -567,7 +570,7 @@ body { font-weight: 600; letter-spacing: .01em; }
 </head>
 <body>
 <div id="app">
-  <div id="stage"><canvas id="game" aria-label="Fraction Fright: the road is a number line"></canvas></div>
+  <div id="stage"><canvas id="game" aria-label="Fraction Fright: the road is a number line"></canvas><canvas id="bonus-stage" aria-label="Bonus round: the Critter Stampede" hidden></canvas></div>
 
   <!-- the yard at dusk behind the menus; src/ui/title.js draws the street, the neighbours, the fence and pumpkins -->
   <div id="backdrop" aria-hidden="true"><svg id="yard-scene" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice"></svg></div>

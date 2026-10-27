@@ -23,6 +23,7 @@ export function createResults(app) {
       r.bank.neighboursAfter > r.bank.neighboursBefore ? h('span', { class: 'callout gold', id: 'res-neighbour' }, 'New neighbour on the block') : null,
       r.boss ? h('span', { class: 'callout pumpkin', id: 'res-boss' }, `${(r.items.find((x) => x.kind === 'boss') || {}).name || 'The boss'} cured!`) : null,
       r.twins ? h('span', { class: 'callout', id: 'res-twins' }, r.twins === 1 ? 'Twins! One throw, two cures' : `Twins ×${r.twins}`) : null,
+      r.bonus ? h('span', { class: 'callout gold', id: 'res-bonus', 'data-cured': String(r.bonus.cured), 'data-gold': String(r.bonus.gold) }, `Critter Stampede: ${r.bonus.cured} cured${r.bonus.gold ? ' · the golden one!' : ''}`) : null,
       r.labXp ? h('span', { class: 'callout' }, `+${r.labXp} XP`) : null].filter(Boolean));
     stats.replaceChildren(
       h('div', { class: 'stat good', id: 'res-cured', 'data-n': String(r.cash.cured) }, h('b', {}, String(r.cash.cured)), h('span', {}, 'Cured')),

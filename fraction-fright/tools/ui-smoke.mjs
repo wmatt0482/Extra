@@ -124,11 +124,20 @@ async function clearSpot(page, target, err) {
 const waitPhase = (page, phase = 'wave', timeout = 8000) => page.waitForFunction((p) => { const g = window.__fractionFright; const s = g.game && g.game.getState(); return g.screen !== 'wave' || (s && s.phase === p && s.target); }, phase, { timeout });
 async function throwAt(page, x) { await waitPhase(page); return J(page, (v) => window.__fractionFright.throwAt(Math.max(0, Math.min(1, v))), x); }
 /** cure every zombie left with a dead-on throw, until the results show */
-async function playOut(page, timeout = 30000) {
+/** v1.2: the Critter Stampede (SPEC §14): spray at every zombie critter until the stampede has passed (sim stepped). */
+async function playBonus(page) {
+  for (let i = 0; i < 600; i++) {
+    const s = await J(page, () => { const b = window.__fractionFright.bonus; const st = b && b.getState(); return st ? { phase: st.phase, c: st.critters.filter((c) => c.zombie).map((c) => [c.x, c.y])[0] || null, screen: window.__fractionFright.screen } : null; });
+    if (!s || s.phase === 'done' || s.screen !== 'bonus') return;
+    await J(page, (c) => { const b = window.__fractionFright.bonus; if (c) { b.aim(c[0], c[1]); b.fire(true); } else b.fire(false); b.debugStep(6); }, s.c);
+  }
+}
+async function playOut(page, timeout = 30000, untilBonus = false) {
   const end = Date.now() + timeout;
   while (Date.now() < end) {
     const s = await F(page);
     if (s.screen === 'results') return true;
+    if (s.screen === 'bonus') { if (untilBonus) return 'bonus'; await playBonus(page); continue; }
     if (s.screen === 'wave' && s.phase === 'wave' && s.target) await J(page, (v) => window.__fractionFright.throwAt(v), s.target.target);
     await page.waitForTimeout(60);
   }
@@ -330,7 +339,7 @@ async function runLayout(browser, layout) {
   check(r1.title === 'Wave 1: fence held.' && r1.cured === '8' && Number(r1.acc) > 50, `results: "${r1.title}", ${r1.cured} neighbours cured, accuracy ${r1.acc} %`);
   const p1 = await payCheck(page, 'wave 1');
   check(p1.rows.find((r) => r.id === 'effort').amount === 40, 'a near then a cure on the same zombie pays the close-then-cured bonus ($40)');
-  check(p1.rows.map((r) => r.id).join() === 'cure,bull,effort,sharp,combo,twins,boss', `the rows: ${p1.rows.map((r) => r.id).join(', ')}`);
+  check(/^cure,bull,effort,sharp,combo,twins,boss(,bonus)?$/.test(p1.rows.map((r) => r.id).join()), `the rows: ${p1.rows.map((r) => r.id).join(', ')}`);
   check(p1.rows.find((r) => r.id === 'sharp').amount >= 50 && p1.rows.find((r) => r.id === 'combo').amount >= 30, `sharpshooter ($${p1.rows.find((r) => r.id === 'sharp').amount}) and combo ($${p1.rows.find((r) => r.id === 'combo').amount}) paid`);
   check(await J(page, () => document.querySelector('#res-combo').dataset.n) >= '2', 'results show the best combo');
   check(await J(page, () => document.querySelector('#res-counter').textContent.includes('Neighbours cured: 8')), 'the Cure Counter shows the total');
@@ -375,11 +384,27 @@ async function runLayout(browser, layout) {
   const big = await J(page, () => ({ big: window.__fractionFright.run.big, z: window.__fractionFright.game.getState().zombies.length, wave: document.querySelector('#hud-wave').textContent, cards: document.querySelectorAll('#hud-stack .mini-card').length }));
   check(big.big && big.z === 4 && /big wave/i.test(big.wave) && big.cards === 3, `wave 3 is the big wave: 4 zombies on the road at once, 3 small cards ("${big.wave}")`);
   await shot(page, layout, '12-big-wave', 0);
+  // v1.2: every throw on the big wave was a bull → the Critter Stampede (SPEC §14) before the results
+  const seenBonus = (await playOut(page, 30000, true)) === 'bonus';
+  check(seenBonus, 'wave 3: ≥ 80 % hits → the bonus round opens (screen "bonus")');
+  if (seenBonus) {
+    const b0 = await J(page, () => { const b = window.__fractionFright.bonus; const st = b.getState(); return { hud: document.querySelector('#hud').hidden, canvas: !document.querySelector('#bonus-stage').hidden, mid: getComputedStyle(document.querySelector('#hud .hud-mid')).visibility, phase: st.phase, total: st.total }; });
+    check(!b0.hud && b0.canvas && b0.mid === 'hidden' && ['intro', 'run'].includes(b0.phase) && b0.total === 24, `bonus: its canvas on, the fraction HUD hidden, phase ${b0.phase}, ${b0.total} critters`);
+    await shot(page, layout, '12b-bonus', 400);
+  }
   check(await playOut(page), 'wave 3 played out');
-  await payCheck(page, 'wave 3');
+  const r3 = await J(page, () => window.__fractionFright.lastResult);
+  check(!!r3.bonus && r3.bonus.cured >= 1 && r3.bonus.cash === 15 * r3.bonus.cured + (r3.bonus.gold ? 150 : 0), `bonus: ${r3.bonus && r3.bonus.cured} of ${r3.bonus && r3.bonus.total} critters cured, $${r3.bonus && r3.bonus.cash}${r3.bonus && r3.bonus.gold ? ', the golden one' : ''}`);
+  const p3 = await payCheck(page, 'wave 3');
+  check(p3.rows.some((r) => r.id === 'bonus' && r3.bonus && r.amount === r3.bonus.cash) && !!(await J(page, () => document.querySelector('#res-bonus'))), 'the Bonus round row pays the stampede and the results call it out');
+  await shot(page, layout, '12c-bonus-results', 0);
+  // Options → Bonus round off: a perfect wave 4 goes straight to the results
+  await J(page, () => window.__fractionFright.app.setSetting('bonus', false));
   await page.click('#res-next');
   await waitPhase(page);
   check(await playOut(page), 'wave 4 played out');
+  check(!(await J(page, () => window.__fractionFright.lastResult.bonus)), 'bonus round off (Options): no stampede after wave 4');
+  await J(page, () => window.__fractionFright.app.setSetting('bonus', true));
 
   // ---------- wave 5: the final wave, ×2, a pumpkin, the street cleared ----------
   await page.click('#res-next');
@@ -410,7 +435,7 @@ async function runLayout(browser, layout) {
   const r5 = await J(page, () => ({ title: document.querySelector('#res-title').textContent, pumpkin: !!document.querySelector('#res-pumpkin'), last: window.__fractionFright.lastResult, save: window.__fractionFright.save }));
   const p5 = await payCheck(page, 'final wave');
   const fin = p5.rows.find((r) => r.id === 'final');
-  check(fin && fin.amount === p5.rows.filter((r) => r.id !== 'final').reduce((x, r) => x + r.amount, 0), `the final wave pays ×2 (a final row of $${fin && fin.amount})`);
+  check(fin && fin.amount === p5.rows.filter((r) => r.id !== 'final' && r.id !== 'bonus').reduce((x, r) => x + r.amount, 0), `the final wave pays ×2 (a final row of $${fin && fin.amount}; the bonus round is on top)`);
   check(r5.title === 'Maple Street: cleared.' && r5.pumpkin && r5.save.pumpkins === 1 && r5.save.streets.maple.cleared === 1 && r5.save.streets.maple.wave === 1, `"${r5.title}", a pumpkin planted, the street starts over at wave 1`);
   check(r5.save.cures >= 40 && r5.last.bank.neighboursAfter >= 4, `the Cure Counter: ${r5.save.cures} cured → ${r5.last.bank.neighboursAfter} neighbours on the title's street`);
   check(p5.rows.find((r) => r.id === 'boss').amount === 300 && r5.last.boss && !!(await J(page, () => document.querySelector('#res-boss'))), 'the boss row pays $300 and the results call it out');
@@ -470,7 +495,7 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '16-pz-fractions');
   await audit(page, layout.insets, 'Parent Zone (Fractions)');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.1\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
+  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.2\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
   await page.click('.pz-tabs [data-tab="report"]');
   const rep = await J(page, () => ({ big: document.querySelector('#report-week .pw-big').textContent, small: document.querySelector('#report-week .pw-small').textContent, pct: document.querySelector('#report-week').dataset.pct,
     bar: document.querySelector('#report-week .pw-bar i').style.width, streets: document.querySelectorAll('#report-streets li').length }));

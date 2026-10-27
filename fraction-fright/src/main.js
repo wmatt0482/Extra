@@ -42,7 +42,7 @@ import { createResults } from './ui/results.js';
 import { createYard } from './ui/yard.js';
 import { createParentZone } from './ui/parentZone.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const GAME = 'fraction-fright';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'fractionFright.resumePlayer';   // sessionStorage: the player to come back to after an update reload
@@ -77,6 +77,14 @@ async function loadEngine() {
   }
 }
 
+/** The bonus round module (SPEC §14): optional, so a broken or missing module only means no bonus. */
+async function loadBonus() {
+  try {
+    const m = await import('./game/bonus.js');
+    return typeof m.createBonus === 'function' ? m : null;
+  } catch (e) { console.warn('[FractionFright] bonus round (src/game/bonus.js) failed to load: no bonus rounds.', e); return null; }
+}
+
 async function boot() {
   hydrateIcons();
   const settings = loadSettings();
@@ -97,7 +105,10 @@ async function boot() {
   let skills = loadSkills(null);          // the current player's fraction skills (src/skills/store.js)
   const skillsCache = new Map();          // other players' skills while the Parent Zone shows them
   const canvas = $('#game');
+  const bonusCanvas = $('#bonus-stage');
   const engineMod = await loadEngine();
+  const bonusMod = await loadBonus();
+  let bonus = null, bonusPending = null;   // the Critter Stampede (SPEC §14): the instance, and the wave result it follows
   let game = null, run = null, hudRaf = 0, screen = 'players', paused = false, coaching = false, lastResult = null;
   const toastsEl = $('#toasts');
 
@@ -258,11 +269,14 @@ async function boot() {
     for (const el of $$('.screen')) el.hidden = el.dataset.screen !== name;
     for (const [k, s] of Object.entries(screens)) if (k !== name && s.hide) s.hide();
     screen = name;
-    const inWave = name === 'wave';
-    document.documentElement.classList.toggle('in-wave', inWave);
-    if (inWave || name === 'results') toastsEl.replaceChildren();
-    $('#hud').hidden = !inWave;
-    $('#backdrop').hidden = inWave || name === 'results' || name === 'lab';
+    const inWave = name === 'wave', inBonus = name === 'bonus';
+    document.documentElement.classList.toggle('in-wave', inWave || inBonus);
+    document.documentElement.classList.toggle('in-bonus', inBonus);
+    if (inWave || inBonus || name === 'results') toastsEl.replaceChildren();
+    $('#hud').hidden = !(inWave || inBonus);
+    bonusCanvas.hidden = !inBonus;
+    if (!inBonus && bonus) { try { bonus.stop(); } catch (_) { /* ignore */ } }
+    $('#backdrop').hidden = inWave || inBonus || name === 'results' || name === 'lab';
     if (!inWave) { hud.clearBanner(); hideCoach(); }
     if (!inWave && name !== 'results' && name !== 'lab') drawBackdrop();
     if (name === 'title') refreshTitle();
@@ -288,6 +302,7 @@ async function boot() {
     if (key === 'reducedMotion') {
       document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);
       if (!run) { try { game && game.destroy(); } catch (_) { /* ignore */ } makeGame(); }
+      if (bonus && screen !== 'bonus') { try { bonus.destroy(); } catch (_) { /* ignore */ } bonus = null; }
     }
     renderPauseToggles();
   }
@@ -335,12 +350,13 @@ async function boot() {
     go('wave');
     hud.reset(street.name, number, { big: w.big, final: w.final });
     paused = false;
+    run.look = { goo: goo.color, fence: fence.id, fenceColor: fence.color, pumpkins: Math.max(3, Math.min(12, 3 + save.pumpkins)), sky: street.sky, landmark: street.look.landmark, hats: street.look.hats,
+      grenade: grenade.id, dog: !!save.yard.dog, lantern: !!save.yard.lantern };   // the bonus round plays in the same yard
     try {
       game.start({
         road: roadFor(tier),
         wave: { street: { id: streetId, name: street.name, weather: street.look.weather }, number, zombies: w.items, big: w.big, final: w.final, live: w.live },
-        look: { goo: goo.color, fence: fence.id, fenceColor: fence.color, pumpkins: Math.max(3, Math.min(12, 3 + save.pumpkins)), sky: street.sky, landmark: street.look.landmark, hats: street.look.hats,
-          grenade: grenade.id, dog: !!save.yard.dog, lantern: !!save.yard.lantern },
+        look: { ...run.look },
         stats: { radius: toleranceFor(state), power: 1 },
         seed,
       });
@@ -490,13 +506,63 @@ async function boot() {
     const result = lastResult = { street: r.street, streetName: r.streetName, number: r.number, stopped, cleared: bank.cleared, cash, bank, accuracy: accuracyOf(r.throws), items, opened: r.opened, throws: r.throws.length,
       bestCombo: Math.max(r.bestCombo, cash.bestCombo || 0), boss: !!(cash.boss || r.bossCured), twins: cash.twins || 0, sharps: cash.sharps || 0 };
     run = null;
+    // the bonus round (SPEC §14.1): after a wave that was not stopped, with ≥ 80 % hits or the boss cured, when it is on
+    const hits = r.throws.filter((t) => isHit(t.result)).length;
+    const earned = !stopped && settings.bonus !== false && !!bonusMod && r.throws.length > 0 && (hits / r.throws.length >= 0.8 || result.boss);
+    const lookNow = { ...r.look };
     setTimeout(() => {
-      go('results', result);
-      if (cash.total) Audio.cash();
-      if (bank.cleared || bank.neighboursAfter > bank.neighboursBefore) setTimeout(() => Audio.fanfare(), 400);
-      for (const t of result.opened) toast(`${(Object.values(STREET_BY_ID).find((s) => s.tier === t) || {}).name} is open!`);
+      if (earned && startBonus(result, lookNow)) return;
+      showResults(result);
     }, stopped ? 0 : 700);
   }
+  function showResults(result) {
+    go('results', result);
+    if (result.cash.total) Audio.cash();
+    if (result.bank.cleared || result.bank.neighboursAfter > result.bank.neighboursBefore) setTimeout(() => Audio.fanfare(), 400);
+    for (const t of result.opened) toast(`${(Object.values(STREET_BY_ID).find((s) => s.tier === t) || {}).name} is open!`);
+  }
+
+  // ---------- the bonus round: the Critter Stampede (SPEC §14) ----------
+  function startBonus(result, look) {
+    if (!bonusMod) return false;
+    try {
+      if (!bonus) bonus = bonusMod.createBonus(bonusCanvas, { onEvent: onBonusEvent, reducedMotion: settings.reducedMotion });
+      bonusPending = result;
+      go('bonus');
+      bonus.start({ look, seed: hashString(`${currentPlayerId}:bonus:${save.waves}`), stampede: { count: 24, goldAt: 0.6 }, street: { id: result.street, name: result.streetName } });
+      return true;
+    } catch (e) {
+      console.error('[FractionFright] bonus round failed to start', e);
+      bonusPending = null;
+      return false;
+    }
+  }
+  function onBonusEvent(evt) {
+    if (!evt) return;
+    if (evt.type === 'sound') { Sfx.play(evt.name, evt.vol); return; }
+    if (evt.type === 'bonusEnd') finishBonus(evt);
+  }
+  function finishBonus(evt) {
+    const result = bonusPending;
+    bonusPending = null;
+    if (!result) return;
+    const cash = Math.max(0, Math.floor(Number(evt.cash) || 0)), cured = Math.max(0, Math.floor(Number(evt.cured) || 0));
+    save.cash += cash;
+    save.records.lifetimeCash = (save.records.lifetimeCash || 0) + cash;
+    const b = save.bonus || (save.bonus = { rounds: 0, cured: 0, gold: 0 });
+    b.rounds += 1; b.cured += cured; if (evt.gold) b.gold += 1;
+    result.bonus = { cured, total: Math.max(0, Math.floor(Number(evt.total) || 0)), cash, gold: !!evt.gold, bestCombo: Number(evt.bestCombo) || 0, stopped: !!evt.stopped };
+    result.cash.rows.push({ id: 'bonus', label: 'Bonus round', count: cured, amount: cash });
+    result.cash.total += cash;
+    app.persist();
+    refreshCash();
+    if (screen === 'bonus') setTimeout(() => showResults(result), 250); else showResults(result);
+  }
+  // the finger on the bonus stage: down = aim + spray, move = aim, up = stop spraying
+  const bonusAt = (e) => { const r = bonusCanvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  bonusCanvas.addEventListener('pointerdown', (e) => { if (!bonus || screen !== 'bonus') return; try { bonusCanvas.setPointerCapture(e.pointerId); } catch (_) { /* ignore */ } const [x, y] = bonusAt(e); try { bonus.aim(x, y); bonus.fire(true); } catch (_) { /* ignore */ } });
+  bonusCanvas.addEventListener('pointermove', (e) => { if (!bonus || screen !== 'bonus') return; const [x, y] = bonusAt(e); try { bonus.aim(x, y); } catch (_) { /* ignore */ } });
+  for (const ev of ['pointerup', 'pointercancel']) bonusCanvas.addEventListener(ev, () => { if (bonus) try { bonus.fire(false); } catch (_) { /* ignore */ } });
   /** Stop the wave: the engine sends waveEnd { stopped: true } (or, if it does not, the app ends it from what it has). */
   function stopWave() {
     if (!run || run.ended) return;
@@ -507,6 +573,7 @@ async function boot() {
 
   // ---------- pause ----------
   function pause() {
+    if (screen === 'bonus' && bonus) { try { bonus.stop(); } catch (_) { /* ignore */ } return; }   // the bonus: a tap on pause ends it with what was cured
     if (!run || run.ended || paused || coaching) return;
     paused = true;
     try { game.pause(); } catch (_) { /* ignore */ }
@@ -612,6 +679,7 @@ async function boot() {
   window.__fractionFright = {
     app, hud, pz, sync, lab, results, tts,
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get screen() { return screen; },
+    get bonus() { return bonus; }, get bonusMod() { return bonusMod; },
     get skills() { return skills; }, get save() { return save; }, get paused() { return paused; }, get coaching() { return coaching; },
     throwAt(x01) { if (!canAim()) return false; try { game.setAim(x01); } catch (_) { return false; } return throwNow(); },
     focus,

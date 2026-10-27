@@ -30,7 +30,7 @@ export function defaultSave() {
     play: {},                 // 'YYYY-MM-DD' -> { waves, cures } (the last 14 days)
   };
 }
-export const defaultSettings = () => ({ sound: true, music: true, reducedMotion: false });
+export const defaultSettings = () => ({ sound: true, music: true, reducedMotion: false, bonus: true });   // bonus: the Critter Stampede (SPEC §14)
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const int0 = (v) => Math.max(0, Math.floor(num(v)));

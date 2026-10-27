@@ -238,3 +238,88 @@ reached/knock, stop()).
   chatter words in the kid-rule audit; engine-smoke covers columns, fog, multi-live resolution, twins, boss, combo,
   grenade types, finale; VERSION 1.1.0, README, docs/LEARNING-DESIGN.md (the fog as delayed feedback; seen throws
   outside the secure rule), the Why page's Fraction Fright section (one line on the horde).
+
+## 14. v1.2 "Critter Stampede" — the bonus round (Oct 27 2026)
+Matt: "a bonus round where you can basically machine gun zombie animals or something as a super fun reward."
+A short, pure-arcade reward that the math earns. Kid rules hold: no kill / die / dead, no blood, no visible timer or
+countdown, no ammo or energy gauge, no pressure text. The round ends when the stampede has passed.
+
+### 14.1 When
+After a wave that was not stopped early, when the wave's hit rate was ≥ 80 % (the crate rule), and always after the
+final wave when the boss was cured. Parents → Options has "Bonus round: On / Off" (on by default; per player, in the
+save's settings). The bonus plays between the engine's waveEnd and the Results screen; its cash is a separate row.
+
+### 14.2 What (src/game/bonus.js, the bonus agent; its own canvas `#bonus-stage` above the game canvas)
+`createBonus(canvas, { onEvent, reducedMotion, simSpeed })` → `{ start(cfg), aim(x, y), fire(on), stop(), destroy(),
+getState(), debugStep(n) }`.
+- start({ look: { goo, fence, fenceColor, sky, grenade, kid }, seed, stampede: { count (default 30), goldAt (0.6) },
+  street: { id, name } }): the same yard at night (reuse render.js: backdrop, fence, kid, particles, spriteText),
+  an intro banner "BONUS ROUND" / "CRITTER STAMPEDE!" (1.2 s), then the stampede: critters run across the yard
+  between the road and the fence and along the lane behind the road, left→right and right→left, bats and crows in
+  arcs through the air; 2–5 on screen at once, the whole herd in ≈ 20 s; one **golden critter** (goldAt = share of
+  the herd) worth more; then the outro "STAMPEDE OVER" with the tally (1.6 s), `bonusEnd`.
+- Critters (procedural, 6 kinds, zombie look = green-grey with one glowing eye and a limp; cured look = natural
+  colours, a little party hat, runs off happily): squirrel, raccoon, bunny, chicken, bat, crow.
+- The **Slime Sprayer**: `aim(x, y)` in css px (the finger), `fire(true)` while the finger is down: a stream of goo
+  pellets from the kid's cannon toward the aim point, ≈ 12 pellets/s, slight spread, muzzle pulse, the cannon tracks
+  the aim; `fire(false)` on release. A pellet that touches a zombie critter cures it: a pop, a small goo burst, the
+  critter flips to its cured look and scampers off (it never stops the stampede); misses leave small splats that fade.
+  Cash: $15 a cure, the golden critter $150; getState().combo = cures without a stray pellet in between (cosmetic:
+  "×5" popups from ×3; no cash). Big effects only on success: pops, confetti on the golden one, a small shake there.
+- Events: `bonusStart`, `cure { kind, gold, cash, combo, cured, total }`, `bonusEnd { cured, total, cash, gold (bool),
+  bestCombo, durationSec, stopped }`, `sound { name, vol }` with names spray (looped while firing: emit `sprayOn` /
+  `sprayOff` instead), pop, gold, stampede, bonusEnd, bonusStart.
+- getState(): { phase: 'idle'|'intro'|'run'|'outro'|'done', cured, total, passed, cash, gold, combo, bestCombo,
+  firing, aim: { x, y } | null, timeSec, critters: [{ kind, x, y, zombie }] }.
+- reducedMotion: fewer particles, no shake. Perf ≤ 8 ms a frame on the test box. Portrait and landscape.
+- Harness `bonus-dev.html?seed=&count=&rm=1&sim=` and `tools/bonus-smoke.mjs`: the phases, a cure by a pellet,
+  the golden critter, bonusEnd's tally and cash (15 × cures + 150 × gold), stop(), reduced motion, perf, portrait.
+
+### 14.3 App
+main.js: after waveEnd (not stopped, bonus on, hit rate ≥ 80 % or the boss cured) → `go('bonus')`: the bonus canvas
+shows, pointerdown/move = aim + fire(true), pointerup = fire(false); on bonusEnd the cash is banked (save.cash +=
+cash; save.bonus = { rounds, cured, gold }), the pending results gain `bonus { cured, total, cash, gold }`, a cash row
+"Bonus round" (the rows still add up: the wave total + the bonus), then `go('results')`. The Results screen shows a
+callout "Critter Stampede: N cured" (and "the golden one!"), the row, and the total. HUD: the bonus draws its own
+banner and tally; the fraction HUD is hidden. Pause: a tap on the pause button stops the bonus (stop() → bonusEnd with
+what was cured). sfx.js: spray loop (sprayOn/sprayOff), pop, gold, stampede, bonusStart/bonusEnd. Parent Zone:
+the Bonus round toggle under Options. Pings: the bonus counts inside the wave ping (no new kind). Docs: README,
+LEARNING-DESIGN (a reward earned by accuracy, short, success-dependent juice; not a loop a child can grind:
+it only follows a wave), SPEC; VERSION 1.2.0; ui-smoke: the mock engine wave with every throw a bull → the bonus
+opens, a scripted spray cures critters, the results row adds up, the Options toggle off → no bonus.
+
+## 15. v1.3 "Blast" — zombies get blasted, with a Gentle mode (Oct 27 2026)
+Matt: "The curing thing is less satisfying than killing zombies." The cure was our reading of the kid rules, not a
+rule; the rules that stay: no blood, no bones, no gore, never the words kill / die / dead / death on screen. Cartoon
+destruction in green goo (the Plants-vs-Zombies line) is the default; **Gentle mode** (Parents → Options, this device)
+brings the cure back.
+
+### 15.1 Blast (the default; `look.gentle: false`)
+- **Zombie**: a hit **blasts it apart**: a fat squelch + a low thump, the body pops (0.12 s squash then burst), its
+  hat, both boots, both arms and the head fly off as separate cartoon parts with spin and gravity, bounce once on the
+  lane and fade; a shower of goo blobs and a goo ring; the torso lands in a heap and **melts into a steaming puddle**
+  (1.2 s, wisps) that stays on the lane for the wave (at most 8 puddles, oldest fades). Screen shake (0.5; none with
+  reducedMotion), a flash on a bull. The **boss**: each hit knocks off a part (hat, then an arm, then the sash) with
+  the dizzy wobble; the third hit is the full blast at 1.6× with a longer shake and a bigger puddle. Twins blast
+  together. The **finale**: the lane is a goo lake with hats floating in it; fireworks; the kid cheers (no
+  neighbours line-up). Sounds: `blast` (replaces `cure`), `blastBig` (the boss / a bull), `melt`, `part` (a part
+  landing). Words on screen: "ZAPPED!", "SPLAT!", "BLASTED!" — never kill / die / dead / death.
+- **Critters** (the bonus): a hit **pops** them into a goo burst plus a puff of fur or feathers (kind-coloured),
+  a cartoon "POP!" ring, the part that is left (a bunny ear, a chicken comb, a bat wing) spins off; no party hat, no
+  cured critter running away. The golden one bursts into gold confetti. Sounds: `pop` as now, `poof`.
+- Engine events keep their names (`cured`, `cure` in the bonus, cash rows unchanged): the app's **verb** changes the
+  words: Blast = "Zombies zapped", "zapped" / "blasted", "Critter Stampede: N popped"; Gentle = today's "cured".
+  `look.gentle` on `start()` of both the engine and the bonus picks the animations; the engine's `getState()` echoes
+  `gentle`.
+
+### 15.2 Gentle mode (`look.gentle: true`)
+Today's cure: the launch, "Thanks!", the neighbour walks home, the finale line-up, the party hats; the Cure Counter
+words. Parents → Options → "Gentle mode" (off by default; this device's setting like reduced motion), with the sub
+"Zombies are cured and walk home instead of being blasted".
+
+### 15.3 App
+settings.gentle (default false); `look.gentle` passed to the engine and the bonus; `app.verb` → the title's counter
+("ZAPPED 37" / "CURED 37"), the results ("8 zapped", "Zombies zapped: 47", "Critter Stampede: 24 popped"), the cash
+row labels ("Zombies zapped" / "Neighbours cured"), the coach card and the Lab's last line ("the zombie gets
+blasted" / "turns back into a neighbour"); the Why page and the README say both modes exist and what the default
+is; the kid-rule audit (ui-smoke BANNED) still passes in both modes; engine-smoke / bonus-smoke run both modes.

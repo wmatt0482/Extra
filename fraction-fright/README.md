@@ -13,6 +13,15 @@ yard basics, the Cure Counter, the Parent Zone with the weekly %, family sync, p
 Horde"** (SPEC §13) = zombies in the fog at their spot, 2–4 at once with a card stack to call any of them, twins
 (two spellings of one number at one spot, one grenade cures both), a boss on every final wave (3 hits, the same number
 three ways), the combo, chatter, grenade types, the finale, a yard dog and a gate lantern, and the new cash rows.
+Version **1.2 "Critter Stampede"** (SPEC §14) = a bonus round the math earns: after a wave with ≥ 80 % hits (or the
+boss cured), ≈ 24 zombie critters (squirrels, raccoons, bunnies, chickens, bats, crows) pour across the yard for about
+20 seconds and the kid holds a finger down to spray slime at them (the **Slime Sprayer**, ≈ 12 pellets a second); a hit
+pops a critter back to normal and it scampers off, $15 each, the one **golden critter** $150, a combo popup from ×3.
+No timer, countdown, ammo or energy on screen: the round ends when the stampede has passed; a tap on pause ends it with
+what was cured. Its cash is a separate "Bonus round" row on the Results (the rows still add up) and a callout
+"Critter Stampede: N cured". Parents → Options → **Bonus round** turns it off. The module is `src/game/bonus.js` (its
+own canvas `#bonus-stage`, harness `bonus-dev.html`, test `tools/bonus-smoke.mjs`); a missing or broken module only
+means no bonus rounds.
 
 ## Run it
 

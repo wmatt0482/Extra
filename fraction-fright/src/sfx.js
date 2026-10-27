@@ -9,7 +9,7 @@
 const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
 
 function createSfx() {
-  let ctx = null, out = null, noiseBuf = null, on = true;
+  let ctx = null, out = null, noiseBuf = null, on = true, spray = null;
   function init() {
     if (ctx || !AC) return !!ctx;
     try { ctx = new AC({ latencyHint: 'interactive' }); } catch (_) { try { ctx = new AC(); } catch (e) { return false; } }
@@ -116,10 +116,44 @@ function createSfx() {
         case 'fireworks': this.fireworks(); break;
         case 'mutter': this.mutter(); break;
         case 'bark': this.bark(); break;
+        // ---- 1.2 (SPEC §14): the Critter Stampede ----
+        case 'sprayOn': this.sprayOn(); break;
+        case 'sprayOff': this.sprayOff(); break;
+        case 'pop': this.pop(v); break;
+        case 'gold': this.gold(); break;
+        case 'stampede': this.stampede(); break;
+        case 'bonusStart': this.bonusStart(); break;
+        case 'bonusEnd': this.bonusEnd(); break;
         default: break;
       }
     },
-    suspend() { if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {}); },
+    // ---- 1.2 (SPEC §14): the Slime Sprayer loop and the critter pops ----
+    /** the sprayer: a looped, filtered hiss with a fast flutter while the finger is down */
+    sprayOn() {
+      if (!ready() || spray) return;
+      const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 1400; f.Q.value = 1.2;
+      const g = ctx.createGain(); g.gain.setValueAtTime(0.0001, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.03);
+      const lfo = ctx.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 12;
+      const lg = ctx.createGain(); lg.gain.value = 0.06;
+      lfo.connect(lg).connect(g.gain);
+      src.connect(f).connect(g).connect(out); src.start(); lfo.start();
+      spray = { src, lfo, g };
+    },
+    sprayOff() {
+      if (!spray) return;
+      const { src, lfo, g } = spray; spray = null;
+      try { g.gain.cancelScheduledValues(ctx.currentTime); g.gain.setValueAtTime(g.gain.value, ctx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.08); src.stop(ctx.currentTime + 0.1); lfo.stop(ctx.currentTime + 0.1); } catch (_) { /* ignore */ }
+    },
+    /** a critter popped back to normal: a bright plip, pitched up a little with the combo */
+    pop(v = 1) { if (ready()) { const k = 1 + 0.06 * Math.min(8, Math.max(0, (Number(v) || 1) - 1)); tone('triangle', 740 * k, 1180 * k, 0.09, 0.09); noise('bandpass', 2200, 1600, 6, 0.06, 0.05); } },
+    /** the golden critter: a sparkle arpeggio */
+    gold() { if (ready()) [660, 880, 1100, 1320].forEach((f, i) => tone('sine', f, f * 1.02, 0.18, 0.08, i * 0.07)); },
+    /** the stampede arriving: a rumble and a trumpet-ish toot */
+    stampede() { if (ready()) { noise('lowpass', 220, 90, 0.8, 0.9, 0.18); tone('sawtooth', 294, 330, 0.25, 0.05, 0.3); tone('sawtooth', 392, 440, 0.3, 0.05, 0.55); } },
+    bonusStart() { if (ready()) [523, 659, 784, 1047].forEach((f, i) => tone('square', f, f, 0.12, 0.05, i * 0.09)); },
+    bonusEnd() { if (ready()) { this.sprayOff(); [784, 659, 784, 1047].forEach((f, i) => tone('triangle', f, f, 0.16, 0.07, i * 0.1)); } },
+    suspend() { this.sprayOff(); if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {}); },
     resume() { if (ctx && ctx.state === 'suspended' && on) ctx.resume().catch(() => {}); },
   };
 }

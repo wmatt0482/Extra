@@ -380,6 +380,7 @@ export function createParentZone(app) {
       toggle('Sound effects', null, st.sound, (v) => app.setSetting('sound', v), 'opt-sound'),
       toggle('Music', null, st.music, (v) => app.setSetting('music', v), 'opt-music'),
       toggle('Reduced motion', 'No slow-mo or shake; calmer splats', st.reducedMotion, (v) => app.setSetting('reducedMotion', v), 'opt-motion'),
+      toggle('Bonus round', 'The Critter Stampede after a great wave (80 % hits, or the boss)', st.bonus !== false, (v) => app.setSetting('bonus', v), 'opt-bonus'),
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with Spell Jump and Trail Blazer')),
         h('button', { class: 'btn btn-sm', id: 'opt-pin', onclick: () => { pinMode = 'reset'; pinEntry = ''; view = 'pin'; render(); } }, 'Change PIN')),
