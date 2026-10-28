@@ -2002,5 +2002,53 @@
     "muzzleVelocityFPS": 2000,
     "testBarrelLengthInches": 26,
     "notes": "approx. BC and velocity; verify against box or chronograph."
+  },
+  {
+    "id": "remington-premier-accutip-20-ga-3in-260",
+    "make": "Remington",
+    "line": "Premier AccuTip Bonded Sabot Slug 3\"",
+    "caliberID": "20-ga-slug",
+    "bulletWeightGrains": 260,
+    "bulletName": "AccuTip Bonded (.45 cal sabot)",
+    "g1BC": 0.19,
+    "muzzleVelocityFPS": 1900,
+    "testBarrelLengthInches": 24,
+    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
+  },
+  {
+    "id": "remington-premier-accutip-20-ga-275in-260",
+    "make": "Remington",
+    "line": "Premier AccuTip Bonded Sabot Slug 2¾\"",
+    "caliberID": "20-ga-slug",
+    "bulletWeightGrains": 260,
+    "bulletName": "AccuTip Bonded (.45 cal sabot)",
+    "g1BC": 0.19,
+    "muzzleVelocityFPS": 1850,
+    "testBarrelLengthInches": 24,
+    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
+  },
+  {
+    "id": "hornady-sst-slug-20-ga-250",
+    "make": "Hornady",
+    "line": "SST Slug 2¾\"",
+    "caliberID": "20-ga-slug",
+    "bulletWeightGrains": 250,
+    "bulletName": "Sabot SST (.45 cal)",
+    "g1BC": 0.19,
+    "muzzleVelocityFPS": 1800,
+    "testBarrelLengthInches": 24,
+    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
+  },
+  {
+    "id": "federal-trophy-copper-20-ga-3in-275",
+    "make": "Federal",
+    "line": "Premium Trophy Copper Sabot Slug 3\"",
+    "caliberID": "20-ga-slug",
+    "bulletWeightGrains": 275,
+    "bulletName": "Trophy Copper (.45 cal sabot)",
+    "g1BC": 0.21,
+    "muzzleVelocityFPS": 1900,
+    "testBarrelLengthInches": 24,
+    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
   }
 ]

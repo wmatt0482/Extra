@@ -1669,5 +1669,37 @@
     "barrelLengthInches": 5,
     "twistInches": 16,
     "typicalSightHeightInches": 0.5
+  },
+  {
+    "id": "savage-220-20-ga-slug",
+    "make": "Savage",
+    "model": "220 Slug Gun",
+    "category": "shotgun",
+    "caliberID": "20-ga-slug",
+    "barrelLengthInches": 22,
+    "twistInches": 24,
+    "typicalSightHeightInches": 1.5,
+    "notes": "Bolt-action rifled 20 ga slug gun; sight height assumes a scope in low rings."
+  },
+  {
+    "id": "savage-220-turkey-20-ga-slug",
+    "make": "Savage",
+    "model": "220 Turkey",
+    "category": "shotgun",
+    "caliberID": "20-ga-slug",
+    "barrelLengthInches": 22,
+    "twistInches": 24,
+    "typicalSightHeightInches": 1.5,
+    "notes": "Same rifled 20 ga bolt action as the 220 Slug Gun."
+  },
+  {
+    "id": "mossberg-500-slug-20-ga-slug",
+    "make": "Mossberg",
+    "model": "500 Slug (20 ga)",
+    "category": "shotgun",
+    "caliberID": "20-ga-slug",
+    "barrelLengthInches": 24,
+    "typicalSightHeightInches": 1.6,
+    "notes": "Rifled slug barrel."
   }
 ]

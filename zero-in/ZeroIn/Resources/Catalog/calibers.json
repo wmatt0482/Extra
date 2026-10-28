@@ -395,5 +395,16 @@
       "50 caliber muzzleloader",
       "sabot"
     ]
+  },
+  {
+    "id": "20-ga-slug",
+    "name": "20 Gauge Slug (sabot)",
+    "bulletDiameterInches": 0.452,
+    "aliases": [
+      "20 gauge",
+      "20ga",
+      "20 ga",
+      "20 gauge sabot slug"
+    ]
   }
 ]
