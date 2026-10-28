@@ -1701,5 +1701,37 @@
     "barrelLengthInches": 24,
     "typicalSightHeightInches": 1.6,
     "notes": "Rifled slug barrel."
+  },
+  {
+    "id": "winchester-xpr-223-rem",
+    "make": "Winchester",
+    "model": "XPR",
+    "category": "boltAction",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 22,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.5,
+    "notes": "Twist is typical for the XPR in .223; check the barrel stamp."
+  },
+  {
+    "id": "winchester-model-70-coyote-light-223-rem",
+    "make": "Winchester",
+    "model": "Model 70 Coyote Light",
+    "category": "boltAction",
+    "caliberID": "223-rem",
+    "barrelLengthInches": 24,
+    "twistInches": 9,
+    "typicalSightHeightInches": 1.5
+  },
+  {
+    "id": "winchester-model-94-scoped-30-30",
+    "make": "Winchester",
+    "model": "Model 94 (scoped)",
+    "category": "leverAction",
+    "caliberID": "30-30",
+    "barrelLengthInches": 20,
+    "twistInches": 12,
+    "typicalSightHeightInches": 1.6,
+    "notes": "Angle-eject 94 with a scope in low rings; use the plain Model 94 entry for iron sights."
   }
 ]

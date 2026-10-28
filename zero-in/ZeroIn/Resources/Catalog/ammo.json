@@ -2050,5 +2050,53 @@
     "muzzleVelocityFPS": 1900,
     "testBarrelLengthInches": 24,
     "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
+  },
+  {
+    "id": "winchester-deer-season-xp-30-30-150",
+    "make": "Winchester",
+    "line": "Deer Season XP",
+    "caliberID": "30-30",
+    "bulletWeightGrains": 150,
+    "bulletName": "Extreme Point",
+    "g1BC": 0.218,
+    "muzzleVelocityFPS": 2390,
+    "testBarrelLengthInches": 24,
+    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
+  },
+  {
+    "id": "winchester-super-x-power-point-30-30-170",
+    "make": "Winchester",
+    "line": "Super-X Power-Point",
+    "caliberID": "30-30",
+    "bulletWeightGrains": 170,
+    "bulletName": "Power-Point",
+    "g1BC": 0.254,
+    "muzzleVelocityFPS": 2200,
+    "testBarrelLengthInches": 24,
+    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
+  },
+  {
+    "id": "winchester-deer-season-xp-223-rem-64",
+    "make": "Winchester",
+    "line": "Deer Season XP",
+    "caliberID": "223-rem",
+    "bulletWeightGrains": 64,
+    "bulletName": "Extreme Point",
+    "g1BC": 0.26,
+    "muzzleVelocityFPS": 3020,
+    "testBarrelLengthInches": 24,
+    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
+  },
+  {
+    "id": "winchester-super-x-power-point-223-rem-64",
+    "make": "Winchester",
+    "line": "Super-X Power-Point",
+    "caliberID": "223-rem",
+    "bulletWeightGrains": 64,
+    "bulletName": "Power-Point",
+    "g1BC": 0.213,
+    "muzzleVelocityFPS": 3020,
+    "testBarrelLengthInches": 24,
+    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
   }
 ]
