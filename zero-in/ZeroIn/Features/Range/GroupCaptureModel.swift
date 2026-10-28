@@ -39,6 +39,9 @@ final class GroupCaptureModel {
     let distanceYards: Double
     let expectedImpact: Point2D
     let scope: ScopeSpec
+    /// One bullet hole's diameter for auto-detect: the profile's bullet
+    /// diameter + 0.02 in when known, else the usual .30-cal tear.
+    let nominalHoleDiameterInches: Double
 
     // Step 1
     var step: Step = .photo
@@ -66,10 +69,13 @@ final class GroupCaptureModel {
     // After saving
     var savedRecord: ShotGroupRecord?
 
-    init(distanceYards: Double, expectedImpact: Point2D, scope: ScopeSpec) {
+    init(distanceYards: Double, expectedImpact: Point2D, scope: ScopeSpec,
+         nominalHoleDiameterInches: Double = HoleDetector.defaultNominalHoleDiameterInches) {
         self.distanceYards = distanceYards
         self.expectedImpact = expectedImpact
         self.scope = scope
+        self.nominalHoleDiameterInches = (nominalHoleDiameterInches > 0 && nominalHoleDiameterInches.isFinite)
+            ? nominalHoleDiameterInches : HoleDetector.defaultNominalHoleDiameterInches
     }
 
     // MARK: Photo
@@ -290,8 +296,9 @@ final class GroupCaptureModel {
         isDetecting = true
         detectionMessage = nil
         let bullRadiusPixels = bullDiameterInches.map { $0 / 2 * cal.pixelsPerInch }
-        let found = await HoleDetector.detect(in: image, pixelsPerInch: cal.pixelsPerInch, poaPixel: poaPixel,
-                                              excludeRadiusPixels: bullRadiusPixels,
+        let found = await HoleDetector.detect(in: image, pixelsPerInch: cal.pixelsPerInch,
+                                              nominalHoleDiameterInches: nominalHoleDiameterInches,
+                                              poaPixel: poaPixel, excludeRadiusPixels: bullRadiusPixels,
                                               existing: holes.map(\.pixel))
         holes.append(contentsOf: found.map { Hole(pixel: $0, isSuggested: true) })
         detectionMessage = found.isEmpty
@@ -343,13 +350,31 @@ final class GroupCaptureModel {
             holes = SampleTarget.shotPixels.map { Hole(pixel: $0, isSuggested: false) }
             demoNote = "Auto-detect found 0 holes · using sample positions"
         } else {
-            let tolerance = 0.15 * SampleTarget.pixelsPerInch
-            let matched = SampleTarget.shotPixels.filter { truth in
-                holes.contains { $0.pixel.distance(to: truth) <= tolerance }
-            }.count
+            let matched = Self.matchedCount(detected: holes.map(\.pixel), truth: SampleTarget.shotPixels,
+                                            tolerance: 0.15 * SampleTarget.pixelsPerInch)
             demoNote = "Auto-detect found \(found) hole\(found == 1 ? "" : "s") · "
                 + "\(matched) of \(SampleTarget.shotPixels.count) match the sample"
         }
         step = target
+    }
+
+    /// Greedy one-to-one pairing: repeatedly takes the closest remaining
+    /// (detection, true hole) pair within `tolerance`, so each detection
+    /// accounts for at most one true hole. Returns the number of true holes paired.
+    static func matchedCount(detected: [Point2D], truth: [Point2D], tolerance: Double) -> Int {
+        var pairs: [(distance: Double, detection: Int, truth: Int)] = []
+        for (i, p) in detected.enumerated() {
+            for (j, t) in truth.enumerated() {
+                let distance = p.distance(to: t)
+                if distance <= tolerance { pairs.append((distance: distance, detection: i, truth: j)) }
+            }
+        }
+        pairs.sort { $0.distance < $1.distance }
+        var usedDetections = Set<Int>(), usedTruth = Set<Int>()
+        for pair in pairs where !usedDetections.contains(pair.detection) && !usedTruth.contains(pair.truth) {
+            usedDetections.insert(pair.detection)
+            usedTruth.insert(pair.truth)
+        }
+        return usedTruth.count
     }
 }

@@ -20,7 +20,17 @@ struct GroupCaptureFlow: View {
         self.demoStep = demoStep
         _model = State(initialValue: GroupCaptureModel(distanceYards: session.distanceYards,
                                                        expectedImpact: Self.expectedImpact(for: session),
-                                                       scope: session.profile?.scope ?? ScopeSpec()))
+                                                       scope: session.profile?.scope ?? ScopeSpec(),
+                                                       nominalHoleDiameterInches: Self.nominalHoleDiameter(for: session)))
+    }
+
+    /// One hole's diameter for auto-detect: bullet diameter + 0.02 in (the
+    /// paper tear) when the profile has one, else the .30-cal default.
+    static func nominalHoleDiameter(for session: SightInSession) -> Double {
+        guard let bullet = session.profile?.bulletDiameterInches, bullet > 0, bullet.isFinite else {
+            return HoleDetector.defaultNominalHoleDiameterInches
+        }
+        return bullet + 0.02
     }
 
     /// Where bullets should print at the session distance for the profile's
