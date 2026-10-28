@@ -2009,11 +2009,11 @@
     "line": "Premier AccuTip Bonded Sabot Slug 3\"",
     "caliberID": "20-ga-slug",
     "bulletWeightGrains": 260,
-    "bulletName": "AccuTip Bonded (.45 cal sabot)",
-    "g1BC": 0.19,
+    "bulletName": "AccuTip Bonded (.45 cal sabot, PRA20M)",
+    "g1BC": 0.144,
     "muzzleVelocityFPS": 1900,
-    "testBarrelLengthInches": 24,
-    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
+    "testBarrelLengthInches": 26,
+    "notes": "BC 0.144 and 1900 fps from Remington's catalog (26 in test barrel; expect less from a 22 in Savage 220). Remington's factory table: +2.5 in at 50, +3.4 at 100 with a 150 yd zero. Savage recommends this load for the Model 220."
   },
   {
     "id": "remington-premier-accutip-20-ga-275in-260",
@@ -2021,11 +2021,11 @@
     "line": "Premier AccuTip Bonded Sabot Slug 2¾\"",
     "caliberID": "20-ga-slug",
     "bulletWeightGrains": 260,
-    "bulletName": "AccuTip Bonded (.45 cal sabot)",
-    "g1BC": 0.19,
+    "bulletName": "AccuTip Bonded (.45 cal sabot, PRA20)",
+    "g1BC": 0.144,
     "muzzleVelocityFPS": 1850,
-    "testBarrelLengthInches": 24,
-    "notes": "approx. BC; velocity is the manufacturer's published figure. Verify against box or chronograph."
+    "testBarrelLengthInches": 26,
+    "notes": "BC 0.144 and 1850 fps from Remington's catalog (26 in test barrel)."
   },
   {
     "id": "hornady-sst-slug-20-ga-250",
