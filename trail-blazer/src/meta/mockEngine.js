@@ -16,12 +16,16 @@
 // backflip is a 'combo' {count: 2} (+$50 combo cash); openGate({ turbo: true }) fires 'turbo' and a 3 s push; the run
 // is sampled every 0.1 s into summary.ghostTrace [[t, x, 0]]; with cfg.ghost, getState().ghostGap and
 // summary.beatGhost compare the run with it.
-// v1.7: the Hill Climb (SPEC v1.7 §1) after a finished race: startHill({ flags: 5, questions: 10, seed, cupMult }) →
-// 'hillStart', then 'hillHold' {heightM, flag} 0.6 s later; hillBoost({ power, quick }) climbs one 60 m section (quick),
-// 0.7 of one (slow) or slides back to the last flag line (power 0) over a 0.8 s burst, then holds again; crossing a
-// flag line → 'hillFlag' {n, heightM, cash: 150 × n × cupMult}; 300 m → 'hillSummit' {heightM, cash: 1000 × cupMult}
-// and the climb ends; `questions` answers without the summit end it at the next hold; endHill() ends it; the end emits
-// 'hillEnd' {heightM, flags, summit, answers, cash: {flags, summit, total}, bestHeightM}. getState().hill mirrors it.
+// v1.7: the Hill Climb (SPEC v1.7 §1) after a finished race: startHill({ flags: 5, questions: 10, seed, cupMult, autoSec })
+// → 'hillStart', then 'hillHold' {heightM, flag} 0.6 s later. v1.7.1 (the throttle): hillBoost({ power, quick }) CHARGES
+// the rocket ('hillCharge' {power, quick, charge}: one 60 m section quick, 0.7 of one slow); the vehicle climbs only
+// while setInput({ gas: true }) and the charge lasts (60 m per 0.8 s), stops and holds when GAS is released ('hillWait'
+// {charge, heightM}), and fires by itself after autoSec (default 6 s; window.__mockScript.hillAutoSec overrides;
+// 'hillAuto' first). power 0 slides back to the last flag line over 0.8 s, then holds. Crossing a flag line →
+// 'hillFlag' {n, heightM, cash: 150 × n × cupMult}; 300 m → 'hillSummit' {heightM, cash: 1000 × cupMult} and the climb
+// ends; `questions` answers without the summit end it at the next hold; endHill() ends it; the end emits 'hillEnd'
+// {heightM, flags, summit, answers, cash: {flags, summit, total}, bestHeightM}. getState().hill mirrors it (charge,
+// thrusting, waiting).
 // Test hooks: window.__mockScript = { aiTimes: [s, s, s] (the AI riders' race times; default 7.0, 9.6, 10.4: the
 //   player, ~8.8 s, finishes 2nd), noCrash: true }.
 import { drawRanger } from '../ui/vehiclePreview.js';
@@ -37,8 +41,9 @@ const COIN_RT = [0.5, 1.0, 1.4, 3.4, 5.0, 5.6, 6.2, 7.0];
 const AI = [{ name: 'Max' }, { name: 'Zoe' }, { name: 'Kai' }];
 const AI_PAINTS = ['lakeblue', 'sunset', 'gold', 'sky', 'purple', 'black'];
 const PLACE_CASH = { 1: 500, 2: 300, 3: 150 };
-const HILL_SECTION_M = 60;    // one flag section (a full quick burst)
-const HILL_BURST_S = 0.8;
+const HILL_SECTION_M = 60;    // one flag section (a full quick charge)
+const HILL_BURST_S = 0.8;     // seconds per section while thrusting (and the slide back)
+const HILL_AUTO_S = 6;
 const HILL_FLAG_CASH = 150, HILL_SUMMIT_CASH = 1000;
 
 export function createGame(canvas, opts = {}) {
@@ -125,31 +130,55 @@ export function createGame(canvas, opts = {}) {
     h.bestHeightM = Math.max(h.bestHeightM, Math.round(h.heightM));
     emit({ type: 'hillEnd', heightM: Math.round(h.heightM), flags: h.flag, summit: h.summit, answers: h.answers, cash: hillCash(h), bestHeightM: h.bestHeightM });
   }
+  // flag lines crossed on the way up; the summit ends the climb; returns true when the climb ended
+  function hillFlags(h) {
+    while (h.flag < h.flags && h.heightM >= HILL_SECTION_M * (h.flag + 1) - 0.01) {
+      h.flag++;
+      emit({ type: 'hillFlag', n: h.flag, heightM: Math.round(h.heightM), cash: Math.round(HILL_FLAG_CASH * h.flag * h.cupMult) });
+    }
+    if (h.flag >= h.flags) {
+      h.summit = true; h.heightM = HILL_SECTION_M * h.flags; h.charge = 0; h.thrusting = false;
+      emit({ type: 'hillSummit', heightM: Math.round(h.heightM), cash: Math.round(HILL_SUMMIT_CASH * h.cupMult) });
+      hillEndNow();
+      return true;
+    }
+    return false;
+  }
+  function hillHoldNow(h) {
+    if (h.answers >= h.questions) { hillEndNow(); return; }
+    h.holding = true; h.waiting = false;
+    emit({ type: 'hillHold', heightM: Math.round(h.heightM), flag: h.flag });
+  }
   function hillStep(dt) {
     const h = hill;
     if (!h || !h.active) return;
     h.t += dt;
-    if (h.pendingHold && h.t >= h.pendingHold) { h.pendingHold = 0; h.holding = true; emit({ type: 'hillHold', heightM: Math.round(h.heightM), flag: h.flag }); return; }
-    if (h.burst > 0) {
+    if (h.pendingHold && h.t >= h.pendingHold) { h.pendingHold = 0; hillHoldNow(h); return; }
+    if (h.burst > 0) {                       // the sputter's slide back to the last flag line
       const k = Math.min(1, dt / h.burst);
       h.heightM += (h.target - h.heightM) * k;
       h.burst = Math.max(0, h.burst - dt);
       if (h.burst > 0) return;
       h.heightM = h.target;
-      // flag lines crossed on the way up
-      while (h.flag < h.flags && h.heightM >= HILL_SECTION_M * (h.flag + 1) - 0.01) {
-        h.flag++;
-        emit({ type: 'hillFlag', n: h.flag, heightM: Math.round(h.heightM), cash: Math.round(HILL_FLAG_CASH * h.flag * h.cupMult) });
+      hillHoldNow(h);
+      return;
+    }
+    if (h.charge > 0) {                      // v1.7.1: the charge burns only on GAS (or by itself after autoSec)
+      h.idle += dt;
+      if (!h.auto && h.autoSec > 0 && h.idle >= h.autoSec) { h.auto = true; emit({ type: 'hillAuto', charge: Math.round(h.charge * 100) / 100 }); }
+      const gas = !!input.gas || h.auto;
+      if (gas) {
+        if (!h.thrusting) { h.thrusting = true; h.waiting = false; emit({ type: 'hillBurst', power: h.power, quick: h.quick, answers: h.answers }); }
+        h.idle = 0;
+        const use = Math.min(h.charge, dt / HILL_BURST_S);
+        h.charge = Math.max(0, h.charge - use);
+        h.heightM = Math.min(HILL_SECTION_M * h.flags, h.heightM + use * HILL_SECTION_M);
+        if (hillFlags(h)) return;
+        if (h.charge <= 0.0001) { h.charge = 0; h.thrusting = false; h.auto = false; hillHoldNow(h); }
+      } else if (h.thrusting) {              // GAS released: stop and hold where it is (no slide)
+        h.thrusting = false; h.waiting = true;
+        emit({ type: 'hillWait', charge: Math.round(h.charge * 100) / 100, heightM: Math.round(h.heightM) });
       }
-      if (h.flag >= h.flags) {
-        h.summit = true; h.heightM = HILL_SECTION_M * h.flags;
-        emit({ type: 'hillSummit', heightM: Math.round(h.heightM), cash: Math.round(HILL_SUMMIT_CASH * h.cupMult) });
-        hillEndNow();
-        return;
-      }
-      if (h.answers >= h.questions) { hillEndNow(); return; }
-      h.holding = true;
-      emit({ type: 'hillHold', heightM: Math.round(h.heightM), flag: h.flag });
     }
   }
 
@@ -346,8 +375,11 @@ export function createGame(canvas, opts = {}) {
     startHill(cfg = {}) {
       const r = run;
       if (!r || !r.ended || !r.finishCrossed || (hill && hill.active)) return false;
+      const script = (typeof window !== 'undefined' && window.__mockScript) || {};
+      const autoSec = Number.isFinite(script.hillAutoSec) ? script.hillAutoSec : Number.isFinite(cfg.autoSec) ? cfg.autoSec : HILL_AUTO_S;
       hill = { active: true, t: 0, flags: Math.max(1, Math.floor(cfg.flags || 5)), questions: Math.max(1, Math.floor(cfg.questions || 10)), cupMult: Number.isFinite(cfg.cupMult) && cfg.cupMult > 0 ? cfg.cupMult : 1,
-        heightM: 0, target: 0, flag: 0, holding: false, burst: 0, answers: 0, summit: false, bestHeightM: hill ? hill.bestHeightM : 0, pendingHold: 0.6 };
+        heightM: 0, target: 0, flag: 0, holding: false, burst: 0, answers: 0, summit: false, bestHeightM: hill ? hill.bestHeightM : 0, pendingHold: 0.6,
+        charge: 0, thrusting: false, waiting: false, auto: false, autoSec: Math.max(0, autoSec), idle: 0, power: 0, quick: false };
       r.popups.push({ text: 'HILL CLIMB!', t: 1.5 });
       emit({ type: 'hillStart', flags: hill.flags, questions: hill.questions });
       return true;
@@ -356,9 +388,11 @@ export function createGame(canvas, opts = {}) {
       const h = hill;
       if (!h || !h.active || !h.holding) return false;
       const power = Math.max(0, Math.min(1, Number(result.power) || 0));
-      h.answers++; h.holding = false; h.burst = HILL_BURST_S;
-      if (power > 0) h.target = Math.min(HILL_SECTION_M * h.flags, h.heightM + HILL_SECTION_M * power * (result.quick ? 1 : 0.7));
-      else h.target = HILL_SECTION_M * h.flag;        // a sputter: slide back to the last flag line (never below the base)
+      h.answers++; h.holding = false;
+      if (power > 0) {                                   // v1.7.1: a charge; GAS burns it
+        h.charge = Math.round(power * (result.quick ? 1 : 0.7) * 100) / 100; h.power = power; h.quick = !!result.quick; h.idle = 0; h.auto = false; h.waiting = true;
+        emit({ type: 'hillCharge', power, quick: !!result.quick, charge: h.charge, answers: h.answers });
+      } else { h.burst = HILL_BURST_S; h.target = HILL_SECTION_M * h.flag; }   // a sputter: slide back to the last flag line (never below the base)
       return true;
     },
     endHill() { hillEndNow(); },
@@ -375,7 +409,8 @@ export function createGame(canvas, opts = {}) {
         cash: cashNow(r).total, finishCrossed: r.finishCrossed, gateIndex: r.gateIndex, gatesTotal: r.gateX.length, stuck: false, upsideDown: r.phase === 'crash',
         place: r.place, timeSec: r.phase === 'countdown' ? 0 : r.finishCrossed ? r.timeSec : Math.max(0, r.rt),
         riders: ridersOut(r), ghostGap: r.ghost ? ghostGap(r) : undefined,
-        hill: hill ? { active: hill.active, heightM: Math.round(hill.heightM), flag: hill.flag, flags: hill.flags, progress: Math.min(1, hill.heightM / (HILL_SECTION_M * hill.flags)), holding: hill.holding, burst: hill.burst, answers: hill.answers } : null,
+        hill: hill ? { active: hill.active, heightM: Math.round(hill.heightM), flag: hill.flag, flags: hill.flags, progress: Math.min(1, hill.heightM / (HILL_SECTION_M * hill.flags)), holding: hill.holding, burst: hill.thrusting ? hill.charge * HILL_BURST_S : hill.burst, answers: hill.answers,
+          charge: Math.round(hill.charge * 100) / 100, thrusting: hill.thrusting, waiting: hill.waiting } : null,
       };
     },
   };

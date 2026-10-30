@@ -67,6 +67,10 @@ summit has fireworks and a gold crate. What makes it a learning tool rather than
 - **Ten facts, then it ends**: the climb is bounded so it never becomes a grind; the summit on five quick answers is
   reachable by every vehicle, which keeps the mastery goal honest (row 21: the math gates the reward, never the other
   way round).
+- **The hands stay on the wheel (v1.7.1)**: the answer charges the rocket; the child holds GAS to spend it. Agency is
+  part of intrinsic integration (row 12): the math is the fuel and the driving is still theirs, so the climb feels like
+  a reward for the answer rather than a cut-scene after it. Letting go stops and holds (never a slide), and an unused
+  charge fires by itself after a few seconds, so the control can never strand a child.
 
 ## What the game never does
 

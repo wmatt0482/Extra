@@ -849,6 +849,24 @@ async function runLayout(browser, layout) {
   check(wk.first === 'pz-weeks' && wk.big === `This week: ${wk.w.masteredPct} % mastered` && wk.bar === `${wk.w.masteredPct}%`
     && wk.small.startsWith(`Right on last try ${wk.w.rightLastTry} / ${wk.w.words} (${wk.w.rightLastTryPct} %) · pretest 3 / 4 → now ${wk.w.rightLastTry} / 4`),
     `report: "${wk.big}" with a bar, "${wk.small}"`);
+  // v3.8: the progress chart on the Report (inline SVG, a legend, range chips); it has data once the child played today
+  const ch = await J(page, () => {
+    const f = document.querySelector('#report-chart');
+    const svg = f && f.querySelector('svg.pz-chart-svg');
+    return f && { empty: f.dataset.empty, series: [...f.querySelectorAll('.pz-legend .lg')].map((x) => x.textContent), bars: svg.querySelectorAll('.bars rect').length, paths: svg.querySelectorAll('path[data-series]').length,
+      chips: [...document.querySelectorAll('#chart-range .chip')].map((c) => c.textContent + (c.classList.contains('on') ? ':on' : '')), days: svg.querySelectorAll('.days text').length, links: f.querySelectorAll('a').length };
+  });
+  check(ch && ch.empty === 'false' && ch.series.join(',') === 'Words practiced,Words mastered,Spelled right %' && ch.bars >= 1 && ch.paths >= 1 && ch.chips.join(',') === '2 weeks,4 weeks:on,12 weeks' && ch.days >= 4 && ch.links === 0,
+    `Report: the progress chart (words practiced, mastered, spelled right) has today's data (${ch && ch.bars} bars, ${ch && ch.paths} lines), legend "${ch && ch.series.join(' · ')}", range chips`);
+  await page.click('#chart-range [data-days="84"]');
+  await page.waitForTimeout(150);
+  check(await J(page, () => document.querySelector('#chart-range [data-days="84"]').classList.contains('on') && document.querySelectorAll('#report-chart .days text').length >= 5), '12 weeks: the chart redraws with the longer range');
+  await page.click('#chart-range [data-days="28"]');
+  await page.waitForTimeout(150);
+  check(await J(page, () => !!document.querySelector('#report-chart-tests') && document.querySelectorAll('#report-chart-tests .bars rect').length >= 1), 'Report: the test-scores chart shows the qualifier');
+  await J(page, () => document.querySelector('#report-chart').scrollIntoView({ block: 'center' }));
+  await shot(page, layout, '34a-pz-chart');
+  await J(page, () => document.querySelector('.pz-content').scrollTo(0, 0));
   await shot(page, layout, '34-pz-report');
   await layoutAudit(page, layout.insets, 'parent zone (report)');
   if (!layout.clipboard) await J(page, () => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: () => Promise.reject(new Error('denied')) } }));

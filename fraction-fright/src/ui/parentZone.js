@@ -13,7 +13,8 @@ import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { TIER_BY_ID, closeText, toleranceFor } from '../skills/items.js';
 import { ladderView, recommended, tierStats } from '../skills/ladder.js';
-import { moveText, report, reportText, stateWord } from '../skills/store.js';
+import { moveText, progressSeries, report, reportText, stateWord } from '../skills/store.js';
+import { dayChart, rangeChips } from '../../../spell-jump/src/ui/chart.js';
 import { weekProgress, weekProgressLines } from '../skills/progress.js';
 import { KNOWN_AFTER, paceText, planPace } from '../skills/pace.js';
 import { playLines } from '../meta/economy.js';
@@ -251,6 +252,21 @@ export function createParentZone(app) {
   }
 
   // ---------- Report ----------
+  let chartDays = 28;      // v1.5: the progress charts' range
+  // v1.5: progress over time (parent-facing only): throws each day (bars), on target % and bull's-eye % (lines on the
+  // right axis), and the streets secure (a second, smaller chart)
+  function chartBlock(d, now) {
+    const ps = progressSeries(d, now, chartDays);
+    const aim = dayChart({ id: 'report-chart', title: 'Throws and aim over time', days: ps.days, left: { max: Math.max(10, ...ps.throws) },
+      series: [
+        { label: 'Throws', color: '#5ab0ff', values: ps.throws, kind: 'bar', axis: 'left' },
+        { label: 'On target %', color: '#49d17d', values: ps.hitPct, kind: 'line', axis: 'right' },
+        { label: "Bull's-eye %", color: '#ffb400', values: ps.bullPct, kind: 'line', axis: 'right', dashed: true },
+      ] });
+    const streets = dayChart({ id: 'report-chart-streets', title: 'Streets secure', days: ps.days, height: 140, left: { max: ps.streets },
+      series: [{ label: 'Streets secure', color: '#c77dff', values: ps.secure, kind: 'line', axis: 'left' }] });
+    return [h('div', { class: 'hud-label pz-sec' }, 'Progress over time'), rangeChips(chartDays, (n) => { chartDays = n; render(); }), aim, streets];
+  }
   function reportTab(p) {
     const d = app.skillsFor(p.id);
     const now = Date.now();
@@ -275,6 +291,7 @@ export function createParentZone(app) {
       `${t.name}: ${stateWord(t.state)}${t.stats.n ? ` · last ${t.stats.n} throws ${Math.round(t.stats.rate * 100)} % on target, ${closeText(t.stats.pae)} on average` : ''}`));
     return [
       weekBlock(wk),
+      ...chartBlock(d, now),
       h('div', { class: 'pz-help pz-first', id: 'report-summary' }, `${r.fractions} different fractions thrown at · ${r.xp} XP · Zombie Lab ${r.lab.done ? 'done' : 'not done yet'}`),
       h('div', { class: 'hud-label pz-sec' }, 'Streets'), h('ul', { class: 'pat-list', id: 'report-streets' }, ...streets),
       h('div', { class: 'hud-label pz-sec' }, 'Closest fractions'),

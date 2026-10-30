@@ -22,6 +22,7 @@ import { diffAttempt, formatList, normalizeWord, parseList, patternRanges, ringL
 import {
   activeList, archivedLists, defaultWords, deleteList, missionState, nextWord, normalizeWordsData, qualifierDue, recordFriday,
   recordQualifier, recordSpell, report, reportText, resetSpelling, restoreList, saveNewList, setLaunch, spellBonus, wordInfo, DEFAULT_OPTIONS, WORDS_PER_RACE, allWords, allWordsText, weekProgress,
+  noteProgress, progressSeries, PROGRESS_KEPT,
 } from '../src/spelling/wordStore.js';
 
 let passed = 0;
@@ -1765,6 +1766,47 @@ await atest('GET /api/stats: no STATS_KEY → 503 no-key; a wrong key → 403; t
   assert.equal(r.json.days.length, 7); assert.equal(r.json.totals.last30.sj.devices, 2, 'last30 is still 30 days');
   r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=999' });
   assert.equal(r.json.days.length, 90, 'at most 90 days');
+});
+
+console.log('v3.8: the progress log and the charts');
+test('every spell records today: words mastered now, practiced and right today; the log keeps 90 days and syncs by max', () => {
+  const d = wordsDoc();
+  recordSpell(d, 'enough', { firstTry: true }, day(1));
+  recordSpell(d, 'friend', { firstTry: false }, day(1, 1));
+  const k = dayKey(day(1));
+  assert.deepEqual(d.progress[k], { mastered: 0, practiced: 2, right: 1 });
+  for (let i = 0; i < 100; i++) noteProgress(d, day(2 + i));
+  assert.equal(Object.keys(d.progress).length, PROGRESS_KEPT, 'capped');
+  assert.ok(!d.progress[k], 'the oldest day fell off');
+  const n = normalizeWordsData({ ...d, progress: { '2026-01-05': { mastered: 2, practiced: '7', right: -1 }, bad: { mastered: 1 } } }, day(3));
+  assert.deepEqual(n.progress, { '2026-01-05': { mastered: 2, practiced: 0, right: 0 } }, 'normalized: numbers only, day keys only');
+  const a = wordsDoc(), b = clone(a);
+  a.progress = { '2026-01-05': { mastered: 1, practiced: 4, right: 3 } };
+  b.progress = { '2026-01-05': { mastered: 2, practiced: 2, right: 2 }, '2026-01-06': { mastered: 2, practiced: 1, right: 1 } };
+  const m = mergeWords(W(a, day(1)), W(b, day(1, 1)), day(2));
+  assert.deepEqual(m.progress, { '2026-01-05': { mastered: 2, practiced: 4, right: 3 }, '2026-01-06': { mastered: 2, practiced: 1, right: 1 } }, 'per day max');
+  resetSpelling(a, day(3));
+  assert.deepEqual(a.progress, {}, 'a reset clears the log');
+});
+test('progressSeries: n days ending today, mastered back-filled from masteredAt before the log, carried across quiet days after', () => {
+  const d = wordsDoc();
+  const now = day(10, 12);
+  // 'enough' mastered on day 2 (before any log), the log begins on day 6
+  Object.assign(d.records.enough, { box: 3, daysCorrect: [dayKey(day(1)), dayKey(day(2))], daysSeen: [dayKey(day(1)), dayKey(day(2))], firstTry: 3, attempts: 3, masteredAt: day(2) });
+  assert.ok(isMastered(d.records.enough));
+  recordSpell(d, 'friend', { firstTry: true }, day(6));
+  const ps = progressSeries(d, now, 10);
+  assert.equal(ps.days.length, 10); assert.equal(ps.days[9], dayKey(now)); assert.equal(ps.days[0], dayKey(day(1, 12)));
+  assert.deepEqual(ps.mastered.slice(0, 5), ps.days.slice(0, 5).map((k) => (k >= dayKey(day(2)) ? 1 : 0)), 'back-filled from masteredAt (by its day)');
+  const i6 = ps.days.indexOf(dayKey(day(6)));
+  assert.ok(i6 >= 1, 'day 6 is in the window');
+  assert.equal(ps.mastered[i6], 1, 'the log on day 6');
+  assert.ok(ps.mastered.slice(i6).every((v) => v === 1), 'carried across days without play');
+  assert.equal(ps.practiced[i6], 1); assert.equal(ps.right[i6], 1); assert.equal(ps.practiced[9], 0);
+  recordFriday(d, [{ word: 'enough', correct: true }, { word: 'friend', correct: false }], day(8));
+  assert.deepEqual(ps.tests, []);
+  const t = progressSeries(d, now, 10).tests;
+  assert.equal(t.length, 1); assert.equal(t[0].pct, 50); assert.equal(t[0].day, dayKey(day(8))); assert.equal(t[0].kind, 'friday');
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

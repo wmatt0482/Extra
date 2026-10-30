@@ -9,7 +9,7 @@
 // (/api/tts/clip/<id>) are content-addressed: cache-first in Spell Jump's clip cache (TTS_CACHE, shared on this origin).
 // Caches are per origin, shared with the other games' workers: this worker only ever deletes its own
 // ('fraction-fright-…'). If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'fraction-fright-v1.4.0';
+const VERSION = 'fraction-fright-v1.5.0';
 const PREFIX = 'fraction-fright-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;

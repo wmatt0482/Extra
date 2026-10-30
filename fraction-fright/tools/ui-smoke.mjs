@@ -509,11 +509,29 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '16-pz-fractions');
   await audit(page, layout.insets, 'Parent Zone (Fractions)');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.4\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
+  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.5\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
   await page.click('.pz-tabs [data-tab="report"]');
   const rep = await J(page, () => ({ big: document.querySelector('#report-week .pw-big').textContent, small: document.querySelector('#report-week .pw-small').textContent, pct: document.querySelector('#report-week').dataset.pct,
     bar: document.querySelector('#report-week .pw-bar i').style.width, streets: document.querySelectorAll('#report-streets li').length }));
   check(/^Fractions: \d+ % of the ladder$/.test(rep.big) && rep.bar === `${rep.pct}%` && /^This week: \d+ % accurate \(\d+ of \d+ throws on target\)/.test(rep.small) && rep.streets === 2, `Report: "${rep.big}" + bar + "${rep.small}"`);
+
+  // v1.5: the progress chart on the Report (inline SVG, a legend, range chips); it has data once the child played today
+  const ch = await J(page, () => {
+    const f = document.querySelector('#report-chart');
+    const svg = f && f.querySelector('svg.pz-chart-svg');
+    return f && { empty: f.dataset.empty, series: [...f.querySelectorAll('.pz-legend .lg')].map((x) => x.textContent), bars: svg.querySelectorAll('.bars rect').length, paths: svg.querySelectorAll('path[data-series]').length,
+      chips: [...document.querySelectorAll('#chart-range .chip')].map((c) => c.textContent + (c.classList.contains('on') ? ':on' : '')), days: svg.querySelectorAll('.days text').length, links: f.querySelectorAll('a').length };
+  });
+  check(ch && ch.empty === 'false' && ch.series.join(',') === "Throws,On target %,Bull's-eye %" && ch.bars >= 1 && ch.paths >= 1 && ch.chips.join(',') === '2 weeks,4 weeks:on,12 weeks' && ch.days >= 4 && ch.links === 0,
+    `Report: the progress chart (throws, on target, bull's-eye) has today's data (${ch && ch.bars} bars, ${ch && ch.paths} lines), legend "${ch && ch.series.join(' · ')}", range chips`);
+  await page.click('#chart-range [data-days="84"]');
+  await page.waitForTimeout(150);
+  check(await J(page, () => document.querySelector('#chart-range [data-days="84"]').classList.contains('on') && document.querySelectorAll('#report-chart .days text').length >= 5), '12 weeks: the chart redraws with the longer range');
+  await page.click('#chart-range [data-days="28"]');
+  await page.waitForTimeout(150);
+  check(await J(page, () => { const f = document.querySelector('#report-chart-streets'); return !!f && f.querySelectorAll('path[data-series]').length === 1; }), 'Report: the streets-secure chart');
+  await J(page, () => document.querySelector('#report-chart').scrollIntoView({ block: 'center' }));
+  await shot(page, layout, '17a-pz-chart');
   await shot(page, layout, '17-pz-report');
   await page.click('#report-copy');
   await page.waitForTimeout(200);

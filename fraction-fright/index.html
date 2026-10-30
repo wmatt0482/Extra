@@ -440,6 +440,24 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .lad.st-secure { background: var(--accent); color: var(--accent-ink); border-color: var(--accent-edge); }
 .lad.st-later { opacity: .55; border-style: dashed; }
 .lad-legend { font-size: 12px; color: var(--muted); font-weight: 700; }
+/* v3.8: the Parent Zone progress charts (inline SVG from spell-jump/src/ui/chart.js) */
+.pz-chart { margin: 0 0 12px; padding: 10px 12px 8px; border-radius: 12px; background: var(--ink-2); }
+.pz-chart figcaption { font: 800 13px/1.2 var(--font-body); color: var(--muted); margin-bottom: 6px; }
+.pz-chart-svg { display: block; width: 100%; height: auto; max-height: 240px; aspect-ratio: 640 / 200; overflow: visible; }
+.pz-chart[data-empty="true"] .pz-chart-svg { opacity: .45; }
+.pz-chart .gridline { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+.pz-chart .axis { stroke: var(--line); stroke-width: 1.5; }
+.pz-chart .tick { fill: var(--muted); font: 700 11px var(--font-body); }
+.pz-chart .bars rect { opacity: .85; }
+.pz-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 4px; font: 800 12px/1.4 var(--font-body); color: var(--muted); }
+.pz-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.pz-legend .sw { display: inline-block; width: 18px; height: 10px; border-radius: 3px; background: var(--c); }
+.pz-legend .sw.line { height: 3px; border-radius: 2px; }
+.pz-legend .sw.dashed { background: repeating-linear-gradient(90deg, var(--c) 0 6px, transparent 6px 10px); }
+.pz-chart-empty { font: 700 12px/1.4 var(--font-body); color: var(--muted); padding: 4px 0 2px; }
+.pz-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.pz-chips .chip { min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 2px solid var(--line); background: var(--ink-2); color: var(--muted); font: 800 12px/1 var(--font-body); }
+.pz-chips .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .pz-week { margin: 2px 0 12px; padding: 10px 12px; border-radius: 4px; background: var(--ink-2); border: 2px solid var(--line); display: grid; gap: 6px; }
 .pz-week .pw-big { font: 400 18px/1.1 var(--font-display); text-transform: uppercase; }
 .pw-bar, .pw-mini { height: 12px; border-radius: 2px; background: rgba(0,0,0,.35); overflow: hidden; }

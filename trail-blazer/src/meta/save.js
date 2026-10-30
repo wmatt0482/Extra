@@ -51,7 +51,7 @@ export function defaultSave() {
     decal: 'none',
     records: { rides: 0, lifetimeCash: 0, longestRide: 0, totalSmashes: 0, totalFlips: 0, totalCoins: 0, maxSpeedKmh: 0, longestAir: 0, winches: 0,
       wins: 0, podiums: 0, crashes: 0, perfectLandings: 0 },
-    seen: { coach: false },
+    seen: { coach: false },   // + hillCoach (v1.7.1) once the climb's "Hold GAS" line was shown
     cups: {},                 // cupId -> { best: points, trophy: 'gold' | 'silver' | 'bronze', weekends }
     stars: {},                // trailId -> [win, every gate right, the trail's stunt]
     crates: defaultCrates(),
@@ -111,6 +111,7 @@ export function normalize(raw) {
   }
   const seen = raw.seen && typeof raw.seen === 'object' ? raw.seen : {};
   s.seen.coach = bool(seen.coach, s.records.rides > 0);
+  if (seen.hillCoach) s.seen.hillCoach = true;      // v1.7.1: "Hold GAS to climb!" shown once
   // ---- v3 ----
   if (raw.cups && typeof raw.cups === 'object') for (const [k, v] of Object.entries(raw.cups)) if (CUP_BY_ID[k] && v && typeof v === 'object') {
     s.cups[k] = { best: Math.max(0, Math.floor(num(v.best))), trophy: TROPHIES.includes(v.trophy) ? v.trophy : null, weekends: Math.max(0, Math.floor(num(v.weekends))) };

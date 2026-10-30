@@ -43,7 +43,7 @@ import { createResults } from './ui/results.js';
 import { createYard } from './ui/yard.js';
 import { createParentZone } from './ui/parentZone.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const GAME = 'fraction-fright';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'fractionFright.resumePlayer';   // sessionStorage: the player to come back to after an update reload

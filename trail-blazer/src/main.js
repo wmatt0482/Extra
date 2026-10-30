@@ -74,7 +74,7 @@ import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, vehicleM
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -268,7 +268,7 @@ async function boot() {
   const hud = createHud({ paintColor });
   const controls = createControls($('#controls'), (s) => {
     input = { gas: !!s.gas, brake: !!s.brake, boost: !!s.nitro };
-    if (game && run) game.setInput(input);
+    if (game && (run || (hill && hill.active))) game.setInput(input);
   });
   const playersUI = createPlayers(app);
   const crates = createCrateOpener(app);
@@ -412,7 +412,7 @@ async function boot() {
     screen = name;
     const inRide = name === 'ride';
     document.documentElement.classList.toggle('in-run', inRide);
-    if (!inRide) { hud.clearBanners(); hideCoach(); hideCountdown(); gatePanel.cancel(); document.documentElement.classList.remove('math'); }
+    if (!inRide) { hud.clearBanners(); hideCoach(); hideCountdown(); gatePanel.cancel(); document.documentElement.classList.remove('math', 'hill'); }
     if (inRide || name === 'results') toastsEl.replaceChildren();
     $('#hud').hidden = !inRide;
     $('#controls').hidden = !inRide;
@@ -557,7 +557,12 @@ async function boot() {
     let s = null;
     try { s = game.getState(); } catch (_) { /* engine between races */ }
     if (!s) return;
-    if (!run) { Audio.engine(hill && hill.active && s.hill && s.hill.burst > 0 ? 0.6 : -1); return; }   // the climb: the engine's own sounds
+    if (!run) {                                  // the climb (v1.7.1): the tank shows the rocket's charge, the engine note follows the thrust
+      const hs = s.hill || {};
+      Audio.engine(hill && hill.active && hs.thrusting ? 0.7 : -1);
+      hud.update({ ...s, boost: hs.charge || 0 });
+      return;
+    }
     run.lastState = s;
     hud.update(s);
     if (s.place >= 1 && run.place == null) run.place = s.place;
@@ -774,7 +779,7 @@ async function boot() {
   // Gate panel (the hill's own mix: the frontier, the scout family, a stretch into the tier above); the answer is the
   // burst (right = a full burst, quick or not; a miss = a sputter and a slide back to the last flag). Nothing is timed
   // on screen, and the climb ends by itself after 10 facts or at the summit; the results follow with the hill's cash.
-  const HILL_FLAGS = 5, HILL_QUESTIONS = 10;
+  const HILL_FLAGS = 5, HILL_QUESTIONS = 10, HILL_AUTO_SEC = 6;
   function startHill(r, result, show) {
     const picks = (() => { try { return hillFacts(facts, HILL_QUESTIONS, Date.now()); } catch (e) { console.error('[TrailBlazer] hillFacts threw', e); return []; } })();
     if (!picks.length) return false;
@@ -782,12 +787,16 @@ async function boot() {
     const hl = { active: true, picks, asked: 0, right: 0, quick: 0, answers: [], result, show, trailId: r.trail.id, cupMult: cm, flags: 0, heightM: 0, summit: false, ended: false };
     let ok = false;
     hill = hl;                                   // before the call: an engine may hold in the same tick
-    try { ok = game.startHill({ flags: HILL_FLAGS, questions: HILL_QUESTIONS, seed: hashString('hill:' + r.trail.id + ':' + (save.hill.climbs || 0)), cupMult: cm }) !== false; }
+    try { ok = game.startHill({ flags: HILL_FLAGS, questions: HILL_QUESTIONS, seed: hashString('hill:' + r.trail.id + ':' + (save.hill.climbs || 0)), cupMult: cm, autoSec: HILL_AUTO_SEC }) !== false; }
     catch (e) { console.error('[TrailBlazer] startHill threw', e); ok = false; }
     if (!ok) { hill = null; gatePanel.cancel(); return false; }
     save.hill.climbs = (save.hill.climbs || 0) + 1;
     app.persist();
-    $('#controls').hidden = true;                // no gas on the hill: the bursts are the answers (go('ride') shows them again)
+    // v1.7.1: GAS burns the charge a right answer gives (BRAKE and BOOST hide: html.hill); the controls wake on the first charge
+    document.documentElement.classList.add('hill');
+    controls.reset(); controls.enable(false);
+    input = { gas: false, brake: false, boost: false };
+    try { game.setInput(input); } catch (_) { /* ignore */ }
     hud.banner('turbo', 'HILL CLIMB!', 1500);
     Audio.whoosh();
     cancelAnimationFrame(hudRaf);
@@ -812,6 +821,21 @@ async function boot() {
     switch (evt.type) {
       case 'hillStart': break;
       case 'hillHold': askHill(hl, evt).catch((e) => { console.error('[TrailBlazer] hill question failed', e); try { game.hillBoost({ power: 1, quick: false }); } catch (_) { /* ignore */ } }); break;
+      case 'hillCharge': {                    // v1.7.1: the rocket is charged; the kid holds GAS to climb
+        controls.enable(true);
+        Audio.coin();
+        if (!save.seen.hillCoach) { save.seen.hillCoach = true; app.persist(); hud.banner('turbo', 'Hold GAS to climb!', 1800); }
+        clearTimeout(hl.waitTimer);
+        hl.waitTimer = setTimeout(() => { if (hill === hl && hl.active && !paused) { const st = (() => { try { return game.getState(); } catch (_) { return null; } })(); if (st && st.hill && st.hill.charge > 0 && !st.hill.thrusting) hud.banner('small', 'Hold GAS!', 1200, { low: true }); } }, 2500);
+        break;
+      }
+      case 'hillBurst': clearTimeout(hl.waitTimer); Audio.whoosh(); break;
+      case 'hillWait': {
+        clearTimeout(hl.waitTimer);
+        hl.waitTimer = setTimeout(() => { if (hill === hl && hl.active && !paused) hud.banner('small', 'Hold GAS!', 1200, { low: true }); }, 2000);
+        break;
+      }
+      case 'hillAuto': clearTimeout(hl.waitTimer); break;
       case 'hillFlag': {
         hl.flags = Math.max(hl.flags, Number(evt.n) || 0); hl.heightM = Math.max(hl.heightM, Number(evt.heightM) || 0);
         Sfx.chime(Math.min(4, (Number(evt.n) || 1) - 1)); setTimeout(() => Audio.coin(), 120);
@@ -833,6 +857,10 @@ async function boot() {
     clearTimeout(hl.watchdog);
     if (hl.asked >= hl.picks.length) { try { game.endHill(); } catch (_) { /* ignore */ } return; }
     const pick = hl.picks[hl.asked];
+    clearTimeout(hl.waitTimer);
+    controls.reset(); controls.enable(false);
+    input = { gas: false, brake: false, boost: false };
+    try { game.setInput(input); } catch (_) { /* ignore */ }
     document.documentElement.classList.add('math');
     const res = await gatePanel.open({ fact: pick.fact, flip: !!pick.flip, index: hl.asked, total: hl.picks.length, mode: 'hill' });
     if (res.cancelled || hill !== hl || !hl.active) return;
@@ -845,14 +873,15 @@ async function boot() {
     app.persistFacts();
     document.documentElement.classList.remove('math');
     try { game.hillBoost({ power: res.correct ? 1 : 0, quick: !!res.quick }); } catch (e) { console.error('[TrailBlazer] hillBoost threw', e); }
-    armHillWatchdog(hl, 20000);       // the engine holds again (or ends) within a few seconds; if it never does, the climb ends on its own
+    armHillWatchdog(hl, 30000);       // the charge fires by itself after HILL_AUTO_SEC, so a hold (or the end) follows within this; if never, the climb ends
   }
   /** The climb is over: bank the hill's cash, remember the best, a gold crate on the summit, then the results. */
   function finishHill(hl, evt) {
     if (hill !== hl || hl.ended) return;
     hl.ended = true; hl.active = false;
-    clearTimeout(hl.watchdog);
-    gatePanel.cancel(); document.documentElement.classList.remove('math');
+    clearTimeout(hl.watchdog); clearTimeout(hl.waitTimer);
+    controls.reset(); controls.enable(false);
+    gatePanel.cancel(); document.documentElement.classList.remove('math', 'hill');
     Audio.engine(-1);
     const e = evt && typeof evt === 'object' ? evt : {};
     const flags = Math.max(hl.flags, Math.floor(Number(e.flags) || 0));

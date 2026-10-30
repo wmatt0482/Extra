@@ -141,6 +141,12 @@ export function mergeWords(local, remote, now = Date.now()) {
     bestStreak: Math.max(...progress.map((d) => num(d.bestStreak))),
     perfectTotal: Math.max(...progress.map((d) => num(d.perfectTotal))),
   };
+  // v3.8: the per-day progress log: each day's counts by max (both devices counted the same child)
+  out.progress = {};
+  for (const d of progress) for (const [day, p] of Object.entries(d.progress || {})) {
+    const m = out.progress[day] || { mastered: 0, practiced: 0, right: 0 };
+    out.progress[day] = { mastered: Math.max(num(m.mastered), num(p && p.mastered)), practiced: Math.max(num(m.practiced), num(p && p.practiced)), right: Math.max(num(m.right), num(p && p.right)) };
+  }
   if (Math.max(num(A.activeAt), num(B.activeAt)) > 0) out.activeAt = Math.max(num(A.activeAt), num(B.activeAt));
   if (deleted.length) out.deletedLists = deleted;
   if (Math.max(resetA, resetB) > 0) out.resetAt = Math.max(resetA, resetB);

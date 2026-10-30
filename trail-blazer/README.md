@@ -97,7 +97,14 @@ hint pattern, on the ladder, in the scouts and in the Parent Zone. **Two more cu
 styles): the **Champion Cup** (×7 cash: Sunset Pines, Crimson Canyon, Frost Lake, Thunder Beach, Ember Vent, Mirror
 Swamp; a Legend trophy + 50 ★) and the **Masters Cup** (×10: Midnight City, Fossil Flats, Cloud Nine, Pumpkin Hollow,
 Far Side, Prism Peak; a Champion trophy + 70 ★): **30 trails in 5 cups, 90 stars**. Parents → Options → "Hill Climb"
-turns the climb off; the Report counts climbs, summits, flags and the best height. The economy table below is the
+turns the climb off; the Report counts climbs, summits, flags and the best height. **v1.7.1 (the throttle; Matt: "there
+should be a way for them to control the throttle or it seems disconnected")**: a right answer now **charges** the
+rocket and the kid **holds GAS to climb** (BRAKE and BOOST hide on the hill; the tank shows the charge); let go and the
+vehicle stops and holds where it is, GAS again carries on; a charge left alone fires by itself after 6 s so nobody is
+stranded; "Hold GAS to climb!" once, the first time. The climb distance per answer is unchanged.
+**v1.8 (Parent Zone charts)**: the Report opens with "Progress over time" (2 / 4 / 12 weeks): gates answered each day
+(bars), facts mastered and fluent (lines), the share right at the gates and the ladder's secure share (dashed, right
+axis), from a per-day snapshot the facts store writes with every answer (`progress`, 90 days, synced by per-day max). The economy table below is the
 v1.7 one (the hill roughly doubles a race's cash, the two cups end the runway at ~12 h; `tools/economy-sim.mjs
 --no-hill` prints it without the climb).
 

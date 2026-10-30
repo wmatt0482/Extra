@@ -18,8 +18,9 @@ import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spe
 import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
 import { ALL_FAMILIES, MAX_CUSTOM, factText, famLabel, parseCustom } from '../facts/facts.js';
 import { STATUSES } from '../facts/scheduler.js';
-import { GATES_OPTIONS, NEW_PER_DAY_OPTIONS, activeFacts, refreshFrontier, report, reportText } from '../facts/store.js';
+import { GATES_OPTIONS, NEW_PER_DAY_OPTIONS, activeFacts, refreshFrontier, report, reportText, progressSeries } from '../facts/store.js';
 import { autoFamilies, famInfo, ladder, tierOf } from '../facts/adaptive.js';
+import { dayChart, rangeChips } from '../../../spell-jump/src/ui/chart.js';
 import { dial, dialText, steppedText } from '../facts/governor.js';
 import { recheckInDays, scoutFamily } from '../facts/scouts.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
@@ -354,6 +355,21 @@ export function createParentZone(app) {
 
   // ---------- Report ----------
   const OP_SHORT = { x: '× Multiply', '/': '÷ Divide', '+': '+ Add', '-': '− Subtract' };
+  let chartDays = 28;      // v1.8: the progress charts' range
+  // v1.8: progress over time (parent-facing only): facts mastered / fluent (lines), gates answered each day (bars),
+  // the share right that day and the ladder's secure share (dashed lines on the right axis)
+  function chartBlock(d, now) {
+    const ps = progressSeries(d, now, chartDays);
+    const chart = dayChart({ id: 'report-chart', title: 'Progress over time', days: ps.days, left: { max: Math.max(10, ...ps.mastered.filter((v) => v != null), ...ps.asked) },
+      series: [
+        { label: 'Gates answered', color: '#5ab0ff', values: ps.asked, kind: 'bar', axis: 'left' },
+        { label: 'Facts mastered', color: '#ffb400', values: ps.mastered, kind: 'line', axis: 'left' },
+        { label: 'Facts fluent', color: '#ff7a3d', values: ps.fluent, kind: 'line', axis: 'left' },
+        { label: 'Right at the gates %', color: '#49d17d', values: ps.rightPct, kind: 'line', axis: 'right', dashed: true },
+        { label: 'Ladder secure %', color: '#c77dff', values: ps.ladderPct, kind: 'line', axis: 'right', dashed: true },
+      ] });
+    return [h('div', { class: 'hud-label pz-sec' }, 'Progress over time'), rangeChips(chartDays, (n) => { chartDays = n; render(); }), chart];
+  }
   function reportTab(p) {
     const d = app.factsFor(p.id);
     const now = Date.now();
@@ -385,6 +401,7 @@ export function createParentZone(app) {
     });
     return [
       weekBlock(wk),
+      ...chartBlock(d, now),
       h('div', { class: 'pz-help pz-first', id: 'report-summary' }, `${r.totals.mastered} mastered · ${r.totals.fluent} fluent (mastered and answered in 3 s or less on 2 days) · ${r.totals.seen} of ${r.totals.facts} facts practiced`),
       table,
       h('div', { class: 'hud-label pz-sec' }, 'Patterns'),

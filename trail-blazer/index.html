@@ -625,6 +625,10 @@ html:not(.kbd) .kb-only { display: none; }
 .hud-facts { margin-top: 4px; font: 800 11px/1 var(--font-body); letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
 .hud-facts.done { color: var(--go); }
 html.math #controls { visibility: hidden; }
+/* v1.7.1: on the hill only GAS works (the rocket's charge burns while it is held); the tank shows the charge */
+html.hill #ctl-brake, html.hill #ctl-boost { display: none; }
+html.hill .boost-bar i { background: linear-gradient(90deg, #4fd2ff, #c9f3ff); }
+html.hill .boost-bar::after { content: ''; }
 
 /* Gate panel: the race stays visible behind it, dimmed and blurred */
 .gate { position: absolute; inset: 0; z-index: 25; display: flex; justify-content: center; align-items: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l);
@@ -852,6 +856,24 @@ html.math #controls { visibility: hidden; }
 .pat-list { margin: 4px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; }
 .pat-list li { padding: 8px 12px; border-radius: 10px; background: var(--ink-2); border: 2px solid var(--line); font-weight: 700; font-size: 14px; }
 /* v1.6.2 the week's progress (Parents → Report, Family code) */
+/* v3.8: the Parent Zone progress charts (inline SVG from spell-jump/src/ui/chart.js) */
+.pz-chart { margin: 0 0 12px; padding: 10px 12px 8px; border-radius: 12px; background: var(--ink-2); }
+.pz-chart figcaption { font: 800 13px/1.2 var(--font-body); color: var(--muted); margin-bottom: 6px; }
+.pz-chart-svg { display: block; width: 100%; height: auto; max-height: 240px; aspect-ratio: 640 / 200; overflow: visible; }
+.pz-chart[data-empty="true"] .pz-chart-svg { opacity: .45; }
+.pz-chart .gridline { stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 4; }
+.pz-chart .axis { stroke: var(--line); stroke-width: 1.5; }
+.pz-chart .tick { fill: var(--muted); font: 700 11px var(--font-body); }
+.pz-chart .bars rect { opacity: .85; }
+.pz-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-bottom: 4px; font: 800 12px/1.4 var(--font-body); color: var(--muted); }
+.pz-legend .lg { display: inline-flex; align-items: center; gap: 6px; }
+.pz-legend .sw { display: inline-block; width: 18px; height: 10px; border-radius: 3px; background: var(--c); }
+.pz-legend .sw.line { height: 3px; border-radius: 2px; }
+.pz-legend .sw.dashed { background: repeating-linear-gradient(90deg, var(--c) 0 6px, transparent 6px 10px); }
+.pz-chart-empty { font: 700 12px/1.4 var(--font-body); color: var(--muted); padding: 4px 0 2px; }
+.pz-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.pz-chips .chip { min-height: 44px; padding: 8px 14px; border-radius: 999px; border: 2px solid var(--line); background: var(--ink-2); color: var(--muted); font: 800 12px/1 var(--font-body); }
+.pz-chips .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .pz-week { margin: 2px 0 12px; padding: 10px 12px; border-radius: 12px; background: var(--ink-2); border: 2px solid var(--line); display: grid; gap: 6px; }
 .pz-week .pw-big { font: 400 18px/1.1 var(--font-display); text-transform: uppercase; }
 .pw-bar, .pw-mini { height: 12px; border-radius: 6px; background: rgba(0,0,0,.35); overflow: hidden; }

@@ -18,7 +18,7 @@ import {
 } from '../src/facts/scheduler.js';
 import {
   LEVEL_XP, MISSION_REWARD, MISSION_SIZE, XP, activeFacts, defaultFacts, levelFor, levelProgress, missionState, nextFact, normalizeFacts, noteRace,
-  recordAnswer, report, reportText, resetFacts,
+  recordAnswer, report, reportText, resetFacts, noteProgress, progressSeries, PROGRESS_KEPT, PROGRESS_FIELDS,
 } from '../src/facts/store.js';
 import { CHECK_XP, MAX_ITEMS, TIERS, applyCheck, checkAnswer, checkNext, checkResult, createCheck, startLine, tiersFor } from '../src/facts/placement.js';
 import { classifyMiss, hintKind, inverseCluster, isSlowOnly, notePattern, patternHint, patternSummary } from '../src/facts/patterns.js';
@@ -1171,6 +1171,47 @@ test('old saves normalize unchanged: a v1.6 store (8 tiers, table families only)
   assert.equal(n.vouched.xteen, T0); assert.deepEqual(n.scouts.xbig, { asked: 2, quick: 2, miss: 0 }); assert.equal(n.pulled.dbig, T0); assert.deepEqual(n.stepped.xbig, { at: T0, back: 'xteen' }); assert.deepEqual(n.frontier.families, ['x10s', 'd10s']);
   assert.equal(normalizeFacts({ placement: { at: T0, families: {}, tier: 'T11' } }, T0).placement.tier, null, 'no such tier');
   assert.deepEqual(resetFacts(n, T0 + 2).vouched, {});
+});
+
+console.log('v1.8: the progress log and the charts');
+test('every answer logs the day: mastered / fluent / secure counts and the gate tallies; capped; normalized; merged by max', () => {
+  const d = defaultFacts(T0);
+  const now = T0 + 5 * DAY_MS;
+  recordAnswer(d, '7x8', { correct: true, quick: true, ms: 1200 }, now);
+  recordAnswer(d, '6x7', { correct: false, fixed: true, ms: 9000 }, now + 1000);
+  const k = new Date(now).toISOString().slice(0, 10) === new Date(now).toISOString().slice(0, 10) ? Object.keys(d.progress)[0] : '';
+  const e = d.progress[k];
+  assert.equal(Object.keys(d.progress).length, 1);
+  assert.deepEqual([e.asked, e.right, e.quick], [2, 1, 1]);
+  assert.equal(e.mastered, 0); assert.equal(e.fluent, 0); assert.ok(e.ladder >= 8); assert.ok(e.secure >= 0 && e.secure <= e.ladder);
+  for (let i = 1; i <= 100; i++) noteProgress(d, now + i * DAY_MS);
+  assert.equal(Object.keys(d.progress).length, PROGRESS_KEPT);
+  assert.ok(!d.progress[k], 'the oldest day fell off');
+  const n = normalizeFacts({ progress: { '2026-02-01': { mastered: 3, fluent: '1', asked: 4, right: 9 }, nope: {} } }, now);
+  assert.deepEqual(n.progress, { '2026-02-01': { mastered: 3, fluent: 0, secure: 0, ladder: 0, asked: 4, right: 9, quick: 0 } });
+  assert.deepEqual(Object.keys(n.progress['2026-02-01']), PROGRESS_FIELDS);
+  const a = defaultFacts(T0), b = defaultFacts(T0);
+  a.progress = { '2026-02-01': { mastered: 2, fluent: 1, secure: 1, ladder: 8, asked: 6, right: 4, quick: 2 } };
+  b.progress = { '2026-02-01': { mastered: 3, fluent: 0, secure: 1, ladder: 8, asked: 2, right: 2, quick: 2 }, '2026-02-02': { mastered: 3, fluent: 1, secure: 2, ladder: 8, asked: 1, right: 1, quick: 0 } };
+  const m = normalizeFacts(mergeFactsDocs({ updatedAt: T0, data: a }, { updatedAt: T0 + 1, data: b }, now), now);
+  assert.deepEqual(m.progress['2026-02-01'], { mastered: 3, fluent: 1, secure: 1, ladder: 8, asked: 6, right: 4, quick: 2 });
+  assert.deepEqual(m.progress['2026-02-02'], b.progress['2026-02-02']);
+  resetFacts(d, now);
+  assert.deepEqual(d.progress, {});
+});
+test('progressSeries: the last n days, counts carried across quiet days, percentages only on days with gates', () => {
+  const d = defaultFacts(T0);
+  const now = T0 + 20 * DAY_MS;
+  const dk = (t) => { const x = new Date(t); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  recordAnswer(d, '7x8', { correct: true, quick: true, ms: 1000 }, now - 3 * DAY_MS);
+  recordAnswer(d, '7x8', { correct: false, fixed: true, ms: 1000 }, now - 3 * DAY_MS + 60000);
+  const ps = progressSeries(d, now, 7);
+  assert.equal(ps.days.length, 7); assert.equal(ps.days[6], dk(now)); assert.equal(ps.days[3], dk(now - 3 * DAY_MS));
+  assert.deepEqual(ps.asked, [0, 0, 0, 2, 0, 0, 0]);
+  assert.deepEqual(ps.rightPct, [null, null, null, 50, null, null, null]);
+  assert.deepEqual(ps.mastered.slice(0, 3), [null, null, null], 'before the log: nothing');
+  assert.deepEqual(ps.mastered.slice(3), [0, 0, 0, 0], 'carried');
+  assert.ok(ps.ladderPct[3] >= 0 && ps.ladderPct[6] === ps.ladderPct[3]);
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

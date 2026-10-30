@@ -66,6 +66,7 @@ export function defaultFacts(now = Date.now()) {
     cleanRaces: 0,
     checkSkips: 0,
     lastCheckOfferAt: 0,
+    progress: {},        // v1.8: 'YYYY-MM-DD' → { mastered, fluent, secure, ladder, asked, right, quick } (the Parent Zone charts)
   };
   d.frontier.history = [];
   refreshFrontier(d, now);
@@ -196,6 +197,11 @@ export function normalizeFacts(raw, now = Date.now()) {
       history: (Array.isArray(fr.history) ? fr.history : []).filter((h) => h && num(h.at) > 0).map((h) => ({ at: num(h.at), from: fams(h.from), families: fams(h.families), why: typeof h.why === 'string' ? h.why.slice(0, 120) : '' })).slice(-HISTORY_KEPT) };
     if (!d.frontier.families.length) refreshFrontier(d, now);
   } else refreshFrontier(d, now);
+  if (raw.progress && typeof raw.progress === 'object') {
+    for (const [k, v] of Object.entries(raw.progress).sort().slice(-PROGRESS_KEPT)) if (/^\d{4}-\d\d-\d\d$/.test(k) && v && typeof v === 'object') {
+      d.progress[k] = Object.fromEntries(PROGRESS_FIELDS.map((f) => [f, Math.max(0, Math.floor(num(v[f])))]));
+    }
+  }
   return d;
 }
 
@@ -300,6 +306,7 @@ export function recordAnswer(d, fact, result = {}, now = Date.now(), session = n
     refreshFrontier(d, now, why);
   }
   d.updatedAt = now;
+  noteProgress(d, now, { correct: !!result.correct, quick: !!result.quick });
   return { status: status(rec), isNew: wasNew, newlyMastered, newlyFluent, missionJustDone, xp, pattern, probe, vouched, stepped };
 }
 
@@ -437,9 +444,51 @@ export function reportText(d, name = '', now = Date.now(), trailName = (id) => i
   return L.join('\n');
 }
 
+// ---------- v1.8: the per-day progress log (the Parent Zone charts) ----------
+export const PROGRESS_KEPT = 90;
+export const PROGRESS_FIELDS = ['mastered', 'fluent', 'secure', 'ladder', 'asked', 'right', 'quick'];
+/**
+ * Today's snapshot: facts mastered / fluent now, families secure (the week block's rule) of the ladder, and the day's
+ * gate counts (asked / right / quick accumulate: pass the answer just recorded).
+ */
+export function noteProgress(d, now = Date.now(), answer = null) {
+  const k = dayKey(now);
+  if (!d.progress || typeof d.progress !== 'object') d.progress = {};
+  const cur = d.progress[k] || { asked: 0, right: 0, quick: 0 };
+  const recs = Object.values(d.records || {});
+  const L = ladder(d.sets || {});
+  const vouched = d.vouched || {};
+  const secure = L.filter((f) => { const i = famInfo(d, f, now); return i.secure || i.graduated || vouched[f] > 0; }).length;
+  const entry = { mastered: recs.filter(isMastered).length, fluent: recs.filter(isFluent).length, secure, ladder: L.length,
+    asked: num(cur.asked) + (answer ? 1 : 0), right: num(cur.right) + (answer && answer.correct ? 1 : 0), quick: num(cur.quick) + (answer && answer.quick ? 1 : 0) };
+  d.progress[k] = entry;
+  const keys = Object.keys(d.progress).sort();
+  for (const old of keys.slice(0, Math.max(0, keys.length - PROGRESS_KEPT))) delete d.progress[old];
+  return entry;
+}
+/** The chart's data for the last n days: { days, mastered, fluent, ladderPct, rightPct, asked } (null where no log). */
+export function progressSeries(d, now = Date.now(), n = 28) {
+  const days = [];
+  const t = new Date(now); t.setHours(12, 0, 0, 0);
+  for (let i = n - 1; i >= 0; i--) days.push(dayKey(t.getTime() - i * 86400000));
+  const log = d.progress || {};
+  const firstLog = Object.keys(log).sort()[0] || '';
+  const carry = (field) => {
+    const out = days.map((day) => (log[day] ? log[day][field] : null));
+    for (let i = 1; i < out.length; i++) if (out[i] == null && out[i - 1] != null && days[i] >= firstLog) out[i] = out[i - 1];
+    return out;
+  };
+  const secure = carry('secure'), L = carry('ladder');
+  return { days, mastered: carry('mastered'), fluent: carry('fluent'),
+    ladderPct: days.map((_, i) => (secure[i] != null && L[i] > 0 ? Math.round((100 * secure[i]) / L[i]) : null)),
+    asked: days.map((day) => (log[day] ? log[day].asked : 0)),
+    rightPct: days.map((day) => (log[day] && log[day].asked > 0 ? Math.round((100 * log[day].right) / log[day].asked) : null)) };
+}
+
 /** Parent Zone → Players → Reset facts data: progress, today and races go; the week's set, options and XP stay. */
 export function resetFacts(d, now = Date.now()) {
   d.records = {};
+  d.progress = {};
   d.today = { date: dayKey(now), count: 0, newCount: 0, missionPaid: false };
   d.races = [];
   // v1.3: the placement goes too (the Pit Crew Check is offered again), and the probe clock starts over

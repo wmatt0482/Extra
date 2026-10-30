@@ -76,7 +76,12 @@ export function mergeFracs(local, remote) {
     const m = d.fracs[k];
     if (!m || f.n > m.n || (f.n === m.n && f.last > m.last)) d.fracs[k] = clone(f);
   }
-  for (const [k, v] of Object.entries(o.days)) { const m = d.days[k]; if (!m || v.throws > m.throws) d.days[k] = clone(v); }
+  for (const [k, v] of Object.entries(o.days)) {
+    const m = d.days[k];
+    const sec = Math.max(num(m && m.secure), num(v.secure));
+    if (!m || v.throws > m.throws) d.days[k] = clone(v);
+    if (sec > 0) d.days[k].secure = sec;
+  }
   d.waves = byAt([...d.waves, ...o.waves], WAVES_KEPT);
   d.moves = byAt([...d.moves, ...o.moves], MOVES_KEPT);
   if (o.opts.updatedAt > d.opts.updatedAt) d.opts = clone(o.opts);

@@ -469,7 +469,8 @@ async function runLayout(browser, layout) {
   await page.click('[data-style-tab="decal"]');
   await page.click('.style-chip[data-decal="mud"]');
   check((await readSave(page)).decal === 'mud', 'Mud Splats decal equips and is saved');
-  check(await J(page, () => document.querySelector('.style-chip[data-decal="flames"]').classList.contains('locked') && /10 flips/.test(document.querySelector('.style-chip[data-decal="flames"]').textContent)), 'Flames decal locked: "Land 10 flips"');
+  // (the crate opened on the results is random: when it held the Flames decal the chip is owned instead)
+  check(await J(page, () => { const c = document.querySelector('.style-chip[data-decal="flames"]'); const s = JSON.parse(localStorage.getItem(`trailBlazer.${window.__trailBlazer.app.currentPlayerId}.save`)); return (c.classList.contains('locked') && /10 flips/.test(c.textContent)) || (s.cosmetics.owned.decal.includes('flames') && c.classList.contains('owned')); }), 'Flames decal locked: "Land 10 flips" (unless the crate just gave it)');
   await shot(page, layout, '12-garage-after');
 
   // ---------- v1.5: the Vehicles row: buy the Dune Quad, its own upgrades, back to the Ranger ----------
@@ -770,12 +771,33 @@ async function runLayout(browser, layout) {
         await typeAnswer(page, st.answer);
         await page.waitForFunction(() => !window.__trailBlazer.gatePanel.isOpen || window.__trailBlazer.gatePanel.state !== 'ask', null, { timeout: 4000 });
         await page.waitForFunction(() => !window.__trailBlazer.gatePanel.isOpen, null, { timeout: 4000 });
+        if (st.hill) {
+          // v1.7.1: the answer charged the rocket; nothing moves until GAS
+          await page.waitForTimeout(350);
+          const ch = await J(page, () => { const T = window.__trailBlazer; const h = T.game.getState().hill; return { charge: h.charge, height: h.heightM, waiting: h.waiting, thrusting: h.thrusting, hill: document.documentElement.classList.contains('hill'), brake: getComputedStyle(document.querySelector('#ctl-brake')).display, boost: getComputedStyle(document.querySelector('#ctl-boost')).display, tank: document.querySelector('#hud-boost').style.transform }; });
+          hillSeen.charges = (hillSeen.charges || []).concat(ch);
+          if (hillSeen.charges.length === 1) check(ch.charge === 1 && ch.waiting && !ch.thrusting && ch.height === 0 && ch.hill && ch.brake === 'none' && ch.boost === 'none' && /scaleX\(1\)/.test(ch.tank), `a quick right answer charges the rocket (charge ${ch.charge}, still at ${ch.height} m, waiting for GAS; BRAKE and BOOST hidden, the tank full)`);
+          if (hillSeen.charges.length === 3) {
+            // GAS for a moment, then let go: the vehicle stops and holds with charge left, never slides
+            await J(page, () => window.__trailBlazer.game.setInput({ gas: true }));
+            await page.waitForTimeout(300);
+            await J(page, () => window.__trailBlazer.game.setInput({ gas: false }));
+            await page.waitForTimeout(200);
+            const rel = await J(page, () => { const h = window.__trailBlazer.game.getState().hill; return { charge: h.charge, height: h.heightM, waiting: h.waiting, thrusting: h.thrusting }; });
+            await page.waitForTimeout(300);
+            const rel2 = await J(page, () => window.__trailBlazer.game.getState().hill.heightM);
+            check(rel.charge > 0 && rel.charge < 1 && rel.height > ch.height && rel.waiting && !rel.thrusting && rel2 === rel.height, `GAS released mid-burst: it stops and holds at ${rel.height} m with ${rel.charge} of the charge left (no slide)`);
+          }
+          await J(page, () => window.__trailBlazer.game.setInput({ gas: true }));
+        }
       } else await page.waitForTimeout(100);
     }
   }
   await page.waitForSelector(visibleSel('#screen-results'), { timeout: 8000 });
   await page.waitForTimeout(1500);
   const hs = await J(page, () => window.__hill);
+  check(hs.banners.includes('Hold GAS to climb!') && hs.banners.indexOf('Hold GAS to climb!') > hs.banners.indexOf('HILL CLIMB!'), 'the first charge of the first climb says "Hold GAS to climb!" (once)');
+  check(await J(page, () => window.__trailBlazer.app.save.seen.hillCoach === true && !document.documentElement.classList.contains('hill')), 'seen.hillCoach saved; html.hill dropped on the results');
   check(hs.starts.length === 1 && hs.starts[0].flags === 5 && hs.starts[0].questions === 10 && hs.starts[0].cupMult === 1, `after the finish the app called startHill({ flags: 5, questions: 10, cupMult: 1 }) (${JSON.stringify(hs.starts[0])})`);
   check(hs.boosts.length === 5 && hs.boosts.every((b) => b.power === 1 && b.quick), `5 quick right answers → 5 full bursts (${hs.boosts.map((b) => `${b.power}${b.quick ? 'q' : ''}`).join(' ')}) → the summit`);
   check(hs.banners.includes('HILL CLIMB!') && hs.banners.some((b) => /^Flag 1! \+\$150$/.test(b)) && hs.banners.includes('SUMMIT!'), `banners: HILL CLIMB! → Flag 1! +$150 … → SUMMIT! (${hs.banners.join(' | ')})`);
@@ -803,7 +825,7 @@ async function runLayout(browser, layout) {
   check(await J(page, () => { const c = document.querySelector('#trail-grid [data-trail="pine-ridge"]'); return !!c.querySelector('.summit-badge') && !document.querySelector('#trail-grid [data-trail="granite-gap"] .summit-badge'); }), 'the Cups screen: a summit badge on Pine Ridge only');
   await shot(page, layout, '16f-summit-badge');
   // a second climb: a wrong first answer slides back to the base (no climb), then the rest right; the climb ends after 10
-  await J(page, () => { window.__hill.boosts = []; window.__hill.banners = []; window.__mockScript = { noCrash: true, aiTimes: [9, 9.6, 10.4] }; window.__trailBlazer.app.startRide('pine-ridge', { skipCheck: true }); });
+  await J(page, () => { window.__hill.boosts = []; window.__hill.banners = []; window.__hill.autos = 0; window.__mockScript = { noCrash: true, aiTimes: [9, 9.6, 10.4], hillAutoSec: 0.4 }; window.__trailBlazer.app.startRide('pine-ridge', { skipCheck: true }); });
   await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
   {
     const end = Date.now() + 60000;
@@ -829,12 +851,13 @@ async function runLayout(browser, layout) {
         await page.waitForFunction(() => !window.__trailBlazer.gatePanel.isOpen, null, { timeout: 4000 });
       } else await page.waitForTimeout(100);
     }
-    check(hillAsked === 7, `the second climb: a miss, then 6 right (one slow) reach the summit on the 7th burst (${hillAsked} asked)`);
+    check(hillAsked === 7, `the second climb: a miss, then 6 right (one slow) reach the summit on the 7th burst (${hillAsked} asked), with no GAS pressed: the charge fires by itself after autoSec`);
   }
   await page.waitForSelector(visibleSel('#screen-results'), { timeout: 8000 });
   await page.waitForTimeout(1500);
   const hs2 = await J(page, () => window.__hill);
-  check(hs2.boosts[0] && hs2.boosts[0].power === 0 && hs2.boosts.slice(1).every((b) => b.power === 1) && hs2.boosts.some((b) => b.power === 1 && !b.quick), `bursts: a sputter (power 0), then full bursts, one of them slow (${hs2.boosts.map((b) => `${b.power}${b.quick ? 'q' : ''}`).join(' ')})`);
+  check(hs2.boosts[0] && hs2.boosts[0].power === 0 && hs2.boosts.slice(1).every((b) => b.power === 1) && hs2.boosts.some((b) => b.power === 1 && !b.quick), `charges: a sputter (power 0), then full charges, one of them slow (${hs2.boosts.map((b) => `${b.power}${b.quick ? 'q' : ''}`).join(' ')})`);
+  check(!hs2.banners.includes('Hold GAS to climb!'), 'the coach line is not repeated on the second climb');
   const rh2 = await J(page, () => window.__trailBlazer.lastResult.hill);
   check(rh2 && rh2.summit && rh2.asked === 7 && rh2.right === 6 && !rh2.newBest, `the second climb's results: a summit after 7 bursts, 6 right, not a new best (${JSON.stringify({ ...rh2, answers: undefined })})`);
   check(await J(page, () => { const s = window.__trailBlazer.app.save; return s.hill.climbs === 2 && s.hill.summits === 2 && s.hill.flags === 10; }), 'save.hill: 2 climbs, 2 summits, 10 flags');
@@ -971,6 +994,23 @@ async function runLayout(browser, layout) {
     && wkr.small.startsWith(`This week: ${wkr.w.rightPct} % right at the gates (${wkr.w.rightThisWeek} of ${wkr.w.gatesThisWeek})`) && wkr.w.gatesThisWeek > 0,
     `Report: "${wkr.big}" with a bar, "${wkr.small}"`);
   check(wkr.copied.includes(wkr.big) && wkr.copied.includes(wkr.small.split(' · ')[0]), 'Copy report includes the week\'s progress');
+
+  // v1.8: the progress chart on the Report (inline SVG, a legend, range chips); it has data once the child played today
+  const ch = await J(page, () => {
+    const f = document.querySelector('#report-chart');
+    const svg = f && f.querySelector('svg.pz-chart-svg');
+    return f && { empty: f.dataset.empty, series: [...f.querySelectorAll('.pz-legend .lg')].map((x) => x.textContent), bars: svg.querySelectorAll('.bars rect').length, paths: svg.querySelectorAll('path[data-series]').length,
+      chips: [...document.querySelectorAll('#chart-range .chip')].map((c) => c.textContent + (c.classList.contains('on') ? ':on' : '')), days: svg.querySelectorAll('.days text').length, links: f.querySelectorAll('a').length };
+  });
+  check(ch && ch.empty === 'false' && ch.series.join(',') === 'Gates answered,Facts mastered,Facts fluent,Right at the gates %,Ladder secure %' && ch.bars >= 1 && ch.paths >= 1 && ch.chips.join(',') === '2 weeks,4 weeks:on,12 weeks' && ch.days >= 4 && ch.links === 0,
+    `Report: the progress chart (gates, mastered, fluent, right %, ladder %) has today's data (${ch && ch.bars} bars, ${ch && ch.paths} lines), legend "${ch && ch.series.join(' · ')}", range chips`);
+  await page.click('#chart-range [data-days="84"]');
+  await page.waitForTimeout(150);
+  check(await J(page, () => document.querySelector('#chart-range [data-days="84"]').classList.contains('on') && document.querySelectorAll('#report-chart .days text').length >= 5), '12 weeks: the chart redraws with the longer range');
+  await page.click('#chart-range [data-days="28"]');
+  await page.waitForTimeout(150);
+  await J(page, () => document.querySelector('#report-chart').scrollIntoView({ block: 'center' }));
+  await shot(page, layout, '20a-pz-chart');
   await J(page, () => document.querySelector('#report-week').scrollIntoView({ block: 'start' }));
   await shot(page, layout, '20-pz-report');
   await audit(page, layout.insets, 'Parent Zone (Report)');

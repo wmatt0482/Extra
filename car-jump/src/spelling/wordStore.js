@@ -1,5 +1,8 @@
 // Per-player spelling data (`spellJump.<playerId>.words`): dated word lists (one active, the rest archived),
 // one progress record per word, test history, today's mission counter and the first-try streak.
+// v3.8 (Parent Zone charts): `progress` { 'YYYY-MM-DD': { mastered, practiced, right } }, a per-day snapshot
+// (noteProgress) kept for the last PROGRESS_KEPT days; progressSeries builds the chart's lines (mastered counts
+// before the log began are back-filled from each word's masteredAt).
 // Pure functions over a plain object (callers persist it); all dates come in as `now` (ms).
 // v3.7 class lists: a list applied from src/data/classLists.js keeps its `classId` (and the class list's id as its own
 // id, so two devices applying the same week merge into one list); a player whose active list is the sample or a class
@@ -36,10 +39,12 @@ export function defaultWords(now = Date.now()) {
     streak: 0,
     bestStreak: 0,
     perfectTotal: 0,
+    progress: {},
   };
   ensureRecords(d);
   return d;
 }
+export const PROGRESS_KEPT = 90;
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const str = (v, d = '') => (typeof v === 'string' ? v : d);
@@ -107,8 +112,47 @@ export function normalizeWordsData(raw, now = Date.now()) {
   const del = strArr(raw.deletedLists).slice(-100);
   if (del.length) d.deletedLists = del;
   if (num(raw.resetAt) > 0) d.resetAt = num(raw.resetAt);
+  if (raw.progress && typeof raw.progress === 'object') {
+    for (const [k, v] of Object.entries(raw.progress).sort().slice(-PROGRESS_KEPT)) if (/^\d{4}-\d\d-\d\d$/.test(k) && v && typeof v === 'object') {
+      d.progress[k] = { mastered: Math.max(0, Math.floor(num(v.mastered))), practiced: Math.max(0, Math.floor(num(v.practiced))), right: Math.max(0, Math.floor(num(v.right))) };
+    }
+  }
   ensureRecords(d);
   return d;
+}
+
+// ---------- v3.8: the per-day progress log (the Parent Zone charts) ----------
+/** Today's snapshot: words mastered now, words practiced today and spelled right today (from the day lists). */
+export function noteProgress(d, now = Date.now()) {
+  const k = dayKey(now);
+  const recs = Object.values(d.records);
+  const entry = { mastered: recs.filter(isMastered).length, practiced: recs.filter((r) => (r.daysSeen || []).includes(k)).length, right: recs.filter((r) => (r.daysCorrect || []).includes(k)).length };
+  if (!d.progress || typeof d.progress !== 'object') d.progress = {};
+  d.progress[k] = entry;
+  const keys = Object.keys(d.progress).sort();
+  for (const old of keys.slice(0, Math.max(0, keys.length - PROGRESS_KEPT))) delete d.progress[old];
+  return entry;
+}
+/**
+ * The chart's data for the last n days: { days, mastered[], practiced[], right[], tests: [{ day, pct, kind }] }.
+ * mastered comes from the log; days before the log began are back-filled from masteredAt (words mastered now, by
+ * the day they got there); practiced / right from the words' day lists (kept for every day).
+ */
+export function progressSeries(d, now = Date.now(), n = 28) {
+  const days = [];
+  const t = new Date(now); t.setHours(12, 0, 0, 0);
+  for (let i = n - 1; i >= 0; i--) days.push(dayKey(t.getTime() - i * 86400000));
+  const recs = Object.values(d.records);
+  const log = d.progress || {};
+  const firstLog = Object.keys(log).sort()[0] || '';
+  const masteredBy = (day) => recs.filter((r) => isMastered(r) && num(r.masteredAt) > 0 && dayKey(r.masteredAt) <= day).length;
+  const mastered = days.map((day) => (log[day] ? log[day].mastered : day < firstLog || !firstLog ? masteredBy(day) : null));
+  // carry the last known count across days without play (a flat line, not a gap) once the log has begun
+  for (let i = 1; i < mastered.length; i++) if (mastered[i] == null && mastered[i - 1] != null && days[i] >= firstLog && firstLog) mastered[i] = mastered[i - 1];
+  const practiced = days.map((day) => recs.filter((r) => (r.daysSeen || []).includes(day)).length);
+  const right = days.map((day) => recs.filter((r) => (r.daysCorrect || []).includes(day)).length);
+  const tests = (d.tests || []).map((x) => ({ day: dayKey(x.at), at: x.at, pct: x.total ? Math.round((x.correct / x.total) * 100) : 0, kind: x.kind, listId: x.listId }));
+  return { days, mastered, practiced, right, tests };
 }
 
 export const activeList = (d) => d.lists.find((l) => l.id === d.activeId) || d.lists[0];
@@ -265,6 +309,7 @@ export function recordSpell(d, word, { firstTry }, now, session) {
   if (!t.missionPaid && t.count >= MISSION_SIZE) { t.missionPaid = true; missionJustDone = true; }
   const newlyMastered = !wasMastered && isMastered(rec);
   if (newlyMastered) rec.masteredAt = now;          // v3.3: the family board counts words mastered this week
+  noteProgress(d, now);
   return { rec, streakBefore, streak: d.streak, missionJustDone, newlyMastered, listId: rec.listId, mission: missionState(d, now) };
 }
 
@@ -298,7 +343,9 @@ export function recordQualifier(d, results, now) {
     applyQualifier(rec, r.correct, now);
   }
   d.qualifierPending = null;
-  return pushTest(d, 'qualifier', results, now);
+  const t = pushTest(d, 'qualifier', results, now);
+  noteProgress(d, now);
+  return t;
 }
 
 // Returns the test entry; `mastered` (not stored) lists the words this test made Mastered (v3.3 trophies).
@@ -312,6 +359,7 @@ export function recordFriday(d, results, now) {
   }
   const t = pushTest(d, 'friday', results, now);
   Object.defineProperty(t, 'mastered', { value: mastered, enumerable: false });
+  noteProgress(d, now);
   return t;
 }
 
@@ -323,6 +371,7 @@ export function resetSpelling(d, now) {
   d.tests = [];
   d.today = fresh.today;
   d.streak = 0; d.bestStreak = 0; d.perfectTotal = 0;
+  d.progress = {};
   d.resetAt = now;                       // family sync: progress older than this does not come back
   ensureRecords(d);
   d.qualifierPending = activeList(d).sample ? null : d.activeId;

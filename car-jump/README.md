@@ -230,6 +230,14 @@ Title → **Parents**. First open sets a 4-digit PIN (twice, stored hashed); lat
 5 minutes). **Forgot PIN?**: press and hold for 3 s, answer a 2-digit × 2-digit multiplication, set a new PIN.
 Per player:
 
+- **Progress over time (v3.8)**: the Report opens with a chart (2 / 4 / 12 weeks): words mastered (a line), words
+  practiced each day (bars) and the share spelled right that day (dashed, right axis), plus a Test scores chart of
+  the Qualifiers and Friday Tests. The data is a per-day snapshot the store writes with every spell or test
+  (`progress` in `trailBlazer`-style day keys, the last 90 days, synced across devices by per-day max); the mastered
+  line before the log began is back-filled from each word's `masteredAt`. The charts are inline SVG from
+  `src/ui/chart.js` (no library, no network; Trail Blazer and Fraction Fright import the same module), drawn only
+  inside the PIN-locked Parent Zone.
+
 - **Words of the week**: the text area (the one place a native keyboard is used: parents type there; the sheet is
   sized to the visual viewport so the iOS keyboard never hides it), pattern of the week, validation (letters,
   apostrophes, hyphens, spaces; case-insensitive; duplicates removed; max 40 words; syllables that don't spell the

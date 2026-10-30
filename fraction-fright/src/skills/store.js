@@ -5,7 +5,8 @@
 //     opened: { T2: at },                          streets opened (an opened street is never closed again)
 //     records: { 'T1.bounce': [[at, pae, code]] }, per tier + kind, the last 12 throws (code b / h / n / m)
 //     fracs: { '3/4': { n, hits, bulls, pae, last } }   per fraction: throws, hits, bulls, PAE sum, last throw at
-//     days: { 'YYYY-MM-DD': { throws, hits, bulls, pae } }   the last 21 days (the Report's week)
+//     days: { 'YYYY-MM-DD': { throws, hits, bulls, pae, secure } }   the last 90 days (the Report's week and its charts;
+//                                                   secure = streets secure at the day's last throw, v1.5)
 //     waves: [{ at, street, number, cured, reached, throws, hits, bulls, pae, stopped? }]   the last 40 waves
 //     moves: [{ at, tier, from, to }]               tier state changes (the Report's "moved up")
 //     opts: { aloud, updatedAt }, pace: { think (s, an EMA of the think time per throw), n, updatedAt } (§16), resetAt? }
@@ -16,7 +17,7 @@ import { updateThink } from './pace.js';
 
 export const SKILLS_VERSION = 1;
 export const skillsKey = (playerId) => `fractionFright.${playerId}.skills`;
-export const DAYS_KEPT = 21;
+export const DAYS_KEPT = 90;      // v1.5: 90 (was 21) for the Parent Zone charts
 export const WAVES_KEPT = 40;
 export const MOVES_KEPT = 20;
 export const LAB_XP = 100;
@@ -67,6 +68,7 @@ export function normalizeSkills(raw) {
       if (!DAY_RE.test(k) || !v || typeof v !== 'object') continue;
       const throws = Math.max(0, Math.floor(num(v.throws)));
       d.days[k] = { throws, hits: Math.min(throws, Math.max(0, Math.floor(num(v.hits)))), bulls: Math.min(throws, Math.max(0, Math.floor(num(v.bulls)))), pae: Math.max(0, r1(v.pae)) };
+      if (num(v.secure) > 0) d.days[k].secure = Math.max(0, Math.floor(num(v.secure)));
     }
   }
   if (Array.isArray(raw.waves)) {
@@ -119,16 +121,38 @@ export function recordThrow(d, { tier, kind = 'locate', show = '', pae = 0, resu
   }
   const k = dayKey(at);
   const day = d.days[k] || { throws: 0, hits: 0, bulls: 0, pae: 0 };
-  d.days[k] = { throws: day.throws + 1, hits: day.hits + (isHit(result) ? 1 : 0), bulls: day.bulls + (result === 'bull' ? 1 : 0), pae: r1(day.pae + p) };
-  const keys = Object.keys(d.days).sort();
-  for (const old of keys.slice(0, Math.max(0, keys.length - DAYS_KEPT))) delete d.days[old];
   const xp = XP_FOR[result] || 1;
   d.xp += xp;
   const after = tierState(d, tier);
+  d.days[k] = { throws: day.throws + 1, hits: day.hits + (isHit(result) ? 1 : 0), bulls: day.bulls + (result === 'bull' ? 1 : 0), pae: r1(day.pae + p), secure: secureCount(d) };
+  const keys = Object.keys(d.days).sort();
+  for (const old of keys.slice(0, Math.max(0, keys.length - DAYS_KEPT))) delete d.days[old];
   if (after !== before) d.moves = [...d.moves, { at, tier, from: before, to: after }].slice(-MOVES_KEPT);
   const opened = openStreets(d, at);
   d.updatedAt = at;
   return { before, after, movedUp: rank(after) > rank(before), opened, xp };
+}
+
+/** Streets secure now (the ladder's state), for the day log. */
+export const secureCount = (d) => PLAYABLE.filter((t) => tierState(d, t) === 'secure').length;
+/**
+ * v1.5: the chart's data for the last n days: { days, throws, hitPct, bullPct, pae (mean), secure (carried across days
+ * without play once logged) } from the day log.
+ */
+export function progressSeries(d, now = Date.now(), n = 28) {
+  const days = [];
+  const t = new Date(now); t.setHours(12, 0, 0, 0);
+  for (let i = n - 1; i >= 0; i--) days.push(dayKey(t.getTime() - i * 86400000));
+  const log = d.days || {};
+  const firstLog = Object.keys(log).filter((k) => log[k].secure != null).sort()[0] || '';
+  const secure = days.map((day) => (log[day] && log[day].secure != null ? log[day].secure : null));
+  for (let i = 1; i < secure.length; i++) if (secure[i] == null && secure[i - 1] != null && firstLog && days[i] >= firstLog) secure[i] = secure[i - 1];
+  const at = (day, f) => (log[day] ? log[day][f] : 0);
+  return { days, throws: days.map((day) => at(day, 'throws')),
+    hitPct: days.map((day) => (at(day, 'throws') > 0 ? Math.round((100 * at(day, 'hits')) / at(day, 'throws')) : null)),
+    bullPct: days.map((day) => (at(day, 'throws') > 0 ? Math.round((100 * at(day, 'bulls')) / at(day, 'throws')) : null)),
+    pae: days.map((day) => (at(day, 'throws') > 0 ? Math.round((10 * at(day, 'pae')) / at(day, 'throws')) / 10 : null)),
+    secure, streets: PLAYABLE.length };
 }
 
 /** The Zombie Lab finished: +100 XP the first time, Maple Street opens. → { first, xp }. */

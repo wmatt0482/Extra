@@ -49,8 +49,10 @@ open http://localhost:8080/fraction-fright/?mock=1     # the mock engine (src/me
 - **Parents** (the same PIN as the other games): Family code (one code syncs all three games; a strip per child
   "Fractions this week · N % of the ladder · N % accurate") · **Fractions** ("Where Mia is", the ladder of streets
   with each one's state and aiming zone, play the Zombie Lab again) · Options (fractions aloud; sound, music, motion;
-  the voice as set in Spell Jump) · **Report** (this week's %, each street, closest and trickiest fractions, moves,
-  this week's waves, play by day, Copy report) · Players (rename, reset skills, reset progress, remove).
+  the voice as set in Spell Jump) · **Report** (this week's %, **progress charts** (v1.5: throws each day, on-target
+  and bull's-eye %, and the streets secure, over 2 / 4 / 12 weeks; the day log keeps 90 days and syncs), each street,
+  closest and trickiest fractions, moves, this week's waves, play by day, Copy report) · Players (rename, reset
+  skills, reset progress, remove).
 - The weekly %: *of the ladder* counts 3 steps per street (started, working, secure); *accurate* is this week's throws
   on target. Parent-facing only, never on the kid's screens.
 

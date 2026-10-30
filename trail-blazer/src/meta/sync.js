@@ -20,11 +20,12 @@
 //           `at` (newest 8); missDay = the later. Store: xp max; placement = the later `at`; scouts = per-family max;
 //           vouched / stepped = union (the earliest `at`); gateLog / dialHistory = union by `at` (12 / 20); races =
 //           union by `at` (40); today = the same day → max counts, else the later day; sets = the later
-//           sets.updatedAt; pulled = union; the frontier is recomputed. A reset (resetAt) on one device wins whole.
+//           sets.updatedAt; pulled = union; progress (v1.8) = per day, per field max; the frontier is recomputed.
+//           A reset (resetAt) on one device wins whole.
 import { registerSyncKind } from '../../../spell-jump/src/sync/client.js';
 import { mergeStreak } from '../../../spell-jump/src/sync/merge.js';
 import { normalize as normalizeSave, saveKey, storedSave } from './save.js';
-import { compactFacts, factsKey, normalizeFacts, refreshFrontier } from '../facts/store.js';
+import { PROGRESS_FIELDS, compactFacts, factsKey, normalizeFacts, refreshFrontier } from '../facts/store.js';
 import { DAYS_KEPT, RECENT_KEPT } from '../facts/scheduler.js';
 import { PATTERNS_KEPT } from '../facts/patterns.js';
 import { MEDAL_RANK } from '../data/medals.js';
@@ -80,6 +81,7 @@ export function mergeTb(local, remote) {
   const end = (g) => (Array.isArray(g) && g.length ? num(g[g.length - 1][0]) : Infinity);
   for (const [k, g] of Object.entries(obj(o.ghosts))) if (!s.ghosts[k] || end(g) < end(s.ghosts[k])) s.ghosts[k] = clone(g);
   s.seen = { ...obj(s.seen), coach: !!(obj(s.seen).coach || obj(o.seen).coach) };
+  if (obj(s.seen).hillCoach || obj(o.seen).hillCoach) s.seen.hillCoach = true;
   for (const [day, p] of Object.entries(obj(o.play))) {
     const mine = s.play[day] || {};
     s.play[day] = { races: Math.max(num(mine.races), num(p.races)), stars: Math.max(num(mine.stars), num(p.stars)), crates: Math.max(num(mine.crates), num(p.crates)) };
@@ -144,6 +146,10 @@ export function mergeFactsDocs(local, remote, now = Date.now()) {
   } else if (o.today.date > d.today.date) d.today = clone(o.today);
   if (num(o.sets.updatedAt) > num(d.sets.updatedAt)) { d.sets = clone(o.sets); d.opts = clone(o.opts); }
   for (const k of ['raceCount', 'checkOffers', 'lastCheckOfferAt', 'lastProbeAt']) d[k] = Math.max(num(d[k]), num(o[k]));
+  for (const [day, p] of Object.entries(obj(o.progress))) {
+    const m = d.progress[day] || {};
+    d.progress[day] = Object.fromEntries(PROGRESS_FIELDS.map((f) => [f, Math.max(num(m[f]), num(p[f]))]));
+  }
   refreshFrontier(d, now, '');
   return compactFacts(normalizeFacts(d, now));
 }

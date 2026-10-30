@@ -221,7 +221,7 @@ test('recordThrow: per fraction, per day, XP (effort counts too), moves; finishL
   S.recordThrow(d, { tier: 'T1', kind: 'bounce', show: '3/4', pae: 12.34, result: 'near', at: T0 });
   S.recordThrow(d, { tier: 'T1', kind: 'bounce', show: '3/4', pae: 0.8, result: 'bull', at: T0 + 1 });
   assert.deepEqual(d.fracs['3/4'], { n: 2, hits: 1, bulls: 1, pae: 13.1, last: T0 + 1 });
-  assert.deepEqual(d.days[S.dayKey(T0)], { throws: 2, hits: 1, bulls: 1, pae: 13.1 });
+  assert.deepEqual(d.days[S.dayKey(T0)], { throws: 2, hits: 1, bulls: 1, pae: 13.1, secure: 0 });
   assert.equal(d.xp, 100 + 1 + 3);
   assert.deepEqual(d.moves.map((m) => [m.from, m.to]), [['new', 'practice']]);
 });
@@ -427,6 +427,35 @@ test('fracs: the same throw on both sides is kept once; a reset wins whole', () 
   assert.equal(mergeFracs(doc(1, a), doc(2, b)).records['T1.locate'].length, 2);
   const r = labbed(); S.resetSkills(r, T0 + 99);
   assert.deepEqual(mergeFracs(doc(5, a), doc(1, r)).records, {});
+});
+
+console.log('v1.5: the day log keeps 90 days with the streets secure; progressSeries for the charts');
+test('a throw stamps the day with the streets secure; 90 days kept; merge keeps the larger secure; series carry it', () => {
+  const d = labbed();
+  const dk = (t) => { const x = new Date(t); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  S.recordThrow(d, { tier: 'T1', kind: 'locate', show: '1/2', pae: 3, result: 'bull', at: T0 });
+  assert.equal(S.DAYS_KEPT, 90);
+  assert.deepEqual(d.days[dk(T0)], { throws: 1, hits: 1, bulls: 1, pae: 3, secure: S.secureCount(d) });
+  for (let i = 1; i <= 95; i++) S.recordThrow(d, { tier: 'T1', kind: 'locate', show: '1/2', pae: 3, result: 'hit', at: T0 + i * DAY });
+  assert.equal(Object.keys(d.days).length, 90);
+  const n = S.normalizeSkills({ days: { '2026-03-01': { throws: 2, hits: 1, bulls: 0, pae: 10, secure: 2 }, '2026-03-02': { throws: 1, hits: 1, bulls: 1, pae: 1 } } });
+  assert.equal(n.days['2026-03-01'].secure, 2); assert.equal(n.days['2026-03-02'].secure, undefined, 'no secure field when none was logged');
+  const a = S.defaultSkills(), b = S.defaultSkills();
+  a.days = { '2026-03-01': { throws: 5, hits: 3, bulls: 1, pae: 20, secure: 1 } };
+  b.days = { '2026-03-01': { throws: 2, hits: 2, bulls: 2, pae: 4, secure: 3 } };
+  const m = mergeFracs(doc(1, a), doc(2, b));
+  assert.deepEqual(m.days['2026-03-01'], { throws: 5, hits: 3, bulls: 1, pae: 20, secure: 3 }, 'the fuller day, the larger secure');
+  const e = S.defaultSkills();
+  const now = T0 + 10 * DAY;
+  e.days = { [dk(now - 4 * DAY)]: { throws: 4, hits: 2, bulls: 1, pae: 12, secure: 1 }, [dk(now - 1 * DAY)]: { throws: 2, hits: 2, bulls: 0, pae: 3, secure: 2 } };
+  const ps = S.progressSeries(e, now, 7);
+  assert.equal(ps.days.length, 7); assert.equal(ps.days[6], dk(now));
+  assert.deepEqual(ps.throws, [0, 0, 4, 0, 0, 2, 0]);
+  assert.deepEqual(ps.hitPct, [null, null, 50, null, null, 100, null]);
+  assert.deepEqual(ps.bullPct, [null, null, 25, null, null, 0, null]);
+  assert.deepEqual(ps.pae, [null, null, 3, null, null, 1.5, null]);
+  assert.deepEqual(ps.secure, [null, null, 1, 1, 1, 2, 2], 'carried across quiet days once logged');
+  assert.equal(ps.streets, I.PLAYABLE.length);
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

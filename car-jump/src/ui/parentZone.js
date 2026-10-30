@@ -20,11 +20,12 @@ import { formatList, parseList, MAX_WORDS } from '../spelling/words.js';
 import { SAMPLE_PRESENTATION, SYSTEM_VOICE, VOICE_TIP, buildPresentation, voiceQuality } from '../spelling/tts.js';
 import { CLOUD_VOICES, cloudVoiceInfo } from '../tts/voices.js';
 import {
-  NEEDS_WORK, activeList, allWords, allWordsText, applyClassList, archivedLists, deleteList, listById, report, reportText, resetSpelling, restoreList, saveNewList, stopFollowing, weekProgress,
+  NEEDS_WORK, activeList, allWords, allWordsText, applyClassList, archivedLists, deleteList, listById, progressSeries, report, reportText, resetSpelling, restoreList, saveNewList, stopFollowing, weekProgress,
 } from '../spelling/wordStore.js';
 import { newestClassList } from '../data/classLists.js';
 import { WHY_INTRO, WHY_ROWS, WHY_SOURCES } from '../spelling/why.js';
 import { $, h } from './dom.js';
+import { dayChart, rangeChips } from './chart.js';
 import { icon } from './icons.js';
 import { drawAvatar } from './players.js';
 
@@ -73,6 +74,7 @@ export function createParentZone(app) {
 
   let view = 'pin', tab = 'sync', playerId = null, unlockedUntil = 0;
   let reportList = null, reportAll = false, allFilter = 'all';   // v3.7.5: the Report's week picker and the running list
+  let chartDays = 28;                                             // v3.8: the progress charts' range
   let lineTimer = 0;                   // keeps "synced 2 min ago" current while the zone is open
   let joined = null;                   // players shown after a Join (merged list)
   let pinMode = 'enter', pinFirst = '', pinEntry = '', mathQ = null, mathEntry = '';
@@ -344,6 +346,23 @@ export function createParentZone(app) {
     ];
   }
 
+  // v3.8: progress over time (parent-facing only): words mastered (a line), words practiced each day (bars) and the
+  // share spelled right (a dashed line on the right axis); test scores as a second chart when there are any
+  function chartBlock(d) {
+    const ps = progressSeries(d, Date.now(), chartDays);
+    const rightPct = ps.days.map((_, i) => (ps.practiced[i] > 0 ? Math.round((100 * ps.right[i]) / ps.practiced[i]) : null));
+    const main = dayChart({ id: 'report-chart', title: 'Progress over time', days: ps.days, left: { max: Math.max(5, ...ps.mastered.filter((v) => v != null), ...ps.practiced) },
+      series: [
+        { label: 'Words practiced', color: '#5ab0ff', values: ps.practiced, kind: 'bar', axis: 'left' },
+        { label: 'Words mastered', color: '#ffb400', values: ps.mastered, kind: 'line', axis: 'left' },
+        { label: 'Spelled right %', color: '#49d17d', values: rightPct, kind: 'line', axis: 'right', dashed: true },
+      ] });
+    const tests = ps.tests.slice(-12);
+    const testChart = tests.length ? dayChart({ id: 'report-chart-tests', title: 'Test scores', days: tests.map((t) => t.day), height: 150,
+      series: [{ label: 'Score %', color: '#c77dff', values: tests.map((t) => t.pct), kind: 'bar', axis: 'right' }], left: { max: 100, unit: '%' } }) : null;
+    return [h('div', { class: 'hud-label pz-sec' }, 'PROGRESS OVER TIME'), rangeChips(chartDays, (n) => { chartDays = n; render(); }), main, testChart];
+  }
+
   // v3.7.1: the week's progress (parent-facing only): a big line + bar on the Report, a strip per child on Family
   const pctText = (v) => (v == null ? '—' : `${v} %`);
   const bar = (v, cls) => h('div', { class: cls, role: 'img', 'aria-label': v == null ? 'no progress yet' : `${v} percent` }, h('i', { style: { width: `${v || 0}%` } }));
@@ -427,6 +446,7 @@ export function createParentZone(app) {
     return [
       chips,
       weekBlock(d, r.list.id),
+      ...(reportList ? [] : chartBlock(d)),
       h('div', { class: 'pz-scores' },
         h('div', { class: 'stat', 'data-score': 'pretest' }, score(r.pretest), h('span', {}, 'Pretest (Qualifier)')),
         h('div', { class: 'stat', 'data-score': 'latest' }, score(r.latest), h('span', {}, 'Latest Friday Test')),
