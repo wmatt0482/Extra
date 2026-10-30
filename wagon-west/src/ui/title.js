@@ -2,6 +2,8 @@
 // (or "Keep going" mid-leg, "Pack the wagon" before the first leg, "A new season" in the valley), Journal, Outfit,
 // Parents; the streak flame (Spell Jump's streak rule: a day counts once a leg is finished) and the week's words count
 // (the child's Spell Jump list, practised at the rivers and in the letters). The player chip goes back to the picker.
+// v1.1: the daily trail challenge under the map ("Today's challenge: …", a check mark once done: the token and the
+// card are given the moment it is done, main.js app.daily()); a tap reads it aloud.
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { streakNow } from '../../../spell-jump/src/meta/engagement.js';
 import { drawMap } from './map.js';
@@ -46,7 +48,17 @@ export function createTitle(app) {
     map.setAttribute('aria-label', r.next ? `The trail map. Next stop: ${r.next.name}.` : 'The trail map.');
     $('#title-season').textContent = `${season.year} · ${season.name}`;
     $('#btn-outfit').disabled = false;
+    const dc = app.daily();
+    const ch = $('#title-challenge');
+    ch.hidden = !dc;
+    if (dc) {
+      ch.dataset.done = String(!!dc.done);
+      ch.replaceChildren(h('span', { class: 'tch-mark', 'aria-hidden': 'true', html: dc.done ? app.icon('check') : app.icon('target') }),
+        h('span', { class: 'tch-text' }, h('b', {}, "Today's challenge: "), dc.text));
+      ch.setAttribute('aria-label', `Today's challenge: ${dc.text}${dc.done ? '. Done!' : ''}`);
+    }
   }
+  $('#title-challenge').addEventListener('click', () => { const dc = app.daily(); if (dc) app.say(dc.say || dc.text); });
   return { show, hide() {} };
 }
 

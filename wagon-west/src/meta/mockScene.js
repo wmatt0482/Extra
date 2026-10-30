@@ -11,6 +11,16 @@
 //   startFish({ casts: 4 }): 4 casts on a timer, the first 3 bite: 'fish' { size, lb } per bite, then 'fishEnd' { fishLb }
 //   endMiniGame(): the app left early: the timer stops, no end event; it returns the summary so far
 //   ({ meatLb, hits, shots } | { fishLb, caught, casts } | null) · setReducedMotion(on) · fishEnd { fishLb, caught, casts }
+//   v1.1 Fort Derby (the real scene's rules): startDerby({ seed, length = 400 }) has a marker every 100 m including
+//   one at the start line (of = 4 for 400 m); the first 'derbyMarker' { n, of } comes a moment after the start and each
+//   holds both wagons until derbyBurst(power) (1 quick right, 0.6 slow right, 0 a stumble; true only while held). After
+//   the last burst, about a second later, 'derbyEnd' { won, margin (whole metres), markers, bursts }: the bursts add up
+//   to 2.4 or more → won (4 quick, 3 quick + a stumble, 4 slow), else the mail wagon gets there first (1–2 quick).
+//   endDerby() / endMiniGame(): the app left early (no event; the state so far). getState().mini = { kind: 'derby',
+//   progress, mailProgress, left, phase: 'ready' | 'wait' | 'run' | 'finish', markers, bursts, won }.
+//   The dog: setParty({ dog: { name, coat: 'brown' | 'spotted' | 'black' } | null }) (the whole party each time) draws
+//   it beside the wagon; dogBark() → true and a 'bark' event (false without a dog); after an animalSpotted with the dog
+//   on screen the mock barks by itself (≤ 1 a second), as the real scene does.
 // Timing for tests: window.__mockScript = { shotMs } (default 650 ms between shots / casts). 'ready' fires once after the first frame.
 const SKIES = {
   prairie: ['#8fc6e8', '#f6e3b4'], bluffs: ['#9cc3e0', '#f2d2a0'], highdesert: ['#a8cfe6', '#f4d9a8'],
@@ -24,9 +34,9 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
   const ctx = canvas.getContext('2d');
   const S = {
     leg: { id: '', biome: 'prairie', miles: 150, stop: { kind: 'river', name: '' } },
-    party: { animal: 'oxen', companions: [], wagon: { paint: '#f3ead7', flag: 'none', name: '' } },
+    party: { animal: 'oxen', companions: [], wagon: { paint: '#f3ead7', flag: 'none', name: '' }, dog: null },
     travel: { milesDone: 0, pace: 'steady', rations: 'plenty', weather: 'clear', mood: 'happy', foodLow: false, moving: false },
-    backdrop: 'trail', mini: null, playing: true, confetti: 0, spotted: null, destroyed: false,
+    backdrop: 'trail', mini: null, derby: null, barkT: 0, lastBark: 0, playing: true, confetti: 0, spotted: null, destroyed: false,
   };
   let raf = 0, miniTimer = 0, w = 0, h = 0, dpr = 1;
   const emit = (type, data = {}) => { try { onEvent({ type, ...data }); } catch (e) { console.error('[mockScene] onEvent', e); } };
@@ -85,6 +95,18 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
       ctx.fillStyle = '#e8c39a'; ctx.beginPath(); ctx.arc(cx, cy - 12, 8, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#3b2c22'; ctx.fillRect(cx - 11, cy - 21, 22, 4);
     });
+    if (S.party.dog) {
+      const dx = bx + 66, dy = by - 4;
+      ctx.fillStyle = { brown: '#9a6a3a', spotted: '#e8e0d0', black: '#2e2622' }[S.party.dog.coat] || '#c08a4a';
+      ctx.fillRect(dx - 12, dy - 12, 24, 10); ctx.fillRect(dx + 8, dy - 18, 9, 9); ctx.fillRect(dx - 10, dy - 3, 3, 6); ctx.fillRect(dx + 6, dy - 3, 3, 6);
+      if (S.barkT > 0) { ctx.fillStyle = 'rgba(60,40,20,.8)'; ctx.font = '700 12px system-ui, sans-serif'; ctx.fillText('Woof!', dx + 14, dy - 22); S.barkT -= 1; }
+    }
+    if (S.derby) {
+      ctx.fillStyle = 'rgba(30,20,10,.3)'; ctx.fillRect(0, h * 0.1, w, 26);
+      const p = (x) => 20 + (w - 40) * Math.min(1, x);
+      ctx.fillStyle = '#f2b33d'; ctx.fillRect(p(S.derby.pos) - 6, h * 0.1 + 4, 12, 18);
+      ctx.fillStyle = '#5bb8d6'; ctx.fillRect(p(S.derby.mail) - 6, h * 0.1 + 4, 12, 18);
+    }
     if (S.travel.weather === 'rain' || S.travel.weather === 'storm') {
       ctx.strokeStyle = 'rgba(220,235,255,.6)'; ctx.lineWidth = 1.5;
       for (let i = 0; i < 40; i++) { const x = (i * 53 + scroll * 3) % w, y = (i * 37 + scroll * 7) % h; ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - 4, y + 12); ctx.stroke(); }
@@ -106,12 +128,30 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     raf = 0;
     if (S.destroyed || !S.playing) return;
     draw();
-    if (S.travel.moving || S.confetti > 0 || S.mini) raf = requestAnimationFrame(loop);
+    if (S.travel.moving || S.confetti > 0 || S.mini || S.barkT > 0) raf = requestAnimationFrame(loop);
   }
   const kick = () => { if (!raf && S.playing && !S.destroyed) raf = requestAnimationFrame(loop); };
 
   // ---------- the mini-games (scripted) ----------
-  function stopMini() { clearTimeout(miniTimer); miniTimer = 0; S.mini = null; }
+  function stopMini() { clearTimeout(miniTimer); miniTimer = 0; S.mini = null; S.derby = null; }
+  // ---------- Fort Derby (scripted): a marker, a pause for the burst, the next marker … the line ----------
+  function derbyNext() {
+    const d = S.derby;
+    if (!d || !S.playing) return;
+    clearTimeout(miniTimer); miniTimer = 0;
+    if (d.n >= d.of) {
+      const sum = d.bursts.reduce((a, x) => a + x, 0);
+      const won = sum >= 2.4 - 1e-9;
+      const out = { won, margin: won ? 40 : 25, markers: d.of, bursts: d.bursts.filter((x) => x > 0).length };
+      d.pos = won ? 1 : 0.94; d.mail = won ? 0.9 : 1; d.phase = 'finish'; d.won = won;
+      stopMini(); draw(); emit('derbyEnd', out); return;
+    }
+    d.n += 1; d.waiting = true; d.phase = 'wait';
+    d.mail = Math.min(0.95, d.n / (d.of + 1));
+    if (S.mini) S.mini.left = d.of - d.n;
+    draw();
+    emit('derbyMarker', { n: d.n, of: d.of });
+  }
   function huntShot() {
     const m = S.mini;
     if (!m || m.kind !== 'hunt' || !S.playing) return;
@@ -146,10 +186,17 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
 
   const scene = {
     setLeg(leg = {}) { S.leg = { ...S.leg, ...leg }; draw(); },
-    setParty(p = {}) { S.party = { ...S.party, ...p, wagon: { ...S.party.wagon, ...(p.wagon || {}) } }; draw(); },
+    setParty(p = {}) { S.party = { ...S.party, ...p, wagon: { ...S.party.wagon, ...(p.wagon || {}) }, dog: p.dog === undefined ? S.party.dog : (p.dog ? { ...p.dog } : null) }; draw(); },
     setTravel(t = {}) { S.travel = { ...S.travel, ...t }; if (S.travel.moving) kick(); else draw(); },
     setBackdrop(name) { S.backdrop = ['trail', 'fort', 'river', 'landmark', 'camp', 'post', 'valley'].includes(name) ? name : 'trail'; draw(); },
-    spotAnimal(kind) { S.spotted = kind; draw(); setTimeout(() => emit('animalSpotted', { animal: kind }), 0); },
+    spotAnimal(kind) {
+      S.spotted = kind; draw();
+      setTimeout(() => {
+        emit('animalSpotted', { animal: kind });
+        const t = Date.now();
+        if (S.party.dog && t - S.lastBark >= 1000) { S.lastBark = t; S.barkT = 30; kick(); emit('bark', {}); }
+      }, 0);
+    },
     celebrate(kind) { S.confetti = reducedMotion ? 0 : 20; void kind; kick(); },
     startHunt({ seed = 0, shots = 5 } = {}) {
       stopMini();
@@ -164,15 +211,42 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
       miniTimer = setTimeout(fishCast, shotMs());
     },
     endMiniGame() {
+      if (S.derby) return scene.endDerby();
       const m = S.mini;
       const out = !m ? null : m.kind === 'hunt' ? { meatLb: m.meat, hits: m.hits, shots: m.shots - m.left } : { fishLb: m.meat, caught: m.hits, casts: m.shots - m.left };
       stopMini(); draw();
       return out;
     },
+    startDerby({ seed = 0, length = 400 } = {}) {
+      stopMini();
+      const of = Math.max(1, Math.min(8, Math.ceil((Number(length) || 400) / 100)));
+      S.derby = { seed: Math.abs(Number(seed) || 0), n: 0, of, bursts: [], waiting: false, pos: 0, mail: 0, phase: 'ready', won: null };
+      S.mini = { kind: 'derby', left: of, hits: 0 };
+      kick();
+      miniTimer = setTimeout(derbyNext, shotMs());
+    },
+    derbyBurst(power = 0) {
+      const d = S.derby;
+      if (!d || !d.waiting) return false;
+      const p = Math.max(0, Math.min(1, Number(power) || 0));
+      d.waiting = false; d.bursts.push(p); d.phase = 'run';
+      d.pos = Math.min(0.95, d.pos + 0.12 + p * 0.12);
+      if (p > 0 && S.mini) S.mini.hits += 1;
+      draw();
+      miniTimer = setTimeout(derbyNext, d.n >= d.of ? Math.round(shotMs() * 1.5) : shotMs());
+      return true;
+    },
+    endDerby() {
+      const d = S.derby;
+      const out = d ? { markers: d.n, bursts: d.bursts.filter((p) => p > 0).length } : null;
+      stopMini(); draw();
+      return out;
+    },
+    dogBark() { if (!S.party.dog) return false; S.barkT = 30; kick(); setTimeout(() => emit('bark', {}), 0); return true; },
     setReducedMotion(on) { reducedMotion = !!on; draw(); },
     play() {
       S.playing = true;
-      if (S.mini && !miniTimer) miniTimer = setTimeout(S.mini.kind === 'hunt' ? huntShot : fishCast, shotMs());
+      if (S.mini && !miniTimer && !(S.derby && S.derby.waiting)) miniTimer = setTimeout(S.mini.kind === 'derby' ? derbyNext : S.mini.kind === 'hunt' ? huntShot : fishCast, shotMs());
       kick();
     },
     pause() { S.playing = false; clearTimeout(miniTimer); miniTimer = 0; cancelAnimationFrame(raf); raf = 0; },
@@ -181,7 +255,9 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     getState() {
       return { backdrop: S.backdrop, milesDone: S.travel.milesDone, weather: S.travel.weather, moving: !!S.travel.moving,
         biome: S.leg.biome, legId: S.leg.id, pace: S.travel.pace, view: S.backdrop, playing: S.playing, reducedMotion: !!reducedMotion,
-        mini: S.mini ? { kind: S.mini.kind, left: S.mini.left, hits: S.mini.hits, [S.mini.kind === 'hunt' ? 'meatLb' : 'fishLb']: S.mini.meat, phase: 'play' } : null, mock: true };
+        mini: S.derby ? { kind: 'derby', progress: S.derby.pos, mailProgress: S.derby.mail, left: S.derby.of - S.derby.n, phase: S.derby.phase, markers: S.derby.n, bursts: S.derby.bursts.length, won: S.derby.won }
+          : S.mini ? { kind: S.mini.kind, left: S.mini.left, hits: S.mini.hits, [S.mini.kind === 'hunt' ? 'meatLb' : 'fishLb']: S.mini.meat, phase: 'play' } : null,
+        dog: S.party.dog ? { ...S.party.dog } : null, mock: true };
     },
   };
   resize();

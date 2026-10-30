@@ -4,6 +4,8 @@
 // Big sounds only on success: a right answer gets a bright two-note chime ("Nice!"), a quick one a whoosh on top, a
 // miss only a soft low bump; the rope toss whistles, lands with a thunk on the landing or a small splash beside it;
 // the bow twangs, the fishing line plops; the bugle calls (a crate look) play when the wagon leaves camp.
+// v1.1: a trail card arrives with a three-note chime; the dog barks twice (a short "wuf-wuf": a low square-ish
+// tone that drops in pitch, with a breathy noise on top).
 const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkitAudioContext) : null;
 
 function createSfx() {
@@ -60,6 +62,13 @@ function createSfx() {
     plop() { if (ready()) { tone('sine', 620, 240, 0.12, 0.1); noise('lowpass', 900, 300, 1, 0.1, 0.05); } },
     /** the party cheers (a river crossed, a leg arrived) */
     cheer() { if (ready()) { for (let i = 0; i < 4; i++) noise('bandpass', 900 + i * 300, 1400 + i * 200, 2, 0.5, 0.05, i * 0.06); tone('triangle', 659, 988, 0.4, 0.05, 0.1); } },
+    /** a trail card drops: a bright three-note chime */
+    chime() { if (ready()) { tone('triangle', 1047, 1047, 0.14, 0.07); tone('triangle', 1319, 1319, 0.14, 0.07, 0.09); tone('sine', 1568, 1568, 0.32, 0.07, 0.18); } },
+    /** the dog: two short barks */
+    bark() {
+      if (!ready()) return;
+      for (const at of [0, 0.2]) { tone('square', 520, 260, 0.11, 0.05, at); tone('triangle', 380, 190, 0.12, 0.08, at); noise('bandpass', 1400, 700, 1.5, 0.1, 0.05, at); }
+    },
     /** a bugle call (the crate look): plays when the wagon leaves camp */
     bugle(id = 'reveille') {
       const notes = BUGLES[id];

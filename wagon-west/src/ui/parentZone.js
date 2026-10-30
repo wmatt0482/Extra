@@ -8,6 +8,9 @@
 // right %, problems right by kind, words right, the progress chart from Spell Jump's src/ui/chart.js with a per-day
 // log, the letters home, Copy report) · Players (rename, reset Wagon West progress, remove). Native text inputs exist
 // only here (family code, player names).
+// v1.1: Options → the voice line says which engine reads the game ("Natural voice: Ava · 312 clips ready" when the
+// natural voice is picked in Spell Jump and the family has a code, else "Device voice"), and "Say a test line" speaks
+// one line and reports which engine spoke it (tts.engine).
 import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spell-jump/src/spelling/profiles.js';
 import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
@@ -403,12 +406,28 @@ export function createParentZone(app) {
   function playerOptions(p) {
     const v = app.voiceInfo(p.id);
     const cv = v.cloudVoice ? cloudVoiceInfo(v.cloudVoice) : null;
-    const voiceText = `${cv ? `Natural voice: ${cv.name}${v.synced ? '' : ' (needs a family code)'}` : v.voiceName ? `Device voice: ${v.voiceName}` : 'Device voice: automatic'} · rate ${v.rate === 'veryslow' ? 'very slow' : v.rate}`;
-    return [
+    const line = cv && v.synced ? `Natural voice: ${cv.name} · ${v.clips} clips ready` : 'Device voice';
+    const note = cv && !v.synced ? `The natural voice (${cv.name}) needs a family code. ` : !cv && v.voiceName ? `${v.voiceName}. ` : '';
+    const out = [
       h('div', { class: 'hud-label pz-sec pz-first' }, `The voice for ${p.name}`),
-      h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Voice'),
-        h('div', { class: 'sub', id: 'opt-voice' }, `${voiceText}. Set in Spell Jump → Parents → Options; it reads the facts, the problems, the letters and the words here too.`))),
+      h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label', id: 'opt-voice-line' }, line),
+        h('div', { class: 'sub', id: 'opt-voice' }, `${note}Rate ${v.rate === 'veryslow' ? 'very slow' : v.rate}. Set in Spell Jump → Parents → Options; it reads the facts, the problems, the letters and the words here too.`))),
     ];
+    if (p.id === app.currentPlayerId) {
+      const result = h('div', { class: 'sub', id: 'opt-voice-result', 'aria-live': 'polite' });
+      const test = h('button', { class: 'btn btn-sm btn-cyan', id: 'opt-voice-test', 'data-sfx': '' }, h('span', { html: icon('sound') }), 'Say a test line');
+      test.addEventListener('click', async () => {
+        test.disabled = true; result.textContent = 'Speaking…';
+        const r = await app.testVoice();
+        test.disabled = false;
+        result.textContent = r.engine === 'cloud' ? `The natural voice spoke it (${r.name}).` : r.engine === 'device' ? 'The device voice spoke it.' : 'No voice spoke: check the sound and the device voice.';
+        result.dataset.engine = r.engine || '';
+        const vl = $('#opt-voice-line');
+        if (vl) { const n = app.voiceInfo(p.id); if (cv && n.synced) vl.textContent = `Natural voice: ${cv.name} · ${n.clips} clips ready`; }
+      });
+      out.push(h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Test the voice'), result), test));
+    }
+    return out;
   }
   function optionsTab(p) {
     const st = app.settings;

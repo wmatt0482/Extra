@@ -11,7 +11,7 @@
 // Trail Blazer store), creates a family code → the server has <id>.ww and <id>.facts (Trail Blazer's kind, registered
 // by Wagon West) → the ipad joins and gets the journey and the facts → the ipad writes a letter offline: it waits, then
 // syncs, and the laptop gets it → both play offline → after the 409 merge no letter, no sticker and no token is lost,
-// cash and tokens are the max, and laptop, ipad and server agree → Trail Blazer on the same device keeps Wagon West's
+// cash and tokens are the max, the trail cards (v1.1, J.cards) the union, and laptop, ipad and server agree → Trail Blazer on the same device keeps Wagon West's
 // sync metadata. No console errors (the 404 / 409s and aborts are expected).
 import { execSync, spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -170,8 +170,8 @@ async function main() {
 
     console.log('\n=== both play offline → the 409 merge keeps every letter, sticker and token ===');
     online.laptop = false; online.ipad = false;
-    await edit(L, (s) => { s.letters.push({ at: 3000, leg: 'chimney-rock', season: 's1847', text: 'Dear Grandma,\nLaptop letter two.' }); s.stickers.push('fort-kearny'); s.journey.cash += 50; s.crates.earned += 1; s.crates.queue.push('gold'); });
-    await edit(I, (s) => { s.letters.push({ at: 3500, leg: 'chimney-rock', season: 's1847', text: 'Dear Miss Carter,\nIpad letter two.' }); s.stickers.push('chimney-rock'); s.journey.tokens += 2; });
+    await edit(L, (s) => { s.letters.push({ at: 3000, leg: 'chimney-rock', season: 's1847', text: 'Dear Grandma,\nLaptop letter two.' }); s.stickers.push('fort-kearny'); s.journey.cash += 50; s.crates.earned += 1; s.crates.queue.push('gold'); s.journey.cards = [...(s.journey.cards || []), 'kansas-river', 'bison']; });
+    await edit(I, (s) => { s.letters.push({ at: 3500, leg: 'chimney-rock', season: 's1847', text: 'Dear Miss Carter,\nIpad letter two.' }); s.stickers.push('chimney-rock'); s.journey.tokens += 2; s.journey.cards = [...(s.journey.cards || []), 'pawnee', 'eagle']; });
     const lo = await mem(L), io = await mem(I);
     online.laptop = true; online.ipad = true;
     const n409 = apiLog.filter((r) => r.status === 409).length;
@@ -184,6 +184,9 @@ async function main() {
     check(['kansas-river', 'fort-kearny', 'chimney-rock'].every((x) => s.stickers.includes(x)), `stickers union (${s.stickers.join(', ')})`);
     check(s.journey.cash === Math.max(lo.cash, io.cash) && s.journey.tokens === Math.max(lo.tokens, io.tokens), `the same journey on both: cash max ($${s.journey.cash}), tokens max (${s.journey.tokens})`);
     check(s.crates.earned === lo.crates && s.crates.queue.length === 1, 'the crate earned offline on the laptop is kept');
+    check(['kansas-river', 'bison', 'pawnee', 'eagle'].every((id) => (s.journey.cards || []).includes(id)), `trail cards union (v1.1): ${(s.journey.cards || []).join(', ')}`);
+    const lc = await J(L, () => window.__wagonWest.save.journey.cards || []), ic = await J(I, () => window.__wagonWest.save.journey.cards || []);
+    check(['bison', 'eagle'].every((id) => lc.includes(id) && ic.includes(id)), 'both devices hold every card after the merge');
     const lm = await mem(L), im = await mem(I);
     check(lm.letters.length === 4 && im.letters.length === 4 && lm.cash === s.journey.cash && im.tokens === s.journey.tokens, 'laptop, ipad and server agree (in memory too)');
 

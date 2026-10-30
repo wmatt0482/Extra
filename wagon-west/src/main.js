@@ -11,6 +11,15 @@
 // nextFact / recordAnswer on trailBlazer.<id>.facts), events, the problems (problemFor on the problem panel), the stop
 // (the lookout, the river words and rope toss, the fort's store and post office), arrive / nextLeg, the results.
 // Spelling goes through Spell Jump's own spell panel and word store (recordSpell on spellJump.<id>.words).
+// v1.1 (SPEC "v1.1"): the natural voice really plays (prepareVoice at player select / voice change / leg start, and
+// app.voiceFor(texts) just in time before a generated sentence is said: a clip exists only for a text the server was
+// asked for); the trail's own music (./meta/music.js: Music.on / tune by leg / mood by screen, ducked by the voice;
+// Spell Jump's Audio.music() loop is never started here); Camp (./ui/camp.js: fishing, hunting, Quick Draw, Campfire
+// tales, rest, each a day through the Journey stream's camp()); trail cards (J.cards through awardCard; the pop and
+// the album in ./ui/cards.js); Fort Derby (the scene's startDerby / derbyBurst, a fact at each marker, derbyPay); the
+// dog (named on the keyboard at Fort Kearny, J.dog, setParty({ dog }), the bark, a berry patch every other leg); the
+// daily trail challenge (dailyChallenge / claimChallenge: a token and a card); the wagon upgrades (UPGRADES /
+// buyUpgrade, Outfit → Look → Wagon).
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -28,7 +37,9 @@ import { completeDay, defaultCosmetics as sjCosmetics, refreshStreak } from '../
 import { loadFactsData, writeFactsData } from '../../trail-blazer/src/meta/save.js';
 import { nextFact, recordAnswer } from '../../trail-blazer/src/facts/store.js';
 import { createSession as createFactSession } from '../../trail-blazer/src/facts/scheduler.js';
+import { activeFacts } from '../../trail-blazer/src/facts/store.js';
 import { factParts, normFact } from '../../trail-blazer/src/facts/facts.js';
+import { cloudVoiceInfo } from '../../spell-jump/src/tts/voices.js';
 import { loadSkills as loadFracSkills } from '../../fraction-fright/src/meta/save.js';
 import { tierState } from '../../fraction-fright/src/skills/ladder.js';
 import { fracName, fractionsOf, hashString, rngFrom, toleranceFor } from '../../fraction-fright/src/skills/items.js';
@@ -37,13 +48,15 @@ import * as Problems from './journey/problems.js';
 import * as Letters from './journey/letters.js';
 import * as Economy from './journey/economy.js';
 import { LEGS, LEG_BY_ID, SEASONS, SEASON_BY_ID, GOODS } from './content/legs.js';
-import { COMPANION_BY_ID } from './content/companions.js';
+import { COMPANIONS, COMPANION_BY_ID } from './content/companions.js';
+import { CARDS, CARD_BY_ID } from './content/cards.js';
 import { LOOKOUTS } from './content/lookouts.js';
 import { EVENTS, EVENT_BY_ID } from './content/events.js';
 import { NATIONS, NATION_BY_ID } from './content/nations.js';
 import { Sfx } from './meta/sfx.js';
+import { Music } from './meta/music.js';
 import { registerWagonWestSync } from './meta/sync.js';
-import { addLetter, defaultSave, loadSave, loadSettings, logKind, logPlay, removeSave, writeSave, writeSettings } from './meta/save.js';
+import { addLetter, dayKeyOf, defaultSave, loadSave, loadSettings, logKind, logPlay, removeSave, writeSave, writeSettings } from './meta/save.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { STOCK, equipLook, grantLook, itemOf, rollCrate } from './ui/looks.js';
 import { createPlayers } from './ui/players.js';
@@ -51,17 +64,69 @@ import { createTitle } from './ui/title.js';
 import { createOutfit } from './ui/outfit.js';
 import { createStore } from './ui/store.js';
 import { createHud } from './ui/hud.js';
-import { createMarkerPanel } from './ui/markerPanel.js';
-import { createProblemPanel, spokenLine } from './ui/problemPanel.js';
+import { createMarkerPanel, markerTexts } from './ui/markerPanel.js';
+import { createProblemPanel, problemTexts, spokenLine } from './ui/problemPanel.js';
 import { createCard } from './ui/card.js';
-import { createRiver } from './ui/river.js';
+import { createRiver, riverTexts } from './ui/river.js';
+import { createCamp } from './ui/camp.js';
+import { createCardPop, ownedCards, sayOf } from './ui/cards.js';
+import { PS_INTRO, READ_BACK } from './ui/postOffice.js';
 import { createPostOffice } from './ui/postOffice.js';
 import { createJournal } from './ui/journal.js';
 import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
+// the natural voice: the server makes clips of at most 200 characters, so a longer line is said (and prepared) a
+// sentence or two at a time; the line "Say a test line" speaks in the Parent Zone
+const CLIP_MAX = 200;
+const VOICE_WAIT_MS = 2500;
+const TEST_LINE = 'Wagon West is ready to roll.';
+const FIXED_LINES = ['Now you: type the answer', 'Now you: type the answer from memory', 'Fixed it!', PS_INTRO, READ_BACK, TEST_LINE,
+  'Make camp tonight? Fishing, a card game, a story by the fire, or a good rest.', 'A dog has been following the wagon. Keep it?'];
+const TUNES = ['susanna', 'buffalo', 'tucker'];
+const DOG_COATS = ['brown', 'spotted', 'black'];   // the scene's three coats
+const QD_TO = 7;                 // Quick Draw: first to 7 right facts
+const DERBY_MARKERS = 4;         // Fort Derby: 400 m, a marker every 100 m from the start line = 4 facts
+const DERBY_LENGTH = 400;
+/** A line cut into pieces the natural voice can say (≤ 200 characters, at sentence breaks, else at commas / spaces). */
+export function splitSay(text) {
+  const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+  if (!t) return [];
+  if (t.length <= CLIP_MAX) return [t];
+  const out = [];
+  let cur = '';
+  const push = (piece) => {
+    if (piece.length > CLIP_MAX) { for (const w of piece.split(/(?<=,)\s+|\s+/)) push(w); return; }
+    if (!cur) cur = piece; else if (cur.length + 1 + piece.length <= CLIP_MAX) cur += ' ' + piece; else { out.push(cur); cur = piece; }
+  };
+  for (const sentence of t.split(/(?<=[.!?])\s+/)) push(sentence);
+  if (cur) out.push(cur);
+  return out;
+}
+// Campfire riddles: a fact in disguise, in trail words (the answer is the fact's; the numbers are shown as digits)
+const RIDDLES = {
+  x: [(a, b) => `${a} wagons, with ${b} oxen pulling each one. How many oxen in all?`,
+    (a, b) => `${a} campfires, ${b} sticks on each fire. How many sticks?`,
+    (a, b) => `${a} sacks of beans, ${b} pounds in every sack. How many pounds of beans?`,
+    (a, b) => `${a} rows of tents, ${b} tents in each row. How many tents?`],
+  '/': [(a, b) => `${a} biscuits shared by ${b} friends, the same for each. How many biscuits each?`,
+    (a, b) => `${a} miles in ${b} days, the same every day. How many miles a day?`,
+    (a, b) => `${a} apples packed in bags of ${b}. How many bags?`],
+  '+': [(a, b) => `${a} geese on the river, and ${b} more fly in. How many geese now?`],
+  '-': [(a, b) => `${a} pancakes on the plate, and the party eats ${b}. How many are left?`],
+};
+/** A riddle for a fact ({ text, say }), or null when the fact cannot be read. */
+export function riddleFor(fact, flip = false, rand = Math.random) {
+  const p = factParts(fact);
+  if (!p || !RIDDLES[p.op]) return null;
+  const [a, b] = flip && (p.op === 'x' || p.op === '+') ? [p.b, p.a] : [p.a, p.b];
+  const list = RIDDLES[p.op];
+  const text = list[Math.floor(rand() * list.length) % list.length](a, b);
+  return { text, say: text };
+}
+const speechChunks = (texts) => [...new Set((texts || []).flatMap((t) => splitSay(t)))];
 const GAME = 'wagon-west';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'wagonWest.resumePlayer';   // sessionStorage: the player to come back to after an update reload
@@ -117,10 +182,14 @@ async function boot() {
   let spellSession = createSpellSession();
   let screen = 'players', paused = false, T = null, mini = null, storeKinds = 0, pendingDone = null;
   const toastsEl = $('#toasts');
-  const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || !!mini;
+  const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || !!mini || !!derby;
+  let derby = null;                       // Fort Derby in progress: { leg, markers, bursts, resolve }
+  let campVisit = null;                   // this camp visit: { context, line (a companion spoke: their card) }
+  let lastQuickDraw = null, lastDerby = null;   // (tests)
+  const musicState = { tune: '', mood: '' };
   const inUse = (k) => k === 'family' || (currentPlayerId && [`${currentPlayerId}.ww`, `${currentPlayerId}.facts`, `${currentPlayerId}.words`].includes(k));
   const sync = createSyncClient({
-    canApply: (k) => (inUse(k) ? !T && !panelOpen() && !['store', 'river', 'post', 'stop', 'home'].includes(screen) : true),
+    canApply: (k) => (inUse(k) ? !T && !panelOpen() && !['store', 'river', 'post', 'stop', 'home', 'camp', 'derby', 'dog'].includes(screen) : true),
     onApply: (k) => syncApplied(k),
     onStatus: () => { playersUI.refreshSyncChip(); pz.onSyncStatus(); },
   });
@@ -163,13 +232,39 @@ async function boot() {
     partyEditable() { const J = save.journey; return !!J && !J.done && !num(J.legIndex) && !num(J.milesDone) && !num(J.day) && !save.trip; },
     voiceInfo(id) {
       const o = Profiles.playerOptions(family, id);
-      return { rate: o.rate, voiceName: o.voiceName || '', cloudVoice: o.cloudVoice || '', synced: !!sync.code, available: tts.available };
+      return { rate: o.rate, voiceName: o.voiceName || '', cloudVoice: o.cloudVoice || '', synced: !!sync.code, available: tts.available, clips: o.cloudVoice ? cloud.count(o.cloudVoice) : 0 };
     },
-    /** Read a line aloud (a voice available). Returns the speech promise. */
-    say(text) { if (!tts.available || !text) return Promise.resolve(null); try { tts.cancel(); return Promise.resolve(tts.say(text)).catch(() => null); } catch (_) { return Promise.resolve(null); } },
+    /** Parents → Options "Say a test line": speak it, report the engine that spoke ('cloud' | 'device' | ''). */
+    async testVoice() {
+      if (currentPlayerId) applyVoice({ prepare: false });
+      await voiceFor([TEST_LINE]);
+      const r = await Promise.race([app.say(TEST_LINE), sleep(8000)]);
+      const info = cloud.voice ? cloudVoiceInfo(cloud.voice) : null;
+      return { engine: r ? tts.engine : '', name: info ? info.name : '' };
+    },
+    /** Read a line aloud (a voice available), a long one a sentence or two at a time. Returns the speech promise. */
+    say(text) {
+      if (!tts.available || !text) return Promise.resolve(null);
+      const parts = splitSay(text);
+      try { tts.cancel(); } catch (_) { /* ignore */ }
+      if (parts.length <= 1) { try { return Promise.resolve(tts.say(parts[0] || text)).catch(() => null); } catch (_) { return Promise.resolve(null); } }
+      return app.sayAll(parts, { cancel: false });
+    },
+    /** Several lines, one utterance each, in turn (a newer speech cuts the rest off). */
+    async sayAll(list, { cancel = true } = {}) {
+      const L = speechChunks(list);
+      if (!tts.available || !L.length) return null;
+      if (cancel) { try { tts.cancel(); } catch (_) { /* ignore */ } }
+      let r = null;
+      for (const t of L) { try { r = await tts.say(t); } catch (_) { r = null; } if (r === null) return null; }
+      return r;
+    },
+    /** The natural voice, just in time: ask the server for these lines (at most 2.5 s; nothing when the device voice reads). */
+    voiceFor,
     /** Say a line and wait for it (at most 8 s), and at least minMs. */
     sayWait(text, minMs = 0) { return Promise.all([Promise.race([app.say(text), sleep(8000)]), sleep(minMs)]); },
-    spoken: (text) => spokenLine(text),
+    /** A line as the voice says it ("$56" → "56 dollars"; no doubled full stop after a comma or a full stop). */
+    spoken: (text) => spokenLine(text).replace(/([.!?])\.$/, '$1').replace(/[,;:]\.$/, '.'),
     go, toast, refreshCash, selectPlayer, setSetting, hitTrail, newSeason,
     createPlayer: (name, color) => Profiles.createPlayer(family, name, color),
     openParents: (opts) => pz.open(opts),
@@ -199,6 +294,14 @@ async function boot() {
     },
     // ----- outfit -----
     outfitDone,
+    // ----- v1.1: camp, cards, the derby, the daily challenge, the wagon upgrades -----
+    campCompanion, campActivity, runDerby,
+    derbyReady: () => !!(save.trip && !save.trip.derby && typeof JA.derbyPay === 'function'),
+    daily: dailyInfo,
+    upgrades: upgradeList,
+    buyUpgrade,
+    get cards() { return ownedCards(save.journey); },
+    get music() { return { ...musicState }; },
     equipLook(kind, id) { if (equipLook(save.cosmetics, kind, id)) { app.persist(); applySceneParty(); if (kind === 'bugle' && id !== 'none') Sfx.bugle(id); } },
     buyLook(kind, id, price) {
       const J = save.journey;
@@ -238,6 +341,7 @@ async function boot() {
     ropeFraction,
     openCrate,
     get panels() { return { marker: markerPanel, problem: problemPanel, spell: spellPanel, card }; },
+    get cloud() { return cloud; },
   };
 
   // ---------- scene ----------
@@ -268,21 +372,57 @@ async function boot() {
   const postOffice = createPostOffice(app);
   const results = createResults(app);
   const homeUI = createHome();
+  const dogUI = createDogNamer();
   const screens = {
     players: playersUI.players, newplayer: playersUI.newplayer, title: createTitle(app), outfit: createOutfit(app), store,
     trail: { show() {}, hide() {} }, stop: { show() {}, hide() {} }, river, post: postOffice, journal: createJournal(app), results, home: homeUI,
+    camp: createCamp(app), derby: { show() {}, hide() {} }, dog: dogUI,
   };
+  const cardPop = createCardPop($('#cardpop'), { sfx: Sfx });
   // the voice: Spell Jump's tts, with the natural voice when the family has a code and the player picked one in Spell Jump
   const cloud = createCloudVoice({ getCode: () => sync.code, getWords: () => { try { return currentPlayerId ? WS.activeList(Profiles.loadWords(currentPlayerId)).words : []; } catch (_) { return []; } }, audio: Audio });
   tts.setCloud(cloud);
-  tts.setOnSpeaking((on) => Audio.voice(on));
-  function applyVoice() {
+  // the voice ducks the trail's music (and softens Spell Jump's effects, as in the siblings)
+  tts.setOnSpeaking((on) => { Audio.voice(on); try { Music.duck(on); } catch (_) { /* ignore */ } });
+  let voiceKey = '';
+  function applyVoice({ prepare = true } = {}) {
     if (!currentPlayerId) return;
     const o = Profiles.playerOptions(family, currentPlayerId);
     tts.setRate(o.rate);
     tts.setVoice(o.voiceName ? { name: o.voiceName, lang: o.voiceLang } : null);
     cloud.setVoice(o.cloudVoice || '');
+    // the clips for this player's voice: at player select and whenever the voice (or the family code) changes
+    const key = `${currentPlayerId}|${cloud.voice}|${sync.code || ''}`;
+    if (prepare && key !== voiceKey) { voiceKey = key; prepareVoice(); }
   }
+  /** Everything the game says that can be known ahead (SPEC v1.1 §1): the week's words (Spell Jump's list), the
+   *  child's active facts (the question, the full sentence and the hint, both ways round), every lookout, nation fact,
+   *  event, companion line and trail card, the fixed lines of the panels, the river's landing sentences for the
+   *  fractions in play. The server is asked only for what this device has no clip of. */
+  function prepareVoice() {
+    if (!currentPlayerId || !cloud.active) return;
+    cloud.prepareList().catch(() => {});
+    const texts = [];
+    try { if (facts) for (const f of activeFacts(facts)) for (const flip of [false, true]) texts.push(...markerTexts(f, flip)); } catch (e) { console.warn('[WagonWest] activeFacts', e); }
+    for (const l of Object.values(LOOKOUTS)) if (l) texts.push(l.say || l.text);
+    for (const n of NATIONS) if (n.fact) texts.push(n.fact.say || n.fact.text);
+    for (const e of EVENTS) texts.push(e.say || e.text);
+    for (const c of COMPANIONS) { const L = c.lines || {}; texts.push(...(L.trail || []), L.tired, L.happy); }
+    for (const c of CARDS) texts.push(sayOf(c));
+    texts.push(...FIXED_LINES);
+    for (const tier of ['T1', 'T2']) { try { for (const f of fractionsOf(tier)) texts.push(...riverTexts(fracName(f.n, f.d))); } catch (_) { /* ignore */ } }
+    cloud.prepare(speechChunks(texts.filter(Boolean))).catch(() => {});
+  }
+  /** Just in time: the sentences about to be said (a generated problem, a letter, a riddle) as clips, waiting at most
+   *  2.5 s; resolves at once when the device voice reads (no natural voice, or no family code). */
+  function voiceFor(texts) {
+    if (!cloud.active) return Promise.resolve();
+    const list = speechChunks(texts).filter((t) => !cloud.has(t));
+    if (!list.length) return Promise.resolve();
+    return Promise.race([cloud.prepare(list).catch(() => null), sleep(VOICE_WAIT_MS)]);
+  }
+  /** A trail card with its sentence ready in the natural voice. */
+  async function showCard(opts) { await voiceFor([opts.say || opts.text]); return card.show(opts); }
   const pz = createParentZone(app);
 
   function refreshCash() {
@@ -300,6 +440,7 @@ async function boot() {
     stopTravel();
     currentPlayerId = id;
     replaceInPlace(save, loadSave(id));
+    ensureJ();
     facts = loadFactsData(id);
     factSession = createFactSession();
     spellSession = createSpellSession();
@@ -307,10 +448,13 @@ async function boot() {
     family.lastPlayer = id;
     Profiles.writeFamily(family);
     app.persist();
+    voiceKey = '';
     applyVoice();
     applySceneParty();
     go('title');
   }
+  /** The Journey stream fills the 1.1 fields (cards, upgrades, challenges) on a journey saved by 1.0. */
+  function ensureJ() { const J = save.journey; if (J && typeof JA.ensureJourney === 'function') { try { JA.ensureJourney(J); } catch (e) { console.warn('[WagonWest] ensureJourney', e); } } }
 
   // Ghost-click guard (same as the other games): swallow a click that lands just after a screen change when its
   // pointerdown came before the change
@@ -318,12 +462,14 @@ async function boot() {
   document.addEventListener('pointerdown', () => { lastDown = performance.now(); }, true);
   document.addEventListener('click', (e) => { const t = performance.now(); if (lastDown < lastGo && t - lastGo < 500) { e.preventDefault(); e.stopPropagation(); } }, true);
 
-  const STAGE_SCREENS = ['trail', 'stop', 'store', 'river', 'post', 'results', 'home'];
+  const STAGE_SCREENS = ['trail', 'stop', 'store', 'river', 'post', 'results', 'home', 'camp', 'derby', 'dog'];
   function go(name, arg) {
     lastGo = performance.now();
     closePause();
     if (name !== 'trail' && T) stopTravel();
-    if (!['stop', 'store', 'river', 'post', 'home'].includes(name)) { if (store.isOpen) store.leave(); }
+    if (!['stop', 'store', 'river', 'post', 'home', 'derby', 'dog', 'camp'].includes(name)) { if (store.isOpen) store.leave(); }
+    if (name !== 'camp' && screens.camp && screens.camp.isOpen && !['dog'].includes(name)) screens.camp.leave();
+    if (name !== 'derby' && derby) quitDerby();
     for (const el of $$('.screen')) el.hidden = el.dataset.screen !== name;
     for (const [k, s] of Object.entries(screens)) if (k !== name && s.hide) s.hide();
     screen = name;
@@ -332,9 +478,23 @@ async function boot() {
     $('#stage').hidden = !STAGE_SCREENS.includes(name);
     $('#backdrop').hidden = STAGE_SCREENS.includes(name);
     if (STAGE_SCREENS.includes(name)) { S('resize'); S('play'); } else S('pause');
+    if (name === 'title') checkDaily();
     if (screens[name]) screens[name].show(arg);
     refreshCash();
+    syncMusic();
     setTimeout(() => updater.check(), 0);
+  }
+  // ---------- the trail's music (./meta/music.js): the tune by leg, the mood by screen, off while a panel is open ----------
+  const MOOD_BY_SCREEN = { trail: 'trail', derby: 'trail', camp: 'camp', results: 'camp', title: 'camp', stop: 'camp', store: 'camp', river: 'trail', journal: 'camp', outfit: 'camp', home: 'camp', dog: 'camp', post: 'post' };
+  function syncMusic() {
+    const J = save.journey;
+    const tune = TUNES[Math.max(0, num(J && J.legIndex)) % TUNES.length];
+    const open = panelOpen() || pz.isOpen || !$('#panel-pause').hidden;
+    const mood = open ? 'off' : (MOOD_BY_SCREEN[screen] || 'off');
+    try {
+      if (tune !== musicState.tune) { musicState.tune = tune; Music.tune(tune); }
+      if (mood !== musicState.mood) { musicState.mood = mood; Music.mood(mood); }
+    } catch (e) { console.warn('[WagonWest] music', e); }
   }
   function toast(text) {
     const t = h('div', { class: 'toast' }, text);
@@ -348,7 +508,7 @@ async function boot() {
     settings[key] = !!value;
     writeSettings(settings);
     if (key === 'sound') { Audio.setSound(settings.sound); Sfx.setSound(settings.sound); }
-    if (key === 'music') Audio.music(settings.music);
+    if (key === 'music') { Audio.music(false); try { Music.on(settings.music); } catch (_) { /* ignore */ } }
     if (key === 'hunting' && save.journey && typeof JA.setHunting === 'function') { try { JA.setHunting(save.journey, settings.hunting); app.persist(); } catch (_) { /* ignore */ } }
     if (key === 'reducedMotion') {
       document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);
@@ -364,14 +524,15 @@ async function boot() {
     if (m) {
       const [, id, kind] = m;
       if (id === currentPlayerId) {
-        if (kind === 'ww') { replaceInPlace(save, loadSave(id)); refreshCash(); applySceneParty(); if (['title', 'journal'].includes(screen)) screens[screen].show(); }
-        if (kind === 'facts') facts = loadFactsData(id);
+        if (kind === 'ww') { replaceInPlace(save, loadSave(id)); ensureJ(); refreshCash(); applySceneParty(); if (['title', 'journal'].includes(screen)) screens[screen].show(); }
+        if (kind === 'facts') { facts = loadFactsData(id); prepareVoice(); }
       } else if (screen === 'players') screens.players.show();
       pz.onSyncApplied();
       return;
     }
     if (k !== 'family') return;
     replaceInPlace(family, Profiles.loadFamily());
+    if (currentPlayerId) applyVoice();
     if (currentPlayerId && !Profiles.playerById(family, currentPlayerId)) {
       currentPlayerId = null; replaceInPlace(save, defaultSave());
       if (!pz.isOpen) go('players');
@@ -390,6 +551,7 @@ async function boot() {
       animal: J.animal,
       companions: ids.map((id, i) => { const c = COMPANION_BY_ID[id] || { hat: 'wide', color: '#d9653b' }; return { id, hat: i === 0 && hat !== 'none' ? hat : c.hat, color: c.color }; }),
       wagon: { paint: app.paintColor(), flag: save.cosmetics.equipped.flag, name: J.wagonName || '' },
+      dog: J.dog ? { name: J.dog.name, coat: J.dog.coat } : null,
     });
   }
   const backdropFor = (leg) => ({ river: 'river', fort: 'fort', landmark: 'landmark', home: 'valley' }[leg && leg.stop && leg.stop.kind] || 'landmark');
@@ -399,7 +561,10 @@ async function boot() {
     const old = save.journey;
     if (fresh || !old) {
       const season = (old && old.done && pendingSeasonId()) || (old ? old.season : SEASONS[0].id);
+      const prev = old;
       save.journey = JA.createJourney({ season, wagonName: draft.wagonName, animal: draft.animal, companions: draft.companions, seed: hashString(`${currentPlayerId}:${Date.now()}`) });
+      carryOver(prev, save.journey);
+      ensureJ();
       save.trip = null;
       if (typeof JA.setHunting === 'function') try { JA.setHunting(save.journey, settings.hunting !== false); } catch (_) { /* ignore */ }
       app.persist();
@@ -411,7 +576,7 @@ async function boot() {
     const partyChanged = J.animal !== draft.animal || String(J.companions || []) !== String(draft.companions);
     if (partyChanged && app.partyEditable()) {
       // nothing has happened on the trail yet: the journey is made again with the new party (the store's buys kept)
-      const keep = { cash: J.cash, food: J.food, parts: J.parts, goods: J.goods, tokens: J.tokens };
+      const keep = { cash: J.cash, food: J.food, parts: J.parts, goods: J.goods, tokens: J.tokens, cards: J.cards, upgrades: J.upgrades, challenges: J.challenges, dog: J.dog };
       const n = JA.createJourney({ season: J.season, wagonName: draft.wagonName, animal: draft.animal, companions: draft.companions, seed: J.seed });
       for (const [k, v] of Object.entries(keep)) if (v !== undefined) n[k] = v;
       save.journey = n;
@@ -419,6 +584,12 @@ async function boot() {
     app.persist();
     applySceneParty();
     go('title');
+  }
+  /** What a new journey keeps from the old one: the trail cards (a collection across seasons) and the dog. */
+  function carryOver(prev, n) {
+    if (!prev || !n) return;
+    if (prev.cards && (!n.cards || (Array.isArray(n.cards) && !n.cards.length))) n.cards = JSON.parse(JSON.stringify(prev.cards));
+    if (prev.dog && !n.dog) n.dog = { ...prev.dog };
   }
   function pendingSeasonId() {
     const J = save.journey;
@@ -498,6 +669,7 @@ async function boot() {
   /** One problem on the problem panel, recorded everywhere (journey, report, the ladder when it holds a fact). */
   async function runProblemPanel(p, { kind, title, chipText = '', pick = null }) {
     const J = save.journey;
+    await voiceFor(problemTexts(p));
     const res = await problemPanel.open({ problem: p, title, chipText });
     if (res.cancelled) return res;
     try { JA.applyProblem(J, { kind, correct: !!res.correct, firstTry: !!res.correct }); } catch (e) { console.warn('[WagonWest] applyProblem', e); }
@@ -506,6 +678,7 @@ async function boot() {
     const lf = ladderFactOf(p, pick);
     if (lf) recordFact(lf, { correct: res.correct, quick: false, fixed: !res.correct && res.fixed, ms: res.ms, given: res.given }, pick);
     app.persist();
+    checkDaily();
     return res;
   }
   async function runProblem(kind, { title, extra = {} } = {}) {
@@ -518,13 +691,15 @@ async function boot() {
     return { ...res, problem: p };
   }
   /** A quick fact on the marker panel outside a marker (the storm's card game, the mud hole, a riddle). */
-  async function runFactPanel(title) {
+  async function runFactPanel(title, { chipText = 'Quick fact', riddle = null, pick: given = null, journey = true } = {}) {
     const J = save.journey;
-    const pick = ladderPick('any') || { fact: '6x7', flip: false };
-    const res = await markerPanel.open({ fact: pick.fact, flip: !!pick.flip, title, chipText: 'Quick fact' });
+    const pick = given || ladderPick('any') || { fact: '6x7', flip: false };
+    await voiceFor([...markerTexts(pick.fact, !!pick.flip), riddle ? riddle.say || riddle.text : '']);
+    const res = await markerPanel.open({ fact: pick.fact, flip: !!pick.flip, title, chipText, riddle });
     if (res.cancelled) return res;
     recordFact(pick.fact, res, pick);
-    try { JA.applyProblem(J, { kind: 'fact', correct: !!res.correct, firstTry: !!res.correct }); } catch (_) { /* ignore */ }
+    // (camp's games pay their own token: their facts move the ladder and the log, not the leg's problem tally)
+    if (journey) { try { JA.applyProblem(J, { kind: 'fact', correct: !!res.correct, firstTry: !!res.correct }); } catch (_) { /* ignore */ } }
     logKind(save, 'fact', !!res.correct);
     logPlay(save, { problems: 1, problemsRight: res.correct ? 1 : 0 });
     app.persist();
@@ -538,6 +713,7 @@ async function boot() {
     const of = Math.max(n, Math.round(num(marker && (marker.of || marker.total)) || Math.floor(((leg && leg.miles) || 150) / 30)));
     const pick = ladderPick('any') || { fact: '6x7', flip: false };
     S('setTravel', { moving: false });
+    await voiceFor(markerTexts(pick.fact, !!pick.flip));
     const res = await markerPanel.open({ fact: pick.fact, flip: !!pick.flip, index: n - 1, total: of });
     if (res.cancelled) return;
     recordFact(pick.fact, res, pick);
@@ -546,6 +722,7 @@ async function boot() {
     app.persist();
     if (res.quick) toast('A tailwind! A few free miles');
     else if (!res.correct) toast('Fixed it. The wagon rolls on');
+    checkDaily();
   }
 
   // ---------- words (Spell Jump's store, Spell Jump's panel) ----------
@@ -585,6 +762,7 @@ async function boot() {
     spellPanel.close();
     try { JA.applyWords(J, { asked, right }); } catch (e) { console.warn('[WagonWest] applyWords', e); }
     app.persist();
+    checkDaily();
     return { asked, right };
   }
 
@@ -626,10 +804,12 @@ async function boot() {
     if (!save.trip || save.trip.legId !== J.legId) {
       save.trip = { legId: J.legId, stage: 'trail', events: [], asked: { ration: 0, distance: 0 }, markers: 0, at: Date.now(), tokens0: num(J.tokens) };
       app.persist();
+      prepareVoice();                      // every leg start: the clips for this week's facts, words and lines
     }
     applySceneParty();
     S('setLeg', { id: leg.id, biome: leg.biome, miles: leg.miles, stop: leg.stop, river: leg.river });
     if (save.trip.stage === 'stop') { runStop(leg).catch((e) => console.error('[WagonWest] stop', e)); return; }
+    try { Music.tune(TUNES[num(J.legIndex) % TUNES.length]); musicState.tune = TUNES[num(J.legIndex) % TUNES.length]; } catch (_) { /* ignore */ }
     S('setBackdrop', 'trail');
     go('trail');
     hud.reset();
@@ -689,6 +869,7 @@ async function boot() {
     if (T !== r) return;
     if (d.res.event) await runEvent(d.res.event);
     if (T !== r) return;
+    if (!d.res.event && !d.res.marker && dogBerriesDue(r)) { await dogBerries(); if (T !== r) return; }
     const left = r.leg.miles - num(J.milesDone);
     if (!d.res.arrived && !save.trip.asked.distance && left <= r.leg.miles * 0.6 && left > 25) {
       save.trip.asked.distance += 1;
@@ -733,10 +914,12 @@ async function boot() {
     let kind = ev.kind;
     let text = ev.text, sayText = ev.say;
     if (kind === 'hunt' && settings.hunting === false) { kind = 'fish'; text = 'Fresh tracks by the trail, and a stream beside them. Get the fishing line out.'; sayText = text; }
-    if (kind === 'lookout') S('spotAnimal', ev.animal || 'bison');
+    if (ev.covered) { const c = ' The canvas cover keeps everyone dry and cheerful.'; text = `${text || ''}${c}`; sayText = `${sayText || ev.text || ''}${c}`; }
+    if (kind === 'lookout') { spotSure = true; S('spotAnimal', ev.animal || 'bison'); }
     S('setTravel', { moving: false });
-    await card.show({ kicker: 'On the trail', title: ev.name || 'On the trail', text, say: sayText, tone: kind, button: EVENT_BUTTON[kind] || 'Continue' });
+    await showCard({ kicker: 'On the trail', title: ev.name || 'On the trail', text, say: sayText, tone: kind, button: EVENT_BUTTON[kind] || 'Continue' });
     if (!T) return;
+    if (kind === 'bonus' && /berr|plum/i.test(`${ev.id} ${ev.name || ''} ${ev.text || ''}`)) dropCard(plumCard());
     if (kind === 'problem') {
       if (ev.problem === 'parts') await runProblem('parts', { title: 'Wagon repair' });
       else await runFactPanel(ev.name || 'Quick fact');
@@ -750,8 +933,9 @@ async function boot() {
   async function runTrade(ev) {
     const J = save.journey;
     const nation = NATION_BY_ID[ev.nation] || NATION_BY_ID[(curLeg() || {}).nation] || NATIONS[0];
-    if (nation && nation.fact) await card.show({ kicker: 'Trading post', title: `The ${nation.name} people`, text: nation.fact.text, say: nation.fact.say, tone: 'trade', button: 'Trade' });
+    if (nation && nation.fact) await showCard({ kicker: 'Trading post', title: `The ${nation.name} people`, text: nation.fact.text, say: nation.fact.say, tone: 'trade', button: 'Trade' });
     if (!T) return;
+    if (nation) dropCard(nation.id);
     let offer = null;
     try { offer = JA.tradeOffer ? JA.tradeOffer(J) : null; } catch (_) { offer = null; }
     const rate = (offer && offer.rate) || (nation && nation.trade && nation.trade.rate) || [3, 2];
@@ -760,6 +944,7 @@ async function boot() {
     let p = null;
     try { p = JA.problemFor({ kind: 'trade', fact: pick ? pick.fact : null, leg: curLeg(), season: J.season, rand: T.rand, nation: ev.nation || (nation && nation.id), have: offer ? offer.have : undefined }); } catch (e) { console.warn('[WagonWest] problemFor trade', e); }
     if (!p) return;
+    await voiceFor(problemTexts(p));       // the trade problem in the natural voice (runProblemPanel asks again: a no-op then)
     const res = await runProblemPanel(p, { kind: 'trade', title: 'Trading post', chipText: nation ? nation.name : '', pick });
     if (res.cancelled) return;
     try { JA.applyTrade(J, p.meta || { giveN: num(p.giveN), getN: num(p.getN) || num(p.answer) }); } catch (e) { console.warn('[WagonWest] applyTrade', e); }
@@ -769,7 +954,7 @@ async function boot() {
   function runMini(kind) {
     return new Promise((resolve) => {
       const J = save.journey;
-      mini = { kind, lb: 0, hits: 0, resolve, done: false };
+      mini = { kind, lb: 0, hits: 0, resolve, done: false, card: false };
       $('#mini-text').textContent = kind === 'hunt' ? 'The bow: tap the animals' : 'The line: tap when it dips';
       $('#mini-done').textContent = kind === 'hunt' ? 'Done hunting' : 'Done fishing';
       $('#mini').hidden = false;
@@ -806,9 +991,13 @@ async function boot() {
     if (!evt) return;
     if (evt.type === 'hunt' && mini && mini.kind === 'hunt') {
       Sfx.twang();
-      if (evt.hit) { mini.lb += num(evt.meatLb); mini.hits += 1; toast('Got one!'); }
+      if (evt.hit) { mini.lb += num(evt.meatLb); mini.hits += 1; toast('Got one!'); if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal)); } }
     } else if (evt.type === 'huntEnd' && mini && mini.kind === 'hunt') finishMini(Number.isFinite(evt.meatLb) ? evt.meatLb : null);
-    else if (evt.type === 'fish' && mini && mini.kind === 'fish') { Sfx.plop(); mini.lb += num(evt.lb); mini.hits += 1; toast(`A ${evt.size || ''} fish!`.replace('  ', ' ')); }
+    else if (evt.type === 'fish' && mini && mini.kind === 'fish') { Sfx.plop(); mini.lb += num(evt.lb); mini.hits += 1; toast(`A ${evt.size || ''} fish!`.replace('  ', ' ')); if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal || 'fish') || animalCard('salmon')); } }
+    else if (evt.type === 'animalSpotted') onSpotted(evt.animal);
+    else if (evt.type === 'bark') Sfx.bark();
+    else if (evt.type === 'derbyMarker') onDerbyMarker(evt);
+    else if (evt.type === 'derbyEnd') onDerbyEnd(evt);
     else if (evt.type === 'fishEnd' && mini && mini.kind === 'fish') finishMini(Number.isFinite(evt.fishLb) ? evt.fishLb : null);
   }
 
@@ -829,16 +1018,19 @@ async function boot() {
     go('stop');
     const kind = leg.stop && leg.stop.kind;
     const look = LOOKOUTS[leg.lookout] || null;
-    await card.show({ kicker: 'You made it!', title: (leg.stop && leg.stop.name) || leg.name, text: look ? look.text : '', say: look ? look.say : '', sticker: leg.sticker, tone: 'lookout',
+    await showCard({ kicker: 'You made it!', title: (leg.stop && leg.stop.name) || leg.name, text: look ? look.text : '', say: look ? look.say : '', sticker: leg.sticker, tone: 'lookout',
       button: kind === 'river' ? 'To the ferry' : kind === 'fort' ? 'Into the fort' : kind === 'home' ? 'Home at last' : 'Continue' });
     if (screen !== 'stop') return;
+    if (look || CARD_BY_ID[leg.id]) dropCard(leg.id);      // the lookout's landmark card
     if (kind === 'river') {
       const rr = await river.run({ leg });
       if (rr.cancelled) { if (screen === 'river') go('title'); return; }
     } else if (kind === 'fort') {
       let sl = leg;
       try { if (JA.storeLeg) sl = JA.storeLeg(J) || leg; } catch (_) { sl = leg; }
-      const ok = await store.open({ leg: sl, place: leg.stop.name, nextText: 'To the post office' });
+      const shop = store.open({ leg: sl, place: leg.stop.name, nextText: 'To the post office', derby: true });
+      await offerDog(leg);
+      const ok = await shop;
       if (!ok) return;
       const po = await postOffice.run({ leg });
       if (po.cancelled) { if (screen === 'post') go('title'); return; }
@@ -846,6 +1038,16 @@ async function boot() {
       const name = await homeUI.ask();
       if (name == null) return;
       save.homestead = name;
+    }
+    // the evening of every arrival: camp before the results (never needed: "On to the results" goes straight on)
+    if (kind !== 'home') {
+      go('stop');
+      const c = await showCard({ kicker: 'Evening', title: 'Make camp tonight?', text: 'Fishing, a card game, a story by the fire, or a good rest.', say: FIXED_LINES[6], tone: 'camp', button: 'On to the results', alt: 'Make camp' });
+      if (screen !== 'stop') return;
+      if (c === 'alt') {
+        const how = await openCamp('arrival');
+        if (how !== 'results') return;
+      }
     }
     finishLeg(leg);
   }
@@ -855,6 +1057,10 @@ async function boot() {
     let a = null;
     try { a = JA.arrive(J); } catch (e) { console.error('[WagonWest] arrive threw', e); }
     a = a || { stars: [true, false, false], cash: { arrival: 0, stars: 0, total: 0 }, sticker: leg.sticker, crate: null };
+    // the arrival's card (one of the leg's biome), and the daily challenge looks at the finished leg before it resets
+    try { if (typeof JA.cardForLeg === 'function') dropCard(JA.cardForLeg(J, Math.random)); } catch (e) { console.warn('[WagonWest] cardForLeg', e); }
+    checkDaily();
+    if (J.dog) J.dog.legs = num(J.dog.legs) + 1;
     const stats = { ...(J.legStats || {}) };
     const stars = (a.stars || []).slice(0, 3).map(Boolean);
     while (stars.length < 3) stars.push(false);
@@ -891,7 +1097,9 @@ async function boot() {
     let n = null;
     try { n = JA.newSeason ? JA.newSeason(J) : null; } catch (e) { console.warn('[WagonWest] newSeason', e); }
     if (!n || !Number.isFinite(n.legIndex)) { go('outfit', { fresh: true }); return; }
+    carryOver(J, n);
     save.journey = n;
+    ensureJ();
     save.trip = null;
     if (typeof JA.setHunting === 'function') try { JA.setHunting(n, settings.hunting !== false); } catch (_) { /* ignore */ }
     app.persist();
@@ -917,6 +1125,318 @@ async function boot() {
       hide() { kb.setActive(false); if (waiter) { const w = waiter; waiter = null; w(null); } },
       ask() { name = ''; return new Promise((resolve) => { waiter = resolve; go('home'); }); },
     };
+  }
+
+  // ---------- trail cards (SPEC v1.1 §3): drops, the pop, a full suit's gold crate ----------
+  let spotSure = false;                   // a lookout event's animal: its card always drops
+  const cardOf = (c) => (!c ? null : typeof c === 'string' ? CARD_BY_ID[c] || null : CARD_BY_ID[c.id] || (c.id && c.suit ? c : null));
+  function animalCard(animal) {
+    if (!animal || typeof JA.cardForAnimal !== 'function') return null;
+    try { return cardOf(JA.cardForAnimal(animal)); } catch (_) { return null; }
+  }
+  const plumCard = () => animalCard('berries') || animalCard('plum') || CARDS.find((c) => c.suit === 'wild' && /plum/i.test(`${c.id} ${c.name}`)) || null;
+  /** A card for the collection (awardCard: a duplicate becomes a token); the pop shows it; a full suit pays a golden
+   *  crate once. Returns awardCard's result or null. */
+  function dropCard(c) {
+    const J = save.journey;
+    const cd = cardOf(c);
+    if (!J || !cd || typeof JA.awardCard !== 'function') return null;
+    let r = null;
+    try { r = JA.awardCard(J, cd.id); } catch (e) { console.warn('[WagonWest] awardCard', e); return null; }
+    if (!r) return null;
+    const suit = r.suit || cd.suit;
+    let full = !!r.suitComplete;
+    if (r.new && r.suitComplete === undefined && typeof JA.suitComplete === 'function') { try { full = !!JA.suitComplete(J, suit); } catch (_) { full = false; } }
+    if (full && !save.suitsDone.includes(suit)) {
+      save.suitsDone.push(suit);
+      save.crates.queue.push('gold'); save.crates.earned += 1;
+      toast('A full suit! A golden crate');
+    }
+    cardPop.pop(cd, { dup: !r.new, suitDone: full });
+    app.persist(); refreshCash();
+    return r;
+  }
+  function onSpotted(animal) {
+    const J = save.journey;
+    if (!J) return;
+    // (the scene barks by itself after a spotted animal when the dog is on screen: the 'bark' event plays the sound)
+    const sure = spotSure;
+    spotSure = false;
+    if (sure || Math.random() < (J.dog ? 0.8 : 0.4)) dropCard(animalCard(animal));   // the dog doubles the chance
+  }
+
+  // ---------- Camp (SPEC v1.1 §3): a real place; every activity is a day (camp(J, kind)) ----------
+  function campCompanion() {
+    const J = save.journey;
+    const ids = J ? (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)) : [];
+    return ids.length ? ids[num(J.day) % ids.length] : 'scout';
+  }
+  /** Open Camp ('trail': from the trail or the pause menu; 'arrival': the evening of an arrival). Resolves how it was left. */
+  async function openCamp(context = 'trail') {
+    if (!save.journey) return null;
+    campVisit = { context, line: false };
+    S('setBackdrop', 'camp');
+    S('setTravel', { moving: false });
+    const how = await screens.camp.open({ context });
+    campVisit = null;
+    if (how === 'trail') hitTrail();
+    else if (how === 'stop') go('title');
+    return how;
+  }
+  async function campActivity(kind) {
+    const J = save.journey;
+    if (!J) return;
+    const who = campCompanion();
+    try { if (typeof JA.camp === 'function') JA.camp(J, kind, { rand: Math.random }); } catch (e) { console.warn('[WagonWest] camp', e); }
+    app.persist(); refreshCash(); screens.camp.refresh();
+    if (kind === 'fish' || kind === 'hunt') { await runMini(kind); companionLine(who, true); }
+    else if (kind === 'cards') { await quickDraw(who); companionLine(who, false); }
+    else if (kind === 'tales') { await campfireTale(); companionLine(who, true); }
+    else { toast('A good rest. Everyone feels better'); companionLine(who, true, 'happy'); }
+    checkDaily();
+    app.persist(); refreshCash();
+  }
+  /** A companion's line at camp (once a visit): said and shown, and their trail card drops. */
+  function companionLine(who, speak, which = 'trail') {
+    if (!campVisit || campVisit.line || screen !== 'camp') return;
+    campVisit.line = true;
+    const c = COMPANION_BY_ID[who];
+    if (!c) return;
+    const L = c.lines || {};
+    const line = which === 'happy' && L.happy ? L.happy : (L.trail || [])[num(save.journey && save.journey.day) % Math.max(1, (L.trail || []).length)] || L.happy || '';
+    if (line) { toast(`${c.name}: “${line}”`); if (speak) app.say(line); }
+    dropCard(who);
+  }
+  /** Quick Draw: first to 7 right facts on the marker panel; the companion "draws" after every answer. A token on a
+   *  win; always a good-game line, never a losing one. No clock anywhere. */
+  async function quickDraw(who) {
+    const J = save.journey;
+    const c = COMPANION_BY_ID[who] || { name: 'Eli', lines: {} };
+    const lines = (c.lines && c.lines.trail) || [];
+    const rand = rngFrom(hashString(`${currentPlayerId}:qd:${J.day}:${Date.now()}`));
+    let me = 0, them = 0, round = 0;
+    while (me < QD_TO && them < QD_TO) {
+      round += 1;
+      const res = await runFactPanel('Quick Draw', { chipText: `You ${me} · ${c.name} ${them}`, journey: false });
+      if (res.cancelled || screen !== 'camp') return;
+      if (res.correct) me += 1;
+      if (me >= QD_TO) break;
+      if (rand() < 0.45) them += 1;        // the companion draws a card every time the child answers
+      const line = lines.length ? lines[(round - 1) % lines.length] : 'Your turn!';
+      toast(`${c.name} draws: “${line}”`);
+      await sleep(beat(250));
+    }
+    const won = me >= QD_TO;
+    if (won) { J.tokens = num(J.tokens) + 1; Audio.cash(); }
+    const happy = (c.lines && c.lines.happy) || 'Good game!';
+    lastQuickDraw = { won, me, them };
+    await showCard({ kicker: 'Quick Draw', title: won ? 'You won the Quick Draw!' : 'Good game!', tone: 'camp', button: 'Back to camp',
+      text: `${c.name}: “${happy}” ${won ? 'A trade token for you.' : `${c.name} wants a rematch tomorrow.`}`, say: happy });
+  }
+  /** Campfire tales: a landmark or nation the trail has passed, read aloud, then a riddle (a fact in disguise): a token. */
+  async function campfireTale() {
+    const J = save.journey;
+    const legs = LEGS.slice(0, Math.max(1, num(J.legIndex) + 1));
+    const pool = [...new Set(legs.flatMap((l) => [l.id, l.nation]).filter(Boolean))].map((id) => CARD_BY_ID[id]).filter(Boolean);
+    const tale = pool[Math.floor(Math.random() * pool.length)];
+    if (tale) await showCard({ kicker: 'Campfire tales', title: tale.name, text: factOfCard(tale), say: sayOf(tale), sticker: { emoji: tale.emoji, name: tale.name }, tone: 'camp', button: 'A riddle!' });
+    if (screen !== 'camp') return;
+    const pick = ladderPick('any') || { fact: '6x7', flip: false };
+    const riddle = riddleFor(pick.fact, !!pick.flip, Math.random);
+    const res = await runFactPanel('Campfire riddle', { chipText: 'A riddle', riddle, pick, journey: false });
+    if (res.cancelled) return;
+    if (res.correct) { J.tokens = num(J.tokens) + 1; Audio.cash(); toast('Riddle solved! A trade token'); } else toast('Riddle solved together. Good thinking');
+  }
+  const factOfCard = (c) => (typeof c.fact === 'string' ? c.fact : (c.fact && c.fact.text) || '');
+
+  // ---------- Fort Derby (SPEC v1.1 §3): the race on the scene, a fact at each marker ----------
+  async function runDerby(leg) {
+    const J = save.journey;
+    if (!J || !save.trip || save.trip.derby) return;
+    save.trip.derby = true;
+    app.persist();
+    S('setBackdrop', 'trail');
+    go('derby');
+    $('#derby-line').textContent = 'Race the mail wagon to the flag';
+    const res = await new Promise((resolve) => {
+      derby = { leg, markers: 0, bursts: [], resolve, busy: false };
+      S('startDerby', { seed: hashString(`${currentPlayerId}:${leg ? leg.id : ''}:${J.day}`), length: DERBY_LENGTH });
+      if (!scene) { derby = null; resolve(null); }
+    });
+    S('setBackdrop', 'fort');
+    if (!res) { if (screen === 'derby') go('store'); return; }
+    let pay = null;
+    try { pay = JA.derbyPay(J, { won: !!res.won, margin: num(res.margin) }); } catch (e) { console.warn('[WagonWest] derbyPay', e); }
+    const cash = num(pay && pay.cash);
+    if (res.won) { try { dropCard(JA.cardForLeg(J, Math.random)); } catch (_) { /* ignore */ } }
+    app.persist(); refreshCash(); Audio.cash();
+    lastDerby = { ...res, cash };
+    go('store');
+    const m = Math.round(num(res.margin));
+    const title = res.won ? `You beat the mail wagon by ${m} m!` : 'The mail wagon got there first. Good race!';
+    const text = res.won ? `The whole fort cheers. $${cash} for the race, and a trail card.` : `What a race! $${cash} for a good try.`;
+    await showCard({ kicker: 'Fort Derby', title, text, say: `${title} ${text}`, tone: 'camp', button: 'Back to the store' });
+    checkDaily();
+  }
+  async function onDerbyMarker(evt) {
+    const d = derby;
+    if (!d || d.busy) return;
+    d.busy = true;
+    d.markers += 1;
+    const of = Math.max(1, Math.round(num(evt.of) || DERBY_MARKERS));
+    const n = Math.max(1, Math.round(num(evt.n) || d.markers));
+    $('#derby-line').textContent = `Marker ${n} of ${of}`;
+    const pick = ladderPick('any') || { fact: '6x7', flip: false };
+    await voiceFor(markerTexts(pick.fact, !!pick.flip));
+    const res = derby === d ? await markerPanel.open({ fact: pick.fact, flip: !!pick.flip, index: n - 1, total: of, title: 'Fort Derby', chipText: `Marker ${n} of ${of}` }) : { cancelled: true };
+    d.busy = false;
+    if (derby !== d) return;
+    if (res.cancelled) { quitDerby(); return; }
+    recordFact(pick.fact, res, pick);
+    logKind(save, 'fact', !!res.correct);
+    logPlay(save, { problems: 1, problemsRight: res.correct ? 1 : 0 });
+    app.persist();
+    const power = res.quick ? 1 : res.correct ? 0.6 : 0;
+    d.bursts.push(power);
+    S('derbyBurst', power);
+    if (power) toast(res.quick ? 'A big burst of speed!' : 'A burst of speed!');
+  }
+  function onDerbyEnd(evt) { const d = derby; if (!d) return; derby = null; d.resolve({ won: !!evt.won, margin: num(evt.margin), markers: num(evt.markers), bursts: num(evt.bursts) }); }
+  function quitDerby() { const d = derby; if (!d) return; derby = null; S('endDerby'); markerPanel.cancel(); d.resolve(null); }
+
+  // ---------- the dog (SPEC v1.1 §3): offered at Fort Kearny's store, named on the keyboard ----------
+  const KEARNY = Math.max(0, LEGS.findIndex((l) => l.id === 'fort-kearny'));
+  async function offerDog(leg) {
+    const J = save.journey;
+    if (!J || J.dog || LEGS.indexOf(leg) < KEARNY) return;
+    const c = await showCard({ kicker: 'At the fort', title: 'A new friend', text: FIXED_LINES[7], say: FIXED_LINES[7], tone: 'camp', button: 'Keep it!', alt: 'Not now' });
+    if (c !== true || screen !== 'store' || J !== save.journey) return;
+    const got = await dogUI.ask();
+    if (got && J === save.journey) {
+      J.dog = { name: got.name, coat: got.coat, legs: 0, nextBerries: 1 };
+      app.persist();
+      applySceneParty();
+      S('dogBark');
+      toast(`${got.name} joins the party!`);
+    }
+    if (screen === 'dog') go('store');
+  }
+  function dogBerriesDue(r) {
+    const J = save.journey;
+    return !!(J && J.dog && save.trip && !save.trip.berries && num(J.dog.legs) >= num(J.dog.nextBerries) && num(J.milesDone) >= r.leg.miles * 0.35 && num(J.milesDone) < r.leg.miles);
+  }
+  /** The dog's berry patch (the 'berries' bonus, fired by the app every other leg, with the dog's name in it). */
+  async function dogBerries() {
+    const J = save.journey;
+    const ev = EVENT_BY_ID.berries || { id: 'berries', kind: 'bonus', foodLb: 20, name: 'Wild berries' };
+    save.trip.berries = true;
+    save.trip.events = [...save.trip.events, 'berries'].slice(0, 8);
+    J.dog.nextBerries = num(J.dog.legs) + 2;
+    const lb = num(ev.foodLb) || 20;
+    J.food = num(J.food) + lb;
+    if (J.trip && Array.isArray(J.trip.happened) && !J.trip.happened.includes('berries')) J.trip.happened.push('berries');
+    app.persist();
+    S('dogBark');
+    S('setTravel', { moving: false });
+    const text = `${J.dog.name} runs off barking and comes back by a patch of wild plums. Everyone picks!`;
+    await showCard({ kicker: 'On the trail', title: `${J.dog.name} found berries!`, text, say: text, tone: 'bonus', button: 'Yum!' });
+    toast(`+${lb} lb of plums for the wagon`);
+    dropCard(plumCard());
+  }
+  function createDogNamer() {
+    let name = '', coat = DOG_COATS[0], waiter = null;
+    const field = $('#dog-name');
+    const coats = $('#dog-coats');
+    const kb = createKeyboard({
+      id: 'dog-keyboard', enterLabel: 'Done',
+      onKey: (ch) => { if (name.length >= 12 || (ch === ' ' && (!name || name.endsWith(' ')))) return; name += ch; Audio.letter(); paint(); },
+      onBackspace: () => { name = name.slice(0, -1); Audio.letter(true); paint(); },
+      onEnter: () => { const n = clean(name); if (!n || !waiter) return; const w = waiter; waiter = null; kb.setActive(false); w({ name: n, coat }); },
+    });
+    $('#dog-kb').append(kb.el);
+    const clean = (x) => x.replace(/\s+/g, ' ').trim().replace(/(^|[ '-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+    const COAT = { brown: '#9a6a3a', spotted: '#e8e0d0', black: '#2e2622' };
+    function paint() {
+      field.replaceChildren(name ? h('span', {}, clean(name) || ' ') : h('span', { class: 'ph' }, 'Name your dog'), h('i', { class: 'caret' }));
+      kb.setEnterEnabled(!!clean(name));
+      coats.replaceChildren(...DOG_COATS.map((c) => {
+        const b = h('button', { class: 'swatch' + (c === coat ? ' on' : ''), role: 'radio', 'aria-checked': String(c === coat), 'aria-label': `A ${c} coat`, 'data-coat': c, 'data-sfx': '', style: { '--c': COAT[c] } });
+        b.addEventListener('click', () => { coat = c; paint(); });
+        return b;
+      }));
+    }
+    return {
+      show() { paint(); kb.setEnabled(true); kb.setActive(true); },
+      hide() { kb.setActive(false); if (waiter) { const w = waiter; waiter = null; w(null); } },
+      ask() { name = ''; coat = DOG_COATS[Math.floor(Math.random() * DOG_COATS.length)]; return new Promise((resolve) => { waiter = resolve; go('dog'); }); },
+    };
+  }
+
+  // ---------- the daily trail challenge (SPEC v1.1 §3): one a day, a token and a card ----------
+  function dailyObj() {
+    const J = save.journey;
+    if (!J || J.done || typeof JA.dailyChallenge !== 'function') return null;
+    try { return JA.dailyChallenge(J, dayKeyOf(Date.now())) || null; } catch (e) { console.warn('[WagonWest] dailyChallenge', e); return null; }
+  }
+  function dailyInfo() {
+    const dc = dailyObj();
+    if (!dc) return null;
+    const d = save.daily;
+    const claimed = d.key === dayKeyOf(Date.now()) && d.id === dc.id && d.claimed;
+    return { id: dc.id, text: dc.text, say: dc.say || dc.text, done: claimed || !!dc.done, claimed };
+  }
+  /** After every action that could finish today's challenge: claim it the moment it is done (once a day). */
+  function checkDaily() {
+    const J = save.journey;
+    const dc = dailyObj();
+    if (!dc) return;
+    const key = dayKeyOf(Date.now());
+    if (save.daily.key !== key || save.daily.id !== dc.id) save.daily = { key, id: dc.id, claimed: false };
+    if (save.daily.claimed) return;
+    let ok = false;
+    try { ok = !!dc.check(J); } catch (e) { console.warn('[WagonWest] challenge check', e); }
+    if (!ok) return;
+    const t0 = num(J.tokens);
+    let r = null;
+    try { r = JA.claimChallenge(J, dc.id); } catch (e) { console.warn('[WagonWest] claimChallenge', e); }
+    save.daily.claimed = true;
+    if (r && r.ok === false) { app.persist(); return; }       // already claimed (on another device)
+    const reward = (r && Number.isFinite(r.tokens) ? r.tokens : dc.reward && Number.isFinite(dc.reward.tokens) ? dc.reward.tokens : 1);
+    if (num(J.tokens) === t0 && reward) J.tokens = t0 + reward;
+    if ((r && r.card) || (dc.reward && dc.reward.card)) { try { dropCard(JA.cardForLeg(J, Math.random)); } catch (_) { /* ignore */ } }
+    toast("Today's challenge: done! A token and a card");
+    Audio.cash();
+    app.persist(); refreshCash();
+  }
+
+  // ---------- the wagon upgrades (Outfit → Look → Wagon): the token and cash sink ----------
+  const UP_EFFECT = { cover: '+1 day of weather protection: rain and frost leave the mood alone', tires: '+2 miles a day', barrel: 'Lean rations feel like plenty' };
+  function ownsUpgrade(J, id) {
+    if (!J) return false;
+    try { if (typeof JA.upgradesOwned === 'function') { const o = JA.upgradesOwned(J); if (Array.isArray(o)) return o.includes(id); } } catch (_) { /* below */ }
+    const u = J.upgrades;
+    return Array.isArray(u) ? u.includes(id) : !!(u && u[id]);
+  }
+  function upgradeList() {
+    const J = save.journey;
+    const list = Array.isArray(JA.UPGRADES) ? JA.UPGRADES : [];
+    return list.map((u) => {
+      let cost = { tokens: u.tokens, cash: u.cash };
+      try { if (J && typeof JA.upgradeCost === 'function') cost = JA.upgradeCost(J, u.id) || cost; } catch (_) { /* the list's price */ }
+      return { id: u.id, name: u.name, tokens: num(cost.tokens, NaN), cash: num(cost.cash, NaN), effect: u.effect || u.text || u.blurb || UP_EFFECT[u.id] || '', owned: ownsUpgrade(J, u.id) };
+    });
+  }
+  function buyUpgrade(id, how) {
+    const J = save.journey;
+    if (!J || typeof JA.buyUpgrade !== 'function') return false;
+    let ok = false;
+    try { ok = !!JA.buyUpgrade(J, id, how === 'cash' ? { cash: true } : { tokens: true }); } catch (e) { console.warn('[WagonWest] buyUpgrade', e); }
+    if (ok) {
+      const u = (JA.UPGRADES || []).find((x) => x.id === id);
+      app.persist(); refreshCash(); Audio.cash();
+      toast(`${u ? u.name : 'The upgrade'}: on the wagon!`);
+    }
+    return ok;
   }
 
   // ---------- pause ----------
@@ -946,7 +1466,11 @@ async function boot() {
   $('#pause-sound').addEventListener('click', () => setSetting('sound', !settings.sound));
   $('#pause-music').addEventListener('click', () => setSetting('music', !settings.music));
   $('#pause-motion').addEventListener('click', () => setSetting('reducedMotion', !settings.reducedMotion));
-  $('#pause-camp').addEventListener('click', () => { closePause(); go('title'); });
+  $('#pause-camp').addEventListener('click', () => { closePause(); openCamp('trail').catch((e) => console.error('[WagonWest] camp', e)); });
+  $('#btn-camp').addEventListener('click', () => {
+    if (screen !== 'trail' || !T || T.busy || panelOpen() || paused) return;
+    openCamp('trail').catch((e) => console.error('[WagonWest] camp', e));
+  });
 
   // ---------- keyboard: Esc pauses (or closes the Parent Zone); the panels own digits / letters / Enter ----------
   window.addEventListener('keydown', (e) => {
@@ -975,8 +1499,10 @@ async function boot() {
   document.addEventListener('click', (e) => { if (e.target.closest('[data-sfx]')) Audio.click(); });
 
   // ---------- audio unlock (first gesture anywhere) ----------
-  Audio.setSound(settings.sound); Audio.music(settings.music); Sfx.setSound(settings.sound);
-  const unlock = () => { Audio.unlock(); Sfx.unlock(); tts.unlock(); Audio.setSound(settings.sound); if (!settings.music) Audio.music(false); };
+  // the shared Audio.music() loop is never started in this game: the trail has its own tunes (./meta/music.js)
+  Audio.setSound(settings.sound); Audio.music(false); Sfx.setSound(settings.sound);
+  try { Music.on(settings.music); } catch (_) { /* ignore */ }
+  const unlock = () => { Audio.unlock(); Sfx.unlock(); tts.unlock(); Audio.setSound(settings.sound); try { Music.unlock(); } catch (_) { /* ignore */ } syncMusic(); };
   document.addEventListener('pointerdown', unlock, { capture: true });
   document.addEventListener('touchend', unlock, { capture: true });
   document.addEventListener('keydown', unlock, { capture: true });
@@ -988,6 +1514,10 @@ async function boot() {
   document.addEventListener('touchmove', (e) => {
     if (!e.target.closest('.scroll, .pz input, .pz textarea')) e.preventDefault();
   }, { passive: false });
+
+  // the music goes quiet while a panel, the pause sheet or the Parent Zone is open, and comes back after
+  const mo = new MutationObserver(() => syncMusic());
+  for (const id of ['panel-marker', 'panel-problem', 'spell', 'card', 'mini', 'panel-pause', 'pz']) { const el = document.getElementById(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ['hidden'] }); }
 
   go('players');
   updateHooks.isSafe = () => safeToReload({ screen, busy: !!T || panelOpen(), parentZone: pz.isOpen });
@@ -1009,7 +1539,10 @@ async function boot() {
     app, pz, sync, tts, store, river, postOffice, results, hud, markerPanel, problemPanel, spellPanel, card,
     get scene() { return scene; }, get screen() { return screen; }, get save() { return save; }, get facts() { return facts; },
     get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb } : null; },
-    JA,
+    JA, cloud, Music, cardPop, camp: screens.camp,
+    get derby() { return derby ? { markers: derby.markers, bursts: derby.bursts.slice(), busy: derby.busy } : null; },
+    get lastDerby() { return lastDerby; }, get lastQuickDraw() { return lastQuickDraw; }, get music() { return { ...musicState }; },
+    dropCard: (id) => dropCard(id), checkDaily: () => checkDaily(), dogBerries: () => (T && !T.busy && save.journey && save.journey.dog ? (T.busy = true, dogBerries().finally(() => { if (T) { T.busy = false; T.last = 0; } }), true) : false),
     // a test hook: fire a trail event by id (or kind) on an idle trail, as the day loop would
     playEvent(id) { const ev = EVENT_BY_ID[id] || EVENTS.find((e) => e.kind === id); if (!ev || !T || T.busy) return false; T.busy = true; runEvent(ev).catch((e) => console.error(e)).finally(() => { if (T) { T.busy = false; T.last = 0; } }); return true; },
   }; // debugging / smoke tests

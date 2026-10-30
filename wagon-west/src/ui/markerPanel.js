@@ -11,6 +11,10 @@
 // No clock on screen, no score, no lives. The panel owns no data: open() resolves { correct, quick, fixed, ms, given }
 // and main.js records it in the child's facts store (recordAnswer) and the journey (applyMarker).
 // open({ title }) re-titles it for the trail's other quick facts (the storm's card game, the mud hole, a riddle).
+// v1.1: open({ riddle: { text, say } }) asks the fact in disguise (Campfire tales' riddle: "Seven wagons, eight oxen
+// each. How many oxen?"): the riddle stands where the fact would, and a miss shows the plain fact with its answer as
+// always. markerTexts(fact, flip) lists every sentence the panel may say for a fact (the question, and on a miss the
+// full sentence with the strategy hint), so main.js can have the natural voice ready before the panel opens.
 import { h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { factAnswer, factText, fullSentence, questionSentence } from '../../../trail-blazer/src/facts/facts.js';
@@ -22,10 +26,19 @@ export const RIGHT_MS = 1000;
 export const SHOW_MS = 2500;
 export const WRONG_FLASH_MS = 450;
 
+/** Every sentence the panel can say for this fact: the question, and on a miss the full sentence + the hint. */
+export function markerTexts(fact, flip = false) {
+  let t = '';
+  try { t = hintFor(fact, flip); } catch (_) { t = ''; }
+  const full = fullSentence(fact, flip);
+  return [questionSentence(fact, flip), `${full} ${t ? spokenHint(t) : ''}`.trim(), full];
+}
+
 export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => true } = {}) {
   const chip = h('span', { class: 'pn-chip', id: 'mk-chip' });
   const hear = h('button', { class: 'btn btn-sm pn-hear', id: 'mk-hear', 'data-sfx': '', 'aria-label': 'Hear it' }, h('span', { html: icon('sound') }), h('span', { class: 'pn-hear-text' }, 'Hear it'));
   const q = h('span', { class: 'mk-q', id: 'mk-q' });
+  let factEl = null;
   const tiles = h('span', { class: 'pn-tiles', id: 'mk-tiles', 'aria-live': 'polite' });
   const msg = h('div', { class: 'pn-msg', id: 'mk-msg', 'aria-live': 'polite' });
   const hint = h('div', { class: 'pn-hint', id: 'mk-hint', hidden: true });
@@ -33,7 +46,7 @@ export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => 
   const titleText = h('span', { class: 'pn-title-text', id: 'mk-title' }, 'Mile marker');
   const card = h('div', { class: 'pn-card card', role: 'dialog', 'aria-labelledby': 'mk-title' },
     h('div', { class: 'pn-top' }, h('span', { class: 'pn-title' }, h('span', { class: 'pn-post', 'aria-hidden': 'true' }), titleText), chip, hear),
-    h('div', { class: 'pn-main' }, h('div', { class: 'mk-fact' }, q, h('span', { class: 'mk-eq' }, '='), tiles), msg, hint),
+    h('div', { class: 'pn-main' }, factEl = h('div', { class: 'mk-fact' }, q, h('span', { class: 'mk-eq' }, '='), tiles), msg, hint),
     h('div', { class: 'pn-pad' }, pad.el));
   root.replaceChildren(card);
   root.hidden = true;
@@ -47,7 +60,9 @@ export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => 
     if (!S) return;
     const { state, answer } = S;
     root.dataset.state = state;
-    q.textContent = factText(S.fact, S.flip);
+    const disguised = !!S.riddle && (state === 'ask' || state === 'bad' || state === 'right');
+    q.textContent = disguised ? S.riddle.text : factText(S.fact, S.flip);
+    factEl.classList.toggle('riddle', disguised);
     let shown, cls = '';
     if (state === 'show') { shown = String(answer); cls = 'model'; }
     else if (state === 'right' || state === 'fixed') { shown = String(answer); cls = 'ok'; }
@@ -153,7 +168,7 @@ export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => 
   hear.addEventListener('click', () => {
     if (!S || !speakable()) return;
     try { tts.reprobe(); } catch (_) { /* ignore */ }
-    say(S.state === 'show' ? `${fullSentence(S.fact, S.flip)} ${S.hintText ? spokenHint(S.hintText) : ''}`.trim() : questionSentence(S.fact, S.flip));
+    say(S.state === 'show' ? `${fullSentence(S.fact, S.flip)} ${S.hintText ? spokenHint(S.hintText) : ''}`.trim() : S.riddle ? (S.riddle.say || S.riddle.text) : questionSentence(S.fact, S.flip));
   });
 
   return {
@@ -161,11 +176,13 @@ export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => 
     get state() { return S ? S.state : 'closed'; },
     get fact() { return S ? S.fact : null; },
     get answer() { return S ? S.answer : null; },
-    /** Ask one fact. { fact, flip, index (0-based), total, title, chipText }. Resolves { correct, quick, fixed, ms, given } or { cancelled }. */
-    open({ fact, flip = false, index = 0, total = 0, title = 'Mile marker', chipText = '' } = {}) {
+    get riddle() { return S && S.riddle ? S.riddle.text : null; },
+    /** Ask one fact. { fact, flip, index (0-based), total, title, chipText, riddle: { text, say } }. Resolves
+     *  { correct, quick, fixed, ms, given } or { cancelled }. */
+    open({ fact, flip = false, index = 0, total = 0, title = 'Mile marker', chipText = '', riddle = null } = {}) {
       if (S) finish({ cancelled: true });
       return new Promise((resolve) => {
-        S = { fact, flip, answer: factAnswer(fact), state: 'ask', typed: '', t0: 0, resolve, timers: [], ms: 0, given: null, hintText: '' };
+        S = { fact, flip, answer: factAnswer(fact), state: 'ask', typed: '', t0: 0, resolve, timers: [], ms: 0, given: null, hintText: '', riddle: riddle && riddle.text ? riddle : null };
         titleText.textContent = title;
         chip.textContent = chipText || (total > 0 ? `Marker ${index + 1} of ${total}` : '');
         chip.hidden = !chip.textContent;
@@ -175,7 +192,7 @@ export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => 
         pad.setActive(true);
         paint();
         S.t0 = performance.now();          // quick is timed from the moment the fact is on screen
-        say(questionSentence(fact, flip));
+        say(S.riddle ? (S.riddle.say || S.riddle.text) : questionSentence(fact, flip));
       });
     },
     /** Close without an answer (the trail was left). */

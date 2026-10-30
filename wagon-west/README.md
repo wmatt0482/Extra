@@ -49,7 +49,7 @@ Stopping is always fine: every day is saved and "Make camp" leaves the journey w
 | `src/meta/save.js` · `sync.js` | the save (`wagonWest.<id>.save`, settings `wagonWest.settings`) and the `ww` sync kind with its merge |
 | `src/meta/mockScene.js` | the scene API (§11) as a placeholder drawing with scripted hunting / fishing (`?mock=1`) |
 | `src/meta/sfx.js` · `selfUpdate.js` | sound effects; reload on a safe screen after an update |
-| `src/ui/*` | players, title + map, outfit + looks, store, HUD, trail card, marker / problem panels, river, post office, journal, results, Parent Zone, the spell panel's re-wording |
+| `src/ui/*` | players, title + map, outfit + looks, store, HUD, trail card, marker / problem panels, river, post office, journal, results, Parent Zone, the spell panel's re-wording; v1.1 camp (`camp.js`) and trail cards (`cards.js`) |
 | `sw.js` · `manifest.webmanifest` · `icons/` | the PWA (`tools/make-icons.mjs` draws the wagon icon) |
 
 The journey (`src/journey/*`), the scene (`src/scene/*`) and the content (`src/content/*`) are the other streams'.
@@ -57,16 +57,51 @@ The journey (`src/journey/*`), the scene (`src/scene/*`) and the content (`src/c
 ## Tests
 
 ```sh
-BASE_URL=http://localhost:8095 node wagon-west/tools/ui-smoke.mjs     # both layouts on the mock scene (ONLY=landscape|portrait)
+BASE_URL=http://localhost:8095 node wagon-west/tools/ui-smoke.mjs     # both layouts on the mock scene (ONLY=landscape|portrait; VOICE_ONLY=1)
 BASE_URL=http://localhost:8095 node wagon-west/tools/sync-smoke.mjs   # two devices, one in-memory family server
 node wagon-west/tools/make-icons.mjs                                  # redraw the icons
 ```
+
+## 1.1
+
+The natural voice, the trail's own music, and side games (SPEC "v1.1"):
+
+- **The natural voice really plays.** Spell Jump's `tts.js` uses a natural-voice clip only when one exists for the
+  exact sentence, so the app asks for them: `prepareVoice()` at player select, at a voice / family-code change and at
+  every leg start (the week's words through `cloud.prepareList()`, the child's active facts both ways round with their
+  hints, every lookout, nation fact, event, companion line and trail card, the panels' fixed lines and the river's
+  landing sentences for the T1 / T2 fractions), and `app.voiceFor(texts)` just in time (at most 2.5 s) before a
+  generated problem, the letter, a riddle or a marker's hint is said. Lines longer than a clip (200 characters) are said
+  a sentence or two at a time. Parents → Options shows "Natural voice: Ava · N clips ready" (or "Device voice") and
+  "Say a test line" reports which engine spoke (`tts.engine`).
+- **Music** (`src/meta/music.js`, the Music stream's): `Music.on` from the settings toggles, the tune by leg
+  (Oh! Susanna, Buffalo Gals, Old Dan Tucker), the mood by screen (trail, camp, post) and `off` under any panel, the
+  pause sheet or the Parent Zone; the voice ducks it. Spell Jump's `Audio.music()` loop is never started here.
+- **Camp** (`src/ui/camp.js`): "Camp" on the trail HUD, Make camp in the pause menu, and the evening of every arrival
+  ("Make camp tonight?" / "On to the results"). Fishing, Hunting (when on), Quick Draw (facts against a companion on
+  the marker panel, first to 7, a token on a win, always a good-game line), Campfire tales (a lookout or nation story,
+  then a riddle: a fact in disguise, a token), Rest. Each one is a day (`camp(J, kind)`). "Back to the trail" / "Stop
+  for today".
+- **Trail cards** (`src/ui/cards.js`, the content in `src/content/cards.js`): 40 cards in four suits, dropped by
+  lookouts (the landmark), trading posts (the nation), spotted animals, hunts and catches (the animal or plant), the
+  berries (wild plum), a companion's line at camp (their card) and every arrival (`cardForLeg`); a duplicate is a token,
+  a full suit a golden crate. The pop flips in near the top with a chime; the Journal's fourth page is the album.
+  The cards are the journey's (`J.cards`); the sync merge keeps the union.
+- **Fort Derby**: "Race the mail wagon" in a fort's store (once a visit): the scene's race, a fact at each marker
+  (quick → a big burst, right → a burst, a miss → a stumble), `derbyPay`, a card on a win, never a losing message.
+- **The dog**: offered at Fort Kearny's store, named on the on-screen keyboard (one of three coats), kept as `J.dog`
+  (the app stores it on the journey), in the scene's party, barking (the `bark` event), and finding a berry patch
+  every other leg.
+- **The daily challenge** on the title (`dailyChallenge` / `claimChallenge`): a token and a card, a check mark once done.
+- **Wagon upgrades** in Outfit → Look → Wagon (`UPGRADES` / `buyUpgrade`, tokens or cash), and every look can now be
+  bought with tokens.
 
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail
 Blazer's kinds (`tb`, `facts`) so the facts the mile markers record sync from here too; Spell Jump's `words` kind is
-built in. Merge: a reset wins; the journey is the later doc's (cash and tokens the max on the same journey); stickers,
+built in. Merge: a reset wins; the journey is the later doc's (cash and tokens the max; the trail cards the union);
+stickers,
 letters, looks and the leg log are unions; the per-day log and the per-kind tallies take the max; crates keep the longer
 queue; the streak follows Spell Jump's rule. The family server must list `ww` among its kinds
 (`car-jump/src/sync/protocol.mjs`).

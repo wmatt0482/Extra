@@ -20,6 +20,16 @@ function el(tag, attrs = {}, ...kids) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** What the ferryman says about a landing (said = "three quarters"): every line, for the natural voice to prepare. */
+export const riverLines = (said) => ({
+  hear: `The landing is ${said} of the way across.`,
+  start: `Rope toss! The landing is ${said} of the way across.`,
+  again: `Splash! A wet boot. The landing is ${said} of the way across. One more throw.`,
+  close: `Close! The ferryman hauls the rope in. The landing was ${said} of the way across.`,
+});
+export const RIVER_FIXED = ['Caught the landing!', 'Caught it this time!'];
+export const riverTexts = (said) => [...Object.values(riverLines(said)), ...RIVER_FIXED];
+
 export function createRiver(app) {
   const title = $('#rv-title');
   const words = $('#rv-words');
@@ -90,7 +100,7 @@ export function createRiver(app) {
     else if (e.code === 'Enter') { e.preventDefault(); throwNow(); }
   });
   throwBtn.addEventListener('click', () => throwNow());
-  hearBtn.addEventListener('click', () => { if (R) app.say(`The landing is ${R.f.say} of the way across.`); });
+  hearBtn.addEventListener('click', () => { if (R) app.say(riverLines(R.f.say).hear); });
 
   async function throwNow() {
     if (!canAim()) return;
@@ -116,12 +126,12 @@ export function createRiver(app) {
     app.sfx.splash();
     if (R.throws < 2) {
       setMsg(`Splash! A wet boot. The landing is at ${R.f.n}/${R.f.d}. One more throw.`, 'hot');
-      app.say(`Splash! A wet boot. The landing is ${R.f.say} of the way across. One more throw.`);
+      app.say(riverLines(R.f.say).again);
       throwBtn.disabled = false;
       return;
     }
     setMsg(`Close! The ferryman hauls the rope in. The landing was at ${R.f.n}/${R.f.d}.`, 'cyan');
-    app.say(`Close! The ferryman hauls the rope in. The landing was ${R.f.say} of the way across.`);
+    app.say(riverLines(R.f.say).close);
     finishRope(false);
   }
   function finishRope(hit) {
@@ -144,7 +154,7 @@ export function createRiver(app) {
     setMsg('Drag the rope to the landing, then THROW.', '');
     throwBtn.disabled = false;
     draw();
-    app.say(`Rope toss! The landing is ${f.say} of the way across.`);
+    app.voiceFor(riverTexts(f.say)).then(() => { if (R && R.f === f && !R.last) app.say(riverLines(f.say).start); });
     return new Promise((resolve) => { R.waiter = resolve; });
   }
 

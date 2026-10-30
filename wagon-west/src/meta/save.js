@@ -22,7 +22,14 @@
 //   legsLog      the last 40 legs: { at, leg, season, stars, markers, markersRight, problems, problemsRight, words, wordsRight }
 //   homestead    the name the child gave the homestead in the valley ('' until then)
 //   seen         { coach } first-trail tips shown
+//   daily        the daily trail challenge (v1.1): { key: 'YYYY-MM-DD', id, claimed } (one a day; claimed = the token and
+//                the card were given)
+//   suitsDone    trail-card suits completed (v1.1): each paid its gold crate once
 //   resetAt      Parents → Reset (a stamped fresh save wins every merge)
+// v1.1 keeps the v1 shape (no migration): the trail cards are the journey's own (J.cards, the Journey stream's
+// awardCard), the dog the child named is J.dog = { name, coat, legs, nextBerries } (the app stores it on the journey:
+// the journey stream does not model it), and the leg in progress remembers the Fort Derby race (trip.derby) and the
+// dog's berry patch (trip.berries) so neither repeats when a stop is resumed.
 import { localWrite } from '../../../spell-jump/src/sync/notify.js';
 import { defaultStreak, normalizeStreak } from '../../../spell-jump/src/meta/engagement.js';
 import { LOOK_KINDS, STOCK, itemOf } from '../ui/looks.js';
@@ -54,6 +61,8 @@ export function defaultSave() {
     legsLog: [],
     homestead: '',
     seen: { coach: false },
+    daily: { key: '', id: '', claimed: false },
+    suitsDone: [],
   };
 }
 export const defaultSettings = () => ({ sound: true, music: true, reducedMotion: false, hunting: true, fractions: true });
@@ -80,6 +89,9 @@ function normalizeTrip(t) {
     asked: { ration: int0(T.asked && T.asked.ration), distance: int0(T.asked && T.asked.distance) },
     markers: int0(T.markers),
     at: int0(T.at),
+    tokens0: int0(T.tokens0),
+    derby: !!T.derby,
+    berries: !!T.berries,
   };
 }
 const letterKey = (l) => `${l.at}|${l.text}`;
@@ -115,6 +127,10 @@ export function normalizeLegsLog(list) {
   }
   return [...seen.values()].sort((a, b) => a.at - b.at).slice(-LEGS_KEPT);
 }
+export function normalizeDaily(raw) {
+  const d = obj(raw) || {};
+  return { key: DAY_RE.test(d.key || '') ? d.key : '', id: str(d.id, 80), claimed: !!d.claimed };
+}
 function normalizeCosmetics(raw) {
   const c = defaultCosmetics();
   const r = obj(raw) || {};
@@ -144,6 +160,8 @@ export function normalize(raw) {
   s.legsLog = normalizeLegsLog(raw.legsLog);
   s.homestead = str(raw.homestead, 24);
   s.seen = { coach: !!(raw.seen && raw.seen.coach) };
+  s.daily = normalizeDaily(raw.daily);
+  s.suitsDone = [...new Set((Array.isArray(raw.suitsDone) ? raw.suitsDone : []).filter((x) => typeof x === 'string' && x.length <= 20))];
   if (num(raw.resetAt) > 0) s.resetAt = num(raw.resetAt);
   return s;
 }

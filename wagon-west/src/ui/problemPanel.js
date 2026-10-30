@@ -11,6 +11,9 @@
 // Two-answer problems ("how many, and what is left?", SPEC §10 'divide'): `steps: [{ ask, answer, unit }]`,
 // `remainder` (asked second: "And how much is left?") or `answer: [a, b]` are asked in turn, the same rules for each.
 // The panel owns no data: open() resolves { correct (every answer right the first time), fixed, ms, given, answers }.
+// v1.1: every sentence is its own utterance (the problem, then its first question; the work one line at a time), so
+// each one can be a natural-voice clip (≤ 200 characters each); problemTexts(p) lists them all, and main.js has the
+// voice prepare them (app.voiceFor) before the panel opens.
 import { h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { spokenHint } from '../../../trail-blazer/src/facts/hints.js';
@@ -23,6 +26,16 @@ export const SHOW_ANSWER_MS = 1400;
 
 /** A line with symbols as the voice reads it ("$56" → "56 dollars", "7 × 8 = 56" → "seven times eight equals fifty-six."). */
 export const spokenLine = (text) => spokenHint(String(text || '').replace(/\$\s?(\d[\d,]*)/g, (m, d) => `${d.replace(/,/g, '')} dollars`));
+
+/** Every sentence the panel may say for a problem (in the order it says them), for the natural voice to prepare. */
+export function problemTexts(p) {
+  if (!p) return [];
+  const out = [p.say || spokenLine(p.text)];
+  for (const st of stepsOf(p)) if (st.ask || st.say) out.push(st.say || spokenLine(st.ask));
+  if (Array.isArray(p.parts)) for (const part of p.parts) if (part && part.say) out.push(part.say);
+  for (const line of Array.isArray(p.work) ? p.work : []) if (typeof line === 'string' && line.trim()) out.push(spokenLine(line));
+  return [...new Set(out.map((t) => String(t || '').trim()).filter(Boolean))];
+}
 
 /** The answers one problem asks for, in turn: [{ ask, answer, unit }]. */
 export function stepsOf(p) {
@@ -61,6 +74,17 @@ export function createProblemPanel(root, { tts, audio, sfx = null, aloud = () =>
   const sleep = (ms) => new Promise((r) => { const st = S; const t = setTimeout(r, ms); if (st) st.timers.push(t); });
   const speakable = () => aloud() && tts && tts.available;
   function say(t) { if (!speakable() || !t) return Promise.resolve(); try { tts.cancel(); return Promise.resolve(tts.say(t)).catch(() => {}); } catch (_) { return Promise.resolve(); } }
+  // several sentences, one utterance each, in turn (a newer speech cuts the rest off)
+  async function sayAll(list) {
+    const L = (list || []).filter(Boolean);
+    if (!speakable() || !L.length) return;
+    try { tts.cancel(); } catch (_) { /* ignore */ }
+    for (const t of L) {
+      let r = null;
+      try { r = await tts.say(t); } catch (_) { r = null; }
+      if (r === null) return;
+    }
+  }
   const step = () => S.steps[S.i];
 
   function paint() {
@@ -200,7 +224,7 @@ export function createProblemPanel(root, { tts, audio, sfx = null, aloud = () =>
     if (!S || !speakable()) return;
     try { tts.reprobe(); } catch (_) { /* ignore */ }
     const st = step();
-    say(S.state === 'copy' || S.state === 'work' ? (S.p.work || []).map(spokenLine).join(' ') : `${S.p.say || spokenLine(S.p.text)}${st.ask ? ' ' + spokenLine(st.ask) : ''}`);
+    sayAll(S.state === 'copy' || S.state === 'work' ? (S.p.work || []).map(spokenLine) : [S.p.say || spokenLine(S.p.text), st.ask ? st.say || spokenLine(st.ask) : null]);
   });
 
   return {
@@ -225,8 +249,7 @@ export function createProblemPanel(root, { tts, audio, sfx = null, aloud = () =>
         pad.setActive(true);
         askStep();
         S.t0 = performance.now();
-        const first = steps[0].ask ? ` ${steps[0].say || spokenLine(steps[0].ask)}` : '';
-        say(`${problem.say || spokenLine(problem.text)}${first}`);
+        sayAll([problem.say || spokenLine(problem.text), steps[0].ask ? steps[0].say || spokenLine(steps[0].ask) : null]);
       });
     },
     cancel() { if (S) { try { tts.cancel(); } catch (_) { /* ignore */ } finish({ cancelled: true }); } },

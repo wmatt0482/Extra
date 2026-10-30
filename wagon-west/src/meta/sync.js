@@ -14,6 +14,10 @@
 //           owned union, worn = the later doc's · crates earned / opened max, the longer waiting queue · streak =
 //           Spell Jump's rule (mergeStreak) · play per day per field max · kinds per kind max · legsLog union (40) ·
 //           homestead = the later doc's, else the other's · seen OR.
+// v1.1      the trail cards (J.cards, the journey's): the union of both sides' cards whenever both have a journey (a
+//           collection is never lost to "the later doc"), and the tokens the max, explicitly · the dog (J.dog, stored
+//           by the app on the journey) kept from the other side when the later one has none · suitsDone union · the
+//           daily challenge: the later doc's, claimed when either side claimed the same day's challenge.
 import { registerSyncKind } from '../../../spell-jump/src/sync/client.js';
 import { mergeStreak } from '../../../spell-jump/src/sync/merge.js';
 import { registerTrailBlazerSync } from '../../../trail-blazer/src/meta/sync.js';
@@ -26,6 +30,14 @@ const uniq = (...arrs) => { const out = []; for (const a of arrs) for (const x o
 function laterDoc(a, b) {
   if (num(a.updatedAt) !== num(b.updatedAt)) return num(a.updatedAt) > num(b.updatedAt) ? a : b;
   return JSON.stringify(a.data) >= JSON.stringify(b.data) ? a : b;
+}
+/** Two card collections in one: ids (an array) or counts by id (an object), whichever shape the journey keeps. */
+export function unionCards(a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) return uniq(Array.isArray(a) ? a : Object.keys(a || {}), Array.isArray(b) ? b : Object.keys(b || {}));
+  if (!a && !b) return a;
+  const out = { ...(a || {}) };
+  for (const [k, v] of Object.entries(b || {})) out[k] = Math.max(num(out[k]), num(v));
+  return out;
 }
 const sameJourney = (x, y) => !!(x && y && x.season === y.season && String(x.seed) === String(y.seed));
 
@@ -43,6 +55,13 @@ export function mergeWw(local, remote) {
     s.journey.cash = Math.max(num(s.journey.cash), num(o.journey.cash));
     s.journey.tokens = Math.max(num(s.journey.tokens), num(o.journey.tokens));
   }
+  if (s.journey && o.journey) {
+    s.journey.cards = unionCards(s.journey.cards, o.journey.cards);
+    s.journey.tokens = Math.max(num(s.journey.tokens), num(o.journey.tokens));
+    if (!s.journey.dog && o.journey.dog) s.journey.dog = clone(o.journey.dog);
+  }
+  s.suitsDone = uniq(s.suitsDone, o.suitsDone);
+  if (o.daily && s.daily && o.daily.key === s.daily.key && o.daily.id === s.daily.id && o.daily.claimed) s.daily.claimed = true;
   s.seasonsDone = Math.max(s.seasonsDone, o.seasonsDone);
   s.stickers = uniq(s.stickers, o.stickers);
   s.letters = normalizeLetters([...s.letters, ...o.letters]);

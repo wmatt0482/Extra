@@ -1,6 +1,7 @@
 // Playwright smoke test of Wagon West on the mock scene (?mock=1&nosw=1), landscape 844×390 and portrait 390×844
 // (iPhone safe-area insets faked), from the repo root:
-//   BASE_URL=http://localhost:8095 node wagon-west/tools/ui-smoke.mjs     (ONLY=landscape | portrait runs one layout)
+//   BASE_URL=http://localhost:8095 node wagon-west/tools/ui-smoke.mjs     (ONLY=landscape | portrait runs one layout;
+//   VOICE_ONLY=1 runs only the natural-voice part)
 // Covers (SPEC §12 "Tests"): the picker and a new player (on-screen keyboard), the title with the map, the outfit (the
 // wagon's name on the on-screen keyboard, the animal, three companions, the looks), the General Store at Independence
 // (a 'buy' problem right, a 'divide' problem missed: the work shown line by line, then the answer typed, the goods at
@@ -13,6 +14,15 @@
 // Journey, Options, Report with the chart, Players), the facts written to the child's Trail Blazer store, the pings,
 // reload persistence, a kid-rule text audit and the layout audit of every screen (no links off-origin, no native
 // inputs outside the Parent Zone, targets ≥ 44 px, no overflow, clear of the insets), and no console errors.
+// v1.1: two legs in both layouts; at Fort Kearny the dog (kept, named on the keyboard, in the scene's party) and Fort
+// Derby (a fact at each marker on the marker panel, the race won on the mock); trail cards (the lookouts' landmark
+// cards, the pop, the Journal's Cards page with its counts); the daily challenge on the title, claimed (a token and a
+// card); an upgrade bought with tokens (Outfit → Look → Wagon); Camp from the trail (Quick Draw to 7, a Campfire tale
+// with its riddle, Rest; "Back to the trail"; the pause menu's Make camp → "Stop for today"); the music's mood by
+// screen and 'off' while a panel is open; the audits on every new screen. Then, per layout, the natural voice with a
+// fake cloud backend and a family code: the marker, a problem, a card, the river sentence and the letter are all
+// spoken by clips (tts.engine 'cloud', the device voice silent), prepare requests carried the leg's lookout and the
+// problem's sentence, and Parents → Options shows "Natural voice: Ava · N clips ready" with "Say a test line".
 import { execSync, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
@@ -47,7 +57,7 @@ let passed = 0;
 const check = (cond, msg) => { if (!cond) { failures.push(msg); console.log('  ✗ ' + msg); } else { passed++; console.log('  ✓ ' + msg); } };
 const LAYOUTS = [
   { name: 'landscape', width: 844, height: 390, insets: { t: 0, r: 47, b: 21, l: 47 }, legs: 2 },
-  { name: 'portrait', width: 390, height: 844, insets: { t: 47, r: 0, b: 34, l: 0 }, legs: 1 },
+  { name: 'portrait', width: 390, height: 844, insets: { t: 47, r: 0, b: 34, l: 0 }, legs: 2 },
 ];
 // kid-facing words that must never show (SPEC §1); the Parent Zone is for grown-ups and is left out
 const BANNED = /\b(kill(s|ed|ing)?|die[sd]?|dying|dead|death|grave|blood|gun|lives|life left|wrong|timer|countdown|hurry|time'?s up|seconds? left|game over|lose|lost|fail(ed)?|dysentery|snakebite|starv(e|ing|ed))\b/i;
@@ -115,7 +125,7 @@ const kidText = (page) => J(page, () => {
 // ---------- the state of the app, and the driver that plays whatever is on screen ----------
 const W = (page) => J(page, () => {
   const w = window.__wagonWest;
-  return { screen: w.screen, marker: w.markerPanel.state, mAns: w.markerPanel.answer, mReal: /^Marker \d+ of \d+$/.test((document.querySelector('#mk-chip') || {}).textContent || ''), problem: w.problemPanel.state, pAns: w.problemPanel.answer, pKind: w.problemPanel.problem && w.problemPanel.problem.kind,
+  return { screen: w.screen, marker: w.markerPanel.state, mAns: w.markerPanel.answer, mReal: /^Marker \d+ of \d+$/.test((document.querySelector('#mk-chip') || {}).textContent || '') && document.querySelector('#mk-title').textContent === 'Mile marker', mTitle: document.querySelector('#mk-title').textContent, problem: w.problemPanel.state, pAns: w.problemPanel.answer, pKind: w.problemPanel.problem && w.problemPanel.problem.kind,
     card: w.card.isOpen, cardTitle: w.card.title, spell: w.spellPanel.isOpen ? w.spellPanel.mode : null, word: w.spellPanel.word, kbOn: !!document.querySelector('#sp-keyboard:not(.is-disabled)'),
     mini: w.mini, travel: w.travel, rope: w.river.rope, rvRope: !document.querySelector('#rv-rope').hidden, rvFoot: !document.querySelector('#rv-foot').hidden,
     poFoot: !document.querySelector('#po-foot').hidden, storeOpen: w.store.isOpen, storeBusy: w.store.busy, journey: w.save.journey && { legIndex: w.save.journey.legIndex, legId: w.save.journey.legId, milesDone: w.save.journey.milesDone, cash: w.save.journey.cash, food: w.save.journey.food, tokens: w.save.journey.tokens, rations: w.save.journey.rations, pace: w.save.journey.pace } };
@@ -152,6 +162,14 @@ async function drive(page, until, plan = {}, timeout = 90000) {
     else if (s.problem === 'ask') { log.problems.push(s.pKind); await typeDigits(page, '#panel-problem', s.pAns); }
     else if (s.problem === 'copy') await typeDigits(page, '#panel-problem', s.pAns);
     else if (s.card) { log.cards.push(s.cardTitle); await page.click('#tc-go'); }
+    else if (s.screen === 'dog') {
+      // the dog at Fort Kearny ("Keep it!" above): a coat, the name on the on-screen keyboard
+      log.dog = true;
+      if (plan.onDog) await plan.onDog();
+      await page.click('#dog-coats [data-coat="spotted"]');
+      for (const k of plan.dogName || 'rex') await page.click(`#dog-keyboard .kb-key[data-key="${k}"]`);
+      await page.click('#dog-keyboard .kb-enter');
+    }
     else if (s.spell && ['write', 'cover', 'copy'].includes(s.spell) && s.kbOn && s.word) { if (s.spell === 'write') log.words.push(s.word); await typeWord(page, s.word); }
     else if (s.mini) { if (lastMini !== s.mini.kind) { log.minis++; lastMini = s.mini.kind; } }
     else if (s.screen === 'river' && s.rvRope && s.rope && !s.rope.done && !s.rope.flying) {
@@ -335,7 +353,7 @@ async function runLayout(browser, layout) {
         await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask' || window.__wagonWest.markerPanel.state === 'ask', null, { timeout: 5000 }).catch(() => {});
         const d = await W(page);
         check(d.journey.pace === 'brisk' && d.journey.rations === 'plenty', 'the dials: brisk pace, plenty rations');
-        check((d.problem === 'ask' && d.pKind === 'ration') || d.marker === 'ask', 'the first rations change asks the rations question (after any marker that was due)');
+        check((d.problem === 'ask' && d.pKind === 'ration') || d.marker === 'ask' || d.card, 'the first rations change asks the rations question (after any marker or event card that was due)');
       }
       if (s.marker === 'ask' && !markerShot) { markerShot = true; await shot(page, layout, '09-marker', 50); await audit(page, layout.insets, 'mile marker'); }
       if (s.marker === 'show') { const t = await J(page, () => ({ tiles: document.querySelector('#mk-tiles').textContent, typed: document.querySelector('#mk-tiles').dataset.typed })); if (!globalThis.__shownChecked) { globalThis.__shownChecked = true; check(t.typed === '' && Number(t.tiles) === s.mAns, `a missed marker: the fact with its answer shown (${t.tiles}), the typed one gone`); await shot(page, layout, '10-marker-show', 0); } }
@@ -351,6 +369,7 @@ async function runLayout(browser, layout) {
   check(leg1.problems.length >= 1, `leg 1 problems on the trail: ${leg1.problems.join(', ')}`);
   check(leg1.words.length === 3 && leg1.throws >= 1, `the river: three words spelled (${leg1.words.join(', ')}) and the rope thrown (${leg1.throws}×)`);
   check(leg1.cards.some((c) => /Kansas River/i.test(c)), `the lookout card at the stop (${leg1.cards.join(' · ')})`);
+  check(leg1.cards.includes('Make camp tonight?'), 'the evening of the arrival offers Camp before the results ("Make camp tonight?" / "On to the results")');
 
   // ---------- results ----------
   const res1 = await J(page, () => ({ rows: [...document.querySelectorAll('#res-pay tr:not(.total)')].map((r) => Number(r.dataset.amount)), total: Number(document.querySelector('#res-pay tr.total').dataset.amount),
@@ -380,7 +399,7 @@ async function runLayout(browser, layout) {
     // ---------- leg 2: the hunt, the fort, the store and the letter ----------
     await page.click('#res-next');
     await page.waitForSelector(visibleSel('#screen-trail'));
-    let storeBought = false, letterChecked = false;
+    let storeBought = false, letterChecked = false, derbyRun = false, derbyChecked = false, dogChecked = false;
     let huntForced = false;
     const leg2 = await drive(page, (s) => s.screen === 'results', {
       leaveStore: false,
@@ -390,9 +409,30 @@ async function runLayout(browser, layout) {
           huntForced = true;
           await J(page, () => window.__wagonWest.playEvent('hunt'));
         }
-        if (s.screen === 'store' && s.storeOpen && !s.storeBusy && s.problem === 'closed') {
+        if (s.card && s.cardTitle === 'A new friend' && !dogChecked) {
+          dogChecked = true;
+          check(await J(page, () => /A dog has been following the wagon\. Keep it\?/.test(document.querySelector('#tc-text').textContent) && !document.querySelector('#tc-alt').hidden), 'Fort Kearny: "A dog has been following the wagon. Keep it?" (Keep it! / Not now)');
+          await audit(page, layout.insets, 'the dog card');
+        }
+        if (s.screen === 'store' && s.storeOpen && !s.storeBusy && s.problem === 'closed' && !s.card && s.marker === 'closed') {
           if (!storeBought) { storeBought = true; await page.click('.st-good[data-good="flour"]'); await page.waitForFunction(() => window.__wagonWest.problemPanel.state !== 'closed' || window.__wagonWest.store.busy === false); }
-          else await page.click('#store-done');
+          else if (!derbyRun && await J(page, () => !!document.querySelector('#store-derby'))) {
+            derbyRun = true;
+            await audit(page, layout.insets, 'store (Race the mail wagon)');
+            await shot(page, layout, '15a-store-derby', 0);
+            await page.click('#store-derby');
+          } else {
+            check(derbyRun && await J(page, () => !document.querySelector('#store-derby')), 'Fort Derby: once per fort visit (the button is gone after the race)');
+            await page.click('#store-done');
+          }
+        }
+        if (s.screen === 'dog' && !globalThis.__dogShot) { globalThis.__dogShot = true; await audit(page, layout.insets, 'name the dog'); await shot(page, layout, '15b-dog', 0); }
+        if (s.marker === 'ask' && s.mTitle === 'Fort Derby' && !derbyChecked) {
+          derbyChecked = true;
+          const d = await J(page, () => ({ chip: document.querySelector('#mk-chip').textContent, mini: window.__wagonWest.scene.getState().mini, line: document.querySelector('#derby-line').textContent }));
+          check(/^Marker 1 of \d+$/.test(d.chip) && d.mini && d.mini.kind === 'derby' && /^Marker 1 of/.test(d.line), `Fort Derby: the race pauses at a marker and the marker panel asks a fact (chip "${d.chip}")`);
+          await audit(page, layout.insets, 'Fort Derby (marker)');
+          await shot(page, layout, '15c-derby', 0);
         }
         if (s.screen === 'post' && !letterChecked && s.spell === 'write') {
           letterChecked = true;
@@ -411,6 +451,13 @@ async function runLayout(browser, layout) {
     check(letters.length === 1 && leg2.words.every((w) => letters[0].text.includes(w)) && /\n[^\n]+,\s*Mia\s*$/.test(letters[0].text), 'the letter is kept in the journal with the three words, signed "Mia"');
     check(await J(page, () => window.__spoken.some((t) => /^Here is your letter/.test(t))), 'the letter is read back aloud');
     check(await J(page, () => (window.__wagonWest.save.journey.goods || {}).pelts >= 0 && window.__wagonWest.save.journey.legStats != null), 'the journey carries on (leg 3 started by nextLeg)');
+    const v11 = await J(page, () => {
+      const w = window.__wagonWest, Jn = w.save.journey;
+      return { dog: Jn.dog, sceneDog: w.scene.getState().dog, derby: w.lastDerby, cards: Array.isArray(Jn.cards) ? Jn.cards.slice() : Object.keys(Jn.cards || {}), pops: w.cardPop.log, crates: w.save.crates.queue.length };
+    });
+    check(leg2.dog && v11.dog && v11.dog.name === 'Rex' && v11.dog.coat === 'spotted' && v11.sceneDog && v11.sceneDog.name === 'Rex', `the dog: named "${v11.dog && v11.dog.name}" on the keyboard, kept on the journey and walking in the scene's party`);
+    check(v11.derby && v11.derby.won && v11.derby.cash > 0 && leg2.cards.some((c) => /^You beat the mail wagon by \d+ m!$/.test(c)), `Fort Derby on the mock: won by ${v11.derby && v11.derby.margin} m, $${v11.derby && v11.derby.cash} (derbyPay), "${leg2.cards.find((c) => /mail wagon/.test(c))}"`);
+    check(['kansas-river', 'fort-kearny'].every((id) => v11.cards.includes(id)) && v11.pops.length >= 4, `trail cards: the lookouts' landmark cards and more dropped (${v11.cards.length} cards: ${v11.cards.join(', ')}; ${v11.pops.length} pops)`);
   }
 
   // ---------- journal ----------
@@ -428,26 +475,25 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'journal (map)');
   await shot(page, layout, '19-journal-map');
   await grab();
+  await page.click('#jr-tabs [data-page="cards"]');
+  const album = await J(page, () => ({ suits: [...document.querySelectorAll('.cards-suit')].map((x) => `${x.dataset.suit}:${x.querySelector('.cards-count').textContent}`),
+    owned: document.querySelectorAll('.cards-grid button.tcard').length, none: document.querySelectorAll('.cards-grid .tcard.none').length, total: document.querySelector('#cards-total').textContent,
+    have: (window.__wagonWest.save.journey.cards || []).length }));
+  check(album.suits.length === 4 && /^landmark:\d+ of \d+$/.test(album.suits[0]) && album.owned === album.have && album.owned + album.none >= 40, `journal → Cards: four suits (${album.suits.join(', ')}), ${album.owned} cards face up, the rest face down`);
+  await audit(page, layout.insets, 'journal (cards)');
+  const flip0 = await J(page, () => window.__spoken.length);
+  await page.click('.cards-grid button.tcard[data-card="kansas-river"]');
+  await page.waitForTimeout(150);
+  check(await J(page, (n) => document.querySelector('.cards-grid button.tcard[data-card="kansas-river"]').classList.contains('flipped') && window.__spoken.length > n, flip0), 'a card flips over on a tap to its fact, read aloud');
+  await shot(page, layout, '19b-journal-cards', 500);
+  await grab();
   await page.click('#screen-journal [data-back="title"]');
   await page.waitForSelector(visibleSel('#screen-title'));
   const t2 = await J(page, () => ({ label: document.querySelector('#btn-trail-label').textContent, streak: Number(document.querySelector('#title-streak-n').textContent), done: document.querySelector('#title-map').dataset.legsDone }));
   check(t2.label === 'Hit the trail' && t2.streak === 1 && t2.done === String(layout.legs), `the title after ${layout.legs} leg(s): "${t2.label}", the streak flame at ${t2.streak}, the map at stop ${t2.done}`);
   await shot(page, layout, '20-title-later');
   await audit(page, layout.insets, 'title (on the way)');
-
-  // ---------- pause mid-leg: make camp, the journey waits ----------
-  await page.click('#btn-trail');
-  await page.waitForSelector(visibleSel('#screen-trail'));
-  await page.waitForFunction(() => window.__wagonWest.save.journey.milesDone > 0 || window.__wagonWest.markerPanel.isOpen || window.__wagonWest.card.isOpen, null, { timeout: 8000 });
-  await drive(page, (s) => s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && s.journey.milesDone > 0, {}, 15000);
-  await page.keyboard.press('Escape');
-  await page.waitForSelector(visibleSel('#panel-pause'));
-  await audit(page, layout.insets, 'pause');
-  await shot(page, layout, '21-pause');
-  const mid = (await W(page)).journey.milesDone;
-  await page.click('#pause-camp');
-  await page.waitForSelector(visibleSel('#screen-title'));
-  check(await J(page, () => document.querySelector('#btn-trail-label').textContent) === 'Keep going' && (await W(page)).journey.milesDone === mid, `make camp: the journey waits at mile ${mid} ("Keep going")`);
+  await sideGames(page, layout, grab);
 
   // ---------- pings ----------
   const pings = await J(page, () => window.__pings || []);
@@ -474,7 +520,14 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.0\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.1\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => document.querySelector('#opt-voice-line').textContent === 'Device voice' && !!document.querySelector('#opt-voice-test')), 'Options: the voice line ("Device voice": no natural voice picked) and "Say a test line"');
+  await page.click('#opt-voice-test');
+  await page.waitForFunction(() => /voice spoke/.test(document.querySelector('#opt-voice-result').textContent), null, { timeout: 8000 }).catch(() => {});
+  check(await J(page, () => document.querySelector('#opt-voice-result').dataset.engine === 'device' && /^The device voice spoke it\.$/.test(document.querySelector('#opt-voice-result').textContent)), `Say a test line: "${await J(page, () => document.querySelector('#opt-voice-result').textContent)}"`);
+  await page.click('#opt-music');
+  check(await J(page, () => window.__wagonWest.app.settings.music === false), 'Options: the music toggle (Music.on(false))');
+  await page.click('#opt-music');
   await audit(page, layout.insets, 'Parent Zone (Options)');
   await page.click('#opt-hunting');
   check(await J(page, () => window.__wagonWest.app.settings.hunting === false && JSON.parse(localStorage.getItem('wagonWest.settings')).hunting === false), 'Options: hunting off is kept on this device');
@@ -524,6 +577,265 @@ async function runLayout(browser, layout) {
   await ctx.close();
 }
 
+// ---------- v1.1 side games after the second leg: the daily challenge, an upgrade, Camp, the music ----------
+const musicNow = (page) => J(page, () => {
+  const w = window.__wagonWest, c = w.Music.current;
+  const app = w.music;
+  return { mood: c && typeof c === 'object' && c.mood ? c.mood : app.mood, tune: c && typeof c === 'object' && c.tune ? c.tune : app.tune, app };
+});
+async function sideGames(page, layout, grab) {
+  // the daily challenge on the title: done and claimed on the trail (a token and a card)
+  const dc = await J(page, () => {
+    const w = window.__wagonWest, el = document.querySelector('#title-challenge');
+    return { shown: !el.hidden, text: el.textContent, done: el.dataset.done, daily: w.save.daily, info: w.app.daily() };
+  });
+  check(dc.shown && /^Today's challenge: \S/.test(dc.text), `the title: "${dc.text}"`);
+  if (dc.info && dc.info.done) check(dc.daily.claimed && dc.done === 'true', "the daily challenge: done on the trail, claimed once (a token and a card), a check mark on the title");
+  else console.log(`  (today's challenge is not done yet on this run: "${dc.text}")`);
+  const m0 = await musicNow(page);
+  check(m0.mood === 'camp', `music: the title plays the camp mood (${m0.mood})`);
+
+  // an upgrade bought with tokens: Outfit → Look → Wagon
+  await J(page, () => { window.__wagonWest.save.journey.tokens += 25; window.__wagonWest.app.persist(); });
+  const tk0 = await J(page, () => window.__wagonWest.save.journey.tokens);
+  await page.click('#btn-outfit');
+  await page.waitForSelector(visibleSel('#screen-outfit'));
+  await page.click('[data-pane="wagon"]');
+  await page.waitForSelector('.ow-up');
+  const ups = await J(page, () => [...document.querySelectorAll('.ow-up')].map((u) => ({ id: u.dataset.up, text: u.textContent })));
+  check(ups.length === 3 && ups.every((u) => u.text.length > 10), `Outfit → Look → Wagon: the three upgrades with their effect (${ups.map((u) => u.id).join(', ')})`);
+  await audit(page, layout.insets, 'outfit (wagon upgrades)');
+  await shot(page, layout, '20b-upgrades');
+  await page.click('[data-upgrade="cover:tokens"]');
+  const up = await J(page, () => { const Jn = window.__wagonWest.save.journey; return { tokens: Jn.tokens, owned: !!(Array.isArray(Jn.upgrades) ? Jn.upgrades.includes('cover') : Jn.upgrades && Jn.upgrades.cover), row: document.querySelector('.ow-up[data-up="cover"]').textContent }; });
+  check(up.owned && up.tokens < tk0 && /On the wagon/.test(up.row), `bought the canvas cover with tokens (${tk0} → ${up.tokens})`);
+  await page.click('#ow-next');
+  await page.waitForSelector(visibleSel('#screen-title'));
+
+  // Camp from the trail
+  await page.click('#btn-trail');
+  await page.waitForSelector(visibleSel('#screen-trail'));
+  await page.waitForFunction(() => window.__wagonWest.save.journey.milesDone > 0 || window.__wagonWest.markerPanel.isOpen || window.__wagonWest.card.isOpen, null, { timeout: 8000 });
+  await drive(page, (s) => s.screen === 'trail' && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && s.journey.milesDone > 0 && s.travel && !s.travel.busy, {}, 15000);
+  const mt = await musicNow(page);
+  const legIx = await J(page, () => window.__wagonWest.save.journey.legIndex);
+  check(mt.mood === 'trail' && mt.tune === ['susanna', 'buffalo', 'tucker'][legIx % 3], `music on the trail: the trail mood, "${mt.tune}" for leg ${legIx + 1}`);
+  // (a marker can come up between two looks: then the Camp button waits for it, so try again once the trail is idle)
+  let mid = 0;
+  for (let k = 0; k < 10; k++) {
+    await drive(page, (s) => s.screen === 'trail' && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && s.travel && !s.travel.busy, {}, 15000);
+    mid = (await W(page)).journey.milesDone;
+    await J(page, () => document.querySelector('#btn-camp').click());
+    if (await page.waitForSelector(visibleSel('#screen-camp'), { timeout: 1500 }).then(() => true, () => false)) break;
+  }
+  mid = (await W(page)).journey.milesDone;
+  const camp0 = await J(page, () => ({ acts: [...document.querySelectorAll('.camp-act')].map((b) => b.dataset.act), back: document.querySelector('#camp-back').textContent.trim(), stop: !document.querySelector('#camp-stop').hidden, backdrop: window.__wagonWest.scene.getState().backdrop, day: window.__wagonWest.save.journey.day, tokens: window.__wagonWest.save.journey.tokens }));
+  check(camp0.acts.join() === 'fish,hunt,cards,tales,rest' && camp0.back === 'Back to the trail' && camp0.stop && camp0.backdrop === 'camp', `"Camp" on the trail opens Camp on the camp backdrop: ${camp0.acts.join(', ')} · "${camp0.back}" · "Stop for today"`);
+  check((await musicNow(page)).mood === 'camp', 'music: the camp mood at camp');
+  await audit(page, layout.insets, 'camp');
+  await shot(page, layout, '21-camp');
+  await grab();
+
+  // Quick Draw: first to 7, the companion draws after each answer, a token on a win
+  await page.click('[data-act="cards"]');
+  let qdOff = false, qdChip = '', qdTitle = '', asked = 0;
+  for (let guard = 0; guard < 60; guard++) {
+    await page.waitForFunction(() => window.__wagonWest.markerPanel.state === 'ask' || window.__wagonWest.card.isOpen, null, { timeout: 10000 });
+    const s = await W(page);
+    if (s.card) { qdTitle = s.cardTitle; break; }
+    if (!qdOff) { qdOff = (await musicNow(page)).mood === 'off'; qdChip = await J(page, () => document.querySelector('#mk-chip').textContent); await audit(page, layout.insets, 'Quick Draw (marker panel)'); }
+    asked += 1;
+    await typeDigits(page, '#panel-marker', s.mAns);
+    await page.waitForFunction(() => window.__wagonWest.markerPanel.state !== 'right' && window.__wagonWest.markerPanel.state !== 'ask' || window.__wagonWest.card.isOpen, null, { timeout: 8000 }).catch(() => {});
+  }
+  check(/^You 0 · \w+ 0$/.test(qdChip) && s0(asked >= 7), `Quick Draw: the marker panel with the score chip ("${qdChip}"), ${asked} facts`);
+  check(qdOff, "music: 'off' while a panel is open");
+  const qd = await J(page, () => ({ last: window.__wagonWest.lastQuickDraw, tokens: window.__wagonWest.save.journey.tokens, day: window.__wagonWest.save.journey.day, text: document.querySelector('#tc-text').textContent }));
+  check(qdTitle === 'You won the Quick Draw!' && qd.last.won && qd.last.me === 7 && qd.tokens >= camp0.tokens + 1 && qd.day === camp0.day + 1, `Quick Draw to 7: "${qdTitle}" (${qd.last.me}–${qd.last.them}), a token, a day at camp (day ${camp0.day} → ${qd.day})`);
+  await grab();
+  await page.click('#tc-go');
+  await page.waitForFunction(() => !window.__wagonWest.camp.busy, null, { timeout: 8000 });
+  check((await musicNow(page)).mood === 'camp', 'music: back to the camp mood when the panel closes');
+
+  // Campfire tales: a story card read aloud, then a riddle (a fact in disguise): a token
+  const tk1 = await J(page, () => window.__wagonWest.save.journey.tokens);
+  await page.click('[data-act="tales"]');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen, null, { timeout: 8000 });
+  const tale = await J(page, () => ({ kicker: document.querySelector('#tc-kicker').textContent, title: window.__wagonWest.card.title, spoken: window.__spoken.slice(-2) }));
+  check(tale.kicker === 'Campfire tales' && tale.spoken.length > 0, `Campfire tales: "${tale.title}" read aloud`);
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.markerPanel.state === 'ask', null, { timeout: 8000 });
+  const rd = await J(page, () => ({ riddle: window.__wagonWest.markerPanel.riddle, q: document.querySelector('#mk-q').textContent, title: document.querySelector('#mk-title').textContent, ans: window.__wagonWest.markerPanel.answer }));
+  check(rd.riddle && rd.q === rd.riddle && /\?$/.test(rd.q) && rd.title === 'Campfire riddle', `the riddle: "${rd.q}"`);
+  await audit(page, layout.insets, 'Campfire riddle');
+  await shot(page, layout, '22-riddle', 0);
+  await typeDigits(page, '#panel-marker', rd.ans);
+  await page.waitForFunction(() => !window.__wagonWest.camp.busy, null, { timeout: 8000 });
+  check(await J(page, () => window.__wagonWest.save.journey.tokens) >= tk1 + 1, 'the riddle solved: a trade token');
+
+  // Rest: a day, everyone happier; a companion's line at camp dropped their card
+  const d1 = await J(page, () => window.__wagonWest.save.journey.day);
+  await page.click('[data-act="rest"]');
+  await page.waitForFunction(() => !window.__wagonWest.camp.busy, null, { timeout: 8000 });
+  const rest = await J(page, () => { const Jn = window.__wagonWest.save.journey; const ids = Jn.companions; const have = Array.isArray(Jn.cards) ? Jn.cards : Object.keys(Jn.cards || {}); return { day: Jn.day, comp: ids.some((id) => have.includes(id)) }; });
+  check(rest.day === d1 + 1 && rest.comp, `Rest: a day at camp (day ${rest.day}), and a companion's line at camp dropped their card`);
+
+  // back to the trail: the journey picks up where it was
+  // (read in the same task as the tap: the trail ticks on at once)
+  const back1 = await J(page, async () => { document.querySelector('#camp-back').click(); for (let i = 0; i < 6; i++) await Promise.resolve(); const w = window.__wagonWest; return { miles: w.save.journey.milesDone, screen: w.screen, mood: (w.Music.current && w.Music.current.mood) || w.music.mood }; });
+  check(back1.miles === mid && back1.screen === 'trail' && back1.mood === 'trail', `"Back to the trail": the wagon rolls on from mile ${mid} (${back1.miles}), the trail music again (${back1.mood})`);
+
+  // the pause menu's Make camp → Camp → "Stop for today": the title, the journey waits
+  await drive(page, (s) => s.screen === 'trail' && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && s.travel && !s.travel.busy, {}, 15000);
+  await page.keyboard.press('Escape');
+  await page.waitForSelector(visibleSel('#panel-pause'));
+  check((await musicNow(page)).mood === 'off', "music: 'off' under the pause sheet");
+  await audit(page, layout.insets, 'pause');
+  await shot(page, layout, '23-pause');
+  const mid2 = (await W(page)).journey.milesDone;
+  await page.click('#pause-camp');
+  await page.waitForSelector(visibleSel('#screen-camp'));
+  await page.click('#camp-stop');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  check(await J(page, () => document.querySelector('#btn-trail-label').textContent) === 'Keep going' && (await W(page)).journey.milesDone === mid2, `pause → Make camp → "Stop for today": the title, the journey waits at mile ${mid2} ("Keep going")`);
+}
+const s0 = (x) => !!x;
+
+// ---------- the natural voice (SPEC v1.1 §1): a family code, a natural voice picked, a fake cloud backend ----------
+async function voiceTest(browser, layout) {
+  console.log(`\n=== natural voice (${layout.name}) ===`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await routeFonts(ctx);
+  await ctx.route('**/api/family/**', (r) => r.abort());
+  let ttsNetwork = false;
+  await ctx.route('**/api/tts/**', (r) => { ttsNetwork = true; return r.abort(); });
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|ERR_INTERNET/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  await page.addInitScript(({ insets }) => {
+    if (!sessionStorage.getItem('wwVoiceSeeded')) {
+      localStorage.clear();
+      const now = Date.now();
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0,
+        options: { pmia: { cloudVoice: 'en-US-Neural2-F' } }, optionsUpdatedAt: { pmia: now }, removedPlayers: [], migrated: true, lastPlayer: 'pmia' }));
+      localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devW', keys: {} }));
+      sessionStorage.setItem('wwVoiceSeeded', '1');
+    }
+    window.__wwScript = { daySec: 0.12, beat: 0.15 };
+    window.__mockScript = { shotMs: 80 };
+    window.__cloudAsked = []; window.__cloudPlayed = []; window.__spoken = [];
+    window.__ttsBackend = {
+      speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 30); },
+      cancel() {}, addEventListener() {},
+    };
+    const hex = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h.toString(16).padStart(8, '0').repeat(4); };
+    window.__cloudVoiceBackend = {
+      async status() { return { key: true }; },
+      async prepare({ code, voice, texts }) {
+        window.__cloudAsked.push({ code, voice, texts });
+        const clips = {};
+        for (const t of texts) clips[t] = '/api/tts/clip/' + hex(voice + '\n' + t);
+        return { status: 200, body: { clips, generated: texts.length, cached: 0, charsToday: 100 } };
+      },
+      async load(url, text) { return { url, text, duration: 0.02 }; },
+      play(buf, text) { window.__cloudPlayed.push(text); return new Promise((r) => setTimeout(() => r(true), 15)); },
+      stop() {},
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const st = document.createElement('style');
+      st.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(st);
+    });
+  }, { insets: layout.insets });
+  await page.goto(URL0, { waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.waitForFunction(() => window.__cloudAsked.length >= 2, null, { timeout: 5000 }).catch(() => {});
+  const C = await J(page, async () => {
+    const L = await import('/wagon-west/src/content/lookouts.js');
+    return { lookout: L.LOOKOUTS['kansas-river'].say, active: window.__wagonWest.cloud.active };
+  });
+  const askedAll = () => J(page, () => window.__cloudAsked.flatMap((a) => a.texts));
+  const asked0 = await askedAll();
+  check(C.active && asked0.includes(C.lookout) && (await J(page, () => window.__cloudAsked.every((a) => a.code === 'ABCD-2345' && a.voice === 'en-US-Neural2-F' && a.texts.length <= 80))),
+    `player select prepares the natural voice: ${asked0.length} texts (≤ 80 a request), with the leg's lookout ("${C.lookout.slice(0, 40)}…")`);
+  check(asked0.some((t) => /^Rope toss! The landing is /.test(t)) && asked0.some((t) => /^\w+ times \w+\.$/i.test(t)), 'the prepared set has the river\'s landing sentences and the facts\' questions');
+  await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'oxen', companions: ['blacksmith', 'scout', 'cook'] }, { fresh: true }); });
+  await page.waitForSelector(visibleSel('#screen-store'));
+  await page.click('#store-done');
+  // is `text` (or its sentences) played as clips, and never by the device voice?
+  const byCloud = (text, wait = 3000) => page.waitForFunction((t) => window.__cloudPlayed.includes(t), text, { timeout: wait }).then(() => true, () => false);
+  const deviceSaid = (text) => J(page, (t) => window.__spoken.includes(t), text);
+  const engine = () => J(page, () => window.__wagonWest.tts.engine);
+  const seen = { marker: null, problem: null, card: null, river: null, letter: null };
+  const plan = {
+    async onEach(s) {
+      if (s.marker === 'ask' && s.mReal && !seen.marker) {
+        const q = await J(page, async () => { const F = await import('/trail-blazer/src/facts/facts.js'); const w = window.__wagonWest; return F.questionSentence(w.markerPanel.fact, false); });
+        const q2 = await J(page, async () => { const F = await import('/trail-blazer/src/facts/facts.js'); return F.questionSentence(window.__wagonWest.markerPanel.fact, true); });
+        const ok = (await byCloud(q)) || (await byCloud(q2, 200));
+        seen.marker = { ok: ok && !(await deviceSaid(q)) && !(await deviceSaid(q2)) && (await engine()) === 'cloud', q };
+      }
+      if (s.problem === 'ask' && !seen.problem) {
+        const p = await J(page, () => { const pr = window.__wagonWest.problemPanel.problem; return { say: pr.say, text: pr.text }; });
+        const ok = await byCloud(p.say);
+        seen.problem = { ok: ok && !(await deviceSaid(p.say)) && (await engine()) === 'cloud' && (await askedAll()).includes(p.say), say: p.say };
+      }
+      if (s.card && /Kansas River/.test(s.cardTitle) && !seen.card) {
+        const ok = await byCloud(C.lookout);
+        seen.card = { ok: ok && !(await deviceSaid(C.lookout)) && (await engine()) === 'cloud' };
+      }
+      if (s.screen === 'river' && s.rvRope && !seen.river) {
+        const t = await J(page, () => `Rope toss! The landing is ${window.__wagonWest.river.rope.f.say} of the way across.`);
+        const ok = await byCloud(t);
+        seen.river = { ok: ok && !(await deviceSaid(t)) && (await engine()) === 'cloud', t };
+      }
+      if (s.screen === 'post' && s.poFoot && !seen.letter) {
+        const L = await J(page, () => ({ opening: window.__wagonWest.app.spoken(window.__wagonWest.postOffice.letter.opening) }));
+        const ok = (await byCloud('Here is your letter.')) && (await byCloud(L.opening));
+        await page.waitForTimeout(400);
+        seen.letter = { ok: ok && !(await deviceSaid('Here is your letter.')) && !(await deviceSaid(L.opening)) && (await engine()) === 'cloud', opening: L.opening,
+          why: ok ? `engine ${await engine()}, device: ${JSON.stringify(await J(page, () => window.__spoken.slice(-4)))}` : `cloud played: ${JSON.stringify(await J(page, () => window.__cloudPlayed.slice(-6)))}` };
+      }
+    },
+  };
+  await drive(page, (s) => s.screen === 'results', plan);
+  await page.click('#res-next');
+  await page.waitForSelector(visibleSel('#screen-trail'));
+  await drive(page, (s) => s.screen === 'results', plan);
+  check(seen.marker && seen.marker.ok, `a mile marker's question is said by the natural voice ("${seen.marker && seen.marker.q}", tts.engine 'cloud')`);
+  check(seen.problem && seen.problem.ok, `a word problem: a prepare request carried its sentence, and the natural voice said it ("${seen.problem && seen.problem.say}")`);
+  check(seen.card && seen.card.ok, 'the lookout card at the Kansas River is said by the natural voice');
+  check(seen.river && seen.river.ok, `the river's landing sentence is said by the natural voice ("${seen.river && seen.river.t}")`);
+  check(seen.letter && seen.letter.ok, `the letter (its opening "${seen.letter && seen.letter.opening}" and the read-back) is said by the natural voice${seen.letter && !seen.letter.ok ? ' — ' + seen.letter.why : ''}`);
+  const words = await J(page, () => window.__cloudPlayed.filter((t) => /^The word is, /.test(t)).length);
+  check(words >= 6, `the river and letter words are presented by clips too (${words} words)`);
+  check(!ttsNetwork, 'no request reached /api/tts (the fake backend answered everything)');
+
+  // Parents → Options: the voice line and "Say a test line"
+  await page.click('#res-camp');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.click('#btn-parents');
+  await page.waitForSelector(visibleSel('#pz'));
+  for (let k = 0; k < 2; k++) { for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`); await page.waitForTimeout(250); }
+  await page.waitForSelector('.pz-tabs');
+  await page.click('.pz-tabs [data-tab="options"]');
+  const line = await J(page, () => document.querySelector('#opt-voice-line').textContent);
+  check(/^Natural voice: Ava · \d+ clips ready$/.test(line), `Options: "${line}"`);
+  await audit(page, layout.insets, 'Parent Zone (Options, natural voice)');
+  const n0 = await J(page, () => window.__cloudPlayed.length);
+  await page.click('#opt-voice-test');
+  await page.waitForFunction(() => /spoke/.test(document.querySelector('#opt-voice-result').textContent), null, { timeout: 8000 }).catch(() => {});
+  const res = await J(page, (n) => ({ text: document.querySelector('#opt-voice-result').textContent, engine: document.querySelector('#opt-voice-result').dataset.engine, played: window.__cloudPlayed.slice(n) }), n0);
+  check(res.engine === 'cloud' && res.played.includes('Wagon West is ready to roll.') && /natural voice/.test(res.text), `Say a test line: "${res.text}"`);
+  await shot(page, layout, 'v01-pz-voice');
+  check(errors.length === 0, `natural voice: no console errors${errors.length ? ' — ' + errors.slice(0, 4).join(' | ') : ''}`);
+  await ctx.close();
+}
+
 // the kid-facing source: every string in the UI modules (not the Parent Zone), the mock and index.html (minus the PZ)
 function staticAudit() {
   console.log('\n=== kid-rule audit of the source ===');
@@ -544,7 +856,10 @@ const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 try {
-  for (const layout of LAYOUTS.filter((l) => !process.env.ONLY || l.name === process.env.ONLY)) await runLayout(browser, layout);
+  for (const layout of LAYOUTS.filter((l) => !process.env.ONLY || l.name === process.env.ONLY)) {
+    if (!process.env.VOICE_ONLY) await runLayout(browser, layout);
+    await voiceTest(browser, layout);
+  }
   staticAudit();
 } catch (e) {
   failures.push('crashed: ' + (e && e.stack || e));

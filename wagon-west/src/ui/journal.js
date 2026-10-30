@@ -1,11 +1,12 @@
 // The journal (SPEC §3 "the kid-facing record", §12): three pages. Letters: every letter home, newest first, each with
 // "Read it to me" (the voice reads it back). Stickers: one per stop of the trail (the landmark's emoji and name once
 // earned, a faint outline before), every season counting. The map: the whole trail with every stop named and the
-// party's wagon where it is.
+// party's wagon where it is. v1.1: a fourth page, Cards: the trail-card album (src/ui/cards.js).
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { drawMap } from './map.js';
+import { albumPage } from './cards.js';
 
-const PAGES = [['letters', 'Letters'], ['stickers', 'Stickers'], ['map', 'Map']];
+const PAGES = [['letters', 'Letters'], ['stickers', 'Stickers'], ['map', 'Map'], ['cards', 'Cards']];
 
 export function createJournal(app) {
   const tabs = $('#jr-tabs');
@@ -25,7 +26,7 @@ export function createJournal(app) {
     return list.map((l, i) => {
       const leg = app.legById(l.leg);
       const read = h('button', { class: 'btn btn-sm jr-read', 'data-letter': String(i), 'data-sfx': '' }, h('span', { html: app.icon('sound') }), 'Read it to me');
-      read.addEventListener('click', () => app.say(app.spoken(l.text)));
+      read.addEventListener('click', () => app.sayAll(l.text.split('\n').map((t) => app.spoken(t))));
       return h('article', { class: 'card jr-letter', 'data-at': String(l.at) },
         h('div', { class: 'jr-letter-head' }, h('b', {}, leg ? (leg.stop && leg.stop.name) || leg.name : 'On the trail'), h('small', {}, dateOf(l.at)), read),
         h('div', { class: 'jr-letter-text' }, ...l.text.split('\n').map((t) => h('p', {}, t))));
@@ -52,7 +53,7 @@ export function createJournal(app) {
   function render() {
     renderTabs();
     body.dataset.page = page;
-    body.replaceChildren(...(page === 'letters' ? letters() : page === 'stickers' ? stickers() : map()));
+    body.replaceChildren(...(page === 'letters' ? letters() : page === 'stickers' ? stickers() : page === 'cards' ? albumPage(app) : map()));
     body.scrollTop = 0;
   }
   return { show(opts = {}) { if (opts.page) page = opts.page; render(); }, hide() {}, get page() { return page; } };

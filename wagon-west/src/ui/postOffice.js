@@ -5,10 +5,14 @@
 // app.spellWords records it in the child's own word store); a spelled word fills its blank. The finished letter is
 // read back aloud and kept in the journal (text only, the newest 36; parents read them in the Parent Zone; nothing
 // is ever sent anywhere). R1 holds: a word is never on screen before it is spelled (only the blanks are).
+// v1.1: the natural voice has the letter's sentences prepared before it is read (app.voiceFor: the opening, the lines,
+// the P.S. with the words, the closing), and the read-back is one sentence per utterance (each one a clip).
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { composeLetter } from '../journey/letters.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export const PS_INTRO = 'And now the P.S. Spell each word for the letter.';
+export const READ_BACK = 'Here is your letter.';
 
 /** The P.S. split around the words, in order: ['P.S. My spelling words this week: ', 0, ', ', 1, ' and ', 2, '.']. */
 export function psParts(ps, words) {
@@ -35,7 +39,7 @@ export function createPostOffice(app) {
   let cur = null;     // { letter, words, blanks, text, done }
   let onDone = null;
   goBtn.addEventListener('click', () => { if (onDone) { const d = onDone; onDone = null; d(); } });
-  hearBtn.addEventListener('click', () => { if (cur && cur.text) app.say(app.spoken(cur.text)); });
+  hearBtn.addEventListener('click', () => { if (cur && cur.text) app.sayAll(cur.text.split('\n').map((t) => app.spoken(t))); });
 
   async function line(text, cls) {
     const p = h('p', { class: `po-line ${cls || ''}` }, text);
@@ -66,7 +70,9 @@ export function createPostOffice(app) {
         letter = { opening: 'Dear everyone back home,', lines: [`We made it to ${(leg.stop && leg.stop.name) || leg.name}.`], ps: `P.S. My spelling words this week: ${words.join(', ')}.`, text: '' };
       }
       cur = { letter, words: picks, done: false, text: '' };
-      await sleep(app.beat(400));
+      const psText = letter.ps || `P.S. My spelling words this week: ${words.join(', ')}.`;
+      const signed = `${letter.close || 'Love,'} ${(app.player && app.player.name) || ''}`.trim();
+      await Promise.all([app.voiceFor([letter.opening || 'Dear everyone back home,', ...letter.lines, PS_INTRO, READ_BACK, psText, signed].map((t) => app.spoken(t))), sleep(app.beat(400))]);
       await line(letter.opening || 'Dear everyone back home,', 'po-open');
       for (const l of letter.lines) { if (app.screen !== 'post') return { cancelled: true }; await line(l); }
       if (app.screen !== 'post') return { cancelled: true };
@@ -81,7 +87,7 @@ export function createPostOffice(app) {
       }));
       paper.append(psEl);
       psEl.scrollIntoView({ block: 'nearest' });
-      await app.sayWait('And now the P.S. Spell each word for the letter.', app.beat(900));
+      await app.sayWait(PS_INTRO, app.beat(900));
       const w = await app.spellWords(picks.length, {
         context: 'post', picks,
         onWord: (i, res) => { const b = blanks[i]; if (b) { b.textContent = picks[i].word; b.className = `po-blank filled ${res.firstTry ? 'first' : 'fixed'}`; } },
@@ -98,7 +104,7 @@ export function createPostOffice(app) {
       foot.hidden = false;
       close.scrollIntoView({ block: 'nearest' });
       const tapped = new Promise((resolve) => { onDone = resolve; });
-      app.say(`Here is your letter. ${app.spoken(text)}`);
+      app.sayAll([READ_BACK, ...text.split('\n').map((t) => app.spoken(t))]);
       await tapped;
       return { words: w, text };
     },

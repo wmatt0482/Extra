@@ -5,6 +5,9 @@
 // walks them in order (the keyboard's Enter is "Next" on the name) and ends at the General Store in Independence. Once
 // the first leg is under way the animal and the party are set for the season (they are the journey); the name and the
 // looks can change any time.
+// v1.1: the Look tab has two panes, Looks and Wagon: the wagon upgrades that matter on the trail (the Journey stream's
+// UPGRADES: a canvas cover, iron tires, a water barrel), each bought once with trade tokens or with cash, its effect
+// in one line (the token and cash sink: main.js app.upgrades / app.buyUpgrade).
 import { createKeyboard } from '../../../spell-jump/src/spelling/keyboard.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { ANIMALS } from '../content/legs.js';
@@ -36,7 +39,7 @@ export function createOutfit(app) {
   const tabsEl = $('#ow-tabs');
   const body = $('#ow-body');
   const foot = $('#ow-foot');
-  let tab = 'name', draft = null, fresh = false;
+  let tab = 'name', draft = null, fresh = false, lookPane = 'looks';
 
   const kb = createKeyboard({
     id: 'ow-keyboard', enterLabel: 'Next',
@@ -120,9 +123,45 @@ export function createOutfit(app) {
       })));
     footButtons('Next', draft.companions.length === 3);
   }
+  function paneTabs() {
+    return h('div', { class: 'seg ow-panes', role: 'tablist' }, ...[['looks', 'Looks'], ['wagon', 'Wagon']].map(([id, text]) => {
+      const b = h('button', { class: 'seg-btn' + (lookPane === id ? ' on' : ''), role: 'tab', 'aria-selected': String(lookPane === id), 'data-pane': id, 'data-sfx': '' }, text);
+      b.addEventListener('click', () => { lookPane = id; lookTab(); });
+      return b;
+    }));
+  }
+  function wagonPane() {
+    const J = app.save.journey;
+    const list = app.upgrades();
+    const rows = list.map((u) => {
+      const kids = [h('span', { class: 'ow-up-text' }, h('b', {}, u.name), h('small', {}, u.effect))];
+      if (u.owned) kids.push(h('span', { class: 'ow-up-owned' }, 'On the wagon'));
+      else {
+        const buy = (how) => {
+          const b = h('button', { class: 'btn btn-sm ow-up-buy' + (how === 'tokens' ? ' btn-gold' : ''), 'data-upgrade': `${u.id}:${how}`, 'data-sfx': '' }, how === 'tokens' ? `${u.tokens} tokens` : `$${u.cash}`);
+          b.addEventListener('click', () => {
+            if (!J) { app.toast('Pack the wagon first'); return; }
+            const ok = app.buyUpgrade(u.id, how);
+            if (!ok) app.toast(how === 'tokens' ? `${u.tokens} trade tokens buy this. Right answers earn them.` : 'Not enough cash in the box for that yet');
+            lookTab();
+          });
+          return b;
+        };
+        kids.push(h('span', { class: 'ow-up-buys' }, Number.isFinite(u.tokens) ? buy('tokens') : null, Number.isFinite(u.cash) ? buy('cash') : null));
+      }
+      return h('div', { class: 'ow-up' + (u.owned ? ' on' : ''), 'data-up': u.id }, ...kids);
+    });
+    return h('div', { class: 'ow-looks ow-wagon scroll' }, ...(rows.length ? rows : [h('p', { class: 'ow-note' }, 'Wagon upgrades come to the store soon.')]));
+  }
   function lookTab() {
     const cos = app.save.cosmetics;
     const tokens = app.tokens();
+    if (lookPane === 'wagon') {
+      const J = app.save.journey;
+      body.replaceChildren(h('div', { class: 'ow-lookhead' }, paneTabs(), h('p', { class: 'ow-note', id: 'ow-tokens' }, `Trade tokens: ${tokens} · cash $${Math.round((J && J.cash) || 0)}`)), wagonPane());
+      footButtons(fresh ? 'To the store' : 'Done');
+      return;
+    }
     const sections = LOOK_KINDS.map((kind) => {
       const items = LOOKS[kind].filter((x) => owns(cos, kind, x.id) || x.tokens);
       return h('div', { class: 'ow-look' },
@@ -140,7 +179,7 @@ export function createOutfit(app) {
           return b;
         })));
     });
-    body.replaceChildren(h('p', { class: 'ow-note', id: 'ow-tokens' }, `Trade tokens: ${tokens} · crates bring more looks`), h('div', { class: 'ow-looks scroll' }, ...sections));
+    body.replaceChildren(h('div', { class: 'ow-lookhead' }, paneTabs(), h('p', { class: 'ow-note', id: 'ow-tokens' }, `Trade tokens: ${tokens} · crates bring more looks`)), h('div', { class: 'ow-looks scroll' }, ...sections));
     footButtons(fresh ? 'To the store' : 'Done');
   }
   function render() {
@@ -156,6 +195,7 @@ export function createOutfit(app) {
       draft = fresh ? { wagonName: '', animal: 'oxen', companions: [] }
         : { wagonName: J.wagonName || '', animal: J.animal || 'oxen', companions: (J.companions || (J.party || []).map((p) => p.id)).slice(0, 3) };
       tab = opts.tab || 'name';
+      lookPane = opts.pane || 'looks';
       render();
     },
     hide() { kb.setActive(false); },
