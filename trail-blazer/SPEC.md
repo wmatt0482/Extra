@@ -717,3 +717,44 @@ opens with 50 stars, migration of a 1.6 save), sync-smoke (hill fields merge), f
 sim table. VERSION 1.7.0, sw.js `trail-blazer-v1.7.0`. Docs: README, LEARNING-DESIGN (the climb as retrieval
 practice with a visible payoff and the stretch tier as the "next step up" the research asks for; nothing in the
 climb is timed, a slow right answer still climbs), the Why page's Trail Blazer section (one line), the site card.
+
+## v1.7.1 — the Hill Climb throttle (Matt, Oct 30: "there should be a way for them to control the throttle or it
+## seems disconnected")
+In 1.7 a right answer fired the burst by itself and the kid watched. Now the answer **charges the rocket** and the
+kid **holds GAS to climb**; the climb distance per answer is unchanged, the hands are on the wheel. Engine stream
+(`src/game/*`, `dev.html`, `tools/engine-smoke.mjs`); the app wires the controls, the HUD and the coach line.
+
+### 1. Engine contract
+- `hillBoost({ power, quick })` no longer fires: with `power > 0` it **charges** the rocket with `charge = power ×
+  (quick ? 1 : 0.7)` sections of fuel (one section = the 1.7 quick-burst distance, closed-loop as before) and emits
+  `hillCharge { power, quick, charge (0..1, sections), answers }`. `power: 0` is the 1.7 sputter + slide to the
+  last flag, then `hillHold` as before (no charge).
+- While `hill.charge > 0` and `setInput({ gas: true })`: the rocket is on (flames, rings, the launch wheelie on the
+  first ignition of a charge) and the fuel burns as distance is covered; `charge` falls to 0 exactly where the 1.7
+  burst would have stopped when GAS is held throughout. Release → rocket off; the vehicle coasts to a stop and the
+  engine **holds** it there (brake, no slide, never below the last flag line... the brake holds wherever it stops) and
+  emits `hillWait { charge, heightM }` once stopped; GAS again resumes the burn from a standing start on the slope
+  (thrust always beats gravity on every section). Flag lines and the summit fire as in 1.7 whenever crossed.
+- When the charge is spent and the vehicle has stopped → `hillHold { heightM, flag }` (the next question), as in 1.7.
+- **Auto-fire**: `cfg.autoSec` (default 6; 0 = off): a charge untouched for that long, or a wait longer than that,
+  burns by itself (the same as GAS held) so a child who never finds the button still climbs; emits
+  `hillAuto { charge }` first. The app passes `autoSec: 6` (`settings.hillAuto` later, not now).
+- `getState().hill` gains `charge (sections left, 0..1)`, `thrusting (bool)`, `waiting (bool: stopped with charge
+  left)`. Everything else in the 1.7 contract stands (hillStart / hillFlag / hillSummit / hillEnd, cash, `endHill`,
+  `stop()`).
+- BRAKE and BOOST do nothing on the hill (BOOST may later dump the charge in one leap; not now).
+- dev.html: `hill=1` keys 1 / 2 / 0 charge; GAS (→ / Space) climbs; `auto=1` answers quick AND holds GAS.
+- engine-smoke (part 4 extended): a charge with GAS held climbs the same distance as the 1.7 burst (± 2 m) on tiers
+  1 / 4 / 8; GAS released mid-burst → the vehicle stops within 1.5 s and `hillWait` with the charge left > 0, no
+  slide (heightM does not fall); GAS again → it resumes and `hillHold` comes with the full distance covered; a
+  charge left alone fires after `autoSec` (`hillAuto`), with `autoSec: 0` it never does; 5 quick answers with GAS
+  held still summit on every tier; a sputter still slides to the last flag; perf unchanged.
+
+### 2. The app
+During the climb the controls are back on (GAS only: BRAKE and BOOST hidden by `html.hill`), the HUD's boost
+tank shows the **rocket charge** (filling on `hillCharge`, draining while thrusting; the label "ROCKET"), a banner
+"Hold GAS to climb!" at the first charge of a player's first climb (then "Hold GAS!" small banner on a `hillWait`
+longer than 2 s), `hillAuto` → no banner (the rocket just goes). Keyboard: → / Space = GAS as in the race. The
+first-climb coach line is in `save.seen.hillCoach`. The pause menu's "End ride" ends the climb (as 1.7). The mock
+engine mirrors the contract (charge, gas input, auto-fire). ui-smoke: the climb needs GAS (the test holds it via
+`setInput`), a released charge waits, auto-fire with `autoSec` small via the mock's `window.__mockScript.hillAutoSec`.
