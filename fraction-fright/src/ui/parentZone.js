@@ -21,8 +21,8 @@ import { playLines } from '../meta/economy.js';
 import { drawAvatar } from './players.js';
 
 const HOLD_MS = 3000;
-export const SAVE_NOTE = "One family code syncs all three games: the players and the PIN, and each child's Spell Jump, Trail Blazer and Fraction Fright progress (cash, the yard, the streets and the fraction skills). Nothing is lost when two devices played offline: the progress is merged.";
-export const SYNCED_LINE = 'Synced · players and all three games';
+export const SAVE_NOTE = "One family code syncs all four games: the players and the PIN, and each child's Spell Jump, Trail Blazer and Fraction Fright progress (cash, the yard, the streets and the fraction skills). Nothing is lost when two devices played offline: the progress is merged.";
+export const SYNCED_LINE = 'Synced · players and all four games';
 
 function toggle(label, sub, on, onChange, id) {
   const t = h('button', { class: 'toggle', role: 'switch', 'aria-checked': String(!!on), 'aria-label': label, id });
@@ -332,7 +332,7 @@ export function createParentZone(app) {
       const now = h('button', { class: 'btn btn-sm', id: 'sync-now', 'data-sfx': '' }, 'Sync now');
       now.addEventListener('click', async () => { now.disabled = true; await sync.syncNow(); now.disabled = false; paintSyncStatus(); });
       out.push(h('div', { class: 'pz-code-row pz-first' }, codeEl, copy, now), status,
-        h('div', { class: 'pz-help' }, 'The same family code as Spell Jump and Trail Blazer. On another device: open any of the three games, tap Parents, then Join a family, and type this code.'),
+        h('div', { class: 'pz-help' }, 'The same family code as Spell Jump and Trail Blazer. On another device: open any of the four games, tap Parents, then Join a family, and type this code.'),
         msg);
       if (joined) out.push(h('div', { class: 'pz-help', id: 'sync-players' }, `Players in this family: ${joined.map((p) => p.name).join(', ') || 'none yet'}`));
       out.push(...confirmRow('Leave family', 'This device stops syncing. Its players stay here; the other devices keep the family.', 'Leave',
@@ -358,7 +358,7 @@ export function createParentZone(app) {
       input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doJoin(); } });
       out.push(
         h('div', { class: 'row pz-first pz-create-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Start a family'),
-          h('div', { class: 'sub' }, "Puts this device's players and their progress in all three games online under a new family code (the same code works in every game).")), create),
+          h('div', { class: 'sub' }, "Puts this device's players and their progress in all four games online under a new family code (the same code works in every game).")), create),
         h('label', { class: 'pz-label', for: 'sync-join-input' }, 'Join a family'),
         h('div', { class: 'pz-join-row' }, input, join),
         h('div', { class: 'pz-help' }, 'Already set up in another game? Type the family code shown there (Parents → Family code). Progress already on this device is merged with the family\'s, never lost.'),
@@ -436,7 +436,7 @@ export function createParentZone(app) {
           `Reset ${p.name}'s fraction skills?`, 'Reset skills', () => { app.resetSkillsFor(p.id); app.toast('Fraction skills reset'); render(); }, `pz-reset-skills-${p.id}`),
         ...confirmRow('Reset Fraction Fright progress', `Cash, the yard, pumpkins and the Cure Counter back to the start for ${p.name}. Spell Jump and Trail Blazer are not touched.`, 'Reset',
           `Reset ${p.name}'s Fraction Fright progress?`, 'Reset', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-${p.id}`),
-        ...confirmRow('Remove player', `Removes ${p.name} from the family in all three games, on every device, with all of ${p.name}'s data.`, 'Remove',
+        ...confirmRow('Remove player', `Removes ${p.name} from the family in all four games, on every device, with all of ${p.name}'s data.`, 'Remove',
           `Remove ${p.name} for good, in every game?`, 'Remove', () => { app.removePlayer(p.id); render(); }, `pz-remove-${p.id}`));
       drawAvatar(cv, p.color);
       return card;

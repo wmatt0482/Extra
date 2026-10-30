@@ -30,7 +30,7 @@ import { icon } from './tbIcons.js';
 import { drawAvatar } from './vehiclePreview.js';
 
 const HOLD_MS = 3000;
-export const SAVE_NOTE = "One family code syncs all three games: the players and the PIN, each child's Spell Jump progress and their Trail Blazer progress (cash, vehicles, upgrades, medals, cups, gear and the math facts). Nothing is lost when two devices played offline: the progress is merged.";
+export const SAVE_NOTE = "One family code syncs all four games: the players and the PIN, each child's Spell Jump progress and their Trail Blazer progress (cash, vehicles, upgrades, medals, cups, gear and the math facts). Nothing is lost when two devices played offline: the progress is merged.";
 /** v1.6: the Parent Zone line when synced and well. */
 export const SYNCED_LINE = 'Synced · players, Spell Jump and Trail Blazer progress';
 

@@ -135,7 +135,7 @@ async function main() {
     for (let k = 0; k < 2 && await J(I, () => !!document.querySelector('.pinpad')); k++) { for (const d of '1234') await I.click(`.pinpad [data-digit="${d}"]`); await I.waitForTimeout(250); }
     await I.waitForSelector('#pz-sync-line:not([hidden])', { timeout: 4000 });
     const line = await J(I, () => document.querySelector('#pz-sync-line').textContent);
-    check(line === 'Synced · players and all three games', `Parents: "${line}"`);
+    check(line === 'Synced · players and all four games', `Parents: "${line}"`);
     await shot(I, '02-ipad-parents');
     await J(I, () => window.__fractionFright.pz.close());
 

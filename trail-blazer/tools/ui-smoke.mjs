@@ -3,7 +3,7 @@
 //   SHOTS_DIR=/some/dir BASE_URL=http://localhost:8080 node trail-blazer/tools/ui-smoke.mjs
 // At 844×390 and 390×844 (DPR 2, touch, simulated iPhone safe-area insets, ?mock=1&nosw=1):
 //   player picker (first screen; Learning Lab + Spell Jump links same-origin) → Parents with no players (PIN set twice,
-//   Family code tab first, the "one family code syncs all three games" note, Players "No players yet") → "+ New player" on
+//   Family code tab first, the "one family code syncs all four games" note, Players "No players yet") → "+ New player" on
 //   the on-screen keyboard (lands in Spell Jump's family record via profiles.js) → title (RACE, "Tracks 0 / 6") →
 //   track select (Pine Ridge open, the rest locked) → race 1 (4 Math Gates): gate 1 freezes the race, the fact is read
 //   aloud, a right answer → "⚡ Quick!" → openGate({ correct, quick }); gate 2: a wrong answer → the fact with its answer
@@ -217,7 +217,7 @@ async function runLayout(browser, layout) {
   }));
   check(pz0.tabs.join(',') === 'sync,facts,options,report,players', `Parent Zone tabs: Family code · Facts this week · Options · Report · Players (${pz0.tabs.join(', ')})`);
   check(pz0.create && pz0.join, 'Family code tab opens first, with Create family code / Join');
-  check(/One family code syncs all three games/.test(pz0.note) && /Trail Blazer progress/.test(pz0.note), 'Family code tab: one code syncs all three games, Trail Blazer progress included (v1.6)');
+  check(/One family code syncs all four games/.test(pz0.note) && /Trail Blazer progress/.test(pz0.note), 'Family code tab: one code syncs all four games, Trail Blazer progress included (v1.6)');
   check(!!pz0.pin, "the PIN is stored in Spell Jump's family record (spellJump.family.pinHash)");
   await shot(page, layout, '02-pz-family');
   await audit(page, layout.insets, 'Parent Zone (Family code)');

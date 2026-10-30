@@ -115,6 +115,10 @@ h2 { font-size: clamp(24px, 6.4vw, 34px); line-height: 1.05; margin-bottom: 20px
 .btn-ff { background: #a6ff2e; color: #0f1a02; box-shadow: 0 var(--edge) 0 #4f8a0b, 0 calc(var(--edge) + 8px) 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45); }
 .btn-ff:active { box-shadow: 0 1px 0 #4f8a0b, inset 0 -3px 0 rgba(0,0,0,.12); }
 .chip.ff { background: rgba(166,255,46,.14); border-color: #a6ff2e; color: #d8ffa8; }
+.game-art.ww { background: linear-gradient(#8fd3ff, #f2c46b 58%, #b7793a); }
+.btn-ww { background: #f2c46b; color: #3a2208; box-shadow: 0 var(--edge) 0 #a8741f, 0 calc(var(--edge) + 8px) 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45); }
+.btn-ww:active { box-shadow: 0 1px 0 #a8741f, inset 0 -3px 0 rgba(0,0,0,.12); }
+.chip.ww { background: rgba(242,196,107,.14); border-color: #f2c46b; color: #ffe2a8; }
 .chip.tb { color: #ff8a1f; }
 
 /* science */
@@ -184,6 +188,10 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       <a class="btn btn-ff" href="/fraction-fright/">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
         Play Fraction Fright
+      </a>
+      <a class="btn btn-ww" href="/wagon-west/">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+        Play Wagon West
       </a>
     </div>
     <p class="free">Free · no ads · no accounts</p>
@@ -306,6 +314,44 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       </div>
     </article>
 
+    <article class="card game second" aria-labelledby="game4-title">
+      <div class="game-art ww">
+        <svg viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A covered wagon pulled by two oxen across a prairie toward a tall rock on the horizon, a river ahead">
+          <circle cx="330" cy="50" r="24" fill="#fff3c2"/>
+          <path d="M0 150 L120 120 L200 138 L260 104 L300 140 L400 118 L400 220 L0 220 Z" fill="#d9a85c"/>
+          <path d="M230 138 L250 70 L262 66 L278 138 Z" fill="#b7793a"/>
+          <path d="M0 200 C 120 180, 280 206, 400 186 L400 220 L0 220 Z" fill="#6fa4c9"/>
+          <!-- the wagon -->
+          <g class="float"><g transform="translate(96 128)">
+            <path d="M-46 0 Q-46 -46 0 -46 Q46 -46 46 0 Z" fill="#f6f0e2"/>
+            <path d="M-46 0 Q-46 -46 0 -46 Q46 -46 46 0" fill="none" stroke="#c9b28a" stroke-width="3"/>
+            <rect x="-52" y="0" width="104" height="22" rx="4" fill="#7a4a1e"/>
+            <circle cx="-30" cy="26" r="13" fill="#3a2208"/><circle cx="-30" cy="26" r="5" fill="#f2c46b"/>
+            <circle cx="30" cy="26" r="13" fill="#3a2208"/><circle cx="30" cy="26" r="5" fill="#f2c46b"/>
+          </g></g>
+          <!-- the oxen -->
+          <g transform="translate(186 134)">
+            <rect x="-22" y="-12" width="44" height="24" rx="10" fill="#8a5a2b"/><circle cx="26" cy="-10" r="10" fill="#8a5a2b"/>
+            <path d="M22 -20 Q30 -30 36 -22 M30 -20 Q38 -30 44 -22" stroke="#f6f0e2" stroke-width="3" fill="none"/>
+            <rect x="-16" y="10" width="6" height="14" fill="#5a3a1c"/><rect x="10" y="10" width="6" height="14" fill="#5a3a1c"/>
+          </g>
+          <g transform="translate(236 140)">
+            <rect x="-22" y="-12" width="44" height="24" rx="10" fill="#9a6a3b"/><circle cx="26" cy="-10" r="10" fill="#9a6a3b"/>
+            <rect x="-16" y="10" width="6" height="14" fill="#5a3a1c"/><rect x="10" y="10" width="6" height="14" fill="#5a3a1c"/>
+          </g>
+          <!-- the store sign: the math -->
+          <g font-family="Bungee, 'Arial Black', sans-serif" font-size="14" fill="#3a2208"><rect x="20" y="22" width="150" height="34" rx="6" fill="#fff3c2"/><text x="95" y="45" text-anchor="middle">FLOUR $4 × 6 = ?</text></g>
+        </svg>
+      </div>
+      <div class="game-body">
+        <span class="kicker">Game four</span>
+        <h2 id="game4-title">Wagon West</h2>
+        <p>A wagon journey from Independence to the Willamette Valley, one landmark a session. The math is where a real journey needed it: buying flour at the fort ("$4 a sack, you buy 6"), rationing, judging distances; mile markers ask your child's own times-table facts. The spelling is the ferryman's three words at every river and a letter home from every fort, with the week's words. Nobody gets sick or lost; a wrong answer costs a slow day, never the trail.</p>
+        <span class="chip ww">Grade 4 math and the week's spelling</span>
+        <span class="chip ww">12 landmarks, 3 seasons</span>
+      </div>
+    </article>
+
     <section aria-labelledby="science-title">
       <span class="kicker">Why it works</span>
       <h2 id="science-title">The science we build on</h2>
@@ -336,13 +382,14 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       <span class="kicker">Five minutes, once a week</span>
       <h2 id="parents-title">Get started as a parent</h2>
       <ol class="steps">
-        <li class="card">Open <a href="/spell-jump/">Spell Jump</a>, tap <b>Parents</b>, set a PIN, and create a family code. Join with that code on your kids' devices so their progress follows them: one code syncs all three games.</li>
+        <li class="card">Open <a href="/spell-jump/">Spell Jump</a>, tap <b>Parents</b>, set a PIN, and create a family code. Join with that code on your kids' devices so their progress follows them: one code syncs all four games.</li>
         <li class="card">Paste this week's spelling words in <b>Parents → Words of the week</b>, one per line. To add a sentence, put it after two bars, like <code>neighbor | | My neighbor has a dog.</code></li>
         <li class="card">Kids play about 8 words a day. Check the <b>Report</b> on Friday to see how far each word has come, and its progress chart to see the weeks add up (every game's Report has one).</li>
         <li class="card">For math, open <a href="/trail-blazer/">Trail Blazer</a> → <b>Parents → Facts this week</b> and pick the times tables (×2 to ×12, with ÷ if you like), or type your own problems one per line, like <code>7 x 8</code> or <code>56 / 7</code>. Each race asks 4 facts; 12 a day is the daily mission.</li>
         <li class="card">For fractions, open <a href="/fraction-fright/">Fraction Fright</a>: your child plays the short Zombie Lab once, then picks a street (the ★ is the suggested one). <b>Parents → Fractions</b> shows where they are on the ladder, and the <b>Report</b> shows the week's accuracy.</li>
+        <li class="card">For a journey that mixes both, open <a href="/wagon-west/">Wagon West</a>: a leg a session, the week's spelling words at rivers and in letters home, and the math your child already knows applied at the fort and on the trail. The <b>Journal</b> keeps every letter; <b>Parents → Report</b> keeps the score.</li>
       </ol>
-      <p class="more">All three games share the same players, family code and parent PIN: set them up once in any game.</p>
+      <p class="more">All four games share the same players, family code and parent PIN: set them up once in any game.</p>
     </section>
   </div>
 </main>

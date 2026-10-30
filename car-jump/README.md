@@ -285,7 +285,7 @@ word lists and progress show up on every device (a laptop for entering the words
 `src/sync/client.js`): Spell Jump registers `<id>.save` and `<id>.words`; Trail Blazer adds `<id>.tb` (its save) and
 `<id>.facts` (its math facts) with its own merge rules (`trail-blazer/src/meta/sync.js`), and the server stores and lists
 all four (`GET` answers `players[id] = { save, words, tb, facts }`). Spell Jump keeps Trail Blazer's sync bookkeeping in
-`spellJump.sync` untouched and never uploads it, so one family code syncs all three games: when Trail Blazer is used, the
+`spellJump.sync` untouched and never uploads it, so one family code syncs all four games: when Trail Blazer is used, the
 child's Trail Blazer progress (cash, vehicles, medals, gear, math facts) is stored online under the code as well.
 
 **Privacy.** What's stored online: player first names, word lists, spelling progress and the parent PIN (hashed).
