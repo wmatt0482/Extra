@@ -16,13 +16,16 @@
 // v1.3.2 / v1.4 SECURE (famInfo): a family the child has shown is known leaves the frontier at once (evidence, not the
 // calendar; no miss in its last 8 answers), or vouched by the Pit Crew Check / 3 quick scouts (scouts.js) with no
 // miss since. The difficulty governor (governor.js) and the frontier's history sit on top, in store.refreshFrontier.
-import { divisionTwins, factFamilies, factParts, familyMembers, famLabel, missCountsFor } from './facts.js';
+import { divisionTwins, factFamilies, factParts, familyMembers, famLabel, missCountsFor, twinFamily } from './facts.js';
 import { DAY_MS, dayKey, isFluent, isMastered, isNew, isSparse, pendingReady, pickNext, pickObligation } from './scheduler.js';
 import { famList, inverseCluster } from './patterns.js';
 
 export const X_LADDER = ['x2', 'x5', 'x10', 'x3', 'x4', 'x6', 'x9', 'x7', 'x8', 'x11', 'x12'];
 export const D_LADDER = X_LADDER.map((f) => 'd' + f.slice(1));
 export const AS_LADDER = ['add', 'sub'];
+// v1.7: three tiers above ÷12 at the top of the ladder: ×10s ÷10s (T8) · teens × (T9) · big × big ÷ (T10). The frontier
+// reaches them by the same rules once every table family is secure ("ran out of races, still kinda easy").
+export const HIGH_LADDER = ['x10s', 'd10s', 'xteen', 'xbig', 'dbig'];
 export const FRONTIER_SIZE = 2;
 export const ADVANCE = { mastered: 0.9, fluent: 0.7 };
 export const SECURE = { quick: 0.75, vouchSeen: 4, window: 8 };   // v1.3.2 / v1.4: evidence-based advancement (famInfo)
@@ -31,12 +34,16 @@ export const PROBE = { size: 6, races: 15, days: 7 };
 const WEEK = 7 * DAY_MS;
 const PLACEMENT_BASE = { fluent: 0.75, known: 0.5, shaky: 0.2 };
 
-export const ladder = (sets = {}) => [...(sets.addSub ? AS_LADDER : []), ...X_LADDER, ...(sets.division !== false ? D_LADDER : [])];
-const twinOf = (fam) => (fam[0] === 'd' ? 'x' + fam.slice(1) : null);
+export const ladder = (sets = {}) => [...(sets.addSub ? AS_LADDER : []), ...X_LADDER, ...(sets.division !== false ? D_LADDER : []),
+  ...HIGH_LADDER.filter((f) => sets.division !== false || f[0] !== 'd')];
+const twinOf = twinFamily;
 /** The Pit Crew Check tiers as the frontier's ladder: + − 0 · ×2 ×5 ×10 1 · ×3 ×4 2 · ×6 ×9 3 · ×7 ×8 4 · ×11 ×12 5 ·
- *  ÷ of tiers 1-2 6 · ÷ of tiers 3-5 7 */
-const TIER_OF = { add: 0, sub: 0, x2: 1, x5: 1, x10: 1, x3: 2, x4: 2, x6: 3, x9: 3, x7: 4, x8: 4, x11: 5, x12: 5 };
-export const tierOf = (fam) => (fam in TIER_OF ? TIER_OF[fam] : fam[0] === 'd' ? (TIER_OF['x' + fam.slice(1)] <= 2 ? 6 : 7) : 9);
+ *  ÷ of tiers 1-2 6 · ÷ of tiers 3-5 7 · v1.7 ×10s ÷10s 8 · teens × 9 · big × big ÷ 10 */
+const TIER_OF = { add: 0, sub: 0, x2: 1, x5: 1, x10: 1, x3: 2, x4: 2, x6: 3, x9: 3, x7: 4, x8: 4, x11: 5, x12: 5, x10s: 8, d10s: 8, xteen: 9, xbig: 10, dbig: 10 };
+export const TOP_TIER = 10;
+export const tierOf = (fam) => (fam in TIER_OF ? TIER_OF[fam] : fam[0] === 'd' && 'x' + fam.slice(1) in TIER_OF ? (TIER_OF['x' + fam.slice(1)] <= 2 ? 6 : 7) : 99);
+/** The families of one ladder tier (0 … 10) on this ladder. */
+export const tierFamilies = (tier, sets = {}) => ladder(sets).filter((f) => tierOf(f) === tier);
 
 function factScore(rec) {
   if (isFluent(rec)) return 1;

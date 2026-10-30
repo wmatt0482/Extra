@@ -3,15 +3,48 @@
 //   ×5 half of 10 × · ×6 5 ×, plus one more · ×9 10 ×, take away one · ×12 10 × plus 2 ×
 //   ×7 / ×8 the nearest known square (7 × 8 = 7 × 7 + 7) or a 5 × / 10 × fact · ÷ the multiplication that undoes it
 //   + make ten (or tens, then ones) · − count up from the smaller number
+//   v1.7 above the table: tens × ("2 × 3 = 6, so 20 × 3 = 60") · teens and big × split the tens ("14 × 6 = 10 × 6 +
+//   4 × 6 = 60 + 24 = 84") · ÷ by tens ("60 ÷ 20 = 3 because 20 × 3 = 60"), ÷ to tens ("6 ÷ 3 = 2, so 60 ÷ 3 = 20"),
+//   two-digit quotients ("91 ÷ 7: 70 ÷ 7 = 10, 21 ÷ 7 = 3, so 91 ÷ 7 = 13")
 // Hints use the numbers as shown (flip: the commutative pair the other way round), so they read naturally.
 import { factAnswer, factParts, shownParts, strategyFactor } from './facts.js';
 import { spokenText } from './spoken.js';
 
 const nextTen = (n) => Math.ceil((n + 1) / 10) * 10;
 
+const isTens = (n) => n >= 20 && n % 10 === 0;
+
+/** v1.7: the hint for a × fact above the 12 × 12 table (either number > 12), in the order shown; '' for a table fact. */
+function highTimesHint(a, b) {
+  if (a <= 12 && b <= 12) return '';
+  const ans = a * b;
+  if (isTens(a) || isTens(b)) {
+    // the tens number first: 2 × 3 = 6, so 20 × 3 = 60 (both tens: 2 × 30 = 60, so 20 × 30 = 600)
+    const [t, m] = isTens(a) ? [a, b] : [b, a];
+    return `${t / 10} × ${m} = ${(t / 10) * m}, so ${a} × ${b} = ${ans}`;
+  }
+  // split the bigger number into tens and ones, in the order shown: 14 × 6 = 10 × 6 + 4 × 6 = 60 + 24 = 84
+  const big = Math.max(a, b), m = Math.min(a, b);
+  const tens = Math.floor(big / 10) * 10, ones = big % 10;
+  if (!ones) return `${big / 10} × ${m} = ${(big / 10) * m}, so ${a} × ${b} = ${ans}`;
+  const pair = (x) => (a === big ? `${x} × ${m}` : `${m} × ${x}`);
+  return `${a} × ${b} = ${pair(tens)} + ${pair(ones)} = ${tens * m} + ${ones * m} = ${ans}`;
+}
+/** v1.7: the hint for a ÷ fact above the table (a tens divisor or quotient, or a two-digit quotient); '' otherwise. */
+function highDivideHint(a, b) {
+  const q = a / b;
+  if (b <= 12 && q <= 12) return '';
+  if (isTens(b)) return `${a} ÷ ${b} = ${q} because ${b} × ${q} = ${a}`;
+  if (isTens(q)) return `${a / 10} ÷ ${b} = ${q / 10}, so ${a} ÷ ${b} = ${q}`;
+  if (q >= 10 && q < 20) return `${a} ÷ ${b}: ${10 * b} ÷ ${b} = 10, ${a - 10 * b} ÷ ${b} = ${q - 10}, so ${a} ÷ ${b} = ${q}`;
+  return `${b} × ? = ${a}. ${b} × ${q} = ${a}, so ${a} ÷ ${b} = ${q}`;
+}
+
 function timesHint(a, b) {
   // n = the factor the strategy works on, m = the other one
   const ans = a * b;
+  const high = highTimesHint(a, b);
+  if (high) return high;
   // two neighbours around a square (6 × 7, 7 × 8, 8 × 9): the square, plus one more
   if (Math.abs(a - b) === 1 && Math.min(a, b) >= 6 && Math.max(a, b) <= 9 && !(a === 9 || b === 9)) {
     const s = Math.min(a, b);
@@ -62,7 +95,7 @@ export function hintFor(fact, flip = false) {
   const p = shownParts(fact, flip);
   if (!p) return '';
   if (p.op === 'x') return timesHint(p.a, p.b);
-  if (p.op === '/') { const q = factAnswer(fact); return `${p.b} × ? = ${p.a}. ${p.b} × ${q} = ${p.a}, so ${p.a} ÷ ${p.b} = ${q}`; }
+  if (p.op === '/') { const q = factAnswer(fact); return highDivideHint(p.a, p.b) || `${p.b} × ? = ${p.a}. ${p.b} × ${q} = ${p.a}, so ${p.a} ÷ ${p.b} = ${q}`; }
   if (p.op === '+') return addHint(p.a, p.b);
   return subHint(p.a, p.b);
 }

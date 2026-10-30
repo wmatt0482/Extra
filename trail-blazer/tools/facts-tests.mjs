@@ -937,6 +937,242 @@ test('weekProgress: gates this week only (an older race does not count), rounded
   assert.equal(PG.weekProgressLines(w)[1], 'This week: 90 % right at the gates (9 of 10) · moved up: ×2');
 });
 
+console.log('\nv1.7: three tiers above ÷12 (tens, teens, big numbers) and the Hill Climb\'s facts');
+const F17 = await import('../src/facts/facts.js');
+const H17 = await import('../src/facts/hill.js');
+const S17 = await import('../src/facts/store.js');
+const P17 = await import('../src/facts/placement.js');
+const A17 = await import('../src/facts/adaptive.js');
+const G17 = await import('../src/facts/governor.js');
+const X_FAMS = ['x2', 'x5', 'x10', 'x3', 'x4', 'x6', 'x9', 'x7', 'x8', 'x11', 'x12'];
+const D_FAMS = X_FAMS.map((f) => 'd' + f.slice(1));
+// the kid who "ran out of races": every table family vouched (the check found × and the ÷ twins fluent)
+const allTable = (t = T0) => { const d = defaultFacts(t); placedAt(d, Object.fromEntries([...X_FAMS, ...D_FAMS].map((f) => [f, 'fluent']))); refreshFrontier(d, t); return d; };
+test('classification: ×10s / ÷10s / teens × / big × / big ÷ by precedence; table facts keep their table families', () => {
+  assert.deepEqual(factFamilies('3x20'), ['x10s']); assert.equal(factFamily('3x20'), 'x10s'); assert.equal(F17.missFamily('3x20'), 'x10s');
+  assert.deepEqual(factFamilies('20x30'), ['x10s']); assert.deepEqual(factFamilies('6x14'), ['xteen']); assert.equal(factFamily('6x14'), 'xteen');
+  assert.deepEqual(factFamilies('4x23'), ['xbig']); assert.equal(F17.missFamily('4x23'), 'xbig');
+  assert.deepEqual(factFamilies('60/20'), ['d10s']); assert.deepEqual(factFamilies('60/3'), ['d10s']); assert.deepEqual(factFamilies('240/8'), ['d10s']);
+  assert.deepEqual(factFamilies('91/7'), ['dbig']); assert.deepEqual(factFamilies('171/9'), ['dbig']);
+  for (const [f, fams] of [['3x12', ['x3', 'x12']], ['12x12', ['x12']], ['36/3', ['d3']], ['84/7', ['d7']], ['144/12', ['d12']], ['7x8', ['x7', 'x8']], ['8+7', ['add']], ['80-46', ['sub']]]) assert.deepEqual(factFamilies(f), fams, f);
+  assert.equal(factFamily('2x8'), 'x2'); assert.equal(F17.missFamily('5x8'), 'x8', 'unchanged for the table');
+  assert.equal(F17.highFamily('7x8'), ''); assert.equal(F17.highFamily('4x23'), 'xbig'); assert.equal(F17.highFamily('nope'), '');
+  for (const fam of F17.HIGH_FAMILIES) for (const f of familyMembers(fam)) assert.equal(factFamily(f), fam, `${f} is ${fam}`);
+  assert.equal(F17.twinFamily('d10s'), 'x10s'); assert.equal(F17.twinFamily('dbig'), 'xbig'); assert.equal(F17.twinFamily('d7'), 'x7'); assert.equal(F17.twinFamily('x7'), null);
+  assert.equal(F17.divisionFamily('x10s'), 'd10s'); assert.equal(F17.divisionFamily('xteen'), null); assert.equal(F17.divisionFamily('x7'), 'd7'); assert.equal(F17.divisionFamily('xbig'), 'dbig');
+  for (const f of ['x10s', 'd10s', 'xteen', 'xbig', 'dbig', 'x7', 'd12', 'add']) assert.ok(F17.isFamilyId(f), f);
+  assert.ok(!F17.isFamilyId('x') && !F17.isFamilyId('dteen') && !F17.isFamilyId(''));
+});
+test('members: ×10s 40, ÷10s 80 (both twins), teens × 35, big × 24 (answers ≤ 999, 8 per decade), big ÷ 49 (quotients 13 … 19); canonical, none in the 12 × 12 grid', () => {
+  const sizes = { x10s: 40, d10s: 80, xteen: 35, xbig: 24, dbig: 49 };
+  for (const [fam, n] of Object.entries(sizes)) {
+    const l = familyMembers(fam);
+    assert.equal(l.length, n, fam); assert.equal(new Set(l).size, n, `${fam}: unique`);
+    for (const f of l) { assert.equal(normFact(f), f, f); const p = F17.factParts(f); assert.ok(p.a > 12 || p.b > 12 || factAnswer(f) > 12, `${f} is above the table`); assert.ok(factAnswer(f) <= 999, f); }
+  }
+  assert.equal(F17.BIG_TIMES.length, 24);
+  for (const dec of [20, 30, 40]) assert.equal(familyMembers('xbig').filter((f) => { const p = F17.factParts(f); const big = Math.max(p.a, p.b); return big >= dec && big < dec + 10; }).length, 8, `${dec}s`);
+  assert.ok(familyMembers('xbig').every((f) => [3, 4, 6, 7, 8, 9].includes(Math.min(F17.factParts(f).a, F17.factParts(f).b))));
+  for (const f of familyMembers('dbig')) { assert.ok(factAnswer(f) >= 13 && factAnswer(f) <= 19, f); assert.ok(F17.factParts(f).b >= 3 && F17.factParts(f).b <= 9, f); }
+  const twins = new Set(familyMembers('x10s').flatMap(F17.divisionTwins));
+  assert.deepEqual(familyMembers('d10s').slice().sort(), [...twins].sort(), '÷10s = both ÷ twins of every ×10s fact');
+  assert.ok(familyMembers('xteen').every((f) => { const p = F17.factParts(f); return p.b >= 13 && p.b <= 19 && [3, 4, 6, 7, 8].includes(p.a); }));
+  assert.ok(familyMembers('x10s').every((f) => { const p = F17.factParts(f); return p.b >= 20 && p.b <= 90 && p.b % 10 === 0 && [3, 4, 6, 7, 8].includes(p.a); }));
+  assert.equal(ALL_FAMILIES.length, 11, 'the Parent Zone\'s × families are unchanged'); assert.equal(familyMembers('x7').length, 11); assert.deepEqual(familyMembers('nope'), []);
+  assert.ok(familyMembers('x12').includes('3x12') && !familyMembers('xteen').includes('3x12'), '12 × 3 stays a ×12 fact');
+  assert.ok(familyMembers('d7').includes('84/7') && !familyMembers('dbig').includes('84/7'), '84 ÷ 7 = 12 stays a ÷7 fact');
+});
+test('labels and names: ×10s ÷10s teens × big × big ÷ / tens, teens, big numbers; difficulty after ÷12 (×10s < ÷10s < teens × < big × < big ÷)', () => {
+  assert.deepEqual(F17.HIGH_FAMILIES.map(F17.famLabel), ['×10s', '÷10s', 'teens ×', 'big ×', 'big ÷']);
+  assert.deepEqual(F17.HIGH_FAMILIES.map(F17.famName), ['tens', 'tens ÷', 'teens', 'big numbers', 'big ÷']);
+  assert.equal(F17.famName('x7'), '×7'); assert.equal(F17.famLabel('d7'), '÷7'); assert.equal(F17.famLabel('add'), '+');
+  const maxTable = Math.max(...setFacts({ families: ALL_FAMILIES, division: true, addSub: true }).map((f) => difficulty(f)));
+  const lo = (fam) => Math.min(...familyMembers(fam).map((f) => difficulty(f))), hi = (fam) => Math.max(...familyMembers(fam).map((f) => difficulty(f)));
+  assert.ok(maxTable < lo('x10s'), `${maxTable} < ${lo('x10s')}`); assert.ok(hi('x10s') < lo('d10s')); assert.ok(hi('d10s') < lo('xteen')); assert.ok(hi('xteen') < lo('xbig')); assert.ok(hi('xbig') < lo('dbig'));
+  assert.ok(difficulty('3x20') < difficulty('8x90'), 'smaller first within a family');
+});
+test('hints: the ×10 pattern, split the tens, ÷ by tens / to tens, two-digit quotients; spoken with no digits or symbols left', () => {
+  assert.equal(hintFor('3x20', true), '2 × 3 = 6, so 20 × 3 = 60'); assert.equal(hintFor('3x20'), '2 × 3 = 6, so 3 × 20 = 60');
+  assert.equal(hintFor('6x14', true), '14 × 6 = 10 × 6 + 4 × 6 = 60 + 24 = 84'); assert.equal(hintFor('6x14'), '6 × 14 = 6 × 10 + 6 × 4 = 60 + 24 = 84');
+  assert.equal(hintFor('4x23', true), '23 × 4 = 20 × 4 + 3 × 4 = 80 + 12 = 92');
+  assert.equal(hintFor('91/7'), '91 ÷ 7: 70 ÷ 7 = 10, 21 ÷ 7 = 3, so 91 ÷ 7 = 13'); assert.equal(hintFor('171/9'), '171 ÷ 9: 90 ÷ 9 = 10, 81 ÷ 9 = 9, so 171 ÷ 9 = 19');
+  assert.equal(hintFor('60/20'), '60 ÷ 20 = 3 because 20 × 3 = 60'); assert.equal(hintFor('60/3'), '6 ÷ 3 = 2, so 60 ÷ 3 = 20');
+  assert.equal(hintFor('84/7'), '7 × ? = 84. 7 × 12 = 84, so 84 ÷ 7 = 12', 'a table fact keeps its hint'); assert.match(hintFor('7x8'), /7 × 7 is 49/); assert.match(hintFor('7x12'), /10 × 7 is 70, plus 2 × 7 is 14: 84/);
+  assert.equal(hintSpoken('3x20', true), 'two times three equals six, so twenty times three equals sixty.');
+  assert.equal(hintSpoken('91/7'), 'ninety-one divided by seven: seventy divided by seven equals ten, twenty-one divided by seven equals three, so ninety-one divided by seven equals thirteen.');
+  assert.equal(hintSpoken('60/20'), 'sixty divided by twenty equals three because twenty times three equals sixty.');
+  for (const fam of F17.HIGH_FAMILIES) for (const f of familyMembers(fam)) for (const flip of [false, true]) {
+    const s = hintSpoken(f, flip);
+    assert.ok(s.length > 5 && !/[\d×÷−?]/.test(s), `${f}: ${s}`); assert.ok(new RegExp(`\\b${factAnswer(f)}\\b`).test(hintFor(f, flip)), `${f}: names the answer`);
+  }
+});
+test('patterns: place-value slips (a zero dropped or added, the ones forgotten, parts side by side, half a quotient) get their own kind, hint and report line', () => {
+  for (const [f, g] of [['3x20', 6], ['3x20', 600], ['6x14', 60], ['6x14', 64], ['6x14', 624], ['6x14', 6024], ['4x23', 80], ['4x23', 83], ['4x23', 812], ['91/7', 3], ['91/7', 10], ['60/3', 2], ['60/3', 200]]) assert.equal(classifyMiss(f, g), 'place-value', `${f} → ${g}`);
+  assert.equal(classifyMiss('7x8', 48), 'off-by-operand', 'table facts as before'); assert.equal(classifyMiss('3x12', 3), 'random'); assert.equal(classifyMiss('3x20', 66), 'adjacent'); assert.equal(classifyMiss('3x20', 60), null);
+  assert.equal(patternHint('6x14', true, 'place-value', 64), 'watch the tens and ones: 14 × 6 = 10 × 6 + 4 × 6 = 60 + 24 = 84');
+  assert.equal(hintKind('3x20', 6), 'place-value');
+  const d = defaultFacts(T0);
+  recordAnswer(d, '3x20', { correct: false, given: 6 }, T0); recordAnswer(d, '4x23', { correct: false, given: 83 }, T0 + 1);
+  assert.ok(patternSummary(d, T0 + 2).some((x) => x.kind === 'place-value' && /tens and ones/.test(x.text)), JSON.stringify(patternSummary(d, T0 + 2)));
+  assert.deepEqual(normalizeFacts(JSON.parse(JSON.stringify(d)), T0 + 3).records['3x20'].patterns.map((x) => x.kind), ['place-value'], 'the kind survives a save');
+});
+test('ladder and tiers: ×10s ÷10s 8 · teens × 9 · big × big ÷ 10 after ÷12; without "÷ too" the ÷ families stay off; the step back of each', () => {
+  const L = A17.ladder({ division: true });
+  assert.deepEqual(L.slice(-5), ['x10s', 'd10s', 'xteen', 'xbig', 'dbig']); assert.ok(L.indexOf('d12') < L.indexOf('x10s'));
+  assert.deepEqual(A17.ladder({ division: false }).slice(-3), ['x10s', 'xteen', 'xbig']); assert.ok(!A17.ladder({ division: false }).includes('d10s'));
+  assert.deepEqual(A17.ladder({ addSub: true }).slice(0, 3), ['add', 'sub', 'x2']);
+  assert.deepEqual(['x10s', 'd10s', 'xteen', 'xbig', 'dbig', 'x12', 'd12', 'd2', 'add', 'nope'].map(A17.tierOf), [8, 8, 9, 10, 10, 5, 7, 6, 0, 99]);
+  assert.deepEqual(A17.tierFamilies(8), ['x10s', 'd10s']); assert.deepEqual(A17.tierFamilies(10), ['xbig', 'dbig']); assert.deepEqual(A17.tierFamilies(9, { division: false }), ['xteen']);
+  assert.deepEqual(P17.HIGH_TIERS, ['T8', 'T9', 'T10']); assert.deepEqual(TIERS.find((t) => t.id === 'T8').families, ['x10s', 'd10s']); assert.deepEqual(TIERS.find((t) => t.id === 'T9').families, ['xteen']); assert.deepEqual(TIERS.find((t) => t.id === 'T10').families, ['xbig', 'dbig']);
+  assert.deepEqual(['T8', 'T9', 'T10', 'T4', 'T0'].map(P17.tierName), ['tens', 'teens', 'big numbers', '×7 ×8', '+ and −']);
+  assert.deepEqual(['x10s', 'xteen', 'xbig', 'd10s', 'dbig', 'd7'].map(G17.stepBackTo), ['x10', 'x12', 'xteen', 'x10s', 'xbig', 'x7']);
+});
+test('the frontier climbs into ×10s once every table family is secure; scouts go T8 → T9 → T10; the stretch is the tier after the scout\'s; ÷10s joins once ×10s is known', () => {
+  const d = allTable();
+  assert.deepEqual(d.frontier.families, ['x10s', 'xteen'], `the frontier: ${d.frontier.families} (${d.frontier.reason})`);
+  assert.equal(scoutFamily(d, T0), 'xteen', 'the scout family: the next tier up (÷10s waits for ×10s to be known)');
+  assert.deepEqual(H17.stretchFamilies(d, 9, T0), ['xbig'], 'the stretch: the tier after the scout\'s (big ÷ waits for big ×)');
+  assert.deepEqual(H17.stretchFamilies(d, 10, T0), [], 'nothing above the top');
+  familyMembers('xteen').slice(0, 3).forEach((f, i) => recordAnswer(d, f, { correct: true, quick: true, ms: 900, scout: 'xteen' }, T0 + i));
+  assert.ok(d.vouched.xteen, '3 quick scouts vouch teens ×');
+  assert.equal(scoutFamily(d, T0 + 10), 'xbig', 'teens vouched: big × next');
+  assert.ok(!d.frontier.families.includes('xteen'), `teens × left the frontier: ${d.frontier.families}`);
+  gateStream(d, familyMembers('x10s').map((f) => [f, true, true]), T0 + 100);
+  const t = T0 + 100 + 40 * 1000;
+  assert.ok(famInfo(d, 'x10s', t).secure, '×10s secure by the same rule'); assert.ok(!d.frontier.families.includes('x10s'), `moved on: ${d.frontier.families}`);
+  assert.ok(d.frontier.families.includes('d10s'), `÷10s joins once ×10s is known: ${d.frontier.families}`);
+  assert.ok(A17.autoFamilies(d, t).includes('d10s') && A17.autoFamilies(d, t).includes('x10s'));
+  const sl = startLine(d, { scout: scoutFamily(d, t) });
+  assert.match(sl.text, /Working on: ÷10s big ×/); assert.match(sl.text, /Up next: /);
+  const w = PG.weekProgress(d, t);
+  assert.equal(w.ladderFamilies, 27); assert.ok(w.secureFamilies >= 24, `${w.secureFamilies} secure`);
+  assert.ok(nextFact(d, t, createSession(), lcg(2)).fact.length > 2, 'a gate fact comes from the active set');
+  assert.ok(!checkDue(d, t).due, 'the frontier above T5 is no reason for a re-check');
+});
+test('Pit Crew Check: T8 … T10 open once ×11 ×12 are known; a fluent kid climbs from T5 into T10 (tens, teens, big numbers) in ≤ 24 items; placement survives a save', () => {
+  assert.deepEqual(tiersFor({ division: true }), ['T1', 'T2', 'T3', 'T4', 'T5'], 'without a store: as before');
+  assert.deepEqual(tiersFor({ division: true }, defaultFacts(T0), T0), ['T1', 'T2', 'T3', 'T4', 'T5'], 'a new kid: no high tiers');
+  assert.ok(!P17.highTiersOpen(null));
+  const d = allTable();
+  assert.ok(P17.highTiersOpen(d, T0));
+  const tiers = tiersFor({ division: true }, d, T0);
+  assert.deepEqual(tiers, ['T1', 'T2', 'T3', 'T4', 'T5', 'T8', 'T9', 'T10']); assert.equal(tiersFor({ division: true, addSub: true }, d, T0)[0], 'T0');
+  const st = runCheck(() => QUICK, { tiers, start: 'T5' });
+  assert.deepEqual(st.items.filter((x) => x.phase === 'locate').map((x) => x.tier), ['T5', 'T5', 'T8', 'T8', 'T9', 'T10', 'T10'], 'up the staircase (T9 has one family)');
+  assert.ok(st.items.length <= MAX_ITEMS, `${st.items.length} items`); assert.equal(new Set(st.items.map((x) => x.fact)).size, st.items.length, 'no fact twice');
+  for (const it of st.items) assert.ok(familyMembers(it.family).includes(it.fact), `${it.fact} is a ${it.family} fact`);
+  assert.ok(!st.items.some((x) => x.phase === 'twins' && ['d10s', 'dbig'].includes(x.family)), '÷10s / big ÷ are asked in their tiers, not as twins');
+  assert.ok(st.items.some((x) => x.phase === 'twins' && x.family === 'd11'), 'the table twins still come');
+  const pl = checkResult(st, T0);
+  assert.equal(pl.located, 'T10'); assert.equal(pl.tier, 'T10');
+  for (const f of ['x10s', 'd10s', 'xteen', 'xbig', 'dbig']) assert.equal(pl.families[f].status, 'fluent', f);
+  assert.ok(pl.tiers.some((t) => t.tier === 'T10' && t.result === 'fluent'));
+  const e = allTable(); applyCheck(e, st, T0 + 5);
+  const n = normalizeFacts(JSON.parse(JSON.stringify(e)), T0 + 6);
+  assert.equal(n.placement.tier, 'T10'); assert.equal(n.placement.located, 'T10'); assert.equal(n.placement.families.xbig.status, 'fluent'); assert.ok(n.placement.tiers.some((t) => t.tier === 'T10'));
+  assert.deepEqual(normalizeFacts(JSON.parse(JSON.stringify(n)), T0 + 7), n);
+  assert.equal(recheckStart({ frontier: { families: ['xteen'] } }), 'T9'); assert.equal(recheckStart({ frontier: { families: ['d10s'] } }), 'T8');
+  // a kid who misses the tens lands at T5 and zooms T5 / T8: the work starts at T8
+  const m = runCheck((it) => (it.tier === 'T8' ? MISS(it) : QUICK), { tiers, start: 'T5' });
+  const pm = checkResult(m, T0);
+  assert.equal(pm.located, 'T5'); assert.equal(pm.tier, 'T8'); assert.equal(pm.families.x10s.status, 'shaky');
+  assert.ok(answersFor(m, 'x10s') >= 2 && answersFor(m, 'd10s') >= 2, 'both T8 families zoomed');
+  assert.ok(m.items.length <= MAX_ITEMS);
+  // without "÷ too" the check never asks ÷10s / big ÷
+  const nd = runCheck(() => QUICK, { tiers: tiersFor({ division: false }, d, T0), start: 'T5', division: false });
+  assert.ok(!nd.items.some((x) => x.fact.includes('/')), 'no ÷ at all'); assert.ok(nd.items.some((x) => x.family === 'xbig'));
+  const low = runCheck((it) => MISS(it), { tiers, start: 'T5' });
+  assert.ok(low.items.length <= MAX_ITEMS); assert.equal(checkResult(low, T0).located, 'T1');
+});
+test('hillFacts: 10 questions, no fact twice, 4 frontier + 4 scouts + 2 stretch (the tier after the scout\'s) with the stretch up the hill; seeded = repeatable', () => {
+  const d = defaultFacts(T0);
+  placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'known', x4: 'known', x6: 'untested', x9: 'untested' });
+  assert.deepEqual(d.frontier.families, ['x3', 'x4']); assert.equal(scoutFamily(d, T0), 'x6');
+  const list = S17.hillFacts(d, 10, T0, lcg(5));
+  assert.equal(list.length, 10); assert.equal(new Set(list.map((p) => p.fact)).size, 10);
+  const kinds = (k) => list.filter((p) => p.kind === k);
+  assert.equal(kinds('frontier').length, 4); assert.equal(kinds('scout').length, 4); assert.equal(kinds('stretch').length, 2);
+  const active = activeFacts(d, T0);
+  for (const p of kinds('frontier')) assert.ok(active.includes(p.fact), `${p.fact}: a gate fact`);
+  for (const p of kinds('scout')) { assert.equal(p.family, 'x6'); assert.ok(familyMembers('x6').includes(p.fact)); assert.ok(p.isNew); }
+  for (const p of kinds('stretch')) { assert.ok(['x7', 'x8'].includes(p.family), `${p.family}: the tier after ×6`); assert.ok(familyMembers(p.family).includes(p.fact)); }
+  assert.ok(list.slice(0, 4).every((p) => p.kind !== 'stretch'), 'the stretch facts come in the upper half');
+  for (const p of list) { assert.equal(typeof p.flip, 'boolean'); if (p.flip) assert.ok(isCommutative(p.fact)); }
+  assert.deepEqual(S17.hillFacts(d, 10, T0, lcg(5)).map((p) => p.fact), list.map((p) => p.fact), 'the same seed, the same climb');
+  assert.notDeepEqual(S17.hillFacts(d, 10, T0, lcg(6)).map((p) => p.fact), list.map((p) => p.fact));
+  assert.equal(S17.hillFacts(d, 5, T0, lcg(1)).length, 5); assert.deepEqual(S17.HILL_MIX, { frontier: 0.4, scout: 0.4, stretch: 0.2 });
+  // a secure kid: scouts from teens ×, the stretch from big × (the hard tiers are met here first)
+  const s = allTable();
+  const l2 = S17.hillFacts(s, 10, T0, lcg(4));
+  assert.equal(l2.length, 10); assert.equal(new Set(l2.map((p) => p.fact)).size, 10);
+  assert.ok(l2.filter((p) => p.kind === 'scout').every((p) => p.family === 'xteen'), JSON.stringify(l2));
+  assert.deepEqual(l2.filter((p) => p.kind === 'stretch').map((p) => p.family), ['xbig', 'xbig']);
+  assert.ok(l2.filter((p) => p.kind === 'frontier').every((p) => familyMembers('x10s').includes(p.fact) || familyMembers('xteen').includes(p.fact)), 'the frontier: ×10s / teens ×');
+  // everything secure, the top tier included: the top tier's facts (the least asked, then the least recent)
+  const top = allTable(); top.vouched = { ...top.vouched, ...Object.fromEntries(F17.HIGH_FAMILIES.map((f) => [f, T0 - DAY_MS])) }; refreshFrontier(top, T0);
+  assert.equal(scoutFamily(top, T0), null);
+  const l3 = S17.hillFacts(top, 10, T0, lcg(3));
+  assert.equal(l3.length, 10); assert.equal(new Set(l3.map((p) => p.fact)).size, 10);
+  assert.ok(l3.filter((p) => p.kind === 'stretch').every((p) => ['xbig', 'dbig'].includes(p.family)), `the top tier: ${JSON.stringify(l3)}`);
+  assert.equal(l3.filter((p) => p.kind === 'stretch').length, 5, 'half the climb'); assert.equal(l3.filter((p) => p.kind === 'frontier').length, 5);
+  // a scout miss at the gates moved the scouts two tiers above the frontier's lowest tier: the hill does not follow (more frontier facts instead)
+  const far = allTable(); noteScout(far, 'xteen', false, false, T0);
+  assert.equal(scoutFamily(far, T0), 'xbig', 'the gates scout big × now'); assert.deepEqual(far.frontier.families, ['x10s', 'xteen']);
+  const l5 = S17.hillFacts(far, 10, T0, lcg(7));
+  assert.equal(l5.filter((p) => p.kind === 'scout').length, 0, 'no scouts two tiers above ×10s'); assert.equal(l5.filter((p) => p.kind === 'stretch').length, 2);
+  assert.ok(l5.filter((p) => p.kind === 'stretch').every((p) => p.family === 'xbig'), 'the stretch: the tier above the frontier');
+  assert.equal(l5.filter((p) => p.kind === 'frontier').length, 8);
+  // a manual set (the parent picked ×7 only): the climb is the set alone
+  const man = defaultFacts(T0); man.sets.mode = 'manual'; man.sets.families = ['x7']; man.sets.division = false;
+  const l4 = S17.hillFacts(man, 10, T0, lcg(2));
+  assert.equal(l4.length, 10); assert.equal(new Set(l4.map((p) => p.fact)).size, 10);
+  assert.ok(l4.every((p) => p.kind === 'frontier' && familyMembers('x7').includes(p.fact)), JSON.stringify(l4));
+  // a tiny custom list: the climb fills from the ladder's open families (never short, never a fact twice)
+  const tiny = defaultFacts(T0); tiny.sets.mode = 'manual'; tiny.sets.source = 'custom'; tiny.sets.custom = ['7x8', '6x7'];
+  const l6 = S17.hillFacts(tiny, 10, T0, lcg(8));
+  assert.equal(l6.length, 10); assert.equal(new Set(l6.map((p) => p.fact)).size, 10);
+});
+test('recordHillAnswer: frontier → the record (XP, today\'s count); a scout miss counts; a stretch miss is not a scout miss; 3 quick-right stretch answers vouch the family', () => {
+  const d = defaultFacts(T0);
+  placedAt(d, { x2: 'fluent', x5: 'fluent', x10: 'fluent', x3: 'known', x4: 'known', x6: 'untested', x9: 'untested' });
+  const list = S17.hillFacts(d, 10, T0, lcg(9));
+  const fr = list.find((p) => p.kind === 'frontier');
+  const r = S17.recordHillAnswer(d, fr, { correct: true, quick: true, answeredMs: 1200 }, T0 + 1);
+  assert.equal(r.xp, XP.firstTry + XP.quick); assert.equal(d.records[fr.fact].attempts, 1); assert.equal(d.records[fr.fact].lastMs, 1200); assert.equal(d.today.count, 1); assert.equal(r.status, 'Learning');
+  const st = list.filter((p) => p.kind === 'stretch');
+  S17.recordHillAnswer(d, st[0], { correct: false, given: 1, answeredMs: 4000 }, T0 + 2);
+  assert.ok(!(d.scouts[st[0].family] && d.scouts[st[0].family].miss), 'a stretch miss is not a scout miss'); assert.equal(d.records[st[0].fact].misses, 1, 'but it is on the record');
+  const fam = st[0].family;
+  const facts = familyMembers(fam).filter((f) => f !== st[0].fact).slice(0, 3);
+  let res = null;
+  facts.forEach((f, i) => { res = S17.recordHillAnswer(d, { fact: f, kind: 'stretch', family: fam, flip: false }, { correct: true, quick: true, answeredMs: 900 }, T0 + 10 + i); });
+  assert.equal(res.vouched, fam, '3 quick-right stretch answers vouch the family'); assert.ok(d.vouched[fam] > 0); assert.ok(famInfo(d, fam, T0 + 20).vouched);
+  const sc = list.find((p) => p.kind === 'scout');
+  S17.recordHillAnswer(d, sc, { correct: false, given: 2 }, T0 + 20);
+  assert.equal(d.scouts[sc.family].miss, 1, 'a scout miss counts as at the gates'); assert.equal(d.records[sc.fact].misses, 1);
+  const sc2 = list.filter((p) => p.kind === 'scout')[1];
+  const r2 = S17.recordHillAnswer(d, sc2, { correct: true, quick: false, ms: 5200 }, T0 + 21);
+  assert.equal(d.scouts[sc.family].asked, 2); assert.equal(r2.xp, XP.firstTry); assert.equal(d.records[sc2.fact].lastMs, 5200, 'ms works as well as answeredMs');
+  assert.equal(S17.recordHillAnswer(d, null, {}, T0), null);
+  assert.deepEqual(normalizeFacts(JSON.parse(JSON.stringify(d)), T0 + 30).vouched, d.vouched);
+});
+test('old saves normalize unchanged: a v1.6 store (8 tiers, table families only) keeps its keys and round-trips; new-tier keys survive too', () => {
+  const v16 = { v: 4, sets: { mode: 'auto', families: STOCK_FAMILIES, division: true, custom: [] }, records: { '7x8': { box: 2, seenCount: 3, attempts: 3, firstTry: 2, times: [900] } },
+    placement: { at: T0, checks: 1, tier: 'T4', located: 'T3', families: { x2: { status: 'fluent' }, x7: { status: 'shaky' }, d7: { status: 'untested' } }, tiers: [{ tier: 'T3', asked: 2, correct: 2, quick: 2, result: 'fluent' }] },
+    frontier: { families: ['x7', 'x8'], since: T0, reason: 'x' }, scouts: { x11: { asked: 1, quick: 1, miss: 0 } }, vouched: { x2: T0 - 1 } };
+  const d = normalizeFacts(JSON.parse(JSON.stringify(v16)), T0);
+  assert.deepEqual(Object.keys(d.placement.families).sort(), ['d7', 'x2', 'x7']); assert.equal(d.placement.tier, 'T4'); assert.equal(d.placement.located, 'T3');
+  assert.deepEqual(d.frontier.families, ['x7', 'x8']); assert.deepEqual(d.scouts, { x11: { asked: 1, quick: 1, miss: 0 } }); assert.deepEqual(d.vouched, { x2: T0 - 1 });
+  assert.deepEqual(Object.keys(d.records), ['7x8']);
+  assert.deepEqual(normalizeFacts(JSON.parse(JSON.stringify(d)), T0 + 1), d, 'round-trips');
+  assert.deepEqual(normalizeFacts(JSON.parse(JSON.stringify(S17.compactFacts(d))), T0 + 1), d, 'and in the storage form');
+  d.vouched.xteen = T0; d.scouts.xbig = { asked: 2, quick: 2, miss: 0 }; d.pulled = { dbig: T0 }; d.stepped = { xbig: { at: T0, back: 'xteen' } }; d.frontier.families = ['x10s', 'd10s'];
+  const n = normalizeFacts(JSON.parse(JSON.stringify(d)), T0 + 1);
+  assert.equal(n.vouched.xteen, T0); assert.deepEqual(n.scouts.xbig, { asked: 2, quick: 2, miss: 0 }); assert.equal(n.pulled.dbig, T0); assert.deepEqual(n.stepped.xbig, { at: T0, back: 'xteen' }); assert.deepEqual(n.frontier.families, ['x10s', 'd10s']);
+  assert.equal(normalizeFacts({ placement: { at: T0, families: {}, tier: 'T11' } }, T0).placement.tier, null, 'no such tier');
+  assert.deepEqual(resetFacts(n, T0 + 2).vouched, {});
+});
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('FAILED:\n - ' + failures.join('\n - ')); process.exit(1); }
 console.log('ALL FACTS TESTS PASSED');

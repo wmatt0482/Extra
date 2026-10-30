@@ -19,7 +19,7 @@
 // activeFacts(d) (the week's set, custom included) · nextFact(d, now, session) · recordAnswer(d, fact, result, now,
 // session) → { newlyMastered, newlyFluent, missionJustDone, status, xp, isNew } · missionState · report / reportText ·
 // resetFacts · normalizeFacts (corrupt / older data → valid). Pure: no DOM, no storage (main.js loads and writes).
-import { ALL_FAMILIES, OPS, STOCK_FAMILIES, difficulty, factAnswer, factFamilies, factOp, factParts, factText, famLabel, isCommutative, normFact, setFacts } from './facts.js';
+import { ALL_FAMILIES, OPS, STOCK_FAMILIES, difficulty, factAnswer, factFamilies, factOp, factParts, factText, famLabel, isCommutative, isFamilyId, normFact, setFacts, twinFamily } from './facts.js';
 import { PATTERNS_KEPT, PATTERN_KINDS, classifyMiss, famList, isSlowOnly, notePattern, patternSummary } from './patterns.js';
 import { autoFacts, famInfo, ladder, noteFinished, noteProbe, pickAuto, probeDue, queueTwin, refreshFrontier as computeAndStore, startProbe, tierOf } from './adaptive.js';
 import { dial, drowning, nextSlot, noteGate, noteRaceDial, raceQuota, releaseStepped, stepBack } from './governor.js';
@@ -158,15 +158,15 @@ export function normalizeFacts(raw, now = Date.now()) {
   if (pl && typeof pl === 'object' && pl.families && typeof pl.families === 'object' && num(pl.at) > 0) {
     const fams = {};
     for (const [k, v] of Object.entries(pl.families)) {
-      if (!/^(x|d)(\d+)$|^(add|sub)$/.test(k) || !v || typeof v !== 'object' || !['fluent', 'known', 'shaky', 'untested'].includes(v.status)) continue;
+      if (!isFamilyId(k) || !v || typeof v !== 'object' || !['fluent', 'known', 'shaky', 'untested'].includes(v.status)) continue;
       fams[k] = { acc: typeof v.acc === 'number' ? Math.max(0, Math.min(1, v.acc)) : null, medianMs: Math.max(0, Math.round(num(v.medianMs))), status: v.status,
         asked: Math.max(0, Math.floor(num(v.asked))), ...(v.inferred ? { inferred: true } : {}) };
     }
-    const tierId = (v) => (typeof v === 'string' && /^T[0-7]$/.test(v) ? v : null);
+    const tierId = (v) => (typeof v === 'string' && /^T([0-9]|10)$/.test(v) ? v : null);   // v1.7: T8 … T10
     const ph = pl.phase && typeof pl.phase === 'object' ? pl.phase : {};
     d.placement = { at: num(pl.at), families: fams, tier: tierId(pl.tier), located: tierId(pl.located),
       phase: { locate: Math.floor(num(ph.locate)), zoom: Math.floor(num(ph.zoom)), twins: Math.floor(num(ph.twins)) }, checks: Math.max(1, Math.floor(num(pl.checks, 1))), items: Math.max(0, Math.floor(num(pl.items))), end: typeof pl.end === 'string' ? pl.end.slice(0, 20) : '',
-      tiers: Array.isArray(pl.tiers) ? pl.tiers.filter((t) => t && typeof t.tier === 'string').slice(0, 10).map((t) => ({ tier: t.tier.slice(0, 4), asked: Math.floor(num(t.asked)), correct: Math.floor(num(t.correct)), quick: Math.floor(num(t.quick)), result: typeof t.result === 'string' ? t.result.slice(0, 10) : '' })) : [] };
+      tiers: Array.isArray(pl.tiers) ? pl.tiers.filter((t) => t && typeof t.tier === 'string').slice(0, 12).map((t) => ({ tier: t.tier.slice(0, 4), asked: Math.floor(num(t.asked)), correct: Math.floor(num(t.correct)), quick: Math.floor(num(t.quick)), result: typeof t.result === 'string' ? t.result.slice(0, 10) : '' })) : [] };
   }
   d.checkOffers = Math.max(0, Math.min(MAX_CHECK_OFFERS, Math.floor(num(raw.checkOffers))));
   d.raceCount = Math.max(0, Math.floor(num(raw.raceCount)));
@@ -178,9 +178,9 @@ export function normalizeFacts(raw, now = Date.now()) {
     if (facts.length) d.probe = { facts, done: (Array.isArray(pr.done) ? pr.done : []).filter((f) => facts.includes(f)), missed: (Array.isArray(pr.missed) ? pr.missed : []).filter((f) => facts.includes(f)), at: num(pr.at) };
   }
   if (raw.lastProbe && typeof raw.lastProbe === 'object') d.lastProbe = { at: num(raw.lastProbe.at), asked: Math.floor(num(raw.lastProbe.asked)), missed: (Array.isArray(raw.lastProbe.missed) ? raw.lastProbe.missed : []).map(normFact).filter(Boolean) };
-  if (raw.pulled && typeof raw.pulled === 'object') for (const [k, v] of Object.entries(raw.pulled)) if (/^(x|d)\d+$|^(add|sub)$/.test(k) && num(v) > 0) d.pulled[k] = num(v);
+  if (raw.pulled && typeof raw.pulled === 'object') for (const [k, v] of Object.entries(raw.pulled)) if (isFamilyId(k) && num(v) > 0) d.pulled[k] = num(v);
   // v1.4 (v1.3 data has none of these: no scouts, no history)
-  const FAM = /^(x|d)\d+$|^(add|sub)$/;
+  const FAM = { test: isFamilyId };          // v1.7: the families above the table too
   if (raw.scouts && typeof raw.scouts === 'object') for (const [k, v] of Object.entries(raw.scouts)) if (FAM.test(k) && v && typeof v === 'object') d.scouts[k] = { asked: Math.max(0, Math.floor(num(v.asked))), quick: Math.max(0, Math.floor(num(v.quick))), miss: Math.max(0, Math.floor(num(v.miss))) };
   if (raw.vouched && typeof raw.vouched === 'object') for (const [k, v] of Object.entries(raw.vouched)) if (FAM.test(k) && num(v) > 0) d.vouched[k] = num(v);
   if (raw.stepped && typeof raw.stepped === 'object') for (const [k, v] of Object.entries(raw.stepped)) if (FAM.test(k) && v && FAM.test(v.back) && num(v.at) > 0) d.stepped[k] = { at: num(v.at), back: v.back };
@@ -329,7 +329,7 @@ export function refreshFrontier(d, now = Date.now(), why = '') {
   }
   if (!fams.length) {
     // never empty: the lowest unfinished family on the ladder, else the weakest of all
-    const open = L.filter((f) => !(d.stepped && d.stepped[f]) && (f[0] !== 'd' || famInfo(d, 'x' + f.slice(1), now).known));
+    const open = L.filter((f) => !(d.stepped && d.stepped[f]) && (f[0] !== 'd' || famInfo(d, twinFamily(f), now).known));
     const info = open.map((f) => famInfo(d, f, now));
     const pick = info.filter((i) => !i.graduated && !i.secure).sort((a, b) => tierOf(a.fam) - tierOf(b.fam))[0]
       || info.sort((a, b) => a.strength - b.strength)[0];
@@ -479,3 +479,5 @@ export function compactFacts(d) {
 }
 
 export { factAnswer, factFamilies, factParts, status, famList };
+// v1.7: the Hill Climb's facts (hill.js)
+export { hillFacts, recordHillAnswer, HILL_MIX } from './hill.js';

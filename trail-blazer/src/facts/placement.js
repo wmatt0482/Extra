@@ -1,6 +1,8 @@
 // The Pit Crew Check (SPEC v1.3 §1, v1.4 §2): a short adaptive placement, kid-framed (never called a test). v1.4 runs
 // it before the first race (and as a re-check, see adaptive.js checkDue). Tiers over the operations the parent allows:
 //   T0 + − (with "+ and −") · T1 ×2 ×5 ×10 · T2 ×3 ×4 · T3 ×6 ×9 · T4 ×7 ×8 · T5 ×11 ×12 · (÷ as twins, below)
+//   v1.7: T8 ×10s ÷10s ("tens") · T9 teens × ("teens") · T10 big × big ÷ ("big numbers"), in the staircase once the
+//   kid knows T5 (tiersFor(sets, d)); their ÷ families are asked in their tier (with "÷ too"), not as twins.
 // LOCATE from T3 (a re-check starts at the frontier's tier): 2 items per tier, one per family (other numbers 3 … 9
 //   first). Both right and quick → up a tier; any miss → down a tier; right but slow → stay (located). Moving onto a
 //   tier already passed / failed, or a ladder end, also locates. ≤ 10 items.
@@ -12,7 +14,8 @@
 // family that is not fluent (where the work starts). The answers seed the records (quick right = box 2 + a first-try,
 // slow right = box 1, a miss = box 0 + focus). The Start line: "Fluent: … · Working on: … · Up next: <the scout family>".
 // Pure: the caller passes `rand` and `now`.
-import { factKey, famLabel } from './facts.js';
+import { divisionFamily, factKey, famLabel, familyMembers, isTableFamily } from './facts.js';
+import { famInfo } from './adaptive.js';
 import { DAY_MS, INTERVAL_DAYS, QUICK_MS, TIMES_KEPT, addDay, dayKey, isNew, newRecord, noteRecent } from './scheduler.js';
 import { classifyMiss, notePattern } from './patterns.js';
 
@@ -25,7 +28,14 @@ export const TIERS = [
   { id: 'T5', families: ['x11', 'x12'] },
   { id: 'T6', families: ['d2', 'd5', 'd10', 'd3', 'd4'] },
   { id: 'T7', families: ['d6', 'd9', 'd7', 'd8', 'd11', 'd12'] },
+  { id: 'T8', families: ['x10s', 'd10s'] },
+  { id: 'T9', families: ['xteen'] },
+  { id: 'T10', families: ['xbig', 'dbig'] },
 ];
+export const HIGH_TIERS = ['T8', 'T9', 'T10'];
+/** The kid-facing names of the tiers ("tens", "teens", "big numbers"; the families' labels for the rest). */
+export const TIER_NAMES = { T0: '+ and −', T8: 'tens', T9: 'teens', T10: 'big numbers' };
+export const tierName = (id) => TIER_NAMES[id] || (tierById(id) ? tierById(id).families.map(famLabel).join(' ') : String(id || ''));
 export const START_TIER = 'T3';
 export const LOCATE_ITEMS = 2;           // per tier while locating
 export const LOCATE_MAX = 10;
@@ -34,13 +44,23 @@ export const MAX_ITEMS = 24;
 export const CHECK_XP = 100;
 export const CHECK_ESTIMATE = 15;        // "About 15 quick facts" (the progress bar's scale)
 
-/** The tiers the staircase walks for the parent's choices: T1 … T5, T0 with "+ and − within 20" (÷ comes as twins). */
-export function tiersFor(sets = {}) {
-  return TIERS.filter((t) => (t.id === 'T0' ? !!sets.addSub : t.id !== 'T6' && t.id !== 'T7')).map((t) => t.id);
+/** v1.7: are the tiers above the table open to this kid? Once T5 (×11 ×12) is known: by the records, a scout vouch or
+ *  the last check (fluent / known there). */
+export function highTiersOpen(d, now = Date.now()) {
+  if (!d || !d.records) return false;
+  return ['x11', 'x12'].every((f) => { const i = famInfo(d, f, now); return i.known || i.secure || i.vouched; });
+}
+/** The tiers the staircase walks for the parent's choices: T1 … T5, T0 with "+ and − within 20" (÷ comes as twins);
+ *  v1.7 T8 … T10 too when the kid's store (d) shows T5 known (highTiersOpen). */
+export function tiersFor(sets = {}, d = null, now = Date.now()) {
+  const high = !!d && highTiersOpen(d, now);
+  return TIERS.filter((t) => (t.id === 'T0' ? !!sets.addSub : HIGH_TIERS.includes(t.id) ? high : t.id !== 'T6' && t.id !== 'T7')).map((t) => t.id);
 }
 /** The ÷ tier of a × family's twin. */
-const twinTier = (fam) => (['x2', 'x5', 'x10', 'x3', 'x4'].includes(fam) ? 'T6' : 'T7');
+const twinTier = (fam) => (['x2', 'x5', 'x10', 'x3', 'x4'].includes(fam) ? 'T6' : fam === 'x10s' ? 'T8' : fam === 'xbig' ? 'T10' : 'T7');
 const tierById = (id) => TIERS.find((t) => t.id === id);
+/** The families of a tier the check asks: without "÷ too" the ÷ families of T8 / T10 stay out. */
+const checkFamilies = (st, id) => tierById(id).families.filter((f) => st.division !== false || f[0] !== 'd');
 
 function shuffle(list, rand) {
   const a = list.slice();
@@ -55,7 +75,11 @@ function itemFor(fam, used, rand) {
       let fact;
       if (fam === 'add') { const b = 3 + Math.floor(rand() * 7) % 7; if (m + b > 20) continue; fact = factKey(m, '+', b); }
       else if (fam === 'sub') { const b = 3 + Math.floor(rand() * 7) % 7; fact = `${m + b}-${m}`; }
-      else {
+      else if (!isTableFamily(fam)) {
+        // v1.7 families: any of their facts, never one asked already
+        const pool = shuffle(familyMembers(fam), rand);
+        return pool.find((f) => !used.has(f)) || null;
+      } else {
         const n = Number(fam.slice(1));
         fact = fam[0] === 'd' ? `${n * m}/${n}` : factKey(n, 'x', m);
       }
@@ -67,7 +91,7 @@ function itemFor(fam, used, rand) {
 
 /** A new check. opts: { tiers (ids, default T1 … T5), start ('T3'), division (÷ twins, default true) } */
 export function createCheck(opts = {}, rand = Math.random) {
-  const tiers = (opts.tiers && opts.tiers.length ? opts.tiers : tiersFor({ division: true })).filter((id) => id !== 'T6' && id !== 'T7');
+  const tiers = (opts.tiers && opts.tiers.length ? opts.tiers : tiersFor({ division: true })).filter((id) => id !== 'T6' && id !== 'T7' && tierById(id));
   let ti = tiers.indexOf(opts.start || START_TIER);
   if (ti < 0) ti = Math.max(0, tiers.indexOf(START_TIER));
   const st = { tiers, ti, phase: 'locate', block: null, items: [], queue: [], passed: [], failed: [], located: null, done: false, end: '', tierResult: {},
@@ -77,7 +101,7 @@ export function createCheck(opts = {}, rand = Math.random) {
 }
 function newBlock(st, ti) {
   st.ti = ti;
-  const fams = shuffle(tierById(st.tiers[ti]).families, st.rand).slice(0, LOCATE_ITEMS);
+  const fams = shuffle(checkFamilies(st, st.tiers[ti]), st.rand).slice(0, LOCATE_ITEMS);
   st.block = { tier: st.tiers[ti], fams, items: [] };
 }
 const stop = (st, why) => { st.done = true; st.end = why; st.block = null; st.queue = []; };
@@ -85,16 +109,18 @@ function locate(st, ti, why) {
   st.located = ti; st.locatedWhy = why; st.phase = 'zoom'; st.block = null;
   for (const t of [ti, ti + 1]) {
     if (t >= st.tiers.length) continue;
-    for (const fam of tierById(st.tiers[t]).families) for (let k = 0; k < ZOOM_ITEMS; k++) st.queue.push({ family: fam, tier: st.tiers[t], phase: 'zoom' });
+    for (const fam of checkFamilies(st, st.tiers[t])) for (let k = 0; k < ZOOM_ITEMS; k++) st.queue.push({ family: fam, tier: st.tiers[t], phase: 'zoom' });
   }
 }
 function startTwins(st) {
   st.phase = 'twins';
   if (!st.division) return;
   const order = TIERS.flatMap((t) => t.families).filter((f) => f[0] === 'x');
+  const inCheck = new Set(st.tiers.flatMap((id) => tierById(id).families));   // v1.7: ÷10s / big ÷ are asked in their tier
   for (const fam of order) {
     const its = st.items.filter((x) => x.family === fam);
-    if (its.length && its.every((x) => x.quick)) st.queue.push({ family: 'd' + fam.slice(1), tier: twinTier(fam), phase: 'twins' });
+    const dfam = divisionFamily(fam);
+    if (dfam && !inCheck.has(dfam) && its.length && its.every((x) => x.quick)) st.queue.push({ family: dfam, tier: twinTier(fam), phase: 'twins' });
   }
 }
 
@@ -173,7 +199,7 @@ export function checkResult(st, now = Date.now()) {
     return { acc: Math.round(acc * 100) / 100, medianMs: median(f.map((x) => x.ms)), asked: f.length,
       status: acc < 1 ? 'shaky' : allQuick && (f.length >= 2 || tierPassedQuick) ? 'fluent' : 'known' };
   };
-  for (const id of [...st.tiers, 'T6', 'T7']) {
+  for (const id of [...st.tiers, ...TIERS.map((t) => t.id).filter((id) => !st.tiers.includes(id))]) {
     const its = st.items.filter((x) => x.tier === id);
     const result = st.tierResult[id] || (its.length ? (its.every((x) => x.correct) ? (its.every((x) => x.quick) ? 'fluent' : 'known') : 'shaky') : 'untested');
     if (its.length || st.tiers.includes(id)) tiers.push({ tier: id, asked: its.length, correct: its.filter((x) => x.correct).length, quick: its.filter((x) => x.quick).length, result });

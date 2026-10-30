@@ -7,7 +7,7 @@
 // the normal fix-it routine; the family just waits its turn. Scouts are ordinary first-sight answers in the records.
 // RE-CHECKS: the Pit Crew Check offers itself again before a race after 14 days, or when the placement looks stale:
 // 5 finished races in a row with no misses, or the frontier two tiers above the placed tier.
-import { factKey, familyMembers } from './facts.js';
+import { factKey, familyMembers, isTableFamily, twinFamily } from './facts.js';
 import { DAY_MS, isNew } from './scheduler.js';
 import { famInfo, ladder, tierOf } from './adaptive.js';
 import { familyRecent } from './governor.js';
@@ -21,7 +21,7 @@ export const canSkipCheck = (d) => (Number(d && d.checkSkips) || 0) < CHECK_SKIP
 export function noteCheckSkip(d) { d.checkSkips = (Number(d.checkSkips) || 0) + 1; return d.checkSkips; }
 export const checkSkipsLeft = (d) => Math.max(0, CHECK_SKIPS - (Number(d && d.checkSkips) || 0));
 const tierNum = (id) => Number(String(id || '').slice(1));
-const twinOf = (fam) => (fam[0] === 'd' ? 'x' + fam.slice(1) : null);
+const twinOf = twinFamily;
 const isSecure = (i) => !!(i && (i.secure || i.graduated || i.vouched));
 
 /** The family the next scout comes from, or null. */
@@ -47,12 +47,13 @@ export function scoutFamily(d, now = Date.now()) {
   cands.sort((a, b) => tierOf(a) - tierOf(b) || L.indexOf(a) - L.indexOf(b));
   return cands[0] || null;
 }
-/** A never-asked fact of the family (other number 3 … 9 first). */
+/** A never-asked fact of the family (other number 3 … 9 first; v1.7 families: any of their facts). */
 export function scoutFact(d, fam, rand = Math.random) {
   const fresh = familyMembers(fam).filter((f) => isNew(d.records[f]));
   if (!fresh.length) return null;
   const n = Number(fam.slice(1));
   const other = (f) => {
+    if (!isTableFamily(fam) || fam === 'add' || fam === 'sub') return 5;
     if (fam[0] === 'd') return Number(f.split('/')[0]) / n;
     const [a, b] = f.split('x').map(Number); return a === n ? b : a;
   };
@@ -89,9 +90,9 @@ export function checkDue(d, now = Date.now()) {
 }
 /** Days until the 14-day re-check (0 when due). */
 export const recheckInDays = (d, now = Date.now()) => (d.placement ? Math.max(0, Math.ceil(RECHECK.days - (now - d.placement.at) / DAY_MS)) : 0);
-/** Where the re-check starts: the frontier's lowest × tier (T1 … T5), else T3. */
+/** Where the re-check starts: the frontier's lowest × tier (T1 … T5, v1.7 T8 … T10 when the check has them), else T3. */
 export function recheckStart(d) {
-  const fr = ((d.frontier && d.frontier.families) || []).map(tierOf).filter((t) => t >= 1 && t <= 5);
+  const fr = ((d.frontier && d.frontier.families) || []).map(tierOf).filter((t) => (t >= 1 && t <= 5) || (t >= 8 && t <= 10));
   return fr.length ? `T${Math.min(...fr)}` : 'T3';
 }
 export { factKey };

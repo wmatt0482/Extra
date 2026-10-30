@@ -9,14 +9,14 @@
 //     ×6 → ×3 …) re-enters the frontier in its place, and it returns once that family is secure again (4+ answers
 //     since, all right, ≥ 75 % quick) or after a week.
 // Fewer than 6 answers: on target. Re-evaluated after every gate (store.recordAnswer). Pure: no DOM, no storage.
-import { famLabel, familyMembers, missCountsFor } from './facts.js';
+import { famLabel, familyMembers, missCountsFor, twinFamily } from './facts.js';
 import { DAY_MS } from './scheduler.js';
 
 export const DIAL_WINDOW = 12;
 export const DIAL_MIN = 6;
 export const EASY = { right: 0.92, quick: 0.7 };
 export const HARD_BELOW = 0.7;
-export const STEP_BACK = { x3: 'x2', x4: 'x2', x5: 'x10', x10: 'x2', x6: 'x3', x9: 'x10', x7: 'x6', x8: 'x4', x11: 'x10', x12: 'x6', sub: 'add' };
+export const STEP_BACK = { x3: 'x2', x4: 'x2', x5: 'x10', x10: 'x2', x6: 'x3', x9: 'x10', x7: 'x6', x8: 'x4', x11: 'x10', x12: 'x6', sub: 'add', x10s: 'x10', xteen: 'x12', xbig: 'xteen' };
 const DIAL_HISTORY = 20;
 
 /** One gate answer into the rolling window: [at, right, quick]. */
@@ -83,7 +83,7 @@ export function drowning(d, fam) {
   const last = familyRecent(d, fam).slice(-6);
   return last.filter((x) => !x[1]).length >= 3;
 }
-export const stepBackTo = (fam) => (fam[0] === 'd' ? 'x' + fam.slice(1) : STEP_BACK[fam] || null);
+export const stepBackTo = (fam) => (fam[0] === 'd' ? twinFamily(fam) : STEP_BACK[fam] || null);
 /** Step a drowning family back: its lower neighbour takes its place until that one is secure again. */
 export function stepBack(d, fam, at = Date.now()) {
   const back = stepBackTo(fam);

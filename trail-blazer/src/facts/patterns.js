@@ -9,15 +9,42 @@
 //                   or two steps away (7 × 8 → 42 = 7 × 6, 70 = 7 × 10)
 //   off-by-operand  one group too many or too few          7 × 8 → 48 (6 × 8) or 63 (7 × 9) · 56 ÷ 7 → 7 or 9
 //   big-operands    any other miss with both numbers ≥ 6   8 × 9 → 71
+//   place-value     v1.7, above the table: a zero dropped or added (20 × 3 → 6 or 600; 60 ÷ 3 → 2), the ones
+//                   forgotten or the two parts written side by side (14 × 6 → 60, 64 or 6024; 23 × 4 → 80, 83, 812),
+//                   only the tens or the ones of a two-digit quotient (91 ÷ 7 → 10 or 3)
 //   slow-only       not a miss: right, but never quick after 2+ right answers (recorded once in a row)
 //   random          anything else
 import { divisionTwins, factAnswer, factFamilies, factKey, factParts, factText, famLabel, missFamily, shownParts } from './facts.js';
 import { DAY_MS, isKnown } from './scheduler.js';
 import { hintFor } from './hints.js';
 
-export const PATTERN_KINDS = ['reversed', 'operation', 'inverse', 'adjacent', 'off-by-operand', 'big-operands', 'slow-only', 'random'];
+export const PATTERN_KINDS = ['reversed', 'operation', 'inverse', 'adjacent', 'off-by-operand', 'big-operands', 'place-value', 'slow-only', 'random'];
 export const PATTERNS_KEPT = 6;                 // v1.6: the newest 6 per fact (the size cap for sync)
-const HINTED = ['adjacent', 'off-by-operand', 'reversed', 'inverse', 'operation'];
+const HINTED = ['adjacent', 'off-by-operand', 'reversed', 'inverse', 'operation', 'place-value'];
+
+/** v1.7: the place-value slips of a fact above the table (see the header): the wrong answers that mean one. */
+function placeValueSlips(p) {
+  const { a, b, op } = p;
+  const out = new Set();
+  if (op === 'x') {
+    if (a <= 12 && b <= 12) return out;
+    const ans = a * b;
+    out.add(ans / 10); out.add(ans * 10);
+    for (const [big, m] of [[a, b], [b, a]]) {
+      if (big <= 12) continue;
+      const tens = Math.floor(big / 10) * 10, ones = big % 10;
+      if (!ones) continue;
+      out.add(tens * m); out.add(tens * m + ones); out.add(ones * m); out.add(Number(`${tens * m}${ones * m}`)); out.add(Number(`${(tens / 10) * m}${ones * m}`));
+    }
+  } else if (op === '/') {
+    const q = a / b;
+    if (b <= 12 && q <= 12) return out;
+    out.add(q / 10); out.add(q * 10);
+    if (q >= 10 && q < 20) { out.add(10); out.add(q - 10); }
+  }
+  out.delete(op === 'x' ? a * b : a / b);
+  return out;
+}
 
 const reverseDigits = (n) => Number(String(n).split('').reverse().join(''));
 
@@ -43,6 +70,7 @@ export function classifyMiss(fact, given, recs = {}) {
   const other = op === 'x' ? [a + b] : op === '/' ? [a * b, a - b, a + b] : op === '+' ? [Math.abs(a - b), a * b] : [a + b];
   if (other.includes(g)) return 'operation';
   if (op === '/' && isKnown(recs[factKey(b, 'x', ans)])) return 'inverse';
+  if (placeValueSlips(p).has(g)) return 'place-value';
   if (op === 'x') {
     const n = neighbour(a, b, g);
     if (n) return Math.abs(n.d) === 2 || n.x === n.c ? 'adjacent' : 'off-by-operand';
@@ -98,6 +126,7 @@ export function patternHint(fact, flip, kind, given) {
     return `the digits in order: ${String(ans).split('').join(', ')}: ${ans}`;
   }
   if (kind === 'inverse' && p.op === '/') return `you know ${p.b} × ${ans} = ${p.a}, so ${p.a} ÷ ${p.b} = ${ans}`;
+  if (kind === 'place-value') return `watch the tens and ones: ${hintFor(fact, flip)}`;
   if (kind === 'operation') {
     const what = { x: 'this one is × (times)', '/': 'this one is ÷ (how many groups)', '+': 'this one is + (put together)', '-': 'this one is − (take away)' }[p.op];
     return `${what}: ${hintFor(fact, flip)}`;
@@ -159,6 +188,7 @@ export function patternSummary(d, now = Date.now(), days = 7) {
   said('off-by-operand', 2, 'Often one group off');
   said('reversed', 2, 'Sometimes swaps the digits');
   said('operation', 2, 'Mixes up the operation');
+  said('place-value', 2, 'Slips on the tens and ones of big numbers');
   return out;
 }
 
