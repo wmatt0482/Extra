@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wagon West Music Harness</title>
+<style>
+  :root { --bg: #1d140e; --panel: #2b1d14; --fg: #fff6e6; --dim: #c9b79c; --accent: #e8a23a; --on: #3f7a3b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.4 system-ui, -apple-system, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px max(16px, env(safe-area-inset-right)) 32px max(16px, env(safe-area-inset-left)); }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.hint { color: var(--dim); margin: 0 0 16px; font-size: 13px; }
+  section { background: var(--panel); border-radius: 10px; padding: 12px; margin: 0 0 12px; }
+  h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dim); margin: 0 0 8px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { font: inherit; color: var(--fg); background: #4a3322; border: 2px solid transparent; border-radius: 8px; padding: 10px 14px; min-height: 44px; cursor: pointer; }
+  button[aria-pressed="true"] { border-color: var(--accent); background: #6a4a2e; }
+  button.big[aria-pressed="true"] { background: var(--on); }
+  label { display: flex; align-items: center; gap: 10px; }
+  input[type=range] { flex: 1; min-height: 44px; }
+  pre { margin: 0; font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre-wrap; color: var(--dim); }
+  #now { color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Wagon West: the trail's music</h1>
+  <p class="hint">Serve the repo over http (<code>python3 -m http.server</code>), open this page, tap Music on. The module is <code>src/meta/music.js</code>; the app calls <code>Music.unlock()</code> from its first tap.</p>
+
+  <section>
+    <h2>Music</h2>
+    <div class="row"><button class="big" id="on" aria-pressed="false">Music on</button></div>
+  </section>
+  <section>
+    <h2>Tune</h2>
+    <div class="row" id="tunes"></div>
+  </section>
+  <section>
+    <h2>Mood</h2>
+    <div class="row" id="moods"></div>
+  </section>
+  <section>
+    <h2>Voice and volume</h2>
+    <div class="row" style="margin-bottom:8px"><button id="duck" aria-pressed="false">Voice speaking (duck -12 dB)</button></div>
+    <label>Volume <input type="range" id="vol" min="0" max="100" value="100"> <span id="volv">100</span></label>
+  </section>
+  <section>
+    <h2>State</h2>
+    <pre id="now"></pre>
+  </section>
+</main>
+<script type="module">
+import { Music, TUNES } from './src/meta/music.js';
+
+const $ = (id) => document.getElementById(id);
+const MOODS = [['trail', 'Trail (104 bpm, full)'], ['camp', 'Camp (76 bpm, quiet)'], ['post', 'Post office (= camp)'], ['off', 'Off (a panel is open)']];
+const btn = (parent, label, onclick) => { const b = document.createElement('button'); b.textContent = label; b.setAttribute('aria-pressed', 'false'); b.addEventListener('click', () => { Music.unlock(); onclick(); render(); }); parent.appendChild(b); return b; };
+
+const tuneBtns = {}, moodBtns = {};
+for (const id of Object.keys(TUNES)) tuneBtns[id] = btn($('tunes'), TUNES[id].name + ' (' + TUNES[id].key + ')', () => Music.tune(id));
+for (const [id, label] of MOODS) moodBtns[id] = btn($('moods'), label, () => Music.mood(id));
+
+let wantOn = false, wantDuck = false;
+$('on').addEventListener('click', () => { Music.unlock(); wantOn = !wantOn; Music.on(wantOn); render(); });
+$('duck').addEventListener('click', () => { Music.unlock(); wantDuck = !wantDuck; Music.duck(wantDuck); render(); });
+$('vol').addEventListener('input', (e) => { Music.unlock(); Music.setVolume(Number(e.target.value) / 100); $('volv').textContent = e.target.value; render(); });
+document.addEventListener('pointerdown', () => Music.unlock(), { passive: true });
+
+function render() {
+  const c = Music.current;
+  $('on').setAttribute('aria-pressed', String(wantOn)); $('on').textContent = wantOn ? 'Music on' : 'Music off';
+  $('duck').setAttribute('aria-pressed', String(wantDuck));
+  for (const id in tuneBtns) tuneBtns[id].setAttribute('aria-pressed', String(c.tune === id));
+  for (const id in moodBtns) moodBtns[id].setAttribute('aria-pressed', String(c.mood === id));
+  const t = TUNES[c.tune];
+  $('now').textContent = 'isPlaying: ' + Music.isPlaying + '\ncurrent: ' + JSON.stringify(c) + '\n' + t.name + ' · key ' + t.key + ' · ' + t.bars.length + ' bars\nvolume ' + Music.volume.toFixed(2) + ' · ducked ' + Music.ducked;
+}
+setInterval(render, 500);
+render();
+window.__music = Music;   // for the console
+</script>
+</body>
+</html>
