@@ -30,11 +30,11 @@ const tooLarge = () => reply(400, { error: 'too-large', message: `body over ${MA
 
 /** The per-player document kinds: Spell Jump's save and words, Trail Blazer's save (tb) and math facts (facts),
  *  Fraction Fright's save (ff) and fraction skills (fracs). */
-export const PLAYER_KINDS = ['save', 'words', 'tb', 'facts', 'ff', 'fracs'];
+export const PLAYER_KINDS = ['save', 'words', 'tb', 'facts', 'ff', 'fracs', 'ww'];   // ww: Wagon West (1.0)
 
 export function parseKey(key) {
   if (key === 'family') return { kind: 'family' };
-  const m = /^(.+)\.(save|words|tb|facts|ff|fracs)$/.exec(key || '');
+  const m = /^(.+)\.(save|words|tb|facts|ff|fracs|ww)$/.exec(key || '');
   if (!m || !PLAYER_ID_RE.test(m[1])) return null;
   return { kind: m[2], playerId: m[1] };
 }

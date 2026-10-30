@@ -39,6 +39,7 @@ import * as Economy from './journey/economy.js';
 import { LEGS, LEG_BY_ID, SEASONS, SEASON_BY_ID, GOODS } from './content/legs.js';
 import { COMPANION_BY_ID } from './content/companions.js';
 import { LOOKOUTS } from './content/lookouts.js';
+import { EVENTS, EVENT_BY_ID } from './content/events.js';
 import { NATIONS, NATION_BY_ID } from './content/nations.js';
 import { Sfx } from './meta/sfx.js';
 import { registerWagonWestSync } from './meta/sync.js';
@@ -1009,6 +1010,8 @@ async function boot() {
     get scene() { return scene; }, get screen() { return screen; }, get save() { return save; }, get facts() { return facts; },
     get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb } : null; },
     JA,
+    // a test hook: fire a trail event by id (or kind) on an idle trail, as the day loop would
+    playEvent(id) { const ev = EVENT_BY_ID[id] || EVENTS.find((e) => e.kind === id); if (!ev || !T || T.busy) return false; T.busy = true; runEvent(ev).catch((e) => console.error(e)).finally(() => { if (T) { T.busy = false; T.last = 0; } }); return true; },
   }; // debugging / smoke tests
   registerSW();
 }

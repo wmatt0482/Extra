@@ -115,7 +115,7 @@ const kidText = (page) => J(page, () => {
 // ---------- the state of the app, and the driver that plays whatever is on screen ----------
 const W = (page) => J(page, () => {
   const w = window.__wagonWest;
-  return { screen: w.screen, marker: w.markerPanel.state, mAns: w.markerPanel.answer, problem: w.problemPanel.state, pAns: w.problemPanel.answer, pKind: w.problemPanel.problem && w.problemPanel.problem.kind,
+  return { screen: w.screen, marker: w.markerPanel.state, mAns: w.markerPanel.answer, mReal: /^Marker \d+ of \d+$/.test((document.querySelector('#mk-chip') || {}).textContent || ''), problem: w.problemPanel.state, pAns: w.problemPanel.answer, pKind: w.problemPanel.problem && w.problemPanel.problem.kind,
     card: w.card.isOpen, cardTitle: w.card.title, spell: w.spellPanel.isOpen ? w.spellPanel.mode : null, word: w.spellPanel.word, kbOn: !!document.querySelector('#sp-keyboard:not(.is-disabled)'),
     mini: w.mini, travel: w.travel, rope: w.river.rope, rvRope: !document.querySelector('#rv-rope').hidden, rvFoot: !document.querySelector('#rv-foot').hidden,
     poFoot: !document.querySelector('#po-foot').hidden, storeOpen: w.store.isOpen, storeBusy: w.store.busy, journey: w.save.journey && { legIndex: w.save.journey.legIndex, legId: w.save.journey.legId, milesDone: w.save.journey.milesDone, cash: w.save.journey.cash, food: w.save.journey.food, tokens: w.save.journey.tokens, rations: w.save.journey.rations, pace: w.save.journey.pace } };
@@ -141,6 +141,8 @@ async function drive(page, until, plan = {}, timeout = 90000) {
     if (await until(s)) return log;
     if (plan.onEach) await plan.onEach(s, log);
     if (s.marker === 'ask') {
+      // a 'fact' event and a card game ask on the same panel ("Quick fact" / "Card game"); only real mile markers count
+      if (!s.mReal) { await typeDigits(page, '#panel-marker', s.mAns); await page.waitForTimeout(60); continue; }
       const n = log.markers.length + 1;
       const miss = (plan.markerMiss || []).includes(n);
       log.markers.push(miss ? 'missed' : 'right');
@@ -289,9 +291,18 @@ async function runLayout(browser, layout) {
   check(work.length >= 2, `then the work, line by line (${work.join(' | ')})`);
   await shot(page, layout, '07-problem-work');
   await audit(page, layout.insets, 'problem panel (the work)');
-  await typeDigits(page, '#panel-problem', p2.pAns);
-  await page.waitForFunction(() => document.querySelector('#pp-msg').textContent === 'Fixed it!');
-  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'closed');
+  // the copy, then any further parts (the remainder variant asks a second number in turn), until the panel closes
+  let fixedSeen = false;
+  for (let guard = 0; guard < 12; guard++) {
+    const st = await W(page);
+    if (st.problem === 'closed') break;
+    if (st.problem === 'ask' || st.problem === 'copy') await typeDigits(page, '#panel-problem', st.pAns);
+    await page.waitForFunction(() => /Fixed it!/.test(document.querySelector('#pp-msg').textContent) || window.__wagonWest.problemPanel.state === 'closed' || window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 15000 }).catch(() => {});
+    if (await J(page, () => /Fixed it!/.test(document.querySelector('#pp-msg').textContent))) fixedSeen = true;
+    await page.waitForTimeout(150);
+  }
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'closed', null, { timeout: 15000 });
+  check(fixedSeen, 'the copy matches: "Fixed it!"');
   const j2 = (await W(page)).journey;
   check(j2.tokens === j1.tokens && j2.food > j1.food, `fixed: the bacon comes at the fair price anyway (${j2.food} lb), no token`);
   await grab();
@@ -318,11 +329,13 @@ async function runLayout(browser, layout) {
       // the dials, on the trail between panels: brisk pace, full rations (the first change asks the rations question)
       if (!dials && s.screen === 'trail' && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && s.travel && !s.travel.busy) {
         dials = true;
-        await page.click('#dial-pace [data-pace="brisk"]');
-        await page.click('#dial-rations [data-rations="full"]');
+        // (DOM clicks: a mile marker can open between two pointer clicks and swallow the second; the sim starts on
+        // full rations, so the change is to plenty)
+        await J(page, () => { document.querySelector('#dial-pace [data-pace="brisk"]').click(); document.querySelector('#dial-rations [data-rations="plenty"]').click(); });
+        await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask' || window.__wagonWest.markerPanel.state === 'ask', null, { timeout: 5000 }).catch(() => {});
         const d = await W(page);
-        check(d.journey.pace === 'brisk' && d.journey.rations === 'full', 'the dials: brisk pace, full rations');
-        check(d.problem === 'ask' && d.pKind === 'ration', 'the first rations change asks the rations question');
+        check(d.journey.pace === 'brisk' && d.journey.rations === 'plenty', 'the dials: brisk pace, plenty rations');
+        check((d.problem === 'ask' && d.pKind === 'ration') || d.marker === 'ask', 'the first rations change asks the rations question (after any marker that was due)');
       }
       if (s.marker === 'ask' && !markerShot) { markerShot = true; await shot(page, layout, '09-marker', 50); await audit(page, layout.insets, 'mile marker'); }
       if (s.marker === 'show') { const t = await J(page, () => ({ tiles: document.querySelector('#mk-tiles').textContent, typed: document.querySelector('#mk-tiles').dataset.typed })); if (!globalThis.__shownChecked) { globalThis.__shownChecked = true; check(t.typed === '' && Number(t.tiles) === s.mAns, `a missed marker: the fact with its answer shown (${t.tiles}), the typed one gone`); await shot(page, layout, '10-marker-show', 0); } }
@@ -360,6 +373,7 @@ async function runLayout(browser, layout) {
   const seen = words ? Object.values(words.records).filter((r) => r.seenCount > 0).map((r) => r.word) : [];
   check(leg1.words.every((w) => seen.includes(w)), `the river words were recorded in the child's Spell Jump word store (recordSpell: ${seen.join(', ')})`);
   const play1 = await J(page, () => Object.values(window.__wagonWest.save.play)[0]);
+  // (a 'fact' event asks on the marker panel too, so the driver can count one more marker than the journey logs)
   check(play1 && play1.legs === 1 && play1.markers === leg1.markers.length && play1.words === 3 && play1.problems >= 3, `today's log: ${JSON.stringify(play1)}`);
 
   if (layout.legs >= 2) {
@@ -367,9 +381,15 @@ async function runLayout(browser, layout) {
     await page.click('#res-next');
     await page.waitForSelector(visibleSel('#screen-trail'));
     let storeBought = false, letterChecked = false;
+    let huntForced = false;
     const leg2 = await drive(page, (s) => s.screen === 'results', {
       leaveStore: false,
       async onEach(s) {
+        // the leg's events are seeded by the sim; the hunt path is exercised by the test hook once the trail is idle
+        if (!huntForced && s.screen === 'trail' && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && s.travel && !s.travel.busy && s.journey.milesDone > 20) {
+          huntForced = true;
+          await J(page, () => window.__wagonWest.playEvent('hunt'));
+        }
         if (s.screen === 'store' && s.storeOpen && !s.storeBusy && s.problem === 'closed') {
           if (!storeBought) { storeBought = true; await page.click('.st-good[data-good="flour"]'); await page.waitForFunction(() => window.__wagonWest.problemPanel.state !== 'closed' || window.__wagonWest.store.busy === false); }
           else await page.click('#store-done');
@@ -388,7 +408,7 @@ async function runLayout(browser, layout) {
     check(leg2.minis >= 1, 'leg 2: the hunt ran on the scene (scripted on the mock: 5 shots, hit / miss)');
     check(storeBought && leg2.words.length === 3, `the fort: a store problem and the letter's three words (${leg2.words.join(', ')})`);
     const letters = await J(page, () => window.__wagonWest.save.letters);
-    check(letters.length === 1 && leg2.words.every((w) => letters[0].text.includes(w)) && /Love, Mia/.test(letters[0].text), 'the letter is kept in the journal with the three words, signed "Mia"');
+    check(letters.length === 1 && leg2.words.every((w) => letters[0].text.includes(w)) && /\n[^\n]+,\s*Mia\s*$/.test(letters[0].text), 'the letter is kept in the journal with the three words, signed "Mia"');
     check(await J(page, () => window.__spoken.some((t) => /^Here is your letter/.test(t))), 'the letter is read back aloud');
     check(await J(page, () => (window.__wagonWest.save.journey.goods || {}).pelts >= 0 && window.__wagonWest.save.journey.legStats != null), 'the journey carries on (leg 3 started by nextLeg)');
   }

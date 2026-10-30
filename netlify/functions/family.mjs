@@ -3,7 +3,7 @@
 // this file only adapts the Blobs store and the Request/Response objects. Blob keys: `<CODE>/family`,
 // `<CODE>/<playerId>.save` and `<CODE>/<playerId>.words` (Spell Jump), `<CODE>/<playerId>.tb` and
 // `<CODE>/<playerId>.facts` (Trail Blazer's save and math facts, since v1.6), `<CODE>/<playerId>.ff` and
-// `<CODE>/<playerId>.fracs` (Fraction Fright's save and fraction skills, since its 1.0), each holding
+// `<CODE>/<playerId>.fracs` (Fraction Fright's save and fraction skills, since its 1.0), `<CODE>/<playerId>.ww` (Wagon West's save, since its 1.0), each holding
 // { rev, updatedAt, deviceId, data }.
 import { getStore } from '@netlify/blobs';
 import { MAX_BODY, handle } from '../../car-jump/src/sync/protocol.mjs';
