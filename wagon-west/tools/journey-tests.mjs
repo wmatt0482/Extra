@@ -13,11 +13,17 @@ import {
   createJourney, startLeg, tickDay, applyMarker, applyProblem, applyWords, applyHunt, applyFish, applyTrade, buy, arrive,
   nextLeg, journeyDone, newSeason, foodNeeded, etaDays, priceAt, storeList, markerMiles, foodToNextFort, legStatus,
   setPace, setRations, setHunting, tradeOffer, partySize, storeLeg,
+  camp, buyUpgrade, upgradesOwned, derbyPay, awardCard, suitComplete, suitProgress, cardForLeg, cardForAnimal, ensureJourney,
+  dailyChallenge, claimChallenge, UPGRADES,
 } from '../src/journey/sim.js';
+import { CARDS, CARD_BY_ID, SUITS, cardsOf } from '../src/content/cards.js';
+import { NATIONS } from '../src/content/nations.js';
+import { COMPANIONS } from '../src/content/companions.js';
+import { readFileSync } from 'node:fs';
 import { problemFor, parseFactId, splitLine, numberWords, PROBLEM_KINDS } from '../src/journey/problems.js';
 import { composeLetter, happenedKeys, keepLetter } from '../src/journey/letters.js';
 import { starsFor, starCount } from '../src/journey/stars.js';
-import { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, payFor, crateFor, lbOf, TRADE_LB, milesPerDay } from '../src/journey/economy.js';
+import { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay } from '../src/journey/economy.js';
 import { planEvents, eligibleEvents, EVENTS, EVENT_BY_ID } from '../src/journey/events.js';
 import { useLegs, syntheticTrail, legList, LEGS, SEASONS, GOODS, nationFor } from '../src/journey/route.js';
 import { mulberry32, hashSeed } from '../src/journey/rng.js';
@@ -562,6 +568,358 @@ test('letters: the river line on a river leg, the mood line by the mood, an empt
   assert.ok(L.lines[0].includes(TRAIL[0].stop.name));
   assert.equal(composeLetter(J, [], ['one', 'two']).ps, 'P.S. My spelling words this week: one and two.');
   keepLetter(J, L); assert.equal(J.letters.length, 1); assert.equal(J.letters[0].text, L.text);
+});
+
+// ================= v1.1: trail cards, camp, the daily challenge, wagon upgrades, the derby's pay =================
+console.log('\ntrail cards (content)');
+test('40 cards in four suits: 12 landmarks, 8 nations, 12 wild, 8 companions, with the shape the album needs', () => {
+  assert.equal(CARDS.length, 40);
+  assert.deepEqual(SUITS, ['landmark', 'nation', 'wild', 'companion']);
+  assert.deepEqual(SUITS.map((s) => cardsOf(s).length), [12, 8, 12, 8]);
+  assert.equal(new Set(CARDS.map((c) => c.id)).size, 40, 'ids are unique across suits');
+  for (const c of CARDS) {
+    assert.equal(CARD_BY_ID[c.id], c);
+    for (const k of ['id', 'suit', 'name', 'emoji', 'fact', 'say']) assert.ok(typeof c[k] === 'string' && c[k].length > 0, `${c.id}.${k}`);
+    assert.ok(SUITS.includes(c.suit));
+    assert.ok(c.fact.length <= 160, `${c.id}: one line (${c.fact.length})`);
+  }
+  assert.deepEqual(cardsOf('landmark').map((c) => c.id), LEGS.map((l) => l.id), 'a landmark card per leg id, in trail order');
+  assert.deepEqual(cardsOf('nation').map((c) => c.id), NATIONS.map((n) => n.id), 'a card per nation id');
+  assert.deepEqual(cardsOf('companion').map((c) => c.id), COMPANIONS.map((c) => c.id), 'a card per companion id');
+  assert.deepEqual(cardsOf('wild').map((c) => c.id).sort(), ['bald-eagle', 'bison', 'camas', 'coyote', 'jackrabbit', 'mule-deer', 'prairie-dog',
+    'pronghorn', 'rattlesnake', 'sagebrush', 'salmon', 'wild-plum']);
+});
+test('kid rules: no death, illness or weapons in a card; the rattlesnake is only "give it room"; the spoken line has no digits', () => {
+  const bad = /\b(die[sd]?|dead|death|kill\w*|sick\w*|ill|illness|disease\w*|gun\w*|shoot\w*|shot|weapon\w*|arrow\w*|bow|blood\w*|bite\w*|bitten|venom\w*|poison\w*|grave\w*|hurt|wound\w*)\b/i;
+  for (const c of CARDS) {
+    assert.ok(!bad.test(c.fact), `${c.id}: ${c.fact}`);
+    assert.ok(!bad.test(c.say), `${c.id}: ${c.say}`);
+    assert.ok(!/\d/.test(c.say), `${c.id}: numbers as words in say: ${c.say}`);
+    assert.ok(!/\b(mph|ft|mi)\b/.test(c.say), `${c.id}: no abbreviations in say`);
+  }
+  assert.equal(CARD_BY_ID.rattlesnake.fact, 'Rattlesnake: give it room.');
+});
+test('every wild card has biomes, every biome has a wild card, and each wild card has a source entry in docs/SOURCES.md', () => {
+  const biomes = new Set(['prairie', 'bluffs', 'highdesert', 'mountains', 'gorge', 'valley']);
+  for (const c of cardsOf('wild')) assert.ok(c.biomes.length > 0 && c.biomes.every((b) => biomes.has(b)), c.id);
+  for (const b of biomes) assert.ok(cardsOf('wild').some((c) => c.biomes.includes(b)), `a wild card for ${b}`);
+  const src = readFileSync(new URL('../docs/SOURCES.md', import.meta.url), 'utf8');
+  for (const c of cardsOf('wild')) assert.ok(src.includes(`<a id="card-${c.id}">`), `SOURCES.md has card-${c.id}`);
+  for (const c of [...cardsOf('landmark'), ...cardsOf('nation')]) assert.ok(src.includes(`<a id="${c.id}">`), `SOURCES.md has ${c.id}`);
+});
+
+console.log('\ntrail cards (the sim)');
+test('awardCard: a new card is kept; a duplicate pays one trade token; an unknown id changes nothing', () => {
+  const J = createJourney({ companions: PARTY, seed: 3 });
+  assert.deepEqual(J.cards, []);
+  const a = awardCard(J, 'bison');
+  assert.equal(a.new, true); assert.equal(a.tokens, 0); assert.deepEqual(J.cards, ['bison']); assert.equal(J.tokens, 0);
+  const b = awardCard(J, 'bison');
+  assert.equal(b.new, false); assert.equal(b.tokens, 1); assert.equal(J.tokens, 1); assert.deepEqual(J.cards, ['bison']);
+  awardCard(J, 'bison'); assert.equal(J.tokens, 2);
+  const c = awardCard(J, 'not-a-card');
+  assert.equal(c.new, false); assert.equal(c.tokens, 0); assert.equal(J.tokens, 2); assert.deepEqual(J.cards, ['bison']);
+});
+test('suitComplete: false until every card of the suit is held, true on the last, and only for that suit', () => {
+  const J = createJourney({ companions: PARTY, seed: 3 });
+  assert.ok(SUITS.every((s) => !suitComplete(J, s)));
+  const comp = cardsOf('companion');
+  comp.slice(0, -1).forEach((c) => { const r = awardCard(J, c.id); assert.equal(r.suitComplete, false); });
+  assert.equal(suitComplete(J, 'companion'), false);
+  assert.deepEqual(suitProgress(J, 'companion'), { have: 7, of: 8 });
+  const last = awardCard(J, comp[comp.length - 1].id);
+  assert.equal(last.new, true); assert.equal(last.suitComplete, true);
+  assert.equal(suitComplete(J, 'companion'), true); assert.equal(suitComplete(J, 'wild'), false); assert.equal(suitComplete(J, 'nonsense'), false);
+  for (const s of SUITS) cardsOf(s).forEach((c) => awardCard(J, c.id));
+  assert.ok(SUITS.every((s) => suitComplete(J, s)));
+  assert.equal(J.cards.length, 40);
+});
+test('cardForLeg: a wild card of the leg\'s biome (else any wild); cardForAnimal maps the scene\'s animals', () => {
+  const J = createJourney({ companions: PARTY, seed: 5 });
+  for (let i = 0; i < legList().length; i++) {
+    startLeg(J, legList()[i].id);
+    const biome = legList()[i].biome;
+    const rand = mulberry32(i + 1);
+    const seen = new Set();
+    for (let k = 0; k < 60; k++) { const c = cardForLeg(J, rand); assert.equal(c.suit, 'wild'); assert.ok(c.biomes.includes(biome), `${c.id} in ${biome}`); seen.add(c.id); }
+    assert.ok(seen.size >= 2, `variety on ${biome}`);
+  }
+  J.legId = 'nowhere'; const any = cardForLeg(J, () => 0); assert.equal(any.suit, 'wild');   // an unknown leg: any wild card
+  assert.equal(cardForAnimal('eagle').id, 'bald-eagle'); assert.equal(cardForAnimal('bison').id, 'bison');
+  assert.equal(cardForAnimal('pronghorn').id, 'pronghorn'); assert.equal(cardForAnimal('coyote').id, 'coyote');
+  assert.equal(cardForAnimal('deer').id, 'mule-deer'); assert.equal(cardForAnimal('rabbit').id, 'jackrabbit');
+  assert.equal(cardForAnimal('turkey'), null); assert.equal(cardForAnimal(undefined), null);
+});
+
+console.log('\ncamp');
+test('camp: costs a day, eats a normal day\'s food, covers no miles, and lifts the mood (+8 rest, +4 the others)', () => {
+  for (const kind of ['fish', 'hunt', 'cards', 'tales', 'rest']) {
+    const J = createJourney({ companions: PARTY, seed: 9 });
+    tickDay(J, { rand: mulberry32(1) });
+    J.spirit = 40; J.rations = 'plenty';
+    const before = { day: J.day, food: J.food, miles: J.milesDone, spirit: J.spirit, totalsDays: J.totals.days };
+    const r = camp(J, kind, { rand: mulberry32(2) });
+    assert.equal(r.day, before.day + 1); assert.equal(J.day, before.day + 1); assert.equal(J.totals.days, before.totalsDays + 1);
+    assert.equal(J.milesDone, before.miles, 'no miles');
+    assert.equal(before.food - J.food, foodNeeded(partySize(J), 'plenty', 1, 0), 'a normal day\'s food');
+    assert.equal(r.food, J.food); assert.equal(r.mood, J.mood);
+    assert.equal(J.spirit, before.spirit + (kind === 'rest' ? 8 : 4), kind);
+    assert.equal(J.totals.camps, 1); assert.equal(r.kind, kind);
+  }
+});
+test('camp: food never goes below 0 (mules eat feed too), spirit stays within 0-100, an unknown kind is a rest', () => {
+  const J = createJourney({ animal: 'mules', companions: PARTY, seed: 9 });
+  J.food = 5; J.spirit = 98;
+  const r = camp(J, 'rest');
+  assert.equal(J.food, 0); assert.equal(r.food, 0); assert.equal(J.spirit, 100);
+  const r2 = camp(J, 'fish'); assert.equal(J.food, 0); assert.ok(r2.day === r.day + 1);
+  const r3 = camp(J, 'dance'); assert.equal(r3.kind, 'rest');
+  J.spirit = 10; camp(J, 'rest'); assert.equal(J.spirit, 18);
+});
+test('camp: uses up a waiting rest day, counts in the leg\'s log, and the fishing it makes room for feeds the party', () => {
+  const J = createJourney({ companions: PARTY, seed: 11 });
+  J.trip.restDays = 1;
+  camp(J, 'fish');
+  assert.equal(J.trip.restDays, 0);
+  assert.ok(J.trip.happened.includes('camp'));
+  J.food = 0;
+  camp(J, 'fish'); applyFish(J, { fishLb: 12 });
+  assert.ok(J.food >= 12);
+  const day = J.day, miles = J.milesDone;
+  tickDay(J, { rand: mulberry32(3) });
+  assert.equal(J.day, day + 1); assert.ok(J.milesDone > miles);
+});
+test('camp: a day of camping every leg never breaks the journey (food >= 0, cash >= 0, every leg arrives)', () => {
+  const rand = mulberry32(77);
+  const J = createJourney({ companions: PARTY, seed: 77 });
+  shop(J);
+  const kinds = ['fish', 'hunt', 'cards', 'tales', 'rest'];
+  for (let guard = 0; guard < 40 && !J.done; guard++) {
+    camp(J, kinds[guard % 5], { rand }); assert.ok(J.food >= 0);
+    playLeg(J, { marker: 0.7, problem: 0.6, huntLb: 20, fishLb: 8 }, rand);
+    assert.ok(arrive(J)); nextLeg(J);
+  }
+  assert.ok(J.done); assert.equal(J.totals.legs, 12); assert.equal(J.totals.camps, 12);
+});
+
+console.log('\ndaily challenge');
+// a throwaway search for a day key that gives a kind on the journey's current leg
+function keyForKind(J, kind) {
+  for (let i = 0; i < 400; i++) {
+    const probe = clone(J); const ch = dailyChallenge(probe, `probe-${i}`);
+    if (ch.kind === kind) return `probe-${i}`;
+  }
+  return null;
+}
+test('dailyChallenge: deterministic per day key and leg; different days vary; all six kinds appear across days and legs', () => {
+  const seen = new Set();
+  for (const leg of TRAIL) {
+    const A = createJourney({ companions: PARTY, seed: 1 }), B = createJourney({ companions: PARTY, seed: 999 });
+    startLeg(A, leg.id); startLeg(B, leg.id);
+    const kinds = new Set();
+    for (let d = 0; d < 40; d++) {
+      const key = `2026-11-${String(d + 1).padStart(2, '0')}`;
+      const a = dailyChallenge(A, key), b = dailyChallenge(B, key);
+      assert.equal(a.id, b.id); assert.equal(a.text, b.text); assert.equal(a.say, b.say);
+      assert.equal(a.id, dailyChallenge(A, key).id, 'asking again gives the same goal');
+      assert.deepEqual(a.reward, { tokens: 1, card: true });
+      assert.equal(typeof a.check, 'function'); assert.equal(a.check(A), false, 'not met yet');
+      assert.ok(a.text.length > 8 && !/\d/.test(a.say) && !/undefined|\{|\}/.test(a.text), a.text);
+      if (leg.stop.kind !== 'river') assert.notEqual(a.kind, 'river'); else if (a.kind === 'river') assert.ok(a.text.includes(leg.stop.name));
+      if (!nationFor(leg)) assert.notEqual(a.kind, 'trade');
+      kinds.add(a.kind); seen.add(a.kind);
+    }
+    assert.ok(kinds.size >= 3, `${leg.id}: variety (${[...kinds]})`);
+  }
+  assert.deepEqual([...seen].sort(), ['camp', 'markers', 'reach', 'river', 'supper', 'trade']);
+  const J = createJourney({ companions: PARTY, seed: 1 });
+  assert.ok(!/undefined/.test(dailyChallenge(J, 'x').text));
+});
+test('dailyChallenge: J.challenges records the day, stays JSON-safe, and the goal does not move when the leg does', () => {
+  const J = createJourney({ companions: PARTY, seed: 4 });
+  const ch = dailyChallenge(J, '2026-11-05');
+  assert.equal(J.challenges['2026-11-05'].id, ch.id); assert.equal(J.challenges['2026-11-05'].done, false);
+  J.milesDone = J.trip.miles; arrive(J); nextLeg(J);
+  const again = dailyChallenge(J, '2026-11-05');
+  assert.equal(again.id, ch.id); assert.equal(again.text, ch.text);
+  assert.deepEqual(clone(J.challenges), J.challenges);
+  const next = dailyChallenge(J, '2026-11-06');
+  assert.ok(next.id.startsWith('2026-11-06|'));
+});
+test('dailyChallenge checks: every marker right, supper, river words, reach the stop, trade, make camp', () => {
+  // markers: right on the leg; one miss spoils it
+  let J = createJourney({ companions: PARTY, seed: 21 });
+  let ch = dailyChallenge(J, keyForKind(J, 'markers'));
+  assert.equal(ch.check(J), false);
+  const n = J.trip.markers.length;
+  for (let i = 0; i < n - 1; i++) applyMarker(J, { correct: true, quick: false });
+  assert.equal(ch.check(J), false, 'not every marker asked yet');
+  applyMarker(J, { correct: true, quick: false });
+  assert.equal(ch.check(J), true);
+  J = createJourney({ companions: PARTY, seed: 21 });
+  ch = dailyChallenge(J, keyForKind(J, 'markers'));
+  for (let i = 0; i < n; i++) applyMarker(J, { correct: i !== 1, quick: false });
+  assert.equal(ch.check(J), false, 'one miss');
+  // supper: a fish or a hunt that brought food
+  J = createJourney({ companions: PARTY, seed: 22 });
+  ch = dailyChallenge(J, keyForKind(J, 'supper'));
+  assert.equal(ch.check(J), false); applyFish(J, { fishLb: 0 }); assert.equal(ch.check(J), false, 'an empty line is not supper');
+  applyFish(J, { fishLb: 6 }); assert.equal(ch.check(J), true);
+  J = createJourney({ companions: PARTY, seed: 22 });
+  ch = dailyChallenge(J, keyForKind(J, 'supper')); applyHunt(J, { meatLb: 10 }); assert.equal(ch.check(J), true);
+  J = createJourney({ companions: PARTY, seed: 22, hunting: false });
+  assert.ok(!/supper/.test(dailyChallenge(J, keyForKind(J, 'supper')).text), 'hunting off: just a fish');
+  // river: the first leg is the Kansas River; three words, all right
+  J = createJourney({ companions: PARTY, seed: 23 });
+  assert.equal(J.legId, TRAIL[0].id); assert.equal(TRAIL[0].stop.kind, 'river');
+  ch = dailyChallenge(J, keyForKind(J, 'river'));
+  assert.ok(ch.text.includes(TRAIL[0].stop.name), ch.text);
+  assert.equal(ch.check(J), false);
+  applyWords(J, { asked: 3, right: 2 }); assert.equal(ch.check(J), false, 'one word missed');
+  J = createJourney({ companions: PARTY, seed: 23 });
+  ch = dailyChallenge(J, keyForKind(J, 'river')); applyWords(J, { asked: 3, right: 3 }); assert.equal(ch.check(J), true);
+  // reach: the stop; and it is remembered after the party rolls on
+  J = createJourney({ companions: PARTY, seed: 24 });
+  ch = dailyChallenge(J, keyForKind(J, 'reach'));
+  assert.ok(ch.text.startsWith('Reach '), ch.text); assert.equal(ch.check(J), false);
+  J.milesDone = J.trip.miles; assert.equal(ch.check(J), true);
+  arrive(J); nextLeg(J); assert.equal(ch.check(J), true, 'still met on the next leg');
+  // trade: units got from a post (Kansas has the Kansa)
+  J = createJourney({ companions: PARTY, seed: 25 });
+  ch = dailyChallenge(J, keyForKind(J, 'trade')); assert.equal(ch.check(J), false);
+  applyTrade(J, { giveN: 3, getN: 2 }); assert.equal(ch.check(J), true);
+  // camp: once
+  J = createJourney({ companions: PARTY, seed: 26 });
+  ch = dailyChallenge(J, keyForKind(J, 'camp')); assert.equal(ch.check(J), false);
+  camp(J, 'rest'); assert.equal(ch.check(J), true);
+});
+test('claimChallenge: only when met, once per day key, +1 token; another day is separate; survives a JSON round trip', () => {
+  const J = createJourney({ companions: PARTY, seed: 31 });
+  const key = keyForKind(J, 'camp');
+  const ch = dailyChallenge(J, key);
+  assert.deepEqual(claimChallenge(J, ch.id), { ok: false }); assert.equal(J.tokens, 0);
+  camp(J, 'tales');
+  const r = claimChallenge(J, ch.id);
+  assert.deepEqual(r, { ok: true, tokens: 1, card: true }); assert.equal(J.tokens, 1); assert.equal(J.challenges[key].done, true);
+  assert.deepEqual(claimChallenge(J, ch.id), { ok: false }, 'once'); assert.equal(J.tokens, 1);
+  assert.equal(dailyChallenge(J, key).done, true);
+  assert.deepEqual(claimChallenge(J, 'nonsense|camp|x'), { ok: false });
+  assert.deepEqual(claimChallenge(J, key + '|camp|' + J.legId), { ok: false }, 'the id must match the day\'s goal unless it is the goal');
+  const saved = JSON.parse(JSON.stringify(J));
+  assert.deepEqual(claimChallenge(saved, ch.id), { ok: false }, 'still claimed after a save');
+  const other = dailyChallenge(saved, 'another-day');
+  assert.notEqual(other.id, ch.id); assert.equal(other.done, false);
+});
+
+console.log('\nwagon upgrades');
+test('buyUpgrade: with tokens or cash, once, never below 0, nothing changes on a refusal', () => {
+  assert.deepEqual(UPGRADES.map((u) => [u.id, u.tokens, u.cash]), [['cover', 6, 40], ['tires', 8, 60], ['barrel', 6, 40]]);
+  const J = createJourney({ companions: PARTY, seed: 41 });
+  assert.deepEqual(J.upgrades, {});
+  J.tokens = 5; assert.equal(buyUpgrade(J, 'cover', { tokens: true }), false); assert.equal(J.tokens, 5); assert.deepEqual(J.upgrades, {});
+  J.tokens = 7; assert.equal(buyUpgrade(J, 'cover', { tokens: true }), true); assert.equal(J.tokens, 1); assert.equal(J.upgrades.cover, true);
+  assert.equal(buyUpgrade(J, 'cover', { tokens: true }), false, 'owned'); assert.equal(J.tokens, 1);
+  assert.equal(buyUpgrade(J, 'cover', { cash: true }), false, 'owned, cash too');
+  const cash0 = J.cash;
+  assert.equal(buyUpgrade(J, 'tires', { cash: true }), true); assert.equal(J.cash, cash0 - 60); assert.ok(J.upgrades.tires);
+  J.cash = 39; assert.equal(buyUpgrade(J, 'barrel', { cash: true }), false); assert.equal(J.cash, 39);
+  assert.equal(buyUpgrade(J, 'barrel', {}), false, 'no payment named'); assert.equal(buyUpgrade(J, 'wings', { tokens: true }), false);
+  assert.deepEqual(upgradesOwned(J), ['cover', 'tires']);
+  const R = createJourney({ season: 's1850', companions: PARTY, seed: 41 });
+  const c0 = R.cash; assert.equal(buyUpgrade(R, 'barrel', { cash: true }), true); assert.equal(R.cash, c0 - 80, 'cash prices scale with the season');
+});
+test('tires: +2 miles on a moving day, in the plan\'s arithmetic too (ETA, food to the next fort)', () => {
+  const mk = () => createJourney({ companions: PARTY, seed: 51 });
+  const A = mk(), B = mk();
+  B.tokens = 8; assert.equal(buyUpgrade(B, 'tires', { tokens: true }), true);
+  const ra = tickDay(A, { rand: () => 0.5 }), rb = tickDay(B, { rand: () => 0.5 });
+  assert.equal(rb.miles - ra.miles, 2);
+  for (const pace of ['steady', 'brisk']) { setPace(A, pace); setPace(B, pace); assert.equal(tickDay(B, { rand: () => 0.5 }).miles - tickDay(A, { rand: () => 0.5 }).miles, 2, pace); }
+  assert.ok(legStatus(B).etaDays <= legStatus(A).etaDays);
+  assert.equal(milesPerDay('steady', 'oxen', 2), 17); assert.equal(etaDays(34, 'steady', 'oxen', 2), 2); assert.equal(etaDays(34, 'steady', 'oxen'), 3);
+  // a rest day stays 0 miles
+  B.trip.restDays = 1; assert.equal(tickDay(B, { rand: () => 0.5 }).miles, 0);
+});
+test('cover: a storm (any rest event) costs the party no mood; without it, it does', () => {
+  const mk = () => { const J = createJourney({ companions: PARTY, seed: 52 }); J.trip.events = [{ id: 'storm', kind: 'rest', atMile: 1, fired: false }]; J.rations = 'plenty'; J.spirit = 70; return J; };
+  const A = mk(), B = mk(); B.upgrades.cover = true;
+  const ra = tickDay(A, { rand: () => 0.5 }), rb = tickDay(B, { rand: () => 0.5 });
+  assert.equal(ra.event.id, 'storm'); assert.equal(rb.event.id, 'storm');
+  assert.equal(rb.event.covered, true); assert.equal(ra.event.covered, false);
+  assert.equal(B.spirit - A.spirit, MOOD.weather); assert.equal(B.spirit, 70 + MOOD.pace.steady);
+  // other events are untouched by the cover
+  const C = mk(), D = mk(); C.trip.events = D.trip.events = [{ id: 'berries', kind: 'bonus', atMile: 1, fired: false }]; D.upgrades.cover = true;
+  tickDay(C, { rand: () => 0.5 }); tickDay(D, { rand: () => 0.5 }); assert.equal(C.spirit, D.spirit);
+});
+test('barrel: lean rations count as plenty for the mood (and only for the mood: the food eaten is the same)', () => {
+  const mk = () => { const J = createJourney({ companions: PARTY, seed: 53 }); J.rations = 'lean'; J.spirit = 70; return J; };
+  const A = mk(), B = mk(); B.upgrades.barrel = true;
+  tickDay(A, { rand: () => 0.5 }); tickDay(B, { rand: () => 0.5 });
+  assert.equal(B.spirit - A.spirit, -MOOD.ration.lean);
+  assert.equal(A.food, B.food, 'still one pound a person');
+  const P = mk(), Q = mk(); P.rations = Q.rations = 'full'; Q.upgrades.barrel = true;
+  tickDay(P, { rand: () => 0.5 }); tickDay(Q, { rand: () => 0.5 }); assert.equal(P.spirit, Q.spirit, 'full rations are unchanged');
+});
+
+console.log('\nFort Derby pay');
+test('derbyPay: $20 x the season\'s price level for a win, $5 for a good try, added to the cash', () => {
+  for (const s of SEASONS) {
+    const J = createJourney({ season: s.id, companions: PARTY, seed: 61 });
+    const c0 = J.cash;
+    assert.deepEqual(derbyPay(J, { won: true, margin: 3 }), { cash: 20 * s.priceMult, won: true }); assert.equal(J.cash, c0 + 20 * s.priceMult);
+    assert.deepEqual(derbyPay(J, { won: false, margin: -2 }), { cash: 5, won: false }); assert.equal(J.cash, c0 + 20 * s.priceMult + 5);
+    assert.equal(J.totals.derbyPlayed, 2); assert.equal(J.totals.derbyWon, 1);
+  }
+});
+
+console.log('\nv1.1 and older saves');
+test('createJourney defaults the v1.1 fields; a 1.0 save (none of them) plays on, and everything stays JSON-safe', () => {
+  const N = createJourney({ companions: PARTY, seed: 71 });
+  assert.deepEqual(N.cards, []); assert.deepEqual(N.upgrades, {}); assert.deepEqual(N.challenges, {});
+  assert.equal(N.totals.camps, 0); assert.equal(N.totals.derbyPlayed, 0); assert.equal(N.totals.derbyWon, 0);
+  const old = clone(N);
+  delete old.cards; delete old.upgrades; delete old.challenges; delete old.totals.camps; delete old.totals.derbyPlayed; delete old.totals.derbyWon;
+  const rand = mulberry32(5);
+  tickDay(old, { rand });
+  assert.deepEqual(old.upgrades, {}); assert.deepEqual(old.cards, []);
+  const old2 = clone(old); delete old2.cards; delete old2.upgrades; delete old2.challenges; delete old2.totals.camps;
+  assert.equal(camp(old2, 'cards').day, old2.day); assert.equal(old2.totals.camps, 1);
+  const old3 = clone(N); delete old3.cards; delete old3.challenges; delete old3.upgrades;
+  assert.equal(awardCard(old3, 'camas').new, true); assert.equal(buyUpgrade(old3, 'cover', { cash: true }), true);
+  assert.equal(derbyPay(old3, { won: true }).cash, 20); assert.ok(dailyChallenge(old3, 'd').text);
+  const old4 = clone(N); delete old4.upgrades; delete old4.cards; assert.ok(legStatus(old4)); assert.ok(foodToNextFort(old4));
+  for (const x of [old, old2, old3, old4, N]) assert.deepEqual(JSON.parse(JSON.stringify(x)), x);
+  const ens = clone(N); delete ens.cards; ensureJourney(ens); assert.deepEqual(ens.cards, []);
+});
+test('newSeason carries the cards, the upgrades and the day\'s claims, and the album keeps filling', () => {
+  const J = createJourney({ companions: PARTY, seed: 81 });
+  awardCard(J, 'bison'); awardCard(J, 'kansa'); J.tokens = 6; buyUpgrade(J, 'barrel', { tokens: true });
+  dailyChallenge(J, 'day-1');
+  J.done = true;
+  const N = newSeason(J);
+  assert.deepEqual(N.cards, ['bison', 'kansa']); assert.deepEqual(N.upgrades, { barrel: true }); assert.ok(N.challenges['day-1']);
+  N.cards.push('x'); assert.deepEqual(J.cards, ['bison', 'kansa'], 'copies, not shared');
+  assert.equal(awardCard(N, 'bison').tokens, 1);
+});
+test('whole journeys with the v1.1 layer: upgrades bought, camps, cards and a derby leave the always-right and always-wrong results intact', () => {
+  for (const kid of [RIGHT, WRONG]) {
+    const rand = mulberry32(2024);
+    const J = createJourney({ companions: PARTY, seed: 2024 });
+    J.tokens = 20; buyUpgrade(J, 'tires', { tokens: true }); buyUpgrade(J, 'cover', { tokens: true });
+    if (kid.shops) shop(J);
+    for (let guard = 0; guard < 40 && !J.done; guard++) {
+      if (guard % 3 === 2) { camp(J, 'fish', { rand }); applyFish(J, { fishLb: kid.fishLb }); }
+      playLeg(J, kid, rand);
+      applyWords(J, { asked: 3, right: kid.marker >= 1 ? 3 : 0 });
+      arrive(J); awardCard(J, cardForLeg(J, rand).id); awardCard(J, legList()[J.legIndex].id); derbyPay(J, { won: guard % 2 === 0 });
+      if (kid.shops && legList()[J.legIndex].stop.kind === 'fort') shop(J);
+      assert.ok(J.food >= 0 && J.cash >= 0);
+      nextLeg(J);
+    }
+    assert.ok(J.done); assert.equal(J.totals.legs, 12);
+    if (kid === RIGHT) assert.equal(J.totals.stars, 36);
+    assert.equal(suitProgress(J, 'landmark').have, 12, 'a landmark card per arrival');
+  }
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

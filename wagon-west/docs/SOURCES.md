@@ -96,3 +96,41 @@ has changed. A parent's eye on the wording of these eight facts is welcome befor
   names the Chinook, and says "Chinookan peoples" in the fact so that
   the wider family is included.
 - **Soda Springs** is folded into the Fort Hall leg (the game has twelve legs); its fact is read at Fort Hall.
+
+## Trail cards (v1.1)
+
+The 40 trail cards in the Journal's Cards page (src/content/cards.js). The twelve landmark cards and the eight
+nation cards each repeat one sentence of the lookout or trading-post fact of the same name, so they are sourced by the
+entries above (the card's `source` points at the same anchor). The eight companion cards are story characters; their
+lines come from the companions' own trail chatter and need no source. The twelve cards below are new: an animal or
+plant of the trail with one plain, checkable line. Numbers are the agencies' usual round figures, and the game says
+"about" where they are estimates.
+
+- <a id="card-bison"></a>**bison**: National Park Service, Yellowstone National Park, the bison pages: the bison is
+  the largest land mammal in North America, and bison can run about 35 miles an hour.
+- <a id="card-pronghorn"></a>**pronghorn**: National Park Service, the pronghorn pages (for example Wind Cave and
+  Yellowstone): the pronghorn is the fastest land animal in North America, up to about 55 miles an hour in a sprint.
+- <a id="card-coyote"></a>**coyote**: National Park Service, the coyote pages (for example Yellowstone and Rocky
+  Mountain National Parks): coyotes communicate with howls and yips, and live across many habitats, from deserts and
+  prairies to mountains.
+- <a id="card-bald-eagle"></a>**bald-eagle**: U.S. Fish and Wildlife Service, the bald eagle fact sheet: a wingspan of
+  about six to seven and a half feet, and fish as the main food, caught with the talons.
+- <a id="card-prairie-dog"></a>**prairie-dog**: National Park Service, Wind Cave and Badlands National Parks, the
+  prairie dog pages: they live in underground colonies called towns, give alarm barks, and belong to the squirrel family.
+- <a id="card-rattlesnake"></a>**rattlesnake**: National Park Service, the pages on wildlife safety: keep a respectful
+  distance from wild animals. The game says only "give it room" and nothing more about the animal.
+- <a id="card-sagebrush"></a>**sagebrush**: Bureau of Land Management and the National Park Service, the sagebrush
+  steppe pages: a gray-green shrub of the dry West with strongly aromatic leaves.
+- <a id="card-wild-plum"></a>**wild-plum**: Kansas Historical Society, Kansapedia, the entries on wild plums and
+  prairie plants, and the Missouri Department of Conservation's field guide entry on the wild plum (Prunus americana):
+  it grows in thickets and its small fruit ripens in late summer.
+- <a id="card-camas"></a>**camas**: National Park Service, Nez Perce National Historical Park, the pages on camas:
+  blue flowers, and a bulb that Native peoples of the Northwest, the Nez Perce among them, have long cooked in earth
+  ovens and still gather. Also the Nez Perce Tribe's own website.
+- <a id="card-salmon"></a>**salmon**: National Oceanic and Atmospheric Administration, NOAA Fisheries, the Pacific
+  salmon pages: salmon hatch in fresh water, live in the ocean, and return to the river where they were born.
+- <a id="card-mule-deer"></a>**mule-deer**: National Park Service, the mule deer pages (for example Rocky Mountain
+  and Zion National Parks): named for their large ears, which resemble a mule's.
+- <a id="card-jackrabbit"></a>**jackrabbit**: National Park Service, the black-tailed jackrabbit pages (for example
+  Death Valley and Great Basin National Parks): jackrabbits are hares, and their long ears help them hear predators
+  and give off heat.

@@ -24,6 +24,8 @@ export const MOOD = {
   start: 70, happy: 60, fine: 30, max: 100, notch: 5, rest: 12, stopRest: 8, hungryCap: 25, spread: 5,
   ration: { full: 3, plenty: 0, lean: -5 }, pace: { steady: 0, brisk: -4 },
   tiredRestAfter: 2,       // tired this many days in a row (with food) → the party rests a day on its own
+  weather: 6,              // v1.1: a wet, grumpy morning (a storm / frost / rain event) costs this much spirit, unless the wagon has the canvas cover
+  camp: { rest: 8, other: 4 },   // v1.1: spirit gained by a day at camp (rest, or fishing / hunting / cards / tales)
 };
 /** Markers: one every ~30 miles, 4-6 a leg. */
 export const MARKERS = { spacing: 30, min: 4, max: 6 };
@@ -40,6 +42,26 @@ export const CRATE_BY_STARS = [null, 'bronze', 'silver', 'gold'];
 /** Pounds of food in one unit of a traded good (NATIONS[].trade.get is always a food: a sack of flour, a bag of
  *  corn, a basket of camas); any unknown id is 10 lb. Store food goods use their own GOODS lb first. */
 export const TRADE_LB = { flour: 50, corn: 25, pemmican: 20, berries: 10, camas: 15, salmon: 15, roots: 10, wapato: 10, default: 10 };
+/** v1.1 wagon upgrades (SPEC v1.1 §3): bought once with trade tokens or with cash (the cash price is in 1847 dollars and
+ *  scales by the season's priceMult, like every price). cover: a weather event costs no mood; tires: +2 miles a day;
+ *  barrel: lean rations count as plenty for the mood. Why both prices: tokens had no sink and cash piled up ($1,400 at the
+ *  end of a Rookie journey), so each upgrade can be bought by whichever the child has more of. */
+export const UPGRADES = [
+  { id: 'cover', name: 'Canvas cover', tokens: 6, cash: 40 },
+  { id: 'tires', name: 'Iron tires', tokens: 8, cash: 60 },
+  { id: 'barrel', name: 'Water barrel', tokens: 6, cash: 40 },
+];
+export const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
+export const UPGRADE_FX = { tiresMiles: 2 };
+/** The Fort Derby's pay (SPEC v1.1 §3): $20 × the season's priceMult for a win, a flat $5 "good try" for a loss. */
+export const DERBY = { win: 20, lose: 5 };
+/** A duplicate trail card pays this many trade tokens. */
+export const CARD_DUP_TOKENS = 1;
+/** The camp activities (SPEC v1.1 §3): each costs a day. */
+export const CAMP_KINDS = ['fish', 'hunt', 'cards', 'tales', 'rest'];
+/** The daily challenge's reward. */
+export const CHALLENGE_REWARD = { tokens: 1, card: true };
+
 /** Pelts: the party starts with a few to trade and the bow hunt brings back 1 (2 for a big hunt of 25 lb or more). */
 export const PELTS = { start: 6, perHunt: 1, bigHunt: 2, bigHuntLb: 25 };
 
@@ -54,14 +76,14 @@ export function lbOf(item) {
   return TRADE_LB[id] || TRADE_LB.default;
 }
 
-/** Miles a day for the pace and the animal (oxen 15 / 19, mules 18 / 23). */
-export function milesPerDay(pace, animal) {
+/** Miles a day for the pace and the animal (oxen 15 / 19, mules 18 / 23), plus a bonus (the iron tires' 2). */
+export function milesPerDay(pace, animal, bonus = 0) {
   const a = animalOf(animal);
-  return (a.milesPerDay && a.milesPerDay[pace]) || (a.milesPerDay && a.milesPerDay.steady) || 15;
+  return ((a.milesPerDay && a.milesPerDay[pace]) || (a.milesPerDay && a.milesPerDay.steady) || 15) + (bonus || 0);
 }
 /** Days to cover some miles at a pace (whole days, rounded up). Why exported: the distance problems and the HUD's
  *  "Fort Laramie in 3 days" use the same rule as the sim. */
-export const etaDays = (miles, pace = 'steady', animal = 'oxen') => Math.max(0, Math.ceil(Math.max(0, miles) / milesPerDay(pace, animal)));
+export const etaDays = (miles, pace = 'steady', animal = 'oxen', bonus = 0) => Math.max(0, Math.ceil(Math.max(0, miles) / milesPerDay(pace, animal, bonus)));
 /** Pounds of food a party needs: people × the ration × days (+ the animal's feed a day, if given). */
 export const foodNeeded = (people, rations = 'full', days = 1, feedLb = 0) =>
   Math.max(0, Math.round((people * (RATION_LB[rations] ?? RATION_LB.full) + feedLb) * days));
