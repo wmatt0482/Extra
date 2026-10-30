@@ -1,0 +1,53 @@
+# Wagon West: learning design
+
+Wagon West is the fourth Learning Lab game. It takes the fluency work of the other three and asks the child to
+**use** it: Grade 4 math (the × and ÷ facts, then multi-step word problems with money, distance and time,
+CCSS 4.OA.A.3 and 4.MD.A.2, plus fraction placement on a number line, 4.NF) and the week's spelling words, inside a
+2,000 mile journey from Independence, Missouri to the Willamette Valley. A trail genuinely needs both subjects:
+arithmetic to outfit and ration a wagon, and writing to send word home. This page maps each technique in `SPEC.md`
+section 4 to its source, to the place in the game and to the code. The other games' pages (`trail-blazer/docs/`,
+`spell-jump/docs/`, `fraction-fright/docs/`) cover the fluency techniques in depth; this game reuses their engines
+rather than copying them, so those rows are summarised here and the new rows (application, worked examples,
+agency, story) are explained in full.
+
+| # | Technique | Source | Where in the game | Code |
+|---|-----------|--------|-------------------|------|
+| 1 | **Retrieval practice, spaced and interleaved**: every answer is typed from memory, never picked from choices; facts and words come back on a schedule and mixed together | Roediger & Karpicke 2006 (testing effect); Cepeda et al. 2006 (spacing); Rohrer & Taylor 2007 (interleaving); Dunlosky et al. 2013 | **Mile markers** (4 to 6 a leg) ask one fact from the child's own Trail Blazer ladder; **river crossings** ask three words from the week's Spell Jump list. The same Leitner boxes and mastery rules run, so a day in Wagon West moves the same frontier a day in Trail Blazer or Spell Jump would. Markers, store problems and river words alternate inside one leg, which is interleaving by construction | `/trail-blazer/src/facts/*` (`nextFact`, `recordAnswer`), `/spell-jump/src/spelling/wordStore.js` (`recordSpell`), `/trail-blazer/src/ui/gatePanel.js` (mode `trail`) |
+| 2 | **Transfer: facts applied in context** (the step from fluency to use) | Common Core 4.OA.A.3 (multi-step word problems with the four operations) and 4.MD.A.2 (money, distance, time); Barnett & Ceci 2002 (a taxonomy of transfer) | The **General Store** ("Flour is $4 a sack. You buy 6 sacks"), **rations** ("3 pounds a day, 4 people, 5 days": two steps), **distances** ("60 miles at 15 a day") and trail events (a wheel's spokes, a trade rate). Each problem is **generated from a fact the child already knows**, so the arithmetic is the familiar part and *reading the situation* is what is new: that isolates the transfer step instead of adding a second difficulty | `src/journey/problems.js` (`problemFor`: kinds buy, divide, ration, distance, parts, trade), `src/journey/economy.js` |
+| 3 | **Worked examples when you miss**, then cover and retype | Sweller & Cooper 1985; Atkinson, Derry, Renkl & Wortham 2000 (learning from examples); Skinner, McLaughlin & Logan 1997 and Joseph et al. 2012 (cover-copy-compare) | A wrong store answer shows **the work in three lines** ("4 × 6: 4 × 5 = 20, and one more 4 = 24"), read aloud, and then the answer is covered and typed once from memory. A wrong spelling gets Spell Jump's fix-it routine (compare, copy, cover). A wrong answer is never left on screen | `src/ui/problemPanel.js`, `/spell-jump/src/spelling/spellPanel.js`, `work[]` from `problemFor` |
+| 4 | **Generative practice for spelling: dictation in a sentence** | Graham & Santangelo 2014 (meta-analysis of spelling instruction); Dunlosky et al. 2013 (generative, retrieval-based practice); the dictation rows of Spell Jump's design | **Letters home** at every fort: a four-line letter with three blanks, each a word of the week, dictated in a sentence that fits the trail ("We saw a *buffalo* herd today"), typed from memory and read back aloud when the letter is done. Writing the word in meaning, not only in a list, is what gives it a place in the child's own writing | `src/content/letters.js`, `src/journey/letters.js` (`composeLetter`), the spell panel in `src/ui/*` |
+| 5 | **Intrinsic integration**: the learning action is the game action | Habgood & Ainsworth 2011 | The math buys the supplies and frees the stuck wagon; the spelling crosses the river; the fraction aims the rope. Nothing is "do your math, then play". Answers change what happens on the trail and in the next scene | `src/main.js` (marker, store, river, post office flows), `src/scene/*` |
+| 6 | **Rewards never gate the progress, and the math gates only the bonus** | Deci, Koestner & Ryan 1999 (expected tangible rewards for doing a task undermine interest); Habgood & Ainsworth 2011; the same rule as Trail Blazer row 21 | A **miss costs a slow day or the fair price, never the leg**: the shopkeeper always sells the supplies, a missed marker only slows the next day to 60 percent, a missed river word still crosses (the raft wobbles). Right answers earn **trade tokens, stars, cash and crates**. There is no fail state: when the food runs low the party slows to a crawl until the next stop, and that is the entire penalty | `src/journey/sim.js` (`applyMarker`, `applyProblem`, `buy`, `arrive`), `src/journey/stars.js`, `src/journey/economy.js` |
+| 7 | **Agency and choice** (supports intrinsic motivation) | Cordova & Lepper 1996 (choice and personalization raised engagement and learning in an educational game); Ryan & Deci 2000 (self-determination theory) | The child names the wagon and picks the draft animal (oxen are strong and slow, mules faster and hungrier: a choice with arithmetic in it) and three companions out of eight. **Pace** and **rations** are two dials the child sets, and both become arithmetic the game asks about. The rope toss is aimed by hand | `src/ui/outfit*`, `src/journey/sim.js` (`tickDay`), `src/content/legs.js` (`ANIMALS`), `src/content/companions.js` |
+| 8 | **Progress the family can see** | Fuchs & Fuchs 1986 (systematic formative evaluation) | For the child: the **journal** (every letter, sticker and the map with the trail drawn so far). For the parent: the **Parent Zone Report** (legs finished, markers right, problems right by kind, words right, a per-day chart from the shared chart module, and the fact ladder and the week's words via the two shared stores) | `src/meta/save.js`, `src/ui/parentZone*`, `/spell-jump/src/ui/chart.js` |
+| 9 | **Fraction placement on a number line** (the rope toss) | Siegler, Thompson & Schneider 2011 (number-line estimation is central to fraction understanding); Fraction Fright's design page | At each river the far bank is a number line from 0 to 1 ("the landing is three quarters of the way across"); the child drags the aim to the fraction and throws. A near miss is a wet boot and one more throw. The tolerance is Fraction Fright's, for the child's tier | `/fraction-fright/src/skills/items.js` (`toleranceFor`, grade 4 denominators), `src/ui/river*` |
+| 10 | **Dual coding and reading support** | Spell Jump's voice stack; Mayer's multimedia principle | Every lookout fact, store problem, work line and letter is read aloud in the child's voice, and shown. Numbers in the spoken text are written as words, so the voice reads them correctly | `/spell-jump/src/spelling/tts.js`, `cloudVoice.js`; `say` fields in `src/content/*` |
+| 11 | **A real place, true facts, told with respect** | National Museum of the American Indian, Native Knowledge 360° (teach about Native peoples as specific nations, with a present as well as a past); the National Park Service Oregon National Historic Trail pages and the Oregon-California Trails Association | Each landmark has one **true, kid-level fact** read aloud and a sticker for the journal (`LOOKOUTS`); each of the eight nations (Kansa, Pawnee, Lakota, Shoshone, Bannock, Nez Perce, Cayuse, Chinook) is named as it names itself, shown as a **trading partner and guide**, with a fact in the present tense where it is true today and a fair trade that is a multiplication scene. Every fact is traced in `SOURCES.md` | `src/content/lookouts.js`, `src/content/nations.js`, `docs/SOURCES.md` |
+| 12 | **A long runway that is a story, and a habit cue, not a punishment** | Habit formation through a stable cue (Lally et al. 2010; Wood & Neal 2007); Trail Blazer row 21 | Twelve landmarks, a named wagon, a letter from every fort: the pull is "what is at the next stop?". The shared streak counts a day on the first finished leg and never takes anything away. Stopping is always fine: the journey waits at the last landmark | `/spell-jump/src/meta/engagement.js`, `src/meta/save.js` |
+
+## A leg, as learning moments
+
+One session is one leg (10 to 14 minutes) and holds about **twelve learning moments**, in line with the other games'
+daily missions: about five facts (mile markers), about four applications (store, rations, distance, an event), and
+three words (the river, or the letter). A new season (1850, then 1853) reruns the same twelve legs with higher prices
+and bigger numbers, like the cups in Trail Blazer, so the same story carries a longer runway of difficulty.
+
+## What the game never does
+
+- **No one dies, is sick in a scary way, or is hurt.** The party is tired (rests a day), the wagon is stuck (a fact
+  frees it), the food is low (the next stop, a hunt or a fishing hole fixes it).
+- **No guns.** Hunting is a cartoon bow: a puff, the animal flops over, "Got one!". No blood and no corpses.
+- **No timers, lives, energy or pressure text.** A day passes in a few seconds, but the child never races a clock,
+  and the sim has no countdown on a question.
+- **No multiple choice.** Every answer is typed. A wrong answer clears at once, and the right one is shown with the work.
+- **No wrong spelling shown as a choice.** The child's wrong attempt is cleared quickly (Spell Jump's rule).
+- **No supplies held back for a wrong answer.** The shopkeeper sells the goods at the fair price either way.
+- **No fail state.** Running out of food slows the party to a crawl until the next stop, and that is the whole penalty.
+- **No Native nation as an obstacle or a villain.** The nations are trading partners and guides, shown as living
+  peoples with names they use for themselves.
+- **No alcohol, no scary weather, no graves, no dysentery.** The hardest thing that happens is a thunderstorm and a
+  rest day.
+- **No external links, no native inputs outside the Parent Zone, no ads, no sharing.** The letters are never sent
+  anywhere; parents can read them in the Parent Zone.
+- **No made-up numbers.** If a source gave a range or was unclear, the fact leaves the number out
+  (`docs/SOURCES.md`, "Things we deliberately did not say").

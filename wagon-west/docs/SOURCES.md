@@ -1,16 +1,98 @@
 # Wagon West: sources
 
-Every fact read aloud in the game (lookouts, the nations' trading-post facts) is listed here with where it comes
-from. Content stream: one entry per lookout id and per nation id, with the source (the National Park Service's
-Oregon National Historic Trail pages, the Oregon-California Trails Association, the nations' own websites, state
-historical societies). Keep it to sources a parent could open.
+Every fact read aloud in the game (the thirteen lookouts and the eight nations' trading-post facts) is listed here
+with where it comes from, so a parent can open the source and check it. The sources are the National Park Service's
+Oregon National Historic Trail and park pages, the Oregon-California Trails Association, the nations' own websites,
+and state historical societies.
+
+How to use this page: each entry names the organisation and the page or topic to look for. A web address is given
+only where we are confident it exists; otherwise search the organisation's own site for the name in quotes. The
+game states no number it could not trace: where a source gave a range or was unclear, the number was left out
+(for example, the miles between two stops, or Independence Rock's height, are not read aloud).
+
+Wording rules the content follows (SPEC section 1): nobody dies or is ill in the story; hunting is a cartoon bow;
+Native nations are trading partners and guides, named as living peoples, in the present tense where that is true
+today; each nation fact is two sentences at most and uses the name the nation uses for itself.
 
 ## Lookouts
-- <a id="independence"></a>**independence**: National Park Service, Oregon National Historic Trail, "Jumping-off points".
-- <a id="kansas-river"></a>**kansas-river**: Kansas Historical Society, "Oregon Trail in Kansas" (ferries at the Kansas River).
-- <a id="fort-kearny"></a>**fort-kearny**: Nebraska State Historical Society, "Fort Kearny State Historical Park".
-- <a id="chimney-rock"></a>**chimney-rock**: National Park Service, "Chimney Rock National Historic Site".
+
+- <a id="independence"></a>**independence**: National Park Service, Oregon National Historic Trail (nps.gov/oreg),
+  the pages on the trail's beginning at the Missouri River towns and on when parties left in spring. Also the
+  Oregon-California Trails Association (octa-trails.org), the "Trail" and "History" pages: the trail ran about 2,000
+  miles, and parties left when the prairie grass was tall enough for the animals.
+- <a id="kansas-river"></a>**kansas-river**: Kansas Historical Society (kshs.org), Kansapedia, the entries on the
+  Oregon Trail and on ferries and crossings in Kansas: local families ran ferries that carried wagons across for a fee.
+- <a id="fort-kearny"></a>**fort-kearny**: Nebraska State Historical Society (history.nebraska.gov), the pages on
+  Fort Kearny State Historical Park: founded in 1848, with a blacksmith shop and a post office. The National Park
+  Service Oregon National Historic Trail pages on Fort Kearny give the same dates.
+- <a id="chimney-rock"></a>**chimney-rock**: National Park Service, Chimney Rock National Historic Site
+  (nps.gov/chro): the spire's height above the land around it, and the many diary entries by travelers.
+- <a id="fort-laramie"></a>**fort-laramie**: National Park Service, Fort Laramie National Historic Site
+  (nps.gov/fola), the history pages: founded in 1834 as a fur trading post, bought by the army in 1849.
+- <a id="independence-rock"></a>**independence-rock**: National Park Service, Oregon National Historic Trail
+  (nps.gov/oreg), the page on Independence Rock; Wyoming State Parks and Historic Sites, "Independence Rock State
+  Historic Site"; Oregon-California Trails Association: travelers carved or painted their names on the granite.
+- <a id="south-pass"></a>**south-pass**: National Park Service, Oregon National Historic Trail (nps.gov/oreg), the
+  page on South Pass; Bureau of Land Management, "South Pass National Historic Landmark" (Wyoming): a broad, gentle
+  crossing of the Continental Divide, over 7,000 feet above sea level.
+- <a id="fort-bridger"></a>**fort-bridger**: Wyoming State Parks and Historic Sites, "Fort Bridger State Historic
+  Site": the trading post started by Jim Bridger and Louis Vasquez in 1843. The National Park Service Oregon National
+  Historic Trail pages on Fort Bridger agree.
+- <a id="fort-hall"></a>**fort-hall**: National Park Service, Oregon National Historic Trail (nps.gov/oreg), pages on
+  Fort Hall and on Soda Springs (carbonated springs that travelers tasted); Idaho State Historical Society
+  (history.idaho.gov), the pages on Fort Hall and on the Oregon Trail in Idaho.
+- <a id="snake-river"></a>**snake-river**: Idaho Department of Parks and Recreation, "Three Island Crossing State
+  Park": wagon parties could ford the Snake River from island to island; parties that did not cross took the
+  longer, drier route along the south side. Also the Oregon-California Trails Association.
+- <a id="blue-mountains"></a>**blue-mountains**: Bureau of Land Management, "National Historic Oregon Trail
+  Interpretive Center" (Flagstaff Hill, Baker City, Oregon); U.S. Forest Service, Umatilla National Forest, the page on
+  the Oregon Trail's Blue Mountain Crossing: pine forests after the dry sagebrush, and wagon ruts still visible.
+- <a id="the-dalles"></a>**the-dalles**: National Park Service, Oregon National Historic Trail (nps.gov/oreg), the
+  pages on The Dalles and the Barlow Road: parties rafted down the Columbia or took the toll road, which opened in
+  1846. Also Oregon Historical Society, the Oregon Encyclopedia (oregonencyclopedia.org), entries on The Dalles and the
+  Barlow Road.
+- <a id="willamette-valley"></a>**willamette-valley**: National Park Service, Oregon National Historic Trail
+  (nps.gov/oreg), the pages on Oregon City and the end of the trail; End of the Oregon Trail Interpretive Center
+  (Oregon City); Oregon Historical Society, the Oregon Encyclopedia: Oregon City stands beside Willamette Falls, and
+  the valley's rich soil drew farmers.
 
 ## Nations
-- <a id="kansa"></a>**kansa**: The Kaw Nation, kawnation.gov, "History".
-- <a id="pawnee"></a>**pawnee**: Pawnee Nation of Oklahoma, pawneenation.org; National Park Service, "The Pawnee".
+
+Nations are named the way they name themselves. Their own websites are the first source, because they say best who
+they are and where they live today. Tribal pages move, so search the nation's name plus "official website" if a link
+has changed. A parent's eye on the wording of these eight facts is welcome before release (SPEC section 1).
+
+- <a id="kansa"></a>**kansa**: Kaw Nation (the Kaw Nation of Oklahoma's own website), the history page: the Kansas
+  River and the state of Kansas are named for the Kansa people. Also Kansas Historical Society, Kansapedia, the entry
+  on the Kansa (Kaw) Indians.
+- <a id="pawnee"></a>**pawnee**: Pawnee Nation of Oklahoma (pawneenation.org), the history and culture pages: farming
+  villages and bison hunting; the nation's headquarters are in Pawnee, Oklahoma. Also Nebraska State Historical
+  Society, the pages on the Pawnee.
+- <a id="lakota"></a>**lakota**: Oglala Sioux Tribe and Standing Rock Sioux Tribe (the tribes' own websites; Standing
+  Rock is at standingrock.org); National Park Service, Fort Laramie National Historic Site (nps.gov/fola), the pages
+  on the Plains peoples and the fur trade: bison robes and the Lakota's place on the northern Plains.
+- <a id="shoshone"></a>**shoshone**: Eastern Shoshone Tribe and Northern Arapaho Tribe, the Wind River Reservation in
+  Wyoming (the tribes' own sites); National
+  Park Service, Oregon National Historic Trail pages on South Pass and Fort Bridger.
+- <a id="bannock"></a>**bannock**: Shoshone-Bannock Tribes, Fort Hall Reservation, Idaho (the tribes' own website),
+  the history pages on Bannock bison-hunting journeys and the Fort Hall Reservation; National Park Service,
+  Yellowstone National Park, the page on the Bannock Trail.
+- <a id="nez-perce"></a>**nez-perce**: Nez Perce Tribe (nezperce.org), the pages on history and culture: the people
+  call themselves Nimiipuu, the tribe is based in Lapwai, Idaho, and is known for its horses and the Appaloosa; National
+  Park Service, Nez Perce National Historical Park (nps.gov/nepe).
+- <a id="cayuse"></a>**cayuse**: Confederated Tribes of the Umatilla Indian Reservation (ctuir.org), the history and
+  culture pages: the Cayuse, Umatilla and Walla Walla peoples; the Cayuse and their horses. Also Oregon Historical
+  Society, the Oregon Encyclopedia, the entry on the Cayuse, and Merriam-Webster, "cayuse" (a word for a horse).
+- <a id="chinook"></a>**chinook**: Chinook Indian Nation (chinooknation.org), the history and culture pages: the lower
+  Columbia River homeland, the nation's long record as traders, and where the nation is based today; Oregon Historical
+  Society, the Oregon Encyclopedia, the entries on the Chinook and on Chinookan peoples of the Columbia River.
+
+## Things we deliberately did not say
+
+- **No miles between stops, no counts of travelers, no dates of treaties.** Sources disagree or give ranges.
+- **No claims about who stood exactly where on the trail.** The game says which nations have homelands in the
+  region the trail crosses, and the trading posts are a game, not a record of one event.
+- **The Dalles was a gathering place of several Chinookan peoples (the Wasco and Wishram among them).** The game
+  names the Chinook, and says "Chinookan peoples" in the fact so that
+  the wider family is included.
+- **Soda Springs** is folded into the Fort Hall leg (the game has twelve legs); its fact is read at Fort Hall.

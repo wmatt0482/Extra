@@ -1,17 +1,49 @@
 // The Native nations whose homelands the trail crosses, in trail order (SPEC §1, §9): trading partners and guides,
 // named as living peoples. Each has the trading post's fact (true, kid-level, present tense where true today, sourced
-// in docs/SOURCES.md) and a trade the problem generator scales by season. Content stream fills all 8:
-// kansa, pawnee, lakota, shoshone, bannock, nez-perce, cayuse, chinook.
+// in docs/SOURCES.md) and a trade the problem generator scales by season: rate is [give, get], so [3, 2] means
+// 3 of the party's `give` goods for 2 of the nation's `get` goods. The party only ever gives pelts, blankets or rope
+// (goods it can have); what it gets back is food. The trading post is a math scene: fair exchange and multiplication.
+// A parent's eye on the wording of the facts is welcome before it ships (SPEC §1); docs/SOURCES.md says where each is from.
 export const NATIONS = [
   { id: 'kansa', name: 'Kansa', also: 'Kaw Nation', legs: ['kansas-river'],
     fact: { text: 'The Kansa people lived along the Kansas River, which is named for them. Today the Kaw Nation is based in Oklahoma.',
       say: 'The Kansa people lived along the Kansas River, which is named for them. Today the Kaw Nation is based in Oklahoma.' },
     trade: { give: 'pelts', giveName: 'beaver pelts', get: 'flour', getName: 'sacks of flour', rate: [3, 2] },
     source: 'SOURCES.md#kansa' },
-  { id: 'pawnee', name: 'Pawnee', legs: ['fort-kearny'],
-    fact: { text: 'The Pawnee grew corn, beans and squash in villages along the Platte River and hunted bison on the plains.',
-      say: 'The Pawnee grew corn, beans and squash in villages along the Platte River and hunted bison on the plains.' },
+  { id: 'pawnee', name: 'Pawnee', also: 'Pawnee Nation of Oklahoma', legs: ['fort-kearny'],
+    fact: { text: 'The Pawnee grew corn, beans and squash in villages along rivers in what is now Nebraska, and they hunted bison on the plains. Today the Pawnee Nation is based in Pawnee, Oklahoma.',
+      say: 'The Pawnee grew corn, beans and squash in villages along rivers in what is now Nebraska, and they hunted bison on the plains. Today the Pawnee Nation is based in Pawnee, Oklahoma.' },
     trade: { give: 'blankets', giveName: 'blankets', get: 'corn', getName: 'bags of corn', rate: [1, 3] },
     source: 'SOURCES.md#pawnee' },
+  { id: 'lakota', name: 'Lakota', also: 'Lakota nations of the Great Plains', legs: ['chimney-rock', 'fort-laramie'],
+    fact: { text: 'The Lakota are people of the northern Great Plains, and bison are a big part of their history and way of life. Today Lakota nations, such as the Oglala Sioux Tribe and the Standing Rock Sioux Tribe, live in South Dakota and North Dakota.',
+      say: 'The Lakota are people of the northern Great Plains, and bison are a big part of their history and way of life. Today Lakota nations, such as the Oglala Sioux Tribe and the Standing Rock Sioux Tribe, live in South Dakota and North Dakota.' },
+    trade: { give: 'blankets', giveName: 'blankets', get: 'pemmican', getName: 'cakes of pemmican (dried bison meat and berries)', rate: [2, 5] },
+    source: 'SOURCES.md#lakota' },
+  { id: 'shoshone', name: 'Shoshone', also: 'Eastern Shoshone Tribe', legs: ['independence-rock', 'south-pass', 'fort-bridger'],
+    fact: { text: 'The Shoshone homeland covers parts of what is now Wyoming, Idaho, Utah and Nevada. Today the Eastern Shoshone Tribe and the Northern Arapaho Tribe share the Wind River Reservation in Wyoming.',
+      say: 'The Shoshone homeland covers parts of what is now Wyoming, Idaho, Utah and Nevada. Today the Eastern Shoshone Tribe and the Northern Arapaho Tribe share the Wind River Reservation in Wyoming.' },
+    trade: { give: 'rope', giveName: 'coils of rope', get: 'berries', getName: 'bags of dried berries', rate: [3, 4] },
+    source: 'SOURCES.md#shoshone' },
+  { id: 'bannock', name: 'Bannock', also: 'Shoshone-Bannock Tribes', legs: ['fort-hall'],
+    fact: { text: 'The Bannock people traveled far across the mountains each year to hunt bison. Today the Shoshone-Bannock Tribes make their home on the Fort Hall Reservation in Idaho.',
+      say: 'The Bannock people traveled far across the mountains each year to hunt bison. Today the Shoshone-Bannock Tribes make their home on the Fort Hall Reservation in Idaho.' },
+    trade: { give: 'rope', giveName: 'coils of rope', get: 'camas', getName: 'bags of camas roots', rate: [3, 2] },
+    source: 'SOURCES.md#bannock' },
+  { id: 'nez-perce', name: 'Nez Perce', also: 'Nimiipuu', legs: ['snake-river'],
+    fact: { text: 'The Nez Perce call themselves Nimiipuu, which means the people. They are known for their fine horses, including the spotted Appaloosa, and the Nez Perce Tribe is based in Lapwai, Idaho today.',
+      say: 'The Nez Perce call themselves Nimiipuu, which means the people. They are known for their fine horses, including the spotted Appaloosa, and the Nez Perce Tribe is based in Lapwai, Idaho today.' },
+    trade: { give: 'blankets', giveName: 'blankets', get: 'salmon', getName: 'bundles of dried salmon', rate: [2, 5] },
+    source: 'SOURCES.md#nez-perce' },
+  { id: 'cayuse', name: 'Cayuse', also: 'Confederated Tribes of the Umatilla Indian Reservation', legs: ['blue-mountains'],
+    fact: { text: 'The Cayuse people are so well known for their horses that cayuse became a word for a horse in the Northwest. Today Cayuse people are part of the Confederated Tribes of the Umatilla Indian Reservation in Oregon.',
+      say: 'The Cayuse people are so well known for their horses that cayuse became a word for a horse in the Northwest. Today Cayuse people are part of the Confederated Tribes of the Umatilla Indian Reservation in Oregon.' },
+    trade: { give: 'pelts', giveName: 'beaver pelts', get: 'roots', getName: 'bags of dried roots', rate: [5, 2] },
+    source: 'SOURCES.md#cayuse' },
+  { id: 'chinook', name: 'Chinook', also: 'Chinook Indian Nation', legs: ['the-dalles', 'willamette-valley'],
+    fact: { text: 'Chinookan peoples have lived along the Columbia River for generations and were famous traders who traveled by canoe. Today the Chinook Indian Nation is based in Washington state.',
+      say: 'Chinookan peoples have lived along the Columbia River for generations and were famous traders who traveled by canoe. Today the Chinook Indian Nation is based in Washington state.' },
+    trade: { give: 'blankets', giveName: 'blankets', get: 'wapato', getName: 'bags of wapato roots', rate: [1, 2] },
+    source: 'SOURCES.md#chinook' },
 ];
 export const NATION_BY_ID = Object.fromEntries(NATIONS.map((n) => [n.id, n]));

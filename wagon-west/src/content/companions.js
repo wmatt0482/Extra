@@ -1,12 +1,30 @@
-// The eight stock companions (SPEC §3): a child picks three. Each has a hat (the crate cosmetics reuse the kinds), a
-// colour and a few lines (trail chatter, and one each for tired / happy). Content stream fills all 8:
-// blacksmith, teacher, fiddler, scout, cook, doctor, carpenter, storyteller.
+// The eight stock companions (SPEC §3): a child picks three. Each has a hat (the crate cosmetics reuse the kinds: cap,
+// wide, bonnet, straw, bowler, hood, kerchief, none), a colour (all eight differ) and a few lines: trail chatter, and
+// one each for tired / happy. Warm and a little funny, never scary: nobody is ever sick or hurt, only tired.
 export const COMPANIONS = [
   { id: 'blacksmith', name: 'Ada', role: 'the blacksmith', hat: 'cap', color: '#d9534f',
-    lines: { trail: ['I can fix any wheel on this trail.', 'Hear that squeak? Needs grease.'], tired: 'My arms are tired. A rest would help.', happy: 'Best wagon west of Missouri!' } },
+    lines: { trail: ['I can fix any wheel on this trail.', 'Hear that squeak? Needs grease.', 'Give me a hammer and a campfire and I can fix anything.'],
+      tired: 'My arms are tired. A rest would help.', happy: 'Best wagon west of Missouri!' } },
+  { id: 'teacher', name: 'Nora', role: 'the schoolteacher', hat: 'bowler', color: '#4a6fa5',
+    lines: { trail: ['Spelling quiz while we walk! How do you spell prairie?', 'If we walk fifteen miles a day, how many days to the next fort? Think it over while we walk.', 'That cloud looks like a hat. Write it in your journal!'],
+      tired: 'Even teachers need a recess.', happy: 'Gold star for everybody!' } },
+  { id: 'fiddler', name: 'Jasper', role: 'the fiddler', hat: 'straw', color: '#8e5ea2',
+    lines: { trail: ['This song has forty-two verses. Want to hear them all?', 'The oxen walk faster when I play. I have tested it.', 'Clap along, and mind the bumps!'],
+      tired: 'My fiddle needs a nap, and so do I.', happy: 'Time for a song around the fire!' } },
   { id: 'scout', name: 'Eli', role: 'the scout', hat: 'wide', color: '#5b8c5a',
-    lines: { trail: ['The river is just past that rise.', 'Pronghorn, two o\'clock.'], tired: 'Let\'s make camp early tonight.', happy: 'Clear skies all the way to the pass!' } },
+    lines: { trail: ['The river is just past that rise.', 'Pronghorn, two o\'clock.', 'I will ride ahead and look for the easy way around.'],
+      tired: 'Let\'s make camp early tonight.', happy: 'Clear skies all the way to the pass!' } },
   { id: 'cook', name: 'Rosa', role: 'the cook', hat: 'bonnet', color: '#f0a500',
-    lines: { trail: ['Beans and bacon tonight!', 'Who wants the last biscuit?'], tired: 'I could use a day by the fire.', happy: 'Berries for dessert!' } },
+    lines: { trail: ['Beans and bacon tonight!', 'Who wants the last biscuit?', 'The secret ingredient is always more butter.'],
+      tired: 'I could use a day by the fire.', happy: 'Berries for dessert!' } },
+  { id: 'doctor', name: 'Mabel', role: 'the doctor', hat: 'hood', color: '#2a9d8f',
+    lines: { trail: ['My medicine bag is mostly peppermint drops and good advice.', 'Drink some water and wear your hat. That is the whole secret.', 'I know every bird on this trail by its song.'],
+      tired: 'Even the doctor needs a nap. Doctor\'s orders!', happy: 'Everyone is in fine shape. Peppermints all round!' } },
+  { id: 'carpenter', name: 'Tomas', role: 'the carpenter', hat: 'kerchief', color: '#a0522d',
+    lines: { trail: ['Measure twice, cut once.', 'I could build a bridge, a barn, or a bench. Which one is it today?', 'Nice wagon. I would add a porch.'],
+      tired: 'My saw is dull and so am I. Let\'s rest.', happy: 'Everything is level and square!' } },
+  { id: 'storyteller', name: 'Ines', role: 'the storyteller', hat: 'none', color: '#c94f8a',
+    lines: { trail: ['Did I ever tell you about the giant jackrabbit? No? Gather round.', 'Every rock out here has a story. Let me find this one\'s.', 'Once upon a time there was a wagon just like ours.'],
+      tired: 'I am too sleepy to tell a story, and that never happens.', happy: 'This is the best chapter yet!' } },
 ];
 export const COMPANION_BY_ID = Object.fromEntries(COMPANIONS.map((c) => [c.id, c]));
