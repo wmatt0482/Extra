@@ -9,7 +9,7 @@
 
 import { TAU, OUT, clamp, lerp, ease, mix, shade, rgba, mkCanvas, mulberry32, drawText } from './util.js';
 import { BIOMES, SPEED } from './biomes.js';
-import { drawWagon, drawTeam, drawPerson, drawCritter, drawCampfire } from './sprites.js';
+import { drawWagon, drawTeam, drawPerson, drawCritter, drawCampfire, drawDog } from './sprites.js';
 
 // ---------------------------------------------------------------- weather looks
 export const WEATHERS = ['clear', 'rain', 'storm', 'dusk', 'snow'];
@@ -214,6 +214,12 @@ function drawTrain(ctx, S) {
   drawWagon(ctx, S.wagonX, gy, k, S.party.wagon, S.wheelSpin, bob, S.t);
 }
 
+// the party's dog (v1.1), placed by the engine (S.dogPos); the derby draws its own running dog
+function drawPartyDog(ctx, S) {
+  const D = S.dogPos, k = S.L.k;
+  drawDog(ctx, D.x, D.y, k * 1.05, S.dog.coat, S.dogPh, D.amp * (S.rm ? 0.6 : 1), S.t, S.dogBarkT > 0 ? S.dogBarkT / 0.7 : 0, D.dir, D.sit);
+}
+
 // ---------------------------------------------------------------- critters
 function drawCritters(ctx, S, sky) {
   const L = S.L, k = L.k;
@@ -371,7 +377,7 @@ export function drawFrame(ctx, S) {
       ctx.fillStyle = '#f4f8ff'; ctx.fillRect(0, L.bands.ground[0], W, H - L.bands.ground[0]);
       ctx.globalAlpha = 1;
     }
-    if (view === 'hunt' && S.mini) {
+    if ((view === 'hunt' || view === 'derby') && S.mini) {
       S.mini.draw(ctx, L, S.t, S.rm);
     } else {
       if (view === 'stop' && S.piece && S.piece.z === 'ground') blitPiece(ctx, S.piece, 0, 0, 1);
@@ -381,6 +387,7 @@ export function drawFrame(ctx, S) {
       drawParty(ctx, S, false);
       drawTrain(ctx, S);
       if (view === 'stop' && S.backdrop === 'camp' && S.piece) drawCampLight(ctx, S);
+      if (S.dog && (view === 'trail' || view === 'stop')) drawPartyDog(ctx, S);
       drawParty(ctx, S, true);
       blitLayer(ctx, S, ly.props, SPEED.props);
     }

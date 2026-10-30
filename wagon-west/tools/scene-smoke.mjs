@@ -12,6 +12,11 @@
 // fishing run to fishEnd (an early tap is free, a missed dip uses the cast, Space hooks); endMiniGame; input ignored
 // outside mini-games; reducedMotion thins the weather and drops lightning; resize to portrait; pause / play /
 // destroy; perf at 4x CPU throttle (a stormy trail with a herd and confetti, and a hunt).
+// v1.1: Fort Derby (a seeded race won with four power-1 bursts and lost with one, the markers hold both wagons, the
+// derbyEnd fields, the celebration and the way back to the backdrop, endDerby early, the 3-4 good / 1-2 rule over
+// several seeds, dev.html's ?derby=1 with keys 1 / 2 / 0) and the dog (each coat in each outdoor backdrop and not in
+// the post office, dogBark, a bark when an animal is spotted, dev.html's ?dog= and key b); perf with the dog and in
+// the derby.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -55,6 +60,9 @@ const WEATHERS = ['clear', 'rain', 'storm', 'dusk', 'snow'];
 const HATS = ['cap', 'wide', 'bonnet', 'straw', 'bowler', 'hood', 'kerchief', 'none'];
 const API = ['setLeg', 'setParty', 'setTravel', 'setBackdrop', 'spotAnimal', 'celebrate', 'startHunt', 'startFish', 'endMiniGame', 'play', 'pause', 'destroy', 'resize', 'getState'];
 const MEAT = { rabbit: 10, deer: 40, turkey: 15 };
+const API_11 = ['startDerby', 'derbyBurst', 'endDerby', 'dogBark'];
+const COATS = ['brown', 'spotted', 'black'];
+const DOG_BACKDROPS = ['trail', 'camp', 'river', 'landmark', 'fort', 'valley', 'post'];
 
 async function open(browser, params = {}, viewport = { width: 844, height: 390 }) {
   const context = await browser.newContext({ viewport, deviceScaleFactor: 2, hasTouch: true });
@@ -110,6 +118,8 @@ try {
     const { page, context, errors } = await open(browser);
     const api = await page.evaluate((names) => names.filter((n) => typeof window.__ww.scene[n] !== 'function'), API);
     check(api.length === 0, `the scene has the whole §11 API (missing: ${api.join(',') || 'none'})`);
+    const api11 = await page.evaluate((names) => names.filter((n) => typeof window.__ww.scene[n] !== 'function'), API_11);
+    check(api11.length === 0, `the scene has the v1.1 API: ${API_11.join(', ')} (missing: ${api11.join(',') || 'none'})`);
     const s = await state(page);
     check(['backdrop', 'milesDone', 'weather', 'moving', 'mini'].every((k) => k in s) && s.mini === null && s.backdrop === 'trail', `getState() has the contract keys (${Object.keys(s).join(',')})`);
     const ready = await events(page, 'ready');
@@ -404,6 +414,262 @@ try {
     await context.close();
   }
 
+  // ---- 9. Fort Derby (v1.1) ----
+  {
+    const { page, context, errors } = await open(browser, { biome: 'highdesert', backdrop: 'fort', moving: '0', dog: 'brown' });
+    await page.evaluate(() => window.__ww.scene.pause());
+    await step(page, 30);
+    const mini = () => page.evaluate(() => window.__ww.scene.debugMini());
+    await page.evaluate(() => window.__ww.scene.startDerby({ seed: 21 }));
+    await step(page, 2);
+    const s0 = await state(page);
+    check(s0.view === 'derby' && s0.backdrop === 'fort' && s0.mini && s0.mini.kind === 'derby' && s0.mini.progress === 0 && s0.mini.mailProgress === 0 && s0.mini.left === 4, `startDerby: a race view (view ${s0.view}, backdrop ${s0.backdrop}), mini ${JSON.stringify(s0.mini)}`);
+    check((await page.evaluate(() => window.__ww.scene.derbyBurst(1))) === false, 'derbyBurst before a marker is refused (returns false)');
+    check((await page.evaluate(() => document.getElementById('c').style.touchAction)) !== 'none', 'the derby does not take the pointer (no touch-action: none)');
+    await shot(page, 'derby-0-start');
+    // the start marker: the race holds there until the first answer
+    await step(page, 45);
+    let mk = await events(page, 'derbyMarker');
+    check(mk.length === 1 && mk[0].n === 1 && mk[0].of === 4, `the first derbyMarker comes at the start line ${JSON.stringify(mk[0])}`);
+    const h0 = await mini();
+    await step(page, 240);
+    const h1 = await mini();
+    check(h1.phase === 'wait' && h1.child === h0.child && h1.mail === h0.mail && h1.child === 0 && (await events(page, 'derbyMarker')).length === 1, `the race holds at the start until derbyBurst (child ${h1.child} m, mail ${h1.mail} m after 4 s)`);
+    const tapsBefore = await page.evaluate(() => window.__ww.events.length);
+    await tapAt(page, 400, 300);
+    check((await page.evaluate(() => window.__ww.events.length)) === tapsBefore && (await mini()).phase === 'wait', 'a tap on the canvas does nothing in the derby');
+    check((await page.evaluate(() => window.__ww.scene.derbyBurst(1))) === true, 'derbyBurst(1) at a marker is taken');
+    await step(page, 20);
+    await shot(page, 'derby-1-go');
+    const r1 = await state(page), i1 = await info(page), m1 = await mini();
+    check(r1.mini.phase === 'run' && r1.mini.progress > 0 && r1.mini.mailProgress > 0 && r1.mini.bursts === 1 && m1.boost > 10, `GO: both wagons roll and the burst is on (${JSON.stringify(r1.mini)}, boost ${m1.boost.toFixed(1)} m/s)`);
+    check(i1.dog && i1.dog.visible && i1.dog.pose === 'run' && Math.abs(i1.dog.x - m1.nose) < 60, `the dog runs with the wagon (dog x ${Math.round(i1.dog.x)}, wagon nose ${Math.round(m1.nose)})`);
+    // the 100 m marker holds both wagons too
+    for (let n = 0; n < 200 && (await events(page, 'derbyMarker')).length < 2; n++) await step(page, 5, false);
+    await step(page, 1);
+    mk = await events(page, 'derbyMarker');
+    const w0 = await mini();
+    await shot(page, 'derby-2-marker');
+    await step(page, 180);
+    const w1 = await mini();
+    check(mk.length === 2 && mk[1].n === 2 && mk[1].of === 4 && Math.abs(w0.child - 100) < 1e-6 && w1.child === w0.child && w1.mail === w0.mail && w1.phase === 'wait', `the 100 m marker holds both wagons (${JSON.stringify(mk[1])}, child ${w1.child} m, mail ${w1.mail.toFixed(1)} m held for 3 s)`);
+    check((await state(page)).mini.left === 2, `left counts the markers still ahead (${(await state(page)).mini.left})`);
+    // two more quick answers, then the line
+    let ends = [];
+    let nb = 1;
+    for (let n = 0; n < 2000 && !ends.length; n++) {
+      const m = await mini();
+      if (m && m.phase === 'wait') { await page.evaluate(() => window.__ww.scene.derbyBurst(1)); nb++; }
+      await step(page, 4, false);
+      ends = await events(page, 'derbyEnd');
+    }
+    await step(page, 24);
+    await shot(page, 'derby-3-finish');
+    const iF = await info(page), sF = await state(page);
+    const e = ends[0] || {};
+    check(ends.length === 1 && e.won === true && e.markers === 4 && e.bursts === 4 && nb === 4 && Number.isInteger(e.margin) && e.margin > 0, `four quick answers win: derbyEnd ${JSON.stringify(e)}`);
+    check(Object.keys(e).filter((k) => k !== 'at').sort().join() === 'bursts,margin,markers,type,won', `derbyEnd carries { won, margin, markers, bursts } (${Object.keys(e).join(', ')})`);
+    check(iF.particles.conf > 10 && sF.mini && sF.mini.phase === 'finish' && sF.mini.progress === 1, `the finish: confetti (${iF.particles.conf} pieces) and the wagon over the line (${JSON.stringify(sF.mini)})`);
+    await step(page, 60);
+    const sMid = await state(page);
+    await step(page, 60);
+    const sBack = await state(page);
+    check(sMid.view === 'derby' && sBack.mini === null && sBack.view === 'stop' && sBack.backdrop === 'fort', `2 s after the line the scene goes back to the fort (at 1.4 s: ${sMid.view}; at 2.4 s: ${sBack.view}/${sBack.backdrop})`);
+    await shot(page, 'derby-4-back-at-the-fort');
+    // whole races in the page (seeded, the same integration the app gets)
+    const race = (seed, powers) => page.evaluate(([seed, powers]) => {
+      const sc = window.__ww.scene, ev0 = window.__ww.events.length;
+      sc.startDerby({ seed });
+      let i = 0, n = 0, endStep = -1;
+      for (; n < 60 * 200; n++) {
+        const s = sc.debugStep(1, false);
+        if (!s.mini || s.mini.kind !== 'derby') break;
+        if (endStep < 0 && s.mini.phase === 'finish') endStep = n;
+        if (s.mini.phase === 'wait') sc.derbyBurst(powers[i++] ?? 0);
+      }
+      const evs = window.__ww.events.slice(ev0);
+      return { end: evs.find((e) => e.type === 'derbyEnd') || null, markers: evs.filter((e) => e.type === 'derbyMarker').map((e) => e.n + '/' + e.of), linger: n - endStep, closed: !sc.getState().mini };
+    }, [seed, powers]);
+    const lost = await race(21, [1, 0, 0, 0]);
+    check(lost.end && lost.end.won === false && lost.end.bursts === 1 && lost.end.markers === 4 && lost.end.margin > 0 && lost.markers.join() === '1/4,2/4,3/4,4/4', `one quick answer (and three wrong) loses: ${JSON.stringify(lost.end)}, markers ${lost.markers.join(' ')}`);
+    check(lost.closed && Math.abs(lost.linger - 120) <= 2, `after a loss the scene goes back after 2 s too (${lost.linger} frames)`);
+    const again = await race(21, [1, 0, 0, 0]);
+    check(again.end && again.end.margin === lost.end.margin && again.end.won === lost.end.won, `same seed, same answers: the same race (margin ${lost.end && lost.end.margin} m twice)`);
+    const table = [];
+    let ruleOk = true;
+    for (let seed = 1; seed <= 6; seed++) {
+      const row = [];
+      for (const [p, want] of [[[1, 1, 1, 1], true], [[0, 1, 1, 1], true], [[0.6, 0.6, 0.6, 0.6], true], [[1, 1, 0, 0], false], [[1, 0, 0, 0], false]]) {
+        const r = await race(seed * 7, p);
+        const ok = r.end && r.end.won === want;
+        if (!ok) ruleOk = false;
+        row.push((r.end && r.end.won ? 'W' : 'L') + (r.end ? r.end.margin : '?'));
+      }
+      table.push(`seed ${seed * 7}: ${row.join(' ')}`);
+    }
+    check(ruleOk, `beatable with 3-4 good bursts (and with 4 slow ones), lost with 1-2, on six seeds [4 quick, 3 quick + wrong, 4 slow, 2 quick, 1 quick]: ${table.join('; ')}`);
+    // a wrong answer is a stumble, no burst
+    await page.evaluate(() => window.__ww.scene.startDerby({ seed: 5 }));
+    await step(page, 45);
+    await page.evaluate(() => window.__ww.scene.derbyBurst(0));
+    await step(page, 8);
+    const st = await mini();
+    await shot(page, 'derby-5-stumble');
+    check(st.phase === 'run' && st.stumbleT > 0 && st.boost === 0 && st.bursts === 0 && st.child > 0, `derbyBurst(0): a stumble and no burst, the wagon rolls on (stumble ${st.stumbleT.toFixed(2)} s, boost ${st.boost}, ${st.child.toFixed(2)} m)`);
+    // endDerby early
+    const endsBefore = (await events(page, 'derbyEnd')).length;
+    await step(page, 60);
+    const sum = await page.evaluate(() => window.__ww.scene.endDerby());
+    await step(page, 200, false);
+    const sE = await state(page);
+    check(sum && sum.kind === 'derby' && sum.progress > 0 && sum.finished === false && sum.bursts === 0 && sE.mini === null && sE.view === 'stop' && sE.backdrop === 'fort' && (await events(page, 'derbyEnd')).length === endsBefore, `endDerby() leaves at once with ${JSON.stringify(sum)} and emits nothing`);
+    check((await page.evaluate(() => window.__ww.scene.endDerby())) === null && (await page.evaluate(() => window.__ww.scene.derbyBurst(1))) === false, 'endDerby() / derbyBurst() with no derby running: null / false');
+    await page.evaluate(() => window.__ww.scene.startDerby({ seed: 8 }));
+    await step(page, 50);
+    const sumM = await page.evaluate(() => window.__ww.scene.endMiniGame());
+    check(sumM && sumM.kind === 'derby' && (await state(page)).mini === null, 'endMiniGame() ends a derby too');
+    // portrait
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => window.__ww.scene.startDerby({ seed: 9 }));
+    await step(page, 45);
+    await page.evaluate(() => window.__ww.scene.derbyBurst(1));
+    await step(page, 60);
+    const pv = await variety(page);
+    await shot(page, 'derby-6-portrait');
+    check(pv >= 12, `the derby draws in portrait too (${pv} colours)`);
+    await page.evaluate(() => window.__ww.scene.endDerby());
+    check(errors.real().length === 0, `derby: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+  // dev.html: ?derby=1 and the keys 1 / 2 / 0
+  {
+    const { page, context, errors } = await open(browser, { derby: '1', dog: 'spotted', seed: '12' });
+    await page.waitForFunction(() => window.__ww.events.some((e) => e.type === 'derbyMarker'), null, { timeout: 5000 });
+    const b0 = (await state(page)).biome;
+    await page.keyboard.press('1');
+    await page.waitForTimeout(100);
+    const a = await state(page);
+    await page.waitForFunction(() => window.__ww.events.filter((e) => e.type === 'derbyMarker').length >= 2, null, { timeout: 15000 });
+    await page.keyboard.press('2');
+    await page.waitForTimeout(100);
+    const b = await state(page);
+    await page.waitForFunction(() => window.__ww.events.filter((e) => e.type === 'derbyMarker').length >= 3, null, { timeout: 15000 });
+    await page.keyboard.press('0');
+    await page.waitForTimeout(100);
+    const c = await state(page), m = await page.evaluate(() => window.__ww.scene.debugMini());
+    check(a.mini && a.mini.kind === 'derby' && a.mini.bursts === 1 && a.biome === b0 && b.mini.bursts === 2 && c.mini.bursts === 2 && m.powers.join() === '1,0.6,0', `dev.html ?derby=1: keys 1 / 2 / 0 answer quick / slow / wrong (powers ${m.powers.join(', ')}, biome kept ${a.biome})`);
+    check(errors.real().length === 0, `dev derby: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+
+  // ---- 10. the dog (v1.1) ----
+  {
+    const { page, context, errors } = await open(browser, { biome: 'prairie', moving: '0' });
+    await page.evaluate(() => window.__ww.scene.pause());
+    await step(page, 20);
+    const i0 = await info(page), s0 = await state(page);
+    const noBark = await page.evaluate(() => window.__ww.scene.dogBark());
+    check(i0.dog === null && s0.dog === null && noBark === false && (await events(page, 'bark')).length === 0, 'no dog until setParty brings one; dogBark() without a dog is false and silent');
+    const setDog = (coat) => page.evaluate((coat) => {
+      const comps = [{ id: 'a', hat: 'cap', color: '#d9534f' }, { id: 'b', hat: 'wide', color: '#5b8c5a' }, { id: 'c', hat: 'bonnet', color: '#f0a500' }];
+      window.__dogParty = { animal: 'oxen', companions: comps, wagon: { paint: 'blue', flag: 'red', name: 'Dog Days' }, dog: coat ? { name: 'Biscuit', coat } : null };
+      window.__ww.scene.setParty(window.__dogParty);
+    }, coat);
+    const results = {};
+    let worst = 1e9, worstAt = '';
+    for (const coat of COATS) {
+      for (const bd of DOG_BACKDROPS) {
+        await page.evaluate((bd) => { const sc = window.__ww.scene; sc.setLeg({ id: 'chimney-rock', biome: 'bluffs', miles: 160, stop: { kind: 'landmark' } }); sc.setBackdrop(bd); sc.setTravel({ moving: bd === 'trail', weather: 'clear' }); }, bd);
+        await setDog(coat);
+        await step(page, 50);
+        const inf = await info(page);
+        const visible = inf.dog && inf.dog.visible;
+        if (bd === 'post') { check(inf.dog && inf.dog.coat === coat && !visible, `${coat} dog: not drawn in the post office (visible ${visible})`); continue; }
+        // the changed pixels with and without the dog at the same instant, and their mean brightness (the coat)
+        const r = await page.evaluate(() => {
+          const sc = window.__ww.scene, inf = sc.debugInfo(), dg = inf.dog, k = inf.k, src = document.getElementById('c'), d = src.width / inf.W;
+          const bx = dg.x - 32 * k, by = dg.y - 50 * k, bw = 66 * k, bh = 58 * k;
+          const grab = () => { const c = document.createElement('canvas'); c.width = Math.round(bw * d); c.height = Math.round(bh * d); const g = c.getContext('2d'); g.drawImage(src, bx * d, by * d, bw * d, bh * d, 0, 0, c.width, c.height); return g.getImageData(0, 0, c.width, c.height).data; };
+          const A = grab();
+          sc.setParty({ ...window.__dogParty, dog: null });
+          sc.debugStep(0);
+          const B = grab();
+          sc.setParty(window.__dogParty);
+          sc.debugStep(0);
+          let n = 0, lum = 0;
+          for (let i = 0; i < A.length; i += 4) {
+            const dd = Math.abs(A[i] - B[i]) + Math.abs(A[i + 1] - B[i + 1]) + Math.abs(A[i + 2] - B[i + 2]);
+            if (dd > 60) { n++; lum += 0.2126 * A[i] + 0.7152 * A[i + 1] + 0.0722 * A[i + 2]; }
+          }
+          return { n, lum: n ? lum / n : 0, pose: dg.pose };
+        });
+        results[coat + '/' + bd] = r;
+        if (r.n < worst) { worst = r.n; worstAt = coat + '/' + bd; }
+        if (!visible) check(false, `${coat} dog in ${bd}: not visible`);
+        await shot(page, `dog-${coat}-${bd}`);
+      }
+    }
+    check(worst > 400, `the dog is drawn in trail, camp, river, landmark, fort and valley with each coat (fewest changed pixels ${worst} at ${worstAt})`);
+    const poses = DOG_BACKDROPS.filter((b) => b !== 'post').map((b) => b + ' ' + results['brown/' + b].pose);
+    check(results['brown/trail'].pose === 'trot' && results['brown/camp'].pose === 'sit' && results['brown/river'].pose === 'stand', `it trots on the trail, sits by the fire, waits at a stop (${poses.join(', ')})`);
+    const coatOrder = DOG_BACKDROPS.filter((b) => b !== 'post').every((b) => results['spotted/' + b].lum > results['brown/' + b].lum + 15 && results['brown/' + b].lum > results['black/' + b].lum + 10);
+    check(coatOrder, `the three coats differ (mean brightness spotted > brown > black: ${DOG_BACKDROPS.filter((b) => b !== 'post').map((b) => COATS.map((c) => results[c + '/' + b].lum.toFixed(0)).join('/')).join(', ')})`);
+    // the bark
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.setBackdrop('trail'); sc.setTravel({ moving: false }); });
+    await setDog('brown');
+    await step(page, 60);
+    const nb0 = (await events(page, 'bark')).length;
+    const ok = await page.evaluate(() => window.__ww.scene.dogBark());
+    await step(page, 10);
+    const ib = await info(page), sb = await state(page);
+    await shot(page, 'dog-bark');
+    const be = await events(page, 'bark');
+    check(ok === true && be.length === nb0 + 1 && Object.keys(be[be.length - 1]).filter((k) => k !== 'at').join() === 'type' && ib.dog.barking && ib.dog.pose === 'bark' && sb.dog && sb.dog.coat === 'brown' && sb.dog.name === 'Biscuit', `dogBark(): the bark pose and { type: 'bark' } (pose ${ib.dog.pose}, getState().dog ${JSON.stringify(sb.dog)})`);
+    await step(page, 60);
+    check(!(await info(page)).dog.barking, 'the bark is brief (over within a second)');
+    // it barks by itself when an animal is spotted
+    for (const a of ['pronghorn', 'eagle']) {
+      const before = await page.evaluate(() => window.__ww.events.length);
+      await page.evaluate((a) => window.__ww.scene.spotAnimal(a), a);
+      for (let n = 0; n < 40 && !(await events(page, 'animalSpotted')).some((e) => e.at >= 0 && e.animal === a); n++) await step(page, 30, false);
+      await step(page, 1);
+      const evs = (await page.evaluate((b) => window.__ww.events.slice(b).map((e) => e.type + (e.animal ? ':' + e.animal : '')), before));
+      const iSpot = evs.indexOf('animalSpotted:' + a);
+      check(iSpot >= 0 && evs[iSpot + 1] === 'bark', `a ${a} spotted with the dog along: it barks (${evs.join(', ')})`);
+      if (a === 'pronghorn') await shot(page, 'dog-barks-at-pronghorn');
+      await step(page, 200, false);
+    }
+    await setDog(null);
+    const nb1 = (await events(page, 'bark')).length;
+    await page.evaluate(() => window.__ww.scene.spotAnimal('coyote'));
+    for (let n = 0; n < 40 && !(await events(page, 'animalSpotted')).some((e) => e.animal === 'coyote'); n++) await step(page, 30, false);
+    check((await events(page, 'animalSpotted')).some((e) => e.animal === 'coyote') && (await events(page, 'bark')).length === nb1 && (await info(page)).dog === null, 'no dog, no bark (the coyote is still spotted)');
+    // not in the hunt or fishing
+    await setDog('black');
+    await page.evaluate(() => window.__ww.scene.startHunt({ seed: 2 }));
+    await step(page, 10);
+    const ih = await info(page);
+    await page.evaluate(() => { window.__ww.scene.endMiniGame(); window.__ww.scene.startFish({ seed: 2 }); });
+    await step(page, 10);
+    const ifs = await info(page);
+    await page.evaluate(() => window.__ww.scene.endMiniGame());
+    check(!ih.dog.visible && !ifs.dog.visible, 'the dog sits out the hunt and the fishing');
+    check(errors.real().length === 0, `dog: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+  // dev.html: ?dog= and key b
+  {
+    const { page, context, errors } = await open(browser, { dog: 'black', moving: '0' });
+    const s = await state(page);
+    await page.keyboard.press('b');
+    await page.waitForTimeout(100);
+    const barks = await events(page, 'bark');
+    check(s.dog && s.dog.coat === 'black' && barks.length === 1, `dev.html ?dog=black brings the dog and key b barks (${JSON.stringify(s.dog)}, ${barks.length} bark)`);
+    check(errors.real().length === 0, `dev dog: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+
   // ---- 8. perf: real frames at 4x CPU throttle on a phone-sized canvas ----
   if (!process.env.SKIP_PERF) {
     const PERF_MS = Number(process.env.PERF_MS || 8);
@@ -411,6 +677,8 @@ try {
       ['stormy trail, a bison herd and confetti', { biome: 'mountains', weather: 'storm', pace: 'brisk' }, () => { const sc = window.__ww.scene; sc.spotAnimal('bison'); sc.spotAnimal('eagle'); sc.celebrate('arrived'); }],
       ['the hunt in the rain', { biome: 'prairie', weather: 'rain' }, () => window.__ww.scene.startHunt({ seed: 5, shots: 5 })],
       ['the river crossing at camp-time dusk', { biome: 'gorge', backdrop: 'river', weather: 'dusk' }, () => window.__ww.scene.celebrate('river')],
+      ['a rainy trail with the dog, a herd and barks', { biome: 'prairie', weather: 'rain', pace: 'brisk', dog: 'spotted' }, () => { const sc = window.__ww.scene; sc.spotAnimal('bison'); sc.spotAnimal('pronghorn'); sc.dogBark(); setInterval(() => sc.dogBark(), 900); }],
+      ['Fort Derby with the dog (bursts and the finish)', { biome: 'highdesert', backdrop: 'fort', dog: 'brown' }, () => { const sc = window.__ww.scene; sc.startDerby({ seed: 3, length: 200 }); setInterval(() => { const s = sc.getState(); if (!s.mini) sc.startDerby({ seed: 4, length: 200 }); else if (s.mini.phase === 'wait') sc.derbyBurst(1); }, 60); }],
     ]) {
       const { page, context, errors } = await open(browser, params);
       const cdp = await context.newCDPSession(page);

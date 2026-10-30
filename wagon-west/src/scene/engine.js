@@ -16,19 +16,33 @@
 // Events: onEvent({ type, ...payload }) (the house convention of the other games' engines):
 //   { type: 'ready' } · { type: 'hunt', hit, animal, meatLb } · { type: 'huntEnd', meatLb, hits, shots }
 //   { type: 'fish', size, lb } · { type: 'fishEnd', fishLb, caught, casts } · { type: 'animalSpotted', animal }
+// v1.1 (SPEC v1.1 §3: Fort Derby and the dog):
+//   setParty({ ..., dog: { name, coat: 'brown' | 'spotted' | 'black' } | null })  (no dog key = no dog, like the rest
+//     of setParty, which replaces the whole party); the dog trots beside the wagon on the trail, sits by the fire at
+//     camp, waits with the party at the fort / river / landmark / valley stops (never in the post office), and runs
+//     with the wagon in the derby. It barks by itself when an animal is spotted while it is on screen.
+//   scene.dogBark() → true (bark pose, a little "!", emits { type: 'bark' }) | false (no dog in the party)
+//   scene.startDerby({ seed, length = 400 })  scene.derbyBurst(power 0..1) → true | false (only while held at a marker)
+//   scene.endDerby() → the state so far | null (emits nothing; endMiniGame() ends a derby the same way)
+//   getState().mini = { kind: 'derby', progress, mailProgress, left, phase, markers, bursts, won } while it runs
+//   Events: { type: 'derbyMarker', n, of } (the race holds until derbyBurst) · { type: 'derbyEnd', won, margin,
+//     markers, bursts } (confetti and a cheer; 2 s later the scene goes back to its backdrop) · { type: 'bark' }
 // Additions beyond §11: setReducedMotion(on); getState() also carries biome, legId, pace, view, scroll (px rolled, the
-// smoke test's "the wagon moved"), playing, reducedMotion; endMiniGame() returns the summary so far (and emits
-// nothing); debugStep(n), debugPerf(reset), debugInfo(), debugMini() for the dev page and the smoke test.
+// smoke test's "the wagon moved"), playing, reducedMotion, dog ({ name, coat } | null); endMiniGame() returns the
+// summary so far (and emits nothing); debugStep(n), debugPerf(reset), debugInfo(), debugMini() for the dev page and
+// the smoke test.
 //
-// Input: while a mini-game runs, a pointerdown on the canvas shoots / hooks (the canvas gets touch-action: none for
-// the duration) and Space does the same from the keyboard; otherwise the scene ignores input entirely.
+// Input: while the hunt or fishing runs, a pointerdown on the canvas shoots / hooks (the canvas gets touch-action:
+// none for the duration) and Space does the same from the keyboard; otherwise the scene ignores input entirely (the
+// derby included: the app's panel answers for it with derbyBurst).
 
 import { clamp, approach, clearTextSprites } from './util.js';
 import { buildLayers, biomeOf, BIOMES } from './biomes.js';
 import { buildSetPiece, BACKDROPS, paintingFor } from './backdrops.js';
-import { paintColor, flagColor, personLook } from './sprites.js';
+import { paintColor, flagColor, personLook, dogCoat } from './sprites.js';
 import { createHunt } from './hunt.js';
 import { createFish } from './fish.js';
+import { createDerby } from './derby.js';
 import { drawFrame, updateFx, createFx, burst, wxOf, WEATHERS } from './render.js';
 
 const CRITTERS = {
@@ -58,6 +72,7 @@ export function createScene(canvas, opts = {}) {
     wxCur: 'clear', wxPrev: 'clear', wxMix: 1,
     critters: [], cheerT: 0, approach: 0, fade: 0,
     mini: null, t: 0, rm: !!opts.reducedMotion, fx: createFx(),
+    dog: null, dogPos: { x: 0, y: 0, dir: 1, sit: false, amp: 0 }, dogPh: 0, dogBarkT: 0, barks: 0, lastBarkAt: -9,
   };
   let dirtyLayers = true, dirtyPiece = true, dirtyApproach = true;
   let playing = false, destroyed = false, raf = 0, last = 0, drawQueued = 0, readySent = false;
@@ -117,6 +132,9 @@ export function createScene(canvas, opts = {}) {
       looks: comps.slice(0, 3).map((c) => personLook(c && c.id, c && c.color, c && c.hat)),
       wagon: { box: paintColor(w.paint), wheel: '#7a4a26', cover: '#f6efdc', flag: flagColor(w.flag), name: String(w.name || '').trim().toUpperCase().slice(0, 18) },
     };
+    const d = p.dog;
+    S.dog = d && typeof d === 'object' ? { name: String(d.name || '').trim().slice(0, 24), coat: dogCoat(d.coat) } : null;
+    if (!S.dog) S.dogBarkT = 0;
   }
   applyParty();
 
@@ -138,6 +156,32 @@ export function createScene(canvas, opts = {}) {
     } else {
       set(0, x - 92 * k, gy + 14 * k, true); set(1, x + 150 * k, gy - 7 * k, false); set(2, x + 262 * k, gy + 13 * k, true);
     }
+    // the dog: by the fire at camp (sitting), with the party at a stop, trotting beside the team on the trail
+    const D = S.dogPos;
+    if (S.view === 'stop' && S.backdrop === 'camp' && S.piece) {
+      D.x = S.piece.anchors.fireX - 120 * k; D.y = gy + 24 * k; D.dir = 1; D.sit = true; D.amp = 0;
+    } else if (S.view === 'stop') {
+      D.x = x + 206 * k; D.y = gy + 30 * k; D.dir = 1; D.sit = false; D.amp = 0;
+    } else {
+      const rolling = S.walkAmp > 0.05;
+      D.x = x + 190 * k + (rolling && !S.rm ? Math.sin(S.t * 0.5) * 18 * k : 0); D.y = gy + 30 * k; D.dir = 1; D.sit = false; D.amp = rolling ? 1 : 0;
+    }
+  }
+  // the dog is drawn on the trail, at the outdoor stops and in the derby (not in the post office, the hunt or fishing)
+  function dogVisible() {
+    if (!S.dog) return false;
+    if (S.view === 'derby' || S.view === 'trail') return true;
+    return S.view === 'stop' && S.backdrop !== 'post';
+  }
+  function bark() {
+    S.dogBarkT = 0.7; S.barks++; S.lastBarkAt = S.t;
+    emit({ type: 'bark' });
+    requestDraw();
+  }
+  function spotted(c) {
+    c.spotted = true;
+    emit({ type: 'animalSpotted', animal: c.kind });
+    if (dogVisible() && S.t - S.lastBarkAt > 1) bark();
   }
 
   // ---------------------------------------------------------------- per-frame update
@@ -165,15 +209,17 @@ export function createScene(canvas, opts = {}) {
       c.x += c.dir * c.speed * k * dt - (c.sky ? 0 : S.speed * 0.6 * dt);
       c.ph += dt * c.gait * (S.rm ? 0.7 : 1);
       const mid = L.W * 0.5;
-      if (!c.spotted && ((c.dir < 0 && c.x <= mid) || (c.dir > 0 && c.x >= mid))) { c.spotted = true; emit({ type: 'animalSpotted', animal: c.kind }); }
+      if (!c.spotted && ((c.dir < 0 && c.x <= mid) || (c.dir > 0 && c.x >= mid))) spotted(c);
       const tail = c.x - c.dir * c.n * 46 * k;
       if ((c.dir < 0 && tail < -80 * k) || (c.dir > 0 && tail > L.W + 80 * k) || c.x < -900 * k || c.x > L.W + 900 * k) {
         c.gone = true;
-        if (!c.spotted) { c.spotted = true; emit({ type: 'animalSpotted', animal: c.kind }); }
+        if (!c.spotted) spotted(c);
       }
     }
     if (S.critters.some((c) => c.gone)) S.critters = S.critters.filter((c) => !c.gone);
     S.cheerT = Math.max(0, S.cheerT - dt);
+    S.dogBarkT = Math.max(0, S.dogBarkT - dt);
+    S.dogPh += (S.speed / k) * dt * 0.085; // a two-frame trot: ~6 steps a second at the steady pace
     updateFx(S, dt);
     if (S.mini) {
       S.mini.update(L, dt);
@@ -212,16 +258,17 @@ export function createScene(canvas, opts = {}) {
     const r = canvas.getBoundingClientRect();
     return { x: ((e.clientX - r.left) * S.L.W) / Math.max(1, r.width), y: ((e.clientY - r.top) * S.L.H) / Math.max(1, r.height) };
   }
+  const owns = () => !!S.mini && S.mini.input !== false;
   const onDown = (e) => {
-    if (!S.mini || !playing || destroyed) return;
+    if (!owns() || !playing || destroyed) return;
     e.preventDefault();
     const p = toLocal(e);
     if (e.pointerType === 'mouse') S.mini.move(S.L, p.x, p.y); // the keyboard's aim line follows a mouse, not a finger
     S.mini.pointer(S.L, p.x, p.y);
   };
-  const onMove = (e) => { if (S.mini && playing && e.pointerType === 'mouse') { const p = toLocal(e); S.mini.move(S.L, p.x, p.y); } };
+  const onMove = (e) => { if (owns() && playing && e.pointerType === 'mouse') { const p = toLocal(e); S.mini.move(S.L, p.x, p.y); } };
   const onKey = (e) => {
-    if (!S.mini || !playing || destroyed) return;
+    if (!owns() || !playing || destroyed) return;
     if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); if (!e.repeat) S.mini.key(S.L); }
   };
   canvas.addEventListener('pointerdown', onDown, { passive: false });
@@ -229,15 +276,14 @@ export function createScene(canvas, opts = {}) {
   globalThis.addEventListener && globalThis.addEventListener('keydown', onKey);
 
   // ---------------------------------------------------------------- mini-games
-  let savedTouch = '';
+  let savedTouch = '', touchTaken = false;
   function openMini(m) {
     if (S.mini) closeMini();
     S.mini = m;
     S.view = m.kind;
     S.fade = S.rm ? 0.5 : 1;
     S.wagonX = wagonTarget();
-    savedTouch = canvas.style.touchAction;
-    canvas.style.touchAction = 'none';
+    if (m.input !== false) { savedTouch = canvas.style.touchAction; canvas.style.touchAction = 'none'; touchTaken = true; }
     requestDraw();
   }
   function closeMini() {
@@ -245,9 +291,10 @@ export function createScene(canvas, opts = {}) {
     S.view = S.backdrop === 'trail' ? 'trail' : 'stop';
     S.fade = S.rm ? 0.5 : 1;
     S.wagonX = wagonTarget();
-    canvas.style.touchAction = savedTouch;
+    if (touchTaken) { canvas.style.touchAction = savedTouch; touchTaken = false; }
     requestDraw();
   }
+  const derbyHooks = { celebrate(kind) { if (S.L) { burst(S, kind); S.cheerT = 1.8; } } };
 
   // fonts may arrive after the first text sprites were cached (the wagon's name, the signs)
   if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
@@ -317,6 +364,24 @@ export function createScene(canvas, opts = {}) {
       closeMini();
       return sum;
     },
+    // ---- v1.1: Fort Derby
+    startDerby(o = {}) { if (!destroyed) openMini(createDerby(o, emit, S, derbyHooks)); },
+    derbyBurst(power) {
+      if (!S.mini || S.mini.kind !== 'derby') return false;
+      const ok = S.mini.burst(power);
+      requestDraw();
+      return ok;
+    },
+    endDerby() {
+      if (!S.mini || S.mini.kind !== 'derby') return null;
+      return scene.endMiniGame();
+    },
+    // ---- v1.1: the dog
+    dogBark() {
+      if (!S.dog || destroyed) return false;
+      bark();
+      return true;
+    },
     play() {
       if (destroyed || playing) return;
       playing = true;
@@ -338,7 +403,7 @@ export function createScene(canvas, opts = {}) {
       canvas.removeEventListener('pointermove', onMove);
       globalThis.removeEventListener && globalThis.removeEventListener('keydown', onKey);
       globalThis.removeEventListener && globalThis.removeEventListener('resize', onWinResize);
-      if (S.mini) canvas.style.touchAction = savedTouch;
+      if (S.mini && touchTaken) canvas.style.touchAction = savedTouch;
       S.mini = null; S.layers = null; S.piece = null; S.approachPiece = null;
     },
     resize,
@@ -349,7 +414,7 @@ export function createScene(canvas, opts = {}) {
         backdrop: S.backdrop, milesDone: tr.milesDone, weather: tr.weather, moving: !!tr.moving,
         mini: S.mini ? S.mini.state() : null,
         biome: S.biome, legId: S.leg.id, pace: tr.pace, view: S.view, scroll: Math.round(S.scroll * 10) / 10,
-        playing, reducedMotion: S.rm,
+        playing, reducedMotion: S.rm, dog: S.dog ? { name: S.dog.name, coat: S.dog.coat } : null,
       };
     },
     // ---- debug (not contract): the dev page and the smoke test
@@ -373,6 +438,11 @@ export function createScene(canvas, opts = {}) {
         paintingFor: paintingFor(S.leg.id), approach: S.approach, approachPainting: S.approachPiece ? S.approachPiece.painting : null,
         particles: { ...S.fx.drawn }, flashes: S.fx.flashes, layersBiome: S.layers ? S.layers.id : null, builds: perf.builds,
         party: S.party.looks.map((l) => l.hat), animal: S.party.animal, wagonName: S.party.wagon.name, fade: S.fade,
+        dog: S.dog ? {
+          ...S.dog, visible: dogVisible(), barking: S.dogBarkT > 0, barks: S.barks,
+          x: S.view === 'derby' && S.mini ? S.mini.dogX : S.dogPos.x, y: S.view === 'derby' && S.mini ? S.mini.dogY : S.dogPos.y,
+          pose: S.dogBarkT > 0 ? 'bark' : S.view === 'derby' ? 'run' : S.dogPos.sit ? 'sit' : S.dogPos.amp > 0 ? 'trot' : 'stand',
+        } : null,
       };
     },
     debugMini() { return S.mini && S.L ? S.mini.debug(S.L) : null; },
