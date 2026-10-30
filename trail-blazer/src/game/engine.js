@@ -54,8 +54,34 @@
 //     fell; cash adds combo and air now includes big-air bonuses ($40 each); all parts still add up to total.
 //   Specials (vehicles.js SPECIALS) and mutators (gravity, tank, fog, wheels, crush, top speed, mirror, bounce) are
 //   applied here; trail.gravity / wind / gaps / fog come from trails.js. The vehicle's top speed is capped at 64 m/s.
+//
+// v1.7 Hill Climb (SPEC v1.7 §1): after a finished ride the wall past the finish becomes a mountain.
+//   startHill({ flags: 5, questions: 10, seed, cupMult }) → bool: the course's ground past the run-in is swapped for
+//     the mountain (course.js createHill / installHill), the physics chunks there are rebuilt, the other riders park,
+//     the player rides to the base line (a scripted glide) and holds; phase 'hill'. Events hillStart { flags,
+//     questions } at once (banner "HILL CLIMB!" 1.5 s) and hillHold { heightM, flag } when the vehicle holds at the
+//     base (and after every burst / slide). There is no gas on the hill: input is ignored.
+//   hillBoost({ power (0..1), quick }) → bool (only while holding, before `questions` answers): power > 0 fires a
+//     rocket burst (event hillBurst { power, quick, answers }, popup, flames, exhaust rings, a wheelie pop) that
+//     climbs power x 65 m of slope when quick, power x 42 m when not (a flag section is 60 m, so 5 quick right
+//     answers summit with margin). The distance is closed-loop: every tick a 1-D predictor coasts the vehicle to a
+//     stop over the real profile and the thrust (17 x power^0.25 m/s², per vehicle) stays on until that stop point
+//     reaches the target (never longer than 5 s), so every vehicle climbs the same distance on the same answer.
+//     When the thrust is off and the speed drops under 1 m/s the vehicle holds (the brake, no slide) → hillHold.
+//     power 0 → hillSputter { answers }: a 0.6 s sputter, then a scripted slide back to the last flag line (dust, a
+//     wobble; never below the base line) → hillHold. The chassis is kept level with the slope: no crash on the hill.
+//   Crossing flag line n (1..flags) → hillFlag { n, heightM, cash: 150 x n x cupMult } (confetti from the pole);
+//     the last flag is the summit → hillSummit { heightM, cash: 1000 x cupMult } (fireworks, "SUMMIT!"), the vehicle
+//     rolls to the cairn and parks → hillEnd. hillEnd { heightM, flags (passed), summit, answers, cash: { flags,
+//     summit, total }, bestHeightM (the highest point of this climb) } also fires at the hold after the `questions`-th
+//     answer and on endHill(); then phase 'hillDone', everything held (the fx keep playing; the app may pause()).
+//   getState().hill = { active, heightM, flag (the last flag line held at), flags (passed), flagsTotal, progress
+//     (slope length to the summit, 0..1), holding, burst (s of thrust time left in a live burst, else 0), answers,
+//     questions, summit, ended, cash } or null without a hill. The race summary is unchanged (the hill is separate).
+//   Sounds (the app maps event types): hillStart → 'hillStart', hillBurst → 'burst', hillSputter → 'sputter',
+//     hillFlag → 'flag', hillSummit → 'summit'.
 
-import { createCourse, CHUNK, START_X, SURF_IDS, RACE, levelStats, raceTop } from './course.js';
+import { createCourse, createHill, installHill, CHUNK, START_X, SURF_IDS, RACE, levelStats, raceTop } from './course.js';
 import { VEHICLE, resolveLook, drawVehicle, drawRider, drawHelmet, trailColor } from './vehicle.js';
 import * as R from './render.js';
 import { OBSTACLE_KINDS, SURFACES, medalFor } from '../data/trails.js';
@@ -109,7 +135,21 @@ export const RACE_TUNING = {
   names: ['Max', 'Zoe', 'Kai'], paints: ['lakeblue', 'sunset', 'purple'], helmets: ['#ffd23f', '#7dff6b', '#4dd2ff'], tierEdge: 1.04,
   pace: [1, 0.965, 0.93],
 };
-const T = TUNING, TR = RACE_TUNING;
+// v1.7 Hill Climb tuning
+export const HILL_TUNING = {
+  thrust: 17, thrustPow: 0.25,    // the rocket burst: m/s² along the slope x stats.power^thrustPow (feel only: the
+  rampSec: 0.15, maxBurstSec: 5,  //   distance is closed-loop); the thrust eases in and never pushes longer than this
+  quickM: 65, slowM: 42,          // m of slope a quick / slow right answer climbs (a flag section is 60 m)
+  roll: 0.3, drag: 0.0035,        // the coasting resistances (the race's rolling and air drag)
+  holdV: 1.0,                     // m/s: the thrust is off and the vehicle is this slow → hold
+  brake: 7, brakeZone: 10,        // m/s² of brake over the last brakeZone m to the burst's target (the predictor knows)
+  sputterSec: 0.6, slideSpeed: 9, // a wrong answer: the sputter, then the slide back at this many m/s
+  wheelie: 2.4,                   // rad/s nose-up pop at launch
+  glideSpeed: 16,                 // m/s of the ride to the base line
+  banner: 1.5, fireworksSec: 3.2,
+  flagCash: 150, summitCash: 1000,
+};
+const T = TUNING, TR = RACE_TUNING, HT = HILL_TUNING;
 const SURF_LIST = SURF_IDS.map((id) => SURFACES[id]);
 const LANE_BIG = 0.62, LANE_SUB = 0.72;
 const CONFETTI = ['#ff4d6d', '#ffd23f', '#4dd2ff', '#7dff6b', '#c77dff', '#ffffff', '#ff9b2e'];
@@ -513,6 +553,7 @@ export function createGame(canvas, opts = {}) {
       // race
       cdT: 0, cdStep: 0, goT: -1, bogged: false, gateDrop: 0, finishCount: 0, place: 1, placeEmitted: 0, timeSec: 0,
       aiRand: mulberry32(hash2(seed, 0xa1)), aiLevel: 0, countdownOn: !raceCfg || raceCfg.countdown !== false,
+      hill: null, // v1.7
     };
     for (let i = 0; i < MAX_PARTICLES; i++) r.particles.push({ type: 0, x: 0, y: 0, vx: 0, vy: 0, size: 0, color: '#fff', life: 0, max: 1, alpha: 1, a: 0, extra: 0 });
     const me = makeRider(r, 0, { me: true, name: (raceCfg && raceCfg.name) || 'You', def, paint: cfg.paint || look0.paint || def.look.paint, decal: cfg.decal || look0.decal,
@@ -684,7 +725,8 @@ export function createGame(canvas, opts = {}) {
       measure(v);
       v.pre.vx = v.com.vx; v.pre.vy = v.com.vy;
       if (v.hold) continue;
-      if (v === me && r.winchAnim) winchStep(r, dt);
+      if (r.hill && v === me) hillControls(r, v, dt);
+      else if (v === me && r.winchAnim) winchStep(r, dt);
       else if (v.crashed) { /* tumbling: no control */ }
       else if (v.finished || (v === me && r.phase === 'done')) coastToStop(v, dt);
       else if (r.race) controlsRace(r, v, dt, v.ai ? aiInput(r, v) : r.finishCrossed ? NO_INPUT : input);
@@ -733,7 +775,8 @@ export function createGame(canvas, opts = {}) {
       }
     }
     r.t += dt;
-    if (r.race) {
+    if (r.hill) hillLogic(r, dt);
+    else if (r.race) {
       for (const v of r.riders) if (!v.hold) riderLogicRace(r, v, dt);
       if (r.phase !== 'done') playerLogic(r, dt);
       racePlaces(r);
@@ -1725,6 +1768,276 @@ export function createGame(canvas, opts = {}) {
     if (W) winchPoseAt(r, Math.min(1, W.t / T.winchDur));
   }
 
+  // ===================================== v1.7 Hill Climb =====================================
+  const round1 = (x) => Math.round(x * 10) / 10;
+  function hillHeight(r) { return Math.max(0, r.course.groundY(r.me.com.x) - r.hill.geo.yBase); }
+  // where the vehicle would coast to a stop from x at tangential speed vt (the 1-D model: gravity along the slope,
+  // rolling and air drag); the burst's thrust stays on until this reaches its target
+  function hillStopX(r, x, vt, brakeFrom = Infinity) {
+    const geo = r.hill.geo;
+    if (vt <= 0) return x;
+    let v2 = vt * vt;
+    const dx = 0.5;
+    for (let i = 0; i < 900; i++) {
+      const sl = geo.slopeAt(x + dx / 2), gn = Math.hypot(1, sl);
+      const ds = dx * gn;
+      const dec = (r.g * sl) / gn + HT.roll + HT.drag * v2 + (x >= brakeFrom ? HT.brake : 0);
+      const loss = 2 * dec * ds;
+      if (loss > 0 && v2 <= loss) return x + dx * (v2 / loss);
+      v2 -= loss;
+      x += dx;
+      if (x > geo.plateauX1) return x;
+    }
+    return x;
+  }
+  function startHillNow(r, cfg) {
+    const v = r.me, c = r.course;
+    const geo = createHill(c, { flags: cfg.flags, seed: cfg.seed != null && cfg.seed !== '' ? cfg.seed : r.seed });
+    installHill(c, geo);
+    // the physics on the old wall goes; manageChunks rebuilds it from the mountain
+    for (const [ci, ch] of r.chunks) {
+      if ((ci + 1) * CHUNK <= geo.x0 - 1) continue;
+      Composite.remove(r.world, ch.bodies.filter((b) => !b.plugin.tb.removed));
+      r.chunks.delete(ci);
+    }
+    { const live = new Set(); for (const ch of r.chunks.values()) for (const p of ch.props) live.add(p); r.props = r.props.filter((p) => live.has(p)); }
+    r.pendingRemove.length = 0;
+    // everyone else parks where they are
+    for (const o of r.riders) {
+      if (o === v) continue;
+      if (!o.hold) { for (const b of o.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); } capturePose(o); o.hold = true; }
+      o.finished = true; o.stopped = true; o.crashed = false; o.driver = null; o.helmetObj = null;
+    }
+    // the player: upright, no boost, no turbo, and a ride to the base line
+    v.crashed = false; v.driver = null; v.helmetObj = null; v.turboT = 0; v.burstT = 0; v.invulnT = 0;
+    if (v.boostOn) { v.boostOn = false; emit({ type: 'boost', on: false }); }
+    v.air = false; v.noContactT = 0; v.upT = 0; v.slowT = 0;
+    measure(v);
+    if (!isFinite(v.com.x) || !isFinite(v.com.y)) { placeVehicle(v, c.finishX + 10, c.groundY(c.finishX + 10) + 0.06, 0); measure(v); }
+    const a0 = v.ang, cs = Math.cos(a0), sn = Math.sin(a0), HC = v.hc;
+    const ox = v.chassis.position.x / S - (cs * HC[0] - sn * HC[1]);
+    const oy = -v.chassis.position.y / S - (sn * HC[0] + cs * HC[1]) - v.lift;
+    const x1 = geo.xBase;
+    const questions = clamp(Math.round(Number(cfg.questions) || 10), 1, 60);
+    const cupMult = Number(cfg.cupMult) > 0 ? Number(cfg.cupMult) : 1;
+    const tags = [''];
+    for (let n = 1; n <= geo.flags; n++) tags.push('$' + Math.round(HT.flagCash * n * cupMult));
+    tags.push('$' + Math.round(HT.summitCash * cupMult)); // the cairn's tag
+    r.hill = {
+      active: true, ended: false, geo, flags: geo.flags, questions, cupMult, tags,
+      passed: 0, flag: 0, answers: 0, holding: false, burst: null, slide: null, summit: false, best: 0,
+      cash: { flags: 0, summit: 0, total: 0 }, thrust: HT.thrust * Math.pow(v.stats.power, HT.thrustPow), thrustOn: false,
+      fireworks: 0, ringT: 0, bannerT: HT.banner,
+      glide: { t: 0, dur: clamp(Math.abs(x1 - ox) / HT.glideSpeed, 0.7, 2.4), x0: ox, y0: oy, a0, x1, a1: Math.atan(c.groundSlope(x1)) },
+    };
+    for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); }
+    capturePose(v);
+    v.hold = true;
+    v.prevAngle = v.chassis.angle;
+    r.phase = 'hill';
+    r.frozen = false; r.gateGlide = null; r.gateApproach = false; r.winchAnim = null;
+    r.timeScale = 1; r.slowT = 0;
+    manageChunks(r);
+    emit({ type: 'hillStart', flags: geo.flags, questions });
+    popup(r, 'HILL CLIMB!', 0.5, LANE_BIG, '#ffd23f', 1.5, false, HT.banner, 'big');
+    r.zoomPunch = 1.12;
+  }
+  // the scripted ride from wherever the race ended to the base line (the vehicle is held; the script places it)
+  function hillGlideStep(r, dt) {
+    const H = r.hill, G = H.glide, v = r.me, c = r.course;
+    G.t += dt;
+    const u = Math.min(1, G.t / G.dur);
+    const e = smoothstep(0, 1, u);
+    const x = G.x0 + (G.x1 - G.x0) * e;
+    const yg = c.groundY(x) + 0.06;
+    const y = G.y0 + (yg - G.y0) * smoothstep(0, 0.5, u);
+    const a = G.a0 + wrapPi(Math.atan(c.groundSlope(x)) - G.a0) * smoothstep(0, 0.7, u);
+    placeVehicle(v, x, y, a);
+    for (let i = 0; i < 2; i++) Body.setAngle(v.wheels[i], -(x - G.x0) / (v.def.wheels[i].r * v.wheelMul));
+    measure(v);
+    capturePose(v);
+    if (u < 1) { if (Math.random() < 0.5) wheelFx(r, v, AI_INPUT); return; }
+    H.glide = null;
+    hillHoldNow(r);
+  }
+  function hillFlames(r, v) {
+    localToWorld(v, v.def.exhaust[0] - 0.4, v.def.exhaust[1], tmp2);
+    const bx = -v.fx, by = -v.fy;
+    for (let k = 0; k < 2; k++) {
+      const sp = 7 + Math.random() * 6;
+      particle(r, P_SPARK, tmp2[0], tmp2[1], v.com.vx * 0.2 + bx * sp + (Math.random() - 0.5) * 2, v.com.vy * 0.2 + by * sp + (Math.random() - 0.5) * 2, 0.1 + Math.random() * 0.06, k ? '#ffd23f' : '#ff7a1a', 0.3 + Math.random() * 0.15, 1);
+    }
+    if (Math.random() < 0.5) particle(r, P_DUST, tmp2[0], tmp2[1], bx * 3 + (Math.random() - 0.5) * 2, by * 3 + 0.8, 0.22 + Math.random() * 0.2, '#ffb36b', 0.4, 0.55);
+    r.hill.ringT -= STEP;
+    if (r.hill.ringT <= 0) { r.hill.ringT = 0.14; particle(r, P_RING, tmp2[0] + bx * 0.6, tmp2[1] + by * 0.6, bx * 2, by * 2, 0.25, 'rgba(255,255,255,0.9)', 0.45, 0.8, 1.6); }
+  }
+  // the player's physics on the hill: the rocket burst to its target, no gas, the chassis kept level with the slope
+  function hillControls(r, v, dt) {
+    const H = r.hill, c = r.course;
+    const gsl = c.groundSlope(v.com.x), gn = Math.hypot(1, gsl), tx = 1 / gn, ty = gsl / gn;
+    const vt = v.com.vx * tx + v.com.vy * ty;
+    const grounded = v.wheelAgo[1] < 0.12 || v.wheelAgo[2] < 0.12;
+    const pitch = wrapPi(v.ang - Math.atan(gsl));
+    const B = H.burst;
+    let thrustOn = false;
+    if (B) {
+      B.t += dt;
+      const brakeFrom = B.targetX - HT.brakeZone;
+      if (B.t < HT.maxBurstSec && hillStopX(r, v.com.x, Math.max(0, vt), brakeFrom) < B.targetX) thrustOn = true;
+      if (thrustOn) {
+        const a = H.thrust * Math.min(1, B.t / HT.rampSec);
+        addVelAll(v, tx * a * dt, ty * a * dt);
+        B.thrustT += dt;
+      } else if (v.com.x >= brakeFrom && vt > 0.05) {
+        // the last metres to the target: the brake (the vehicle rolls up to its hold instead of creeping)
+        const dv = Math.min(vt, HT.brake * dt);
+        addVelAll(v, -tx * dv, -ty * dv);
+      }
+    }
+    // upright: a wheelie may pop at launch; otherwise the chassis follows the slope (a crash is impossible here)
+    let w = v.omega;
+    const err = pitch - clamp(pitch, -0.18, 0.32);
+    w += (-err * 18 - w * (err ? 4 : 1.5)) * dt;
+    if (B && thrustOn && B.t < 0.22 && !H.summit) w = Math.max(w, HT.wheelie * Math.min(1, B.t / 0.1));
+    setOmegaAll(v, w);
+    if (!grounded && v.com.y - c.groundY(v.com.x) > v.rideH + 0.25) addVelAll(v, 0, -r.g * 0.8 * dt);
+    measure(v);
+    const sp = v.speed;
+    if (sp > 0.01) {
+      const dv = Math.min(sp, (HT.roll + HT.drag * sp * sp) * dt);
+      addVelAll(v, (-v.com.vx / sp) * dv, (-v.com.vy / sp) * dv);
+    }
+    v.boostOn = thrustOn;
+    H.thrustOn = thrustOn;
+    if (thrustOn) hillFlames(r, v);
+    spinWheels(v, thrustOn ? AI_INPUT : NO_INPUT);
+    if (B && !thrustOn && B.t > 0.4 && vt < HT.holdV) hillHoldNow(r);
+  }
+  function hillHoldNow(r) {
+    const H = r.hill, v = r.me;
+    H.burst = null; H.slide = null; H.thrustOn = false; v.boostOn = false;
+    for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); }
+    capturePose(v);
+    v.hold = true;
+    v.prevAngle = v.chassis.angle;
+    measure(v);
+    H.flag = H.passed;
+    H.holding = true;
+    const hgt = hillHeight(r);
+    if (hgt > H.best) H.best = hgt;
+    if (H.summit || H.answers >= H.questions) { finishHill(r); return; }
+    emit({ type: 'hillHold', heightM: round1(hgt), flag: H.flag });
+  }
+  function hillFlagHit(r, n) {
+    const H = r.hill, geo = H.geo;
+    const cash = Math.round(HT.flagCash * n * H.cupMult);
+    H.cash.flags += cash; H.cash.total += cash;
+    emit({ type: 'hillFlag', n, heightM: round1(geo.flagY[n] - geo.yBase), cash });
+    confetti(r, geo.flagX[n], geo.flagY[n] + 4.2, reducedMotion ? 14 : 40);
+    popup(r, '+$' + cash, geo.flagX[n], geo.flagY[n] + 5.8, '#ffe14a', 0.7, true, 1.3);
+    r.shake = Math.max(r.shake, 2);
+    if (n === geo.flags) hillSummitHit(r);
+    else popup(r, 'FLAG!', 0.5, LANE_BIG, '#ffb347', 1.1, false, 1.0, 'big');
+  }
+  function hillSummitHit(r) {
+    const H = r.hill, geo = H.geo;
+    H.summit = true;
+    const cash = Math.round(HT.summitCash * H.cupMult);
+    H.cash.summit += cash; H.cash.total += cash;
+    emit({ type: 'hillSummit', heightM: round1(geo.height), cash });
+    popup(r, 'SUMMIT!', 0.5, LANE_BIG, '#ffd23f', 1.7, false, 2.4, 'big');
+    popup(r, '+$' + cash, 0.5, LANE_SUB, '#ffe14a', 0.85, false, 2.0, 'sub');
+    H.fireworks = HT.fireworksSec;
+    r.flash = Math.max(r.flash, 0.45);
+    r.zoomPunch = 1.22;
+    r.shake = Math.max(r.shake, 5);
+  }
+  function firework(r) {
+    const geo = r.hill.geo;
+    const x = geo.summitX + 4 + (Math.random() - 0.5) * 30, y = geo.summitY + 7 + Math.random() * 9;
+    const col = CONFETTI[(Math.random() * CONFETTI.length) | 0];
+    const n = reducedMotion ? 10 : 22;
+    for (let k = 0; k < n; k++) { const a = (k / n) * TAU, sp = 5 + Math.random() * 4; particle(r, P_SPARK, x, y, Math.cos(a) * sp, Math.sin(a) * sp, 0.09, k % 4 ? col : '#ffffff', 0.8 + Math.random() * 0.4, 1); }
+    particle(r, P_RING, x, y, 0, 0, 0.3, col, 0.5, 0.9, 3.5);
+  }
+  // a wrong answer: the sputter, then the slide back to the last flag line (scripted, the vehicle is held)
+  function hillSputter(r) {
+    const H = r.hill, v = r.me, geo = H.geo;
+    const a0 = v.ang, cs = Math.cos(a0), sn = Math.sin(a0), HC = v.hc;
+    const ox = v.chassis.position.x / S - (cs * HC[0] - sn * HC[1]);
+    const x1 = Math.min(ox, geo.flagX[H.flag]);
+    const dist = ox - x1;
+    H.slide = { t: 0, sputter: HT.sputterSec, dur: dist > 0.05 ? clamp(dist / HT.slideSpeed, 0.5, 3.2) : 0, x0: ox, x1, w0: v.wheels[0].angle, w1: v.wheels[1].angle };
+    emit({ type: 'hillSputter', answers: H.answers });
+    popup(r, 'SPUTTER...', 0.5, LANE_BIG, '#cfd6ff', 0.95, false, 0.9, 'big');
+    localToWorld(v, v.def.exhaust[0] - 0.3, v.def.exhaust[1], tmp2);
+    for (let k = 0; k < 6; k++) particle(r, P_DUST, tmp2[0], tmp2[1], -v.fx * 2 + (Math.random() - 0.5) * 2, 1 + Math.random() * 2, 0.2 + Math.random() * 0.2, '#8a8f99', 0.6, 0.6);
+    r.shake = Math.max(r.shake, 1.5);
+  }
+  function hillSlideStep(r, dt) {
+    const H = r.hill, L = H.slide, v = r.me, c = r.course;
+    L.t += dt;
+    if (L.t < L.sputter) {
+      // the sputter: a lurch and grey puffs, no climb
+      const u = L.t / L.sputter;
+      const x = L.x0 + 0.25 * Math.sin(u * Math.PI);
+      placeVehicle(v, x, c.groundY(x) + 0.06, Math.atan(c.groundSlope(x)) + 0.05 * Math.sin(u * TAU * 2));
+      measure(v); capturePose(v);
+      if (Math.random() < 0.4) { localToWorld(v, v.def.exhaust[0] - 0.3, v.def.exhaust[1], tmp2); particle(r, P_DUST, tmp2[0], tmp2[1], -v.fx * 1.5, 0.8 + Math.random(), 0.16 + Math.random() * 0.14, '#8a8f99', 0.5, 0.55); }
+      return;
+    }
+    const u = L.dur > 0 ? Math.min(1, (L.t - L.sputter) / L.dur) : 1;
+    const e = smoothstep(0, 1, u);
+    const x = L.x0 + (L.x1 - L.x0) * e;
+    const wob = 0.06 * Math.sin(u * TAU * 2.5) * (1 - u);
+    placeVehicle(v, x, c.groundY(x) + 0.06, Math.atan(c.groundSlope(x)) + wob);
+    for (let i = 0; i < 2; i++) Body.setAngle(v.wheels[i], (i ? L.w1 : L.w0) - (x - L.x0) / (v.def.wheels[i].r * v.wheelMul));
+    measure(v); capturePose(v);
+    if (u < 1 && L.dur > 0 && Math.random() < 0.7) {
+      const wb = v.wheels[0];
+      particle(r, r.bd.style === 'snow' || x > H.geo.snowX ? P_SNOW : P_DUST, wb.position.x / S + 0.4, -wb.position.y / S - 0.2, 1.5 + Math.random() * 2, 0.8 + Math.random() * 1.5, 0.18 + Math.random() * 0.16, x > H.geo.snowX ? '#ffffff' : r.dustCol, 0.5 + Math.random() * 0.3, 0.6);
+    }
+    if (u >= 1) hillHoldNow(r);
+  }
+  function hillLogic(r, dt) {
+    const H = r.hill, v = r.me, geo = H.geo;
+    for (let i = 0; i < 3; i++) { if (v.contacts[i]) v.wheelAgo[i] = 0; else v.wheelAgo[i] += dt; }
+    if (H.bannerT > 0) H.bannerT -= dt;
+    if (H.glide) hillGlideStep(r, dt);
+    else if (H.slide) hillSlideStep(r, dt);
+    if (!H.ended && !v.hold) {
+      while (H.passed < geo.flags && v.com.x >= geo.flagX[H.passed + 1]) { H.passed++; hillFlagHit(r, H.passed); }
+      const hgt = hillHeight(r);
+      if (hgt > H.best) H.best = hgt;
+      wheelFx(r, v, H.thrustOn ? AI_INPUT : NO_INPUT);
+      if (!isFinite(v.com.x) || !isFinite(v.com.y)) { placeVehicle(v, geo.flagX[H.flag], r.course.groundY(geo.flagX[H.flag]) + 0.06, 0); measure(v); hillHoldNow(r); }
+    }
+    if (H.fireworks > 0) { H.fireworks -= dt; if (Math.random() < (reducedMotion ? 0.12 : 0.3)) firework(r); }
+  }
+  function finishHill(r) {
+    const H = r.hill, v = r.me;
+    if (H.ended) return;
+    H.ended = true; H.active = false; H.holding = false;
+    H.burst = null; H.slide = null; H.glide = null; H.thrustOn = false; v.boostOn = false;
+    if (!v.hold) { for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); } capturePose(v); v.hold = true; }
+    measure(v);
+    const hgt = hillHeight(r);
+    if (hgt > H.best) H.best = hgt;
+    r.phase = 'hillDone';
+    emit({ type: 'hillEnd', heightM: round1(hgt), flags: H.passed, summit: H.summit, answers: H.answers, cash: { ...H.cash }, bestHeightM: round1(H.best) });
+  }
+  function hillStateOut(r) {
+    const H = r.hill;
+    if (!H) return null;
+    const geo = H.geo, v = r.me;
+    return {
+      active: H.active, heightM: round1(hillHeight(r)), flag: H.flag, flags: H.passed, flagsTotal: geo.flags,
+      progress: Math.round(clamp(geo.sAt(v.com.x) / geo.sTop, 0, 1) * 1000) / 1000,
+      holding: H.holding, burst: H.burst && !H.ended ? Math.max(0, Math.round((HT.maxBurstSec - H.burst.t) * 100) / 100) : 0,
+      answers: H.answers, questions: H.questions, summit: H.summit, ended: H.ended, cash: { ...H.cash },
+    };
+  }
+
   // ---------- cash, rating, summary ----------
   function cashBreakdown(r) {
     const m = r.stats.coinMult;
@@ -1769,7 +2082,7 @@ export function createGame(canvas, opts = {}) {
       timeSec: v.finished ? Math.round(v.finishTime * 100) / 100 : null, me: v.me, crashed: v.crashed }));
   }
   function endRun(r, reason) {
-    if (r.phase === 'done') return;
+    if (r.phase === 'done' || r.summary) return; // once per ride (the Hill Climb comes after it)
     const me = r.me;
     r.phase = 'done';
     r.endReason = reason;
@@ -1825,7 +2138,8 @@ export function createGame(canvas, opts = {}) {
     const gy = r.course.groundY(c.x);
     const alt = Math.max(0, c.y - gy - 1);
     let visH;
-    if (r.race) visH = clamp(12.5 + sp * 0.22 + alt * 0.38, 12.5, 26) / r.zoomPunch;
+    if (r.hill) visH = clamp(15 + sp * 0.18, 15, 24) / r.zoomPunch;
+    else if (r.race) visH = clamp(12.5 + sp * 0.22 + alt * 0.38, 12.5, 26) / r.zoomPunch;
     else { visH = clamp(11 + sp * 0.28 + alt * 0.55, 11, 30); if (r.phase === 'gate') visH = 12; }
     const portrait = view.H > view.W;
     const z = portrait ? view.W / (visH * 1.05) : Math.min(view.H / visH, view.W / (visH * 1.75));
@@ -1833,7 +2147,7 @@ export function createGame(canvas, opts = {}) {
     const lead = r.race ? clamp(c.vx * 0.32, -6, 9) : clamp(c.vx * 0.35, -6, 9);
     let tx = c.x + lead + visW * (portrait ? 0.08 : 0.12);
     const aheadY = r.course.groundY(c.x + visW * 0.25);
-    let ty = c.y + 1.4 + (aheadY - gy) * 0.35 + clamp(c.vy * 0.15, -3, 3);
+    let ty = c.y + 1.4 + (aheadY - gy) * (r.hill ? 0.5 : 0.35) + clamp(c.vy * 0.15, -3, 3);
     if (r.winchAnim) { tx = (r.winchAnim.x0 + r.winchAnim.ax) / 2; ty = r.winchAnim.y1 + 2; }
     ty = clamp(ty, c.y - visHH * 0.28, c.y + visHH * 0.3);
     if (snap) { cam.x = tx; cam.y = ty; cam.z = z; return; }
@@ -1907,8 +2221,10 @@ export function createGame(canvas, opts = {}) {
     vis.y0 = cam.y - (H / 2 + Math.abs(cam.sy)) / z; vis.y1 = cam.y + (H / 2 + Math.abs(cam.sy)) / z;
     const lw = clamp(z * 0.11, 1.3, 3) / z;
     R.drawDecor(ctx, course, bd, vis, lw);
+    if (course.hill) R.drawHillClouds(ctx, course.hill, vis, t, false);
     if (r.race) R.drawBerms(ctx, course, vis, lw);
     R.drawTerrain(ctx, course, bd, vis, lw, cam);
+    if (course.hill) R.drawHillSnow(ctx, course, vis, lw);
     R.drawRavines(ctx, course, bd, vis, lw);
     R.drawBridges(ctx, course, vis, lw);
     R.drawKickers(ctx, course, vis, lw);
@@ -1918,6 +2234,7 @@ export function createGame(canvas, opts = {}) {
     } else if (vis.x0 < 0) R.drawStartSign(ctx, course, r.trail, lw);
     for (const g of r.gates) if (g.x > vis.x0 - 4 && g.x < vis.x1 + 2) R.drawGate(ctx, g, g.y, lw, g.open, t, bd.night);
     if (course.finishX > vis.x0 - 8 && course.finishX < vis.x1 + 8) R.drawFinish(ctx, course, lw, t);
+    if (course.hill && r.hill) R.drawHill(ctx, course.hill, vis, lw, t, r.hill.passed, r.hill.tags);
     if (r.best > 1 && r.best < course.length - 2 && r.best > vis.x0 - 3 && r.best < vis.x1 + 3) R.drawBestFlag(ctx, course, r.best, lw, r.recordHit);
     for (const pr of r.props) {
       if (pr.smashed || pr.x < vis.x0 - 3 || pr.x > vis.x1 + 3) continue;
@@ -1942,7 +2259,7 @@ export function createGame(canvas, opts = {}) {
       }
     }
     // v1.5 ghost: a translucent copy of your best run, behind the riders
-    if (r.ghost && r.goT >= 0 && r.phase !== 'done') {
+    if (r.ghost && r.goT >= 0 && r.phase !== 'done' && !r.hill) {
       const gp = ghostPose(r.ghost, r.t - r.goT, tmp3);
       if (gp[0] > vis.x0 - 3 && gp[0] < vis.x1 + 3) drawGhost(r, gp, lw);
     }
@@ -1963,10 +2280,11 @@ export function createGame(canvas, opts = {}) {
     }
     R.drawWater(ctx, course, bd, vis, lw, t);
     R.drawParticles(ctx, r.particles, r.np, vis);
+    if (course.hill) { R.drawHillClouds(ctx, course.hill, vis, t, true); R.drawHillWind(ctx, course.hill, vis, t); }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (r.fog > 0) R.drawFog(ctx, view, cam, bd, r.fog, me.com.y, t);
     R.drawWeather(ctx, view, cam, bd, t, r.windNow);
-    const inten = (r.race ? clamp((me.speed - 16.7) / 14, 0, 1) : clamp((me.speed - 14) / 14, 0, 1)) * (r.phase === 'ride' ? 1 : 0);
+    const inten = (r.race ? clamp((me.speed - 16.7) / 14, 0, 1) : clamp((me.speed - 14) / 14, 0, 1)) * (r.phase === 'ride' || r.phase === 'hill' ? 1 : 0);
     if (inten > 0) R.drawSpeedLines(ctx, view, r.speedLines, inten, me.com.vx / (me.speed || 1), me.com.vy / (me.speed || 1));
     R.drawFlash(ctx, view, r.flash, '#ffffff');
     R.drawPopups(ctx, r.popups, toScreen, view);
@@ -2071,7 +2389,7 @@ export function createGame(canvas, opts = {}) {
     if (!r) {
       return { phase: 'done', distance: 0, speedKmh: 0, boost: 0, airTime: 0, flips: 0, smashed: 0, cash: 0, finishCrossed: false,
         gateIndex: 0, gatesTotal: 0, stuck: false, upsideDown: false, coins: 0, winches: 0, progress: 0, x: 0,
-        place: 1, timeSec: 0, riders: [], crashed: false, countdown: 0, race: false };
+        place: 1, timeSec: 0, riders: [], crashed: false, countdown: 0, race: false, hill: null };
     }
     const v = r.me;
     return {
@@ -2111,6 +2429,8 @@ export function createGame(canvas, opts = {}) {
       turbo: v.turboT > 0 ? Math.round(v.turboT * 100) / 100 : 0,
       ghostGap: ghostGapNow(r),
       fog: r.fog,
+      // v1.7
+      hill: hillStateOut(r),
     };
   }
   // seconds behind (+) / ahead (-) of the ghost at the player's distance
@@ -2183,9 +2503,47 @@ export function createGame(canvas, opts = {}) {
       winchStart(r);
       return true;
     },
+    // v1.7 Hill Climb (see the header): after a finished ride; a second call restarts the climb from the base
+    startHill(cfg = {}) {
+      const r = run;
+      if (!r || !r.finishCrossed || r.winchAnim) return false;
+      startHillNow(r, cfg && typeof cfg === 'object' ? cfg : {});
+      return true;
+    },
+    hillBoost(res = {}) {
+      const r = run;
+      if (!r || !r.hill || !r.hill.active || r.hill.ended || !r.hill.holding || r.hill.glide || r.hill.slide || r.hill.burst) return false;
+      const H = r.hill, v = r.me, geo = H.geo;
+      const power = clamp(Number(res.power) || 0, 0, 1), quick = !!res.quick;
+      H.answers++;
+      H.holding = false;
+      if (power <= 0.001) { hillSputter(r); return true; }
+      const dist = (quick ? HT.quickM : HT.slowM) * power;
+      // a burst that reaches the summit line rolls over the top to the cairn
+      let targetS = geo.sAt(v.com.x) + dist;
+      if (targetS >= geo.sTop) targetS = geo.sAt(geo.cairnX - 4);
+      H.burst = { t: 0, thrustT: 0, power, quick, targetS, targetX: geo.xAtS(targetS) };
+      v.hold = false; v.air = false; v.noContactT = 0; v.prevAngle = v.chassis.angle;
+      v.wheelAgo[0] = v.wheelAgo[1] = v.wheelAgo[2] = 0;
+      for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); }
+      measure(v);
+      emit({ type: 'hillBurst', power, quick, answers: H.answers });
+      popup(r, quick ? 'BLAST OFF!' : 'CLIMB!', 0.5, LANE_BIG, quick ? '#7cf2ff' : '#7dff6b', 1.15, false, 0.9, 'big');
+      r.shake = Math.max(r.shake, 3);
+      localToWorld(v, v.def.exhaust[0] - 0.4, v.def.exhaust[1], tmp2);
+      for (let k = 0; k < 3; k++) particle(r, P_RING, tmp2[0] - v.fx * 0.3 * k, tmp2[1] - v.fy * 0.3 * k, -v.fx * 2.5, -v.fy * 2.5, 0.2 + 0.1 * k, 'rgba(255,255,255,0.9)', 0.5 + 0.1 * k, 0.85, 1.8);
+      return true;
+    },
+    endHill() {
+      const r = run;
+      if (!r || !r.hill || r.hill.ended) return false;
+      finishHill(r);
+      return true;
+    },
     pause() { paused = true; },
     resume() { paused = false; last = performance.now(); acc = 0; },
     stop() {
+      if (run && run.hill && !run.hill.ended) finishHill(run);
       if (run && run.phase !== 'done') endRun(run, 'stopped');
       paused = true;
     },
@@ -2218,7 +2576,9 @@ export function createGame(canvas, opts = {}) {
         winch: !!r.winchAnim, slope: r.course.groundSlope(v.com.x), groundY: r.course.groundY(v.com.x), view: { W: view.W, H: view.H },
         timeScale: r.timeScale, aiLevel: r.aiLevel, vTop: v.vTop, lean: v.lastLean, w0: v.lastW0,
         vehicle: v.def.id, special: v.special, gravity: r.gravity, mutator: r.mutator && r.mutator.id, mirrored: !!r.course.mirrored, wind: r.windNow,
-        combo: r.comboN, comboMax: r.comboMax, turboT: v.turboT, ghostSamples: r.ghostTrace.length, ghostDt: r.ghostDt, stats: r.stats, lift: v.lift, wheelMul: v.wheelMul };
+        combo: r.comboN, comboMax: r.comboMax, turboT: v.turboT, ghostSamples: r.ghostTrace.length, ghostDt: r.ghostDt, stats: r.stats, lift: v.lift, wheelMul: v.wheelMul,
+        hill: r.hill ? { s: r.hill.geo.sAt(v.com.x), thrust: r.hill.thrust, thrustOn: r.hill.thrustOn, burst: r.hill.burst ? { ...r.hill.burst } : null, slide: !!r.hill.slide, glide: !!r.hill.glide, hold: v.hold,
+          stopX: r.hill.burst ? hillStopX(r, v.com.x, Math.max(0, v.vf), r.hill.burst.targetX - HT.brakeZone) : null, flagX: r.hill.geo.flagX, summitX: r.hill.geo.summitX, cairnX: r.hill.geo.cairnX, xBase: r.hill.geo.xBase, height: r.hill.geo.height } : null };
     },
     debugCourse() { return run ? run.course : null; },
     debugRiders() {

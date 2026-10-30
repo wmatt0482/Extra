@@ -790,6 +790,8 @@ export function drawDecor(ctx, course, bd, vis, lw) {
     if (r < 0.45) continue;
     const x = s * cell + rhash(s + 0.5) * 4;
     if (course.inZone(x, 2) && course.inZone(x, 2).type === 'bridge') continue;
+    const hill = course.hill;
+    if (hill && x > hill.xBase) { if (x > hill.snowX) continue; const f = clamp((course.terrainY(x) - hill.yBase) / Math.max(1, hill.height), 0, 1); if (r < 0.45 + 0.5 * f) continue; }
     const gy = course.terrainY(x) - 0.4;
     const k = 0.7 + rhash(s + 0.25) * 0.6;
     ctx.save();
@@ -1782,4 +1784,147 @@ export function drawStartGate(ctx, course, lw, drop) {
   ctx.restore();
   ctx.fillStyle = '#5b616d';
   ctx.fillRect(x - 0.3, y - 0.1, 0.6, 0.2);
+}
+
+// ===================================== v1.7 Hill Climb =====================================
+// the mountain's dressing (course.js createHill): clouds (behind the slope, and a few translucent ones in front),
+// the snow line, the flag poles with their pennants and cash tags, the summit cairn, wind streaks near the top
+function puffCloud(ctx, x, y, w, k, outline = false) {
+  ctx.beginPath();
+  for (const [dx, dy, rr] of [[-0.3, 0, 0.26 * k], [0, 0.12, 0.34 * k], [0.32, 0, 0.26 * k], [0, -0.08, 0.3]]) { ctx.moveTo(x + dx * w + rr * w, y + dy * w); ctx.arc(x + dx * w, y + dy * w, rr * w, 0, TAU); }
+  if (outline) ctx.stroke();
+  ctx.fill();
+}
+export function drawHillClouds(ctx, hill, vis, t, front) {
+  for (const c of hill.clouds) {
+    if (c.front !== front) continue;
+    const x = c.x + Math.sin(t * 0.21 * c.drift) * 2.5 + (front ? -t * 0.3 * c.drift : 0);
+    if (x + c.w < vis.x0 || x - c.w > vis.x1 || c.y + c.w < vis.y0 || c.y - c.w > vis.y1) continue;
+    if (front) { ctx.fillStyle = 'rgba(255,255,255,0.3)'; puffCloud(ctx, x, c.y, c.w * 0.9, c.k); continue; }
+    // an outer outline only: the stroke goes under the white fill
+    ctx.strokeStyle = 'rgba(120,140,175,0.6)';
+    ctx.lineWidth = 0.3;
+    ctx.fillStyle = '#ffffff';
+    puffCloud(ctx, x, c.y, c.w, c.k, true);
+  }
+}
+export function drawHillSnow(ctx, course, vis, lw) {
+  const h = course.hill;
+  const xa = Math.max(h.snowX - 14, vis.x0 - 2), xb = Math.min(h.xEnd, vis.x1 + 2);
+  if (xb <= xa) return;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // the white band fades in over 14 m, then a solid cap with a soft lower edge
+  for (let x = xa; x < xb; x += 2) {
+    const x2 = Math.min(xb, x + 2);
+    const a = clamp((x - (h.snowX - 14)) / 14, 0, 1);
+    if (a <= 0) continue;
+    ctx.strokeStyle = 'rgba(255,255,255,' + (0.95 * a).toFixed(3) + ')';
+    ctx.lineWidth = 0.75;
+    ctx.beginPath();
+    ctx.moveTo(x, course.terrainY(x) - 0.12);
+    ctx.lineTo(x2, course.terrainY(x2) - 0.12);
+    ctx.stroke();
+  }
+  // snow lumps along the band and a blue-white sheen below it
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  const t0 = Math.floor(Math.max(xa, h.snowX) / 1.7);
+  for (let s = t0; s * 1.7 < xb; s++) {
+    const r = rhash(s * 0.53);
+    if (r < 0.35) continue;
+    const x = s * 1.7 + r, y = course.terrainY(x) + 0.05;
+    ctx.moveTo(x + 0.36, y);
+    ctx.ellipse(x, y, 0.36 + r * 0.2, 0.2 + r * 0.08, 0, 0, Math.PI);
+  }
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(190,220,255,0.35)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  for (let x = Math.max(xa, h.snowX); x <= xb; x += 1) { const y = course.terrainY(x) - 0.75; if (x === Math.max(xa, h.snowX)) ctx.moveTo(x, y); else ctx.lineTo(x, y); }
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+}
+function flagPole(ctx, x, y, h, col, lw, t, wave, passed) {
+  ctx.lineWidth = lw * 0.8;
+  ctx.strokeStyle = OUT;
+  ctx.fillStyle = '#e8e8ee';
+  ctx.fillRect(x - 0.08, y, 0.16, h);
+  ctx.strokeRect(x - 0.08, y, 0.16, h);
+  ctx.fillStyle = col;
+  const w = 0.25 * Math.sin(t * 4 + wave);
+  ctx.beginPath();
+  ctx.moveTo(x + 0.08, y + h);
+  ctx.quadraticCurveTo(x + 0.9, y + h - 0.2 + w * 0.5, x + 1.7, y + h - 0.45 + w);
+  ctx.lineTo(x + 0.08, y + h - 0.9);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  if (passed) { ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.arc(x + 0.75, y + h - 0.45 + w * 0.4, 0.2, 0, TAU); ctx.fill(); }
+  ctx.fillStyle = '#ffd23f';
+  ctx.beginPath(); ctx.arc(x, y + h + 0.12, 0.16, 0, TAU); ctx.fill(); ctx.stroke();
+}
+function cashTag(ctx, x, y, text, lw) {
+  // a small wooden sign beside the pole with the flag's cash
+  ctx.lineWidth = lw * 0.8;
+  ctx.strokeStyle = OUT;
+  ctx.fillStyle = '#7a4f2a';
+  ctx.fillRect(x - 0.07, y, 0.14, 1.3);
+  ctx.strokeRect(x - 0.07, y, 0.14, 1.3);
+  ctx.fillStyle = '#ffe9a8';
+  ctx.beginPath();
+  ctx.moveTo(x - 0.95, y + 1.0); ctx.lineTo(x + 0.95, y + 1.0); ctx.lineTo(x + 0.95, y + 1.85); ctx.lineTo(x - 0.95, y + 1.85);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  worldText(ctx, text, 0.5, x, y + 1.43, '#1f4d2e', false);
+}
+export function drawHill(ctx, hill, vis, lw, t, passed, tags) {
+  ctx.lineJoin = 'round';
+  for (let k = 0; k <= hill.flags; k++) {
+    const x = hill.flagX[k], y = hill.flagY[k];
+    if (x < vis.x0 - 4 || x > vis.x1 + 4) continue;
+    const summit = k === hill.flags;
+    const done = k > 0 && k <= passed;
+    const col = k === 0 ? '#ffffff' : summit ? '#ffd23f' : done ? '#7dff6b' : '#ff8a1f';
+    // the flag line on the ground
+    ctx.strokeStyle = summit ? 'rgba(255,210,63,0.8)' : 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 0.18;
+    ctx.setLineDash([0.4, 0.3]);
+    ctx.beginPath(); ctx.moveTo(x - 1.4, y + 0.05); ctx.lineTo(x + 1.4, y + 0.05); ctx.stroke();
+    ctx.setLineDash([]);
+    flagPole(ctx, x, y - 0.1, summit ? 5.6 : 4.2, col, lw, t, k * 1.3, done);
+    if (k > 0 && tags && tags[k]) cashTag(ctx, x - 1.6, y - 0.1, tags[k], lw);
+  }
+  // the summit: the cairn (a stack of stones) with a tiny flag, on the plateau
+  const cx = hill.cairnX;
+  if (cx > vis.x0 - 6 && cx < vis.x1 + 6) {
+    const y = hill.summitY;
+    ctx.lineWidth = lw;
+    ctx.strokeStyle = OUT;
+    const stones = [[0, 0.5, 1.6, 0.55, '#8d8f99'], [0.1, 1.35, 1.3, 0.5, '#a0a3ad'], [-0.05, 2.1, 1.05, 0.45, '#8d8f99'], [0.08, 2.75, 0.8, 0.38, '#b3b6bf'], [0, 3.3, 0.55, 0.3, '#a0a3ad']];
+    for (const [dx, dy, w, h, c] of stones) { ctx.fillStyle = c; ctx.beginPath(); ctx.ellipse(cx + dx, y + dy, w, h, 0, 0, TAU); ctx.fill(); ctx.stroke(); }
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    for (const [dx, dy, w] of stones) { ctx.beginPath(); ctx.ellipse(cx + dx - w * 0.3, y + dy + 0.14, w * 0.35, 0.1, 0, 0, TAU); ctx.fill(); }
+    flagPole(ctx, cx + 0.05, y + 3.4, 2.2, '#ffd23f', lw, t, 2.2, passed >= hill.flags);
+    if (tags && tags[hill.flags + 1]) cashTag(ctx, cx + 2.4, y - 0.05, tags[hill.flags + 1], lw);
+  }
+}
+export function drawHillWind(ctx, hill, vis, t) {
+  const yLo = hill.flagY[Math.min(hill.flags, 3)];
+  if (vis.y1 < yLo) return;
+  const span = vis.x1 - vis.x0 + 30;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineCap = 'round';
+  for (let i = 0; i < 16; i++) {
+    const r = rhash(i * 3.1 + 7);
+    const y = yLo + r * (hill.summitY + 22 - yLo);
+    if (y < vis.y0 - 1 || y > vis.y1 + 1) continue;
+    const sp = 9 + 7 * rhash(i + 0.3);
+    const x = vis.x1 + 15 - ((rhash(i + 0.7) * span + t * sp) % span);
+    const len = 1.6 + 2.2 * rhash(i + 0.9);
+    const a = 0.12 + 0.3 * clamp((y - yLo) / 50, 0, 1) * (0.6 + 0.4 * Math.sin(t * 2 + i));
+    ctx.globalAlpha = a;
+    ctx.lineWidth = 0.08 + 0.05 * r;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x - len, y + 0.08 * Math.sin(t * 3 + i)); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  ctx.lineCap = 'butt';
 }

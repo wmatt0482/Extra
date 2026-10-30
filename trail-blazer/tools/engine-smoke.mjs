@@ -8,7 +8,10 @@
 // v1.2 math gates in a race (park + freeze, quick / correct / fixed, AI pass through). Part 3 (v1.5, The Season):
 // every vehicle finishes Pine Ridge against the AI, every trail finishes with a tier-matched vehicle at upgrade 5,
 // the ghost draws, each mutator runs a race, the turbo gate boosts, combos count, perf on the heaviest world.
-// Env ONLY=v15 runs part 3 alone (plus perf); ONLY=v1 skips it.
+// Part 4 (v1.7, Hill Climb): vehicle tiers 1, 4, 8 race to the finish and summit on 5 quick answers (flag cash x
+// cupMult adds up), a slow answer climbs less, a wrong answer slides back to the last flag line (never below the
+// base), 10 answers without the summit end the climb, endHill() ends it at once, perf on the hill.
+// Env ONLY=v15 runs part 3 alone (plus perf); ONLY=v17 runs part 4 alone (plus perf); ONLY=v1 skips both.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -93,7 +96,7 @@ const events = (page, type) => page.evaluate((t) => window.__tb.events.filter((e
 await ensureServer();
 const browser = await chromium.launch();
 try {
-  if (ONLY === 'v15') throw { skipTo: 'v15' };
+  if (ONLY === 'v15' || ONLY === 'v17') throw { skipTo: 'v15' };
   // ======== v1 trail mode (start() without `race`): gates, stuck + winch ========
   // ---- 1. stock hold-GAS on Pine Ridge with gates: reaches the first gate and parks; openGate pays $120 ----
   {
@@ -484,7 +487,7 @@ try {
   if (!e || e.skipTo !== 'v15') { failures.push('exception: ' + e.message); console.error(e); }
 }
 try {
-  if (ONLY === 'v1') throw { skipTo: 'perf' };
+  if (ONLY === 'v1' || ONLY === 'v17') throw { skipTo: 'perf' };
   // ======== v1.5 The Season ========
   const racePolicy = "({ gas: s.countdown === 0, boost: s.countdown === 0 && s.boost > 0.3 })";
   async function raceDrive(page, { until = 'false', maxSec = 300, policy = racePolicy, auto = false } = {}) {
@@ -666,6 +669,188 @@ try {
     });
     check(res.n === 96 && res.helmets === 12 && res.suits === 8 && res.flags === 6 && res.fx === 8 && res.lit > 2000, `8 vehicles x 12 helmets + 8 suits + 6 flags + 8 trails draw (${res.n} previews, ${res.lit} px)`);
     check(errors.length === 0, `art: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+} catch (e) {
+  if (!e || e.skipTo !== 'perf') { failures.push('exception: ' + e.message); console.error(e); }
+}
+try {
+  if (ONLY === 'v1' || ONLY === 'v15') throw { skipTo: 'perf' };
+  // ======== v1.7 Hill Climb ========
+  const HILL_FLAG_CASH = 150, HILL_SUMMIT_CASH = 1000;
+  const HILL_KEYS = 'active,answers,burst,cash,ended,flag,flags,flagsTotal,heightM,holding,progress,questions,summit';
+  // race to the finish (teleported close to it) and wait for the base hold; dev.html's hill=1 calls startHill
+  async function toHill(page) {
+    return page.evaluate(() => {
+      const g = window.__tb.game, c = g.debugCourse();
+      g.debugTeleport(c.finishX - 60, 18);
+      let i = 0;
+      for (; i < 60 * 40; i++) { g.setInput({ gas: true }); g.debugStep(1); if (window.__tb.finished) break; }
+      g.setInput({ gas: false });
+      let j = 0;
+      for (; j < 60 * 12; j++) { g.debugStep(1); if (window.__tb.events.some((e) => e.type === 'hillHold')) break; }
+      return { raceSec: i / 60, holdSec: j / 60, s: g.getState(), d: g.debugInfo(), ev: window.__tb.events.filter((e) => e.type.startsWith('hill')) };
+    });
+  }
+  // answer (hillBoost) and step until the next hillHold / hillEnd (14 s sim at most)
+  async function answer(page, res) {
+    return page.evaluate((res) => {
+      const g = window.__tb.game, n0 = window.__tb.events.length;
+      const ok = g.hillBoost(res);
+      let i = 0, maxV = 0, maxPitch = 0, minUp = 1;
+      for (; i < 60 * 14; i++) {
+        g.debugStep(1);
+        const d = g.debugInfo();
+        maxV = Math.max(maxV, d.vf); maxPitch = Math.max(maxPitch, Math.abs(d.ang - Math.atan(d.slope))); minUp = Math.min(minUp, d.upCos);
+        if (window.__tb.events.slice(n0).some((e) => e.type === 'hillHold' || e.type === 'hillEnd')) break;
+      }
+      return { ok, sec: i / 60, maxV, maxPitch, minUp, s: g.getState(), d: g.debugInfo(), ev: window.__tb.events.slice(n0).filter((e) => e.type !== 'coin') };
+    }, res);
+  }
+  // ---- H1. vehicle tiers 1, 4, 8 summit on 5 quick answers; the cash adds up (x cupMult); no crash ----
+  for (const tier of [1, 4, 8]) {
+    const vid = VEHICLES[tier - 1].id;
+    const cupMult = tier === 4 ? 3 : 1;
+    const { page, context, errors } = await open(browser, { trail: tier === 8 ? 'snow-pass' : 'pine-ridge', lvl: '3', vehicle: vid, hill: '1', riders: '0', cupMult: String(cupMult) });
+    const base = await toHill(page);
+    const hs = base.ev.find((e) => e.type === 'hillStart'), hh = base.ev.find((e) => e.type === 'hillHold');
+    console.log(`    ${vid}: race ${base.raceSec.toFixed(1)} s, hillStart → base hold ${base.holdSec.toFixed(2)} s, ${JSON.stringify(base.s.hill)}`);
+    check(base.s.phase === 'hill' && !!hs && hs.flags === 5 && hs.questions === 10 && !!hh && hh.flag === 0 && hh.heightM === 0, `${vid}: a finished race starts the climb: hillStart {flags: 5, questions: 10} then hillHold {heightM: 0, flag: 0} (${JSON.stringify(hs)} ${JSON.stringify(hh)})`);
+    check(!!base.s.hill && Object.keys(base.s.hill).sort().join(',') === HILL_KEYS, `${vid}: getState().hill has the contract keys (${base.s.hill && Object.keys(base.s.hill).sort().join(',')})`);
+    check(!!base.s.hill && base.s.hill.active && base.s.hill.holding && base.s.hill.flag === 0 && base.s.hill.flags === 0 && base.s.hill.flagsTotal === 5 && base.s.hill.progress === 0 && base.s.hill.answers === 0 && base.s.hill.burst === 0 && base.s.hill.questions === 10, `${vid}: state.hill at the base: active, holding, flag 0, progress 0, answers 0`);
+    check(!!base.d.hill && base.d.hill.hold && Math.abs(base.d.x - base.d.hill.xBase) < 1.5, `${vid}: held at the base line (x ${base.d.x.toFixed(1)} vs base ${base.d.hill && base.d.hill.xBase.toFixed(1)})`);
+    const held = await page.evaluate(() => { const g = window.__tb.game; const a = g.debugInfo().x; for (let i = 0; i < 60; i++) { g.setInput({ gas: true, boost: true }); g.debugStep(1); } g.setInput({ gas: false, boost: false }); return Math.abs(g.debugInfo().x - a); });
+    check(held < 0.02, `${vid}: GAS / BOOST do nothing on the hill (moved ${held.toFixed(3)} m)`);
+    if (tier === 4) await shot(page, 'v17-hill-base');
+    const flagsSeen = [];
+    let summitEv = null, endEv = null, maxPitch = 0, minUp = 1;
+    for (let k = 1; k <= 5; k++) {
+      const a = await answer(page, { power: 1, quick: true });
+      maxPitch = Math.max(maxPitch, a.maxPitch); minUp = Math.min(minUp, a.minUp);
+      flagsSeen.push(...a.ev.filter((e) => e.type === 'hillFlag'));
+      summitEv = summitEv || a.ev.find((e) => e.type === 'hillSummit');
+      endEv = endEv || a.ev.find((e) => e.type === 'hillEnd');
+      console.log(`    ${vid}: quick #${k}: ${a.sec.toFixed(2)} s, max ${(a.maxV * 3.6).toFixed(0)} km/h, pitch ${a.maxPitch.toFixed(2)} rad → ${a.ev.map((e) => e.type + (e.n ? ' ' + e.n : '')).join(', ')}; ${a.s.hill.heightM} m, progress ${a.s.hill.progress}`);
+      check(a.ok && a.sec < 12 && a.ev.some((e) => e.type === 'hillBurst' && e.quick === true && e.answers === k), `${vid}: quick burst #${k} accepted (hillBurst {quick: true, answers: ${k}}) and over within 12 s (${a.sec.toFixed(1)} s)`);
+      if (k === 2 && tier === 4) await shot(page, 'v17-hill-flag');
+      if (k < 5) check(a.ev.some((e) => e.type === 'hillHold' && e.flag === k) && a.s.hill.holding && a.s.hill.flag === k && a.s.hill.flags === k && a.s.hill.answers === k, `${vid}: holds past flag ${k} (hillHold {flag: ${k}}; state flag ${a.s.hill.flag}, flags ${a.s.hill.flags})`);
+      if (a.s.hill.ended) break;
+    }
+    const want = HILL_FLAG_CASH * 15 * cupMult, sCash = HILL_SUMMIT_CASH * cupMult;
+    check(flagsSeen.length === 5 && flagsSeen.every((e, i) => e.n === i + 1 && e.cash === HILL_FLAG_CASH * (i + 1) * cupMult && e.heightM > (i ? flagsSeen[i - 1].heightM : 0)), `${vid}: hillFlag n = 1..5 with cash 150 x n x ${cupMult} and rising heights (${JSON.stringify(flagsSeen)})`);
+    check(!!summitEv && summitEv.cash === sCash && summitEv.heightM > 130, `${vid}: hillSummit {cash: ${sCash}} on the 5th quick answer (${JSON.stringify(summitEv)})`);
+    check(!!endEv && endEv.summit === true && endEv.flags === 5 && endEv.answers === 5 && endEv.cash.flags === want && endEv.cash.summit === sCash && endEv.cash.total === want + sCash && endEv.bestHeightM >= endEv.heightM - 0.01, `${vid}: hillEnd {summit: true, flags: 5, answers: 5} and the cash adds up to $${want + sCash} (${JSON.stringify(endEv)})`);
+    const sEnd = await page.evaluate(() => window.__tb.game.getState());
+    check(sEnd.phase === 'hillDone' && sEnd.hill.ended && !sEnd.hill.active && !sEnd.hill.holding && sEnd.hill.progress === 1 && sEnd.hill.summit && endEv && sEnd.hill.cash.total === endEv.cash.total, `${vid}: after the summit: phase 'hillDone', state.hill ended, progress 1 (${JSON.stringify(sEnd.hill)})`);
+    check(minUp > 0.3 && maxPitch < 1.0, `${vid}: upright all the way up: pitch to the slope under 1 rad (max ${maxPitch.toFixed(2)} rad; min world up-cos ${minUp.toFixed(2)} on the 38° section)`);
+    const crashes = await events(page, 'crash');
+    check(crashes.length === 0 && !sEnd.crashed, `${vid}: no crash on the hill`);
+    const race = await page.evaluate(() => window.__tb.finished);
+    check(!!race && race.finishCrossed && sumOK(race.cash) && race.cash.total === sEnd.cash, `${vid}: the race summary and state.cash are untouched by the hill ($${race && race.cash.total})`);
+    if (tier === 4) { await page.evaluate(() => { const g = window.__tb.game; for (let i = 0; i < 30; i++) g.debugStep(1); }); await shot(page, 'v17-hill-summit'); }
+    if (tier === 8) await shot(page, 'v17-hill-summit-snow');
+    const again = await page.evaluate(() => { const g = window.__tb.game; const ok = g.startHill({ flags: 5, questions: 10, cupMult: 1 }); let i = 0; for (; i < 60 * 12; i++) { g.debugStep(1); if (g.getState().hill.holding) break; } return { ok, s: g.getState(), sec: i / 60 }; });
+    check(again.ok && again.s.phase === 'hill' && again.s.hill.active && again.s.hill.holding && again.s.hill.flag === 0 && again.s.hill.answers === 0 && again.s.hill.cash.total === 0 && again.s.hill.heightM === 0, `${vid}: startHill() again restarts the climb at the base (held after ${again.sec.toFixed(1)} s)`);
+    check(errors.length === 0, `${vid}: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- H2. a slow answer climbs less; a wrong answer slides back to the last flag line (never below the base);
+  // ten answers without the summit end the climb at the next hold ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '2', vehicle: 'dirtbike', hill: '1', riders: '0' });
+    await toHill(page);
+    const slow = await answer(page, { power: 1, quick: false });
+    const hSlow = slow.s.hill.heightM;
+    check(slow.ok && slow.ev.some((e) => e.type === 'hillBurst' && e.quick === false) && slow.s.hill.holding && slow.s.hill.flag === 0 && !slow.ev.some((e) => e.type === 'hillFlag') && hSlow > 8 && hSlow < 18, `slow right answer: climbs ${hSlow} m, short of flag 1 (18.6 m)`);
+    const wrong1 = await answer(page, { power: 0 });
+    check(wrong1.ok && wrong1.ev[0] && wrong1.ev[0].type === 'hillSputter' && wrong1.ev[0].answers === 2 && wrong1.s.hill.heightM === 0 && wrong1.s.hill.flag === 0 && wrong1.s.hill.holding && wrong1.ev.some((e) => e.type === 'hillHold' && e.flag === 0), `wrong answer at ${hSlow} m: hillSputter, slides back to the base line, hillHold {flag: 0} (${wrong1.s.hill.heightM} m)`);
+    check(wrong1.d.x >= wrong1.d.hill.xBase - 0.6, `never below the base line (x ${wrong1.d.x.toFixed(1)} vs base ${wrong1.d.hill.xBase.toFixed(1)})`);
+    const quick = await answer(page, { power: 1, quick: true });
+    const hQuick = quick.s.hill.heightM;
+    const fl = quick.ev.find((e) => e.type === 'hillFlag');
+    check(quick.ok && quick.s.hill.flag === 1 && !!fl && hQuick > hSlow + 4, `quick right answer climbs more than the slow one (${hQuick} m vs ${hSlow} m) and passes flag 1`);
+    const wrong2 = await answer(page, { power: 0 });
+    check(wrong2.ok && !!fl && Math.abs(wrong2.s.hill.heightM - fl.heightM) < 0.5 && wrong2.s.hill.flag === 1 && wrong2.s.hill.flags === 1 && wrong2.s.hill.cash.total === 150 && wrong2.d.x >= wrong2.d.hill.flagX[1] - 0.6, `wrong answer above flag 1: slides back to the flag 1 line (${wrong2.s.hill.heightM} m vs ${fl && fl.heightM}), keeps the flag's cash`);
+    await shot(page, 'v17-hill-slide');
+    let endEv = null, holds = 0;
+    for (let k = 5; k <= 10; k++) {
+      const a = await answer(page, { power: 0 });
+      holds += a.ev.filter((e) => e.type === 'hillHold').length;
+      endEv = endEv || a.ev.find((e) => e.type === 'hillEnd');
+      check(a.ok && a.sec < 3, `wrong answer #${k} accepted (sputter ${a.sec.toFixed(2)} s)`);
+    }
+    check(!!endEv && endEv.summit === false && endEv.answers === 10 && endEv.flags === 1 && endEv.cash.total === 150 && endEv.cash.summit === 0 && Math.abs(endEv.bestHeightM - hQuick) < 0.01 && holds === 5, `after 10 answers without the summit: hillEnd {summit: false, answers: 10, flags: 1, bestHeightM: ${hQuick}} at the next hold (${JSON.stringify(endEv)}, ${holds} holds)`);
+    const rejected = await page.evaluate(() => window.__tb.game.hillBoost({ power: 1, quick: true }));
+    check(rejected === false, `hillBoost() after hillEnd is refused`);
+    check(errors.length === 0, `slow / wrong: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- H3. endHill() ends at once; a hillBoost during a live burst is refused; hill is null without a climb ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '1', vehicle: 'quad', hill: '1', riders: '0' });
+    const s0 = await page.evaluate(() => window.__tb.game.getState());
+    check(s0.hill === null, `getState().hill is null before a climb`);
+    const early = await page.evaluate(() => window.__tb.game.startHill({}));
+    check(early === false, `startHill() before the finish is refused`);
+    await toHill(page);
+    const mid = await page.evaluate(() => {
+      const g = window.__tb.game;
+      g.hillBoost({ power: 1, quick: true });
+      for (let i = 0; i < 45; i++) g.debugStep(1);
+      const s = g.getState();
+      const dup = g.hillBoost({ power: 1, quick: true });
+      const ok = g.endHill();
+      return { s, dup, ok, s2: g.getState(), ev: window.__tb.events.filter((e) => e.type === 'hillEnd') };
+    });
+    check(mid.s.hill.burst > 0 && !mid.s.hill.holding && mid.dup === false, `a second hillBoost during a live burst is refused (burst ${mid.s.hill.burst} s left, holding ${mid.s.hill.holding})`);
+    check(mid.ok && mid.ev.length === 1 && mid.ev[0].summit === false && mid.ev[0].answers === 1 && mid.ev[0].heightM > 0 && mid.s2.phase === 'hillDone' && mid.s2.hill.ended && !mid.s2.hill.active && mid.s2.hill.burst === 0, `endHill() ends the climb at once: hillEnd {summit: false, answers: 1} (${JSON.stringify(mid.ev[0])})`);
+    const twice = await page.evaluate(() => window.__tb.game.endHill());
+    check(twice === false, `endHill() twice is refused`);
+    const still = await page.evaluate(() => { const g = window.__tb.game; const a = g.debugInfo().x; for (let i = 0; i < 60; i++) g.debugStep(1); return Math.abs(g.debugInfo().x - a); });
+    check(still < 0.02, `after hillEnd the vehicle holds where it is (moved ${still.toFixed(3)} m)`);
+    const stopped = await page.evaluate(() => { const g = window.__tb.game; g.stop(); return { finishes: window.__tb.events.filter((e) => e.type === 'finish').length, ends: window.__tb.events.filter((e) => e.type === 'hillEnd').length, s: g.getState() }; });
+    check(stopped.finishes === 1 && stopped.ends === 1 && stopped.s.phase === 'hillDone', `stop() after the climb emits no second finish / hillEnd (${stopped.finishes} finish, ${stopped.ends} hillEnd)`);
+    check(errors.length === 0, `endHill: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- H4. perf on the hill: Night Ride, 3 parked rivals, auto quick answers, real-time frames at 4x throttle ----
+  if (!process.env.SKIP_PERF) {
+    const context = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, hasTouch: true });
+    const page = await context.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await page.goto(`${BASE}${DEV}?ui=0&trail=night-ride&lvl=4&vehicle=turbo&hill=1&auto=1`);
+    await page.waitForFunction(() => window.__tb && window.__tb.game && window.__tb.game.getState().phase === 'parked');
+    await page.evaluate(() => { const g = window.__tb.game, c = g.debugCourse(); g.debugTeleport(c.finishX - 60, 18); g.setInput({ gas: true }); });
+    await page.waitForFunction(() => window.__tb.game.getState().phase === 'hill', null, { timeout: 30000 });
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+    const res = await page.evaluate(() => new Promise((resolve) => {
+      const g = window.__tb.game;
+      g.setInput({ gas: false });
+      g.debugPerf(true);
+      const norm = [];
+      const t0 = performance.now();
+      let bursts = 0;
+      const tick = () => {
+        const p = g.debugPerf(true);
+        const s = g.getState();
+        if (p.frames > 0 && p.ticks > 0) norm.push(p.sim / p.ticks + p.draw / p.frames);
+        if (s.hill && s.hill.burst > 0) bursts++;
+        if (performance.now() - t0 > 12000 || (s.hill && s.hill.ended && performance.now() - t0 > 6000)) {
+          const b = norm.slice().sort((x, y) => x - y);
+          resolve({ frames: norm.length, avg: norm.reduce((x, y) => x + y, 0) / Math.max(1, norm.length), p95: b[Math.floor(b.length * 0.95)] || 0, hill: s.hill, riders: s.riders.length, burstFrames: bursts });
+          return;
+        }
+        requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    }));
+    await cdp.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+    const PERF_MS = Number(process.env.PERF_MS || 12);
+    console.log(`    perf (4x throttle, Night Ride hill, ${res.riders} riders): ${res.frames} frames, per 60 Hz frame avg ${res.avg.toFixed(2)} ms (p95 ${res.p95.toFixed(2)}), ${res.burstFrames} burst frames, hill ${JSON.stringify(res.hill)}`);
+    check(res.riders === 4 && res.burstFrames > 10 && res.avg < PERF_MS, `perf hill: game code per 60 Hz frame avg ${res.avg.toFixed(2)} ms < ${PERF_MS} ms at 4x CPU throttle while climbing`);
+    check(errors.length === 0, `perf hill: no page errors (${errors.join(' | ')})`);
     await context.close();
   }
 } catch (e) {

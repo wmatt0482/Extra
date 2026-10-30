@@ -810,3 +810,100 @@ export function mirrorCourse(c) {
     propsInChunk, terrainXs,
   };
 }
+
+// =====================================================================================================
+// v1.7 Hill Climb: the wall past the finish becomes a mountain. createHill builds the profile from the finish
+// straight (a gentle run-in, `flags` steepening sections of SECTION m of slope each, 18° → 38°, a round-over, the
+// summit plateau with the cairn, then a far side that is never ridden); installHill swaps the course's groundY /
+// terrainY / groundSlope for x past the run-in (the engine drops its physics chunks there and rebuilds them).
+// Pure and deterministic (no randomness beyond the seed, which only shifts the clouds).
+// =====================================================================================================
+export const HILL = {
+  runIn: 30,       // m before the base line: flat → 6° so the first section is not a wall
+  section: 60,     // m of slope per flag section
+  deg0: 18, degStep: 5, // the first section's angle and the step per section (5 flags: 18, 23, 28, 33, 38)
+  blend: 5,        // m of slope over which the angle eases at a join
+  roundOver: 10,   // m of slope easing to flat on the summit
+  plateau: 34,     // m of flat summit (the cairn stands on it)
+  base: 100,       // the base line stands this far past the finish (where the old wall rose)
+  snowAfter: 3,    // the snow line is just above this flag
+};
+export function createHill(course, opts = {}) {
+  const flags = clamp(Math.round(Number(opts.flags) || 5), 1, 8);
+  const H = HILL;
+  const x0 = course.finishX + H.base - H.runIn; // the run-in starts here (ground level = the finish straight)
+  const yF = course.groundY(x0);
+  const xBase = course.finishX + H.base;
+  const rad = (d) => (d * Math.PI) / 180;
+  const sTop = flags * H.section;
+  const sEnd = sTop + H.roundOver + H.plateau; // the end of the plateau (slope length from the base)
+  // the angle along the slope length s (0 at the base line): sections with eased joins
+  function angleAt(s) {
+    if (s < 0) { const u = clamp((s + H.runIn) / H.runIn, 0, 1); const a6 = rad(6) * smoothstep(0, 0.4, u); return u < 0.8 ? a6 : rad(6) + (rad(H.deg0) - rad(6)) * smoothstep(0.8, 1, u); }
+    if (s >= sTop) return s < sTop + H.roundOver ? rad(H.deg0 + (flags - 1) * H.degStep) * (1 - smoothstep(0, H.roundOver, s - sTop)) : s < sEnd ? 0 : -rad(8) * smoothstep(sEnd, sEnd + 12, s);
+    const k = Math.min(flags - 1, Math.floor(s / H.section));
+    const a0 = rad(H.deg0 + k * H.degStep);
+    const next = k + 1 < flags ? rad(H.deg0 + (k + 1) * H.degStep) : a0;
+    const prev = k > 0 ? rad(H.deg0 + (k - 1) * H.degStep) : rad(H.deg0);
+    const u = s - k * H.section;
+    if (u < H.blend && k > 0) return prev + (a0 - prev) * smoothstep(-H.blend, H.blend, u);
+    if (u > H.section - H.blend && k + 1 < flags) return a0 + (next - a0) * smoothstep(-H.blend, H.blend, u - H.section);
+    return a0;
+  }
+  // integrate the profile: x(s), y(s) from the run-in start to well past the plateau
+  const DS = 0.25;
+  const sFar = sEnd + 90;
+  const n = Math.ceil((sFar + H.runIn) / DS) + 2;
+  const xs = new Float32Array(n), ys = new Float32Array(n), ss = new Float32Array(n);
+  let x = x0, y = yF;
+  for (let i = 0; i < n; i++) {
+    const s = -H.runIn + i * DS;
+    xs[i] = x; ys[i] = y; ss[i] = s;
+    const a = angleAt(s + DS / 2);
+    x += Math.cos(a) * DS; y += Math.sin(a) * DS;
+  }
+  const xEnd = xs[n - 1];
+  // resample to a uniform table over x (x(s) is monotonic)
+  const DX = 0.25;
+  const N = Math.ceil((xEnd - x0) / DX) + 1;
+  const T = new Float32Array(N), TS = new Float32Array(N);
+  { let j = 0; for (let i = 0; i < N; i++) { const xx = x0 + i * DX; while (j < n - 2 && xs[j + 1] < xx) j++; const u = clamp((xx - xs[j]) / Math.max(1e-6, xs[j + 1] - xs[j]), 0, 1); T[i] = ys[j] + (ys[j + 1] - ys[j]) * u; TS[i] = ss[j] + (ss[j + 1] - ss[j]) * u; } }
+  const yAt = (xx) => { const f = (xx - x0) / DX; const i = Math.floor(f); if (i < 0) return T[0]; if (i >= N - 1) return T[N - 1]; const t = f - i; return T[i] * (1 - t) + T[i + 1] * t; };
+  const sAt = (xx) => { const f = (xx - x0) / DX; const i = Math.floor(f); if (i < 0) return TS[0] + (xx - x0); if (i >= N - 1) return TS[N - 1] + (xx - xEnd); const t = f - i; return TS[i] * (1 - t) + TS[i + 1] * t; };
+  const xAtS = (s) => { const i = clamp(Math.floor((s + H.runIn) / DS), 0, n - 2); const t = clamp((s + H.runIn) / DS - i, 0, 1); return xs[i] * (1 - t) + xs[i + 1] * t; };
+  const slopeAt = (xx) => (yAt(xx + 0.15) - yAt(xx - 0.15)) / 0.3;
+  const flagX = [], flagY = [], flagS = [];
+  for (let k = 0; k <= flags; k++) { const s = k * H.section; const fx = xAtS(s); flagS.push(s); flagX.push(fx); flagY.push(yAt(fx)); }
+  const plateauX0 = xAtS(sTop + H.roundOver), plateauX1 = xAtS(sEnd);
+  const summitX = flagX[flags], summitY = yAt(plateauX0); // the summit line is the last flag; the plateau is the top
+  const cairnX = xAtS(sTop + H.roundOver + H.plateau * 0.4);
+  const snowX = xAtS(Math.min(sTop, H.snowAfter * H.section + 12));
+  const rng = mulberry32(hash2((opts.seed | 0) >>> 0, 0x4111));
+  const clouds = [];
+  for (let k = 0; k < 7; k++) { const s = sTop * (0.45 + 0.5 * (k / 6)) + (rng() - 0.5) * 20; const cx = xAtS(s); clouds.push({ x: cx - 22 - rng() * 30, y: yAt(cx) - 4 - rng() * 10, w: 5 + rng() * 5, k: 0.8 + rng() * 0.5, front: k % 3 === 2, drift: 0.4 + rng() * 0.6 }); }
+  const sections = [];
+  for (let k = 0; k < flags; k++) sections.push({ x0: flagX[k], x1: flagX[k + 1], deg: H.deg0 + k * H.degStep, s0: k * H.section, s1: (k + 1) * H.section });
+  return {
+    flags, x0, xBase: flagX[0], yBase: flagY[0], summitX, summitY, sTop, sEnd, section: H.section, flagX, flagY, flagS, sections,
+    cairnX, plateauX0, plateauX1, snowX, xEnd, clouds, height: summitY - flagY[0],
+    yAt, sAt, xAtS, slopeAt, angleAt,
+  };
+}
+// swap the course's ground past the run-in for the mountain (the original functions are kept for uninstallHill)
+export function installHill(course, hill) {
+  if (course.hill) uninstallHill(course);
+  const g0 = course.groundY, t0 = course.terrainY, s0 = course.groundSlope;
+  course._hill0 = { groundY: g0, terrainY: t0, groundSlope: s0 };
+  course.hill = hill;
+  course.groundY = (x) => (x < hill.x0 ? g0(x) : hill.yAt(x));
+  course.terrainY = (x) => (x < hill.x0 ? t0(x) : hill.yAt(x));
+  course.groundSlope = (x) => (x < hill.x0 - 0.2 ? s0(x) : x < hill.x0 + 0.2 ? (course.groundY(x + 0.15) - course.groundY(x - 0.15)) / 0.3 : hill.slopeAt(x));
+  return course;
+}
+export function uninstallHill(course) {
+  const o = course._hill0;
+  if (!o) return course;
+  course.groundY = o.groundY; course.terrainY = o.terrainY; course.groundSlope = o.groundSlope;
+  course._hill0 = null; course.hill = null;
+  return course;
+}

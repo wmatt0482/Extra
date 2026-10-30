@@ -29,6 +29,7 @@
   #results h2 { margin: 0 0 6px; color: var(--accent); font: 900 20px system-ui; }
   #results pre { margin: 0 0 8px; font: 12px/1.4 ui-monospace, Menlo, monospace; }
   body.noui #log, body.noui #state, body.noui .ctl, body.noui #side { display: none; }
+  body.noui #results { display: none !important; }
 </style>
 </head>
 <body>
@@ -52,6 +53,9 @@
 // v1.5: vehicle (id from src/data/vehicles.js), mutator (id from src/data/mutators.js), helmet / suit / flag / trailfx
 // (cosmetic ids), rivals (comma-separated rival vehicle ids), ghost=1 (replay the previous run of this page as the
 // ghost: the trace is kept in sessionStorage per trail + vehicle), turbo=1 (the last gate answered with turbo: true).
+// v1.7: hill=1 (a race with 0 gates unless `gates` is given, then a Hill Climb after the finish: startHill({ flags,
+// questions, cupMult }); keys 1 / 2 / 0 = a quick / slow / wrong answer (hillBoost), h restarts the climb; with
+// auto=1 every hillHold is answered quick after 400 ms), flags (5), questions (10), cupMult (1).
 import { createGame } from './src/game/engine.js';
 import { TRAILS, TRAIL_BY_ID } from './src/data/trails.js';
 import { VEHICLE_BY_ID } from './src/data/vehicles.js';
@@ -79,8 +83,10 @@ let ghost = null;
 if (q.get('ghost') === '1') { try { ghost = JSON.parse(sessionStorage.getItem(ghostKey) || 'null'); } catch (_) { ghost = null; } }
 const rivals = (q.get('rivals') || '').split(',').filter((id) => VEHICLE_BY_ID[id]);
 const useTurbo = q.get('turbo') === '1';
+const hillOn = q.get('hill') === '1' && race;
+const hillCfg = { flags: num('flags', 5), questions: num('questions', 10), cupMult: num('cupMult', 1) };
 
-const tb = (window.__tb = { game: null, events: [], finished: null, restart: null, stats, trail, race, vehicle, mutator, ghost });
+const tb = (window.__tb = { game: null, events: [], finished: null, restart: null, stats, trail, race, vehicle, mutator, ghost, hill: null, hillEnd: null, hillCfg });
 const logLines = [];
 let timers = [];
 function onEvent(evt) {
@@ -98,10 +104,27 @@ function onEvent(evt) {
     if (autoWinch) timers.push(setTimeout(() => { $('winchBtn').hidden = true; tb.game.winch(true); }, 300));
   }
   if (evt.type === 'winched' || evt.type === 'unstuck') $('winchBtn').hidden = true;
+  if (evt.type === 'hillHold' && auto) timers.push(setTimeout(() => tb.game.hillBoost({ power: 1, quick: true }), 400));
+  if (evt.type === 'hillEnd') { tb.hillEnd = evt; showResults(tb.finished, evt); }
   if (evt.type === 'finish') {
     tb.finished = evt.summary;
-    const s = evt.summary, c = s.cash;
+    const s = evt.summary;
     if (s.finishCrossed && s.ghostTrace && s.ghostTrace.length) { try { sessionStorage.setItem(ghostKey, JSON.stringify(s.ghostTrace)); } catch (_) { /* quota */ } }
+    // v1.7: a finished race with hill=1 goes on to the Hill Climb; the results wait for hillEnd
+    if (hillOn && s.finishCrossed && tb.game.startHill({ ...hillCfg, seed: q.get('seed') != null ? num('seed', trail.seed) : trail.seed })) return;
+    showResults(s, null);
+  }
+  const { type, ...rest } = evt;
+  if (type !== 'coin') {
+    logLines.unshift(type + ' ' + (type === 'finish' ? '' : JSON.stringify(rest)));
+    logLines.length = Math.min(logLines.length, 12);
+    $('log').textContent = logLines.join('\n');
+  }
+}
+function showResults(s, hill) {
+  if (!s) return;
+  const c = s.cash;
+  {
     $('resText').textContent =
       (s.race ? `race       ${['', '1st', '2nd', '3rd', '4th'][s.place]} place   time ${s.timeSec} s   medal ${s.medal || '-'}\n` +
         `riders     ${s.riders.map((x) => x.name + ' ' + (x.timeSec != null ? x.timeSec + 's' : Math.round(x.x) + 'm')).join(' · ')}\n` +
@@ -110,14 +133,9 @@ function onEvent(evt) {
       `time       ${s.durationSec} s   max ${s.maxSpeedKmh} km/h\nair        ${s.airTime} s   flips ${s.flips}   smashed ${s.smashed}   coins ${s.coins}\n` +
       `gates      ${s.gates.correct}/${s.gates.answered} (quick ${s.gates.quick}, fixed ${s.gates.fixed}) of ${s.gatesTotal}\nwinches    ${s.winches}\n` +
       `cash       dist ${c.distance} + air ${c.air} + smash ${c.smash} + flips ${c.flips} + perfect ${c.perfect} + combo ${c.combo}\n           + gates ${c.gates} + quick ${c.quick} + coins ${c.coins} + finish ${c.finish} + place ${c.place}\n` +
-      `           = $${c.total}   rating ${s.rating} (${s.ratingScore})`;
+      `           = $${c.total}   rating ${s.rating} (${s.ratingScore})` +
+      (hill ? `\nhill       ${hill.summit ? 'SUMMIT!' : hill.flags + ' flags'}   ${hill.heightM} m (best ${hill.bestHeightM})   answers ${hill.answers}   cash flags ${hill.cash.flags} + summit ${hill.cash.summit} = $${hill.cash.total}` : '');
     $('results').style.display = 'block';
-  }
-  const { type, ...rest } = evt;
-  if (type !== 'coin') {
-    logLines.unshift(type + ' ' + (type === 'finish' ? '' : JSON.stringify(rest)));
-    logLines.length = Math.min(logLines.length, 12);
-    $('log').textContent = logLines.join('\n');
   }
 }
 
@@ -127,12 +145,13 @@ function restart() {
   timers = [];
   tb.events.length = 0;
   tb.finished = null;
+  tb.hillEnd = null;
   $('results').style.display = 'none';
   $('gateBtn').hidden = true; $('winchBtn').hidden = true;
   const riderN = num('riders', 3);
   game.start({ trail, stats, seed: q.get('seed') != null ? num('seed', trail.seed) : trail.seed, paint: q.get('paint') || undefined, decal: q.get('decal') || 'none',
     vehicle, mutator, ghost, helmet: q.get('helmet') || undefined, suit: q.get('suit') || undefined, flag: q.get('flag') || undefined, boostTrail: q.get('trailfx') || undefined,
-    bestDistance: num('best', 0), gates: q.get('gates') != null ? num('gates', undefined) : undefined,
+    bestDistance: num('best', 0), gates: q.get('gates') != null ? num('gates', undefined) : hillOn ? 0 : undefined,
     race: race ? { riders: rivals.length ? rivals.slice(0, riderN).map((v, i) => ({ vehicle: v, name: ['Dusty', 'Blaze', 'Nitro'][i], helmet: ['flames', 'shark', 'lightning'][i], suit: ['racer', 'neon', 'gold'][i], flag: ['skull', 'star', 'lightning'][i] })) : riderN,
       skill: q.get('skill') != null ? num('skill', undefined) : undefined, skillUp: num('skillUp', 0) } : undefined });
 }
@@ -159,6 +178,11 @@ addEventListener('keydown', (e) => {
   if (e.key === 'r') restart();
   if (e.key === 'w') game.winch(true);
   if (e.key === 'g') game.openGate({ correct: true, quick: true });
+  // v1.7 Hill Climb: 1 / 2 / 0 = a quick / slow / wrong answer, h restarts the climb
+  if (e.key === '1') game.hillBoost({ power: 1, quick: true });
+  if (e.key === '2') game.hillBoost({ power: 1, quick: false });
+  if (e.key === '0') game.hillBoost({ power: 0 });
+  if (e.key === 'h') { $('results').style.display = 'none'; tb.hillEnd = null; game.startHill({ ...hillCfg, seed: q.get('seed') != null ? num('seed', trail.seed) : trail.seed }); }
 });
 addEventListener('keyup', (e) => { const k = KEYS[e.key]; if (k) { held[k].delete('k' + e.key); sync(); } });
 addEventListener('blur', () => { for (const s of Object.values(held)) s.clear(); sync(); });
@@ -174,7 +198,8 @@ function readout() {
   $('state').textContent = `${trail.name}  lvl ${lvl}${race ? '  RACE' : ''}  ${vehicle}${mutator ? '  [' + mutator + ']' : ''}\nphase ${s.phase}${s.upsideDown ? ' (upside down)' : ''}${s.crashed ? ' CRASHED' : ''}${s.countdown ? ' ' + s.countdown.toFixed(1) : ''}${s.turbo ? '  TURBO ' + s.turbo.toFixed(1) : ''}${s.combo && s.combo.count > 1 ? '  COMBO x' + s.combo.mult : ''}${s.ghostGap != null ? '  ghost ' + (s.ghostGap > 0 ? '+' : '') + s.ghostGap.toFixed(1) + 's' : ''}\n` +
     (race ? `place ${ord[s.place]} / ${s.riders.length}   time ${s.timeSec.toFixed(1)} s${s.frozen ? '  FROZEN' : ''}${s.gateHold ? '  hold ' + s.gateHold.toFixed(1) : ''}\n` + s.riders.map((x) => `  ${x.place}. ${x.name.padEnd(4)} ${Math.round(x.x)} m${x.timeSec != null ? '  ' + x.timeSec + ' s' : ''}`).join('\n') + '\n' : '') +
     `dist  ${s.distance} / ${trail.length} m\n` +
-    `speed ${s.speedKmh} km/h\nboost ${Math.round(s.boost * 100)}%\ncash  $${s.cash}\ngate  ${s.gateIndex}/${s.gatesTotal}  coins ${s.coins}`;
+    `speed ${s.speedKmh} km/h\nboost ${Math.round(s.boost * 100)}%\ncash  $${s.cash}\ngate  ${s.gateIndex}/${s.gatesTotal}  coins ${s.coins}` +
+    (s.hill ? `\nhill  ${s.hill.heightM} m  flag ${s.hill.flag}/${s.hill.flagsTotal}  ${Math.round(s.hill.progress * 100)}%  ${s.hill.holding ? 'HOLD' : s.hill.burst ? 'BURST ' + s.hill.burst.toFixed(1) : ''}  answers ${s.hill.answers}/${s.hill.questions}  $${s.hill.cash.total}${s.hill.summit ? '  SUMMIT' : ''}${s.hill.ended ? '  ended' : ''}` : '');
   requestAnimationFrame(readout);
 }
 readout();
