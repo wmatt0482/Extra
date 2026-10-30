@@ -168,7 +168,11 @@ async function runLayout(browser, layout) {
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   await page.addInitScript(({ insets }) => {
-    if (!sessionStorage.getItem('tbSmokeSeeded')) { localStorage.clear(); sessionStorage.setItem('tbSmokeSeeded', '1'); }
+    if (!sessionStorage.getItem('tbSmokeSeeded')) {
+      localStorage.clear(); sessionStorage.setItem('tbSmokeSeeded', '1');
+      // v1.7: the Hill Climb (on by default) is tested in its own section; the races before it stay as they were
+      localStorage.setItem('trailBlazer.settings', JSON.stringify({ sound: true, music: true, reducedMotion: false, shake: 100, hill: false }));
+    }
     window.__mockScript = {};
     // headless Chromium has no voices: a fake speechSynthesis records every utterance (Spell Jump's tts.js test hook)
     window.__spoken = [];
@@ -250,8 +254,10 @@ async function runLayout(browser, layout) {
     const m = S.loadSave('legacy');
     localStorage.removeItem('trailBlazer.legacy.save');
     return { v: m.v, cash: m.cash, vehicle: m.vehicle, ranger: m.vehicles.ranger150, n: Object.keys(m.vehicles).length, levels: 'levels' in m, cups: m.cups, stars: m.stars, crates: m.crates.queue.length,
-      eq: m.cosmetics.equipped, streak: !!m.streak, rivals: m.rivals.retired.length, ghosts: m.ghosts, daily: m.daily.day, paint: m.paint, medal: m.medals['pine-ridge'] };
+      eq: m.cosmetics.equipped, streak: !!m.streak, rivals: m.rivals.retired.length, ghosts: m.ghosts, daily: m.daily.day, paint: m.paint, medal: m.medals['pine-ridge'],
+      hill: m.hill, summits: Object.keys(m.summits).length };
   });
+  check(mig.hill && mig.hill.climbs === 0 && mig.hill.summits === 0 && mig.hill.bestHeightM === 0 && mig.hill.flags === 0 && mig.summits === 0, 'a save from before 1.7 gets an empty Hill Climb record (climbs, summits, best height, flags) and no summit badges');
   check(mig.v === 3 && mig.cash === 4321 && mig.vehicle === 'ranger150' && mig.ranger.owned && mig.ranger.levels.engine === 3 && mig.ranger.levels.boost === 2 && mig.n === 1 && !mig.levels
     && !Object.keys(mig.cups).length && !Object.keys(mig.stars).length && mig.crates === 0 && mig.eq.helmet === 'classic' && mig.streak && mig.rivals === 0 && !Object.keys(mig.ghosts).length && mig.daily === ''
     && mig.paint === 'orange' && mig.medal === 'gold', `a v2 save migrates to v3 (Ranger owned with Engine ${mig.ranger.levels.engine} / Boost ${mig.ranger.levels.boost}, cash, paint and medals kept; cups, stars, crates, gear, ghosts empty)`);
@@ -263,7 +269,7 @@ async function runLayout(browser, layout) {
   check(cards.length === 6 && !cards[0].locked && cards.slice(1).every((c) => c.locked), `Cups → Rookie Cup: 6 trails, ${cards[0] && cards[0].id} open, the rest locked`);
   check(cards[0].num === 'Trail 1' && cards.every((c) => c.stars === 3), `cards say "Trail 1" and show 3 stars each (${cards[0].num})`);
   const tabs = await J(page, () => [...document.querySelectorAll('#cup-tabs [data-cup]')].map((t) => t.dataset.cup + (t.classList.contains('locked') ? ':locked' : '')));
-  check(tabs.join(',') === 'rookie,pro:locked,legend:locked', `Cups screen: 3 tabs, Pro and Legend locked (${tabs.join(', ')})`);
+  check(tabs.join(',') === 'rookie,pro:locked,legend:locked,champion:locked,masters:locked', `Cups screen: 5 tabs, Pro, Legend, Champion and Masters locked (${tabs.join(', ')})`);
   check(await J(page, () => document.querySelector('#cup-race').dataset.ready === 'false' && /1 \/ 6 open/.test(document.querySelector('#cup-race').textContent)), '"Race the cup" waits until every Rookie trail is open (1 / 6 open)');
   await shot(page, layout, '05-cups');
   await audit(page, layout.insets, 'Cups');
@@ -719,7 +725,7 @@ async function runLayout(browser, layout) {
   await page.click('#res-garage');
   await page.click('[data-back="title"]');
   await page.waitForSelector(visibleSel('#screen-title'));
-  const cashAfter = (await readSave(page)).cash;
+  let cashAfter = (await readSave(page)).cash;
   const podiums = await J(page, () => window.__trailBlazer.app.trailsDoneFor(window.__trailBlazer.app.currentPlayerId));
 
   // the next cup needs BOTH a trophy and the stars (12 for Pro): the trophy alone does not open it
@@ -727,6 +733,137 @@ async function runLayout(browser, layout) {
   const tt = await J(page, () => document.querySelector('#title-trails-text').textContent);
   check(st12 >= 12 ? /^Pro Cup: / .test(tt) : /^Rookie Cup: /.test(tt), `with the trophy and ${st12} ★ the Pro Cup is ${st12 >= 12 ? 'open' : 'still locked'} ("${tt}")`);
   await J(page, () => { const a = window.__trailBlazer.app; for (const t of a.trails.filter((x) => x.cup === 'rookie')) a.save.stars[t.id] = [true, true, (a.save.stars[t.id] || [])[2] || false]; a.persist(); a.go('title'); });
+
+  // ---------- v1.7: the Hill Climb after a finished race ----------
+  await J(page, () => {
+    const T = window.__trailBlazer, g = T.game;
+    T.app.setSetting('hill', true);
+    window.__hill = { starts: [], boosts: [], banners: [] };
+    const sh = g.startHill; g.startHill = (cfg) => { window.__hill.starts.push(cfg); return sh(cfg); };
+    const hb = g.hillBoost; g.hillBoost = (r) => { window.__hill.boosts.push({ ...r, before: g.getState().hill && g.getState().hill.heightM }); return hb(r); };
+    new MutationObserver(() => { const t = document.querySelector('#banner-text').textContent.trim(); const a = window.__hill.banners; if (t && a[a.length - 1] !== t) a.push(t); }).observe(document.querySelector('#banner-text'), { childList: true, characterData: true, subtree: true });
+    window.__mockScript = { noCrash: true, aiTimes: [9, 9.6, 10.4] };
+    T.app.startRide('pine-ridge', { skipCheck: true });
+  });
+  await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
+  const cashH0 = (await readSave(page)).cash, cratesH0 = (await readSave(page)).crates.queue.length;
+  // the race's gates right, then the climb: the first hill question is checked by hand, the rest answered quick
+  const hillSeen = { modes: [], chips: [], titles: [], kinds: [] };
+  {
+    const end = Date.now() + 45000;
+    let checkedFirst = false;
+    while (Date.now() < end) {
+      const st = await J(page, () => { const T = window.__trailBlazer, g = T.gate; return { results: T.screen === 'results', gate: g.open && g.state === 'ask', answer: g.answer, mode: g.mode, hill: !!T.hill, chip: document.querySelector('#gp-chip').textContent, title: document.querySelector('#gp-title-text').textContent, html: document.documentElement.classList.contains('math') }; });
+      if (st.results) break;
+      if (st.gate) {
+        if (st.hill) {
+          hillSeen.modes.push(st.mode); hillSeen.chips.push(st.chip); hillSeen.titles.push(st.title);
+          if (!checkedFirst) {
+            checkedFirst = true;
+            check(st.mode === 'hill' && st.title === 'Hill Climb' && st.chip === 'Burst 1 of 10' && st.html, `the first hold asks on the Gate panel in hill mode ("${st.title}" · "${st.chip}")`);
+            check(await J(page, () => { const h = window.__trailBlazer.hill; return h && h.active && h.picks.length === 10 && h.picks.every((p) => p.fact && ['frontier', 'scout', 'stretch'].includes(p.kind)); }), 'the climb has 10 facts picked by hillFacts (frontier / scout / stretch)');
+            hillSeen.kinds = await J(page, () => window.__trailBlazer.hill.picks.map((p) => p.kind));
+            await shot(page, layout, '16d-hill-question', 300);
+            await audit(page, layout.insets, 'Hill Climb question');
+          }
+        }
+        await typeAnswer(page, st.answer);
+        await page.waitForFunction(() => !window.__trailBlazer.gatePanel.isOpen || window.__trailBlazer.gatePanel.state !== 'ask', null, { timeout: 4000 });
+        await page.waitForFunction(() => !window.__trailBlazer.gatePanel.isOpen, null, { timeout: 4000 });
+      } else await page.waitForTimeout(100);
+    }
+  }
+  await page.waitForSelector(visibleSel('#screen-results'), { timeout: 8000 });
+  await page.waitForTimeout(1500);
+  const hs = await J(page, () => window.__hill);
+  check(hs.starts.length === 1 && hs.starts[0].flags === 5 && hs.starts[0].questions === 10 && hs.starts[0].cupMult === 1, `after the finish the app called startHill({ flags: 5, questions: 10, cupMult: 1 }) (${JSON.stringify(hs.starts[0])})`);
+  check(hs.boosts.length === 5 && hs.boosts.every((b) => b.power === 1 && b.quick), `5 quick right answers → 5 full bursts (${hs.boosts.map((b) => `${b.power}${b.quick ? 'q' : ''}`).join(' ')}) → the summit`);
+  check(hs.banners.includes('HILL CLIMB!') && hs.banners.some((b) => /^Flag 1! \+\$150$/.test(b)) && hs.banners.includes('SUMMIT!'), `banners: HILL CLIMB! → Flag 1! +$150 … → SUMMIT! (${hs.banners.join(' | ')})`);
+  check(hillSeen.chips.length === 5 && hillSeen.chips[4] === 'Burst 5 of 10' && hillSeen.modes.every((m) => m === 'hill'), `every hold asked on the panel ("${hillSeen.chips.join('", "')}")`);
+  const rh = await J(page, () => ({ row: document.querySelector('#res-pay tr[data-extra="hill"]'), lines: [...document.querySelectorAll('#res-lines [data-line]')].map((x) => x.dataset.line + ':' + x.textContent), callouts: [...document.querySelectorAll('#res-callouts [data-callout]')].map((c) => c.dataset.callout), last: window.__trailBlazer.lastResult.hill }));
+  const rowH = await J(page, () => { const tr = document.querySelector('#res-pay tr[data-extra="hill"]'); return tr ? { summit: tr.dataset.summit, flags: tr.dataset.flags, cash: Number(tr.dataset.hillCash), text: [...tr.querySelectorAll('td')].map((td) => td.textContent.replace(/\s+/g, ' ').trim()).join(' ') } : null; });
+  const resH = await results(page);
+  const sumH = resH.rows.reduce((a, r) => a + r.value, 0);
+  check(rowH && rowH.summit === 'true' && rowH.flags === '5' && rowH.cash === 3250 && /Hill Climb · SUMMIT! \+\$3,250/.test(rowH.text), `results: a Hill Climb row under the total ("${rowH && rowH.text}"; $150 × 1…5 + $1,000)`);
+  check(sumH === resH.total && resH.total === resH.last.summary.cash.total, `the race's rows still add up to the race's total without the hill (${sumH} = ${resH.total})`);
+  check(rh.callouts.includes('summit') && rh.lines.some((l) => /^hill:Summit! 5 of 5 right on the way up$/.test(l)) && rh.lines.some((l) => /^crate:Gold crate: the summit$/.test(l)), `"SUMMIT!" callout, "Summit! 5 of 5 right on the way up", a gold crate (${rh.lines.filter((l) => /^(hill|crate)/.test(l)).join(' | ')})`);
+  check(rh.last && rh.last.summit && rh.last.heightM === 300 && rh.last.asked === 5 && rh.last.right === 5 && rh.last.newBest, `lastResult.hill: 300 m, 5 asked, 5 right, a new best (${JSON.stringify({ ...rh.last, answers: rh.last.answers.length })})`);
+  const saveH = await readSave(page);
+  check(saveH.cash === cashH0 + resH.total + 3250 && saveH.hill.climbs === 1 && saveH.hill.summits === 1 && saveH.hill.bestHeightM === 300 && saveH.hill.flags === 5 && saveH.summits['pine-ridge'] === true && saveH.crates.queue.length >= cratesH0 + 1 && saveH.crates.queue.includes('gold'),
+    `banked the race ($${resH.total}) and the hill ($3,250) → $${saveH.cash}; save.hill ${JSON.stringify(saveH.hill)}; a summit badge on Pine Ridge; a gold crate waiting`);
+  check(hillSeen.kinds.filter((k) => k === 'frontier').length >= 2 && hillSeen.kinds.filter((k) => k !== 'frontier').length >= 2, `the climb's mix: ${hillSeen.kinds.join(' ')}`);
+  await shot(page, layout, '16e-results-summit', 600);
+  await audit(page, layout.insets, 'results (summit)');
+  // the summit badge on the trail card
+  await page.click('#res-garage');
+  await page.click('[data-back="title"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.click('#btn-ride');
+  await page.waitForSelector(visibleSel('#screen-trails'));
+  check(await J(page, () => { const c = document.querySelector('#trail-grid [data-trail="pine-ridge"]'); return !!c.querySelector('.summit-badge') && !document.querySelector('#trail-grid [data-trail="granite-gap"] .summit-badge'); }), 'the Cups screen: a summit badge on Pine Ridge only');
+  await shot(page, layout, '16f-summit-badge');
+  // a second climb: a wrong first answer slides back to the base (no climb), then the rest right; the climb ends after 10
+  await J(page, () => { window.__hill.boosts = []; window.__hill.banners = []; window.__mockScript = { noCrash: true, aiTimes: [9, 9.6, 10.4] }; window.__trailBlazer.app.startRide('pine-ridge', { skipCheck: true }); });
+  await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
+  {
+    const end = Date.now() + 60000;
+    let hillAsked = 0, slowOne = false;
+    while (Date.now() < end) {
+      const st = await J(page, () => { const T = window.__trailBlazer, g = T.gate; return { results: T.screen === 'results', gate: g.open && g.state === 'ask', answer: g.answer, hill: !!T.hill, height: g.open && T.hill ? T.game.getState().hill.heightM : null }; });
+      if (st.results) break;
+      if (st.gate) {
+        if (st.hill) {
+          hillAsked++;
+          if (hillAsked === 1) {
+            // a miss: the hint, the covered copy, "Fixed it!" (the fix-it routine), then the sputter
+            await typeAnswer(page, st.answer + 1);
+            await page.waitForFunction(() => window.__trailBlazer.gatePanel.state === 'copy', null, { timeout: 4000 });
+            await typeAnswer(page, st.answer);
+            await page.waitForFunction(() => !window.__trailBlazer.gatePanel.isOpen, null, { timeout: 4000 });
+            continue;
+          }
+          if (hillAsked === 2) { check(st.height === 0, `after the miss the vehicle is back at the base (${st.height} m)`); }
+          if (hillAsked === 3 && !slowOne) { slowOne = true; await page.waitForTimeout(3300); }    // a slow right answer (over QUICK_MS): 0.7 of a section
+        }
+        await typeAnswer(page, st.answer);
+        await page.waitForFunction(() => !window.__trailBlazer.gatePanel.isOpen, null, { timeout: 4000 });
+      } else await page.waitForTimeout(100);
+    }
+    check(hillAsked === 7, `the second climb: a miss, then 6 right (one slow) reach the summit on the 7th burst (${hillAsked} asked)`);
+  }
+  await page.waitForSelector(visibleSel('#screen-results'), { timeout: 8000 });
+  await page.waitForTimeout(1500);
+  const hs2 = await J(page, () => window.__hill);
+  check(hs2.boosts[0] && hs2.boosts[0].power === 0 && hs2.boosts.slice(1).every((b) => b.power === 1) && hs2.boosts.some((b) => b.power === 1 && !b.quick), `bursts: a sputter (power 0), then full bursts, one of them slow (${hs2.boosts.map((b) => `${b.power}${b.quick ? 'q' : ''}`).join(' ')})`);
+  const rh2 = await J(page, () => window.__trailBlazer.lastResult.hill);
+  check(rh2 && rh2.summit && rh2.asked === 7 && rh2.right === 6 && !rh2.newBest, `the second climb's results: a summit after 7 bursts, 6 right, not a new best (${JSON.stringify({ ...rh2, answers: undefined })})`);
+  check(await J(page, () => { const s = window.__trailBlazer.app.save; return s.hill.climbs === 2 && s.hill.summits === 2 && s.hill.flags === 10; }), 'save.hill: 2 climbs, 2 summits, 10 flags');
+  // the toggle off: the results come straight after the finish
+  await J(page, () => { window.__hill.starts = []; window.__trailBlazer.app.setSetting('hill', false); window.__mockScript = { noCrash: true, aiTimes: [9, 9.6, 10.4] }; window.__trailBlazer.app.startRide('pine-ridge', { skipCheck: true }); });
+  await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
+  check(await raceToResults(page), 'Hill Climb off: the race ends on the results');
+  await page.waitForTimeout(1300);
+  check(await J(page, () => window.__hill.starts.length === 0 && !document.querySelector('#res-pay tr[data-extra="hill"]') && !window.__trailBlazer.lastResult.hill && JSON.parse(localStorage.getItem('trailBlazer.settings')).hill === false), 'no climb, no hill row; the setting is saved');
+  // the Champion Cup opens with a Legend trophy and 50 stars; the Masters with a Champion trophy and 70
+  const cupsOpen = await J(page, () => {
+    const a = window.__trailBlazer.app, s = a.save;
+    const before = { champion: a.isCupOpen ? a.isCupOpen('champion') : null };
+    s.cups.pro = { best: 60, trophy: 'bronze', weekends: 1 }; s.cups.legend = { best: 60, trophy: 'bronze', weekends: 1 };
+    for (const t of a.trails.filter((x) => ['rookie', 'pro', 'legend'].includes(x.cup))) s.stars[t.id] = [true, true, true];
+    a.persist(); a.go('trails');
+    const tabs = [...document.querySelectorAll('#cup-tabs [data-cup]')].map((t) => t.dataset.cup + (t.classList.contains('locked') ? ':locked' : ''));
+    return { before, tabs };
+  });
+  check(cupsOpen.tabs.join(',') === 'rookie,pro,legend,champion,masters:locked', `with a Legend trophy and 54 ★ the Champion Cup is open, the Masters locked (${cupsOpen.tabs.join(', ')})`);
+  await page.click('#cup-tabs [data-cup="champion"]');
+  check(await J(page, () => document.querySelectorAll('#trail-grid [data-trail]').length === 6 && !document.querySelector('#trail-grid [data-trail="sunset-pines"]').classList.contains('locked') && /×7 cash/.test(document.querySelector('.cup-head .ch-mult').textContent)), 'the Champion Cup tab: 6 trails, Sunset Pines open, ×7 cash');
+  await page.click('#cup-tabs [data-cup="masters"]');
+  check(await J(page, () => /^Masters Cup: a Champion trophy \+ 70 ★/.test(document.querySelector('.ch-lock').textContent)), 'the Masters Cup tab: "Masters Cup: a Champion trophy + 70 ★"');
+  await shot(page, layout, '16g-cups-5');
+  await audit(page, layout.insets, 'Cups (5 tabs)');
+  await J(page, () => { const a = window.__trailBlazer.app, s = a.save; delete s.cups.legend; delete s.cups.pro; for (const t of a.trails.filter((x) => ['pro', 'legend'].includes(x.cup))) delete s.stars[t.id]; for (const t of a.trails.filter((x) => x.cup === 'rookie')) s.stars[t.id] = [true, true, (s.stars[t.id] || [])[2] || false]; a.persist(); a.go('title'); });
+  await page.waitForSelector(visibleSel('#screen-title'));
+  cashAfter = (await readSave(page)).cash;
 
   // ---------- Parent Zone from the title ----------
   check(await J(page, () => /^Pro Cup: 0 \/ 6 · 0 ★$/.test(document.querySelector('#title-trails-text').textContent)), `title: a Rookie trophy + 12 ★ opened the Pro Cup ("${await J(page, () => document.querySelector('#title-trails-text').textContent)}")`);
@@ -846,6 +983,9 @@ async function runLayout(browser, layout) {
   await page.click('#opt-music');
   check(await J(page, () => JSON.parse(localStorage.getItem('trailBlazer.settings')).music === false), 'Options: Music off is saved in trailBlazer.settings');
   await page.click('#opt-music');
+  check(await J(page, () => { const t = document.querySelector('#opt-hill'); return !!t && t.getAttribute('aria-checked') === 'false'; }), 'Options: the Hill Climb toggle (off, as left by the test)');
+  await page.click('#opt-hill');
+  check(await J(page, () => JSON.parse(localStorage.getItem('trailBlazer.settings')).hill === true && document.querySelector('#opt-hill').getAttribute('aria-checked') === 'true'), 'Options: Hill Climb on is saved in trailBlazer.settings');
   await page.click('.pz-tabs [data-tab="players"]');
   await page.fill(`#pz-name-${pid}`, 'Mia B');
   await page.click(`[data-rename="${pid}"]`);

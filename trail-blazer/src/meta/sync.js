@@ -12,7 +12,8 @@
 //           bestTime = min · medals = the better · stars = per-trail OR · cups = the better trophy, max points, max
 //           weekends · crates earned / opened / sinceNew = max, the longer waiting queue · streak = Spell Jump's rule
 //           (mergeStreak) · rivals = max tier, retired = union, beats = max · ghosts = the faster trace per trail ·
-//           seen = OR · play = per day max · resetAt: a reset on one device wins whole.
+//           seen = OR · play = per day max · hill = per-field max · summits = union · resetAt: a reset on one device
+//           wins whole.
 // facts     records per fact: base = the later lastSeen; attempts / firstTry / quick / misses / fixed / seenCount /
 //           totalMs / answeredMs = max; box = the base's unless the other answered it the same day with a higher box;
 //           day lists = union (the last 12); times = the base's; patterns = union by `at` (newest 6); recent = union by
@@ -84,6 +85,9 @@ export function mergeTb(local, remote) {
     s.play[day] = { races: Math.max(num(mine.races), num(p.races)), stars: Math.max(num(mine.stars), num(p.stars)), crates: Math.max(num(mine.crates), num(p.crates)) };
     if (Math.max(num(mine.streak), num(p.streak))) s.play[day].streak = Math.max(num(mine.streak), num(p.streak));
   }
+  const ha = obj(s.hill), hb = obj(o.hill);
+  s.hill = Object.fromEntries(['climbs', 'summits', 'bestHeightM', 'flags'].map((k) => [k, Math.max(num(ha[k]), num(hb[k]))]));
+  for (const [k, v] of Object.entries(obj(o.summits))) if (v) s.summits[k] = true;
   if (Math.max(ra, rb) > 0) s.resetAt = Math.max(ra, rb);
   return storedSave(normalizeSave(s));
 }

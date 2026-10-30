@@ -110,7 +110,7 @@ async function typeAnswer(page, value) {
 async function race(page, trailId = 'pine-ridge') {
   await J(page, (id) => { const a = window.__trailBlazer.app; a.save.seen.coach = true; a.startRide(id, { skipCheck: true }); }, trailId);
   await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
-  const end = Date.now() + 30000;
+  const end = Date.now() + 70000;          // v1.7: the race and then the Hill Climb (10 holds at most)
   while (Date.now() < end) {
     const st = await J(page, () => { const g = window.__trailBlazer.gate; return { results: window.__trailBlazer.screen === 'results', gate: g.open && g.state === 'ask', answer: g.answer, index: g.index }; });
     if (st.results) { await page.waitForTimeout(400); return true; }
@@ -230,6 +230,16 @@ async function main() {
     check(sets === 'x6', `the parent's later set wins (the laptop's ×6: ${sets})`);
     const tbL = await ls(L, `trailBlazer.${miaId}.save`), tbS = (await serverDoc(code, `${miaId}.tb`)).data;
     check(tbL.cash === tbS.cash && tbL.vehicles.quad.owned && (await mem(I)).cash === tbS.cash, `the save agrees too (cash $${tbS.cash}, the quad kept)`);
+    // v1.7: the Hill Climb record merges by max, the summit badges by union (every finished race above climbed the hill)
+    check(tbS.hill && tbS.hill.climbs >= 1 && tbL.hill && tbL.hill.climbs === tbS.hill.climbs, `the Hill Climb record synced (${JSON.stringify(tbS.hill)})`);
+    const hm = await J(L, async () => {
+      const m = await import(new URL('src/meta/sync.js', location.href).href);
+      const a = { updatedAt: 2, data: { v: 3, hill: { climbs: 3, summits: 1, bestHeightM: 180, flags: 7 }, summits: { 'pine-ridge': true } } };
+      const b = { updatedAt: 1, data: { v: 3, hill: { climbs: 2, summits: 2, bestHeightM: 300, flags: 4 }, summits: { 'granite-gap': true } } };
+      const r = m.mergeTb(a, b);
+      return { hill: r.hill, summits: Object.keys(r.summits).sort().join() };
+    });
+    check(hm.hill.climbs === 3 && hm.hill.summits === 2 && hm.hill.bestHeightM === 300 && hm.hill.flags === 7 && hm.summits === 'granite-gap,pine-ridge', `mergeTb: hill fields by max, summits by union (${JSON.stringify(hm)})`);
 
     console.log('\n=== Spell Jump on the same server and the same device ===');
     const metaBefore = (await ls(I, 'spellJump.sync')).keys;

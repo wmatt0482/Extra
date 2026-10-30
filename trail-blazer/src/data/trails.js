@@ -318,6 +318,104 @@ export const TRAILS = [
     mx: { design: 20, aiPace: 1.0, aiBias: 6.5, mix: { double: 4, table: 2.5, stepup: 2, stepdown: 2, whoops: 2, berm: 1.5 } },
     seed: 1818,
   },
+  // ---------- v1.7: Champion Cup (×7) and Masters Cup (×10): 12 more trails on the 18 styles, new looks ----------
+  {
+    id: 'sunset-pines', cup: 'champion', name: 'Sunset Pines', blurb: 'Pine Ridge at dusk: longer, steeper, golden.',
+    length: 2600, grip: 1.0, style: 'forest',
+    theme: { sky: ['#ff8a3d', '#ffd59a'], far: '#5a4a7a', mid: '#3a5a4a', ground: '#4f9a3f', groundDark: '#5a3a2a', accent: '#ffd23f', trail: '#a87a4a' },
+    terrain: { amplitude: 34, wavelength: 148, roughness: 0.4, hills: 14, steep: [0.36, 0.9] },
+    props: ['log', 'rock', 'stump', 'sign', 'puddle', 'cone'], patches: ['mud'], water: 1, bridges: 3, kickers: 5,
+    mx: { design: 14, aiPace: 1.0, aiBias: 5, mix: { double: 4, table: 2.5, stepup: 1.5, stepdown: 1.5, whoops: 1.5, berm: 1.5 } }, seed: 1901,
+  },
+  {
+    id: 'crimson-canyon', cup: 'champion', name: 'Crimson Canyon', blurb: 'Red rock under a red sky; the doubles get longer.',
+    length: 2800, grip: 1.0, style: 'canyon',
+    theme: { sky: ['#a52a2a', '#ff9a6a'], far: '#7a2a2a', mid: '#b04a2a', ground: '#c8663a', groundDark: '#6a2a1a', accent: '#ffd23f', trail: '#d98a5a' },
+    terrain: { amplitude: 36, wavelength: 150, roughness: 0.45, hills: 15, steep: [0.36, 0.92] },
+    props: ['rock', 'boulder', 'cactus', 'cone', 'sign'], patches: ['sand'], water: 0, bridges: 3, kickers: 6,
+    mx: { design: 15, aiPace: 1.0, aiBias: 5.5, mix: { double: 5, table: 2, stepup: 2, stepdown: 1.5, whoops: 1.2, berm: 1.2 } }, seed: 1902,
+  },
+  {
+    id: 'frost-lake', cup: 'champion', name: 'Frost Lake', blurb: 'The big lake, frozen over: ice patches and snow ramps.',
+    length: 2900, grip: 0.8, style: 'lake',
+    theme: { sky: ['#9ad0ff', '#f0f8ff'], far: '#9fb8d0', mid: '#6f8fae', ground: '#dfe9f2', groundDark: '#7f93a8', accent: '#ff8a1f', trail: '#c9d7e3' },
+    terrain: { amplitude: 32, wavelength: 150, roughness: 0.35, hills: 15, steep: [0.34, 0.9] },
+    props: ['snowman', 'log', 'rock', 'cone', 'sign'], patches: ['ice', 'ice'], water: 2, bridges: 3, kickers: 5, weather: 'snow',
+    mx: { design: 15, aiPace: 1.0, aiBias: 5.5, mix: { double: 3.5, table: 3, stepup: 1.5, stepdown: 1.5, whoops: 1.5, berm: 1.5 } }, seed: 1903,
+  },
+  {
+    id: 'thunder-beach', cup: 'champion', name: 'Thunder Beach', blurb: 'A storm rolls in over the surf; rain and big tables.',
+    length: 3000, grip: 0.9, style: 'beach',
+    theme: { sky: ['#2a3550', '#6a7a95'], far: '#3a4a6a', mid: '#4f6a8a', ground: '#d9c89a', groundDark: '#7a6a4a', accent: '#ffd23f', trail: '#e3d3a8' },
+    terrain: { amplitude: 34, wavelength: 150, roughness: 0.4, hills: 16, steep: [0.35, 0.92] },
+    props: ['crab', 'beachball', 'barrel', 'cone', 'log'], patches: ['sand', 'sand'], water: 3, bridges: 3, kickers: 5, weather: 'rain',
+    mx: { design: 16, aiPace: 1.0, aiBias: 5.5, mix: { double: 3, table: 4, stepup: 1.5, stepdown: 1.5, whoops: 1.5, berm: 1.5 } }, seed: 1904,
+  },
+  {
+    id: 'ember-vent', cup: 'champion', name: 'Ember Vent', blurb: 'The volcano at night: lava glow, ash and rolling boulders.',
+    length: 3100, grip: 0.95, style: 'volcano',
+    theme: { sky: ['#0a0608', '#3a1a10'], far: '#2a1410', mid: '#4a1e14', ground: '#3a2a28', groundDark: '#1a1210', accent: '#ff5d2e', trail: '#5a3a30', night: true },
+    terrain: { amplitude: 36, wavelength: 150, roughness: 0.5, hills: 16, steep: [0.36, 0.94] },
+    props: ['boulder', 'rock', 'crate', 'cone', 'barrel'], patches: ['mud'], water: 0, bridges: 4, kickers: 6, weather: 'ash',
+    mx: { design: 16, aiPace: 1.0, aiBias: 6, mix: { double: 4, table: 2.5, stepup: 2, stepdown: 2, whoops: 1.5, berm: 1 } }, seed: 1905,
+  },
+  {
+    id: 'mirror-swamp', cup: 'champion', name: 'Mirror Swamp', blurb: 'The swamp at night: deeper mud, longer logs, more frogs.',
+    length: 3200, grip: 0.9, style: 'swamp',
+    theme: { sky: ['#0e1a12', '#2f4a2a'], far: '#1a2a1a', mid: '#2f4a2a', ground: '#4a6a2a', groundDark: '#2a3a1a', accent: '#9dff2e', trail: '#5a5a2a', night: true },
+    terrain: { amplitude: 34, wavelength: 150, roughness: 0.45, hills: 16, steep: [0.36, 0.94] },
+    props: ['log', 'stump', 'frog', 'puddle', 'cone'], patches: ['mud', 'mud'], water: 3, bridges: 4, kickers: 5,
+    mx: { design: 17, aiPace: 1.0, aiBias: 6, mix: { double: 3.5, table: 2.5, stepup: 2, stepdown: 2, whoops: 2, berm: 1.5 } }, seed: 1906,
+  },
+  {
+    id: 'midnight-city', cup: 'masters', name: 'Midnight City', blurb: 'Neon City after midnight: longer rooftops, bigger gaps.',
+    length: 3600, grip: 1.0, style: 'neon',
+    theme: { sky: ['#06061a', '#1a1040'], far: '#2a1a5a', mid: '#3a2a7a', ground: '#3a3a4a', groundDark: '#1a1a26', accent: '#ff3cac', trail: '#55556a', night: true },
+    terrain: { amplitude: 36, wavelength: 150, roughness: 0.35, hills: 18, steep: [0.36, 0.95] },
+    props: ['cone', 'crate', 'barrel', 'sign'], patches: [], water: 0, bridges: 5, kickers: 6, gaps: 3,
+    mx: { design: 18, aiPace: 1.0, aiBias: 6.5, mix: { double: 5, table: 2, stepup: 2, stepdown: 1.5, whoops: 1.2, berm: 1.5 } }, seed: 1907,
+  },
+  {
+    id: 'fossil-flats', cup: 'masters', name: 'Fossil Flats', blurb: 'Dino country in a dust storm: wind, bones and whoops.',
+    length: 3700, grip: 0.95, style: 'dino',
+    theme: { sky: ['#c99a5a', '#f3d9a8'], far: '#8a6a3a', mid: '#a8824a', ground: '#c9a86a', groundDark: '#6a4a2a', accent: '#ff8a1f', trail: '#b8925a' },
+    terrain: { amplitude: 36, wavelength: 150, roughness: 0.5, hills: 18, steep: [0.36, 0.95] },
+    props: ['bone', 'egg', 'rock', 'cactus', 'cone'], patches: ['sand', 'sand'], water: 1, bridges: 3, kickers: 6, wind: 1.6,
+    mx: { design: 18, aiPace: 1.0, aiBias: 6.5, mix: { double: 3.5, table: 2.5, stepup: 2, stepdown: 2, whoops: 3, berm: 1.5 } }, seed: 1908,
+  },
+  {
+    id: 'cloud-nine', cup: 'masters', name: 'Cloud Nine', blurb: 'Higher than Sky Bridge: lighter air, longer gaps, more wind.',
+    length: 3800, grip: 1.0, gravity: 0.8, style: 'sky',
+    theme: { sky: ['#2a6fd6', '#cfe8ff'], far: '#ffffff', mid: '#e8f2ff', ground: '#9aa4c4', groundDark: '#6a7498', accent: '#ffd23f', trail: '#b4bcd8' },
+    terrain: { amplitude: 32, wavelength: 150, roughness: 0.2, hills: 18, steep: [0.32, 0.9] },
+    props: ['cone', 'crate', 'balloon', 'barrel'], patches: [], water: 0, bridges: 6, kickers: 5, wind: 2.8, gaps: 7,
+    mx: { design: 19, aiPace: 1.0, aiBias: 6.5, mix: { double: 5, table: 2, stepup: 1.5, stepdown: 1, whoops: 1, berm: 1.2 } }, seed: 1909,
+  },
+  {
+    id: 'pumpkin-hollow', cup: 'masters', name: 'Pumpkin Hollow', blurb: 'Haunted Hollow at Halloween: thicker fog, more bats.',
+    length: 3900, grip: 0.95, style: 'haunted',
+    theme: { sky: ['#0d0618', '#2a1a4a'], far: '#1f1736', mid: '#15102a', ground: '#3a4a2a', groundDark: '#1e1626', accent: '#ff8a1f', trail: '#4a3a2e', night: true, planet: 'moon' },
+    terrain: { amplitude: 40, wavelength: 150, roughness: 0.45, hills: 19, steep: [0.38, 0.96] },
+    props: ['pumpkin', 'tombstone', 'skull', 'log', 'stump'], patches: ['mud'], water: 2, bridges: 4, kickers: 5, fog: 0.5, weather: 'bats',
+    mx: { design: 19, aiPace: 1.0, aiBias: 6.5, mix: { double: 3.5, table: 2.5, stepup: 1.5, stepdown: 2, whoops: 1.5, berm: 1.2 } }, seed: 1910,
+  },
+  {
+    id: 'far-side', cup: 'masters', name: 'Far Side', blurb: 'The far side of the Moon: darker, lighter, longer floats.',
+    length: 4000, grip: 0.9, gravity: 0.35, style: 'moon',
+    theme: { sky: ['#010104', '#070a1e'], far: '#4a4d5e', mid: '#2e3140', ground: '#8a8c9b', groundDark: '#45475a', accent: '#4dd2ff', trail: '#a4a6b4', night: true },
+    terrain: { amplitude: 32, wavelength: 150, roughness: 0.35, hills: 19, steep: [0.34, 0.92] },
+    props: ['moonrock', 'crate', 'cone', 'rock'], patches: [], water: 0, bridges: 3, kickers: 6,
+    mx: { design: 20, aiPace: 1.0, aiBias: 6.5, mix: { double: 3, table: 3, stepup: 2, stepdown: 1.5, whoops: 1, berm: 1 } }, seed: 1911,
+  },
+  {
+    id: 'prism-peak', cup: 'masters', name: 'Prism Peak', blurb: 'The last word: every world, every jump, the longest trail of all.',
+    length: 4500, grip: 1.0, style: 'rainbow',
+    theme: { sky: ['#4aa8ff', '#ffe6f7'], far: '#7a5bff', mid: '#2dd27a', ground: '#ff8f1a', groundDark: '#7f2a6a', accent: '#ff5d5d', trail: '#ffd84a' },
+    terrain: { amplitude: 42, wavelength: 150, roughness: 0.4, hills: 22, steep: [0.36, 0.97] },
+    props: ['balloon', 'mushroom', 'beachball', 'egg', 'snowman', 'cactus', 'crate', 'star'], patches: ['mud', 'sand', 'ice'],
+    water: 3, bridges: 5, kickers: 7, weather: 'confetti',
+    mx: { design: 21, aiPace: 1.0, aiBias: 7, mix: { double: 4, table: 2.5, stepup: 2, stepdown: 2, whoops: 2, berm: 1.5 } }, seed: 1912,
+  },
 ];
 for (const t of TRAILS) if (t.gates == null) t.gates = Math.round(t.length / 140);
 
@@ -345,6 +443,20 @@ export const MEDAL_TIMES = {
   'haunted-hollow': { gold: 85, silver: 95, bronze: 106 },
   'moon-base': { gold: 127, silver: 142, bronze: 159 },
   'rainbow-ridge': { gold: 122, silver: 137, bronze: 153 },
+  // v1.7 Champion / Masters Cups: gold ≈ the same-style Legend / Pro trail's gold scaled by length (re-measure with
+  // tools/engine-smoke.mjs when the trails are retuned); silver +12 %, bronze +25 %
+  'sunset-pines': { gold: 92, silver: 103, bronze: 115 },
+  'crimson-canyon': { gold: 96, silver: 108, bronze: 120 },
+  'frost-lake': { gold: 100, silver: 112, bronze: 125 },
+  'thunder-beach': { gold: 104, silver: 116, bronze: 130 },
+  'ember-vent': { gold: 108, silver: 121, bronze: 135 },
+  'mirror-swamp': { gold: 112, silver: 125, bronze: 140 },
+  'midnight-city': { gold: 112, silver: 125, bronze: 140 },
+  'fossil-flats': { gold: 120, silver: 134, bronze: 150 },
+  'cloud-nine': { gold: 124, silver: 139, bronze: 155 },
+  'pumpkin-hollow': { gold: 122, silver: 137, bronze: 153 },
+  'far-side': { gold: 140, silver: 157, bronze: 175 },
+  'prism-peak': { gold: 138, silver: 155, bronze: 173 },
 };
 export function medalFor(trailId, timeSec) {
   const m = MEDAL_TIMES[trailId];
@@ -354,13 +466,13 @@ export function medalFor(trailId, timeSec) {
 
 export const TRAIL_BY_ID = Object.fromEntries(TRAILS.map((t) => [t.id, t]));
 // v1.5: cup order and the trails of each cup (the app's cups.js owns trophies, points and unlocks)
-export const CUP_IDS = ['rookie', 'pro', 'legend'];
+export const CUP_IDS = ['rookie', 'pro', 'legend', 'champion', 'masters'];   // v1.7: two more cups
 export const TRAILS_BY_CUP = Object.fromEntries(CUP_IDS.map((c) => [c, TRAILS.filter((t) => t.cup === c)]));
 /** The vehicle tier a trail is tuned for (SPEC v1.5 §9: "a tier-matched vehicle at upgrade 5"): rookie 1-2, pro 3-5, legend 6-8. */
 export function trailTier(trail) {
   const list = TRAILS_BY_CUP[trail.cup] || TRAILS_BY_CUP.rookie;
   const k = Math.max(0, list.indexOf(trail)) / Math.max(1, list.length - 1);
-  const [lo, hi] = trail.cup === 'legend' ? [6, 8] : trail.cup === 'pro' ? [3, 5] : [1, 2];
+  const [lo, hi] = trail.cup === 'masters' ? [7, 8] : trail.cup === 'champion' ? [6, 8] : trail.cup === 'legend' ? [6, 8] : trail.cup === 'pro' ? [3, 5] : [1, 2];
   return Math.round(lo + (hi - lo) * k);
 }
 

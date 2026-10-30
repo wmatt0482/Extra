@@ -51,6 +51,23 @@ first-try, slow right → box 1, a miss → box 0 and first among due facts), so
 The child never sees a score or a wrong count: right answers flash "56!" (⚡ when quick), a miss shows the fact with its
 answer for a moment, read aloud.
 
+## The Hill Climb (v1.7)
+
+After a finished race the vehicle climbs the mountain past the finish, one **burst per fact**. It is retrieval practice
+(row 1) with a payoff the child can see: a right answer is a burst up the slope, a flag chimes every section, the
+summit has fireworks and a gold crate. What makes it a learning tool rather than a victory lap:
+
+- **The stretch**: about one question in five comes from the tier *above* the scouts' (`hillFacts`, kind `stretch`),
+  so a child who is secure everywhere meets 20 × 3, 14 × 6 or 84 ÷ 7 here first, as a bonus, before the gates ask them.
+  Right-and-quick stretch answers count as scout evidence (`recordHillAnswer` → `noteScout`), which is how the frontier
+  advances on evidence (row 19). This is Matt's "still kinda easy": the top of the ladder now goes to T10.
+- **Nothing is timed on the hill**: a slow right answer still climbs (a little less), the holds wait as long as the
+  child needs, and a miss gets the same fix-it routine as a gate (row 7). The slide back to the last flag is the
+  engine's version of "not yet", never a loss of what was earned (flags stay paid).
+- **Ten facts, then it ends**: the climb is bounded so it never becomes a grind; the summit on five quick answers is
+  reachable by every vehicle, which keeps the mastery goal honest (row 21: the math gates the reward, never the other
+  way round).
+
 ## What the game never does
 
 - No timers on screen, no countdown on a question, no penalty for being slow (slow and right still opens the gate

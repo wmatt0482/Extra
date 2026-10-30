@@ -2,7 +2,7 @@
 
 Learning Lab's second game, at **learninglab.fun/trail-blazer/**. A **motocross-style race** in the **Ranger 150**, a
 kid-size sage-green side-by-side (v1.5: one of 8 vehicles), against three rivals on six tracks (Pine Ridge, Granite
-Gap, Lake Loop, Snow Pass, Desert Wash, Night Ride; v1.5: 18 trails in 3 cups). A 3-2-1 gate drop starts each race; in the air BRAKE is a backflip and GAS a
+Gap, Lake Loop, Snow Pass, Desert Wash, Night Ride; v1.5: 18 trails in 3 cups; v1.7: 30 in 5). A 3-2-1 gate drop starts each race; in the air BRAKE is a backflip and GAS a
 front flip; land on the downslope for a PERFECT; a crash respawns at the last checkpoint. Finishing 3rd or better
 opens the next track; medals follow the place (1st gold, 2nd silver, 3rd bronze; beating a track's target time can
 only raise it, so a 2nd under the gold time is gold); cash buys Engine, Tires, Suspension and Boost
@@ -48,22 +48,27 @@ The runway, from `node trail-blazer/tools/economy-sim.mjs` (40 simulated 4th gra
 
 | Milestone | Price / rule | Races | Hours | Target |
 |---|---|---|---|---|
-| Dune Quad | $170,000 | 30 | 1.0 h | ~1 h |
-| Dirt Bike 85 | $700,000 | 67 | 2.2 h |  |
-| Rock Bawler | $2,400,000 | 127 | 4.2 h |  |
-| Mud Monster | $5,500,000 | 220 | 7.3 h | ~8 h |
-| Turbo RZR-X | $15,000,000 | 426 | 14.2 h |  |
-| Thunder Rail | $22,000,000 | 729 | 24.3 h | ~25 h |
-| Moon Rover | $56,000,000 | 1480 | 49.3 h | ~50 h |
-| Pro Cup open | a Rookie trophy + 12 ★ | 32 | 1.1 h | ~3 h ✗ |
-| Legend Cup open | a Pro trophy + 30 ★ | 99 | 3.3 h | ~12 h ✗ |
-| 12 stars |  | 26 | 0.9 h |  |
-| 30 stars |  | 89 | 3.0 h |  |
-| 54 stars |  | 209 | 7.0 h |  |
+| Dune Quad | $170,000 | 24 | 0.8 h | ~1 h |
+| Dirt Bike 85 | $700,000 | 54 | 1.8 h |  |
+| Rock Bawler | $2,400,000 | 111 | 3.7 h |  |
+| Mud Monster | $5,500,000 | 190 | 6.3 h | ~7 h |
+| Turbo RZR-X | $15,000,000 | 333 | 11.1 h |  |
+| Thunder Rail | $22,000,000 | 446 | 14.9 h | ~15 h |
+| Moon Rover | $56,000,000 | 682 | 22.7 h | ~23 h |
+| Pro Cup open | a Rookie trophy + 12 ★ | 24 | 0.8 h | ~1 h |
+| Legend Cup open | a Pro trophy + 30 ★ | 89 | 3.0 h | ~3 h |
+| Champion Cup open | a Legend trophy + 50 ★ | 255 | 8.5 h | ~9 h |
+| Masters Cup open | a Champion trophy + 70 ★ | 347 | 11.6 h | ~12 h |
+| 12 stars |  | 22 | 0.7 h |  |
+| 30 stars |  | 83 | 2.8 h |  |
+| 54 stars |  | 192 | 6.4 h |  |
+| 70 stars |  | 321 | 10.7 h |  |
+| 90 stars |  | 425 | 14.2 h |  |
 
-Crates: 0.78 a race in the first 60 races (one every 1.3), 0.86 a race in races 600-900.
-Longest stretch with nothing new (a vehicle, an upgrade, a crate, a star, a trail): 7 races (target < 10).
-Upgrade multiplier per tier: 1 / 1.6 / 2.5 / 4 / 7 / 12 / 20 / 35 · cup cash: ×1 / ×2 / ×4
+Crates: 1.29 a race in the first 60 races (one every 0.8), 0.76 a race in races 600-900.
+Longest stretch with nothing new (a vehicle, an upgrade, a crate, a star, a trail): 5 races (target < 10).
+Upgrade multiplier per tier: 1 / 1.6 / 2.5 / 4 / 7 / 12 / 20 / 35 · cup cash: ×1 / ×2 / ×4 / ×7 / ×10
+Hill Climb: $25138 a race on average (with the cup multiplier), a summit in 78 % of climbs.
 
 **v1.6 syncs Trail Blazer across the family's devices** (`SPEC.md` "v1.6"): the family code a parent already uses for
 Spell Jump (Parents → Family code) now carries each child's Trail Blazer save (`<id>.tb`: cash, vehicles, upgrades,
@@ -76,6 +81,25 @@ another device loads when it arrives, never in the middle of a race. Tests: `too
 size) and `tools/sync-smoke.mjs` (two devices on one in-memory server, plus Spell Jump on the same code).
 
 **v1.6.2:** Parents → Report opens with each child's week ("Ladder: 58 % of families secure", a bar, and "This week: 91 % right at the gates (42 of 46) · moved up: ×6 ×9"; `src/facts/progress.js`), and the Family code tab shows a strip per child ("Math this week · 58 % of the ladder · 91 % right"). Parent-facing only, never on the kid's screens.
+
+**v1.7 "Hill Climb" (Matt, Oct 30: "ran out of races, it's still kinda easy for them; add a bonus round with a hill
+climb")** (`SPEC.md` "v1.7"): after every **finished** race the steep wall past the finish is a **mountain**: five
+flags, a snow line, a summit with a cairn. There is no gas up there: the vehicle climbs on **bursts**, one per fact. At
+every hold the Gate panel asks a fact (in hill mode: "Hill Climb · Burst 3 of 10"); a right answer is a full burst (quick
+or not: nothing on the hill is timed), a slow right answer climbs a little less, a miss gets the fix-it hint and the
+vehicle slides back to the last flag. Each flag pays $150 × its number × the cup, the summit $1,000 × the cup (a gold
+crate too, and a summit badge on the trail card); the climb ends on the summit or after 10 facts, and the results show a
+"Hill Climb" row under the race's total. The hill's facts are the climb's own mix (`hillFacts`): about 40 % the
+frontier, 40 % the scout family, 20 % a **stretch** into the tier above, so a child who is secure everywhere meets the
+new tiers here first. **Three tiers above ÷12** (4th-grade CCSS 4.NBT.5–6): T8 tens × ones and their ÷ twins (20 × 3,
+60 ÷ 20), T9 teens × ones (14 × 6, split the tens), T10 big × (23 × 4) and two-digit quotients (84 ÷ 7), each with its
+hint pattern, on the ladder, in the scouts and in the Parent Zone. **Two more cups** (12 new trails on the 18 render
+styles): the **Champion Cup** (×7 cash: Sunset Pines, Crimson Canyon, Frost Lake, Thunder Beach, Ember Vent, Mirror
+Swamp; a Legend trophy + 50 ★) and the **Masters Cup** (×10: Midnight City, Fossil Flats, Cloud Nine, Pumpkin Hollow,
+Far Side, Prism Peak; a Champion trophy + 70 ★): **30 trails in 5 cups, 90 stars**. Parents → Options → "Hill Climb"
+turns the climb off; the Report counts climbs, summits, flags and the best height. The economy table below is the
+v1.7 one (the hill roughly doubles a race's cash, the two cups end the runway at ~12 h; `tools/economy-sim.mjs
+--no-hill` prints it without the climb).
 
 **v1.6.3:** the anonymous lights-on counter (Spell Jump's `src/meta/pings.js`): a `day` ping once per device per UTC day, a `race` ping per finished race and a `check` ping per Pit Crew Check, carrying only `{ game, v, kind, fam }` (no names, no ids; see Spell Jump's README, "Usage counter").
 
@@ -185,11 +209,11 @@ trail-blazer/
   src/data/fallbackVehicles.js  the 8 vehicles for the menus if data/vehicles.js fails to load
   src/data/runway.js      the economy knobs (vehicle prices, tier multipliers, cup cash, weekend bonus, stars to open a
                           cup, daily ×2), tuned with tools/economy-sim.mjs
-  src/data/cups.js        the 3 cups, points 10 / 6 / 3 / 1, trophies, cupOf / cupMult
+  src/data/cups.js        the 5 cups (v1.7), points 10 / 6 / 3 / 1, trophies, cupOf / cupMult
   src/data/cosmetics.js   rider gear (12 helmets, 8 suits, 6 horns, 8 boost trails, 6 flags) + paints / decals as
                           Garage Wall items, crate tiers, set bonuses, streak rewards
   src/data/rivals.js      the 8 rivals (paint, helmet, taunt, cheer), the trio, retiring the leader
-  src/data/trails.js, vehicles.js, mutators.js  the 18 trails, 8 vehicles and 7 Pit Challenge twists (engine-owned)
+  src/data/trails.js, vehicles.js, mutators.js  the 30 trails (v1.7), 8 vehicles and 7 Pit Challenge twists
   src/game/*              the engine, course, renderer, vehicle art (engine-owned)
   src/meta/save.js        save + device settings, normalize + versioning
   src/meta/economy.js     upgrades, unlock chain (3rd or better), banking a race (place, time, medal), cash rows that

@@ -84,6 +84,7 @@ export function createTrails(app) {
         h('div', { class: 'trail-stat' }, h('span', {}, 'Length'), h('b', {}, `${money(t.length || 600)} m`)),
         h('div', { class: 'trail-stat' }, h('span', {}, 'Best time'), h('b', { 'data-best-time': String(bestTime) }, bestTime ? fmtTime(bestTime) : '—'))),
       medal ? h('span', { class: `medal-badge m-${medal} t-medal`, 'data-medal': medal }, MEDAL_LABEL[medal]) : null,
+      s.summits && s.summits[t.id] ? h('span', { class: 'summit-badge', title: 'Summit reached', 'aria-label': 'Summit reached', html: icon('flag') }) : null,   // v1.7
       done ? h('span', { class: 'cleared' }, bestPlace === 1 ? 'Won' : ordinal(bestPlace)) : null);
     card.addEventListener('click', () => {
       if (!unlocked) { app.audio.error(); app.toast(cupLocked ? why : `Locked: finish 3rd or better on ${prev ? prev.name : 'the trail before'}`); return; }

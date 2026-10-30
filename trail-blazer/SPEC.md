@@ -626,3 +626,94 @@ counted in `facts.checkSkips`); after that the card shows only **Start** ("The c
 About 15 quick facts, then the track is yours!") and the way out of the check reads "Later" and leads to the title,
 never to a race. A finished check (`applyCheck`) resets the budget, so a re-check gets two skips again. Never a lock:
 the child can always leave to the title; they just cannot race past the check a third time.
+
+## v1.7 — Hill Climb, harder facts, two more cups (Matt, Oct 30: "ran out of races, it's still kinda easy for them;
+## add a bonus round with a hill climb, they love the mysterious huge hill at the end of the race; make it more fun
+## while also enhancing learning")
+Three streams: the **engine agent** owns `src/game/*`, `dev.html`, `tools/engine-smoke.mjs`; the **facts agent** owns
+`src/facts/*`, `tools/facts-tests.mjs`; the **app** (orchestrator) owns everything else (`src/data/*` incl. trails.js
+and cups.js, `src/ui/*`, `src/meta/*`, `src/main.js`, `index.html`, `sw.js`, `tools/ui-smoke.mjs`,
+`tools/economy-sim.mjs`, `tools/sync-smoke.mjs`, docs, the site). Kid rules stand (no lives, energy, timers, pressure
+text; nothing punishes stopping). Never touch `car-jump/`.
+
+### 1. Hill Climb (engine): the wall past the finish becomes a mountain
+The course already ends in a steep wall 90 m past the finish (course.js: y += 0.06 (x − finish − 90)²). After a
+finished race the app may call `game.startHill(cfg)` on the same ride (the vehicle, look, trail style and camera carry
+over; no reload): `cfg = { flags: 5, questions: 10, seed, cupMult }`.
+- The **mountain**: a profile from the finish straight: a gentle run-in, then 5 steepening sections, one per **flag**
+  (a pole with a pennant and a cash tag drawn on the ground at each flag line; no numbers that read as a score), the
+  snow line after flag 3, the **summit** after flag 5 (a plateau with a trophy cairn and a flag; clouds below it).
+  Total climb ≈ 5 × 60 m of slope; the slope angle rises 18° → 38°. Style: the trail's render style (sky, layers,
+  props thin out with height; wind streaks near the top). Camera: follows the vehicle up; the HUD banner "HILL CLIMB!"
+  for 1.5 s, then "the hill is yours" is NOT shown (no pressure text).
+- **Physics**: the vehicle keeps its physics; there is **no gas**: it climbs only on bursts. `hillBoost({ power
+  (0..1), quick })` fires a burst: a full-power quick burst carries the vehicle ≈ one flag section (tuned per vehicle
+  so every vehicle can summit on 5 quick right answers; a slow right answer = 0.7 of a section; power 0 = a sputter,
+  no climb); rocket flames, exhaust rings, a wheelie on launch. When the burst ends and the speed drops below 1 m/s
+  the engine **holds** the vehicle (brake, no slide) and emits `hillHold { heightM, flag }`; the app asks the next
+  question. On `power: 0` the vehicle **slides back** to the last flag line (dust, a wobble; never below the base)
+  then holds again. A crash is impossible (the vehicle is kept upright on the hill).
+- **Flags and the summit**: crossing a flag line emits `hillFlag { n (1..5), heightM, cash }` (a chime, confetti
+  from the pole; cash = 150 × n × cupMult); reaching the summit emits `hillSummit { heightM, cash }` (fireworks, the
+  vehicle parks by the cairn, "SUMMIT!" banner; cash 1000 × cupMult) and ends the climb.
+- **End**: the climb ends on the summit, or after `questions` answers when the next hold comes, or on `endHill()`;
+  the engine emits `hillEnd { heightM, flags, summit (bool), answers, cash: { flags, summit, total }, bestHeightM }`
+  and freezes the scene (the results open over it). `getState().hill = { active, heightM, flag, flags, progress
+  (0..1 of the summit), holding, burst (s left), answers }`. Summary of the race is unchanged (the hill is separate).
+- dev.html: `hill=1` starts a race with 0 gates and a Hill Climb after the finish; keys 1 / 2 / 0 = quick / slow /
+  wrong answer. engine-smoke: a climb to the summit on 5 quick answers with every vehicle tier (1, 4, 8); a slow
+  answer climbs less; a wrong answer slides back to the last flag; 10 answers without the summit end with hillEnd;
+  flag cash × cupMult adds up; perf ≤ 12 ms; screenshots of the base, a flag, the summit.
+
+### 2. Harder facts (facts agent): three tiers above ÷12
+The ladder ends at T7 (÷ 6 … ÷ 12): a kid secure everywhere has an empty frontier and only meets review facts ("still
+kinda easy"). New families (4th grade CCSS 4.NBT.5–6; whole numbers, answers ≤ 9,999, exact division):
+| Tier | Families | Facts | Hint pattern |
+|---|---|---|---|
+| T8 | `x10s` (tens × ones: 20 … 90 × 3, 4, 6, 7, 8), `d10s` (their ÷ twins: 60 ÷ 3, 60 ÷ 20) | 35 + 70 | "2 × 3 = 6, so 20 × 3 = 60" (the ×10 pattern) |
+| T9 | `xteen` (12 … 19 × 3, 4, 6, 7, 8) | 40 | "14 × 6 = 10 × 6 + 4 × 6 = 60 + 24" (split the tens) |
+| T10 | `xbig` (21 … 49 × 3, 4, 6, 7, 8, 9; the 24 facts in the list the agent fixes), `dbig` (two-digit quotients: (11 … 19) × d ÷ d, d 3 … 9) | 24 + 63 | "23 × 4 = 20 × 4 + 3 × 4"; "84 ÷ 7: 70 ÷ 7 = 10, 14 ÷ 7 = 2, so 12" |
+`factFamilies` / `factFamily` / `missFamily` classify these facts (a × fact with a multiple of ten is `x10s`, with
+12–19 `xteen`, with 21–49 `xbig`; a ÷ with a two-digit quotient is `dbig`, with a tens divisor or dividend `d10s`);
+`familyMembers` lists them; `famLabel` ("×10s", "teens ×", "big ×", "big ÷"); `difficulty` places them after ÷12;
+`hints.js` / `patterns.js` explain them in the hint and the error patterns; `spoken.js` reads them (numbers to
+9,999 already). Placement: `TIERS` gains T8 T9 T10; `tiersFor` includes them once T5 is known (the staircase can
+climb into them); the scouts' "next tier" after T7 is T8 → T9 → T10; the frontier advances into them by the same
+SECURE rule; the Fact Grid stays 12 × 12 (the Parent Zone's ladder lists the new tiers with their state). The Pit
+Crew Check's text for them: "tens", "teens", "big numbers". `store.js`: nothing structural (families are keys).
+New export for the app: `hillFacts(d, n, now, rand)` → `[{ fact, flip, kind: 'frontier' | 'scout' | 'stretch' }]`:
+n facts for a climb, ≈ 40 % frontier (nextFact), 40 % the scout family's facts, 20 % **stretch** (the tier after the
+scout's, so a secure kid meets the hard tiers here first); `recordHillAnswer(d, pick, result, now)` records them
+(frontier → recordAnswer; scout / stretch → noteScout for their family, so right-and-quick stretch answers move the
+frontier up). facts-tests cover the new families, hints, classification, placement into T8–T10, hillFacts' mix.
+
+### 3. Two more cups (app): 12 new trails, 90 stars
+`trails.js` gains 12 trails that reuse the 18 render styles with new themes (sky / layer colours), terrain, props, mx
+and medal times: **Champion Cup** (cup `champion`, ×7 cash): Sunset Pines (forest at dusk), Crimson Canyon (canyon,
+red sky), Frost Lake (lake, ice patches, grip 0.8), Thunder Beach (beach, storm, rain), Ember Vent (volcano, night),
+Mirror Swamp (swamp, reversed). **Masters Cup** (cup `masters`, ×10): Midnight City (neon, longer), Fossil Flats (dino,
+wind), Cloud Nine (sky, gravity 0.8, gaps), Pumpkin Hollow (haunted, fog 0.5), Far Side (moon, gravity 0.35), Prism
+Peak (rainbow, 4,500 m finale). `cups.js`: 5 cups; Champion opens with the Legend trophy or 50 stars, Masters with the
+Champion trophy or 70 stars (runway.js STARS_TO_OPEN); points / weekends unchanged. Stars: 90. Vehicle tier hints
+for the trail cards: champion 6-8, masters 7-8. The Cups screen gets five tabs (scrollable), the title's cup line
+counts the new cups; the site card and README say "30 worlds, 5 cups".
+
+### 4. The app: the climb after the race, the results, the Parent Zone
+After a **finished** race (any place) when Parents → Options → "Hill Climb" is on (default on): the results wait;
+the HUD shows "HILL CLIMB!"; `game.startHill({ flags: 5, questions: 10, seed, cupMult })`; on every `hillHold` the
+Gate panel asks the next of `hillFacts(facts, 10)` (the same panel, the same numpad; the hint on a miss; a miss is
+one question spent, the engine slides back); the answer → `hillBoost({ power: correct ? 1 : 0, quick })`; on
+`hillEnd` the cash is banked (a separate "Hill Climb" row on the results: "3 flags · 310 m" / "SUMMIT!"), the
+climb's answers are recorded (`recordHillAnswer`), `save.hill = { climbs, summits, bestHeightM, flags }`,
+a **gold crate** on a summit, a star-like **summit badge** on the trail card (`save.summits[trailId]`), then the
+results. The Parent Zone Report line gains "hill climbs · summits"; the Fact ladder shows T8–T10. Pings: a climb
+counts inside the race ping. Sync: `save.hill`, `save.summits` (max / union). Economy sim: the climb adds ≈ $2,500 ×
+cupMult a race at 70 % right (a summit on 5 quick answers pays $3,250 × cupMult: it roughly doubles a race's cash,
+which is the point of a bonus round the kids asked for); the sim's targets move to the 30-trail shape (Thunder Rail
+~15 h, Moon Rover ~23 h, Champion Cup ~9 h, Masters Cup ~12 h) rather than the hill being nerfed.
+Tests: ui-smoke (mock engine gains startHill / hillBoost / endHill and the hill events: a climb to the summit with
+quick answers, a wrong answer, the results row, the toggle off → no climb, the five cup tabs, a Champion trail
+opens with 50 stars, migration of a 1.6 save), sync-smoke (hill fields merge), facts-tests, engine-smoke, economy
+sim table. VERSION 1.7.0, sw.js `trail-blazer-v1.7.0`. Docs: README, LEARNING-DESIGN (the climb as retrieval
+practice with a visible payoff and the stretch tier as the "next step up" the research asks for; nothing in the
+climb is timed, a slow right answer still climbs), the Why page's Trail Blazer section (one line), the site card.

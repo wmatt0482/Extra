@@ -13,6 +13,8 @@
 // a successful write; the save is stored with its ghosts packed (encodeGhost: deltas in 0.01 s / 0.1 m / 0.01 rad, a
 // few KB a trail instead of ~60) and the facts in their compact form (store.js compactFacts), so both fit a sync
 // request; `resetAt` (Parents → Reset) is kept so a reset on one device wins the merge (src/meta/sync.js).
+// v1.7 (Hill Climb): `hill` { climbs, summits, bestHeightM, flags } and `summits` { trailId: true } (the summit badge on
+// the trail card); settings.hill (Parents → Options → Hill Climb, default on). v stays 3: an older copy ignores them.
 import { UPGRADES, MAX_LEVEL, emptyLevels } from '../data/upgrades.js';
 import { PAINT_BY_ID, DECAL_BY_ID } from '../data/paints.js';
 import { KINDS, STOCK, itemOf } from '../data/cosmetics.js';
@@ -29,6 +31,7 @@ export const GHOST_MAX = 1500;            // samples kept per trail (0.1 s each)
 const CRATE_TIER_IDS = ['bronze', 'silver', 'gold'];
 export const defaultCosmetics = () => ({ owned: Object.fromEntries(KINDS.map((k) => [k, []])), equipped: { helmet: STOCK.helmet, suit: STOCK.suit, horn: STOCK.horn, trail: STOCK.trail, flag: STOCK.flag } });
 export const defaultCrates = () => ({ queue: [], earned: 0, opened: 0, sinceNew: 0 });
+export const defaultHill = () => ({ climbs: 0, summits: 0, bestHeightM: 0, flags: 0 });
 export const SETTINGS_KEY = 'trailBlazer.settings';
 export const saveKey = (playerId) => `trailBlazer.${playerId}.save`;
 
@@ -59,10 +62,12 @@ export function defaultSave() {
     daily: { day: '', trailId: null, mutator: null, done: false },
     weekend: null,            // { cup, trails: [ids], results: [{ trailId, standings: [{ name, place, points, me }] }], points: { name: n } }
     play: {},                 // 'YYYY-MM-DD' -> { races, stars, crates } (the last 14 days)
+    hill: defaultHill(),      // the Hill Climb (v1.7): climbs started, summits reached, best height, flags passed
+    summits: {},              // trailId -> true once the summit was reached there (the badge on the trail card)
   };
 }
 export function defaultSettings() {
-  return { sound: true, music: true, reducedMotion: false, shake: 100 };
+  return { sound: true, music: true, reducedMotion: false, shake: 100, hill: true };
 }
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -142,6 +147,10 @@ export function normalize(raw) {
     s.play[k] = { races: Math.max(0, Math.floor(num(v.races))), stars: Math.max(0, Math.floor(num(v.stars))), crates: Math.max(0, Math.floor(num(v.crates))) };
     if (num(v.streak) > 0) s.play[k].streak = Math.floor(num(v.streak));
   }
+  // ---- v1.7: the Hill Climb ----
+  const h = raw.hill && typeof raw.hill === 'object' ? raw.hill : {};
+  s.hill = { climbs: Math.max(0, Math.floor(num(h.climbs))), summits: Math.max(0, Math.floor(num(h.summits))), bestHeightM: Math.max(0, Math.round(num(h.bestHeightM))), flags: Math.max(0, Math.floor(num(h.flags))) };
+  if (raw.summits && typeof raw.summits === 'object') for (const [k, v] of Object.entries(raw.summits)) if (idOk(k) && v) s.summits[k] = true;
   return s;
 }
 
@@ -231,6 +240,7 @@ export function loadSettings() {
     d.music = bool(raw.music, true);
     d.reducedMotion = bool(raw.reducedMotion, false);
     d.shake = Math.max(0, Math.min(100, Math.round(num(raw.shake, 100))));
+    d.hill = bool(raw.hill, true);
     return d;
   } catch (_) { return d; }
 }

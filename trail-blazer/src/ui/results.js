@@ -11,6 +11,9 @@
 // Pit Challenge lines, the crate button (its own moment: src/ui/crate.js), the cup multiplier on the total row
 // ("Pro Cup ×2"), the weekend standings between races ("You 16 · Blaze 13 · …") with "Next race", and after a
 // weekend's last race the cup podium with the trophy.
+// v1.7: the Hill Climb (r.hill = { heightM, flags, summit, cash: { flags, summit, total }, asked, right, newBest }): a row
+// under the total like the mission (its cash is banked on its own, not part of the race's cash), a "SUMMIT!" callout
+// and a line ("3 flags · 180 m up the hill").
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { MEDAL_LABEL, fmtTime, ordinal } from '../data/medals.js';
 import { factAnswer, factText } from '../facts/facts.js';
@@ -78,6 +81,9 @@ export function createResults(app, crates) {
     if (ss.ghost && ss.ghost.beat && ss.ghost.by > 0) out.push(line('ghost', `Beat your ghost by ${ss.ghost.by.toFixed(1)} s!`));
     else if (ss.ghost && ss.ghost.beat === false && ss.ghost.by > 0) out.push(line('ghost', `Your ghost was ${ss.ghost.by.toFixed(1)} s ahead`));
     if (ss.turbo) out.push(line('turbo', 'TURBO gate!'));
+    const hl = r.hill;
+    if (hl && hl.summit) out.push(line('hill', `Summit! ${hl.right} of ${hl.asked} right on the way up`));
+    else if (hl && hl.asked > 0) out.push(line('hill', `${hl.flags} flag${hl.flags === 1 ? '' : 's'} · ${money(hl.heightM)} m up the hill · ${hl.right} of ${hl.asked} right`));
     const rv = ss.rival;
     if (rv && rv.retired) out.push(line('rival', `${rv.retired.name} retires to the Hall of Rivals! Next up: ${rv.next ? rv.next.name : 'legends'}`));
     else if (rv && rv.beat) out.push(line('rival', `You beat ${rv.leader.name}! (${rv.beats} / 3)`));
@@ -191,11 +197,16 @@ export function createResults(app, crates) {
       h('td', { 'data-value': String(row.value) }, '$' + money(row.value))));
     const totalTd = h('td', { id: 'res-total' });
     const extra = math && math.missionPaid ? [h('tr', { class: 'extra', 'data-extra': 'mission' }, h('td', {}, 'Daily mission', h('span', { class: 'hint' }, ' · paid on the 12th gate')), h('td', {}, '+$' + money(math.missionPaid)))] : [];
+    const hl = r.hill;
+    if (hl) extra.push(h('tr', { class: 'extra', 'data-extra': 'hill', 'data-flags': String(hl.flags), 'data-summit': String(!!hl.summit), 'data-hill-cash': String(hl.cash.total) },
+      h('td', {}, 'Hill Climb', h('span', { class: 'hint' }, hl.summit ? ' · SUMMIT!' : ` · ${hl.flags} flag${hl.flags === 1 ? '' : 's'} · ${money(hl.heightM)} m`)), h('td', {}, '+$' + money(hl.cash.total))));
     const ss = r.season || {};
     const mults = [ss.cup && ss.cup.mult > 1 ? `${ss.cup.name} ×${ss.cup.mult}` : '', ss.daily ? 'Pit Challenge ×2' : ''].filter(Boolean);
     el.pay.replaceChildren(h('tbody', {}, ...rows, h('tr', { class: 'total' }, h('td', {}, 'Total', mults.length ? h('span', { class: 'hint mult', 'data-mult': mults.join(' ') }, ` · ${mults.join(' · ')}`) : null), totalTd), ...extra));
     countUp(totalTd, r.total);
     const call = [];
+    if (hl && hl.summit) call.push(h('span', { class: 'callout orange', 'data-callout': 'summit' }, 'SUMMIT!'));
+    else if (hl && hl.newBest && hl.heightM > 0) call.push(h('span', { class: 'callout', 'data-callout': 'hill-best' }, `New best: ${money(hl.heightM)} m up the hill`));
     if (math && math.mastered.length) call.push(h('span', { class: 'callout mastered', 'data-callout': 'mastered' }, `${math.mastered.length} fact${math.mastered.length > 1 ? 's' : ''} mastered!`));
     if (math && math.missionPaid) call.push(h('span', { class: 'callout orange', 'data-callout': 'mission' }, `Mission complete! +$${money(math.missionPaid)}`));
     else if (math && math.facts.length) call.push(h('span', { class: 'callout', 'data-callout': 'mission-progress' }, math.mission.done ? 'Mission done today' : `Today ${math.mission.count} / ${math.mission.size} gates`));

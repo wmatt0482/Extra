@@ -313,7 +313,7 @@ export function createParentZone(app) {
       ...steppedText(d).map((t) => h('div', { class: 'pz-help' }, t)));
     return [
       where,
-      h('div', { class: 'pz-help' }, `Auto works up the ladder for ${p.name}: two families from the lowest tier not yet secure. A family moves on as soon as it is right and quick (no miss in its last 8 answers), or when 3 quick scout gates vouch for it; one gate a race scouts ahead. The gates stay at the learning level: a bit easy moves up, a bit hard steps back to an easier family for a while.`),
+      h('div', { class: 'pz-help' }, `Auto works up the ladder for ${p.name}: two families from the lowest tier not yet secure. A family moves on as soon as it is right and quick (no miss in its last 8 answers), or when 3 quick scout gates vouch for it; one gate a race scouts ahead. The gates stay at the learning level: a bit easy moves up, a bit hard steps back to an easier family for a while. Past ÷12 come three more tiers (tens × ones, teens × ones, big numbers) once ×11 and ×12 are known; the Hill Climb after a race stretches into the next tier up first.`),
       box,
       h('div', { class: 'hud-label pz-sec' }, 'The ladder'),
       h('div', { class: 'ladder', id: 'facts-ladder' }, ...chips),
@@ -364,12 +364,15 @@ export function createParentZone(app) {
       h('tbody', {}, ...ops.map(([op, o]) => h('tr', { 'data-op': op, 'data-total': String(o.total) },
         h('td', { class: 'op' }, OP_SHORT[op], h('small', {}, `${o.total} facts`)), ...STATUSES.map((st) => h('td', { 'data-status': st }, String(o[st]))))))));
     const tName = (id) => (app.trails.find((t) => t.id === id) || { name: id }).name;
-    const play = app.saveOf ? playLines(app.saveOf(p.id)) : [];
+    const sv = app.saveOf ? app.saveOf(p.id) : null;
+    const play = sv ? playLines(sv) : [];
+    const hill = (sv && sv.hill) || { climbs: 0, summits: 0, bestHeightM: 0, flags: 0 };
+    const hillText = hill.climbs ? `${hill.climbs} climb${hill.climbs === 1 ? '' : 's'} · ${hill.summits} summit${hill.summits === 1 ? '' : 's'} · ${hill.flags} flag${hill.flags === 1 ? '' : 's'} · best ${hill.bestHeightM} m` : 'No climbs yet.';
     const dayName = (k) => new Date(k + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     const wk = weekProgress(d, now);
     const base = reportText(d, p.name, now, tName).split('\n');
     base.splice(1, 0, ...weekProgressLines(wk));          // v1.6.2: the week's progress right under the title line
-    const text = base.join('\n') + (play.length ? `\n\nPlay (v1.5)\n${play.map((x) => `${dayName(x.day)}: ${x.text}`).join('\n')}` : '');
+    const text = base.join('\n') + (play.length ? `\n\nPlay (v1.5)\n${play.map((x) => `${dayName(x.day)}: ${x.text}`).join('\n')}` : '') + (hill.climbs ? `\n\nHill Climb: ${hillText}` : '');
     const pre = h('pre', { class: 'pz-report-text', id: 'report-text', hidden: true }, text);
     const copy = h('button', { class: 'btn btn-sm btn-cyan', id: 'report-copy', 'data-sfx': '' }, 'Copy report');
     copy.addEventListener('click', async () => {
@@ -402,6 +405,8 @@ export function createParentZone(app) {
       h('div', { class: 'hud-label pz-sec' }, 'Play, day by day'),
       play.length ? h('ul', { class: 'pat-list', id: 'report-play' }, ...play.map((x) => h('li', { 'data-day': x.day }, `${dayName(x.day)} · ${x.text}`)))
         : h('div', { class: 'pz-help', id: 'report-play' }, 'No races yet.'),
+      h('div', { class: 'hud-label pz-sec' }, 'Hill Climb'),
+      h('div', { class: 'pz-help', id: 'report-hill', 'data-climbs': String(hill.climbs), 'data-summits': String(hill.summits) }, hillText),
       h('div', { class: 'pz-actions' }, copy), pre,
     ];
   }
@@ -509,6 +514,7 @@ export function createParentZone(app) {
       toggle('Sound effects', null, st.sound, (v) => app.setSetting('sound', v), 'opt-sound'),
       toggle('Music', null, st.music, (v) => app.setSetting('music', v), 'opt-music'),
       toggle('Reduced motion', 'Calmer camera, no screen shake', st.reducedMotion, (v) => app.setSetting('reducedMotion', v), 'opt-motion'),
+      toggle('Hill Climb', 'After a finished race: a mountain past the finish, one fact per burst up it (never timed)', st.hill !== false, (v) => app.setSetting('hill', v), 'opt-hill'),
       h('div', { class: 'row slider-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Screen shake')), h('div', { class: 'slider' }, shake, out)),
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with Spell Jump')),

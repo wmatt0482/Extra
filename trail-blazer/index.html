@@ -255,6 +255,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .lock svg { width: 30px; height: 30px; color: var(--accent); filter: drop-shadow(0 3px 0 rgba(0,0,0,.4)); }
 .trail-card .t-medal { position: absolute; top: 8px; left: 8px; padding: 3px 8px 3px 3px; font-size: 10px; }
 .trail-card .t-medal::before { width: 16px; height: 16px; }
+.trail-card .summit-badge { position: absolute; top: 36px; left: 8px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: #9be7ff; color: #06303f; box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+.trail-card .summit-badge svg { width: 14px; height: 14px; }
 .trail-card .cleared { position: absolute; top: 8px; right: 8px; padding: 4px 7px; border-radius: 7px; background: var(--go); color: #062a12;
   font: 400 10px/1 var(--font-display); box-shadow: 0 2px 0 var(--go-edge); }
 
@@ -1013,7 +1015,7 @@ html.math #controls { visibility: hidden; }
 .res-lines:empty { display: none; }
 .res-line { padding: 4px 9px; border-radius: 9px; background: var(--ink-2); border: 2px solid var(--line); font: 800 12px/1.2 var(--font-body); }
 .res-line.l-ghost { border-color: #c9d1ff; } .res-line.l-combo, .res-line.l-turbo { border-color: var(--cyan); } .res-line.l-rival { border-color: var(--violet); }
-.res-line.l-streak, .res-line.l-daily { border-color: var(--accent); } .res-line.l-crate { border-color: #ffd23a; }
+.res-line.l-streak, .res-line.l-daily { border-color: var(--accent); } .res-line.l-crate { border-color: #ffd23a; } .res-line.l-hill { border-color: #9be7ff; }
 .res-weekend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border-radius: 12px; background: rgba(255,138,31,.12); border: 2px solid var(--accent); font: 800 13px/1.2 var(--font-body); }
 .res-weekend > b { font: 400 13px/1 var(--font-display); color: var(--accent); text-transform: uppercase; }
 .wk-table { display: flex; flex-wrap: wrap; gap: 4px 10px; }

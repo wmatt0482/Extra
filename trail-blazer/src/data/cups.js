@@ -10,6 +10,8 @@ export const CUPS = [
   { id: 'rookie', name: 'Rookie Cup', short: 'Rookie', color: '#2fd36b', trophyName: 'Rookie Cup', starsToOpen: 0 },
   { id: 'pro', name: 'Pro Cup', short: 'Pro', color: '#22d3ff', trophyName: 'Pro Cup', starsToOpen: STARS_TO_OPEN.pro },
   { id: 'legend', name: 'Legend Cup', short: 'Legend', color: '#ffd23a', trophyName: 'Legend Cup', starsToOpen: STARS_TO_OPEN.legend },
+  { id: 'champion', name: 'Champion Cup', short: 'Champion', color: '#ff5d5d', trophyName: 'Champion Cup', starsToOpen: STARS_TO_OPEN.champion },   // v1.7
+  { id: 'masters', name: 'Masters Cup', short: 'Masters', color: '#c77dff', trophyName: 'Masters Cup', starsToOpen: STARS_TO_OPEN.masters },
 ];
 export const CUP_BY_ID = Object.fromEntries(CUPS.map((c) => [c.id, c]));
 export const POINTS = [10, 6, 3, 1];

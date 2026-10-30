@@ -74,7 +74,7 @@ export function createPitCheck(app, gatePanel) {
     app.unlockVoice();
     app.go('check');
     const recheck = !!d.placement || opts.kind === 'recheck';
-    st = createCheck({ tiers: tiersFor(d.sets), start: recheck ? recheckStart(d) : 'T3', division: d.sets.division !== false }, Math.random);
+    st = createCheck({ tiers: tiersFor(d.sets, d, Date.now()), start: recheck ? recheckStart(d) : 'T3', division: d.sets.division !== false }, Math.random);
     let it;
     while ((it = checkNext(st))) {
       const skipLeft = !!opts.trailId && canSkipCheck(d);

@@ -55,6 +55,7 @@ import { createCrateOpener } from './ui/crate.js';
 import {
   MISSION_REWARD, activeFacts, afterRace, beginRace, checkDue, levelFor, missionState, nextFact, noteRace, recordAnswer, refreshFrontier, resetFacts,
 } from './facts/store.js';
+import { hillFacts, recordHillAnswer } from './facts/hill.js';     // v1.7: the Hill Climb's own mix of facts
 import { hintKind, patternHint } from './facts/patterns.js';
 import { createPitCheck } from './ui/pitCheck.js';
 import { createSession } from './facts/scheduler.js';
@@ -73,7 +74,7 @@ import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, vehicleM
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.6.3';
+const VERSION = '1.7.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -173,6 +174,7 @@ async function boot() {
   const canvas = $('#game');
   const engineMod = await loadEngine();
   let game = null, run = null, hudRaf = 0, screen = 'players', paused = false, coaching = false, stopFallback = 0, lastResult = null;
+  let hill = null;      // v1.7: the Hill Climb after a finished race { active, picks, asked, answers, result, show, trailId, cupMult, ... }
   let input = { gas: false, brake: false, boost: false };
   const toastsEl = $('#toasts');
 
@@ -550,11 +552,12 @@ async function boot() {
   }
 
   function hudLoop() {
-    if (!run) return;
+    if (!run && !hill) return;
     hudRaf = requestAnimationFrame(hudLoop);
     let s = null;
     try { s = game.getState(); } catch (_) { /* engine between races */ }
     if (!s) return;
+    if (!run) { Audio.engine(hill && hill.active && s.hill && s.hill.burst > 0 ? 0.6 : -1); return; }   // the climb: the engine's own sounds
     run.lastState = s;
     hud.update(s);
     if (s.place >= 1 && run.place == null) run.place = s.place;
@@ -594,6 +597,7 @@ async function boot() {
   }
 
   function onEvent(evt) {
+    if (evt && typeof evt.type === 'string' && evt.type.startsWith('hill')) { onHillEvent(evt); return; }
     if (!run || !evt) return;
     switch (evt.type) {
       case 'countdown':
@@ -751,12 +755,129 @@ async function boot() {
     };
     const wasPaused = paused;
     paused = false;
-    setTimeout(() => {
+    const show = () => {
       go('results', result);
-      if (bank.earned) Audio.cash();
+      if (bank.earned || (result.hill && result.hill.cash.total > 0)) Audio.cash();
       if (bank.place === 1 || bank.newMedal || bank.unlocked || bank.paints.length || bank.decals.length || season.crates.length) setTimeout(() => Audio.fanfare(), 400);
       if (math && math.mastered.length) setTimeout(() => Audio.trophy(), 900);
-    }, wasPaused ? 0 : 900);
+    };
+    // v1.7: after a finished race the mountain past the finish is climbed first (Parents → Options → Hill Climb)
+    if (summary.finishCrossed && !r.quitting && !wasPaused && facts && settings.hill !== false && game && typeof game.startHill === 'function') {
+      setTimeout(() => { if (!startHill(r, result, show)) show(); }, 700);
+      return;
+    }
+    setTimeout(show, wasPaused ? 0 : 900);
+  }
+
+  // ---------- v1.7: the Hill Climb (SPEC v1.7 §4) ----------
+  // The vehicle stays on the trail past the finish and the engine raises the mountain; every hold asks one fact on the
+  // Gate panel (the hill's own mix: the frontier, the scout family, a stretch into the tier above); the answer is the
+  // burst (right = a full burst, quick or not; a miss = a sputter and a slide back to the last flag). Nothing is timed
+  // on screen, and the climb ends by itself after 10 facts or at the summit; the results follow with the hill's cash.
+  const HILL_FLAGS = 5, HILL_QUESTIONS = 10;
+  function startHill(r, result, show) {
+    const picks = (() => { try { return hillFacts(facts, HILL_QUESTIONS, Date.now()); } catch (e) { console.error('[TrailBlazer] hillFacts threw', e); return []; } })();
+    if (!picks.length) return false;
+    const cm = cupMult(r.cupId) * (r.daily ? DAILY_MULT : 1);
+    const hl = { active: true, picks, asked: 0, right: 0, quick: 0, answers: [], result, show, trailId: r.trail.id, cupMult: cm, flags: 0, heightM: 0, summit: false, ended: false };
+    let ok = false;
+    hill = hl;                                   // before the call: an engine may hold in the same tick
+    try { ok = game.startHill({ flags: HILL_FLAGS, questions: HILL_QUESTIONS, seed: hashString('hill:' + r.trail.id + ':' + (save.hill.climbs || 0)), cupMult: cm }) !== false; }
+    catch (e) { console.error('[TrailBlazer] startHill threw', e); ok = false; }
+    if (!ok) { hill = null; gatePanel.cancel(); return false; }
+    save.hill.climbs = (save.hill.climbs || 0) + 1;
+    app.persist();
+    $('#controls').hidden = true;                // no gas on the hill: the bursts are the answers (go('ride') shows them again)
+    hud.banner('turbo', 'HILL CLIMB!', 1500);
+    Audio.whoosh();
+    cancelAnimationFrame(hudRaf);
+    hudRaf = requestAnimationFrame(hudLoop);
+    armHillWatchdog(hl, 25000);
+    return true;
+  }
+  // a safety net: an engine that never holds or ends leaves the kid on the results after a while (not while the
+  // question is open or the game is paused: those wait as long as the kid needs)
+  function armHillWatchdog(hl, ms) {
+    clearTimeout(hl.watchdog);
+    hl.watchdog = setTimeout(() => {
+      if (hill !== hl || !hl.active) return;
+      if (gatePanel.isOpen || paused) { armHillWatchdog(hl, 4000); return; }
+      try { game.endHill(); } catch (_) { /* ignore */ }
+      if (hill === hl && hl.active) finishHill(hl, null);
+    }, ms);
+  }
+  function onHillEvent(evt) {
+    const hl = hill;
+    if (!hl || !hl.active) return;
+    switch (evt.type) {
+      case 'hillStart': break;
+      case 'hillHold': askHill(hl, evt).catch((e) => { console.error('[TrailBlazer] hill question failed', e); try { game.hillBoost({ power: 1, quick: false }); } catch (_) { /* ignore */ } }); break;
+      case 'hillFlag': {
+        hl.flags = Math.max(hl.flags, Number(evt.n) || 0); hl.heightM = Math.max(hl.heightM, Number(evt.heightM) || 0);
+        Sfx.chime(Math.min(4, (Number(evt.n) || 1) - 1)); setTimeout(() => Audio.coin(), 120);
+        hud.banner('small', `Flag ${evt.n}! +$${money(Math.round(evt.cash || 0))}`, 1100);
+        break;
+      }
+      case 'hillSummit': {
+        hl.summit = true; hl.heightM = Math.max(hl.heightM, Number(evt.heightM) || 0);
+        hud.banner('turbo', 'SUMMIT!', 1600);
+        Audio.cheer(1.4); Audio.fireworks(); setTimeout(() => Audio.trophy(), 500);
+        break;
+      }
+      case 'hillEnd': finishHill(hl, evt); break;
+      default: break;
+    }
+  }
+  async function askHill(hl, evt) {
+    if (hill !== hl || !hl.active || gatePanel.isOpen) return;
+    clearTimeout(hl.watchdog);
+    if (hl.asked >= hl.picks.length) { try { game.endHill(); } catch (_) { /* ignore */ } return; }
+    const pick = hl.picks[hl.asked];
+    document.documentElement.classList.add('math');
+    const res = await gatePanel.open({ fact: pick.fact, flip: !!pick.flip, index: hl.asked, total: hl.picks.length, mode: 'hill' });
+    if (res.cancelled || hill !== hl || !hl.active) return;
+    hl.asked++;
+    const now = Date.now();
+    if (res.correct) hl.right++;
+    if (res.quick) hl.quick++;
+    hl.answers.push({ fact: pick.fact, flip: !!pick.flip, kind: pick.kind || '', correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, ms: res.ms });
+    try { recordHillAnswer(facts, pick, res, now); } catch (e) { console.error('[TrailBlazer] recordHillAnswer threw', e); }
+    app.persistFacts();
+    document.documentElement.classList.remove('math');
+    try { game.hillBoost({ power: res.correct ? 1 : 0, quick: !!res.quick }); } catch (e) { console.error('[TrailBlazer] hillBoost threw', e); }
+    armHillWatchdog(hl, 20000);       // the engine holds again (or ends) within a few seconds; if it never does, the climb ends on its own
+  }
+  /** The climb is over: bank the hill's cash, remember the best, a gold crate on the summit, then the results. */
+  function finishHill(hl, evt) {
+    if (hill !== hl || hl.ended) return;
+    hl.ended = true; hl.active = false;
+    clearTimeout(hl.watchdog);
+    gatePanel.cancel(); document.documentElement.classList.remove('math');
+    Audio.engine(-1);
+    const e = evt && typeof evt === 'object' ? evt : {};
+    const flags = Math.max(hl.flags, Math.floor(Number(e.flags) || 0));
+    const summit = hl.summit || !!e.summit;
+    const heightM = Math.max(hl.heightM, Math.round(Number(e.heightM) || 0));
+    const c = e.cash && typeof e.cash === 'object' ? e.cash : {};
+    const cashFlags = Math.max(0, Math.round(Number(c.flags) || 0)), cashSummit = Math.max(0, Math.round(Number(c.summit) || 0));
+    const total = Math.max(0, Math.round(Number.isFinite(Number(c.total)) ? Number(c.total) : cashFlags + cashSummit));
+    if (total > 0) earn(save, total);
+    const newBest = heightM > (save.hill.bestHeightM || 0);
+    save.hill.bestHeightM = Math.max(save.hill.bestHeightM || 0, heightM);
+    save.hill.flags = (save.hill.flags || 0) + flags;
+    const result = hl.result;
+    if (summit) {
+      save.hill.summits = (save.hill.summits || 0) + 1;
+      save.summits[hl.trailId] = true;
+      earnCrate(save, 'gold');
+      if (result.season) result.season.crates.push({ tier: 'gold', why: 'the summit' });
+      notePlay(save, Date.now(), { crates: 1 });
+    }
+    if (hl.asked > 0 || total > 0) result.hill = { heightM, flags, summit, cash: { flags: cashFlags, summit: cashSummit, total }, asked: hl.asked, right: hl.right, quick: hl.quick, answers: hl.answers, newBest };
+    app.persist();
+    hill = null;
+    cancelAnimationFrame(hudRaf);
+    setTimeout(() => hl.show(), summit ? 1400 : 700);
   }
 
   // ---------- v1.5: the season after a race (stars, crates, streak, daily, ghost, rivals, weekend, play log) ----------
@@ -808,7 +929,7 @@ async function boot() {
 
   // ---------- pause (sound, music, motion, shake, end ride) ----------
   function pause() {
-    if (!run || paused || coaching || gatePanel.isOpen) return;    // the race is frozen at the gate anyway
+    if ((!run && !(hill && hill.active)) || paused || coaching || gatePanel.isOpen) return;    // the race is frozen at the gate anyway
     paused = true;
     try { game.pause(); } catch (_) { /* ignore */ }
     controls.enable(false);
@@ -817,7 +938,7 @@ async function boot() {
     openPanel('pause');
   }
   function resume() {
-    if (!run || !paused) return;
+    if ((!run && !hill) || !paused) return;
     paused = false;
     closePanel();
     controls.enable(true);
@@ -862,6 +983,13 @@ async function boot() {
   $('#pause-music').addEventListener('click', () => setSetting('music', !settings.music));
   $('#pause-motion').addEventListener('click', () => setSetting('reducedMotion', !settings.reducedMotion));
   $('#pause-end').addEventListener('click', () => {
+    if (!run && hill && hill.active) {        // v1.7: leaving the hill keeps what was climbed
+      const hl = hill;
+      closePanel(); paused = false;
+      try { game.resume(); game.endHill(); } catch (e) { console.error(e); }
+      if (hill === hl && hl.active) finishHill(hl, null);
+      return;
+    }
     if (!run) return;
     closePanel();
     const snap = (() => { try { return game.getState(); } catch (_) { return null; } })();
@@ -949,7 +1077,7 @@ async function boot() {
   }, { passive: false });
 
   go('players');
-  updateHooks.isSafe = () => safeToReload({ screen, running: !!run, parentZone: pz.isOpen }) && !coaching && !gatePanel.isOpen;
+  updateHooks.isSafe = () => safeToReload({ screen, running: !!run, parentZone: pz.isOpen }) && !coaching && !gatePanel.isOpen && !hill;
   updateHooks.notify = () => {
     const t = h('div', { class: 'toast update-note', id: 'update-note', role: 'status' }, UPDATE_NOTICE);
     $('#app').append(t);
@@ -977,6 +1105,7 @@ async function boot() {
         reason: open && run && run.pick ? run.pick.reason || '' : '', bucket: open && run && run.pick ? run.pick.bucket || '' : '' };
     },
     pit, crates, get vehicles() { return vehicles; }, get mutators() { return mutators; },
+    get hill() { return hill; },     // v1.7: the climb in progress (null between)
   }; // debugging / smoke tests
   registerSW();
 }
