@@ -510,7 +510,9 @@ export function cardForLeg(J, rand = Math.random) {
 // the scene's and the hunt's animal names → card ids
 const ANIMAL_CARD = { bison: 'bison', pronghorn: 'pronghorn', coyote: 'coyote', eagle: 'bald-eagle', 'bald-eagle': 'bald-eagle',
   'prairie-dog': 'prairie-dog', prairiedog: 'prairie-dog', rattlesnake: 'rattlesnake', rabbit: 'jackrabbit', jackrabbit: 'jackrabbit',
-  deer: 'mule-deer', 'mule-deer': 'mule-deer', salmon: 'salmon' };
+  deer: 'mule-deer', 'mule-deer': 'mule-deer', salmon: 'salmon',
+  // v1.1 integration: a catch of any size is the salmon card; berries are the wild plum
+  fish: 'salmon', trout: 'salmon', berries: 'wild-plum', plum: 'wild-plum', 'wild-plum': 'wild-plum' };
 /** The card for an animal the scene spotted or the bow brought home ('bison' | 'pronghorn' | 'coyote' | 'eagle' | 'rabbit' |
  *  'deer' …): the card object, or null when there is none (a turkey, a trout). */
 export function cardForAnimal(animal) {
