@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Wagon West Scene Harness</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bungee&display=swap">
+<style>
+  :root { --panel: rgba(30,20,14,0.78); --fg: #fff6e6; --accent: #e8a23a; }
+  html, body { margin: 0; height: 100%; background: #1d140e; color: var(--fg); overflow: hidden;
+    font: 12px/1.35 system-ui, -apple-system, sans-serif; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; overscroll-behavior: none; }
+  #stage { position: fixed; inset: 0; }
+  #state, #log { position: fixed; z-index: 4; background: var(--panel); border-radius: 8px; padding: 6px 8px; margin: 0;
+    font: 11px/1.3 ui-monospace, Menlo, monospace; white-space: pre; pointer-events: none; }
+  #state { top: max(6px, env(safe-area-inset-top)); left: max(6px, env(safe-area-inset-left)); top: 46px; }
+  #log { top: 46px; right: max(6px, env(safe-area-inset-right)); max-height: 40vh; overflow: hidden; opacity: 0.85; }
+  #help { position: fixed; z-index: 4; left: 50%; bottom: max(6px, env(safe-area-inset-bottom)); transform: translateX(-50%);
+    background: var(--panel); border-radius: 8px; padding: 4px 10px; pointer-events: none; white-space: nowrap; }
+  body.noui #state, body.noui #log, body.noui #help { display: none; }
+</style>
+</head>
+<body>
+<div id="stage"><canvas id="c"></canvas></div>
+<pre id="state"></pre>
+<pre id="log"></pre>
+<div id="help">1-6 biome · w weather · p pace · m move · b backdrop · l landmark · a animal · c cheer · h hunt · f fish · Space shoot · Esc end · r motion</div>
+<script type="module">
+// Scene playground (SPEC §11). URL params: biome (prairie | bluffs | highdesert | mountains | gorge | valley),
+// backdrop (trail | fort | river | landmark | camp | post | valley), weather (clear | rain | storm | dusk | snow),
+// leg (a leg id from src/content/legs.js, or any id: it picks the landmark painting), miles (milesDone),
+// moving (1 default; 0 parks), pace (steady | brisk), animal (oxen | mules), name (the wagon's name), paint, flag,
+// hats (comma list of 3 hats: cap, wide, bonnet, straw, bowler, hood, kerchief, none), auto (1 default: the miles tick
+// while moving, ~2.5 a second as on the real trail), hunt=1 / fish=1 (start a mini-game), seed, rm=1 (reduced
+// motion), ui=0 (no overlays), mock=1 (load the app's mock scene from src/meta/mockScene.js if it exists).
+// Keys: 1-6 biomes, w weather, p pace, m moving, b backdrop, l the next landmark leg, a spot an animal, c celebrate,
+// h hunt, f fish, Space shoots / hooks (the scene's own key handling), Esc endMiniGame, r reduced motion.
+// window.__ww = { scene, events } for the smoke test.
+import { LEGS, LEG_BY_ID } from './src/content/legs.js';
+import { COMPANIONS } from './src/content/companions.js';
+
+const q = new URLSearchParams(location.search);
+if (q.get('ui') === '0') document.body.classList.add('noui');
+const BIOMES = ['prairie', 'bluffs', 'highdesert', 'mountains', 'gorge', 'valley'];
+const BACKDROPS = ['trail', 'fort', 'river', 'landmark', 'camp', 'post', 'valley'];
+const WEATHERS = ['clear', 'rain', 'storm', 'dusk', 'snow'];
+const CRITTERS = ['bison', 'pronghorn', 'coyote', 'eagle'];
+const CHEERS = ['arrived', 'river', 'star'];
+const LANDMARK_IDS = ['chimney-rock', 'independence-rock', 'south-pass', 'soda-springs', 'blue-mountains', 'the-dalles', 'fort-laramie', 'snake-river', 'willamette-valley', 'mystery-mesa'];
+
+const events = [];
+const logEl = document.getElementById('log'), stateEl = document.getElementById('state');
+function onEvent(evt) {
+  events.push({ ...evt, at: Math.round(performance.now()) });
+  logEl.textContent = events.slice(-12).map((e) => JSON.stringify(e)).join('\n');
+}
+
+let createScene;
+if (q.get('mock') === '1') {
+  try { const m = await import('./src/meta/mockScene.js'); createScene = m.createScene || m.createMockScene; } catch { console.warn('[dev] no mock scene yet; using the real scene'); }
+}
+if (!createScene) ({ createScene } = await import('./src/scene/engine.js'));
+
+const canvas = document.getElementById('c');
+const scene = createScene(canvas, { onEvent, reducedMotion: q.get('rm') === '1' });
+let rm = q.get('rm') === '1';
+
+function legFor(id, biome) {
+  const base = LEG_BY_ID[id] || { id: id || 'dev-leg', biome: 'prairie', miles: 150, stop: { kind: 'landmark', name: 'Somewhere' } };
+  return { ...base, biome: biome || base.biome };
+}
+let legId = q.get('leg') || (LEGS[0] && LEGS[0].id);
+let biome = q.get('biome') || null;
+let leg = legFor(legId, biome);
+scene.setLeg(leg);
+const hats = (q.get('hats') || '').split(',').filter(Boolean);
+const comps = COMPANIONS.slice(0, 3).map((c, i) => ({ id: c.id, color: c.color, hat: hats[i] || c.hat }));
+while (comps.length < 3) comps.push({ id: 'extra' + comps.length, color: '#7d5ba6', hat: hats[comps.length] || 'straw' });
+scene.setParty({ animal: q.get('animal') || 'oxen', companions: comps, wagon: { paint: q.get('paint') || 'classic', flag: q.get('flag') || 'red', name: q.get('name') || 'Lucky Star' } });
+let travel = { milesDone: +(q.get('miles') || 20), pace: q.get('pace') || 'steady', rations: 'full', weather: q.get('weather') || 'clear', mood: 'fine', foodLow: false, moving: q.get('moving') !== '0' };
+scene.setTravel(travel);
+let backdrop = q.get('backdrop') || 'trail';
+scene.setBackdrop(backdrop);
+const seed = +(q.get('seed') || 7);
+if (q.get('hunt') === '1') scene.startHunt({ seed, shots: 5 });
+else if (q.get('fish') === '1') scene.startFish({ seed, casts: 4 });
+
+const cycle = (arr, v) => arr[(arr.indexOf(v) + 1) % arr.length];
+let ai = 0, ci = 0, li = 0;
+addEventListener('keydown', (e) => {
+  if (e.key >= '1' && e.key <= '6') { biome = BIOMES[+e.key - 1]; leg = legFor(legId, biome); scene.setLeg(leg); }
+  else if (e.key === 'w') { travel.weather = cycle(WEATHERS, travel.weather); scene.setTravel({ weather: travel.weather }); }
+  else if (e.key === 'p') { travel.pace = travel.pace === 'brisk' ? 'steady' : 'brisk'; scene.setTravel({ pace: travel.pace }); }
+  else if (e.key === 'm') { travel.moving = !travel.moving; scene.setTravel({ moving: travel.moving }); }
+  else if (e.key === 'b') { backdrop = cycle(BACKDROPS, backdrop); scene.setBackdrop(backdrop); }
+  else if (e.key === 'l') { legId = LANDMARK_IDS[li++ % LANDMARK_IDS.length]; leg = legFor(legId, biome); scene.setLeg(leg); }
+  else if (e.key === 'a') scene.spotAnimal(CRITTERS[ai++ % CRITTERS.length]);
+  else if (e.key === 'c') scene.celebrate(CHEERS[ci++ % CHEERS.length]);
+  else if (e.key === 'h') scene.startHunt({ seed: Math.floor(Math.random() * 1e6), shots: 5 });
+  else if (e.key === 'f') scene.startFish({ seed: Math.floor(Math.random() * 1e6), casts: 4 });
+  else if (e.key === 'Escape') onEvent({ type: '(endMiniGame)', summary: scene.endMiniGame() });
+  else if (e.key === 'r') { rm = !rm; scene.setReducedMotion && scene.setReducedMotion(rm); }
+});
+
+// the miles tick while rolling (about 15 miles a 6-second day), wrapping at the leg's end so the stop rises again
+const auto = q.get('auto') !== '0';
+let lastT = performance.now();
+setInterval(() => {
+  const now = performance.now(), dt = (now - lastT) / 1000; lastT = now;
+  const s = scene.getState();
+  if (auto && s.moving && s.backdrop === 'trail' && !s.mini && s.playing) {
+    travel.milesDone = (travel.milesDone + dt * 2.5) % Math.max(1, leg.miles || 150);
+    scene.setTravel({ milesDone: Math.round(travel.milesDone * 10) / 10 });
+  }
+  if (document.body.classList.contains('noui')) return; // the smoke test reads debugPerf itself
+  const p = scene.debugPerf ? scene.debugPerf(true) : null;
+  stateEl.textContent = JSON.stringify(scene.getState(), null, 1).replace(/[{}"]/g, '').trim() +
+    (p ? `\nframe ${(p.avgUpdate + p.avgDraw).toFixed(2)} ms (upd ${p.avgUpdate.toFixed(2)}, draw ${p.avgDraw.toFixed(2)})` : '') +
+    (scene.debugMini && scene.debugMini() ? '\nmini ' + JSON.stringify(scene.debugMini()).slice(0, 120) : '');
+}, 250);
+
+window.__ww = { scene, events, LEGS, legFor };
+</script>
+</body>
+</html>
