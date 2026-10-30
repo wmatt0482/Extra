@@ -343,3 +343,83 @@ Cherry-pick the four streams, wire the real scene (`?mock=1` for tests), add `wa
 `netlify.toml` (ignore rule and the trailing-slash redirect), the site card and the Why page section, the home
 page's parent quick start, the stats function's game list if it has one; run every suite; playtest a leg on the
 real scene at iPhone size; commit "Wagon West 1.0"; hold the push for Matt.
+
+---
+
+## v1.1 — the natural voice, the trail's own music, and side games (Matt, Oct 30: "Let's make a different
+## background tune. Need to make it more addictive with opportunities for side games and stuff. The robotic voice is
+## being used, not the cool Google voice")
+
+### 1. The natural voice (bug)
+Spell Jump's natural voice plays a phrase only when a clip for it exists on the device (`tts.js`: cloud engine when
+`cloud.active` and every clip of the utterance is present, else the device voice). Wagon West 1.0 never prepares any
+clip, so every line falls back. Fix (app stream, `src/main.js` + the panels):
+- `prepareVoice()` on player select, voice change, and every leg start: `cloud.prepareList()` (the week's words:
+  the spell panel's texts), the question and full sentences of the child's active facts (`activeFacts(facts)` →
+  `questionSentence(f, flip)` both flips, like Trail Blazer's prepareVoice), every `say` in LOOKOUTS, NATIONS[].fact,
+  EVENTS, the companions' lines if ever spoken, the fixed UI phrases the panels say ("Now you: type the answer",
+  "Fixed it!", the card buttons' texts if spoken), and the river's landing sentences for the fractions in play
+  (`say` of every T1 / T2 fraction).
+- Generated sentences just in time: `app.voiceFor(texts)` → `cloud.active ? Promise.race([cloud.prepare(texts),
+  sleep(2500)]) : Promise.resolve()`; awaited by `runProblem` before `problemPanel.open` (the problem's `say`, each
+  `work` line's spoken form, each part's `say`), by the post office before the letter is read (the opening, the lines,
+  the P.S. with the words, the closing) and before each dictated word (Spell Jump's `prepareList` covers the words),
+  by `runTrade` (the trade problem) and by the marker panel's hint sentence (`fullSentence + spokenHint`) when a miss
+  is shown (prepare at open so it is ready in time).
+- Parent Zone → Options → the voice line shows "Natural voice: <name> · N clips ready" like Spell Jump's, and a
+  "Say a test line" button that reports which engine spoke (tts.lastEngine).
+- ui-smoke: with the fake cloud backend (`window.__cloudVoiceBackend` as Spell Jump's tests use it) and a family
+  code, a leg's marker, problem, card, river sentence and letter are all spoken by the cloud engine (`tts.lastEngine
+  === 'cloud'` after each), and a prepare request carries the leg's lookout and the problem's say.
+
+### 2. The trail's own music (`src/meta/music.js`, app stream)
+A period tune, not Spell Jump's loop: three **public-domain** songs the trail actually sang, on a plucked banjo-like
+Web Audio synth (a short-decay triangle + a noise pluck, a walking bass, a light shaker): "Oh! Susanna" (Stephen
+Foster, 1848), "Buffalo Gals" (1844) and "Old Dan Tucker" (1843), transcribed as note lists (melody + bass per bar),
+one tune per leg rotating by leg index, a slower, quieter arrangement at camp and in the post office, silence on the
+panels (the voice ducks it as in the siblings: `Audio.voice(on)` → the music bus). The shared `Audio.music()` loop
+is never started in this game (`Audio.music(false)` always; the settings toggle drives `Music.on(bool)`). Tempo ~
+104 bpm on the trail, 76 at camp; master gain −14 dB; starts after the first tap (the unlock). No external files.
+
+### 3. Side games (the "addictive" layer; kid rules stand: no timers, no lives, nothing punishes stopping)
+- **Make camp** is a real place, not a way out: on the trail, "Make camp" (and the evening of every arrival) opens
+  the **Camp** screen (the scene's `camp` backdrop): **Fishing** (the scene's fishing, any time: food), **Hunting**
+  (the bow, when hunting is on; food and a pelt), **Quick Draw** (a card game with a companion: a fact per card from
+  the child's ladder on the marker panel, first to 7 right wins a trade token; no clock: the companion "draws" a
+  card every time the child answers), **Campfire tales** (a lookout or nation fact read aloud + a riddle that is a
+  fact in disguise: a token), **Rest** (a day: mood up). A camp activity costs a day of food (the sim's rest day);
+  the party's mood goes up. Camp is where a child goes "to play a bit more": the trail never needs it.
+- **Trail cards**: a collection in the Journal (a fourth page, "Cards"): 40 cards in four suits (12 landmarks, 8
+  nations, 12 animals and plants, 8 companions), each with its picture (an emoji on a card face drawn by the UI,
+  no new art needed) and its one-line fact (lookouts / nations / a new `src/content/cards.js` for the animals and
+  plants, sourced). Cards drop from: a lookout at a stop (its landmark card), a trading post (the nation's card), a
+  spotted animal (`animalSpotted`), a hunt or a catch, berries, a companion's line at camp (their card), every leg's
+  arrival (one random card of the leg's biome). Duplicates become a token. The album shows the set per suit with
+  "7 of 12" and a gold star for a full suit (a gold crate). Sync: `save.cards` union.
+- **Fort Derby** (at every fort, optional, from the store screen's "Race the mail wagon"): a 30-second side-scroll
+  wagon race against the mail wagon on the scene (`scene.startDerby({ seed, length })`: two wagons, the child's and
+  the mail wagon; `scene.derbyBurst(power)`; events `derbyMarker` (ask a fact: the marker panel), `derbyEnd {won,
+  margin}`); a right answer is a burst, quick a bigger one; winning pays $20 × priceMult and a card; losing pays a
+  "good try" $5. No timer on screen: the race ends at the line. (Scene stream.)
+- **The dog**: at Fort Kearny a dog joins the party (named by the child on the keyboard). It walks beside the wagon
+  (scene: a small sprite, one of three coats), barks at animals (a card drop chance ×2 on lookouts), and finds a
+  berry patch now and then (a bonus event). Pure delight; no mechanics beyond that. (Scene + app.)
+- **Daily trail challenge** on the title: "Today's challenge: cross the Snake River with no misses" style goals
+  generated from the current leg (one a day; a token and a card). (App + journey.)
+Economy: tokens now buy the Outfit's paints, flags, bugles AND wagon upgrades that matter (a canvas cover: +1 day of
+weather protection; iron tires: +2 miles a day; a water barrel: lean rations feel like plenty) so cash and tokens
+both have a sink (the 1.0 note "cash piles up"). Economy sim re-run.
+
+### 4. Streams
+- **Scene** (Opus): `startDerby` / `derbyBurst` / `endDerby` + events, the mail wagon sprite, the dog (3 coats,
+  walking, a bark pose), `setParty({ dog })`; scene-smoke checks; dev.html keys.
+- **App** (Opus): §1 the voice, §3 Camp screen and activities, Quick Draw and Campfire tales on existing panels,
+  Trail cards (album page, drops, sync), Fort Derby wiring, the dog's naming and party, the daily challenge, the
+  token sink in Outfit, Parent Zone voice line, ui-smoke for all of it (the fake cloud backend), README.
+- **Music** (Sonnet): `src/meta/music.js` per §2 with a `tools/music-check.mjs` (node: the note lists are in range,
+  bars add up, the three tunes differ) and a dev page `music-dev.html`; the app stream wires `Music.on/off/tune`.
+- **Journey + content** (Sonnet): `cards.js` content (the 40 cards with facts and sources), the camp activities'
+  effects in the sim (`camp(J, kind)`: a day, mood, food), the derby's pay, the daily challenge generator
+  (`dailyChallenge(J, day)` → { text, check(J) }), the upgrades (`UPGRADES`, `buyUpgrade`, their effects in
+  tickDay), journey-tests, economy sim re-run.
+VERSION 1.1.0, sw `wagon-west-v1.1.0`.
