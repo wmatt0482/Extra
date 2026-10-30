@@ -678,7 +678,7 @@ try {
   if (ONLY === 'v1' || ONLY === 'v15') throw { skipTo: 'perf' };
   // ======== v1.7 Hill Climb ========
   const HILL_FLAG_CASH = 150, HILL_SUMMIT_CASH = 1000;
-  const HILL_KEYS = 'active,answers,burst,cash,ended,flag,flags,flagsTotal,heightM,holding,progress,questions,summit';
+  const HILL_KEYS = 'active,answers,burst,cash,charge,ended,flag,flags,flagsTotal,heightM,holding,progress,questions,summit,thrusting,waiting';
   // race to the finish (teleported close to it) and wait for the base hold; dev.html's hill=1 calls startHill
   async function toHill(page) {
     return page.evaluate(() => {
@@ -692,20 +692,25 @@ try {
       return { raceSec: i / 60, holdSec: j / 60, s: g.getState(), d: g.debugInfo(), ev: window.__tb.events.filter((e) => e.type.startsWith('hill')) };
     });
   }
-  // answer (hillBoost) and step until the next hillHold / hillEnd (14 s sim at most)
-  async function answer(page, res) {
-    return page.evaluate((res) => {
+  // answer (hillBoost = a charge, v1.7.1) with GAS held (unless gas: false) and step until the next hillHold / hillEnd
+  // (14 s sim at most); s0 = the slope distance before, so the climb per answer can be measured
+  async function answer(page, res, gas = true) {
+    return page.evaluate(({ res, gas }) => {
       const g = window.__tb.game, n0 = window.__tb.events.length;
+      const s0 = g.debugInfo().hill.s;
       const ok = g.hillBoost(res);
       let i = 0, maxV = 0, maxPitch = 0, minUp = 1;
       for (; i < 60 * 14; i++) {
+        g.setInput({ gas });
         g.debugStep(1);
         const d = g.debugInfo();
         maxV = Math.max(maxV, d.vf); maxPitch = Math.max(maxPitch, Math.abs(d.ang - Math.atan(d.slope))); minUp = Math.min(minUp, d.upCos);
         if (window.__tb.events.slice(n0).some((e) => e.type === 'hillHold' || e.type === 'hillEnd')) break;
       }
-      return { ok, sec: i / 60, maxV, maxPitch, minUp, s: g.getState(), d: g.debugInfo(), ev: window.__tb.events.slice(n0).filter((e) => e.type !== 'coin') };
-    }, res);
+      g.setInput({ gas: false });
+      const d = g.debugInfo();
+      return { ok, sec: i / 60, maxV, maxPitch, minUp, climbed: Math.round((d.hill.s - s0) * 10) / 10, s: g.getState(), d, ev: window.__tb.events.slice(n0).filter((e) => e.type !== 'coin') };
+    }, { res, gas });
   }
   // ---- H1. vehicle tiers 1, 4, 8 summit on 5 quick answers; the cash adds up (x cupMult); no crash ----
   for (const tier of [1, 4, 8]) {
@@ -731,7 +736,10 @@ try {
       summitEv = summitEv || a.ev.find((e) => e.type === 'hillSummit');
       endEv = endEv || a.ev.find((e) => e.type === 'hillEnd');
       console.log(`    ${vid}: quick #${k}: ${a.sec.toFixed(2)} s, max ${(a.maxV * 3.6).toFixed(0)} km/h, pitch ${a.maxPitch.toFixed(2)} rad → ${a.ev.map((e) => e.type + (e.n ? ' ' + e.n : '')).join(', ')}; ${a.s.hill.heightM} m, progress ${a.s.hill.progress}`);
-      check(a.ok && a.sec < 12 && a.ev.some((e) => e.type === 'hillBurst' && e.quick === true && e.answers === k), `${vid}: quick burst #${k} accepted (hillBurst {quick: true, answers: ${k}}) and over within 12 s (${a.sec.toFixed(1)} s)`);
+      const ci = a.ev.findIndex((e) => e.type === 'hillCharge'), bi = a.ev.findIndex((e) => e.type === 'hillBurst');
+      check(a.ok && a.sec < 12 && ci === 0 && a.ev[ci].quick === true && a.ev[ci].charge === 1 && a.ev[ci].answers === k && bi > ci && a.ev[bi].quick === true && a.ev[bi].answers === k, `${vid}: quick answer #${k} charges (hillCharge {quick: true, charge: 1, answers: ${k}}), GAS ignites it (hillBurst) and it is over within 12 s (${a.sec.toFixed(1)} s)`);
+      if (k < 5) check(Math.abs(a.climbed - 65) <= 2, `${vid}: with GAS held the charge climbs 65 m of slope ± 2 (${a.climbed} m)`);
+      if (k < 5) check(a.s.hill.charge === 0 && !a.s.hill.thrusting && !a.s.hill.waiting, `${vid}: at the hold the charge is spent (charge ${a.s.hill.charge}, thrusting ${a.s.hill.thrusting}, waiting ${a.s.hill.waiting})`);
       if (k === 2 && tier === 4) await shot(page, 'v17-hill-flag');
       if (k < 5) check(a.ev.some((e) => e.type === 'hillHold' && e.flag === k) && a.s.hill.holding && a.s.hill.flag === k && a.s.hill.flags === k && a.s.hill.answers === k, `${vid}: holds past flag ${k} (hillHold {flag: ${k}}; state flag ${a.s.hill.flag}, flags ${a.s.hill.flags})`);
       if (a.s.hill.ended) break;
@@ -796,13 +804,15 @@ try {
     const mid = await page.evaluate(() => {
       const g = window.__tb.game;
       g.hillBoost({ power: 1, quick: true });
+      g.setInput({ gas: true });
       for (let i = 0; i < 45; i++) g.debugStep(1);
+      g.setInput({ gas: false });
       const s = g.getState();
       const dup = g.hillBoost({ power: 1, quick: true });
       const ok = g.endHill();
       return { s, dup, ok, s2: g.getState(), ev: window.__tb.events.filter((e) => e.type === 'hillEnd') };
     });
-    check(mid.s.hill.burst > 0 && !mid.s.hill.holding && mid.dup === false, `a second hillBoost during a live burst is refused (burst ${mid.s.hill.burst} s left, holding ${mid.s.hill.holding})`);
+    check(mid.s.hill.charge > 0 && mid.s.hill.thrusting && !mid.s.hill.holding && mid.dup === false, `a second hillBoost during a live charge is refused (charge ${mid.s.hill.charge} left, thrusting, holding ${mid.s.hill.holding})`);
     check(mid.ok && mid.ev.length === 1 && mid.ev[0].summit === false && mid.ev[0].answers === 1 && mid.ev[0].heightM > 0 && mid.s2.phase === 'hillDone' && mid.s2.hill.ended && !mid.s2.hill.active && mid.s2.hill.burst === 0, `endHill() ends the climb at once: hillEnd {summit: false, answers: 1} (${JSON.stringify(mid.ev[0])})`);
     const twice = await page.evaluate(() => window.__tb.game.endHill());
     check(twice === false, `endHill() twice is refused`);
@@ -811,6 +821,105 @@ try {
     const stopped = await page.evaluate(() => { const g = window.__tb.game; g.stop(); return { finishes: window.__tb.events.filter((e) => e.type === 'finish').length, ends: window.__tb.events.filter((e) => e.type === 'hillEnd').length, s: g.getState() }; });
     check(stopped.finishes === 1 && stopped.ends === 1 && stopped.s.phase === 'hillDone', `stop() after the climb emits no second finish / hillEnd (${stopped.finishes} finish, ${stopped.ends} hillEnd)`);
     check(errors.length === 0, `endHill: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- H5 (v1.7.1). the throttle: a charge waits for GAS; release mid-burst stops and holds (no slide) with the
+  // charge left; GAS again finishes the same distance; the auto-fire after autoSec, never with autoSec 0 ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '2', vehicle: 'dirtbike', hill: '1', riders: '0' });
+    await toHill(page);
+    // a. a charge nobody touches: held, waiting, charge 1, no climb for 5 s (autoSec 6)
+    const idle = await page.evaluate(() => {
+      const g = window.__tb.game, n0 = window.__tb.events.length;
+      const ok = g.hillBoost({ power: 1, quick: true });
+      const x0 = g.debugInfo().x;
+      for (let i = 0; i < 60 * 5; i++) { g.setInput({ gas: false }); g.debugStep(1); }
+      return { ok, s: g.getState(), moved: Math.abs(g.debugInfo().x - x0), ev: window.__tb.events.slice(n0).map((e) => e.type) };
+    });
+    check(idle.ok && idle.s.hill.charge === 1 && idle.s.hill.waiting && !idle.s.hill.thrusting && !idle.s.hill.holding && idle.moved < 0.02 && idle.ev.join() === 'hillCharge', `a charge waits for GAS: hillCharge only, charge 1, waiting, no movement for 5 s (${JSON.stringify(idle.s.hill)})`);
+    // b. GAS for 0.8 s, release: stops within 1.5 s, hillWait with charge left, the height never falls
+    const rel = await page.evaluate(() => {
+      const g = window.__tb.game, n0 = window.__tb.events.length;
+      for (let i = 0; i < 48; i++) { g.setInput({ gas: true }); g.debugStep(1); }
+      const hRel = g.getState().hill.heightM, cRel = g.getState().hill.charge;
+      let i = 0, minH = hRel;
+      for (; i < 60 * 3; i++) {
+        g.setInput({ gas: false }); g.debugStep(1);
+        minH = Math.min(minH, g.getState().hill.heightM);
+        if (window.__tb.events.slice(n0).some((e) => e.type === 'hillWait')) break;
+      }
+      return { hRel, cRel, stopSec: i / 60, minH, s: g.getState(), ev: window.__tb.events.slice(n0).filter((e) => e.type !== 'coin') };
+    });
+    const wait = rel.ev.find((e) => e.type === 'hillWait');
+    check(rel.ev[0] && rel.ev[0].type === 'hillBurst' && rel.hRel > 0.5 && rel.cRel > 0 && rel.cRel < 1, `GAS ignites the charge (hillBurst) and climbs (${rel.hRel} m after 0.8 s, charge ${rel.cRel} left)`);
+    check(!!wait && rel.stopSec <= 1.5 && wait.charge > 0 && wait.charge < 1 && rel.s.hill.waiting && !rel.s.hill.thrusting && !rel.s.hill.holding && rel.s.hill.charge > 0, `GAS released: stops within 1.5 s (${rel.stopSec.toFixed(2)} s) → hillWait {charge: ${wait && wait.charge}}, waiting with the charge left (${rel.s.hill.charge})`);
+    check(rel.minH >= rel.hRel - 0.3 && wait && wait.heightM >= rel.hRel - 0.3, `no slide on release: the height never falls (min ${rel.minH} m vs ${rel.hRel} m at release)`);
+    // c. GAS again: resumes from the standing start and the hold comes at the full 65 m
+    const resume = await page.evaluate(() => {
+      const g = window.__tb.game, n0 = window.__tb.events.length;
+      const s0 = g.debugInfo().hill.s;
+      let i = 0;
+      for (; i < 60 * 12; i++) { g.setInput({ gas: true }); g.debugStep(1); if (window.__tb.events.slice(n0).some((e) => e.type === 'hillHold')) break; }
+      g.setInput({ gas: false });
+      return { sec: i / 60, s: g.getState(), d: g.debugInfo(), ev: window.__tb.events.slice(n0).map((e) => e.type) };
+    });
+    const total = Math.round((resume.d.hill.s - idle.s.hill.flag * 0 - 0) * 10) / 10;
+    check(resume.ev.includes('hillHold') && resume.s.hill.holding && resume.s.hill.charge === 0 && !resume.ev.includes('hillBurst'), `GAS again resumes the burn (no second hillBurst) to the hold (${resume.sec.toFixed(1)} s)`);
+    check(Math.abs(resume.d.hill.s - 65) <= 2.5, `the whole charge still climbs 65 m of slope ± 2.5 from the base (${resume.d.hill.s.toFixed(1)} m)`);
+    check(resume.s.hill.flag === 1 && resume.s.hill.flags === 1, `and passes flag 1 on the way (flag ${resume.s.hill.flag})`);
+    // d. the auto-fire: a charge left alone burns by itself after 6 s (hillAuto), then holds at +65 m
+    const auto = await page.evaluate(() => {
+      const g = window.__tb.game, n0 = window.__tb.events.length;
+      const s0 = g.debugInfo().hill.s;
+      g.hillBoost({ power: 1, quick: true });
+      let i = 0, autoAt = -1;
+      for (; i < 60 * 20; i++) {
+        g.setInput({ gas: false }); g.debugStep(1);
+        const ev = window.__tb.events.slice(n0);
+        if (autoAt < 0 && ev.some((e) => e.type === 'hillAuto')) autoAt = i / 60;
+        if (ev.some((e) => e.type === 'hillHold' || e.type === 'hillEnd')) break;
+      }
+      return { autoAt, sec: i / 60, climbed: Math.round((g.debugInfo().hill.s - s0) * 10) / 10, s: g.getState(), ev: window.__tb.events.slice(n0).filter((e) => e.type !== 'coin') };
+    });
+    const autoEv = auto.ev.find((e) => e.type === 'hillAuto');
+    check(!!autoEv && autoEv.charge === 1 && auto.autoAt >= 5.9 && auto.autoAt <= 6.5 && auto.ev.some((e) => e.type === 'hillBurst') && auto.s.hill.holding && Math.abs(auto.climbed - 65) <= 2, `a charge nobody touches fires by itself after 6 s (hillAuto {charge: 1} at ${auto.autoAt.toFixed(1)} s) and climbs the 65 m (${auto.climbed} m)`);
+    // e. a wait longer than autoSec fires too: GAS 0.5 s, release, wait → hillAuto → hold
+    const autoWait = await page.evaluate(() => {
+      const g = window.__tb.game, n0 = window.__tb.events.length;
+      g.hillBoost({ power: 1, quick: false });
+      for (let i = 0; i < 30; i++) { g.setInput({ gas: true }); g.debugStep(1); }
+      let i = 0;
+      for (; i < 60 * 30; i++) { g.setInput({ gas: false }); g.debugStep(1); if (window.__tb.events.slice(n0).some((e) => e.type === 'hillHold' || e.type === 'hillEnd')) break; }
+      return { sec: i / 60, s: g.getState(), ev: window.__tb.events.slice(n0).map((e) => e.type) };
+    });
+    check(autoWait.ev.indexOf('hillWait') >= 0 && autoWait.ev.indexOf('hillAuto') > autoWait.ev.indexOf('hillWait') && autoWait.ev.includes('hillHold') && autoWait.s.hill.holding && autoWait.sec < 20, `a wait longer than 6 s fires too: hillWait → hillAuto → hillHold in ${autoWait.sec.toFixed(1)} s (${autoWait.ev.join(', ')})`);
+    // f. the sputter ignores GAS: slides back to the last flag line
+    const sput = await answer(page, { power: 0 }, true);
+    check(sput.ok && sput.ev[0].type === 'hillSputter' && sput.s.hill.holding && Math.abs(sput.s.hill.heightM - sput.s.hill.flag * 0 - (sput.ev.find((e) => e.type === 'hillHold') || {}).heightM) < 0.01 && sput.s.hill.flag >= 1, `a wrong answer with GAS held still sputters and slides to the last flag line (flag ${sput.s.hill.flag}, ${sput.s.hill.heightM} m)`);
+    check(errors.length === 0, `throttle: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- H6 (v1.7.1). autoSec 0: a charge never fires by itself ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '1', vehicle: 'quad', hill: '1', riders: '0', autoSec: '0' });
+    await toHill(page);
+    const never = await page.evaluate(() => {
+      const g = window.__tb.game, n0 = window.__tb.events.length;
+      g.hillBoost({ power: 1, quick: true });
+      const x0 = g.debugInfo().x;
+      for (let i = 0; i < 60 * 10; i++) { g.setInput({ gas: false }); g.debugStep(1); }
+      return { s: g.getState(), moved: Math.abs(g.debugInfo().x - x0), ev: window.__tb.events.slice(n0).map((e) => e.type) };
+    });
+    check(never.s.hill.charge === 1 && never.s.hill.waiting && never.moved < 0.02 && never.ev.join() === 'hillCharge', `autoSec 0: the charge waits 10 s and never fires (${never.ev.join(', ')})`);
+    const then = await page.evaluate(() => {
+      const g = window.__tb.game, n0 = window.__tb.events.length;
+      let i = 0;
+      for (; i < 60 * 12; i++) { g.setInput({ gas: true }); g.debugStep(1); if (window.__tb.events.slice(n0).some((e) => e.type === 'hillHold')) break; }
+      g.setInput({ gas: false });
+      return { s: g.getState(), ev: window.__tb.events.slice(n0).map((e) => e.type) };
+    });
+    check(then.ev[0] === 'hillBurst' && then.ev.includes('hillHold') && then.s.hill.flag === 1, `… until GAS: hillBurst → flag 1 → hillHold (${then.ev.join(', ')})`);
+    check(errors.length === 0, `autoSec 0: no console errors (${errors.join(' | ')})`);
     await context.close();
   }
   // ---- H4. perf on the hill: Night Ride, 3 parked rivals, auto quick answers, real-time frames at 4x throttle ----
@@ -836,7 +945,7 @@ try {
         const p = g.debugPerf(true);
         const s = g.getState();
         if (p.frames > 0 && p.ticks > 0) norm.push(p.sim / p.ticks + p.draw / p.frames);
-        if (s.hill && s.hill.burst > 0) bursts++;
+        if (s.hill && s.hill.thrusting) bursts++;
         if (performance.now() - t0 > 12000 || (s.hill && s.hill.ended && performance.now() - t0 > 6000)) {
           const b = norm.slice().sort((x, y) => x - y);
           resolve({ frames: norm.length, avg: norm.reduce((x, y) => x + y, 0) / Math.max(1, norm.length), p95: b[Math.floor(b.length * 0.95)] || 0, hill: s.hill, riders: s.riders.length, burstFrames: bursts });

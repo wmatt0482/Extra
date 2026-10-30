@@ -60,14 +60,21 @@
 //     the mountain (course.js createHill / installHill), the physics chunks there are rebuilt, the other riders park,
 //     the player rides to the base line (a scripted glide) and holds; phase 'hill'. Events hillStart { flags,
 //     questions } at once (banner "HILL CLIMB!" 1.5 s) and hillHold { heightM, flag } when the vehicle holds at the
-//     base (and after every burst / slide). There is no gas on the hill: input is ignored.
-//   hillBoost({ power (0..1), quick }) → bool (only while holding, before `questions` answers): power > 0 fires a
-//     rocket burst (event hillBurst { power, quick, answers }, popup, flames, exhaust rings, a wheelie pop) that
-//     climbs power x 65 m of slope when quick, power x 42 m when not (a flag section is 60 m, so 5 quick right
-//     answers summit with margin). The distance is closed-loop: every tick a 1-D predictor coasts the vehicle to a
-//     stop over the real profile and the thrust (17 x power^0.25 m/s², per vehicle) stays on until that stop point
-//     reaches the target (never longer than 5 s), so every vehicle climbs the same distance on the same answer.
-//     When the thrust is off and the speed drops under 1 m/s the vehicle holds (the brake, no slide) → hillHold.
+//     base (and after every charge / slide). v1.7.1: the kid's GAS is the throttle (BRAKE / BOOST do nothing here).
+//   hillBoost({ power (0..1), quick }) → bool (only while holding, before `questions` answers): power > 0 CHARGES
+//     the rocket (v1.7.1, SPEC v1.7.1 §1): event hillCharge { power, quick, charge (sections, = power x (quick ? 1 :
+//     0.7)), answers }, popup "CHARGED!", the vehicle stays held. While the charge is left and GAS is held the rocket
+//     burns (hillBurst { power, quick, answers } at the first ignition of a charge: popup, flames, exhaust rings, a
+//     wheelie pop) and climbs power x 65 m of slope when quick, power x 42 m when not (a flag section is 60 m, so
+//     5 quick answers summit with margin). The distance is closed-loop: every tick a 1-D predictor coasts the
+//     vehicle to a stop over the real profile and the thrust (17 x power^0.25 m/s², per vehicle) stays on until that
+//     stop point reaches the charge's target (never more than 8 s of thrust in all), so every vehicle climbs the
+//     same distance on the same answer whatever the kid does with the button. GAS released → the rocket is off and
+//     the brake brings the vehicle to a stop, held there (no slide) → hillWait { charge (sections left), heightM };
+//     GAS again resumes from the standing start (the thrust beats gravity on every section). The charge spent and
+//     the vehicle stopped (speed under 1 m/s) → hillHold. Auto-fire: cfg.autoSec (default 6, 0 = never): a charge
+//     untouched for that long, or a wait that long, burns by itself (hillAuto { charge } first), so a child who
+//     never finds GAS still climbs.
 //     power 0 → hillSputter { answers }: a 0.6 s sputter, then a scripted slide back to the last flag line (dust, a
 //     wobble; never below the base line) → hillHold. The chassis is kept level with the slope: no crash on the hill.
 //   Crossing flag line n (1..flags) → hillFlag { n, heightM, cash: 150 x n x cupMult } (confetti from the pole);
@@ -76,10 +83,12 @@
 //     summit, total }, bestHeightM (the highest point of this climb) } also fires at the hold after the `questions`-th
 //     answer and on endHill(); then phase 'hillDone', everything held (the fx keep playing; the app may pause()).
 //   getState().hill = { active, heightM, flag (the last flag line held at), flags (passed), flagsTotal, progress
-//     (slope length to the summit, 0..1), holding, burst (s of thrust time left in a live burst, else 0), answers,
-//     questions, summit, ended, cash } or null without a hill. The race summary is unchanged (the hill is separate).
-//   Sounds (the app maps event types): hillStart → 'hillStart', hillBurst → 'burst', hillSputter → 'sputter',
-//     hillFlag → 'flag', hillSummit → 'summit'.
+//     (slope length to the summit, 0..1), holding, burst (s of thrust time left in a live charge, else 0), charge
+//     (sections of fuel left, 0..1), thrusting, waiting (stopped with a charge left: before the first ignition or
+//     after GAS was released), answers, questions, summit, ended, cash } or null without a hill. The race summary
+//     is unchanged (the hill is separate).
+//   Sounds (the app maps event types): hillStart → 'hillStart', hillCharge → 'charge', hillBurst → 'burst',
+//     hillSputter → 'sputter', hillFlag → 'flag', hillSummit → 'summit'.
 
 import { createCourse, createHill, installHill, CHUNK, START_X, SURF_IDS, RACE, levelStats, raceTop } from './course.js';
 import { VEHICLE, resolveLook, drawVehicle, drawRider, drawHelmet, trailColor } from './vehicle.js';
@@ -138,7 +147,10 @@ export const RACE_TUNING = {
 // v1.7 Hill Climb tuning
 export const HILL_TUNING = {
   thrust: 17, thrustPow: 0.25,    // the rocket burst: m/s² along the slope x stats.power^thrustPow (feel only: the
-  rampSec: 0.15, maxBurstSec: 5,  //   distance is closed-loop); the thrust eases in and never pushes longer than this
+  rampSec: 0.15, maxBurstSec: 8,  //   distance is closed-loop); the thrust eases in and never pushes longer than this (in all, per charge)
+  autoSec: 6,                     // v1.7.1: a charge untouched (or a wait) this long burns by itself (cfg.autoSec; 0 = never)
+  coastBrake: 7,                  // v1.7.1: m/s² of brake once GAS is released mid-charge (the stop comes within ~1 s)
+  maxLiveSec: 18,                 // v1.7.1: a charge is over after this much time moving (thrust + coasting), whatever happened
   quickM: 65, slowM: 42,          // m of slope a quick / slow right answer climbs (a flag section is 60 m)
   roll: 0.3, drag: 0.0035,        // the coasting resistances (the race's rolling and air drag)
   holdV: 1.0,                     // m/s: the thrust is off and the vehicle is this slow → hold
@@ -724,7 +736,7 @@ export function createGame(canvas, opts = {}) {
     for (const v of r.riders) {
       measure(v);
       v.pre.vx = v.com.vx; v.pre.vy = v.com.vy;
-      if (v.hold) continue;
+      if (v.hold && !(r.hill && v === me && r.hill.charge)) continue;   // v1.7.1: a held vehicle with a charge still listens for GAS
       if (r.hill && v === me) hillControls(r, v, dt);
       else if (v === me && r.winchAnim) winchStep(r, dt);
       else if (v.crashed) { /* tumbling: no control */ }
@@ -1825,7 +1837,8 @@ export function createGame(canvas, opts = {}) {
     tags.push('$' + Math.round(HT.summitCash * cupMult)); // the cairn's tag
     r.hill = {
       active: true, ended: false, geo, flags: geo.flags, questions, cupMult, tags,
-      passed: 0, flag: 0, answers: 0, holding: false, burst: null, slide: null, summit: false, best: 0,
+      passed: 0, flag: 0, answers: 0, holding: false, burst: null, charge: null, slide: null, summit: false, best: 0,
+      autoSec: cfg.autoSec === undefined || cfg.autoSec === null || cfg.autoSec === '' ? HT.autoSec : Math.max(0, Number(cfg.autoSec) || 0),
       cash: { flags: 0, summit: 0, total: 0 }, thrust: HT.thrust * Math.pow(v.stats.power, HT.thrustPow), thrustOn: false,
       fireworks: 0, ringT: 0, bannerT: HT.banner,
       glide: { t: 0, dur: clamp(Math.abs(x1 - ox) / HT.glideSpeed, 0.7, 2.4), x0: ox, y0: oy, a0, x1, a1: Math.atan(c.groundSlope(x1)) },
@@ -1871,34 +1884,92 @@ export function createGame(canvas, opts = {}) {
     r.hill.ringT -= STEP;
     if (r.hill.ringT <= 0) { r.hill.ringT = 0.14; particle(r, P_RING, tmp2[0] + bx * 0.6, tmp2[1] + by * 0.6, bx * 2, by * 2, 0.25, 'rgba(255,255,255,0.9)', 0.45, 0.8, 1.6); }
   }
-  // the player's physics on the hill: the rocket burst to its target, no gas, the chassis kept level with the slope
+  // the player's physics on the hill (v1.7.1): the charge is a distance budget; GAS burns it, release stops and holds
+  // (no slide), the chassis is kept level with the slope
+  function hillIgnite(r, v) {
+    const H = r.hill, C = H.charge;
+    v.hold = false; v.air = false; v.noContactT = 0; v.prevAngle = v.chassis.angle;
+    v.wheelAgo[0] = v.wheelAgo[1] = v.wheelAgo[2] = 0;
+    for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); }
+    measure(v);
+    C.igniteT = 0; C.coastT = 0; C.waiting = false; C.waitT = 0;
+    if (!C.ignited) {
+      C.ignited = true;
+      emit({ type: 'hillBurst', power: C.power, quick: C.quick, answers: H.answers });
+      popup(r, C.quick ? 'BLAST OFF!' : 'CLIMB!', 0.5, LANE_BIG, C.quick ? '#7cf2ff' : '#7dff6b', 1.15, false, 0.9, 'big');
+      r.shake = Math.max(r.shake, 3);
+      localToWorld(v, v.def.exhaust[0] - 0.4, v.def.exhaust[1], tmp2);
+      for (let k = 0; k < 3; k++) particle(r, P_RING, tmp2[0] - v.fx * 0.3 * k, tmp2[1] - v.fy * 0.3 * k, -v.fx * 2.5, -v.fy * 2.5, 0.2 + 0.1 * k, 'rgba(255,255,255,0.9)', 0.5 + 0.1 * k, 0.85, 1.8);
+    }
+  }
+  // the stop-and-hold with a charge left (GAS released): the vehicle waits for the kid (or the auto-fire)
+  function hillWaitNow(r) {
+    const H = r.hill, v = r.me, C = H.charge;
+    H.thrustOn = false; v.boostOn = false;
+    for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); }
+    capturePose(v);
+    v.hold = true;
+    v.prevAngle = v.chassis.angle;
+    measure(v);
+    const hgt = hillHeight(r);
+    if (hgt > H.best) H.best = hgt;
+    C.waiting = true; C.waitT = 0;
+    emit({ type: 'hillWait', charge: hillChargeLeft(r), heightM: round1(hgt) });
+  }
+  // sections of fuel left in the live charge (0..1): the slope distance still to cover to its target
+  function hillChargeLeft(r) {
+    const H = r.hill, C = H.charge;
+    if (!C) return 0;
+    const v = r.me, geo = H.geo;
+    const gsl = r.course.groundSlope(v.com.x), gn = Math.hypot(1, gsl);
+    const vt = v.hold ? 0 : (v.com.vx + v.com.vy * gsl) / gn;
+    const stopS = geo.sAt(hillStopX(r, v.com.x, Math.max(0, vt), C.targetX - HT.brakeZone));
+    return Math.round(C.sections * clamp((C.targetS - stopS) / Math.max(0.01, C.dist), 0, 1) * 1000) / 1000;
+  }
   function hillControls(r, v, dt) {
     const H = r.hill, c = r.course;
     const gsl = c.groundSlope(v.com.x), gn = Math.hypot(1, gsl), tx = 1 / gn, ty = gsl / gn;
     const vt = v.com.vx * tx + v.com.vy * ty;
     const grounded = v.wheelAgo[1] < 0.12 || v.wheelAgo[2] < 0.12;
     const pitch = wrapPi(v.ang - Math.atan(gsl));
-    const B = H.burst;
+    const C = H.charge;
     let thrustOn = false;
-    if (B) {
-      B.t += dt;
-      const brakeFrom = B.targetX - HT.brakeZone;
-      if (B.t < HT.maxBurstSec && hillStopX(r, v.com.x, Math.max(0, vt), brakeFrom) < B.targetX) thrustOn = true;
-      if (thrustOn) {
-        const a = H.thrust * Math.min(1, B.t / HT.rampSec);
+    if (C) {
+      C.t += dt;
+      const brakeFrom = C.targetX - HT.brakeZone;
+      const gas = input.gas || C.auto;
+      const spent = C.thrustT >= HT.maxBurstSec || hillStopX(r, v.com.x, Math.max(0, vt), brakeFrom) >= C.targetX;
+      if (!spent && gas) {
+        if (v.hold) hillIgnite(r, v);
+        thrustOn = true;
+        C.igniteT += dt; C.thrustT += dt; C.idleT = 0; C.coastT = 0;
+        const a = H.thrust * Math.min(1, C.igniteT / HT.rampSec);
         addVelAll(v, tx * a * dt, ty * a * dt);
-        B.thrustT += dt;
-      } else if (v.com.x >= brakeFrom && vt > 0.05) {
-        // the last metres to the target: the brake (the vehicle rolls up to its hold instead of creeping)
-        const dv = Math.min(vt, HT.brake * dt);
-        addVelAll(v, -tx * dv, -ty * dv);
+        // belt and braces: a vehicle that will not move under thrust (a wheel hooked on the ground) is re-seated
+        if (C.igniteT > 1.0 && vt < 0.2) { placeVehicle(v, v.com.x, c.groundY(v.com.x) + 0.06, Math.atan(gsl)); measure(v); C.igniteT = 0.3; }
+      } else {
+        if (!gas) C.idleT += dt;
+        if (!v.hold) {
+          C.coastT += dt;
+          if (vt > 0.05) {
+            // spent: the last metres to the target under the brake (the vehicle rolls up to its hold instead of
+            // creeping); released: the brake brings it to a stop within about a second
+            const dec = spent ? (v.com.x >= brakeFrom ? HT.brake : 0) : HT.coastBrake;
+            if (dec > 0) { const dv = Math.min(vt, dec * dt); addVelAll(v, -tx * dv, -ty * dv); }
+          }
+        }
       }
+      // the auto-fire: a charge nobody touches (or a long wait) burns by itself
+      if (!C.auto && !spent && H.autoSec > 0 && C.idleT >= H.autoSec) { C.auto = true; emit({ type: 'hillAuto', charge: hillChargeLeft(r) }); }
+      if (v.hold && spent) { hillHoldNow(r); return; }
+      if (!v.hold) { C.liveT = (C.liveT || 0) + dt; if (C.liveT > HT.maxLiveSec) { hillHoldNow(r); return; } }   // never a climb that goes on and on
     }
-    // upright: a wheelie may pop at launch; otherwise the chassis follows the slope (a crash is impossible here)
+    if (v.hold) return;                      // still held (a charge waiting for GAS): no physics this tick
+    // upright: a wheelie may pop at the first ignition; otherwise the chassis follows the slope (a crash is impossible here)
     let w = v.omega;
     const err = pitch - clamp(pitch, -0.18, 0.32);
     w += (-err * 18 - w * (err ? 4 : 1.5)) * dt;
-    if (B && thrustOn && B.t < 0.22 && !H.summit) w = Math.max(w, HT.wheelie * Math.min(1, B.t / 0.1));
+    if (C && thrustOn && C.thrustT < 0.22 && !H.summit) w = Math.max(w, HT.wheelie * Math.min(1, C.thrustT / 0.1));
     setOmegaAll(v, w);
     if (!grounded && v.com.y - c.groundY(v.com.x) > v.rideH + 0.25) addVelAll(v, 0, -r.g * 0.8 * dt);
     measure(v);
@@ -1911,11 +1982,14 @@ export function createGame(canvas, opts = {}) {
     H.thrustOn = thrustOn;
     if (thrustOn) hillFlames(r, v);
     spinWheels(v, thrustOn ? AI_INPUT : NO_INPUT);
-    if (B && !thrustOn && B.t > 0.4 && vt < HT.holdV) hillHoldNow(r);
+    if (C && !v.hold && !thrustOn && C.coastT > 0.25 && vt < HT.holdV) {
+      const spent = C.thrustT >= HT.maxBurstSec || hillStopX(r, v.com.x, Math.max(0, vt), C.targetX - HT.brakeZone) >= C.targetX;
+      if (spent) hillHoldNow(r); else hillWaitNow(r);
+    }
   }
   function hillHoldNow(r) {
     const H = r.hill, v = r.me;
-    H.burst = null; H.slide = null; H.thrustOn = false; v.boostOn = false;
+    H.burst = null; H.charge = null; H.slide = null; H.thrustOn = false; v.boostOn = false;
     for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); }
     capturePose(v);
     v.hold = true;
@@ -2018,7 +2092,7 @@ export function createGame(canvas, opts = {}) {
     const H = r.hill, v = r.me;
     if (H.ended) return;
     H.ended = true; H.active = false; H.holding = false;
-    H.burst = null; H.slide = null; H.glide = null; H.thrustOn = false; v.boostOn = false;
+    H.burst = null; H.charge = null; H.slide = null; H.glide = null; H.thrustOn = false; v.boostOn = false;
     if (!v.hold) { for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); } capturePose(v); v.hold = true; }
     measure(v);
     const hgt = hillHeight(r);
@@ -2033,7 +2107,9 @@ export function createGame(canvas, opts = {}) {
     return {
       active: H.active, heightM: round1(hillHeight(r)), flag: H.flag, flags: H.passed, flagsTotal: geo.flags,
       progress: Math.round(clamp(geo.sAt(v.com.x) / geo.sTop, 0, 1) * 1000) / 1000,
-      holding: H.holding, burst: H.burst && !H.ended ? Math.max(0, Math.round((HT.maxBurstSec - H.burst.t) * 100) / 100) : 0,
+      holding: H.holding, burst: H.charge && !H.ended ? Math.max(0, Math.round((HT.maxBurstSec - H.charge.thrustT) * 100) / 100) : 0,
+      charge: H.charge && !H.ended ? hillChargeLeft(r) : 0, thrusting: !!H.thrustOn && !H.ended,
+      waiting: !!(H.charge && !H.ended && !H.thrustOn && v.hold),
       answers: H.answers, questions: H.questions, summit: H.summit, ended: H.ended, cash: { ...H.cash },
     };
   }
@@ -2512,7 +2588,7 @@ export function createGame(canvas, opts = {}) {
     },
     hillBoost(res = {}) {
       const r = run;
-      if (!r || !r.hill || !r.hill.active || r.hill.ended || !r.hill.holding || r.hill.glide || r.hill.slide || r.hill.burst) return false;
+      if (!r || !r.hill || !r.hill.active || r.hill.ended || !r.hill.holding || r.hill.glide || r.hill.slide || r.hill.charge) return false;
       const H = r.hill, v = r.me, geo = H.geo;
       const power = clamp(Number(res.power) || 0, 0, 1), quick = !!res.quick;
       H.answers++;
@@ -2522,16 +2598,13 @@ export function createGame(canvas, opts = {}) {
       // a burst that reaches the summit line rolls over the top to the cairn
       let targetS = geo.sAt(v.com.x) + dist;
       if (targetS >= geo.sTop) targetS = geo.sAt(geo.cairnX - 4);
-      H.burst = { t: 0, thrustT: 0, power, quick, targetS, targetX: geo.xAtS(targetS) };
-      v.hold = false; v.air = false; v.noContactT = 0; v.prevAngle = v.chassis.angle;
-      v.wheelAgo[0] = v.wheelAgo[1] = v.wheelAgo[2] = 0;
-      for (const b of v.parts) { Body.setVelocity(b, { x: 0, y: 0 }); Body.setAngularVelocity(b, 0); }
-      measure(v);
-      emit({ type: 'hillBurst', power, quick, answers: H.answers });
-      popup(r, quick ? 'BLAST OFF!' : 'CLIMB!', 0.5, LANE_BIG, quick ? '#7cf2ff' : '#7dff6b', 1.15, false, 0.9, 'big');
-      r.shake = Math.max(r.shake, 3);
-      localToWorld(v, v.def.exhaust[0] - 0.4, v.def.exhaust[1], tmp2);
-      for (let k = 0; k < 3; k++) particle(r, P_RING, tmp2[0] - v.fx * 0.3 * k, tmp2[1] - v.fy * 0.3 * k, -v.fx * 2.5, -v.fy * 2.5, 0.2 + 0.1 * k, 'rgba(255,255,255,0.9)', 0.5 + 0.1 * k, 0.85, 1.8);
+      // v1.7.1: the charge (a distance budget); the kid's GAS burns it (hillControls), the vehicle stays held until then
+      const sections = Math.round(power * (quick ? 1 : 0.7) * 1000) / 1000;
+      H.charge = { t: 0, thrustT: 0, igniteT: 0, idleT: 0, coastT: 0, waitT: 0, power, quick, sections, dist, s0: geo.sAt(v.com.x), targetS, targetX: geo.xAtS(targetS), ignited: false, auto: false, waiting: true };
+      emit({ type: 'hillCharge', power, quick, charge: sections, answers: H.answers });
+      popup(r, 'CHARGED!', 0.5, LANE_BIG, '#ffd23f', 1.0, false, 0.8, 'big');
+      localToWorld(v, v.def.exhaust[0] - 0.3, v.def.exhaust[1], tmp2);
+      for (let k = 0; k < 2; k++) particle(r, P_RING, tmp2[0], tmp2[1], -v.fx * 1.5, -v.fy * 1.5 + 0.5, 0.18 + 0.08 * k, 'rgba(255,210,63,0.9)', 0.45, 0.8, 1.4);
       return true;
     },
     endHill() {
@@ -2577,8 +2650,8 @@ export function createGame(canvas, opts = {}) {
         timeScale: r.timeScale, aiLevel: r.aiLevel, vTop: v.vTop, lean: v.lastLean, w0: v.lastW0,
         vehicle: v.def.id, special: v.special, gravity: r.gravity, mutator: r.mutator && r.mutator.id, mirrored: !!r.course.mirrored, wind: r.windNow,
         combo: r.comboN, comboMax: r.comboMax, turboT: v.turboT, ghostSamples: r.ghostTrace.length, ghostDt: r.ghostDt, stats: r.stats, lift: v.lift, wheelMul: v.wheelMul,
-        hill: r.hill ? { s: r.hill.geo.sAt(v.com.x), thrust: r.hill.thrust, thrustOn: r.hill.thrustOn, burst: r.hill.burst ? { ...r.hill.burst } : null, slide: !!r.hill.slide, glide: !!r.hill.glide, hold: v.hold,
-          stopX: r.hill.burst ? hillStopX(r, v.com.x, Math.max(0, v.vf), r.hill.burst.targetX - HT.brakeZone) : null, flagX: r.hill.geo.flagX, summitX: r.hill.geo.summitX, cairnX: r.hill.geo.cairnX, xBase: r.hill.geo.xBase, height: r.hill.geo.height } : null };
+        hill: r.hill ? { s: r.hill.geo.sAt(v.com.x), thrust: r.hill.thrust, thrustOn: r.hill.thrustOn, charge: r.hill.charge ? { ...r.hill.charge } : null, slide: !!r.hill.slide, glide: !!r.hill.glide, hold: v.hold,
+          stopX: r.hill.charge ? hillStopX(r, v.com.x, Math.max(0, v.vf), r.hill.charge.targetX - HT.brakeZone) : null, flagX: r.hill.geo.flagX, summitX: r.hill.geo.summitX, cairnX: r.hill.geo.cairnX, xBase: r.hill.geo.xBase, height: r.hill.geo.height } : null };
     },
     debugCourse() { return run ? run.course : null; },
     debugRiders() {
