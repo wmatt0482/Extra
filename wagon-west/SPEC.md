@@ -1,9 +1,10 @@
-# Wagon West — design spec (v0, for Matt's review before any build)
+# Wagon West — build spec (v1)
 
 > Matt, Oct 30: "For the next game, I'm thinking something like Oregon Trail. Maybe it incorporates math and spelling?"
-> This is the design to react to. Nothing is built. The name is a working title: "The Oregon Trail" is a registered
-> game title (Houghton Mifflin Harcourt / Gameloft), so the game is *about* the Oregon Trail without using it as its
-> name. Working alternatives: **Wagon West**, Westward, Trail to Oregon.
+> Decisions (Matt, Oct 30): the name is **Wagon West**; companions are stock characters (siblings play separately);
+> **fishing and hunting** (a bow, cartoon-clean: no blood, the animal flops and "Got one!"); **trading with Native
+> nations, trading posts kept**; **both** spelling scenes (river words and letters); **build now**. §0–§7 are the
+> design as reviewed; §8 onward is the build contract the agents implement.
 
 Learning Lab's fourth game, at **learninglab.fun/wagon-west/** (folder `wagon-west/`, deployed by `build.sh` next to
 the other three). A **journey game**: a kid-size wagon party travels the 2,000 miles from Independence, Missouri to
@@ -29,8 +30,9 @@ Audience: 4th graders (9–10) on an iPhone in landscape (also portrait, iPad, l
 ## 1. Kid rules (non-negotiable, as everywhere)
 
 - Nobody dies, nobody is sick in a scary way. The party gets **tired** (rests a day), the wagon gets **stuck** (a
-  math problem frees it), food runs **low** (the next fort or a fishing stop fixes it). No dysentery, no snakebite,
-  no graves, no gunplay. Hunting is **fishing and foraging** (berries, fish, a wild-onion patch).
+  math problem frees it), food runs **low** (the next fort, a fishing stop or a hunt fixes it). No dysentery, no
+  snakebite, no graves, no guns. **Hunting is a bow** (Matt's call): a cartoon scene, the animal flops over with a
+  puff and "Got one!", no blood; **fishing** is a timing tap at a river or a lake.
 - Native nations are **trading partners and guides**, named correctly for where the trail passes (Kansa, Pawnee,
   Lakota, Shoshone, Bannock, Nez Perce, Cayuse, Chinook) and never obstacles. A trading post scene is a math scene
   (trade is multiplication and fair exchange) and a short true fact about that nation is read aloud at it. This is
@@ -67,9 +69,9 @@ aloud, and a sticker for the journal). The whole journey is 2–3 weeks of sessi
 numbers, like Trail Blazer's cups: 1847 Rookie, 1850 Pioneer, 1853 Trailblazer).
 
 **The party.** The child names their wagon, picks a draft animal (oxen are strong and slow, mules faster and
-hungrier, a choice with arithmetic in it) and **three companions**. Companions can be the other players in the
-family (their Spell Jump avatars; the party rides together) or stock characters. Each has a mood (happy / fine /
-tired), never a health bar.
+hungrier, a choice with arithmetic in it) and **three companions** from eight stock characters (a blacksmith, a
+schoolteacher, a fiddler, a scout, a cook, a doctor, a carpenter, a storyteller: each with a line or two on the
+trail and a hat for the crates). Each has a mood (happy / fine / tired), never a health bar.
 
 **A day on the trail (the scene).** A parallax 2D canvas: the wagon rolling right, the terrain changing with the
 leg (prairie, bluffs, high desert, mountains, the Columbia gorge), weather, animals to spot (bison, pronghorn, a
@@ -173,3 +175,171 @@ page section, and the Parent quick start line on the home page.
 5. **How much spelling**: river words + letters (6 words a leg) or letters only?
 6. **Build now or after a week of the Hill Climb in the wild?** A full build is a few hours of agent time and lands
    as one release.
+
+---
+
+## 8. Build contract: streams and file ownership
+
+Four streams in worktrees, built from the same commit; the orchestrator integrates. Never touch another stream's
+files; never touch `car-jump/`, `trail-blazer/`, `fraction-fright/`, `site/`, `build.sh`, `netlify.toml` (the
+orchestrator does those). All code: plain ES modules, no build step, no dependencies, no network except the shared
+sync and voice. Comments explain the why at the top of each module (the house style of the other games).
+
+| Stream | Model | Owns |
+|---|---|---|
+| **Scene** | Opus | `wagon-west/src/scene/*` (engine.js, render.js, sprites.js, biomes.js, hunt.js, fish.js), `wagon-west/dev.html`, `wagon-west/tools/scene-smoke.mjs` |
+| **Journey** | Opus | `wagon-west/src/journey/*` (sim.js, economy.js, events.js, problems.js, letters.js, stars.js), `wagon-west/tools/journey-tests.mjs`, `wagon-west/tools/economy-sim.mjs` |
+| **App** | Opus | `wagon-west/index.html`, `wagon-west/src/main.js`, `wagon-west/src/ui/*`, `wagon-west/src/meta/*` (save.js, sync.js, mockScene.js, sfx.js), `wagon-west/sw.js`, `wagon-west/manifest.webmanifest`, `wagon-west/icons/*`, `wagon-west/tools/make-icons.mjs`, `wagon-west/tools/ui-smoke.mjs`, `wagon-west/tools/sync-smoke.mjs`, `wagon-west/README.md` |
+| **Content** | Sonnet | `wagon-west/src/content/*` (legs.js, nations.js, companions.js, events.js, letters.js, lookouts.js), `wagon-west/docs/SOURCES.md`, `wagon-west/docs/LEARNING-DESIGN.md` |
+
+The content files exist as **skeletons** (schema + two or three entries each) at the build commit so every stream
+imports real shapes; the Content stream fills them in without changing the shapes.
+
+## 9. Content schema (`src/content/*`, Content stream fills, everyone imports)
+
+```js
+// legs.js
+export const LEGS = [{
+  id: 'kansas-river', n: 1, name: 'Kansas River', from: 'Independence', to: 'Kansas River crossing',
+  miles: 150, biome: 'prairie',                       // 'prairie' | 'bluffs' | 'highdesert' | 'mountains' | 'gorge' | 'valley'
+  stop: { kind: 'river', name: 'Kansas River' },      // 'fort' | 'river' | 'landmark' | 'home'
+  river: { width: 'wide' },                            // rivers only: 'narrow' | 'wide'
+  fort: { prices: 1.0 },                               // forts only: the price level (×, rises along the trail)
+  nation: 'kansa',                                     // the trading post's nation here (optional)
+  lookout: 'kansas-river',                             // lookouts.js id (the fact read at the stop)
+  sticker: { id: 'kansas-river', name: 'Kansas River', emoji: '🌊' },
+}, …];                                                 // 12 legs in trail order; LEG_BY_ID
+export const SEASONS = [{ id: 's1847', year: 1847, name: 'Rookie year', priceMult: 1, numberMult: 1 },
+  { id: 's1850', year: 1850, name: 'Pioneer year', priceMult: 2, numberMult: 2 }, { id: 's1853', year: 1853, name: 'Trailblazer year', priceMult: 4, numberMult: 4 }];
+export const ANIMALS = [{ id: 'oxen', name: 'Oxen', milesPerDay: { steady: 15, brisk: 19 }, feedLb: 0 }, { id: 'mules', name: 'Mules', milesPerDay: { steady: 18, brisk: 23 }, feedLb: 2 }];
+// lookouts.js: the real fact read aloud at a stop (kid-level, one or two sentences, true; sourced in docs/SOURCES.md)
+export const LOOKOUTS = { 'kansas-river': { text: '…', say: '…' }, … };
+// nations.js: the nations the trail passes, in order; the trading post's fact and trade
+export const NATIONS = [{ id: 'kansa', name: 'Kansa', legs: ['kansas-river'], fact: { text: '…', say: '…' },
+  trade: { give: 'pelts', get: 'flour', rate: [3, 2] },  // 3 pelts for 2 sacks (the problem generator scales by season)
+  source: 'SOURCES.md#kansa' }, …];                       // 8 nations
+// companions.js: 8 stock characters
+export const COMPANIONS = [{ id: 'blacksmith', name: 'Ada the blacksmith', hat: 'cap', color: '#…', lines: { trail: ['…'], tired: '…', happy: '…' } }, …];
+// events.js: the trail events (text only; the journey stream decides when they fire)
+export const EVENTS = [{ id: 'wheel', name: 'A wheel comes off', biomes: null, kind: 'problem', problem: 'parts', text: '…', say: '…', fix: 'A quick fix and we roll on!' },
+  { id: 'storm', kind: 'rest', … }, { id: 'berries', kind: 'bonus', foodLb: 20, … }, { id: 'bison', kind: 'lookout', … }, { id: 'trade', kind: 'trade', … }, { id: 'hunt', kind: 'hunt', … }, { id: 'fish', kind: 'fish', … }, { id: 'mud', kind: 'problem', problem: 'fact', … }];
+// letters.js: the letter's narrative lines by what happened (the journey stream picks three) + the P.S. frame
+export const LETTER_LINES = { arrived: ['We made it to {stop} today.'], river: ['The {river} was {width} but we crossed it fine.'], hunt: [...], fish: [...], storm: [...], berries: [...], bison: [...], trade: [...], tired: [...], happy: [...] };
+export const LETTER_PS = 'P.S. My spelling words this week: {w1}, {w2} and {w3}.';
+export const LETTER_OPEN = ['Dear Grandma,', 'Dear Uncle Theo,', 'Dear Miss Carter,'];
+```
+Text rules: no death, illness, weapons beyond the bow, or alcohol; nations named as living peoples (present tense
+where true today); every fact traceable to `docs/SOURCES.md` (National Park Service, the Oregon-California Trails
+Association, tribal nations' own sites, state historical societies). Spoken text (`say`) spells out numbers and
+avoids abbreviations.
+
+## 10. Journey contract (`src/journey/*`, pure: no DOM, no clock, no storage)
+
+```js
+createJourney({ season: 's1847', wagonName, animal: 'oxen', companions: ['blacksmith','scout','cook'], seed }) → J
+// J: { season, legIndex, legId, milesDone, day, cash, food (lb), parts, tokens, pace: 'steady'|'brisk',
+//      rations: 'full'|'plenty'|'lean', mood: 'happy'|'fine'|'tired', party: [{ id, mood }], stickers: [], letters: [],
+//      legStats: { markers, markersRight, problems, problemsRight, words, wordsRight, hunted, fished }, done: false }
+startLeg(J, legId?)                              // the next leg by default; resets legStats; returns the leg
+tickDay(J, { rand })                             // one day: miles by pace & animal, food eaten by rations & party,
+                                                 // mood from food / rations / rest; returns { arrived, event | null, marker | null,
+                                                 // foodLow, miles }; markers every ~30 mi (4–6 a leg); one or two events a leg
+                                                 // (seeded, by biome, never two of the same kind in a leg)
+applyMarker(J, { correct, quick })               // right: mood up a notch, quick: +3 free miles; miss: a slow day (the next tick is 60 %)
+applyProblem(J, { kind, correct, firstTry })     // tokens +1 on a first-try right; stats
+applyWords(J, { asked, right })                  // river words / letter words
+applyHunt(J, { meatLb }) · applyFish(J, { fishLb })  // food added
+applyTrade(J, { giveN, getN })                   // a trade's result
+buy(J, { item: 'flour'|'parts'|'oxen'|'blankets'|'rope', qty, price }) → { ok, cost }   // never below $0: ok false
+arrive(J) → { stars: [arrived, everyoneHappy, allMarkersRight], cash: { arrival, stars, total }, sticker, crate: tier | null }
+nextLeg(J) / journeyDone(J) → the valley; newSeason(J)
+foodNeeded(people, rations, days), etaDays(miles, pace, animal), priceAt(item, leg, season), storeList(leg, season)
+// problems.js: a word problem from a fact the child knows (the app passes a fact from the ladder, or a skill)
+problemFor({ kind: 'buy'|'divide'|'ration'|'distance'|'parts'|'trade', fact: '7x8' | '56/7' | null, leg, season, rand })
+  → { text, say, answer (int), unit: '$'|'lb'|'days'|'', work: [line, line, line], kind, fact }
+  // 'buy': "Flour is $7 a sack. You buy 8 sacks. How much is that?" (fact 7x8 → $56; work: "7 × 8 = 56" + a split
+  //   if the fact is not yet fluent: "7 × 8: 7 × 4 = 28, doubled = 56"); 'divide': "$56 buys sacks at $7 each. How
+  //   many?" (and the remainder variant "You have $60 …: how many, and what is left?" → two answers asked in turn);
+  //   'ration': "3 pounds a day for 4 people, 5 days" (two steps, both shown); 'distance': "60 miles at 15 a day";
+  //   'parts': "12 spokes, 3 broken"; 'trade': the nation's rate × the pelts you have. Numbers scale by season.numberMult.
+// letters.js: composeLetter(J, legEvents, words: [w1,w2,w3]) → { opening, lines: [3], ps, text }
+// stars.js: the star rules; economy.js: prices, pay, tokens, the crate rule (a gold crate on a 3-star leg)
+```
+Unit tests (`tools/journey-tests.mjs`, node, no DOM): a full 12-leg journey on seeded random with always-right
+answers arrives with cash to spare and 36 stars; always-wrong still arrives (no fail state); food never negative;
+pace / rations arithmetic; markers 4–6 a leg; events never repeat a kind in a leg; every problem kind for ×2…×12,
+÷ and the big tiers produces an integer answer and ≥ 2 work lines, with `say` free of digits over 999 written as
+digits; letters pick lines that happened; seasons scale. `tools/economy-sim.mjs`: 40 kids, a leg a session,
+70 % right: hours to each season, tokens per leg, food margin.
+
+## 11. Scene contract (`src/scene/*`: a presentational canvas; the app drives it)
+
+```js
+createScene(canvas, { onEvent, reducedMotion }) → scene
+scene.setLeg({ id, biome, miles, stop })            // the backdrop set for the leg (parallax layers by biome)
+scene.setParty({ animal, companions: [{ id, hat, color }], wagon: { paint, flag, name } })
+scene.setTravel({ milesDone, pace, rations, weather: 'clear'|'rain'|'storm'|'dusk'|'snow', mood, foodLow, moving })
+scene.setBackdrop('trail' | 'fort' | 'river' | 'landmark' | 'camp' | 'post' | 'valley')   // the stop scenes
+scene.spotAnimal('bison' | 'pronghorn' | 'coyote' | 'eagle')  // a critter crosses the background (a lookout cue)
+scene.celebrate('arrived' | 'river' | 'star')      // confetti / fireworks / the party cheers
+scene.startHunt({ seed, shots: 5 })                // the bow scene: animals cross (rabbit, deer, turkey); the child
+                                                   // taps / clicks to loose an arrow (the scene owns the pointer while a
+                                                   // hunt runs); emits hunt {hit, animal, meatLb} per shot and huntEnd
+                                                   // {meatLb, hits, shots}; cartoon-clean: a puff, a flop, "Got one!"
+scene.startFish({ seed, casts: 4 })                // a bobber dips; tap in the window → fish {size, lb}; fishEnd {fishLb}
+scene.endMiniGame()                                // (the app leaving early)
+scene.play() / pause() / destroy() / resize()
+scene.getState() → { backdrop, milesDone, weather, moving, mini: null | { kind, left, hits } }
+// events: 'ready', 'hunt', 'huntEnd', 'fish', 'fishEnd', 'animalSpotted'
+```
+Rendering: 2D canvas, DPR-aware, 60 fps on a phone with ≤ 8 ms of game code per frame at 4× CPU throttle; the
+wagon, the draft animals (oxen / mules) walking, 3 companions walking alongside (hats and colours), dust, weather;
+six biomes with their own parallax (sky, far, mid, near, ground, props) and 12 landmark paintings (Chimney Rock,
+Independence Rock, South Pass, the forts' palisades, the Columbia gorge, the valley's homestead). `dev.html`:
+`?biome=…&backdrop=…&hunt=1&fish=1`, keys for weather and pace. `tools/scene-smoke.mjs` (Playwright): every biome
+and backdrop renders without errors (screenshots), the hunt and the fishing run to their ends with scripted taps,
+perf under the budget. Kid rules on the canvas: no blood, no corpses (the animal flops, a puff, it is gone).
+
+## 12. App contract (`src/main.js`, `src/ui/*`, `src/meta/*`)
+
+Screens: **players** (the shared picker: profiles.js), **title** (the map: the trail drawn to the party's position,
+the next stop, "Hit the trail", Journal, Outfit, Parents; the streak flame and the week's words count), **outfit**
+(name the wagon, pick the animal and three companions, paints / flags from crates), **store** (a fort: the goods
+with prices, each purchase a 'buy' or 'divide' problem on the problem panel), **trail** (the scene + the HUD: "Day
+23 · Fort Laramie in 41 mi", food, mood faces, the two dials (pace, rations) as big segmented buttons, pause), the
+**marker** (Trail Blazer's gate panel in mode `'trail'`: title "Mile marker", chip "Marker 2 of 5"), the **problem
+panel** (`src/ui/problemPanel.js`: the sentence in big type, read aloud, the numpad; a miss shows the three work
+lines, then the answer is typed once (copy), as the gate panel's fix-it), **river** (three words on Spell Jump's
+spell panel: `createSpellPanel(root, { tts, audio })` → `run({ word, syllables, sentence, sayAs, pattern, isNew, look })`
+resolves `{ firstTry, fixed, cancelled }`; then the **rope toss**: an SVG number line 0…1 with the landing fraction
+said and shown ("the landing is three quarters of the way across"), the child drags the aim and taps THROW; the
+tolerance is Fraction Fright's for the child's tier (`toleranceFor` in `/fraction-fright/src/skills/items.js`) and a
+near miss is a wet boot and one more throw), **post office** (the letter: the three narrative lines appear, then the
+P.S. words are dictated one by one on the spell panel; the letter is read back and saved), **journal** (letters,
+stickers, the map), **results** (the leg: stars, cash rows, tokens, the sticker, the crate button), **Parent Zone**
+(the shared pattern: PIN, Family code, Journey (where they are, the party, reset), Options (sound, music, motion,
+hunting on/off, "fractions at rivers" on/off, the voice as set in Spell Jump), Report (legs, markers right %,
+problems right by kind, words right, the progress chart from `/spell-jump/src/ui/chart.js` with a per-day log,
+Copy report), Players).
+
+Data: `wagonWest.<id>.save` (`src/meta/save.js`: v1 { journey (the J object), seasonsDone, stickers, journal
+letters (≤ 36, text only), cosmetics, crates, streak (engagement.js), play: per-day log { legs, markers, markersRight,
+problems, problemsRight, words, wordsRight }, resetAt }; settings `wagonWest.settings`); sync kind `ww` via
+`registerSyncKind('ww', { storageKey: saveKey, merge })` with merge rules: the journey = the later doc (a journey is
+one device at a time; cash / tokens max), stickers / letters union, per-day log max, resetAt wins. The facts store
+and the word store are Spell Jump's and Trail Blazer's own keys, written through their modules (`recordAnswer`,
+`recordSpell`), never copied. Pings: `createPinger('wagon-west', …)` with kinds 'day', 'leg'.
+Mock scene (`src/meta/mockScene.js`, `?mock=1`): the same API, scripted hunts / fishing, instant.
+Tests: `tools/ui-smoke.mjs` (both layouts, the picker → outfit → a whole leg on the mock with markers answered
+right and one wrong, a store problem right and one fixed, a river with three words and a rope toss, a letter, the
+results, the journal, the Parent Zone tabs and chart, the audit of every screen: no links off-origin, no native
+inputs outside the Parent Zone, targets ≥ 44 px, no overflow), `tools/sync-smoke.mjs` (two devices, as the other
+games'). `sw.js` (`wagon-west-v1.0.0`, the other games' pattern with network-first index + main.js), manifest,
+icons (make-icons.mjs draws a wagon). VERSION '1.0.0'.
+
+## 13. Integration (orchestrator)
+
+Cherry-pick the four streams, wire the real scene (`?mock=1` for tests), add `wagon-west` to `build.sh`,
+`netlify.toml` (ignore rule and the trailing-slash redirect), the site card and the Why page section, the home
+page's parent quick start, the stats function's game list if it has one; run every suite; playtest a leg on the
+real scene at iPhone size; commit "Wagon West 1.0"; hold the push for Matt.
