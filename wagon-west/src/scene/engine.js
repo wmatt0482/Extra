@@ -27,14 +27,35 @@
 //   getState().mini = { kind: 'derby', progress, mailProgress, left, phase, markers, bursts, won } while it runs
 //   Events: { type: 'derbyMarker', n, of } (the race holds until derbyBurst) · { type: 'derbyEnd', won, margin,
 //     markers, bursts } (confetti and a cheer; 2 s later the scene goes back to its backdrop) · { type: 'bark' }
+// v1.2 (SPEC v1.2 §3 and §4: rivers are a choice, pure play). Four mini-games that own the pointer while they run
+// (pointerdown on the canvas, plus the keys named), each ended early by endMiniGame() (the state so far, no event):
+//   scene.startFord({ seed, width: 'narrow' | 'wide' })   the wagon wades the river at the current biome; the current
+//     pulses (a swell every 1.4 s: 0.7 s of heaving water, 0.7 s of calm); tap (or Space) on the calm beat to push; 4
+//     (narrow) or 6 (wide) pushes cross. Events { type: 'ford', good } per push, { type: 'fordEnd', soaked, pushes, good }
+//     (soaked = 1 when 2 or more pushes were on swells, else 0). mini = { kind: 'ford', width, left, pushes, good, bad,
+//     soaked, phase: 'calm' | 'swell' | 'landed', progress }
+//   scene.startFloat({ seed, width })   the wagon on a raft drifts down the screen through a run of river (6 s narrow,
+//     9 s wide, top to bottom); drag left / right (or ← →) to steer past the rocks. Events { type: 'float', bump: true }
+//     per rock hit, { type: 'floatEnd', bumps } at the landing. mini = { kind: 'float', width, bumps, progress, phase }
+//   scene.startRaft({ seed, length = 4 })   the Columbia finale: like the float in the gorge, longer (7 s a bend) with
+//     eddies that spin the raft and a calm lane of pale water to follow; `length` bends; at each bend the raft pauses in
+//     calm water and emits { type: 'raftMarker', n, of } and WAITS for scene.raftGo() (→ true when it was waiting);
+//     then 4.5 s into the valley: { type: 'raftEnd', bumps, bends }, the party cheering and a vista. Rock hits also
+//     emit { type: 'raft', bump: true }. mini = { kind: 'raft', length, bend, bumps, progress, phase, waiting }
+//   scene.startStampede({ seed })   the trail at the prairie / bluffs; the bison herd thunders by in three waves; when
+//     the lead bull looms a BRAKE sign pulses and a tap (or Space, B, ←) brakes the team. Events { type: 'stampede',
+//     good } per wave, { type: 'stampedeEnd', held } (held = 2 or more good). mini = { kind: 'stampede', wave, waves,
+//     left, good, phase: 'warn' | 'run' | 'cue' | 'brake' | 'dust' | 'settle', held }
+//   Each ends with a short cheer and goes back to the backdrop on its own 2 s later (the raft's vista holds 4 s).
 // Additions beyond §11: setReducedMotion(on); getState() also carries biome, legId, pace, view, scroll (px rolled, the
 // smoke test's "the wagon moved"), playing, reducedMotion, dog ({ name, coat } | null); endMiniGame() returns the
-// summary so far (and emits nothing); debugStep(n), debugPerf(reset), debugInfo(), debugMini() for the dev page and
-// the smoke test.
+// summary so far (and emits nothing); debugStep(n), debugPerf(reset), debugInfo(), debugMini(), debugInput(kind, a, b) for the dev
+// page and the smoke test.
 //
 // Input: while the hunt or fishing runs, a pointerdown on the canvas shoots / hooks (the canvas gets touch-action:
-// none for the duration) and Space does the same from the keyboard; otherwise the scene ignores input entirely (the
-// derby included: the app's panel answers for it with derbyBurst).
+// none for the duration) and Space does the same from the keyboard; the v1.2 mini-games also read ← → (steering) and
+// B (brake) and a finger or mouse drag (steering); otherwise the scene ignores input entirely (the derby included: the
+// app's panel answers for it with derbyBurst).
 
 import { clamp, approach, clearTextSprites } from './util.js';
 import { buildLayers, biomeOf, BIOMES } from './biomes.js';
@@ -43,6 +64,9 @@ import { paintColor, flagColor, personLook, dogCoat } from './sprites.js';
 import { createHunt } from './hunt.js';
 import { createFish } from './fish.js';
 import { createDerby } from './derby.js';
+import { createFord } from './ford.js';
+import { createRun } from './rafting.js';
+import { createStampede } from './stampede.js';
 import { drawFrame, updateFx, createFx, burst, wxOf, WEATHERS } from './render.js';
 
 const CRITTERS = {
@@ -141,7 +165,7 @@ export function createScene(canvas, opts = {}) {
   function wagonTarget() {
     const L = S.L; if (!L) return 0;
     const k = L.k;
-    if (S.view === 'stop' || S.view === 'hunt' || S.view === 'fish') return Math.max(112 * k, L.W * 0.3 - 86 * k);
+    if (S.view === 'stop' || S.view === 'hunt' || S.view === 'fish' || S.view === 'stampede') return Math.max(112 * k, L.W * 0.3 - 86 * k);
     return L.W * 0.5 - 86 * k + (S.travel.pace === 'brisk' && S.travel.moving ? 14 * k : 0);
   }
   function placeParty() {
@@ -170,7 +194,7 @@ export function createScene(canvas, opts = {}) {
   // the dog is drawn on the trail, at the outdoor stops and in the derby (not in the post office, the hunt or fishing)
   function dogVisible() {
     if (!S.dog) return false;
-    if (S.view === 'derby' || S.view === 'trail') return true;
+    if (S.view === 'derby' || S.view === 'trail' || S.view === 'stampede') return true;
     return S.view === 'stop' && S.backdrop !== 'post';
   }
   function bark() {
@@ -259,21 +283,42 @@ export function createScene(canvas, opts = {}) {
     return { x: ((e.clientX - r.left) * S.L.W) / Math.max(1, r.width), y: ((e.clientY - r.top) * S.L.H) / Math.max(1, r.height) };
   }
   const owns = () => !!S.mini && S.mini.input !== false;
+  let dragging = false;
   const onDown = (e) => {
     if (!owns() || !playing || destroyed) return;
     e.preventDefault();
     const p = toLocal(e);
     if (e.pointerType === 'mouse') S.mini.move(S.L, p.x, p.y); // the keyboard's aim line follows a mouse, not a finger
     S.mini.pointer(S.L, p.x, p.y);
+    if (S.mini && S.mini.drag) { dragging = true; try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events have no pointer to capture */ } }
   };
-  const onMove = (e) => { if (owns() && playing && e.pointerType === 'mouse') { const p = toLocal(e); S.mini.move(S.L, p.x, p.y); } };
+  const onMove = (e) => {
+    if (!owns() || !playing) return;
+    if (dragging && S.mini.drag) { const p = toLocal(e); S.mini.drag(S.L, p.x, p.y); }
+    else if (e.pointerType === 'mouse') { const p = toLocal(e); S.mini.move(S.L, p.x, p.y); }
+  };
+  const onUp = () => { if (dragging) { dragging = false; if (S.mini && S.mini.release) S.mini.release(); } };
+  const keyName = (e) => (e.code === 'ArrowLeft' || e.key === 'ArrowLeft' ? 'left' : e.code === 'ArrowRight' || e.key === 'ArrowRight' ? 'right' : e.code === 'KeyB' || e.key === 'b' || e.key === 'B' ? 'brake' : null);
   const onKey = (e) => {
     if (!owns() || !playing || destroyed) return;
-    if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); if (!e.repeat) S.mini.key(S.L); }
+    if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); if (!e.repeat) S.mini.key(S.L); return; }
+    const n = keyName(e);
+    if (n && S.mini.keyDown && S.mini.keyDown(S.L, n, !!e.repeat)) e.preventDefault();
   };
+  const onKeyUp = (e) => {
+    if (!owns() || destroyed) return;
+    const n = keyName(e);
+    if (n && S.mini.keyUp) S.mini.keyUp(S.L, n);
+  };
+  const onBlur = () => { if (S.mini && S.mini.keyUp) { S.mini.keyUp(S.L, 'left'); S.mini.keyUp(S.L, 'right'); } };
   canvas.addEventListener('pointerdown', onDown, { passive: false });
   canvas.addEventListener('pointermove', onMove);
+  canvas.addEventListener('pointerup', onUp);
+  canvas.addEventListener('pointercancel', onUp);
+  canvas.addEventListener('lostpointercapture', onUp);
   globalThis.addEventListener && globalThis.addEventListener('keydown', onKey);
+  globalThis.addEventListener && globalThis.addEventListener('keyup', onKeyUp);
+  globalThis.addEventListener && globalThis.addEventListener('blur', onBlur);
 
   // ---------------------------------------------------------------- mini-games
   let savedTouch = '', touchTaken = false;
@@ -287,14 +332,15 @@ export function createScene(canvas, opts = {}) {
     requestDraw();
   }
   function closeMini() {
-    S.mini = null;
+    S.mini = null; dragging = false;
     S.view = S.backdrop === 'trail' ? 'trail' : 'stop';
     S.fade = S.rm ? 0.5 : 1;
     S.wagonX = wagonTarget();
     if (touchTaken) { canvas.style.touchAction = savedTouch; touchTaken = false; }
     requestDraw();
   }
-  const derbyHooks = { celebrate(kind) { if (S.L) { burst(S, kind); S.cheerT = 1.8; } } };
+  // celebrate(kind, x, y): confetti / sparkles (x, y: where a 'star' goes off) and the party cheers
+  const derbyHooks = { celebrate(kind, x, y) { if (S.L) { burst(S, kind, x, y); S.cheerT = 1.8; } } };
 
   // fonts may arrive after the first text sprites were cached (the wagon's name, the signs)
   if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
@@ -376,6 +422,17 @@ export function createScene(canvas, opts = {}) {
       if (!S.mini || S.mini.kind !== 'derby') return null;
       return scene.endMiniGame();
     },
+    // ---- v1.2: rivers and the stampede
+    startFord(o = {}) { if (!destroyed) openMini(createFord(o, emit, S, derbyHooks, S.biome)); },
+    startFloat(o = {}) { if (!destroyed) openMini(createRun('float', o, emit, S, derbyHooks, S.biome)); },
+    startRaft(o = {}) { if (!destroyed) openMini(createRun('raft', o, emit, S, derbyHooks, S.biome)); },
+    startStampede(o = {}) { if (!destroyed) openMini(createStampede(o, emit, S, derbyHooks)); },
+    raftGo() {
+      if (!S.mini || S.mini.kind !== 'raft') return false;
+      const ok = S.mini.go();
+      requestDraw();
+      return ok;
+    },
     // ---- v1.1: the dog
     dogBark() {
       if (!S.dog || destroyed) return false;
@@ -401,7 +458,12 @@ export function createScene(canvas, opts = {}) {
       if (ro) ro.disconnect();
       canvas.removeEventListener('pointerdown', onDown);
       canvas.removeEventListener('pointermove', onMove);
+      canvas.removeEventListener('pointerup', onUp);
+      canvas.removeEventListener('pointercancel', onUp);
+      canvas.removeEventListener('lostpointercapture', onUp);
       globalThis.removeEventListener && globalThis.removeEventListener('keydown', onKey);
+      globalThis.removeEventListener && globalThis.removeEventListener('keyup', onKeyUp);
+      globalThis.removeEventListener && globalThis.removeEventListener('blur', onBlur);
       globalThis.removeEventListener && globalThis.removeEventListener('resize', onWinResize);
       if (S.mini && touchTaken) canvas.style.touchAction = savedTouch;
       S.mini = null; S.layers = null; S.piece = null; S.approachPiece = null;
@@ -446,6 +508,18 @@ export function createScene(canvas, opts = {}) {
       };
     },
     debugMini() { return S.mini && S.L ? S.mini.debug(S.L) : null; },
+    // feeds the running mini-game the same calls a real input would, whether or not the scene is playing (the smoke test)
+    debugInput(kind, a, b) {
+      const m = S.mini, L = S.L;
+      if (!m || !L || destroyed || m.input === false) return false;
+      if (kind === 'pointer') { const r = m.pointer(L, a, b); if (m.drag) dragging = true; return r; }
+      if (kind === 'drag') { if (m.drag) m.drag(L, a, b); return true; }
+      if (kind === 'release') { dragging = false; if (m.release) m.release(); return true; }
+      if (kind === 'key') return m.key(L);
+      if (kind === 'keydown') return !!(m.keyDown && m.keyDown(L, a, false));
+      if (kind === 'keyup') { if (m.keyUp) m.keyUp(L, a); return true; }
+      return false;
+    },
   };
   function setVisualWeather() {
     let w = S.travel.weather;

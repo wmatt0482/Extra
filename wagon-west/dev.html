@@ -16,7 +16,7 @@
   #state { top: max(6px, env(safe-area-inset-top)); left: max(6px, env(safe-area-inset-left)); top: 46px; }
   #log { top: 46px; right: max(6px, env(safe-area-inset-right)); max-height: 40vh; overflow: hidden; opacity: 0.85; }
   #help { position: fixed; z-index: 4; left: 50%; bottom: max(6px, env(safe-area-inset-bottom)); transform: translateX(-50%);
-    background: var(--panel); border-radius: 8px; padding: 4px 10px; pointer-events: none; white-space: nowrap; }
+    background: var(--panel); border-radius: 8px; padding: 4px 10px; pointer-events: none; white-space: normal; max-width: 94vw; text-align: center; }
   body.noui #state, body.noui #log, body.noui #help { display: none; }
 </style>
 </head>
@@ -24,7 +24,7 @@
 <div id="stage"><canvas id="c"></canvas></div>
 <pre id="state"></pre>
 <pre id="log"></pre>
-<div id="help">1-6 biome · w weather · p pace · m move · v backdrop · l landmark · a animal · c cheer · h hunt · f fish · Space shoot · d derby (1 quick · 2 slow · 0 wrong) · g dog · b bark · Esc end · r motion</div>
+<div id="help">1-6 biome · w weather · p pace · m move · v backdrop · k landmark · a animal · c cheer · h hunt · i fish · d derby (1 quick · 2 slow · 0 wrong) · g dog · n motion · <b>f ford (Shift: wide) · l float (Shift: wide) · r raft (Enter: next bend) · s stampede</b> · Space tap / shoot · ← → steer · B brake / bark · Esc end</div>
 <script type="module">
 // Scene playground (SPEC §11). URL params: biome (prairie | bluffs | highdesert | mountains | gorge | valley),
 // backdrop (trail | fort | river | landmark | camp | post | valley), weather (clear | rain | storm | dusk | snow),
@@ -34,10 +34,15 @@
 // while moving, ~2.5 a second as on the real trail), hunt=1 / fish=1 (start a mini-game), seed, rm=1 (reduced
 // motion), ui=0 (no overlays), mock=1 (load the app's mock scene from src/meta/mockScene.js if it exists).
 // v1.1: derby=1 (start Fort Derby; length=400 sets the course), dog=brown | spotted | black (the party's dog; dogname).
-// Keys: 1-6 biomes, w weather, p pace, m moving, v backdrop, l the next landmark leg, a spot an animal, c celebrate,
-// h hunt, f fish, Space shoots / hooks (the scene's own key handling), Esc endMiniGame, r reduced motion;
+// Keys: 1-6 biomes, w weather, p pace, m moving, v backdrop, k the next landmark leg, a spot an animal, c celebrate,
+// h hunt, i fish, Space shoots / hooks (the scene's own key handling), Esc endMiniGame, n reduced motion;
 // d starts a derby, and while one runs 1 / 2 / 0 answer a marker quick / slow / wrong (derbyBurst 1 / 0.6 / 0);
 // g cycles the dog (brown, spotted, black, none), b barks.
+// v1.2: ford=1 (width=narrow | wide), float=1 (width), raft=1 (length=4), stampede=1 start a river or stampede game.
+// Keys: f ford (Shift+f: wide), l float (Shift+l: wide), r the Columbia raft (while it waits at a bend, Enter calls
+// scene.raftGo()), s the stampede; the games read Space (tap / push / brake), ← → (steer; ← also brakes) and B (brake)
+// themselves, and drag steers. To make room, the old keys moved: i fish (was f), k the next landmark (was l), n reduced
+// motion (was r). b barks only when no game is running (it brakes in the stampede).
 // window.__ww = { scene, events } for the smoke test.
 import { LEGS, LEG_BY_ID } from './src/content/legs.js';
 import { COMPANIONS } from './src/content/companions.js';
@@ -91,6 +96,10 @@ const seed = +(q.get('seed') || 7);
 if (q.get('hunt') === '1') scene.startHunt({ seed, shots: 5 });
 else if (q.get('fish') === '1') scene.startFish({ seed, casts: 4 });
 else if (q.get('derby') === '1') scene.startDerby({ seed, length: +(q.get('length') || 400) });
+else if (q.get('ford') === '1') scene.startFord({ seed, width: q.get('width') === 'wide' ? 'wide' : 'narrow' });
+else if (q.get('float') === '1') scene.startFloat({ seed, width: q.get('width') === 'wide' ? 'wide' : 'narrow' });
+else if (q.get('raft') === '1') scene.startRaft({ seed, length: +(q.get('length') || 4) });
+else if (q.get('stampede') === '1') scene.startStampede({ seed });
 
 const cycle = (arr, v) => arr[(arr.indexOf(v) + 1) % arr.length];
 let ai = 0, ci = 0, li = 0;
@@ -102,16 +111,21 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'p') { travel.pace = travel.pace === 'brisk' ? 'steady' : 'brisk'; scene.setTravel({ pace: travel.pace }); }
   else if (e.key === 'm') { travel.moving = !travel.moving; scene.setTravel({ moving: travel.moving }); }
   else if (e.key === 'v') { backdrop = cycle(BACKDROPS, backdrop); scene.setBackdrop(backdrop); }
-  else if (e.key === 'b') scene.dogBark && scene.dogBark();
+  else if (e.key === 'b') { if (!scene.getState().mini) scene.dogBark && scene.dogBark(); } // in a game the scene brakes
   else if (e.key === 'g') { const i = party.dog ? COATS.indexOf(party.dog.coat) + 1 : 0; party.dog = i < COATS.length ? { name: q.get('dogname') || 'Biscuit', coat: COATS[i] } : null; scene.setParty(party); }
   else if (e.key === 'd') scene.startDerby && scene.startDerby({ seed: Math.floor(Math.random() * 1e6), length: +(q.get('length') || 400) });
-  else if (e.key === 'l') { legId = LANDMARK_IDS[li++ % LANDMARK_IDS.length]; leg = legFor(legId, biome); scene.setLeg(leg); }
+  else if (e.key === 'k') { legId = LANDMARK_IDS[li++ % LANDMARK_IDS.length]; leg = legFor(legId, biome); scene.setLeg(leg); }
+  else if (e.key === 'f' || e.key === 'F') scene.startFord && scene.startFord({ seed: Math.floor(Math.random() * 1e6), width: e.shiftKey || q.get('width') === 'wide' ? 'wide' : 'narrow' });
+  else if (e.key === 'l' || e.key === 'L') scene.startFloat && scene.startFloat({ seed: Math.floor(Math.random() * 1e6), width: e.shiftKey || q.get('width') === 'wide' ? 'wide' : 'narrow' });
+  else if (e.key === 'r' || e.key === 'R') scene.startRaft && scene.startRaft({ seed: Math.floor(Math.random() * 1e6), length: +(q.get('length') || 4) });
+  else if (e.key === 's' || e.key === 'S') scene.startStampede && scene.startStampede({ seed: Math.floor(Math.random() * 1e6) });
+  else if (e.key === 'Enter') { if (scene.raftGo && scene.raftGo()) onEvent({ type: '(raftGo)' }); }
   else if (e.key === 'a') scene.spotAnimal(CRITTERS[ai++ % CRITTERS.length]);
   else if (e.key === 'c') scene.celebrate(CHEERS[ci++ % CHEERS.length]);
   else if (e.key === 'h') scene.startHunt({ seed: Math.floor(Math.random() * 1e6), shots: 5 });
-  else if (e.key === 'f') scene.startFish({ seed: Math.floor(Math.random() * 1e6), casts: 4 });
+  else if (e.key === 'i') scene.startFish({ seed: Math.floor(Math.random() * 1e6), casts: 4 });
   else if (e.key === 'Escape') onEvent({ type: inDerby() ? '(endDerby)' : '(endMiniGame)', summary: inDerby() ? scene.endDerby() : scene.endMiniGame() });
-  else if (e.key === 'r') { rm = !rm; scene.setReducedMotion && scene.setReducedMotion(rm); }
+  else if (e.key === 'n') { rm = !rm; scene.setReducedMotion && scene.setReducedMotion(rm); }
 });
 
 // the miles tick while rolling (about 15 miles a 6-second day), wrapping at the leg's end so the stop rises again

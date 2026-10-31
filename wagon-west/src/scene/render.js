@@ -55,7 +55,8 @@ export function createFx() {
 }
 const CONF_COLS = ['#ff5d5d', '#ffe14a', '#3ddc84', '#22b8ff', '#8f6bff', '#ff7ad1', '#ffffff'];
 
-export function burst(S, kind) {
+// x, y: where a 'star' goes off (default the wagon on the trail); the other kinds fill the screen
+export function burst(S, kind, bx, by) {
   const fx = S.fx, r = fx.rand, L = S.L, k = L.k, rm = S.rm;
   const want = kind === 'arrived' ? (rm ? 40 : 150) : kind === 'river' ? (rm ? 30 : 120) : (rm ? 14 : 40);
   let n = 0;
@@ -70,7 +71,7 @@ export function burst(S, kind) {
       if (n >= want) break;
     }
   } else { // star: sparkles around the wagon
-    const cx = S.wagonX, cy = L.gy - 70 * k;
+    const cx = bx != null ? bx : S.wagonX, cy = by != null ? by : L.gy - 70 * k;
     spawn((p) => { const a = r() * TAU, sp = (50 + r() * 110) * k; p.kind = 2; p.x = cx; p.y = cy; p.vx = Math.cos(a) * sp; p.vy = Math.sin(a) * sp - 40 * k; p.a = r() * TAU; p.va = (r() - 0.5) * 6; p.life = 0; p.max = 1.1 + r() * 0.5; p.col = r() < 0.7 ? '#ffd23f' : '#ffffff'; p.s = (5 + r() * 5) * k; });
   }
 }
@@ -351,16 +352,24 @@ export function drawFrame(ctx, S) {
   if (view === 'stop' && S.piece && S.piece.z === 'cover') {
     blitPiece(ctx, S.piece, 0, 0, 1);
     drawConfetti(ctx, S);
-  } else if (view === 'fish' && S.mini) {
+  } else if ((view === 'fish' || view === 'ford') && S.mini) {
     drawSky(ctx, S);
     blitLayer(ctx, S, ly.far, SPEED.far);
     blitLayer(ctx, S, ly.mid, SPEED.mid);
-    S.mini.drawBackground(ctx, L);
+    S.mini.drawBackground(ctx, L, S.t, S.rm);
     S.mini.draw(ctx, L, S.t, S.rm);
     drawWeather(ctx, S);
+    if (view === 'ford') drawConfetti(ctx, S);
+  } else if ((view === 'float' || view === 'raft') && S.mini) {
+    // a river seen from above, painted by the mini-game itself (no sky, no parallax)
+    S.mini.draw(ctx, L, S.t, S.rm);
+    drawWeather(ctx, S);
+    drawConfetti(ctx, S);
   } else {
     drawSky(ctx, S);
     drawCritters(ctx, S, true);
+    const shake = view === 'stampede' && S.mini ? S.mini.shake : 0; // the ground shakes a little under the herd
+    if (shake) ctx.translate(0, shake);
     blitLayer(ctx, S, ly.far, SPEED.far);
     // the stop ahead, rising over the horizon while the wagon approaches it
     if (view === 'trail' && S.approach > 0 && S.approachPiece) {
@@ -379,6 +388,13 @@ export function drawFrame(ctx, S) {
     }
     if ((view === 'hunt' || view === 'derby') && S.mini) {
       S.mini.draw(ctx, L, S.t, S.rm);
+    } else if (view === 'stampede' && S.mini) {
+      S.mini.drawBack(ctx, L, S.t, S.rm); // the herd, behind the wagon
+      drawParty(ctx, S, false);
+      drawTrain(ctx, S);
+      if (S.dog) drawPartyDog(ctx, S);
+      drawParty(ctx, S, true);
+      blitLayer(ctx, S, ly.props, SPEED.props);
     } else {
       if (view === 'stop' && S.piece && S.piece.z === 'ground') blitPiece(ctx, S.piece, 0, 0, 1);
       if (view === 'stop') drawStopLife(ctx, S);
@@ -391,6 +407,8 @@ export function drawFrame(ctx, S) {
       drawParty(ctx, S, true);
       blitLayer(ctx, S, ly.props, SPEED.props);
     }
+    if (shake) ctx.translate(0, -shake);
+    if (view === 'stampede' && S.mini) S.mini.drawFront(ctx, L, S.t, S.rm); // dust, the BRAKE sign, the words
     drawWeather(ctx, S);
     drawConfetti(ctx, S);
   }

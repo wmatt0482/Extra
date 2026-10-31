@@ -17,6 +17,13 @@
 // several seeds, dev.html's ?derby=1 with keys 1 / 2 / 0) and the dog (each coat in each outdoor backdrop and not in
 // the post office, dogBark, a bark when an animal is spotted, dev.html's ?dog= and key b); perf with the dog and in
 // the derby.
+// v1.2: the ford (4 / 6 pushes on the calm beat of a 1.4 s swell: all calm = dry, swells = 1 soaked sack, never more; the
+// 0.5 s rest; the timing; touch and Space), the float (6 / 9 s runs; unsteered = bumps, steered along the calm lane = 0 on
+// 12 seeds; arrow keys and a real drag steer; the bump, the landing and its cheer), the Columbia raft (four markers that
+// wait for raftGo, raftEnd { bumps, bends }, eddies spin the raft, the bend marker / calm lane / valley vista pictures),
+// the buffalo stampede (3 good = held, 0 = not held, 2 / 1, the BRAKE sign by touch, Space, B and ←, an early tap is
+// free, dust and shaking, reduced motion), endMiniGame on each, dev.html's ?ford=1 ?float=1 ?raft=1 ?stampede=1 and keys
+// f / l / r / s; perf for the stampede, the raft, the float and the ford.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -61,6 +68,7 @@ const HATS = ['cap', 'wide', 'bonnet', 'straw', 'bowler', 'hood', 'kerchief', 'n
 const API = ['setLeg', 'setParty', 'setTravel', 'setBackdrop', 'spotAnimal', 'celebrate', 'startHunt', 'startFish', 'endMiniGame', 'play', 'pause', 'destroy', 'resize', 'getState'];
 const MEAT = { rabbit: 10, deer: 40, turkey: 15 };
 const API_11 = ['startDerby', 'derbyBurst', 'endDerby', 'dogBark'];
+const API_12 = ['startFord', 'startFloat', 'startRaft', 'raftGo', 'startStampede'];
 const COATS = ['brown', 'spotted', 'black'];
 const DOG_BACKDROPS = ['trail', 'camp', 'river', 'landmark', 'fort', 'valley', 'post'];
 
@@ -670,6 +678,508 @@ try {
     await context.close();
   }
 
+  // ---- 11. v1.2: the ford, the float, the Columbia raft and the buffalo stampede ----
+  // helpers living in the page: follow the calm lane (the guaranteed clear route) by feeding the scene pointer calls
+  const FOLLOW = () => {
+    window.__follow = (sc, look = 0.03) => {
+      const m = sc.debugMini();
+      if (!m || (m.phase !== 'drift' && m.phase !== 'ready')) return;
+      const a = Math.min(1, m.a + look), f = a * 20, i = Math.min(19, Math.floor(f));
+      const u = m.route[i] + (m.route[i + 1] - m.route[i]) * (f - i);
+      sc.debugInput('pointer', m.x0 + u * m.chan, m.y);
+    };
+    // a ford run: taps by policy ('calm' | 'swell' | 'swell1' (the first push on a swell, the rest calm) | 'swell2')
+    window.__ford = (width, mode, seed) => {
+      const sc = window.__ww.scene, ev0 = window.__ww.events.length;
+      sc.startFord({ seed, width });
+      let swellTaps = mode === 'swell1' ? 1 : mode === 'swell2' ? 2 : 0, frames = 0, tapsAt = [];
+      for (let n = 0; n < 60 * 90; n++) {
+        const m = sc.debugMini();
+        if (!m) break;
+        frames = n;
+        if (m.ready) {
+          const wantSwell = mode === 'swell' || swellTaps > 0;
+          if (wantSwell ? !m.calm : m.calm) { if (wantSwell && mode !== 'swell') swellTaps--; sc.debugInput('pointer', 5, 5); tapsAt.push(Math.round(m.clock * 100) / 100); }
+        }
+        sc.debugStep(1, false);
+      }
+      const evs = window.__ww.events.slice(ev0);
+      return { taps: evs.filter((e) => e.type === 'ford').map((e) => e.good), end: evs.filter((e) => e.type === 'fordEnd'), frames, closed: !sc.getState().mini, tapsAt };
+    };
+    // a float or raft run: steer along the calm lane ('steer'), or leave the raft alone ('none')
+    window.__river = (kind, opts, mode, extra = {}) => {
+      const sc = window.__ww.scene, ev0 = window.__ww.events.length;
+      if (kind === 'float') sc.startFloat(opts); else sc.startRaft(opts);
+      let frames = 0, maxAng = 0, waitedFrames = 0, gos = 0, waitY = [], phases = new Set(), markers = [];
+      for (let n = 0; n < 60 * 240; n++) {
+        const m = sc.debugMini();
+        if (!m) break;
+        frames = n; phases.add(m.phase);
+        if (mode === 'steer' && n % 4 === 0) window.__follow(sc);
+        maxAng = Math.max(maxAng, Math.abs(m.ang));
+        if (kind === 'raft' && m.waiting) {
+          waitedFrames++; waitY.push(Math.round(m.y * 10) / 10);
+          if (waitedFrames >= (extra.hold || 90)) { waitedFrames = 0; if (sc.raftGo()) gos++; }
+        }
+        sc.debugStep(1, false);
+      }
+      const evs = window.__ww.events.slice(ev0);
+      return { evs, frames, maxAng, gos, waitY, phases: [...phases], closed: !sc.getState().mini };
+    };
+    window.__stampede = (seed, goodWaves, opts = {}) => {
+      const sc = window.__ww.scene, ev0 = window.__ww.events.length;
+      sc.startStampede({ seed });
+      let waveIdx = -1, lastCue = false, phases = new Set(), maxShake = 0, maxHaze = 0, maxDust = 0, early = 0, frames = 0, spanTaps = 0;
+      for (let n = 0; n < 60 * 120; n++) {
+        const m = sc.debugMini();
+        if (!m) break;
+        frames = n; phases.add(m.phase);
+        maxShake = Math.max(maxShake, Math.abs(m.shake)); maxHaze = Math.max(maxHaze, m.haze); maxDust = Math.max(maxDust, m.dust);
+        if (m.cue && !lastCue) { waveIdx = m.resolved; }
+        lastCue = m.cue;
+        if (m.cue && goodWaves[waveIdx]) { sc.debugInput(opts.key ? 'keydown' : 'pointer', opts.key || 5, 5); spanTaps++; }
+        if (opts.earlyTap && !m.cue && m.phase === 'warn' && n % 30 === 0) { sc.debugInput('pointer', 5, 5); early++; }
+        sc.debugStep(1, false);
+      }
+      const evs = window.__ww.events.slice(ev0);
+      return { evs, frames, phases: [...phases], maxShake, maxHaze, maxDust, early, closed: !sc.getState().mini };
+    };
+  };
+
+  // ---- the API and the ford ----
+  {
+    const { page, context, errors } = await open(browser, { biome: 'prairie', moving: '0' });
+    await page.evaluate(() => window.__ww.scene.pause());
+    await page.evaluate(FOLLOW);
+    const api12 = await page.evaluate((names) => names.filter((n) => typeof window.__ww.scene[n] !== 'function'), API_12);
+    check(api12.length === 0, `the scene has the v1.2 API: ${API_12.join(', ')} (missing: ${api12.join(',') || 'none'})`);
+    check((await page.evaluate(() => window.__ww.scene.raftGo())) === false, 'raftGo() with no raft running: false');
+    // narrow, all calm taps: dry
+    const calmN = await page.evaluate(() => window.__ford('narrow', 'calm', 3));
+    const keysOf = (e) => Object.keys(e).filter((k) => k !== 'at').sort().join();
+    check(calmN.taps.length === 4 && calmN.taps.every((g) => g === true) && calmN.end.length === 1 && calmN.end[0].soaked === 0 && calmN.end[0].pushes === 4 && calmN.end[0].good === 4, `ford (narrow): 4 calm taps cross dry: ${JSON.stringify(calmN.end[0])}, taps ${calmN.taps.join()}`);
+    check(keysOf(calmN.end[0]) === 'good,pushes,soaked,type' && calmN.closed, `fordEnd carries { soaked, pushes, good } (${keysOf(calmN.end[0])}) and the scene goes back on its own (${calmN.frames} frames)`);
+    const calmW = await page.evaluate(() => window.__ford('wide', 'calm', 4));
+    check(calmW.taps.length === 6 && calmW.end[0] && calmW.end[0].pushes === 6 && calmW.end[0].soaked === 0 && calmW.end[0].good === 6, `ford (wide): 6 calm pushes: ${JSON.stringify(calmW.end[0])}`);
+    // all swell taps: one soaked sack, never more
+    const swN = await page.evaluate(() => window.__ford('narrow', 'swell', 3));
+    const swW = await page.evaluate(() => window.__ford('wide', 'swell', 9));
+    check(swN.taps.length === 4 && swN.taps.every((g) => g === false) && swN.end[0].soaked === 1 && swN.end[0].pushes === 4 && swN.end[0].good === 0, `ford (narrow): 4 swell taps = a wobble each and 1 soaked sack: ${JSON.stringify(swN.end[0])}`);
+    check(swW.taps.length === 6 && swW.end[0].soaked === 1 && swW.end[0].good === 0 && swW.end[0].pushes === 6, `ford (wide): 6 swell taps still soak only one sack: ${JSON.stringify(swW.end[0])}`);
+    const one = await page.evaluate(() => window.__ford('narrow', 'swell1', 5));
+    const two = await page.evaluate(() => window.__ford('narrow', 'swell2', 5));
+    check(one.taps[0] === false && one.end[0].soaked === 0 && one.end[0].good === 3 && two.taps.slice(0, 2).every((g) => g === false) && two.end[0].soaked === 1 && two.end[0].good === 2, `one swell tap stays dry, two soak one sack (1 swell: ${JSON.stringify(one.end[0])}; 2 swells: ${JSON.stringify(two.end[0])})`);
+    // timing: the swell comes every 1.4 s, 0.7 s of swell then calm; the calm beat is the bigger share
+    const timing = await page.evaluate(() => {
+      const sc = window.__ww.scene;
+      sc.startFord({ seed: 11, width: 'narrow' });
+      const starts = [], ends = [];
+      let was = false, t = 0;
+      for (let n = 0; n < 60 * 9; n++) {
+        const m = sc.debugMini(), sw = !m.calm;
+        if (sw && !was) starts.push(m.clock); if (!sw && was) ends.push(m.clock);
+        was = sw;
+        sc.debugStep(1, false);
+      }
+      const calmShare = 1 - ends.slice(0, 4).reduce((a, e, i) => a + (e - starts[i]), 0) / 4 / 1.4;
+      sc.endMiniGame();
+      return { periods: starts.slice(1).map((s, i) => Math.round((s - starts[i]) * 100) / 100), first: starts[0], calmShare };
+    });
+    check(timing.periods.length >= 4 && timing.periods.every((p) => Math.abs(p - 1.4) < 0.03) && timing.first >= 0.9 && timing.calmShare > 0.5, `a swell every ${timing.periods[0]} s (periods ${timing.periods.join(', ')}), the first after ${timing.first.toFixed(2)} s of calm, the calm beat ${(timing.calmShare * 100).toFixed(0)} % of each period`);
+    // one tap per rest: mashing is ignored while the team rests
+    const mash = await page.evaluate(() => {
+      const sc = window.__ww.scene; sc.startFord({ seed: 2, width: 'narrow' });
+      const r = [sc.debugInput('pointer', 1, 1), sc.debugInput('pointer', 1, 1), sc.debugInput('pointer', 1, 1)];
+      const s = sc.getState().mini; sc.endMiniGame();
+      return { r, pushes: s.pushes };
+    });
+    check(mash.r[0] === true && mash.r[1] === false && mash.pushes === 1, `a push rests the team 0.5 s: three quick taps count once (${mash.r.join()}, pushes ${mash.pushes})`);
+    // the real thing: a touch on the canvas and the Space key, with the scene playing
+    await page.evaluate(() => { window.__ww.scene.startFord({ seed: 6, width: 'narrow' }); });
+    const ta = await page.evaluate(() => getComputedStyle(document.getElementById('c')).touchAction);
+    await tapAt(page, 300, 200);
+    await step(page, 45);
+    await keySpace(page);
+    const rs = await state(page);
+    check(ta === 'none' && rs.mini && rs.mini.kind === 'ford' && rs.mini.pushes === 2 && rs.mini.good === 2 && (await events(page, 'ford')).length >= 2, `a touch on the canvas and Space both push (touch-action ${ta}, mini ${JSON.stringify(rs.mini)})`);
+    await shot(page, 'ford-1-crossing');
+    // look at a swell and a soaked sack
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.endMiniGame(); sc.startFord({ seed: 8, width: 'wide' }); for (let n = 0; n < 600; n++) { const m = sc.debugMini(); if (m.ready && !m.calm && m.intensity > 0.8) break; sc.debugStep(1, false); } sc.debugInput('pointer', 1, 1); sc.debugStep(40, false); for (let n = 0; n < 600; n++) { const m = sc.debugMini(); if (m.ready && !m.calm) break; sc.debugStep(1, false); } sc.debugInput('pointer', 1, 1); sc.debugStep(20, false); for (let n = 0; n < 600; n++) { const m = sc.debugMini(); if (!m.calm && m.intensity > 0.9) break; sc.debugStep(1, false); } });
+    await shot(page, 'ford-2-swell-and-soggy-sack');
+    const st2 = await state(page);
+    check(st2.mini.bad === 2 && st2.mini.soaked === 1 && st2.mini.phase === 'swell', `a swell on screen after two swell taps: soaked ${st2.mini.soaked} (${JSON.stringify(st2.mini)})`);
+    // endMiniGame early: the state so far, no fordEnd
+    const fe0 = (await events(page, 'fordEnd')).length;
+    const sum = await page.evaluate(() => window.__ww.scene.endMiniGame());
+    const sa = await state(page);
+    check(sum && sum.kind === 'ford' && sum.finished === false && sum.pushes === 2 && sa.mini === null && sa.view === 'trail' && (await events(page, 'fordEnd')).length === fe0, `endMiniGame() on a ford: ${JSON.stringify(sum)} and no fordEnd`);
+    check((await page.evaluate(() => getComputedStyle(document.getElementById('c')).touchAction)) !== 'none', 'the canvas gets its touch-action back when the ford ends');
+    // each biome draws (and a wide ford at the far bank shot)
+    for (const biome of ['prairie', 'highdesert', 'mountains', 'gorge']) {
+      await page.evaluate((b) => { const sc = window.__ww.scene; sc.setLeg({ id: 'kansas-river', biome: b, miles: 150, stop: { kind: 'river' } }); sc.startFord({ seed: 2, width: 'wide' }); sc.debugStep(60); }, biome);
+      const v = await variety(page);
+      check(v >= 14, `the ford draws in the ${biome} (${v} colours)`);
+      if (biome === 'gorge') await shot(page, 'ford-3-gorge');
+      await page.evaluate(() => window.__ww.scene.endMiniGame());
+    }
+    // portrait
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { window.__ww.scene.startFord({ seed: 5, width: 'wide' }); window.__ww.scene.debugStep(70); });
+    await shot(page, 'ford-4-portrait');
+    const pv = await variety(page);
+    const pr = await page.evaluate(() => window.__ford('wide', 'calm', 4));
+    check(pv >= 14 && pr.end[0] && pr.end[0].soaked === 0, `the ford in portrait: ${pv} colours, and crosses dry (${JSON.stringify(pr.end[0])})`);
+    check(errors.real().length === 0, `ford: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+  // dev.html: ?ford=1&width=wide and key f
+  {
+    const { page, context, errors } = await open(browser, { ford: '1', width: 'wide', seed: '4' });
+    const s0 = await state(page);
+    await page.waitForTimeout(150);
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(100);
+    const s1 = await state(page);
+    check(s0.mini && s0.mini.kind === 'ford' && s0.mini.width === 'wide' && s0.mini.left === 6 && s1.mini.pushes === 1 && (await events(page, 'ford')).length === 1, `dev.html ?ford=1&width=wide starts a wide ford and Space pushes (${JSON.stringify(s1.mini)})`);
+    check(errors.real().length === 0, `dev ford: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+  {
+    const { page, context, errors } = await open(browser, {});
+    await page.keyboard.press('f');
+    await page.waitForTimeout(100);
+    const s2 = await state(page);
+    check(s2.mini && s2.mini.kind === 'ford' && s2.mini.width === 'narrow' && s2.mini.pushes === 0, `key f starts a ford (${JSON.stringify(s2.mini)})`);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Shift+F');
+    await page.waitForTimeout(100);
+    check((await state(page)).mini.width === 'wide', 'Shift+f starts a wide one');
+    check(errors.real().length === 0, `dev ford keys: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+
+  // ---- the float ----
+  {
+    const { page, context, errors } = await open(browser, { biome: 'mountains', moving: '0' });
+    await page.evaluate(() => window.__ww.scene.pause());
+    await page.evaluate(FOLLOW);
+    const rows = [];
+    let noSteerOk = true, steerOk = true;
+    for (const width of ['narrow', 'wide']) {
+      for (const seed of [1, 2, 3, 5, 8, 13]) {
+        const idle = await page.evaluate(([w, s]) => window.__river('float', { seed: s, width: w }, 'none'), [width, seed]);
+        const steer = await page.evaluate(([w, s]) => window.__river('float', { seed: s, width: w }, 'steer'), [width, seed]);
+        const ib = idle.evs.filter((e) => e.type === 'float' && e.bump).length, sb = steer.evs.filter((e) => e.type === 'float' && e.bump).length;
+        const ie = idle.evs.find((e) => e.type === 'floatEnd'), se = steer.evs.find((e) => e.type === 'floatEnd');
+        if (!(ib >= 1 && ie && ie.bumps === ib && idle.closed)) noSteerOk = false;
+        if (!(sb === 0 && se && se.bumps === 0 && steer.closed)) steerOk = false;
+        rows.push(`${width}/${seed}: ${ib} bumps idle, ${sb} steered`);
+      }
+    }
+    check(noSteerOk, `float: no steering = at least one bump, floatEnd.bumps counts them (${rows.join('; ')})`);
+    check(steerOk, 'float: steering along the way through = 0 bumps on every seed, floatEnd { bumps: 0 }');
+    const one = await page.evaluate(() => window.__river('float', { seed: 4, width: 'narrow' }, 'none'));
+    const bumpEv = one.evs.find((e) => e.type === 'float');
+    check(bumpEv && Object.keys(bumpEv).filter((k) => k !== 'at').sort().join() === 'bump,type' && bumpEv.bump === true && Object.keys(one.evs.find((e) => e.type === 'floatEnd')).filter((k) => k !== 'at').sort().join() === 'bumps,type', 'float events: { type: "float", bump: true } and { type: "floatEnd", bumps }');
+    // the run's length: 6 s narrow, 9 s wide (ready 0.7 s + drift + 1 s to land)
+    const len = await page.evaluate(() => {
+      const out = {};
+      for (const w of ['narrow', 'wide']) {
+        const sc = window.__ww.scene; sc.startFloat({ seed: 2, width: w });
+        let drift0 = -1, drift1 = -1, n = 0, ended = -1;
+        for (; n < 60 * 40; n++) { const m = sc.debugMini(); if (!m) break; if (m.phase === 'drift' && drift0 < 0) drift0 = n; if (m.phase !== 'drift' && drift0 >= 0 && drift1 < 0) drift1 = n; if (m.phase === 'landed' && ended < 0) ended = n; sc.debugStep(1, false); }
+        out[w] = { drift: (drift1 - drift0) / 60, landedAt: ended / 60, total: n / 60 };
+      }
+      return out;
+    });
+    check(Math.abs(len.narrow.drift - 6) < 0.05 && Math.abs(len.wide.drift - 9) < 0.05, `the run is 6 s (narrow) / 9 s (wide) from top to bottom: ${len.narrow.drift} s / ${len.wide.drift} s (landing at ${len.narrow.landedAt.toFixed(1)} / ${len.wide.landedAt.toFixed(1)} s, scene back at ${len.narrow.total.toFixed(1)} / ${len.wide.total.toFixed(1)} s)`);
+    // the mini state while it runs, and screenshots
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.startFloat({ seed: 3, width: 'wide' }); sc.debugStep(10); });
+    await shot(page, 'float-1-start');
+    await page.evaluate(() => { const sc = window.__ww.scene; for (let n = 0; n < 160; n++) sc.debugStep(1, false); sc.debugStep(1); });
+    const fs = await state(page);
+    await shot(page, 'float-2-drift');
+    check(fs.mini && fs.mini.kind === 'float' && fs.mini.width === 'wide' && fs.mini.phase === 'drift' && fs.mini.progress > 0 && fs.mini.progress < 1 && 'bumps' in fs.mini, `getState().mini while floating: ${JSON.stringify(fs.mini)}`);
+    // steering by the keys (the scene sees the real keyboard) and by a drag (the real mouse)
+    await page.evaluate(() => window.__ww.scene.endMiniGame());
+    await page.evaluate(() => { window.__ww.scene.startFloat({ seed: 3, width: 'wide' }); });
+    await page.evaluate(() => window.__ww.scene.play());
+    await page.waitForTimeout(900);
+    const u0 = (await page.evaluate(() => window.__ww.scene.debugMini())).u;
+    await page.keyboard.down('ArrowLeft');
+    await page.waitForTimeout(500);
+    await page.keyboard.up('ArrowLeft');
+    const u1 = (await page.evaluate(() => window.__ww.scene.debugMini())).u;
+    await page.keyboard.down('ArrowRight');
+    await page.waitForTimeout(500);
+    await page.keyboard.up('ArrowRight');
+    const u2 = (await page.evaluate(() => window.__ww.scene.debugMini())).u;
+    check(u1 < u0 - 0.15 && u2 > u1 + 0.15, `the arrow keys steer: ← takes u ${u0.toFixed(2)} → ${u1.toFixed(2)}, → back to ${u2.toFixed(2)}`);
+    const dm = await page.evaluate(() => window.__ww.scene.debugMini());
+    const px = (u) => dm.x0 + u * dm.chan;
+    await page.mouse.move(px(dm.u), dm.y);
+    await page.mouse.down();
+    await page.mouse.move(px(0.85), dm.y, { steps: 6 });
+    await page.waitForTimeout(700);
+    await page.mouse.up();
+    const u3 = (await page.evaluate(() => window.__ww.scene.debugMini())).u;
+    await page.evaluate(() => window.__ww.scene.pause());
+    check(u3 > u2 + 0.2, `a drag steers: the raft followed the pointer from u ${u2.toFixed(2)} to ${u3.toFixed(2)}`);
+    // a bump: thud, splash, rocking (the raft's tilt) in the picture
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.endMiniGame(); sc.startFloat({ seed: 3, width: 'narrow' }); for (let n = 0; n < 6000; n++) { sc.debugStep(1, false); if (sc.debugMini().bumps > 0) break; } sc.debugStep(6); });
+    await shot(page, 'float-3-bump');
+    check((await state(page)).mini.bumps >= 1, 'a bump shows (BUMP!, a splash, the raft rocking)');
+    // endMiniGame early; the landing and cheer
+    const fe0 = (await events(page, 'floatEnd')).length;
+    const sum = await page.evaluate(() => window.__ww.scene.endMiniGame());
+    check(sum && sum.kind === 'float' && sum.finished === false && (await state(page)).mini === null && (await events(page, 'floatEnd')).length === fe0, `endMiniGame() on a float: ${JSON.stringify(sum)}`);
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.startFloat({ seed: 2, width: 'narrow' }); for (let n = 0; n < 60 * 20; n++) { if (sc.debugMini().phase === 'landed') break; sc.debugStep(1, false); } sc.debugStep(20); });
+    await shot(page, 'float-4-landed');
+    const lp = await info(page);
+    check(lp.particles.conf > 5 && (await state(page)).mini.phase === 'landed', `the landing: a small cheer (${lp.particles.conf} sparkles) and the party on the beach`);
+    await page.evaluate(() => window.__ww.scene.endMiniGame());
+    // portrait
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    const pf = await page.evaluate(() => window.__river('float', { seed: 7, width: 'narrow' }, 'steer'));
+    check(pf.evs.some((e) => e.type === 'floatEnd' && e.bumps === 0), 'the float in portrait: steering along the lane lands with no bumps');
+    await page.evaluate(() => { window.__ww.scene.startFloat({ seed: 7, width: 'wide' }); window.__ww.scene.debugStep(200); });
+    await shot(page, 'float-5-portrait');
+    check((await variety(page)) >= 14, 'the float draws in portrait');
+    await page.evaluate(() => window.__ww.scene.endMiniGame());
+    check(errors.real().length === 0, `float: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+  // dev.html: ?float=1 and key l
+  {
+    const { page, context, errors } = await open(browser, { float: '1', seed: '3' });
+    const s0 = await state(page);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('l');
+    await page.waitForTimeout(100);
+    const s1 = await state(page);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Shift+L');
+    await page.waitForTimeout(100);
+    const s2 = await state(page);
+    check(s0.mini && s0.mini.kind === 'float' && s1.mini.kind === 'float' && s1.mini.width === 'narrow' && s2.mini.width === 'wide', `dev.html ?float=1 and keys l / Shift+l (${s0.mini && s0.mini.kind}, ${s1.mini.width}, ${s2.mini.width})`);
+    check(errors.real().length === 0, `dev float: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+
+  // ---- the Columbia raft ----
+  {
+    const { page, context, errors } = await open(browser, { biome: 'prairie', moving: '0' });
+    await page.evaluate(() => window.__ww.scene.pause());
+    await page.evaluate(FOLLOW);
+    // steered along the calm lane, four bends: the markers pause until raftGo
+    const run = await page.evaluate(() => window.__river('raft', { seed: 5 }, 'steer', { hold: 100 }));
+    const mk = run.evs.filter((e) => e.type === 'raftMarker'), end = run.evs.filter((e) => e.type === 'raftEnd');
+    check(mk.length === 4 && mk.every((e, i) => e.n === i + 1 && e.of === 4 && Object.keys(e).filter((k) => k !== 'at').sort().join() === 'n,of,type'), `raft: four markers { n, of } in order (${mk.map((e) => e.n + '/' + e.of).join(' ')})`);
+    check(run.gos === 4 && run.waitY.length >= 4 * 100 - 8, `raft: the raft waits at each bend until raftGo (${run.gos} raftGo calls, waited ${run.waitY.length} frames)`);
+    const still = run.waitY.every((y) => Math.abs(y - run.waitY[0]) < 0.01);
+    check(still, 'raft: it stays put in the calm water while it waits (same y every frame)');
+    check(end.length === 1 && end[0].bumps === 0 && end[0].bends === 4 && Object.keys(end[0]).filter((k) => k !== 'at').sort().join() === 'bends,bumps,type' && run.closed, `raft: steered along the calm lane = raftEnd ${JSON.stringify(end[0])} and the scene goes back`);
+    check(['ready', 'drift', 'bend', 'turn', 'land', 'landed', 'vista'].every((p) => run.phases.includes(p)), `raft: it passes through ${run.phases.join(', ')}`);
+    check(mk[0].at < end[0].at && run.evs.indexOf(mk[3]) < run.evs.indexOf(end[0]), 'raft: raftEnd comes after the last marker');
+    // left alone: bumps (and the eddies spin it if it drifts in)
+    const idle = await page.evaluate(() => window.__river('raft', { seed: 5, length: 2 }, 'none', { hold: 30 }));
+    const ie = idle.evs.find((e) => e.type === 'raftEnd');
+    const ib = idle.evs.filter((e) => e.type === 'raft' && e.bump).length;
+    check(ie && ie.bumps >= 1 && ie.bumps === ib && ie.bends === 2 && idle.evs.filter((e) => e.type === 'raftMarker').length === 2, `raft with length 2, no steering: bumps ${ie && ie.bumps} (= ${ib} bump events), ${ie && ie.bends} bends, 2 markers`);
+    // raftGo: true only while waiting; the markers carry the length
+    const wg = await page.evaluate(() => {
+      const sc = window.__ww.scene; sc.startRaft({ seed: 2, length: 3 });
+      const early = sc.raftGo();
+      let n = 0;
+      for (; n < 60 * 30; n++) { if (sc.debugMini().waiting) break; window.__follow(sc); sc.debugStep(1, false); }
+      const m1 = sc.debugMini(), y1 = m1.y; sc.debugStep(120, false);
+      const m2 = sc.debugMini();
+      const first = sc.raftGo(), second = sc.raftGo();
+      sc.debugStep(30, false);
+      const m3 = sc.debugMini();
+      sc.endMiniGame();
+      return { early, first, second, wait: m1.waiting, waitAfter: m2.waiting, y1, y2: m2.y, progress: [m1.progress, m2.progress], phaseAfter: m3.phase, of: window.__ww.events.filter((e) => e.type === 'raftMarker').pop().of, left: m1.left };
+    });
+    check(wg.early === false && wg.wait && wg.waitAfter && wg.y1 === wg.y2 && wg.progress[0] === wg.progress[1] && wg.first === true && wg.second === false && wg.phaseAfter === 'turn' && wg.of === 3, `raftGo(): false before a bend, true once at a bend, false again; the raft does not move while it waits (${JSON.stringify(wg)})`);
+    // eddies: steer into one: the raft spins; steer out: it settles
+    const ed = await page.evaluate(() => {
+      const sc = window.__ww.scene; sc.startRaft({ seed: 9, length: 2 });
+      const spun = { max: 0, spins: 0, settled: null };
+      let hit = false;
+      for (let n = 0; n < 60 * 30; n++) {
+        const m = sc.debugMini();
+        if (!m || m.phase === 'bend') break;
+        if (m.phase === 'drift' || m.phase === 'ready') {
+          const e = m.eddies.find((q) => q.a > m.a - 0.02) || null;
+          if (e && !hit && m.a < e.a + 0.08) { sc.debugInput('pointer', m.x0 + e.u * m.chan, m.y); if (Math.abs(m.u - e.u) < 0.1 && Math.abs(m.a - e.a) < 0.06) hit = true; }
+          else if (hit || !e) window.__follow(sc, 0.0);
+        }
+        spun.max = Math.max(spun.max, Math.abs(m.ang)); spun.spins = m.spins;
+        sc.debugStep(1, false);
+      }
+      sc.debugStep(10, false);
+      const after = sc.debugMini();
+      spun.settled = after ? Math.abs(after.ang - Math.round(after.ang / (2 * Math.PI)) * 2 * Math.PI) : null;
+      sc.endMiniGame();
+      return spun;
+    });
+    check(ed.max > 1.2 && ed.spins >= 1, `raft: an eddy spins it (largest turn ${ed.max.toFixed(2)} rad, ${ed.spins} eddy entered)`);
+    check(ed.settled !== null && ed.settled < 0.5, `raft: out of the eddy the raft settles straight again (${ed.settled === null ? 'n/a' : ed.settled.toFixed(2)} rad off)`);
+    // pictures: the bend marker, the calm lane, the landing and the vista
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.startRaft({ seed: 12, length: 2 }); for (let n = 0; n < 60 * 20; n++) { window.__follow(sc); sc.debugStep(1, false); if (sc.debugMini().waiting) break; } sc.debugStep(30); });
+    await shot(page, 'raft-1-bend-1');
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.raftGo(); sc.debugStep(35); });
+    await shot(page, 'raft-2-turning');
+    await page.evaluate(() => { const sc = window.__ww.scene; for (let n = 0; n < 60 * 20; n++) { window.__follow(sc); sc.debugStep(1, false); if (sc.debugMini().waiting) break; } sc.raftGo(); for (let n = 0; n < 60 * 20; n++) { if (sc.debugMini().phase === 'drift' && sc.debugMini().valley) break; sc.debugStep(1, false); } sc.debugStep(120); });
+    await shot(page, 'raft-3-valley-stretch');
+    await page.evaluate(() => { const sc = window.__ww.scene; for (let n = 0; n < 60 * 20; n++) { window.__follow(sc); if (sc.debugMini().phase === 'landed') break; sc.debugStep(1, false); } sc.debugStep(30); });
+    await shot(page, 'raft-4-landing');
+    const landed = await state(page), li = await info(page);
+    check(landed.mini && landed.mini.phase === 'landed' && li.particles.conf > 30 && (await events(page, 'raftEnd')).length >= 3, `raft: the landing at the valley, the party cheering with confetti (${li.particles.conf} pieces, phase ${landed.mini && landed.mini.phase})`);
+    await page.evaluate(() => window.__ww.scene.debugStep(80));
+    await shot(page, 'raft-5-vista');
+    check((await state(page)).mini.phase === 'vista', 'raft: then the vista of the valley (phase vista)');
+    // endMiniGame mid-run
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.endMiniGame(); sc.startRaft({ seed: 3, length: 3 }); sc.debugStep(200, false); });
+    const re0 = (await events(page, 'raftEnd')).length;
+    const rsum = await page.evaluate(() => window.__ww.scene.endMiniGame());
+    check(rsum && rsum.kind === 'raft' && rsum.finished === false && (await state(page)).mini === null && (await events(page, 'raftEnd')).length === re0 && (await page.evaluate(() => window.__ww.scene.raftGo())) === false, `endMiniGame() on a raft: ${JSON.stringify(rsum)}`);
+    // portrait and a wide viewport
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { window.__ww.scene.startRaft({ seed: 4, length: 4 }); window.__ww.scene.debugStep(240); });
+    await shot(page, 'raft-6-portrait');
+    check((await variety(page)) >= 14, 'the raft draws in portrait');
+    const pr = await page.evaluate(() => { window.__ww.scene.endMiniGame(); return window.__river('raft', { seed: 4, length: 2 }, 'steer', { hold: 20 }); });
+    check(pr.evs.some((e) => e.type === 'raftEnd' && e.bumps === 0 && e.bends === 2), 'the raft in portrait: steering along the calm lane makes it through with no bumps');
+    check(errors.real().length === 0, `raft: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+  // dev.html: ?raft=1 and the keys r / Enter
+  {
+    const { page, context, errors } = await open(browser, { raft: '1', length: '2', seed: '6' });
+    const s0 = await state(page);
+    check(s0.mini && s0.mini.kind === 'raft' && s0.mini.length === 2, `dev.html ?raft=1&length=2 starts the raft (${JSON.stringify(s0.mini)})`);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('r');
+    await page.waitForTimeout(100);
+    check((await state(page)).mini.kind === 'raft', 'key r starts the Columbia raft');
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.pause(); for (let n = 0; n < 60 * 30; n++) { sc.debugStep(1, false); if (sc.debugMini().waiting) break; } });
+    await page.keyboard.press('Enter');
+    check((await state(page)).mini.phase === 'turn', 'Enter calls raftGo() at a bend');
+    check(errors.real().length === 0, `dev raft: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+
+  // ---- the buffalo stampede ----
+  {
+    const { page, context, errors } = await open(browser, { biome: 'prairie', moving: '0' });
+    await page.evaluate(() => window.__ww.scene.pause());
+    await page.evaluate(FOLLOW);
+    const good3 = await page.evaluate(() => window.__stampede(7, [true, true, true]));
+    const ev = (r, t) => r.evs.filter((e) => e.type === t);
+    check(ev(good3, 'stampede').length === 3 && ev(good3, 'stampede').every((e) => e.good === true && Object.keys(e).filter((k) => k !== 'at').sort().join() === 'good,type') && ev(good3, 'stampedeEnd').length === 1 && ev(good3, 'stampedeEnd')[0].held === true && good3.closed, `stampede: three good brakes = held: ${JSON.stringify(ev(good3, 'stampede').map((e) => e.good))}, ${JSON.stringify(ev(good3, 'stampedeEnd')[0])}`);
+    const bad = await page.evaluate(() => window.__stampede(7, [false, false, false]));
+    check(ev(bad, 'stampede').length === 3 && ev(bad, 'stampede').every((e) => e.good === false) && ev(bad, 'stampedeEnd')[0].held === false && bad.closed, `stampede: no brakes = not held, never a crash: ${JSON.stringify(ev(bad, 'stampede').map((e) => e.good))}, ${JSON.stringify(ev(bad, 'stampedeEnd')[0])}`);
+    const two = await page.evaluate(() => window.__stampede(7, [true, false, true]));
+    const one = await page.evaluate(() => window.__stampede(7, [false, true, false]));
+    check(ev(two, 'stampedeEnd')[0].held === true && ev(one, 'stampedeEnd')[0].held === false && ev(two, 'stampede').map((e) => e.good).join() === 'true,false,true' && ev(one, 'stampede').map((e) => e.good).join() === 'false,true,false', `held = at least two good (2 good: ${ev(two, 'stampedeEnd')[0].held}, 1 good: ${ev(one, 'stampedeEnd')[0].held})`);
+    check(['warn', 'run', 'cue'].every((p) => good3.phases.includes(p)) && good3.phases.includes('brake') && bad.phases.includes('dust') && good3.phases.includes('settle') && good3.maxShake > 0.5 && bad.maxHaze > 0.3 && bad.maxDust > 8, `the stampede's phases ${good3.phases.join('/')}; the ground shakes (${good3.maxShake.toFixed(1)} px), a miss raises the dust (haze ${bad.maxHaze.toFixed(2)}, ${bad.maxDust} puffs)`);
+    check(ev(good3, 'stampedeEnd')[0].at > ev(good3, 'stampede')[2].at, 'stampedeEnd comes after the third wave');
+    // an early tap is free (no event, no penalty); the sign comes before any decision
+    const early = await page.evaluate(() => window.__stampede(7, [true, true, true], { earlyTap: true }));
+    check(early.early >= 2 && ev(early, 'stampede').length === 3 && ev(early, 'stampede').every((e) => e.good === true), `a tap before the BRAKE sign is free (${early.early} early taps, still three good brakes)`);
+    // the run's timing
+    check(good3.frames / 60 > 15 && good3.frames / 60 < 45, `a stampede takes ${(good3.frames / 60).toFixed(1)} s with all three waves and the dust settling`);
+    // pictures
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.startStampede({ seed: 7 }); sc.debugStep(70); });
+    await shot(page, 'stampede-1-rumble');
+    await page.evaluate(() => { const sc = window.__ww.scene; for (let n = 0; n < 600 && !sc.debugMini().cue; n++) sc.debugStep(1, false); sc.debugStep(30); });
+    await shot(page, 'stampede-2-brake-sign');
+    check((await page.evaluate(() => window.__ww.scene.debugMini().cue)) === true && (await state(page)).mini.phase === 'cue', 'the BRAKE sign is up (phase cue)');
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.debugInput('pointer', 1, 1); sc.debugStep(25); });
+    await shot(page, 'stampede-3-whoa');
+    check((await state(page)).mini.good === 1 && (await state(page)).mini.phase === 'brake', 'a brake: WHOA! (the team and the bull stop)');
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.endMiniGame(); sc.startStampede({ seed: 9 }); for (let n = 0; n < 900; n++) { const m = sc.debugMini(); if (m.results.length >= 1) break; sc.debugStep(1, false); } sc.debugStep(20); });
+    await shot(page, 'stampede-4-pfft');
+    const ps = await info(page);
+    check((await state(page)).mini.phase === 'dust' && ps.dog === null, 'a miss: dust in everyone\'s face and "PFFT!" (phase dust)');
+    // the dog trots along through it
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.endMiniGame(); sc.setParty({ animal: 'oxen', companions: [{ id: 'a', hat: 'cap', color: '#d9534f' }, { id: 'b', hat: 'wide', color: '#5b8c5a' }, { id: 'c', hat: 'bonnet', color: '#f0a500' }], wagon: { paint: 'blue', flag: 'red', name: 'Dust Up' }, dog: { name: 'Biscuit', coat: 'spotted' } }); sc.startStampede({ seed: 5 }); sc.debugStep(200); });
+    await shot(page, 'stampede-5-with-the-dog');
+    check((await info(page)).dog.visible === true, 'the dog is along in the stampede');
+    await page.evaluate(() => window.__ww.scene.endMiniGame());
+    // endMiniGame early
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.startStampede({ seed: 2 }); sc.debugStep(200, false); });
+    const se0 = (await events(page, 'stampedeEnd')).length;
+    const ssum = await page.evaluate(() => window.__ww.scene.endMiniGame());
+    check(ssum && ssum.kind === 'stampede' && ssum.finished === false && (await state(page)).mini === null && (await events(page, 'stampedeEnd')).length === se0 && (await state(page)).view === 'trail', `endMiniGame() on a stampede: ${JSON.stringify(ssum)}`);
+    // reduced motion: no shaking
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.setReducedMotion(true); });
+    const rmRun = await page.evaluate(() => window.__stampede(7, [true, true, true]));
+    check(rmRun.maxShake === 0 && ev(rmRun, 'stampedeEnd').length === 1, 'reduced motion: the ground does not shake');
+    await page.evaluate(() => window.__ww.scene.setReducedMotion(false));
+    // the real keyboard and the real touch: wait for the sign, then ← (and again with Space, B and a touch)
+    for (const [name, press] of [['ArrowLeft', (p) => p.keyboard.press('ArrowLeft')], ['Space', (p) => p.keyboard.press('Space')], ['b', (p) => p.keyboard.press('b')], ['a touch', (p) => p.touchscreen.tap(300, 200)]]) {
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.endMiniGame(); sc.startStampede({ seed: 7 }); sc.play(); });
+      await page.waitForFunction(() => window.__ww.scene.debugMini().cue, null, { timeout: 8000 });
+      const before = (await events(page, 'stampede')).length;
+      await press(page);
+      await page.waitForTimeout(80);
+      const evs = await events(page, 'stampede');
+      check(evs.length === before + 1 && evs[evs.length - 1].good === true, `the real ${name} brakes at the sign (${JSON.stringify(evs[evs.length - 1])})`);
+      await page.evaluate(() => window.__ww.scene.pause());
+    }
+    await page.evaluate(() => window.__ww.scene.endMiniGame());
+    // portrait
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.startStampede({ seed: 7 }); for (let n = 0; n < 600 && !sc.debugMini().cue; n++) sc.debugStep(1, false); sc.debugStep(20); });
+    await shot(page, 'stampede-6-portrait');
+    check((await variety(page)) >= 14, 'the stampede draws in portrait');
+    await page.evaluate(() => window.__ww.scene.endMiniGame());
+    // the other biome
+    await page.setViewportSize({ width: 844, height: 390 });
+    await page.waitForTimeout(300);
+    await page.evaluate(() => { const sc = window.__ww.scene; sc.setLeg({ id: 'chimney-rock', biome: 'bluffs', miles: 160, stop: { kind: 'landmark' } }); sc.startStampede({ seed: 3 }); for (let n = 0; n < 600 && !sc.debugMini().cue; n++) sc.debugStep(1, false); sc.debugStep(10); });
+    await shot(page, 'stampede-7-bluffs');
+    check((await variety(page)) >= 14, 'the stampede draws on the bluffs too');
+    await page.evaluate(() => window.__ww.scene.endMiniGame());
+    check(errors.real().length === 0, `stampede: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+  // dev.html: ?stampede=1 and the key s
+  {
+    const { page, context, errors } = await open(browser, { stampede: '1', seed: '7' });
+    const s0 = await state(page);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('s');
+    await page.waitForTimeout(100);
+    const s1 = await state(page);
+    check(s0.mini && s0.mini.kind === 'stampede' && s1.mini && s1.mini.kind === 'stampede' && s1.mini.good === 0, `dev.html ?stampede=1 and key s start the stampede (${JSON.stringify(s1.mini)})`);
+    check(errors.real().length === 0, `dev stampede: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+  // the other mini-games still work next to the new ones (hunt, fishing, the derby)
+  {
+    const { page, context, errors } = await open(browser, { biome: 'prairie', moving: '0' });
+    await page.evaluate(() => window.__ww.scene.pause());
+    const r = await page.evaluate(() => {
+      const sc = window.__ww.scene, out = [];
+      for (const [start, kind] of [['startHunt', 'hunt'], ['startFish', 'fish'], ['startDerby', 'derby'], ['startFord', 'ford'], ['startFloat', 'float'], ['startRaft', 'raft'], ['startStampede', 'stampede']]) {
+        sc[start]({ seed: 1 }); sc.debugStep(30);
+        const m = sc.getState().mini; out.push(m && m.kind);
+      }
+      const last = sc.endMiniGame();
+      return { out, last: last && last.kind, after: sc.getState().mini };
+    });
+    check(r.out.join() === 'hunt,fish,derby,ford,float,raft,stampede' && r.last === 'stampede' && r.after === null, `starting one mini-game over another replaces it (${r.out.join(' > ')})`);
+    check(errors.real().length === 0, `mini-games in a row: no console errors (${errors.real().join(' | ')})`);
+    await context.close();
+  }
+
   // ---- 8. perf: real frames at 4x CPU throttle on a phone-sized canvas ----
   if (!process.env.SKIP_PERF) {
     const PERF_MS = Number(process.env.PERF_MS || 8);
@@ -678,6 +1188,10 @@ try {
       ['the hunt in the rain', { biome: 'prairie', weather: 'rain' }, () => window.__ww.scene.startHunt({ seed: 5, shots: 5 })],
       ['the river crossing at camp-time dusk', { biome: 'gorge', backdrop: 'river', weather: 'dusk' }, () => window.__ww.scene.celebrate('river')],
       ['a rainy trail with the dog, a herd and barks', { biome: 'prairie', weather: 'rain', pace: 'brisk', dog: 'spotted' }, () => { const sc = window.__ww.scene; sc.spotAnimal('bison'); sc.spotAnimal('pronghorn'); sc.dogBark(); setInterval(() => sc.dogBark(), 900); }],
+      ['the buffalo stampede (a herd, dust, the BRAKE sign, the dog)', { biome: 'prairie', dog: 'spotted', weather: 'rain' }, () => { const sc = window.__ww.scene; sc.startStampede({ seed: 3 }); setInterval(() => { const m = sc.debugMini(); if (!m) sc.startStampede({ seed: 4 }); else if (m.cue && Math.random() < 0.15) sc.debugInput('pointer', 1, 1); }, 90); }],
+      ['the Columbia raft (rocks, eddies, bends, steering)', { biome: 'gorge', weather: 'rain' }, () => { const sc = window.__ww.scene; sc.startRaft({ seed: 2, length: 4 }); setInterval(() => { const m = sc.debugMini(); if (!m) { sc.startRaft({ seed: 3, length: 4 }); return; } if (m.waiting) { sc.raftGo(); return; } if (m.phase !== 'drift') return; const f = Math.min(1, m.a + 0.03) * 20, i = Math.min(19, Math.floor(f)); const u = m.route[i] + (m.route[i + 1] - m.route[i]) * (f - i); sc.debugInput('pointer', m.x0 + u * m.chan, m.y); }, 100); }],
+      ['the float on a wide river', { biome: 'mountains' }, () => { const sc = window.__ww.scene; sc.startFloat({ seed: 6, width: 'wide' }); setInterval(() => { if (!sc.debugMini()) sc.startFloat({ seed: 7, width: 'wide' }); }, 200); }],
+      ['the ford with a swell every 1.4 s', { biome: 'highdesert', dog: 'brown' }, () => { const sc = window.__ww.scene; sc.startFord({ seed: 6, width: 'wide' }); setInterval(() => { const m = sc.debugMini(); if (!m) sc.startFord({ seed: 7, width: 'wide' }); else if (m.ready && Math.random() < 0.3) sc.debugInput('pointer', 1, 1); }, 120); }],
       ['Fort Derby with the dog (bursts and the finish)', { biome: 'highdesert', backdrop: 'fort', dog: 'brown' }, () => { const sc = window.__ww.scene; sc.startDerby({ seed: 3, length: 200 }); setInterval(() => { const s = sc.getState(); if (!s.mini) sc.startDerby({ seed: 4, length: 200 }); else if (s.mini.phase === 'wait') sc.derbyBurst(1); }, 60); }],
     ]) {
       const { page, context, errors } = await open(browser, params);
