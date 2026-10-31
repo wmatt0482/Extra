@@ -1,0 +1,10 @@
+// Only this game's caches are retired. Family and voice APIs stay network-only; prepared voice clips are shared.
+const VERSION='build-crew-v0.1.0',PREFIX='build-crew-',TTS_CACHE='spell-jump-tts-v1';
+importScripts('./offline.js');
+self.addEventListener('install',event=>event.waitUntil((async()=>{const cache=await caches.open(VERSION);await cache.addAll(SHELL.map(u=>new Request(u,{cache:'reload'})));await self.skipWaiting();})()));
+self.addEventListener('activate',event=>event.waitUntil((async()=>{await Promise.all((await caches.keys()).filter(k=>k.startsWith(PREFIX)&&k!==VERSION).map(k=>caches.delete(k)));await self.clients.claim();})()));
+self.addEventListener('message',event=>{if(event.data?.type==='cache-urls')event.waitUntil((async()=>{const cache=await caches.open(VERSION);await Promise.allSettled(event.data.urls.filter(u=>{const url=new URL(u,self.location.href);return url.origin===self.location.origin&&!url.pathname.startsWith('/api/');}).map(u=>cache.add(new Request(u,{cache:'reload'}))));})());});
+self.addEventListener('fetch',event=>{const req=event.request,url=new URL(req.url);if(req.method!=='GET'||url.origin!==self.location.origin)return;if(url.pathname.startsWith('/api/tts/clip/')){event.respondWith((async()=>{const cache=await caches.open(TTS_CACHE),hit=await cache.match(req);if(hit)return hit;const res=await fetch(req);if(res.ok)await cache.put(req,res.clone());return res;})());return;}if(url.pathname.startsWith('/api/'))return;
+  const navigation=req.mode==='navigate',fresh=navigation||url.pathname.endsWith('/src/main.js');
+  event.respondWith((async()=>{const cache=await caches.open(VERSION),key=navigation?new Request(new URL('./',self.location.href)):req,hit=await cache.match(key);const network=fetch(req).then(res=>{if(res.ok)cache.put(key,res.clone());return res;});if(fresh){try{return await Promise.race([network,new Promise((_,reject)=>setTimeout(()=>reject(Error('offline')),3000))]);}catch{if(hit)return hit;throw Error('not cached');}}if(hit){event.waitUntil(network.catch(()=>{}));return hit;}return network;})());
+});

@@ -1,0 +1,10 @@
+{
+  "three": "0.170.0",
+  "rapier3d-compat": "0.17.3",
+  "sha256": {
+    "three.module.js": "08fd7545d13d2c7fb65ab691530a802dafefd638596501854f267d0fb13c39e7",
+    "THREE-LICENSE.txt": "4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454",
+    "RAPIER-LICENSE.txt": "4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454",
+    "rapier.mjs": "e0f7783dae9d3d175ec62c0cafdad84261d8c64c5f7da6ae5b24e858cf9ab759"
+  }
+}

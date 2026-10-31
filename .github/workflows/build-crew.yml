@@ -1,0 +1,46 @@
+name: Build Crew first flight
+on:
+  push:
+    branches: [codex/build-crew]
+  pull_request:
+    branches: [claude/extra-v0]
+    paths: ['build-crew/**', 'car-jump/src/sync/protocol.mjs', 'car-jump/tools/spelling-tests.mjs', 'build.sh', 'netlify.toml', 'site/**', '.github/workflows/build-crew.yml']
+permissions:
+  contents: read
+jobs:
+  playable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Headless physics and shared sync regressions
+        run: |
+          node build-crew/tools/physics-tests.mjs
+          node car-jump/tools/spelling-tests.mjs
+          bash build.sh
+      - name: Install test tooling outside the static game
+        run: |
+          npm install --prefix "$RUNNER_TEMP/build-crew-tools" playwright@1.58.2
+          "$RUNNER_TEMP/build-crew-tools/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Real browser solutions, visual evidence and frame budget
+        env:
+          BASE_URL: http://localhost:8080
+          PLAYWRIGHT_MODULE: /tmp/build-crew-playwright.mjs
+        run: |
+          ln -s "$RUNNER_TEMP/build-crew-tools/node_modules/playwright/index.mjs" /tmp/build-crew-playwright.mjs
+          python3 -m http.server 8080 > "$RUNNER_TEMP/build-crew-server.log" 2>&1 &
+          for attempt in {1..30}; do curl -fs http://localhost:8080/build-crew/ > /dev/null && break || sleep 1; done
+          node build-crew/tools/browser-smoke.mjs
+          node build-crew/tools/frame-check.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-crew-evidence
+          path: |
+            build-crew/docs/screenshots/
+            build-crew/docs/*results.json
+            build-crew/docs/*failure.json
+          retention-days: 14

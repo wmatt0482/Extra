@@ -1,0 +1,136 @@
+// App orchestration. Shared family, PIN, speech, sync and reports remain live imports from Spell Jump.
+import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
+import { createKeyboard } from '../../spell-jump/src/spelling/keyboard.js';
+import { tts } from '../../spell-jump/src/spelling/tts.js';
+import { createCloudVoice } from '../../spell-jump/src/spelling/cloudVoice.js';
+import { DEFAULT_CLOUD_VOICE } from '../../spell-jump/src/tts/voices.js';
+import { createParentZone } from '../../spell-jump/src/ui/parentZone.js';
+import { dayChart, lastDays, dayKey } from '../../spell-jump/src/ui/chart.js';
+import { $, h } from '../../spell-jump/src/ui/dom.js';
+import { hydrateIcons, icon } from '../../spell-jump/src/ui/icons.js';
+import { Audio } from '../../spell-jump/src/audio.js';
+import { createSyncClient } from '../../spell-jump/src/sync/client.js';
+import { createPinger } from '../../spell-jump/src/meta/pings.js';
+import { createUpdateGuard, safeToReload } from '../../spell-jump/src/meta/selfUpdate.js';
+import { completeDay, refreshStreak } from '../../spell-jump/src/meta/engagement.js';
+import { ROUNDS, SANDBOX, MACHINES, TOYS, COLORS, VERSION, HINTS, VOICE_LINES } from './content.mjs';
+import { initPhysics, Yard, DT } from './physics.mjs';
+import { Mission } from './missions.mjs';
+import { Scene } from './scene.js';
+import { createControls } from './controls.js';
+import { defaultSave, loadSave, normalize, normalizeYard } from './meta/save.mjs';
+import { registerSync, writeSave } from './meta/sync.js';
+import { Music } from './meta/music.js';
+import { Sound } from './meta/sound.js';
+const params=new URLSearchParams(location.search),testing=params.get('test')==='1',sleep=ms=>new Promise(r=>setTimeout(r,ms));
+const settings=(()=>{try{return {sound:true,music:true,reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches,...JSON.parse(localStorage.getItem('buildCrew.settings')||'{}')};}catch{return {sound:true,music:true,reducedMotion:false};}})();
+let family=Profiles.loadFamily(),playerId=family.lastPlayer||family.players[0]?.id||null,save=playerId?loadSave(playerId):defaultSave();
+let yard,scene,mission,screen='title',paused=false,keyboard=null,stamp=null,spawnColor=COLORS[0],last=0,acc=0,playStart=null,lastChime=0,hintIndex=0,said=new Set(),voiceKey='',pz;
+const samples={frame:[],update:[],render:[]};
+registerSync();
+const sync=createSyncClient({canApply:()=>screen==='title'&&!pz?.isOpen,onApply(k){if(k==='family'){family=Profiles.loadFamily();if(!Profiles.playerById(family,playerId))playerId=family.players[0]?.id||null;}if(k==='family'||k===`${playerId}.bc`){save=playerId?loadSave(playerId):defaultSave();applyVoice();renderTitle();}pz?.onSyncApplied();},onStatus(){pz?.onSyncStatus();if(playerId)applyVoice();}});
+const ping=createPinger('build-crew',{version:VERSION,getCode:()=>sync.code});
+const cloud=createCloudVoice({getCode:()=>sync.code,getWords:()=>[],audio:Audio});tts.setCloud(cloud);tts.setOnSpeaking(on=>{Audio.voice(on);Music.duck(on);});
+function persist(){if(playerId&&!writeSave(playerId,save)){toast('The device could not save. Your previous save is safe.');return false;}return true;}
+function toast(text){const e=h('div',{class:'toast'},text);$('#toasts').append(e);setTimeout(()=>e.remove(),4200);}
+function setSetting(k,v){settings[k]=v;try{localStorage.setItem('buildCrew.settings',JSON.stringify(settings));}catch{}Audio.setSound(settings.sound);Audio.music(false);Music.on(settings.music);Sound.on(settings.sound);document.documentElement.classList.toggle('reduced-motion',settings.reducedMotion);if(scene)scene.reducedMotion=settings.reducedMotion;}
+function applyVoice(){if(!playerId)return;const o=Profiles.playerOptions(family,playerId);tts.setRate(o.rate);tts.setVoice(o.voiceName?{name:o.voiceName,lang:o.voiceLang}:null);cloud.setVoice(o.cloudVoice||'');const key=`${playerId}|${cloud.voice}|${sync.code||''}`;if(key!==voiceKey){voiceKey=key;prepareVoice();}if(o.cloudVoice===undefined&&sync.code)cloudDefault(playerId);}
+let defaultPending=false;
+async function cloudDefault(id){if(defaultPending)return;defaultPending=true;try{await cloud.status();const o=Profiles.playerOptions(family,id);if(cloud.server.key&&sync.code&&o.cloudVoice===undefined){Profiles.setPlayerOption(family,id,'cloudVoice',DEFAULT_CLOUD_VOICE);Profiles.writeFamily(family);if(id===playerId){voiceKey='';applyVoice();}}}finally{defaultPending=false;}}
+function prepareVoice(){if(!playerId||!cloud.active)return;cloud.prepareList().catch(()=>{});cloud.prepare(VOICE_LINES).catch(()=>{});}
+function voiceFor(texts){if(!cloud.active)return Promise.resolve();const needed=[...new Set(texts)].filter(t=>!cloud.has(t));return needed.length?Promise.race([cloud.prepare(needed).catch(()=>null),sleep(2500)]):Promise.resolve();}
+let speechEpoch=0;
+async function say(text){const epoch=++speechEpoch;tts.cancel();await voiceFor([text]);if(epoch!==speechEpoch||document.hidden)return;return tts.say(text);}
+cloud.onChange(()=>pz?.onCloudStatus());
+const activePlay=()=>screen==='play'&&!paused&&!pz?.isOpen&&!document.hidden&&$('#modal').hidden;
+function account(){const now=Date.now();if(playStart!==null&&playerId){let from=playStart;while(from<now){const end=new Date(from);end.setHours(24,0,0,0);const to=Math.min(now,end.getTime());const key=dayKey(from);save.play[key]||={rounds:0,seconds:0};save.play[key].seconds+=(to-from)/1000;from=to;}}playStart=activePlay()?now:null;}
+function flush(){account();persist();}
+function modal(title,children){account();controls?.setEnabled(false);$('#modal-body').replaceChildren(h('h2',{id:'modal-title'},title),...children);$('#modal').hidden=false;playStart=null;Music.play(false);$('#modal-close').focus();}
+function closeModal(){keyboard?.destroy();keyboard=null;$('#modal').hidden=true;paused=false;controls?.setEnabled(screen==='play'&&!pz?.isOpen);account();Music.play(true);$('#pause').focus();}
+function newPlayer(){let name='';const out=h('div',{class:'name-display',role:'status'},'Your name');keyboard?.destroy();keyboard=createKeyboard({enterLabel:'Ready',onKey(c){name=(name+c).slice(0,Profiles.MAX_NAME);draw();},onBackspace(){name=name.slice(0,-1);draw();},onEnter(){const p=Profiles.createPlayer(family,name,Profiles.PLAYER_COLORS[family.players.length%6]);if(!p)return;closeModal();selectPlayer(p.id);}});function draw(){out.textContent=name||'Your name';keyboard.setEnterEnabled(!!Profiles.cleanName(name));}modal('Who is building?',[h('p',{},'Your crew will remember your jobs and your yard.'),out,keyboard.el]);keyboard.setActive(true);draw();}
+function selectPlayer(id){account();persist();playerId=id;save=loadSave(id);family.lastPlayer=id;Profiles.writeFamily(family);refreshStreak(save,Date.now());persist();voiceKey='';applyVoice();renderTitle();}
+function availableMachines(){return Object.keys(MACHINES).filter(k=>k==='skid'||save.unlockAll||save.rewards.includes(k));}
+function ensurePlayer(then){if(playerId){then();return;}newPlayer();}
+function machineArt(kind){const c=MACHINES[kind].color;return `<svg viewBox="0 0 64 46" aria-hidden="true"><rect x="7" y="30" width="45" height="10" rx="5" fill="#43564c"/><rect x="18" y="9" width="22" height="25" rx="3" fill="${c}"/><rect x="22" y="13" width="14" height="12" rx="2" fill="#8cbcc1"/><circle cx="25" cy="18" r="2" fill="#fff5dc"/><circle cx="33" cy="18" r="2" fill="#fff5dc"/>${kind==='crane'?'<path d="M39 29L48 3L60 10" stroke="'+c+'" stroke-width="6" fill="none"/><path d="M59 10v19" stroke="#455f56" stroke-width="2"/>':kind==='excavator'?'<path d="M39 25L46 5L57 17L54 32" stroke="'+c+'" stroke-width="6" fill="none"/>':'<path d="M37 20L49 30L60 31" fill="none" stroke="'+c+'" stroke-width="6"/>'}<circle cx="17" cy="35" r="5" fill="#f4d17d"/><circle cx="43" cy="35" r="5" fill="#f4d17d"/></svg>`;}
+function renderTitle(){
+  const row=$('#profile-row');row.replaceChildren(...family.players.map(p=>h('button',{class:'profile-button'+(p.id===playerId?' on':''),'data-profile':p.id,onclick:()=>selectPlayer(p.id)},h('span',{class:'avatar-dot',style:{background:p.color}},p.name[0].toUpperCase()),p.name)));
+  if(family.players.length<Profiles.MAX_PLAYERS)row.append(h('button',{class:'profile-button',id:'add-player',onclick:newPlayer},'+ Add builder'));
+  $('#done-total').textContent=`${save.done.length} / 10`;$('#play').firstChild.textContent=save.done.length===10?'Build again ':save.done.length?'Keep building ':"Let's build ";
+  $('#my-yard').hidden=!save.yard;$('#saved-thumb').replaceChildren();if(save.yard)try{const src=localStorage.getItem(`buildCrew.${playerId}.thumb`);if(src)$('#saved-thumb').append(h('img',{src,alt:'Your saved construction yard'}));}catch{}
+  const looks=$('#looks');looks.replaceChildren();for(const [k,label]of [['stock','Original'],['cream','Cream'],['leaf','Leaf'],['sky','Sky'],['sunset','Sunset']])if(k==='stock'||save.rewards.includes(k))looks.append(h('button',{'aria-pressed':String(save.paint===k),onclick(){save.paint=k;persist();scene.paint=k;renderTitle();}},label));
+  for(const decal of ['star','stripe'])if(save.rewards.includes(decal))looks.append(h('button',{'aria-pressed':String(save.decal===decal),onclick(){save.decal=save.decal===decal?'none':decal;persist();scene.decal=save.decal;toast(decal==='star'?'A star for your crew!':'Racing stripes!');}},decal==='star'?'★ Decal':'▧ Stripes'));
+  if(save.rewards.includes('bell'))looks.append(h('button',{onclick(){save.horn=save.horn==='bell'?'stock':'bell';persist();Sound.horn(save.horn==='bell');}},'♫ Horn'));
+}
+function makeWorld(round,snapshot){yard?.destroy();yard=new Yard(round,{onEvent(event){if(event.type==='impact')Sound.impact(event.force);if(event.type==='glitter')scene?.emit(event.position,'#def8e7',25);if(event.type==='stamp')scene?.syncStamps();}});if(snapshot)yard.restore(snapshot);mission=round.id?new Mission(round):null;scene.setRound(yard);scene.paint=save.paint;scene.decal=save.decal;scene.daylightTo(snapshot?.daylight??.72);acc=0;last=0;}
+function startRound(id,{restore=false}={}){
+  if(!playerId)return;account();persist();closeModal();screen='play';paused=false;stamp=null;$('#tray').hidden=true;$('#hud').hidden=false;$('#title').hidden=$('#title-head').hidden=$('#title-foot').hidden=true;
+  const round=id?ROUNDS.find(r=>r.id===id):{...SANDBOX,machines:availableMachines()};makeWorld(round,restore?save.yard:null);scene.overview=false;controls.setEnabled(true);$('#job-number').textContent=id?`THE YARD / JOB ${String(id).padStart(2,'0')}`:'THE YARD / FREE PLAY';$('#job-title').textContent=round.title;$('#goal').textContent=round.goal;
+  for(const el of ['open-tray','save-yard'])$('#'+el).hidden=!!id;$('#wreck').hidden=!(save.unlockAll||save.rewards.includes('wrecking'));$('#clear-yard').hidden=!!id;
+  renderMachines();updateUI();hintIndex=0;said=new Set();showHint(MACHINES[yard.machine.kind].hint);prepareVoice();say(round.goal);account();
+}
+function title(){account();persist();controls.clear();controls.setEnabled(false);screen='title';paused=false;closeModal();screen='title';controls.setEnabled(false);$('#hud').hidden=true;$('#title').hidden=$('#title-head').hidden=$('#title-foot').hidden=false;scene.overview=true;renderTitle();Music.play(true);updater.check();sync.syncNow();}
+function renderMachines(){const el=$('#machines');el.replaceChildren(...yard.machines.map((m,i)=>h('button',{class:'machine-card'+(yard.active===i?' on':''),'data-machine':m.kind,'aria-pressed':String(yard.active===i),onclick(){yard.select(i);renderMachines();showHint(MACHINES[m.kind].hint);}},h('span',{html:machineArt(m.kind)}),h('span',{},h('b',{},MACHINES[m.kind].name),h('small',{},MACHINES[m.kind].label)))));
+  const kind=yard.machine.kind;$('#tool-label').innerHTML=kind==='crane'?'HOIST & SWING <small>I J K L</small>':kind==='excavator'?'BOOM & STICK <small>I J K L</small>':'LIFT & TILT <small>I J K L</small>';
+  for(const b of document.querySelectorAll('[data-hold]')){const axis=b.dataset.hold.split(':')[0];b.hidden=axis==='swing'?kind!=='excavator':axis==='extend'?kind!=='crane':kind==='crane';}
+  updateUI();}
+function showHint(text){$('#hint').textContent=text;}
+function action(a){if(a==='pause'){if(screen!=='play')return;if(!$('#modal').hidden){closeModal();return;}pause();return;}if(!activePlay())return;if(a==='grab'){if(!yard.grab())showHint('Bring the tool close to a block, then press Grab.');else if(yard.held)showHint('Lift it a little, then carry it to the outline.');updateUI();}if(a==='hop'){yard.hop();renderMachines();}if(a==='reset'){yard.resetMachine();toast('Back on steady ground.');}if(a==='horn')Sound.horn(save.horn==='bell');}
+function pause(){account();paused=true;modal('A little breather',[h('p',{},'Your yard will wait right here.'),h('div',{class:'modal-actions'},h('button',{class:'primary',id:'resume',onclick:closeModal},'Keep building'),h('button',{onclick:title},'Back to the yard gate'),h('button',{id:'pause-sound',onclick(){setSetting('sound',!settings.sound);this.textContent=`Sound ${settings.sound?'on':'off'}`;}},`Sound ${settings.sound?'on':'off'}`),h('button',{id:'pause-music',onclick(){setSetting('music',!settings.music);this.textContent=`Music ${settings.music?'on':'off'}`;}},`Music ${settings.music?'on':'off'}`),h('button',{id:'pause-motion',onclick(){setSetting('reducedMotion',!settings.reducedMotion);this.textContent=settings.reducedMotion?'Calm motion':'Full motion';}},settings.reducedMotion?'Calm motion':'Full motion'))]);}
+let lastCount=0;
+function updateUI(){if(!yard)return;$('#grab').innerHTML=`${icon(yard.held?'air':'land')} ${yard.held?'Release':'Grab'} <kbd>SPACE</kbd>`;$('#progress').textContent=mission?`${mission.status.count} / ${mission.status.total} placed`:`${yard.blocks.length} toys in your yard`;}
+function step(input){yard.step(input);if(mission&&!mission.complete){const was=mission.status.count;const done=mission.step(yard.poses(),yard.held?.id,DT);if(mission.status.count>was&&yard.time-lastChime>.25){lastChime=yard.time;Audio.coin();}if(done)win();}const arm=(Math.abs(input.lift||0)+Math.abs(input.tool||0));if(arm>.1&&!said.has('tool')){said.add('tool');showHint('Bring the tool close to a block, then press Grab.');}if(Math.abs(input.drive||0)>.1&&!said.has('drive')){said.add('drive');showHint('Try I and K, or the right stick, to lift your tool.');}}
+function win(){if(screen!=='play')return;const r=yard.round;account();if(!save.done.includes(r.id)){save.done.push(r.id);save.rewards.push(r.unlock);const key=dayKey(Date.now());save.play[key]||={rounds:0,seconds:0};save.play[key].rounds++;completeDay(save,Date.now());}persist();ping('round');scene.celebrate();Music.celebrate();Audio.coin();updateUI();
+  modal('You built it!',[h('div',{class:'celebration-stamp',html:icon('trophy')}),h('p',{},`Lovely work! You earned ${r.reward}.`),h('div',{class:'modal-actions'},h('button',{class:'primary',id:'next-round',onclick:()=>r.id<10?startRound(r.id+1):startRound(0)},r.id<10?'Next little job':'Play in your yard'),h('button',{id:'keep-playing',onclick(){mission=null;closeModal();}},'Keep playing here'),h('button',{onclick:title},'Back to the gate'))]);say(`Lovely work! You earned ${r.reward}.`);
+}
+const controls=createControls($('#world'),{action,orbit:(x,y)=>scene?.orbit(x,y),zoom:d=>scene?.zoom(d),tap(e){if(!stamp||yard.round.id)return;const p=scene.groundPoint(e);if(p){if(yard.stamp(stamp,p.x,p.z)){scene.syncStamps();toast('A new piece of your yard.');stamp=null;}else toast('Try a clear patch. There is room for twelve terrain pieces.');}}});
+function resetBlocks(){const round=yard.round;makeWorld(round);scene.overview=false;renderMachines();updateUI();showHint('All set. Keep building!');}
+function saveYard(){flush();const snapshot=normalizeYard({...yard.snapshot(),daylight:scene.daylight});const old=save.yard;save.yard=snapshot;if(!persist()){save.yard=old;return;}try{localStorage.setItem(`buildCrew.${playerId}.thumb`,scene.thumbnail());}catch{}toast('Your yard is saved.');say('Your yard is saved.');}
+function buildTray(){
+  $('#toys').replaceChildren(...Object.entries(TOYS).map(([kind,d])=>h('button',{'data-spawn':kind,onclick(){if(yard.blocks.length>=64){toast('Your yard is full. Save it, or clear some room.');return;}const body=yard.spawn({type:kind,color:spawnColor,x:-10,y:4+Math.floor(yard.blocks.length/8)*.4,z:10});if(body){scene.emit({x:-10,y:3,z:10});updateUI();}}},d.name)));
+  $('#colors').replaceChildren(...COLORS.map(color=>h('button',{class:'swatch'+(color===spawnColor?' on':''),'aria-label':`Toy color ${color}`,style:{background:color},onclick(){spawnColor=color;buildTray();}})));
+  $('#terrain').replaceChildren(...['hill','pit','ramp','water'].map(kind=>h('button',{'data-stamp':kind,onclick(){stamp=kind;$('#tray').hidden=true;showHint(`Tap a clear patch of ground for your ${kind}.`);}},kind[0].toUpperCase()+kind.slice(1))));
+}
+function jobBoard(){modal('The job board',[h('p',{},'One little job at a time. Finished jobs are yours to build again.'),h('div',{class:'job-grid'},...ROUNDS.map(r=>h('button',{class:'job-tile','data-job':r.id,disabled:!testing&&r.id>1&&!save.done.includes(r.id-1),onclick:()=>startRound(r.id)},h('b',{},`${save.done.includes(r.id)?'✓ ':''}${String(r.id).padStart(2,'0')} / ${r.title}`),h('small',{},r.reward))))]);}
+// The shared zone owns all PIN entry, family transport and voice controls. Its live unlocked content gets a game report.
+const parentApp={
+  get family(){return family;},get currentPlayerId(){return playerId;},audio:Audio,tts,cloud,sync,version:VERSION,toast,ping,
+  wordsFor:Profiles.loadWords,saveWordsFor:Profiles.writeWords,persistFamily:()=>Profiles.writeFamily(family),
+  onOptionsChanged(id){if(id===playerId){voiceKey='';applyVoice();}},cloudDefault,cloudPrepareFor:async()=>{prepareVoice();await cloud.prepareList();},
+  settingsFor:()=>({...settings,shake:0}),setSettingFor:(_,k,v)=>setSetting(k,v),
+  resetGameFor(id){const fresh=defaultSave();fresh.resetAt=Date.now();writeSave(id,fresh);if(id===playerId)save=fresh;},
+  removePlayer(id){Profiles.removePlayer(family,id);if(id===playerId){playerId=family.players[0]?.id||null;save=playerId?loadSave(playerId):defaultSave();}},
+  onParentZoneClosed(){family=Profiles.loadFamily();save=playerId?loadSave(playerId):defaultSave();applyVoice();renderTitle();controls.setEnabled(screen==='play'&&$('#modal').hidden);account();Music.play(true);},reloadNow(){flush();location.reload();},go:()=>newPlayer(),
+  async exportProgress(id){return JSON.stringify({game:'build-crew',name:Profiles.playerById(family,id)?.name,save:loadSave(id)});},
+  async importProgress(text){try{if(text.length>200000)return {ok:false,error:'That transfer is too large.'};const r=JSON.parse(text);if(r.game!=='build-crew'||!r.save)return {ok:false,error:'Use a Build Crew transfer.'};let p=family.players.find(p=>p.name===Profiles.cleanName(r.name));if(!p)p=Profiles.createPlayer(family,r.name);if(!p)return {ok:false,error:'Add a player or make room for this builder first.'};const {mergeBc}=await import('./meta/save.mjs');writeSave(p.id,mergeBc({updatedAt:Date.now(),data:loadSave(p.id)},{updatedAt:0,data:r.save}));return {ok:true,message:'Build Crew progress imported.',mode:'add'};}catch{return {ok:false,error:'That transfer could not be read.'};}},
+};
+pz=createParentZone(parentApp);
+function parentExtras(){
+  if($('#pz').hidden||$('#pz').dataset.view!=='main')return;
+  const id=$('#pz .pz-ptab.on')?.dataset.player||playerId;if(!id)return;const data=id===playerId?save:loadSave(id),content=$('#pz .pz-content');if(!content)return;
+  if(content.dataset.tab==='report'&&!$('#bc-report',content)){
+    const days=lastDays(28),report=h('div',{class:'bc-report',id:'bc-report'},h('h3',{},'Build Crew'),h('p',{class:'sub'},'Creative play. Completed jobs and active play time; no scores or accuracy grades.'),h('div',{class:'pz-scores'},h('div',{class:'stat'},h('b',{},`${data.done.length} / 10`),h('span',{},'Jobs completed'))),dayChart({days,title:'Jobs completed each day',series:[{label:'Jobs',color:'#5c8e72',kind:'bar',values:days.map(d=>data.play[d]?.rounds||0)}]}),dayChart({days,title:'Minutes played each day',left:{unit:'m'},series:[{label:'Minutes',color:'#bc8052',kind:'line',values:days.map(d=>Math.round((data.play[d]?.seconds||0)/6)/10)}]}));content.replaceChildren(report);
+  }
+  if(content.dataset.tab==='options'&&!$('#bc-options',content)){
+    const toggle=h('button',{id:'bc-unlock',role:'switch','aria-checked':String(data.unlockAll),onclick(){data.unlockAll=!data.unlockAll;writeSave(id,data);this.setAttribute('aria-checked',String(data.unlockAll));this.textContent=data.unlockAll?'All three machines available':'Use job rewards';}},data.unlockAll?'All three machines available':'Use job rewards');
+    content.prepend(h('div',{id:'bc-options'},h('h3',{},'Build Crew free play'),h('p',{class:'sub'},'Unlock all implemented machines and the wrecking ball for this builder. Story jobs stay in order.'),toggle));
+  }
+}
+new MutationObserver(parentExtras).observe($('#pz'),{childList:true,subtree:true,attributes:true,attributeFilter:['data-view']});
+$('#parents').onclick=()=>{flush();controls.setEnabled(false);Music.play(false);pz.open(playerId);};
+for(const [id,fn]of Object.entries({play:()=>ensurePlayer(()=>startRound(ROUNDS.find(r=>!save.done.includes(r.id))?.id||1)),sandbox:()=>ensurePlayer(()=>startRound(0)),jobs:()=>ensurePlayer(jobBoard),'my-yard':()=>startRound(0,{restore:true}),home:title,pause:()=>action('pause'),grab:()=>action('grab'),hop:()=>action('hop'),horn:()=>action('horn'),'repeat-goal':()=>say(yard.round.goal),'right-machine':()=>action('reset'),'reset-blocks':resetBlocks,'save-yard':saveYard,'modal-close':closeModal,'open-tray':()=>{$('#tray').hidden=!$('#tray').hidden;buildTray();},'close-tray':()=>$('#tray').hidden=true,'clear-yard':()=>{yard.release();for(const b of yard.blocks)yard.world.removeRigidBody(b.body);yard.blocks=[];updateUI();},wreck:()=>{const i=yard.machines.findIndex(m=>m.kind==='crane');if(i>=0){yard.select(i);yard.wreck();renderMachines();}},'sound-title':()=>{setSetting('sound',!settings.sound);toast(`Sound ${settings.sound?'on':'off'}`);}}))$('#'+id).onclick=fn;
+const slider=$('#daylight');function daylight(n){scene.daylightTo(Math.max(0,Math.min(1,n)));slider.setAttribute('aria-valuenow',Math.round(scene.daylight*100));slider.querySelector('i').style.left=`${scene.daylight*100}%`;}
+function slide(e){const r=slider.getBoundingClientRect();daylight((e.clientX-r.left)/r.width);}slider.onpointerdown=e=>{slider.setPointerCapture(e.pointerId);slide(e);};slider.onpointermove=e=>{if(slider.hasPointerCapture(e.pointerId))slide(e);};slider.onkeydown=e=>{if(['ArrowLeft','ArrowRight','Home','End'].includes(e.code)){e.preventDefault();daylight(e.code==='Home'?0:e.code==='End'?1:scene.daylight+(e.code==='ArrowRight'?.05:-.05));}};
+const updater=createUpdateGuard({hadController:!!navigator.serviceWorker?.controller,isSafe:()=>safeToReload({screen:screen==='title'?'title':'running',running:screen==='play',parentZone:pz.isOpen||!$('#modal').hidden}),notify:()=>toast('A fresh yard is ready next time you visit the gate.'),reload:()=>{flush();location.reload();}});navigator.serviceWorker?.addEventListener('controllerchange',()=>updater.onControllerChange());
+function unlock(){Audio.unlock();tts.unlock();Music.unlock();Sound.unlock();setSetting('sound',settings.sound);Music.play(!pz.isOpen&&$('#modal').hidden);}
+for(const event of ['pointerdown','keydown','touchend'])document.addEventListener(event,unlock,{capture:true});
+document.addEventListener('contextmenu',e=>{if(!e.target.closest('#pz'))e.preventDefault();});document.addEventListener('gesturestart',e=>e.preventDefault());
+document.addEventListener('visibilitychange',()=>{account();persist();controls.clear();if(document.hidden){speechEpoch++;tts.cancel();Audio.suspend();Music.suspend();Sound.suspend();}else{Audio.resume();Music.resume();Sound.resume();last=0;account();}});
+window.addEventListener('pagehide',()=>{account();persist();if(!yard?.round.id&&screen==='play')saveYard();});
+setInterval(()=>{if(activePlay()){account();persist();}},10000);
+function frame(now){requestAnimationFrame(frame);const dt=last?Math.min(.05,(now-last)/1000):DT,elapsed=last?now-last:16.67;last=now;const t0=performance.now();let input={};if(activePlay()&&!testing){input=controls.read();acc+=dt;let n=0;while(acc>=DT&&n++<3){step(input);acc-=DT;if(!activePlay())break;}updateUI();}else acc=0;Sound.update(yard?.machine.kind,input.drive||0,Math.abs(input.lift||0)+Math.abs(input.tool||0),activePlay());const beforeRender=performance.now();scene.render(dt,mission?.status);const end=performance.now();if(screen==='play'&&!document.hidden){samples.frame.push(elapsed);samples.update.push(beforeRender-t0);samples.render.push(end-beforeRender);if(samples.frame.length>1200)for(const a of Object.values(samples))a.shift();}}
+async function registerSW(){if(params.has('nosw')||!('serviceWorker'in navigator))return;try{await navigator.serviceWorker.register('sw.js');const reg=await navigator.serviceWorker.ready;const urls=performance.getEntriesByType('resource').map(e=>e.name).filter(u=>u.startsWith(location.origin));reg.active?.postMessage({type:'cache-urls',urls});}catch(e){console.warn('[BuildCrew] Offline cache unavailable',e);}}
+async function boot(){hydrateIcons();setSetting('sound',settings.sound);await initPhysics();scene=new Scene($('#world'),settings);makeWorld({...SANDBOX,machines:['skid','excavator','crane'],toys:[...SANDBOX.toys,{type:'cube',color:COLORS[0],x:5,y:.7,z:5},{type:'cube',color:COLORS[1],x:5,y:2,z:5},{type:'beam',color:COLORS[3],x:7,y:.4,z:8}]});for(let i=0;i<90;i++)yard.step();controls.setEnabled(false);renderTitle();$('#loading').hidden=true;$('#title').hidden=$('#title-head').hidden=$('#title-foot').hidden=false;applyVoice();sync.start();ping('day');requestAnimationFrame(frame);registerSW();
+  window.__buildCrew={version:VERSION,get state(){return {screen,paused:!activePlay(),playerId,round:yard.round.id,complete:!!mission?.complete,status:mission?.status,held:yard.held?.id,blocks:yard.poses(),machines:yard.machines.map(m=>({kind:m.kind,x:m.x,z:m.z,yaw:m.yaw,swing:m.swing,lift:m.lift,reach:m.reach,tip:{...m.tip}})),active:yard.active,daylight:scene.daylight,stamps:yard.stamps.map(s=>({...s})),save:normalize(save),voice:{engine:tts.lastEngine,clips:cloud.count(),active:cloud.active}};},get performance(){return {...samples,calls:scene.renderer.info.render.calls,triangles:scene.renderer.info.render.triangles,renderer:scene.renderer.getContext().getParameter(scene.renderer.getContext().RENDERER)};},voiceFor,say,
+    ...(testing?{test:{start:id=>startRound(id),advance(input={},n=1){for(let i=0;i<Math.min(n,3600);i++){if(!activePlay())break;step(input);}updateUI();scene.render(DT,mission?.status);return window.__buildCrew.state;},action,reset:resetBlocks}}:{})};
+}
+boot().catch(e=>{console.error('[BuildCrew] Could not open the yard',e);$('#loading').replaceChildren(h('div',{class:'loading-card'},h('h1',{},'The yard needs another try.'),h('p',{},'This game needs a browser with WebGL 2. Try reloading the yard.'),h('button',{class:'primary',onclick:()=>location.reload()},'Try again')));});

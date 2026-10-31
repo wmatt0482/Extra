@@ -37,12 +37,15 @@ copy_game "$root/car-jump" "$out/spell-jump"
 copy_game "$root/trail-blazer" "$out/trail-blazer"
 copy_game "$root/fraction-fright" "$out/fraction-fright"
 copy_game "$root/wagon-west" "$out/wagon-west"
+copy_game "$root/build-crew" "$out/build-crew"
 
 for required in index.html why/index.html stats/index.html spell-jump/index.html spell-jump/sw.js spell-jump/manifest.webmanifest spell-jump/icons/favicon.png \
     trail-blazer/index.html trail-blazer/sw.js trail-blazer/manifest.webmanifest trail-blazer/icons/favicon.png \
     fraction-fright/index.html fraction-fright/sw.js fraction-fright/manifest.webmanifest fraction-fright/icons/favicon.png \
     fraction-fright/src/main.js fraction-fright/src/game/engine.js \
-    wagon-west/index.html wagon-west/sw.js wagon-west/manifest.webmanifest wagon-west/icons/favicon.png wagon-west/src/main.js wagon-west/src/scene/engine.js; do
+    wagon-west/index.html wagon-west/sw.js wagon-west/manifest.webmanifest wagon-west/icons/favicon.png wagon-west/src/main.js wagon-west/src/scene/engine.js \
+    build-crew/index.html build-crew/sw.js build-crew/manifest.webmanifest build-crew/icons/icon-192.png \
+    build-crew/src/main.js build-crew/src/physics.mjs build-crew/vendor/rapier.mjs build-crew/vendor/three.module.js; do
   [[ -f "$out/$required" ]] || { echo "build.sh: missing dist/$required" >&2; exit 1; }
 done
 
