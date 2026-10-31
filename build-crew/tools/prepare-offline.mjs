@@ -21,6 +21,7 @@ function visit(file) {
 for (const f of [
   'index.html',
   'style.css',
+  'celebrate.css',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',

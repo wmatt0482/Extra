@@ -31,14 +31,6 @@ const scratch = {
   slat: new T.Matrix4(),
 };
 
-/** Extra markers for particular jobs, keyed by job id: job 8's height flag shows how tall the stack must be. */
-const JOB_MARKERS = {
-  8(kit, group) {
-    kit.cylinder(group, 6, 2.5, 5, 0.04, 5, '#e7dec2');
-    kit.box(group, 6.6, 4.8, 5, 1.2, 0.6, 0.04, '#de7754');
-  },
-};
-
 export class ToyLayer {
   constructor(kit) {
     this.kit = kit;
@@ -104,7 +96,12 @@ export class ToyLayer {
         for (let y = 0.35; y < 3; y += 0.7) kit.box(group, p.x + 0.31, y, p.z, 0.025, 0.035, p.size[2], '#515f66');
       }
     }
-    JOB_MARKERS[round.id]?.(kit, group);
+    // A job's height flag (round.flag: x, z, height) shows how tall the stack must be.
+    if (round.flag) {
+      const { x, z, height } = round.flag;
+      kit.cylinder(group, x, height / 2, z, 0.04, height, '#e7dec2');
+      kit.box(group, x + 0.6, height - 0.2, z, 1.2, 0.6, 0.04, '#de7754');
+    }
   }
 
   /** Writes every toy's pose into its type's instanced mesh (and the edge frames). */

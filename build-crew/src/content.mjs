@@ -2,7 +2,7 @@
 // may speak. It is plain data with no imports, so physics, missions, the scene, the app and the Node tests all read the
 // same numbers. The later sites and machines described in SPEC.md are deliberately absent until they are built.
 /** The game version reported by pings and the Parent Zone (the service worker has its own cache version). */
-export const VERSION = '0.2.5';
+export const VERSION = '0.3.0';
 /** The five paint colors for loads: red first, because the jobs say "red loads"; also the confetti colors. */
 export const COLORS = ['#c6412f', '#e9aa26', '#287da5', '#64816b', '#87909c'];
 /** Toy shapes. size is [width, height, depth] in metres (a cylinder uses width as its diameter), mass in kilograms.
@@ -61,7 +61,8 @@ const supply = (n, type = 'cube') =>
 const base = { site: 'yard', pad: { x: 5, z: 5, w: 8, d: 8 }, props: [] };
 /** The ten jobs, in order. A job with ghosts is a blueprint (one matching toy per ghost); a job without ghosts is a
  *  delivery (every toy wholly inside the pad). props are fixed colliders such as the raised platform and the wall.
- *  reward is what the child is told; unlock is the save's reward id (a paint, decal, horn or machine kind). */
+ *  flag, when present, is a height flag {x, z, height} drawn as a pole and pennant. reward is what the child is told;
+ *  unlock is the save's reward id (a paint, decal, horn or machine kind). */
 export const ROUNDS = [
   {
     ...base,
@@ -144,6 +145,7 @@ export const ROUNDS = [
     id: 8,
     title: 'High stack',
     goal: 'Stack four blocks to reach the height marker.',
+    flag: { x: 6, z: 5, height: 5 },
     machines: ['excavator'],
     toys: supply(4),
     ghosts: [0, 1, 2, 3].map((i) => ghost(4, 0.6 + 1.2 * i, 5)),

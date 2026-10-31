@@ -692,19 +692,6 @@ h1 em {
   margin-bottom: 7px;
   box-shadow: 0 3px 18px #00000040;
 }
-.celebration-stamp {
-  width: 85px;
-  height: 85px;
-  border-radius: 50%;
-  background: #f2b538;
-  color: #172735;
-  display: grid;
-  place-items: center;
-  margin-bottom: 15px;
-}
-.celebration-stamp svg {
-  width: 43px;
-}
 .reduced-motion * {
   transition: none !important;
   scroll-behavior: auto !important;
@@ -1595,12 +1582,6 @@ h3 {
   border-top: 4px solid #f2b538;
   border-radius: 6px;
 }
-.celebration-stamp {
-  width: 64px;
-  height: 64px;
-  border-radius: 4px;
-  color: #152635;
-}
 .toast {
   border-radius: 4px;
   background: #192e3c;
@@ -1762,8 +1743,11 @@ h3 {
   .center-controls {
     padding: 5px;
   }
+  /* Two columns, so the sandbox's four tools stay above the DRIVE stick label instead of running down behind it. */
   .hud-tools {
     top: 113px;
+    display: grid;
+    grid-template-columns: repeat(2, max-content);
   }
   .job-label h2 {
     font-size: 20px;

@@ -154,12 +154,6 @@ export class Scene {
     this.effects.emit(position, color, count);
   }
 
-  /** A finished job: a slow sweep around the pad and confetti. */
-  celebrate() {
-    this.sweep = this.reducedMotion ? 0 : 5;
-    this.effects.confetti(this.yard.round.pad);
-  }
-
   orbit(dx, dy) {
     this.rig.orbit(dx, dy);
   }

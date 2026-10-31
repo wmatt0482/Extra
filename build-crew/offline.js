@@ -33,6 +33,7 @@ const SHELL = [
   "../spell-jump/src/ui/icons.js",
   "../spell-jump/src/ui/parentZone.js",
   "../spell-jump/src/ui/players.js",
+  "celebrate.css",
   "icons/icon-192.png",
   "icons/icon-512.png",
   "icons/icon.svg",
