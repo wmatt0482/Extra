@@ -1,5 +1,5 @@
 // Only this game's caches are retired. Family and voice APIs stay network-only; prepared voice clips are shared.
-const VERSION='build-crew-v0.2.0',PREFIX='build-crew-',TTS_CACHE='spell-jump-tts-v1';
+const VERSION='build-crew-v0.2.1',PREFIX='build-crew-',TTS_CACHE='spell-jump-tts-v1';
 importScripts('./offline.js');
 self.addEventListener('install',event=>event.waitUntil((async()=>{const cache=await caches.open(VERSION);await cache.addAll(SHELL.map(u=>new Request(u,{cache:'reload'})));await self.skipWaiting();})()));
 self.addEventListener('activate',event=>event.waitUntil((async()=>{await Promise.all((await caches.keys()).filter(k=>k.startsWith(PREFIX)&&k!==VERSION).map(k=>caches.delete(k)));await self.clients.claim();})()));
