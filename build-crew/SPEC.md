@@ -4,7 +4,7 @@
 
 A quiet construction yard full of heavy toys, built for free play. Depth matters: a beam can bridge a gap, a load can tip, and a crane can reach over a wall. There are no spelling or math gates. Children discover how weight, reach and balance work by moving things.
 
-Name options: **Build Crew** (clear, friendly, working name), **Little Big Yard** (stronger sense of toy scale), **Mighty Makers** (broader than construction). Keep Build Crew for this flight so URLs and saves stay predictable.
+Name options: **Build Crew** (clear, friendly, working name), **Siteworks** (a direct construction identity), **Heavy Shift** (broader than construction). Keep Build Crew for this flight so URLs and saves stay predictable.
 
 First flight ships one yard, three machines, ten jobs, free play, one yard save per profile, a profile picker, shared Parent Zone, music, voice, effects, celebrations and offline caching. The remaining twenty jobs and additional machines below are design only. No empty machine buttons or unfinished site screens ship.
 
@@ -18,9 +18,9 @@ Touch: left stick drives, right stick operates the tool, large Grab/Release butt
 
 | Machine | Feel and working joints | Tool controls | Release |
 |---|---|---|---|
-| Pip, skid steer | Fast turn in place, short reach; physical bucket floor/back/side colliders push and scoop | Up/down or I/K lifts, left/right or J/L tilts | First flight, from start |
-| Digger, excavator | Slower tracks; cab swings independently; boom, stick and curling bucket | Up/down or I/K boom; left/right or J/L stick; Shift+left/right cab; Tilt buttons or U/O bucket | First flight, after job 2 |
-| Sky, mobile crane | Slow heavy carrier; slewing boom; extending reach; hanging magnet | Up/down or I/K hoist; left/right or J/L slew; U/O extends boom | First flight, after job 5 |
+| SS-01, skid steer | Fast turn in place, short reach; physical bucket floor/back/side colliders push and scoop | Up/down or I/K lifts, left/right or J/L tilts | First flight, from start |
+| EX-02, excavator | Slower tracks; cab swings independently; boom, stick and curling bucket | Up/down or I/K boom; left/right or J/L stick; Shift+left/right cab; Tilt buttons or U/O bucket | First flight, after job 2 |
+| CR-03, mobile crane | Slow heavy carrier; slewing boom; extending reach; hanging magnet | Up/down or I/K hoist; left/right or J/L slew; U/O extends boom | First flight, after job 5 |
 | Dump truck | Long stopping distance; tipping bed hauls many loose blocks | Lift tips bed | Later, harbor |
 | Forklift | Rear steer, narrow forks need pallet approach; mast lift and tilt | Lift + mast tilt | Later, harbor |
 | Wheel loader | Articulated steering, wide high capacity bucket | Lift + tilt | Later, hillside |
@@ -38,7 +38,7 @@ Drive bodies and tools are position-based kinematic bodies with colliders; toys 
 | Slab | Wide shallow piece for floors | 2.8 |
 | Pallet | Wood slats on two runners, compound collider with fork space | 1.4 |
 | Barrel | Cylinder; rolls and tips | 1.2 |
-| Pipe | Open-looking low-poly tube, solid cylinder collider in this flight | 1.6 |
+| SS-01e | Open-looking low-poly tube, solid cylinder collider in this flight | 1.6 |
 | Glass | Translucent pane; hard impact becomes harmless glitter and a replacement pane | 0.6 |
 
 Choose **Rapier 3D compat 0.17.3**, vendored with its WASM embedded in the ESM distribution. **Three.js 0.170.0** is also vendored. No runtime CDN, npm, bundler or build step. Retain licenses and hashes in vendor/. Rapier runs the same simulation in Node and browsers. Fixed 1/60 s steps, bounded catch-up, CCD on toys, high friction, damping, extra solver iterations and automatic sleep support stacks. Cannon-es is simpler to load and has no WASM initialization, but its iterative JS solver needs careful stack tuning too. A reproducible headless comparison records both solvers' stack drift; the decision rests on our actual stacking regression. The 20-second eight-cube comparison measured 0.00037 m maximum horizontal drift with Rapier and 0.1434 m with cannon-es (0.20.0). Both retained their height; cannon ran faster in this small fixture. Rapier gave the quieter stack. Damping implementations differ; this is evidence for our settings, not a general ranking. Results and the reproducible script are in docs/stack-comparison.json and tools/stack-compare.mjs. See [Rapier JavaScript guide](https://rapier.rs/docs/user_guides/javascript/getting_started_js/) and [cannon-es source](https://github.com/pmndrs/cannon-es).
@@ -59,7 +59,7 @@ First ten are the playable yard flight. Later rows describe future design and ma
 | 6 | Yard | Crane | Place 3 cubes on a raised platform | Only crane reaches the height | Sky paint |
 | 7 | Yard | Crane, skid | Move 4 blocks from behind a wall | Slew over the wall | Bell horn |
 | 8 | Yard | Excavator | Stack 4 blocks to the flag | Balance and a taller stack | Stripe decal |
-| 9 | Yard | Crane, excavator | Build a little gateway | Two legs and a lintel | Sunset paint |
+| 9 | Yard | Crane, excavator | Build a portal frame | Two legs and a lintel | Sunset paint |
 | 10 | Yard | All three | Raise a toy water tower | Four base blocks and a tank slab | Yard badge + wrecking ball |
 | 11 | Harbor | Dump truck, skid | Load and deliver 8 blocks | Loose cargo and bed tilt | Dump truck |
 | 12 | Harbor | Forklift | Move 3 loaded pallets | Clean approach under runners | Forklift |
@@ -86,17 +86,17 @@ First ten are the playable yard flight. Later rows describe future design and ma
 
 Open from the title at any time. Spawn tray offers every toy in several colors; pressing a toy button creates it in a clear marked spawn bay. There is unlimited replenishment, with a simultaneous-body cap of 64: explain that a full yard can be cleared or saved, never silently delete someone's build. Daylight is a custom button/drag slider, not a native input. Terrain stamps create physical hills, pits, ramps and a shallow blue water area; choose a stamp, then tap the ground to place it. A pit is a recessed terrain patch with edges, not an invisible collider under a painted hole. The water is decorative shallow water with a solid bed.
 
-One **Save my yard** slot per profile includes toy poses, machine poses and joints, stamps, daylight, and a small rendered thumbnail. **My yard** on the title restores it after closing the tab. Storage failures show a readable message; the previous good save stays intact. A wrecking ball is a heavy colliding sphere on the crane, earned at job 10 or by the parent unlock. Later versions may add more save slots; none are presented as empty placeholders now.
+One **Save site** slot per profile includes toy poses, machine poses and joints, stamps, daylight, and a small rendered thumbnail. **My yard** on the title restores it after closing the tab. Storage failures show a readable message; the previous good save stays intact. A wrecking ball is a heavy colliding sphere on the crane, earned at job 10 or by the parent unlock. Later versions may add more save slots; none are presented as empty placeholders now.
 
 ## 5. Look, camera and sound
 
-Toy diorama: warm ochre soil, butter-yellow machines, teal glass, red building toys, sage trees, cream industrial sheds and a peach-blue gradient sky. A fence frames the playable site, distant hills soften the horizon. No people. Machines have expressive windscreen eyes and individual names. Hazard stripes, bolts, buckets and articulated hydraulic arms should read clearly at toy scale.
+Construction sandbox for tweens: gravel and weathered steel, industrial amber equipment, tinted cab glass, red framed loads, muted trees and corrugated workshops. A steel fence frames the site. Equipment has hydraulic parts, safety frames, ventilation, lights and unit IDs; no machine faces or character names. Crisp slate control panels use direct job language.
 
 Soft directional shadows and contact discs ground the toys. Instanced blocks and repeated props, low-poly trees, bounded dust, exhaust wisps and pooled tire marks. Future site palettes: harbor uses seafoam, rust-orange cranes and a pale coastal sky; hillside uses sage grass, terracotta soil and amber light; downtown uses warm concrete, coral accents and clear blue; moon base uses lavender dust, indigo sky and an Earth backdrop. These are design stubs only.
 
-No postprocessing. Smooth follow camera with an orbit drag; a gentler wide sweep celebrates a completed job. Reduced motion removes the sweep, particles and camera interpolation. Confetti, a little tune and a useful reward close each job. Controls stay large and readable against the world.
+No postprocessing. Smooth follow camera with an orbit drag; a gentler wide sweep celebrates a completed job. Reduced motion removes the sweep, particles and camera interpolation. Confetti, a short tune and a useful reward close each job. Controls stay large and readable against the world.
 
-Sound: shared synthesized UI effects, separate low engine tones per machine, hydraulic whine while tools move, collision thunks scaled to impulse, a placement chime. Own Web Audio arrangement of the public-domain melody **Frère Jacques** with marimba-like notes, bass and gentle percussion. It starts only after a gesture, ducks for speech, pauses when hidden and follows the sound/music settings. Natural voice: prepare known job/hint/reward phrases on player pick and round start; await voiceFor before new speech. Use cloud status/default selection exactly as wagon-west does. No API key in source, storage, logs or tests.
+Sound: shared synthesized UI effects, separate low engine tones per machine, hydraulic whine while tools move, collision thunks scaled to impulse, a placement chime. Own Web Audio arrangement of the public-domain melody **The Entertainer (Scott Joplin, 1902)** with plucked synth notes, bass and gentle percussion. It starts only after a gesture, ducks for speech, pauses when hidden and follows the sound/music settings. Natural voice: prepare known job/hint/reward phrases on player pick and round start; await voiceFor before new speech. Use cloud status/default selection exactly as wagon-west does. No API key in source, storage, logs or tests.
 
 ## 6. Performance budget
 
@@ -139,3 +139,7 @@ Single implementation owner: Codex. Existing game folders remain untouched excep
 | ../site/index.html, ../site/why/index.html | Fifth-game entry and honest pure-play description |
 
 Branch: codex/build-crew from claude/extra-v0. Open PR against claude/extra-v0 only after required checks pass. Never push the base branch. PR lists assumptions, exact verification commands, observed performance and limitations, and embeds all ten screenshots.
+
+## Tween visual direction (0.2)
+
+For ages roughly 10–13: industrial slate panels, amber controls, direct job language and equipment identifiers (SS-01, EX-02, CR-03). Machines have tinted cabs, safety frames, hydraulic parts and work lights; no faces or character names. The site uses gravel, steel fencing, loading markings and corrugated workshops. A closer camera puts the player behind the equipment. Keep the open-ended, unhurried rules and readable touch targets. The own synthesized arrangement uses the opening theme of Joplin’s public-domain 1902 composition; score provenance: https://www.loc.gov/item/2023864238/.

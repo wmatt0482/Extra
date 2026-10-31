@@ -1,6 +1,6 @@
 # Build Crew
 
-A static 3D toy construction yard for Learning Lab. Ten jobs, a skid steer, an excavator, a crane, and a free-play yard with one save slot per family profile. The thirty-job roadmap is in [SPEC.md](SPEC.md).
+A static 3D construction sandbox for tweens for Learning Lab. Ten jobs, a skid steer, an excavator, a crane, and a free-play yard with one save slot per family profile. The thirty-job roadmap is in [SPEC.md](SPEC.md).
 
 From the repository root:
 
@@ -10,11 +10,11 @@ python3 -m http.server 8080
 
 Open http://localhost:8080/build-crew/. The existing `spell-jump -> car-jump` symlink supplies the shared modules locally. Netlify's `bash build.sh` copies the correct folders into `dist/`; there is no game package.json or bundler. Three.js 0.170.0 and Rapier 3D compat 0.17.3 (embedded WASM) are pinned in `vendor/`, with licenses and SHA256 hashes. Play does not fetch a CDN.
 
-Drive with WASD; I/K lifts. J/L tilts Pip's bucket, extends Digger's stick or swings Sky's boom. Shift+J/L swings Digger's cab. U/O extends/retracts Sky's boom. Space grabs or releases when the tool is close to a toy, E hops to the nearest other machine, R resets a stuck machine, H sounds the horn, Escape pauses. Machine cards and all extra joints have buttons. Touch sticks and a standard gamepad are supported. Drag to orbit; scroll or pinch to zoom.
+Drive with WASD; I/K lifts. J/L tilts SS-01's bucket, extends EX-02's stick or swings CR-03's boom. Shift+J/L swings EX-02's cab. U/O extends/retracts CR-03's boom. Space grabs or releases when the tool is close to a toy, E hops to the nearest other machine, R resets a stuck machine, H sounds the horn, Escape pauses. Machine cards and all extra joints have buttons. Touch sticks and a standard gamepad are supported. Drag to orbit; scroll or pinch to zoom.
 
 The shared Parent Zone uses the existing family PIN, sync and voice picker. Build Crew's Report shows jobs completed and active minutes per day. Options adds a per-builder free-play unlock for the three implemented machines and the wrecking ball. Play-time is never shown to the child. The other sites and machines in the spec are future work, without code placeholders.
 
-Free play: open the toy box, spawn toys into the striped bay, choose terrain then tap the ground, and drag the daylight control. Save my yard stores poses, machines, joints, stamps and daylight. My saved yard restores it after closing the browser. Thumbnail storage is local to the device; the small build snapshot syncs. Maximum simultaneous toys: 64. A full tray explains how to clear room rather than deleting someone's build. Parent unlock or job ten enables the crane's wrecking ball.
+Free play: open the materials tray, spawn materials into the striped bay, choose terrain then tap the ground, and drag the daylight control. Save site stores poses, machines, joints, stamps and daylight. Load saved site restores it after closing the browser. Thumbnail storage is local to the device; the small build snapshot syncs. Maximum simultaneous toys: 64. A full tray explains how to clear room rather than deleting someone's build. Parent unlock or job ten enables the crane's wrecking ball.
 
 ## Verification
 
