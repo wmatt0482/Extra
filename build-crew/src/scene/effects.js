@@ -101,7 +101,7 @@ export class Effects {
   emit(position, color = '#ddc196', count = 8, puff = 0, ring = 0) {
     if (this.isCalm()) return;
     for (let i = 0; i < count; i++) {
-      const p = this.spare.pop() || { p: new T.Vector3(), v: new T.Vector3(), life: 0, color: '', size: 0 };
+      const p = this.spare.pop() || { p: new T.Vector3(), v: new T.Vector3(), life: 0, col: new T.Color(), size: 0 };
       p.p.set(position.x, position.y, position.z);
       if (puff) {
         // A ring of dust: evenly spaced around the base (starting `ring` metres out), a little faster for every
@@ -119,7 +119,7 @@ export class Effects {
         p.size = 0.1 + (i % 3) * 0.05;
       }
       p.puff = puff ? p.life : 0;
-      p.color = color;
+      p.col.set(color);
       this.particles.push(p);
     }
     const extra = this.particles.length - Math.max(0, BUDGET.particles - this.flakes.length);
@@ -133,13 +133,19 @@ export class Effects {
   /** One confetti flake or spark streak, if there is room under the shared particle cap. */
   flake(kind, x, y, z, vx, vy, vz, color, life) {
     if (this.flakes.length + this.particles.length >= BUDGET.particles) return;
-    const f = this.spareFlakes.pop() || { p: new T.Vector3(), v: new T.Vector3(), r: new T.Vector3(), w: new T.Vector3() };
+    const f = this.spareFlakes.pop() || {
+      p: new T.Vector3(),
+      v: new T.Vector3(),
+      r: new T.Vector3(),
+      w: new T.Vector3(),
+      col: new T.Color(),
+    };
     f.kind = kind;
     f.p.set(x, y, z);
     f.v.set(vx, vy, vz);
     f.r.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
     f.w.set(3 + Math.random() * 7, 2 + Math.random() * 6, 3 + Math.random() * 5);
-    f.color = color;
+    f.col.set(color);
     f.life = f.max = life;
     f.phase = Math.random() * 6.28;
     f.size = kind === 'spark' ? 1 : 0.7 + Math.random() * 0.5;
@@ -158,13 +164,17 @@ export class Effects {
   runShow() {
     const show = this.show;
     if (!show) return;
-    const elapsed = performance.now() - show.t0;
+    const elapsed = performance.now() - show.t0,
+      // A phone's smaller particle budget gets a proportionally smaller show.
+      scale = BUDGET.particles / 120;
     while (show.next < SHOW_WAVES.length && elapsed >= SHOW_WAVES[show.next].at) {
       const w = SHOW_WAVES[show.next++],
         c = show.center,
         r = show.radius * w.spread;
-      if (w.dust) this.emit({ x: c.x, y: c.y + 0.2, z: c.z }, '#d9ccaa', w.dust, 2.2 + show.radius * 0.3, show.radius * 0.7);
-      for (let i = 0; i < w.confetti; i++) {
+      if (w.dust) {
+        this.emit({ x: c.x, y: c.y + 0.2, z: c.z }, '#d9ccaa', Math.round(w.dust * scale), 2.2 + show.radius * 0.3, show.radius * 0.7);
+      }
+      for (let i = 0, n = Math.round(w.confetti * scale); i < n; i++) {
         const a = i * 2.399 + show.next,
           out = 2 + (i % 5) * 1.5;
         this.flake(
@@ -179,7 +189,7 @@ export class Effects {
           2.6 + (i % 4) * 0.25,
         );
       }
-      for (let i = 0; i < w.sparks; i++) {
+      for (let i = 0, n = Math.round(w.sparks * scale); i < n; i++) {
         const a = i * 2.399 + 1.3,
           out = 3 + (i % 4) * 1.4;
         this.flake(
@@ -206,14 +216,15 @@ export class Effects {
   /** Places a flattened disc on the ground under every toy, sized to its footprint. */
   updateContacts(poses, yard) {
     const tmp = this.kit.tmp;
-    poses.forEach((b, i) => {
-      const d = TOYS[b.type];
+    for (let i = 0; i < poses.length; i++) {
+      const b = poses[i],
+        d = TOYS[b.type];
       tmp.position.set(b.position.x, 0.065 + yard.groundAt(b.position.x, b.position.z), b.position.z);
       tmp.rotation.set(-Math.PI / 2, 0, 0);
       tmp.scale.set(d.size[0] * 0.65, d.size[2] * 0.65, 1);
       tmp.updateMatrix();
       this.contacts.setMatrixAt(i, tmp.matrix);
-    });
+    }
     this.contacts.count = poses.length;
     this.contacts.instanceMatrix.needsUpdate = true;
   }
@@ -225,8 +236,12 @@ export class Effects {
     if (this.isCalm() || Math.abs(m.speed) <= 0.3 || yard.time - this.lastMark <= MARK_INTERVAL) return;
     this.lastMark = yard.time;
     if (this.marks.length % 3 === 0) this.emit({ x: m.x + 0.45, y: m.y + 2.3, z: m.z - 0.8 }, '#c4c9b3', 1);
-    this.marks.push({ x: m.x, z: m.z, yaw: m.yaw });
-    if (this.marks.length > BUDGET.tireMarks) this.marks.shift();
+    // Once the ground is full of marks the oldest record is reused for the newest.
+    const mark = this.marks.length >= BUDGET.tireMarks ? this.marks.shift() : { x: 0, z: 0, yaw: 0 };
+    mark.x = m.x;
+    mark.z = m.z;
+    mark.yaw = m.yaw;
+    this.marks.push(mark);
     if (Math.abs(m.speed) > 1) {
       const scooping = MACHINE[m.kind].scoops && m.lift < 1;
       this.emit(scooping ? { x: m.tip.x, y: 0.2, z: m.tip.z } : { x: m.x, y: 0.25, z: m.z - 1 }, '#d7ba85', 1);
@@ -236,7 +251,8 @@ export class Effects {
   /** Draws each tire mark as a pair of track prints on the ground. */
   drawMarks(yard) {
     const tmp = this.kit.tmp;
-    this.marks.forEach((p, i) => {
+    for (let i = 0; i < this.marks.length; i++) {
+      const p = this.marks[i];
       for (let k = 0; k < 2; k++) {
         tmp.position.set(p.x + (k ? 0.85 : -0.85) * Math.cos(p.yaw), 0.035 + yard.groundAt(p.x, p.z), p.z);
         tmp.rotation.set(0, p.yaw, 0);
@@ -244,7 +260,7 @@ export class Effects {
         tmp.updateMatrix();
         this.trackPool.setMatrixAt(i * 2 + k, tmp.matrix);
       }
-    });
+    }
     this.trackPool.count = this.marks.length * 2;
     this.trackPool.instanceMatrix.needsUpdate = true;
   }
@@ -261,7 +277,8 @@ export class Effects {
     }
     list.length = alive;
     const tmp = this.kit.tmp;
-    list.forEach((p, i) => {
+    for (let i = 0; i < list.length; i++) {
+      const p = list[i];
       p.life -= dt;
       p.p.addScaledVector(p.v, dt);
       if (p.puff) {
@@ -279,8 +296,8 @@ export class Effects {
       tmp.rotation.set(i * 0.8, i, 0);
       tmp.updateMatrix();
       this.pool.setMatrixAt(i, tmp.matrix);
-      this.pool.setColorAt(i, this.kit.color.set(p.color));
-    });
+      this.pool.setColorAt(i, p.col);
+    }
     this.pool.count = list.length;
     this.pool.instanceMatrix.needsUpdate = true;
     if (this.pool.instanceColor) this.pool.instanceColor.needsUpdate = true;
@@ -298,7 +315,8 @@ export class Effects {
     }
     list.length = alive;
     const tmp = this.kit.tmp;
-    list.forEach((f, i) => {
+    for (let i = 0; i < list.length; i++) {
+      const f = list[i];
       f.life -= dt;
       const spark = f.kind === 'spark';
       if (spark) {
@@ -331,8 +349,8 @@ export class Effects {
       }
       tmp.updateMatrix();
       this.flakePool.setMatrixAt(i, tmp.matrix);
-      this.flakePool.setColorAt(i, this.kit.color.set(f.color));
-    });
+      this.flakePool.setColorAt(i, f.col);
+    }
     this.flakePool.count = list.length;
     this.flakePool.instanceMatrix.needsUpdate = true;
     if (this.flakePool.instanceColor) this.flakePool.instanceColor.needsUpdate = true;

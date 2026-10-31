@@ -167,6 +167,38 @@ function report(data) {
         },
       ],
     }),
+    qualityPanel(),
+  );
+}
+
+/** What the picture-quality controller decided on this device: the device tier, the resolution it started at and ended
+ *  at, the shadows, the physics step budget, the first-second test and each change with the reason. For a parent
+ *  (or whoever helps with a slow tablet); the child never sees it. */
+function qualityPanel() {
+  const q = app.scene?.quality?.summary();
+  if (!q) return h('div');
+  const bench = typeof q.benchmark === 'string' ? q.benchmark : `${q.benchmark.frameMs} ms frames, ${q.benchmark.renderMs} ms drawing (${q.benchmark.verdict})`;
+  const rows = [
+    ['Quality tier', q.tier],
+    ['Resolution', q.startPixelRatio === q.pixelRatio ? `${q.pixelRatio}x` : `${q.startPixelRatio}x, now ${q.pixelRatio}x`],
+    ['Shadows', q.shadows],
+    ['Physics', `60 steps a second, up to ${q.maxPhysicsSteps} per picture${q.interpolated ? ', smoothed between steps' : ''}`],
+    ['First-second test', bench],
+  ];
+  return h(
+    'div',
+    { class: 'bc-quality', id: 'bc-quality' },
+    h('h3', {}, 'Picture quality on this device'),
+    h('p', { class: 'sub' }, 'The game lowers its picture detail by itself on a slow device and never raises it again until the page is reloaded.'),
+    ...rows.map(([k, v]) => h('p', { class: 'sub' }, h('b', {}, k + ': '), String(v))),
+    h(
+      'p',
+      { class: 'sub' },
+      h('b', {}, 'Changes this session: '),
+      q.decisions.length
+        ? q.decisions.map((d) => `${d.what} ${d.from} to ${d.to} at ${d.at} s (${d.why})`).join('; ')
+        : 'none',
+    ),
   );
 }
 

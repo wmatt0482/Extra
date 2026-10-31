@@ -16,6 +16,14 @@ const OVERVIEW_DISTANCE = 35;
 const SWEEP_TURN = 1.7;
 const SWEEP_PITCH = 0.46;
 
+/** The follow camera is a critically damped spring on the machine: it settles with no overshoot, and because it also
+ *  leads by the machine's own velocity it keeps up with a moving machine instead of trailing behind it. FOLLOW_W is
+ *  the spring's natural frequency (rad/s): the camera closes 95 % of a sudden gap in about a quarter of a second. */
+const FOLLOW_W = 12;
+const AXES = ['x', 'z'];
+/** A followed point faster than this (m/s) is a jump, not travel. */
+const MAX_LEAD = 8;
+
 /** Smooth start and end: 0..1 in, 0..1 out. */
 const ease = (p) => p * p * (3 - 2 * p);
 
@@ -35,6 +43,45 @@ export class CameraRig {
     /** The view to ease back to once the celebration ends (the player's own pitch and zoom), or null. */
     this.settle = null;
     this.desired = new T.Vector3();
+    /** The follow spring's velocity (m/s) and the low-passed velocity of the point it follows. */
+    this.vel = new T.Vector3();
+    this.lead = new T.Vector3();
+    this.lastDesired = new T.Vector3();
+    this.following = false;
+    /** Pixels of the screen taken by the top bar and the bottom controls; the view is shifted so the machine sits in
+     *  the middle of the free band between them. {top, bottom} (zero on a desktop). */
+    this.insets = { top: 0, bottom: 0 };
+    this.viewShift = 0;
+  }
+
+  /** Sets the covered bands (px) at the top and bottom of the screen and reapplies the view shift. */
+  setInsets(top, bottom) {
+    this.insets.top = top;
+    this.insets.bottom = bottom;
+    this.applyView();
+  }
+
+  /** Shifts the picture vertically with the camera's view offset so the look-at point lands in the middle of the
+   *  free band instead of the middle of the screen. Does nothing without insets or before the first resize. */
+  applyView() {
+    const cam = this.camera,
+      h = this.height || 0,
+      w = this.width || 0;
+    const shift = h ? Math.round((this.insets.top - this.insets.bottom) / 2) : 0;
+    if (!shift || !h) {
+      if (this.viewShift) cam.clearViewOffset();
+      this.viewShift = 0;
+      return;
+    }
+    this.viewShift = shift;
+    cam.setViewOffset(w, h, 0, -shift, w, h);
+  }
+
+  /** The renderer's size changed. */
+  resized(w, h) {
+    this.width = w;
+    this.height = h;
+    this.applyView();
   }
 
   /** Drag to orbit: horizontal turns around the target, vertical tilts within PITCH. */
@@ -73,6 +120,30 @@ export class CameraRig {
     return !!this.show;
   }
 
+  /** One step of the critically damped spring toward `desired` (exact for a steady target, so any frame length is
+   *  stable). The target leads by the followed point's velocity (low-passed), which cancels the steady lag. */
+  follow(dt, desired) {
+    const step = Math.max(dt, 1e-4),
+      k = 1 - Math.exp(-step * 20),
+      t = this.target,
+      lead = this.lead,
+      e = Math.exp(-FOLLOW_W * step);
+    // x and z follow the machine; y is a constant height.
+    for (const axis of AXES) {
+      // A jump (hopping to another machine) is not a speed: the lead is dropped and the spring simply pulls over.
+      const speed = (desired[axis] - this.lastDesired[axis]) / step;
+      lead[axis] += ((Math.abs(speed) > MAX_LEAD ? 0 : speed) - lead[axis]) * k;
+      const goal = desired[axis] + (lead[axis] * 2) / FOLLOW_W,
+        x0 = t[axis] - goal,
+        v0 = this.vel[axis],
+        temp = v0 + FOLLOW_W * x0;
+      t[axis] = goal + (x0 + temp * step) * e;
+      this.vel[axis] = (v0 - FOLLOW_W * temp * step) * e;
+    }
+    t.y += (desired.y - t.y) * (1 - Math.exp(-step * 3));
+    this.lastDesired.copy(desired);
+  }
+
   /** Eases the target toward the overview point, the follow point (65 % machine, 15 % pad) or, during a sweep, the
    *  finished build, then places the camera. Tall phone screens pull back so the yard still fits. */
   update(dt, machine, pad, reducedMotion) {
@@ -103,7 +174,14 @@ export class CameraRig {
       this.distance += (this.settle.distance - this.distance) * k;
       if (Math.abs(this.distance - this.settle.distance) < 0.05) this.settle = null;
     } else this.settle = null;
-    this.target.lerp(desired, reducedMotion ? 1 : lerp);
+    if (reducedMotion || show || this.sweep > 0 || this.overview || !this.following) {
+      // Overview, celebration, calm motion and the first frame of a follow: ease or snap, and start the spring afresh.
+      this.target.lerp(desired, reducedMotion ? 1 : lerp);
+      this.vel.set(0, 0, 0);
+      this.lead.set(0, 0, 0);
+      this.lastDesired.copy(desired);
+      this.following = !this.overview && !show && !(this.sweep > 0);
+    } else this.follow(dt, desired);
     const aspect = this.camera.aspect;
     const dist =
       (this.overview ? Math.max(OVERVIEW_DISTANCE, this.distance) : this.distance) *

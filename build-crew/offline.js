@@ -59,6 +59,7 @@ const SHELL = [
   "src/scene/camera.js",
   "src/scene/effects.js",
   "src/scene/environment.js",
+  "src/scene/interp.js",
   "src/scene/kit.js",
   "src/scene/machines.js",
   "src/scene/quality.js",

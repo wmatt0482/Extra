@@ -88,11 +88,16 @@ export function closeTray() {
   disarmClear();
 }
 
-/** Caps the tray's height to the room between its top edge and the drive deck, so on a phone it scrolls inside that
- *  room instead of running under the deck's buttons. The deck changes height with the machine (extra joint buttons),
+/** Caps the tray's height to the room between its top edge and the drive deck, so on a small window it scrolls inside
+ *  that room instead of running under the deck's buttons. The deck changes height with the machine (extra joint buttons),
  *  so main.js calls this again whenever the deck or the window resizes. */
 export function fitTray() {
   const tray = $('#tray');
+  // On a touch screen the tray is a sheet placed by the stylesheet (above the sticks, scrolling inside itself).
+  if (document.documentElement.classList.contains('touch')) {
+    tray.style.maxHeight = '';
+    return;
+  }
   if (tray.hidden) return;
   const deck = document.querySelector('.drive-deck').getBoundingClientRect();
   tray.style.maxHeight = '';

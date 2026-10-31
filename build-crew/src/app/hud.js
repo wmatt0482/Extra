@@ -40,6 +40,36 @@ export const MACHINE_UI = {
   },
 };
 
+/** True when the page uses the touch layout (a touch screen is the main pointer, or ?touch=1). */
+export const isTouch = () => document.documentElement.classList.contains('touch');
+
+/** The wording of the hints for a touch screen. The keyboard wording stays in content.mjs for a laptop; a phone is told
+ *  to drag a stick or tap a button instead of pressing keys it does not have. */
+const TOUCH_TEXT = {
+  'WASD or the left stick drives. This skid steer turns on the spot.':
+    'Drag the left stick to drive. This skid steer turns on the spot.',
+  'Lift with I or the right stick. J and L reach out and in.':
+    'Drag the right stick up to lift. Left and right reach out and in.',
+  'I and K lift the magnet. J and L swing the boom.':
+    'Drag the right stick up and down to lift the magnet. Left and right swings the boom.',
+  'Try W or the left stick to drive.': 'Try dragging the left stick to drive.',
+  'Try I and K, or the right stick, to lift your tool.': 'Try dragging the right stick to lift your tool.',
+  'Press E to hop into another machine.': 'Tap Hop to jump into another machine.',
+};
+
+/** The hint as shown on this device: the touch wording on a touch screen, otherwise unchanged. */
+export function hintText(text) {
+  if (!isTouch() || !text) return text;
+  return TOUCH_TEXT[text] || text.replace(/\bpress Grab\b/, 'tap Grab');
+}
+
+/** Short vibration (ms or a pattern) for grabbing and placing, where the device has it. Off in calm motion. */
+function buzz(pattern) {
+  try {
+    if (isTouch() && !app.settings.reducedMotion && app.settings.haptics !== false) navigator.vibrate?.(pattern);
+  } catch {}
+}
+
 /** Toasts wait here while another is showing, so two messages never stack over the hint or each other. */
 const toastQueue = [];
 let toastOn = false;
@@ -87,9 +117,24 @@ function placeToasts() {
   slot.style.left = Math.max(half + 8, Math.min(innerWidth - half - 8, center)) + 'px';
 }
 
-/** Replaces the hint line. */
+/** How long a hint stays up on a touch screen before the strip goes back to the job's goal (ms). */
+const HINT_MS = 7000;
+let hintTimer = 0;
+
+/** Replaces the hint line. On a touch screen it is a slim strip under the top bar that falls back to the job's goal
+ *  after a few seconds, so it never stays over the yard longer than it is useful. */
 export function showHint(text) {
-  $('#hint').textContent = text;
+  const el = $('#hint');
+  clearTimeout(hintTimer);
+  el.classList.remove('goal');
+  el.textContent = hintText(text);
+  if (text && isTouch()) {
+    hintTimer = setTimeout(() => {
+      if (app.jobDone) return;
+      el.classList.add('goal');
+      el.textContent = $('#goal').textContent;
+    }, HINT_MS);
+  }
   if (toastOn) placeToasts();
 }
 
@@ -153,26 +198,68 @@ export function renderMachines() {
     ),
   );
   const ui = MACHINE_UI[yard.machine.kind];
-  $('#tool-label').innerHTML = `${ui.toolLabel} <small>I J K L</small>`;
+  $('#tool-label').innerHTML = `${ui.toolLabel} <small class="kb">I J K L</small><small class="drag">drag the stick</small>`;
   for (const b of document.querySelectorAll('[data-hold]')) {
     const axis = b.dataset.hold.split(':')[0];
     b.hidden = !ui.joints.includes(axis);
   }
   updateUI();
+  measureInsets();
+}
+
+/** On a touch screen, tells the camera how much of the screen the top bar and the bottom controls cover, so it frames
+ *  the machine in the free band between them. Call it when the window changes shape or the HUD appears. */
+export function measureInsets() {
+  const scene = app.scene,
+    hud = $('#hud');
+  if (!scene) return;
+  if (!isTouch() || hud.hidden) {
+    scene.setInsets(0, 0);
+    return;
+  }
+  const bar = $('.hud-top').getBoundingClientRect(),
+    cluster = $('.work-buttons').getBoundingClientRect();
+  scene.setInsets(Math.round(bar.bottom + 30), cluster.height ? Math.round(innerHeight - cluster.top + 10) : 0);
+}
+
+/** Cached lookups for the per-frame update, so a frame does not search the page. */
+const refs = {};
+let lastYard = null,
+  lastHeld = false,
+  lastCount = 0;
+
+/** Vibrates briefly when a block is grabbed or let go and for a little longer when it is placed on the outline. */
+function haptics(yard) {
+  const held = !!yard.held,
+    count = app.mission?.status.count ?? 0;
+  if (lastYard !== yard) lastYard = yard;
+  else {
+    if (held !== lastHeld) buzz(held ? 14 : 8);
+    if (count > lastCount) buzz([22, 40, 30]);
+  }
+  lastHeld = held;
+  lastCount = count;
 }
 
 /** Keeps the Grab/Release button and the progress line current; touches the DOM only when they change. */
 export function updateUI() {
   const yard = app.yard;
   if (!yard) return;
-  const grab = $('#grab'),
+  const grab = (refs.grab ||= $('#grab')),
+    progress = (refs.progress ||= $('#progress')),
     held = String(!!yard.held);
   if (grab.dataset.held !== held) {
     grab.dataset.held = held;
     grab.innerHTML = `${icon(yard.held ? 'air' : 'land')} ${yard.held ? 'Release' : 'Grab'} <kbd>SPACE</kbd>`;
   }
-  const text = app.mission
-    ? `${app.mission.status.count} / ${app.mission.status.total} placed`
-    : `${yard.blocks.length} materials on site`;
-  if ($('#progress').textContent !== text) $('#progress').textContent = text;
+  // The counter's text is rebuilt only when its numbers change (no string is made on the frames in between).
+  const mission = app.mission,
+    n = mission ? mission.status.count : yard.blocks.length,
+    of = mission ? mission.status.total : -1;
+  if (refs.n !== n || refs.of !== of || !progress.textContent) {
+    refs.n = n;
+    refs.of = of;
+    progress.textContent = mission ? `${n} / ${of} placed` : isTouch() ? `${n} materials` : `${n} materials on site`;
+  }
+  haptics(yard);
 }

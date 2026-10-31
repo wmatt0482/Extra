@@ -1,7 +1,8 @@
 // The full browser check with real WebGL (SwiftShader) and real Rapier: it solves all ten jobs through the production
 // axes and Grab button (tools/solution.mjs, run inside the page), then checks the sandbox save and reload, sibling
 // profile isolation, the Parent Zone PIN, report and unlock, real-time keyboard and touch-stick input, responsive
-// layouts, a full offline reload and natural-voice preparation through a fake transport. No mocks of the game and no
+// layouts, the phone touch layout (real touch events, 60% playfield, instant sticks, pinch, tray sheet, camera
+// framing), a full offline reload and natural-voice preparation through a fake transport. No mocks of the game and no
 // completion overrides. Screenshots go to SHOTS_DIR (default <tmp>/build-crew-shots); results to RESULTS_DIR.
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -34,7 +35,8 @@ const browser = await pw.chromium.launch(launch);
 const errors = [],
   logs = [],
   results = { solutions: [], checks: [] };
-// A host-side deadline: a wedged browser still produces a failure report instead of a silent hang.
+// A host-side deadline (20 minutes: ten solved jobs plus the phone stages): a wedged browser still produces a failure
+// report instead of a silent hang.
 const watchdog = setTimeout(() => {
   const failure = {
     message: 'Browser smoke exceeded its host deadline',
@@ -47,7 +49,7 @@ const watchdog = setTimeout(() => {
   console.error(failure);
   browser.close().catch(() => {});
   setTimeout(() => process.exit(1), 1500);
-}, 600000);
+}, 1200000);
 const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 const page = await context.newPage();
 context.on('page', (p) =>
@@ -225,6 +227,9 @@ try {
   await page.locator('.pz-tabs [data-tab="report"]').click();
   await page.locator('#bc-report .pz-chart').first().waitFor();
   assert.equal(await page.locator('#bc-report .pz-chart').count(), 2);
+  // The report says which quality tier this device runs at and every change the controller made.
+  assert.equal(await page.locator('#bc-quality').count(), 1);
+  assert.match(await page.locator('#bc-quality').textContent(), /Quality tier: desktop.*Resolution: .*Shadows: 1024.*Changes this session:/);
   await page.screenshot({ path: path.join(shots, 'parent-report.png') });
   await page.locator('.pz-tabs [data-tab="options"]').click();
   await page.locator('#bc-unlock').click();
@@ -319,6 +324,309 @@ try {
   await audit(live);
   await live.screenshot({ path: path.join(shots, 'small-landscape.png') });
   await bounded(live.close(), 'live page close');
+  // ---- Phones (0.4): the touch layout, input feel and camera framing, on a real touch context ----
+  {
+  stage = 'phone touch';
+  const phoneContext = await bounded(
+    browser.newContext({
+      viewport: { width: 390, height: 844 },
+      deviceScaleFactor: 2,
+      hasTouch: true,
+      isMobile: true,
+      storageState: await bounded(context.storageState(), 'phone state'),
+    }),
+    'phone context',
+    30000,
+  );
+  const phone = await phoneContext.newPage();
+  phone.on('pageerror', (e) => errors.push(e.message));
+  await phone.goto(BASE + '/build-crew/?nosw=1');
+  await ready(phone);
+  assert.equal(await phone.evaluate(() => document.documentElement.classList.contains('touch')), true, 'touch class');
+  assert.equal(await phone.evaluate(() => window.__buildCrew.performance.quality.tier), 'phone', 'phone tier');
+  await phone.locator('#play').tap();
+  await phone.waitForFunction(() => window.__buildCrew.state.screen === 'play');
+  await phone.waitForTimeout(1200);
+  const cdp = await phoneContext.newCDPSession(phone);
+  await cdp.send('Performance.enable');
+  const metric = async (name) => (await cdp.send('Performance.getMetrics')).metrics.find((m) => m.name === name).value;
+  const touch = (type, points) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
+  const box = (sel) => phone.locator(sel).boundingBox();
+  const axes = () => phone.evaluate(() => window.__buildCrew.axes);
+  /** The playfield: the share of the screen height left clear in the middle band (the top bar and hint above it,
+   *  the controls under it), counting every control that reaches into the central half of the width. */
+  async function playfield() {
+    return phone.evaluate(() => {
+      const H = innerHeight,
+        W = innerWidth,
+        mid = (r) => r.right > W * 0.25 && r.left < W * 0.75;
+      let top = 0,
+        bottom = H;
+      const els = [...document.querySelectorAll('.hud-top, #hint, #hud button, #hud .stick')].filter(
+        (e) => e.offsetParent && !e.closest('#tray'),
+      );
+      for (const e of els) {
+        const r = e.getBoundingClientRect();
+        if (!r.width || !mid(r)) continue;
+        if (r.bottom < H / 2) top = Math.max(top, r.bottom);
+        else bottom = Math.min(bottom, r.top);
+      }
+      return { top, bottom, share: (bottom - top) / H };
+    });
+  }
+  /** The pairs of visible controls (named by these selectors) whose boxes overlap. */
+  async function overlaps(selectors) {
+    return phone.evaluate((sels) => {
+      const boxes = sels.flatMap((s) =>
+        [...document.querySelectorAll(s)]
+          .filter((e) => e.offsetParent && e.getBoundingClientRect().width)
+          .map((e) => [s, e.getBoundingClientRect()]),
+      );
+      const bad = [];
+      for (let i = 0; i < boxes.length; i++)
+        for (let j = i + 1; j < boxes.length; j++) {
+          const [a, A] = boxes[i],
+            [b, B] = boxes[j];
+          if (A.left < B.right && B.left < A.right && A.top < B.bottom && B.top < A.bottom) bad.push(a + ' / ' + b);
+        }
+      return bad;
+    }, selectors);
+  }
+  const CONTROLS = ['.hud-top', '#hint', '.hud-tools', '.machines', '.work-buttons', '.joint-buttons', '.stick'];
+  const kbdWords = /WASD|W A S D|SPACE|I J K L|\bkbd\b|Press E|press Grab/i;
+  for (const [width, height] of [
+    [390, 844],
+    [844, 390],
+  ]) {
+    stage = `phone layout ${width}x${height}`;
+    await phone.setViewportSize({ width, height });
+    await phone.waitForTimeout(600);
+    await audit(phone);
+    const pf = await playfield();
+    assert(pf.share >= 0.6, `the playfield keeps at least 60% of the height at ${width}x${height} (${pf.share.toFixed(2)})`);
+    assert.deepEqual(await overlaps(CONTROLS), [], `no controls overlap at ${width}x${height}`);
+    const text = await phone.evaluate(() => document.querySelector('#hud').innerText);
+    assert(!kbdWords.test(text), `no keyboard chips on a touch screen: ${text.replace(/\s+/g, ' ')}`);
+    assert(/drag the stick/i.test(text), 'the sticks say "drag the stick"');
+    assert.deepEqual(
+      await phone.evaluate(() =>
+        ['.stick', '#world', '[data-hold]', '#grab'].map((s) => getComputedStyle(document.querySelector(s)).touchAction),
+      ),
+      ['none', 'none', 'none', 'manipulation'],
+      'touch-action keeps the browser out of the sticks and the yard',
+    );
+    // The page fills the dynamic viewport height.
+    assert(await phone.evaluate(() => getComputedStyle(document.querySelector('#app')).height === innerHeight + 'px'));
+    await phone.screenshot({ path: path.join(shots, `phone-round1-${width}x${height}.png`) });
+  }
+  await phone.setViewportSize({ width: 390, height: 844 });
+  await phone.waitForTimeout(600);
+  // The first pointerdown is a control, with nothing to wait out: the axes are set as the touch is delivered.
+  stage = 'phone sticks';
+  const centre = (b) => ({ x: b.x + b.width / 2, y: b.y + b.height / 2, r: b.width * 0.34 });
+  const d = centre(await box('[data-stick="drive"]')),
+    t = centre(await box('[data-stick="tool"]'));
+  const z0 = await phone.evaluate(() => window.__buildCrew.state.machines[0].z);
+  await touch('touchStart', [{ id: 1, x: d.x + 2, y: d.y }]);
+  assert.deepEqual(
+    await axes().then((a) => [a.drive, a.steer]),
+    [0, 0],
+    'a touch inside the 12% dead zone drives nothing',
+  );
+  await touch('touchEnd', []);
+  const layoutBefore = await metric('LayoutCount');
+  await touch('touchStart', [{ id: 1, x: d.x, y: d.y - d.r * 0.9 }]);
+  const first = await axes();
+  assert(first.drive > 0.6 && Math.abs(first.steer) < 0.01, 'the first pointerdown drives at once: ' + JSON.stringify(first));
+  assert(
+    await phone.evaluate(() => /translate3d/.test(document.querySelector('[data-stick="drive"] .stick-dot').style.transform)),
+    'the knob follows the finger with a transform',
+  );
+  for (let i = 0; i < 40; i++) {
+    await touch('touchMove', [{ id: 1, x: d.x + Math.sin(i / 5) * d.r * 0.5, y: d.y - d.r * 0.8 }]);
+    await phone.waitForTimeout(16);
+  }
+  const layouts = (await metric('LayoutCount')) - layoutBefore;
+  assert(layouts <= 6, `moving a stick does not re-run layout (${layouts} layouts in 40 moves)`);
+  // Both sticks at once, then a pinch on the yard with both still held: nothing fights.
+  const held = [
+    { id: 1, x: d.x, y: d.y - d.r * 0.9 },
+    { id: 2, x: t.x, y: t.y - t.r * 0.9 },
+  ];
+  await touch('touchStart', held);
+  const both = await axes();
+  assert(both.drive > 0.6 && both.lift > 0.6, 'both sticks at once: ' + JSON.stringify(both));
+  const before = await phone.evaluate(() => window.__buildCrew.state.camera.distance);
+  const mid = { x: 195, y: 300 };
+  await touch('touchStart', [...held, { id: 3, x: mid.x - 20, y: mid.y }, { id: 4, x: mid.x + 20, y: mid.y }]);
+  for (let i = 1; i <= 8; i++) {
+    await touch('touchMove', [
+      ...held,
+      { id: 3, x: mid.x - 20 - i * 10, y: mid.y },
+      { id: 4, x: mid.x + 20 + i * 10, y: mid.y },
+    ]);
+    await phone.waitForTimeout(16);
+  }
+  const during = await axes();
+  assert(during.drive > 0.6 && during.lift > 0.6, 'a pinch does not drop the sticks: ' + JSON.stringify(during));
+  const after = await phone.evaluate(() => window.__buildCrew.state.camera.distance);
+  assert(after < before - 1, `pinching out zooms in (${before.toFixed(1)} to ${after.toFixed(1)})`);
+  await phone.waitForTimeout(500);
+  const z1 = await phone.evaluate(() => window.__buildCrew.state.machines[0].z);
+  assert(Math.abs(z1 - z0) > 0.3, 'the machine moved under touch (' + z0.toFixed(2) + ' to ' + z1.toFixed(2) + ')');
+  await touch('touchEnd', []);
+  assert.deepEqual(
+    await axes().then((a) => [a.drive, a.steer, a.lift, a.tool]),
+    [0, 0, 0, 0],
+    'lifting every finger returns every axis to neutral',
+  );
+  console.log('PASS UI stage');
+  results.checks.push(
+    'phone: touch layout, 60% playfield, no keyboard chips, instant sticks, dead zone, pinch with both sticks held',
+  );
+  // The sandbox tray is a sheet that leaves the sticks reachable, in both orientations, for every machine's joints.
+  stage = 'phone tray';
+  await phone.locator('#home').tap();
+  await phone.locator('#sandbox').tap();
+  await phone.waitForFunction(() => window.__buildCrew.state.screen === 'play');
+  for (const [width, height] of [
+    [390, 844],
+    [844, 390],
+  ]) {
+    await phone.setViewportSize({ width, height });
+    await phone.waitForTimeout(500);
+    await phone.locator('#open-tray').tap();
+    for (const machine of ['skid', 'excavator', 'crane']) {
+      await phone.locator(`[data-machine="${machine}"]`).tap();
+      await phone.waitForTimeout(150);
+      const hits = await hitTest(phone, ['wreck', 'clear-yard', 'close-tray']);
+      assert.deepEqual(hits, { wreck: true, 'clear-yard': true, 'close-tray': true }, `tray buttons hit with ${machine}`);
+      assert.deepEqual(
+        await clears(phone, '#tray', ['.stick', '.joint-buttons', '.machines', '.hud-tools']),
+        [],
+        `tray clear of the sticks, joints and cards at ${width}x${height}`,
+      );
+      if (height > width) {
+        assert.deepEqual(await clears(phone, '#tray', ['.work-buttons']), [], 'the portrait tray leaves Grab free');
+      }
+      // Every stick, joint button and card is still the topmost thing at its own centre.
+      const blocked = await phone.evaluate(() =>
+        [...document.querySelectorAll('.stick, .joint-buttons button, .machine-card')]
+          .filter((e) => e.offsetParent)
+          .map((e) => {
+            const r = e.getBoundingClientRect(),
+              top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+            return top === e || e.contains(top) ? null : e.className;
+          })
+          .filter(Boolean),
+      );
+      assert.deepEqual(blocked, [], `sticks, joints and cards reachable through the open tray at ${width}x${height}`);
+    }
+    const sheet = await phone.evaluate(() => ({ ...document.querySelector('#tray').getBoundingClientRect().toJSON(), h: innerHeight }));
+    assert(sheet.top >= 40 && sheet.bottom <= sheet.h, 'the tray stays on the screen');
+    await phone.screenshot({ path: path.join(shots, `phone-tray-${width}x${height}.png`) });
+    await phone.locator('#close-tray').tap();
+  }
+  console.log('PASS UI stage');
+  results.checks.push('phone: the tray sheet clears the sticks and joints in portrait and landscape');
+  await bounded(phoneContext.close(), 'phone context close');
+  // Every job at phone sizes: the machine, the delivery pad and every ghost sit clear of the top bar, the hint strip
+  // and the controls (the camera frames the machine in the band between them).
+  for (const [width, height] of [
+    [390, 844],
+    [844, 390],
+  ]) {
+    stage = `phone framing ${width}x${height}`;
+    const fc = await bounded(
+      browser.newContext({
+        viewport: { width, height },
+        deviceScaleFactor: 1,
+        hasTouch: true,
+        isMobile: true,
+        storageState: await bounded(context.storageState(), 'framing state'),
+      }),
+      'framing context',
+      30000,
+    );
+    const fp = await fc.newPage();
+    fp.on('pageerror', (e) => errors.push(e.message));
+    await fp.goto(BASE + '/build-crew/?test=1&nosw=1');
+    await ready(fp);
+    for (let id = 1; id <= 10; id++) {
+      await fp.evaluate((id) => window.__buildCrew.test.start(id), id);
+      await fp.evaluate(() => window.__buildCrew.test.advance({}, 30));
+      await fp.waitForTimeout(1000);
+      const covered = await fp.evaluate(() => {
+        const L = window.__buildCrew.layout,
+          pts = { machine: L.machine, pad: L.padCentre };
+        L.ghosts.forEach((g, i) => (pts['ghost' + i] = g));
+        const boxes = [...document.querySelectorAll('#hud button, #hud .stick, #hint, .hud-top')]
+          .filter((e) => e.offsetParent && e.getBoundingClientRect().width)
+          .map((e) => [e.id || e.className, e.getBoundingClientRect()]);
+        return Object.entries(pts).flatMap(([name, p]) =>
+          boxes
+            .filter(([, r]) => p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom)
+            .map(([n]) => name + ' under ' + n),
+        );
+      });
+      assert.deepEqual(covered, [], `job ${id} at ${width}x${height}: nothing the player needs is under a control`);
+    }
+    await fc.close();
+  }
+  // The job-complete sheet on a phone on its side: the whole card and its three buttons fit on the screen.
+  stage = 'phone job complete';
+  const sideContext = await bounded(
+    browser.newContext({
+      viewport: { width: 844, height: 390 },
+      deviceScaleFactor: 2,
+      hasTouch: true,
+      isMobile: true,
+      storageState: await bounded(context.storageState(), 'side state'),
+    }),
+    'side context',
+    30000,
+  );
+  const side = await sideContext.newPage();
+  side.on('pageerror', (e) => errors.push(e.message));
+  await side.goto(BASE + '/build-crew/?test=1&nosw=1');
+  await ready(side);
+  await side.evaluate(() => window.__buildCrew.test.start(1));
+  const solved = await side.evaluate(async () => {
+    const { solve } = await import('./tools/solution.mjs');
+    const api = window.__buildCrew;
+    return solve(
+      {
+        state: () => api.state,
+        advance: (axes, n) => api.test.advance(axes, n),
+        action: (a) => api.test.action(a),
+        select: (i) => document.querySelectorAll('[data-machine]')[i].click(),
+      },
+      1,
+    );
+  });
+  assert(solved.complete);
+  await side.locator('#next-round').waitFor();
+  // The sheet slides in; measure it once the slide has finished.
+  await side.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => {}))));
+  await side.waitForTimeout(200);
+  const done = await side.evaluate(() => {
+    const card = document.querySelector('#modal .modal-card').getBoundingClientRect();
+    return {
+      inside: card.top >= 0 && card.bottom <= innerHeight && card.left >= 0 && card.right <= innerWidth,
+      buttons: [...document.querySelectorAll('#modal .modal-actions button')].every((b) => {
+        const r = b.getBoundingClientRect();
+        return r.bottom <= innerHeight && r.height >= 44;
+      }),
+    };
+  });
+  assert.deepEqual(done, { inside: true, buttons: true }, 'the job-complete sheet fits a phone on its side');
+  await side.screenshot({ path: path.join(shots, 'phone-complete-844x390.png') });
+  await sideContext.close();
+  console.log('PASS UI stage');
+  results.checks.push(
+    'phone: every job frames machine, pad and ghosts clear of the controls in both orientations; the job-complete sheet fits',
+  );
+  }
   // Prewarm the complete shell, then verify a new offline navigation and a saved sandbox.
   const offlineContext = await browser.newContext({
     viewport: { width: 1024, height: 768 },

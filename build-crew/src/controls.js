@@ -1,6 +1,27 @@
 // Every input path (keyboard, the two touch sticks, the joint hold buttons, a standard gamepad, drag to orbit, pinch
 // and wheel to zoom) produces the same bounded axes, read once per frame by the game loop. Captured fingers, blur,
 // hidden tabs and a disconnected gamepad all return to neutral, so an axis can never stay stuck on.
+/** The stick's dead zone (fraction of full deflection) and the deflection at which it reaches full power. */
+const DEAD_ZONE = 0.12;
+const FULL_AT = 0.92;
+const STICK_AXES = { drive: ['drive', 'steer'], tool: ['lift', 'tool'] };
+
+/** Shapes a stick deflection (x, y each -1..1, length up to 1) into `out`: nothing inside the 12 % dead zone, then a
+ *  smooth curve that starts gentle (for placing a load precisely) and reaches full power just before the rim. The
+ *  direction is kept, so diagonals work. Returns out. */
+export function shapeStick(x, y, out = { x: 0, y: 0 }) {
+  const r = Math.hypot(x, y);
+  if (r <= DEAD_ZONE) {
+    out.x = out.y = 0;
+    return out;
+  }
+  const s = Math.min(1, (r - DEAD_ZONE) / (FULL_AT - DEAD_ZONE)),
+    power = s * (0.3 + 0.7 * s);
+  out.x = (x / r) * power;
+  out.y = (y / r) * power;
+  return out;
+}
+
 /** Wires all input to the canvas and the HUD. action(name) receives one-shot actions (grab, hop, reset, pause, horn);
  *  orbit(dx, dy) and zoom(delta) move the camera; tap(event) is a short click on the yard (terrain stamps). Returns
  *  { clear, setEnabled, read } where read() returns the axes clamped to -1..1, or {} while disabled. */
@@ -11,13 +32,19 @@ export function createControls(canvas, { action, orbit, zoom, tap }) {
     previous = [],
     drag = null,
     pinches = new Map(),
-    pinchDist = 0;
+    pinchDist = 0,
+    pads = false;
+  // Everything the sticks need is looked up once, so a pointermove only writes the knob's transform.
+  const sticks = [...document.querySelectorAll('[data-stick]')],
+    releases = [];
   // Releases every key, axis and stick dot.
   const neutral = () => {
     keys.clear();
     for (const k in axes) axes[k] = 0;
-    for (const dot of document.querySelectorAll('.stick-dot')) dot.style.transform = 'translate(-50%,-50%)';
+    for (const release of releases) release();
   };
+  // A gamepad is polled only once the browser has reported one (the poll allocates).
+  addEventListener('gamepadconnected', () => (pads = true));
   // Typing in the Parent Zone or moving the daylight slider must not drive a machine.
   const isInput = (e) => e.target.closest('input,textarea,select,#pz,[role="slider"]');
   const special = { Space: 'grab', KeyE: 'hop', KeyR: 'reset', Escape: 'pause', KeyH: 'horn' };
@@ -50,41 +77,53 @@ export function createControls(canvas, { action, orbit, zoom, tap }) {
   window.addEventListener('keyup', (e) => keys.delete(e.code));
   window.addEventListener('blur', neutral);
   document.addEventListener('visibilitychange', neutral);
-  // The touch sticks: one captured finger each; the dot follows it inside a circle of 34 % of the stick's width.
-  for (const stick of document.querySelectorAll('[data-stick]')) {
-    let finger = null;
-    const dot = stick.querySelector('.stick-dot');
+  // The touch sticks: one captured finger each; the dot follows it inside a circle of 34 % of the stick's width. The
+  // stick answers on the very first pointerdown (touch-action: none in the stylesheet keeps the browser's own scroll,
+  // zoom and double-tap handling out of the way, so there is no delay to wait out and no preventDefault is needed).
+  // The stick's box is measured once when the finger lands, so moving it never reads the layout, and the dot is moved
+  // with a transform alone.
+  const shaped = { x: 0, y: 0 };
+  for (const stick of sticks) {
+    let finger = null,
+      cx = 0,
+      cy = 0,
+      rad = 1;
+    const dot = stick.querySelector('.stick-dot'),
+      [vertical, horizontal] = STICK_AXES[stick.dataset.stick],
+      driving = stick.dataset.stick === 'drive';
     const move = (e) => {
       if (e.pointerId !== finger) return;
-      const r = stick.getBoundingClientRect(),
-        rad = r.width * 0.34;
-      let x = (e.clientX - r.x - r.width / 2) / rad,
-        y = (e.clientY - r.y - r.height / 2) / rad;
+      let x = (e.clientX - cx) / rad,
+        y = (e.clientY - cy) / rad;
       const l = Math.max(1, Math.hypot(x, y));
       x /= l;
       y /= l;
-      dot.style.transform = `translate(calc(-50% + ${x * rad}px),calc(-50% + ${y * rad}px))`;
-      if (stick.dataset.stick === 'drive') {
-        axes.drive = -y;
-        axes.steer = -x;
-      } else {
-        axes.lift = -y;
-        axes.tool = x;
-      }
+      dot.style.transform = `translate3d(${x * rad}px,${y * rad}px,0)`;
+      shapeStick(x, y, shaped);
+      // (`|| 0` keeps a centred stick at +0 rather than -0.)
+      axes[vertical] = -shaped.y || 0;
+      axes[horizontal] = (driving ? -shaped.x : shaped.x) || 0;
     };
+    const end = () => {
+      finger = null;
+      axes[vertical] = axes[horizontal] = 0;
+      dot.style.transform = '';
+      stick.classList.remove('held');
+    };
+    releases.push(end);
     stick.addEventListener('pointerdown', (e) => {
-      if (!enabled) return;
+      if (!enabled || finger !== null) return;
       finger = e.pointerId;
+      const r = stick.getBoundingClientRect();
+      cx = r.x + r.width / 2;
+      cy = r.y + r.height / 2;
+      rad = r.width * 0.34;
       stick.setPointerCapture(finger);
+      stick.classList.add('held');
+      stick.parentElement.classList.add('used');
       move(e);
     });
     stick.addEventListener('pointermove', move);
-    const end = () => {
-      finger = null;
-      if (stick.dataset.stick === 'drive') axes.drive = axes.steer = 0;
-      else axes.lift = axes.tool = 0;
-      dot.style.transform = 'translate(-50%,-50%)';
-    };
     stick.addEventListener('pointerup', end);
     stick.addEventListener('pointercancel', end);
     stick.addEventListener('lostpointercapture', end);
@@ -127,7 +166,8 @@ export function createControls(canvas, { action, orbit, zoom, tap }) {
     if (pinches.size === 2) {
       const p = [...pinches.values()],
         d = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
-      zoom((pinchDist - d) * 0.035);
+      // Scaled to the screen, so a pinch across a phone zooms as far as one across a laptop's trackpad.
+      zoom((pinchDist - d) * (22 / Math.max(300, Math.min(innerWidth, innerHeight))));
       pinchDist = d;
       return;
     }
@@ -160,40 +200,48 @@ export function createControls(canvas, { action, orbit, zoom, tap }) {
   );
   // +1, -1 or 0 for a pair of opposing keys.
   const down = (a, b) => Number(keys.has(a)) - Number(keys.has(b));
+  const out = { drive: 0, steer: 0, lift: 0, tool: 0, swing: 0, tilt: 0, extend: 0 };
+  const clamp = (v) => (v > 1 ? 1 : v < -1 ? -1 : v);
+  const NONE = Object.freeze({});
   return {
     clear: neutral,
     setEnabled(v) {
       enabled = v;
       neutral();
     },
+    /** The stick and button axes as they stand, for tests and tools (the same object each time). */
+    peek: () => axes,
     // Keyboard and gamepad add to the stick axes; Shift turns J/L from the tool axis into the excavator's cab swing.
-    // Gamepad buttons A, Y and B fire grab, hop and reset on their press edge only.
+    // Gamepad buttons A, Y and B fire grab, hop and reset on their press edge only. The object returned is reused by
+    // the next read, so the game loop allocates nothing here.
     read() {
-      if (!enabled) return {};
+      if (!enabled) return NONE;
       const shift = keys.has('ShiftLeft') || keys.has('ShiftRight'),
         horizontal = down('KeyL', 'KeyJ') + down('ArrowRight', 'ArrowLeft');
-      const result = {
-        ...axes,
-        drive: axes.drive + down('KeyW', 'KeyS'),
-        steer: axes.steer + down('KeyA', 'KeyD'),
-        lift: axes.lift + down('KeyI', 'KeyK') + down('ArrowUp', 'ArrowDown'),
-        tool: axes.tool + (shift ? 0 : horizontal),
-        swing: axes.swing + (shift ? horizontal : 0),
-        extend: axes.extend + down('KeyO', 'KeyU'),
-      };
-      const pad = Array.from(navigator.getGamepads?.() || []).find((p) => p?.connected);
+      let drive = axes.drive + down('KeyW', 'KeyS'),
+        steer = axes.steer + down('KeyA', 'KeyD'),
+        lift = axes.lift + down('KeyI', 'KeyK') + down('ArrowUp', 'ArrowDown'),
+        tool = axes.tool + (shift ? 0 : horizontal);
+      const pad = pads ? Array.from(navigator.getGamepads?.() || []).find((p) => p?.connected) : null;
       if (pad) {
         const dz = (v) => (Math.abs(v) > 0.18 ? v : 0);
-        result.drive += -dz(pad.axes[1] || 0);
-        result.steer += -dz(pad.axes[0] || 0);
-        result.lift += -dz(pad.axes[3] || 0);
-        result.tool += dz(pad.axes[2] || 0);
+        drive += -dz(pad.axes[1] || 0);
+        steer += -dz(pad.axes[0] || 0);
+        lift += -dz(pad.axes[3] || 0);
+        tool += dz(pad.axes[2] || 0);
         [0, 3, 1].forEach((b, i) => {
           if (pad.buttons[b]?.pressed && !previous[b]) action(['grab', 'hop', 'reset'][i]);
         });
         previous = pad.buttons.map((b) => b.pressed);
-      } else previous = [];
-      return Object.fromEntries(Object.entries(result).map(([k, v]) => [k, Math.max(-1, Math.min(1, v))]));
+      } else if (previous.length) previous = [];
+      out.drive = clamp(drive);
+      out.steer = clamp(steer);
+      out.lift = clamp(lift);
+      out.tool = clamp(tool);
+      out.swing = clamp(axes.swing + (shift ? horizontal : 0));
+      out.tilt = clamp(axes.tilt);
+      out.extend = clamp(axes.extend + down('KeyO', 'KeyU'));
+      return out;
     },
   };
 }

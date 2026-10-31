@@ -20,7 +20,7 @@ import { registerSync } from './meta/sync.js';
 import { Music } from './meta/music.js';
 import { Sound } from './meta/sound.js';
 import { app, initState, persist, account, flush, activePlay, setSetting } from './app/state.js';
-import { toast, closeModal, updateUI } from './app/hud.js';
+import { toast, closeModal, updateUI, measureInsets } from './app/hud.js';
 import { createVoice, applyVoice, voiceFor, say, hush } from './app/voice.js';
 import { ensurePlayer, renderTitle, jobBoard, showTitle } from './app/title.js';
 import { makeWorld, startRound, step, resetBlocks, action } from './app/rounds.js';
@@ -35,7 +35,7 @@ import {
   fitTray,
 } from './app/tray.js';
 import { initParentZone } from './app/parent.js';
-import { samples, startLoop, forgetLastFrame } from './app/loop.js';
+import { samples, loopStats, startLoop, forgetLastFrame } from './app/loop.js';
 
 initState();
 registerSync();
@@ -82,6 +82,7 @@ const BUTTONS = {
   horn: () => action('horn'),
   'repeat-goal': () => say(app.yard.round.goal),
   'right-machine': () => action('reset'),
+  'reset-machine': () => action('reset'),
   'reset-blocks': resetBlocks,
   'save-yard': saveYard,
   'modal-close': closeModal,
@@ -98,6 +99,17 @@ for (const [id, fn] of Object.entries(BUTTONS)) $('#' + id).onclick = fn;
 bindDaylight();
 // The tray stays above the drive deck whenever the deck (a machine's joint buttons) or the window changes size.
 addEventListener('resize', fitTray);
+// On a touch screen the camera frames the machine between the top bar and the controls, whatever the window's shape.
+const reframe = () => requestAnimationFrame(measureInsets);
+addEventListener('resize', reframe);
+addEventListener('orientationchange', reframe);
+try {
+  matchMedia('(pointer: coarse)').addEventListener('change', (e) => {
+    document.documentElement.classList.toggle('touch', e.matches || app.params.get('touch') === '1');
+    fitTray();
+    reframe();
+  });
+} catch {}
 new ResizeObserver(fitTray).observe(document.querySelector('.drive-deck'));
 
 // A new version waits for a safe moment (the title, nothing open) before reloading.
@@ -126,7 +138,15 @@ function unlock() {
   setSetting('sound', app.settings.sound);
   Music.play(!app.pz.isOpen && $('#modal').hidden);
 }
-for (const event of ['pointerdown', 'keydown', 'touchend']) document.addEventListener(event, unlock, { capture: true });
+// Unlocking is only needed for the first few gestures (a touch ends with touchend, which iOS needs to count); after
+// that every pointerdown, a stick touch included, skips the audio and settings work and answers at once.
+let gestures = 0;
+function onGesture() {
+  unlock();
+  if (++gestures >= 4) for (const event of GESTURES) document.removeEventListener(event, onGesture, { capture: true });
+}
+const GESTURES = ['pointerdown', 'keydown', 'touchend'];
+for (const event of GESTURES) document.addEventListener(event, onGesture, { capture: true });
 document.addEventListener('contextmenu', (e) => {
   if (!e.target.closest('#pz')) e.preventDefault();
 });
@@ -239,6 +259,7 @@ function exposeHooks() {
         })),
         active: yard.active,
         daylight: scene.daylight,
+        camera: { yaw: scene.yaw, pitch: scene.pitch, distance: scene.distance },
         stamps: yard.stamps.map((s) => ({ ...s })),
         save: normalize(app.save),
         voice: { engine: tts.engine, clips: cloud.count(), active: cloud.active },
@@ -252,7 +273,37 @@ function exposeHooks() {
         triangles: renderer.info.render.triangles,
         effectiveDpr: renderer.getPixelRatio(),
         renderer: renderer.getContext().getParameter(renderer.getContext().RENDERER),
+        quality: app.scene.quality.summary(),
+        loop: { ...loopStats, steps: loopStats.steps.slice() },
       };
+    },
+    /** Where the delivery pad's corners, the blueprint's ghosts and the active machine appear on screen (CSS pixels),
+     *  for the layout checks: read-only, it projects through the camera and moves nothing. */
+    get layout() {
+      const { yard, scene } = app,
+        cam = scene.camera,
+        r = yard.round,
+        v = scene.tapPoint;
+      const at = (x, y, z) => {
+        v.set(x, y, z).project(cam);
+        return { x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight };
+      };
+      const p = r.pad;
+      return {
+        pad: [
+          at(p.x - p.w / 2, 0, p.z - p.d / 2),
+          at(p.x + p.w / 2, 0, p.z - p.d / 2),
+          at(p.x + p.w / 2, 0, p.z + p.d / 2),
+          at(p.x - p.w / 2, 0, p.z + p.d / 2),
+        ],
+        padCentre: at(p.x, 0, p.z),
+        ghosts: (r.ghosts || []).map((g) => at(g.x, g.y, g.z)),
+        machine: at(yard.machine.x, 1, yard.machine.z),
+      };
+    },
+    /** The stick and button axes as they stand right now (read-only; for tools). */
+    get axes() {
+      return { ...app.controls.peek() };
     },
     voiceFor,
     say,

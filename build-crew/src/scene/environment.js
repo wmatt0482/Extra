@@ -5,7 +5,7 @@
 // batched into instanced meshes; only the floor tiles and the stamps change after that.
 import * as T from '../../vendor/three.module.js';
 import { canvasTexture } from './kit.js';
-import { BUDGET } from './quality.js';
+import { BUDGET, TIER } from './quality.js';
 import { HILL, RAMP_FACES, RECESS, hillProfile, rampPoints } from '../terrain.mjs';
 
 /** The first-flight yard (SPEC §5): gravel, weathered steel and muted greens under a pale industrial sky. */
@@ -114,13 +114,15 @@ export function buildEnvironment(scene, kit, theme = YARD_THEME) {
   return env;
 }
 
-/** The single shadow-casting light. Its shadow box covers the whole working area. */
+/** The single shadow-casting light. Its shadow box covers the whole working area (the tier sets its size and the map). */
 function makeSun(theme) {
   const sun = new T.DirectionalLight(theme.sun.color, theme.sun.intensity);
   sun.position.set(...theme.sun.position);
   sun.castShadow = true;
   sun.shadow.mapSize.set(BUDGET.shadowMap, BUDGET.shadowMap);
-  Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 80 });
+  // A phone's smaller shadow map covers a tighter box (the working area plus its margin) to keep the texels small.
+  const r = TIER.shadowRange;
+  Object.assign(sun.shadow.camera, { left: -r, right: r, top: r, bottom: -r, near: 1, far: 80 });
   sun.shadow.normalBias = 0.08;
   sun.shadow.bias = -0.0006;
   return sun;
