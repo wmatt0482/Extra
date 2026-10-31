@@ -93,7 +93,7 @@ import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
 
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 // the natural voice: the server makes clips of at most 200 characters, so a longer line is said (and prepared) a
 // sentence or two at a time; the line "Say a test line" speaks in the Parent Zone
 const CLIP_MAX = 200;
@@ -866,6 +866,9 @@ async function boot() {
       pick = tries < 2 ? ladderPick(kind === 'buy' ? 'x' : '/') : null;
       try { p = JA.problemFor({ kind, fact: pick ? pick.fact : null, leg, season: J.season, rand: Math.random, item, cash: num(J.cash), shelf: num(good.price) }); } catch (e) { console.warn('[WagonWest] problemFor', e); p = null; }
       if (p && kind === 'buy' && num(p.answer) > num(J.cash)) p = null;
+      // a divide must not ask about more money than the purse holds, nor about more sacks than the purse pays at the shelf's price
+      // (a fact like 63 ÷ 9 cannot fit a purse a big "Work it out" already spent: the next try is a small one)
+      if (p && kind === 'divide') { const m = p.meta || {}; if (num(m.total) + num(m.left) > num(J.cash) || num(m.qty) * num(good.price) > num(J.cash)) p = null; }
     }
     if (!p) { toast(num(J.cash) < 1 ? 'The cash box is empty right now' : 'No question for that one: just tap to buy it'); return; }
     const res = await runProblemPanel(p, { kind, title: 'General Store', chipText: good.name, pick });
@@ -877,8 +880,11 @@ async function boot() {
     if (price == null) { try { price = JA.priceAt ? JA.priceAt(meta.item || item, JA.storeLeg ? JA.storeLeg(J) : leg, J.season) : null; } catch (_) { price = null; } }
     if (!Number.isFinite(price) || price <= 0) price = num(meta.price) || num(good.price) || 1;
     let r = { ok: false };
-    try { r = JA.buy(J, { item: meta.item || item, qty, price }); } catch (e) { console.warn('[WagonWest] buy', e); }
-    if (r && r.ok) { Audio.cash(); toast(`${qty} × ${good.name} in the wagon`); } else toast('Not enough cash for that many: try another good');
+    // (the purse is checked again here: the child may have spent it while the panel was open, and the goods never cost more than the cash box holds)
+    const canPay = price > 0 ? Math.floor(num(J.cash) / price) : qty;
+    const qtyPaid = Math.min(qty, canPay);
+    try { r = qtyPaid >= 1 ? JA.buy(J, { item: meta.item || item, qty: qtyPaid, price }) : { ok: false }; } catch (e) { console.warn('[WagonWest] buy', e); }
+    if (r && r.ok) { Audio.cash(); toast(`${qtyPaid} × ${good.name} in the wagon`); } else toast('Not enough cash for that many: try another good');
     app.persist(); refreshCash();
   }
 
@@ -1202,12 +1208,12 @@ async function boot() {
     if (!T) return;
     if (nation) dropCard(nation.id);
     let offer = null;
-    try { offer = JA.tradeOffer ? JA.tradeOffer(J) : null; } catch (_) { offer = null; }
-    const rate = (offer && offer.rate) || (nation && nation.trade && nation.trade.rate) || [3, 2];
-    if (offer && num(offer.have) < rate[0]) { toast('Nothing to trade this time: a friendly visit'); return; }
+    try { offer = JA.tradeOffer(J, { nation: ev.nation || (nation && nation.id) }); } catch (e) { console.warn('[WagonWest] tradeOffer', e); }
+    // the guard only fires when the wagon holds nothing tradable at all (a fallback offer is always affordable)
+    if (!offer || offer.kind === 'none') { toast('Nothing to trade this time: a friendly visit'); return; }
     const pick = ladderPick('x');
     let p = null;
-    try { p = JA.problemFor({ kind: 'trade', fact: pick ? pick.fact : null, leg: curLeg(), season: J.season, rand: T.rand, nation: ev.nation || (nation && nation.id), have: offer ? offer.have : undefined }); } catch (e) { console.warn('[WagonWest] problemFor trade', e); }
+    try { p = JA.problemFor({ kind: 'trade', fact: pick ? pick.fact : null, leg: curLeg(), season: J.season, rand: T.rand, nation: ev.nation || (nation && nation.id), offer, have: offer.have }); } catch (e) { console.warn('[WagonWest] problemFor trade', e); }
     if (!p) return;
     await voiceFor(problemTexts(p));       // the trade problem in the natural voice (runProblemPanel asks again: a no-op then)
     const res = await runProblemPanel(p, { kind: 'trade', title: 'Trading post', chipText: nation ? nation.name : '', pick });

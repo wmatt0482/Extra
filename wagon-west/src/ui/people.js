@@ -13,8 +13,6 @@ import { $, h } from '../../../spell-jump/src/ui/dom.js';
 const STOP_BUTTON = { river: 'To the ferry', fort: 'Into the fort', home: 'Home at last', start: 'To the store' };
 /** The start town as a stop (it is not a leg): the Talk row there works like a fort's, its big button goes to the store. */
 export const START_STOP = Object.freeze({ id: 'independence', name: 'Independence, Missouri', stop: Object.freeze({ kind: 'start', name: 'Independence, Missouri' }) });
-const GOOD_NAME = { pelts: 'beaver pelts', blankets: 'blankets', rope: 'coils of rope', flour: 'sacks of flour', corn: 'bags of corn', pemmican: 'cakes of pemmican', berries: 'bags of dried berries',
-  camas: 'bags of camas roots', salmon: 'bundles of dried salmon', roots: 'bags of dried roots', wapato: 'bags of wapato roots' };
 const cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : '');
 
 /** The Journal's "People met" card for the map page. app: { save, v2 }. */
@@ -61,16 +59,20 @@ export function createPeople(app) {
   function done(ok) { if (!V) return; const v = V; V = null; wrap.hidden = true; v.resolve(ok); }
   go.addEventListener('click', () => { if (!busy) done(true); });
 
-  /** A person's trade at their own rate: the trade problem, then applyTrade. */
-  async function personTrade(person, gift) {
+  /** What this person can trade with what the wagon holds: their own listed trade, else a fallback the wagon can afford
+   *  (tokens, then store food), else kind 'none'. */
+  const offerFor = (person, g) => JA().tradeOffer(app.save.journey, { trades: [g], nation: person.id });
+  /** The card's words: the person's own line for their listed trade, a sentence worked from the offer for a fallback. */
+  const offerText = (person, g, offer) => (offer && offer.kind === 'fallback' ? JA().tradeLine(offer, person.name) : g.text);
+
+  /** A person's trade: the trade problem at the offer's rate (the multiplication asked is the offer's rate x count), then applyTrade. */
+  async function personTrade(person, g, offer = offerFor(person, g)) {
     const J = app.save.journey;
-    const rate = Array.isArray(gift.rate) && gift.rate.length === 2 ? gift.rate : [3, 2];
-    const have = JA().spareGoods(J, gift.give);
-    if (have < rate[0]) { app.effectToast('Nothing to trade this time: a friendly visit.'); return; }
+    if (!offer || offer.kind === 'none') { app.effectToast('Nothing to trade this time: a friendly visit.'); return; }
     const pick = app.v2.ladderPick('x');
-    const nation = { id: person.id, name: person.name, trade: { give: gift.give, giveName: GOOD_NAME[gift.give] || gift.give, get: gift.get, getName: GOOD_NAME[gift.get] || gift.get, rate } };
+    const nation = { id: person.id, name: person.name, trade: { give: offer.give, giveName: offer.giveName, get: offer.get, getName: offer.getName, rate: offer.rate } };
     let p = null;
-    try { p = JA().problemFor({ kind: 'trade', fact: pick ? pick.fact : null, leg: app.v2.curLeg(), season: J.season, rand: Math.random, nation, have }); } catch (e) { console.warn('[WagonWest] problemFor trade', e); }
+    try { p = JA().problemFor({ kind: 'trade', fact: pick ? pick.fact : null, leg: app.v2.curLeg(), season: J.season, rand: Math.random, nation, offer, have: offer.have }); } catch (e) { console.warn('[WagonWest] problemFor trade', e); }
     if (!p) return;
     const who = (t) => (typeof t === 'string' ? t.replace(/^The .+? people trade /, `${person.name} trades `) : t);
     p = { ...p, text: who(p.text), say: who(p.say) };
@@ -79,7 +81,7 @@ export function createPeople(app) {
     let t = null;
     try { t = JA().applyTrade(J, p.meta || { giveN: p.giveN, getN: p.answer }); } catch (e) { console.warn('[WagonWest] applyTrade', e); }
     app.persist();
-    if (t && t.got) app.effectToast(`Traded ${t.gave} ${GOOD_NAME[gift.give] || gift.give} for ${t.got} ${GOOD_NAME[gift.get] || gift.get}.`);
+    if (t && t.got) app.effectToast(`Traded ${t.gave} ${offer.giveName} for ${t.got} ${offer.getName}.`);
   }
 
   async function gift(person, g) {
@@ -93,8 +95,11 @@ export function createPeople(app) {
       const c = await app.v2.showCard({ kicker: person.name, title: 'A puzzle for a token', text: g.text, say: g.text, sticker: { emoji: person.emoji, name: '' }, tone: 'trade', button: 'Work it out', alt: 'Not now' });
       if (c === true && V) await app.v2.runProblem('parts', { title: person.name });
     } else if (g.kind === 'trade') {
-      const c = await app.v2.showCard({ kicker: person.name, title: 'A fair trade', text: g.text, say: g.text, sticker: { emoji: person.emoji, name: '' }, tone: 'trade', button: 'Trade', alt: 'No thanks' });
-      if (c === true && V) await personTrade(person, g);
+      const offer = offerFor(person, g);
+      if (!offer || offer.kind === 'none') { app.effectToast('Nothing to trade this time: a friendly visit.'); return; }
+      const text = offerText(person, g, offer);          // the shown text and the spoken line are the same words
+      const c = await app.v2.showCard({ kicker: person.name, title: 'A fair trade', text, say: text, sticker: { emoji: person.emoji, name: '' }, tone: 'trade', button: 'Trade', alt: 'No thanks' });
+      if (c === true && V) await personTrade(person, g, offerFor(person, g));
     }
   }
 

@@ -64,7 +64,7 @@ export function createCamp(app) {
         try {
           if (a.id === 'wait') {
             const r = app.waitOut();
-            app.toast(r && r.waited ? 'You waited out the storm. It cost nothing!' : 'A good rest. Everyone feels better');
+            app.effectToast(r && r.waited ? 'You waited out the storm. It cost nothing!' : 'A good rest. Everyone feels better');      // (an effect line: the answer to the tap outlives a crowded camp screen)
           } else await app.campActivity(a.id);
         } finally { busy = false; if (ctx && app.screen === 'camp') paint(); }
       });

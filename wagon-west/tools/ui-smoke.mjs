@@ -359,10 +359,10 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'store (one good greyed)');
   await J(page, (c) => { const w = window.__wagonWest; w.save.journey.cash = c; w.store.refresh(); }, tap1.cash);
   await grab();
+  const spoken0 = await J(page, () => window.__spoken.length);      // (before the click: the panel reads its question as it opens)
   await page.click('.st-work[data-good="flour"]');
   await page.waitForSelector(visibleSel('#panel-problem'));
   const p1 = await W(page);
-  const spoken0 = await J(page, () => window.__spoken.length);
   check(p1.pKind === 'buy' && p1.problem === 'ask', `"Work it out" asks a 'buy' problem on the problem panel ("${await J(page, () => document.querySelector('#pp-text').textContent)}")`);
   await shot(page, layout, '06-problem');
   await audit(page, layout.insets, 'problem panel');
@@ -372,6 +372,9 @@ async function runLayout(browser, layout) {
   check(j1.tokens === tap1.tokens + 1 && j1.food > tap1.food && j1.cash < tap1.cash, `a right first answer to "Work it out": the flour in the wagon (${tap1.food} → ${j1.food} lb, $${tap1.cash} → $${j1.cash}) and a trade token`);
   check(await J(page, (n) => window.__spoken.slice(n).some((t) => /flour/i.test(t)), spoken0), 'the problem is read aloud');
   await page.waitForTimeout(250);
+  // (the flour question may have spent most of the $45 purse: it asks for up to 9 sacks at the shelf's price, and a divide that
+  // cannot fit what is left is skipped. Top the purse up to $30 so this check is about the bacon arriving, not the purse)
+  await J(page, () => { const w = window.__wagonWest; if (w.save.journey.cash < 30) w.save.journey.cash = 30; w.store.refresh(); });
   await page.click('.st-work[data-good="bacon"]');
   await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask');
   const p2 = await W(page);
@@ -613,7 +616,7 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.3\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.3\.1 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
   check(await J(page, () => document.querySelector('#opt-voice-line').textContent === 'Device voice' && !!document.querySelector('#opt-voice-test')), 'Options: the voice line ("Device voice": no natural voice picked) and "Say a test line"');
   await page.click('#opt-voice-test');
   await page.waitForFunction(() => /voice spoke/.test(document.querySelector('#opt-voice-result').textContent), null, { timeout: 8000 }).catch(() => {});
@@ -809,6 +812,8 @@ const forceDay = (page, extra) => J(page, (extra) => {
   JA.tickDay = (Jn, o) => { JA.tickDay = orig; return Object.assign(orig(Jn, o) || {}, extra); };
 }, extra);
 // (the in-flight day may still hold a marker or a card: the driver answers those while it waits for the one we want)
+/** The lines under the river's result (a soaked sack, a used coil of rope): in the panel, not a toast over the river. */
+const noteText = (page) => J(page, () => document.querySelector('#rv-notes').textContent);
 const toastWith = async (page, re, timeout = 12000) => {
   // (the test trail runs a day in 0.12 s and opens a panel every few days: a toast waits while one is open, so the driver also holds the day loop between panels)
   const plan = { onEach: async (s) => { await keepFar(page); if (s.screen === 'trail' && !s.card && s.marker === 'closed' && s.problem === 'closed') await J(page, (src) => { if (window.__wagonWest.toaster.waiting.some((t) => new RegExp(src).test(t))) window.__wagonWest.holdTrail(true); }, re.source); } };
@@ -1552,7 +1557,7 @@ async function v12Rivers(page, layout, grab) {
   const wet = await pickAndCross('ford');
   const fs1 = await jn(page);
   check(wet.res.soakedLb === 25 && fs1.flour === fs0.flour - 25 && /soaks a sack of flour/.test(wet.text), `a soaked ford: one sack of flour, 25 lb (${fs0.flour} → ${fs1.flour}), "${wet.text}"`);
-  check(await toastWith(page, /A sack of flour got soaked\. Soggy biscuits tonight!/, 3000) && await spokenHas(page, /Soggy biscuits tonight/), 'and its own line, shown and read aloud: "A sack of flour got soaked. Soggy biscuits tonight!"');
+  check(/A sack of flour got soaked\. Soggy biscuits tonight!/.test(await noteText(page)) && await spokenHas(page, /Soggy biscuits tonight/), 'and its own line, shown and read aloud: "A sack of flour got soaked. Soggy biscuits tonight!"');
   await shot(page, layout, 'p03-ford-soaked');
   await audit(page, layout.insets, 'river (a soaked ford)');
   await page.evaluate(() => { delete window.__mockScript.ford; });
@@ -1580,7 +1585,7 @@ async function v12Rivers(page, layout, grab) {
   const roped = await pickAndCross('float');
   const rp1 = await jn(page);
   check(roped.res.ropeUsed && rp1.rope === rp0.rope - 1 && rp1.flour === rp0.flour && /rope holds it steady/.test(roped.text), `a coil of rope: the bump costs nothing (rope ${rp0.rope} → ${rp1.rope}, flour ${rp1.flour} lb), "${roped.text}"`);
-  check(await toastWith(page, /The rope held the raft steady/, 3000), 'and a line says the coil is used up');
+  check(/The rope held the raft steady\. One coil is used up\./.test(await noteText(page)) && await J(page, () => !document.querySelector('#rv-notes').hidden), 'and a line in the river panel says the coil is used up');
 
   // ----- Float with no bumps, fractions off: straight to the steering run, a smooth crossing -----
   await page.evaluate(() => { window.__mockScript.bumps = 0; });
@@ -1662,6 +1667,8 @@ async function v12Raft(page, layout, grab) {
       if (s.marker === 'ask' && s.mTitle === 'Down the Columbia') { const c = await TEXT(page, '#mk-chip'); if (!chips.includes(c)) chips.push(c); }
     },
   }, 60000);
+  // (an effect line waits up to 25 s for a clear place and a closed card: on a busy machine it can still be coming when the valley shows)
+  if (!sawAcross) sawAcross = await page.waitForFunction(() => window.__wagonWest.toaster.log.find((t) => /^The raft is across!/.test(t)) || false, null, { timeout: 25000 }).then((hnd) => hnd.jsonValue(), () => '');
   const h1 = await jn(page);
   const play1 = await J(page, () => Object.values(window.__wagonWest.save.play)[0] || {});
   check(chips.join() === 'Bend 1 of 4,Bend 2 of 4,Bend 3 of 4,Bend 4 of 4', `four bends, each a fact on the marker panel: ${chips.join(', ')}`);
@@ -1735,6 +1742,62 @@ async function v12Stampede(page, layout, grab) {
   await page.evaluate(() => { window.__mockScript.shotMs = 80; });
 }
 const deedPopped = (log, id) => Array.isArray(log) && log.includes(id);
+
+async function v12Trade(page, layout, grab) {
+  console.log('  -- trading: a wagon without the nation\'s goods still gets an offer it can make --');
+  await setJ(page, `if (!J.deeds.includes('trader')) J.deeds.push('trader');`);        // (ten goods traded would pop the Trader deed in the middle of the next section)
+  const NO_GOODS = `J.done = false; J.goods.blankets = 0; J.goods.pelts = 0; J.goods.rope = 0; J.tokens = 0; J.foods = { flour: 300, bacon: 100, beans: 100, other: 0 }; J.food = 500;`;
+  // ----- the Pawnee post (the nation's goods are blankets, pelts and rope for corn): none of them, and no corn -----
+  await toTrail(page, 'fort-kearny');
+  await drive(page, idleTrail, far(page), 30000);
+  await setJ(page, NO_GOODS);
+  const off = await J(page, () => window.__wagonWest.JA.tradeOffer(window.__wagonWest.save.journey, { nation: 'pawnee' }));
+  check(off && off.kind === 'fallback' && off.have >= off.rate[0] && !['blankets', 'pelts', 'rope'].includes(off.give), `no blankets, pelts or rope at the Pawnee post: an offer of what the wagon holds (${off && off.kind}: ${off && off.rate[0]} ${off && off.give} for ${off && off.rate[1]} ${off && off.get}, ${off && off.have} to spare)`);
+  const t0 = await J(page, () => { const Jn = window.__wagonWest.save.journey; return { give: Jn.foods.flour, other: Jn.foods.other, tokens: Jn.tokens, traded: Jn.totals.traded }; });
+  for (let k = 0; k < 20 && !(await J(page, () => window.__wagonWest.playEvent('trade'))); k++) await drive(page, idleTrail, far(page), 20000);
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A trading post', null, { timeout: 8000 });
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'The Pawnee people', null, { timeout: 8000 });
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask' || /Nothing to trade/.test(document.body.innerText), null, { timeout: 8000 });
+  const tp = await J(page, () => { const p = window.__wagonWest.problemPanel.problem; return p ? { kind: p.kind, text: document.querySelector('#pp-text').textContent, meta: p.meta, answer: p.answer } : null; });
+  check(!!tp && tp.kind === 'trade' && tp.meta.give === off.give && tp.meta.get === off.get && tp.meta.rate[0] === off.rate[0] && tp.meta.rate[1] === off.rate[1], `the trading-post question is about that offer, not the Pawnee corn ("${tp && tp.text.slice(0, 90)}…")`);
+  const k = tp ? tp.meta.giveN / tp.meta.rate[0] : 0;
+  check(!!tp && Number.isInteger(k) && k >= 1 && tp.meta.getN === k * tp.meta.rate[1] && tp.answer === tp.meta.getN && tp.meta.giveN <= off.have, `the multiplication asked is the offer's rate × count (${tp && tp.meta.rate[1]} × ${k} = ${tp && tp.answer}), and no more is given than the wagon has (${tp && tp.meta.giveN} of ${off.have})`);
+  await typeDigits(page, '#panel-problem', tp.answer);
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'closed', null, { timeout: 8000 });
+  await page.waitForTimeout(300);
+  const t1 = await J(page, () => { const Jn = window.__wagonWest.save.journey; return { flour: Jn.foods.flour, bacon: Jn.foods.bacon, beans: Jn.foods.beans, other: Jn.foods.other, tokens: Jn.tokens, traded: Jn.totals.traded }; });
+  const gaveUp = { flour: 300 - t1.flour, bacon: 100 - t1.bacon, beans: 100 - t1.beans, tokens: t0.tokens - t1.tokens }[off.give];
+  check(t1.traded > t0.traded && t1.other > t0.other && gaveUp > 0, `the trade completes: the wagon gave its ${off.give} and got ${off.get} (food in the wagon: other +${t1.other - t0.other} lb, traded ${t0.traded} → ${t1.traded})`);
+  check(!(await toastTexts(page)).some((t) => /Nothing to trade/.test(t)) && !(await J(page, () => window.__wagonWest.toaster.waiting.some((t) => /Nothing to trade/.test(t)))), 'and no "Nothing to trade this time" line');
+  await drive(page, idleTrail, far(page), 30000);
+
+  // ----- a person's trade (Lakota trader at Fort Laramie): the card says the offer the wagon can make, shown and spoken alike -----
+  await setJ(page, `J.met = J.met.filter((m) => m !== 'lakota-trader'); ${NO_GOODS}`);
+  await toStop(page, 'fort-laramie');
+  await drive(page, (s) => s.screen === 'stop' && s.stopOpen, {}, 40000);
+  await setJ(page, `J.met = J.met.filter((m) => m !== 'lakota-trader'); ${NO_GOODS}`);
+  // (the lines the app hands to the voice, recorded as they are asked for: the mock speech engine can lag on a busy machine, what the card asks to be said cannot)
+  await J(page, () => { const w = window.__wagonWest, o = w.app.say; window.__sayLog = []; w.app.say = function (t) { window.__sayLog.push(String(t)); return o.apply(this, arguments); }; });
+  await page.click('.stop-person[data-person="lakota-trader"]');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A Lakota trader', null, { timeout: 5000 });
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A fair trade', null, { timeout: 5000 });
+  const poff = await J(page, () => window.__wagonWest.JA.tradeOffer(window.__wagonWest.save.journey, { trades: [{ give: 'blankets', get: 'pemmican', rate: [2, 5] }], nation: 'lakota-trader' }));
+  const ctext = await TEXT(page, '#tc-text');
+  check(poff.kind === 'fallback' && /^A Lakota trader offers a fair trade: .+ for .+\.$/.test(ctext) && !/pemmican/.test(ctext) && /blankets/.test(ctext) === (poff.give === 'blankets'), `no blankets: the card names a trade the wagon can make ("${ctext}")`);
+
+  check(await J(page, (t) => window.__sayLog.includes(t), ctext), 'and the line handed to the voice is the same offer, word for word');
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
+  const pp = await J(page, () => { const p = window.__wagonWest.problemPanel.problem; return { text: document.querySelector('#pp-text').textContent, meta: p.meta, answer: p.answer }; });
+  check(pp.meta.give === poff.give && pp.meta.rate[0] === poff.rate[0] && pp.meta.getN === pp.answer && /^A Lakota trader trades /.test(pp.text), `the question asks that offer (${pp.meta.rate[1]} × ${pp.meta.giveN / pp.meta.rate[0]} = ${pp.answer}): "${pp.text.slice(0, 80)}…"`);
+  await typeDigits(page, '#panel-problem', pp.answer);
+  await page.waitForFunction(() => !window.__wagonWest.peopleUI.busy, null, { timeout: 8000 });
+  check((await jn(page)).totals.traded > t1.traded, 'and the trade goes through');
+  await J(page, () => window.__wagonWest.app.go('title'));
+}
 
 async function v12People(page, layout, grab) {
   console.log('  -- v1.2 (app two): people at the stops --');
@@ -1892,7 +1955,7 @@ async function v12Camp(page, layout, grab) {
   const c1 = await J(page, () => ({ acts: [...document.querySelectorAll('.camp-act')].map((b) => b.dataset.act), day: window.__wagonWest.save.journey.day, waited: window.__wagonWest.save.journey.totals.waitedOut, deeds: window.__wagonWest.save.journey.deeds.slice(), ev: window.__wagonWest.save.journey.trip.events.some((e) => e.id === 'storm' && e.waited) }));
   check(c1.day === c0.day + 1 && c1.waited === 1 && c1.ev, `"Wait out the storm": app.waitOut() — a rest day (day ${c0.day} → ${c1.day}), the storm waited out`);
   check(!c1.acts.includes('wait'), 'the storm is waited out, so the option is gone');
-  check(await toastWith(page, /You waited out the storm/, 9000), 'a line says so: "You waited out the storm. It cost nothing!"');
+  check(await toastWith(page, /You waited out the storm/, 25000), 'a line says so: "You waited out the storm. It cost nothing!"');
   check(c1.deeds.includes('wait-it-out'), 'the "Wait it out" deed is earned');
   // arrows back: Hunting returns and the note goes
   await setJ(page, `J.goods.arrows = 15;`);
@@ -1912,6 +1975,7 @@ async function playTest(browser, layout) {
   const sec = (name, fn) => (!only.length || only.includes(name) ? fn(page, layout, grab) : null);
   await sec('rivers', v12Rivers);
   await sec('stampede', v12Stampede);
+  await sec('trade', v12Trade);
   await sec('people', v12People);
   await sec('camp', v12Camp);
   await sec('raft', v12Raft);

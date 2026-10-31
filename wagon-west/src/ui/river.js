@@ -80,6 +80,7 @@ export function createRiver(app) {
   const playTitle = $('#rv-play-title');
   const status = $('#rv-status');
   const result = $('#rv-result');
+  const notes = $('#rv-notes');
   const foot = $('#rv-foot');
   const goBtn = $('#rv-go');
   let R = null;         // the rope toss: { f: {n, d, tol, say}, aim, throws, waiter, dragging, done }
@@ -282,8 +283,13 @@ export function createRiver(app) {
     // the crossing's line, then a soaked sack's line and a used coil of rope's: shown at once, read aloud in turn; the
     // companion's skill line (Tomas) follows, since it speaks too
     const said = [cr.say || cr.line];
-    if (cr.soakedLb > 0) { app.effectToast(SOAKED_LINE); said.push(SOAKED_LINE); }
-    if (cr.ropeUsed) { app.effectToast(ROPE_LINE); said.push(ROPE_LINE); }
+    // (in-panel lines, not toasts: the child is looking at the river, and the toast queue holds toasts while a river is open)
+    const extra = [];
+    if (cr.soakedLb > 0) extra.push(SOAKED_LINE);
+    if (cr.ropeUsed) extra.push(ROPE_LINE);
+    notes.replaceChildren(...extra.map((t) => h('p', { class: 'rv-note-line' }, t)));
+    notes.hidden = !extra.length;
+    said.push(...extra);
     app.voiceFor(said).then(() => app.sayAll(said)).then(() => { if (cr.skill && app.screen === 'river') app.skillLine(cr.skill); });
     app.scene.celebrate('river');
     app.sfx.cheer();
@@ -319,7 +325,7 @@ export function createRiver(app) {
       app.go('river');
       cur = run;                      // (app.go hides the screens it leaves, not this one)
       title.textContent = `${(leg.stop && leg.stop.name) || leg.name} crossing`;
-      choice.hidden = true; words.hidden = true; rope.hidden = true; play.hidden = true; result.hidden = true; foot.hidden = true;
+      choice.hidden = true; words.hidden = true; rope.hidden = true; play.hidden = true; result.hidden = true; notes.hidden = true; foot.hidden = true;
       screenEl.classList.remove('rv-playing');
       setMsg('');
       app.scene.setBackdrop('river');

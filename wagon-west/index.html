@@ -694,6 +694,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .rv-status { min-height: 20px; font: 700 16px/1.25 var(--font-body); }
 .rv-status.go { color: var(--go); } .rv-status.hot { color: #ffcf9a; }
 .rv-result { background: var(--paper); color: var(--paper-ink); border-color: #a07a4c; font: 700 17px/1.35 var(--font-body); }
+/* what the crossing cost, as lines in the panel the child is looking at (a soaked sack, a used coil of rope): never a toast over the river */
+.rv-notes { align-self: center; width: min(560px, 100%); display: grid; gap: 2px; padding: 6px 16px; text-align: center; background: var(--paper); color: var(--paper-ink); border-color: #a07a4c; font: 700 15px/1.3 var(--font-body); }
+.rv-notes p { margin: 0; }
 #screen-river.rv-playing { pointer-events: none; }
 #screen-river.rv-playing button { pointer-events: auto; }
 /* the Talk row on the stop screen */
@@ -1110,6 +1113,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
       </div>
       <div class="card rv-play" id="rv-play" hidden><b id="rv-play-title">Ford the river</b><span class="rv-status" id="rv-status" aria-live="polite"></span></div>
       <div class="card rv-result" id="rv-result" hidden aria-live="polite"></div>
+      <div class="card rv-notes" id="rv-notes" hidden aria-live="polite"></div>
     </div>
     <div class="rv-foot" id="rv-foot" hidden><span class="rv-across">Across the river!</span><button class="btn btn-go" id="rv-go" data-sfx>Roll on<span data-icon="right"></span></button></div>
   </section>

@@ -141,6 +141,16 @@ Independence, a true-to-period ferry picture and fact-checked lookouts come with
 
 - VERSION 1.3.0; the service worker is `wagon-west-v1.3.0`.
 
+## 1.3.1
+
+Trade offers the wagon can make (a nation's post or a person's trade asks `tradeOffer(J, { nation, trades })`, and the
+card text, the spoken line and the multiplication all come from that offer; "Nothing to trade this time" only when the
+wagon holds nothing tradable), toasts that wait for what the child is reading (`src/ui/toasts.js`), no stray "null", the
+ford's prompt in a slim top strip, a river crossing's soaked-sack and used-coil lines inside the river panel, and a
+store "Work it out" divide that never asks about more money than the purse holds.
+
+- VERSION 1.3.1; the service worker is `wagon-west-v1.3.1`.
+
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail
