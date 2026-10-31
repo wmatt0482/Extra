@@ -4,7 +4,7 @@ import { TOYS, MACHINES, COLORS } from './content.mjs';
 const v=(x=0,y=0,z=0)=>new T.Vector3(x,y,z);
 export class Scene {
   constructor(canvas,{reducedMotion=false}={}){
-    this.canvas=canvas;this.reducedMotion=reducedMotion;this.scene=new T.Scene();this.scene.fog=new T.Fog('#dce7d7',45,110);
+    this.canvas=canvas;this.reducedMotion=reducedMotion;this.scene=new T.Scene();this.scene.fog=new T.Fog('#dce7d7',65,140);
     this.renderer=new T.WebGLRenderer({canvas,antialias:true,alpha:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});
     this.renderer.setPixelRatio(Math.min(devicePixelRatio||1,1.5));this.renderer.shadowMap.enabled=true;this.renderer.shadowMap.type=T.PCFSoftShadowMap;this.renderer.outputColorSpace=T.SRGBColorSpace;this.renderer.toneMapping=T.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.2;
     this.camera=new T.PerspectiveCamera(42,1,.1,160);this.target=v(0,0,2);this.yaw=-.68;this.pitch=.77;this.distance=35;this.overview=true;this.daylight=.72;this.sweep=0;this.particleCursor=0;this.particles=[];this.marks=[];this.lastMark=0;this.color=new T.Color();this.tmp=new T.Object3D();this.ray=new T.Raycaster();this.ndc=new T.Vector2();this.machineModels=[];
@@ -12,11 +12,16 @@ export class Scene {
     this.hemi=new T.HemisphereLight('#d3edff','#bd9461',2.3);this.scene.add(this.hemi);
     this.sun=new T.DirectionalLight('#ffe0a2',3.2);this.sun.position.set(-15,30,12);this.sun.castShadow=true;this.sun.shadow.mapSize.set(1024,1024);Object.assign(this.sun.shadow.camera,{left:-25,right:25,top:25,bottom:-25,near:1,far:80});this.sun.shadow.normalBias=.035;this.sun.shadow.bias=-.0002;this.scene.add(this.sun);
     const sky=new T.Mesh(new T.SphereGeometry(120,24,12),new T.ShaderMaterial({side:T.BackSide,depthWrite:false,uniforms:{top:{value:new T.Color('#8dcbe2')},bottom:{value:new T.Color('#f8e3bc')}},vertexShader:'varying float h; void main(){h=position.y/120.0;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}',fragmentShader:'varying float h;uniform vec3 top;uniform vec3 bottom;void main(){gl_FragColor=vec4(mix(bottom,top,smoothstep(-0.1,0.7,h)),1.0);}'}));this.sky=sky;this.scene.add(sky);
-    this.static=new T.Group();this.scene.add(this.static);this.yardGroup=new T.Group();this.scene.add(this.yardGroup);this.makeEnvironment();this.batch(this.static);
+    this.static=new T.Group();this.scene.add(this.static);this.yardGroup=new T.Group();this.scene.add(this.yardGroup);this.makeEnvironment();this.batch(this.static);this.batchFloor();
     this.pool=new T.InstancedMesh(this.sphereGeo,this.mat('#e2bd83'),120);this.pool.instanceMatrix.setUsage(T.DynamicDrawUsage);this.pool.frustumCulled=false;this.scene.add(this.pool);this.pool.count=0;
     this.trackPool=new T.InstancedMesh(this.boxGeo,new T.MeshBasicMaterial({color:'#ad8b60',transparent:true,opacity:.22,depthWrite:false}),72);this.trackPool.instanceMatrix.setUsage(T.DynamicDrawUsage);this.trackPool.frustumCulled=false;this.scene.add(this.trackPool);this.trackPool.count=0;
     this.resize=()=>{const w=canvas.clientWidth,h=canvas.clientHeight;this.renderer.setSize(w,h,false);this.camera.aspect=w/Math.max(1,h);this.camera.updateProjectionMatrix();};window.addEventListener('resize',this.resize);this.resize();
   }
+  batchFloor(){
+    this.floorTiles=this.yardGroup.children.map(m=>({x:m.position.x,z:m.position.z,color:m.material.color.clone()}));this.yardGroup.clear();
+    this.floorMesh=new T.InstancedMesh(this.boxGeo,this.mat('#ffffff'),this.floorTiles.length);this.floorMesh.receiveShadow=true;this.floorMesh.frustumCulled=false;this.floorMesh.instanceMatrix.setUsage(T.DynamicDrawUsage);this.yardGroup.add(this.floorMesh);this.updateFloor();
+  }
+  updateFloor(){this.floorTiles.forEach((p,i)=>{const st=this.yard?.stamps.find(s=>s.x===p.x&&s.z===p.z);const h=st?.kind==='pit'?-.9:st?.kind==='water'?-.3:0;this.tmp.position.set(p.x,h-.5,p.z);this.tmp.rotation.set(0,0,0);this.tmp.scale.set(4,1,4);this.tmp.updateMatrix();this.floorMesh.setMatrixAt(i,this.tmp.matrix);this.floorMesh.setColorAt(i,p.color);});this.floorMesh.instanceMatrix.needsUpdate=true;this.floorMesh.instanceColor.needsUpdate=true;}
   batch(group,skip=new Set()){
     group.updateMatrixWorld(true);const inverse=new T.Matrix4().copy(group.matrixWorld).invert(),buckets=new Map();
     group.traverse(o=>{if(o.isMesh&&!o.isInstancedMesh&&!skip.has(o)&&[this.boxGeo,this.cylGeo,this.sphereGeo].includes(o.geometry)){const key=o.geometry.uuid+o.material.uuid;let list=buckets.get(key);if(!list){list=[];buckets.set(key,list);}list.push(o);}});
@@ -44,7 +49,7 @@ export class Scene {
     this.sign=new T.Group();this.static.add(this.sign);this.box(this.sign,-12,1.5,-15,.18,3,.18,'#805d44');this.box(this.sign,-8,1.5,-15,.18,3,.18,'#805d44');this.box(this.sign,-10,2.7,-15,5,1.5,.2,'#304d4a');
     const cv=document.createElement('canvas');cv.width=512;cv.height=128;const c=cv.getContext('2d');c.fillStyle='#304d4a';c.fillRect(0,0,512,128);c.fillStyle='#f9e9bf';c.font='bold 54px sans-serif';c.textAlign='center';c.fillText('BUILD CREW',256,83);const texture=new T.CanvasTexture(cv);texture.colorSpace=T.SRGBColorSpace;const label=new T.Mesh(new T.PlaneGeometry(4.6,1.15),new T.MeshBasicMaterial({map:texture}));label.position.set(-10,2.7,-14.88);this.static.add(label);this.labelTexture=texture;
   }
-  clearRound(){if(!this.roundGroup)return;this.scene.remove(this.roundGroup);this.roundGroup.traverse(o=>{if(o.isInstancedMesh)o.dispose();if(o.userData.ownGeometry){o.geometry.dispose();if(o.material!==this.toyMeshes?.pipe?.material)o.material.dispose();}if(o.isLineSegments){o.geometry.dispose();o.material.dispose();}});this.machineModels=[];this.particles=[];this.marks=[];this.pool.count=this.trackPool.count=0;}
+  clearRound(){if(!this.roundGroup)return;this.scene.remove(this.roundGroup);this.roundGroup.traverse(o=>{if(o.isInstancedMesh)o.dispose();if(o.userData.ownGeometry)o.geometry.dispose();if(o.userData.ownMaterial)o.material.dispose();if(o.isLineSegments){o.geometry.dispose();o.material.dispose();}});this.machineModels=[];this.particles=[];this.marks=[];this.pool.count=this.trackPool.count=0;}
   setRound(yard){
     this.clearRound();this.yard=yard;this.roundGroup=new T.Group();this.scene.add(this.roundGroup);this.toyMeshes={};
     for(const kind of Object.keys(TOYS)){
@@ -52,15 +57,15 @@ export class Scene {
       const mat=this.mat(kind==='glass'?'#b7e5dc':'#ffffff',kind==='glass'?{transparent:true,opacity:.5,roughness:.22}:{});
       const m=new T.InstancedMesh(geo,mat,kind==='pallet'?448:64);m.instanceMatrix.setUsage(T.DynamicDrawUsage);m.castShadow=true;m.receiveShadow=true;m.frustumCulled=false;m.count=0;if(kind==='pipe')m.userData.ownGeometry=true;this.roundGroup.add(m);this.toyMeshes[kind]=m;
     }
-    this.contacts=new T.InstancedMesh(this.circleGeo,new T.MeshBasicMaterial({color:'#524c32',transparent:true,opacity:.13,depthWrite:false}),64);this.contacts.frustumCulled=false;this.roundGroup.add(this.contacts);
+    this.contacts=new T.InstancedMesh(this.circleGeo,new T.MeshBasicMaterial({color:'#524c32',transparent:true,opacity:.13,depthWrite:false}),64);this.contacts.userData.ownMaterial=true;this.contacts.frustumCulled=false;this.roundGroup.add(this.contacts);
     const pad=yard.round.pad;this.box(this.roundGroup,pad.x,.025,pad.z,pad.w,.035,pad.d,'#709fa4');
     for(const side of[-1,1]){this.box(this.roundGroup,pad.x+side*pad.w/2,.053,pad.z,.12,.035,pad.d,'#dcf3dd');this.box(this.roundGroup,pad.x,.053,pad.z+side*pad.d/2,pad.w,.035,.12,'#dcf3dd');}
     this.ghosts=[];
-    for(const g of yard.round.ghosts||[]){const geo=new T.BoxGeometry(...TOYS[g.type].size),mat=new T.MeshBasicMaterial({color:'#a4f0d4',transparent:true,opacity:.2,depthWrite:false});const ghost=new T.Mesh(geo,mat);ghost.position.set(g.x,g.y,g.z);ghost.userData.ownGeometry=true;this.roundGroup.add(ghost);const edges=new T.LineSegments(new T.EdgesGeometry(geo),new T.LineBasicMaterial({color:'#ceffe3',transparent:true,opacity:.75}));ghost.add(edges);this.ghosts.push(ghost);}
+    for(const g of yard.round.ghosts||[]){const geo=new T.BoxGeometry(...TOYS[g.type].size),mat=new T.MeshBasicMaterial({color:'#a4f0d4',transparent:true,opacity:.2,depthWrite:false});const ghost=new T.Mesh(geo,mat);ghost.position.set(g.x,g.y,g.z);ghost.userData.ownGeometry=true;ghost.userData.ownMaterial=true;this.roundGroup.add(ghost);const edges=new T.LineSegments(new T.EdgesGeometry(geo),new T.LineBasicMaterial({color:'#ceffe3',transparent:true,opacity:.75}));ghost.add(edges);this.ghosts.push(ghost);}
     for(const p of yard.round.props||[]){this.box(this.roundGroup,p.x,p.y,p.z,...p.size,p.kind==='platform'?'#8d9991':'#c5ac86');if(p.kind==='wall')for(let y=.35;y<3;y+=.7)this.box(this.roundGroup,p.x+.31,y,p.z,.025,.035,p.size[2],'#ab916d');}
     if(yard.round.id===8){this.cylinder(this.roundGroup,6,2.5,5,.04,5,'#e7dec2');this.box(this.roundGroup,6.6,4.8,5,1.2,.6,.04,'#de7754');}
     yard.machines.forEach(m=>this.machineModels.push(this.makeMachine(m.kind)));
-    this.wreckMesh=new T.Mesh(new T.IcosahedronGeometry(.85,1),this.mat('#495f60',{metalness:.55,roughness:.4}));this.wreckMesh.castShadow=true;this.roundGroup.add(this.wreckMesh);this.wreckMesh.visible=false;
+    this.wreckMesh=new T.Mesh(new T.IcosahedronGeometry(.85,1),this.mat('#495f60',{metalness:.55,roughness:.4}));this.wreckMesh.userData.ownGeometry=true;this.wreckMesh.castShadow=true;this.roundGroup.add(this.wreckMesh);this.wreckMesh.visible=false;
     this.stampGroup=new T.Group();this.roundGroup.add(this.stampGroup);this.syncStamps();
     this.overview=true;this.sweep=0;
   }
@@ -97,7 +102,7 @@ export class Scene {
     });
   }
   syncStamps(){
-    if(!this.stampGroup)return;this.stampGroup.clear();
+    if(!this.stampGroup)return;this.stampGroup.clear();this.updateFloor();
     for(const tile of this.yardGroup.children){if(tile.name.startsWith('tile:'))tile.position.y=-.5;}
     for(const s of this.yard.stamps){const tile=this.yardGroup.getObjectByName(`tile:${s.x}:${s.z}`);if(s.kind==='pit'||s.kind==='water'){if(tile)tile.position.y=-.5+(s.kind==='pit'?-.9:-.3);if(s.kind==='water')this.box(this.stampGroup,s.x,-.08,s.z,3.9,.05,3.9,'#73b4bd');for(const x of[-1,1]){this.box(this.stampGroup,s.x+x*1.96,-.45,s.z,.08,.9,4,'#b29c72');this.box(this.stampGroup,s.x,-.45,s.z+x*1.96,4,.9,.08,'#b29c72');}}else{const wedge=(offset,rot)=>{const ramp=this.box(this.stampGroup,s.x,.9,s.z+offset,4,.32,s.kind==='hill'?2.7:4.4,'#baa478');ramp.rotation.x=rot;};if(s.kind==='hill'){wedge(-1,-.73);wedge(1,.73);}else wedge(0,-.43);}}
   }
@@ -123,8 +128,8 @@ export class Scene {
     this.marks.forEach((p,i)=>{for(let k=0;k<2;k++){this.tmp.position.set(p.x+(k?.85:-.85)*Math.cos(p.yaw),.035+this.yard.groundAt(p.x,p.z),p.z);this.tmp.rotation.set(0,p.yaw,0);this.tmp.scale.set(.3,.012,.6);this.tmp.updateMatrix();this.trackPool.setMatrixAt(i*2+k,this.tmp.matrix);}});this.trackPool.count=this.marks.length*2;this.trackPool.instanceMatrix.needsUpdate=true;
     this.particles=this.particles.filter(p=>p.life>0);this.particles.forEach((p,i)=>{p.life-=dt;p.p.addScaledVector(p.v,dt);p.v.y-=dt*1.4;this.tmp.position.copy(p.p);this.tmp.rotation.set(i*.8,i,0);this.tmp.scale.setScalar(p.size*Math.max(0,p.life));this.tmp.updateMatrix();this.pool.setMatrixAt(i,this.tmp.matrix);this.pool.setColorAt(i,this.color.set(p.color));});this.pool.count=this.particles.length;this.pool.instanceMatrix.needsUpdate=true;if(this.pool.instanceColor)this.pool.instanceColor.needsUpdate=true;
     this.wreckMesh.visible=!!this.yard.ball;if(this.yard.ball)this.wreckMesh.position.copy(this.yard.ball.translation());
-    const desired=this.overview?v(0,0,1):v(m.x*.65,1,m.z*.65+1);if(this.sweep>0){this.sweep-=dt;this.yaw+=dt*.15;desired.set(this.yard.round.pad.x,1,this.yard.round.pad.z);}
-    this.target.lerp(desired,this.reducedMotion?1:1-Math.exp(-dt*3));const dist=this.overview?Math.max(35,this.distance):this.distance;
+    const desired=this.overview?v(0,0,1):v(m.x*.45+this.yard.round.pad.x*.3,1,m.z*.45+this.yard.round.pad.z*.3);if(this.sweep>0){this.sweep-=dt;this.yaw+=dt*.15;desired.set(this.yard.round.pad.x,1,this.yard.round.pad.z);}
+    this.target.lerp(desired,this.reducedMotion?1:1-Math.exp(-dt*3));const dist=(this.overview?Math.max(35,this.distance):this.distance)*(this.camera.aspect<.8?Math.min(1.5,.85/this.camera.aspect):1);
     this.camera.position.set(this.target.x+Math.sin(this.yaw)*Math.cos(this.pitch)*dist,this.target.y+Math.sin(this.pitch)*dist,this.target.z+Math.cos(this.yaw)*Math.cos(this.pitch)*dist);this.camera.lookAt(this.target);this.renderer.render(this.scene,this.camera);
   }
   thumbnail(){this.render(0);const cv=document.createElement('canvas');cv.width=320;cv.height=180;cv.getContext('2d').drawImage(this.canvas,0,0,320,180);return cv.toDataURL('image/jpeg',.65);}
