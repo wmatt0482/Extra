@@ -4,7 +4,21 @@
   "sha256": {
     "three.module.js": "08fd7545d13d2c7fb65ab691530a802dafefd638596501854f267d0fb13c39e7",
     "THREE-LICENSE.txt": "4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454",
-    "RAPIER-LICENSE.txt": "4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454",
+    "RAPIER-LICENSE.txt": "30e8ce6a8eac7adb39cca50cf71849abdd1f584c86a17c6c26804d4d369c7bc3",
     "rapier.mjs": "e0f7783dae9d3d175ec62c0cafdad84261d8c64c5f7da6ae5b24e858cf9ab759"
+  },
+  "licenses": {
+    "three": {
+      "spdx": "MIT",
+      "file": "THREE-LICENSE.txt"
+    },
+    "rapier3d-compat": {
+      "spdx": "Apache-2.0",
+      "file": "RAPIER-LICENSE.txt",
+      "sources": [
+        "https://raw.githubusercontent.com/dimforge/rapier.js/master/LICENSE",
+        "https://raw.githubusercontent.com/dimforge/rapier/master/LICENSE"
+      ]
+    }
   }
 }

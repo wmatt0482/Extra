@@ -1,15 +1,14 @@
 // Shared set-up for the developer tools: where Playwright comes from and where result files go. Playwright is a
 // test-only dependency installed outside the game: set PLAYWRIGHT_MODULE to its index.mjs, or have it on Node's normal
-// module path (NODE_PATH or a node_modules folder above the repo). Results are written outside the tracked docs/ folder
-// so running a check never dirties the working tree; set RESULTS_DIR to collect them elsewhere (CI points it at docs/).
+// module path (NODE_PATH or a node_modules folder above the repo). Results are written to the system temp folder, not
+// the repo, so running a check never dirties the working tree; set RESULTS_DIR to collect them elsewhere.
 import { createRequire } from 'node:module';
 import { mkdirSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
-/** Where *-results.json and failure reports are written. */
-export const RESULTS_DIR =
-  process.env.RESULTS_DIR ||
-  '/tmp/claude-0/-home-user-Extra/0887b907-788e-5c4e-a0e5-9e998f29e90b/scratchpad/bc-results';
+/** Where *-results.json and failure reports are written: RESULTS_DIR, else <tmp>/build-crew-results. */
+export const RESULTS_DIR = process.env.RESULTS_DIR || path.join(os.tmpdir(), 'build-crew-results');
 
 /** The path for result file `name` inside RESULTS_DIR, creating the folder if needed. */
 export function resultsPath(name) {

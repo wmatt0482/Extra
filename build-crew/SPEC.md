@@ -84,7 +84,7 @@ First ten are the playable yard flight. Later rows describe future design and ma
 
 ## 4. Sandbox
 
-Open from the title at any time. Spawn tray offers every toy in several colors; pressing a toy button creates it in a clear marked spawn bay. There is unlimited replenishment, with a simultaneous-body cap of 64: explain that a full yard can be cleared or saved, never silently delete someone's build. Daylight is a custom button/drag slider, not a native input. Terrain stamps create physical hills, pits, ramps and a shallow blue water area; choose a stamp, then tap the ground to place it. A pit is a recessed terrain patch with edges, not an invisible collider under a painted hole. The water is decorative shallow water with a solid bed.
+Open from the title at any time. Spawn tray offers every toy in several colors; pressing a toy button creates it in a clear marked spawn bay. There is unlimited replenishment, with a simultaneous-body cap of 64: explain that a full yard can be cleared or saved, never silently delete someone's build. Clear site asks first: one tap turns the button into "Yes, clear" (it resets itself after four seconds, with no timer shown), a second tap clears. Daylight is a custom button/drag slider, not a native input. Terrain stamps create physical hills, pits, ramps and a shallow blue water area; choose a stamp, then tap the ground to place it. A pit is a recessed terrain patch with edges, not an invisible collider under a painted hole. The water is decorative shallow water with a solid bed.
 
 One **Save site** slot per profile includes toy poses, machine poses and joints, stamps, daylight, and a small rendered thumbnail. **My yard** on the title restores it after closing the tab. Storage failures show a readable message; the previous good save stays intact. A wrecking ball is a heavy colliding sphere on the crane, earned at job 10 or by the parent unlock. Later versions may add more save slots; none are presented as empty placeholders now.
 
@@ -110,7 +110,7 @@ Shared modules are imported from /spell-jump/src/ at runtime, never copied: prof
 
 Save key: buildCrew.<playerId>.save; sync kind **bc**. Completed job IDs and cosmetics union on merge. Per-day counters merge by maximum, consistent with sibling games, so simultaneous play may undercount. The yard snapshot is last writer wins with a deterministic tie break. A newer resetAt wins the entire document. Settings are device local except parent unlock, which belongs to each player's save and follows the later document. Thumbnail stays device-local to keep sync docs small. Siblings' progress and yard slots remain separate. A corrupt save is backed up and replaced safely. localWrite marks every successful save for sync. Mid-job sync is deferred, then refreshed at the title.
 
-Required checks before PR: Node headless Rapier stack/mission/grab/reset tests and merge tests; shared spelling/sync protocol tests; Playwright Chromium with SwiftShader, loading all ten rounds, selecting every available machine, driving a scripted solution through production controls with real physics and asserting settled completion. Test hooks may advance fixed simulation time and inspect poses; they must not teleport toys, change completion flags, or bypass mission checks. Screenshots of every round are inspected and committed under docs/screenshots for PR attachment. Browser checks cover profile isolation, touch, parent PIN/report, sandbox save/reload, offline reload, console errors and native-input/link audit. Run a frame-time sample. Serve repo root with python3 -m http.server 8080 and BASE_URL=http://localhost:8080. Document exact commands and any unavailable verification.
+Required checks before PR: Node headless Rapier stack/mission/grab/reset tests and merge tests; shared spelling/sync protocol tests; Playwright Chromium with SwiftShader, loading all ten rounds, selecting every available machine, driving a scripted solution through production controls with real physics and asserting settled completion. Test hooks may advance fixed simulation time and inspect poses; they must not teleport toys, change completion flags, or bypass mission checks. Screenshots of every round are inspected and saved to SHOTS_DIR (not committed) for PR attachment. Browser checks cover profile isolation, touch, parent PIN/report, sandbox save/reload, offline reload, console errors and native-input/link audit. Run a frame-time sample. Serve repo root with python3 -m http.server 8080 and BASE_URL=http://localhost:8080. Document exact commands and any unavailable verification.
 
 ## 8. Module map and ownership
 
@@ -132,6 +132,7 @@ Single implementation owner: Codex. Existing game folders remain untouched excep
 | src/app/parent.js | Shared Parent Zone adapter, Build Crew report and options |
 | src/app/loop.js | Fixed-step game loop (max 3 steps a frame), one pose read per frame, frame samples |
 | src/content.mjs | Ten jobs, toy types, machine metadata, rewards and known spoken phrases |
+| src/terrain.mjs | Terrain stamp shapes shared by physics and scene (the hill mound's profile and height, recess depths) |
 | src/physics.mjs | Rapier world, bodies, fixed step, machines and joints (`MACHINE` table), physical grab/release, terrain, snapshot |
 | src/missions.mjs | Pure pose/velocity/ghost matching and settled completion |
 | src/scene/scene.js | Scene façade the app uses: renderer, round set-up, per-frame draw, thumbnail, disposal |
@@ -151,7 +152,6 @@ Single implementation owner: Codex. Existing game folders remain untouched excep
 | README.md, docs/* | Running, verification, visual QA evidence, implementation assumptions |
 | ../car-jump/src/sync/protocol.mjs | Add bc to PLAYER_KINDS, parseKey and API contract message |
 | ../car-jump/tools/spelling-tests.mjs | Update kind assertions and bc transport coverage |
-| ../.github/workflows/build-crew.yml | Linux Chromium/SwiftShader checks when local macOS execution is restricted |
 | ../build.sh, ../netlify.toml | Static copying, integrity checks, redirect and cache headers |
 | ../site/index.html, ../site/why/index.html | Fifth-game entry and honest pure-play description |
 
