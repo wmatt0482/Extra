@@ -1,11 +1,12 @@
 // The site around the jobs: sky, fog and lights, the gravel floor tiles, terrain stamps, and the scenery outside the
-// working area (road, fence, workshop, loading bay, containers, shed, trees, hills, cones, stones, a pallet stack and
+// working area (road, fence, workshop, loading bay, containers, shed, trees, hills, cones, stones, a pallet rack and
 // the site sign). Everything here is built once per page from a site theme object, so a second site (the harbor or
 // the hillside in SPEC §3) is a new theme: its palette, its sign and its list of scenery features. Static scenery is
 // batched into instanced meshes; only the floor tiles and the stamps change after that.
 import * as T from '../../vendor/three.module.js';
 import { canvasTexture } from './kit.js';
 import { BUDGET } from './quality.js';
+import { HILL, RECESS, hillProfile } from '../terrain.mjs';
 
 /** The first-flight yard (SPEC §5): gravel, weathered steel and muted greens under a pale industrial sky. */
 export const YARD_THEME = {
@@ -26,9 +27,17 @@ export const YARD_THEME = {
   gravel: { base: '#c5c8c5', dark: '#a5aaa7', light: '#e0e1dc' },
   ground: '#627660',
   tiles: ['#6d7772', '#6e7873'],
-  stamps: { water: '#73b4bd', edge: '#b29c72', slope: '#baa478' },
+  stamps: {
+    water: '#73b4bd',
+    bank: '#b29c72',
+    slope: '#baa478',
+    mound: '#6e5d40',
+    pitFloor: '#151a1f',
+    pitWall: '#3a3029',
+    pitRim: '#d9a42c',
+  },
   /** The scenery to build, in order. Each name is a function in FEATURES below. */
-  features: ['road', 'fence', 'workshop', 'bay', 'containers', 'shed', 'trees', 'hills', 'cones', 'stones', 'pallets'],
+  features: ['road', 'fence', 'workshop', 'bay', 'containers', 'shed', 'trees', 'hills', 'cones', 'stones', 'rack'],
   road: { surface: '#3c4650', line: '#d4cfb5' },
   fence: { post: '#64727a', rail: '#4d5a62' },
   workshop: { wall: '#586b79', roof: '#283e50', door: '#364952', slat: '#83949c', rib: '#718493' },
@@ -49,15 +58,21 @@ export const YARD_THEME = {
     cap: '#d9dfe1',
   },
   stones: { count: 40, color: '#798174' },
-  pallets: { color: '#6f6250' },
+  rack: {
+    x: -9,
+    z: -20.2,
+    bays: 3,
+    bayWidth: 2.6,
+    post: '#2f5b86',
+    beam: '#d8742a',
+    wood: '#7a6a52',
+    crate: '#8f7650',
+  },
   sign: { text: 'BUILD CREW', post: '#2d3d49', board: '#172531', ink: '#f1b539' },
 };
 
 /** The floor tile grid: 4 m tiles with centres from -14 to 14, matching physics.mjs. */
 const TILE = { half: 14, size: 4 };
-
-/** How far a pit or the shallow water's bed sits below the floor (matches physics.mjs). */
-const RECESS = { pit: -0.9, water: -0.3 };
 
 /** Builds the lights, sky and scenery into `scene` and returns the parts that change later: the lights and sky (for
  *  daylight), the floor tiles (for stamps) and the textures to dispose. */
@@ -76,7 +91,16 @@ export function buildEnvironment(scene, kit, theme = YARD_THEME) {
   scene.add(env.static);
   env.yardGroup = new T.Group();
   scene.add(env.yardGroup);
-  kit.box(env.static, 0, -1.3, 0, 250, 1, 250, theme.ground);
+  // The ground around the yard is four slabs rather than one big one, so nothing sits above the floor tiles' footprint
+  // and a pit's dark floor (0.9 m down) is not hidden by the lawn.
+  for (const [x, z, w, d] of [
+    [0, -70.5, 250, 109],
+    [0, 70.5, 250, 109],
+    [-70.5, 0, 109, 32],
+    [70.5, 0, 109, 32],
+  ]) {
+    kit.box(env.static, x, -1.3, z, w, 1, d, theme.ground);
+  }
   for (let x = -TILE.half; x <= TILE.half; x += TILE.size) {
     for (let z = -TILE.half; z <= TILE.half; z += TILE.size) {
       const tile = kit.box(env.yardGroup, x, -0.5, z, 4, 1, 4, (x + z) % 8 === 0 ? theme.tiles[0] : theme.tiles[1]);
@@ -97,8 +121,8 @@ function makeSun(theme) {
   sun.castShadow = true;
   sun.shadow.mapSize.set(BUDGET.shadowMap, BUDGET.shadowMap);
   Object.assign(sun.shadow.camera, { left: -25, right: 25, top: 25, bottom: -25, near: 1, far: 80 });
-  sun.shadow.normalBias = 0.035;
-  sun.shadow.bias = -0.0002;
+  sun.shadow.normalBias = 0.08;
+  sun.shadow.bias = -0.0006;
   return sun;
 }
 
@@ -237,10 +261,24 @@ const FEATURES = {
     }
   },
 
-  /** A stack of spare pallets by the west fence. */
-  pallets(group, kit, c) {
-    for (let i = 0; i < 5; i++) {
-      kit.box(group, -13, 0.32 + i * 0.5, -3, 2, 0.5, 1.3, c.color);
+  /** A steel pallet rack behind the north fence: blue uprights, orange load beams and three shelves of pallets with a
+   *  few crates, so the spare stock reads as scenery rather than a toy in the yard. */
+  rack(group, kit, c) {
+    const { x, z, bays, bayWidth } = c,
+      length = bays * bayWidth,
+      left = x - length / 2;
+    for (let i = 0; i <= bays; i++) {
+      for (const dz of [-0.7, 0.7]) kit.box(group, left + i * bayWidth, 1.75, z + dz, 0.14, 3.5, 0.14, c.post);
+    }
+    for (const y of [1.05, 2.15, 3.25]) {
+      for (const dz of [-0.7, 0.7]) kit.box(group, x, y, z + dz, length, 0.16, 0.1, c.beam);
+    }
+    for (let b = 0; b < bays; b++) {
+      const bx = left + (b + 0.5) * bayWidth;
+      for (const [k, y] of [0.14, 1.205, 2.305].entries()) {
+        kit.box(group, bx, y, z, bayWidth - 0.4, 0.14, 1.2, c.wood);
+        if ((b + k) % 2 === 0) kit.box(group, bx, y + 0.5, z, bayWidth - 0.9, 0.86, 0.95, c.crate);
+      }
     }
   },
 };
@@ -310,35 +348,50 @@ function updateFloor(env, kit, stamps) {
     tmp.scale.set(4, 1, 4);
     tmp.updateMatrix();
     env.floorMesh.setMatrixAt(i, tmp.matrix);
-    env.floorMesh.setColorAt(i, p.color);
+    env.floorMesh.setColorAt(i, st?.kind === 'pit' ? kit.color.set(env.theme.stamps.pitFloor) : p.color);
   });
   env.floorMesh.instanceMatrix.needsUpdate = true;
   env.floorMesh.instanceColor.needsUpdate = true;
 }
 
-/** Redraws the terrain stamps into stampGroup: pits and water get dirt edges (and a water surface), ramps and hills
- *  get sloped slabs matching their colliders. */
+/** The mound's mesh: a lathe of the same profile the physics hull is built from (terrain.mjs), flat shaded. Built once
+ *  per round and freed by the scene with the round. */
+function hillGeometry(env) {
+  if (!env.hillGeo) {
+    const profile = hillProfile().map(({ r, y }) => new T.Vector2(r, y));
+    env.hillGeo = new T.LatheGeometry(profile, HILL.sides);
+  }
+  return env.hillGeo;
+}
+
+/** Redraws the terrain stamps into stampGroup. A hill is a low earth mound; a pit is a dark floor 0.9 m down inside
+ *  dark walls with a raised amber rim around its opening; water is a shallow bed with a blue surface and sandy banks;
+ *  a ramp is a sloped slab. Each matches its collider in physics.mjs. */
 export function syncStamps(env, kit, stampGroup, stamps) {
   const c = env.theme.stamps;
   stampGroup.clear();
   updateFloor(env, kit, stamps);
   for (const s of stamps) {
     if (s.kind === 'pit' || s.kind === 'water') {
-      if (s.kind === 'water') kit.box(stampGroup, s.x, -0.08, s.z, 3.9, 0.05, 3.9, c.water);
+      const pit = s.kind === 'pit';
+      if (!pit) kit.box(stampGroup, s.x, -0.08, s.z, 3.9, 0.05, 3.9, c.water);
       for (const x of [-1, 1]) {
-        kit.box(stampGroup, s.x + x * 1.96, -0.45, s.z, 0.08, 0.9, 4, c.edge);
-        kit.box(stampGroup, s.x, -0.45, s.z + x * 1.96, 4, 0.9, 0.08, c.edge);
+        kit.box(stampGroup, s.x + x * 1.96, -0.45, s.z, 0.08, 0.9, 4, pit ? c.pitWall : c.bank);
+        kit.box(stampGroup, s.x, -0.45, s.z + x * 1.96, 4, 0.9, 0.08, pit ? c.pitWall : c.bank);
+        if (pit) {
+          // The rim: a low raised frame around the opening, so the hole reads from far away and from above.
+          kit.box(stampGroup, s.x + x * 1.87, 0.04, s.z, 0.26, 0.08, 4, c.pitRim);
+          kit.box(stampGroup, s.x, 0.04, s.z + x * 1.87, 3.48, 0.08, 0.26, c.pitRim);
+        }
       }
+    } else if (s.kind === 'hill') {
+      const mound = new T.Mesh(hillGeometry(env), kit.mat(c.mound, { flatShading: true }));
+      mound.position.set(s.x, 0, s.z);
+      mound.castShadow = mound.receiveShadow = true;
+      stampGroup.add(mound);
     } else {
-      const wedge = (offset, rot) => {
-        const depth = s.kind === 'hill' ? 2.7 : 4.4;
-        const slope = kit.box(stampGroup, s.x, 0.9, s.z + offset, 4, 0.32, depth, c.slope);
-        slope.rotation.x = rot;
-      };
-      if (s.kind === 'hill') {
-        wedge(-1, -0.73);
-        wedge(1, 0.73);
-      } else wedge(0, -0.43);
+      const slope = kit.box(stampGroup, s.x, 0.9, s.z, 4, 0.32, 4.4, c.slope);
+      slope.rotation.x = -0.43;
     }
   }
 }

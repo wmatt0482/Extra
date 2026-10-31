@@ -104,6 +104,36 @@ assert(
 );
 yard.destroy();
 console.log('PASS wrecking-ball ownership across machine hops');
+// Terrain stamps: what is drawn is what is solid. The hill's collider surface must follow the height machines ride
+// on (groundAt), a cube dropped on its crown must rest on it, and a cube in a pit must settle at the bottom.
+yard = new Yard({ ...SANDBOX, machines: ['skid'], toys: [] });
+assert(yard.stamp('hill', 6, 6) && yard.stamp('pit', -6, 6));
+yard.world.step();
+for (const angle of [0, 0.26, 1.1, 2.4]) {
+  for (const r of [0, 0.4, 0.9, 1.4, 1.8]) {
+    const x = 6 + r * Math.sin(angle),
+      z = 6 + r * Math.cos(angle),
+      hit = yard.world.castRay(new RAPIER.Ray({ x, y: 5, z }, { x: 0, y: -1, z: 0 }), 10, true);
+    assert(
+      Math.abs(5 - hit.timeOfImpact - yard.groundAt(x, z)) < 0.08,
+      `hill surface at r=${r} matches its ride height`,
+    );
+  }
+}
+assert(yard.groundAt(6, 6) > 0.5 && yard.groundAt(6, 6) < 0.7, 'a hill is a low mound');
+assert.equal(yard.groundAt(-6, 6), -0.9, 'a pit is recessed');
+yard.spawn({ type: 'cube', color: '#e65e4b', x: 6, y: 3, z: 6 });
+yard.spawn({ type: 'cube', color: '#e65e4b', x: -6, y: 3, z: 6 });
+for (let i = 0; i < 300; i++) yard.step();
+const [onHill, inPit] = yard.poses();
+assert(
+  Math.abs(onHill.position.y - (yard.groundAt(onHill.position.x, onHill.position.z) + 0.6)) < 0.25,
+  'a cube rests on the mound',
+);
+assert(onHill.position.y > 1 && onHill.position.y < 1.4);
+assert(Math.abs(inPit.position.y - (-0.9 + 0.6)) < 0.1, 'a cube falls to the bottom of the pit');
+yard.destroy();
+console.log('PASS terrain stamps: mound and pit colliders match what is drawn');
 const a = defaultSave(),
   b = defaultSave();
 a.done = [1, 2];

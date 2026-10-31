@@ -5,6 +5,7 @@
 // MACHINE table below, so a new machine is a table row (plus its model in scene/machines.js).
 import RAPIER from '../vendor/rapier.mjs';
 import { TOYS, MACHINES } from './content.mjs';
+import { RECESS, hillHeight, hillPoints } from './terrain.mjs';
 export { RAPIER };
 
 let ready;
@@ -125,16 +126,14 @@ function moveJoint(m, d, joint, amount) {
   m[joint] = limits ? clamp(m[joint] + amount, limits[0], limits[1]) : m[joint] + amount;
 }
 
-/** The ground's height under a terrain stamp at local offset l (metres along z from the stamp's centre). */
+/** The ground's height under a terrain stamp at local offset (dx, dz) metres from the stamp's centre. A hill is a
+ *  low mound, a pit and the water sit in recesses, and a ramp climbs 1.8 m along z. */
 const STAMP_HEIGHT = {
-  pit: () => -0.9,
-  water: () => -0.3,
-  ramp: (l) => ((l + 2) / 4) * 1.8,
-  hill: (l) => (1 - Math.abs(l) / 2) * 1.8,
+  pit: () => RECESS.pit,
+  water: () => RECESS.water,
+  ramp: (dx, dz) => ((dz + 2) / 4) * 1.8,
+  hill: (dx, dz) => hillHeight(Math.hypot(dx, dz)),
 };
-
-/** The floor tile height for a recessed stamp (a pit or the shallow water's solid bed). */
-const RECESS = { pit: -0.9, water: -0.3 };
 
 /** One job's (or the sandbox's) physical yard: floor tiles, fence, props, machines and toys. */
 export class Yard {
@@ -170,7 +169,8 @@ export class Yard {
       [0, YARD.fence, [35, 3, 1]],
     ];
     for (const [x, z, s] of fence) this.fixed(x, 1.5, z, s);
-    round.machines.forEach((kind, i) => this.addMachine(kind, -6 + i * 5, -4));
+    // Jobs line the machines up from (-6, -4); a round's `spawns` ([x, z] per machine) overrides that.
+    round.machines.forEach((kind, i) => this.addMachine(kind, ...(round.spawns?.[i] || [-6 + i * 5, -4])));
     round.toys.forEach((t) => this.spawn(t));
   }
 
@@ -500,11 +500,11 @@ export class Yard {
   groundAt(x, z) {
     const s = this.stamps.find((s) => Math.abs(s.x - x) < 2 && Math.abs(s.z - z) < 2);
     if (!s) return 0;
-    return Object.hasOwn(STAMP_HEIGHT, s.kind) ? STAMP_HEIGHT[s.kind](z - s.z) : 0;
+    return Object.hasOwn(STAMP_HEIGHT, s.kind) ? STAMP_HEIGHT[s.kind](x - s.x, z - s.z) : 0;
   }
 
-  /** Places a terrain stamp on the tile nearest (x, z). Pits and water lower the tile; ramps and hills add tilted
-   *  slabs. Returns false when the yard already has 12 stamps or the tile is taken. */
+  /** Places a terrain stamp on the tile nearest (x, z). Pits and water lower the tile; a hill adds a low mound and a
+   *  ramp a tilted slab. Returns false when the yard already has 12 stamps or the tile is taken. */
   stamp(kind, x, z) {
     if (this.stamps.length >= 12) return false;
     x = clamp(Math.round((x - 2) / 4) * 4 + 2, -YARD.half, YARD.half);
@@ -513,18 +513,16 @@ export class Yard {
     const s = { kind, x, z };
     this.stamps.push(s);
     if (Object.hasOwn(RECESS, kind)) this.tile(x, z, RECESS[kind]);
-    else {
-      const ramp = (offset, angle) => {
-        const c = RAPIER.ColliderDesc.cuboid(2, 0.16, kind === 'hill' ? 1.35 : 2.2)
-          .setTranslation(x, 0.9, z + offset)
-          .setRotation({ x: Math.sin(angle / 2), y: 0, z: 0, w: Math.cos(angle / 2) })
-          .setFriction(1);
-        this.world.createCollider(c);
-      };
-      if (kind === 'hill') {
-        ramp(-1, -0.73);
-        ramp(1, 0.73);
-      } else ramp(0, -0.43);
+    else if (kind === 'hill') {
+      // The mound's solid is the convex hull of the very points the scene draws.
+      const hull = RAPIER.ColliderDesc.convexHull(new Float32Array(hillPoints()));
+      if (hull) this.world.createCollider(hull.setTranslation(x, 0, z).setFriction(1));
+    } else {
+      const c = RAPIER.ColliderDesc.cuboid(2, 0.16, 2.2)
+        .setTranslation(x, 0.9, z)
+        .setRotation({ x: Math.sin(-0.43 / 2), y: 0, z: 0, w: Math.cos(0.43 / 2) })
+        .setFriction(1);
+      this.world.createCollider(c);
     }
     this.onEvent({ type: 'stamp', stamp: s });
     return true;

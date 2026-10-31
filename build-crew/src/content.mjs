@@ -2,7 +2,7 @@
 // may speak. It is plain data with no imports, so physics, missions, the scene, the app and the Node tests all read the
 // same numbers. The later sites and machines described in SPEC.md are deliberately absent until they are built.
 /** The game version reported by pings and the Parent Zone (the service worker has its own cache version). */
-export const VERSION = '0.2.3';
+export const VERSION = '0.2.5';
 /** The five paint colors for loads: red first, because the jobs say "red loads"; also the confetti colors. */
 export const COLORS = ['#c6412f', '#e9aa26', '#287da5', '#64816b', '#87909c'];
 /** Toy shapes. size is [width, height, depth] in metres (a cylinder uses width as its diameter), mass in kilograms.
@@ -186,7 +186,14 @@ export const SANDBOX = {
   title: 'Open site',
   goal: 'Build, reshape the terrain, and test your own structures.',
   machines: ['skid'],
-  toys: [toy(-4, 4), toy(-1, 4, 'beam'), toy(3, 3, 'barrel', COLORS[2])],
+  // The machines (however many are earned) stand apart in a row facing the striped spawn bay (x -12..-4, z 8..12);
+  // the starter toys sit between the row and the bay.
+  spawns: [
+    [-10, 2],
+    [-3, 2],
+    [4, 2],
+  ],
+  toys: [toy(-7, 6.5), toy(-2, 6.5, 'beam'), toy(3.5, 6.5, 'barrel', COLORS[2])],
 };
 /** One-line hints, introduced one control at a time. */
 export const HINTS = [

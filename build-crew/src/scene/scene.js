@@ -112,6 +112,8 @@ export class Scene {
         o.material.dispose();
       }
     });
+    this.env.hillGeo?.dispose();
+    this.env.hillGeo = null;
     this.machineModels = [];
     this.effects.clear();
   }

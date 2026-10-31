@@ -19,6 +19,9 @@ const PALLET_SLATS = Array.from({ length: 7 }, (_, k) =>
 );
 const PALLET_WOOD = '#b38c5c';
 
+/** Blueprint ghost colors: amber while open, green once a toy matches (fill, then edge lines). */
+const GHOST = { open: '#ffb81f', openEdge: '#ffe08a', match: '#38e86a', matchEdge: '#d4ffd9' };
+
 /** Scratch objects for the per-frame pallet transforms. */
 const scratch = {
   position: new T.Vector3(),
@@ -84,17 +87,15 @@ export class ToyLayer {
     this.ghosts = [];
     for (const g of round.ghosts || []) {
       const geo = new T.BoxGeometry(...TOYS[g.type].size),
-        mat = new T.MeshBasicMaterial({ color: '#a4f0d4', transparent: true, opacity: 0.2, depthWrite: false });
+        mat = new T.MeshBasicMaterial({ color: GHOST.open, transparent: true, opacity: 0.3, depthWrite: false });
       const ghost = new T.Mesh(geo, mat);
       ghost.position.set(g.x, g.y, g.z);
       ghost.userData.ownGeometry = true;
       ghost.userData.ownMaterial = true;
       group.add(ghost);
-      const edges = new T.LineSegments(
-        new T.EdgesGeometry(geo),
-        new T.LineBasicMaterial({ color: '#ceffe3', transparent: true, opacity: 0.75 }),
-      );
+      const edges = new T.LineSegments(new T.EdgesGeometry(geo), new T.LineBasicMaterial({ color: GHOST.openEdge }));
       ghost.add(edges);
+      ghost.userData.edges = edges;
       this.ghosts.push(ghost);
     }
     for (const p of round.props || []) {
@@ -144,12 +145,14 @@ export class ToyLayer {
     }
   }
 
-  /** Ghosts turn green while a toy matches them and otherwise breathe gently with the yard clock. */
+  /** Ghosts are amber (the complement of the blue pad, so they stand out) and breathe gently with the yard clock;
+   *  while a toy matches one it turns a solid, brighter green. */
   updateGhosts(status, time) {
     this.ghosts.forEach((g, i) => {
       const good = status?.matches?.[i] != null;
-      g.material.color.set(good ? '#91f38a' : '#adf6e1');
-      g.material.opacity = good ? 0.33 : 0.16 + Math.sin(time * 2) * 0.04;
+      g.material.color.set(good ? GHOST.match : GHOST.open);
+      g.material.opacity = good ? 0.5 : 0.3 + Math.sin(time * 2) * 0.06;
+      g.userData.edges.material.color.set(good ? GHOST.matchEdge : GHOST.openEdge);
     });
   }
 }

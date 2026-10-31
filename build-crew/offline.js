@@ -63,6 +63,7 @@ const SHELL = [
   "src/scene/quality.js",
   "src/scene/scene.js",
   "src/scene/toys.js",
+  "src/terrain.mjs",
   "style.css",
   "vendor/rapier.mjs",
   "vendor/three.module.js"
