@@ -14,7 +14,7 @@ export function evaluate(round, blocks, held = null) {
     const p=round.pad;
     for(const b of blocks) {
       const t=TOYS[b.type], margin=Math.hypot(t.size[0],t.size[2])/2;
-      matches.push(eligible.includes(b) && Math.abs(b.position.x-p.x)+margin<p.w/2 && Math.abs(b.position.z-p.z)+margin<p.d/2 && b.position.y<4 ? b.id:null);
+      matches.push(eligible.includes(b) && Math.abs(b.position.x-p.x)+margin<p.w/2 && Math.abs(b.position.z-p.z)+margin<p.d/2 ? b.id:null);
     }
   }
   return { matches, count:matches.filter(x=>x!==null).length,total:round.ghosts?.length??blocks.length,done:matches.length>0&&matches.every(x=>x!==null) };
