@@ -12,7 +12,7 @@ export class Yard {
   constructor(round,{onEvent=()=>{}}={}) {
     this.round=round;this.onEvent=onEvent;this.world=new RAPIER.World({x:0,y:-9.81,z:0});
     this.world.timestep=DT;this.world.numSolverIterations=12;this.world.numAdditionalFrictionIterations=8;
-    this.queue=new RAPIER.EventQueue(true);this.blocks=[];this.machines=[];this.stamps=[];this.held=null;this.active=0;this.serial=0;this.time=0;this.wrecking=false;this.ball=null;
+    this.queue=new RAPIER.EventQueue(true);this.blocks=[];this.machines=[];this.stamps=[];this.held=null;this.active=0;this.serial=0;this.time=0;this.wrecking=false;this.ball=null;this.ballMachine=null;
     this.tiles=new Map();
     for(let x=-14;x<=14;x+=4)for(let z=-14;z<=14;z+=4)this.tile(x,z,0);
     for(const p of round.props||[])this.fixed(p.x,p.y,p.z,p.size);
@@ -85,7 +85,7 @@ export class Yard {
       const scale=Math.min(1,230/Math.max(1,len(f)));b.addForce({x:f.x*mass*scale,y:f.y*mass*scale,z:f.z*mass*scale},true);
       const sign=r.w<0?-1:1;b.addTorque({x:(-r.x*sign*28-w.x*9)*mass,y:(-r.y*sign*28-w.y*9)*mass,z:(-r.z*sign*28-w.z*9)*mass},true);
     }
-    if(this.ball){const p=this.ball.translation(),v=this.ball.linvel(),t=m.tip,mass=this.ball.mass();this.ball.resetForces(false);this.ball.addForce({x:((t.x-p.x)*18-v.x*3)*mass,y:((t.y-p.y)*18-v.y*3+9.81)*mass,z:((t.z-p.z)*18-v.z*3)*mass},true);}
+    if(this.ball){const p=this.ball.translation(),v=this.ball.linvel(),t=this.ballMachine.tip,mass=this.ball.mass();this.ball.resetForces(false);this.ball.addForce({x:((t.x-p.x)*18-v.x*3)*mass,y:((t.y-p.y)*18-v.y*3+9.81)*mass,z:((t.z-p.z)*18-v.z*3)*mass},true);}
     this.world.step(this.queue);
     this.queue.drainContactForceEvents(e=>{
       const force=e.totalForceMagnitude();if(force>800)this.onEvent({type:'impact',force});
@@ -107,7 +107,7 @@ export class Yard {
     }
     this.onEvent({type:'stamp',stamp:s});return true;
   }
-  wreck(){if(this.machine.kind!=='crane')return false;if(this.ball){this.world.removeRigidBody(this.ball);this.ball=null;return true;}const t=this.tool;this.ball=this.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(t.x,t.y,t.z).setLinearDamping(.2).setCcdEnabled(true));this.world.createCollider(RAPIER.ColliderDesc.ball(.85).setMass(230),this.ball);return true;}
+  wreck(){if(this.machine.kind!=='crane')return false;if(this.ball){this.world.removeRigidBody(this.ball);this.ball=null;this.ballMachine=null;return true;}this.ballMachine=this.machine;const t=this.tool;this.ball=this.world.createRigidBody(RAPIER.RigidBodyDesc.dynamic().setTranslation(t.x,t.y,t.z).setLinearDamping(.2).setCcdEnabled(true));this.world.createCollider(RAPIER.ColliderDesc.ball(.85).setMass(230),this.ball);return true;}
   snapshot(){return {v:1,toys:this.poses().map(b=>({type:b.type,color:b.color,x:b.position.x,y:b.position.y,z:b.position.z,rotation:b.rotation})),machines:this.machines.map(m=>({kind:m.kind,x:m.x,z:m.z,yaw:m.yaw,swing:m.swing,lift:m.lift,reach:m.reach,tilt:m.tilt})),stamps:this.stamps.map(s=>({...s}))};}
   restore(s){this.release();for(const b of this.blocks)this.world.removeRigidBody(b.body);this.blocks=[];for(const t of s.toys||[])this.spawn(t);for(const st of s.stamps||[])this.stamp(st.kind,st.x,st.z);for(const saved of s.machines||[]){const m=this.machines.find(m=>m.kind===saved.kind);if(m){Object.assign(m,saved);m.body.setTranslation({x:m.x,y:.7,z:m.z},true);m.body.setRotation(qyaw(m.yaw),true);this.updateTip(m,true);}}}
   destroy(){this.queue.free();this.world.free();}
