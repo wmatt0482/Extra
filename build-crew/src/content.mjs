@@ -1,5 +1,5 @@
 // First-flight data only. The other sites and machines live in SPEC.md until implemented.
-export const VERSION = '0.2.1';
+export const VERSION = '0.2.2';
 export const COLORS = ['#c6412f', '#e9aa26', '#287da5', '#64816b', '#87909c'];
 export const TOYS = {
   cube: { name: 'Cube', size: [1.2, 1.2, 1.2], mass: 24 },
