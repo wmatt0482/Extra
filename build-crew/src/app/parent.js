@@ -61,9 +61,10 @@ function parentAdapter() {
       }
     },
     cloudDefault,
-    cloudPrepareFor: async () => {
-      prepareVoice();
-      await app.cloud.prepareList();
+    /** A natural voice was picked for builder `id`: make Build Crew's lines in it (not the Spell Jump word list, which
+     *  this game never speaks). Another builder's lines are made when that builder is chosen. */
+    cloudPrepareFor: async (id) => {
+      if (id === app.playerId) await prepareVoice();
     },
     settingsFor: () => ({ ...app.settings, shake: 0 }),
     setSettingFor: (_, k, v) => setSetting(k, v),

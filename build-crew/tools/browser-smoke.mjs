@@ -393,7 +393,9 @@ try {
   }
   console.log('PASS UI stage');
   results.checks.push('?test=1 hooks and job unlock only on localhost, 127.0.0.1 and .local hosts');
-  // Prove that known and new phrases use prepared natural clips with a fake transport, never a Google key.
+  // Prove that every spoken line has a prepared natural clip and the device voice never speaks while the natural voice is
+  // available, with a fake transport (never a Google key). tools/voice-check.mjs is the fuller trace of every spoken
+  // moment through a stubbed /api/tts with latency; this stage keeps the check in the main suite.
   stage = 'natural voice context';
   const voiceContext = await bounded(
     browser.newContext({ viewport: { width: 1024, height: 768 } }),
@@ -403,6 +405,7 @@ try {
   await voiceContext.addInitScript(() => {
     window.__voiceTexts = [];
     window.__voiceSpoken = [];
+    window.__deviceSpoken = [];
     window.__cloudVoiceBackend = {
       status: async () => ({ key: true }),
       prepare: async ({ texts }) => {
@@ -411,7 +414,7 @@ try {
           status: 200,
           body: {
             clips: Object.fromEntries(
-              texts.map((text, i) => [
+              texts.map((text) => [
                 text,
                 '/api/tts/clip/' + String(window.__voiceTexts.indexOf(text)).padStart(32, '0'),
               ]),
@@ -425,6 +428,22 @@ try {
         return true;
       },
       stop() {},
+    };
+    // The device ("robot") voice is a recorder: the check fails if it is ever asked to speak a real line.
+    window.__ttsBackend = {
+      speaking: false,
+      pending: false,
+      paused: false,
+      getVoices: () => [{ name: 'Robo', lang: 'en-US', localService: true, default: true, voiceURI: 'robo' }],
+      cancel() {},
+      resume() {},
+      speak(u) {
+        if (u.volume >= 0.1) window.__deviceSpoken.push(u.text);
+        setTimeout(() => {
+          u.onstart?.({});
+          u.onend?.({});
+        }, 5);
+      },
     };
     localStorage.setItem(
       'spellJump.family',
@@ -443,22 +462,45 @@ try {
   const voicePage = await voiceContext.newPage();
   await voicePage.goto(BASE + '/build-crew/?test=1&nosw=1');
   await ready(voicePage);
-  await voicePage.locator('#play').click();
+  await voicePage.waitForTimeout(800);
+  assert.deepEqual(await voicePage.evaluate(() => window.__voiceSpoken), [], 'nothing is spoken on the title');
+  // every line the game can say is prepared, from the static set in content.mjs
   await bounded(
-    voicePage.evaluate(async () => {
-      await window.__buildCrew.say('Build Crew is ready.');
-    }),
-    'prepared voice playback',
-  );
-  assert.equal((await voicePage.evaluate(() => window.__buildCrew.state.voice)).engine, 'cloud');
-  assert(
-    (await voicePage.evaluate(() => window.__voiceTexts)).includes(
-      'Transfer three red loads to the blue delivery zone.',
+    voicePage.waitForFunction(
+      async () => {
+        const { VOICE_LINES } = await import('./src/content.mjs');
+        return VOICE_LINES.every((t) => window.__voiceTexts.includes(t));
+      },
+      undefined,
+      { timeout: 20000 },
     ),
+    'all known lines prepared',
+    25000,
   );
+  await voicePage.locator('#play').click();
+  const intro = 'Job one. Cargo transfer. Transfer three red loads to the blue delivery zone.';
+  await bounded(
+    voicePage.waitForFunction((t) => window.__voiceSpoken.includes(t), intro, { timeout: 15000 }),
+    'job one read aloud',
+    20000,
+  );
+  await bounded(
+    voicePage.waitForFunction(() => window.__voiceSpoken.some((t) => t.startsWith('W A S D or the left stick drives')), undefined, { timeout: 15000 }),
+    'first hint read aloud',
+    20000,
+  );
+  await voicePage.evaluate(() => window.__buildCrew.test.advance({ drive: 1 }, 40));
+  await bounded(
+    voicePage.waitForFunction(() => window.__voiceSpoken.includes('Try I and K, or the right stick, to lift your tool.'), undefined, { timeout: 15000 }),
+    'next hint read aloud',
+    20000,
+  );
+  const spoken = await voicePage.evaluate(() => ({ cloud: window.__voiceSpoken, device: window.__deviceSpoken, prepared: window.__voiceTexts }));
+  assert.deepEqual(spoken.device, [], 'the device voice never speaks while the natural voice is available');
+  assert(spoken.cloud.every((t) => spoken.prepared.includes(t)), 'every spoken line had a prepared clip');
   await bounded(voiceContext.close(), 'natural voice context close');
   console.log('PASS UI stage');
-  results.checks.push('natural voice prepareVoice and just-in-time voiceFor');
+  results.checks.push('natural voice: every spoken line prepared, none on the device voice, nothing before a builder');
   assert.deepEqual(errors, []);
   writeFileSync(resultsPath('browser-results.json'), JSON.stringify(results, null, 2) + '\n');
   console.log('All browser checks passed.');

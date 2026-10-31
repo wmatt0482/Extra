@@ -70,6 +70,7 @@ export function selectPlayer(id) {
   Profiles.writeFamily(app.family);
   refreshStreak(app.save, Date.now());
   persist();
+  hush();
   app.voiceKey = '';
   applyVoice();
   renderTitle();

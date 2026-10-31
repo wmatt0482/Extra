@@ -9,7 +9,7 @@ import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { Audio } from '../../../spell-jump/src/audio.js';
 import { dayKey } from '../../../spell-jump/src/ui/chart.js';
 import { completeDay } from '../../../spell-jump/src/meta/engagement.js';
-import { ROUNDS, SANDBOX, MACHINES } from '../content.mjs';
+import { ROUNDS, SANDBOX, MACHINES, HINT, jobIntro, jobDoneLine } from '../content.mjs';
 import { Yard, DT } from '../physics.mjs';
 import { Mission } from '../missions.mjs';
 import { Music } from '../meta/music.js';
@@ -115,7 +115,9 @@ export function startRound(id, { restore = false } = {}) {
   app.said = new Set();
   hint(MACHINES[app.yard.machine.kind].hint);
   prepareVoice();
-  say(round.goal);
+  // The job is read aloud once as it starts ("Job three. Foundation grid. Place ..."); the machine's first hint above
+  // follows it the first time this builder meets that machine (the voice watches the hint line, see voice.js).
+  say(jobIntro(round));
   account();
 }
 
@@ -141,13 +143,11 @@ export function step(input) {
   const arm = Math.abs(input.lift || 0) + Math.abs(input.tool || 0);
   if (arm > 0.1 && !app.said.has('tool')) {
     app.said.add('tool');
-    hint(
-      yard.held ? 'Carry it to the outline, then release.' : 'Bring the tool close to a block, then press Grab.',
-    );
+    hint(yard.held ? HINT.carry : HINT.grab);
   }
   if (Math.abs(input.drive || 0) > 0.1 && !app.said.has('drive')) {
     app.said.add('drive');
-    hint('Try I and K, or the right stick, to lift your tool.');
+    hint(HINT.lift);
   }
   return poses;
 }
@@ -250,7 +250,7 @@ function reveal(show) {
       h('button', { onclick: showTitle }, 'Back to base'),
     ),
   ]);
-  say(`Job complete. Unlocked: ${r.reward}.`);
+  say(jobDoneLine(r));
 }
 
 /** Puts every block and machine back at the job's start, keeping earned progress. */
@@ -260,7 +260,7 @@ export function resetBlocks() {
   app.scene.overview = false;
   renderMachines();
   updateUI();
-  hint('All set. Resume!');
+  hint(HINT.resume);
 }
 
 /** A one-shot action from a key, a gamepad button or the HUD. Pause works whenever a job is open; the rest only
@@ -278,8 +278,8 @@ export function action(a) {
   if (!activePlay()) return;
   const yard = app.yard;
   if (a === 'grab') {
-    if (!yard.grab()) hint('Bring the tool close to a block, then press Grab.');
-    else if (yard.held) hint('Raise the load clear of the ground, then move to the outline.');
+    if (!yard.grab()) hint(HINT.grab);
+    else if (yard.held) hint(HINT.raise);
     else if (MACHINE_UI[yard.machine.kind].releaseHint) hint(MACHINE_UI[yard.machine.kind].releaseHint);
     updateUI();
   }
