@@ -33,6 +33,7 @@ jobs:
           ln -s "$RUNNER_TEMP/build-crew-tools/node_modules/playwright/index.mjs" /tmp/build-crew-playwright.mjs
           python3 -m http.server 8080 > "$RUNNER_TEMP/build-crew-server.log" 2>&1 &
           for attempt in {1..30}; do curl -fs http://localhost:8080/build-crew/ > /dev/null && break || sleep 1; done
+          node build-crew/tools/offline-check.mjs
           node build-crew/tools/browser-smoke.mjs
           node build-crew/tools/frame-check.mjs
       - uses: actions/upload-artifact@v4

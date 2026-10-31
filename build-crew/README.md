@@ -31,6 +31,7 @@ npm install --prefix /tmp/build-crew-tools playwright@1.58.2
 /tmp/build-crew-tools/node_modules/.bin/playwright install --with-deps chromium
 export PLAYWRIGHT_MODULE=/tmp/build-crew-tools/node_modules/playwright/index.mjs
 export BASE_URL=http://localhost:8080
+node build-crew/tools/offline-check.mjs
 node build-crew/tools/browser-smoke.mjs
 node build-crew/tools/frame-check.mjs
 ```
