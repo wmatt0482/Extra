@@ -65,7 +65,9 @@ export class Yard {
     const dt=DT,m=this.machine,d=MACHINES[m.kind];this.time+=dt;
     m.speed+=(clamp(input.drive||0,-1,1)*d.speed-m.speed)*.12;
     m.yaw+=clamp(input.steer||0,-1,1)*d.turn*dt;
-    m.x=clamp(m.x+Math.sin(m.yaw)*m.speed*dt,-14,14);m.z=clamp(m.z+Math.cos(m.yaw)*m.speed*dt,-14,14);
+    const blocked=(x,z)=>(this.round.props||[]).some(p=>Math.abs(x-p.x)<p.size[0]/2+1.15&&Math.abs(z-p.z)<p.size[2]/2+1.3);
+    const nx=clamp(m.x+Math.sin(m.yaw)*m.speed*dt,-14,14),nz=clamp(m.z+Math.cos(m.yaw)*m.speed*dt,-14,14);
+    if(!blocked(nx,m.z))m.x=nx;if(!blocked(m.x,nz))m.z=nz;
     m.y=.7+this.groundAt(m.x,m.z);
     m.lift=clamp(m.lift+(input.lift||0)*2.2*dt,...d.height);
     if(m.kind==='crane')m.swing+=(input.tool||0)*.8*dt;

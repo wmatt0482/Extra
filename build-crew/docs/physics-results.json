@@ -1,59 +1,59 @@
 {
   "1": {
     "simulatedSeconds": 210,
-    "cpuMs": 1135,
+    "cpuMs": 1362,
     "complete": true
   },
   "2": {
     "simulatedSeconds": 434,
-    "cpuMs": 2423,
+    "cpuMs": 2466,
     "complete": true
   },
   "3": {
     "simulatedSeconds": 263,
-    "cpuMs": 992,
+    "cpuMs": 1049,
     "complete": true
   },
   "4": {
     "simulatedSeconds": 354,
-    "cpuMs": 1364,
+    "cpuMs": 1382,
     "complete": true
   },
   "5": {
     "simulatedSeconds": 277,
-    "cpuMs": 1027,
+    "cpuMs": 1059,
     "complete": true
   },
   "6": {
     "simulatedSeconds": 261,
-    "cpuMs": 1023,
+    "cpuMs": 1034,
     "complete": true
   },
   "7": {
     "simulatedSeconds": 395,
-    "cpuMs": 1709,
+    "cpuMs": 1805,
     "complete": true
   },
   "8": {
     "simulatedSeconds": 353,
-    "cpuMs": 1369,
+    "cpuMs": 1407,
     "complete": true
   },
   "9": {
     "simulatedSeconds": 468,
-    "cpuMs": 2097,
+    "cpuMs": 2037,
     "complete": true
   },
   "10": {
     "simulatedSeconds": 486,
-    "cpuMs": 2315,
+    "cpuMs": 2180,
     "complete": true
   },
   "stack": {
     "blocks": 8,
     "seconds": 20,
     "maxDrift": 0.0003693420077694838,
-    "cpuMs": 72.95325000000048,
+    "cpuMs": 77.39566699999887,
     "sleeping": true
   }
 }
