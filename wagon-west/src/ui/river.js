@@ -31,11 +31,18 @@ function el(tag, attrs = {}, ...kids) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/** The ferry's picture: an 1840s ferry was a flat-bottomed scow with a wagon on it, hauled across by a rope strung from bank
+ *  to bank (not a modern ship). Inline SVG in the style of the shared icon set (24×24, round strokes, currentColor); no files. */
+export const FERRY_SVG = '<svg viewBox="0 0 24 24" width="40" height="40" style="display:block" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'
+  + '<path d="M1.5 4.5h21"/><path d="M8 4.5v2.2M16 4.5v2.2"/>'          // the rope across the river, two lines down to the scow
+  + '<path d="M7 14V9.5a5 3.4 0 0 1 10 0V14"/>'                           // the wagon's canvas cover
+  + '<path d="M3.5 14h17l-1.8 4.2H5.3z"/>'                                // the flat hull
+  + '<path d="M2.5 21c1.4-1 2.8-1 4.2 0s2.8 1 4.2 0 2.8-1 4.2 0 2.8 1 4.2 0"/></svg>';   // the water
 /** The three ways across, with the one line each says. */
 export const RIVER_OPTS = Object.freeze([
   { how: 'ford', emoji: '🚶', name: 'Ford', line: 'Walk the wagon across. Tap on the calm water.' },
   { how: 'float', emoji: '🛶', name: 'Float', line: 'Raft it over: toss the rope, then steer past the rocks.' },
-  { how: 'ferry', emoji: '⛴️', name: 'Ferry', line: "The ferryman's fare: spell this week's three words." },
+  { how: 'ferry', emoji: '🛶', svg: FERRY_SVG, name: 'Ferry', line: "The ferryman's fare: spell this week's three words." },
 ]);
 export const RIVER_PROMPT = 'How will you cross the river?';
 export const RIVER_SAY = `${RIVER_PROMPT} Ford, float, or ferry?`;
@@ -195,12 +202,18 @@ export function createRiver(app) {
   }
 
   // ---------- the choice, the scene's ford and float, the result ----------
+  /** The option's picture: its inline SVG when it has one (the ferry), else its emoji. */
+  function iconSpan(o) {
+    const sp = h('span', { class: 'rv-opt-emoji', 'aria-hidden': 'true' }, o.svg ? '' : o.emoji);
+    if (o.svg) sp.innerHTML = o.svg;
+    return sp;
+  }
   function paintChoice() {
     const safe = app.v2.floatSafe();
     opts.replaceChildren(...RIVER_OPTS.map((o) => {
       const note = o.how === 'float' ? h('span', { class: 'rv-opt-note' + (safe.safe ? ' safe' : ''), 'data-safe': String(safe.safe) }, safe.safe ? safe.why : 'No rope: a bump can soak a sack of flour.') : null;
       const b = h('button', { class: 'card rv-opt', 'data-how': o.how, 'data-sfx': '' },
-        h('span', { class: 'rv-opt-emoji', 'aria-hidden': 'true' }, o.emoji),
+        iconSpan(o),
         h('span', { class: 'rv-opt-name' }, o.name),
         h('span', { class: 'rv-opt-line' }, o.line),
         note);

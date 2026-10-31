@@ -10,7 +10,9 @@
 // lends the panels through app.v2 (showCard, runProblem, dropCard, checkDeeds, curLeg, JA).
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 
-const STOP_BUTTON = { river: 'To the ferry', fort: 'Into the fort', home: 'Home at last' };
+const STOP_BUTTON = { river: 'To the ferry', fort: 'Into the fort', home: 'Home at last', start: 'To the store' };
+/** The start town as a stop (it is not a leg): the Talk row there works like a fort's, its big button goes to the store. */
+export const START_STOP = Object.freeze({ id: 'independence', name: 'Independence, Missouri', stop: Object.freeze({ kind: 'start', name: 'Independence, Missouri' }) });
 const GOOD_NAME = { pelts: 'beaver pelts', blankets: 'blankets', rope: 'coils of rope', flour: 'sacks of flour', corn: 'bags of corn', pemmican: 'cakes of pemmican', berries: 'bags of dried berries',
   camas: 'bags of camas roots', salmon: 'bundles of dried salmon', roots: 'bags of dried roots', wapato: 'bags of wapato roots' };
 const cap = (t) => (t ? t.charAt(0).toUpperCase() + t.slice(1) : '');

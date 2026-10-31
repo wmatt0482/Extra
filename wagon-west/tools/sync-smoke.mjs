@@ -119,6 +119,8 @@ async function main() {
     console.log('\n=== laptop: Mia packs the wagon, plays a mile marker, creates a family code; the ipad joins ===');
     const miaId = await J(L, () => { const a = window.__wagonWest.app; const p = a.createPlayer('Mia', '#ff3b5c'); a.selectPlayer(p.id || p); return a.currentPlayerId; });
     await J(L, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'oxen', companions: ['blacksmith', 'scout', 'cook'] }, { fresh: true }); });
+    await L.waitForFunction(() => window.__wagonWest.peopleUI.isOpen);     // Independence's Talk row comes first now
+    await L.click('#stop-go');
     await L.waitForSelector('#screen-store:not([hidden])');
     await L.click('#store-done');
     await L.waitForFunction(() => window.__wagonWest.card.isOpen);

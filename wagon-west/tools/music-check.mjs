@@ -1,6 +1,6 @@
 // Wagon West music check (SPEC v1.1 §2), node, no browser:   node wagon-west/tools/music-check.mjs
 // The note lists: every bar of every tune sums to 4 beats in both voices, midi notes within 40-84, 16-32 bars, the three
-// melodies differ; the module imports without a window; and the engine is driven with a fake AudioContext to check the
+// melodies differ; the first phrase of each tune is checked against a public-domain reference; the module imports without a window; and the engine is driven with a fake AudioContext to check the
 // scheduling (the loop is seamless, tunes and moods switch on the bar line, 'off' is silent, the voice duck ramps).
 import { Music, TUNES } from '../src/meta/music.js';
 
@@ -42,6 +42,51 @@ for (let i = 0; i < IDS.length; i++) for (let j = i + 1; j < IDS.length; j++) {
   ok(sim < 0.5, `${IDS[i]} and ${IDS[j]} melodies differ (${Math.round(sim * 100)}% of notes equal)`);
   ok(JSON.stringify(TUNES[IDS[i]].bars.map((b) => b.melody)) !== JSON.stringify(TUNES[IDS[j]].bars.map((b) => b.melody)), `${IDS[i]} vs ${IDS[j]}: not identical`);
 }
+
+// ---- the first phrase of each tune against a reference melody (public domain), note by note ----
+// A reference is written in the SOURCE's own key as semitones above its tonic, with the source's octave kept (so
+// "C4 E4 G4" in a C-major sheet is 0 4 7). The game's table is in G (or D) and may sit in another octave, so each
+// tune names `tonic`, the midi note that stands for 0. `dur` is the sheet's rhythm in eighth notes where the table keeps
+// it (Buffalo Gals); for the other two the table plays straight eighths, so only the pitches are compared.
+//
+//   Oh! Susanna, Stephen Foster, 1848. A piano setting in D major (ABC, github.com/baobach/abc_search,
+//     database/abc/QmWY8qwejrP1LFbKn5yFXZAyCX3abvncsjQJxLCcaeekTt.abc), words under the notes:
+//     "Oh, I | come from A- la- | ba- ma with a | ban- jo on my | knee!" = pickup D E | F A A B | A F D E | F F E D | E (6) D E.
+//     Table pitches (pickup left for the end of the last bar): F# A A B A F# D E | F# F# E D E D E  = 4 7 7 9 7 4 0 2 | 4 4 2 0 2 0 2.
+//   Buffalo Gals, John Hodges ("Cool White"), 1844, "Lubly Fan, Will You Cum Out To-night?". The chorus, vocal line of a
+//     transcription of the 1844 sheet in C major, 2/2 (ABC, "John Hodges (1844)": github.com/oriolcolomefont/The-Sound-of-AI-workshop,
+//     wikifonia-dataset/original-abc/JohnHodgesBuffaloGals.abc), words under the notes:
+//     C CC2 E2 GG | A G2 G E2 EE | G F2 F D2 DD | A G2 G E4 : "Buf- fa- lo gals, won't ya | come out to- night, won't ya | come out
+//     to- night, won't ya | come out to- night?" Two other ABC transcriptions (Bayard-style "Traditional" in G; Viola Ruth,
+//     Pioneer Western Folk Tunes, 1948) agree from "come out tonight" on (A G G E | G F F D | A G G E) and differ only on the
+//     first four syllables, which they sing as a rising 1 3 5 5; the 1844 sheet is the older source, so it is the reference.
+//     The 1844 scan itself (IMSLP, "Lubly Fan Will You Cum Out To Night? (Hodges, John)") could not be opened from the build
+//     machine; the transcription above is the stand-in.
+//   Old Dan Tucker, Dan Emmett, 1843. "American Veteran Fifer", no. 112 (ABC, github.com/syntithenai/abc2book,
+//     abcresources/jc/abc_tune_jc_201319413.abc), D major, 2/4, first strain:
+//     (A B c#) | d d d A | d d d A/A/ | d d e f# | A A B c# | ...  The two sixteenth A's of bar 2 are one eighth in the table.
+const REF = {
+  susanna: { tonic: 67, pitches: [4, 7, 7, 9, 7, 4, 0, 2, 4, 4, 2, 0, 2, 0, 2] },
+  buffalo: {
+    tonic: 67,
+    // Buf fa lo gals won't ya | come out to night won't ya | come out to night won't ya | come out to night
+    pitches: [0, 0, 0, 4, 7, 7, 9, 7, 7, 4, 4, 4, 7, 5, 5, 2, 2, 2, 9, 7, 7, 4],
+    dur: [1, 1, 2, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 2, 1, 1, 1, 2, 1, 4],
+  },
+  tucker: { tonic: 74, pitches: [0, 0, 0, -5, 0, 0, 0, -5, 0, 0, 2, 4, -5, -5, -3, -1] },
+};
+for (const id of IDS) {
+  const ref = REF[id];
+  const notes = TUNES[id].bars.flatMap((b) => b.melody).filter(([m]) => m);
+  const got = notes.slice(0, ref.pitches.length).map(([m]) => m - ref.tonic);
+  ok(JSON.stringify(got) === JSON.stringify(ref.pitches), `${id}: the first phrase is the reference melody (table ${got.join(' ')} vs reference ${ref.pitches.join(' ')})`);
+  if (ref.dur) {
+    const d = notes.slice(0, ref.dur.length).map(([, b]) => b * 2);
+    ok(JSON.stringify(d) === JSON.stringify(ref.dur), `${id}: the first phrase has the sheet's rhythm (${d.join(' ')} vs ${ref.dur.join(' ')} eighths)`);
+  }
+}
+// a guard for the mistake that was in the Buffalo Gals table: it must open on the key note, not the fifth
+ok(TUNES.buffalo.bars[0].melody[0][0] % 12 === 7, 'Buffalo Gals opens on the key note (G)');
 
 // ---- the module in node (no window, no AudioContext) ----
 ok(typeof window === 'undefined', 'this run has no window');

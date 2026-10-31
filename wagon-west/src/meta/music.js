@@ -66,33 +66,39 @@ const SUSANNA = makeTune('susanna', 'Oh! Susanna', 104, 'G', [
   ['G4/6 G4/1 A4/1', 'G G'],
 ]);
 
-// Buffalo Gals (Won't You Come Out Tonight?) (Hodges, 1844, "Lubly Fan"), G major: "Buffalo gals, won't you come out
-// tonight, come out tonight, come out tonight; Buffalo gals, won't you come out tonight and dance by the light of the
-// moon"; verse: "As I was walking down the street, down the street, down the street, a pretty little gal I chanced to
-// meet, oh she was fair to see".
+// Buffalo Gals (John Hodges, 1844, "Lubly Fan, Will You Cum Out To-night?"), the chorus in G major: "Buffalo gals, won't
+// you come out tonight, come out tonight, come out tonight; Buffalo gals, won't you come out tonight and dance by the
+// light of the moon". Checked note by note against a transcription of the 1844 sheet (key of C there, here moved up a
+// fifth to G; the reference is recorded in tools/music-check.mjs). The earlier table here was wrong: it began on the
+// fifth (5 5 3 5 6 5 3 1); the tune begins on the key note, three times (1 1 1 3 5 5 | 6 5 5 3 3 3 | 5 4 4 2 2 2 | 6 5 5 3).
+// Rhythm is the sheet's: eighths and quarters (/1 and /2). The last bar's rest and pickup note lead into the verse in the
+// sheet music; here they bring the loop back round to the chorus.
 const BUFFALO = makeTune('buffalo', 'Buffalo Gals', 104, 'G', [
-  ['D5/1 D5/1 B4/1 D5/1 E5/1 D5/1 B4/1 G4/1', 'G G'],
-  ['B4/1 A4/1 G4/2 B4/1 A4/1 G4/2', 'G D'],
-  ['D5/1 D5/1 B4/1 D5/1 E5/1 D5/1 B4/1 G4/1', 'G G'],
-  ['B4/1 D5/1 E5/1 D5/1 B4/1 A4/1 G4/2', 'D G'],
-  ['G4/1 G4/1 B4/1 D5/1 E5/2 D5/2', 'G G'],
-  ['D5/1 B4/1 G4/2 D5/1 B4/1 G4/2', 'G D'],
-  ['A4/1 B4/1 D5/1 D5/1 B4/1 A4/1 G4/1 A4/1', 'D G'],
-  ['B4/1 D5/1 E5/2 D5/1 B4/1 G4/2', 'G G'],
+  ['G4/1 G4/1 G4/2 B4/2 D5/1 D5/1', 'G G'],
+  ['E5/1 D5/2 D5/1 B4/2 B4/1 B4/1', 'C G'],
+  ['D5/1 C5/2 C5/1 A4/2 A4/1 A4/1', 'D D'],
+  ['E5/1 D5/2 D5/1 B4/4', 'C G'],
+  ['G4/1 G4/1 G4/2 B4/2 D5/1 D5/1', 'G G'],
+  ['E5/1 D5/2 D5/1 B4/2 B4/2', 'C G'],
+  ['D5/2 C5/1 C5/1 B4/2 A4/1 A4/1', 'D D'],
+  ['G4/4 r/2 D5/2', 'G G'],
 ]);
 
-// Old Dan Tucker (Emmett, 1843), D major: "Old Dan Tucker was a fine old man, washed his face in a frying pan, combed
+// Old Dan Tucker (Dan Emmett, 1843), D major: "Old Dan Tucker was a fine old man, washed his face in a frying pan, combed
 // his hair with a wagon wheel, died with a toothache in his heel"; chorus: "Get out the way, Old Dan Tucker, you're
-// too late to come to supper."
+// too late to come to supper." From a 19th-century fife-and-drum setting (American Veteran Fifer, no. 112; the reference
+// is recorded in tools/music-check.mjs): the first strain opens on the key note three times, then drops to the fifth
+// below (1 1 1 5 | 1 1 1 5 | 1 1 2 3 | 5 5 6 7); the chorus climbs back up. The fife's quick sixteenth pairs are
+// played as single eighths. The earlier table here opened on the wrong notes (5 5 5 3 | 5 5 5 2).
 const TUCKER = makeTune('tucker', 'Old Dan Tucker', 104, 'D', [
-  ['A4/1 A4/1 A4/1 F#4/1 A4/1 A4/1 A4/1 E4/1', 'D A'],
-  ['A4/1 A4/1 B4/1 C#5/1 C#5/1 E5/1 E5/1 F#5/1', 'D D'],
-  ['A4/1 A4/1 A4/1 F#4/1 A4/1 A4/1 A4/1 A4/1', 'D A'],
-  ['A4/1 A4/1 B4/1 C#5/1 C#5/1 E5/1 E5/1 F#5/1', 'D D'],
-  ['A4/1 C#5/1 C#5/1 C#5/1 C#5/1 B4/1 A4/1 F#4/1', 'A D'],
-  ['A4/1 B4/1 B4/1 B4/1 B4/1 E5/1 E5/1 F#5/1', 'G A'],
-  ['A4/1 C#5/1 C#5/1 C#5/1 C#5/1 B4/1 A4/1 F#4/1', 'A D'],
-  ['A4/1 B4/1 B4/1 B4/1 B4/1 E5/1 E5/1 D5/1', 'G D'],
+  ['D5/1 D5/1 D5/1 A4/1 D5/1 D5/1 D5/1 A4/1', 'D D'],
+  ['D5/1 D5/1 E5/1 F#5/1 A4/1 A4/1 B4/1 C#5/1', 'D A'],
+  ['D5/1 D5/1 D5/1 A4/1 D5/1 D5/1 D5/1 A4/1', 'D D'],
+  ['D5/1 D5/1 E5/1 F#5/1 A4/1 A4/1 B4/1 D5/1', 'D A'],
+  ['F#5/1 F#5/1 F#5/2 E5/1 D5/1 B4/1 D5/1', 'D G'],
+  ['E5/1 E5/1 E5/1 F#5/1 A4/1 A4/1 B4/1 D5/1', 'A G'],
+  ['F#5/1 F#5/1 A5/2 F#5/1 D5/1 B4/1 D5/1', 'D G'],
+  ['E5/1 E5/1 E5/1 F#5/1 A4/1 C#5/1 D5/2', 'A D'],
 ]);
 
 export const TUNES = { susanna: SUSANNA, buffalo: BUFFALO, tucker: TUCKER };

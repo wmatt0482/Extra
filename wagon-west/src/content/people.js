@@ -59,7 +59,7 @@ export const PEOPLE = [
 
   // ---- Chimney Rock ----
   P('hannah', 'chimney-rock', 'Hannah', '👧', 'a girl with a diary', [
-    'Chimney Rock rises about three hundred feet above the land around it. I could see it from miles away.',
+    'Chimney Rock is a tall spire that rises hundreds of feet above the valley. I could see it from miles away.',
     'Many travelers wrote about it in their diaries. I am going to draw it in mine.',
   ]),
   P('lakota-guide', 'chimney-rock', 'A Lakota guide', '🧑', 'a Lakota guide', [
@@ -91,7 +91,7 @@ export const PEOPLE = [
     'Some of the names from long ago can still be seen today. Maybe mine will last, too.',
   ]),
   P('shoshone-guide', 'independence-rock', 'A Shoshone guide', '🧑', 'a Shoshone guide', [
-    'The Shoshone homeland covers parts of what is now Wyoming, Idaho, Utah and Nevada.',
+    'The Shoshone homeland includes parts of what is now Wyoming, Idaho, Utah and Nevada.',
     'Today the Eastern Shoshone Tribe and the Northern Arapaho Tribe share the Wind River Reservation in Wyoming.',
   ], { kind: 'trade', give: 'rope', get: 'berries', rate: [3, 4], text: 'The guide offers a fair trade: three coils of rope for four bags of dried berries.' }),
 
@@ -116,7 +116,7 @@ export const PEOPLE = [
   ], { kind: 'tip', problem: 'parts', text: 'Greta hands you a spare-parts puzzle. Work it out for a trade token.' }),
   P('shoshone-trader', 'fort-bridger', 'A Shoshone trader', '🧑', 'a Shoshone trader', [
     'Shoshone people traded with travelers at this fort. A fair trade leaves both sides happy.',
-    'The Shoshone homeland covers parts of what is now Wyoming, Idaho, Utah and Nevada, and Shoshone people live here today.',
+    'The Shoshone homeland includes parts of what is now Wyoming, Idaho, Utah and Nevada, and Shoshone people live here today.',
   ], { kind: 'trade', give: 'rope', get: 'berries', rate: [3, 4], text: 'The trader offers a fair trade: three coils of rope for four bags of dried berries.' }),
 
   // ---- Fort Hall ----
@@ -145,11 +145,11 @@ export const PEOPLE = [
     'We are known for fine horses, including the spotted Appaloosa. The Nez Perce Tribe is based in Lapwai, Idaho, today.',
   ], { kind: 'card', card: 'nez-perce', text: 'The trader shares a card about the Nez Perce.' }),
   P('cayuse-guide', 'blue-mountains', 'A Cayuse guide', '🧑', 'a Cayuse guide', [
-    'The Cayuse people are so well known for their horses that cayuse became a word for a horse in the Northwest.',
+    'The Cayuse people are so well known for their horses that cayuse became a word for a pony in the West.',
     'Today Cayuse people are part of the Confederated Tribes of the Umatilla Indian Reservation in Oregon.',
   ], { kind: 'card', card: 'cayuse', text: 'The guide shares a card about the Cayuse.' }),
   P('pruitt', 'blue-mountains', 'Mr. Pruitt', '🧓', 'a traveler in the pines', [
-    'Pine forests at last! After all that dry sagebrush, the shade feels wonderful.',
+    'Pine forests at last! After all that hot, dry travel, the shade feels wonderful.',
     'The nights up here turn cold. Make sure everybody has a blanket, and the oxen get a rest.',
   ], { kind: 'food', what: 'hazelnuts', lb: 15, text: 'Mr. Pruitt shares a bag of hazelnuts he gathered by the trail.' }),
 

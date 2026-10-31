@@ -20,10 +20,10 @@ const C = (id, name, emoji, fact) => ({ id, suit: 'companion', name, emoji, fact
 export const CARDS = [
   // ---- landmarks (12): id = the leg id ----
   L('kansas-river', 'Kansas River', '🌊', 'Local families ran ferries here that carried wagons across for a fee.'),
-  L('fort-kearny', 'Fort Kearny', '🏕️', 'Fort Kearny was built in 1848, with a blacksmith shop for wagon repairs and a post office for letters home.',
-    'Fort Kearny was built in eighteen forty-eight, with a blacksmith shop for wagon repairs and a post office for letters home.'),
-  L('chimney-rock', 'Chimney Rock', '🗻', 'Chimney Rock rises about 300 feet above the land around it, and travelers could spot it from miles away.',
-    'Chimney Rock rises about three hundred feet above the land around it, and travelers could spot it from miles away.'),
+  L('fort-kearny', 'Fort Kearny', '🏕️', 'Fort Kearny was built in 1848, with a blacksmith shop for wagon repairs, and travelers could send letters home from there.',
+    'Fort Kearny was built in eighteen forty-eight, with a blacksmith shop for wagon repairs, and travelers could send letters home from there.'),
+  L('chimney-rock', 'Chimney Rock', '🗻', 'Chimney Rock rises hundreds of feet above the valley, and travelers could spot it from miles away.',
+    'Chimney Rock rises hundreds of feet above the valley, and travelers could spot it from miles away.'),
   L('fort-laramie', 'Fort Laramie', '🏰', 'Fort Laramie began in 1834 as a trading post for furs and bison robes.',
     'Fort Laramie began in eighteen thirty-four as a trading post for furs and bison robes.'),
   L('independence-rock', 'Independence Rock', '🪨', 'Travelers carved or painted their names on Independence Rock, and some of the names can still be seen today.'),
@@ -33,7 +33,7 @@ export const CARDS = [
     'Jim Bridger and Louis Vasquez started Fort Bridger in eighteen forty-three as a trading post.'),
   L('fort-hall', 'Fort Hall', '🚩', 'Near Soda Springs, travelers tasted fizzy, bubbly water that came right out of the ground.'),
   L('snake-river', 'Snake River', '🏝️', 'At Three Island Crossing, wagon parties could wade across the Snake River by going from island to island.'),
-  L('blue-mountains', 'Blue Mountains', '🌲', 'In the Blue Mountains, dark pine forests felt cool and shady after the hot, dry sagebrush.'),
+  L('blue-mountains', 'Blue Mountains', '🌲', 'In the Blue Mountains, the cool shade of the pine forests felt wonderful after miles of hot, dry travel.'),
   L('the-dalles', 'The Dalles', '🛶', 'At The Dalles the Columbia River squeezes through a narrow channel.'),
   L('willamette-valley', 'Willamette Valley', '🏡', 'The Willamette Valley has rich soil, which is why so many families came here to farm.'),
 
@@ -41,10 +41,10 @@ export const CARDS = [
   N('kansa', 'Kansa', '🌾', 'The Kansas River is named for the Kansa people, and the Kaw Nation is based in Oklahoma today.'),
   N('pawnee', 'Pawnee', '🌽', 'The Pawnee grew corn, beans and squash in villages along the rivers of what is now Nebraska.'),
   N('lakota', 'Lakota', '🦬', 'Bison are a big part of the history and way of life of the Lakota, people of the northern Great Plains.'),
-  N('shoshone', 'Shoshone', '🏔️', 'The Shoshone homeland covers parts of what is now Wyoming, Idaho, Utah and Nevada.'),
+  N('shoshone', 'Shoshone', '🏔️', 'The Shoshone homeland includes parts of what is now Wyoming, Idaho, Utah and Nevada.'),
   N('bannock', 'Bannock', '🏕️', 'The Bannock people traveled far across the mountains each year to hunt bison.'),
   N('nez-perce', 'Nez Perce', '🪶', 'The Nez Perce call themselves Nimiipuu, which means the people.'),
-  N('cayuse', 'Cayuse', '🐎', 'The Cayuse were so well known for their horses that cayuse became a word for a horse in the Northwest.'),
+  N('cayuse', 'Cayuse', '🐎', 'The Cayuse were so well known for their horses that cayuse became a word for a pony in the West.'),
   N('chinook', 'Chinook', '🛶', 'Chinookan peoples were famous traders who traveled the Columbia River by canoe.'),
 
   // ---- animals and plants of the trail (12) ----

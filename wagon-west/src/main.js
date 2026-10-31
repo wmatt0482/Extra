@@ -81,7 +81,7 @@ import { createProblemPanel, problemTexts, spokenLine } from './ui/problemPanel.
 import { createCard } from './ui/card.js';
 import { createRiver, riverTexts, riverChoiceTexts } from './ui/river.js';
 // ---- v1.2 (app two): people and deeds ----
-import { createPeople } from './ui/people.js';
+import { createPeople, START_STOP } from './ui/people.js';
 import { createDeedPop, deedTexts } from './ui/deeds.js';
 import { createCamp } from './ui/camp.js';
 import { createCardPop, ownedCards, sayOf } from './ui/cards.js';
@@ -790,6 +790,12 @@ async function boot() {
   async function independenceStore() {
     const J = save.journey;
     S('setBackdrop', 'fort');
+    // v1.2 fix: the start town has people too (Mr. Hale, Clara, Amos): the same Talk row a fort has, then the store
+    if (peopleUI.has(START_STOP)) {
+      go('stop');
+      const on = await peopleUI.visit(START_STOP);
+      if (!on || screen !== 'stop') return;
+    }
     let leg = null;
     try { leg = JA.storeLeg ? JA.storeLeg(J) : null; } catch (_) { leg = null; }
     const ok = await store.open({ leg, place: (LEGS[0] && LEGS[0].from) || 'Independence', nextText: 'Hit the trail' });

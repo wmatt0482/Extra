@@ -6,7 +6,7 @@ Oregon National Historic Trail and park pages, the Oregon-California Trails Asso
 and state historical societies.
 
 How to use this page: each entry names the organisation and the page or topic to look for. A web address is given
-only where we are confident it exists; otherwise search the organisation's own site for the name in quotes. The
+only where we are confident it exists; see the "Fact check" section at the end for the addresses checked on October 31, 2026. The
 game states no number it could not trace: where a source gave a range or was unclear, the number was left out
 (for example, the miles between two stops, or Independence Rock's height, are not read aloud).
 
@@ -26,7 +26,7 @@ today; each nation fact is two sentences at most and uses the name the nation us
   Fort Kearny State Historical Park: founded in 1848, with a blacksmith shop and a post office. The National Park
   Service Oregon National Historic Trail pages on Fort Kearny give the same dates.
 - <a id="chimney-rock"></a>**chimney-rock**: National Park Service, Chimney Rock National Historic Site
-  (nps.gov/chro): the spire's height above the land around it, and the many diary entries by travelers.
+  (nps.gov/chro): a spire that rises hundreds of feet above the valley (sources give 286 to 480 feet, so no number is read aloud), and the many diary entries by travelers.
 - <a id="fort-laramie"></a>**fort-laramie**: National Park Service, Fort Laramie National Historic Site
   (nps.gov/fola), the history pages: founded in 1834 as a fur trading post, bought by the army in 1849.
 - <a id="independence-rock"></a>**independence-rock**: National Park Service, Oregon National Historic Trail
@@ -216,3 +216,63 @@ game rules built from the general picture the National Park Service and the Oreg
 parties carried flour, bacon and beans; oxen and mules pulled the wagons and tired; wheels, axles and tongues broke; rivers
 were forded, floated on rafts or crossed by ferry for a fee. The numbers (percentages, pounds, miles) are the game's, tuned
 by tools/economy-sim.mjs, and are not read aloud as facts about the trail.
+
+## Fact check (October 31, 2026)
+
+Every nation fact and every lookout fact was checked again against the pages below. How it was done, honestly: the
+checking was done from search results that quote or summarise these pages; the build machine could not open nps.gov,
+history.nebraska.gov or the nations' own sites directly (its network blocks them), so a few of the nations' own pages are
+named but not read line by line. Where the only support was a secondary page, the verdict says so. A parent who wants to
+check a fact should start with the first address in its row.
+
+Verdicts: confirmed (a reputable page says it), corrected (the game's text was changed), could not verify (kept as it was,
+or softened, and flagged).
+
+### Nations (trading-post facts, and the same lines in the people's cards)
+
+| Fact | Verdict | Source |
+|---|---|---|
+| Kansa: lived along the Kansas River, named for them; Kaw Nation based in Oklahoma today | confirmed (headquarters Kaw City, Oklahoma; the river and the state take the name) | https://en.wikipedia.org/wiki/Kaw_people ; https://www.nps.gov/safe/learn/historyculture/upload/We-Lived-along-the-River-508.pdf ; https://www.leavenworthks.gov/ru/page/kaw-indians-native-american-history-leavenworth ; the nation's own site (kawnation.com) was not reachable |
+| Pawnee: corn, beans and squash in river villages in what is now Nebraska; hunted bison; Pawnee Nation based in Pawnee, Oklahoma | confirmed | https://history.nebraska.gov/marker-monday-pawnee-villages/ ; https://history.nebraska.gov/publications_section/pawnee-foods/page/1/ ; https://www.kansashistory.gov/kansapedia/pawnees/15611 ; https://www.britannica.com/topic/Pawnee-people ; pawneenation.org (not reachable) |
+| Lakota: people of the northern Great Plains; bison central to history and life; Oglala Sioux Tribe (South Dakota) and Standing Rock Sioux Tribe (North and South Dakota) today | confirmed | https://en.wikipedia.org/wiki/Pine_Ridge_Indian_Reservation ; https://en.wikipedia.org/wiki/Standing_Rock_Sioux_Reservation ; https://www.worldwildlife.org/news/stories/the-return-of-a-relative-tribal-communities-in-the-northern-great-plains-rally-around-bison-restoration/ ; the tribes' own sites were not reachable |
+| Shoshone: homeland covers parts of Wyoming, Idaho, Utah and Nevada; Eastern Shoshone and Northern Arapaho share Wind River Reservation, Wyoming | corrected: "covers" became "includes" (the homeland also reaches into Oregon, Montana and California, so "covers" was too tidy); the Wind River line is confirmed | https://historytogo.utah.gov/uhg-first-peoples-shoshone-indians ; https://en.wikipedia.org/wiki/Shoshone ; https://jacksonholehistory.org/an-introduction-to-the-wind-river-indian-reservation-of-wyoming/ |
+| Bannock: traveled far across the mountains each year to hunt bison; Shoshone-Bannock Tribes on the Fort Hall Reservation, Idaho | confirmed (the Bannock Trail to the Yellowstone and Montana buffalo country) | https://kids.britannica.com/students/article/Bannock/316971 ; https://www.sbtribes.com/ ; https://www.nps.gov/crmo/learn/education/history.htm |
+| Nez Perce: call themselves Nimiipuu, "the people"; known for horses including the spotted Appaloosa; Nez Perce Tribe based in Lapwai, Idaho | confirmed | https://critfc.org/member-tribes-overview/nez-perce-tribe/ ; https://cdil.lib.uidaho.edu/nimiipuu-l3/culture/ ; https://oregonencyclopedia.org/articles/appaloosa_horse_breed ; nezperce.org (not reachable) |
+| Cayuse: famous for horses, "cayuse" became a word for a horse; Cayuse people are part of the Confederated Tribes of the Umatilla Indian Reservation, Oregon | corrected: the dictionaries define "cayuse" as a small Indian pony, used across the West, so the line now says "a word for a pony in the West"; the Umatilla Reservation line is confirmed | https://www.historylink.org/file/10365 ; https://www.dictionary.com/browse/cayuse ; https://www.ebsco.com/research-starters/social-sciences-and-humanities/cayuse ; ctuir.org (not reachable) |
+| Chinook: Chinookan peoples on the Columbia for generations, famous traders by canoe; Chinook Indian Nation based in Washington state | confirmed (office in Bay Center, Washington). The nation is not federally recognized as of the 2024 reports found; the game says nothing either way | https://chinooknation.org/ ; https://www.historylink.org/file/7914 ; https://www.knkx.org/arts-culture/2024-05-11/chinook-indian-nation-closer-to-securing-ancestral-winter-village-land |
+
+### Lookouts
+
+| Fact | Verdict | Source |
+|---|---|---|
+| Independence: parties left in late April or May when the grass was tall enough; the trail ran about 2,000 miles | corrected: "about 2,000" became "more than 2,000 miles" (the park service's route is about 2,000 miles to 2,170 miles depending on the end point); April-May confirmed | https://www.nps.gov/oreg/learn/historyculture/making-the-trek.htm ; https://www.nps.gov/articles/000/traveling-emigrant-trails.htm ; https://www.britannica.com/topic/Oregon-Trail/The-journey |
+| Kansas River: local families ran ferries that carried wagons across for a fee | confirmed (for example Pappan's Ferry at Topeka, a dollar a wagon) | https://www.kansashistory.gov/p/ferries-in-kansas-part-ii-kansas-river/17899 ; https://kansasriver.org/learn/life-on-the-kaw/the-working-kaw/ |
+| Fort Kearny: built in 1848 to help travelers; a blacksmith shop; a post office for letters home | built in 1848 and the blacksmith shop confirmed; corrected: "a post office" became "travelers could send letters home from there" (the fort was a message center from 1848; a stamp-history page says a post office was established in 1849, which is a secondary source, so the claim was softened) | https://www.hmdb.org/m.asp?m=43237 ; https://outdoornebraska.gov/fi/location/fort-kearny-shp/ ; https://www.legendsofamerica.com/ne-fortkearny/ ; https://stampnewsnow.com/ArticlesViewingUS_Collections.html |
+| Chimney Rock: rises about 300 feet above the land; seen from miles away; many diaries | corrected: sources disagree (286 feet above its surroundings, 300 above the valley, 325 above its base, 480 above the valley, 500 in an older brochure), so the number was dropped: "rises hundreds of feet above the North Platte River valley"; the diaries line is confirmed | https://www.nps.gov/cali/planyourvisit/chimney-rock.htm ; https://octa-trails.org/trail-sites/chimney-rock-national-historic-site-nebraska/ ; https://www.npshistory.com/brochures/chro/1995.pdf ; https://npgallery.nps.gov/GetAsset/dbb912d6-df33-4e57-a904-3ef0df794d8a |
+| Fort Laramie: began in 1834 as a trading post for furs and bison robes; the army bought it in 1849 | confirmed (founded by William Sublette and Robert Campbell; the army paid $4,000 in 1849) | https://www.nps.gov/articles/ftlaramie.htm ; https://www.wyohistory.org/encyclopedia/fort-laramie |
+| Independence Rock: huge granite rock beside the Sweetwater; travelers carved or painted names; some still seen | confirmed | https://www.nps.gov/places/000/independence-rock-state-historic-site.htm ; https://wyoparks.wyo.gov/index.php/about-independence-rock |
+| South Pass: wide, gentle gap in the Rockies, more than 7,000 feet up; wagons crossed the Continental Divide without steep cliffs | confirmed (about 7,412 feet) | https://www.wyohistory.org/encyclopedia/south-pass ; https://en.wikipedia.org/wiki/South_Pass_(Wyoming) ; https://npgallery.nps.gov/NRHP/GetAsset/NHLS/66000754_text |
+| Fort Bridger: started by Jim Bridger and Louis Vasquez in 1843 as a trading post; wagon parties traded, bought supplies, fixed wagons | confirmed (one federal document says built in 1842 and open early in 1843) | https://wyoparks.wyo.gov/index.php/about-fort-bridger ; https://www.wyohistory.org/encyclopedia/fort-bridger |
+| Fort Hall / Soda Springs: fizzy water out of the ground; Fort Hall in Idaho a trading post where wagon parties rested and traded | confirmed (Fort Hall built 1834; Soda Springs' carbonated water is in many diaries; no page was found that says "rested" in those words, it rests on the general picture of the stop) | https://digitalatlas.cose.isu.edu/geog/forts/text/forthall.htm ; https://hmdb.org/m.asp?m=124029 ; https://idahomagazine.com/?p=1366 |
+| Snake River: wade across from island to island at Three Island Crossing; the south-side trail was longer and drier | confirmed | https://parksandrecreation.idaho.gov/?p=40439 ; https://www.blm.gov/visit/main-oregon-trail-back-country-byway |
+| Blue Mountains: dark pine forests cool and shady after the hot, dry sagebrush; wagon ruts still seen | corrected: the "after the hot, dry sagebrush" part had no source, so the line now says the cool shade of the pine forests felt wonderful after miles of hot, dry travel (the park service's wording is a relief after a sweltering climb); "dark" dropped; ruts and wagon scars on the pines confirmed | https://www.nps.gov/places/000/oregon-trail-interpretive-park-at-blue-mountain-crossing.htm ; https://octa-trails.org/trail-sites/blue-mountain-crossing-oregon |
+| The Dalles: the Columbia squeezes through a narrow channel; rafts down the river or the Barlow Road, a toll road opened in 1846 | confirmed | https://oregonencyclopedia.org/articles/barlow_road/ ; https://www.nps.gov/articles/000/the-barlow-road.htm |
+| Oregon City: end of the trail, beside Willamette Falls; the valley's rich soil drew farmers | confirmed (the Oregon Encyclopedia: some of the most fertile farmland in North America) | https://oregonencyclopedia.org/articles/willamette_valley/ ; https://www.nps.gov/places/willamette-falls.htm ; https://www.travelportland.com/culture/end-of-the-oregon-trail |
+
+The same corrections were made wherever the sentence is repeated: the trail cards (src/content/cards.js) and the people
+who say it (src/content/people.js: Hannah, the Cayuse guide, Mr. Pruitt, the Shoshone guide and trader). Mr. Hale's and
+Danny's lines at Independence and Fort Kearny are story advice and were not changed.
+
+### The tunes (src/meta/music.js, tools/music-check.mjs)
+
+- **Oh! Susanna** (Stephen Foster, 1848): the first phrase matches a piano setting in ABC, words under the notes:
+  github.com/baobach/abc_search (database/abc/QmWY8qwejrP1LFbKn5yFXZAyCX3abvncsjQJxLCcaeekTt.abc).
+- **Buffalo Gals** (John Hodges, 1844): the table was wrong (it opened on the fifth of the scale, 5 5 3 5 6 5 3 1; the tune
+  opens 1 1 1 3 5 5). Rewritten from a transcription of the 1844 sheet, "John Hodges (1844)":
+  github.com/oriolcolomefont/The-Sound-of-AI-workshop (wikifonia-dataset/original-abc/JohnHodgesBuffaloGals.abc), which puts the
+  words under the notes. Two other transcriptions agree from "come out tonight" on and differ on the first four syllables, so
+  the 1844 sheet was taken as the reference. The 1844 scan is on IMSLP
+  (https://imslp.org/wiki/Lubly_Fan_Will_You_Cum_Out_To_Night%3F_(Hodges,_John)) but could not be opened from the build machine.
+- **Old Dan Tucker** (Dan Emmett, 1843): the table was also wrong (5 5 5 3 | 5 5 5 2); rewritten from the fife setting in
+  "American Veteran Fifer" no. 112 (github.com/syntithenai/abc2book, abcresources/jc/abc_tune_jc_201319413.abc). One source
+  only; a second would be welcome.
