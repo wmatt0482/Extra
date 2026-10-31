@@ -6,12 +6,14 @@ import { GOODS, animalOf, goodOf, legOf, seasonOf } from './route.js';
 
 /** What a journey starts with in the Rookie year (cash and food scale with season.priceMult / stay the same). Why 300
  *  lb: enough for a party of four at full rations to reach the first fort two legs out, even if the app skips the
- *  Independence store; $400 buys the rest. */
-export const START = { cash: 400, food: 300, parts: 1,
+ *  Independence store. v1.3: $45 (was $400): a purse, not a bank; the first store is food, a part, blankets, rope and arrows. */
+export const START = { cash: 45, food: 300, parts: 1,
   foods: { flour: 150, bacon: 90, beans: 60, other: 0 },     // v1.2: the 300 lb as the wagon carries it (50 / 30 / 20 %)
   goods: { parts: 1, rope: 0, blankets: 0, arrows: 15, pelts: 6, yoke: 0 } };
-/** Arrival pay: $60 × season.priceMult for arriving, + $20 a star (SPEC §5). */
-export const PAY = { arrival: 60, star: 20 };
+/** Pay on arriving (v1.3, SPEC "money is a choice"): $4 × season.priceMult, plus the stars: $1 for arriving, $3 for everyone happy, $14 for
+ *  every marker right (× season.priceMult too), so the pay that follows the answers is the marker star (the strong kid earns about $16 a leg,
+ *  the average about $10, the weak about $8). Was a flat $60 + $20 a star, with the stars not scaling by season. */
+export const PAY = { arrival: 4, star: [1, 3, 14] };
 /** Pounds a person eats a day by the rations dial (SPEC §5: 3 full, 2 plenty, 1 lean). */
 export const RATION_LB = { full: 3, plenty: 2, lean: 1 };
 export const PACES = ['steady', 'brisk'];
@@ -56,8 +58,8 @@ export const UPGRADES = [
 ];
 export const UPGRADE_BY_ID = Object.fromEntries(UPGRADES.map((u) => [u.id, u]));
 export const UPGRADE_FX = { tiresMiles: 2 };
-/** The Fort Derby's pay (SPEC v1.1 §3): $20 × the season's priceMult for a win, a flat $5 "good try" for a loss. */
-export const DERBY = { win: 20, lose: 5 };
+/** The Fort Derby's pay (SPEC v1.1 §3, v1.3): $8 × the season's priceMult for a win, $2 × it for a good try (was $20 / a flat $5). */
+export const DERBY = { win: 8, lose: 2 };
 /** A duplicate trail card pays this many trade tokens. */
 export const CARD_DUP_TOKENS = 1;
 /** The camp activities (SPEC v1.1 §3): each costs a day. */
@@ -89,13 +91,25 @@ export const COOK = { foodFactor: 0.9 };
 /** Skill numbers: Jasper's night at camp (+4 spirit), Mabel's peppermints (raise a tired party to fine + 6, then wait
  *  `cooldown` days), Ada / Tomas live in the repair rules. */
 export const SKILL_FX = { fiddlerCamp: 4, peppermintTo: MOOD.fine + 6, peppermintCooldown: 3 };
-/** Pay for the pure-play mini-games (× the season's priceMult): the Columbia raft is $40 less $10 a bump (never under
- *  $10); holding the stampede pays $15 and the bison card. */
-export const RAFT = { base: 40, perBump: 10, min: 10 };
+/** Pay for the pure-play mini-games (× the season's priceMult): the Columbia raft is $24 less $6 a bump (never under
+ *  $6); holding the stampede pays $15 and the bison card. */
+export const RAFT = { base: 24, perBump: 6, min: 6 };
 export const STAMPEDE = { held: 15 };
-/** The goods the General Store sells that the content's GOODS table does not list (src/content/legs.js is not ours). */
-export const EXTRA_GOODS = [{ id: 'yoke', name: 'A second yoke', unit: 'yoke', emoji: '🐂', price: 30 }];
+/** The goods the General Store sells that the content's GOODS table does not list (src/content/legs.js is not ours). The second yoke
+ *  (v1.3): $42 × the fort's price level (Kearny $50, Laramie $67, Bridger $80, Hall $92; was $30 from Independence, which every child
+ *  bought on leg 1), sold from Fort Kearny on (fromLeg 2 = leg.n of the first stop that has it): it competes with the food and the blankets. */
+export const EXTRA_GOODS = [{ id: 'yoke', name: 'A second yoke', unit: 'yoke', emoji: '🐂', price: 42, fromLeg: 2 }];
 export const EXTRA_GOOD_BY_ID = Object.fromEntries(EXTRA_GOODS.map((g) => [g.id, g]));
+/** Is this extra good on the shelf at this stop? `fromLeg` is the number (leg.n) of the first leg whose stop sells it; the
+ *  Independence store (leg null) sells only what has fromLeg 0. Goods the content's GOODS table lists are always on sale. */
+export function offeredAt(item, leg) {
+  const g = EXTRA_GOOD_BY_ID[typeof item === 'object' && item ? item.id : item];
+  if (!g) return true;
+  const l = legOf(leg);
+  return (l ? l.n || 0 : 0) >= (g.fromLeg || 0);
+}
+/** Does the store at this stop sell the second yoke? (From Fort Kearny on: see EXTRA_GOODS.) */
+export const yokeOffered = (leg) => offeredAt('yoke', leg);
 
 const FOOD_GOODS = new Set(GOODS.filter((g) => g.lb).map((g) => g.id));
 /** Is this good food (its pounds go into J.food)? */
@@ -131,14 +145,16 @@ export function priceAt(item, leg, season) {
 }
 /** The General Store's shelf at a stop: every good with its price here (the app shows it; each purchase is a problem). */
 export function storeList(leg, season) {
-  return [...GOODS, ...EXTRA_GOODS].map((g) => ({ id: g.id, name: g.name, unit: g.unit, lb: g.lb || 0, emoji: g.emoji, food: !!g.lb, price: priceAt(g, leg, season) }));
+  return [...GOODS, ...EXTRA_GOODS.filter((g) => offeredAt(g, leg))].map((g) => ({ id: g.id, name: g.name, unit: g.unit, lb: g.lb || 0, emoji: g.emoji, food: !!g.lb, price: priceAt(g, leg, season) }));
 }
 
 /** The arrival pay for a leg's stars: { arrival, stars, total }. */
 export function payFor(stars, season) {
-  const n = (stars || []).filter(Boolean).length;
-  const arrival = Math.round(PAY.arrival * seasonOf(season).priceMult);
-  return { arrival, stars: PAY.star * n, total: arrival + PAY.star * n };
+  const mult = seasonOf(season).priceMult;
+  const arrival = Math.round(PAY.arrival * mult);
+  const sum = (stars || []).reduce((a, lit, i) => a + (lit ? PAY.star[i] || 0 : 0), 0);
+  const paid = Math.round(sum * mult);
+  return { arrival, stars: paid, total: arrival + paid };
 }
 /** The crate tier for a leg's stars ('gold' | 'silver' | 'bronze' | null). */
 export const crateFor = (stars) => CRATE_BY_STARS[Math.min(3, (stars || []).filter(Boolean).length)] || null;

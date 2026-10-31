@@ -16,7 +16,7 @@ import {
   camp, buyUpgrade, upgradesOwned, derbyPay, awardCard, suitComplete, suitProgress, cardForLeg, cardForAnimal, ensureJourney,
   dailyChallenge, claimChallenge, UPGRADES,
   repair, crossRiver, forecast, waitOut, meetPerson, peopleAt, raftPay, stampedePay, teacherTip, applyMarkerHint, markerHintReady, lookoutDrops, campKinds,
-  foodDays, huntAllowed, needsBlankets, spareGoods, coldLegsAhead, skillOf, skillInfo, partySkills, syncFood, speedBonus, effectivePace, checkDeeds, DEEDS,
+  foodDays, huntAllowed, needsBlankets, spareGoods, coldLegsAhead, skillOf, skillInfo, partySkills, syncFood, speedBonus, effectivePace, checkDeeds, DEEDS, yokeOffered,
 } from '../src/journey/sim.js';
 import { CARDS, CARD_BY_ID, SUITS, cardsOf } from '../src/content/cards.js';
 import { NATIONS } from '../src/content/nations.js';
@@ -27,7 +27,7 @@ import { composeLetter, happenedKeys, keepLetter, lineSource, FALLBACK_LINES } f
 import { PEOPLE, PEOPLE_BY_STOP, PERSON_BY_ID } from '../src/content/people.js';
 import { DEED_BY_ID } from '../src/journey/deeds.js';
 import { starsFor, starCount } from '../src/journey/stars.js';
-import { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay, ARROWS, ANIMAL_RULES, COLD_LEGS, SOAKED_LB, FOOD_KINDS, RAFT } from '../src/journey/economy.js';
+import { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay, ARROWS, ANIMAL_RULES, COLD_LEGS, SOAKED_LB, FOOD_KINDS, RAFT, DERBY, EXTRA_GOODS } from '../src/journey/economy.js';
 import { planEvents, eligibleEvents, EVENTS, EVENT_BY_ID } from '../src/journey/events.js';
 import { useLegs, syntheticTrail, legList, LEGS, SEASONS, GOODS, nationFor } from '../src/journey/route.js';
 import { mulberry32, hashSeed } from '../src/journey/rng.js';
@@ -48,7 +48,8 @@ function shop(J, factor = 1.3) {
   const plan = foodToNextFort(J);
   const want = Math.max(0, Math.round(plan.lb * factor) - J.food);
   const sacks = Math.ceil(want / lbOf('flour'));
-  if (sacks > 0) buy(J, { item: 'flour', qty: sacks, price: priceAt('flour', storeLeg(J), J.season) });
+  const afford = Math.min(sacks, Math.floor(J.cash / Math.max(1, priceAt('flour', storeLeg(J), J.season))));   // the sacks the purse covers (the store is one tap a sack)
+  if (afford > 0) buy(J, { item: 'flour', qty: afford, price: priceAt('flour', storeLeg(J), J.season) });
   if (J.parts < 1) buy(J, { item: 'parts', qty: 1 });
   if (coldLegsAhead(J).length && (J.goods.blankets | 0) < needsBlankets(J, coldLegsAhead(J)[0]).need) buy(J, { item: 'blankets', qty: needsBlankets(J, coldLegsAhead(J)[0]).need - (J.goods.blankets | 0) });   // v1.2: blankets before the cold legs
   if ((J.goods.arrows | 0) < 10 && J.opts.hunting) buy(J, { item: 'arrows', qty: 2 });
@@ -305,7 +306,8 @@ test('priceAt / storeList: the good × the fort × the season, whole dollars', (
   const list = storeList(fort, 's1850');
   assert.equal(list.length, GOODS.length + 1, 'every good plus the second yoke');
   assert.deepEqual(list.find((g) => g.id === 'yoke'), { id: 'yoke', name: 'A second yoke', unit: 'yoke', lb: 0, emoji: '🐂', food: false, price: priceAt('yoke', fort, 's1850') });
-  assert.equal(priceAt('yoke', null, 's1847'), 30); assert.equal(priceAt('yoke', fort, 's1847'), Math.round(30 * fort.fort.prices));
+  assert.equal(priceAt('yoke', null, 's1847'), 42); assert.equal(priceAt('yoke', fort, 's1847'), Math.round(42 * fort.fort.prices));
+  assert.ok(!storeList(null, 's1847').some((g) => g.id === 'yoke'), 'Independence has no second yoke'); assert.equal(storeList(null, 's1847').length, GOODS.length);
   for (const g of list) { assert.ok(Number.isInteger(g.price) && g.price >= 1); assert.equal(g.price, priceAt(g.id, fort, 's1850')); }
 });
 test('trades: pelts from the start and the hunts; the trade adds food by TRADE_LB; never more than the wagon holds', () => {
@@ -336,7 +338,7 @@ test('arrive: three stars, $60 × priceMult + $20 a star, the sticker, the crate
   const res = arrive(J);
   assert.equal(res.stars[0], true); assert.equal(res.stars[2], true);
   assert.deepEqual(res.cash, payFor(res.stars, 's1847'));
-  assert.equal(res.cash.total, PAY.arrival + PAY.star * starCount(res.stars));
+  assert.equal(res.cash.total, res.stars.reduce((a, lit, i) => a + (lit ? PAY.star[i] : 0), PAY.arrival), 'the arrival pay plus the pay of each lit star');
   assert.equal(J.cash, cash0 + res.cash.total);
   assert.equal(res.crate, crateFor(res.stars));
   assert.equal(arrive(J), res); assert.equal(J.cash, cash0 + res.cash.total, 'paid once');
@@ -346,7 +348,9 @@ test('arrive: three stars, $60 × priceMult + $20 a star, the sticker, the crate
 test('crates: gold on 3 stars, silver on 2, bronze on 1; pay scales with the season', () => {
   assert.equal(crateFor([true, true, true]), 'gold'); assert.equal(crateFor([true, false, true]), 'silver');
   assert.equal(crateFor([true, false, false]), 'bronze'); assert.equal(crateFor([false, false, false]), null);
-  assert.equal(payFor([true, true, true], 's1850').total, 120 + 60); assert.equal(payFor([true], 's1853').arrival, 240);
+  const full = PAY.arrival + PAY.star.reduce((a, b) => a + b, 0);
+  assert.equal(payFor([true, true, true], 's1850').total, full * 2, 'stars scale with the season too'); assert.equal(payFor([true], 's1853').arrival, PAY.arrival * 4); assert.equal(payFor([true], 's1853').stars, PAY.star[0] * 4);
+  assert.ok(payFor([true, true, true], 's1847').stars > payFor([true, true, false], 's1847').stars && payFor([true, true, false], 's1847').stars > payFor([true, false, false], 's1847').stars, 'a better leg pays more, a bare arrival still pays');
 });
 test('stars: everyone happy needs every companion happy; every marker right needs at least one marker', () => {
   const J = createJourney({ companions: PARTY });
@@ -829,7 +833,7 @@ test('buyUpgrade: with tokens or cash, once, never below 0, nothing changes on a
   J.tokens = 7; assert.equal(buyUpgrade(J, 'cover', { tokens: true }), true); assert.equal(J.tokens, 1); assert.equal(J.upgrades.cover, true);
   assert.equal(buyUpgrade(J, 'cover', { tokens: true }), false, 'owned'); assert.equal(J.tokens, 1);
   assert.equal(buyUpgrade(J, 'cover', { cash: true }), false, 'owned, cash too');
-  const cash0 = J.cash;
+  J.cash = 500; const cash0 = J.cash;
   assert.equal(buyUpgrade(J, 'tires', { cash: true }), true); assert.equal(J.cash, cash0 - 60); assert.ok(J.upgrades.tires);
   J.cash = 39; assert.equal(buyUpgrade(J, 'barrel', { cash: true }), false); assert.equal(J.cash, 39);
   assert.equal(buyUpgrade(J, 'barrel', {}), false, 'no payment named'); assert.equal(buyUpgrade(J, 'wings', { tokens: true }), false);
@@ -871,12 +875,12 @@ test('barrel: lean rations count as plenty for the mood (and only for the mood: 
 });
 
 console.log('\nFort Derby pay');
-test('derbyPay: $20 x the season\'s price level for a win, $5 for a good try, added to the cash', () => {
+test('derbyPay: DERBY.win x the season\'s price level for a win, DERBY.lose x it for a good try, added to the cash', () => {
   for (const s of SEASONS) {
     const J = createJourney({ season: s.id, companions: PARTY, seed: 61 });
     const c0 = J.cash;
-    assert.deepEqual(derbyPay(J, { won: true, margin: 3 }), { cash: 20 * s.priceMult, won: true }); assert.equal(J.cash, c0 + 20 * s.priceMult);
-    assert.deepEqual(derbyPay(J, { won: false, margin: -2 }), { cash: 5, won: false }); assert.equal(J.cash, c0 + 20 * s.priceMult + 5);
+    assert.deepEqual(derbyPay(J, { won: true, margin: 3 }), { cash: DERBY.win * s.priceMult, won: true }); assert.equal(J.cash, c0 + DERBY.win * s.priceMult);
+    assert.deepEqual(derbyPay(J, { won: false, margin: -2 }), { cash: DERBY.lose * s.priceMult, won: false }); assert.equal(J.cash, c0 + DERBY.win * s.priceMult + DERBY.lose * s.priceMult);
     assert.equal(J.totals.derbyPlayed, 2); assert.equal(J.totals.derbyWon, 1);
   }
 });
@@ -895,7 +899,7 @@ test('createJourney defaults the v1.1 fields; a 1.0 save (none of them) plays on
   assert.equal(camp(old2, 'cards').day, old2.day); assert.equal(old2.totals.camps, 1);
   const old3 = clone(N); delete old3.cards; delete old3.challenges; delete old3.upgrades;
   assert.equal(awardCard(old3, 'camas').new, true); assert.equal(buyUpgrade(old3, 'cover', { cash: true }), true);
-  assert.equal(derbyPay(old3, { won: true }).cash, 20); assert.ok(dailyChallenge(old3, 'd').text);
+  assert.equal(derbyPay(old3, { won: true }).cash, DERBY.win); assert.ok(dailyChallenge(old3, 'd').text);
   const old4 = clone(N); delete old4.upgrades; delete old4.cards; assert.ok(legStatus(old4)); assert.ok(foodToNextFort(old4));
   for (const x of [old, old2, old3, old4, N]) assert.deepEqual(JSON.parse(JSON.stringify(x)), x);
   const ens = clone(N); delete ens.cards; ensureJourney(ens); assert.deepEqual(ens.cards, []);
@@ -1098,18 +1102,26 @@ test('animals tire on a brisk pace (+12) and in the mountains (+8), a rest day o
   const C = mk(); C.animals.tired = 90; camp(C, 'fish', { rand: R5 }); assert.equal(C.animals.tired, 60);
   assert.ok(ANIMAL_RULES.forceSteadyOver === 70);
 });
-test('the second yoke: $30 × the price level, four animals, +3 miles a day, tiring halved; only one', () => {
-  const J = rich(mk()); J.cash = 500;
-  assert.equal(priceAt('yoke', null, 's1847'), 30);
-  const b = buy(J, { item: 'yoke', qty: 1 }); assert.deepEqual([b.ok, b.cost], [true, 30]);
-  assert.equal(J.cash, 470); assert.equal(J.animals.n, 4); assert.equal(J.goods.yoke, 1);
-  assert.deepEqual(buy(J, { item: 'yoke', qty: 1 }), { ok: false, cost: 30, cash: 470, foodLb: 0 }, 'only one second yoke'); assert.equal(J.cash, 470);
+test('the second yoke: sold from Fort Kearny on (not at Independence), EXTRA_GOODS price × the price level, four animals, +3 miles a day, tiring halved; only one', () => {
+  const YOKE = EXTRA_GOODS.find((g) => g.id === 'yoke');
+  assert.equal(YOKE.price, 42); assert.equal(YOKE.fromLeg, 2);
+  const I = rich(mk()); I.cash = 500;
+  assert.equal(yokeOffered(null), false, 'not at the Independence store'); assert.ok(!storeList(null, 's1847').some((g) => g.id === 'yoke'));
+  assert.deepEqual(buy(I, { item: 'yoke', qty: 1 }), { ok: false, cost: YOKE.price, cash: 500, foodLb: 0 }, 'the Independence store has none'); assert.equal(I.animals.n, 2);
+  assert.equal(yokeOffered(TRAIL[0]), false, 'nor at the Kansas River'); assert.equal(yokeOffered(TRAIL[1]), true, 'Fort Kearny is the first store that has one');
+  assert.ok(storeList(TRAIL[1], 's1847').some((g) => g.id === 'yoke')); assert.ok(!storeList(TRAIL[0], 's1847').some((g) => g.id === 'yoke'));
+  assert.equal(priceAt('yoke', null, 's1847'), YOKE.price, 'the price is defined everywhere; the shelf decides');
+  const J = rich(mk()); J.cash = 500; startLeg(J, TRAIL[1].id); J.trip.arrived = true;       // standing in Fort Kearny's store
+  const price = priceAt('yoke', storeLeg(J), 's1847'); assert.equal(price, Math.round(YOKE.price * TRAIL[1].fort.prices));
+  const b = buy(J, { item: 'yoke', qty: 1 }); assert.deepEqual([b.ok, b.cost], [true, price]);
+  assert.equal(J.cash, 500 - price); assert.equal(J.animals.n, 4); assert.equal(J.goods.yoke, 1);
+  assert.deepEqual(buy(J, { item: 'yoke', qty: 1 }), { ok: false, cost: price, cash: 500 - price, foodLb: 0 }, 'only one second yoke'); assert.equal(J.cash, 500 - price);
   assert.equal(speedBonus(J), 3);
-  quiet(J); assert.equal(tickDay(J, { rand: R5 }).miles, 18);
+  startLeg(J, TRAIL[2].id); quiet(J); assert.equal(tickDay(J, { rand: R5 }).miles, 18);
   setPace(J, 'brisk'); const t0 = J.animals.tired; tickDay(J, { rand: R5 }); assert.equal(J.animals.tired - t0, 6, 'brisk tires them half as much');
   assert.equal(legStatus(J).etaDays, etaDays(J.trip.miles - J.milesDone, 'brisk', 'oxen', 3));
-  const poor = mk(); poor.cash = 29; assert.equal(buy(poor, { item: 'yoke' }).ok, false); assert.equal(poor.animals.n, 2);
-  const S = createJourney({ season: 's1850', companions: PLAIN, seed: 1 }); assert.equal(buy(S, { item: 'yoke' }).cost, 60);
+  const poor = mk(); startLeg(poor, TRAIL[1].id); poor.trip.arrived = true; poor.cash = price - 1; assert.equal(buy(poor, { item: 'yoke' }).ok, false); assert.equal(poor.animals.n, 2);
+  const S = createJourney({ season: 's1850', companions: PLAIN, seed: 1 }); S.cash = 500; startLeg(S, TRAIL[1].id); S.trip.arrived = true; assert.equal(buy(S, { item: 'yoke' }).cost, priceAt('yoke', TRAIL[1], 's1850'));
 });
 test('arrows: a hunt takes five; huntAllowed needs five; no arrows = no hunt events, no bow at camp; a bundle is five arrows', () => {
   const J = mk(); assert.equal(huntAllowed(J), true); assert.equal(J.goods.arrows, 15);
@@ -1336,16 +1348,16 @@ test('waitOut: a rest day at camp that cancels the coming weather\'s mood cost a
 });
 
 console.log('\nv1.2 pay: the raft and the stampede');
-test('raftPay: $40 less $10 a bump, never under $10, times the season; stampedePay: held = the bison card', () => {
+test('raftPay: $24 less $6 a bump, never under $6, times the season; stampedePay: held = the bison card', () => {
   for (const s of SEASONS) {
-    const want = [40, 30, 20, 10, 10, 10];
+    const want = [24, 18, 12, 6, 6, 6];
     want.forEach((w, bumps) => { const J = createJourney({ season: s.id, companions: PLAIN, seed: 5 }); const c0 = J.cash; const r = raftPay(J, { bumps }); assert.equal(r.cash, w * s.priceMult); assert.equal(J.cash, c0 + r.cash); });
     const J = createJourney({ season: s.id, companions: PLAIN, seed: 5 }); const c0 = J.cash;
     assert.deepEqual(stampedePay(J, { held: true }), { cash: 15 * s.priceMult, card: 'bison', held: true }); assert.equal(J.cash, c0 + 15 * s.priceMult);
     assert.deepEqual(stampedePay(J, { held: false }), { cash: 0, card: null, held: false }); assert.equal(J.cash, c0 + 15 * s.priceMult);
     assert.deepEqual([J.totals.stampedes, J.totals.stampedesHeld], [2, 1]);
   }
-  assert.ok(CARD_BY_ID.bison); assert.deepEqual(RAFT, { base: 40, perBump: 10, min: 10 });
+  assert.ok(CARD_BY_ID.bison); assert.deepEqual(RAFT, { base: 24, perBump: 6, min: 6 });
   const J = mk(); raftPay(J, { bumps: 0 }); raftPay(J, { bumps: 2 }); assert.deepEqual([J.totals.raftRuns, J.totals.raftClean], [2, 1]);
 });
 
@@ -1412,7 +1424,7 @@ test('DEEDS: twenty, each { id, name, how, say }, unique, spoken lines without d
 test('every deed is reachable in a scripted journey (and none is earned by doing nothing)', () => {
   const rand = mulberry32(77);
   const J = createJourney({ companions: ['blacksmith', 'scout', 'teacher'], seed: 77 });
-  J.cash = 2000; shop(J); buy(J, { item: 'yoke' }); buy(J, { item: 'parts', qty: 4 });
+  J.cash = 2000; shop(J); buy(J, { item: 'parts', qty: 4 });
   let tokensFromDeeds = 0; const earned = new Set();
   const check = () => { const t0 = J.tokens; const got = checkDeeds(J); tokensFromDeeds += J.tokens - t0; got.forEach((d) => earned.add(d)); };
   for (const [i, p] of PEOPLE.slice(0, 12).entries()) meetPerson(J, p.id);
@@ -1434,7 +1446,7 @@ test('every deed is reachable in a scripted journey (and none is earned by doing
     applyWords(J, { asked: 3, right: 3 });
     if (leg.stop.kind === 'river') { if (!ferried) { crossRiver(J, { how: 'ferry' }); ferried = true; } else crossRiver(J, { how: 'ford', soaked: 0 }); }
     arrive(J); check();
-    if (leg.stop.kind === 'fort') shop(J);
+    if (leg.stop.kind === 'fort') { shop(J); buy(J, { item: 'yoke' }); }
     nextLeg(J);
   }
   check();

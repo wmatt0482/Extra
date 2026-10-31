@@ -33,7 +33,7 @@
 import { ANIMALS, legAt, legIndexOf, legList, legOf, seasonOf, animalOf, nextSeasonId } from './route.js';
 import { START, MOOD, SPEED, MARKERS, RESCUE, TOKENS, RATIONS, PACES, foodNeeded, milesPerDay, etaDays, priceAt, storeList, payFor,
   crateFor, moodOf, isFood, lbOf, PELTS, UPGRADES, UPGRADE_BY_ID, UPGRADE_FX, DERBY, CARD_DUP_TOKENS, CAMP_KINDS,
-  FOOD_KINDS, ARROWS, ANIMAL_RULES, COLD_LEGS, COLD, SOAKED_LB, SKILL_FX, RAFT, STAMPEDE } from './economy.js';
+  FOOD_KINDS, ARROWS, ANIMAL_RULES, COLD_LEGS, COLD, SOAKED_LB, SKILL_FX, RAFT, STAMPEDE, yokeOffered } from './economy.js';
 import { CARDS, CARD_BY_ID, cardsOf } from '../content/cards.js';
 import { COMPANION_BY_ID } from '../content/companions.js';
 import { PERSON_BY_ID, PEOPLE_BY_STOP } from '../content/people.js';
@@ -496,7 +496,7 @@ export function buy(J, { item, qty = 1, price } = {}) {
   const q = id === 'yoke' ? Math.min(1, Math.max(0, Math.floor(Number(qty) || 0))) : Math.max(0, Math.floor(Number(qty) || 0));
   const p = Number.isFinite(price) ? Math.max(0, Math.round(price)) : priceAt(id, storeLeg(J), J.season);
   const cost = q * p;
-  if (!id || cost > J.cash || (id === 'yoke' && J.animals.n >= 4)) return { ok: false, cost, cash: J.cash, foodLb: 0 };
+  if (!id || cost > J.cash || (id === 'yoke' && (J.animals.n >= 4 || !yokeOffered(storeLeg(J))))) return { ok: false, cost, cash: J.cash, foodLb: 0 };
   J.cash -= cost;
   let foodLb = 0;
   if (isFood(id)) { foodLb = q * lbOf(id); addFoodKind(J, id, foodLb); }
@@ -813,7 +813,7 @@ export const upgradesOwned = (J) => UPGRADES.filter((u) => J && J.upgrades && J.
  *  accepted from the scene's derbyEnd and pays nothing extra. Added to J.cash. Returns { cash, won }. */
 export function derbyPay(J, { won = false } = {}) {
   ensureJourney(J);
-  const cash = won ? Math.round(DERBY.win * seasonOf(J.season).priceMult) : DERBY.lose;
+  const cash = Math.round((won ? DERBY.win : DERBY.lose) * seasonOf(J.season).priceMult);
   J.cash += cash;
   J.totals.derbyPlayed++; if (won) J.totals.derbyWon++;
   return { cash, won: !!won };
@@ -863,7 +863,7 @@ export function cardForAnimal(animal) {
 }
 
 // one import for the app: the §10 helpers that live in economy.js and stars.js, and the v1.2 modules
-export { foodNeeded, etaDays, priceAt, storeList, milesPerDay, starsFor };
+export { foodNeeded, etaDays, priceAt, storeList, milesPerDay, starsFor, yokeOffered };
 export { UPGRADES, CARDS, CARD_BY_ID, cardsOf };
 export { dailyChallenge, claimChallenge } from './challenge.js';
 export { ANIMALS };

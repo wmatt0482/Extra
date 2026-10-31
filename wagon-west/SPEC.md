@@ -144,7 +144,7 @@ journey's stats, the whole journal to read back, a season sticker.
   plus 4–6 markers (≈ 15 s each), 2–3 trail problems, one event, the fort or river scene (≈ 3 min): 10–14 minutes.
 - Food: 3 lb a person a day full, 2 plenty, 1 lean; a party of 4 eats 120 lb on a 10-day leg; flour $4 / 50 lb sack
   in 1847, rising by fort (the way it really did).
-- Starting cash $400 (1847); a leg pays $60 arrival + $20 a star + tokens; prices scale by season ×2 / ×4.
+- Starting cash $45 (1847; v1.3, was $400); a leg pays $4 for arriving + $1 / $3 / $14 for the stars (arrived / everyone happy / every marker right) + tokens; prices and pay both scale by season ×2 / ×4. See "v1.3 — money is a choice" below.
 - Problems per leg: ~5 facts (markers), ~4 applications (store, rations, distance, event), 3 words (river) or 3
   words (letter): ~12 learning moments a session, in line with the other games' 12-a-day missions.
 
@@ -449,7 +449,7 @@ working a problem out, never a gate), and the trail gains play that has no quest
   party tired, a rest day. **Arrows**: a hunt uses 5 (`J.goods.arrows`, start 15); none → the camp offers fishing only.
 - **Animals** tire: `J.animals = { n: 2, tired: 0..100 }`; brisk pace and mountain biomes tire them, a rest day or a
   stop restores; over 70 the pace is steady whatever the dial says ("the oxen need a rest"); a **second yoke**
-  (`buy` item 'yoke', $30 × price level) makes n = 4: +3 miles a day and slower tiring.
+  (`buy` item 'yoke', $42 × price level, sold from Fort Kearny on, v1.3) makes n = 4: +3 miles a day and slower tiring.
 - Every effect above is a line the child sees (a card or a HUD toast), never a silent number.
 
 ### 2. Companion skills (content + journey + app)
@@ -523,3 +523,28 @@ and work lines unchanged). Rations and distance questions are no longer forced: 
 - **App part two** (after the first three merge) owns `src/ui/river.js`, `src/ui/people.js` (new), `src/ui/deeds.js`
   (new), `src/ui/journal.js`, `src/ui/results.js`, `src/ui/camp.js`, plus the wiring lines in `src/main.js` for
   rivers / raft / stampede / people / deeds (small, marked blocks) and their ui-smoke sections.
+
+## v1.3 — money is a choice (playtest, Oct 31: cash piled up to about $1,500 over twelve legs, the General Store stopped
+## being a decision, and the second yoke was bought by everyone on leg 1)
+The kid rules stand (no timers, lives or fail states; nothing punishes stopping). A child who answers well is comfortable
+but still has to pick at the store; a child who misses a lot runs lean (slow days, a thin purse, the safety nets), and
+every journey still finishes. `tools/economy-sim.mjs` runs three players (strong 90 % right, average 70 %, weak 45 %), each
+shopping by eye and each with a "buys everything useful" policy, prints the cash on hand at every stop, and `--check`
+enforces the TARGETS at the top of the file.
+- **Pay** (`economy.js`, Rookie dollars; the later seasons are the same times 2 and 4, stars included): start cash $45
+  (was $400), $4 for arriving, then $1 for the arrived star, $3 for everyone happy and $14 for every marker right (was a
+  flat $60 + $20 a star, and the star pay did not scale with the season). The pay that depends on answers is the marker
+  star, so the strong player earns about $16 a leg, the average about $10, the weak about $8: a bare arrival still pays.
+  Fort Derby $8 for a win, $2 for a good try (was $20 / $5); the Columbia raft $24 less $6 a bump, never under $6 (was
+  $40 / $10 / $10). The stampede ($15), the trade tokens, the camp games, the daily challenge and the deeds are unchanged.
+- **The second yoke** costs $42 × the fort's price level (was $30) and is on the shelf from Fort Kearny on (`EXTRA_GOODS`
+  `fromLeg: 2`; `storeList` leaves it out at Independence and the Kansas River, `buy` refuses it there). At Fort Kearny it
+  is $50, at Fort Laramie $67, at Fort Bridger $80, at Fort Hall $92: it competes with the food and the blankets, and
+  buying it early is worth more than buying it late.
+- **Where the money goes**: food (Fort Hall's 700 miles is the big bill, about nine sacks at $9), blankets before South
+  Pass, a second spare part, arrows, rope, the yoke. There is no store after Fort Hall, so what is earned in the last four
+  legs and on the raft is the cushion at the end of the journey, not something to chase.
+- **Unchanged** on purpose: the goods' base prices (flour $4 a sack, in the tests and the problems), the fort price
+  levels, the wagon upgrades (6 / 8 / 6 trade tokens or $40 / $60 / $40, bought with tokens in practice), the hunt and
+  fish yields, the food rules. Trade tokens still pile up (about 60 spare at the end of a Rookie journey): they want a
+  sink, which is a UI decision.
