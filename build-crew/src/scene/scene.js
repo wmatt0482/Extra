@@ -10,7 +10,7 @@ import { ToyLayer } from './toys.js';
 import { buildMachine, syncMachine, buildWreckingBall, syncWreckingBall } from './machines.js';
 import { Effects } from './effects.js';
 import { CameraRig } from './camera.js';
-import { Quality, initialPixelRatio } from './quality.js';
+import { Quality, TIER, initialPixelRatio } from './quality.js';
 
 /** The ground plane that taps on the yard are projected onto. */
 const GROUND = new T.Plane(new T.Vector3(0, 1, 0), 0);
@@ -27,12 +27,15 @@ export class Scene {
       canvas,
       antialias: true,
       alpha: false,
-      preserveDrawingBuffer: true,
+      stencil: false,
+      // Only a desktop needs the buffer kept (screenshots); on a phone keeping it costs a copy every frame.
+      preserveDrawingBuffer: TIER.preserve,
       powerPreference: 'high-performance',
     });
     this.renderer.setPixelRatio(initialPixelRatio());
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = T.PCFSoftShadowMap;
+    // The cheaper filter on a phone, where a 512 map is soft enough already.
+    this.renderer.shadowMap.type = TIER.name === 'phone' ? T.PCFShadowMap : T.PCFSoftShadowMap;
     this.renderer.outputColorSpace = T.SRGBColorSpace;
     this.renderer.toneMapping = T.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.12;
@@ -52,6 +55,7 @@ export class Scene {
       this.renderer.setSize(w, h, false);
       this.camera.aspect = w / Math.max(1, h);
       this.camera.updateProjectionMatrix();
+      this.rig.resized(w, h);
     };
     window.addEventListener('resize', this.resize);
     this.resize();
@@ -171,21 +175,31 @@ export class Scene {
     return this.ray.ray.intersectPlane(GROUND, this.tapPoint);
   }
 
+  /** Sets how many pixels at the top and bottom of the screen the controls cover; the camera frames the machine in
+   *  the free band between them. */
+  setInsets(top, bottom) {
+    this.rig.setInsets(top, bottom);
+  }
+
   /** Draws one frame. status is the mission status (ghost highlights); poses may be passed when the game loop
-   *  already read them from the yard this frame, otherwise they are read here. */
-  render(dt, status, poses = null) {
+   *  already read them from the yard this frame, otherwise they are read here. With `blend` (an Interpolator that
+   *  holds the last two physics steps) the toys and machines are drawn between those steps instead. */
+  render(dt, status, poses = null, blend = null) {
     if (!this.yard) return;
     const yard = this.yard;
-    const frame = poses || yard.poses();
+    const frame = blend ? blend.poses() : poses || yard.poses();
+    if (blend) blend.apply(yard);
     this.toys.update(frame);
     this.effects.updateContacts(frame, yard);
     this.toys.updateGhosts(status, yard.time);
-    yard.machines.forEach((m, i) => syncMachine(this.kit, this.machineModels[i], m, this));
+    for (let i = 0; i < yard.machines.length; i++) syncMachine(this.kit, this.machineModels[i], yard.machines[i], this);
     this.effects.trail(yard);
     this.effects.drawMarks(yard);
     this.effects.updateParticles(dt);
     syncWreckingBall(this.wreckMesh, yard);
     this.rig.update(dt, yard.machine, yard.round.pad, this.reducedMotion);
+    if (blend) blend.restore(yard);
+    this.quality.beforeRender();
     this.renderer.render(this.scene, this.camera);
   }
 

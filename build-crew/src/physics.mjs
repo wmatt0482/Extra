@@ -62,39 +62,62 @@ const JOINT_LIMITS = {
   tilt: () => TILT,
 };
 
+/** The skid steer's bucket in the tool's frame (origin at the grab point, +z ahead, metres), shared with its model
+ *  in scene/machines.js so what is drawn is what pushes. A wide, low box bucket: a floor plate, a back plate and two
+ *  side plates whose top edge slopes down toward the cutting edge, as on a real skid-steer bucket. `side` is the side
+ *  plate's outline as [z, y] points; each plate is a convex hull of that outline across `sideX`. */
+export const SKID_BUCKET = {
+  width: 2.4,
+  floor: { y: -0.62, thick: 0.12, z: [-0.65, 0.65] },
+  back: { z: -0.62, thick: 0.12, y: [-0.64, 0.16] },
+  sideX: [1.09, 1.21],
+  side: [
+    [-0.68, -0.68],
+    [0.66, -0.68],
+    [0.66, -0.4],
+    [-0.68, 0.16],
+  ],
+};
+
+/** The bucket's colliders: the floor and back as boxes ([size, offset]) and each side plate as { hull } points. */
+function skidBucketColliders(b = SKID_BUCKET) {
+  const { floor, back } = b;
+  const sides = [-1, 1].map((k) => ({
+    hull: b.sideX.flatMap((x) => b.side.flatMap(([z, y]) => [k * x, y, z])),
+  }));
+  return [
+    [
+      [b.width, floor.thick, floor.z[1] - floor.z[0]],
+      [0, floor.y, (floor.z[0] + floor.z[1]) / 2],
+    ],
+    [
+      [b.width, back.y[1] - back.y[0], back.thick],
+      [0, (back.y[0] + back.y[1]) / 2, back.z],
+    ],
+    ...sides,
+  ];
+}
+
 /** Physics for each machine kind.
  *  - speed, turn, height, reach: drive speed, turn rate, tool height range and reach range (from content.mjs).
- *  - tool: colliders on the tool body as [size, offset] boxes in the tool's frame; an empty list is a magnet, which
- *    only grabs. The skid steer's open bucket (floor, back, two sides) can also scoop and push loose toys.
+ *  - tool: colliders on the tool body in the tool's frame, each a box [size, offset] or a convex { hull } of flat
+ *    [x, y, z, ...] points; an empty list is a tool that only grabs (the excavator's bucket and the crane's magnet).
+ *    The skid steer's open bucket (floor, back, two sloped sides) can also scoop and push loose toys.
  *  - orient: the tool's rotation from the boom angle (yaw + swing) and the machine's joints.
  *  - stick: the joint the right stick's left/right axis (J/L) drives, and its rate per second at full stick.
  *  - extend: the joint U/O drives, or null.
+ *  - swings: whether the swing joint exists (the excavator's house and the crane's slewing house turn; the skid
+ *    steer's arms are fixed to its body, so it ignores swing input).
  *  - wreckingBall: whether this machine can hang the wrecking ball.
  *  The grab point is the same for every machine: `reach` metres ahead along the boom, at the tool's lift height. */
 export const MACHINE = {
   skid: {
     ...pick(MACHINES.skid),
-    tool: [
-      [
-        [2.4, 0.12, 1.3],
-        [0, -0.62, 0],
-      ],
-      [
-        [2.4, 0.8, 0.12],
-        [0, -0.24, -0.62],
-      ],
-      [
-        [0.12, 0.7, 1.3],
-        [-1.15, -0.24, 0],
-      ],
-      [
-        [0.12, 0.7, 1.3],
-        [1.15, -0.24, 0],
-      ],
-    ],
+    tool: skidBucketColliders(),
     orient: yawAndTilt,
     stick: { joint: 'tilt', rate: 1 },
     extend: null,
+    swings: false,
     wreckingBall: false,
   },
   excavator: {
@@ -103,6 +126,7 @@ export const MACHINE = {
     orient: yawOnly,
     stick: { joint: 'reach', rate: 1.8 },
     extend: null,
+    swings: true,
     wreckingBall: false,
   },
   crane: {
@@ -111,6 +135,7 @@ export const MACHINE = {
     orient: yawOnly,
     stick: { joint: 'swing', rate: 0.8 },
     extend: { joint: 'reach', rate: 1.8 },
+    swings: true,
     wreckingBall: true,
   },
 };
@@ -212,11 +237,11 @@ export class Yard {
       tip: null,
     };
     m.tool = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
-    for (const [size, offset] of def.tool) {
-      const part = RAPIER.ColliderDesc.cuboid(...size.map((v) => v / 2))
-        .setTranslation(...offset)
-        .setFriction(0.95);
-      this.world.createCollider(part, m.tool);
+    for (const shape of def.tool) {
+      const part = shape.hull
+        ? RAPIER.ColliderDesc.convexHull(new Float32Array(shape.hull))
+        : RAPIER.ColliderDesc.cuboid(...shape[0].map((v) => v / 2)).setTranslation(...shape[1]);
+      this.world.createCollider(part.setFriction(0.95), m.tool);
     }
     this.machines.push(m);
     this.updateTip(m, true);
@@ -396,7 +421,7 @@ export class Yard {
     this.drive(m, d, input, dt);
     m.lift = clamp(m.lift + (input.lift || 0) * LIFT_RATE * dt, ...d.height);
     moveJoint(m, d, d.stick.joint, (input.tool || 0) * d.stick.rate * dt);
-    m.swing += (input.swing || 0) * dt;
+    if (d.swings) m.swing += (input.swing || 0) * dt;
     m.tilt = clamp(m.tilt + (input.tilt || 0) * dt, ...TILT);
     if (d.extend) moveJoint(m, d, d.extend.joint, (input.extend || 0) * d.extend.rate * dt);
     m.body.setNextKinematicTranslation({ x: m.x, y: m.y, z: m.z });

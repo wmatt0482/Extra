@@ -2,7 +2,7 @@
 // may speak. It is plain data with no imports, so physics, missions, the scene, the app and the Node tests all read the
 // same numbers. The later sites and machines described in SPEC.md are deliberately absent until they are built.
 /** The game version reported by pings and the Parent Zone (the service worker has its own cache version). */
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';
 /** The five paint colors for loads: red first, because the jobs say "red loads"; also the confetti colors. */
 export const COLORS = ['#c6412f', '#e9aa26', '#287da5', '#64816b', '#87909c'];
 /** Toy shapes. size is [width, height, depth] in metres (a cylinder uses width as its diameter), mass in kilograms.
@@ -197,23 +197,105 @@ export const SANDBOX = {
   ],
   toys: [toy(-7, 6.5), toy(-2, 6.5, 'beam'), toy(3.5, 6.5, 'barrel', COLORS[2])],
 };
-/** One-line hints, introduced one control at a time. */
-export const HINTS = [
-  'Try W or the left stick to drive.',
-  'Try I and K, or the right stick, to lift your tool.',
-  'Bring the tool close to a block, then press Grab.',
-  'Release over the blue square. Let the block settle.',
-  'Drag the yard to look around.',
-  'Press E to hop into another machine.',
-  'You can reset the blocks whenever you like.',
-];
-/** Every known phrase, prepared as natural voice clips when a builder is picked so that speech starts instantly. */
-export const VOICE_LINES = [
-  ...ROUNDS.flatMap((r) => [r.goal, `Job complete. Unlocked: ${r.reward}.`]),
-  ...Object.values(MACHINES).map((m) => m.hint),
-  ...HINTS,
-  SANDBOX.goal,
+/** One-line hints, introduced one control at a time (the HUD shows them; the voice reads each the first time a builder
+ *  sees it). Every hint the game shows is named here so the voice can have a clip ready for its exact text; release,
+ *  look, hop and reset are the later hints of the introduction order and are not shown yet, so they are not prepared. */
+export const HINT = {
+  drive: 'Try W or the left stick to drive.',
+  lift: 'Try I and K, or the right stick, to lift your tool.',
+  grab: 'Bring the tool close to a block, then press Grab.',
+  carry: 'Carry it to the outline, then release.',
+  raise: 'Raise the load clear of the ground, then move to the outline.',
+  tilt: 'Tilt the bucket forward to pour your block out.',
+  release: 'Release over the blue square. Let the block settle.',
+  look: 'Drag the yard to look around.',
+  hop: 'Press E to hop into another machine.',
+  reset: 'You can reset the blocks whenever you like.',
+  resume: 'All set. Resume!',
+};
+export const HINTS = [HINT.drive, HINT.lift, HINT.grab, HINT.release, HINT.look, HINT.hop, HINT.reset];
+/** The sandbox's four terrain stamps and the hint shown after one is chosen (tray.js builds the same sentence). */
+export const STAMPS = ['hill', 'pit', 'ramp', 'water'];
+export const STAMP_HINT = (kind) => `Tap a clear patch of ground for your ${kind}.`;
+/** The tip under the materials tray (also printed in index.html), read the first time a builder opens the tray. */
+export const TRAY_TIP = 'New materials arrive at the striped bay. Terrain: pick a stamp, then tap the ground.';
+/** The wording of the hints on a touch screen (a phone has no keys): drag a stick or tap a button. hud.js shows these
+ *  through `touchHint`, and the voice prepares the same words, so the hint a phone shows is the line it hears. */
+export const TOUCH_TEXT = {
+  [MACHINES.skid.hint]: 'Drag the left stick to drive. This skid steer turns on the spot.',
+  [MACHINES.excavator.hint]: 'Drag the right stick up to lift. Left and right reach out and in.',
+  [MACHINES.crane.hint]: 'Drag the right stick up and down to lift the magnet. Left and right swings the boom.',
+  [HINT.drive]: 'Try dragging the left stick to drive.',
+  [HINT.lift]: 'Try dragging the right stick to lift your tool.',
+  [HINT.hop]: 'Tap Hop to jump into another machine.',
+};
+/** A hint as a touch screen shows it: the touch wording, and "press Grab" becomes "tap Grab". */
+export const touchHint = (text) => (text && (TOUCH_TEXT[text] || text.replace(/\bpress Grab\b/, 'tap Grab'))) || text;
+
+/** Toasts the voice reads aloud (the others are only shown): short, calm confirmations and the two "why not" notes. */
+export const SPOKEN_TOASTS = [
+  'Back on steady ground.',
   'Site saved.',
-  'Build Crew is ready.',
-  'Loads reset. Ready to build.',
+  'Site cleared.',
+  'A star for your crew!',
+  'Racing stripes!',
+  'Material limit reached. Save the site or clear room for more.',
+  'Try a clear patch. There is room for twelve terrain pieces.',
 ];
+
+// ---- What the voice says -------------------------------------------------------------------------------------------
+// Everything below is plain strings so the natural voice can make a clip of each one ahead of time (a clip exists only
+// for an exact text) and so the Node tests can check the whole set. The screen copy is unchanged; these are the same
+// words written the way a person would read them out: numbers as words, unit codes never read as codes.
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
+/** The reward as it is said ("Limestone paint" is the label on screen; the unit codes EX-02 and CR-03 are not read). */
+export const REWARD_SAY = {
+  cream: 'the Limestone paint',
+  excavator: 'the excavator',
+  leaf: 'the Forest paint',
+  star: 'the Star decal',
+  crane: 'the crane',
+  sky: 'the Steel blue paint',
+  bell: 'the Bell horn',
+  stripe: 'the Stripe decal',
+  sunset: 'the Sunset paint',
+  wrecking: 'the yard badge and the wrecking ball',
+};
+/** Reads a text the way the voice should say it: "WASD" as four letters and any unit code such as SS-01 as its
+ *  letters and digit words ("S S zero one"). Plain sentences pass through unchanged. */
+export function speakable(text) {
+  return String(text ?? '')
+    .replace(/\bWASD\b/g, 'W A S D')
+    .replace(/\b([A-Z])([A-Z])-(\d)(\d)\b/g, (_, a, b, c, d) => `${a} ${b} ${NUMBER_WORDS[+c]} ${NUMBER_WORDS[+d]}`)
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+/** Said when a job (or the sandbox, id 0) starts: "Job three. Foundation grid. Place the three blocks on ..." */
+export const jobIntro = (r) => speakable(r.id ? `Job ${NUMBER_WORDS[r.id]}. ${r.title}. ${r.goal}` : `${r.title}. ${r.goal}`);
+/** Said when the reward sheet opens. */
+export const jobDoneLine = (r) => `Job complete. You unlocked ${REWARD_SAY[r.unlock]}.`;
+/** Said by the "read the job aloud" button. */
+export const jobGoalLine = (r) => speakable(r.goal);
+
+/** The first hint of each machine, as said. */
+const machineHints = Object.values(MACHINES).map((m) => speakable(m.hint));
+/** Every line the voice may say, in the order a new builder needs them: the first job, the fixed lines, then the rest.
+ *  voice.js prepares these at builder select. A runtime-built line must be assembled from these or prepared first. */
+export const SPOKEN = {
+  /** Lines for job `r`: the intro, the plain goal (repeat button) and the reward line. */
+  job: (r) => [jobIntro(r), jobGoalLine(r), ...(r.unlock ? [jobDoneLine(r)] : [])],
+  fixed: [
+    ...machineHints,
+    ...[HINT.drive, HINT.lift, HINT.grab, HINT.carry, HINT.raise, HINT.tilt, HINT.resume].map(speakable),
+    // the same hints worded for a touch screen (see touchHint): a phone shows these, so a phone hears these
+    ...Object.values(TOUCH_TEXT).map(speakable),
+    speakable(touchHint(HINT.grab)),
+    ...STAMPS.map((k) => STAMP_HINT(k)),
+    TRAY_TIP,
+    ...SPOKEN_TOASTS,
+    jobIntro(SANDBOX),
+    jobGoalLine(SANDBOX),
+  ],
+};
+/** Every spoken line (no duplicates). */
+export const VOICE_LINES = [...new Set([...ROUNDS.flatMap(SPOKEN.job), ...SPOKEN.fixed])];

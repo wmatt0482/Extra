@@ -7,7 +7,6 @@ import { TOYS, COLORS } from '../content.mjs';
 import { normalizeYard } from '../meta/save.mjs';
 import { app, persist, flush } from './state.js';
 import { MACHINE_UI, toast, showHint, renderMachines, updateUI } from './hud.js';
-import { say } from './voice.js';
 
 /** Where tray materials arrive: the striped spawn bay. */
 const BAY = { x: -10, z: 10 };
@@ -88,11 +87,16 @@ export function closeTray() {
   disarmClear();
 }
 
-/** Caps the tray's height to the room between its top edge and the drive deck, so on a phone it scrolls inside that
- *  room instead of running under the deck's buttons. The deck changes height with the machine (extra joint buttons),
+/** Caps the tray's height to the room between its top edge and the drive deck, so on a small window it scrolls inside
+ *  that room instead of running under the deck's buttons. The deck changes height with the machine (extra joint buttons),
  *  so main.js calls this again whenever the deck or the window resizes. */
 export function fitTray() {
   const tray = $('#tray');
+  // On a touch screen the tray is a sheet placed by the stylesheet (above the sticks, scrolling inside itself).
+  if (document.documentElement.classList.contains('touch')) {
+    tray.style.maxHeight = '';
+    return;
+  }
   if (tray.hidden) return;
   const deck = document.querySelector('.drive-deck').getBoundingClientRect();
   tray.style.maxHeight = '';
@@ -178,7 +182,6 @@ export function saveYard() {
     localStorage.setItem(`buildCrew.${app.playerId}.thumb`, app.scene.thumbnail());
   } catch {}
   toast('Site saved.');
-  say('Site saved.');
 }
 
 /** Wires the daylight slider: a custom button-style slider (no native input) driven by pointer drag or the arrow,

@@ -22,6 +22,15 @@ const PALLET_WOOD = '#b38c5c';
 /** Blueprint ghost colors: amber while open, green once a toy matches (fill, then edge lines). */
 const GHOST = { open: '#ffb81f', openEdge: '#ffe08a', match: '#38e86a', matchEdge: '#d4ffd9' };
 
+/** Colors parsed once per hex string, so drawing a frame never parses a color string. */
+const colorCache = new Map();
+const colorOf = (hex) => {
+  let c = colorCache.get(hex);
+  if (!c) colorCache.set(hex, (c = new T.Color(hex)));
+  return c;
+};
+const GHOST_COLORS = Object.fromEntries(Object.entries(GHOST).map(([k, v]) => [k, new T.Color(v)]));
+
 /** Scratch objects for the per-frame pallet transforms. */
 const scratch = {
   position: new T.Vector3(),
@@ -36,6 +45,7 @@ export class ToyLayer {
     this.kit = kit;
     this.meshes = {};
     this.ghosts = [];
+    this.counts = {};
   }
 
   /** Creates this round's instanced toy meshes and the edge-frame mesh in the round group. */
@@ -109,9 +119,11 @@ export class ToyLayer {
     const kit = this.kit,
       tmp = kit.tmp;
     let frameCount = 0;
-    const counts = Object.fromEntries(Object.keys(TOYS).map((k) => [k, 0]));
-    for (const b of poses) {
-      const d = TOYS[b.type],
+    const counts = this.counts;
+    for (const kind in this.meshes) counts[kind] = 0;
+    for (let i = 0; i < poses.length; i++) {
+      const b = poses[i],
+        d = TOYS[b.type],
         mesh = this.meshes[b.type];
       tmp.position.copy(b.position);
       tmp.quaternion.copy(b.rotation);
@@ -126,16 +138,17 @@ export class ToyLayer {
         for (const local of PALLET_SLATS) {
           slat.multiplyMatrices(pallet, local);
           mesh.setMatrixAt(counts[b.type], slat);
-          mesh.setColorAt(counts[b.type]++, kit.color.set(PALLET_WOOD));
+          mesh.setColorAt(counts[b.type]++, colorOf(PALLET_WOOD));
         }
       } else {
         mesh.setMatrixAt(counts[b.type], tmp.matrix);
-        mesh.setColorAt(counts[b.type]++, kit.color.set(b.color));
+        mesh.setColorAt(counts[b.type]++, colorOf(b.color));
       }
     }
     this.frames.count = frameCount;
     this.frames.instanceMatrix.needsUpdate = true;
-    for (const [kind, m] of Object.entries(this.meshes)) {
+    for (const kind in this.meshes) {
+      const m = this.meshes[kind];
       m.count = counts[kind];
       m.instanceMatrix.needsUpdate = true;
       if (m.instanceColor) m.instanceColor.needsUpdate = true;
@@ -145,12 +158,13 @@ export class ToyLayer {
   /** Ghosts are amber (the complement of the blue pad, so they stand out) and breathe gently with the yard clock;
    *  while a toy matches one it turns a solid, brighter green. */
   updateGhosts(status, time) {
-    this.ghosts.forEach((g, i) => {
-      const good = status?.matches?.[i] != null;
-      g.material.color.set(good ? GHOST.match : GHOST.open);
+    for (let i = 0; i < this.ghosts.length; i++) {
+      const g = this.ghosts[i],
+        good = status?.matches?.[i] != null;
+      g.material.color.copy(good ? GHOST_COLORS.match : GHOST_COLORS.open);
       g.material.opacity = good ? 0.5 : 0.3 + Math.sin(time * 2) * 0.06;
-      g.userData.edges.material.color.set(good ? GHOST.matchEdge : GHOST.openEdge);
-    });
+      g.userData.edges.material.color.copy(good ? GHOST_COLORS.matchEdge : GHOST_COLORS.openEdge);
+    }
   }
 }
 
