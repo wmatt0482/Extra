@@ -1,6 +1,7 @@
 // The sandbox tools: the materials tray (spawn any toy in any paint color at the striped bay, up to 64 at once),
-// terrain stamps placed by tapping the ground, the daylight slider, the wrecking ball, clearing the site, and saving
-// the site with a thumbnail to this builder's one slot. A full yard says so instead of silently deleting anything.
+// terrain stamps placed by tapping the ground, the daylight slider, the wrecking ball, clearing the site (after a
+// confirming second tap), and saving the site with a thumbnail to this builder's one slot. A full yard says so instead
+// of silently deleting anything.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { TOYS, COLORS } from '../content.mjs';
 import { normalizeYard } from '../meta/save.mjs';
@@ -77,11 +78,26 @@ export function buildTray() {
 /** Opens or closes the tray. */
 export function toggleTray() {
   $('#tray').hidden = !$('#tray').hidden;
+  disarmClear();
   buildTray();
+  fitTray();
 }
 
 export function closeTray() {
   $('#tray').hidden = true;
+  disarmClear();
+}
+
+/** Caps the tray's height to the room between its top edge and the drive deck, so on a phone it scrolls inside that
+ *  room instead of running under the deck's buttons. The deck changes height with the machine (extra joint buttons),
+ *  so main.js calls this again whenever the deck or the window resizes. */
+export function fitTray() {
+  const tray = $('#tray');
+  if (tray.hidden) return;
+  const deck = document.querySelector('.drive-deck').getBoundingClientRect();
+  tray.style.maxHeight = '';
+  const room = deck.top - tray.getBoundingClientRect().top - 10;
+  if (room > 0) tray.style.maxHeight = Math.max(140, room) + 'px';
 }
 
 /** A tap on the yard while a terrain stamp is chosen (sandbox only) places it there. */
@@ -98,13 +114,42 @@ export function placeStamp(e) {
   }
 }
 
-/** Removes every toy from the sandbox. */
+let clearTimer = 0;
+
+/** Puts the Clear site button back to its resting state and forgets a pending confirmation. */
+function disarmClear() {
+  clearTimeout(clearTimer);
+  clearTimer = 0;
+  const button = $('#clear-yard');
+  button.textContent = 'Clear site';
+  button.classList.remove('armed');
+  $('#clear-ask').textContent = '';
+}
+
+/** Removes every toy from the sandbox, but only after a second tap. The first tap asks "Clear site?" and turns the
+ *  button into "Yes, clear"; if the child does nothing it quietly goes back after four seconds. A confirm was chosen
+ *  over an undo toast because it needs no countdown or pressure text on screen (SPEC kid rules) and nothing has to
+ *  be restored: the build is untouched until the child says yes. */
 export function clearSite() {
   const yard = app.yard;
+  if (!clearTimer) {
+    if (!yard.blocks.length) {
+      toast('The site is already clear.');
+      return;
+    }
+    const button = $('#clear-yard');
+    button.textContent = 'Yes, clear';
+    button.classList.add('armed');
+    $('#clear-ask').textContent = 'Clear site?';
+    clearTimer = setTimeout(disarmClear, 4000);
+    return;
+  }
+  disarmClear();
   yard.release();
   for (const b of yard.blocks) yard.world.removeRigidBody(b.body);
   yard.blocks = [];
   updateUI();
+  toast('Site cleared.');
 }
 
 /** Switches to the machine that carries the wrecking ball and hangs it (or takes it down). */

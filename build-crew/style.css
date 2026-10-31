@@ -1296,7 +1296,7 @@ h1 em {
     left: 12px;
     right: 12px;
     width: auto;
-    top: 190px;
+    top: 214px;
     max-height: calc(100dvh - 490px);
     min-height: 160px;
   }
@@ -1829,4 +1829,86 @@ h3 {
   #title-foot {
     justify-content: flex-end;
   }
+}
+
+/* Sandbox tray actions: Wrecking ball and Clear site sit at the top of the tray, above the drive deck's reach. Clear
+   site asks first: the button turns into "Yes, clear" beside a "Clear site?" prompt. */
+.tray-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  margin: 0 0 4px;
+}
+.tray-actions .tool-button {
+  border: 1px solid #4d6475;
+  min-height: 44px;
+}
+.tray-actions .tool-button.armed {
+  background: #f2b538;
+  color: #172735;
+  border-color: #f2b538;
+  font-weight: 800;
+}
+.clear-ask {
+  font-size: 12px;
+  font-weight: 700;
+  color: #f2d48a;
+}
+.clear-ask:empty {
+  display: none;
+}
+
+/* Title panel with a finished profile and a saved site: the thumbnail sits beside the job links instead of under them,
+   and the panel is held clear of the BUILD CREW wordmark in the footer (it scrolls inside itself if a very short
+   window cannot fit it). Phones and the compact landscape layout have their own rules above. */
+.title-extra {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+.title-extra .title-links {
+  margin-top: 0;
+}
+.title-extra #saved-thumb {
+  order: -1;
+}
+.title-extra #saved-thumb:empty {
+  display: none;
+}
+.title-extra:has(#saved-thumb img) .title-links {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+@media (max-width: 600px) {
+  .looks {
+    flex-wrap: wrap;
+  }
+}
+.title-extra #saved-thumb img {
+  width: 96px;
+  height: 54px;
+  margin-top: 0;
+  display: block;
+  border-width: 2px;
+}
+@media (min-width: 601px) and (min-height: 601px) {
+  .title {
+    top: clamp(84px, 13dvh, 150px);
+    max-height: calc(100dvh - clamp(84px, 13dvh, 150px) - 118px);
+    overflow-y: auto;
+  }
+}
+
+/* Toasts: one at a time, in a slot placed under the hint line by hud.js (top and left are set there). The stylesheet
+   position is only the title screen's. */
+#toasts {
+  width: max-content;
+  max-width: 90vw;
+}
+.toast {
+  margin-bottom: 0;
+  max-width: min(90vw, 420px);
 }

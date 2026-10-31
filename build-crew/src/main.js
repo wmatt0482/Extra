@@ -32,6 +32,7 @@ import {
   toggleWreckingBall,
   saveYard,
   bindDaylight,
+  fitTray,
 } from './app/tray.js';
 import { initParentZone } from './app/parent.js';
 import { samples, startLoop, forgetLastFrame } from './app/loop.js';
@@ -95,6 +96,9 @@ const BUTTONS = {
 };
 for (const [id, fn] of Object.entries(BUTTONS)) $('#' + id).onclick = fn;
 bindDaylight();
+// The tray stays above the drive deck whenever the deck (a machine's joint buttons) or the window changes size.
+addEventListener('resize', fitTray);
+new ResizeObserver(fitTray).observe(document.querySelector('.drive-deck'));
 
 // A new version waits for a safe moment (the title, nothing open) before reloading.
 app.updater = createUpdateGuard({

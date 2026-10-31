@@ -17,11 +17,16 @@ import { toast } from './hud.js';
 /** The shared state. Fields are filled by initState() and by main.js as services are created. */
 export const app = {};
 
+/** True only on a developer's own machine: localhost, 127.0.0.1, ::1 or a .local name. */
+export const isLocalHost = (host = location.hostname) =>
+  host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1' || host.endsWith('.local');
+
 /** Reads the URL flags, device settings and the last builder's save. ?test=1 adds test hooks and opens every job;
- *  the game loop then stops stepping on its own so tests advance the simulation explicitly. */
+ *  the game loop then stops stepping on its own so tests advance the simulation explicitly. The flag is honored only
+ *  on a local host, so a child who adds ?test=1 on the live site gets the normal game and no unlocked jobs. */
 export function initState() {
   app.params = new URLSearchParams(location.search);
-  app.testing = app.params.get('test') === '1';
+  app.testing = isLocalHost() && app.params.get('test') === '1';
   app.settings = readSettings();
   app.family = Profiles.loadFamily();
   app.playerId = app.family.lastPlayer || app.family.players[0]?.id || null;

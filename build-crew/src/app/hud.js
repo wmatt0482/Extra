@@ -40,16 +40,57 @@ export const MACHINE_UI = {
   },
 };
 
-/** A short message that fades after a few seconds. */
+/** Toasts wait here while another is showing, so two messages never stack over the hint or each other. */
+const toastQueue = [];
+let toastOn = false;
+
+/** A short message that fades after a few seconds. One shows at a time in a slot just under the hint line (never over
+ *  it or the drive deck); the next waits its turn. A message already waiting is not queued twice, and a backlog is
+ *  trimmed to the newest few so an old message never arrives late. */
 export function toast(text) {
+  if (toastQueue.includes(text)) return;
+  toastQueue.push(text);
+  while (toastQueue.length > 3) toastQueue.shift();
+  if (!toastOn) nextToast();
+}
+
+function nextToast() {
+  const text = toastQueue.shift();
+  if (text === undefined) {
+    toastOn = false;
+    return;
+  }
+  toastOn = true;
   const e = h('div', { class: 'toast' }, text);
-  $('#toasts').append(e);
-  setTimeout(() => e.remove(), 4200);
+  $('#toasts').replaceChildren(e);
+  placeToasts();
+  setTimeout(() => {
+    e.remove();
+    nextToast();
+  }, 3600);
+}
+
+/** Puts the toast slot centered under the hint line (or where it would be when the hint is empty), kept inside the
+ *  window. On the title, which has no hint, it falls back to the stylesheet's position. */
+function placeToasts() {
+  const slot = $('#toasts'),
+    hint = $('#hint');
+  if ($('#hud').hidden) {
+    slot.style.top = slot.style.left = '';
+    return;
+  }
+  const box = hint.getBoundingClientRect(),
+    top = box.height ? box.bottom : parseFloat(getComputedStyle(hint).top) || 0,
+    half = (slot.firstChild?.getBoundingClientRect().width || 0) / 2,
+    center = box.height ? box.left + box.width / 2 : innerWidth / 2;
+  slot.style.top = top + 8 + 'px';
+  slot.style.left = Math.max(half + 8, Math.min(innerWidth - half - 8, center)) + 'px';
 }
 
 /** Replaces the hint line. */
 export function showHint(text) {
   $('#hint').textContent = text;
+  if (toastOn) placeToasts();
 }
 
 /** Opens the modal sheet with a title and content. Play time stops and the controls and music pause while it is up. */

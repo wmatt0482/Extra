@@ -48,11 +48,13 @@
           <button class="primary" id="play">Start building <span data-icon="right"></span></button
           ><button id="sandbox" class="secondary">Sandbox <span data-icon="style"></span></button>
         </div>
-        <div class="title-links">
-          <button id="jobs">Job board <span id="done-total"></span></button
-          ><button id="my-yard" hidden>Load saved site <span data-icon="back"></span></button>
+        <div class="title-extra">
+          <div class="title-links">
+            <button id="jobs">Job board <span id="done-total"></span></button
+            ><button id="my-yard" hidden>Load saved site <span data-icon="back"></span></button>
+          </div>
+          <div id="saved-thumb"></div>
         </div>
-        <div id="saved-thumb"></div>
         <div id="looks" class="looks"></div>
       </section>
       <footer id="title-foot" hidden>
@@ -81,13 +83,19 @@
           ><button id="open-tray" class="tool-button" hidden><span data-icon="crate"></span> Materials</button
           ><button id="save-yard" class="tool-button" hidden><span data-icon="check"></span> Save site</button>
         </div>
-        <!-- Sandbox only: spawn toys, pick a color, choose a terrain stamp, set the daylight, wrecking ball, clear site. -->
+        <!-- Sandbox only: wrecking ball and clear site (kept at the top so the drive deck never covers them), spawn toys,
+             pick a color, choose a terrain stamp, set the daylight. -->
         <div id="tray" class="tray" hidden>
           <div class="tray-head">
             <b>Materials tray</b
             ><button id="close-tray" aria-label="Close materials tray" class="icon-button">
               <span data-icon="close"></span>
             </button>
+          </div>
+          <div class="tray-actions">
+            <button id="wreck" class="tool-button" hidden>Wrecking ball</button
+            ><button id="clear-yard" class="tool-button">Clear site</button
+            ><span id="clear-ask" class="clear-ask" role="status"></span>
           </div>
           <div id="toys" class="tray-row"></div>
           <div id="colors" class="tray-row"></div>
@@ -108,8 +116,6 @@
             </div>
             <span>DAY</span>
           </div>
-          <button id="wreck" class="tool-button" hidden>Wrecking ball</button
-          ><button id="clear-yard" class="tool-button">Clear site</button>
           <p class="tiny">New materials arrive at the striped bay. Terrain: pick a stamp, then tap the ground.</p>
         </div>
         <!-- Drive stick, machine cards, grab/hop/horn, extra joint buttons shown per machine, and the tool stick. -->
