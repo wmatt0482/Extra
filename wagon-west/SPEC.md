@@ -423,3 +423,103 @@ both have a sink (the 1.0 note "cash piles up"). Economy sim re-run.
   (`dailyChallenge(J, day)` → { text, check(J) }), the upgrades (`UPGRADES`, `buyUpgrade`, their effects in
   tickDay), journey-tests, economy sim re-run.
 VERSION 1.1.0, sw `wagon-west-v1.1.0`.
+
+---
+
+## v1.2 — the trail is the game (Matt, Oct 31: "All the supplies: are there breakdowns? Why does it matter who
+## you picked? Those elements don't come through"; "there should be elements of the game that are fun and not
+## necessarily educational"; "Go ahead, use sonnet agents")
+The learning spine stays small and clear: the **mile markers** (4–6 facts a leg) and the **letter's three words** at
+every fort are the only non-optional learning moments. Everything else becomes optional and rewarded (a token for
+working a problem out, never a gate), and the trail gains play that has no question in it. Kid rules stand.
+
+### 1. Supplies that do things (journey + app)
+- **Food by kind**: `J.foods = { flour, bacon, beans }` in lb (J.food stays as their sum, computed; older saves split
+  their J.food 50 / 30 / 20 %). A day eats from each kind in that ratio while it lasts, then from what is left; the
+  store's `buy` adds to the kind. `foodDays(J)` → days left at the current rations. The **Wagon panel** (app, from
+  the HUD's food box) draws the load: sacks / sides / bags as stacks that shrink, parts, rope, blankets, arrows with
+  counts, "food for 6 days · Fort Laramie in 9 days" in plain words (no numbers that read as a score), the animals'
+  state, the companions with their moods and skills.
+- **Breakdowns**: `breakdown` events (wheel, axle, tongue; replaces the 1.1 'wheel' problem event) need a part:
+  with one, a quick repair (a 'parts' problem is OPTIONAL: "Work it out" for a token, else a tap "Fix it") and the
+  part is used; without, a lost day and a limp (60 % speed) until the next fort (`J.limp = true`, cleared by a fort or
+  a part bought from a trader). `J.goods.parts` starts at 1; the store sells them.
+- **Rope**: at a river, the float option is safe with rope (none: a sack of flour is soaked, 25 lb). **Blankets**: the
+  cold legs (south-pass, blue-mountains, a snow event anywhere) need one per two people; short → a cold night: the
+  party tired, a rest day. **Arrows**: a hunt uses 5 (`J.goods.arrows`, start 15); none → the camp offers fishing only.
+- **Animals** tire: `J.animals = { n: 2, tired: 0..100 }`; brisk pace and mountain biomes tire them, a rest day or a
+  stop restores; over 70 the pace is steady whatever the dial says ("the oxen need a rest"); a **second yoke**
+  (`buy` item 'yoke', $30 × price level) makes n = 4: +3 miles a day and slower tiring.
+- Every effect above is a line the child sees (a card or a HUD toast), never a silent number.
+
+### 2. Companion skills (content + journey + app)
+`COMPANIONS[].skill = { id, name, text }` and in the sim `skillOf(J, id)`; one trigger each, announced with the
+companion's line when it fires (`event.skill = { id, name, text }` on the tickDay result or the relevant call's result):
+blacksmith (Ada) fixes one breakdown a leg without a part; scout (Eli) +1 animal spotted a leg (a card chance) and
+the weather forecast a day early; cook (Rosa) food lasts 10 % longer, berries twice as often; doctor (Mabel) a
+tired companion recovers in one day; carpenter (Tomas) the float is safe without rope and repairs use half a part
+(every second repair free); fiddler (Jasper) +4 spirit a night at camp and Quick Draw's companion draws less often;
+teacher (Nora) the marker panel shows the strategy hint BEFORE the answer once a leg (the child asks: "Nora's tip");
+storyteller (Ines) a campfire tale always drops a card and lookouts drop two. The Outfit screen shows each skill in
+one line; the party's three skills show on the Wagon panel.
+
+### 3. Rivers are a choice (scene + app + journey)
+At every river the child picks: **Ford** (free: a timing tap on the scene (`scene.startFord({ seed, width })`: the
+current pulses, tap on the calm beat; events `ford { good }` per tap and `fordEnd { soaked }`; soaked = one sack of
+flour wet, 25 lb, never more), **Float** (the rope toss for one fraction, then steering: `scene.startFloat({ seed,
+width })`: drag or ← → to steer the raft past rocks down a short run; `floatEnd { bumps }`; with rope or the
+carpenter a bump costs nothing, else one bump = a soaked sack), or **Ferry** (the ferryman asks the week's three
+words as the fare; the words still record through Spell Jump). The crossing's story goes in the letter. `crossRiver
+(J, { how: 'ford'|'float'|'ferry', soaked, bumps })` applies it.
+
+### 4. Pure play (scene + app)
+- **Rafting the Columbia**: the last leg (the-dalles → willamette-valley) runs as a raft: `scene.startRaft({ seed,
+  length })`: a longer steering run down the gorge, rocks, calm lanes, eddies that spin you; `raftMarker { n, of }`
+  at four bends (a mile marker's fact keeps the learning spine), `raftEnd { bumps, time }`; the party cheers at the
+  valley. The leg's miles tick as the raft runs (no days).
+- **Buffalo stampede**: a `stampede` event on the prairie / bluffs legs: `scene.startStampede({ seed })`: the herd
+  thunders across; tap BRAKE on the beat when the lead bull looms (three waves); events `stampede { good }` and
+  `stampedeEnd { held }`; held = the bison card + a lookout fact; not held = dust everywhere, the wagon fine, a laugh.
+- **Talk to people** at every stop: `src/content/people.js`: 2–3 people per stop id (a trader, a soldier's child, a
+  guide of the leg's nation, a returning mountain man, a ferry family, a missionary's daughter…) each with a name,
+  an emoji portrait, 2 lines (true-to-period, kid-level, sourced where factual) and sometimes a `gift` (10 lb of
+  beans, a card, a tip that is a 'parts' problem for a token) or a `trade` (as the posts). The stop screen gets a
+  "Talk" row of portraits; a talked-to person is remembered (`J.met`) and the journal counts "people met".
+- **Weather you see coming**: `forecast(J)` → 'clear' | 'rain soon' | 'storm soon' | 'snow soon' a day ahead (the scout
+  gives it two days ahead); the HUD shows a small cloud icon with the words; the camp menu gains "Wait out the
+  storm" (a rest day; the storm then costs nothing).
+- **Deeds**: `DEEDS` (20) in `src/journey/deeds.js` with `checkDeeds(J)` → newly earned ids (e.g. 'dry-feet' every
+  river of a season without a soaked sack, 'mail-beater' three derby wins, 'full-wagon' a leg with no food low,
+  'card-shark' 20 cards, 'people-person' 12 people met, 'cold-proof' the Blue Mountains with blankets for all,
+  'fixer' three repairs, 'angler' 50 lb of fish, 'archer' 100 lb of game, 'spelling-ferry' a ferry fare with no
+  misses, 'marker-master' a leg with every marker right, 'summiteer' South Pass, 'homesteader' the valley, …); each a
+  badge in the Journal's "Deeds" page with a one-line "how" and a token on earning; `J.deeds = [ids]`.
+- **The family map**: on the title's map, every other player in the family shows as a small wagon at their stop
+  (read with `loadSave(id)` for each family player; no names unless tapped; no scores). Siblings see each other's
+  dust, as Matt asked ("siblings separate" stands: nothing shared but the map).
+
+### 5. The store without a gate (app)
+Goods are bought with a tap at the listed price (the cash box in view; a buy the box cannot cover is greyed). Each
+good's row has **"Work it out"**: the 'buy' / 'divide' problem for a trade token on a first-try right (the 1.0 panel
+and work lines unchanged). Rations and distance questions are no longer forced: the trail HUD's food box offers
+"Ask Eli: how many days?" (a 'distance' or 'ration' problem for a token), at most once a leg each. The hint
+"you'll need about N lb to reach <stop>" is always shown at the store (`foodToNextFort`).
+
+### 6. Streams (all Sonnet)
+- **Journey + content** owns `src/journey/*`, `src/content/companions.js` (skills), `src/content/people.js` (new),
+  `src/content/events.js` (breakdown / stampede / snow events), `docs/SOURCES.md` (people), `tools/journey-tests.mjs`,
+  `tools/economy-sim.mjs`: §1 foods / breakdowns / rope / blankets / arrows / animals / yoke, §2 skills, §3
+  `crossRiver`, §4 `forecast`, `deeds.js`, `meetPerson(J, id)` / `J.met`, raft and stampede pay (`raftPay(J, {
+  bumps })` $10–40 × price level, `stampedePay(J, { held })`), tests, the sim re-run (--check: nobody stuck, the
+  first season 12 ± 2 sessions, soaked sacks < 1 a leg, limps < 1 a season, tokens 3–10 a leg).
+- **Scene** owns `src/scene/*`, `dev.html`, `tools/scene-smoke.mjs`: `startFord`, `startFloat`, `startRaft`,
+  `startStampede` with their events (and `endMiniGame()` ending any of them), the raft and the bison herd sprites,
+  BRAKE as a tap or ← ; keys in dev.html; smoke checks for each (scripted taps win and lose), perf.
+- **App part one** owns `src/main.js`, `src/ui/hud.js`, `src/ui/store.js`, `src/ui/outfit.js`, `src/ui/title.js`,
+  `src/ui/map.js`, `src/ui/wagonPanel.js` (new), `src/meta/*`, `index.html`, `tools/ui-smoke.mjs`: §1's Wagon panel
+  and effect cards / toasts, §2's skills in Outfit and the party, §5's store and "Ask Eli", §4's forecast on the
+  HUD and "Wait out the storm" at camp, the family map, the breakdown flow with the optional problem, the mock
+  scene's new mini-games (scripted), VERSION 1.2.0, sw `wagon-west-v1.2.0`, README "1.2"; ui-smoke for all of it.
+- **App part two** (after the first three merge) owns `src/ui/river.js`, `src/ui/people.js` (new), `src/ui/deeds.js`
+  (new), `src/ui/journal.js`, `src/ui/results.js`, `src/ui/camp.js`, plus the wiring lines in `src/main.js` for
+  rivers / raft / stampede / people / deeds (small, marked blocks) and their ui-smoke sections.
