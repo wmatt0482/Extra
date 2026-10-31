@@ -7,7 +7,9 @@ import { GOODS, animalOf, goodOf, legOf, seasonOf } from './route.js';
 /** What a journey starts with in the Rookie year (cash and food scale with season.priceMult / stay the same). Why 300
  *  lb: enough for a party of four at full rations to reach the first fort two legs out, even if the app skips the
  *  Independence store; $400 buys the rest. */
-export const START = { cash: 400, food: 300, parts: 1, goods: { pelts: 6 } };
+export const START = { cash: 400, food: 300, parts: 1,
+  foods: { flour: 150, bacon: 90, beans: 60, other: 0 },     // v1.2: the 300 lb as the wagon carries it (50 / 30 / 20 %)
+  goods: { parts: 1, rope: 0, blankets: 0, arrows: 15, pelts: 6, yoke: 0 } };
 /** Arrival pay: $60 × season.priceMult for arriving, + $20 a star (SPEC §5). */
 export const PAY = { arrival: 60, star: 20 };
 /** Pounds a person eats a day by the rations dial (SPEC §5: 3 full, 2 plenty, 1 lean). */
@@ -16,7 +18,7 @@ export const PACES = ['steady', 'brisk'];
 export const RATIONS = ['full', 'plenty', 'lean'];
 /** Speed rules: a missed marker makes the next day 60 %; no food makes the party crawl at 40 %; a quick marker
  *  answer is a tailwind of 3 free miles. */
-export const SPEED = { slowDay: 0.6, crawl: 0.4, quickMiles: 3 };
+export const SPEED = { slowDay: 0.6, crawl: 0.4, quickMiles: 3, limp: 0.6 };   // v1.2: limp = a wagon with no spare part for its breakdown
 /** Mood is a hidden 0-100 "spirit" shown as happy (≥ 60) / fine (≥ 30) / tired. Per day: rations and pace move it,
  *  a rest day lifts it, a night at a stop lifts it, a right marker is a notch up; food at 0 caps it at tired. Each
  *  companion sits a few points either side of the party (spread) so the faces are not all the same. */
@@ -26,6 +28,7 @@ export const MOOD = {
   tiredRestAfter: 2,       // tired this many days in a row (with food) → the party rests a day on its own
   weather: 6,              // v1.1: a wet, grumpy morning (a storm / frost / rain event) costs this much spirit, unless the wagon has the canvas cover
   camp: { rest: 8, other: 4 },   // v1.1: spirit gained by a day at camp (rest, or fishing / hunting / cards / tales)
+  lostDay: 0,              // v1.2: a day lost to a breakdown with no spare part gives no rest bonus
 };
 /** Markers: one every ~30 miles, 4-6 a leg. */
 export const MARKERS = { spacing: 30, min: 4, max: 6 };
@@ -65,6 +68,35 @@ export const CHALLENGE_REWARD = { tokens: 1, card: true };
 /** Pelts: the party starts with a few to trade and the bow hunt brings back 1 (2 for a big hunt of 25 lb or more). */
 export const PELTS = { start: 6, perHunt: 1, bigHunt: 2, bigHuntLb: 25 };
 
+// ---- v1.2: supplies that do things (SPEC v1.2 §1) ----
+/** The wagon's food by kind: a day eats 50 / 30 / 20 % from flour / bacon / beans once the 'other' kind (game, fish, plums,
+ *  trades: whatever is not store food) is gone, then whatever is left. */
+export const FOOD_KINDS = ['flour', 'bacon', 'beans', 'other'];
+export const EAT_RATIO = { flour: 0.5, bacon: 0.3, beans: 0.2 };
+/** Arrows: a hunt uses `perHunt` (the bow scene's five shots); the store's "bundle" is `perBundle` arrows (one hunt). */
+export const ARROWS = { start: 15, perHunt: 5, perBundle: 5 };
+/** Animals tire (J.animals.tired, 0-100): brisk pace and mountain biomes tire them each travel day, a rest day or a stop
+ *  restores them; above `forceSteadyOver` the pace is steady whatever the dial says; the second yoke (4 animals) adds
+ *  `yokeMiles` a day and halves the tiring. */
+export const ANIMAL_RULES = { tireBrisk: 12, tireMountains: 8, restRelief: 30, stopRelief: 30, forceSteadyOver: 70, yokeMiles: 3, yokeTiring: 0.5, max: 100 };
+/** The legs whose nights are cold (and a 'snow' event anywhere): one blanket for every `perBlanket` people. */
+export const COLD_LEGS = ['south-pass', 'blue-mountains'];
+export const COLD = { perBlanket: 2, spiritCap: 24 };       // a cold night caps the party's spirit at tired (< MOOD.fine)
+/** Wet flour: a soaked sack is 25 lb, never more than half the wagon's flour. */
+export const SOAKED_LB = 25;
+/** Rosa's good cooking: the party eats this share of a normal day's food. */
+export const COOK = { foodFactor: 0.9 };
+/** Skill numbers: Jasper's night at camp (+4 spirit), Mabel's peppermints (raise a tired party to fine + 6, then wait
+ *  `cooldown` days), Ada / Tomas live in the repair rules. */
+export const SKILL_FX = { fiddlerCamp: 4, peppermintTo: MOOD.fine + 6, peppermintCooldown: 3 };
+/** Pay for the pure-play mini-games (× the season's priceMult): the Columbia raft is $40 less $10 a bump (never under
+ *  $10); holding the stampede pays $15 and the bison card. */
+export const RAFT = { base: 40, perBump: 10, min: 10 };
+export const STAMPEDE = { held: 15 };
+/** The goods the General Store sells that the content's GOODS table does not list (src/content/legs.js is not ours). */
+export const EXTRA_GOODS = [{ id: 'yoke', name: 'A second yoke', unit: 'yoke', emoji: '🐂', price: 30 }];
+export const EXTRA_GOOD_BY_ID = Object.fromEntries(EXTRA_GOODS.map((g) => [g.id, g]));
+
 const FOOD_GOODS = new Set(GOODS.filter((g) => g.lb).map((g) => g.id));
 /** Is this good food (its pounds go into J.food)? */
 export const isFood = (item) => FOOD_GOODS.has(typeof item === 'object' ? item.id : item);
@@ -91,7 +123,7 @@ export const foodNeeded = (people, rations = 'full', days = 1, feedLb = 0) =>
 /** A good's price at a stop in a season: the base price × the fort's price level × season.priceMult, in whole dollars
  *  (never below $1). leg null = Independence (price level 1). */
 export function priceAt(item, leg, season) {
-  const g = goodOf(item);
+  const g = goodOf(item) || EXTRA_GOOD_BY_ID[typeof item === 'object' && item ? item.id : item];
   const base = g ? g.price : (item && typeof item === 'object' && item.price) || 0;
   const l = legOf(leg);
   const level = (l && l.fort && l.fort.prices) || 1;
@@ -99,7 +131,7 @@ export function priceAt(item, leg, season) {
 }
 /** The General Store's shelf at a stop: every good with its price here (the app shows it; each purchase is a problem). */
 export function storeList(leg, season) {
-  return GOODS.map((g) => ({ id: g.id, name: g.name, unit: g.unit, lb: g.lb || 0, emoji: g.emoji, food: !!g.lb, price: priceAt(g, leg, season) }));
+  return [...GOODS, ...EXTRA_GOODS].map((g) => ({ id: g.id, name: g.name, unit: g.unit, lb: g.lb || 0, emoji: g.emoji, food: !!g.lb, price: priceAt(g, leg, season) }));
 }
 
 /** The arrival pay for a leg's stars: { arrival, stars, total }. */

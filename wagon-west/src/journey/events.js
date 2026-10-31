@@ -21,14 +21,15 @@ export function eligibleEvents(leg, { hunting = true } = {}) {
 /** The leg's event plan: [{ id, kind, atMile, fired: false }], one or two (EVENTS_PLAN.secondChance), different kinds,
  *  the first in the first half of the leg and the second in the second half. `avoid` (mile positions of the markers)
  *  nudges an event off a marker's mile so the two do not land on the same day. */
-export function planEvents(leg, rand, opts = {}, avoid = []) {
+export function planEvents(leg, rand, opts = {}, avoid = []) {   // opts: { hunting, cook }
   const l = legOf(leg);
   const pool = eligibleEvents(l, opts);
   if (!l || !pool.length) return [];
-  const first = pick(rand, pool);
+  const weigh = (list) => (opts.cook ? list.flatMap((e) => (e.kind === 'bonus' ? [e, e] : [e])) : list);   // v1.2: Rosa finds wild food twice as often
+  const first = pick(rand, weigh(pool));
   const out = [first];
   const rest = pool.filter((e) => e.kind !== first.kind);
-  if (rest.length && rand() < EVENTS_PLAN.secondChance) out.push(pick(rand, rest));
+  if (rest.length && rand() < EVENTS_PLAN.secondChance) out.push(pick(rand, weigh(rest)));
   const spans = [EVENTS_PLAN.first, EVENTS_PLAN.second];
   return out.map((e, i) => {
     const [a, b] = spans[i];

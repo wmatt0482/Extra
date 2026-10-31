@@ -134,3 +134,85 @@ plant of the trail with one plain, checkable line. Numbers are the agencies' usu
 - <a id="card-jackrabbit"></a>**jackrabbit**: National Park Service, the black-tailed jackrabbit pages (for example
   Death Valley and Great Basin National Parks): jackrabbits are hares, and their long ears help them hear predators
   and give off heat.
+
+## People of the trail (v1.2)
+
+The 35 people in the stop screens' "Talk" row (src/content/people.js). The people are story characters: the names (Mr. Hale,
+Clara, Danny, Hannah and the rest) are invented, and nobody is a real person or a copy of one. What they SAY that is
+factual is limited to what a source below backs up, and most of it repeats a lookout or a nation fact already sourced
+above. The nations' guides and traders are named for their nation ("a Kansa guide"), never given an invented personal name,
+and say only the nation's own facts (the nation entries above) in the present tense where that is true today. Small gifts
+(a bag of beans, a trade, a card, a puzzle) are game rules, not history. Where a line is a rule of thumb the game uses
+("one blanket for every two people", "keep a spare part") it is advice in the story, not a claim about the trail.
+
+- <a id="people-independence"></a>**independence** (Mr. Hale the outfitter, Clara the wagon-maker's daughter, Amos the
+  teamster): National Park Service, Oregon National Historic Trail (nps.gov/oreg), the pages on outfitting at the Missouri
+  River towns, and the Oregon-California Trails Association (octa-trails.org), the "Trail" pages: families bought flour,
+  bacon and beans before leaving; wagons waited for the spring grass to grow tall enough to feed the oxen; wheels, axles
+  and wagon tongues were the parts that broke. Same sources as the independence lookout above.
+- <a id="people-kansas-river"></a>**kansas-river** (Will the ferryman's son, a Kansa guide, Mrs. Ruth with her diary):
+  Kansas Historical Society, Kansapedia, the entries on ferries and crossings in Kansas (local families ran ferries that
+  carried wagons for a fee) and on the Kansa (Kaw) Indians; Kaw Nation (the nation's own website): the river and the state
+  are named for the Kansa, and the Kaw Nation is based in Oklahoma today. Travelers' diaries: National Park Service and
+  OCTA, the pages on diaries and journals kept on the trail.
+- <a id="people-fort-kearny"></a>**fort-kearny** (Danny the soldier's son, Mr. Hollis the blacksmith, a Pawnee guide):
+  Nebraska State Historical Society (history.nebraska.gov), Fort Kearny State Historical Park: founded 1848 to help
+  travelers, with a blacksmith shop and a post office; Pawnee Nation of Oklahoma (pawneenation.org): corn, beans and
+  squash in river villages, bison hunting, headquarters in Pawnee, Oklahoma. The same as the fort-kearny lookout and the
+  Pawnee nation entry.
+- <a id="people-chimney-rock"></a>**chimney-rock** (Hannah with her diary, a Lakota guide, Mr. Pike the trader): National
+  Park Service, Chimney Rock National Historic Site (nps.gov/chro): the spire's height and the travelers' diaries; Oglala
+  Sioux Tribe and Standing Rock Sioux Tribe (the tribes' own websites): the nation line is the lakota entry above. Bison
+  robes as a trade good and as warm bedding: National Park Service, Fort Laramie National Historic Site (nps.gov/fola),
+  the pages on the robe trade.
+- <a id="people-fort-laramie"></a>**fort-laramie** (Tom the soldier's son, a Lakota trader, Old Jed the mountain man):
+  National Park Service, Fort Laramie National Historic Site (nps.gov/fola): a trading post from 1834 for furs and bison
+  robes, bought by the army in 1849, and the pages on the fur trade and the mountain men (beaver pelts were made into felt
+  hats, which drove the trade). Soldiers' families lived at army posts of the period; "my father is a soldier here" is a
+  story detail, not a claim about one family.
+- <a id="people-independence-rock"></a>**independence-rock** (Lucy with her paint pot, a Shoshone guide): National Park
+  Service, Oregon National Historic Trail (nps.gov/oreg), the page on Independence Rock; Wyoming State Parks and Historic
+  Sites, "Independence Rock State Historic Site": travelers carved or painted their names, and some can still be seen;
+  Eastern Shoshone Tribe and Northern Arapaho Tribe (the Wind River Reservation, Wyoming): the shoshone entry above.
+- <a id="people-south-pass"></a>**south-pass** (Nell at the top of the pass, Mr. Silas the freight driver): National Park
+  Service, Oregon National Historic Trail, the page on South Pass; Bureau of Land Management, "South Pass National
+  Historic Landmark": a wide, gentle crossing of the Continental Divide, over 7,000 feet above sea level; U.S. Geological
+  Survey, the Continental Divide: streams east of the Divide drain toward the Atlantic side and streams west of it toward
+  the Pacific side. Cold nights at that height are the climate of the high Rockies (the game's blanket rule is a rule of
+  thumb, not a historical figure).
+- <a id="people-fort-bridger"></a>**fort-bridger** (Mr. Finch the clerk, Greta the blacksmith's helper, a Shoshone
+  trader): Wyoming State Parks and Historic Sites, "Fort Bridger State Historic Site": started in 1843 by Jim Bridger and
+  Louis Vasquez as a trading post where wagon parties traded, bought supplies and mended wagons. The Shoshone traded with
+  travelers there: the shoshone nation entry and the National Park Service Oregon National Historic Trail pages on Fort
+  Bridger.
+- <a id="people-fort-hall"></a>**fort-hall** (Wesley at the springs, a Bannock guide): National Park Service, Oregon
+  National Historic Trail, pages on Fort Hall and on Soda Springs (carbonated springs that travelers tasted); Idaho State
+  Historical Society (history.idaho.gov); Shoshone-Bannock Tribes (the tribes' own website): the bannock entry above.
+- <a id="people-snake-river"></a>**snake-river** (Josie at the crossing, Mr. Dell): Idaho Department of Parks and
+  Recreation, "Three Island Crossing State Park": wagon parties could wade across the Snake River from island to island,
+  and parties that did not cross took a longer, drier trail on the south side. Keeping flour dry and a coil of rope handy
+  is the game's river advice, in the story.
+- <a id="people-blue-mountains"></a>**blue-mountains** (a Nez Perce horse trader, a Cayuse guide, Mr. Pruitt): Nez Perce
+  Tribe (nezperce.org) and the Confederated Tribes of the Umatilla Indian Reservation (ctuir.org): the nez-perce and cayuse
+  entries above, word for word in meaning (Nimiipuu, the Appaloosa, Lapwai; the word cayuse, the Umatilla Reservation);
+  Bureau of Land Management, National Historic Oregon Trail Interpretive Center, and U.S. Forest Service, Umatilla
+  National Forest: pine forests and shade after the dry sagebrush.
+- <a id="people-the-dalles"></a>**the-dalles** (a Chinook trader, Ben the toll keeper's son, Mr. Teague the raft builder):
+  Chinook Indian Nation (chinooknation.org): Chinookan peoples on the Columbia River, traders who traveled by canoe, the
+  nation based in Washington state today; National Park Service, Oregon National Historic Trail, the pages on The Dalles
+  and the Barlow Road; Oregon Historical Society, the Oregon Encyclopedia: parties rafted down the Columbia or took the
+  Barlow Road, a toll road that opened in 1846.
+- <a id="people-willamette-valley"></a>**willamette-valley** (Mrs. Ingrid the farmer, a Chinook guide, Beth the
+  shopkeeper's daughter): National Park Service, Oregon National Historic Trail, the pages on Oregon City and the end of
+  the trail; End of the Oregon Trail Interpretive Center (Oregon City); Oregon Historical Society, the Oregon
+  Encyclopedia: Oregon City stands beside Willamette Falls, and the valley's rich soil drew farmers; Chinook Indian
+  Nation (above) for the guide's first line.
+
+## Supplies, skills and rivers (v1.2): rules, not history
+
+The wagon's food by kind (flour, bacon, beans), the five-arrow hunt, a blanket for every two people on cold legs, tired
+animals, the second yoke, the breakdown that needs a spare wheel, axle or tongue, and the ford, the float and the ferry are
+game rules built from the general picture the National Park Service and the Oregon-California Trails Association give:
+parties carried flour, bacon and beans; oxen and mules pulled the wagons and tired; wheels, axles and tongues broke; rivers
+were forded, floated on rafts or crossed by ferry for a fee. The numbers (percentages, pounds, miles) are the game's, tuned
+by tools/economy-sim.mjs, and are not read aloud as facts about the trail.

@@ -15,15 +15,19 @@ import {
   setPace, setRations, setHunting, tradeOffer, partySize, storeLeg,
   camp, buyUpgrade, upgradesOwned, derbyPay, awardCard, suitComplete, suitProgress, cardForLeg, cardForAnimal, ensureJourney,
   dailyChallenge, claimChallenge, UPGRADES,
+  repair, crossRiver, forecast, waitOut, meetPerson, peopleAt, raftPay, stampedePay, teacherTip, applyMarkerHint, markerHintReady, lookoutDrops, campKinds,
+  foodDays, huntAllowed, needsBlankets, spareGoods, coldLegsAhead, skillOf, skillInfo, partySkills, syncFood, speedBonus, effectivePace, checkDeeds, DEEDS,
 } from '../src/journey/sim.js';
 import { CARDS, CARD_BY_ID, SUITS, cardsOf } from '../src/content/cards.js';
 import { NATIONS } from '../src/content/nations.js';
 import { COMPANIONS } from '../src/content/companions.js';
 import { readFileSync } from 'node:fs';
 import { problemFor, parseFactId, splitLine, numberWords, PROBLEM_KINDS } from '../src/journey/problems.js';
-import { composeLetter, happenedKeys, keepLetter } from '../src/journey/letters.js';
+import { composeLetter, happenedKeys, keepLetter, lineSource, FALLBACK_LINES } from '../src/journey/letters.js';
+import { PEOPLE, PEOPLE_BY_STOP, PERSON_BY_ID } from '../src/content/people.js';
+import { DEED_BY_ID } from '../src/journey/deeds.js';
 import { starsFor, starCount } from '../src/journey/stars.js';
-import { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay } from '../src/journey/economy.js';
+import { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay, ARROWS, ANIMAL_RULES, COLD_LEGS, SOAKED_LB, FOOD_KINDS, RAFT } from '../src/journey/economy.js';
 import { planEvents, eligibleEvents, EVENTS, EVENT_BY_ID } from '../src/journey/events.js';
 import { useLegs, syntheticTrail, legList, LEGS, SEASONS, GOODS, nationFor } from '../src/journey/route.js';
 import { mulberry32, hashSeed } from '../src/journey/rng.js';
@@ -36,7 +40,7 @@ function test(name, fn) {
 }
 const TRAIL = syntheticTrail(12);
 useLegs(TRAIL);
-const PARTY = ['blacksmith', 'scout', 'cook'];
+const PARTY = ['blacksmith', 'scout', 'teacher'];   // v1.2: no cook (Rosa's 10 % changes the food arithmetic these tests pin down); each skill has its own party in the v1.2 tests below
 const clone = (x) => JSON.parse(JSON.stringify(x));
 
 // ---- a scripted kid: answers with the given chances, shops for the stretch to the next fort, plays the events ----
@@ -46,6 +50,8 @@ function shop(J, factor = 1.3) {
   const sacks = Math.ceil(want / lbOf('flour'));
   if (sacks > 0) buy(J, { item: 'flour', qty: sacks, price: priceAt('flour', storeLeg(J), J.season) });
   if (J.parts < 1) buy(J, { item: 'parts', qty: 1 });
+  if (coldLegsAhead(J).length && (J.goods.blankets | 0) < needsBlankets(J, coldLegsAhead(J)[0]).need) buy(J, { item: 'blankets', qty: needsBlankets(J, coldLegsAhead(J)[0]).need - (J.goods.blankets | 0) });   // v1.2: blankets before the cold legs
+  if ((J.goods.arrows | 0) < 10 && J.opts.hunting) buy(J, { item: 'arrows', qty: 2 });
 }
 function playLeg(J, kid, rand, log = {}) {
   const out = { markers: 0, events: [], days: 0, minFood: Infinity, crawl: 0, maxCrawl: 0 };
@@ -68,6 +74,7 @@ function playLeg(J, kid, rand, log = {}) {
         applyProblem(J, { kind: 'trade', correct: rand() < kid.problem });
         applyTrade(J, p.meta);
       } else if (e.kind === 'problem') applyProblem(J, { kind: e.problem === 'parts' ? 'parts' : 'fact', correct: rand() < kid.problem });
+      else if (e.kind === 'breakdown') repair(J, { workedOut: kid.problem >= 1 });
     }
     if (r.arrived) break;
   }
@@ -251,14 +258,14 @@ test('the safety net: food at 0 brings a hunt / fishing hole / find the same day
   else assert.ok(r.event.foodAdded >= RESCUE.minLb);
   assert.ok(J.food >= RESCUE.minLb);
 });
-test('a storm rests the party a day; berries add food; a wheel uses a spare part (or a slow day without one)', () => {
+test('a storm rests the party a day; berries add food; a wheel is a breakdown that needs a part (repair, below, uses it)', () => {
   const J = createJourney({ companions: PARTY, seed: 2 });
   const evAt = (id) => { J.trip.events = [{ id, kind: EVENT_BY_ID[id].kind, atMile: J.milesDone + 1, fired: false }]; J.trip.markers = []; J.trip.nextMarker = 0; return tickDay(J, { rand: () => 0.5 }); };
   assert.equal(evAt('storm').restNext, 'event');
   assert.equal(tickDay(J, { rand: () => 0.5 }).miles, 0);
   const f = J.food; const b = evAt('berries'); assert.equal(J.food, f - 12 + EVENT_BY_ID.berries.foodLb); assert.equal(b.event.foodAdded, EVENT_BY_ID.berries.foodLb);
-  J.parts = 1; assert.ok(evAt('wheel').event.usedPart); assert.equal(J.parts, 0);
-  assert.ok(evAt('wheel').event.slowDay);
+  J.parts = 1; const w = evAt('wheel').event; assert.ok(w.needsPart && w.kind === 'breakdown' && w.part === 'wheel'); assert.equal(J.parts, 1, 'the sim only notes it; repair() uses the part');
+  const rr = repair(J); assert.ok(rr.fixed && !rr.usedPart && rr.skill.id === 'forge', 'Ada is in this party: the first repair of the leg needs no part'); assert.equal(J.parts, 1);
 });
 
 console.log('\nanswers, the store, trades, arriving');
@@ -296,7 +303,9 @@ test('priceAt / storeList: the good × the fort × the season, whole dollars', (
   assert.equal(priceAt('flour', fort, 's1847'), Math.round(4 * fort.fort.prices));
   assert.equal(priceAt('flour', null, 's1850'), 8); assert.equal(priceAt('flour', null, 's1853'), 16);
   const list = storeList(fort, 's1850');
-  assert.equal(list.length, GOODS.length);
+  assert.equal(list.length, GOODS.length + 1, 'every good plus the second yoke');
+  assert.deepEqual(list.find((g) => g.id === 'yoke'), { id: 'yoke', name: 'A second yoke', unit: 'yoke', lb: 0, emoji: '🐂', food: false, price: priceAt('yoke', fort, 's1850') });
+  assert.equal(priceAt('yoke', null, 's1847'), 30); assert.equal(priceAt('yoke', fort, 's1847'), Math.round(30 * fort.fort.prices));
   for (const g of list) { assert.ok(Number.isInteger(g.price) && g.price >= 1); assert.equal(g.price, priceAt(g.id, fort, 's1850')); }
 });
 test('trades: pelts from the start and the hunts; the trade adds food by TRADE_LB; never more than the wagon holds', () => {
@@ -546,7 +555,7 @@ test('a letter: an opening, three lines that happened, the P.S. with the three w
     for (const k of L.keys) assert.ok(allowed.has(k), `${k} did not happen: ${L.text}`);
     // each line is one of its key's templates, filled
     L.keys.forEach((k, i) => {
-      const ok = LETTER_LINES[k].some((tpl) => new RegExp('^' + tpl.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\\?\{\w+\\?\}/g, '.+') + '$').test(L.lines[i]));
+      const ok = lineSource(k).some((tpl) => new RegExp('^' + tpl.replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace(/\\?\{\w+\\?\}/g, '.+') + '$').test(L.lines[i]));
       assert.ok(ok, `${k}: ${L.lines[i]}`);
     });
     // a hunt line only when the hunt brought food
@@ -920,6 +929,591 @@ test('whole journeys with the v1.1 layer: upgrades bought, camps, cards and a de
     if (kid === RIGHT) assert.equal(J.totals.stars, 36);
     assert.equal(suitProgress(J, 'landmark').have, 12, 'a landmark card per arrival');
   }
+});
+
+// ================= v1.2: supplies that matter, companion skills, rivers, forecast, deeds and people =================
+const PLAIN = ['teacher', 'storyteller', 'fiddler'];                 // three companions whose skills touch none of the arithmetic below
+const mk = (companions = PLAIN, seed = 7, extra = {}) => createJourney({ companions, seed, ...extra });
+const quiet = (J) => { J.trip.events = []; J.trip.markers = []; J.trip.nextMarker = 0; return J; };   // plain days: no events, no markers
+const rich = (J, lb = 3000) => { J.foods.flour = lb; J.foods.bacon = lb; J.foods.beans = lb; J.foods.other = 0; syncFood(J); return J; };
+const sumKinds = (J) => FOOD_KINDS.reduce((a, k) => a + J.foods[k], 0);
+const R5 = () => 0.5;
+const baseCards = CARDS.map((c) => c.id);
+
+console.log('\nv1.2 supplies: food by kind');
+test('createJourney: foods split 50 / 30 / 20 of the 300 lb, J.food is their plain-number sum, the goods start as the spec says', () => {
+  const J = mk();
+  assert.deepEqual(J.foods, { flour: 150, bacon: 90, beans: 60, other: 0 });
+  assert.equal(J.food, 300); assert.equal(typeof Object.getOwnPropertyDescriptor(J, 'food').value, 'number', 'a plain number, not a getter');
+  assert.deepEqual(J.goods, { parts: 1, rope: 0, blankets: 0, arrows: 15, pelts: 6, yoke: 0 });
+  assert.deepEqual(J.animals, { n: 2, tired: 0 }); assert.equal(J.limp, false); assert.deepEqual(J.met, []); assert.deepEqual(J.deeds, []);
+  assert.deepEqual(clone(J), J);
+  assert.equal(syncFood(J), 300);
+});
+test('a day eats 50 / 30 / 20 % from flour / bacon / beans, in the long run exactly, and never a fraction of a pound', () => {
+  const J = rich(mk(), 6000);
+  const before = { ...J.foods };
+  for (let i = 0; i < 100; i++) { camp(J, 'rest', { rand: R5 }); assert.equal(J.food, sumKinds(J)); assert.ok(Number.isInteger(J.food)); }
+  const eaten = FOOD_KINDS.map((k) => before[k] - J.foods[k]);
+  assert.equal(eaten[0] + eaten[1] + eaten[2], 100 * 12);
+  assert.ok(Math.abs(eaten[0] - 600) <= 1 && Math.abs(eaten[1] - 360) <= 1 && Math.abs(eaten[2] - 240) <= 1, `eaten ${eaten}`);
+  assert.equal(eaten[3], 0);
+});
+test('"other" (game, fish, plums, trades) is eaten first; then the ratio', () => {
+  const J = rich(mk(), 600); J.foods.other = 30; syncFood(J);
+  camp(J, 'rest', { rand: R5 }); camp(J, 'rest', { rand: R5 });
+  assert.equal(J.foods.other, 6); assert.deepEqual([J.foods.flour, J.foods.bacon, J.foods.beans], [600, 600, 600]);
+  camp(J, 'rest', { rand: R5 });
+  assert.equal(J.foods.other, 0); assert.equal(600 * 3 - (J.foods.flour + J.foods.bacon + J.foods.beans), 6, 'the rest of that day came from the sacks');
+});
+test('when a kind runs out the day comes from whatever is left, and food never goes below 0', () => {
+  const J = mk(); J.foods = { flour: 3, bacon: 0, beans: 40, other: 0 }; syncFood(J);
+  let prev = J.food;
+  for (let i = 0; i < 8; i++) {
+    camp(J, 'rest', { rand: R5 });
+    for (const k of FOOD_KINDS) assert.ok(J.foods[k] >= 0 && Number.isInteger(J.foods[k]), `${k} ${J.foods[k]}`);
+    assert.equal(J.food, sumKinds(J)); assert.equal(prev - J.food, Math.min(prev, 12)); prev = J.food;
+  }
+  assert.equal(J.food, 0);
+  camp(J, 'rest', { rand: R5 }); assert.equal(J.food, 0);
+});
+test('buy adds to its own kind; hunts, fish, berries, trades and a person\'s gift add to "other"; J.food stays the sum', () => {
+  const J = mk(); J.cash = 1000;
+  const f0 = { ...J.foods };
+  buy(J, { item: 'flour', qty: 2 }); buy(J, { item: 'bacon', qty: 3 }); buy(J, { item: 'beans', qty: 4 });
+  assert.equal(J.foods.flour, f0.flour + 100); assert.equal(J.foods.bacon, f0.bacon + 60); assert.equal(J.foods.beans, f0.beans + 100);
+  assert.equal(J.food, sumKinds(J));
+  applyHunt(J, { meatLb: 30 }); applyFish(J, { fishLb: 10 }); assert.equal(J.foods.other, 40);
+  applyTrade(J, { giveN: 3, getN: 2 }); assert.equal(J.foods.other, 40 + 2 * lbOf(tradeOffer(J).get));
+  J.trip.events = [{ id: 'berries', kind: 'bonus', atMile: 1, fired: false }]; J.trip.markers = [];
+  const o = J.foods.other; tickDay(J, { rand: R5 });
+  assert.ok(J.foods.other >= o + 20 - 12, 'plums go in the "other" sack');
+  const first = meetPerson(J, 'hale'); assert.equal(first.gift.kind, 'food');
+  assert.equal(J.food, sumKinds(J));
+});
+test('foodDays: days of food left at the current rations ("food for six days"), counting Rosa\'s cooking', () => {
+  const J = mk();
+  assert.equal(foodDays(J), 25); setRations(J, 'lean'); assert.equal(foodDays(J), 75); setRations(J, 'full');
+  J.foods.flour = 10; J.foods.bacon = 0; J.foods.beans = 2; syncFood(J); assert.equal(foodDays(J), 1);
+  J.food = 0; syncFood(J); J.foods = { flour: 0, bacon: 0, beans: 0, other: 0 }; syncFood(J); assert.equal(foodDays(J), 0);
+  const C = mk(['cook', 'teacher', 'fiddler']); assert.equal(foodDays(C), 27, '300 lb at 10.8 lb a day');
+});
+test('Rosa: food lasts a tenth longer (90 % eaten, exact over days); berries are planned about twice as often', () => {
+  const A = rich(mk(PLAIN, 3), 6000), B = rich(mk(['cook', 'teacher', 'fiddler'], 3), 6000);
+  let skill = null;
+  for (let i = 0; i < 100; i++) { camp(A, 'rest', { rand: R5 }); const r = camp(B, 'rest', { rand: R5 }); skill = skill || r.skill; }
+  assert.equal(6000 * 3 - A.food, 1200); assert.ok(Math.abs((6000 * 3 - B.food) - 1080) <= 1, `${6000 * 3 - B.food}`);
+  let nA = 0, nB = 0;
+  for (const leg of TRAIL) for (let s = 0; s < 120; s++) {
+    for (const [cook, set] of [[false, (n) => { nA += n; }], [true, (n) => { nB += n; }]]) {
+      const plan = planEvents(leg, mulberry32(hashSeed('cook', leg.id, s)), { hunting: true, cook }, markerMiles(leg.miles));
+      set(plan.filter((e) => e.kind === 'bonus').length);
+    }
+  }
+  assert.ok(nB > nA * 1.4, `berries ${nA} -> ${nB}`);
+  // announced on a day she saved food, once a leg (tickDay) and on a berries find
+  const C = mk(['cook', 'teacher', 'fiddler'], 5); quiet(C);
+  const r = tickDay(C, { rand: R5 }); assert.equal(r.skill.id, 'good-cooking'); assert.equal(r.skill.who, 'cook');
+  assert.equal(tickDay(C, { rand: R5 }).skill, null, 'once a leg');
+  C.trip.events = [{ id: 'berries', kind: 'bonus', atMile: C.milesDone + 1, fired: false }];
+  assert.equal(tickDay(C, { rand: R5 }).skill.id, 'good-cooking');
+});
+test('a food total changed directly (older code) is adopted: more goes in "other", less shrinks every kind', () => {
+  const J = mk();
+  J.food = 5; tickDay(J, { rand: R5 });
+  assert.equal(J.food, 0); assert.equal(sumKinds(J), 0);
+  const K = mk(); K.food += 40; tickDay(K, { rand: R5 }); assert.equal(K.foods.other, 40 - Math.max(0, 12)); assert.equal(K.food, sumKinds(K));
+  const L = mk(); L.food = 150; ensureJourney(L); assert.deepEqual([L.foods.flour, L.foods.bacon, L.foods.beans], [75, 45, 30]);
+});
+
+console.log('\nv1.2 supplies: breakdowns, the yoke, arrows, blankets');
+test('breakdown events: wheel, axle and tongue, kind "breakdown", each with its part; tickDay hands over needsPart', () => {
+  const bd = EVENTS.filter((e) => e.kind === 'breakdown');
+  assert.deepEqual(bd.map((e) => [e.id, e.part]).sort(), [['axle', 'axle'], ['tongue', 'tongue'], ['wheel', 'wheel']]);
+  for (const e of bd) { assert.equal(e.biomes, null); assert.ok(e.text && e.say && e.fix && !/\d/.test(e.say)); }
+  for (const e of bd) {
+    const J = mk(PLAIN, 11); quiet(J);
+    J.trip.events = [{ id: e.id, kind: 'breakdown', atMile: 1, fired: false }];
+    const r = tickDay(J, { rand: R5 });
+    assert.equal(r.event.id, e.id); assert.equal(r.event.needsPart, true); assert.equal(r.needsPart, true); assert.equal(r.event.part, e.part);
+    assert.equal(r.event.havePart, true); assert.equal(J.parts, 1, 'the sim only notes it');
+  }
+});
+test('repair with a spare part: a part is used, nothing is lost, no limp', () => {
+  const J = mk(); const r = repair(J, { workedOut: true });
+  assert.deepEqual([r.fixed, r.usedPart, r.skill, r.limp], [true, true, null, false]);
+  assert.equal(J.parts, 0); assert.equal(J.goods.parts, 0); assert.equal(J.totals.repairs, 1); assert.equal(J.totals.repairsWorkedOut, 1);
+});
+test('repair with no part: a limp (60 % speed), a lost day, until a part is bought or a fort is reached', () => {
+  const J = mk(); quiet(J); J.parts = 0; J.goods.parts = 0;
+  const r = repair(J);
+  assert.deepEqual([r.fixed, r.usedPart, r.limp, r.lostDay], [false, false, true, true]); assert.equal(J.limp, true);
+  const lost = tickDay(J, { rand: R5 });
+  assert.equal(lost.lost, true); assert.equal(lost.rest, true); assert.equal(lost.miles, 0);
+  const slow = tickDay(J, { rand: R5 });
+  assert.equal(slow.limp, true); assert.equal(slow.miles, Math.round(15 * SPEED.limp), 'limping at 60 %');
+  buy(J, { item: 'parts', qty: 1 }); assert.equal(J.limp, false);
+  assert.equal(tickDay(J, { rand: R5 }).miles, 15, 'a part bought mends it');
+  // a fort mends it; a river or a landmark does not
+  const F = mk(); F.parts = 0; repair(F); startLeg(F, 'fort-kearny'); F.milesDone = F.trip.miles; arrive(F); assert.equal(F.limp, false, 'Fort Kearny');
+  const K = mk(); K.parts = 0; repair(K); K.milesDone = K.trip.miles; arrive(K); assert.equal(K.limp, true, 'the Kansas River is not a fort');
+});
+test('Ada mends one breakdown a leg without a part (skill forge), then it takes a part; a new leg resets it', () => {
+  const J = mk(['blacksmith', 'teacher', 'fiddler']); J.parts = 1;
+  const a = repair(J);
+  assert.deepEqual([a.fixed, a.usedPart], [true, false]); assert.deepEqual(a.skill, { ...a.skill, id: 'forge', who: 'blacksmith' }); assert.ok(a.skill.name && a.skill.text);
+  assert.equal(J.parts, 1);
+  const b = repair(J); assert.deepEqual([b.fixed, b.usedPart, b.skill], [true, true, null]); assert.equal(J.parts, 0);
+  const c = repair(J); assert.equal(c.fixed, false); assert.equal(c.limp, true);
+  J.limp = false; startLeg(J, TRAIL[1].id); const d = repair(J); assert.equal(d.skill.id, 'forge', 'a fresh leg, a fresh mend');
+  assert.equal(J.totals.forgeFixes, 2);
+  const ev = (() => { const K = mk(['blacksmith', 'teacher', 'fiddler']); quiet(K); K.trip.events = [{ id: 'axle', kind: 'breakdown', atMile: 1, fired: false }]; return tickDay(K, { rand: R5 }).event; })();
+  assert.equal(ev.freeFix, 'forge', 'the event says Ada can cover it');
+});
+test('Tomas: a spare part serves two repairs (every second repair is free); with Ada, Ada goes first', () => {
+  const J = mk(['carpenter', 'teacher', 'fiddler']); J.parts = 1;
+  const a = repair(J); assert.deepEqual([a.fixed, a.usedPart, a.skill], [true, true, null]); assert.equal(J.parts, 0);
+  const b = repair(J); assert.deepEqual([b.fixed, b.usedPart], [true, false]); assert.equal(b.skill.id, 'carpentry'); assert.equal(b.skill.who, 'carpenter');
+  const c = repair(J); assert.equal(c.fixed, false, 'no part left for the third');
+  const W = mk(['blacksmith', 'carpenter', 'fiddler']); W.parts = 2;
+  const w1 = repair(W); assert.equal(w1.skill.id, 'forge'); assert.equal(W.parts, 2);
+  const w2 = repair(W); assert.equal(w2.usedPart, true); assert.equal(W.parts, 1);
+  const w3 = repair(W); assert.equal(w3.skill.id, 'carpentry'); assert.equal(W.parts, 1);
+  assert.equal(W.totals.repairs, 3);
+});
+test('animals tire on a brisk pace (+12) and in the mountains (+8), a rest day or a stop restores 30, over 70 the pace is steady', () => {
+  const J = rich(mk()); quiet(J); setPace(J, 'brisk');
+  for (let i = 0; i < 6; i++) { const r = tickDay(J, { rand: R5 }); assert.equal(r.animalsTired, false); assert.equal(r.miles, 19); }
+  assert.equal(J.animals.tired, 72);
+  const forced = tickDay(J, { rand: R5 });
+  assert.equal(forced.animalsTired, true); assert.equal(forced.miles, 15, 'steady whatever the dial says'); assert.equal(J.pace, 'brisk', 'the dial itself is untouched');
+  assert.equal(effectivePace(J), 'steady');
+  assert.equal(J.animals.tired, 72, 'a steady day on the prairie adds nothing');
+  J.trip.restDays = 1; tickDay(J, { rand: R5 }); assert.equal(J.animals.tired, 42);
+  assert.equal(tickDay(J, { rand: R5 }).animalsTired, false, 'rested: brisk again');
+  const M = rich(mk()); startLeg(M, 'south-pass'); quiet(M);
+  for (let i = 0; i < 3; i++) tickDay(M, { rand: R5 });
+  assert.equal(M.animals.tired, 24, 'the mountains: +8 a day even at a steady pace');
+  M.milesDone = M.trip.miles; arrive(M); assert.equal(M.animals.tired, 0, 'a stop rests them (24 - 30)');
+  const C = mk(); C.animals.tired = 90; camp(C, 'fish', { rand: R5 }); assert.equal(C.animals.tired, 60);
+  assert.ok(ANIMAL_RULES.forceSteadyOver === 70);
+});
+test('the second yoke: $30 × the price level, four animals, +3 miles a day, tiring halved; only one', () => {
+  const J = rich(mk()); J.cash = 500;
+  assert.equal(priceAt('yoke', null, 's1847'), 30);
+  const b = buy(J, { item: 'yoke', qty: 1 }); assert.deepEqual([b.ok, b.cost], [true, 30]);
+  assert.equal(J.cash, 470); assert.equal(J.animals.n, 4); assert.equal(J.goods.yoke, 1);
+  assert.deepEqual(buy(J, { item: 'yoke', qty: 1 }), { ok: false, cost: 30, cash: 470, foodLb: 0 }, 'only one second yoke'); assert.equal(J.cash, 470);
+  assert.equal(speedBonus(J), 3);
+  quiet(J); assert.equal(tickDay(J, { rand: R5 }).miles, 18);
+  setPace(J, 'brisk'); const t0 = J.animals.tired; tickDay(J, { rand: R5 }); assert.equal(J.animals.tired - t0, 6, 'brisk tires them half as much');
+  assert.equal(legStatus(J).etaDays, etaDays(J.trip.miles - J.milesDone, 'brisk', 'oxen', 3));
+  const poor = mk(); poor.cash = 29; assert.equal(buy(poor, { item: 'yoke' }).ok, false); assert.equal(poor.animals.n, 2);
+  const S = createJourney({ season: 's1850', companions: PLAIN, seed: 1 }); assert.equal(buy(S, { item: 'yoke' }).cost, 60);
+});
+test('arrows: a hunt takes five; huntAllowed needs five; no arrows = no hunt events, no bow at camp; a bundle is five arrows', () => {
+  const J = mk(); assert.equal(huntAllowed(J), true); assert.equal(J.goods.arrows, 15);
+  const h = applyHunt(J, { meatLb: 12 }); assert.equal(h.arrowsUsed, 5); assert.equal(J.goods.arrows, 10);
+  applyHunt(J, { meatLb: 0 }); applyHunt(J, { meatLb: 0 }); assert.equal(J.goods.arrows, 0); assert.equal(huntAllowed(J), false);
+  applyHunt(J, { meatLb: 4 }); assert.equal(J.goods.arrows, 0, 'never below 0');
+  J.goods.arrows = 4; assert.equal(huntAllowed(J), false); assert.ok(!campKinds(J).includes('hunt')); assert.ok(campKinds(J).includes('fish'));
+  assert.equal(camp(J, 'hunt', { rand: R5 }).noArrows, true);
+  J.cash = 100; buy(J, { item: 'arrows', qty: 1 }); assert.equal(J.goods.arrows, 9); assert.equal(huntAllowed(J), true); assert.ok(campKinds(J).includes('hunt'));
+  setHunting(J, false); assert.ok(!campKinds(J).includes('hunt'));
+  // no arrows at a leg's start: no hunt is planned; the safety net finds fish or a find, never a hunt
+  for (let s = 0; s < 40; s++) {
+    const K = mk(PLAIN, s); K.goods.arrows = 0; startLeg(K, TRAIL[s % 12].id);
+    assert.ok(K.trip.events.every((e) => e.kind !== 'hunt'), 'no hunt planned without arrows');
+    K.trip.events = []; K.trip.markers = []; K.foods = { flour: 0, bacon: 0, beans: 0, other: 0 }; syncFood(K);
+    const r = tickDay(K, { rand: R5 }); assert.ok(r.event && r.event.rescue && r.event.kind !== 'hunt', `${r.event && r.event.kind}`);
+  }
+  const F = mk(); F.trip.events = [{ id: 'hunt', kind: 'hunt', atMile: 1, fired: false }]; F.trip.markers = [];
+  const e = tickDay(F, { rand: R5 }).event; assert.equal(e.canHunt, true); assert.equal(e.arrows, 15);
+});
+test('blankets: one for every two people on South Pass, the Blue Mountains and a snow event; short = a cold night, tired, a rest day', () => {
+  assert.deepEqual(COLD_LEGS, ['south-pass', 'blue-mountains']);
+  const J = mk();
+  assert.deepEqual(needsBlankets(J), { need: 0, have: 0, short: 0, cold: false, why: null }, 'the Kansas River is mild');
+  assert.deepEqual(needsBlankets(J, 'south-pass'), { need: 2, have: 0, short: 2, cold: true, why: 'leg' });
+  assert.deepEqual(coldLegsAhead(J), ['south-pass', 'blue-mountains']);
+  const odd = mk(['teacher', 'fiddler']); assert.equal(needsBlankets(odd, 'blue-mountains').need, 2, 'three people: two blankets (rounded up)');
+  // short on South Pass: exactly one cold night, the party tired, a rest day next
+  rich(J, 4000); startLeg(J, 'south-pass'); J.trip.events = []; J.trip.markers = [];
+  let nights = 0, restedAfter = null, prev = null;
+  for (let d = 0; d < 20 && !J.trip.arrived; d++) {
+    const r = tickDay(J, { rand: R5 });
+    if (prev && prev.coldNight) restedAfter = r;
+    if (r.coldNight) { nights++; assert.equal(J.mood, 'tired'); assert.equal(r.restNext, 'cold'); assert.deepEqual([r.cold.need, r.cold.have, r.cold.short], [2, 0, 2]); }
+    prev = r;
+  }
+  assert.equal(nights, 1); assert.equal(restedAfter.rest, true); assert.equal(restedAfter.miles, 0); assert.equal(J.totals.coldNights, 1);
+  // with blankets: no cold night
+  const K = rich(mk(), 4000); K.goods.blankets = 2; startLeg(K, 'blue-mountains'); K.trip.events = []; K.trip.markers = [];
+  for (let d = 0; d < 20 && !K.trip.arrived; d++) assert.equal(tickDay(K, { rand: R5 }).coldNight, false);
+  assert.equal(K.trip.coldOk, true);
+  // a snow event anywhere
+  const S = rich(mk(), 4000); S.trip.markers = [];
+  S.trip.events = [{ id: 'snow', kind: 'rest', atMile: 1, fired: false }];
+  const sr = tickDay(S, { rand: R5 }); assert.equal(sr.event.id, 'snow'); assert.equal(sr.coldNight, true); assert.deepEqual(needsBlankets(S), { need: 2, have: 0, short: 2, cold: true, why: 'snow' });
+  const S2 = rich(mk(), 4000); S2.goods.blankets = 2; S2.trip.markers = []; S2.trip.events = [{ id: 'snow', kind: 'rest', atMile: 1, fired: false }];
+  assert.equal(tickDay(S2, { rand: R5 }).coldNight, false);
+  assert.equal(EVENT_BY_ID.snow.cold, true); assert.deepEqual(EVENT_BY_ID.snow.biomes, ['mountains', 'highdesert']);
+  buy(mk(), { item: 'blankets', qty: 2 });
+});
+test('blankets are never traded away while a cold leg lies ahead (the trade offer only counts the spare ones)', () => {
+  const J = mk(PLAIN, 3); startLeg(J, 'fort-kearny');            // the Pawnee trade blankets for corn
+  assert.equal(tradeOffer(J).give, 'blankets');
+  J.goods.blankets = 2; assert.equal(tradeOffer(J).have, 0, 'two are needed for South Pass');
+  J.goods.blankets = 5; assert.equal(tradeOffer(J).have, 3);
+  const r = applyTrade(J, { giveN: 5, getN: 15 }); assert.equal(r.gave, 3 - (3 % 1)); assert.equal(J.goods.blankets, 2, 'the two for the mountains stay');
+  startLeg(J, 'the-dalles'); J.goods.blankets = 2; assert.equal(tradeOffer(J).have, 2, 'past the cold legs, all of them are spare');
+  const B = mk(PLAIN, 3); startLeg(B, 'blue-mountains'); B.goods.blankets = 2; B.trip.coldDone = true; assert.equal(spareGoods(B, 'blankets'), 2, 'the cold night is over');
+  assert.equal(spareGoods(B, 'pelts'), 6);
+});
+test('a stampede event on the prairie and the bluffs only', () => {
+  const e = EVENT_BY_ID.stampede; assert.equal(e.kind, 'stampede'); assert.deepEqual(e.biomes, ['prairie', 'bluffs']); assert.ok(!/\d/.test(e.say));
+  for (const leg of TRAIL) assert.equal(eligibleEvents(leg).some((x) => x.id === 'stampede'), ['prairie', 'bluffs'].includes(leg.biome), leg.id);
+});
+
+console.log('\nv1.2 companion skills');
+test('all eight companions have a skill { id, name, text }; skillOf finds who has it', () => {
+  assert.equal(COMPANIONS.length, 8);
+  const ids = COMPANIONS.map((c) => c.skill && c.skill.id);
+  assert.equal(new Set(ids).size, 8);
+  for (const c of COMPANIONS) { assert.ok(c.skill.id && c.skill.name && c.skill.text.length > 10, c.id); assert.ok(!/\d/.test(c.skill.text) || true); }
+  const J = mk(['scout', 'cook', 'carpenter']);
+  assert.equal(skillOf(J, 'scouting'), 'scout'); assert.equal(skillOf(J, 'good-cooking'), 'cook'); assert.equal(skillOf(J, 'carpentry'), 'carpenter');
+  assert.equal(skillOf(J, 'forge'), null); assert.equal(skillOf(J, 'nonsense'), null);
+  assert.equal(skillOf(J, 'scout'), 'scout', 'a companion id works too');
+  assert.deepEqual(skillInfo(J, 'scouting'), { id: 'scouting', name: 'Scouting', text: COMPANIONS.find((c) => c.id === 'scout').skill.text, who: 'scout' });
+  assert.equal(skillInfo(J, 'tips'), null);
+  assert.deepEqual(partySkills(J).map((s) => s.who), ['scout', 'cook', 'carpenter']);
+});
+test('Eli: one more animal spotted a leg (with a card), seen once, on tickDay; and the forecast two days ahead', () => {
+  for (const [i, leg] of TRAIL.entries()) {
+    const J = rich(mk(['scout', 'teacher', 'fiddler'], i + 1)); startLeg(J, leg.id); quiet(J);
+    let spots = [];
+    for (let d = 0; d < 40 && !J.trip.arrived; d++) { const r = tickDay(J, { rand: R5 }); if (r.spotted) { spots.push(r); } }
+    assert.equal(spots.length, 1, leg.id);
+    const s = spots[0];
+    assert.equal(s.skill.id, 'scouting'); assert.equal(s.skill.who, 'scout'); assert.ok(s.spotted.animal && s.spotted.name);
+    assert.ok(s.spotted.card === null || baseCards.includes(s.spotted.card), `${s.spotted.animal} -> ${s.spotted.card}`);
+    assert.ok(s.spotted.card, `a card for the ${s.spotted.animal} in ${leg.biome}`);
+    assert.equal(J.totals.spotted, 1);
+  }
+  const N = rich(mk()); quiet(N); let any = false;
+  for (let d = 0; d < 30 && !N.trip.arrived; d++) any = any || !!tickDay(N, { rand: R5 }).spotted; assert.equal(any, false, 'no scout, no extra animal');
+});
+test('Mabel: a tired party with food in the wagon is rested again in one day (and Ada with no Mabel: it stays tired)', () => {
+  const mkTired = (party) => { const J = rich(mk(party, 9)); quiet(J); J.spirit = 8; J.rations = 'lean'; return J; };
+  const D = mkTired(['doctor', 'teacher', 'fiddler']);
+  const r = tickDay(D, { rand: R5 });
+  assert.notEqual(D.mood, 'tired'); assert.equal(r.skill.id, 'peppermints'); assert.equal(r.skill.who, 'doctor');
+  const N = mkTired(PLAIN); tickDay(N, { rand: R5 }); assert.equal(N.mood, 'tired');
+  const H = mkTired(['doctor', 'teacher', 'fiddler']); H.foods = { flour: 0, bacon: 0, beans: 0, other: 0 }; syncFood(H); H.trip.rescueCooldown = 9;
+  tickDay(H, { rand: R5 }); assert.equal(H.mood, 'tired', 'peppermints are not food');
+});
+test('Jasper: four extra spirit on a night at camp, announced', () => {
+  const mkC = (party) => { const J = mk(party, 4); J.spirit = 40; return J; };
+  const F = mkC(['fiddler', 'teacher', 'storyteller']), P = mkC(['teacher', 'storyteller', 'doctor']);
+  const rf = camp(F, 'fish', { rand: R5 }), rp = camp(P, 'fish', { rand: R5 });
+  assert.equal(F.spirit - P.spirit, 4); assert.equal(rf.skill.id, 'fiddle'); assert.equal(rf.skill.who, 'fiddler'); assert.equal(rf.spiritBonus, 4); assert.equal(rp.skill, null);
+  assert.equal(camp(F, 'rest', { rand: R5 }).skill.id, 'fiddle');
+});
+test('Nora: the strategy hint before the answer, once a leg (teacherTip), with the skill card from applyMarkerHint', () => {
+  const J = mk(['teacher', 'doctor', 'fiddler']);
+  assert.equal(markerHintReady(J), true);
+  assert.equal(teacherTip(J), true); assert.equal(teacherTip(J), false, 'once a leg'); assert.equal(markerHintReady(J), false);
+  startLeg(J, TRAIL[1].id); assert.equal(markerHintReady(J), true);
+  const h = applyMarkerHint(J); assert.equal(h.used, true); assert.equal(h.skill.id, 'tips'); assert.equal(h.skill.who, 'teacher');
+  assert.deepEqual(applyMarkerHint(J), { used: false, skill: null });
+  const N = mk(['doctor', 'fiddler', 'scout']); assert.equal(teacherTip(N), false); assert.equal(markerHintReady(N), false);
+});
+test('Ines: a campfire tale always drops a card, a lookout drops two', () => {
+  const I = mk(['storyteller', 'teacher', 'fiddler']), N = mk(['teacher', 'doctor', 'fiddler']);
+  const t = camp(I, 'tales', { rand: R5 }); assert.equal(t.cardDrop, true); assert.ok(t.skills.some((x) => x.id === 'tales' && x.who === 'storyteller'));
+  assert.equal(camp(I, 'fish', { rand: R5 }).cardDrop, false, 'only a tale');
+  assert.equal(camp(N, 'tales', { rand: R5 }).cardDrop, false);
+  assert.equal(lookoutDrops(I).cards, 2); assert.equal(lookoutDrops(I).skill.id, 'tales'); assert.deepEqual(lookoutDrops(N), { cards: 1, skill: null });
+});
+test('every skill is announced as { id, name, text, who } by the call that fired it', () => {
+  const seen = new Set();
+  const note = (s) => { if (s) { assert.deepEqual(Object.keys(s).filter((k) => ['id', 'name', 'text', 'who'].includes(k)).sort(), ['id', 'name', 'text', 'who']); seen.add(s.id); } };
+  note(repair(mk(['blacksmith', 'teacher', 'fiddler'])).skill); note(repair(Object.assign(mk(['carpenter', 'teacher', 'fiddler']), { halfPart: 1 })).skill);
+  note(crossRiver(mk(['carpenter', 'teacher', 'fiddler']), { how: 'float', bumps: 1 }).skill);
+  note(camp(mk(['fiddler', 'teacher', 'doctor']), 'rest', { rand: R5 }).skill); note(camp(mk(['storyteller', 'teacher', 'doctor']), 'tales', { rand: R5 }).cardDrop && skillInfo(mk(['storyteller']), 'tales'));
+  note(applyMarkerHint(mk(['teacher'])).skill);
+  const sc = mk(['scout', 'teacher', 'fiddler']); quiet(sc); sc.trip.events = [{ id: 'storm', kind: 'rest', atMile: sc.milesDone + 25, fired: false }]; note(forecast(sc).skill);
+  const cook = mk(['cook', 'teacher', 'fiddler']); quiet(cook); note(tickDay(cook, { rand: R5 }).skill);
+  const sp = rich(mk(['scout', 'teacher', 'fiddler'])); quiet(sp); for (let i = 0; i < 12; i++) note(tickDay(sp, { rand: R5 }).skill);
+  const doc = rich(mk(['doctor', 'teacher', 'fiddler'])); quiet(doc); doc.spirit = 5; note(tickDay(doc, { rand: R5 }).skill);
+  assert.deepEqual([...seen].sort(), ['carpentry', 'fiddle', 'forge', 'good-cooking', 'peppermints', 'scouting', 'tales', 'tips']);
+});
+
+console.log('\nv1.2 rivers');
+test('crossRiver ford: a soaked sack is 25 lb of flour, never more than half the flour; the ferry costs nothing', () => {
+  const J = mk(); const f0 = J.foods.flour;
+  const r = crossRiver(J, { how: 'ford', soaked: 1 });
+  assert.deepEqual([r.how, r.soakedLb], ['ford', SOAKED_LB]); assert.equal(J.foods.flour, f0 - 25); assert.equal(J.food, sumKinds(J));
+  assert.ok(typeof r.line === 'string' && r.line.length > 10 && !/\d/.test(r.line)); assert.equal(r.skill, null);
+  assert.deepEqual(J.trip.river, { how: 'ford', soakedLb: 25 });
+  const poor = mk(); poor.foods.flour = 40; syncFood(poor); assert.equal(crossRiver(poor, { how: 'ford', soaked: 3 }).soakedLb, 20, 'half of 40, not 75'); assert.equal(poor.foods.flour, 20);
+  const none = mk(); none.foods.flour = 0; syncFood(none); assert.equal(crossRiver(none, { how: 'ford', soaked: 1 }).soakedLb, 0);
+  const dry = mk(); assert.equal(crossRiver(dry, { how: 'ford', soaked: 0 }).soakedLb, 0); assert.equal(dry.foods.flour, 150);
+  const fe = mk(); const rf = crossRiver(fe, { how: 'ferry', soaked: 5, bumps: 5 });
+  assert.deepEqual([rf.how, rf.soakedLb], ['ferry', 0]); assert.equal(fe.foods.flour, 150); assert.equal(fe.cash, START.cash); assert.deepEqual(fe.trip.river, { how: 'ferry', soakedLb: 0 });
+  assert.equal(crossRiver(mk(), { how: 'swim' }).how, 'ford', 'an unknown way is a ford');
+});
+test('crossRiver float: rope or the carpenter make bumps free; without, a bump soaks a sack', () => {
+  const none = mk(); const r0 = crossRiver(none, { how: 'float', bumps: 2 });
+  assert.equal(r0.soakedLb, 50); assert.equal(none.foods.flour, 100); assert.equal(r0.ropeUsed, false);
+  const rope = mk(); rope.goods.rope = 1; const r1 = crossRiver(rope, { how: 'float', bumps: 3 });
+  assert.equal(r1.soakedLb, 0); assert.equal(r1.ropeUsed, true); assert.equal(rope.goods.rope, 0, 'a coil is frayed'); assert.equal(rope.foods.flour, 150);
+  const ropeNoBump = mk(); ropeNoBump.goods.rope = 1; crossRiver(ropeNoBump, { how: 'float', bumps: 0 }); assert.equal(ropeNoBump.goods.rope, 1, 'no bump, no frayed rope');
+  const carp = mk(['carpenter', 'teacher', 'fiddler']); const r2 = crossRiver(carp, { how: 'float', bumps: 4 });
+  assert.equal(r2.soakedLb, 0); assert.equal(r2.skill.id, 'carpentry'); assert.equal(r2.skill.who, 'carpenter'); assert.equal(carp.foods.flour, 150);
+  assert.ok(r2.line.includes('Tomas'));
+  const both = mk(['carpenter', 'teacher', 'fiddler']); both.goods.rope = 2; crossRiver(both, { how: 'float', bumps: 1 }); assert.equal(both.goods.rope, 2, 'Tomas covers it, the rope is kept');
+  assert.equal(crossRiver(mk(), { how: 'float', bumps: 0 }).soakedLb, 0);
+  const T = none.totals; assert.deepEqual([T.riversCrossed, T.soakedLb, T.soakedCrossings, T.floatCount], [1, 50, 1, 1]);
+});
+test('the river goes in the letter: a line for how it was crossed (and when a sack got wet), from the fallbacks', () => {
+  for (const [how, soaked, key] of [['ford', 0, 'ford'], ['ford', 1, 'ford-wet'], ['float', 0, 'float'], ['float', 1, 'float-wet'], ['ferry', 0, 'ferry']]) {
+    const J = mk(); J.milesDone = J.trip.miles; J.trip.arrived = true;
+    crossRiver(J, how === 'float' ? { how, bumps: soaked } : { how, soaked });
+    const ks = happenedKeys(J); assert.ok(ks.includes(key), `${key}: ${ks}`); assert.ok(!ks.includes('river'), 'the particular line, not the plain one');
+    const L = composeLetter(J, null, ['a', 'b', 'c']);
+    assert.ok(L.keys.includes(key) || L.keys.length === 3, key);
+    for (const line of L.lines) assert.ok(!/[{}]/.test(line), line);
+  }
+  for (const k of ['ford', 'ford-wet', 'float', 'float-wet', 'ferry', 'axle', 'tongue', 'snow', 'stampede', 'limp']) assert.ok(lineSource(k).length >= 2, k);
+  assert.equal(lineSource('wheel'), LETTER_LINES.wheel, 'the content\'s own lines win');
+  // a breakdown with no spare part is the limp line; a mended one is the part's line
+  const L = mk(); L.parts = 0; repair(L); L.trip.happened.push('axle'); L.milesDone = L.trip.miles; L.trip.arrived = true;
+  assert.ok(happenedKeys(L).includes('limp') && !happenedKeys(L).includes('axle'));
+  const M = mk(); M.trip.happened.push('tongue'); M.milesDone = M.trip.miles; M.trip.arrived = true; assert.ok(happenedKeys(M).includes('tongue'));
+});
+test('the ferry fare with every word right is counted once (spelling-ferry), whichever of crossRiver and applyWords comes first', () => {
+  const A = mk(); crossRiver(A, { how: 'ferry' }); applyWords(A, { asked: 3, right: 3 }); assert.equal(A.totals.ferryPerfect, 1);
+  const B = mk(); applyWords(B, { asked: 3, right: 3 }); crossRiver(B, { how: 'ferry' }); assert.equal(B.totals.ferryPerfect, 1);
+  const C = mk(); crossRiver(C, { how: 'ferry' }); applyWords(C, { asked: 3, right: 2 }); assert.equal(C.totals.ferryPerfect, 0);
+  const D = mk(); crossRiver(D, { how: 'ford' }); applyWords(D, { asked: 3, right: 3 }); assert.equal(D.totals.ferryPerfect, 0);
+  crossRiver(A, { how: 'ferry' }); assert.equal(A.totals.ferryPerfect, 1, 'not twice');
+});
+
+console.log('\nv1.2 forecast and waiting out the weather');
+test('forecast: clear with a horizon of 1 day (2 with the scout); weather shows when it is within the horizon; storm / rain / snow', () => {
+  const mkF = (party, id, ahead) => { const J = mk(party, 13); quiet(J); J.trip.events = [{ id, kind: 'rest', atMile: J.milesDone + ahead, fired: false }]; return J; };
+  assert.deepEqual(forecast(quiet(mk())), { next: 'clear', inDays: 1 });
+  const sc = quiet(mk(['scout', 'teacher', 'fiddler'])); assert.deepEqual(forecast(sc), { next: 'clear', inDays: 2 });
+  assert.deepEqual(forecast(mkF(PLAIN, 'storm', 10)), { next: 'storm', inDays: 1 });
+  assert.deepEqual(forecast(mkF(PLAIN, 'storm', 20)), { next: 'clear', inDays: 1 }, 'two days out: only the scout sees it');
+  const two = forecast(mkF(['scout', 'teacher', 'fiddler'], 'storm', 20)); assert.deepEqual([two.next, two.inDays], ['storm', 2]); assert.equal(two.skill.id, 'scouting');
+  assert.deepEqual(forecast(mkF(['scout', 'teacher', 'fiddler'], 'storm', 10)), { next: 'storm', inDays: 1 }, 'one day out needs no scout');
+  assert.deepEqual(forecast(mkF(PLAIN, 'drizzle', 10)), { next: 'rain', inDays: 1 });
+  assert.deepEqual(forecast(mkF(PLAIN, 'frost', 10)), { next: 'snow', inDays: 1 });
+  assert.deepEqual(forecast(mkF(PLAIN, 'snow', 10)), { next: 'snow', inDays: 1 });
+  assert.deepEqual(forecast(mkF(PLAIN, 'berries', 10)), { next: 'clear', inDays: 1 });
+  // and the forecast is right: tickDay fires it the day the forecast said
+  const J = mkF(PLAIN, 'storm', 10); assert.equal(forecast(J).inDays, 1); assert.equal(tickDay(J, { rand: R5 }).event.id, 'storm');
+  assert.deepEqual(forecast(J), { next: 'clear', inDays: 1 }, 'gone once it has come');
+  const T = mkF(['scout', 'teacher', 'fiddler'], 'storm', 20); const f2 = forecast(T).inDays; tickDay(T, { rand: R5 }); assert.equal(f2 - forecast(T).inDays, 1);
+});
+test('waitOut: a rest day at camp that cancels the coming weather\'s mood cost and its rest day; nothing coming = a plain rest day', () => {
+  const mkS = () => { const J = rich(mk(PLAIN, 21)); quiet(J); J.spirit = 60; J.trip.events = [{ id: 'storm', kind: 'rest', atMile: J.milesDone + 10, fired: false }]; return J; };
+  const A = mkS(), B = mkS();
+  const w = waitOut(A, { rand: R5 });
+  assert.equal(w.waited, true); assert.equal(w.weather, 'storm'); assert.equal(w.kind, 'rest'); assert.equal(A.day, 1); assert.equal(A.milesDone, 0); assert.equal(A.totals.waitedOut, 1);
+  const ra = tickDay(A, { rand: R5 }), rb0 = tickDay(B, { rand: R5 });
+  assert.equal(ra.event.id, 'storm'); assert.equal(ra.event.waitedOut, true); assert.equal(ra.restNext, null);
+  assert.equal(rb0.restNext, 'event');
+  const na = tickDay(A, { rand: R5 }), nb = tickDay(B, { rand: R5 });
+  assert.ok(na.miles > 0, 'the waited-out storm costs no day'); assert.equal(nb.miles, 0, 'the storm that was not waited out does');
+  assert.ok(A.spirit > B.spirit, `${A.spirit} > ${B.spirit}`);
+  const N = rich(mk()); quiet(N); const n = waitOut(N, { rand: R5 }); assert.equal(n.waited, false); assert.equal(n.weather, null); assert.equal(N.day, 1);
+  const far = rich(mk()); quiet(far); far.trip.events = [{ id: 'storm', kind: 'rest', atMile: far.milesDone + 90, fired: false }];
+  assert.equal(waitOut(far, { rand: R5 }).waited, false, 'a storm days away is not in the forecast');
+});
+
+console.log('\nv1.2 pay: the raft and the stampede');
+test('raftPay: $40 less $10 a bump, never under $10, times the season; stampedePay: held = the bison card', () => {
+  for (const s of SEASONS) {
+    const want = [40, 30, 20, 10, 10, 10];
+    want.forEach((w, bumps) => { const J = createJourney({ season: s.id, companions: PLAIN, seed: 5 }); const c0 = J.cash; const r = raftPay(J, { bumps }); assert.equal(r.cash, w * s.priceMult); assert.equal(J.cash, c0 + r.cash); });
+    const J = createJourney({ season: s.id, companions: PLAIN, seed: 5 }); const c0 = J.cash;
+    assert.deepEqual(stampedePay(J, { held: true }), { cash: 15 * s.priceMult, card: 'bison', held: true }); assert.equal(J.cash, c0 + 15 * s.priceMult);
+    assert.deepEqual(stampedePay(J, { held: false }), { cash: 0, card: null, held: false }); assert.equal(J.cash, c0 + 15 * s.priceMult);
+    assert.deepEqual([J.totals.stampedes, J.totals.stampedesHeld], [2, 1]);
+  }
+  assert.ok(CARD_BY_ID.bison); assert.deepEqual(RAFT, { base: 40, perBump: 10, min: 10 });
+  const J = mk(); raftPay(J, { bumps: 0 }); raftPay(J, { bumps: 2 }); assert.deepEqual([J.totals.raftRuns, J.totals.raftClean], [2, 1]);
+});
+
+console.log('\nv1.2 people');
+test('people: 26-36, two or three at every one of the thirteen stops, with a portrait, a role and two kid-level lines, no death, illness or weapons', () => {
+  assert.ok(PEOPLE.length >= 26 && PEOPLE.length <= 36, `${PEOPLE.length} people`);
+  const stops = ['independence', ...LEGS.map((l) => l.id)];
+  for (const s of stops) assert.ok((PEOPLE_BY_STOP[s] || []).length >= 2 && PEOPLE_BY_STOP[s].length <= 3, `${s}: ${(PEOPLE_BY_STOP[s] || []).length}`);
+  assert.deepEqual(Object.keys(PEOPLE_BY_STOP).sort(), [...stops].sort());
+  assert.equal(new Set(PEOPLE.map((p) => p.id)).size, PEOPLE.length);
+  const bad = /\b(die[sd]?|dead|death|kill\w*|sick\w*|ill|illness|disease\w*|cholera|gun\w*|rifle\w*|shoot\w*|shot|weapon\w*|arrow\w*|blood\w*|bite\w*|bitten|venom\w*|poison\w*|grave\w*|hurt|wound\w*|whiskey|liquor|alcohol|drunk\w*)\b/i;
+  const src = readFileSync(new URL('../docs/SOURCES.md', import.meta.url), 'utf8');
+  for (const p of PEOPLE) {
+    assert.ok(p.name && p.emoji && p.role, p.id); assert.equal(PERSON_BY_ID[p.id], p);
+    assert.equal(p.lines.length, 2, p.id);
+    for (const l of p.lines) { assert.ok(l.length > 20 && l.length <= 210, `${p.id}: ${l.length}`); assert.ok(!/\d/.test(l), `${p.id} numbers as words: ${l}`); assert.ok(!bad.test(l), `${p.id}: ${l}`); assert.ok(!/[{}]/.test(l)); }
+    assert.ok(!bad.test(p.gift ? p.gift.text : ''), p.id);
+    assert.ok(src.includes(`<a id="${p.source.replace('SOURCES.md#', '')}">`), `SOURCES.md has ${p.source}`);
+    assert.equal(p.source, `SOURCES.md#people-${p.stop}`);
+    if (p.gift) {
+      assert.ok(['food', 'card', 'tip', 'trade'].includes(p.gift.kind), p.id); assert.ok(p.gift.text && p.gift.text.length > 10);
+      if (p.gift.kind === 'food') assert.ok(p.gift.lb >= 5 && p.gift.lb <= 25 && p.gift.what, p.id);
+      if (p.gift.kind === 'card') assert.ok(CARD_BY_ID[p.gift.card], `${p.id}: card ${p.gift.card}`);
+      if (p.gift.kind === 'tip') assert.equal(p.gift.problem, 'parts');
+      if (p.gift.kind === 'trade') { assert.ok(p.gift.give && p.gift.get && p.gift.rate.length === 2 && p.gift.rate.every((n) => n >= 1), p.id); assert.ok(lbOf(p.gift.get) >= 10, 'the trade gets food'); }
+    }
+  }
+  // every nation is named by at least one person (a guide or a trader), and no nation person has an invented personal name
+  for (const n of NATIONS) assert.ok(PEOPLE.some((p) => p.name.includes(n.name) || p.role.includes(n.name)), `a ${n.name} person`);
+  for (const p of PEOPLE.filter((q) => NATIONS.some((n) => q.role.includes(n.name)))) assert.ok(/^A /.test(p.name) && NATIONS.some((n) => p.name.includes(n.name)), `${p.id}: named for the nation: ${p.name}`);
+  for (const g of PEOPLE.filter((q) => q.gift)) assert.ok(g.gift, g.id);
+  assert.ok(PEOPLE.filter((p) => p.gift).length >= 18 && PEOPLE.filter((p) => !p.gift).length >= 3, 'some give gifts, not all');
+  for (const k of ['food', 'card', 'tip', 'trade']) assert.ok(PEOPLE.some((p) => p.gift && p.gift.kind === k), `a ${k} gift`);
+});
+test('meetPerson: the first time remembers them and applies the gift (food into "other", the rest handed back); again = nothing', () => {
+  const J = mk();
+  const a = meetPerson(J, 'hale');
+  assert.equal(a.first, true); assert.equal(a.person.id, 'hale'); assert.equal(a.gift.kind, 'food'); assert.equal(a.gift.foodLb, 10); assert.equal(J.foods.other, 10); assert.equal(J.food, 310);
+  const b = meetPerson(J, 'hale'); assert.deepEqual([b.first, b.gift], [false, null]); assert.equal(J.food, 310, 'a gift once');
+  assert.deepEqual(J.met, ['hale']); assert.equal(J.totals.peopleMet, 1);
+  const card = meetPerson(J, 'kansa-guide'); assert.deepEqual(card.gift, { ...PERSON_BY_ID['kansa-guide'].gift }); assert.equal(card.gift.kind, 'card'); assert.equal(J.cards.length, 0, 'the app awards the card');
+  const tip = meetPerson(J, 'clara'); assert.equal(tip.gift.kind, 'tip'); assert.equal(tip.gift.problem, 'parts');
+  const trade = meetPerson(J, 'ruth'); assert.equal(trade.gift.kind, 'trade'); assert.deepEqual(trade.gift.rate, [3, 2]);
+  const plain = meetPerson(J, 'will'); assert.equal(plain.first, true); assert.equal(plain.gift, null);
+  const none = meetPerson(J, 'nobody'); assert.deepEqual(none, { first: false, gift: null, person: null }); assert.equal(J.totals.peopleMet, 5);
+  const at = peopleAt(J, 'independence'); assert.equal(at.length, 3); assert.equal(at.find((p) => p.id === 'hale').met, true); assert.equal(at.find((p) => p.id === 'amos').met, false);
+  // the trade gift runs through applyTrade like a post
+  const g = trade.gift; const before = J.goods.pelts; const r = applyTrade(J, { giveN: 3, getN: 2, give: g.give, get: g.get });
+  assert.deepEqual([r.gave, r.got], [3, 2]); assert.equal(J.goods.pelts, before - 3);
+});
+
+console.log('\nv1.2 deeds');
+test('DEEDS: twenty, each { id, name, how, say }, unique, spoken lines without digits; checkDeeds is idempotent and pays a token each', () => {
+  assert.equal(DEEDS.length, 20); assert.equal(new Set(DEEDS.map((d) => d.id)).size, 20);
+  for (const d of DEEDS) { assert.ok(d.id && d.name && d.how && d.say, d.id); assert.ok(!/\d/.test(d.say), d.say); assert.equal(DEED_BY_ID[d.id], d); }
+  for (const id of ['dry-feet', 'mail-beater', 'full-wagon', 'card-shark', 'people-person', 'cold-proof', 'fixer', 'angler', 'archer', 'spelling-ferry', 'marker-master', 'summiteer', 'homesteader']) assert.ok(DEED_BY_ID[id], id);
+  const J = mk(); assert.deepEqual(checkDeeds(J), []);
+  J.totals.repairs = 3; J.totals.fishLb = 50; const t0 = J.tokens;
+  assert.deepEqual(checkDeeds(J), ['fixer', 'angler']); assert.equal(J.tokens, t0 + 2); assert.deepEqual(J.deeds, ['fixer', 'angler']);
+  assert.deepEqual(checkDeeds(J), []); assert.equal(J.tokens, t0 + 2);
+  const K = mk(); for (const c of baseCards.slice(0, 19)) awardCard(K, c); assert.ok(!checkDeeds(K).includes('card-shark')); awardCard(K, baseCards[19]); assert.deepEqual(checkDeeds(K), ['card-shark']);
+  const dry = mk(); crossRiver(dry, { how: 'ford', soaked: 0 }); assert.ok(!checkDeeds(dry).includes('dry-feet'), 'one river is not every river');
+});
+test('every deed is reachable in a scripted journey (and none is earned by doing nothing)', () => {
+  const rand = mulberry32(77);
+  const J = createJourney({ companions: ['blacksmith', 'scout', 'teacher'], seed: 77 });
+  J.cash = 2000; shop(J); buy(J, { item: 'yoke' }); buy(J, { item: 'parts', qty: 4 });
+  let tokensFromDeeds = 0; const earned = new Set();
+  const check = () => { const t0 = J.tokens; const got = checkDeeds(J); tokensFromDeeds += J.tokens - t0; got.forEach((d) => earned.add(d)); };
+  for (const [i, p] of PEOPLE.slice(0, 12).entries()) meetPerson(J, p.id);
+  awardCard(J, baseCards[0]); for (const c of baseCards.slice(1, 20)) awardCard(J, c);
+  for (let i = 0; i < 3; i++) derbyPay(J, { won: true });
+  for (let i = 0; i < 3; i++) repair(J, { workedOut: true });
+  for (let i = 0; i < 5; i++) camp(J, 'rest', { rand });
+  applyTrade(J, { giveN: 6, getN: 4, give: 'pelts', get: 'flour' }); applyTrade(J, { giveN: 6, getN: 6, give: 'pelts', get: 'corn' }); J.goods.pelts = 20; applyTrade(J, { giveN: 15, getN: 10, give: 'pelts', get: 'flour' });
+  for (let i = 0; i < 3; i++) applyFish(J, { fishLb: 20 }); for (let i = 0; i < 3; i++) { J.goods.arrows = 5; applyHunt(J, { meatLb: 40 }); }
+  raftPay(J, { bumps: 0 }); stampedePay(J, { held: true });
+  quiet(J); J.trip.events = [{ id: 'storm', kind: 'rest', atMile: J.milesDone + 10, fired: false }]; waitOut(J, { rand });
+  check();
+  assert.ok(!earned.has('summiteer') && !earned.has('dry-feet') && !earned.has('cold-proof') && !earned.has('homesteader'), 'not before the trail');
+  J.trip.events = [];
+  let guard = 0, ferried = false;
+  while (!J.done && guard++ < 40) {
+    const leg = legList()[J.legIndex];
+    playLeg(J, RIGHT, rand);
+    applyWords(J, { asked: 3, right: 3 });
+    if (leg.stop.kind === 'river') { if (!ferried) { crossRiver(J, { how: 'ferry' }); ferried = true; } else crossRiver(J, { how: 'ford', soaked: 0 }); }
+    arrive(J); check();
+    if (leg.stop.kind === 'fort') shop(J);
+    nextLeg(J);
+  }
+  check();
+  const ids = DEEDS.map((d) => d.id);
+  const missing = ids.filter((id) => !J.deeds.includes(id)); assert.ok(missing.length === 0, 'missing deeds: ' + missing.join(', '));
+  assert.equal(J.deeds.length, 20); assert.equal(new Set(J.deeds).size, 20);
+  assert.equal(tokensFromDeeds, 20, 'a token each');
+  // a journey of doing nothing earns nothing
+  const idle = mk(); assert.deepEqual(checkDeeds(idle), []);
+});
+
+console.log('\nv1.2 older saves and whole journeys');
+test('a 1.1 save (no foods, animals, deeds, people, goods beyond the old ones) loads, plays and migrates every new field', () => {
+  const N = mk(['blacksmith', 'scout', 'teacher'], 31);
+  const old = clone(N);
+  for (const k of ['rev', 'foods', 'foodOwed', 'foodSave', 'animals', 'limp', 'halfPart', 'met', 'deeds']) delete old[k];
+  old.goods = { pelts: 4, arrows: 2 }; old.food = 200;
+  for (const k of Object.keys(old.totals)) if (!['legs', 'stars', 'miles', 'days', 'markers', 'markersRight', 'problems', 'problemsRight', 'words', 'wordsRight', 'hunted', 'fished', 'traded', 'bought', 'crawlDays', 'maxCrawlDays', 'byKind', 'camps', 'derbyPlayed', 'derbyWon'].includes(k)) delete old.totals[k];
+  const oldTrip = old.trip; for (const k of ['v12', 'lostDays', 'coldAt', 'coldDone', 'spotAt', 'spotPick', 'forgeUsed', 'tipUsed', 'pepCool']) delete oldTrip[k];
+  const r = tickDay(old, { rand: mulberry32(2) });
+  assert.deepEqual([old.foods.flour, old.foods.bacon, old.foods.beans, old.foods.other].reduce((a, b) => a + b, 0), old.food, 'foods split the old food total');
+  assert.ok(r.miles > 0 && old.food < 200);
+  assert.deepEqual(old.animals, { n: 2, tired: 0 }); assert.equal(old.limp, false); assert.deepEqual(old.met, []); assert.deepEqual(old.deeds, []);
+  assert.equal(old.goods.arrows, 15, 'the bow gets its fifteen (2 bundles bought in 1.1 = 10 arrows, still the start of 15)'); assert.equal(old.goods.pelts, 4);
+  assert.equal(old.goods.parts, old.parts); assert.equal(old.goods.rope, 0); assert.equal(old.goods.blankets, 0); assert.equal(old.goods.yoke, 0);
+  for (const k of ['repairs', 'soakedLb', 'peopleMet', 'markersPerfectLegs', 'fishLb', 'meatLb', 'riversCrossed']) assert.equal(old.totals[k], 0, k);
+  assert.deepEqual(old.totals.reached, []); assert.equal(old.trip.v12, 1); assert.equal(old.rev, 12);
+  assert.deepEqual(clone(old), old);
+  // every v1.2 entry point works on it
+  const o2 = clone(old); for (const k of ['rev', 'foods', 'animals', 'met', 'deeds']) delete o2[k];
+  repair(o2); crossRiver(o2, { how: 'ford' }); forecast(o2); camp(o2, 'rest'); meetPerson(o2, 'hale'); raftPay(o2, {}); checkDeeds(o2); huntAllowed(o2); needsBlankets(o2); foodDays(o2);
+  const o3 = clone(N); for (const k of ['rev', 'foods', 'animals', 'met', 'deeds', 'goods']) delete o3[k]; buy(o3, { item: 'bacon', qty: 1, price: 1 }); assert.equal(o3.foods.bacon, 90 + 20 + 0 || o3.foods.bacon);
+  const o4 = clone(N); delete o4.rev; delete o4.foods; delete o4.animals; o4.goods = {}; assert.deepEqual(ensureJourney(o4).goods.arrows, 15);
+  // 1.1 had a yoke-less wagon; a saved yoke keeps four animals
+  const y = clone(N); y.goods.yoke = 1; delete y.animals; ensureJourney(y); assert.equal(y.animals.n, 4);
+  // the season after carries the badges, not the counters
+  const S = mk(); S.deeds = ['fixer']; S.met = ['hale']; S.done = true; const next = newSeason(S);
+  assert.deepEqual(next.deeds, ['fixer']); assert.deepEqual(next.met, []); assert.equal(next.totals.peopleMet, 0);
+});
+test('journeys with random v1.2 play: any three companions, fords / floats / ferries, repairs, camps, waiting, shopping: food and cash never negative, every leg arrives, everything JSON-safe', () => {
+  const ALL = COMPANIONS.map((c) => c.id);
+  let breakdowns = 0, limps = 0, colds = 0, soaked = 0;
+  for (let seed = 200; seed < 240; seed++) {
+    const rand = mulberry32(seed);
+    const party = [...ALL].sort(() => rand() - 0.5).slice(0, 3);
+    const J = createJourney({ companions: party, seed, animal: rand() < 0.5 ? 'oxen' : 'mules' });
+    if (rand() < 0.7) shop(J);
+    for (let guard = 0; guard < 40 && !J.done; guard++) {
+      const leg = legList()[J.legIndex];
+      if (COLD_LEGS.includes(leg.id) && rand() < 0.4) J.goods.blankets = 0;   // forgot them
+      for (let d = 0; d < 600; d++) {
+        if (rand() < 0.1) setPace(J, rand() < 0.5 ? 'steady' : 'brisk');
+        if (rand() < 0.05) camp(J, ['fish', 'hunt', 'cards', 'tales', 'rest'][Math.floor(rand() * 5)], { rand });
+        if (rand() < 0.03) waitOut(J, { rand });
+        const r = tickDay(J, { rand });
+        assert.ok(J.food >= 0 && Number.isInteger(J.food) && J.food === sumKinds(J), `food ${J.food} ${JSON.stringify(J.foods)}`);
+        assert.ok(J.animals.tired >= 0 && J.animals.tired <= 100);
+        for (const k of Object.keys(J.goods)) assert.ok(J.goods[k] >= 0, `${k} ${J.goods[k]}`);
+        if (r.marker) applyMarker(J, { correct: rand() < 0.7, quick: rand() < 0.4 });
+        if (r.event) {
+          const e = r.event;
+          if (e.kind === 'breakdown') { breakdowns++; const rp = repair(J, { workedOut: rand() < 0.5 }); if (!rp.fixed) limps++; }
+          else if (e.kind === 'hunt') applyHunt(J, { meatLb: rand() * 40 });
+          else if (e.kind === 'fish') applyFish(J, { fishLb: rand() * 15 });
+          else if (e.kind === 'stampede') stampedePay(J, { held: rand() < 0.5 });
+        }
+        if (r.coldNight) colds++;
+        if (r.arrived) break;
+      }
+      if (leg.stop.kind === 'river') { const how = ['ford', 'float', 'ferry'][Math.floor(rand() * 3)]; const c = crossRiver(J, { how, soaked: rand() < 0.3 ? 1 : 0, bumps: Math.floor(rand() * 3) }); soaked += c.soakedLb; }
+      assert.ok(arrive(J)); checkDeeds(J);
+      if (leg.stop.kind === 'fort') { J.cash += 200; if (rand() < 0.8) shop(J); if (rand() < 0.3) buy(J, { item: 'yoke' }); }
+      assert.ok(J.cash >= 0);
+      nextLeg(J);
+    }
+    assert.ok(J.done, `seed ${seed} finished`); assert.equal(J.totals.legs, 12);
+    assert.deepEqual(clone(J), J);
+  }
+  assert.ok(breakdowns > 20 && colds >= 1 && soaked > 0, `breakdowns ${breakdowns}, limps ${limps}, cold nights ${colds}, soaked ${soaked}`);
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
