@@ -2,8 +2,10 @@
 // Journey stream's arrive()), the cash rows (arrival + stars = total; they always add up), the trade tokens earned on
 // the leg, the sticker, and the crate (a gold crate on a 3-star leg, Trail Blazer's crate idea) opened with a tap. Then
 // Camp (the title, the journey waits here), Journal, or Next leg. Stopping here is always fine.
+// v1.2 (app two): "Deeds earned" lists the badges earned on the leg (result.deeds: ids; src/ui/deeds.js).
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { CRATES, KIND_NAME, itemOf } from './looks.js';
+import { deedChips } from './deeds.js';
 
 const STAR_NAMES = ['Arrived', 'Everyone happy', 'Every marker right'];
 
@@ -30,6 +32,10 @@ export function createResults(app) {
     const sticker = $('#res-sticker');
     sticker.hidden = !r.sticker;
     if (r.sticker) sticker.replaceChildren(h('span', { class: 'tc-emoji', 'aria-hidden': 'true' }, r.sticker.emoji || '★'), h('span', {}, `Sticker: ${r.sticker.name}`));
+    const dd = $('#res-deeds');
+    const earned = Array.isArray(r.deeds) ? r.deeds : [];
+    dd.hidden = !earned.length;
+    dd.replaceChildren(...(earned.length ? [h('b', {}, `Deed${earned.length > 1 ? 's' : ''} earned on this leg`), ...deedChips(earned)] : []));
     paintCrate();
     $('#res-next-text').textContent = r.home ? 'A new season' : 'Next leg';
     $('#res-next').dataset.action = r.home ? 'season' : 'next';

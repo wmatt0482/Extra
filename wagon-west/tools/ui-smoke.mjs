@@ -32,6 +32,13 @@
 // the Outfit's skill lines and the party summary (also on the title); the family map (a second player's wagon at their
 // stop, a name only on a tap); the mock scene's ford / float / raft / stampede scripts. The sections that need the
 // journey stream's v1.2 API (foodDays, forecast, repair, …) say "SKIP" when the tree does not have it yet.
+// v1.2 (app part two; PLAY_ONLY=1 runs only this part, on a journey of its own): the river is a choice (a card with Ford,
+// Float and Ferry; the ford dry and soaked, the float with bumps and no rope / with rope / with Tomas / with fractions
+// off, the ferry's three words recorded; leaving mid-crossing), the Columbia raft (leaving mid-raft leaves the leg at mile
+// 0; four bends as facts "Bend n of 4", raftPay, the valley and the results), the stampede (held with its bison card and
+// deed pop, not held, skipped), people at the stops (the Talk row; food, tip, trade and card gifts; met marks; "People
+// person"), the Journal's Deeds page and "People met", camp with no arrows and "Wait out the storm"; the audits on every
+// new screen and a kid-rule text audit.
 import { execSync, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
@@ -137,6 +144,7 @@ const W = (page) => J(page, () => {
   return { screen: w.screen, marker: w.markerPanel.state, mAns: w.markerPanel.answer, mReal: /^Marker \d+ of \d+$/.test((document.querySelector('#mk-chip') || {}).textContent || '') && document.querySelector('#mk-title').textContent === 'Mile marker', mTitle: document.querySelector('#mk-title').textContent, problem: w.problemPanel.state, pAns: w.problemPanel.answer, pKind: w.problemPanel.problem && w.problemPanel.problem.kind,
     card: w.card.isOpen, cardTitle: w.card.title, spell: w.spellPanel.isOpen ? w.spellPanel.mode : null, word: w.spellPanel.word, kbOn: !!document.querySelector('#sp-keyboard:not(.is-disabled)'),
     mini: w.mini, travel: w.travel, rope: w.river.rope, rvRope: !document.querySelector('#rv-rope').hidden, rvFoot: !document.querySelector('#rv-foot').hidden,
+    rvChoice: !document.querySelector('#rv-choice').hidden, stopOpen: w.peopleUI.isOpen, stopBusy: w.peopleUI.busy, v2play: w.v2.play,
     poFoot: !document.querySelector('#po-foot').hidden, storeOpen: w.store.isOpen, storeBusy: w.store.busy, journey: w.save.journey && { legIndex: w.save.journey.legIndex, legId: w.save.journey.legId, milesDone: w.save.journey.milesDone, cash: w.save.journey.cash, food: w.save.journey.food, tokens: w.save.journey.tokens, rations: w.save.journey.rations, pace: w.save.journey.pace } };
 });
 async function typeDigits(page, root, digits) {
@@ -181,6 +189,8 @@ async function drive(page, until, plan = {}, timeout = 90000) {
     }
     else if (s.spell && ['write', 'cover', 'copy'].includes(s.spell) && s.kbOn && s.word) { if (s.spell === 'write') log.words.push(s.word); await typeWord(page, s.word); }
     else if (s.mini) { if (lastMini !== s.mini.kind) { log.minis++; lastMini = s.mini.kind; } }
+    else if (s.screen === 'river' && s.rvChoice) { const how = plan.river || 'ferry'; log.river = how; await page.click(`#rv-opts .rv-opt[data-how="${how}"]`); }       // v1.2: rivers are a choice (the default is the ferry: three words)
+    else if (s.screen === 'stop' && s.stopOpen && !s.stopBusy && !s.v2play) { log.stops = (log.stops || 0) + 1; if (plan.onStop) await plan.onStop(s, log); await page.click('#stop-go'); }     // v1.2: the Talk row; its big button goes on
     else if (s.screen === 'river' && s.rvRope && s.rope && !s.rope.done && !s.rope.flying) {
       await dragRope(page, s.rope.f.n / s.rope.f.d);
       await page.click('#rv-throw'); log.throws++;
@@ -407,7 +417,7 @@ async function runLayout(browser, layout) {
   globalThis.__shownChecked = globalThis.__coverChecked = globalThis.__spellShot = globalThis.__ropeShot = globalThis.__miniShot = globalThis.__cardShot = false;
   check(leg1.markers.length >= 4 && leg1.markers.filter((m) => m === 'missed').length === 1, `leg 1: ${leg1.markers.length} mile markers (one missed and fixed): ${leg1.markers.join(', ')}`);
   check(eliAsked && leg1.problems.includes('distance'), `leg 1: Ask Eli on the HUD asked a 'distance' problem (${leg1.problems.join(', ')})`);
-  check(leg1.words.length === 3 && leg1.throws >= 1, `the river: three words spelled (${leg1.words.join(', ')}) and the rope thrown (${leg1.throws}×)`);
+  check(leg1.words.length === 3 && leg1.river === 'ferry', `the river (the ferry, the default pick): three words spelled (${leg1.words.join(', ')}); the rope toss belongs to the float, below`);
   check(leg1.cards.some((c) => /Kansas River/i.test(c)), `the lookout card at the stop (${leg1.cards.join(' · ')})`);
   check(leg1.cards.includes('Make camp tonight?'), 'the evening of the arrival offers Camp before the results ("Make camp tonight?" / "On to the results")');
 
@@ -422,6 +432,8 @@ async function runLayout(browser, layout) {
     await page.click('#res-crate-open');
     check(await J(page, () => !!document.querySelector('#res-crate-reveal')), 'the crate opens with a tap (a look or cash)');
   }
+  const rd1 = await J(page, () => ({ chips: [...document.querySelectorAll('#res-deeds .res-deed')].map((c) => c.dataset.deed), hidden: document.querySelector('#res-deeds').hidden }));
+  check(!rd1.hidden && rd1.chips.includes('spelling-ferry'), `v1.2 results: the deeds earned on the leg are listed (${rd1.chips.join(', ')}: a ferry fare with every word right)`);
   await shot(page, layout, '14-results');
   await audit(page, layout.insets, 'results');
   await grab();
@@ -527,6 +539,12 @@ async function runLayout(browser, layout) {
   check(await J(page, (n) => document.querySelector('.cards-grid button.tcard[data-card="kansas-river"]').classList.contains('flipped') && window.__spoken.length > n, flip0), 'a card flips over on a tap to its fact, read aloud');
   await shot(page, layout, '19b-journal-cards', 500);
   await grab();
+  await page.click('#jr-tabs [data-page="deeds"]');
+  const dd0 = await J(page, () => ({ badges: document.querySelectorAll('.dd-badge').length, lit: [...document.querySelectorAll('.dd-badge.got')].map((b) => b.dataset.deed) }));
+  check(dd0.badges === 20 && dd0.lit.includes('spelling-ferry'), `v1.2 journal → Deeds: 20 badges, the earned ones lit (${dd0.lit.join(', ')})`);
+  await audit(page, layout.insets, 'journal (deeds)');
+  await page.click('#jr-tabs [data-page="map"]');
+  check(await J(page, () => /^People met · \d+ of \d+$/.test(document.querySelector('#met-card b').textContent)), 'v1.2 journal → Map: "People met" below the map');
   await page.click('#screen-journal [data-back="title"]');
   await page.waitForSelector(visibleSel('#screen-title'));
   const t2 = await J(page, () => ({ label: document.querySelector('#btn-trail-label').textContent, streak: Number(document.querySelector('#title-streak-n').textContent), done: document.querySelector('#title-map').dataset.legsDone }));
@@ -671,7 +689,7 @@ async function sideGames(page, layout, grab) {
     if (await page.waitForSelector(visibleSel('#screen-camp'), { timeout: 1500 }).then(() => true, () => false)) break;
   }
   mid = (await W(page)).journey.milesDone;
-  const camp0 = await J(page, () => ({ acts: [...document.querySelectorAll('.camp-act')].map((b) => b.dataset.act), back: document.querySelector('#camp-back').textContent.trim(), stop: !document.querySelector('#camp-stop').hidden, backdrop: window.__wagonWest.scene.getState().backdrop, day: window.__wagonWest.save.journey.day, tokens: window.__wagonWest.save.journey.tokens }));
+  const camp0 = await J(page, () => ({ acts: [...document.querySelectorAll('.camp-act')].map((b) => b.dataset.act).filter((a) => a !== 'wait'), back: document.querySelector('#camp-back').textContent.trim(), stop: !document.querySelector('#camp-stop').hidden, backdrop: window.__wagonWest.scene.getState().backdrop, day: window.__wagonWest.save.journey.day, tokens: window.__wagonWest.save.journey.tokens }));
   check(camp0.acts.join() === 'fish,hunt,cards,tales,rest' && camp0.back === 'Back to the trail' && camp0.stop && camp0.backdrop === 'camp', `"Camp" on the trail opens Camp on the camp backdrop: ${camp0.acts.join(', ')} · "${camp0.back}" · "Stop for today"`);
   check((await musicNow(page)).mood === 'camp', 'music: the camp mood at camp');
   await audit(page, layout.insets, 'camp');
@@ -1257,6 +1275,7 @@ async function voiceTest(browser, layout) {
       }
     },
   };
+  plan.river = 'float';          // v1.2: the float has the rope toss (the landing sentence in the natural voice); the letter's three words follow at the fort
   await drive(page, (s) => s.screen === 'results', plan);
   await page.click('#res-next');
   await page.waitForSelector(visibleSel('#screen-trail'));
@@ -1267,7 +1286,7 @@ async function voiceTest(browser, layout) {
   check(seen.river && seen.river.ok, `the river's landing sentence is said by the natural voice ("${seen.river && seen.river.t}")`);
   check(seen.letter && seen.letter.ok, `the letter (its opening "${seen.letter && seen.letter.opening}" and the read-back) is said by the natural voice${seen.letter && !seen.letter.ok ? ' — ' + seen.letter.why : ''}`);
   const words = await J(page, () => window.__cloudPlayed.filter((t) => /^The word is, /.test(t)).length);
-  check(words >= 6, `the river and letter words are presented by clips too (${words} words)`);
+  check(words >= 3, `the letter's words are presented by clips too (${words} words)`);
   check(!ttsNetwork, 'no request reached /api/tts (the fake backend answered everything)');
 
   // Parents → Options: the voice line and "Say a test line"
@@ -1288,6 +1307,509 @@ async function voiceTest(browser, layout) {
   check(res.engine === 'cloud' && res.played.includes('Wagon West is ready to roll.') && /natural voice/.test(res.text), `Say a test line: "${res.text}"`);
   await shot(page, layout, 'v01-pz-voice');
   check(errors.length === 0, `natural voice: no console errors${errors.length ? ' — ' + errors.slice(0, 4).join(' | ') : ''}`);
+  await ctx.close();
+}
+
+
+// ---------- v1.2 (app part two): rivers as a choice, the Columbia raft, the stampede, people, deeds, camp's storm ----------
+// A journey of its own (one made by the Outfit's own call), so finishing the valley does not touch the other sections'.
+/** The party stands at the stop of leg `legId`, as after the last mile: the stop flow starts (the lookout card, the Talk row …). */
+const toStop = async (page, legId) => {
+  await J(page, (legId) => {
+    const w = window.__wagonWest, Jn = w.save.journey, leg = w.JA.startLeg(Jn, legId);
+    Jn.milesDone = leg.miles;
+    Jn.trip.arrived = true;
+    w.save.trip = { legId, stage: 'stop', events: [], asked: { ration: 0, distance: 0 }, markers: 0, at: Date.now(), tokens0: Jn.tokens };
+    w.app.persist(); w.app.go('title');
+    try { w.card.close(); } catch (_) { /* a card of the trail left open */ }
+  }, legId);
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.click('#btn-trail');
+};
+/** The party is at mile 0 of leg `legId` on the trail. */
+const toTrail = async (page, legId) => {
+  await J(page, (legId) => {
+    const w = window.__wagonWest, Jn = w.save.journey;
+    w.JA.startLeg(Jn, legId);
+    Jn.milesDone = 0;
+    if (Jn.trip) Jn.trip.tipUsed = true;            // (Nora's tip would be the first thing a marker shows)
+    w.save.trip = { legId, stage: 'trail', events: [], asked: { ration: 0, distance: 0 }, markers: 0, at: Date.now(), tokens0: Jn.tokens };
+    w.app.persist(); w.app.go('title');
+    try { w.card.close(); } catch (_) { /* a card of the trail left open */ }
+  }, legId);
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.click('#btn-trail');
+};
+const jn = (page) => J(page, () => { const Jn = window.__wagonWest.save.journey; return { cash: Jn.cash, food: Jn.food, flour: Jn.foods.flour, other: Jn.foods.other, rope: Jn.goods.rope, blankets: Jn.goods.blankets, tokens: Jn.tokens, cards: Jn.cards.slice(), deeds: Jn.deeds.slice(), met: Jn.met.slice(), river: Jn.trip && Jn.trip.river, totals: { ...Jn.totals }, day: Jn.day, milesDone: Jn.milesDone }; });
+const spokenHas = async (page, re) => {
+  const ok = await page.waitForFunction((src) => window.__spoken.some((t) => new RegExp(src).test(t)), re.source, { timeout: 5000 }).then(() => true, () => false);
+  if (!ok) console.log('    (not spoken: ' + re + '; the last said: ' + JSON.stringify(await J(page, () => window.__spoken.slice(-4).map((t) => t.slice(0, 50)))) + ')');
+  return ok;
+};
+
+async function playSetup(browser, layout) {
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await routeFonts(ctx);
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\./.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  await page.addInitScript(({ insets }) => {
+    if (!sessionStorage.getItem('wwPlay')) {
+      localStorage.clear();
+      const now = Date.now();
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0, options: {}, optionsUpdatedAt: {}, removedPlayers: [], migrated: true, lastPlayer: 'pmia' }));
+      sessionStorage.setItem('wwPlay', '1');
+    }
+    window.__wwScript = { daySec: 0.12, beat: 0.15 };
+    window.__mockScript = { shotMs: 80 };
+    window.__spoken = [];
+    window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 30); }, cancel() {}, addEventListener() {} };
+    document.addEventListener('DOMContentLoaded', () => {
+      const st = document.createElement('style');
+      st.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(st);
+    });
+  }, { insets: layout.insets });
+  await page.goto(URL0, { waitUntil: 'networkidle' });
+  await page.evaluate(() => document.fonts && document.fonts.ready);
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'mules', companions: ['blacksmith', 'teacher', 'fiddler'] }, { fresh: true }); });
+  await page.waitForSelector(visibleSel('#screen-store'));
+  await page.click('#store-done');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen);
+  await page.click('#tc-go');
+  await page.waitForSelector(visibleSel('#screen-trail'));
+  await J(page, () => window.__wagonWest.app.go('title'));
+  await page.waitForSelector(visibleSel('#screen-title'));
+  return { ctx, page, errors };
+}
+
+const TEXT = (page, sel) => J(page, (sel) => (document.querySelector(sel) || {}).textContent || '', sel);
+
+async function v12Rivers(page, layout, grab) {
+  console.log('  -- v1.2 (app two): rivers as a choice --');
+  await J(page, () => { const m = window.__mockScript; delete m.ford; delete m.bumps; });
+  const watch = () => J(page, () => {
+    window.__rvSeen = []; window.__rvPlaying = null;
+    const st = document.querySelector('#rv-status'), scr = document.querySelector('#screen-river');
+    new MutationObserver(() => window.__rvSeen.push(st.textContent)).observe(st, { childList: true, characterData: true, subtree: true });
+    new MutationObserver(() => { if (scr.classList.contains('rv-playing') && !window.__rvPlaying) window.__rvPlaying = { pe: getComputedStyle(scr).pointerEvents, title: document.querySelector('#rv-play-title').textContent, play: !document.querySelector('#rv-play').hidden }; }).observe(scr, { attributes: true, attributeFilter: ['class'] });
+  });
+  const seenStatus = () => J(page, () => window.__rvSeen || []);
+  const atChoice = async (setup, legId = 'kansas-river') => {
+    await setJ(page, setup);
+    await toStop(page, legId);
+    await drive(page, (s) => s.screen === 'river' && s.rvChoice, {}, 40000);
+  };
+  const pickAndCross = async (how, extra = {}) => {
+    await watch();
+    await page.click(`#rv-opts .rv-opt[data-how="${how}"]`);
+    const plan = { river: how, async onEach(s) { if (extra.onEach) await extra.onEach(s); } };
+    await drive(page, (s) => s.screen === 'river' && s.rvFoot, plan, 40000);
+    return J(page, () => { const r = window.__wagonWest.river.last; return { how: r.how, res: r.result, text: document.querySelector('#rv-result').textContent, rope: r.rope, words: r.words, playing: window.__rvPlaying }; });
+  };
+
+  // ----- the choice card -----
+  await atChoice(`J.foods = { flour: 300, bacon: 100, beans: 100, other: 0 }; J.goods.rope = 0; J.goods.arrows = 15; J.deeds = []; J.totals.crossed = [];`);
+  const ch = await J(page, () => ({ opts: [...document.querySelectorAll('#rv-opts .rv-opt')].map((b) => ({ how: b.dataset.how, name: b.querySelector('.rv-opt-name').textContent, line: b.querySelector('.rv-opt-line').textContent, h: b.getBoundingClientRect().height })),
+    ask: document.querySelector('#rv-ask').textContent, note: (document.querySelector('.rv-opt-note') || {}).textContent, title: document.querySelector('#rv-title').textContent, words: document.querySelector('#rv-words').hidden, rope: document.querySelector('#rv-rope').hidden }));
+  check(ch.opts.map((o) => o.how).join() === 'ford,float,ferry' && ch.opts.map((o) => o.name).join() === 'Ford,Float,Ferry' && ch.ask === 'How will you cross the river?', `the river is a choice: ${ch.opts.map((o) => o.name).join(' · ')} ("${ch.ask}")`);
+  check(ch.opts[0].line === 'Walk the wagon across. Tap on the calm water.' && ch.opts[1].line === 'Raft it over: toss the rope, then steer past the rocks.' && ch.opts[2].line === "The ferryman's fare: spell this week's three words.", 'one line each: Ford, Float and Ferry say what they are');
+  check(ch.opts.every((o) => o.h >= 70) && ch.words && ch.rope, 'three big buttons, and nothing else is on the screen yet (no words, no rope)');
+  check(/^No rope: a bump can soak a sack of flour\.$/.test(ch.note), `the Float says what the supplies mean: "${ch.note}"`);
+  check(await spokenHas(page, /How will you cross the river/), 'the choice is read aloud');
+  await shot(page, layout, 'p01-river-choice');
+  await audit(page, layout.insets, 'river (the choice)');
+  await grab();
+
+  // ----- Ford, dry: the timing tap on the scene -----
+  const f0 = await jn(page);
+  const dry = await pickAndCross('ford');
+  const f1 = await jn(page);
+  const seen1 = await seenStatus();
+  check(dry.playing && dry.playing.pe === 'none' && dry.playing.title === 'Ford the river' && dry.playing.play, `the ford: the scene gets the taps (the screen lets the pointer through: ${dry.playing && dry.playing.pe}) under a status card "${dry.playing && dry.playing.title}"`);
+  check(seen1.includes('Good push!') && seen1.includes('Whoa, a wave!'), `the ford's status line: ${[...new Set(seen1)].map((x) => `"${x}"`).join(', ')}`);
+  check(dry.res.how === 'ford' && dry.res.soakedLb === 0 && f1.flour === f0.flour && f1.river && f1.river.how === 'ford' && /everything stays dry/.test(dry.text) && dry.text === dry.res.line, `a dry ford: crossRiver(J, { how: 'ford', soaked: 0 }), the flour stays at ${f1.flour} lb, "${dry.text}"`);
+  check(await spokenHas(page, /everything stays dry/), "the crossing's line is read aloud");
+  check(await J(page, () => !document.querySelector('#rv-foot').hidden && document.querySelector('#rv-go').textContent.includes('Roll on')), 'then "Across the river!" and "Roll on"');
+  await shot(page, layout, 'p02-ford-dry');
+  await audit(page, layout.insets, 'river (a dry ford)');
+  await grab();
+
+  // ----- Ford, soaked: one sack of flour, never more -----
+  await page.evaluate(() => { window.__mockScript.ford = 'soaked'; });
+  await setJ(page, `J.foods.flour = 300;`);
+  await toStop(page, 'kansas-river');
+  await drive(page, (s) => s.screen === 'river' && s.rvChoice, {}, 40000);
+  const fs0 = await jn(page);
+  const wet = await pickAndCross('ford');
+  const fs1 = await jn(page);
+  check(wet.res.soakedLb === 25 && fs1.flour === fs0.flour - 25 && /soaks a sack of flour/.test(wet.text), `a soaked ford: one sack of flour, 25 lb (${fs0.flour} → ${fs1.flour}), "${wet.text}"`);
+  check(await toastWith(page, /A sack of flour got soaked\. Soggy biscuits tonight!/, 3000) && await spokenHas(page, /Soggy biscuits tonight/), 'and its own line, shown and read aloud: "A sack of flour got soaked. Soggy biscuits tonight!"');
+  await shot(page, layout, 'p03-ford-soaked');
+  await audit(page, layout.insets, 'river (a soaked ford)');
+  await page.evaluate(() => { delete window.__mockScript.ford; });
+
+  // ----- Float with no rope and two bumps: the rope toss first, then the steering; two bumps soak two sacks -----
+  await page.evaluate(() => { window.__mockScript.bumps = 2; });
+  await atChoice(`J.foods.flour = 300; J.goods.rope = 0;`);
+  const fl0 = await jn(page);
+  const ropeA = { shot: false };
+  const bumpy = await pickAndCross('float', { async onEach(s) { if (s.screen === 'river' && s.rvRope && !ropeA.shot) { ropeA.shot = true; await shot(page, layout, 'p04-float-rope', 50); await audit(page, layout.insets, 'river (the rope toss, float)'); await grab(); } } });
+  const fl1 = await jn(page);
+  const seen2 = await seenStatus();
+  check(bumpy.rope && bumpy.rope.throws >= 1 && ropeA.shot, `the float starts with the rope toss (${bumpy.rope && bumpy.rope.throws} throw${bumpy.rope && bumpy.rope.throws > 1 ? 's' : ''}), then the steering run`);
+  check(seen2.includes('Bump! A rock. Hold on.') && bumpy.playing && bumpy.playing.title === 'Float across' && bumpy.playing.pe === 'none', `the float's status line: "${seen2.filter(Boolean)[0]}" (the screen lets the pointer through: ${bumpy.playing && bumpy.playing.pe})`);
+  check(bumpy.res.how === 'float' && bumpy.res.soakedLb === 50 && fl1.flour === fl0.flour - 50 && fl1.rope === 0 && !bumpy.res.ropeUsed && /Without a rope/.test(bumpy.text), `no rope, two bumps: two sacks soaked (${fl0.flour} → ${fl1.flour} lb), "${bumpy.text}"`);
+  await shot(page, layout, 'p05-float-bumps');
+  await audit(page, layout.insets, 'river (a bumpy float)');
+
+  // ----- Float with a coil of rope and one bump: the rope holds, one coil used -----
+  await page.evaluate(() => { window.__mockScript.bumps = 1; });
+  await atChoice(`J.foods.flour = 300; J.goods.rope = 2;`);
+  check(await J(page, () => document.querySelector('.rv-opt-note').dataset.safe === 'true' && /rope/.test(document.querySelector('.rv-opt-note').textContent)), `with rope the Float's note is good news: "${await TEXT(page, '.rv-opt-note')}"`);
+  const rp0 = await jn(page);
+  const roped = await pickAndCross('float');
+  const rp1 = await jn(page);
+  check(roped.res.ropeUsed && rp1.rope === rp0.rope - 1 && rp1.flour === rp0.flour && /rope holds it steady/.test(roped.text), `a coil of rope: the bump costs nothing (rope ${rp0.rope} → ${rp1.rope}, flour ${rp1.flour} lb), "${roped.text}"`);
+  check(await toastWith(page, /The rope held the raft steady/, 3000), 'and a line says the coil is used up');
+
+  // ----- Float with no bumps, fractions off: straight to the steering run, a smooth crossing -----
+  await page.evaluate(() => { window.__mockScript.bumps = 0; });
+  await J(page, () => { window.__wagonWest.app.settings.fractions = false; });
+  await atChoice(`J.foods.flour = 300; J.goods.rope = 0;`);
+  const clean = await pickAndCross('float');
+  await J(page, () => { window.__wagonWest.app.settings.fractions = true; });
+  check(clean.rope === null && clean.res.soakedLb === 0 && /without a single bump/.test(clean.text), `"Fractions at rivers" off skips the rope toss; no bumps: "${clean.text}"`);
+
+  // ----- Float with Tomas the carpenter: a bump is just a wobble, and his skill line shows -----
+  await page.evaluate(() => { window.__mockScript.bumps = 1; });
+  await atChoice(`J.foods.flour = 300; J.goods.rope = 0; J.companions = ['carpenter', 'teacher', 'fiddler']; J.party = J.companions.map((id) => ({ id, mood: J.mood }));`);
+  check(await J(page, () => /Tomas steadies the raft/.test(document.querySelector('.rv-opt-note').textContent)), `with Tomas the Float's note says so: "${await TEXT(page, '.rv-opt-note')}"`);
+  const tm0 = await jn(page);
+  const carp = await pickAndCross('float');
+  const tm1 = await jn(page);
+  check(carp.res.skill && carp.res.skill.id === 'carpentry' && tm1.flour === tm0.flour && tm1.rope === 0 && /Tomas steadies the raft/.test(carp.text), `Tomas: no rope and a bump, nothing soaked (flour ${tm1.flour} lb), "${carp.text.slice(0, 60)}…"`);
+  check(await page.waitForFunction(() => { const t = document.querySelector('#toasts .toast.skill'); return !!t && t.dataset.who === 'carpenter' && !!t.querySelector('.sk-face svg'); }, null, { timeout: 8000 }).then(() => true, () => false), "and his skill line shows with his portrait (app.skillLine)");
+  await setJ(page, `J.companions = ['blacksmith', 'teacher', 'fiddler']; J.party = J.companions.map((id) => ({ id, mood: J.mood }));`);
+
+  // ----- Ferry: the three words, recorded in the child's own Spell Jump word store -----
+  await atChoice(`J.foods.flour = 300;`);
+  const fe0 = await jn(page);
+  const wordsBefore = await J(page, () => { const d = JSON.parse(localStorage.getItem(`spellJump.${window.__wagonWest.app.currentPlayerId}.words`) || '{"records":{}}'); return Object.values(d.records).reduce((a, r) => a + (r.seenCount || 0), 0); });
+  const spellLog = [];
+  const ferry = await pickAndCross('ferry', { async onEach(s) { if (s.spell === 'write' && s.word && !spellLog.includes(s.word)) { spellLog.push(s.word); if (spellLog.length === 1) { await shot(page, layout, 'p06-ferry-spell', 50); await audit(page, layout.insets, 'river (the ferry: the spell panel)'); } } } });
+  const fe1 = await jn(page);
+  const wordsAfter = await J(page, () => { const d = JSON.parse(localStorage.getItem(`spellJump.${window.__wagonWest.app.currentPlayerId}.words`) || '{"records":{}}'); return Object.values(d.records).reduce((a, r) => a + (r.seenCount || 0), 0); });
+  check(spellLog.length === 3 && ferry.words && ferry.words.asked === 3 && wordsAfter >= wordsBefore + 3, `the ferry: the three words spelled (${spellLog.join(', ')}) and recorded through recordSpell (${wordsBefore} → ${wordsAfter})`);
+  check(ferry.res.how === 'ferry' && fe1.flour === fe0.flour && fe1.river && fe1.river.how === 'ferry' && fe1.totals.ferryPerfect >= 1 && /ferryman poles the ferry across/.test(ferry.text), `crossRiver(J, { how: 'ferry' }): nothing lost, a perfect fare counted, "${ferry.text}"`);
+  await shot(page, layout, 'p07-ferry');
+  await audit(page, layout.insets, 'river (the ferry, across)');
+  await grab();
+
+  // ----- leaving the river mid-crossing ends the scene's mini-game; nothing is lost -----
+  await page.evaluate(() => { window.__mockScript.shotMs = 600; });
+  await atChoice(`J.foods.flour = 300;`);
+  const lv0 = await jn(page);
+  await page.click('#rv-opts .rv-opt[data-how="ford"]');
+  await page.waitForFunction(() => !!window.__wagonWest.v2.play, null, { timeout: 8000 });
+  await J(page, () => document.querySelector('#screen-river [data-camp]').click());
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const lv1 = await jn(page);
+  check(await J(page, () => window.__wagonWest.v2.play === null && window.__wagonWest.scene.getState().mini === null && !document.querySelector('#screen-river').classList.contains('rv-playing')) && lv1.flour === lv0.flour, 'leaving mid-ford (the back button): the scene\'s mini-game is ended, the flour untouched');
+  await page.evaluate(() => { window.__mockScript.shotMs = 80; delete window.__mockScript.bumps; });
+}
+
+async function v12Raft(page, layout, grab) {
+  console.log('  -- v1.2 (app two): the Columbia raft --');
+  await page.evaluate(() => { window.__mockScript.bumps = 0; });
+  await setJ(page, `J.deeds = []; J.cash = 100;`);
+  // ----- leaving mid-raft: the mini-game ends, the leg stays at mile 0 -----
+  await toTrail(page, 'willamette-valley');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen, null, { timeout: 8000 });
+  const intro = await J(page, () => ({ title: window.__wagonWest.card.title, kicker: document.querySelector('#tc-kicker').textContent, text: document.querySelector('#tc-text').textContent, go: document.querySelector('#tc-go').textContent }));
+  check(intro.title === 'Down the Columbia!' && /^Push off!$/.test(intro.go) && /raft down the Columbia/.test(intro.text), `the last leg is a raft: "${intro.title}" · "${intro.go}"`);
+  await audit(page, layout.insets, 'the raft (intro card)');
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.markerPanel.state === 'ask', null, { timeout: 8000 });
+  const b1 = await J(page, () => ({ chip: document.querySelector('#mk-chip').textContent, title: document.querySelector('#mk-title').textContent, bar: !document.querySelector('#mini').hidden, barText: document.querySelector('#mini-text').textContent, play: window.__wagonWest.v2.play, raft: window.__wagonWest.v2.raft, mini: window.__wagonWest.scene.getState().mini }));
+  check(b1.chip === 'Bend 1 of 4' && b1.title === 'Down the Columbia' && b1.play === 'startRaft' && b1.mini && b1.mini.kind === 'raft' && b1.mini.waiting, `the first bend asks a fact on the marker panel (chip "${b1.chip}") while the raft waits`);
+  await audit(page, layout.insets, 'the raft (a bend: the marker panel)');
+  await shot(page, layout, 'p08-raft-bend', 50);
+  await J(page, () => document.querySelector('#mini-done').click());          // the bar's "Stop for today"
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const gone = await J(page, () => { const w = window.__wagonWest; return { play: w.v2.play, raft: w.v2.raft, mini: w.scene.getState().mini, panel: w.markerPanel.isOpen, miles: w.save.journey.milesDone, bar: document.querySelector('#mini').hidden, inMini: document.documentElement.classList.contains('in-mini'), cash: w.save.journey.cash }; });
+  check(gone.play === null && gone.raft === null && gone.mini === null && !gone.panel && gone.miles === 0 && gone.bar && !gone.inMini && gone.cash === 100, 'leaving mid-raft ("Stop for today"): the mini-game ended, the leg is at mile 0, nothing lost');
+  check(await J(page, () => document.querySelector('#btn-trail-label').textContent) === 'Keep going', 'the title offers "Keep going"');
+
+  // ----- the whole raft: four bends, four facts, then the valley -----
+  const j0 = await jn(page);
+  const play0 = await J(page, () => Object.values(window.__wagonWest.save.play)[0] || {});
+  await page.click('#btn-trail');
+  const chips = [];
+  let sawAcross = false;
+  await drive(page, (s) => s.screen === 'home', {
+    async onEach(s) {
+      if (!sawAcross) sawAcross = (await toastTexts(page)).some((t) => /^The raft is across!/.test(t));
+      if (s.marker === 'ask' && s.mTitle === 'Down the Columbia') { const c = await TEXT(page, '#mk-chip'); if (!chips.includes(c)) chips.push(c); }
+    },
+  }, 60000);
+  const h1 = await jn(page);
+  const play1 = await J(page, () => Object.values(window.__wagonWest.save.play)[0] || {});
+  check(chips.join() === 'Bend 1 of 4,Bend 2 of 4,Bend 3 of 4,Bend 4 of 4', `four bends, each a fact on the marker panel: ${chips.join(', ')}`);
+  check(play1.markers - (play0.markers || 0) === 4 && (await J(page, () => window.__wagonWest.save.journey.legStats.markers)) === 4, 'each bend counted like a mile marker (recorded in the facts, applyMarker)');
+  check(h1.cash - j0.cash === 40 && h1.totals.raftRuns === 1 && h1.totals.raftClean === 1, `raftEnd → raftPay: $${h1.cash - j0.cash} for a run with no bumps ($40)`);
+  check(h1.milesDone === 160 && h1.deeds.includes('raft-rider'), 'after the vista the miles are the leg\'s length (160), then the normal arrival; "Raft rider" is earned');
+  check(sawAcross, 'a line says so: "The raft is across! $40 for the run, and not a single bump."');
+  await shot(page, layout, 'p09-valley');
+  await audit(page, layout.insets, 'the valley (name the homestead)');
+  for (const k of 'oak') await page.click(`#hs-keyboard .kb-key[data-key="${k}"]`);
+  await page.click('#hs-keyboard .kb-enter');
+  await page.waitForSelector(visibleSel('#screen-results'));
+  const rs = await J(page, () => ({ title: document.querySelector('#res-title').textContent, deeds: [...document.querySelectorAll('#res-deeds .res-deed')].map((d) => d.dataset.deed), head: (document.querySelector('#res-deeds b') || {}).textContent, hidden: document.querySelector('#res-deeds').hidden, res: window.__wagonWest.results.last }));
+  check(/Home in the valley/.test(rs.title) && !rs.hidden, `home: "${rs.title}"`);
+  check(rs.deeds.includes('raft-rider') && rs.deeds.includes('homesteader') && /^Deeds earned on this leg$/.test(rs.head), `the results list the leg's deeds: ${rs.deeds.join(', ')} ("${rs.head}")`);
+  await shot(page, layout, 'p10-results-deeds');
+  await audit(page, layout.insets, 'results (deeds earned)');
+  await grab();
+}
+
+async function v12Stampede(page, layout, grab) {
+  console.log('  -- v1.2 (app two): the stampede --');
+  await setJ(page, `J.done = false; J.deeds = J.deeds.filter((d) => d !== 'bison-brake'); J.totals.stampedesHeld = 0;`);
+  await toTrail(page, 'kansas-river');
+  await drive(page, idleTrail, far(page), 30000);
+  for (let k = 0; k < 20 && !(await J(page, () => window.__wagonWest.playEvent('stampede'))); k++) await drive(page, idleTrail, far(page), 20000);
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A bison stampede', null, { timeout: 8000 });
+  const sc = await J(page, () => ({ text: document.querySelector('#tc-text').textContent, go: document.querySelector('#tc-go').textContent }));
+  check(/The ground shakes/.test(sc.text) && sc.go === 'Hold the mules!', `the stampede event: a card "${sc.text.slice(0, 40)}…" with "${sc.go}"`);
+  await audit(page, layout.insets, 'trail card (the stampede)');
+  await shot(page, layout, 'p11-stampede-card', 50);
+  await grab();
+  const s0 = await jn(page);
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.v2.play === 'startStampede', null, { timeout: 5000 });
+  const bar = await J(page, () => ({ bar: !document.querySelector('#mini').hidden, text: document.querySelector('#mini-text').textContent, done: document.querySelector('#mini-done').textContent }));
+  check(bar.bar && /BRAKE/.test(bar.text), `the stampede runs on the scene (every wave braked on the mock), the bar says "${bar.text}"`);
+  check(await toastWith(page, /You held them!/), 'held: "You held them!"');
+  const s1 = await jn(page);
+  check(s1.cash - s0.cash === 15 && s1.cards.includes('bison') && s1.totals.stampedesHeld === 1, `stampedePay: $${s1.cash - s0.cash} and the bison card (${s1.cards.includes('bison')})`);
+  const dlog = await J(page, () => window.__wagonWest.deedPop.log);
+  check(s1.deeds.includes('bison-brake') && deedPopped(dlog, 'bison-brake'), `a new deed is earned and popped: "Bison brake" (the pops so far: ${dlog.join(', ')})`);
+  const shown = await page.waitForFunction(() => { const c = document.querySelector('#deedpop .dpop-card[data-deed="bison-brake"]'); return !!c && !document.querySelector('#deedpop').hidden; }, null, { timeout: 15000 }).then(() => true, () => false);
+  const pop = shown && await J(page, () => { const c = document.querySelector('#deedpop .dpop-card'); return { name: c.querySelector('.dpop-name').textContent, label: c.querySelector('.dpop-label').textContent, how: c.querySelector('.dpop-how').textContent }; });
+  check(pop && pop.label === 'New deed!' && pop.name === 'Bison brake' && /stampede/.test(pop.how), `the deed pops like a card: "${pop && pop.label}" "${pop && pop.name}" — ${pop && pop.how}`);
+  check(await spokenHas(page, /Bison brake! The wagon held through the stampede/), 'and its line is read aloud');
+  if (pop) { await audit(page, layout.insets, 'trail (a deed pop)'); await shot(page, layout, 'p12-deed-pop', 0); }
+  await drive(page, idleTrail, far(page), 30000);
+  // not held: dust everywhere, the wagon fine
+  await page.evaluate(() => { window.__mockScript.stampede = [false, false, true]; });
+  const s2 = await jn(page);
+  for (let k = 0; k < 20 && !(await J(page, () => window.__wagonWest.playEvent('stampede'))); k++) await drive(page, idleTrail, far(page), 20000);
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A bison stampede', null, { timeout: 8000 });
+  await page.click('#tc-go');
+  check(await toastWith(page, /Pfft, dust everywhere!/), 'not held: "Pfft, dust everywhere!"');
+  const s3 = await jn(page);
+  check(s3.cash === s2.cash && s3.totals.stampedesHeld === 1 && s3.totals.stampedes === 2, 'not held: no pay, nothing lost, the wagon is fine');
+  await page.evaluate(() => { delete window.__mockScript.stampede; });
+  await drive(page, idleTrail, far(page), 30000);
+  // leaving mid-stampede ends it too
+  await page.evaluate(() => { window.__mockScript.shotMs = 600; });
+  for (let k = 0; k < 20 && !(await J(page, () => window.__wagonWest.playEvent('stampede'))); k++) await drive(page, idleTrail, far(page), 20000);
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A bison stampede', null, { timeout: 8000 });
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.v2.play === 'startStampede', null, { timeout: 5000 });
+  await J(page, () => document.querySelector('#mini-done').click());      // "Skip"
+  await page.waitForFunction(() => window.__wagonWest.v2.play === null && document.querySelector('#mini').hidden, null, { timeout: 5000 });
+  check(await J(page, () => window.__wagonWest.scene.getState().mini === null && !document.documentElement.classList.contains('in-mini')), 'the bar\'s "Skip" ends the stampede (not held) and gives the trail back');
+  await page.evaluate(() => { window.__mockScript.shotMs = 80; });
+}
+const deedPopped = (log, id) => Array.isArray(log) && log.includes(id);
+
+async function v12People(page, layout, grab) {
+  console.log('  -- v1.2 (app two): people at the stops --');
+  await setJ(page, `J.dog = { name: 'Rex', coat: 'brown', legs: 0, nextBerries: 9 }; J.done = false; J.met = []; J.totals.peopleMet = 10; J.goods.blankets = 20; J.goods.pelts = 9; J.foods = { flour: 300, bacon: 100, beans: 100, other: 0 }; J.deeds = J.deeds.filter((d) => d !== 'people-person');`);
+  await toStop(page, 'fort-laramie');
+  await drive(page, (s) => s.screen === 'stop' && s.stopOpen, {}, 40000);
+  const row = await J(page, () => ({ head: document.querySelector('.stop-talk-head b').textContent, met: document.querySelector('#stop-met').textContent, title: document.querySelector('#stop-title').textContent,
+    people: [...document.querySelectorAll('#stop-row .stop-person')].map((b) => ({ id: b.dataset.person, emoji: b.querySelector('.stop-person-emoji').textContent, name: b.querySelector('.stop-person-name').textContent, met: b.classList.contains('met'), h: b.getBoundingClientRect().height })),
+    go: document.querySelector('#stop-go-text').textContent }));
+  check(row.head === 'Talk' && row.people.length === 3 && row.people.every((p) => p.emoji && p.name && !p.met && p.h >= 44) && row.met === '0 of 3 met here' && row.title === 'Fort Laramie', `the stop screen: a "Talk" row of ${row.people.length} portraits (${row.people.map((p) => p.emoji + ' ' + p.name).join(' · ')}), "${row.met}"`);
+  check(row.go === 'Into the fort', `its big button goes on: "${row.go}"`);
+  await shot(page, layout, 'p13-talk');
+  await audit(page, layout.insets, 'the stop screen (the Talk row)');
+  await grab();
+  // ----- food: Tom hands over bacon -----
+  const g0 = await jn(page);
+  await page.click('.stop-person[data-person="tom"]');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen, null, { timeout: 5000 });
+  const tc = await J(page, () => ({ title: window.__wagonWest.card.title, kicker: document.querySelector('#tc-kicker').textContent, text: document.querySelector('#tc-text').textContent, go: document.querySelector('#tc-go').textContent, emoji: document.querySelector('#tc-sticker .tc-emoji').textContent }));
+  check(tc.title === 'Tom' && /soldier's son/.test(tc.kicker) && /My father is a soldier here/.test(tc.text) && /Fort Laramie began as a trading post/.test(tc.text) && tc.go === 'Thanks!' && tc.emoji === '🧒', `tapping a portrait: a card with their two lines ("${tc.title}", ${tc.kicker})`);
+  check(await spokenHas(page, /My father is a soldier here/), 'their lines are read aloud');
+  await audit(page, layout.insets, 'the stop screen (a person\'s card)');
+  await shot(page, layout, 'p14-person', 50);
+  await page.click('#tc-go');
+  await page.waitForFunction(() => !window.__wagonWest.peopleUI.busy, null, { timeout: 5000 });
+  const g1 = await jn(page);
+  check(g1.food === g0.food + 10 && g1.met.includes('tom') && g1.totals.peopleMet === 11, `meetPerson: a gift of food (+10 lb, ${g0.food} → ${g1.food}), Tom is met (${g1.met.join(', ')})`);
+  check(await toastWith(page, /^\+10 lb of bacon$/, 3000), 'the gift is a line the child sees: "+10 lb of bacon"');
+  check(await J(page, () => document.querySelector('.stop-person[data-person="tom"]').classList.contains('met') && document.querySelector('#stop-met').textContent === '1 of 3 met here'), 'a check mark on the portrait, "1 of 3 met here"');
+  // ----- a tip: the optional 'parts' puzzle for a token -----
+  await page.click('.stop-person[data-person="jed"]');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'Old Jed', null, { timeout: 5000 });
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A puzzle for a token', null, { timeout: 5000 });
+  const tip = await J(page, () => ({ go: document.querySelector('#tc-go').textContent, alt: document.querySelector('#tc-alt').hidden ? '' : document.querySelector('#tc-alt').textContent, text: document.querySelector('#tc-text').textContent }));
+  check(tip.go === 'Work it out' && tip.alt === 'Not now' && /Work it out for a trade token/.test(tip.text), `a tip is optional: "${tip.go}" or "${tip.alt}"`);
+  await audit(page, layout.insets, 'the stop screen (a tip)');
+  const t0 = (await jn(page)).tokens;
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
+  const pr = await W(page);
+  check(pr.pKind === 'parts', `"Work it out": the 'parts' problem on the problem panel ("${await TEXT(page, '#pp-text')}")`);
+  await typeDigits(page, '#panel-problem', pr.pAns);
+  await page.waitForFunction(() => !window.__wagonWest.peopleUI.busy, null, { timeout: 8000 });
+  const t1 = await jn(page);
+  check(t1.tokens >= t0 + 1 && t1.met.includes('jed'), `a right first answer: a trade token (${t0} → ${t1.tokens})`);
+  // the 12th person met: a deed
+  check(t1.deeds.includes('people-person') && deedPopped(await J(page, () => window.__wagonWest.deedPop.log), 'people-person') && await spokenHas(page, /People person! Twelve people met/), 'twelve people met: the "People person" deed pops, its line read aloud');
+  // ----- a trade at the person's own rate -----
+  const tr0 = await jn(page);
+  await page.click('.stop-person[data-person="lakota-trader"]');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A Lakota trader', null, { timeout: 5000 });
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A fair trade', null, { timeout: 5000 });
+  check(await J(page, () => document.querySelector('#tc-go').textContent === 'Trade' && document.querySelector('#tc-alt').textContent === 'No thanks' && /two blankets for five cakes of pemmican/.test(document.querySelector('#tc-text').textContent)), 'a trade card: "Trade" or "No thanks"');
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
+  const trp = await J(page, () => ({ text: document.querySelector('#pp-text').textContent, kind: window.__wagonWest.problemPanel.problem.kind }));
+  check(trp.kind === 'trade' && /^A Lakota trader trades /.test(trp.text) && /blankets/.test(trp.text) && /pemmican/.test(trp.text), `the trading-post flow at their rate: "${trp.text.slice(0, 80)}…"`);
+  await typeDigits(page, '#panel-problem', (await W(page)).pAns);
+  await page.waitForFunction(() => !window.__wagonWest.peopleUI.busy, null, { timeout: 8000 });
+  const tr1 = await jn(page);
+  check(tr1.blankets < tr0.blankets && tr1.other > tr0.other && tr1.totals.traded > tr0.totals.traded, `applyTrade: blankets ${tr0.blankets} → ${tr1.blankets}, pemmican in the wagon (+${tr1.other - tr0.other} lb)`);
+  // met people give nothing twice
+  const again0 = await jn(page);
+  await page.click('.stop-person[data-person="tom"]');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen, null, { timeout: 5000 });
+  await page.click('#tc-go');
+  await page.waitForFunction(() => !window.__wagonWest.peopleUI.busy, null, { timeout: 5000 });
+  const again1 = await jn(page);
+  check(again1.food === again0.food && again1.totals.peopleMet === again0.totals.peopleMet, 'talking to Tom again: the same lines, no second gift');
+  await audit(page, layout.insets, 'the stop screen (all met)');
+  // the stop's button goes on
+  await page.click('#stop-go');
+  await page.waitForSelector(visibleSel('#screen-store'));
+  check(true, '"Into the fort": on to the store');
+  await J(page, () => window.__wagonWest.app.go('title'));
+
+  // ----- a card from the Lakota guide at Chimney Rock; a stop with no gift -----
+  await toStop(page, 'chimney-rock');
+  await drive(page, (s) => s.screen === 'stop' && s.stopOpen, {}, 40000);
+  await page.click('.stop-person[data-person="lakota-guide"]');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen, null, { timeout: 5000 });
+  await page.click('#tc-go');
+  await page.waitForFunction(() => !window.__wagonWest.peopleUI.busy, null, { timeout: 5000 });
+  const c1 = await jn(page);
+  check(c1.cards.includes('lakota') && (await J(page, () => window.__wagonWest.cardPop.log.some((c) => c.id === 'lakota'))), 'a card for a gift: the Lakota card pops and goes in the album (awardCard)');
+  await page.click('.stop-person[data-person="hannah"]');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen, null, { timeout: 5000 });
+  await page.click('#tc-go');
+  await page.waitForFunction(() => !window.__wagonWest.peopleUI.busy, null, { timeout: 5000 });
+  check((await jn(page)).met.includes('hannah'), 'a person with no gift: just a friendly visit, still met');
+  await J(page, () => window.__wagonWest.app.go('title'));
+}
+
+async function v12Journal(page, layout, grab) {
+  console.log('  -- v1.2 (app two): the Journal: Deeds, People met --');
+  await J(page, () => window.__wagonWest.app.go('title'));
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.click('#btn-journal');
+  await page.waitForSelector(visibleSel('#screen-journal'));
+  await page.click('#jr-tabs [data-page="map"]');
+  const met = await J(page, () => ({ head: document.querySelector('#met-card b').textContent, chips: [...document.querySelectorAll('#met-card .met-chip')].map((c) => c.dataset.person), have: window.__wagonWest.save.journey.met.slice(), total: window.__wagonWest.JA.PEOPLE.length }));
+  check(met.chips.length === met.have.length && met.chips.length >= 5 && met.head === `People met · ${met.have.length} of ${met.total}`, `the map page lists "${met.head}": ${met.chips.join(', ')}`);
+  await shot(page, layout, 'p15-journal-people');
+  await audit(page, layout.insets, 'journal (map, people met)');
+  await grab();
+  await page.click('#jr-tabs [data-page="deeds"]');
+  const dd = await J(page, () => ({ tabs: [...document.querySelectorAll('#jr-tabs .seg-btn')].map((b) => b.textContent), total: document.querySelector('#deeds-total').textContent, badges: [...document.querySelectorAll('.dd-badge')].map((b) => ({ id: b.dataset.deed, got: b.classList.contains('got'), name: b.querySelector('.dd-name').textContent, how: b.querySelector('.dd-how').textContent, emoji: b.querySelector('.dd-emoji').textContent })), have: window.__wagonWest.save.journey.deeds.slice() }));
+  check(dd.tabs.join() === 'Letters,Stickers,Map,Cards,Deeds', `the Journal has a fifth page: ${dd.tabs.join(', ')}`);
+  check(dd.badges.length === 20 && dd.badges.every((b) => b.name && b.how.length > 15 && b.emoji), `Deeds: ${dd.badges.length} badges, each with an emoji, a name and the one-line "how"`);
+  check(dd.badges.filter((b) => b.got).map((b) => b.id).sort().join() === dd.have.slice().sort().join() && dd.have.length >= 3 && new RegExp(`^${dd.have.length} of 20 deeds earned`).test(dd.total), `the earned ones are lit: ${dd.have.join(', ')} ("${dd.total.slice(0, 22)}")`);
+  const sp0 = await J(page, () => window.__spoken.length);
+  await page.click(`.dd-badge[data-deed="${dd.have[0]}"]`);
+  await page.waitForTimeout(150);
+  check(await J(page, (n) => window.__spoken.length > n, sp0), 'a tap on a badge reads it aloud');
+  await shot(page, layout, 'p16-journal-deeds');
+  await audit(page, layout.insets, 'journal (deeds)');
+  await grab();
+  await page.click('#screen-journal [data-back="title"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+}
+
+async function v12Camp(page, layout, grab) {
+  console.log('  -- v1.2 (app two): camp: no arrows, wait out the storm --');
+  await setJ(page, `J.done = false; J.goods.arrows = 0; J.deeds = J.deeds.filter((d) => d !== 'wait-it-out'); J.totals.waitedOut = 0;`);
+  await toTrail(page, 'kansas-river');
+  let opened = false;
+  for (let k = 0; k < 12 && !opened; k++) {
+    await drive(page, idleTrail, far(page), 30000);
+    // a storm is planned one mile ahead (the forecast shows it), and camp opens in the same breath
+    await J(page, () => {
+      const w = window.__wagonWest, Jn = w.save.journey;
+      Jn.trip.restDays = 0; Jn.trip.lostDays = 0;
+      Jn.trip.events = Jn.trip.events.filter((e) => e.id !== 'storm' || e.fired);
+      Jn.trip.events.push({ id: 'storm', kind: 'rest', atMile: Jn.milesDone + 1, fired: false });
+      document.querySelector('#btn-camp').click();
+    });
+    opened = await page.waitForSelector(visibleSel('#screen-camp'), { timeout: 1500 }).then(() => true, () => false);
+  }
+  check(opened, 'Camp opens from the trail with a storm on the way');
+  const c0 = await J(page, () => ({ acts: [...document.querySelectorAll('.camp-act')].map((b) => b.dataset.act), note: document.querySelector('#camp-arrows').hidden ? '' : document.querySelector('#camp-arrows').textContent, day: window.__wagonWest.save.journey.day,
+    wait: (document.querySelector('.camp-act[data-act="wait"]') || { textContent: '' }).textContent }));
+  if (!c0.acts.includes('wait')) console.log('    (forecast: ' + JSON.stringify(await J(page, () => { const w = window.__wagonWest, Jn = w.save.journey; return { f: w.JA.forecast(Jn), rest: Jn.trip.restDays, lost: Jn.trip.lostDays, miles: Jn.milesDone, ev: Jn.trip.events.map((e) => `${e.id}@${e.atMile}${e.fired ? 'F' : ''}${e.waited ? 'W' : ''}`), limp: Jn.limp, arrived: Jn.trip.arrived }; })) + ')');
+  check(!c0.acts.includes('hunt') && c0.acts.join() === 'fish,cards,tales,rest,wait', `no arrows: Hunting is gone from camp (${c0.acts.join(', ')})`);
+  check(/^No arrows: fishing only\./.test(c0.note), `and a line says why: "${c0.note}"`);
+  check(/Wait out the storm/.test(c0.wait), `with a storm ahead, camp offers "Wait out the storm"`);
+  await shot(page, layout, 'p17-camp-storm');
+  await audit(page, layout.insets, 'camp (no arrows, wait out the storm)');
+  await grab();
+  await page.click('.camp-act[data-act="wait"]');
+  await page.waitForFunction(() => !window.__wagonWest.camp.busy, null, { timeout: 5000 });
+  const c1 = await J(page, () => ({ acts: [...document.querySelectorAll('.camp-act')].map((b) => b.dataset.act), day: window.__wagonWest.save.journey.day, waited: window.__wagonWest.save.journey.totals.waitedOut, deeds: window.__wagonWest.save.journey.deeds.slice(), ev: window.__wagonWest.save.journey.trip.events.some((e) => e.id === 'storm' && e.waited) }));
+  check(c1.day === c0.day + 1 && c1.waited === 1 && c1.ev, `"Wait out the storm": app.waitOut() — a rest day (day ${c0.day} → ${c1.day}), the storm waited out`);
+  check(!c1.acts.includes('wait'), 'the storm is waited out, so the option is gone');
+  check(await toastWith(page, /You waited out the storm/, 3000), 'a line says so: "You waited out the storm. It cost nothing!"');
+  check(c1.deeds.includes('wait-it-out'), 'the "Wait it out" deed is earned');
+  // arrows back: Hunting returns and the note goes
+  await setJ(page, `J.goods.arrows = 15;`);
+  await J(page, () => window.__wagonWest.camp.refresh());
+  check(await J(page, () => [...document.querySelectorAll('.camp-act')].some((b) => b.dataset.act === 'hunt') && document.querySelector('#camp-arrows').hidden), 'with arrows again, Hunting is back and the note is gone');
+  await J(page, () => document.querySelector('#camp-stop').click());
+  await page.waitForSelector(visibleSel('#screen-title'));
+}
+
+async function playTest(browser, layout) {
+  console.log(`\n=== v1.2 app part two (${layout.name}) ===`);
+  const { ctx, page, errors } = await playSetup(browser, layout);
+  page.on('console', (m) => { if (process.env.DEBUG_CONSOLE) console.log('    [console.' + m.type() + '] ' + m.text()); });
+  const texts = [];
+  const grab = async () => texts.push(await kidText(page));
+  const only = (process.env.PLAY_SECTIONS || '').split(',').filter(Boolean);      // (a fast loop while developing: PLAY_SECTIONS=raft,journal)
+  const sec = (name, fn) => (!only.length || only.includes(name) ? fn(page, layout, grab) : null);
+  await sec('rivers', v12Rivers);
+  await sec('stampede', v12Stampede);
+  await sec('people', v12People);
+  await sec('camp', v12Camp);
+  await sec('raft', v12Raft);
+  await sec('journal', v12Journal);
+  const bad = texts.map((t) => (t.match(BANNED) || [])[0]).filter(Boolean);
+  check(bad.length === 0, `kid-rule text audit of the v1.2 app-two screens${bad.length ? ' — found: ' + bad.join(', ') : ''}`);
+  check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 4).join(' | ') : ''}`);
   await ctx.close();
 }
 
@@ -1313,10 +1835,11 @@ const browser = await chromium.launch();
 try {
   for (const layout of LAYOUTS.filter((l) => !process.env.ONLY || l.name === process.env.ONLY)) {
     if (process.env.QUICK) { await quickV12(browser, layout); continue; }
-    if (!process.env.VOICE_ONLY) await runLayout(browser, layout);
-    await voiceTest(browser, layout);
+    if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await runLayout(browser, layout);
+    if (!process.env.PLAY_ONLY) await voiceTest(browser, layout);
+    if (!process.env.VOICE_ONLY) await playTest(browser, layout);
   }
-  if (!process.env.VOICE_ONLY) await mockMiniGames(browser);
+  if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await mockMiniGames(browser);
   staticAudit();
 } catch (e) {
   failures.push('crashed: ' + (e && e.stack || e));

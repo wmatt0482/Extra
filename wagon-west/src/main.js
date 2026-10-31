@@ -26,6 +26,10 @@
 // app.skillLine, both streams use them), the store without a gate (a tap buys at the listed price, "Work it out" is the
 // optional problem for a token), rations / distance questions only when the child asks Eli, camp's app.waitOut(), and
 // the family map on the title (app.familyWagons).
+// v1.2 (app part two, the "// ---- v1.2 (app two): ... ----" blocks): rivers as a choice (./ui/river.js: ford, float, ferry),
+// the Columbia raft on the last leg, the buffalo stampede event, the people at the stops (./ui/people.js: the Talk row),
+// deeds (./ui/deeds.js: checkDeeds after what can earn one, the pop, the Journal page, the results list), camp's arrows /
+// wait-out. The scene's four mini-games run through playMini() / the scene event hook at the end of onSceneEvent.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -75,7 +79,10 @@ import { createWagonPanel, partySummary, skillOfCompanion } from './ui/wagonPane
 import { createMarkerPanel, markerTexts } from './ui/markerPanel.js';
 import { createProblemPanel, problemTexts, spokenLine } from './ui/problemPanel.js';
 import { createCard } from './ui/card.js';
-import { createRiver, riverTexts } from './ui/river.js';
+import { createRiver, riverTexts, riverChoiceTexts } from './ui/river.js';
+// ---- v1.2 (app two): people and deeds ----
+import { createPeople } from './ui/people.js';
+import { createDeedPop, deedTexts } from './ui/deeds.js';
 import { createCamp } from './ui/camp.js';
 import { createCardPop, ownedCards, sayOf } from './ui/cards.js';
 import { PS_INTRO, READ_BACK } from './ui/postOffice.js';
@@ -96,6 +103,8 @@ const FIXED_LINES = ['Now you: type the answer', 'Now you: type the answer from 
 // v1.2: the lines the effects say aloud (prepared with the rest, so the natural voice plays them)
 FIXED_LINES.push('A cold night. There are not enough blankets, so the party rests a day.', 'The oxen need a rest, so we go steady today.', 'The mules need a rest, so we go steady today.',
   'The wagon limps along slowly to the next fort.', 'A spare part is used.', 'The new part mends the wagon. No more limping.');
+// ---- v1.2 (app two): the river choice, the raft and the deeds' lines (prepared with the rest) ----
+FIXED_LINES.push(...riverChoiceTexts(), ...deedTexts(), 'The raft is across!', 'You held them!', 'Pfft, dust everywhere!');
 const TUNES = ['susanna', 'buffalo', 'tucker'];
 const DOG_COATS = ['brown', 'spotted', 'black'];   // the scene's three coats
 const QD_TO = 7;                 // Quick Draw: first to 7 right facts
@@ -226,7 +235,7 @@ async function boot() {
     legById: (id) => LEG_BY_ID[id] || null,
     beat,
     overlayOpen: () => panelOpen() || pz.isOpen || wagonPanel.isOpen || !$('#panel-pause').hidden,
-    persist: () => writeSave(currentPlayerId, save),
+    persist: () => { v2CheckDeeds(); writeSave(currentPlayerId, save); },   // (v1.2 app two: a deed is earned the moment its counter says so)
     saveOf: (id) => (id === currentPlayerId ? save : loadSave(id)),
     /** "Leg 3 of 12 · 1847" for the picker tile and the Parent Zone. */
     whereFor(id) {
@@ -909,14 +918,14 @@ async function boot() {
     app.persist();
     return res;
   }
-  async function runMarker(marker) {
+  async function runMarker(marker, opts = {}) {      // (v1.2 app two: opts.raft = a bend of the Columbia: its own panel title and chip)
     const J = save.journey;
     save.trip.markers += 1;
     const n = Math.max(1, Math.round(num(marker && marker.n) || save.trip.markers));
     const leg = curLeg();
     const of = Math.max(n, Math.round(num(marker && (marker.of || marker.total)) || Math.floor(((leg && leg.miles) || 150) / 30)));
     const pick = ladderPick('any') || { fact: '6x7', flip: false };
-    S('setTravel', { moving: false });
+    if (!opts.raft) S('setTravel', { moving: false });
     // Nora's tip (once a leg when the teacher is in the party): the strategy hint BEFORE the answer
     let tip = '';
     try { if (typeof JA.teacherTip === 'function' && JA.teacherTip(J)) tip = hintFor(pick.fact, !!pick.flip) || ''; } catch (e) { console.warn('[WagonWest] teacherTip', e); }
@@ -926,13 +935,13 @@ async function boot() {
       if (!T) return;
     }
     await voiceFor(markerTexts(pick.fact, !!pick.flip));
-    const res = await markerPanel.open({ fact: pick.fact, flip: !!pick.flip, index: n - 1, total: of });
+    const res = await markerPanel.open({ fact: pick.fact, flip: !!pick.flip, index: n - 1, total: of, ...(opts.raft ? { title: 'Down the Columbia', chipText: `Bend ${n} of ${of}` } : {}) });
     if (res.cancelled) return;
     recordFact(pick.fact, res, pick);
     try { const am = JA.applyMarker(J, { correct: !!res.correct, quick: !!res.quick }); if (am && am.skill) skillLine(am.skill); } catch (e) { console.warn('[WagonWest] applyMarker', e); }
     logPlay(save, { markers: 1, markersRight: res.correct ? 1 : 0 });
     app.persist();
-    if (res.quick) toast('A tailwind! A few free miles');
+    if (res.quick) toast(opts.raft ? 'A fast current!' : 'A tailwind! A few free miles');
     else if (!res.correct) toast('Fixed it. The wagon rolls on');
     checkDaily();
   }
@@ -1031,6 +1040,8 @@ async function boot() {
     if (bugle && bugle !== 'none') Sfx.bugle(bugle);
     T = { leg, day: null, acc: 0, busy: false, last: 0, raf: 0, weather: 'clear', rand: rngFrom(hashString(`${currentPlayerId}:${J.legId}:${J.seed}:${J.day}`)) };
     T.raf = requestAnimationFrame(travelFrame);
+    // ---- v1.2 (app two): the last leg runs as the Columbia raft instead of the trail days ----
+    if (v2StartRaft(leg)) return;
     if (!save.seen.coach) {
       T.busy = true;
       const r = T;
@@ -1040,6 +1051,7 @@ async function boot() {
     }
   }
   function stopTravel() {
+    v2Abort();                          // ---- v1.2 (app two): leaving mid-raft / mid-stampede ends the mini-game ----
     if (!T) return;
     cancelAnimationFrame(T.raf);
     T = null;
@@ -1135,6 +1147,7 @@ async function boot() {
     if (kind === 'lookout') { spotSure = true; S('spotAnimal', ev.animal || 'bison'); }
     S('setTravel', { moving: false });
     if (kind === 'breakdown') { await runBreakdown(ev); return; }
+    if (kind === 'stampede' && scene && typeof scene.startStampede === 'function') { await runStampede(ev); return; }   // ---- v1.2 (app two) ----
     await showCard({ kicker: 'On the trail', title: ev.name || 'On the trail', text, say: sayText, tone: kind, button: EVENT_BUTTON[kind] || 'Continue' });
     if (!T) return;
     if (kind === 'bonus' && /berr|plum/i.test(`${ev.id} ${ev.name || ''} ${ev.text || ''}`)) dropCard(plumCard());
@@ -1237,6 +1250,7 @@ async function boot() {
   });
   function onSceneEvent(evt) {
     if (!evt) return;
+    if (v2Event(evt)) return;           // ---- v1.2 (app two): the ford / float / raft / stampede events ----
     if (evt.type === 'hunt' && mini && mini.kind === 'hunt') {
       Sfx.twang();
       if (evt.hit) { mini.lb += num(evt.meatLb); mini.hits += 1; toast('Got one!'); if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal)); } }
@@ -1267,9 +1281,11 @@ async function boot() {
     const kind = leg.stop && leg.stop.kind;
     const look = LOOKOUTS[leg.lookout] || null;
     await showCard({ kicker: 'You made it!', title: (leg.stop && leg.stop.name) || leg.name, text: look ? look.text : '', say: look ? look.say : '', sticker: leg.sticker, tone: 'lookout',
-      button: kind === 'river' ? 'To the ferry' : kind === 'fort' ? 'Into the fort' : kind === 'home' ? 'Home at last' : 'Continue' });
+      button: peopleUI.has(leg) ? 'Look around' : kind === 'river' ? 'To the ferry' : kind === 'fort' ? 'Into the fort' : kind === 'home' ? 'Home at last' : 'Continue' });
     if (screen !== 'stop') return;
     if (look || CARD_BY_ID[leg.id]) dropCard(leg.id);      // the lookout's landmark card
+    // ---- v1.2 (app two): the "Talk" row of the people at this stop (its big button goes on to the ferry / the fort / home) ----
+    if (peopleUI.has(leg)) { const on = await peopleUI.visit(leg); if (!on || screen !== 'stop') return; }
     if (kind === 'river') {
       const rr = await river.run({ leg });
       if (rr.cancelled) { if (screen === 'river') go('title'); return; }
@@ -1327,12 +1343,16 @@ async function boot() {
     let done = !!J.done;
     if (!next && !done && leg === LEGS[LEGS.length - 1]) { J.done = true; done = true; }
     if (done) save.seasonsDone += 1;
+    // ---- v1.2 (app two): the deeds this leg earned (the arrival counted) go on the results ----
+    v2CheckDeeds();
+    const legDeeds = (save.trip && Array.isArray(save.trip.deeds)) ? save.trip.deeds.slice() : [];
     save.trip = null;
     app.persist();
     pingNow('leg');
     const result = { leg: leg.id, place: (leg.stop && leg.stop.name) || leg.name, stars, cash: { arrival: num(a.cash && a.cash.arrival), stars: num(a.cash && a.cash.stars), total: num(a.cash && a.cash.total) },
       tokens, sticker, crate: a.crate || null, stats, food: num(J.food), home: home || done };
     if (result.cash.total !== result.cash.arrival + result.cash.stars) result.cash.total = result.cash.arrival + result.cash.stars;
+    result.deeds = legDeeds;               // (v1.2 app two)
     S('setBackdrop', home ? 'valley' : backdropFor(leg));
     go('results', result);
     Audio.cash();
@@ -1687,6 +1707,179 @@ async function boot() {
     return ok;
   }
 
+  // ---- v1.2 (app two): the scene's rivers, the Columbia raft, the stampede, the people at the stops, deeds ----
+  // The scene runs four mini-games that own the pointer (SPEC v1.2 §3-§4): startFord → 'ford' { good } / 'fordEnd'
+  // { soaked }, startFloat → 'float' { bump } / 'floatEnd' { bumps }, startRaft → 'raftMarker' { n, of } (it waits for
+  // scene.raftGo()) / 'raft' { bump } / 'raftEnd' { bumps, bends }, startStampede → 'stampede' { good } / 'stampedeEnd'
+  // { held }. playMini() starts one and resolves with its end event (null when the child left; a quiet synthetic end when
+  // the scene has no such mini-game, so the journey never stalls); onSceneEvent hands the events over through v2Event().
+  const v2 = { play: null, raft: null, bar: null };
+  const peopleUI = createPeople(app);
+  screens.stop = peopleUI;
+  const deedPop = createDeedPop($('#deedpop'), { sfx: Sfx, say: (t) => { voiceFor([t]).then(() => app.say(t)); }, waitFor: () => cardPop.showing });
+  const RAFT_BENDS = 4;
+  const RAFT_INTRO = 'The last stretch: a raft down the Columbia River to the Willamette Valley! Steer around the rocks. At every bend, answer a fact and the raft rolls on.';
+  const seedFor = (tag) => { const J = save.journey; return hashString(`${currentPlayerId}:${J ? J.legId : ''}:${J ? num(J.day) : 0}:${J ? num(J.legStarts) : 0}:${tag}`); };
+  function playMini(fn, opts, { end, types = [], onEvent = null } = {}) {
+    return new Promise((resolve) => {
+      if (v2.play) endPlay();
+      if (!scene || typeof scene[fn] !== 'function') { setTimeout(() => resolve({ type: end, unavailable: true }), 0); return; }
+      const p = { fn, end, types, onEvent, resolve };
+      v2.play = p;
+      try { scene[fn](opts); } catch (e) { console.error(`[WagonWest] scene.${fn} threw`, e); v2.play = null; setTimeout(() => resolve({ type: end, unavailable: true }), 0); }
+    });
+  }
+  /** End the mini-game running now. early = the child chose to finish: resolves a synthetic end with what the scene
+   *  had so far (a stampede not held); else the child left and it resolves null. */
+  function endPlay(early = false) {
+    const p = v2.play;
+    if (!p) return;
+    v2.play = null;
+    const sum = S('endMiniGame');
+    p.resolve(early ? { type: p.end, early: true, ...(sum && typeof sum === 'object' ? sum : {}), held: false } : null);
+  }
+  function v2Event(evt) {
+    const p = v2.play;
+    if (!p) return false;
+    if (evt.type === p.end) { v2.play = null; p.resolve(evt); return true; }
+    if (p.types.includes(evt.type)) { if (p.onEvent) { try { p.onEvent(evt); } catch (e) { console.error('[WagonWest] mini event', e); } } return true; }
+    return false;
+  }
+  /** The bar at the bottom while a mini-game runs on the trail screen (the hunt's bar, with its own text and button). */
+  function showBar(text, button, act) {
+    $('#mini-text').textContent = text;
+    $('#mini-done').textContent = button;
+    v2.bar = act;
+    $('#mini').hidden = false;
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    document.documentElement.classList.add('in-mini');
+  }
+  function hideBar() {
+    v2.bar = null;
+    if (mini) return;
+    $('#mini').hidden = true;
+    document.documentElement.classList.remove('in-mini');
+  }
+  $('#mini-done').addEventListener('click', () => { if (v2.bar && !mini) v2.bar(); });
+  /** The trail was left (the title, camp, the pause menu): end the mini-game, leave the raft leg at mile 0. Nothing is lost. */
+  function v2Abort() {
+    if (v2.play) endPlay();
+    if (v2.raft) {
+      const J = save.journey, leg = v2.raft.leg;
+      v2.raft = null;
+      if (J && leg && J.legId === leg.id && !(J.trip && J.trip.arrived) && num(J.milesDone) < num(leg.miles)) J.milesDone = 0;
+      try { markerPanel.cancel(); } catch (_) { /* ignore */ }
+    }
+    if (v2.bar) hideBar();
+  }
+
+  // ----- the river: the journey's crossRiver, and what makes a float safe -----
+  function v2Cross(how, args = {}) {
+    const J = save.journey;
+    let r = null;
+    try { r = JA.crossRiver(J, { how, ...args }); } catch (e) { console.warn('[WagonWest] crossRiver', e); }
+    if (!r) r = { how, soakedLb: 0, ropeUsed: false, skill: null, line: 'You are across the river.', say: 'You are across the river.' };
+    app.persist(); refreshCash();
+    return r;
+  }
+  /** Is a bump on the float free (a coil of rope, or the carpenter)? { safe, why } for the choice card's note. */
+  function v2FloatSafe() {
+    const J = save.journey;
+    let sk = null;
+    try { sk = typeof JA.skillInfo === 'function' ? JA.skillInfo(J, 'carpentry') : null; } catch (_) { sk = null; }
+    if (sk) { const c = COMPANION_BY_ID[sk.who] || COMPANION_BY_ID.carpenter; return { safe: true, why: `${c ? c.name : 'The carpenter'} steadies the raft: a bump costs nothing.` }; }
+    if (goodsOf(J).rope > 0) return { safe: true, why: 'You have rope: a bump costs nothing.' };
+    return { safe: false, why: '' };
+  }
+
+  // ----- the buffalo stampede (a 'stampede' event on the prairie / bluffs legs) -----
+  async function runStampede(ev) {
+    const J = save.journey;
+    S('setTravel', { moving: false });
+    const text = ev.text || 'The ground shakes. Bison!';
+    await showCard({ kicker: 'On the trail', title: ev.name || 'A bison stampede', text, say: ev.say || text, tone: 'stampede', button: `Hold the ${animalName()}!` });
+    if (!T) return;
+    showBar('The herd is coming: tap BRAKE when the lead bull looms', 'Skip', () => endPlay(true));
+    const end = await playMini('startStampede', { seed: seedFor('stampede') }, { end: 'stampedeEnd', types: ['stampede'], onEvent: (e) => { toast(e.good ? 'Good brake!' : 'The herd thunders past'); } });
+    hideBar();
+    if (!end || !T) return;
+    const held = !!end.held;
+    let pay = null;
+    try { pay = JA.stampedePay(J, { held }); } catch (e) { console.warn('[WagonWest] stampedePay', e); }
+    if (held && (!pay || pay.card)) dropCard((pay && pay.card) || 'bison');
+    app.persist(); refreshCash();
+    if (held) { effectToast(`You held them!${num(pay && pay.cash) ? ` $${pay.cash} for steady hands, and a bison card.` : ''}`, 'You held them!'); Audio.cash(); }
+    else effectToast('Pfft, dust everywhere! The herd rumbles away and the wagon is fine.', 'Pfft, dust everywhere!');
+    if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() });
+  }
+
+  // ----- the Columbia raft: the last leg (the-dalles → willamette-valley) is a raft run, not trail days -----
+  function v2StartRaft(leg) {
+    const r = T;
+    if (!r || !leg || !(leg.stop && leg.stop.kind === 'home') || !scene || typeof scene.startRaft !== 'function') return false;
+    cancelAnimationFrame(r.raf);
+    r.busy = true; r.raft = true;
+    runRaft(leg, r).catch((e) => { console.error('[WagonWest] raft', e); if (T === r) r.busy = false; });
+    return true;
+  }
+  async function runRaft(leg, r) {
+    const J = save.journey;
+    J.milesDone = 0;                         // a raft run always starts from the top: leaving mid-way loses nothing
+    await showCard({ kicker: 'The last stretch', title: 'Down the Columbia!', text: RAFT_INTRO, say: RAFT_INTRO, tone: 'lookout', button: 'Push off!' });
+    if (T !== r) return;
+    v2.raft = { leg, bends: 0 };
+    showBar('Steer the raft: drag, or use the arrow keys', 'Stop for today', () => go('title'));
+    const end = await playMini('startRaft', { seed: seedFor('raft'), length: RAFT_BENDS }, {
+      end: 'raftEnd', types: ['raftMarker', 'raft'],
+      onEvent: (e) => { if (e.type === 'raftMarker') raftBend(e, leg, r).catch((x) => console.error('[WagonWest] bend', x)); else if (e.bump) toast('Bump! Hold on'); },
+    });
+    hideBar();
+    v2.raft = null;
+    if (!end || T !== r) return;
+    const bumps = Math.max(0, Math.round(num(end.bumps)));
+    let pay = null;
+    try { pay = JA.raftPay(J, { bumps }); } catch (e) { console.warn('[WagonWest] raftPay', e); }
+    J.milesDone = leg.miles;
+    app.persist(); refreshCash(); Audio.cash();
+    hud.update(J, leg, { milesDone: leg.miles, ...hudExtra() });
+    effectToast(`The raft is across!${num(pay && pay.cash) ? ` $${pay.cash} for the run${bumps ? '' : ', and not a single bump'}.` : ''}`, 'The raft is across!');
+    await sleep(beat(3400));                 // the vista: the party cheers in the valley
+    if (T !== r) return;
+    await arrival(r);
+  }
+  /** A bend of the river: a fact on the marker panel (chip "Bend n of 4"), recorded like a mile marker; then the raft runs on. */
+  async function raftBend(e, leg, r) {
+    const J = save.journey;
+    if (v2.raft) v2.raft.bends = num(e.n);
+    const of = Math.max(1, num(e.of) || RAFT_BENDS);
+    hud.update(J, leg, { milesDone: Math.round(num(leg.miles) * Math.max(0, num(e.n) - 1) / of), ...hudExtra() });       // (shown only: the miles are set at the valley)
+    await runMarker({ n: num(e.n), of }, { raft: true });
+    if (T !== r || !v2.play || !v2.raft) return;
+    hud.update(J, leg, { milesDone: Math.round(num(leg.miles) * num(e.n) / of), ...hudExtra() });
+    S('raftGo');
+  }
+
+  // ----- deeds: checked after what can earn one (every save does it), popped like a card, listed on the results -----
+  function v2CheckDeeds() {
+    const J = save.journey;
+    if (!J || typeof JA.checkDeeds !== 'function') return [];
+    let ids = [];
+    try { ids = JA.checkDeeds(J) || []; } catch (e) { console.warn('[WagonWest] checkDeeds', e); }
+    for (const id of ids) {
+      if (save.trip) save.trip.deeds = [...(Array.isArray(save.trip.deeds) ? save.trip.deeds : []), id];
+      deedPop.pop(id);
+    }
+    return ids;
+  }
+  Object.assign(app, {
+    /** What the second app stream's screens borrow from the app (rivers, people, deeds). */
+    v2: {
+      JA, showCard, runProblem, runProblemPanel, ladderPick, dropCard, curLeg,
+      playMini, endPlay: () => endPlay(), seed: seedFor, cross: v2Cross, floatSafe: v2FloatSafe,
+      checkDeeds: () => { const ids = v2CheckDeeds(); if (ids.length) { app.persist(); refreshCash(); } return ids; },
+    },
+  });
+
   // ---------- pause ----------
   function pause() {
     if (screen !== 'trail' || !T || paused) return;
@@ -1789,6 +1982,7 @@ async function boot() {
     get scene() { return scene; }, get screen() { return screen; }, get save() { return save; }, get facts() { return facts; },
     get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb } : null; },
     JA, cloud, Music, cardPop, camp: screens.camp,
+    peopleUI, deedPop, get v2() { return { play: v2.play ? v2.play.fn : null, raft: v2.raft ? { ...v2.raft } : null }; },    // (v1.2 app two)
     get derby() { return derby ? { markers: derby.markers, bursts: derby.bursts.slice(), busy: derby.busy } : null; },
     get lastDerby() { return lastDerby; }, get lastQuickDraw() { return lastQuickDraw; }, get music() { return { ...musicState }; },
     dropCard: (id) => dropCard(id), checkDaily: () => checkDaily(), dogBerries: () => (T && !T.busy && save.journey && save.journey.dog ? (T.busy = true, dogBerries().finally(() => { if (T) { T.busy = false; T.last = 0; } }), true) : false),

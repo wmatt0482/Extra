@@ -2,11 +2,15 @@
 // "Read it to me" (the voice reads it back). Stickers: one per stop of the trail (the landmark's emoji and name once
 // earned, a faint outline before), every season counting. The map: the whole trail with every stop named and the
 // party's wagon where it is. v1.1: a fourth page, Cards: the trail-card album (src/ui/cards.js).
+// v1.2 (app two): the map page also lists "People met" (src/ui/people.js metCard: the portraits of everyone talked to at
+// the stops), and a fifth page, Deeds: twenty badges with the one line that says how, the earned ones lit (src/ui/deeds.js).
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { drawMap } from './map.js';
 import { albumPage } from './cards.js';
+import { deedsPage } from './deeds.js';
+import { metCard } from './people.js';
 
-const PAGES = [['letters', 'Letters'], ['stickers', 'Stickers'], ['map', 'Map'], ['cards', 'Cards']];
+const PAGES = [['letters', 'Letters'], ['stickers', 'Stickers'], ['map', 'Map'], ['cards', 'Cards'], ['deeds', 'Deeds']];
 
 export function createJournal(app) {
   const tabs = $('#jr-tabs');
@@ -48,12 +52,12 @@ export function createJournal(app) {
     const J = app.save.journey;
     drawMap(svg, { legs: app.legs, J, inLeg: !!(app.save.trip && J && app.save.trip.legId === J.legId), paint: app.paintColor(), labels: 'all', stickers: app.save.stickers });
     svg.setAttribute('aria-label', 'The whole trail');
-    return [h('div', { class: 'card jr-mapcard' }, svg)];
+    return [h('div', { class: 'card jr-mapcard' }, svg), metCard(app)];
   }
   function render() {
     renderTabs();
     body.dataset.page = page;
-    body.replaceChildren(...(page === 'letters' ? letters() : page === 'stickers' ? stickers() : page === 'cards' ? albumPage(app) : map()));
+    body.replaceChildren(...(page === 'letters' ? letters() : page === 'stickers' ? stickers() : page === 'cards' ? albumPage(app) : page === 'deeds' ? deedsPage(app) : map()));
     body.scrollTop = 0;
   }
   return { show(opts = {}) { if (opts.page) page = opts.page; render(); }, hide() {}, get page() { return page; } };

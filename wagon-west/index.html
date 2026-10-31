@@ -670,6 +670,85 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 @keyframes cardIn { from { transform: perspective(500px) rotateY(-100deg) scale(.7); opacity: 0; } }
 @keyframes cardOut { to { transform: translateY(-10px) scale(.9); opacity: 0; } }
 .reduced-motion .cpop-card { animation: none; }
+/* ---------- v1.2 (app two): rivers as a choice, the Talk row, deeds, the storm at camp ---------- */
+.rv-choice { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.rv-ask { margin: 0; font: 400 clamp(19px, 3vmin + 1vw, 26px)/1.1 var(--font-display); color: #fff; text-shadow: 0 3px 0 var(--ink); text-align: center; }
+.rv-opts { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.rv-opt { display: grid; justify-items: center; align-content: center; gap: 4px; min-height: 132px; padding: 10px 10px 12px; text-align: center; background: var(--paper); color: var(--paper-ink); border-color: #a07a4c; cursor: pointer; }
+.rv-opt:active { transform: translateY(3px); }
+.rv-opt-emoji { font-size: 38px; line-height: 1; }
+.rv-opt-name { font: 400 22px/1.05 var(--font-display); color: var(--rust-edge); }
+.rv-opt-line { font: 700 14px/1.25 var(--font-body); }
+.rv-opt-note { font: 800 12px/1.2 var(--font-body); color: #6b4426; }
+.rv-opt-note.safe { color: #2f6a1a; }
+.rv-body { align-items: stretch; }
+.rv-play, .rv-result { align-self: center; width: min(560px, 100%); display: grid; gap: 4px; padding: 10px 16px; text-align: center; background: rgba(31,21,13,.88); }
+.rv-play b { font: 400 18px/1.1 var(--font-display); color: var(--accent); }
+.rv-status { min-height: 20px; font: 700 16px/1.25 var(--font-body); }
+.rv-status.go { color: var(--go); } .rv-status.hot { color: #ffcf9a; }
+.rv-result { background: var(--paper); color: var(--paper-ink); border-color: #a07a4c; font: 700 17px/1.35 var(--font-body); }
+#screen-river.rv-playing { pointer-events: none; }
+#screen-river.rv-playing .rv-body { justify-content: flex-end; }
+#screen-river.rv-playing button { pointer-events: auto; }
+/* the Talk row on the stop screen */
+.stop-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; }
+.stop-panel { display: flex; align-items: flex-end; gap: 12px; }
+.stop-talk { flex: 1; min-width: 0; padding: 8px 12px 10px; display: grid; gap: 6px; background: rgba(31,21,13,.9); }
+.stop-talk-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.stop-talk-head b { font: 400 17px/1 var(--font-display); color: var(--accent); }
+.stop-met { font: 800 12px/1 var(--font-body); color: var(--muted); }
+.stop-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.stop-person { position: relative; flex: 1 1 96px; max-width: 200px; min-height: 76px; display: grid; justify-items: center; align-content: center; gap: 3px; padding: 6px 8px; border-radius: 12px; background: var(--paper); color: var(--paper-ink); border: 2px solid #a07a4c; box-shadow: 0 4px 0 #a88b5c; }
+.stop-person:active { transform: translateY(3px); box-shadow: 0 1px 0 #a88b5c; }
+.stop-person-emoji { font-size: 34px; line-height: 1; }
+.stop-person-name { font: 800 12px/1.15 var(--font-body); text-align: center; }
+.stop-person.met { background: #e9dcb8; }
+.stop-person.met::after { content: '\2713'; position: absolute; top: 3px; right: 6px; font: 800 15px/1 var(--font-body); color: #2f6a1a; }
+.stop-go { flex: none; }
+/* deeds: the Journal's fifth page, the pop, the results list */
+.dd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+.dd-badge { position: relative; display: grid; justify-items: center; align-content: start; gap: 3px; min-height: 108px; padding: 10px 8px; border-radius: 12px; border: 2px dashed var(--line); background: rgba(31,21,13,.6); color: var(--muted); text-align: center; }
+.dd-badge .dd-emoji { font-size: 32px; line-height: 1; filter: grayscale(1); opacity: .45; }
+.dd-badge .dd-name { font: 400 15px/1.1 var(--font-display); }
+.dd-badge .dd-how { font: 700 12px/1.25 var(--font-body); }
+.dd-badge.got { border-style: solid; border-color: var(--accent); background: var(--paper); color: var(--paper-ink); box-shadow: 0 0 0 2px rgba(242,179,61,.35); }
+.dd-badge.got .dd-emoji { filter: none; opacity: 1; }
+.dd-badge.got .dd-name { color: var(--rust-edge); }
+.dd-badge.got::after { content: '\2713'; position: absolute; top: 4px; right: 8px; font: 800 15px/1 var(--font-body); color: #2f6a1a; }
+.met-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.met-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; background: var(--paper); color: var(--paper-ink); font: 800 13px/1.1 var(--font-body); }
+.met-chip span:first-child { font-size: 20px; }
+.met-card { padding: 10px 14px; display: grid; gap: 8px; }
+.met-card b { font: 400 17px/1.1 var(--font-display); }
+#deedpop { position: absolute; left: 50%; top: calc(var(--pad-t) + 56px); z-index: 46; transform: translateX(-50%); pointer-events: none; width: max-content; max-width: min(92vw, 440px); }
+.dpop-card { display: flex; align-items: center; gap: 12px; padding: 8px 16px 8px 12px; border-radius: 16px; background: rgba(31,21,13,.92); border: 3px solid var(--accent); animation: cardIn .5s cubic-bezier(.2,1.4,.4,1) both, cardOut .35s ease 3.05s both; }
+.dpop-emoji { font-size: 38px; line-height: 1; }
+.dpop-text { display: grid; gap: 2px; }
+.dpop-label { font: 800 11px/1 var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+.dpop-name { font: 400 19px/1.1 var(--font-display); color: var(--accent); }
+.dpop-how { font: 700 13px/1.25 var(--font-body); }
+.reduced-motion .dpop-card { animation: none; }
+.res-deeds { display: grid; gap: 4px; }
+.res-deeds b { font: 800 11px/1 var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.res-deed { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px; border-radius: 999px; background: var(--paper); color: var(--paper-ink); font: 800 13px/1.15 var(--font-body); }
+.res-deed span:first-child { font-size: 20px; }
+.camp-arrows { color: #ffcf9a; }
+.camp-act[data-act="wait"] { border-color: var(--cyan); }
+@media (orientation: portrait) {
+  .rv-opts { grid-template-columns: 1fr; gap: 8px; }
+  .rv-opt { grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto auto; justify-items: start; text-align: left; align-content: center; min-height: 96px; column-gap: 12px; padding: 8px 12px; }
+  .rv-opt-emoji { grid-row: 1 / 4; align-self: center; }
+  .stop-panel { flex-direction: column; align-items: stretch; }
+  .stop-go { width: 100%; }
+  .stop-person { flex: 1 1 28%; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .rv-opt { min-height: 118px; padding: 6px 8px 8px; gap: 2px; }
+  .rv-opt-emoji { font-size: 32px; }
+  .rv-opt-line { font-size: 13px; }
+  .stop-person { min-height: 70px; }
+  .stop-person-emoji { font-size: 30px; }
+}
 /* ---------- v1.2: the Wagon panel, the forecast chip, effect toasts, the store rows, the family map ---------- */
 .hud-food { font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .hud-food .hud-label, .hud-food b, .hud-food .hud-note { display: block; }
@@ -961,6 +1040,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
     </div>
     <div class="camp-body">
       <div class="camp-acts" id="camp-acts"></div>
+      <p class="camp-note camp-arrows" id="camp-arrows" hidden>No arrows: fishing only. Arrows are sold at the next fort.</p>
       <p class="camp-note"><span id="camp-food"></span> · each one takes a day, and the trail waits</p>
     </div>
     <div class="camp-foot">
@@ -984,7 +1064,19 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   </section>
 
   <!-- ===== At a stop: the scene's backdrop, the lookout card over it ===== -->
-  <section class="screen" id="screen-stop" data-screen="stop" hidden></section>
+  <section class="screen" id="screen-stop" data-screen="stop" hidden>
+    <!-- v1.2 (app two, src/ui/people.js): the "Talk" row of the people at this stop -->
+    <div class="stop-wrap" id="stop-wrap" hidden>
+      <div class="topbar"><h2 id="stop-title">The stop</h2></div>
+      <div class="stop-panel">
+        <div class="card stop-talk">
+          <div class="stop-talk-head"><b>Talk</b><span class="stop-met" id="stop-met"></span></div>
+          <div class="stop-row" id="stop-row"></div>
+        </div>
+        <button class="btn btn-go btn-big stop-go" id="stop-go" data-sfx><span id="stop-go-text">Continue</span><span data-icon="right"></span></button>
+      </div>
+    </div>
+  </section>
 
   <!-- ===== River crossing (src/ui/river.js) ===== -->
   <section class="screen" id="screen-river" data-screen="river" hidden>
@@ -993,7 +1085,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
       <h2 id="rv-title">River crossing</h2>
     </div>
     <div class="rv-body">
-      <div class="card rv-words" id="rv-words">The ferryman asks for three words from your spelling list.</div>
+      <!-- v1.2 (app two): rivers are a choice -->
+      <div class="rv-choice" id="rv-choice" hidden>
+        <p class="rv-ask" id="rv-ask">How will you cross the river?</p>
+        <div class="rv-opts" id="rv-opts"></div>
+      </div>
+      <div class="card rv-words" id="rv-words" hidden>The ferryman asks for three words from your spelling list.</div>
       <div class="rv-rope" id="rv-rope" hidden>
         <div class="card rv-landing">
           <div class="hud-label">The landing</div>
@@ -1005,6 +1102,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
         <svg class="rv-svg" id="rv-svg" viewBox="0 0 1000 260" role="img" aria-label="The river as a number line: drag the rope to aim"></svg>
         <div class="rv-msg" id="rv-msg" aria-live="polite"></div>
       </div>
+      <div class="card rv-play" id="rv-play" hidden><b id="rv-play-title">Ford the river</b><span class="rv-status" id="rv-status" aria-live="polite"></span></div>
+      <div class="card rv-result" id="rv-result" hidden aria-live="polite"></div>
     </div>
     <div class="rv-foot" id="rv-foot" hidden><span class="rv-across">Across the river!</span><button class="btn btn-go" id="rv-go" data-sfx>Roll on<span data-icon="right"></span></button></div>
   </section>
@@ -1052,6 +1151,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
       <div class="card res-pay">
         <table class="pay" id="res-pay"></table>
         <p class="res-tokens" id="res-tokens"></p>
+        <div class="res-deeds" id="res-deeds" hidden></div>
         <div class="res-crate" id="res-crate" hidden></div>
       </div>
     </div>
@@ -1069,6 +1169,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   <div id="mini" hidden><div class="mini-bar"><span id="mini-text">Tap to loose an arrow</span><button class="btn btn-sm" id="mini-done" data-sfx>Done</button></div></div>
   <div id="spell" hidden></div>
   <div id="cardpop" aria-live="polite" hidden></div>
+  <div id="deedpop" aria-live="polite" hidden></div>
 
   <!-- ===== Pause ===== -->
   <div class="modal" id="panel-pause" hidden>

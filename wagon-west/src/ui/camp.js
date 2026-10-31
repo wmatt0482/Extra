@@ -5,6 +5,9 @@
 // camp (the Journey stream's camp(J, kind)); main.js runs them (app.campActivity). The way out: "Back to the trail"
 // (or "On to the results" on an arrival evening) and "Stop for today" (the title; the journey waits). No timers, no
 // lives: camp is where a child goes to play a bit more, and the trail never needs it.
+// v1.2 (app two): Hunting is hidden while there are no arrows (huntAllowed(J) false: "No arrows: fishing only"), and
+// "Wait out the storm" is added while the forecast shows rain, a storm or snow (app.waitOut(): a rest day, the weather
+// then costs nothing); the scout's forecast line shows once a visit when he sees it two days ahead.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { COMPANION_BY_ID } from '../content/companions.js';
 
@@ -15,6 +18,8 @@ export const CAMP_ACTS = Object.freeze([
   { id: 'tales', emoji: '🔥', name: 'Campfire tales', line: 'A story by the fire, then a riddle: a token.' },
   { id: 'rest', emoji: '🛌', name: 'Rest', line: 'A quiet day. Everyone feels better.' },
 ]);
+export const WAIT_ACT = Object.freeze({ id: 'wait', emoji: '⛈️', name: 'Wait out the storm', line: 'Rest a day under the canvas. The weather then costs nothing.' });
+const WEATHER = ['rain', 'storm', 'snow'];
 
 export function createCamp(app) {
   const acts = $('#camp-acts');
@@ -22,6 +27,18 @@ export function createCamp(app) {
   const stop = $('#camp-stop');
   let ctx = null;      // { context: 'trail' | 'arrival', resolve }
   let busy = false;
+  const journeyApi = () => (app.v2 && app.v2.JA) || {};
+  /** The raw forecast (with the scout's skill line when he sees it), or null. */
+  function weatherAhead() {
+    const J = app.save.journey, JA = journeyApi();
+    if (!J || typeof JA.forecast !== 'function') return null;
+    try { const f = JA.forecast(J); return f && WEATHER.includes(f.next) ? f : null; } catch (_) { return null; }
+  }
+  /** Is the bow usable (hunting on in the Parent Zone, and arrows in the quiver)? */
+  function bowOk() {
+    const J = app.save.journey, JA = journeyApi();
+    try { return typeof JA.huntAllowed === 'function' ? !!JA.huntAllowed(J) : true; } catch (_) { return true; }
+  }
   function paint() {
     if (!ctx) return;
     const J = app.save.journey;
@@ -30,7 +47,12 @@ export function createCamp(app) {
     $('#camp-title').textContent = ctx.context === 'arrival' ? 'Camp for the night' : 'Camp';
     $('#camp-day').textContent = `Day ${(J && J.day) || 0}`;
     $('#camp-food').textContent = `${Math.round((J && J.food) || 0)} lb food · ${(J && J.tokens) || 0} tokens`;
-    const list = CAMP_ACTS.filter((a) => a.id !== 'hunt' || app.settings.hunting !== false);
+    const noArrows = app.settings.hunting !== false && !bowOk();
+    const storm = ctx.context === 'trail' ? weatherAhead() : null;
+    const list = CAMP_ACTS.filter((a) => a.id !== 'hunt' || (app.settings.hunting !== false && !noArrows));
+    if (storm) list.push(WAIT_ACT);
+    $('#camp-arrows').hidden = !noArrows;
+    if (storm && storm.skill && !ctx.scoutSaid) { ctx.scoutSaid = true; app.skillLine(storm.skill); }
     acts.replaceChildren(...list.map((a) => {
       const b = h('button', { class: 'card camp-act', 'data-act': a.id, 'data-sfx': '', disabled: busy },
         h('span', { class: 'camp-emoji', 'aria-hidden': 'true' }, a.emoji),
@@ -39,7 +61,12 @@ export function createCamp(app) {
       b.addEventListener('click', async () => {
         if (busy || !ctx) return;
         busy = true; paint();
-        try { await app.campActivity(a.id); } finally { busy = false; if (ctx && app.screen === 'camp') paint(); }
+        try {
+          if (a.id === 'wait') {
+            const r = app.waitOut();
+            app.toast(r && r.waited ? 'You waited out the storm. It cost nothing!' : 'A good rest. Everyone feels better');
+          } else await app.campActivity(a.id);
+        } finally { busy = false; if (ctx && app.screen === 'camp') paint(); }
       });
       return b;
     }));
