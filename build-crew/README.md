@@ -41,4 +41,6 @@ Run the server in another terminal. `CHROMIUM_PATH` optionally selects an instal
 
 Voice preparation follows Wagon West: prepare known lines on player/round changes, await voiceFor before new speech, and duck music during speech. The Google key remains in Netlify's environment. Existing shared pings are called, but the current shared stats allowlist does not accept Build Crew; changing another existing game module was outside the authorized files.
 
-`node build-crew/tools/prepare-offline.mjs` refreshes the committed offline list after changing imports. Bump both VERSION in `src/content.mjs` and the service-worker cache version on releases. Offline caches include all transitive shared imports and the embedded WASM; APIs stay network only and prepared voice clips use the shared voice cache.
+`node build-crew/tools/prepare-offline.mjs` refreshes the committed offline list after changing imports. The optional stacking comparison runs with `CANNON_MODULE=file:///absolute/path/to/cannon-es/dist/cannon-es.js node build-crew/tools/stack-compare.mjs`; cannon-es is a test-only external installation.
+
+Bump both VERSION in `src/content.mjs` and the service-worker cache version on releases. Offline caches include all transitive shared imports and the embedded WASM; APIs stay network only and prepared voice clips use the shared voice cache.

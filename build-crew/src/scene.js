@@ -119,7 +119,7 @@ export class Scene {
     this.ghosts.forEach((g,i)=>{const good=status?.matches?.[i]!=null;g.material.color.set(good?'#91f38a':'#adf6e1');g.material.opacity=good?.33:.16+Math.sin(this.yard.time*2)*.04;});
     this.syncMachines();
     const m=this.yard.machine;
-    if(!this.reducedMotion&&Math.abs(m.speed)>.3&&this.yard.time-this.lastMark>.24){this.lastMark=this.yard.time;this.marks.push({x:m.x,z:m.z,yaw:m.yaw});if(this.marks.length>36)this.marks.shift();if(Math.abs(m.speed)>1)this.emit({x:m.x,y:.25,z:m.z-1},'#d7ba85',1);}
+    if(!this.reducedMotion&&Math.abs(m.speed)>.3&&this.yard.time-this.lastMark>.24){this.lastMark=this.yard.time;if(this.marks.length%3===0)this.emit({x:m.x+.45,y:m.y+2.3,z:m.z-.8},'#c4c9b3',1);this.marks.push({x:m.x,z:m.z,yaw:m.yaw});if(this.marks.length>36)this.marks.shift();if(Math.abs(m.speed)>1)this.emit({x:m.x,y:.25,z:m.z-1},'#d7ba85',1);}
     this.marks.forEach((p,i)=>{for(let k=0;k<2;k++){this.tmp.position.set(p.x+(k?.85:-.85)*Math.cos(p.yaw),.035+this.yard.groundAt(p.x,p.z),p.z);this.tmp.rotation.set(0,p.yaw,0);this.tmp.scale.set(.3,.012,.6);this.tmp.updateMatrix();this.trackPool.setMatrixAt(i*2+k,this.tmp.matrix);}});this.trackPool.count=this.marks.length*2;this.trackPool.instanceMatrix.needsUpdate=true;
     this.particles=this.particles.filter(p=>p.life>0);this.particles.forEach((p,i)=>{p.life-=dt;p.p.addScaledVector(p.v,dt);p.v.y-=dt*1.4;this.tmp.position.copy(p.p);this.tmp.rotation.set(i*.8,i,0);this.tmp.scale.setScalar(p.size*Math.max(0,p.life));this.tmp.updateMatrix();this.pool.setMatrixAt(i,this.tmp.matrix);this.pool.setColorAt(i,this.color.set(p.color));});this.pool.count=this.particles.length;this.pool.instanceMatrix.needsUpdate=true;if(this.pool.instanceColor)this.pool.instanceColor.needsUpdate=true;
     this.wreckMesh.visible=!!this.yard.ball;if(this.yard.ball)this.wreckMesh.position.copy(this.yard.ball.translation());
@@ -128,5 +128,6 @@ export class Scene {
     this.camera.position.set(this.target.x+Math.sin(this.yaw)*Math.cos(this.pitch)*dist,this.target.y+Math.sin(this.pitch)*dist,this.target.z+Math.cos(this.yaw)*Math.cos(this.pitch)*dist);this.camera.lookAt(this.target);this.renderer.render(this.scene,this.camera);
   }
   thumbnail(){this.render(0);const cv=document.createElement('canvas');cv.width=320;cv.height=180;cv.getContext('2d').drawImage(this.canvas,0,0,320,180);return cv.toDataURL('image/jpeg',.65);}
+  adapt(ms){this.slowFrames=ms>18?(this.slowFrames||0)+1:Math.max(0,(this.slowFrames||0)-1);if(this.slowFrames>45&&this.renderer.getPixelRatio()>1){this.renderer.setPixelRatio(1);this.resize();}}
   destroy(){window.removeEventListener('resize',this.resize);this.clearRound();const geometries=new Set(),materials=new Set();this.scene.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)for(const m of Array.isArray(o.material)?o.material:[o.material])materials.add(m);});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());this.labelTexture.dispose();this.renderer.dispose();}
 }

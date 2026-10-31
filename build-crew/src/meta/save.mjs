@@ -6,9 +6,10 @@ export const saveKey=id=>`buildCrew.${id}.save`;
 export const defaultSave=()=>({v:1,done:[],rewards:[],play:{},yard:null,resetAt:0,unlockAll:false,paint:'stock',decal:'none',horn:'stock',streak:defaultStreak(),cosmetics:defaultCosmetics(),crates:defaultCrates()});
 const n=v=>typeof v==='number'&&Number.isFinite(v)?v:0;
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,n(v)));
+function quaternion(q){if(!q||!['x','y','z','w'].every(k=>Number.isFinite(q[k])))return {x:0,y:0,z:0,w:1};const l=Math.hypot(q.x,q.y,q.z,q.w);return l>1e-6?{x:q.x/l,y:q.y/l,z:q.z/l,w:q.w/l}:{x:0,y:0,z:0,w:1};}
 export function normalizeYard(raw){
   if(!raw||!Array.isArray(raw.toys))return null;
-  return {v:1,daylight:clamp(raw.daylight??.7,0,1),toys:raw.toys.slice(0,64).filter(t=>TOYS[t.type]).map(t=>({type:t.type,color:/^#[0-9a-f]{6}$/i.test(t.color)?t.color:'#e65e4b',x:clamp(t.x,-16,16),y:clamp(t.y,-1,15),z:clamp(t.z,-16,16),rotation:t.rotation&&['x','y','z','w'].every(k=>Number.isFinite(t.rotation[k]))?t.rotation:{x:0,y:0,z:0,w:1}})),machines:(raw.machines||[]).slice(0,3).filter(m=>MACHINES[m.kind]).map(m=>({kind:m.kind,x:clamp(m.x,-14,14),z:clamp(m.z,-14,14),yaw:clamp(m.yaw,-1000,1000),swing:clamp(m.swing,-1000,1000),lift:clamp(m.lift,...MACHINES[m.kind].height),reach:clamp(m.reach,...MACHINES[m.kind].reach),tilt:clamp(m.tilt,-.7,.7)})),stamps:(raw.stamps||[]).slice(0,12).filter(s=>['hill','pit','ramp','water'].includes(s.kind)).map(s=>({kind:s.kind,x:clamp(s.x,-14,14),z:clamp(s.z,-14,14)}))};
+  return {v:1,daylight:clamp(raw.daylight??.7,0,1),toys:raw.toys.slice(0,64).filter(t=>TOYS[t.type]).map(t=>({type:t.type,color:/^#[0-9a-f]{6}$/i.test(t.color)?t.color:'#e65e4b',x:clamp(t.x,-16,16),y:clamp(t.y,-1,15),z:clamp(t.z,-16,16),rotation:quaternion(t.rotation)})),machines:(raw.machines||[]).slice(0,3).filter(m=>MACHINES[m.kind]).map(m=>({kind:m.kind,x:clamp(m.x,-14,14),z:clamp(m.z,-14,14),yaw:clamp(m.yaw,-1000,1000),swing:clamp(m.swing,-1000,1000),lift:clamp(m.lift,...MACHINES[m.kind].height),reach:clamp(m.reach,...MACHINES[m.kind].reach),tilt:clamp(m.tilt,-.7,.7)})),stamps:(raw.stamps||[]).slice(0,12).filter(s=>['hill','pit','ramp','water'].includes(s.kind)).map(s=>({kind:s.kind,x:clamp(s.x,-14,14),z:clamp(s.z,-14,14)}))};
 }
 export function normalize(raw){
   const out=defaultSave();if(!raw||typeof raw!=='object')return out;
