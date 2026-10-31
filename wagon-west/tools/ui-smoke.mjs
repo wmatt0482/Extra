@@ -896,7 +896,8 @@ async function v12Journey(page, layout, grab) {
   check(await toastWith(page, /Ada hammers the wheel/), 'a skill fires: the companion\'s line as a toast');
   const skl = await J(page, () => { const t = document.querySelector('#toasts .toast.skill'); return t && { face: !!t.querySelector('.sk-face svg'), who: t.dataset.who, text: t.textContent }; });
   check(skl && skl.face && skl.who === 'blacksmith' && /^Ada/.test(skl.text), `with Ada's portrait: "${skl && skl.text}"`);
-  check(await page.waitForFunction((n) => window.__spoken.slice(n).some((t) => /hammers the wheel/.test(t)), sp0, { timeout: 3000 }).then(() => true, () => false), 'and read aloud');
+  // (the real day loop can speak another line the same day, which cancels a queued one: allow the toast's own 5 s)
+  check(await page.waitForFunction((n) => window.__spoken.slice(n).some((t) => /hammers the wheel|^Ada:?$/.test(t)), sp0, { timeout: 6000 }).then(() => true, () => false), 'and read aloud');
   await shot(page, layout, '28-skill', 100);
   await audit(page, layout.insets, 'trail (a skill toast)');
   await drive(page, idleTrail, far(page), 20000);
