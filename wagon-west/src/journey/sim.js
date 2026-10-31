@@ -37,6 +37,8 @@ import { START, MOOD, SPEED, MARKERS, RESCUE, TOKENS, RATIONS, PACES, foodNeeded
 import { CARDS, CARD_BY_ID, cardsOf } from '../content/cards.js';
 import { COMPANION_BY_ID } from '../content/companions.js';
 import { PERSON_BY_ID, PEOPLE_BY_STOP } from '../content/people.js';
+import { NATION_BY_ID, FALLBACK_TRADES, TRADE_GOOD_NAMES } from '../content/nations.js';
+import { numberWords, singular } from './problems.js';
 import { planEvents, rescueEvent, eventPayload, EVENT_BY_ID } from './events.js';
 import { starsFor, hasArrived, starCount } from './stars.js';
 import { hashSeed, mulberry32, drawFrom, randInt } from './rng.js';
@@ -442,41 +444,90 @@ export function applyHunt(J, { meatLb = 0 } = {}) {
 /** The fishing result (the scene's fishEnd.fishLb), with the same safety-net minimum. */
 export const applyFish = (J, { fishLb = 0 } = {}) => addFood(J, fishLb, 'fished', 'fish');
 
-/** What the wagon can trade here: the nation's give good, how many the wagon holds (pelts from the start and the
- *  hunts, blankets and rope from the store) and the rate. The app passes `have` to problemFor('trade'). */
-export function tradeOffer(J) {
-  const nation = nationFor(currentLeg(J));
-  const tr = (nation && nation.trade) || { give: 'pelts', get: 'flour', rate: [3, 2] };
-  return { nation: nation ? nation.id : null, give: tr.give, get: tr.get, rate: tr.rate || [3, 2], have: spareGoods(J, tr.give) };
+/** The goods a trade can give that are food: counted in whole units (a sack of flour is 50 lb) out of J.foods. */
+const FOOD_GIVES = ['flour', 'bacon', 'beans'];
+const GENERIC_TRADE = { give: 'pelts', giveName: 'beaver pelts', get: 'flour', getName: 'sacks of flour', rate: [3, 2] };
+const gcd = (a, b) => (b ? gcd(b, a % b) : a);
+const tradesIn = (J, t) => Math.floor(spareGoods(J, t.give) / Math.max(1, (t.rate && t.rate[0]) | 0 || 1));
+
+/** What the wagon can trade here, and it is always something the wagon holds (SPEC §1: nothing the child cannot have).
+ *  Candidates are the nation's listed trades (`nation.trades`: its signature trade first, then the same food for the party's
+ *  other goods), or `opts.trades` (a person's own trade); then the token trade and the food trades of FALLBACK_TRADES.
+ *  The pick, in order: a listed trade the wagon can make twice or more (the signature one first, else the good the wagon
+ *  holds most of), then once; then a fallback (tokens, then store food) twice or more, then once. Two trades make the
+ *  multiplication worth asking, but the nation's own goods come first. The offer is { nation, give, giveName, get, getName, rate, have, trades, kind: 'listed' | 'fallback' |
+ *  'none' }: `have` is how many of `give` the wagon can spare (tokens, a food's whole units, goods, pelts; blankets a cold
+ *  leg still needs are not spare). 'none' (the guard: the app says "Nothing to trade this time") is only when the wagon
+ *  holds not even one trade of anything, so `have` < rate[0] there. The app passes the offer to problemFor('trade', {
+ *  offer }) so the story and the multiplication match what the wagon gives. */
+export function tradeOffer(J, opts = {}) {
+  const nation = opts.nation ? NATION_BY_ID[opts.nation] : nationFor(currentLeg(J));
+  const listed = (opts.trades && opts.trades.length ? opts.trades : nation && (nation.trades || (nation.trade ? [nation.trade] : null))) || [GENERIC_TRADE];
+  const norm = (t) => ({ ...t, rate: Array.isArray(t.rate) && t.rate.length === 2 ? t.rate.map((n) => Math.max(1, n | 0)) : [3, 2] });
+  const L = listed.map(norm), F = FALLBACK_TRADES.map(norm);
+  const make = (t, kind) => ({ nation: nation ? nation.id : null, give: t.give, giveName: t.giveName || TRADE_GOOD_NAMES[t.give] || t.give,
+    get: t.get, getName: t.getName || TRADE_GOOD_NAMES[t.get] || t.get, rate: t.rate, have: spareGoods(J, t.give), trades: tradesIn(J, t), kind });
+  // the nation's own goods first (twice or more, then once), then the fallbacks (twice or more, then once)
+  const pickListed = (need) => {
+    const ok = L.filter((t) => tradesIn(J, t) >= need);
+    return !ok.length ? null : ok.includes(L[0]) ? L[0] : ok.reduce((m, t) => (tradesIn(J, t) > tradesIn(J, m) ? t : m), ok[0]);
+  };
+  const pickFallback = (need) => F.find((t) => tradesIn(J, t) >= need && !L.some((l) => l.give === t.give && l.get === t.get)) || null;
+  for (const [pick, kind, need] of [[pickListed, 'listed', 2], [pickListed, 'listed', 1], [pickFallback, 'fallback', 2], [pickFallback, 'fallback', 1]]) {
+    const t = pick(need);
+    if (t) return make(t, kind);
+  }
+  return make(L[0], 'none');
+}
+/** The offer in one sentence (digits spelled out, so it can be read aloud): "Mr. Dell offers a fair trade: three coils of rope
+ *  for two bags of camas roots." `who` defaults to "The trading post". */
+export function tradeLine(offer, who = 'The trading post') {
+  if (!offer) return '';
+  const [g, t] = offer.rate;
+  return `${who} offers a fair trade: ${numberWords(g)} ${g === 1 ? singular(offer.giveName) : offer.giveName} for ${numberWords(t)} ${t === 1 ? singular(offer.getName) : offer.getName}.`;
 }
 /** How many of a good the wagon can trade away: all of them, except the blankets a cold leg still ahead needs (one for every
- *  two people): the party never trades its blankets away and then freezes in the mountains (SPEC v1.2 §1). */
+ *  two people): the party never trades its blankets away and then freezes in the mountains (SPEC v1.2 §1). Trade tokens
+ *  count as themselves and a food (flour, bacon, beans) as its whole units (a sack of flour is 50 lb). */
 export function spareGoods(J, good) {
+  if (good === 'tokens') return Math.max(0, (J.tokens | 0));
+  if (FOOD_GIVES.includes(good)) { ensureFoods(J); return Math.floor((J.foods[good] | 0) / lbOf(good)); }
   const have = (J.goods && J.goods[good]) | 0;
   if (good !== 'blankets') return have;
   const t = J.trip;
   const ahead = coldLegsAhead(J).filter((id) => !(id === J.legId && t && t.coldDone));
   return Math.max(0, have - (ahead.length ? needsBlankets(J, ahead[0]).need : 0));
 }
+function takeGood(J, good, n) {
+  if (good === 'tokens') J.tokens = Math.max(0, (J.tokens | 0) - n);
+  else if (FOOD_GIVES.includes(good)) { ensureFoods(J); J.foods[good] = Math.max(0, (J.foods[good] | 0) - n * lbOf(good)); syncFood(J); }
+  else J.goods[good] = Math.max(0, (J.goods[good] | 0) - n);
+}
 
-/** A trade at a trading post: give `giveN` of the nation's give good from the wagon's goods (never below 0), get
- *  `getN` of its get good, always a food (into the wagon's `other` food by TRADE_LB pounds). When the wagon holds fewer than
- *  giveN, the trade shrinks to the whole trades it can make (so goods are never created from nothing). */
-export function applyTrade(J, { giveN = 0, getN = 0, give, get } = {}) {
+/** A trade at a trading post: give `giveN` of the offered good (the wagon's tokens, food units or goods, never below 0), get
+ *  `getN` of its get good, always a food (into the wagon's `other` food by TRADE_LB pounds). `give` / `get` / `rate` default to
+ *  the nation's own trade (a problem's meta carries them all, so the app passes the offer it asked about); a rate left out of a trade of some other good is worked from
+ *  giveN : getN. When the wagon holds fewer than giveN, the trade shrinks to the whole trades it can make (so goods are never
+ *  created from nothing). */
+export function applyTrade(J, { giveN = 0, getN = 0, give, get, rate } = {}) {
   ensureJourney(J);
-  const offer = tradeOffer(J);
-  const g = give || offer.give, w = get || offer.get;
-  const [per, gets] = Array.isArray(offer.rate) && offer.rate.length === 2 ? offer.rate : [3, 2];
+  const nation = nationFor(currentLeg(J));
+  const sig = (nation && nation.trade) || GENERIC_TRADE;                     // a call with no goods named is the nation's own trade
+  const g = give || sig.give, w = get || sig.get;
+  let r = Array.isArray(rate) && rate.length === 2 ? rate : null;
+  if (!r && g === sig.give) r = sig.rate;
+  if (!r) { const d = gcd(Math.max(1, giveN | 0), Math.max(1, getN | 0)); r = [Math.max(1, (giveN | 0) / d), Math.max(1, (getN | 0) / d)]; }
+  const [per, gets] = r;
   const want = Math.max(0, giveN | 0), have = spareGoods(J, g);
   let n = Math.max(0, getN | 0), gave = want;
   if (have < want) { const trades = Math.floor(have / Math.max(1, per)); gave = trades * per; n = Math.min(n, trades * gets); }
-  J.goods[g] = Math.max(0, (J.goods[g] | 0) - gave);
+  takeGood(J, g, gave);
   const foodLb = n * lbOf(w);
   addFoodKind(J, 'other', foodLb);
   J.totals.traded += n;
   if (J.trip) { J.trip.traded = (J.trip.traded | 0) + n; if (n > 0 && !J.trip.happened.includes('trade')) J.trip.happened.push('trade'); }
   refreshMood(J);
-  return { foodLb, got: n, gave, good: w, nation: offer.nation };
+  return { foodLb, got: n, gave, good: w, gaveGood: g, nation: nation ? nation.id : null };
 }
 
 /** The stop whose store the party is at: the arrived leg's fort, or Independence (null) before the first mile. */

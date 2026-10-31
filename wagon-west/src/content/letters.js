@@ -32,11 +32,11 @@ export const LETTER_LINES = {
   wheel: [
     'A wheel came off, but {name} fixed it in no time.',
     'Bump! Our wheel popped right off. {name} said it was an easy job, and it was.',
-    'We lost a wheel in a rut. Counting the spokes took longer than fixing it!',
+    'A wheel popped off in a rut. Counting the spokes took longer than fixing it!',
   ],
   bolts: [
     'The wagon rattled so much that some bolts shook loose, but {name} tightened them up.',
-    'Rattle, rattle, rattle! I counted the bolts when we fixed it. Not one got lost.',
+    'Rattle, rattle, rattle! I counted the bolts when we fixed it. Every single one was there.',
     'We tightened the bolts on the wagon, and now it only squeaks a little.',
   ],
   mud: [

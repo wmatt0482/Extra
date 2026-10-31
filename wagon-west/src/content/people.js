@@ -135,7 +135,7 @@ export const PEOPLE = [
     'Parties that skip the crossing take a longer, drier trail along the south side.',
   ], { kind: 'tip', problem: 'parts', text: 'Josie asks a riddle about the ropes on the ferry. Work it out for a trade token.' }),
   P('dell', 'snake-river', 'Mr. Dell', '🧔', 'a traveler with sound advice', [
-    'Keep the flour packed high and dry. A wet sack of flour is a lost sack.',
+    'Keep the flour packed high and dry. Dry flour makes the best biscuits on the trail.',
     'A coil of rope is the cheapest thing you can carry. It has saved many a crossing.',
   ], { kind: 'trade', give: 'rope', get: 'camas', rate: [3, 2], text: 'Mr. Dell offers a fair trade: three coils of rope for two bags of camas roots.' }),
 

@@ -12,14 +12,14 @@ import assert from 'node:assert/strict';
 import {
   createJourney, startLeg, tickDay, applyMarker, applyProblem, applyWords, applyHunt, applyFish, applyTrade, buy, arrive,
   nextLeg, journeyDone, newSeason, foodNeeded, etaDays, priceAt, storeList, markerMiles, foodToNextFort, legStatus,
-  setPace, setRations, setHunting, tradeOffer, partySize, storeLeg,
+  setPace, setRations, setHunting, tradeOffer, tradeLine, partySize, storeLeg,
   camp, buyUpgrade, upgradesOwned, derbyPay, awardCard, suitComplete, suitProgress, cardForLeg, cardForAnimal, ensureJourney,
   dailyChallenge, claimChallenge, UPGRADES,
   repair, crossRiver, forecast, waitOut, meetPerson, peopleAt, raftPay, stampedePay, teacherTip, applyMarkerHint, markerHintReady, lookoutDrops, campKinds,
   foodDays, huntAllowed, needsBlankets, spareGoods, coldLegsAhead, skillOf, skillInfo, partySkills, syncFood, speedBonus, effectivePace, checkDeeds, DEEDS, yokeOffered,
 } from '../src/journey/sim.js';
 import { CARDS, CARD_BY_ID, SUITS, cardsOf } from '../src/content/cards.js';
-import { NATIONS } from '../src/content/nations.js';
+import { NATIONS, FALLBACK_TRADES } from '../src/content/nations.js';
 import { COMPANIONS } from '../src/content/companions.js';
 import { readFileSync } from 'node:fs';
 import { problemFor, parseFactId, splitLine, numberWords, PROBLEM_KINDS } from '../src/journey/problems.js';
@@ -970,6 +970,7 @@ test('whole journeys with the v1.1 layer: upgrades bought, camps, cards and a de
 });
 
 // ================= v1.2: supplies that matter, companion skills, rivers, forecast, deeds and people =================
+const isFoodLike = (id) => Object.hasOwn(TRADE_LB, id) || id === 'bacon' || id === 'beans';
 const PLAIN = ['teacher', 'storyteller', 'fiddler'];                 // three companions whose skills touch none of the arithmetic below
 const mk = (companions = PLAIN, seed = 7, extra = {}) => createJourney({ companions, seed, ...extra });
 const quiet = (J) => { J.trip.events = []; J.trip.markers = []; J.trip.nextMarker = 0; return J; };   // plain days: no events, no markers
@@ -1206,13 +1207,105 @@ test('blankets: one for every two people on South Pass, the Blue Mountains and a
   assert.equal(EVENT_BY_ID.snow.cold, true); assert.deepEqual(EVENT_BY_ID.snow.biomes, ['mountains', 'highdesert']);
   buy(mk(), { item: 'blankets', qty: 2 });
 });
+test('trade offers (W8): every offer is something the wagon holds, for all eight nations and many random wagons', () => {
+  const seenNations = new Set(), kinds = { listed: 0, fallback: 0 }, gives = new Set();
+  const rand = mulberry32(8080);
+  const ri = (n) => Math.floor(rand() * n);
+  for (let i = 0; i < 1500; i++) {
+    const nation = NATIONS[i % NATIONS.length];                       // all eight, even two that share a leg (Nez Perce, Cayuse)
+    const leg = legList().find((l) => l.nation === nation.id || (nation.legs || []).includes(l.id));
+    const J = mk(PLAIN, 100 + i); startLeg(J, leg.id);
+    // a random wagon: any goods (often none), tokens, food kinds; blankets only sometimes
+    J.goods.pelts = rand() < 0.4 ? 0 : ri(9); J.goods.rope = rand() < 0.5 ? 0 : ri(7); J.goods.blankets = rand() < 0.6 ? 0 : ri(8);
+    J.tokens = rand() < 0.5 ? 0 : ri(12);
+    J.foods = { flour: ri(5) * 50 + ri(50), bacon: ri(8) * 20, beans: ri(6) * 25, other: ri(60) }; syncFood(J);
+    const canDo = [...nation.trades, ...FALLBACK_TRADES].some((t) => spareGoods(J, t.give) >= t.rate[0]);
+    const o = tradeOffer(J, { nation: nation.id });
+    assert.equal(o.nation, nation.id);
+    seenNations.add(o.nation);
+    assert.equal(o.have, spareGoods(J, o.give), 'have is what the wagon can spare');
+    if (o.kind !== 'none') {
+      assert.ok(o.have >= o.rate[0], `${leg.id} offers ${o.rate[0]} ${o.give} but the wagon spares ${o.have} (${JSON.stringify({ g: J.goods, t: J.tokens, f: J.foods })})`);
+      assert.ok(o.trades >= 1 && o.trades === Math.floor(o.have / o.rate[0]));
+      kinds[o.kind]++; gives.add(o.give);
+      assert.ok(['pelts', 'rope', 'blankets', 'tokens', 'flour', 'bacon', 'beans'].includes(o.give), o.give);
+      assert.ok(isFoodLike(o.get), `${o.get} is a food`);
+      // the trade is a multiplication scene: the rate times the count, whole numbers, and it can be made
+      const p = problemFor({ kind: 'trade', fact: ['7x8', '3x4', '9x6', null, '56/7'][i % 5], leg: J.legId, season: J.season, rand, nation: nation.id, offer: o });
+      assert.equal(p.meta.give, o.give); assert.equal(p.meta.get, o.get); assert.deepEqual(p.meta.rate, o.rate);
+      assert.ok(p.meta.giveN <= o.have, `story trades ${p.meta.giveN} of ${o.have}`);
+      assert.equal(p.meta.giveN % o.rate[0], 0); assert.equal(p.answer, (p.meta.giveN / o.rate[0]) * o.rate[1]); assert.equal(p.answer, p.meta.getN);
+      assert.ok(p.meta.giveN / o.rate[0] >= 1);
+      // and applying it takes exactly what the story gave and adds the food
+      const before = { have: spareGoods(J, o.give), food: J.food };
+      const r = applyTrade(J, p.meta);
+      assert.equal(r.gave, p.meta.giveN, 'nothing shrinks: the wagon held it'); assert.equal(r.got, p.meta.getN);
+      assert.equal(spareGoods(J, o.give), before.have - r.gave);
+      assert.equal(J.food, before.food + r.got * lbOf(o.get) - (['flour', 'bacon', 'beans'].includes(o.give) ? r.gave * lbOf(o.give) : 0));
+      assert.ok(J.tokens >= 0 && Object.values(J.goods).every((v) => v >= 0) && FOOD_KINDS.every((k) => J.foods[k] >= 0));
+    } else {
+      assert.ok(o.have < o.rate[0], 'the guard only when nothing can be traded');
+      assert.ok(!canDo, 'the guard was reached although the wagon held something to trade');
+    }
+  }
+  assert.equal(seenNations.size, 8, 'all eight nations');
+  assert.deepEqual([...seenNations].sort(), NATIONS.map((n) => n.id).sort());
+  assert.ok(kinds.listed > 100 && kinds.fallback > 20, JSON.stringify(kinds));
+  for (const g of ['pelts', 'rope', 'blankets', 'tokens', 'flour']) assert.ok(gives.has(g), `${g} is offered sometimes`);
+});
+const tradeOfferFor = tradeOffer;
+test('trade offers: the signature trade when the wagon holds its goods, the other listed goods otherwise, a token trade as the fallback', () => {
+  for (const n of NATIONS) {
+    assert.ok(Array.isArray(n.trades) && n.trades.length >= 3 || n.trades.length >= 2, `${n.id} lists its trades`);
+    assert.deepEqual(n.trades[0], n.trade, `${n.id}: the signature trade is listed first`);
+    for (const t of n.trades) { assert.equal(t.get, n.trade.get, 'the same food'); assert.ok(['pelts', 'rope', 'blankets'].includes(t.give)); assert.ok(t.rate[0] >= 1 && t.rate[1] >= 1); }
+    assert.equal(new Set(n.trades.map((t) => t.give)).size, n.trades.length, `${n.id}: one trade per good`);
+    const J = mk(PLAIN, 5); startLeg(J, 'kansas-river');                // the offer is for the nation asked for (ev.nation), wherever the wagon is
+    const tradeOffer = (J, o = {}) => tradeOfferFor(J, { nation: n.id, ...o });
+    // the wagon holds plenty of the signature good: that one is offered
+    J.goods[n.trade.give] = 40;
+    assert.equal(tradeOffer(J).give, n.trade.give); assert.equal(tradeOffer(J).kind, 'listed');
+    // none of the signature good, but one of the nation's other goods: that one
+    J.goods = { ...J.goods, pelts: 0, rope: 0, blankets: 0 };
+    const alt = n.trades[1]; J.goods[alt.give] = 40;
+    assert.equal(tradeOffer(J).give, alt.give, `${n.id} falls to ${alt.give}`); assert.equal(tradeOffer(J).kind, 'listed');
+    // no goods at all: a token trade when the child has tokens, else store food
+    J.goods = { ...J.goods, pelts: 0, rope: 0, blankets: 0 };
+    J.tokens = 6; let o = tradeOffer(J);
+    assert.equal(o.give, 'tokens'); assert.equal(o.kind, 'fallback'); assert.equal(o.have, 6); assert.equal(o.trades, 3);
+    J.tokens = 0; o = tradeOffer(J);
+    assert.equal(o.give, 'flour'); assert.equal(o.kind, 'fallback'); assert.ok(o.have >= 2);
+    // the fallback token trade takes the tokens and gives food
+    J.tokens = 6; const f = J.food; const p = problemFor({ kind: 'trade', fact: '3x4', leg: J.legId, season: J.season, offer: tradeOffer(J) });
+    assert.equal(p.meta.give, 'tokens'); assert.ok(p.text.includes('trade token'), p.text);
+    const r = applyTrade(J, p.meta); assert.equal(J.tokens, 6 - r.gave); assert.ok(r.gave >= 2 && r.got >= 3); assert.equal(J.food, f + r.foodLb);
+  }
+});
+test('trade offers: one trade still counts as an offer; the guard "nothing to trade" is the last resort; a person\'s own trade', () => {
+  const J = mk(PLAIN, 9); startLeg(J, 'kansas-river');                     // pelts [3, 2]
+  J.goods.pelts = 3; J.tokens = 20;
+  assert.equal(tradeOffer(J).give, 'pelts', 'the nation\'s own goods before tokens, even for one trade'); assert.equal(tradeOffer(J).trades, 1);
+  J.goods.pelts = 2; assert.equal(tradeOffer(J).give, 'tokens');
+  J.tokens = 1; J.foods = { flour: 0, bacon: 0, beans: 0, other: 30 }; syncFood(J);
+  const none = tradeOffer(J);
+  assert.equal(none.kind, 'none'); assert.ok(none.have < none.rate[0], 'the app\'s guard test (have < rate[0]) still fires');
+  assert.equal(applyTrade(J, { giveN: 3, getN: 2 }).got, 0, 'and a trade of nothing creates nothing');
+  // a person's own trade: only their listed trade, then the same fallbacks
+  const gift = PERSON_BY_ID.dell.gift; J.goods.rope = 0; J.tokens = 0; J.foods = { flour: 100, bacon: 0, beans: 0, other: 0 }; syncFood(J);
+  let o = tradeOffer(J, { trades: [gift] }); assert.equal(o.give, 'flour'); assert.equal(o.kind, 'fallback');
+  J.goods.rope = 9; o = tradeOffer(J, { trades: [gift] }); assert.equal(o.give, 'rope'); assert.equal(o.kind, 'listed'); assert.deepEqual(o.rate, [3, 2]);
+  assert.equal(tradeLine(o, 'Mr. Dell'), 'Mr. Dell offers a fair trade: three coils of rope for two bags of camas roots.');
+  assert.equal(spareGoods(J, 'tokens'), 0); assert.equal(spareGoods(J, 'flour'), 2); assert.equal(spareGoods(J, 'beans'), 0);
+  const r = applyTrade(J, { giveN: 6, getN: 4, give: 'rope', get: 'camas' }); assert.equal(r.gave, 6); assert.equal(r.got, 4); assert.equal(J.goods.rope, 3);
+  const r2 = applyTrade(J, { giveN: 6, getN: 4, give: 'rope', get: 'camas' }); assert.equal(r2.gave, 3, 'a person\'s trade at its own rate [3, 2]: one trade left'); assert.equal(r2.got, 2);
+});
 test('blankets are never traded away while a cold leg lies ahead (the trade offer only counts the spare ones)', () => {
-  const J = mk(PLAIN, 3); startLeg(J, 'fort-kearny');            // the Pawnee trade blankets for corn
-  assert.equal(tradeOffer(J).give, 'blankets');
-  J.goods.blankets = 2; assert.equal(tradeOffer(J).have, 0, 'two are needed for South Pass');
-  J.goods.blankets = 5; assert.equal(tradeOffer(J).have, 3);
-  const r = applyTrade(J, { giveN: 5, getN: 15 }); assert.equal(r.gave, 3 - (3 % 1)); assert.equal(J.goods.blankets, 2, 'the two for the mountains stay');
-  startLeg(J, 'the-dalles'); J.goods.blankets = 2; assert.equal(tradeOffer(J).have, 2, 'past the cold legs, all of them are spare');
+  const J = mk(PLAIN, 3); startLeg(J, 'fort-kearny');            // the Pawnee trade blankets for corn, but the wagon has none
+  assert.equal(tradeOffer(J).give, 'pelts', 'no blankets: the offer is pelts, which the wagon has');
+  J.goods.blankets = 2; assert.equal(spareGoods(J, 'blankets'), 0, 'two are needed for South Pass'); assert.equal(tradeOffer(J).give, 'pelts', 'no spare blanket: still pelts');
+  J.goods.blankets = 5; assert.equal(spareGoods(J, 'blankets'), 3); assert.equal(tradeOffer(J).give, 'blankets'); assert.equal(tradeOffer(J).have, 3);
+  const r = applyTrade(J, { giveN: 5, getN: 15, give: 'blankets' }); assert.equal(r.gave, 3); assert.equal(J.goods.blankets, 2, 'the two for the mountains stay');
+  startLeg(J, 'the-dalles'); J.goods.blankets = 2; assert.equal(spareGoods(J, 'blankets'), 2, 'past the cold legs, all of them are spare'); assert.equal(tradeOffer(J).give, 'blankets'); assert.equal(tradeOffer(J).have, 2);
   const B = mk(PLAIN, 3); startLeg(B, 'blue-mountains'); B.goods.blankets = 2; B.trip.coldDone = true; assert.equal(spareGoods(B, 'blankets'), 2, 'the cold night is over');
   assert.equal(spareGoods(B, 'pelts'), 6);
 });

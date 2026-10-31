@@ -229,7 +229,7 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
       if (!g) continue;
       if (g.kind === 'card') cardId(g.card);
       else if (g.kind === 'tip') { if (rand() < KID.tipWork) ask('parts', FACTS[Math.floor(rand() * FACTS.length)]); }
-      else if (g.kind === 'trade') { const have = J.goods[g.give] | 0; if (have >= g.rate[0]) { const k = Math.floor(have / g.rate[0]); applyTrade(J, { giveN: k * g.rate[0], getN: k * g.rate[1], give: g.give, get: g.get }); spend(SEC.trade); } }
+      else if (g.kind === 'trade') { const o = tradeOffer(J, { trades: [g] }); if (o.kind === 'listed') { const k = Math.floor(o.have / o.rate[0]); applyTrade(J, { giveN: k * o.rate[0], getN: k * o.rate[1], give: o.give, get: o.get, rate: o.rate }); spend(SEC.trade); } }   // the kid trades the person's own goods (a fallback offer is a "No thanks")
     }
   };
   for (let s = 0; s < seasons; s++) {
@@ -279,7 +279,7 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
           spend(SEC.event);
           if (e.kind === 'hunt') { applyHunt(J, { meatLb: e.canHunt === false ? 0 : huntLb(rand) }); spend(SEC.hunt); }
           else if (e.kind === 'fish') { applyFish(J, { fishLb: fishLb(rand) }); spend(SEC.fish); }
-          else if (e.kind === 'trade') { const o = tradeOffer(J); const p = problemFor({ kind: 'trade', fact: FACTS[Math.floor(rand() * FACTS.length)], leg: J.legId, season: J.season, rand, have: o.have }); applyProblem(J, { kind: 'trade', correct: rand() < KID.problem }); applyTrade(J, p.meta); spend(SEC.trade); }
+          else if (e.kind === 'trade') { const o = tradeOffer(J); const p = problemFor({ kind: 'trade', fact: FACTS[Math.floor(rand() * FACTS.length)], leg: J.legId, season: J.season, rand, have: o.have, offer: o }); applyProblem(J, { kind: 'trade', correct: rand() < KID.problem }); applyTrade(J, p.meta); spend(SEC.trade); }
           else if (e.kind === 'breakdown') {
             rec.breakdowns++;
             const worked = rand() < KID.workRepairOut;

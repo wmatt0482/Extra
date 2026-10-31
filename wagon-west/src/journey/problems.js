@@ -277,7 +277,9 @@ function parts(f, rand) {
 const GENERIC_TRADE = { give: 'pelts', giveName: 'beaver pelts', get: 'flour', getName: 'sacks of flour', rate: [3, 2] };
 function trade(f, rand, season, o, leg) {
   const nation = (o.nation && (typeof o.nation === 'object' ? o.nation : NATION_BY_ID[o.nation])) || nationFor(leg) || null;
-  const tr = { ...GENERIC_TRADE, ...((nation && nation.trade) || {}) };
+  // o.offer: what sim.tradeOffer(J) picked from what the wagon holds (it wins over the nation's signature trade)
+  const off = o.offer && typeof o.offer === 'object' && o.offer.give ? o.offer : null;
+  const tr = { ...GENERIC_TRADE, ...((nation && nation.trade) || {}), ...(off ? { give: off.give, giveName: off.giveName || off.give, get: off.get, getName: off.getName || off.get, rate: off.rate } : {}) };
   const [g, t] = Array.isArray(tr.rate) && tr.rate.length === 2 ? tr.rate.map((n) => Math.max(1, n | 0)) : GENERIC_TRADE.rate;
   // how many trades: a number from the fact (≤ 12, so the pelts stay countable)
   let k;
@@ -289,7 +291,8 @@ function trade(f, rand, season, o, leg) {
   }
   k = Math.max(1, Math.min(12, k));
   // what the wagon really holds (tradeOffer(J).have): never trade more than that, and say so when it is fewer
-  const have = Number.isFinite(o.have) ? Math.max(0, Math.floor(o.have)) : null;
+  const haveIn = off && Number.isFinite(off.have) ? off.have : o.have;
+  const have = Number.isFinite(haveIn) ? Math.max(0, Math.floor(haveIn)) : null;
   if (have != null && Math.floor(have / g) >= 1) k = Math.min(k, Math.floor(have / g));
   const n = g * k, ans = t * k;
   const give = tr.giveName || tr.give, get = tr.getName || tr.get;
@@ -310,7 +313,7 @@ const MAKERS = { buy, divide, ration, distance, parts, trade };
  *  kind: 'buy' (price × qty), 'divide' (money ÷ price; the remainder variant asks two numbers in turn: answers [q, r]
  *  and parts [{ text, say, answer, unit }, …], answer = the first), 'ration' (two steps), 'distance' (miles ÷ a day,
  *  or miles a day × days), 'parts' (× then the broken ones, or ÷ shared equally), 'trade' (the nation's rate × the
- *  pelts you have; `have`: the wagon's count from tradeOffer(J), so the story never trades more). fact: a Trail Blazer fact id or null (small numbers). meta carries what the app needs to act on
+ *  pelts you have; `offer`: tradeOffer(J)'s pick (what the wagon really holds, so the story always matches); `have`: the wagon's count, so the story never trades more). fact: a Trail Blazer fact id or null (small numbers). meta carries what the app needs to act on
  *  the answer (a buy's item / qty / price, a trade's giveN / getN). rand defaults to a generator seeded from the
  *  arguments, so the same call gives the same problem. `cash` (and `shelf`, the shelf price of the item) cap a 'buy' or
  *  'divide' store problem to what the purse covers (v1.3): a smaller multiple of the same fact stands in. */
