@@ -92,7 +92,7 @@ import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
 
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 // the natural voice: the server makes clips of at most 200 characters, so a longer line is said (and prepared) a
 // sentence or two at a time; the line "Say a test line" speaks in the Parent Zone
 const CLIP_MAX = 200;
@@ -866,7 +866,7 @@ async function boot() {
     let p = null, pick = null;
     for (let tries = 0; tries < 3 && !p; tries++) {
       pick = tries < 2 ? ladderPick(kind === 'buy' ? 'x' : '/') : null;
-      try { p = JA.problemFor({ kind, fact: pick ? pick.fact : null, leg, season: J.season, rand: Math.random, item }); } catch (e) { console.warn('[WagonWest] problemFor', e); p = null; }
+      try { p = JA.problemFor({ kind, fact: pick ? pick.fact : null, leg, season: J.season, rand: Math.random, item, cash: num(J.cash), shelf: num(good.price) }); } catch (e) { console.warn('[WagonWest] problemFor', e); p = null; }
       if (p && kind === 'buy' && num(p.answer) > num(J.cash)) p = null;
     }
     if (!p) { toast(num(J.cash) < 1 ? 'The cash box is empty right now' : 'No question for that one: just tap to buy it'); return; }

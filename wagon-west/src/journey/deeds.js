@@ -17,7 +17,7 @@ export const DEEDS = [
   { id: 'fixer', name: 'Fixer', emoji: '🔧', how: 'Mend the wagon three times.', say: 'Fixer! Three repairs, and the wagon rolls on.' },
   { id: 'angler', name: 'Angler', emoji: '🎣', how: 'Catch fifty pounds of fish.', say: 'Angler! Fifty pounds of fish caught.' },
   { id: 'archer', name: 'Archer', emoji: '🏹', how: 'Bring home one hundred pounds of game.', say: 'Archer! One hundred pounds of game brought home.' },
-  { id: 'spelling-ferry', name: 'Spelling ferry', emoji: '⛴️', how: 'Pay a ferry fare with every word spelled right.', say: 'Spelling ferry! The ferryman got every word right.' },
+  { id: 'spelling-ferry', name: 'Spelling ferry', emoji: '🚣', how: 'Pay a ferry fare with every word spelled right.', say: 'Spelling ferry! The ferryman got every word right.' },
   { id: 'marker-master', name: 'Marker master', emoji: '📍', how: 'Answer every mile marker right in one leg.', say: 'Marker master! Every marker right in one leg.' },
   { id: 'summiteer', name: 'Summiteer', emoji: '⛰️', how: 'Reach South Pass.', say: 'Summiteer! You made it to South Pass.' },
   { id: 'homesteader', name: 'Homesteader', emoji: '🏡', how: 'Reach the Willamette Valley.', say: 'Homesteader! You reached the Willamette Valley.' },

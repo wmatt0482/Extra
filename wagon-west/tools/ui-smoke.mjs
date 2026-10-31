@@ -44,6 +44,8 @@ import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { RAFT } from '../src/journey/economy.js';          // the raft's pay is read from the economy, never typed here
+import { seasonOf } from '../src/journey/route.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const gameRoot = path.join(repoRoot, 'wagon-west');
@@ -600,7 +602,7 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.2\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.3\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
   check(await J(page, () => document.querySelector('#opt-voice-line').textContent === 'Device voice' && !!document.querySelector('#opt-voice-test')), 'Options: the voice line ("Device voice": no natural voice picked) and "Say a test line"');
   await page.click('#opt-voice-test');
   await page.waitForFunction(() => /voice spoke/.test(document.querySelector('#opt-voice-result').textContent), null, { timeout: 8000 }).catch(() => {});
@@ -1580,10 +1582,10 @@ async function v12Raft(page, layout, grab) {
   const play0 = await J(page, () => Object.values(window.__wagonWest.save.play)[0] || {});
   await page.click('#btn-trail');
   const chips = [];
-  let sawAcross = false;
+  let sawAcross = '';
   await drive(page, (s) => s.screen === 'home', {
     async onEach(s) {
-      if (!sawAcross) sawAcross = (await toastTexts(page)).some((t) => /^The raft is across!/.test(t));
+      if (!sawAcross) sawAcross = (await toastTexts(page)).find((t) => /^The raft is across!/.test(t)) || '';
       if (s.marker === 'ask' && s.mTitle === 'Down the Columbia') { const c = await TEXT(page, '#mk-chip'); if (!chips.includes(c)) chips.push(c); }
     },
   }, 60000);
@@ -1591,9 +1593,10 @@ async function v12Raft(page, layout, grab) {
   const play1 = await J(page, () => Object.values(window.__wagonWest.save.play)[0] || {});
   check(chips.join() === 'Bend 1 of 4,Bend 2 of 4,Bend 3 of 4,Bend 4 of 4', `four bends, each a fact on the marker panel: ${chips.join(', ')}`);
   check(play1.markers - (play0.markers || 0) === 4 && (await J(page, () => window.__wagonWest.save.journey.legStats.markers)) === 4, 'each bend counted like a mile marker (recorded in the facts, applyMarker)');
-  check(h1.cash - j0.cash === 40 && h1.totals.raftRuns === 1 && h1.totals.raftClean === 1, `raftEnd → raftPay: $${h1.cash - j0.cash} for a run with no bumps ($40)`);
+  const raftPayExpected = Math.round(RAFT.base * seasonOf(await J(page, () => window.__wagonWest.save.journey.season)).priceMult);
+  check(h1.cash - j0.cash === raftPayExpected && h1.totals.raftRuns === 1 && h1.totals.raftClean === 1, `raftEnd → raftPay: $${h1.cash - j0.cash} for a run with no bumps ($${raftPayExpected}, RAFT.base × the season's prices)`);
   check(h1.milesDone === 160 && h1.deeds.includes('raft-rider'), 'after the vista the miles are the leg\'s length (160), then the normal arrival; "Raft rider" is earned');
-  check(sawAcross, 'a line says so: "The raft is across! $40 for the run, and not a single bump."');
+  check(sawAcross === `The raft is across! $${raftPayExpected} for the run, and not a single bump.`, `a line says so ("${sawAcross}"): "The raft is across! $${raftPayExpected} for the run, and not a single bump."`);
   await shot(page, layout, 'p09-valley');
   await audit(page, layout.insets, 'the valley (name the homestead)');
   for (const k of 'oak') await page.click(`#hs-keyboard .kb-key[data-key="${k}"]`);

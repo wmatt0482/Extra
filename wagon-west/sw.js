@@ -12,7 +12,7 @@
 // v1.1 adds the trail's music (src/meta/music.js), the trail cards (src/content/cards.js, src/ui/cards.js) and Camp.
 // v1.2 adds the Wagon panel (src/ui/wagonPanel.js); the other streams' v1.2 modules (people, deeds, the mini-games) are in
 // OPTIONAL below: cached when present.
-const VERSION = 'wagon-west-v1.2.0';
+const VERSION = 'wagon-west-v1.3.0';
 const PREFIX = 'wagon-west-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;

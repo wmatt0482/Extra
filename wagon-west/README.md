@@ -127,9 +127,19 @@ from `src/journey/sim.js`, the mini-games from the scene).
   the storm"), `app.wagonInfo()`, `app.forecast()`, `app.openWagon()`, and the mock scene's `startFord` / `startFloat` /
   `startRaft` + `raftGo()` / `startStampede` with scripted events (`__mockScript.ford = 'soaked'`, `.bumps`,
   `.stampede = [bool, bool, bool]`).
-- `ensureJourney(J)` runs after every save load; VERSION 1.2.0; the service worker is `wagon-west-v1.2.0`.
+- `ensureJourney(J)` runs after every save load; VERSION 1.2.0 (1.3.0 now, see below); the service worker was `wagon-west-v1.2.0`.
 - Tests: `tools/ui-smoke.mjs` covers all of it on the mock scene (`QUICK=1` runs just the v1.2 sections; those that need
   the journey's v1.2 API print SKIP until it is in the tree).
+
+## 1.3
+
+Money is a choice (SPEC "v1.3"): start cash $45, pay follows the markers, the raft pays $24 / $6 / $6, the second yoke is
+$42 and sold from Fort Kearny on. Prices and pay live in `src/journey/economy.js`; the app reads them (the raft line is
+`raftPay(J)`'s cash, never a typed figure). The store's "Work it out" problems get `cash` and the shelf price from the
+app, so they never ask for more sacks than the purse covers (a smaller multiple of the same fact stands in). A Talk row at
+Independence, a true-to-period ferry picture and fact-checked lookouts come with it.
+
+- VERSION 1.3.0; the service worker is `wagon-west-v1.3.0`.
 
 ## Data and sync
 

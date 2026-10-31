@@ -89,6 +89,19 @@ function scaleFor(mult, fits) {
   return 1;
 }
 
+
+/** The store's purse cap (v1.3: start cash $45): the quantities to try for a problem, the fact's own first, then half of
+ *  it, a quarter, … down to 1, so a smaller multiple of the same fact stands in when the purse would not cover the full
+ *  one. `fits(q)` says whether q is affordable. Returns the first quantity that fits; the original when none does (the
+ *  edge case: even one costs more than the purse, and the app's "Not enough cash" path takes over). */
+function affordableQty(qty, fits) {
+  for (let q = qty; q >= 1; q = q > 1 ? Math.floor(q / 2) : 0) if (fits(q)) return q;
+  return qty;
+}
+/** The purse the caller passes (`cash`, and `shelf`: the price the store's shelf shows for the good), or null (no cap). */
+const purseOf = (o) => (Number.isFinite(o.cash) ? Math.max(0, Math.floor(o.cash)) : null);
+const shelfOf = (o) => (Number.isFinite(o.shelf) && o.shelf > 0 ? o.shelf : 0);
+
 // ---- the work lines ----
 const placeParts = (n) => String(n).split('').map((d, i, s) => Number(d) * 10 ** (s.length - 1 - i)).filter((v) => v > 0);
 /** The split line for a × (a strategy, the way Trail Blazer's hints say it), or null when the fact is small (both
@@ -146,8 +159,11 @@ const destOf = (leg, dest) => dest || (leg && ((leg.stop && leg.stop.name) || le
 
 // ---- the kinds ----
 function buy(f, rand, season, o) {
-  const { x, y: qty } = factorsOf(f, rand);
-  const m = scaleFor(season.numberMult, (k) => x * k * qty <= MAX_NUMBER);
+  const { x, y: qty0 } = factorsOf(f, rand);
+  const purse = purseOf(o), shelf = shelfOf(o);
+  // the purse caps what the child is asked to buy: the problem's total and the shelf's total both stay within the cash
+  const qty = purse == null ? qty0 : affordableQty(qty0, (q) => x * q <= purse && shelf * q <= purse);
+  const m = scaleFor(season.numberMult, (k) => x * k * qty <= MAX_NUMBER && (purse == null || x * k * qty <= purse));
   const price = x * m, total = price * qty;
   const it = itemFor(x, rand, o.item);
   const s = both((F) => `${cap(article(it.one))} ${it.one} costs ${F.d(price)}. You buy ${F.w(qty, it.short, it.shorts)}. How much is that?`);
@@ -157,9 +173,12 @@ function buy(f, rand, season, o) {
 }
 
 function divide(f, rand, season, o) {
-  const { d, q: q0 } = divisionOf(f, rand);
+  const { d, q: qFact } = divisionOf(f, rand);
   const rem = o.remainder != null ? !!o.remainder && d >= 2 : d >= 3 && rand() < REMAINDER_CHANCE;
-  const m = scaleFor(season.numberMult, (k) => d * q0 * k + (rem ? d - 1 : 0) <= MAX_NUMBER);
+  const purse = purseOf(o), shelf = shelfOf(o), extra = rem ? d - 1 : 0;
+  // the purse caps the sacks: "you have $X" never passes the cash on hand, nor the shelf's price for them
+  const q0 = purse == null ? qFact : affordableQty(qFact, (q) => d * q + extra <= purse && shelf * q <= purse);
+  const m = scaleFor(season.numberMult, (k) => d * q0 * k + extra <= MAX_NUMBER && (purse == null || (d * q0 * k + extra <= purse && shelf * q0 * k <= purse)));
   const q = q0 * m, r = rem ? randInt(rand, 1, d - 1) : 0, have = d * q + r;
   const it = itemFor(d, rand, o.item);
   const many = cap(it.many);
@@ -286,14 +305,15 @@ function trade(f, rand, season, o, leg) {
 
 const MAKERS = { buy, divide, ration, distance, parts, trade };
 
-/** A word problem: problemFor({ kind, fact, leg, season, rand, item?, remainder?, nation?, dest? }) →
+/** A word problem: problemFor({ kind, fact, leg, season, rand, item?, remainder?, nation?, dest?, cash?, shelf? }) →
  *  { kind, fact, text, say, answer, unit: '$' | 'lb' | 'days' | 'mi' | '', work: [2-3 lines], meta, answers?, parts? }.
  *  kind: 'buy' (price × qty), 'divide' (money ÷ price; the remainder variant asks two numbers in turn: answers [q, r]
  *  and parts [{ text, say, answer, unit }, …], answer = the first), 'ration' (two steps), 'distance' (miles ÷ a day,
  *  or miles a day × days), 'parts' (× then the broken ones, or ÷ shared equally), 'trade' (the nation's rate × the
  *  pelts you have; `have`: the wagon's count from tradeOffer(J), so the story never trades more). fact: a Trail Blazer fact id or null (small numbers). meta carries what the app needs to act on
  *  the answer (a buy's item / qty / price, a trade's giveN / getN). rand defaults to a generator seeded from the
- *  arguments, so the same call gives the same problem. */
+ *  arguments, so the same call gives the same problem. `cash` (and `shelf`, the shelf price of the item) cap a 'buy' or
+ *  'divide' store problem to what the purse covers (v1.3): a smaller multiple of the same fact stands in. */
 export function problemFor({ kind = 'buy', fact = null, leg = null, season = null, rand = null, ...o } = {}) {
   const k = MAKERS[kind] ? kind : 'buy';
   const l = legOf(leg);

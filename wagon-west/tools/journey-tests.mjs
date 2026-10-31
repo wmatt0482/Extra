@@ -527,6 +527,40 @@ test('seasons scale the numbers where it makes sense (prices, pounds, miles), ne
   assert.equal(at('s1853', 'parts', '7x8').meta.total, 56, 'counts are not scaled');
   assert.ok(at('s1853', 'buy', '49x6').answer <= 999);
 });
+test('the store problem never asks for more than the purse covers (v1.3: $45): a smaller multiple of the same fact stands in', () => {
+  // every fact of the ladder, every season, a spread of purses: the problem's total, the shelf's total and "you have" stay within the cash
+  const facts = []; for (let a = 2; a <= 12; a++) for (let b = 2; b <= 12; b++) facts.push(`${a}x${b}`, `${a * b}/${b}`);
+  facts.push('23x4', '20x3', '14x6', '91/7');
+  let capped = 0, checked = 0;
+  for (const season of ['s1847', 's1850', 's1853']) for (const cash of [45, 28, 12]) for (const fact of facts) for (const item of ['flour', 'bacon', 'beans']) {
+    const shelf = priceAt(item, null, season);
+    for (const kind of ['buy', 'divide']) {
+      const full = problemFor({ kind, fact, season, item, remainder: false });
+      const p = problemFor({ kind, fact, season, item, cash, shelf, remainder: false });
+      const qty = p.meta.qty;
+      if (p.meta.price > cash || shelf > cash) continue;                 // the edge case: not even one fits (the app's gentle path)
+      checked++;
+      assert.ok(qty >= 1);
+      assert.ok(p.meta.total <= cash, `${kind} ${fact} ${season} $${cash}: total ${p.meta.total}`);
+      assert.ok(shelf * qty <= cash, `${kind} ${fact} ${season} $${cash}: ${qty} at the shelf's $${shelf}`);
+      if (kind === 'buy') assert.equal(p.answer, p.meta.price * qty);
+      if (qty < full.meta.qty) capped++;
+    }
+  }
+  assert.ok(checked > 1000 && capped > 100, `checked ${checked}, capped ${capped}`);
+  // the example from the playtest: 7 x 8 at a $45 purse becomes 7 x 4, not a $56 bill
+  const q = problemFor({ kind: 'buy', fact: '7x8', season: 's1847', item: 'flour', cash: 45, shelf: 3 });
+  assert.equal(q.meta.qty, 4); assert.equal(q.answer, 28); assert.equal(q.text, 'A sack of flour costs $7. You buy 4 sacks. How much is that?');
+  // enough cash: untouched
+  assert.deepEqual(problemFor({ kind: 'buy', fact: '7x8', season: 's1847', item: 'flour', cash: 400, shelf: 3 }).meta, problemFor({ kind: 'buy', fact: '7x8', season: 's1847', item: 'flour' }).meta);
+  // no cash given: no cap (other callers)
+  assert.equal(problemFor({ kind: 'buy', fact: '7x8', season: 's1847', item: 'flour' }).answer, 56);
+  // the remainder variant stays inside the purse too
+  const r = problemFor({ kind: 'divide', fact: '56/7', season: 's1847', item: 'flour', remainder: true, cash: 45, shelf: 3, rand: () => 0.5 });
+  assert.ok(r.meta.total + r.meta.left <= 45, `have ${r.meta.total + r.meta.left}`);
+  // the edge: not even one fits: the problem is left as asked (the app's "Not enough cash for that many" path)
+  assert.equal(problemFor({ kind: 'buy', fact: '30x2', season: 's1847', cash: 10, shelf: 3 }).meta.qty, 2);
+});
 test('trade problems use the leg\'s nation and never trade more than the wagon holds', () => {
   const leg = TRAIL.find((l) => nationFor(l));
   const n = nationFor(leg);
