@@ -4,6 +4,8 @@
 // each stop a dot (a ring for a river, a square for a fort, a star for a landmark, a house for home), the covered
 // wagon at the party's position and the next stop named. Pure drawing from the legs (src/content/legs.js) and where
 // the party is; no state of its own.
+// v1.2: `family` draws the family's other players as small wagons in their own colour at their stops (the title only; no
+// names or scores on the map: a tap tells whose wagon it is, via onFamily).
 const NS = 'http://www.w3.org/2000/svg';
 function el(tag, attrs = {}, ...kids) {
   const e = document.createElementNS(NS, tag);
@@ -66,7 +68,19 @@ function wagonMark(x, y, paint = '#f3ead7') {
  * Draw the map into an <svg>. opts: { legs, J, inLeg (the leg is under way: place the wagon by milesDone), paint,
  * labels: 'next' (the title: the next stop only) | 'all' (the journal: every stop), stickers: [ids earned] }.
  */
-export function drawMap(svg, { legs = [], J = null, inLeg = false, paint, labels = 'next', stickers = [] } = {}) {
+/** A small family wagon (one of the other players) at (x, y), in their colour; a roomy transparent hit area for a finger. */
+function famWagon(x, y, color, id) {
+  const g = el('g', { class: 'map-fam', 'data-player': id, role: 'button', tabindex: 0, 'aria-label': 'A wagon from your family. Tap to see whose.', transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` });
+  g.append(el('circle', { class: 'fam-hit', cx: 0, cy: 0, r: 34, fill: 'transparent', stroke: 'none' }),
+    el('ellipse', { cx: 0, cy: 12, rx: 17, ry: 3, fill: 'rgba(60,35,15,.25)' }),
+    el('rect', { x: -12, y: 2, width: 24, height: 6, rx: 1.5, fill: '#6b4426' }),
+    el('path', { d: 'M-11.5 3 Q0 -15 11.5 3Z', fill: color || '#f3ead7', stroke: '#4a2c16', 'stroke-width': 2 }),
+    el('circle', { cx: -7, cy: 10, r: 4, fill: '#fff6e0', stroke: '#4a2c16', 'stroke-width': 2 }),
+    el('circle', { cx: 7, cy: 10, r: 4, fill: '#fff6e0', stroke: '#4a2c16', 'stroke-width': 2 }));
+  return g;
+}
+
+export function drawMap(svg, { legs = [], J = null, inLeg = false, paint, labels = 'next', stickers = [], family = [], onFamily = null } = {}) {
   svg.setAttribute('viewBox', '0 0 1000 300');
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   const pts = stopPoints(legs);
@@ -95,7 +109,23 @@ export function drawMap(svg, { legs = [], J = null, inLeg = false, paint, labels
     kids.push(el('text', { x: Math.max(110, Math.min(890, n.x)), y: n.y - 26, 'text-anchor': 'middle', class: 'map-label' }, n.name));
   }
   kids.push(wagonMark(wx, wy, paint));
+  // the family's other wagons, a little below the trail so they never cover a stop's name or this wagon
+  const seenAt = {};
+  for (const f of Array.isArray(family) ? family : []) {
+    if (!f || !f.J) continue;
+    const fa = partyAt(f.J, legs, { inLeg: !!f.inLeg });
+    const pa = pts[Math.min(fa.legsDone, pts.length - 1)], pb = pts[Math.min(fa.legsDone + 1, pts.length - 1)];
+    const x = pa.x + (pb.x - pa.x) * fa.p, y = pa.y + (pb.y - pa.y) * fa.p;
+    const key = `${fa.legsDone}:${Math.round(fa.p * 10)}`;
+    const k = seenAt[key] = (seenAt[key] || 0) + 1;
+    const g = famWagon(x + (k - 1) * 30, y + 34, f.color, f.id);
+    const tap = () => { if (typeof onFamily === 'function') onFamily(f); };
+    g.addEventListener('click', tap);
+    g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(); } });
+    kids.push(g);
+  }
   svg.replaceChildren(...kids);
+  svg.dataset.family = String((Array.isArray(family) ? family : []).filter((f) => f && f.J).length);
   svg.dataset.legsDone = String(at.legsDone);
   svg.dataset.p = at.p.toFixed(2);
   return { pts, at, next: pts[nextIdx] };

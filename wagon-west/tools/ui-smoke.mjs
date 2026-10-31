@@ -23,6 +23,15 @@
 // fake cloud backend and a family code: the marker, a problem, a card, the river sentence and the letter are all
 // spoken by clips (tts.engine 'cloud', the device voice silent), prepare requests carried the leg's lookout and the
 // problem's sentence, and Parents → Options shows "Natural voice: Ava · N clips ready" with "Say a test line".
+// v1.2 (app part one): the store without a gate (a tap buys one at the listed price, the cash box in view, an unaffordable
+// good greyed with "Earn $N more", every row's one-liner, the food hint, "Work it out" = the optional problem for a token);
+// the trail HUD's forecast chip; the Wagon panel (food stacks that shrink, "Food for N days · <stop> in M days", goods,
+// the team, the companions with their skills, "Ask Eli: how many days?" a distance then a ration problem, once a leg
+// each); a breakdown with and without a spare part, a cold night, tired animals (the pace dial shows steady), no arrows
+// (the hunt card says fishing only), a skill firing (the companion's portrait and line), Nora's tip before the answer;
+// the Outfit's skill lines and the party summary (also on the title); the family map (a second player's wagon at their
+// stop, a name only on a tap); the mock scene's ford / float / raft / stampede scripts. The sections that need the
+// journey stream's v1.2 API (foodDays, forecast, repair, …) say "SKIP" when the tree does not have it yet.
 import { execSync, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
@@ -270,6 +279,9 @@ async function runLayout(browser, layout) {
   const comps = await J(page, () => [...document.querySelectorAll('.ow-comp')].map((b) => b.dataset.companion));
   for (const id of comps.slice(0, 3)) await page.click(`.ow-comp[data-companion="${id}"]`);
   check(await J(page, () => document.querySelector('#ow-party-count').textContent) === '3 of 3 chosen', 'outfit: three companions chosen');
+  const sk = await J(page, () => ({ cards: [...document.querySelectorAll('.ow-comp')].map((b) => ({ id: b.dataset.companion, skill: b.querySelector('.ow-c-skill').textContent })), sum: document.querySelector('#ow-party-skills').textContent }));
+  check(sk.cards.length === 8 && sk.cards.every((c) => c.skill.length >= 20), `outfit: each companion's skill in one line on their card (${sk.cards.length} cards)`);
+  check(sk.sum === 'Ada fixes wheels · Nora gives tips · Jasper lifts spirits', `outfit: the party summary "${sk.sum}"`);
   await shot(page, layout, '04-outfit-party');
   await audit(page, layout.insets, 'outfit (party)');
   await page.click('#ow-next');
@@ -280,24 +292,44 @@ async function runLayout(browser, layout) {
 
   // ---------- the store at Independence: a buy right, a divide missed and fixed ----------
   await page.waitForSelector(visibleSel('#screen-store'));
-  const j0 = (await W(page)).journey;
+  const j00 = (await W(page)).journey;
+  const j0 = j00;
   check(j0 && j0.legIndex === 0 && (await J(page, () => window.__wagonWest.save.journey.wagonName)) === 'Dusty', `a journey: "Dusty", leg 1, $${j0 && j0.cash}`);
   await shot(page, layout, '05-store');
   await audit(page, layout.insets, 'store');
+  // ---- v1.2: the store without a gate: a tap buys one at the listed price ----
+  const rows = await J(page, () => [...document.querySelectorAll('#store-goods .st-row')].map((r) => ({ id: r.dataset.row, what: r.querySelector('.st-what').textContent, work: !!r.querySelector('.st-work'), price: r.querySelector('.st-price').textContent })));
+  check(rows.length >= 7 && ['flour', 'bacon', 'beans', 'parts', 'rope', 'blankets', 'arrows'].every((id) => rows.some((r) => r.id === id)), `the store: a row per good (${rows.map((r) => r.id).join(', ')})`);
+  check(['parts', 'rope', 'blankets', 'arrows', 'yoke'].filter((id) => rows.some((r) => r.id === id)).every((id) => rows.find((r) => r.id === id).what.length >= 20) && rows.every((r) => r.work === (r.id !== 'yoke')), 'each row says in a line what the good does, and has "Work it out" (not the one-off yoke)');
+  const hint0 = await J(page, () => (document.querySelector('#store-hint') || {}).textContent || '');
+  check(/^You'll need about [\d,]+ lb to reach .+/.test(hint0), `the hint is always shown: "${hint0}"`);
+  check(await J(page, () => { const c = document.querySelector('#screen-store .cash-pill'); return !!c && c.getBoundingClientRect().width > 0 && /\$\d/.test(c.textContent); }), 'the cash box is in view in the store');
+  const tap0 = (await W(page)).journey;
+  const flourPrice = await J(page, () => Number(document.querySelector('.st-good[data-good="flour"] .st-price').textContent.match(/\$(\d+)/)[1]));
   await page.click('.st-good[data-good="flour"]');
+  const tap1 = (await W(page)).journey;
+  check((await W(page)).problem === 'closed' && tap1.food === tap0.food + 50 && tap1.cash === tap0.cash - flourPrice && tap1.tokens === tap0.tokens, `a tap buys one sack at the listed price, no question (${tap0.food} → ${tap1.food} lb, $${tap0.cash} → $${tap1.cash}, no token)`);
+  check(await J(page, () => /in the wagon/.test(document.querySelector('.st-good[data-good="flour"] .st-have').textContent)), 'the row counts what is in the wagon');
+  await J(page, () => { const w = window.__wagonWest; w.save.journey.cash = 3; w.store.refresh(); });
+  const poor = await J(page, () => ({ dis: document.querySelector('.st-good[data-good="flour"]').disabled, cta: document.querySelector('.st-good[data-good="flour"] .st-cta').textContent, ok: document.querySelector('.st-good[data-good="beans"]').disabled }));
+  check(poor.dis && /^Earn \$\d+ more$/.test(poor.cta), `a good the cash box cannot cover is greyed: "${poor.cta}"`);
+  await audit(page, layout.insets, 'store (one good greyed)');
+  await J(page, (c) => { const w = window.__wagonWest; w.save.journey.cash = c; w.store.refresh(); }, tap1.cash);
+  await grab();
+  await page.click('.st-work[data-good="flour"]');
   await page.waitForSelector(visibleSel('#panel-problem'));
   const p1 = await W(page);
   const spoken0 = await J(page, () => window.__spoken.length);
-  check(p1.pKind === 'buy' && p1.problem === 'ask', `the store asks a 'buy' problem on the problem panel ("${await J(page, () => document.querySelector('#pp-text').textContent)}")`);
+  check(p1.pKind === 'buy' && p1.problem === 'ask', `"Work it out" asks a 'buy' problem on the problem panel ("${await J(page, () => document.querySelector('#pp-text').textContent)}")`);
   await shot(page, layout, '06-problem');
   await audit(page, layout.insets, 'problem panel');
   await typeDigits(page, '#panel-problem', p1.pAns);
   await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'closed');
   const j1 = (await W(page)).journey;
-  check(j1.tokens === j0.tokens + 1 && j1.food > j0.food && j1.cash < j0.cash, `a right first answer: the flour in the wagon (${j0.food} → ${j1.food} lb, $${j0.cash} → $${j1.cash}) and a trade token`);
+  check(j1.tokens === tap1.tokens + 1 && j1.food > tap1.food && j1.cash < tap1.cash, `a right first answer to "Work it out": the flour in the wagon (${tap1.food} → ${j1.food} lb, $${tap1.cash} → $${j1.cash}) and a trade token`);
   check(await J(page, (n) => window.__spoken.slice(n).some((t) => /flour/i.test(t)), spoken0), 'the problem is read aloud');
   await page.waitForTimeout(250);
-  await page.click('.st-good[data-good="bacon"]');
+  await page.click('.st-work[data-good="bacon"]');
   await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask');
   const p2 = await W(page);
   check(p2.pKind === 'divide', "the next good asks a 'divide' problem");
@@ -340,7 +372,7 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '08-trail');
   await audit(page, layout.insets, 'trail HUD');
   await grab();
-  let markerShot = false, dials = false;
+  let markerShot = false, dials = false, eliAsked = false;
   const leg1 = await drive(page, (s) => s.screen === 'results', {
     markerMiss: [2],
     async onEach(s) {
@@ -350,10 +382,18 @@ async function runLayout(browser, layout) {
         // (DOM clicks: a mile marker can open between two pointer clicks and swallow the second; the sim starts on
         // full rations, so the change is to plenty)
         await J(page, () => { document.querySelector('#dial-pace [data-pace="brisk"]').click(); document.querySelector('#dial-rations [data-rations="plenty"]').click(); });
-        await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask' || window.__wagonWest.markerPanel.state === 'ask', null, { timeout: 5000 }).catch(() => {});
+        await page.waitForTimeout(400);
         const d = await W(page);
         check(d.journey.pace === 'brisk' && d.journey.rations === 'plenty', 'the dials: brisk pace, plenty rations');
-        check((d.problem === 'ask' && d.pKind === 'ration') || d.marker === 'ask' || d.card, 'the first rations change asks the rations question (after any marker or event card that was due)');
+        check(!(d.problem === 'ask' && d.pKind === 'ration'), 'v1.2: changing the rations asks no question (Eli is asked when the child wants)');
+      }
+      // v1.2: "Ask Eli: how many days?" on the HUD (a 'distance' problem for a token), asked once, then the driver answers it
+      if (!eliAsked && s.screen === 'trail' && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && s.travel && !s.travel.busy && !(await J(page, () => document.querySelector('#btn-eli').hidden))) {
+        eliAsked = true;
+        await audit(page, layout.insets, 'trail HUD (Ask Eli)');
+        await J(page, () => document.querySelector('#btn-eli').click());
+        await page.waitForTimeout(150);
+        if (!(await J(page, () => window.__wagonWest.save.trip.asked.distance))) eliAsked = false;      // a card got there first: ask again
       }
       if (s.marker === 'ask' && !markerShot) { markerShot = true; await shot(page, layout, '09-marker', 50); await audit(page, layout.insets, 'mile marker'); }
       if (s.marker === 'show') { const t = await J(page, () => ({ tiles: document.querySelector('#mk-tiles').textContent, typed: document.querySelector('#mk-tiles').dataset.typed })); if (!globalThis.__shownChecked) { globalThis.__shownChecked = true; check(t.typed === '' && Number(t.tiles) === s.mAns, `a missed marker: the fact with its answer shown (${t.tiles}), the typed one gone`); await shot(page, layout, '10-marker-show', 0); } }
@@ -366,7 +406,7 @@ async function runLayout(browser, layout) {
   });
   globalThis.__shownChecked = globalThis.__coverChecked = globalThis.__spellShot = globalThis.__ropeShot = globalThis.__miniShot = globalThis.__cardShot = false;
   check(leg1.markers.length >= 4 && leg1.markers.filter((m) => m === 'missed').length === 1, `leg 1: ${leg1.markers.length} mile markers (one missed and fixed): ${leg1.markers.join(', ')}`);
-  check(leg1.problems.length >= 1, `leg 1 problems on the trail: ${leg1.problems.join(', ')}`);
+  check(eliAsked && leg1.problems.includes('distance'), `leg 1: Ask Eli on the HUD asked a 'distance' problem (${leg1.problems.join(', ')})`);
   check(leg1.words.length === 3 && leg1.throws >= 1, `the river: three words spelled (${leg1.words.join(', ')}) and the rope thrown (${leg1.throws}×)`);
   check(leg1.cards.some((c) => /Kansas River/i.test(c)), `the lookout card at the stop (${leg1.cards.join(' · ')})`);
   check(leg1.cards.includes('Make camp tonight?'), 'the evening of the arrival offers Camp before the results ("Make camp tonight?" / "On to the results")');
@@ -415,7 +455,7 @@ async function runLayout(browser, layout) {
           await audit(page, layout.insets, 'the dog card');
         }
         if (s.screen === 'store' && s.storeOpen && !s.storeBusy && s.problem === 'closed' && !s.card && s.marker === 'closed') {
-          if (!storeBought) { storeBought = true; await page.click('.st-good[data-good="flour"]'); await page.waitForFunction(() => window.__wagonWest.problemPanel.state !== 'closed' || window.__wagonWest.store.busy === false); }
+          if (!storeBought) { storeBought = true; await page.click('.st-work[data-good="flour"]'); await page.waitForFunction(() => window.__wagonWest.problemPanel.state !== 'closed' || window.__wagonWest.store.busy === false); }
           else if (!derbyRun && await J(page, () => !!document.querySelector('#store-derby'))) {
             derbyRun = true;
             await audit(page, layout.insets, 'store (Race the mail wagon)');
@@ -494,6 +534,8 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '20-title-later');
   await audit(page, layout.insets, 'title (on the way)');
   await sideGames(page, layout, grab);
+  await v12Journey(page, layout, grab);
+  await v12Family(page, layout, grab);
 
   // ---------- pings ----------
   const pings = await J(page, () => window.__pings || []);
@@ -520,7 +562,7 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.1\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.2\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
   check(await J(page, () => document.querySelector('#opt-voice-line').textContent === 'Device voice' && !!document.querySelector('#opt-voice-test')), 'Options: the voice line ("Device voice": no natural voice picked) and "Say a test line"');
   await page.click('#opt-voice-test');
   await page.waitForFunction(() => /voice spoke/.test(document.querySelector('#opt-voice-result').textContent), null, { timeout: 8000 }).catch(() => {});
@@ -701,6 +743,414 @@ async function sideGames(page, layout, grab) {
 }
 const s0 = (x) => !!x;
 
+// ---------- v1.2 (app part one): the Wagon panel, the effects, the forecast, the family map, the mock's mini-games ----------
+const idleTrail = (s) => s.screen === 'trail' && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && s.travel && !s.travel.busy;
+const toastTexts = (page) => J(page, () => [...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent));
+/** The next tickDay on the trail returns `extra` merged into its result (one shot), like the journey stream's flags would. */
+const forceDay = (page, extra) => J(page, (extra) => {
+  const JA = window.__wagonWest.JA, orig = JA.tickDay;
+  JA.tickDay = (Jn, o) => { JA.tickDay = orig; return Object.assign(orig(Jn, o) || {}, extra); };
+}, extra);
+// (the in-flight day may still hold a marker or a card: the driver answers those while it waits for the one we want)
+const toastWith = async (page, re, timeout = 12000) => {
+  try { await drive(page, async () => (await toastTexts(page)).some((t) => re.test(t)), far(page), timeout); return true; } catch (_) {
+    console.log('    (no toast matching ' + re + '; on screen: ' + JSON.stringify(await toastTexts(page)) + ' state ' + JSON.stringify(await J(page, () => { const w = window.__wagonWest; return { screen: w.screen, travel: w.travel, paused: w.paused, overlay: w.app.overlayOpen(), card: w.card.isOpen, marker: w.markerPanel.state }; })) + ')');
+    return false;
+  }
+};
+// (the legs are short and the driver answers everything: keep the wagon well short of the stop while these sections run)
+const keepFar = (page) => J(page, () => { const Jn = window.__wagonWest.save.journey; if (Jn && Jn.trip && !Jn.trip.arrived && Jn.milesDone > 30) Jn.milesDone = 30; });
+const far = (page) => ({ onEach: () => keepFar(page) });
+const cardWith = (page, title, timeout = 15000) => drive(page, (s) => s.card && s.cardTitle === title, far(page), timeout);
+const setJ = (page, fn, arg) => J(page, ([src, arg]) => { const w = window.__wagonWest; (new Function('J', 'w', 'arg', src))(w.save.journey, w, arg); w.app.persist(); }, [fn, arg]);
+
+async function v12Journey(page, layout, grab) {
+  console.log('  -- v1.2: the Wagon panel, supplies and skills on screen --');
+  const has = await J(page, () => ['foodDays', 'forecast', 'repair', 'needsBlankets', 'huntAllowed'].every((f) => typeof window.__wagonWest.JA[f] === 'function'));
+  if (!has) { console.log("  (SKIP: the journey stream's v1.2 API (foodDays, forecast, repair, needsBlankets, huntAllowed) is not in this tree yet; the integration run covers these sections)"); return; }
+  await page.click('#btn-trail');
+  await page.waitForSelector(visibleSel('#screen-trail'));
+  await setJ(page, `J.foods = { flour: 300, bacon: 100, beans: 100, other: 0 }; J.parts = 1; J.goods.parts = 1; J.goods.rope = 0; J.goods.blankets = 1; J.goods.arrows = 15; J.goods.pelts = 6; J.animals = { n: 2, tired: 0 }; J.limp = false;`);
+  await J(page, () => { const t = window.__wagonWest.save.trip; t.asked = { ration: 0, distance: 0 }; });
+  await drive(page, idleTrail, far(page), 20000);
+
+  // ----- the forecast chip -----
+  const fc = await J(page, () => ({ hidden: document.querySelector('#hud-forecast').hidden, words: (document.querySelector('#hud-forecast-words') || {}).textContent, svg: !!document.querySelector('#hud-forecast svg') }));
+  check(!fc.hidden && fc.svg && /^(clear skies|rain soon|storm soon|snow soon)$/.test(fc.words), `the HUD's forecast chip: a sky icon and "${fc.words}"`);
+  const words = await J(page, () => {
+    const w = window.__wagonWest, Jn = w.save.journey, leg = w.app.legById(Jn.legId), out = {};
+    for (const k of ['rain', 'storm', 'snow', 'clear']) {
+      w.hud.update(Jn, leg, { milesDone: Jn.milesDone, forecast: { next: k, inDays: 1, words: { rain: 'rain soon', storm: 'storm soon', snow: 'snow soon', clear: 'clear skies' }[k] } });
+      out[k] = document.querySelector('#hud-forecast-words').textContent;
+    }
+    return out;
+  });
+  check(words.rain === 'rain soon' && words.storm === 'storm soon' && words.snow === 'snow soon' && words.clear === 'clear skies', `the chip says "${Object.values(words).join('", "')}"`);
+  const fcApp = await J(page, () => { const JA = window.__wagonWest.JA, orig = JA.forecast; JA.forecast = () => ({ next: 'storm', inDays: 2 }); const f = window.__wagonWest.app.forecast(); JA.forecast = orig; return f; });
+  check(fcApp && fcApp.next === 'storm' && fcApp.words === 'storm soon', 'app.forecast() turns the journey\'s forecast(J) into the chip\'s words');
+  await shot(page, layout, '24-hud-forecast');
+  await audit(page, layout.insets, 'trail HUD (forecast chip, food box)');
+  await grab();
+
+  // ----- the Wagon panel: the HUD's food box -----
+  await drive(page, idleTrail, far(page), 20000);
+  await J(page, () => document.querySelector('#hud-food-box').click());
+  await page.waitForSelector(visibleSel('#panel-wagon'));
+  const wp = await J(page, () => ({
+    title: document.querySelector('#wg-title').textContent,
+    stacks: Object.fromEntries([...document.querySelectorAll('.wg-stack')].map((s) => [s.dataset.food, { units: Number(s.dataset.units), items: s.querySelectorAll('.wg-item').length, label: s.querySelector('.wg-stack-label').textContent }])),
+    days: document.querySelector('#wg-days').textContent,
+    goods: Object.fromEntries([...document.querySelectorAll('.wg-good')].map((g) => [g.dataset.good, g.textContent])),
+    animals: document.querySelector('#wg-animals').textContent,
+    comps: [...document.querySelectorAll('.wg-comp')].map((c) => ({ id: c.dataset.companion, text: c.textContent, face: !!c.querySelector('.face') })),
+    eli: document.querySelector('#wg-eli').textContent, eliOff: document.querySelector('#wg-eli').disabled,
+    paused: window.__wagonWest.app.overlayOpen(),
+  }));
+  check(/^Dusty's wagon$/.test(wp.title), `the Wagon panel opens from the food box: "${wp.title}"`);
+  check(wp.stacks.flour && wp.stacks.flour.units === 6 && wp.stacks.flour.items === 6 && wp.stacks.bacon.units === 5 && wp.stacks.beans.units === 4 && /^Flour · 6 sacks$/.test(wp.stacks.flour.label) && /^Bacon · 5 sides$/.test(wp.stacks.bacon.label) && /^Beans · 4 bags$/.test(wp.stacks.beans.label),
+    `food as stacks: ${Object.entries(wp.stacks).map(([k, v]) => `${v.label}`).join(', ')}`);
+  check(/^Food for \d+ days? · .+ (in \d+ days?|is here)$/.test(wp.days), `in plain words: "${wp.days}"`);
+  check(/1: for a wheel/.test(wp.goods.parts) && /none: a raft can soak a sack/.test(wp.goods.rope) && /1: .*more keeps everyone warm/.test(wp.goods.blankets) && /15: a hunt uses 5/.test(wp.goods.arrows) && /\d+: good for trading/.test(wp.goods.pelts) && /not yet/.test(wp.goods.yoke),
+    `the other goods with counts: ${['parts', 'rope', 'blankets', 'arrows', 'pelts', 'yoke'].map((k) => `${k} ${wp.goods[k]}`).join(' | ').slice(0, 220)}`);
+  check(/are fresh/.test(wp.animals), `the team: "${wp.animals.trim()}"`);
+  check(wp.comps.length === 3 && wp.comps.every((c) => c.face && c.text.length > 40) && wp.comps.some((c) => /Ada/.test(c.text) && /Fixes wheels|fixes one breakdown/i.test(c.text)), `the party with moods and their skill lines (${wp.comps.map((c) => c.id).join(', ')})`);
+  check(/Ask Eli: how many days\?$/.test(wp.eli) && !wp.eliOff && wp.paused, 'the panel has "Ask Eli: how many days?" and the trail waits behind it');
+  await shot(page, layout, '25-wagon');
+  await audit(page, layout.insets, 'Wagon panel');
+  await grab();
+  // the stacks shrink as the party eats
+  await setJ(page, `J.foods.flour = 120; J.foods.bacon = 0;`);
+  await J(page, () => window.__wagonWest.wagonPanel.refresh());
+  const sh = await J(page, () => Object.fromEntries([...document.querySelectorAll('.wg-stack')].map((s) => [s.dataset.food, [Number(s.dataset.units), s.querySelectorAll('.wg-item').length]])));
+  check(sh.flour[0] === 3 && sh.flour[1] === 3 && sh.bacon[0] === 0 && sh.bacon[1] === 0 && sh.beans[0] === 4, `the stacks shrink with J.foods (flour ${sh.flour[1]} sacks drawn, bacon ${sh.bacon[1]}, beans ${sh.beans[1]})`);
+  await setJ(page, `J.animals.tired = 90; J.limp = true;`);
+  await J(page, () => window.__wagonWest.wagonPanel.refresh());
+  const tr = await J(page, () => ({ a: document.querySelector('#wg-animals').textContent, limp: !!document.querySelector('#wg-limp'), short: !!document.querySelector('#wg-short') }));
+  check(/are tired\. They need a rest/.test(tr.a) && tr.limp, `tired animals: "${tr.a.trim()}", and the limp is said`);
+  await setJ(page, `J.animals.tired = 0; J.limp = false; J.foods = { flour: 300, bacon: 100, beans: 100, other: 0 };`);
+  await J(page, () => window.__wagonWest.wagonPanel.refresh());
+  // Ask Eli from the panel: a 'distance' problem (the panel stays under it), a token on a right first answer
+  const tk = await J(page, () => window.__wagonWest.save.journey.tokens);
+  await page.click('#wg-eli');
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
+  const e1 = await W(page);
+  check(e1.pKind === 'distance', `Ask Eli (from the Wagon panel) asks a 'distance' problem: "${await J(page, () => document.querySelector('#pp-text').textContent)}"`);
+  await typeDigits(page, '#panel-problem', e1.pAns);
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'closed', null, { timeout: 8000 });
+  check(await J(page, (t) => window.__wagonWest.save.journey.tokens === t + 1, tk), 'a right first answer: a trade token');
+  check(await J(page, () => !document.querySelector('#panel-wagon').hidden && !!document.querySelector('#wg-eli') && !document.querySelector('#wg-eli').disabled), 'back on the Wagon panel, Eli has one question left this leg');
+  await page.click('#wg-close');
+  await page.waitForSelector('#panel-wagon', { state: 'hidden' });
+  check(await J(page, () => window.__wagonWest.screen === 'trail' && !window.__wagonWest.app.overlayOpen()), '"Back to the trail": the panel closes onto the trail');
+  // Ask Eli on the HUD: the 'ration' problem; then no more this leg
+  await drive(page, idleTrail, far(page), 20000);
+  check(await J(page, () => !document.querySelector('#btn-eli').hidden), 'the HUD offers "Ask Eli: how many days?" while he has a question left');
+  for (let k = 0; k < 8 && (await J(page, () => window.__wagonWest.problemPanel.state)) === 'closed'; k++) {
+    await drive(page, idleTrail, far(page), 20000);
+    await J(page, () => document.querySelector('#btn-eli').click());
+    await page.waitForTimeout(250);
+  }
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
+  const e2 = await W(page);
+  check(e2.pKind === 'ration', `Ask Eli on the HUD asks the 'ration' problem: "${await J(page, () => document.querySelector('#pp-text').textContent)}"`);
+  await typeDigits(page, '#panel-problem', e2.pAns);
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'closed', null, { timeout: 8000 });
+  await page.waitForTimeout(200);
+  check(await J(page, () => document.querySelector('#btn-eli').hidden && window.__wagonWest.save.trip.asked.distance === 1 && window.__wagonWest.save.trip.asked.ration === 1), 'at most once a leg each: Ask Eli is gone from the HUD');
+  await drive(page, idleTrail, far(page), 20000);
+  // the pause sheet's "The wagon"
+  for (let k = 0; k < 8; k++) {       // (a card or marker of the day in flight can be in the way of the pause: try again when idle)
+    await page.keyboard.press('Escape');
+    if (await page.waitForSelector(visibleSel('#panel-pause'), { timeout: 1500 }).then(() => true, () => false)) break;
+    await drive(page, idleTrail, far(page), 20000);
+  }
+  await page.waitForSelector(visibleSel('#panel-pause'));
+  check(await J(page, () => !!document.querySelector('#pause-wagon')), 'the pause sheet has a "The wagon" button');
+  await J(page, () => document.querySelector('#pause-wagon').click());
+  await page.waitForSelector(visibleSel('#panel-wagon'));
+  check(await J(page, () => document.querySelector('#panel-pause').hidden), 'pause → The wagon: the Wagon panel over the trail');
+  await page.keyboard.press('Escape');
+  await page.waitForSelector('#panel-wagon', { state: 'hidden' });
+
+  // ----- effects the child sees: a toast or a card for every one -----
+  await drive(page, idleTrail, far(page), 20000);
+  await forceDay(page, { coldNight: true });
+  check(await toastWith(page, /cold night/), 'a cold night: "A cold night. There are not enough blankets, so the party rests a day…"');
+  await shot(page, layout, '26-cold-night', 100);
+  await drive(page, idleTrail, far(page), 20000);
+  await setJ(page, `J.animals.tired = 90; J.pace = 'brisk';`);
+  await forceDay(page, { animalsTired: true });
+  check(await toastWith(page, /need a rest, so we go steady/), 'tired animals: "The oxen need a rest, so we go steady today."');
+  await page.waitForTimeout(250);
+  const dial = await J(page, () => ({ on: document.querySelector('#dial-pace .seg-btn.on').dataset.pace, rest: document.querySelector('#dial-pace [data-pace="brisk"]').classList.contains('rest'), tired: document.querySelector('#dial-pace').dataset.tired }));
+  check(dial.on === 'steady' && dial.rest && dial.tired === 'true', 'the pace dial shows steady and Brisk is greyed');
+  await drive(page, idleTrail, far(page), 20000);
+  await J(page, () => document.querySelector('#dial-pace [data-pace="brisk"]').click());
+  check(await toastWith(page, /need a rest first/) && await J(page, () => window.__wagonWest.save.journey.pace !== 'brisk' || true), 'Brisk while they are tired: "The oxen need a rest first."');
+  await shot(page, layout, '27-tired-animals', 100);
+  await setJ(page, `J.animals.tired = 0; J.pace = 'steady';`);
+  await drive(page, idleTrail, far(page), 20000);
+  // a skill firing: the companion's portrait and line
+  const sp0 = await J(page, () => window.__spoken.length);
+  await forceDay(page, { skill: { id: 'fix', name: 'Fixes wheels', text: 'Ada hammers the wheel straight in a minute.', who: 'blacksmith' } });
+  check(await toastWith(page, /Ada hammers the wheel/), 'a skill fires: the companion\'s line as a toast');
+  const skl = await J(page, () => { const t = document.querySelector('#toasts .toast.skill'); return t && { face: !!t.querySelector('.sk-face svg'), who: t.dataset.who, text: t.textContent }; });
+  check(skl && skl.face && skl.who === 'blacksmith' && /^Ada/.test(skl.text), `with Ada's portrait: "${skl && skl.text}"`);
+  check(await page.waitForFunction((n) => window.__spoken.slice(n).some((t) => /hammers the wheel/.test(t)), sp0, { timeout: 3000 }).then(() => true, () => false), 'and read aloud');
+  await shot(page, layout, '28-skill', 100);
+  await audit(page, layout.insets, 'trail (a skill toast)');
+  await drive(page, idleTrail, far(page), 20000);
+  // arrows out: the hunt card says fishing only
+  await setJ(page, `J.goods.arrows = 0;`);
+  for (let k = 0; k < 20 && !(await J(page, () => window.__wagonWest.playEvent('hunt'))); k++) await drive(page, idleTrail, far(page), 20000);
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen, null, { timeout: 6000 });
+  const hc = await J(page, () => ({ text: document.querySelector('#tc-text').textContent, button: document.querySelector('#tc-go').textContent }));
+  check(/fishing only/.test(hc.text) && hc.button === 'Cast a line', `no arrows: the hunt card says fishing only ("${hc.button}")`);
+  await shot(page, layout, '29-fishing-only', 50);
+  await audit(page, layout.insets, 'trail card (fishing only)');
+  await grab();
+  await page.click('#tc-go');
+  await drive(page, idleTrail, far(page), 30000);
+  await setJ(page, `J.goods.arrows = 15;`);
+  // a breakdown with a spare part: "Fix it" / "Work it out for a token"
+  const breakdown = { id: 'wheel', kind: 'breakdown', part: 'wheel', needsPart: true, name: 'A wheel comes off', text: 'Bump! A wheel comes off in a rut.', say: 'Bump! A wheel comes off in a rut.', fix: 'A quick fix and we roll on!' };
+  await setJ(page, `J.parts = 1; J.goods.parts = 1;`);
+  await forceDay(page, { event: breakdown });
+  await cardWith(page, 'A wheel comes off');
+  const b1 = await J(page, () => ({ text: document.querySelector('#tc-text').textContent, go: document.querySelector('#tc-go').textContent, alt: document.querySelector('#tc-alt').hidden ? '' : document.querySelector('#tc-alt').textContent, kicker: document.querySelector('#tc-kicker').textContent }));
+  check(b1.go === 'Fix it' && b1.alt === 'Work it out for a token' && /spare part in the wagon/.test(b1.text), `a breakdown with a part: "${b1.go}" and "${b1.alt}"`);
+  await shot(page, layout, '30-breakdown', 50);
+  await audit(page, layout.insets, 'trail card (a breakdown)');
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.save.journey.parts === 0, null, { timeout: 6000 });
+  check(await toastWith(page, /spare part is used/), 'Fix it: the part is used up, and a line says so');
+  await drive(page, idleTrail, far(page), 30000);
+  // …Work it out for a token (the optional 'parts' problem)
+  await setJ(page, `J.parts = 1; J.goods.parts = 1;`);
+  const tkb = await J(page, () => window.__wagonWest.save.journey.tokens);
+  await forceDay(page, { event: breakdown });
+  await cardWith(page, 'A wheel comes off');
+  await page.click('#tc-alt');
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
+  const wo = await W(page);
+  check(wo.pKind === 'parts', 'Work it out for a token: the optional \'parts\' problem');
+  await typeDigits(page, '#panel-problem', wo.pAns);
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'closed', null, { timeout: 8000 });
+  await page.waitForFunction(() => window.__wagonWest.save.journey.parts === 0, null, { timeout: 6000 });
+  check(await J(page, (t) => window.__wagonWest.save.journey.tokens >= t + 1, tkb), 'a right first answer: a token, and the wagon is mended');
+  await drive(page, idleTrail, far(page), 30000);
+  // …without a part (and no blacksmith): the card says the wagon limps to the next fort
+  await setJ(page, `J.parts = 0; J.goods.parts = 0; J.companions = ['teacher', 'fiddler', 'scout']; J.party = J.companions.map((id) => ({ id, mood: J.mood }));`);
+  await forceDay(page, { event: breakdown });
+  await cardWith(page, 'A wheel comes off');
+  const b2 = await J(page, () => ({ text: document.querySelector('#tc-text').textContent, go: document.querySelector('#tc-go').textContent, altHidden: document.querySelector('#tc-alt').hidden }));
+  check(/limps to the next fort/.test(b2.text) && b2.altHidden && b2.go === 'Limp along', `a breakdown without a part: "…${b2.text.slice(-60)}" (one button, "${b2.go}")`);
+  await shot(page, layout, '31-breakdown-no-part', 50);
+  await page.click('#tc-go');
+  check(await toastWith(page, /limps along slowly/) && await J(page, () => window.__wagonWest.save.journey.limp === true), 'no part: a lost step, "the wagon limps along" and J.limp is set');
+  await J(page, () => window.__wagonWest.wagonPanel.refresh());
+  await setJ(page, `J.limp = false; J.companions = ['blacksmith', 'teacher', 'fiddler']; J.party = J.companions.map((id) => ({ id, mood: J.mood })); J.parts = 1; J.goods.parts = 1;`);
+  await drive(page, idleTrail, far(page), 30000);
+
+  // ----- Nora's tip before the answer (the teacher in the party) -----
+  if (await J(page, () => typeof window.__wagonWest.JA.teacherTip === 'function')) {
+    await setJ(page, `if (J.trip) J.trip.tipGiven = false;`);
+    const tip = { sawTip: false, tipBeforeAnswer: false };
+    const stop = Date.now() + 60000;
+    while (Date.now() < stop) {
+      const s = await W(page);
+      if (s.card && /tip/i.test(await J(page, () => document.querySelector('#tc-kicker').textContent))) {
+        const k = await J(page, () => ({ kicker: document.querySelector('#tc-kicker').textContent, text: document.querySelector('#tc-text').textContent, markerOpen: window.__wagonWest.markerPanel.isOpen }));
+        tip.sawTip = /^Nora's tip$/.test(k.kicker) && k.text.length > 5 && !k.markerOpen;
+        tip.text = k.text;
+        await page.click('#tc-go');
+        await page.waitForFunction(() => window.__wagonWest.markerPanel.state === 'ask', null, { timeout: 8000 });
+        tip.tipBeforeAnswer = true;
+        break;
+      }
+      if (s.marker === 'ask' || s.marker === 'copy') break;
+      if (s.card) await page.click('#tc-go');
+      else if (s.problem === 'ask' || s.problem === 'copy') await typeDigits(page, '#panel-problem', s.pAns);
+      await page.waitForTimeout(80);
+    }
+    if (tip.sawTip) {
+      check(tip.sawTip && tip.tipBeforeAnswer, `Nora's tip: the strategy hint on a card BEFORE the marker's answer ("${String(tip.text).slice(0, 50)}…")`);
+      await drive(page, (s) => s.marker !== 'ask' && s.marker !== 'copy' && s.marker !== 'show', {}, 20000).catch(() => {});
+    } else console.log("  (no mile marker came up in this window for Nora's tip; covered by the journey stream's teacherTip tests)");
+  }
+  await drive(page, idleTrail, far(page), 30000);
+
+  // ----- camp's "Wait out the storm" is the second stream's; app.waitOut() is the call -----
+  const w0 = await J(page, () => ({ day: window.__wagonWest.save.journey.day, has: typeof window.__wagonWest.JA.waitOut === 'function' }));
+  if (w0.has) {
+    const r = await J(page, () => window.__wagonWest.app.waitOut());
+    check(r !== null && await J(page, (d) => window.__wagonWest.save.journey.day >= d, w0.day), 'app.waitOut() runs the journey\'s waitOut(J) and saves');
+  }
+  await J(page, () => window.__wagonWest.app.go('title'));
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const ts = await J(page, () => ({ season: document.querySelector('#title-season').textContent, skills: document.querySelector('#title-skills').textContent }));
+  check(/^Dusty · 1847 · Rookie year$/.test(ts.season) && ts.skills === 'Ada fixes wheels · Nora gives tips · Jasper lifts spirits', `the title: "${ts.season}" and under it "${ts.skills}"`);
+  await shot(page, layout, '32-title-party');
+  await audit(page, layout.insets, 'title (the party line)');
+  await grab();
+}
+
+// the family map: the other players as small wagons at their stops
+async function v12Family(page, layout, grab) {
+  console.log('  -- v1.2: the family map --');
+  const ids = await J(page, async () => {
+    const w = window.__wagonWest, m = await import('/wagon-west/src/meta/save.js'), L = await import('/wagon-west/src/content/legs.js');
+    const sam = w.app.createPlayer('Sam', '#3b7dd9'), zed = w.app.createPlayer('Zed', '#d94f8a');
+    const s = m.defaultSave();
+    s.journey = JSON.parse(JSON.stringify(w.save.journey));
+    s.journey.legIndex = 5; s.journey.legId = L.LEGS[5].id; s.journey.milesDone = 0;
+    m.writeSave(sam.id, s);                                // Zed has no journey yet: no wagon on the map
+    w.app.onFamilyChanged();
+    return { sam: sam.id, zed: zed.id };
+  });
+  await page.waitForTimeout(200);
+  const fam = await J(page, (ids) => ({ wagons: [...document.querySelectorAll('#title-map .map-fam')].map((g) => g.dataset.player), mapText: document.querySelector('#title-map').textContent, label: document.querySelector('#title-map .map-fam') && document.querySelector('#title-map .map-fam').getAttribute('aria-label'), legsDone: document.querySelector('#title-map').dataset.legsDone, ids }), ids);
+  check(fam.wagons.length === 1 && fam.wagons[0] === ids.sam, `the title map: the family's other player with a journey is a small wagon (${fam.wagons.length}); a player with no journey is not`);
+  check(!/Sam|Zed/.test(fam.mapText + fam.label), 'no names on the map until a tap');
+  await shot(page, layout, '33-family-map');
+  await audit(page, layout.insets, 'title (the family map)');
+  const pos = await J(page, () => { const g = document.querySelector('#title-map .map-fam'); const m = /translate\(([\d.]+) ([\d.]+)\)/.exec(g.getAttribute('transform')); return { x: Number(m[1]), y: Number(m[2]) }; });
+  const mine = await J(page, () => { const g = document.querySelector('#title-map .map-wagon'); const m = /translate\(([\d.]+) ([\d.]+)\)/.exec(g.getAttribute('transform')); return { x: Number(m[1]), y: Number(m[2]) }; });
+  check(pos.x < mine.x, `Sam's wagon is further west than mine (x ${Math.round(pos.x)} vs ${Math.round(mine.x)}: leg 6 vs leg ${Number(fam.legsDone) + 1})`);
+  await page.dispatchEvent('#title-map .map-fam', 'click');
+  check(await toastWith(page, /^Sam's wagon$/, 2000), 'a tap shows whose wagon: "Sam\'s wagon"');
+  await J(page, (ids) => { const w = window.__wagonWest; w.app.removePlayer(ids.sam); w.app.removePlayer(ids.zed); w.app.onFamilyChanged(); }, ids);
+  check(await J(page, () => document.querySelectorAll('#title-map .map-fam').length === 0), 'the extra players are removed: the map is just mine again');
+}
+
+// QUICK=1: only the v1.2 sections, from a journey made by the Outfit's own call (a fast loop while developing)
+async function quickV12(browser, layout) {
+  console.log(`\n=== quick v1.2 (${layout.name}) ===`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await routeFonts(ctx);
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\./.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  await page.addInitScript(({ insets }) => {
+    if (!sessionStorage.getItem('wwQuick')) {
+      localStorage.clear();
+      const now = Date.now();
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0, options: {}, optionsUpdatedAt: {}, removedPlayers: [], migrated: true, lastPlayer: 'pmia' }));
+      sessionStorage.setItem('wwQuick', '1');
+    }
+    window.__wwScript = { daySec: 0.12, beat: 0.15 };
+    window.__mockScript = { shotMs: 80 };
+    window.__spoken = [];
+    window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 30); }, cancel() {}, addEventListener() {} };
+    document.addEventListener('DOMContentLoaded', () => {
+      const st = document.createElement('style');
+      st.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(st);
+    });
+  }, { insets: layout.insets });
+  await page.goto(URL0, { waitUntil: 'networkidle' });
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'oxen', companions: ['blacksmith', 'teacher', 'fiddler'] }, { fresh: true }); });
+  await page.waitForSelector(visibleSel('#screen-store'));
+  await page.click('#store-done');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen);
+  await page.click('#tc-go');
+  await page.waitForSelector(visibleSel('#screen-trail'));
+  await page.keyboard.press('Escape');
+  await page.waitForSelector(visibleSel('#panel-pause'));
+  await page.click('#pause-camp');
+  await page.waitForSelector(visibleSel('#screen-camp'));
+  await page.click('#camp-stop');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const texts = [];
+  const grab = async () => texts.push(await kidText(page));
+  await v12Journey(page, layout, grab);
+  await v12Family(page, layout, grab);
+  const bad = texts.map((t) => (t.match(BANNED) || [])[0]).filter(Boolean);
+  check(bad.length === 0, `kid-rule text audit of the v1.2 screens${bad.length ? ' — found: ' + bad.join(', ') : ''}`);
+  check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 4).join(' | ') : ''}`);
+  await ctx.close();
+}
+
+// the mock scene's scripted mini-games (what the second app stream's ui-smoke runs against)
+async function mockMiniGames(browser) {
+  console.log('\n=== the mock scene: ford, float, raft, stampede ===');
+  const ctx = await browser.newContext({ viewport: { width: 844, height: 390 } });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto(BASE + '/wagon-west/index.html?mock=1&nosw=1', { waitUntil: 'domcontentloaded' });
+  const r = await page.evaluate(async () => {
+    const m = await import('/wagon-west/src/meta/mockScene.js');
+    window.__mockScript = { shotMs: 20 };
+    const wait = (cond, ms = 4000) => new Promise((res) => { const t0 = Date.now(); const iv = setInterval(() => { if (cond() || Date.now() - t0 > ms) { clearInterval(iv); res(); } }, 10); });
+    const make = () => { const ev = []; const sc = m.createScene(document.createElement('canvas'), { onEvent: (e) => ev.push(e) }); return { ev, sc }; };
+    const out = {};
+    let { ev, sc } = make();
+    sc.startFord({ seed: 1, width: 'wide' });
+    out.fordState = sc.getState().mini;
+    await wait(() => ev.some((e) => e.type === 'fordEnd'));
+    out.ford = { types: ev.map((e) => e.type).join(','), end: ev.find((e) => e.type === 'fordEnd'), goods: ev.filter((e) => e.type === 'ford').map((e) => e.good).join(), after: sc.getState().mini };
+    window.__mockScript = { shotMs: 20, ford: 'soaked' };
+    ({ ev, sc } = make());
+    sc.startFord({ seed: 2 });
+    await wait(() => ev.some((e) => e.type === 'fordEnd'));
+    out.fordSoaked = ev.find((e) => e.type === 'fordEnd');
+    window.__mockScript = { shotMs: 20 };
+    ({ ev, sc } = make());
+    sc.startFord({ seed: 2, width: 'narrow' });
+    await wait(() => ev.some((e) => e.type === 'fordEnd'));
+    out.fordNarrow = ev.filter((e) => e.type === 'ford').length;
+    window.__mockScript = { shotMs: 20, ford: 'soaked' };
+    window.__mockScript = { shotMs: 20 };
+    ({ ev, sc } = make());
+    sc.startFloat({ seed: 3, width: 'wide' });
+    out.floatState = sc.getState().mini;
+    await wait(() => ev.some((e) => e.type === 'floatEnd'));
+    out.float = { bumps: ev.filter((e) => e.type === 'float').map((e) => e.bump).join(), end: ev.find((e) => e.type === 'floatEnd') };
+    ({ ev, sc } = make());
+    sc.startRaft({ seed: 4, length: 4 });
+    const bends = [];
+    for (let i = 0; i < 4; i++) {
+      await wait(() => ev.filter((e) => e.type === 'raftMarker').length > i);
+      await new Promise((res) => setTimeout(res, 80));         // it waits for raftGo(): nothing more comes meanwhile
+      bends.push({ n: ev.filter((e) => e.type === 'raftMarker').length, waiting: sc.getState().mini && sc.getState().mini.waiting });
+      out['go' + i] = sc.raftGo();
+    }
+    await wait(() => ev.some((e) => e.type === 'raftEnd'));
+    out.raft = { bends, markers: ev.filter((e) => e.type === 'raftMarker').map((e) => `${e.n}/${e.of}`).join(), end: ev.find((e) => e.type === 'raftEnd'), goAfter: sc.raftGo() };
+    ({ ev, sc } = make());
+    sc.startStampede({ seed: 5 });
+    out.stState = sc.getState().mini;
+    await wait(() => ev.some((e) => e.type === 'stampedeEnd'));
+    out.stampede = { goods: ev.filter((e) => e.type === 'stampede').map((e) => e.good).join(), end: ev.find((e) => e.type === 'stampedeEnd') };
+    window.__mockScript = { shotMs: 20, stampede: [false, false, true] };
+    ({ ev, sc } = make());
+    sc.startStampede({ seed: 6 });
+    await wait(() => ev.some((e) => e.type === 'stampedeEnd'));
+    out.stampedeMiss = ev.find((e) => e.type === 'stampedeEnd');
+    window.__mockScript = { shotMs: 400 };
+    ({ ev, sc } = make());
+    sc.startFloat({ seed: 7 });
+    const sum = sc.endMiniGame();
+    out.ended = { sum, state: sc.getState().mini, events: ev.length };
+    sc.startStampede({ seed: 8 });
+    out.endedStampede = sc.endMiniGame();
+    return out;
+  });
+  check(r.fordState && r.fordState.kind === 'ford' && r.ford.goods === 'true,true,false,true,true,true' && r.ford.end && r.ford.end.soaked === 0 && r.ford.end.pushes === 6 && r.ford.end.good === 5 && r.ford.after === null, `ford: 'ford' { good } per push then 'fordEnd' ${JSON.stringify(r.ford.end)}`);
+  check(r.fordSoaked && r.fordSoaked.soaked === 1 && r.fordNarrow === 4, 'ford (scripted soaked): fordEnd { soaked: 1 }; a narrow ford is 4 pushes');
+  check(r.floatState && r.floatState.kind === 'float' && r.float.bumps === 'true' && r.float.end.bumps === 1, `float: 'float' { bump } per rock (${r.float.bumps}) then floatEnd ${JSON.stringify(r.float.end)}`);
+  check(r.raft.markers === '1/4,2/4,3/4,4/4' && r.raft.bends.every((b, i) => b.n === i + 1 && b.waiting === true) && r.go0 && r.go3 && r.raft.end && r.raft.end.bends === 4 && r.raft.goAfter === false, `raft: four raftMarker { n, of } that wait for raftGo(), then raftEnd ${JSON.stringify(r.raft.end)}`);
+  check(r.stState && r.stState.kind === 'stampede' && r.stampede.goods === 'true,true,true' && r.stampede.end.held === true && r.stampedeMiss.held === false, `stampede: three waves then stampedeEnd { held } (${r.stampede.end.held}; scripted misses: ${r.stampedeMiss.held})`);
+  check(r.ended.sum && r.ended.sum.bumps === 0 && r.ended.sum.finished === false && r.ended.state === null && r.ended.events === 0 && r.endedStampede && r.endedStampede.held === false, 'endMiniGame() ends any of them without an event and returns the summary');
+  check(errors.length === 0, `mock mini-games: no page errors${errors.length ? ' — ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
 // ---------- the natural voice (SPEC v1.1 §1): a family code, a natural voice picked, a fake cloud backend ----------
 async function voiceTest(browser, layout) {
   console.log(`\n=== natural voice (${layout.name}) ===`);
@@ -778,6 +1228,9 @@ async function voiceTest(browser, layout) {
         const q2 = await J(page, async () => { const F = await import('/trail-blazer/src/facts/facts.js'); return F.questionSentence(window.__wagonWest.markerPanel.fact, true); });
         const ok = (await byCloud(q)) || (await byCloud(q2, 200));
         seen.marker = { ok: ok && !(await deviceSaid(q)) && !(await deviceSaid(q2)) && (await engine()) === 'cloud', q };
+      }
+      if (!seen.problem && s.screen === 'trail' && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && s.travel && !s.travel.busy && !(await J(page, () => document.querySelector('#btn-eli').hidden))) {
+        await J(page, () => document.querySelector('#btn-eli').click());     // (a word problem now comes when the child asks Eli)
       }
       if (s.problem === 'ask' && !seen.problem) {
         const p = await J(page, () => { const pr = window.__wagonWest.problemPanel.problem; return { say: pr.say, text: pr.text }; });
@@ -857,9 +1310,11 @@ const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 try {
   for (const layout of LAYOUTS.filter((l) => !process.env.ONLY || l.name === process.env.ONLY)) {
+    if (process.env.QUICK) { await quickV12(browser, layout); continue; }
     if (!process.env.VOICE_ONLY) await runLayout(browser, layout);
     await voiceTest(browser, layout);
   }
+  if (!process.env.VOICE_ONLY) await mockMiniGames(browser);
   staticAudit();
 } catch (e) {
   failures.push('crashed: ' + (e && e.stack || e));

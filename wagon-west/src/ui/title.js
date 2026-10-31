@@ -4,6 +4,8 @@
 // (the child's Spell Jump list, practised at the rivers and in the letters). The player chip goes back to the picker.
 // v1.1: the daily trail challenge under the map ("Today's challenge: …", a check mark once done: the token and the
 // card are given the moment it is done, main.js app.daily()); a tap reads it aloud.
+// v1.2: the wagon's name and what the three companions are good at under the logo ("Ada fixes wheels · Eli scouts · Rosa
+// stretches the food"), and the family's other wagons as small wagons at their stops on the map (tap one: whose it is).
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { streakNow } from '../../../spell-jump/src/meta/engagement.js';
 import { drawMap } from './map.js';
@@ -29,7 +31,7 @@ export function createTitle(app) {
     $('#title-words').setAttribute('aria-label', `${words} spelling words this week`);
     const legs = app.legs;
     const inLeg = !!(save.trip && J && save.trip.legId === J.legId);
-    const r = drawMap(map, { legs, J, inLeg, paint: app.paintColor() });
+    const r = drawMap(map, { legs, J, inLeg, paint: app.paintColor(), family: app.familyWagons(), onFamily: (f) => app.toast(`${f.name}'s wagon`) });
     const season = app.season();
     let label = 'Hit the trail', text = '';
     if (!J) { label = 'Pack the wagon'; text = `${season.year}: ${legs.length} stops from ${(legs[0] && legs[0].from) || 'Independence'} to the valley`; }
@@ -46,7 +48,12 @@ export function createTitle(app) {
     $('#btn-trail-label').textContent = label;
     go.dataset.action = !J ? 'outfit' : J.done ? 'season' : 'trail';
     map.setAttribute('aria-label', r.next ? `The trail map. Next stop: ${r.next.name}.` : 'The trail map.');
-    $('#title-season').textContent = `${season.year} · ${season.name}`;
+    $('#title-season').textContent = `${J && J.wagonName ? `${J.wagonName} · ` : ''}${season.year} · ${season.name}`;
+    const crew = J ? (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)) : [];
+    const skills = app.partyLine(crew);
+    const sk = $('#title-skills');
+    sk.hidden = !skills;
+    sk.textContent = skills;
     $('#btn-outfit').disabled = false;
     const dc = app.daily();
     const ch = $('#title-challenge');

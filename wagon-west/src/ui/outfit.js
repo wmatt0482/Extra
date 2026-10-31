@@ -8,11 +8,14 @@
 // v1.1: the Look tab has two panes, Looks and Wagon: the wagon upgrades that matter on the trail (the Journey stream's
 // UPGRADES: a canvas cover, iron tires, a water barrel), each bought once with trade tokens or with cash, its effect
 // in one line (the token and cash sink: main.js app.upgrades / app.buyUpgrade).
+// v1.2: each companion's card says what they are good at in one line (their skill), and the Party step sums the three up
+// ("Ada fixes wheels · Eli scouts · Rosa stretches the food"), so who you pick matters on the trail.
 import { createKeyboard } from '../../../spell-jump/src/spelling/keyboard.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { ANIMALS } from '../content/legs.js';
 import { COMPANIONS } from '../content/companions.js';
 import { KIND_NAME, LOOKS, LOOK_KINDS, STOCK, owns } from './looks.js';
+import { partySummary, skillOfCompanion } from './wagonPanel.js';
 
 export const MAX_WAGON_NAME = 16;
 const TABS = [['name', 'Name'], ['animal', 'Animal'], ['party', 'Party'], ['look', 'Look']];
@@ -107,11 +110,12 @@ export function createOutfit(app) {
     const n = draft.companions.length;
     body.replaceChildren(
       h('p', { class: 'ow-note', id: 'ow-party-count' }, lock ? 'The party is set for this season.' : `${n} of 3 chosen`),
+      h('p', { class: 'ow-note ow-skills', id: 'ow-party-skills' }, partySummary(draft.companions) || 'Each friend is good at something on the trail.'),
       h('div', { class: 'ow-party scroll' }, ...COMPANIONS.map((c) => {
         const on = draft.companions.includes(c.id);
         const b = h('button', { class: 'card ow-comp' + (on ? ' on' : ''), 'data-companion': c.id, 'aria-pressed': String(on), 'data-sfx': '', style: { '--c': c.color }, disabled: lock && !on },
           h('span', { class: 'ow-c-face', html: companionSvg(c) }),
-          h('span', { class: 'ow-c-text' }, h('b', {}, c.name), h('small', {}, c.role || ''), h('i', {}, `“${(c.lines && c.lines.trail && c.lines.trail[0]) || ''}”`)));
+          h('span', { class: 'ow-c-text' }, h('b', {}, c.name), h('small', {}, c.role || ''), h('i', { class: 'ow-c-skill' }, (skillOfCompanion(c.id) || {}).text || '')));
         b.addEventListener('click', () => {
           if (lock) return;
           if (on) draft.companions = draft.companions.filter((x) => x !== c.id);

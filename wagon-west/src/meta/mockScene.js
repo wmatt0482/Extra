@@ -21,7 +21,16 @@
 //   The dog: setParty({ dog: { name, coat: 'brown' | 'spotted' | 'black' } | null }) (the whole party each time) draws
 //   it beside the wagon; dogBark() → true and a 'bark' event (false without a dog); after an animalSpotted with the dog
 //   on screen the mock barks by itself (≤ 1 a second), as the real scene does.
+//   v1.2 the rivers, the raft and the stampede (the real scene's events, scripted; a tap or Space also steps a ford / a
+//   stampede at once): startFord({ seed, width }) → 'ford' { good } per push (4 narrow / 6 wide), then 'fordEnd' { soaked (1 when 2 or more
+//   swell taps, else 0), pushes, good }; startFloat({ seed, width }) → 'float' { bump: true } per rock hit, then 'floatEnd'
+//   { bumps }; startRaft({ seed, length }) → 'raftMarker' { n, of: 4 } at each bend, which WAITS until raftGo() (→ true), the
+//   last raftGo() → 'raftEnd' { bumps, bends }; startStampede({ seed }) → 'stampede' { good } per wave (3), then
+//   'stampedeEnd' { held } (held when 2 or more were good). endMiniGame() ends any of them (no event) and returns the
+//   summary so far. getState().mini = { kind: 'ford' | 'float' | 'raft' | 'stampede', left, phase, … }.
 // Timing for tests: window.__mockScript = { shotMs } (default 650 ms between shots / casts). 'ready' fires once after the first frame.
+//   v1.2 scripts: __mockScript.ford = 'soaked' (default dry), .bumps = n rocks hit by the float / the raft (default 1),
+//   .stampede = [bool, bool, bool] (the waves braked on the beat; default all true).
 const SKIES = {
   prairie: ['#8fc6e8', '#f6e3b4'], bluffs: ['#9cc3e0', '#f2d2a0'], highdesert: ['#a8cfe6', '#f4d9a8'],
   mountains: ['#7fb2dc', '#e4ecf2'], gorge: ['#8db8d4', '#d9e6e8'], valley: ['#92cbe6', '#eef2c8'],
@@ -115,7 +124,13 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     if (S.mini) {
       ctx.fillStyle = 'rgba(30,20,10,.35)'; ctx.fillRect(0, 0, w, h);
       ctx.fillStyle = '#fff6e0'; ctx.font = '700 18px system-ui, sans-serif'; ctx.textAlign = 'center';
-      ctx.fillText(S.mini.kind === 'hunt' ? `Bow: ${S.mini.left} arrows left · ${S.mini.hits} got` : `Line: ${S.mini.left} casts left · ${S.mini.hits} bites`, w / 2, h * 0.4);
+      const k = S.mini.kind;
+      ctx.fillText(k === 'hunt' ? `Bow: ${S.mini.left} arrows left · ${S.mini.hits} got`
+        : k === 'fish' ? `Line: ${S.mini.left} casts left · ${S.mini.hits} bites`
+          : k === 'ford' ? `Ford: tap on the calm beat (${S.mini.left} left)`
+            : k === 'float' ? `Float: steer past the rocks (${S.mini.left} left)`
+              : k === 'raft' ? `Raft: bend ${S.mini.n} of ${S.mini.of}${S.mini.waiting ? ' (waiting)' : ''}`
+                : k === 'stampede' ? `Stampede: brake! (${S.mini.left} waves left)` : '', w / 2, h * 0.4);
       ctx.textAlign = 'start';
     }
     if (S.confetti > 0) {
@@ -152,6 +167,49 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     draw();
     emit('derbyMarker', { n: d.n, of: d.of });
   }
+  // ---------- v1.2: the ford, the float, the raft, the stampede (scripted) ----------
+  const FORD_NARROW = 4, FORD_WIDE = 6, FLOAT_ROCKS = 4, RAFT_BENDS = 4, WAVES = 3;
+  const armed = (fn) => { clearTimeout(miniTimer); miniTimer = setTimeout(fn, shotMs()); };
+  function fordStep() {
+    const m = S.mini;
+    if (!m || m.kind !== 'ford' || !S.playing) return;
+    clearTimeout(miniTimer); miniTimer = 0;
+    const good = script().ford === 'soaked' ? m.i >= 2 : m.i !== 2;      // dry: one swell tap (never soaked); soaked: two swell taps
+    m.i += 1; m.left -= 1; if (good) m.good += 1; else m.bad += 1;
+    emit('ford', { good });
+    if (m.left <= 0) { const out = { soaked: m.bad >= 2 ? 1 : 0, pushes: m.i, good: m.good }; stopMini(); draw(); emit('fordEnd', out); return; }
+    draw(); armed(fordStep);
+  }
+  function floatStep() {
+    const m = S.mini;
+    if (!m || m.kind !== 'float' || !S.playing) return;
+    clearTimeout(miniTimer); miniTimer = 0;
+    const want = Number.isFinite(Number(script().bumps)) ? Number(script().bumps) : 1;
+    const bump = m.i < want;
+    m.i += 1; m.left -= 1; if (bump) m.bumps += 1;
+    if (bump) emit('float', { bump: true });         // (the real scene emits 'float' only for a rock that was hit)
+    if (m.left <= 0) { const out = { bumps: m.bumps }; stopMini(); draw(); emit('floatEnd', out); return; }
+    draw(); armed(floatStep);
+  }
+  function raftBend() {
+    const m = S.mini;
+    if (!m || m.kind !== 'raft' || !S.playing || m.waiting) return;
+    clearTimeout(miniTimer); miniTimer = 0;
+    m.n += 1; m.waiting = true; m.left = m.of - m.n;
+    draw();
+    emit('raftMarker', { n: m.n, of: m.of });      // the raft holds here until the app calls raftGo()
+  }
+  function stampedeStep() {
+    const m = S.mini;
+    if (!m || m.kind !== 'stampede' || !S.playing) return;
+    clearTimeout(miniTimer); miniTimer = 0;
+    const waves = Array.isArray(script().stampede) ? script().stampede : [true, true, true];
+    const good = !!waves[m.i % waves.length];
+    m.i += 1; m.left -= 1; if (good) m.good += 1;
+    emit('stampede', { good });
+    if (m.left <= 0) { const out = { held: m.good >= 2 }; stopMini(); draw(); emit('stampedeEnd', out); return; }
+    draw(); armed(stampedeStep);
+  }
   function huntShot() {
     const m = S.mini;
     if (!m || m.kind !== 'hunt' || !S.playing) return;
@@ -177,8 +235,9 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     draw();
     miniTimer = setTimeout(fishCast, shotMs());
   }
-  const onPointer = (e) => { if (S.mini && S.mini.kind === 'hunt') { e.preventDefault(); huntShot(); } else if (S.mini && S.mini.kind === 'fish') { e.preventDefault(); fishCast(); } };
-  const onKey = (e) => { if (S.mini && e.code === 'Space') { e.preventDefault(); if (S.mini.kind === 'hunt') huntShot(); else fishCast(); } };
+  const tapStep = () => { const k = S.mini && S.mini.kind; if (k === 'hunt') huntShot(); else if (k === 'fish') fishCast(); else if (k === 'ford') fordStep(); else if (k === 'stampede') stampedeStep(); };
+  const onPointer = (e) => { if (S.mini && ['hunt', 'fish', 'ford', 'stampede'].includes(S.mini.kind)) { e.preventDefault(); tapStep(); } };
+  const onKey = (e) => { if (S.mini && e.code === 'Space' && S.mini.kind !== 'derby') { e.preventDefault(); tapStep(); } };
   canvas.addEventListener('pointerdown', onPointer);
   window.addEventListener('keydown', onKey);
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => resize()) : null;
@@ -213,9 +272,49 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     endMiniGame() {
       if (S.derby) return scene.endDerby();
       const m = S.mini;
-      const out = !m ? null : m.kind === 'hunt' ? { meatLb: m.meat, hits: m.hits, shots: m.shots - m.left } : { fishLb: m.meat, caught: m.hits, casts: m.shots - m.left };
+      const out = !m ? null
+        : m.kind === 'hunt' ? { meatLb: m.meat, hits: m.hits, shots: m.shots - m.left }
+          : m.kind === 'fish' ? { fishLb: m.meat, caught: m.hits, casts: m.shots - m.left }
+            : m.kind === 'ford' ? { soaked: m.bad >= 2 ? 1 : 0, pushes: m.i, good: m.good, finished: false }
+              : m.kind === 'float' ? { bumps: m.bumps, finished: false }
+                : m.kind === 'raft' ? { bumps: Number.isFinite(Number(script().bumps)) ? Number(script().bumps) : 1, bends: m.n, finished: false }
+                  : { held: m.good >= 2, finished: false };
       stopMini(); draw();
       return out;
+    },
+    startFord({ seed = 0, width = 'wide' } = {}) {
+      stopMini();
+      const n = width === 'narrow' ? FORD_NARROW : FORD_WIDE;
+      S.mini = { kind: 'ford', seed: Math.abs(Number(seed) || 0), width, i: 0, left: n, good: 0, bad: 0 };
+      kick(); armed(fordStep);
+    },
+    startFloat({ seed = 0, width = 'wide' } = {}) {
+      stopMini();
+      S.mini = { kind: 'float', seed: Math.abs(Number(seed) || 0), width, i: 0, left: FLOAT_ROCKS, bumps: 0 };
+      kick(); armed(floatStep);
+    },
+    startRaft({ seed = 0, length = 4 } = {}) {
+      stopMini();
+      S.mini = { kind: 'raft', seed: Math.abs(Number(seed) || 0), length, n: 0, of: RAFT_BENDS, left: RAFT_BENDS, waiting: false, bumps: 0 };
+      kick(); armed(raftBend);
+    },
+    /** The app answered the bend's fact: the raft runs on to the next bend (or the valley after the last). */
+    raftGo() {
+      const m = S.mini;
+      if (!m || m.kind !== 'raft' || !m.waiting) return false;
+      m.waiting = false;
+      if (m.n >= m.of) {
+        const out = { bumps: Number.isFinite(Number(script().bumps)) ? Number(script().bumps) : 1, bends: m.of };
+        stopMini(); draw(); setTimeout(() => emit('raftEnd', out), shotMs());
+        return true;
+      }
+      armed(raftBend);
+      return true;
+    },
+    startStampede({ seed = 0 } = {}) {
+      stopMini();
+      S.mini = { kind: 'stampede', seed: Math.abs(Number(seed) || 0), i: 0, left: WAVES, good: 0 };
+      kick(); armed(stampedeStep);
     },
     startDerby({ seed = 0, length = 400 } = {}) {
       stopMini();
@@ -246,7 +345,8 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     setReducedMotion(on) { reducedMotion = !!on; draw(); },
     play() {
       S.playing = true;
-      if (S.mini && !miniTimer && !(S.derby && S.derby.waiting)) miniTimer = setTimeout(S.mini.kind === 'derby' ? derbyNext : S.mini.kind === 'hunt' ? huntShot : fishCast, shotMs());
+      const STEP = { derby: derbyNext, hunt: huntShot, fish: fishCast, ford: fordStep, float: floatStep, raft: raftBend, stampede: stampedeStep };
+      if (S.mini && !miniTimer && !(S.derby && S.derby.waiting) && !S.mini.waiting) miniTimer = setTimeout(STEP[S.mini.kind] || fishCast, shotMs());
       kick();
     },
     pause() { S.playing = false; clearTimeout(miniTimer); miniTimer = 0; cancelAnimationFrame(raf); raf = 0; },
@@ -256,7 +356,11 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
       return { backdrop: S.backdrop, milesDone: S.travel.milesDone, weather: S.travel.weather, moving: !!S.travel.moving,
         biome: S.leg.biome, legId: S.leg.id, pace: S.travel.pace, view: S.backdrop, playing: S.playing, reducedMotion: !!reducedMotion,
         mini: S.derby ? { kind: 'derby', progress: S.derby.pos, mailProgress: S.derby.mail, left: S.derby.of - S.derby.n, phase: S.derby.phase, markers: S.derby.n, bursts: S.derby.bursts.length, won: S.derby.won }
-          : S.mini ? { kind: S.mini.kind, left: S.mini.left, hits: S.mini.hits, [S.mini.kind === 'hunt' ? 'meatLb' : 'fishLb']: S.mini.meat, phase: 'play' } : null,
+          : S.mini && S.mini.kind === 'ford' ? { kind: 'ford', left: S.mini.left, good: S.mini.good, pushes: S.mini.i, phase: 'play' }
+            : S.mini && S.mini.kind === 'float' ? { kind: 'float', left: S.mini.left, bumps: S.mini.bumps, phase: 'play' }
+              : S.mini && S.mini.kind === 'raft' ? { kind: 'raft', n: S.mini.n, of: S.mini.of, left: S.mini.left, waiting: S.mini.waiting, phase: S.mini.waiting ? 'wait' : 'play' }
+                : S.mini && S.mini.kind === 'stampede' ? { kind: 'stampede', left: S.mini.left, good: S.mini.good, phase: 'play' }
+                  : S.mini ? { kind: S.mini.kind, left: S.mini.left, hits: S.mini.hits, [S.mini.kind === 'hunt' ? 'meatLb' : 'fishLb']: S.mini.meat, phase: 'play' } : null,
         dog: S.party.dog ? { ...S.party.dog } : null, mock: true };
     },
   };

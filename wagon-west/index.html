@@ -670,6 +670,77 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 @keyframes cardIn { from { transform: perspective(500px) rotateY(-100deg) scale(.7); opacity: 0; } }
 @keyframes cardOut { to { transform: translateY(-10px) scale(.9); opacity: 0; } }
 .reduced-motion .cpop-card { animation: none; }
+/* ---------- v1.2: the Wagon panel, the forecast chip, effect toasts, the store rows, the family map ---------- */
+.hud-food { font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.hud-food .hud-label, .hud-food b, .hud-food .hud-note { display: block; }
+.hud-food:active { transform: translateY(2px); }
+.hud-forecast { flex-direction: row; align-items: center; gap: 6px; padding: 5px 10px; }
+.hud-forecast .sky svg { display: block; width: 26px; height: 26px; }
+.fc-words { font: 800 13px/1.1 var(--font-body); white-space: nowrap; }
+.hud-eli { align-self: flex-end; flex: 0 1 auto; min-width: 0; text-align: left; white-space: normal; line-height: 1.1; padding: 6px 12px; }
+.dial-btn.rest { opacity: .45; }
+.toast.fx { animation-duration: 4.8s; max-width: min(92vw, 520px); border-radius: 16px; font-size: 14px; line-height: 1.25; }
+.toast.skill { display: flex; align-items: center; gap: 10px; animation-duration: 5.2s; text-align: left; border-color: var(--cyan); color: var(--text); }
+.toast.skill .sk-face { flex: none; display: inline-flex; }
+.toast.skill .sk-face svg { display: block; width: 40px; height: 40px; border-radius: 50%; background: #f6e7c4; }
+.toast.skill .sk-text { display: grid; gap: 1px; font: 700 13px/1.25 var(--font-body); }
+.toast.skill .sk-text b { font: 400 15px/1.1 var(--font-display); color: var(--accent); }
+.title-skills { max-width: 100%; margin: 0; font: 700 12px/1.25 var(--font-body); color: #f2dfbd; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
+.map-fam { cursor: pointer; }
+.map-fam:focus-visible { outline: none; }
+.map-fam:focus-visible .fam-hit { stroke: var(--cyan); stroke-width: 4; }
+.ow-c-skill { font: 600 12px/1.25 var(--font-body); font-style: normal; color: #f2dfbd; }
+.ow-skills { color: var(--accent); }
+/* the Wagon panel (z-index below the problem panel and the cards, so "Ask Eli" opens over it) */
+#panel-wagon { z-index: 18; }
+.wg-sheet { width: min(700px, 100%); overflow: hidden; padding-bottom: 12px; }
+.wg-body { flex: 1; min-height: 0; display: grid; gap: 10px; align-content: start; padding-right: 4px; }
+.wg-sec { padding: 8px 10px 10px; border-radius: 10px; background: var(--ink-2); border: 2px solid var(--line); }
+.wg-sec-h { font: 800 11px/1 var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
+.wg-days { margin: 0 0 6px; font: 400 18px/1.2 var(--font-display); color: var(--accent); }
+.wg-note { margin: 4px 0 0; font: 700 13px/1.3 var(--font-body); color: var(--muted); }
+.wg-note.warn { color: #ffcf9a; }
+.wg-stacks { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: flex-end; }
+.wg-stack { display: grid; gap: 4px; justify-items: start; min-width: 100px; }
+.wg-pile { display: flex; flex-wrap: wrap-reverse; align-content: flex-start; gap: 3px; width: 102px; min-height: 28px; }
+.wg-item { display: grid; place-items: center; width: 30px; height: 24px; border-radius: 6px; font-size: 14px; line-height: 1; border: 2px solid rgba(0,0,0,.35); box-shadow: inset 0 -3px 0 rgba(0,0,0,.18); }
+.wg-item.k-flour { background: #f3ead7; } .wg-item.k-bacon { background: #e8a09a; } .wg-item.k-beans { background: #c79a66; } .wg-item.k-other { background: #9cc66b; }
+.wg-empty { font: 700 12px/1 var(--font-body); color: var(--dim); }
+.wg-stack-label { font: 800 13px/1.1 var(--font-body); }
+.wg-goods { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 6px 14px; }
+.wg-good { display: grid; grid-template-columns: 26px auto minmax(0, 1fr); align-items: baseline; gap: 4px 8px; font: 700 14px/1.25 var(--font-body); }
+.wg-good b { font: 400 15px/1.1 var(--font-display); }
+.wg-g-text { color: var(--muted); }
+.wg-good.dim .wg-g-text { color: #ffcf9a; }
+.wg-animal { margin: 0; font: 700 15px/1.3 var(--font-body); }
+.wg-comps { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.wg-comp { display: flex; align-items: center; gap: 10px; padding: 6px 8px; border-radius: 10px; background: var(--panel); border: 2px solid var(--line); border-left: 6px solid var(--c); }
+.wg-c-face { flex: none; width: 44px; height: 44px; border-radius: 50%; background: #f6e7c4; }
+.wg-c-face svg { display: block; width: 44px; height: 44px; }
+.wg-c-text { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.wg-c-text b { font: 400 15px/1.1 var(--font-display); }
+.wg-c-text small { font: 800 11px/1 var(--font-body); color: var(--muted); }
+.wg-c-text i { font: 600 12px/1.25 var(--font-body); font-style: normal; color: #f2dfbd; }
+.wg-c-mood { flex: none; display: grid; justify-items: center; gap: 2px; }
+.wg-c-mood small { font: 800 10px/1 var(--font-body); color: var(--muted); }
+.wg-eli-sec { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.wg-eli { flex: none; white-space: normal; }
+/* the store: a row per good, a tap buys one at the listed price, "Work it out" is the optional question */
+.store-goods { grid-auto-rows: max-content; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+.st-row { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; min-height: min-content; }
+.st-row > * { flex: none; }
+.st-row .st-good { display: grid; grid-template-columns: 38px minmax(0, 1fr); grid-auto-rows: auto; align-items: center; gap: 0 10px; padding: 6px 8px; border-radius: 8px; text-align: left; min-height: 64px; background: var(--panel-2); box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+.st-row .st-good:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,.35); }
+.st-row .st-good[disabled] { filter: grayscale(.7) brightness(.8); box-shadow: none; cursor: default; }
+.st-row .st-emoji { grid-row: 1 / 5; font-size: 30px; text-align: center; }
+.st-row .st-name { font: 400 16px/1.1 var(--font-display); }
+.st-row .st-price { font: 800 13px/1.1 var(--font-body); color: var(--accent); }
+.st-row .st-cta { font: 800 12px/1.1 var(--font-body); color: var(--go); }
+.st-row .st-good[disabled] .st-cta { color: #ffcf9a; }
+.st-have { font: 700 12px/1.1 var(--font-body); color: var(--muted); }
+.st-foot { display: flex; align-items: center; gap: 8px 10px; }
+.st-what { margin: 0; font: 700 12.5px/1.3 var(--font-body); color: #f2dfbd; flex: 1; min-width: 0; }
+.st-work { flex: none; }
 /* ---------- portrait: the same flow, stacked ---------- */
 @media (orientation: portrait) {
   /* the scene keeps a landscape-ish box (the wagon sits at ~0.8 of its height), sky above and earth below it */
@@ -698,10 +769,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   .ow-party { grid-template-columns: 1fr; padding-left: 10px; padding-right: 10px; }
   .ow-looks { padding-left: 10px; padding-right: 10px; }
   .store-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; }
-  .store-goods { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .store-goods { grid-template-columns: minmax(0, 1fr); }
   .store-stats { grid-template-columns: 1fr 1fr; }
   .store-stats .st-note { grid-column: 1 / -1; }
   .hud-top { flex-wrap: wrap; }
+  .hud-eli { align-self: stretch; text-align: center; justify-content: center; }
+  .wg-goods, .wg-comps { grid-template-columns: 1fr; }
   .hud-bottom { flex-direction: column; align-items: stretch; }
   .dial { flex-direction: row; align-items: center; justify-content: space-between; }
   .dial .seg { flex: 1; } .dial .seg-btn { flex: 1; min-width: 0; }
@@ -817,6 +890,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
       <div class="title-left">
         <h1 class="logo">Wagon <span>West</span></h1>
         <div class="season-line" id="title-season">1847 · Rookie year</div>
+        <div class="title-skills" id="title-skills" hidden></div>
         <div class="card map-card"><svg class="map-svg" id="title-map" role="img" aria-label="The trail map"></svg></div>
         <p class="title-next" id="title-next"></p>
         <button class="title-challenge" id="title-challenge" data-sfx hidden></button>
@@ -863,7 +937,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   <section class="screen" id="screen-trail" data-screen="trail" hidden>
     <div class="hud-top">
       <div class="hud-box"><div class="hud-label" id="hud-day">Day 1</div><div class="hud-where" id="hud-where">On the trail</div></div>
-      <div class="hud-box hud-food"><div class="hud-label">Food</div><b id="hud-food">0 lb</b><span class="hud-note" id="hud-food-note" hidden></span></div>
+      <button class="hud-box hud-food" id="hud-food-box" type="button" data-sfx><span class="hud-label">Food</span><b id="hud-food">0 lb</b><span class="hud-note" id="hud-food-note" hidden></span></button>
+      <div class="hud-box hud-forecast" id="hud-forecast" role="img" aria-label="The weather ahead" hidden></div>
       <div class="hud-right">
         <div class="hud-box hud-faces" id="hud-faces" role="img" aria-label="The party"></div>
         <button class="btn btn-sm hud-camp" id="btn-camp" data-sfx><span class="hud-camp-tent" aria-hidden="true">⛺</span>Camp</button>
@@ -872,6 +947,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
     </div>
     <div class="hud-bottom">
       <div class="dial"><div class="hud-label">Pace</div><div class="seg" id="dial-pace" role="radiogroup" aria-label="Pace"></div></div>
+      <button class="btn btn-sm btn-gold hud-eli" id="btn-eli" type="button" data-sfx hidden><span aria-hidden="true">🧭</span>Ask Eli: how many days?</button>
       <div class="dial"><div class="hud-label">Rations</div><div class="seg" id="dial-rations" role="radiogroup" aria-label="Rations"></div></div>
     </div>
   </section>
@@ -1005,8 +1081,19 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
           <button class="btn btn-sm" id="pause-music" data-sfx></button>
           <button class="btn btn-sm" id="pause-motion" data-sfx></button>
         </div>
-        <button class="btn" id="pause-camp" data-sfx><span aria-hidden="true">⛺</span>Make camp</button>
+        <div class="pause-toggles">
+          <button class="btn" id="pause-wagon" data-sfx><span aria-hidden="true">🧺</span>The wagon</button>
+          <button class="btn" id="pause-camp" data-sfx><span aria-hidden="true">⛺</span>Make camp</button>
+        </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ===== The Wagon panel (src/ui/wagonPanel.js): what the wagon carries ===== -->
+  <div class="modal" id="panel-wagon" hidden>
+    <div class="card sheet wg-sheet" role="dialog" aria-labelledby="wg-title">
+      <div class="sheet-head"><h3 id="wg-title">The wagon</h3><button class="btn btn-sm btn-go" id="wg-close" data-sfx>Back to the trail</button></div>
+      <div class="wg-body scroll" id="wg-body"></div>
     </div>
   </div>
 

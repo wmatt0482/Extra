@@ -49,7 +49,7 @@ Stopping is always fine: every day is saved and "Make camp" leaves the journey w
 | `src/meta/save.js` · `sync.js` | the save (`wagonWest.<id>.save`, settings `wagonWest.settings`) and the `ww` sync kind with its merge |
 | `src/meta/mockScene.js` | the scene API (§11) as a placeholder drawing with scripted hunting / fishing (`?mock=1`) |
 | `src/meta/sfx.js` · `selfUpdate.js` | sound effects; reload on a safe screen after an update |
-| `src/ui/*` | players, title + map, outfit + looks, store, HUD, trail card, marker / problem panels, river, post office, journal, results, Parent Zone, the spell panel's re-wording; v1.1 camp (`camp.js`) and trail cards (`cards.js`) |
+| `src/ui/*` | players, title + map, outfit + looks, store, HUD, trail card, marker / problem panels, river, post office, journal, results, Parent Zone, the spell panel's re-wording; v1.1 camp (`camp.js`) and trail cards (`cards.js`); v1.2 the Wagon panel (`wagonPanel.js`) |
 | `sw.js` · `manifest.webmanifest` · `icons/` | the PWA (`tools/make-icons.mjs` draws the wagon icon) |
 
 The journey (`src/journey/*`), the scene (`src/scene/*`) and the content (`src/content/*`) are the other streams'.
@@ -95,6 +95,41 @@ The natural voice, the trail's own music, and side games (SPEC "v1.1"):
 - **The daily challenge** on the title (`dailyChallenge` / `claimChallenge`): a token and a card, a check mark once done.
 - **Wagon upgrades** in Outfit → Look → Wagon (`UPGRADES` / `buyUpgrade`, tokens or cash), and every look can now be
   bought with tokens.
+
+## 1.2
+
+The trail is the game (SPEC "v1.2"). App part one (this stream) puts the supplies, the skills, the weather and the family
+on screen; the journey, scene, people / deeds and rivers are the other streams' (`J.foods`, `repair`, `forecast` … come
+from `src/journey/sim.js`, the mini-games from the scene).
+
+- **The Wagon panel** (`src/ui/wagonPanel.js`): tap the HUD's food box (or "The wagon" in the pause sheet). Food by kind
+  as stacks that shrink (sacks of flour, sides of bacon, bags of beans, a basket of wild food from `J.foods`), "Food for
+  6 days · Fort Laramie in 9 days", the goods with counts (spare parts, rope, blankets against what the party needs,
+  arrows, pelts, the second yoke), the team ("the oxen are fresh / tired"), the companions with their mood faces and
+  their skills, and **"Ask Eli: how many days?"** (a 'distance' then a 'ration' problem for a token, once a leg each;
+  also on the HUD while Eli has one left). The rations and distance questions are no longer forced.
+- **The HUD**: a forecast chip beside the food box (sun / cloud / rain / storm / snow and "rain soon", from
+  `forecast(J)`); tired animals show Steady on the pace dial and grey Brisk. Every effect is a line the child sees:
+  `app.effectToast(text, say)` (a cold night, tired animals, a soaked sack, a limp, a part used),
+  `app.skillLine(skill)` (the companion's portrait and line, read aloud; also from `tickDay` / `repair` / `camp` /
+  `applyMarker` results), the breakdown card ("Fix it" / "Work it out for a token", or "the wagon limps to the next
+  fort" without a part; `repair(J, { workedOut })` decides), the hunt card that says "fishing only" without arrows, and
+  Nora's tip (a card before the marker's answer, `teacherTip(J)`).
+- **The store without a gate**: a tap buys one at the listed price (the cash box in view; a good the box cannot cover is
+  greyed: "Earn $N more"); each row says what the good does and has **"Work it out"** (the 'buy' / 'divide' problem
+  for a trade token on a first-try right; the goods then come at the fair price). "You'll need about N lb to reach
+  <stop>" is always shown. The second yoke is a one-time row.
+- **Outfit and the title**: each companion's card says what they are good at; the Party step and the title (under the
+  wagon's name) sum it up: "Ada fixes wheels · Eli scouts · Rosa stretches the food".
+- **The family map**: the other players of the family with a journey are small wagons in their colour at their stops on
+  the title's map (read with `loadSave(id)`); a tap tells whose; no names or scores otherwise.
+- **For the second app stream**: `app.effectToast(text, say)`, `app.skillLine(skill)`, `app.waitOut()` (camp's "Wait out
+  the storm"), `app.wagonInfo()`, `app.forecast()`, `app.openWagon()`, and the mock scene's `startFord` / `startFloat` /
+  `startRaft` + `raftGo()` / `startStampede` with scripted events (`__mockScript.ford = 'soaked'`, `.bumps`,
+  `.stampede = [bool, bool, bool]`).
+- `ensureJourney(J)` runs after every save load; VERSION 1.2.0; the service worker is `wagon-west-v1.2.0`.
+- Tests: `tools/ui-smoke.mjs` covers all of it on the mock scene (`QUICK=1` runs just the v1.2 sections; those that need
+  the journey's v1.2 API print SKIP until it is in the tree).
 
 ## Data and sync
 

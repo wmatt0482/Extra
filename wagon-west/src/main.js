@@ -20,6 +20,12 @@
 // dog (named on the keyboard at Fort Kearny, J.dog, setParty({ dog }), the bark, a berry patch every other leg); the
 // daily trail challenge (dailyChallenge / claimChallenge: a token and a card); the wagon upgrades (UPGRADES /
 // buyUpgrade, Outfit → Look → Wagon).
+// v1.2 (SPEC "v1.2", app part one): the Wagon panel (./ui/wagonPanel.js: food by kind as stacks, the goods, the animals,
+// the companions and their skills, "Ask Eli: how many days?"), the HUD's forecast chip and effect toasts / cards (a
+// breakdown with or without a part, a cold night, tired animals, no arrows, a skill firing: app.effectToast /
+// app.skillLine, both streams use them), the store without a gate (a tap buys at the listed price, "Work it out" is the
+// optional problem for a token), rations / distance questions only when the child asks Eli, camp's app.waitOut(), and
+// the family map on the title (app.familyWagons).
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -39,6 +45,7 @@ import { nextFact, recordAnswer } from '../../trail-blazer/src/facts/store.js';
 import { createSession as createFactSession } from '../../trail-blazer/src/facts/scheduler.js';
 import { activeFacts } from '../../trail-blazer/src/facts/store.js';
 import { factParts, normFact } from '../../trail-blazer/src/facts/facts.js';
+import { hintFor, spokenHint } from '../../trail-blazer/src/facts/hints.js';
 import { cloudVoiceInfo } from '../../spell-jump/src/tts/voices.js';
 import { loadSkills as loadFracSkills } from '../../fraction-fright/src/meta/save.js';
 import { tierState } from '../../fraction-fright/src/skills/ladder.js';
@@ -47,7 +54,7 @@ import * as Sim from './journey/sim.js';
 import * as Problems from './journey/problems.js';
 import * as Letters from './journey/letters.js';
 import * as Economy from './journey/economy.js';
-import { LEGS, LEG_BY_ID, SEASONS, SEASON_BY_ID, GOODS } from './content/legs.js';
+import { ANIMAL_BY_ID, LEGS, LEG_BY_ID, SEASONS, SEASON_BY_ID, GOODS } from './content/legs.js';
 import { COMPANIONS, COMPANION_BY_ID } from './content/companions.js';
 import { CARDS, CARD_BY_ID } from './content/cards.js';
 import { LOOKOUTS } from './content/lookouts.js';
@@ -61,9 +68,10 @@ import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdat
 import { STOCK, equipLook, grantLook, itemOf, rollCrate } from './ui/looks.js';
 import { createPlayers } from './ui/players.js';
 import { createTitle } from './ui/title.js';
-import { createOutfit } from './ui/outfit.js';
+import { companionSvg, createOutfit } from './ui/outfit.js';
 import { createStore } from './ui/store.js';
 import { createHud } from './ui/hud.js';
+import { createWagonPanel, partySummary, skillOfCompanion } from './ui/wagonPanel.js';
 import { createMarkerPanel, markerTexts } from './ui/markerPanel.js';
 import { createProblemPanel, problemTexts, spokenLine } from './ui/problemPanel.js';
 import { createCard } from './ui/card.js';
@@ -77,7 +85,7 @@ import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 // the natural voice: the server makes clips of at most 200 characters, so a longer line is said (and prepared) a
 // sentence or two at a time; the line "Say a test line" speaks in the Parent Zone
 const CLIP_MAX = 200;
@@ -85,6 +93,9 @@ const VOICE_WAIT_MS = 2500;
 const TEST_LINE = 'Wagon West is ready to roll.';
 const FIXED_LINES = ['Now you: type the answer', 'Now you: type the answer from memory', 'Fixed it!', PS_INTRO, READ_BACK, TEST_LINE,
   'Make camp tonight? Fishing, a card game, a story by the fire, or a good rest.', 'A dog has been following the wagon. Keep it?'];
+// v1.2: the lines the effects say aloud (prepared with the rest, so the natural voice plays them)
+FIXED_LINES.push('A cold night. There are not enough blankets, so the party rests a day.', 'The oxen need a rest, so we go steady today.', 'The mules need a rest, so we go steady today.',
+  'The wagon limps along slowly to the next fort.', 'A spare part is used.', 'The new part mends the wagon. No more limping.');
 const TUNES = ['susanna', 'buffalo', 'tucker'];
 const DOG_COATS = ['brown', 'spotted', 'black'];   // the scene's three coats
 const QD_TO = 7;                 // Quick Draw: first to 7 right facts
@@ -214,7 +225,7 @@ async function boot() {
     legs: LEGS,
     legById: (id) => LEG_BY_ID[id] || null,
     beat,
-    overlayOpen: () => panelOpen() || pz.isOpen || !$('#panel-pause').hidden,
+    overlayOpen: () => panelOpen() || pz.isOpen || wagonPanel.isOpen || !$('#panel-pause').hidden,
     persist: () => writeSave(currentPlayerId, save),
     saveOf: (id) => (id === currentPlayerId ? save : loadSave(id)),
     /** "Leg 3 of 12 · 1847" for the picker tile and the Parent Zone. */
@@ -318,17 +329,37 @@ async function boot() {
       try { const l = JA.storeList ? JA.storeList(leg, J.season) : null; if (Array.isArray(l) && l.length) return l; } catch (e) { console.warn('[WagonWest] storeList', e); }
       return GOODS.map((g) => ({ ...g, item: g.id }));
     },
-    storeBuy,
-    foodDays() {
-      const J = save.journey;
-      if (!J || !JA.foodNeeded) return null;
-      try { const per = JA.foodNeeded(partySize(J), J.rations || 'plenty', 1); return per > 0 ? Math.floor(num(J.food) / per) : null; } catch (_) { return null; }
-    },
+    storeBuy, storeTap,
+    foodDays() { const J = save.journey; return J ? foodDaysOf(J) : null; },
     foodHint() {
       const J = save.journey;
       if (!J || !JA.foodToNextFort) return '';
-      try { const f = JA.foodToNextFort(J); return f && f.lb ? `About ${money(f.lb)} lb gets the party to ${f.stop}${f.enough ? ': you have enough' : ''}.` : ''; } catch (_) { return ''; }
+      try { const f = JA.foodToNextFort(J); return f && f.lb ? `You'll need about ${money(f.lb)} lb to reach ${f.stop}${f.enough ? ': you have enough' : ''}.` : ''; } catch (_) { return ''; }
     },
+    /** How many units of a store good the wagon holds: { n, lb } (food in sacks / sides / bags by their pounds). */
+    have: haveOf,
+    // ----- v1.2: supplies, skills, the forecast, the family map (SPEC "v1.2" §1, §2, §4, §5) -----
+    /** What the Wagon panel draws (see ./ui/wagonPanel.js). */
+    wagonInfo,
+    openWagon: () => wagonPanel.open(),
+    get wagon() { return wagonPanel; },
+    /** "Ask Eli: how many days?": a 'distance' then a 'ration' problem for a token, each once a leg. */
+    askEli, eliLeft,
+    /** A line the child sees for an effect (a cold night, tired animals, a soaked sack, a limp): a toast that stays a
+     *  little longer, and read aloud when `say` is given (the spoken form; pass the text again to say it as written). */
+    effectToast,
+    /** A companion's skill firing: their portrait and line as a toast, read aloud. skill = { id, name, text, who } as the
+     *  journey's tickDay / repair / camp results carry it. Returns the toast element (or null). */
+    skillLine,
+    /** Camp's "Wait out the storm": the journey's waitOut(J) (a rest day, the storm then costs nothing), saved. */
+    waitOut,
+    /** The weather ahead for the HUD chip: { next: 'clear' | 'rain' | 'storm' | 'snow', inDays, words } or null. */
+    forecast: forecastNow,
+    /** The party on the title and in the Outfit: "Ada fixes wheels · Eli scouts · Rosa stretches the food". */
+    partyLine: (ids) => partySummary(ids),
+    skillOf: (id) => skillOfCompanion(id),
+    /** The other players of the family with a journey, for the title map's small wagons: [{ id, name, color, J, inLeg }]. */
+    familyWagons,
     // ----- words (Spell Jump's store) -----
     pickWords, spellWords,
     legEvents: () => (save.trip ? save.trip.events.map((id) => ({ id })) : []),
@@ -360,7 +391,7 @@ async function boot() {
 
   // ---------- UI ----------
   const playersUI = createPlayers(app);
-  const hud = createHud({ onPace, onRations });
+  const hud = createHud({ onPace, onRations, onWagon: () => openWagonFromHud(), onEli: () => { askEli().catch((e) => console.error('[WagonWest] ask Eli', e)); } });
   const markerPanel = createMarkerPanel($('#panel-marker'), { tts, audio: Audio, sfx: Sfx });
   const problemPanel = createProblemPanel($('#panel-problem'), { tts, audio: Audio, sfx: Sfx });
   const card = createCard($('#card'), { say: (t) => app.say(t), canSay: () => tts.available });
@@ -368,6 +399,7 @@ async function boot() {
   const spellPanel = createSpellPanel(spellRoot, { tts, audio: Audio, onCancel: () => {} });
   const spellSkin = skinSpellPanel(spellRoot);
   const store = createStore(app);
+  const wagonPanel = createWagonPanel(app);
   const river = createRiver(app);
   const postOffice = createPostOffice(app);
   const results = createResults(app);
@@ -434,6 +466,153 @@ async function boot() {
   const partySize = (J) => { try { if (JA.partySize) return JA.partySize(J); } catch (_) { /* below */ } return ((J.party && J.party.length) || 3) + 1; };
   const curLeg = () => { const J = save.journey; if (!J) return null; try { if (JA.currentLeg) { const l = JA.currentLeg(J); if (l) return LEG_BY_ID[l.id] || l; } } catch (_) { /* below */ } return LEG_BY_ID[J.legId] || LEGS[num(J.legIndex)] || null; };
 
+  // ---------- v1.2: the wagon's supplies, the skills, the forecast, the family map ----------
+  const animalName = () => (save.journey && save.journey.animal === 'mules' ? 'mules' : 'oxen');
+  /** Food by kind in lb: the journey's J.foods, else its single J.food split 50 / 30 / 20 (a save from before 1.2). */
+  function foodKindsOf(J) {
+    const f = J.foods && typeof J.foods === 'object' ? J.foods : null;
+    if (f) return { flour: num(f.flour), bacon: num(f.bacon), beans: num(f.beans), other: num(f.other) };
+    const t = Math.max(0, num(J.food)), a = Math.round(t * 0.5), b = Math.round(t * 0.3);
+    return { flour: a, bacon: b, beans: t - a - b, other: 0 };
+  }
+  /** Days of food at the current rations (the journey's foodDays(J), else worked out from foodNeeded). */
+  function foodDaysOf(J) {
+    try { if (typeof JA.foodDays === 'function') { const d = JA.foodDays(J); if (Number.isFinite(d)) return Math.max(0, Math.floor(d)); } } catch (e) { console.warn('[WagonWest] foodDays', e); }
+    if (typeof JA.foodNeeded !== 'function') return null;
+    try { const per = JA.foodNeeded(partySize(J), J.rations || 'plenty', 1, (ANIMAL_BY_ID[J.animal] || {}).feedLb || 0); return per > 0 ? Math.floor(num(J.food) / per) : null; } catch (_) { return null; }
+  }
+  const goodsOf = (J) => { const g = J.goods && typeof J.goods === 'object' ? J.goods : {}; return { parts: num(J.parts !== undefined ? J.parts : g.parts), rope: num(g.rope), blankets: num(g.blankets), arrows: num(g.arrows), pelts: num(g.pelts), yoke: num(g.yoke) }; };
+  const animalsOf = (J) => { const a = J.animals && typeof J.animals === 'object' ? J.animals : {}; return { n: num(a.n, 2), tired: num(a.tired) }; };
+  const animalsTiredNow = (J) => !!J && animalsOf(J).tired > 70;
+  function blanketsOf(J) {
+    const have = goodsOf(J).blankets;
+    try { if (typeof JA.needsBlankets === 'function') { const b = JA.needsBlankets(J); if (b && Number.isFinite(b.need)) return { need: num(b.need), have: Number.isFinite(b.have) ? b.have : have, short: num(b.short), cold: b.cold !== false }; } } catch (_) { /* below */ }
+    const need = Math.ceil(partySize(J) / 2);
+    return { need, have, short: Math.max(0, need - have), cold: true };
+  }
+  /** How many units of a store good the wagon holds: { n, lb } (food by its pounds in whole units). */
+  function haveOf(item) {
+    const J = save.journey;
+    if (!J) return { n: 0, lb: 0 };
+    const food = GOODS.find((g) => g.id === item && g.lb);
+    if (food) { const lb = foodKindsOf(J)[item] || 0; return { n: lb > 0 ? Math.ceil(lb / food.lb) : 0, lb }; }
+    if (item === 'yoke') return { n: animalsOf(J).n >= 4 ? 1 : 0, lb: 0 };
+    return { n: goodsOf(J)[item] || 0, lb: 0 };
+  }
+  /** Asks Eli may still answer this leg: a 'distance' and a 'ration' problem, each once a leg (a token on a right first try). */
+  function eliLeft() {
+    const a = save.trip && save.trip.asked;
+    if (!a || !save.journey || screen === 'players') return 0;
+    return (a.distance ? 0 : 1) + (a.ration ? 0 : 1);
+  }
+  async function askEli() {
+    const J = save.journey;
+    if (!J || !save.trip || !eliLeft() || panelOpen() || (T && T.busy)) return null;       // not over a card or a marker
+    const a = save.trip.asked;
+    const kind = !a.distance ? 'distance' : 'ration';
+    a[kind] += 1;
+    app.persist();
+    const leg = curLeg();
+    const res = kind === 'distance'
+      ? await runProblem('distance', { title: 'Ask Eli: how far?', extra: { dest: leg ? (leg.stop ? leg.stop.name : leg.name) : '' } })
+      : await runProblem('ration', { title: 'Ask Eli: the food' });
+    if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() });
+    return res;
+  }
+  /** What the Wagon panel draws. */
+  function wagonInfo() {
+    const J = save.journey;
+    if (!J) return null;
+    const leg = curLeg();
+    const stop = leg ? (leg.stop ? leg.stop.name : leg.name) : '';
+    let stopDays = 0;
+    if (leg) {
+      const left = Math.max(0, num(leg.miles) - num(J.milesDone));
+      try { stopDays = JA.etaDays(left, J.pace, J.animal, typeof JA.speedBonus === 'function' ? JA.speedBonus(J) : 0); } catch (_) { stopDays = Math.ceil(left / 15); }
+    }
+    const A = animalsOf(J);
+    const party = Array.isArray(J.party) && J.party.length ? J.party : (J.companions || []).map((id) => ({ id, mood: J.mood }));
+    return {
+      wagonName: J.wagonName || '',
+      food: { kinds: foodKindsOf(J), days: foodDaysOf(J), stop, stopDays },
+      goods: goodsOf(J), blankets: blanketsOf(J), limp: !!J.limp,
+      animals: { name: animalName(), n: A.n, tired: A.tired, isTired: A.tired > 70 },
+      companions: party.map((p) => ({ id: p.id, mood: p.mood || J.mood || 'happy' })),
+      eli: { left: eliLeft() },
+    };
+  }
+  function openWagonFromHud() {
+    if (screen !== 'trail' || !T || T.busy || panelOpen() || wagonPanel.isOpen) return;
+    wagonPanel.open();
+  }
+  const FC_WORDS = { clear: 'clear skies', rain: 'rain soon', storm: 'storm soon', snow: 'snow soon' };
+  /** The weather ahead for the HUD chip: { next, inDays, words } or null. */
+  function forecastNow() {
+    const J = save.journey;
+    if (!J || typeof JA.forecast !== 'function') return null;
+    try {
+      let f = JA.forecast(J);
+      if (typeof f === 'string') f = { next: f.split(' ')[0], inDays: 1 };
+      return f && FC_WORDS[f.next] ? { next: f.next, inDays: num(f.inDays, 1), words: FC_WORDS[f.next] } : null;
+    } catch (_) { return null; }
+  }
+  const hudExtra = () => ({ forecast: forecastNow(), animalsTired: animalsTiredNow(save.journey), eli: eliLeft() > 0 });
+  /** An effect the child sees (SPEC v1.2 §1: never a silent number): a toast that stays a little longer; `say` is read. */
+  function effectToast(text, say) {
+    if (!text) return null;
+    const t = h('div', { class: 'toast fx', role: 'status' }, text);
+    toastsEl.append(t);
+    while (toastsEl.children.length > 3) toastsEl.firstChild.remove();
+    setTimeout(() => t.remove(), 4800);
+    if (say) app.say(say);
+    return t;
+  }
+  /** A companion's skill firing: their portrait and the line as a toast, read aloud. skill = { id, name, text, who }. */
+  function skillLine(skill) {
+    if (!skill) return null;
+    const J = save.journey;
+    const ids = J ? (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)) : [];
+    const who = (skill.who && COMPANION_BY_ID[skill.who] ? skill.who : null)
+      || ids.find((id) => { const s = skillOfCompanion(id); return s && s.id === skill.id; })
+      || (COMPANION_BY_ID[skill.id] ? skill.id : null);
+    const c = who ? COMPANION_BY_ID[who] : null;
+    const line = skill.text || skill.name || '';
+    if (!line) return null;
+    const t = h('div', { class: 'toast fx skill', role: 'status', 'data-skill': skill.id || '', 'data-who': who || '' },
+      c ? h('span', { class: 'sk-face', html: companionSvg(c), 'aria-hidden': 'true' }) : null,
+      h('span', { class: 'sk-text' }, c ? h('b', {}, c.name) : null, h('span', {}, line)));
+    toastsEl.append(t);
+    while (toastsEl.children.length > 3) toastsEl.firstChild.remove();
+    setTimeout(() => t.remove(), 5200);
+    app.say(c && !line.startsWith(c.name) ? `${c.name}: ${line}` : line);
+    return t;
+  }
+  /** Camp's "Wait out the storm" (second app stream's screen): the journey's waitOut(J), saved; null without it. */
+  function waitOut() {
+    const J = save.journey;
+    if (!J || typeof JA.waitOut !== 'function') return null;
+    let r = null;
+    try { r = JA.waitOut(J, { rand: Math.random }); } catch (e) { console.warn('[WagonWest] waitOut', e); }
+    if (r && r.skill) skillLine(r.skill);
+    app.persist(); refreshCash();
+    try { if (screens.camp && screens.camp.isOpen) screens.camp.refresh(); } catch (_) { /* ignore */ }
+    if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() });
+    return r;
+  }
+  /** The other players of the family who have a journey, for the title map: [{ id, name, color, J, inLeg }]. */
+  function familyWagons() {
+    const out = [];
+    for (const p of family.players || []) {
+      if (p.id === currentPlayerId) continue;
+      let s = null;
+      try { s = loadSave(p.id); } catch (_) { s = null; }
+      const Jp = s && s.journey;
+      if (!Jp) continue;
+      out.push({ id: p.id, name: p.name, color: p.color, J: Jp, inLeg: !!(s.trip && s.trip.legId === Jp.legId) });
+    }
+    return out;
+  }
+
   // ---------- players ----------
   function selectPlayer(id) {
     if (!Profiles.playerById(family, id)) return;
@@ -466,6 +645,7 @@ async function boot() {
   function go(name, arg) {
     lastGo = performance.now();
     closePause();
+    if (wagonPanel.isOpen) wagonPanel.close();
     if (name !== 'trail' && T) stopTravel();
     if (!['stop', 'store', 'river', 'post', 'home', 'derby', 'dog', 'camp'].includes(name)) { if (store.isOpen) store.leave(); }
     if (name !== 'camp' && screens.camp && screens.camp.isOpen && !['dog'].includes(name)) screens.camp.leave();
@@ -489,7 +669,7 @@ async function boot() {
   function syncMusic() {
     const J = save.journey;
     const tune = TUNES[Math.max(0, num(J && J.legIndex)) % TUNES.length];
-    const open = panelOpen() || pz.isOpen || !$('#panel-pause').hidden;
+    const open = panelOpen() || pz.isOpen || wagonPanel.isOpen || !$('#panel-pause').hidden;
     const mood = open ? 'off' : (MOOD_BY_SCREEN[screen] || 'off');
     try {
       if (tune !== musicState.tune) { musicState.tune = tune; Music.tune(tune); }
@@ -527,6 +707,7 @@ async function boot() {
         if (kind === 'ww') { replaceInPlace(save, loadSave(id)); ensureJ(); refreshCash(); applySceneParty(); if (['title', 'journal'].includes(screen)) screens[screen].show(); }
         if (kind === 'facts') { facts = loadFactsData(id); prepareVoice(); }
       } else if (screen === 'players') screens.players.show();
+      else if (screen === 'title' && kind === 'ww') screens.title.show();
       pz.onSyncApplied();
       return;
     }
@@ -576,7 +757,8 @@ async function boot() {
     const partyChanged = J.animal !== draft.animal || String(J.companions || []) !== String(draft.companions);
     if (partyChanged && app.partyEditable()) {
       // nothing has happened on the trail yet: the journey is made again with the new party (the store's buys kept)
-      const keep = { cash: J.cash, food: J.food, parts: J.parts, goods: J.goods, tokens: J.tokens, cards: J.cards, upgrades: J.upgrades, challenges: J.challenges, dog: J.dog };
+      const keep = { cash: J.cash, parts: J.parts, goods: J.goods, foods: J.foods, animals: J.animals, tokens: J.tokens, cards: J.cards, upgrades: J.upgrades, challenges: J.challenges, dog: J.dog };
+      if (!J.foods) keep.food = J.food;
       const n = JA.createJourney({ season: J.season, wagonName: draft.wagonName, animal: draft.animal, companions: draft.companions, seed: J.seed });
       for (const [k, v] of Object.entries(keep)) if (v !== undefined) n[k] = v;
       save.journey = n;
@@ -639,6 +821,28 @@ async function boot() {
     if (fp.op === '/') return fp.b >= 1 && fp.b <= 12 && fp.a / fp.b <= 12 ? k : null;
     return null;
   }
+  /** A tap on a good (SPEC v1.2 §5: the store without a gate): one unit at the listed price, no question. Returns
+   *  { ok } or { ok: false, reason: 'poor' (need: dollars short) | 'have' }. */
+  function storeTap(good) {
+    const J = save.journey;
+    if (!J) return { ok: false };
+    const item = good.item || good.id;
+    const price = Math.max(1, Math.round(num(good.price) || 1));
+    if (item === 'yoke' && animalsOf(J).n >= 4) return { ok: false, reason: 'have' };
+    if (num(J.cash) < price) return { ok: false, reason: 'poor', need: price - Math.floor(num(J.cash)) };
+    const wasLimp = !!J.limp;
+    let r = { ok: false };
+    try { r = JA.buy(J, { item, qty: 1, price }); } catch (e) { console.warn('[WagonWest] buy', e); }
+    if (r && r.ok) {
+      Audio.cash();
+      if (wasLimp && !J.limp) effectToast('The new part mends the wagon: no more limping.', 'The new part mends the wagon. No more limping.');
+      app.persist(); refreshCash();
+      return { ok: true };
+    }
+    return { ok: false, reason: 'poor', need: price };
+  }
+  /** "Work it out" on a good (optional): the shopkeeper's 'buy' / 'divide' problem; the goods come at the fair price
+   *  whatever the answer, and a right first answer earns a trade token. */
   async function storeBuy(good, leg) {
     const J = save.journey;
     if (!J) return;
@@ -650,14 +854,14 @@ async function boot() {
       try { p = JA.problemFor({ kind, fact: pick ? pick.fact : null, leg, season: J.season, rand: Math.random, item }); } catch (e) { console.warn('[WagonWest] problemFor', e); p = null; }
       if (p && kind === 'buy' && num(p.answer) > num(J.cash)) p = null;
     }
-    if (!p) { toast('That costs more than the cash box holds right now'); return; }
+    if (!p) { toast(num(J.cash) < 1 ? 'The cash box is empty right now' : 'No question for that one: just tap to buy it'); return; }
     const res = await runProblemPanel(p, { kind, title: 'General Store', chipText: good.name, pick });
     if (res.cancelled) return;
     // the goods at the fair price, whatever the answer (the math earns the token, never the supplies)
     const meta = p.meta || {};
     const qty = Math.max(1, Math.round(num(meta.qty) || num(p.qty) || (kind === 'divide' ? num(p.answer) : num((factParts(p.fact) || {}).b)) || 1));
-    let price = null;
-    try { price = JA.priceAt ? JA.priceAt(meta.item || item, JA.storeLeg ? JA.storeLeg(J) : leg, J.season) : null; } catch (_) { price = null; }
+    let price = (meta.item || item) === (good.item || good.id) && num(good.price) > 0 ? num(good.price) : null;     // the price the shelf shows
+    if (price == null) { try { price = JA.priceAt ? JA.priceAt(meta.item || item, JA.storeLeg ? JA.storeLeg(J) : leg, J.season) : null; } catch (_) { price = null; } }
     if (!Number.isFinite(price) || price <= 0) price = num(meta.price) || num(good.price) || 1;
     let r = { ok: false };
     try { r = JA.buy(J, { item: meta.item || item, qty, price }); } catch (e) { console.warn('[WagonWest] buy', e); }
@@ -713,11 +917,19 @@ async function boot() {
     const of = Math.max(n, Math.round(num(marker && (marker.of || marker.total)) || Math.floor(((leg && leg.miles) || 150) / 30)));
     const pick = ladderPick('any') || { fact: '6x7', flip: false };
     S('setTravel', { moving: false });
+    // Nora's tip (once a leg when the teacher is in the party): the strategy hint BEFORE the answer
+    let tip = '';
+    try { if (typeof JA.teacherTip === 'function' && JA.teacherTip(J)) tip = hintFor(pick.fact, !!pick.flip) || ''; } catch (e) { console.warn('[WagonWest] teacherTip', e); }
+    if (tip) {
+      const nora = (COMPANION_BY_ID.teacher || { name: 'Nora' }).name;
+      await showCard({ kicker: `${nora}'s tip`, title: 'A tip before you answer', text: tip, say: spokenHint(tip), tone: 'lookout', button: 'Got it' });
+      if (!T) return;
+    }
     await voiceFor(markerTexts(pick.fact, !!pick.flip));
     const res = await markerPanel.open({ fact: pick.fact, flip: !!pick.flip, index: n - 1, total: of });
     if (res.cancelled) return;
     recordFact(pick.fact, res, pick);
-    try { JA.applyMarker(J, { correct: !!res.correct, quick: !!res.quick }); } catch (e) { console.warn('[WagonWest] applyMarker', e); }
+    try { const am = JA.applyMarker(J, { correct: !!res.correct, quick: !!res.quick }); if (am && am.skill) skillLine(am.skill); } catch (e) { console.warn('[WagonWest] applyMarker', e); }
     logPlay(save, { markers: 1, markersRight: res.correct ? 1 : 0 });
     app.persist();
     if (res.quick) toast('A tailwind! A few free miles');
@@ -813,7 +1025,7 @@ async function boot() {
     S('setBackdrop', 'trail');
     go('trail');
     hud.reset();
-    hud.update(J, leg, { milesDone: J.milesDone });
+    hud.update(J, leg, { milesDone: J.milesDone, ...hudExtra() });
     S('setTravel', { milesDone: num(J.milesDone), pace: J.pace, rations: J.rations, weather: 'clear', mood: J.mood, foodLow: false, moving: false });
     const bugle = save.cosmetics.equipped.bugle;
     if (bugle && bugle !== 'none') Sfx.bugle(bugle);
@@ -823,7 +1035,7 @@ async function boot() {
       T.busy = true;
       const r = T;
       card.show({ kicker: 'How the trail works', title: 'Roll out!', tone: 'coach', button: "Let's roll",
-        text: 'The wagon rolls on its own. Pace and rations are your two dials. At each mile marker, type one fact. Stop any time: the journey waits right here.' })
+        text: 'The wagon rolls on its own. Pace and rations are your two dials. At each mile marker, type one fact. Tap the food box to look in the wagon. Stop any time: the journey waits right here.' })
         .then(() => { save.seen.coach = true; app.persist(); if (T === r) { r.busy = false; r.last = 0; } });
     }
   }
@@ -858,34 +1070,41 @@ async function boot() {
     const k = Math.min(1, r.acc / dayMs());
     const m = r.day.from + (r.day.to - r.day.from) * k;
     S('setTravel', { milesDone: m, pace: J.pace, rations: J.rations, weather: r.weather, mood: J.mood, foodLow: !!r.day.res.foodLow, moving: k < 1 });
-    hud.update(J, r.leg, { milesDone: m, foodLow: !!r.day.res.foodLow });
+    hud.update(J, r.leg, { milesDone: m, foodLow: !!r.day.res.foodLow, ...hudExtra() });
     if (k >= 1) { const d = r.day; r.day = null; afterDay(r, d).catch((e) => console.error('[WagonWest] day', e)); }
   }
   async function afterDay(r, d) {
     r.busy = true;
     app.persist();                              // every day is saved: stopping anywhere loses nothing
     const J = save.journey;
+    dayEffects(d.res, r);
     if (d.res.marker) await runMarker(d.res.marker);
     if (T !== r) return;
     if (d.res.event) await runEvent(d.res.event);
     if (T !== r) return;
     if (!d.res.event && !d.res.marker && dogBerriesDue(r)) { await dogBerries(); if (T !== r) return; }
-    const left = r.leg.miles - num(J.milesDone);
-    if (!d.res.arrived && !save.trip.asked.distance && left <= r.leg.miles * 0.6 && left > 25) {
-      save.trip.asked.distance += 1;
-      await runProblem('distance', { title: 'How far?', extra: { dest: r.leg.stop ? r.leg.stop.name : r.leg.name } });
-      if (T !== r) return;
-    }
-    hud.update(J, r.leg, { milesDone: num(J.milesDone), foodLow: !!d.res.foodLow });
+    hud.update(J, r.leg, { milesDone: num(J.milesDone), foodLow: !!d.res.foodLow, ...hudExtra() });
     if (d.res.arrived || num(J.milesDone) >= r.leg.miles) { await arrival(r); return; }
     r.busy = false; r.last = 0;
+  }
+  /** The day's effects as lines the child sees: a skill firing, a cold night, tired animals (SPEC v1.2 §1, §2). */
+  function dayEffects(res, r) {
+    if (!res) return;
+    const skills = [...(Array.isArray(res.skills) ? res.skills : []), ...(res.skill ? [res.skill] : [])].filter((k, i, a) => k && a.findIndex((x) => x && x.id === k.id) === i);
+    for (const k of skills) skillLine(k);
+    if (res.spotted && res.spotted.card) { const n = res.spotted.name || res.spotted.animal || 'an animal'; effectToast(`A ${n} on the ridge! A new card for the album.`); dropCard(res.spotted.card); }
+    if (res.coldNight) effectToast('A cold night. There are not enough blankets, so the party rests a day. Blankets at the next fort will help.', 'A cold night. There are not enough blankets, so the party rests a day.');
+    if (res.animalsTired) {
+      if (!r.tiredShown) { r.tiredShown = true; effectToast(`The ${animalName()} need a rest, so we go steady today.`, `The ${animalName()} need a rest, so we go steady today.`); }
+    } else r.tiredShown = false;
   }
   function onPace(id) {
     const J = save.journey;
     if (!J) return;
+    if (id === 'brisk' && animalsTiredNow(J)) { effectToast(`The ${animalName()} need a rest first. Steady pace for now.`); if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() }); return; }
     try { if (JA.setPace) JA.setPace(J, id); else J.pace = id; } catch (_) { J.pace = id; }
     app.persist();
-    if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone) });
+    if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() });
   }
   async function onRations(id) {
     const J = save.journey;
@@ -893,15 +1112,8 @@ async function boot() {
     try { if (JA.setRations) JA.setRations(J, id); else J.rations = id; } catch (_) { J.rations = id; }
     app.persist();
     const r = T;
-    if (r) hud.update(J, r.leg, { milesDone: num(J.milesDone) });
-    // the first change of a leg asks the rations question (SPEC §3)
-    if (r && !r.busy && save.trip && !save.trip.asked.ration) {
-      save.trip.asked.ration += 1;
-      r.busy = true;
-      S('setTravel', { moving: false });
-      await runProblem('ration', { title: `${id[0].toUpperCase()}${id.slice(1)} rations` });
-      if (T === r) { r.busy = false; r.last = 0; }
-    }
+    if (r) hud.update(J, r.leg, { milesDone: num(J.milesDone), ...hudExtra() });
+    // (the rations question is no longer forced: the child asks Eli, SPEC v1.2 §5)
   }
 
   // ---------- events ----------
@@ -913,10 +1125,16 @@ async function boot() {
     app.persist();
     let kind = ev.kind;
     let text = ev.text, sayText = ev.say;
-    if (kind === 'hunt' && settings.hunting === false) { kind = 'fish'; text = 'Fresh tracks by the trail, and a stream beside them. Get the fishing line out.'; sayText = text; }
+    const noArrows = kind === 'hunt' && (ev.canHunt === false || (typeof JA.huntAllowed === 'function' && !JA.huntAllowed(J)));
+    if (kind === 'hunt' && (settings.hunting === false || noArrows)) {
+      kind = 'fish';
+      text = noArrows && settings.hunting !== false ? 'Fresh tracks by the trail, but the quiver is empty. A creek runs right beside them: fishing only today. Arrows at the next fort!' : 'Fresh tracks by the trail, and a stream beside them. Get the fishing line out.';
+      sayText = text;
+    }
     if (ev.covered) { const c = ' The canvas cover keeps everyone dry and cheerful.'; text = `${text || ''}${c}`; sayText = `${sayText || ev.text || ''}${c}`; }
     if (kind === 'lookout') { spotSure = true; S('spotAnimal', ev.animal || 'bison'); }
     S('setTravel', { moving: false });
+    if (kind === 'breakdown') { await runBreakdown(ev); return; }
     await showCard({ kicker: 'On the trail', title: ev.name || 'On the trail', text, say: sayText, tone: kind, button: EVENT_BUTTON[kind] || 'Continue' });
     if (!T) return;
     if (kind === 'bonus' && /berr|plum/i.test(`${ev.id} ${ev.name || ''} ${ev.text || ''}`)) dropCard(plumCard());
@@ -929,6 +1147,36 @@ async function boot() {
     if (!T) return;
     if (ev.fix) toast(ev.fix);
     app.persist();
+  }
+  /** A breakdown (a wheel, axle or tongue): with a spare part (or Ada) the card offers "Fix it" and "Work it out for a
+   *  token" (the 'parts' problem is optional); without, the wagon limps to the next fort. The journey's repair(J)
+   *  decides and returns { fixed, usedPart, skill, limp }. */
+  async function runBreakdown(ev) {
+    const J = save.journey;
+    const have = typeof ev.havePart === 'boolean' ? ev.havePart : goodsOf(J).parts > 0;
+    const free = ev.freeFix || (typeof ev.havePart !== 'boolean' && (J.companions || []).includes('blacksmith') ? 'forge' : '');   // 'forge' (Ada) | 'half' (Tomas)
+    const canFix = have || !!free;
+    const what = ev.part || 'wheel';
+    const trick = free === 'half' ? 'Tomas can make a part last twice as long.' : 'Ada knows a trick or two.';
+    const text = `${ev.text || `Bump! The ${what} breaks.`} ${free === 'forge' && !have ? `There is no spare part, but ${trick}` : have ? `There is a spare part in the wagon.${free ? ` ${trick}` : ''}` : free ? `There is no spare part, but ${trick}` : 'There is no spare part in the wagon, so the wagon limps to the next fort.'}`;
+    const c = await showCard({ kicker: 'Breakdown', title: ev.name || `A ${what} breaks`, text, say: text, tone: 'problem', button: canFix ? 'Fix it' : 'Limp along', alt: canFix ? 'Work it out for a token' : undefined });
+    if (!T) return;
+    let workedOut = false;
+    if (c === 'alt') {
+      const res = await runProblem('parts', { title: 'Wagon repair' });
+      if (!T) return;
+      workedOut = !!res.correct;
+    }
+    let r = null;
+    try { r = typeof JA.repair === 'function' ? JA.repair(J, { workedOut }) : null; } catch (e) { console.warn('[WagonWest] repair', e); }
+    r = r || { fixed: canFix, usedPart: have };
+    app.persist();
+    if (r.skill) skillLine(r.skill);
+    if (r.fixed) {
+      toast(ev.fix || 'A quick fix and we roll on!');
+      if (r.usedPart) effectToast('A spare part is used. Spares are sold at the forts.', 'A spare part is used.');
+    } else effectToast('The wagon limps along slowly to the next fort. A spare part would mend it.', 'The wagon limps along slowly to the next fort.');
+    if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() });
   }
   async function runTrade(ev) {
     const J = save.journey;
@@ -1187,7 +1435,7 @@ async function boot() {
     const J = save.journey;
     if (!J) return;
     const who = campCompanion();
-    try { if (typeof JA.camp === 'function') JA.camp(J, kind, { rand: Math.random }); } catch (e) { console.warn('[WagonWest] camp', e); }
+    try { if (typeof JA.camp === 'function') { const cr = JA.camp(J, kind, { rand: Math.random }); if (cr && cr.skill) skillLine(cr.skill); } } catch (e) { console.warn('[WagonWest] camp', e); }
     app.persist(); refreshCash(); screens.camp.refresh();
     if (kind === 'fish' || kind === 'hunt') { await runMini(kind); companionLine(who, true); }
     else if (kind === 'cards') { await quickDraw(who); companionLine(who, false); }
@@ -1466,6 +1714,7 @@ async function boot() {
   $('#pause-sound').addEventListener('click', () => setSetting('sound', !settings.sound));
   $('#pause-music').addEventListener('click', () => setSetting('music', !settings.music));
   $('#pause-motion').addEventListener('click', () => setSetting('reducedMotion', !settings.reducedMotion));
+  $('#pause-wagon').addEventListener('click', () => { closePause(); if (screen === 'trail' && T) wagonPanel.open(); });
   $('#pause-camp').addEventListener('click', () => { closePause(); openCamp('trail').catch((e) => console.error('[WagonWest] camp', e)); });
   $('#btn-camp').addEventListener('click', () => {
     if (screen !== 'trail' || !T || T.busy || panelOpen() || paused) return;
@@ -1517,7 +1766,7 @@ async function boot() {
 
   // the music goes quiet while a panel, the pause sheet or the Parent Zone is open, and comes back after
   const mo = new MutationObserver(() => syncMusic());
-  for (const id of ['panel-marker', 'panel-problem', 'spell', 'card', 'mini', 'panel-pause', 'pz']) { const el = document.getElementById(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ['hidden'] }); }
+  for (const id of ['panel-marker', 'panel-problem', 'spell', 'card', 'mini', 'panel-pause', 'panel-wagon', 'pz']) { const el = document.getElementById(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ['hidden'] }); }
 
   go('players');
   updateHooks.isSafe = () => safeToReload({ screen, busy: !!T || panelOpen(), parentZone: pz.isOpen });
@@ -1536,7 +1785,7 @@ async function boot() {
   sync.start();                        // first pull after the picker is on screen (never blocks it)
   pingNow('day');                      // once per device per UTC day (fire and forget)
   window.__wagonWest = {
-    app, pz, sync, tts, store, river, postOffice, results, hud, markerPanel, problemPanel, spellPanel, card,
+    app, pz, sync, tts, store, river, postOffice, results, hud, markerPanel, problemPanel, spellPanel, card, wagonPanel,
     get scene() { return scene; }, get screen() { return screen; }, get save() { return save; }, get facts() { return facts; },
     get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb } : null; },
     JA, cloud, Music, cardPop, camp: screens.camp,

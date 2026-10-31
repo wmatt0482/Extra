@@ -10,7 +10,9 @@
 // Caches are per origin, shared with the other games' workers: this worker only ever deletes its own ('wagon-west-…').
 // If another worker removed this cache, the next online launch puts the shell back (ensureShell).
 // v1.1 adds the trail's music (src/meta/music.js), the trail cards (src/content/cards.js, src/ui/cards.js) and Camp.
-const VERSION = 'wagon-west-v1.1.0';
+// v1.2 adds the Wagon panel (src/ui/wagonPanel.js); the other streams' v1.2 modules (people, deeds, the mini-games) are in
+// OPTIONAL below: cached when present.
+const VERSION = 'wagon-west-v1.2.0';
 const PREFIX = 'wagon-west-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -54,6 +56,7 @@ const SHELL = [
   'src/ui/spellSkin.js',
   'src/ui/camp.js',
   'src/ui/cards.js',
+  'src/ui/wagonPanel.js',
 ];
 // The scene and the journey (the other streams' modules) and the shared modules of the other games (+ their imports):
 // cached when present; the page also posts every module it actually loaded (see 'cache-urls' below).
@@ -67,6 +70,17 @@ const OPTIONAL = [
   'src/journey/route.js',
   'src/journey/rng.js',
   'src/journey/challenge.js',
+  'src/journey/deeds.js',
+  'src/content/people.js',
+  'src/ui/people.js',
+  'src/ui/deeds.js',
+  'src/scene/derby.js',
+  'src/scene/ford.js',
+  'src/scene/rafting.js',
+  'src/scene/stampede.js',
+  'src/scene/sprites12.js',
+  'src/scene/util.js',
+  'src/scene/backdrops.js',
   'src/scene/engine.js',
   'src/scene/render.js',
   'src/scene/sprites.js',

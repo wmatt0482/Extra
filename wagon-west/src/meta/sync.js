@@ -59,6 +59,8 @@ export function mergeWw(local, remote) {
     s.journey.cards = unionCards(s.journey.cards, o.journey.cards);
     s.journey.tokens = Math.max(num(s.journey.tokens), num(o.journey.tokens));
     if (!s.journey.dog && o.journey.dog) s.journey.dog = clone(o.journey.dog);
+    // v1.2: deeds earned and people met are collections too: the union of both sides
+    for (const k of ['deeds', 'met']) if (s.journey[k] !== undefined || o.journey[k] !== undefined) s.journey[k] = unionCards(s.journey[k], o.journey[k]);
   }
   s.suitsDone = uniq(s.suitsDone, o.suitsDone);
   if (o.daily && s.daily && o.daily.key === s.daily.key && o.daily.id === s.daily.id && o.daily.claimed) s.daily.claimed = true;
