@@ -151,6 +151,23 @@ store "Work it out" divide that never asks about more money than the purse holds
 
 - VERSION 1.3.1; the service worker is `wagon-west-v1.3.1`.
 
+## 1.3.2
+
+The voice, fixed (owner, Oct 31, from a real device: "glitchy voices reading the letters; the old robot voices are back").
+Causes: (1) the cloud engine's `prepare` runs one request per voice at a time and `prepareVoice` queued 80-text
+requests for the whole game, so a line prepared just in time (a lookout, a person, the trade, the letter's lines) waited
+behind them, missed the 2.5 s wait and was read by the device voice, and the letter then switched voices mid-way as the
+clips arrived; a few lines were never prepared at all (the first-run "How the trail works" card, people's lines); (2) a
+toast's or a deed's line was said the moment it was queued, cutting the line being read (the river's result, the
+dictation, the letter's read-back) and, held by the 1.3.1 toast queue, again when it was released.
+`src/meta/speech.js` is now the one voice: lines play straight from their clip (never the device voice while the natural
+voice is in use: a line without its clip in 9 s is skipped, its words are on screen), one at a time, toasts' and pops'
+lines wait for the voice, the panels, the dictation and cards; the whole game is prepared ahead in batches of 8, this leg
+first (`src/meta/voiceTexts.js`), stepping aside for any line waiting for its clip. `tools/content-audit.mjs` checks every
+spoken string against that list; ui-smoke plays the letter with instrumented engines.
+
+- VERSION 1.3.2; the service worker is `wagon-west-v1.3.2`.
+
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail

@@ -1,7 +1,7 @@
 // Playwright smoke test of Wagon West on the mock scene (?mock=1&nosw=1), landscape 844×390 and portrait 390×844
 // (iPhone safe-area insets faked), from the repo root:
 //   BASE_URL=http://localhost:8095 node wagon-west/tools/ui-smoke.mjs     (ONLY=landscape | portrait runs one layout;
-//   VOICE_ONLY=1 runs only the natural-voice part)
+//   VOICE_ONLY=1 runs only the natural-voice parts, which include the letter home with instrumented engines of v1.3.2)
 // Covers (SPEC §12 "Tests"): the picker and a new player (on-screen keyboard), the title with the map, the outfit (the
 // wagon's name on the on-screen keyboard, the animal, three companions, the looks), the General Store at Independence
 // (a 'buy' problem right, a 'divide' problem missed: the work shown line by line, then the answer typed, the goods at
@@ -164,9 +164,18 @@ async function typeDigits(page, root, digits) {
   for (const d of String(digits)) await page.click(`${root} .np-key[data-key="${d}"]`);
   await page.click(`${root} .np-key[data-key="go"]`);
 }
-async function typeWord(page, word) {
-  for (const ch of word) await page.click(`#sp-keyboard .kb-key[data-key="${ch === ' ' ? 'space' : ch}"]`);
+async function typeWord(page, word, patient = false) {
+  for (const ch of word) { if (patient) await quiet(page); await page.click(`#sp-keyboard .kb-key[data-key="${ch === ' ' ? 'space' : ch}"]`); }
+  if (patient) await quiet(page);
   await page.click('#sp-keyboard .kb-enter');
+}
+/** A patient child: waits until the voice is silent (the instrumented engines of voiceLetterTest) before the next tap. */
+async function quiet(page) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < 15000) {
+    if (await page.evaluate(() => !window.__quiet || window.__quiet())) { await page.waitForTimeout(250); if (await page.evaluate(() => !window.__quiet || window.__quiet())) return; }
+    await page.waitForTimeout(40);
+  }
 }
 /**
  * Play until `until(state)` is true. plan: { markerMiss: [n…] (miss these marker numbers, 1-based), onEach(state) }.
@@ -180,6 +189,7 @@ async function drive(page, until, plan = {}, timeout = 90000) {
     const s = await W(page);
     if (await until(s)) return log;
     if (plan.onEach) await plan.onEach(s, log);
+    if (plan.patient && (s.marker === 'ask' || s.problem === 'ask' || s.card || s.spell || s.stopOpen || s.poFoot || (s.screen === 'river' && (s.rvFoot || s.rvChoice)) || s.storeOpen)) await quiet(page);
     if (s.marker === 'ask') {
       // a 'fact' event and a card game ask on the same panel ("Quick fact" / "Card game"); only real mile markers count
       if (!s.mReal) { await typeDigits(page, '#panel-marker', s.mAns); await page.waitForTimeout(60); continue; }
@@ -200,10 +210,10 @@ async function drive(page, until, plan = {}, timeout = 90000) {
       for (const k of plan.dogName || 'rex') await page.click(`#dog-keyboard .kb-key[data-key="${k}"]`);
       await page.click('#dog-keyboard .kb-enter');
     }
-    else if (s.spell && ['write', 'cover', 'copy'].includes(s.spell) && s.kbOn && s.word) { if (s.spell === 'write') log.words.push(s.word); await typeWord(page, s.word); }
+    else if (s.spell && ['write', 'cover', 'copy'].includes(s.spell) && s.kbOn && s.word) { if (s.spell === 'write') log.words.push(s.word); await typeWord(page, s.word, plan.patient); }
     else if (s.mini) { if (lastMini !== s.mini.kind) { log.minis++; lastMini = s.mini.kind; } }
     else if (s.screen === 'river' && s.rvChoice) { const how = plan.river || 'ferry'; log.river = how; await page.click(`#rv-opts .rv-opt[data-how="${how}"]`); }       // v1.2: rivers are a choice (the default is the ferry: three words)
-    else if (s.screen === 'stop' && s.stopOpen && !s.stopBusy && !s.v2play) { log.stops = (log.stops || 0) + 1; if (plan.onStop) await plan.onStop(s, log); await page.click('#stop-go'); }     // v1.2: the Talk row; its big button goes on
+    else if (s.screen === 'stop' && s.stopOpen && !s.stopBusy && !s.v2play) { if (plan.talk && !log.talked) { log.talked = true; await page.click(`.stop-person[data-person="${plan.talk}"]`); await page.waitForTimeout(100); continue; } log.stops = (log.stops || 0) + 1; if (plan.onStop) await plan.onStop(s, log); await page.click('#stop-go'); }     // v1.2: the Talk row; its big button goes on
     else if (s.screen === 'river' && s.rvRope && s.rope && !s.rope.done && !s.rope.flying) {
       await dragRope(page, s.rope.f.n / s.rope.f.d);
       await page.click('#rv-throw'); log.throws++;
@@ -616,7 +626,7 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.3\.1 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.3\.2 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
   check(await J(page, () => document.querySelector('#opt-voice-line').textContent === 'Device voice' && !!document.querySelector('#opt-voice-test')), 'Options: the voice line ("Device voice": no natural voice picked) and "Say a test line"');
   await page.click('#opt-voice-test');
   await page.waitForFunction(() => /voice spoke/.test(document.querySelector('#opt-voice-result').textContent), null, { timeout: 8000 }).catch(() => {});
@@ -969,6 +979,7 @@ async function v12Journey(page, layout, grab) {
   // ----- toasts and pops wait while a card is open (playtest 1.2 W3-W5) and never cover its text; they come out when it closes -----
   {
     await J(page, () => { const w = window.__wagonWest; w.toaster.clear(); w.holdTrail(true); });     // (a quiet trail: no marker opens under the card)
+    await page.waitForFunction(() => !window.__wagonWest.cardPop.showing, null, { timeout: 8000 }).catch(() => {});      // (a pop of the trail's own, from the seconds before, is done: this block fires its own)
     await J(page, () => { const w = window.__wagonWest; w.card.show({ kicker: 'On the trail', title: 'Snow in the pass', text: 'Snow in the pass slows the wagon. The party waits for a clear morning.', say: '', button: 'Continue' }); });
     await J(page, () => {
       const w = window.__wagonWest;
@@ -986,6 +997,7 @@ async function v12Journey(page, layout, grab) {
     let u = await boxes();
     for (const ms of [150, 600, 1500]) { await page.waitForTimeout(ms); const v = await boxes(); u = { ...v, toasts: Math.max(u.toasts, v.toasts), toastHits: u.toastHits + v.toastHits, pop: u.pop || v.pop, popHit: u.popHit || v.popHit }; }
     check(u.open && u.toastHits === 0 && u.popHit === false, `a card is open and a toast fires: no toast or pop box meets the card's box (${u.toasts} toasts and ${u.pop ? 'a pop' : 'no pop'} drawn while it was open)`);
+    if (!(u.toasts === 0 && !u.pop && u.waiting >= 3)) console.log('    (held: ' + JSON.stringify(await J(page, () => ({ pop: [...document.querySelectorAll('#cardpop .cpop-card')].map((e) => e.dataset.card), popLog: window.__wagonWest.cardPop.log.slice(-4), popShowing: window.__wagonWest.cardPop.showing, card: window.__wagonWest.card.isOpen, reading: window.__wagonWest.reading, waiting: window.__wagonWest.toaster.waiting, trace: window.__wagonWest.toaster.trace.slice(-8) }))) + ')');
     check(u.toasts === 0 && !u.pop && u.waiting >= 3, `they are held, not dropped: ${u.waiting} toasts wait in the queue, no pop yet`);
     await shot(page, layout, '28b-card-toasts-held', 0);
     await J(page, () => window.__wagonWest.card.close());
@@ -999,6 +1011,7 @@ async function v12Journey(page, layout, grab) {
       const over = hits.flatMap((a) => things.filter((t) => a.left < t.b.right && a.right > t.b.left && a.top < t.b.bottom && a.bottom > t.b.top).map((t) => `${t.id} ${Math.round(t.b.left)},${Math.round(t.b.top)}-${Math.round(t.b.right)},${Math.round(t.b.bottom)} vs toast ${Math.round(a.left)},${Math.round(a.top)}-${Math.round(a.right)},${Math.round(a.bottom)}`));
       return { n: hits.length, hits: over.length, over: over.slice(0, 3) };
     });
+    if (!(clear.n > 0 && clear.hits === 0)) console.log('    (toaster: ' + JSON.stringify(await J(page, () => ({ trace: window.__wagonWest.toaster.trace, log: window.__wagonWest.toaster.log.slice(-6), pop: window.__wagonWest.cardPop.log, shown: window.__wagonWest.toaster.shown, waiting: window.__wagonWest.toaster.waiting }))) + ')');
     check(clear.n > 0 && clear.hits === 0, `shown on the trail, a toast sits clear of the HUD, the buttons and the pop (${clear.n} up, ${clear.hits} overlapping${clear.over.length ? ': ' + clear.over.join('; ') : ''})`);
     check(await page.waitForFunction(() => !!document.querySelector('#cardpop .cpop-card'), null, { timeout: 16000 }).then(() => true, () => false), 'and the held "New card!" pop');
     await page.waitForTimeout(6000);
@@ -1329,7 +1342,7 @@ async function voiceTest(browser, layout) {
   // is `text` (or its sentences) played as clips, and never by the device voice?
   const byCloud = (text, wait = 3000) => page.waitForFunction((t) => window.__cloudPlayed.includes(t), text, { timeout: wait }).then(() => true, () => false);
   const deviceSaid = (text) => J(page, (t) => window.__spoken.includes(t), text);
-  const engine = () => J(page, () => window.__wagonWest.tts.engine);
+  const engine = () => J(page, () => window.__wagonWest.speech.engine);
   const seen = { marker: null, problem: null, card: null, river: null, letter: null };
   const plan = {
     async onEach(s) {
@@ -1400,6 +1413,137 @@ async function voiceTest(browser, layout) {
   await ctx.close();
 }
 
+
+// ---------- v1.3.2: the letter home with instrumented engines (no robot voice, no overlap, no cut) ----------
+// Both engines log every utterance to window.__ulog ({ engine: 'cloud' | 'device', text, t0, t1, end: 'ok' | 'cancelled', over: the
+// utterances still playing when it began }): the natural voice's fake backend (a server that takes a moment to make clips, clips that
+// take as long to play as their text is long) and the device voice's (speechSynthesis stub; its unlock word at volume 0.01 is not
+// logged). A patient child plays a fort: the Talk row (a trade), the store, the letter with three dictated words. While the words are
+// dictated a toast with a line and a deed pop are fired on purpose (v1.3.1 said them at once and cut the dictation / the letter).
+function installVoiceInstruments(cfg) {
+  const t = () => Math.round(performance.now());
+  const ulog = (window.__ulog = []);
+  const active = new Map();
+  let nextId = 1;
+  window.__cloudAsked = [];
+  window.__quiet = () => active.size === 0;
+  const begin = (engine, text) => {
+    const e = { id: nextId++, engine, text, t0: t(), t1: 0, end: '', over: [...active.keys()] };
+    ulog.push(e); active.set(e.id, e);
+    return e;
+  };
+  const finish = (e, end) => { if (e.end) return; e.end = end; e.t1 = t(); active.delete(e.id); };
+  const dev = { current: null };
+  window.__ttsBackend = {
+    get speaking() { return !!dev.current; }, get pending() { return false; },
+    getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+    speak(u) {
+      const text = String(u.text).trim();
+      if (u.volume != null && u.volume < 0.05) { setTimeout(() => { try { u.onstart && u.onstart(); u.onend && u.onend(); } catch (_) {} }, 5); return; }
+      const e = begin('device', text);
+      dev.current = e; e.u = u;
+      setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5);
+      e.timer = setTimeout(() => { if (dev.current === e) dev.current = null; finish(e, 'ok'); try { u.onend && u.onend(); } catch (_) {} }, Math.max(60, text.length * cfg.msPerChar));
+    },
+    cancel() { const e = dev.current; if (e && !e.end) { clearTimeout(e.timer); dev.current = null; finish(e, 'cancelled'); try { e.u.onerror && e.u.onerror({ error: 'canceled' }); } catch (_) {} } },
+    addEventListener() {}, resume() {}, pause() {},
+  };
+  const hex = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h.toString(16).padStart(8, '0').repeat(4); };
+  let cur = null;
+  window.__cloudVoiceBackend = {
+    async status() { return { key: true }; },
+    async prepare({ voice, texts }) {
+      window.__cloudAsked.push({ at: t(), n: texts.length });
+      await new Promise((r) => setTimeout(r, cfg.prepBase + cfg.prepPerText * texts.length));
+      const clips = {};
+      for (const x of texts) clips[x] = '/api/tts/clip/' + hex(voice + '\n' + x);
+      return { status: 200, body: { clips, generated: texts.length, cached: 0, charsToday: 100 } };
+    },
+    async load(url, text) { return { url, text }; },
+    play(buf, text) {
+      const e = begin('cloud', text);
+      return new Promise((resolve) => {
+        const done = (ok, end) => { if (cur && cur.e === e) cur = null; finish(e, end); resolve(ok); };
+        cur = { e, stop: () => done(false, 'cancelled') };
+        e.timer = setTimeout(() => done(true, 'ok'), Math.max(60, text.length * cfg.msPerChar));
+      });
+    },
+    stop() { if (cur) { const c = cur; clearTimeout(c.e.timer); c.stop(); } },
+  };
+}
+
+async function voiceLetterTest(browser, layout) {
+  console.log(`\n=== the letter home with instrumented engines (${layout.name}) ===`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await routeFonts(ctx);
+  await ctx.route('**/api/family/**', (r) => r.abort());
+  await ctx.route('**/api/tts/**', (r) => r.abort());
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|ERR_INTERNET/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('wwLetterSeeded')) {
+      localStorage.clear();
+      const now = Date.now();
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0,
+        options: { pmia: { cloudVoice: 'en-US-Neural2-F' } }, optionsUpdatedAt: { pmia: now }, removedPlayers: [], migrated: true, lastPlayer: 'pmia' }));
+      localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devW', keys: {} }));
+      sessionStorage.setItem('wwLetterSeeded', '1');
+    }
+    window.__wwScript = { daySec: 0.12, beat: 0.15 };
+    window.__mockScript = { shotMs: 80 };
+  });
+  // a server that is not instant (each text takes a moment to make): the background preparation takes a while, and the lines
+  // the child needs meanwhile must not wait behind it nor go to the device voice
+  await page.addInitScript(installVoiceInstruments, { msPerChar: 5, prepBase: 120, prepPerText: 25 });
+  await page.goto(URL0, { waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'oxen', companions: ['blacksmith', 'scout', 'cook'] }, { fresh: true }); });
+  await skipIndependenceTalk(page);
+  await page.waitForSelector(visibleSel('#screen-store'));
+  await page.click('#store-done');
+  await toStop(page, 'fort-kearny');
+  const mark = { post0: 0, spellOpen: 0, spellClosed: 0, injected: false, results: 0 };
+  const plan = {
+    patient: true, talk: 'pawnee-guide',
+    async onEach(s) {
+      const now = await J(page, () => Math.round(performance.now()));
+      if (s.screen === 'post' && !mark.post0) mark.post0 = now;
+      if (s.spell && !mark.injected) {
+        // the dictation is on: a toast with a line and a deed pop arrive. v1.3.1 said them at once and cut the dictation.
+        mark.injected = true; mark.spellOpen = now;
+        await J(page, () => { const w = window.__wagonWest; w.app.effectToast('The wagon rolls on steady.'); w.speech.later('The wagon rolls on, steady and slow.', { maxAgeMs: 90000 }); w.deedPop.pop('camper'); });
+      }
+      if (mark.injected && !s.spell && !mark.spellClosed) mark.spellClosed = now;
+    },
+  };
+  await drive(page, (s) => s.screen === 'results', plan, 150000);
+  mark.results = await J(page, () => Math.round(performance.now()));
+  // the lines of the toast and the deed come out behind the letter, one at a time (give them time)
+  await page.waitForFunction(() => window.__ulog.some((u) => /Camper!/.test(u.text)) && window.__ulog.some((u) => /steady and slow/.test(u.text)), null, { timeout: 12000 }).catch(() => {});
+  await page.waitForTimeout(600);
+  const U = await J(page, () => window.__ulog.map((u) => ({ id: u.id, engine: u.engine, text: u.text, t0: u.t0, t1: u.t1, end: u.end, over: u.over })));
+  const inLetter = U.filter((u) => u.t0 >= mark.post0 && mark.post0);
+  const device = U.filter((u) => u.engine === 'device');
+  const bad = inLetter.filter((u) => u.end === 'cancelled' || u.over.length);
+  const asked = await J(page, () => window.__cloudAsked.length);
+  check(mark.post0 > 0 && inLetter.length >= 12, `the letter home was read and dictated through the instrumented engines (${inLetter.length} utterances at the post office)`);
+  check(device.length === 0, `zero device-voice utterances while the natural voice is available (${device.length}${device.length ? ': ' + device.slice(0, 4).map((u) => JSON.stringify(u.text.slice(0, 40))).join(', ') : ''})`);
+  check(bad.length === 0, `zero overlapping or cancelled utterances during the letter (${bad.length}${bad.length ? ': ' + bad.slice(0, 4).map((u) => `${u.engine} ${JSON.stringify(u.text.slice(0, 30))} ${u.end}${u.over.length ? ' over ' + u.over : ''}`).join('; ') : ''})`);
+  const toastLine = U.find((u) => /steady and slow/.test(u.text)), deedLine = U.find((u) => /Camper!/.test(u.text));
+  check(toastLine && deedLine && toastLine.engine === 'cloud' && deedLine.engine === 'cloud', 'the toast\'s line and the deed\'s line were said by the natural voice');
+  check(toastLine && deedLine && mark.spellClosed > 0 && toastLine.t0 >= mark.spellClosed && deedLine.t0 >= mark.spellClosed && Math.abs(toastLine.t0 - deedLine.t0) > 0, `the toast's and the deed's lines waited for the dictation to end (dictation ended ${mark.spellClosed}, said at ${toastLine && toastLine.t0} and ${deedLine && deedLine.t0}) and came one after the other`);
+  const overs = U.filter((u) => u.over.length);
+  check(overs.length === 0, `no utterance ever began while another was playing (one voice at a time)${overs.length ? ' — ' + overs.slice(0, 3).map((u) => `${u.engine} ${JSON.stringify(u.text.slice(0, 30))} over ${u.over}`).join('; ') : ''}`);
+  const sp = await J(page, () => window.__wagonWest.speech.stats);
+  check(!sp.silent, `no line was skipped for want of its clip (${sp.silent || 0} silent)`);
+  check(asked > 3, `the background preparation asked the server in small batches (${asked} requests)`);
+  check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 3).join(' | ') : ''}`);
+  await ctx.close();
+}
 
 // ---------- v1.2 (app part two): rivers as a choice, the Columbia raft, the stampede, people, deeds, camp's storm ----------
 // A journey of its own (one made by the Outfit's own call), so finishing the valley does not touch the other sections'.
@@ -1727,7 +1871,7 @@ async function v12Stampede(page, layout, grab) {
   await page.click('#tc-go');
   check(await toastWith(page, /Pfft, dust everywhere!/), 'not held: "Pfft, dust everywhere!"');
   const s3 = await jn(page);
-  check(s3.cash === s2.cash && s3.totals.stampedesHeld === 1 && s3.totals.stampedes === 2, 'not held: no pay, nothing lost, the wagon is fine');
+  check(s3.cash === s2.cash && s3.totals.stampedesHeld === 1 && s3.totals.stampedes === 2, `not held: no pay, nothing lost, the wagon is fine (cash ${s2.cash} → ${s3.cash}, held ${s3.totals.stampedesHeld}, stampedes ${s3.totals.stampedes})`);
   await page.evaluate(() => { delete window.__mockScript.stampede; });
   await drive(page, idleTrail, far(page), 30000);
   // leaving mid-stampede ends it too
@@ -2010,6 +2154,7 @@ try {
     if (process.env.QUICK) { await quickV12(browser, layout); continue; }
     if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await runLayout(browser, layout);
     if (!process.env.PLAY_ONLY) await voiceTest(browser, layout);
+    if (!process.env.PLAY_ONLY) await voiceLetterTest(browser, layout);
     if (!process.env.VOICE_ONLY) await playTest(browser, layout);
   }
   if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await mockMiniGames(browser);

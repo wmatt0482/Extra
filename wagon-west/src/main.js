@@ -59,7 +59,7 @@ import * as Problems from './journey/problems.js';
 import * as Letters from './journey/letters.js';
 import * as Economy from './journey/economy.js';
 import { ANIMAL_BY_ID, LEGS, LEG_BY_ID, SEASONS, SEASON_BY_ID, GOODS } from './content/legs.js';
-import { COMPANIONS, COMPANION_BY_ID } from './content/companions.js';
+import { COMPANION_BY_ID } from './content/companions.js';
 import { CARDS, CARD_BY_ID } from './content/cards.js';
 import { LOOKOUTS } from './content/lookouts.js';
 import { EVENTS, EVENT_BY_ID } from './content/events.js';
@@ -77,55 +77,33 @@ import { createStore } from './ui/store.js';
 import { createHud } from './ui/hud.js';
 import { createWagonPanel, partySummary, skillOfCompanion } from './ui/wagonPanel.js';
 import { createMarkerPanel, markerTexts } from './ui/markerPanel.js';
-import { createProblemPanel, problemTexts, spokenLine } from './ui/problemPanel.js';
+import { createProblemPanel, problemTexts } from './ui/problemPanel.js';
 import { createCard } from './ui/card.js';
-import { createRiver, riverTexts, riverChoiceTexts } from './ui/river.js';
+import { createRiver } from './ui/river.js';
 // ---- v1.2 (app two): people and deeds ----
 import { createPeople, START_STOP } from './ui/people.js';
-import { createDeedPop, deedTexts } from './ui/deeds.js';
+import { createDeedPop } from './ui/deeds.js';
 import { createCamp } from './ui/camp.js';
 import { createCardPop, ownedCards, sayOf } from './ui/cards.js';
 import { createToaster, popHeld } from './ui/toasts.js';
-import { PS_INTRO, READ_BACK } from './ui/postOffice.js';
 import { createPostOffice } from './ui/postOffice.js';
 import { createJournal } from './ui/journal.js';
 import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
+import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
+import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts } from './meta/voiceTexts.js';
+import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.3.1';
-// the natural voice: the server makes clips of at most 200 characters, so a longer line is said (and prepared) a
-// sentence or two at a time; the line "Say a test line" speaks in the Parent Zone
-const CLIP_MAX = 200;
-const VOICE_WAIT_MS = 2500;
-const TEST_LINE = 'Wagon West is ready to roll.';
-const FIXED_LINES = ['Now you: type the answer', 'Now you: type the answer from memory', 'Fixed it!', PS_INTRO, READ_BACK, TEST_LINE,
-  'Make camp tonight? Fishing, a card game, a story by the fire, or a good rest.', 'A dog has been following the wagon. Keep it?'];
-// v1.2: the lines the effects say aloud (prepared with the rest, so the natural voice plays them)
-FIXED_LINES.push('A cold night. There are not enough blankets, so the party rests a day.', 'The oxen need a rest, so we go steady today.', 'The mules need a rest, so we go steady today.',
-  'The wagon limps along slowly to the next fort.', 'A spare part is used.', 'The new part mends the wagon. No more limping.');
-// ---- v1.2 (app two): the river choice, the raft and the deeds' lines (prepared with the rest) ----
-FIXED_LINES.push(...riverChoiceTexts(), ...deedTexts(), 'The raft is across!', 'You held them!', 'Pfft, dust everywhere!');
+const VERSION = '1.3.2';
+// the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
+// is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];
 const DOG_COATS = ['brown', 'spotted', 'black'];   // the scene's three coats
 const QD_TO = 7;                 // Quick Draw: first to 7 right facts
 const DERBY_MARKERS = 4;         // Fort Derby: 400 m, a marker every 100 m from the start line = 4 facts
 const DERBY_LENGTH = 400;
-/** A line cut into pieces the natural voice can say (≤ 200 characters, at sentence breaks, else at commas / spaces). */
-export function splitSay(text) {
-  const t = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
-  if (!t) return [];
-  if (t.length <= CLIP_MAX) return [t];
-  const out = [];
-  let cur = '';
-  const push = (piece) => {
-    if (piece.length > CLIP_MAX) { for (const w of piece.split(/(?<=,)\s+|\s+/)) push(w); return; }
-    if (!cur) cur = piece; else if (cur.length + 1 + piece.length <= CLIP_MAX) cur += ' ' + piece; else { out.push(cur); cur = piece; }
-  };
-  for (const sentence of t.split(/(?<=[.!?])\s+/)) push(sentence);
-  if (cur) out.push(cur);
-  return out;
-}
+export { splitSay };
 // Campfire riddles: a fact in disguise, in trail words (the answer is the fact's; the numbers are shown as digits)
 const RIDDLES = {
   x: [(a, b) => `${a} wagons, with ${b} oxen pulling each one. How many oxen in all?`,
@@ -147,7 +125,6 @@ export function riddleFor(fact, flip = false, rand = Math.random) {
   const text = list[Math.floor(rand() * list.length) % list.length](a, b);
   return { text, say: text };
 }
-const speechChunks = (texts) => [...new Set((texts || []).flatMap((t) => splitSay(t)))];
 const GAME = 'wagon-west';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'wagonWest.resumePlayer';   // sessionStorage: the player to come back to after an update reload
@@ -205,8 +182,9 @@ async function boot() {
   const toastsEl = $('#toasts');
   // Toasts and pops wait while a panel, card, question or mini-game is open, and sit only where they touch nothing the
   // child reads or presses (src/ui/toasts.js; playtest 1.2 W3-W5). v2/mini/derby are declared further down: read lazily.
-  const readingOpen = () => { try { return !!(app.overlayOpen() || v2.play || v2.bar || mini || derby); } catch (_) { return false; } };
-  const toaster = createToaster(toastsEl, { blocked: readingOpen });
+  let dayFlow = false;                    // a trail day's marker / event is about to open: its toasts wait for it (their lines would be cut by it)
+  const readingOpen = () => { try { return !!(app.overlayOpen() || v2.play || v2.bar || mini || derby || dayFlow); } catch (_) { return false; } };
+  const toaster = createToaster(toastsEl, { blocked: readingOpen, say: (t) => speech.later(t), speaking: () => speech.ambientPending });
   const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || !!mini || !!derby;
   let derby = null;                       // Fort Derby in progress: { leg, markers, bursts, resolve }
   let campVisit = null;                   // this camp visit: { context, line (a companion spoke: their card) }
@@ -262,34 +240,24 @@ async function boot() {
     /** Parents → Options "Say a test line": speak it, report the engine that spoke ('cloud' | 'device' | ''). */
     async testVoice() {
       if (currentPlayerId) applyVoice({ prepare: false });
-      await voiceFor([TEST_LINE]);
-      const r = await Promise.race([app.say(TEST_LINE), sleep(8000)]);
+      await voiceFor([TEST_LINE], 9000);
+      const r = await Promise.race([app.say(TEST_LINE), sleep(14000)]);
       const info = cloud.voice ? cloudVoiceInfo(cloud.voice) : null;
-      return { engine: r ? tts.engine : '', name: info ? info.name : '' };
+      return { engine: r ? speech.engine : '', name: info ? info.name : '' };
     },
-    /** Read a line aloud (a voice available), a long one a sentence or two at a time. Returns the speech promise. */
-    say(text) {
-      if (!tts.available || !text) return Promise.resolve(null);
-      const parts = splitSay(text);
-      try { tts.cancel(); } catch (_) { /* ignore */ }
-      if (parts.length <= 1) { try { return Promise.resolve(tts.say(parts[0] || text)).catch(() => null); } catch (_) { return Promise.resolve(null); } }
-      return app.sayAll(parts, { cancel: false });
-    },
-    /** Several lines, one utterance each, in turn (a newer speech cuts the rest off). */
-    async sayAll(list, { cancel = true } = {}) {
-      const L = speechChunks(list);
-      if (!tts.available || !L.length) return null;
-      if (cancel) { try { tts.cancel(); } catch (_) { /* ignore */ } }
-      let r = null;
-      for (const t of L) { try { r = await tts.say(t); } catch (_) { r = null; } if (r === null) return null; }
-      return r;
-    },
-    /** The natural voice, just in time: ask the server for these lines (at most 2.5 s; nothing when the device voice reads). */
+    /** Read a line aloud (a voice available), a long one a piece at a time: it replaces what is playing. Returns the speech
+     *  promise (true spoken · false silent: the natural voice could not make the clip in time · null cut off). */
+    say(text) { return speech.say(text); },
+    /** Several lines, one after the other (a newer speech cuts the rest off). */
+    sayAll(list) { return speech.say((list || []).filter(Boolean)); },
+    /** A toast's / pop's line: it waits for the voice to be idle and for the open panels, and never cuts anything. */
+    sayLater(text) { return speech.later(text); },
+    /** The natural voice, just in time: ask the server for these lines and wait (a moment) for them. */
     voiceFor,
-    /** Say a line and wait for it (at most 8 s), and at least minMs. */
-    sayWait(text, minMs = 0) { return Promise.all([Promise.race([app.say(text), sleep(8000)]), sleep(minMs)]); },
+    /** Say a line and wait for it (at most 25 s: the clip's wait and the line), and at least minMs. */
+    sayWait(text, minMs = 0) { return Promise.all([Promise.race([app.say(text), sleep(25000)]), sleep(minMs)]); },
     /** A line as the voice says it ("$56" → "56 dollars"; no doubled full stop after a comma or a full stop). */
-    spoken: (text) => spokenLine(text).replace(/([.!?])\.$/, '$1').replace(/[,;:]\.$/, '.'),
+    spoken: spokenText,
     go, toast, refreshCash, selectPlayer, setSetting, hitTrail, newSeason,
     createPlayer: (name, color) => Profiles.createPlayer(family, name, color),
     openParents: (opts) => pz.open(opts),
@@ -406,8 +374,11 @@ async function boot() {
   // ---------- UI ----------
   const playersUI = createPlayers(app);
   const hud = createHud({ onPace, onRations, onWagon: () => openWagonFromHud(), onEli: () => { askEli().catch((e) => console.error('[WagonWest] ask Eli', e)); } });
-  const markerPanel = createMarkerPanel($('#panel-marker'), { tts, audio: Audio, sfx: Sfx });
-  const problemPanel = createProblemPanel($('#panel-problem'), { tts, audio: Audio, sfx: Sfx });
+  // the panels read their questions through the same voice as everything else (src/meta/speech.js: one line at a time, a clip
+  // or silence, never the device voice while the natural voice is in use); `speech` is made below, before any panel speaks
+  const panelTts = { get available() { return tts.available; }, say: (t) => speech.say(t), cancel: () => speech.cancel(), unlock: () => tts.unlock(), reprobe: () => tts.reprobe() };
+  const markerPanel = createMarkerPanel($('#panel-marker'), { tts: panelTts, audio: Audio, sfx: Sfx });
+  const problemPanel = createProblemPanel($('#panel-problem'), { tts: panelTts, audio: Audio, sfx: Sfx });
   const card = createCard($('#card'), { say: (t) => app.say(t), canSay: () => tts.available });
   const spellRoot = $('#spell');
   const spellPanel = createSpellPanel(spellRoot, { tts, audio: Audio, onCancel: () => {} });
@@ -429,7 +400,11 @@ async function boot() {
   const cloud = createCloudVoice({ getCode: () => sync.code, getWords: () => { try { return currentPlayerId ? WS.activeList(Profiles.loadWords(currentPlayerId)).words : []; } catch (_) { return []; } }, audio: Audio });
   tts.setCloud(cloud);
   // the voice ducks the trail's music (and softens Spell Jump's effects, as in the siblings)
-  tts.setOnSpeaking((on) => { Audio.voice(on); try { Music.duck(on); } catch (_) { /* ignore */ } });
+  const duckMusic = (on) => { Audio.voice(on); try { Music.duck(on); } catch (_) { /* ignore */ } };
+  tts.setOnSpeaking(duckMusic);
+  // every line the game says goes through `speech` (SPEC v1.3.2): one at a time; toasts' and pops' lines wait for the panels,
+  // the dictation and a card, and for the voice to be idle; a natural-voice line without its clip is skipped, not robot-read
+  const speech = createSpeech({ tts, cloud, duck: duckMusic, hold: () => readingOpen() });
   let voiceKey = '';
   function applyVoice({ prepare = true } = {}) {
     if (!currentPlayerId) return;
@@ -441,32 +416,25 @@ async function boot() {
     const key = `${currentPlayerId}|${cloud.voice}|${sync.code || ''}`;
     if (prepare && key !== voiceKey) { voiceKey = key; prepareVoice(); }
   }
-  /** Everything the game says that can be known ahead (SPEC v1.1 §1): the week's words (Spell Jump's list), the
-   *  child's active facts (the question, the full sentence and the hint, both ways round), every lookout, nation fact,
-   *  event, companion line and trail card, the fixed lines of the panels, the river's landing sentences for the
-   *  fractions in play. The server is asked only for what this device has no clip of. */
+  /** Everything the game says that can be known ahead (src/meta/voiceTexts.js), asked for in the order it is needed and in
+   *  small batches that step aside for a line waiting for its own clip (src/meta/speech.js): the dictation (the week's words
+   *  and the letters of the alphabet), the fixed lines and the river, THIS leg (lookout, nation, people and their offers,
+   *  letter), the child's mile-marker sentences, the next leg, then the rest of the trail. The server is asked only for what
+   *  this device has no clip of. Called at player select, at a voice change and at every leg start. */
   function prepareVoice() {
     if (!currentPlayerId || !cloud.active) return;
-    cloud.prepareList().catch(() => {});
-    const texts = [];
-    try { if (facts) for (const f of activeFacts(facts)) for (const flip of [false, true]) texts.push(...markerTexts(f, flip)); } catch (e) { console.warn('[WagonWest] activeFacts', e); }
-    for (const l of Object.values(LOOKOUTS)) if (l) texts.push(l.say || l.text);
-    for (const n of NATIONS) if (n.fact) texts.push(n.fact.say || n.fact.text);
-    for (const e of EVENTS) texts.push(e.say || e.text);
-    for (const c of COMPANIONS) { const L = c.lines || {}; texts.push(...(L.trail || []), L.tired, L.happy); }
-    for (const c of CARDS) texts.push(sayOf(c));
-    texts.push(...FIXED_LINES);
-    for (const tier of ['T1', 'T2']) { try { for (const f of fractionsOf(tier)) texts.push(...riverTexts(fracName(f.n, f.d))); } catch (_) { /* ignore */ } }
-    cloud.prepare(speechChunks(texts.filter(Boolean))).catch(() => {});
+    let words = [];
+    try { words = WS.activeList(Profiles.loadWords(currentPlayerId)).words; } catch (_) { words = []; }
+    const factTexts = [];
+    try { if (facts) for (const f of activeFacts(facts)) for (const flip of [false, true]) factTexts.push(...markerTexts(f, flip)); } catch (e) { console.warn('[WagonWest] activeFacts', e); }
+    const J = save.journey;
+    const legId = (J && J.legId) || LEGS[0].id;
+    const c = collectVoiceTexts({ legId, factTexts, names: ((J && J.companions) || []).map((id) => (COMPANION_BY_ID[id] || {}).name).filter(Boolean), animal: J ? animalName() : '', playerName: (app.player && app.player.name) || '' });
+    speech.prepareBulk([...listTexts(words), ...c.ordered]);
   }
-  /** Just in time: the sentences about to be said (a generated problem, a letter, a riddle) as clips, waiting at most
-   *  2.5 s; resolves at once when the device voice reads (no natural voice, or no family code). */
-  function voiceFor(texts) {
-    if (!cloud.active) return Promise.resolve();
-    const list = speechChunks(texts).filter((t) => !cloud.has(t));
-    if (!list.length) return Promise.resolve();
-    return Promise.race([cloud.prepare(list).catch(() => null), sleep(VOICE_WAIT_MS)]);
-  }
+  /** Just in time: the sentences about to be said (a generated problem, a letter, a riddle) as clips. Waits for them at most
+   *  `ms` (the screen opens meanwhile: the speech itself waits for its clip); resolves at once when the device voice reads. */
+  function voiceFor(texts, ms = HEAD_START_MS) { return speech.ready(texts, ms); }
   /** A trail card with its sentence ready in the natural voice. */
   async function showCard(opts) { await voiceFor([opts.say || opts.text]); return card.show(opts); }
   const pz = createParentZone(app);
@@ -575,8 +543,7 @@ async function boot() {
   function effectToast(text, say) {
     if (!text) return null;
     const t = h('div', { class: 'toast fx', role: 'status' }, text);
-    toaster.add(t, 4800);
-    if (say) app.say(say);
+    toaster.add(t, 4800, { say });          // (the line is said when the toast is shown, behind whatever is playing)
     return t;
   }
   /** A companion's skill firing: their portrait and the line as a toast, read aloud. skill = { id, name, text, who }. */
@@ -593,8 +560,7 @@ async function boot() {
     const t = h('div', { class: 'toast fx skill', role: 'status', 'data-skill': skill.id || '', 'data-who': who || '' },
       c ? h('span', { class: 'sk-face', html: companionSvg(c), 'aria-hidden': 'true' }) : null,
       h('span', { class: 'sk-text' }, c ? h('b', {}, c.name) : null, h('span', {}, line)));
-    toaster.add(t, 5200);
-    app.say(c && !line.startsWith(c.name) ? `${c.name}: ${line}` : line);
+    toaster.add(t, 5200, { say: c && !line.startsWith(c.name) ? `${c.name}: ${line}` : line });
     return t;
   }
   /** Camp's "Wait out the storm" (second app stream's screen): the journey's waitOut(J), saved; null without it. */
@@ -686,8 +652,8 @@ async function boot() {
       if (mood !== musicState.mood) { musicState.mood = mood; Music.mood(mood); }
     } catch (e) { console.warn('[WagonWest] music', e); }
   }
-  function toast(text) {
-    toaster.add(h('div', { class: 'toast' }, text), 2700);
+  function toast(text, say = '') {
+    toaster.add(h('div', { class: 'toast' }, text), 2700, { say });
   }
 
   // ---------- settings (this device) ----------
@@ -979,6 +945,16 @@ async function boot() {
     const list = picks || pickWords(n);
     spellSkin.setContext(context);
     const opts = Profiles.playerOptions(family, currentPlayerId);
+    // the dictation in the natural voice: the words' clips and their letters are ready before the panel opens (it would
+    // hand a word without its clip to the device voice); a slow server delays the first word a little, never the voice
+    if (cloud.active && list.length) {
+      const dict = [];
+      for (const p of list) {
+        const info = { word: p.word, sentence: p.sentence, sayAs: p.sayAs, syllables: p.syllables };
+        dict.push(...wordTexts(info), ...Array.from(String(p.word || '')).map(cloudLetterText));
+      }
+      await voiceFor(dict, 9000);
+    }
     let asked = 0, right = 0;
     for (let i = 0; i < list.length; i++) {
       if (i > 0) { const ok = await spellPanel.beat('Next word!', beat(800)); if (!ok) return { cancelled: true, asked, right }; }
@@ -1055,8 +1031,7 @@ async function boot() {
     if (!save.seen.coach) {
       T.busy = true;
       const r = T;
-      card.show({ kicker: 'How the trail works', title: 'Roll out!', tone: 'coach', button: "Let's roll",
-        text: 'The wagon rolls on its own. Pace and rations are your two dials. At each mile marker, type one fact. Tap the food box to look in the wagon. Stop any time: the journey waits right here.' })
+      card.show({ kicker: 'How the trail works', title: 'Roll out!', tone: 'coach', button: "Let's roll", text: COACH_TEXT })      // (opens at once; its line waits for its clip)
         .then(() => { save.seen.coach = true; app.persist(); if (T === r) { r.busy = false; r.last = 0; } });
     }
   }
@@ -1099,12 +1074,15 @@ async function boot() {
     r.busy = true;
     app.persist();                              // every day is saved: stopping anywhere loses nothing
     const J = save.journey;
-    dayEffects(d.res, r);
-    if (d.res.marker) await runMarker(d.res.marker);
-    if (T !== r) return;
-    if (d.res.event) await runEvent(d.res.event);
-    if (T !== r) return;
-    if (!d.res.event && !d.res.marker && dogBerriesDue(r)) { await dogBerries(); if (T !== r) return; }
+    dayFlow = !!(d.res.marker || d.res.event);  // (a day with a marker or an event: its effect toasts wait for that panel / card, which would cut their lines; a quiet day holds nothing)
+    try {
+      dayEffects(d.res, r);
+      if (d.res.marker) await runMarker(d.res.marker);
+      if (T !== r) return;
+      if (d.res.event) await runEvent(d.res.event);
+      if (T !== r) return;
+      if (!d.res.event && !d.res.marker && dogBerriesDue(r)) { await dogBerries(); if (T !== r) return; }
+    } finally { dayFlow = false; }
     hud.update(J, r.leg, { milesDone: num(J.milesDone), foodLow: !!d.res.foodLow, ...hudExtra() });
     if (d.res.arrived || num(J.milesDone) >= r.leg.miles) { await arrival(r); return; }
     r.busy = false; r.last = 0;
@@ -1150,10 +1128,10 @@ async function boot() {
     const noArrows = kind === 'hunt' && (ev.canHunt === false || (typeof JA.huntAllowed === 'function' && !JA.huntAllowed(J)));
     if (kind === 'hunt' && (settings.hunting === false || noArrows)) {
       kind = 'fish';
-      text = noArrows && settings.hunting !== false ? 'Fresh tracks by the trail, but the quiver is empty. A creek runs right beside them: fishing only today. Arrows at the next fort!' : 'Fresh tracks by the trail, and a stream beside them. Get the fishing line out.';
+      text = noArrows && settings.hunting !== false ? HUNT_NO_ARROWS : HUNT_FISH_ONLY;
       sayText = text;
     }
-    if (ev.covered) { const c = ' The canvas cover keeps everyone dry and cheerful.'; text = `${text || ''}${c}`; sayText = `${sayText || ev.text || ''}${c}`; }
+    if (ev.covered) { const c = COVER_LINE; text = `${text || ''}${c}`; sayText = `${sayText || ev.text || ''}${c}`; }
     if (kind === 'lookout') { spotSure = true; S('spotAnimal', ev.animal || 'bison'); }
     S('setTravel', { moving: false });
     if (kind === 'breakdown') { await runBreakdown(ev); return; }
@@ -1180,8 +1158,7 @@ async function boot() {
     const free = ev.freeFix || (typeof ev.havePart !== 'boolean' && (J.companions || []).includes('blacksmith') ? 'forge' : '');   // 'forge' (Ada) | 'half' (Tomas)
     const canFix = have || !!free;
     const what = ev.part || 'wheel';
-    const trick = free === 'half' ? 'Tomas can make a part last twice as long.' : 'Ada knows a trick or two.';
-    const text = `${ev.text || `Bump! The ${what} breaks.`} ${free === 'forge' && !have ? `There is no spare part, but ${trick}` : have ? `There is a spare part in the wagon.${free ? ` ${trick}` : ''}` : free ? `There is no spare part, but ${trick}` : 'There is no spare part in the wagon, so the wagon limps to the next fort.'}`;
+    const text = breakdownText(ev, have, free);
     const c = await showCard({ kicker: 'Breakdown', title: ev.name || `A ${what} breaks`, text, say: text, tone: 'problem', button: canFix ? 'Fix it' : 'Limp along', alt: canFix ? 'Work it out for a token' : undefined });
     if (!T) return;
     let workedOut = false;
@@ -1316,7 +1293,7 @@ async function boot() {
     // the evening of every arrival: camp before the results (never needed: "On to the results" goes straight on)
     if (kind !== 'home') {
       go('stop');
-      const c = await showCard({ kicker: 'Evening', title: 'Make camp tonight?', text: 'Fishing, a card game, a story by the fire, or a good rest.', say: FIXED_LINES[6], tone: 'camp', button: 'On to the results', alt: 'Make camp' });
+      const c = await showCard({ kicker: 'Evening', title: 'Make camp tonight?', text: 'Fishing, a card game, a story by the fire, or a good rest.', say: CAMP_EVENING, tone: 'camp', button: 'On to the results', alt: 'Make camp' });
       if (screen !== 'stop') return;
       if (c === 'alt') {
         const how = await openCamp('arrival');
@@ -1482,7 +1459,7 @@ async function boot() {
     if (!c) return;
     const L = c.lines || {};
     const line = which === 'happy' && L.happy ? L.happy : (L.trail || [])[num(save.journey && save.journey.day) % Math.max(1, (L.trail || []).length)] || L.happy || '';
-    if (line) { toast(`${c.name}: “${line}”`); if (speak) app.say(line); }
+    if (line) toast(`${c.name}: “${line}”`, speak ? line : '');
     dropCard(who);
   }
   /** Quick Draw: first to 7 right facts on the marker panel; the companion "draws" after every answer. A token on a
@@ -1587,7 +1564,7 @@ async function boot() {
   async function offerDog(leg) {
     const J = save.journey;
     if (!J || J.dog || LEGS.indexOf(leg) < KEARNY) return;
-    const c = await showCard({ kicker: 'At the fort', title: 'A new friend', text: FIXED_LINES[7], say: FIXED_LINES[7], tone: 'camp', button: 'Keep it!', alt: 'Not now' });
+    const c = await showCard({ kicker: 'At the fort', title: 'A new friend', text: DOG_OFFER, say: DOG_OFFER, tone: 'camp', button: 'Keep it!', alt: 'Not now' });
     if (c !== true || screen !== 'store' || J !== save.journey) return;
     const got = await dogUI.ask();
     if (got && J === save.journey) {
@@ -1726,9 +1703,8 @@ async function boot() {
   const v2 = { play: null, raft: null, bar: null };
   const peopleUI = createPeople(app);
   screens.stop = peopleUI;
-  const deedPop = createDeedPop($('#deedpop'), { sfx: Sfx, say: (t) => { voiceFor([t]).then(() => app.say(t)); }, waitFor: () => cardPop.showing, hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) });
+  const deedPop = createDeedPop($('#deedpop'), { sfx: Sfx, say: (t) => { app.sayLater(t); }, waitFor: () => cardPop.showing, hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) });
   const RAFT_BENDS = 4;
-  const RAFT_INTRO = 'The last stretch: a raft down the Columbia River to the Willamette Valley! Steer around the rocks. At every bend, answer a fact and the raft rolls on.';
   const seedFor = (tag) => { const J = save.journey; return hashString(`${currentPlayerId}:${J ? J.legId : ''}:${J ? num(J.day) : 0}:${J ? num(J.legStarts) : 0}:${tag}`); };
   function playMini(fn, opts, { end, types = [], onEvent = null } = {}) {
     return new Promise((resolve) => {
@@ -1788,7 +1764,7 @@ async function boot() {
     const J = save.journey;
     let r = null;
     try { r = JA.crossRiver(J, { how, ...args }); } catch (e) { console.warn('[WagonWest] crossRiver', e); }
-    if (!r) r = { how, soakedLb: 0, ropeUsed: false, skill: null, line: 'You are across the river.', say: 'You are across the river.' };
+    if (!r) r = { how, soakedLb: 0, ropeUsed: false, skill: null, line: RIVER_ACROSS, say: RIVER_ACROSS };
     app.persist(); refreshCash();
     return r;
   }
@@ -1933,9 +1909,9 @@ async function boot() {
   });
 
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { pause(); tts.cancel(); Audio.suspend(); Sfx.suspend(); if (currentPlayerId) app.persist(); } else { Audio.resume(); Sfx.resume(); }
+    if (document.hidden) { pause(); speech.cancel(); Audio.suspend(); Sfx.suspend(); if (currentPlayerId) app.persist(); } else { Audio.resume(); Sfx.resume(); }
   });
-  window.addEventListener('pagehide', () => { pause(); tts.cancel(); if (currentPlayerId) app.persist(); });
+  window.addEventListener('pagehide', () => { pause(); speech.cancel(); if (currentPlayerId) app.persist(); });
 
   // ---------- navigation ----------
   $('#btn-trail').addEventListener('click', () => {
@@ -1988,7 +1964,7 @@ async function boot() {
   sync.start();                        // first pull after the picker is on screen (never blocks it)
   pingNow('day');                      // once per device per UTC day (fire and forget)
   window.__wagonWest = {
-    app, pz, sync, tts, store, river, postOffice, results, hud, markerPanel, problemPanel, spellPanel, card, wagonPanel,
+    app, pz, sync, tts, speech, store, river, postOffice, results, hud, markerPanel, problemPanel, spellPanel, card, wagonPanel,
     get scene() { return scene; }, get screen() { return screen; }, get save() { return save; }, get facts() { return facts; },
     get reading() { return { overlay: app.overlayOpen(), play: !!v2.play, bar: !!v2.bar, mini: !!mini, derby: !!derby }; },   // (tests: what holds the toasts)
     holdTrail(on) { if (T) T.busy = !!on; return !!T; },   // (a test hook: the day loop waits, as it does under a scripted event)

@@ -6,6 +6,11 @@
 //   2. the kid-facing tables in src/journey/*  (deeds, upgrades, challenge kinds and labels, skills, event payload text)
 //   3. every word-problem story problems.js can tell (each kind, a spread of facts and seasons), the work shown after a miss
 //   4. the string literals in the source of src/journey/*.js and src/content/*.js (comments skipped), as ui-smoke does for the UI
+//   5. (v1.3.2) the natural voice's coverage: every string the UI can speak is reachable by prepareVoice (src/meta/voiceTexts.js
+//      collectVoiceTexts, the one list main.js prepares): the trail's content walked on its own (lookouts, nations, events,
+//      companions, cards, people and their offers, deeds, the letters' templates) and the string literals the source hands to the
+//      voice (effectToast / toast second argument, say:, app.say, sayWait, a card's text:), each compared with the collected list;
+//      lines that exist only at run time are listed by name and prepared just in time (speech.js ready()).
 // The Parent Zone is for grown-ups and is not here. Exit code 1 on any hit.
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -97,10 +102,91 @@ for (const f of files) {
 // a literal is a hit only if the same text is not already reported from the walk above
 for (const h of lit) if (!hits.some((x) => h.includes(x.split(' in ')[1] || '\u0000'))) hits.push(`source ${h}`);
 
+// 5. the natural voice: everything the UI can say that is known ahead is in the list prepareVoice() asks for
+const { collectVoiceTexts, allVoiceTexts, spoken } = await import(pathToFileURL(path.join(root, 'src/meta/voiceTexts.js')).href);
+const { speechChunks } = await import(pathToFileURL(path.join(root, 'src/meta/speech.js')).href);
+const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+const stripStop = (t) => norm(t).replace(/[.!?]$/, '');
+// what prepareVoice can reach: its list for every leg (a leg's letters are prepared when that leg starts), as clip pieces
+const reachable = new Set();
+for (const leg of ALL_LEGS) for (const t of speechChunks(collectVoiceTexts({ legId: leg.id, playerName: 'Mia' }).ordered)) reachable.add(norm(t));
+const reachableLoose = new Set([...reachable].map(stripStop));
+const has = (t) => speechChunks([t]).every((c) => reachable.has(norm(c)) || reachableLoose.has(stripStop(c)));
+const missingVoice = [];
+const need = (where, t) => { if (t && norm(t) && !has(t)) missingVoice.push(`${where}: "${norm(t).slice(0, 100)}"`); };
+const regexQuote = (t) => t.replace(/[.*+?^$()|[\]\\]/g, '\\$&');
+// 5a. the content, walked on its own (not through the collector)
+const { LOOKOUTS } = mods['src/content/lookouts.js'];
+const { EVENTS } = mods['src/content/events.js'];
+const { COMPANIONS } = mods['src/content/companions.js'];
+const { CARDS } = mods['src/content/cards.js'];
+const { PEOPLE } = mods['src/content/people.js'];
+const { DEEDS } = mods['src/journey/deeds.js'];
+const { LETTER_LINES, LETTER_OPEN } = mods['src/content/letters.js'];
+for (const [id, l] of Object.entries(LOOKOUTS)) need(`lookout ${id}`, l.say || l.text);
+for (const n of NATIONS) need(`nation ${n.id}`, n.fact && (n.fact.say || n.fact.text));
+for (const e of EVENTS) need(`event ${e.id}`, e.say || e.text);
+for (const c of COMPANIONS) {
+  for (const l of (c.lines.trail || [])) need(`companion ${c.id} line`, l);
+  need(`companion ${c.id} tired`, c.lines.tired); need(`companion ${c.id} happy`, c.lines.happy); need(`companion ${c.id} skill`, `${c.name}: ${c.skill.text}`);
+}
+for (const c of CARDS) need(`card ${c.id}`, c.say || (c.fact && (c.fact.say || c.fact.text)) || (typeof c.fact === 'string' ? c.fact : ''));
+for (const p of PEOPLE) { need(`person ${p.id}`, p.lines.join(' ')); if (p.gift && p.gift.text) need(`person ${p.id} gift`, p.gift.text); }
+for (const d of DEEDS) need(`deed ${d.id}`, d.say);
+for (const o of LETTER_OPEN) need('letter opening', spoken(o));
+// the letters' templates: each one matches a collected line (a line that tells a number of pounds is said just in time)
+for (const [key, list] of Object.entries(LETTER_LINES)) {
+  for (const line of list) {
+    if (/\{food\}/.test(line)) continue;
+    const re = new RegExp('^' + regexQuote(line).replace(/\{(\w+)\}/g, '.+') + '$');
+    if (![...reachable].some((t) => re.test(t))) missingVoice.push(`letter line ${key}: "${line.slice(0, 80)}"`);
+  }
+}
+// 5b. the string literals the source hands to the voice (effectToast / toast second argument, say:, app.say, sayWait, a card's text:)
+const dynamic = [];
+const voiceFiles = [...jsIn('src/ui').filter((f) => !/parentZone/.test(f)), 'src/main.js'];
+const LIT = '(`(?:[^`\\\\]|\\\\.)*`|\'(?:[^\'\\\\\\n]|\\\\.)*\')';
+const callSites = [
+  ['effectToast second argument', new RegExp('effectToast\\(\\s*' + LIT + '\\s*,\\s*' + LIT + '\\s*\\)', 'g'), 2],
+  ['toast second argument', new RegExp('\\btoast\\(\\s*' + LIT + '\\s*,\\s*' + LIT + '\\s*\\)', 'g'), 2],
+  ['say:', new RegExp('\\bsay:\\s*' + LIT, 'g'), 1],
+  ['app.say(', new RegExp('app\\.say\\(\\s*' + LIT + '\\s*\\)', 'g'), 1],
+  ['sayWait(', new RegExp('sayWait\\(\\s*' + LIT, 'g'), 1],
+  ['showCard / card.show text:', new RegExp('(?:showCard|card\\.show)\\(\\{[^\\n]*?\\btext:\\s*' + LIT, 'g'), 1],
+];
+let sites = 0;
+for (const f of voiceFiles) {
+  const src = readFileSync(path.join(root, f), 'utf8').split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  for (const [label, re, grp] of callSites) {
+    for (const m of src.matchAll(re)) {
+      if (/showCard|card\.show/.test(label) && /\bsay:/.test(m[0] + src.slice(m.index + m[0].length, src.indexOf('\n', m.index + m[0].length)))) continue;      // (the card says its `say:`, not its text)
+      sites++;
+      const lit = m[grp];
+      const body = lit.slice(1, -1).replace(/\\(['`\\])/g, '$1');
+      if (lit[0] !== '`') { need(`${f} ${label}`, spoken(body)); continue; }
+      const literal = body.replace(/\$\{[^}]*\}/g, '');
+      if (literal.replace(/\s+/g, '').length < 12) { dynamic.push(`${f} ${label}: ${lit.slice(0, 60)}`); continue; }
+      const re2 = new RegExp('^' + regexQuote(body.replace(/\$\{[^}]*\}/g, '\u0000')).replace(/\u0000/g, '.+') + '$');
+      if (![...reachable].some((t) => re2.test(t))) missingVoice.push(`${f} ${label}: ${lit.slice(0, 90)}`);
+    }
+  }
+}
+// main.js must really prepare this list
+const mainSrc = readFileSync(path.join(root, 'src/main.js'), 'utf8');
+if (!/collectVoiceTexts\(/.test(mainSrc) || !/prepareBulk\(/.test(mainSrc)) missingVoice.push('src/main.js prepareVoice() does not prepare collectVoiceTexts() through speech.prepareBulk()');
+for (const t of allVoiceTexts({ playerName: 'Mia' })) need('allVoiceTexts', t);
+console.log(`voice coverage: ${reachable.size} prepared lines reachable (a leg's list: ${collectVoiceTexts({ legId: 'fort-kearny', playerName: 'Mia' }).ordered.length}), ${sites} call sites read, ${dynamic.length} built at run time and prepared just in time`);
+for (const d of dynamic) console.log('  · ' + d);
+
 console.log(`content audit: ${files.length} modules, ${problems} word problems, ${seen} strings checked`);
+if (missingVoice.length) {
+  console.log(`\n${missingVoice.length} spoken string${missingVoice.length === 1 ? '' : 's'} not reachable by prepareVoice:`);
+  for (const m of missingVoice.slice(0, 40)) console.log('  ✗ ' + m);
+  process.exit(1);
+}
 if (hits.length) {
   console.log(`\n${hits.length} banned word${hits.length === 1 ? '' : 's'} found:`);
   for (const h of hits) console.log('  ✗ ' + h);
   process.exit(1);
 }
-console.log('NO BANNED WORDS IN THE CONTENT');
+console.log('NO BANNED WORDS IN THE CONTENT; EVERY SPOKEN STRING IS PREPARED OR PREPARED JUST IN TIME');

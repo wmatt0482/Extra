@@ -64,8 +64,11 @@ export function hitsOf(box, boxes) {
 /** Every visible control and piece of text that `box` would touch. */
 export const touching = (box, skip = null) => hitsOf(box, readingBoxes(skip));
 
-/** The toast layer. root = #toasts; blocked() → true while a panel / card / mini-game is open. */
-export function createToaster(root, { blocked = () => false } = {}) {
+/** The toast layer. root = #toasts; blocked() → true while a panel / card / mini-game is open. A toast may carry a line to say
+ *  (`add(el, ms, { say })`): it is handed to say(text) when the toast is SHOWN (not when it is queued), and the next toast
+ *  with a line is shown only when speaking() says the voice has finished the last one: held toasts come out one at a time
+ *  and their speech queues behind whatever is playing, never cutting a dictation or a panel's reading (src/meta/speech.js). */
+export function createToaster(root, { blocked = () => false, say = null, speaking = () => false } = {}) {
   const pending = [];                              // { el, ms, text }
   let timer = 0;
   const trace = [];                                // (tests) what happened to each toast, newest last
@@ -111,6 +114,7 @@ export function createToaster(root, { blocked = () => false } = {}) {
     if (!at) { it.el.remove(); return false; }
     root.style.left = at.x; root.style.top = at.y;
     note('shown', it);
+    if (it.say && say && !it.said) { it.said = true; try { say(it.say); } catch (_) { /* ignore */ } }      // (once: a toast parked and shown again does not say its line again)
     shownLog.push(it.text); if (shownLog.length > 80) shownLog.shift();
     it.el.style.visibility = '';
     expire(it);
@@ -123,9 +127,14 @@ export function createToaster(root, { blocked = () => false } = {}) {
     if (!root.children.length) home();
     // (a line nobody could be shown for a good while is stale: a plain toast after 8 s, an effect line after 25 s)
     for (let i = pending.length - 1; i >= 0; i--) if (Date.now() - pending[i].at > (pending[i].keep ? MAX_WAIT_MS : PLAIN_WAIT_MS)) { note('stale', pending[i]); pending.splice(i, 1); }
+    let spokeThisPass = false;
     while (pending.length && !blocked() && root.children.length < MAX_SHOWN) {
-      if (!place(pending[0])) break;
-      pending.shift();
+      // a toast with a line waits while the voice is still on the last one (the plain toasts behind it do not wait)
+      let i = 0;
+      if (pending[0].say && say && (spokeThisPass || speaking())) { i = pending.findIndex((p) => !(p.say && say)); if (i < 0) break; }
+      if (!place(pending[i])) break;
+      if (pending[i].say && say) spokeThisPass = true;
+      pending.splice(i, 1);
     }
     arm();
   }
@@ -137,11 +146,11 @@ export function createToaster(root, { blocked = () => false } = {}) {
   }
   return {
     /** Queue a toast element for `ms` of life once it is shown. Returns the element. */
-    add(el, ms = 2700) {
+    add(el, ms = 2700, { say: line = '' } = {}) {
       const text = el.textContent;
       const dup = pending.find((p) => p.text === text);
       if (dup) return dup.el;
-      const it = { el, ms, text, timer: 0, at: Date.now(), keep: el.classList.contains('fx') };   // (an effect line is information: it outlives a change of screen)
+      const it = { el, ms, text, say: line, timer: 0, at: Date.now(), keep: el.classList.contains('fx') };   // (an effect line is information: it outlives a change of screen)
       el._item = it;
       pending.push(it);
       note('queued', it);

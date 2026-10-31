@@ -548,3 +548,30 @@ enforces the TARGETS at the top of the file.
   levels, the wagon upgrades (6 / 8 / 6 trade tokens or $40 / $60 / $40, bought with tokens in practice), the hunt and
   fish yields, the food rules. Trade tokens still pile up (about 60 spare at the end of a Rookie journey): they want a
   sink, which is a UI decision.
+
+## v1.3.2 — the voice (owner, Oct 31, real device: "There are glitchy voices reading the letters. Also the old robot voices are back.")
+Rule (stands from v1.1 §1): the natural voice plays a phrase only from a clip made for that exact text; a phrase without its
+clip is **not** handed to the device voice while the natural voice is in use (a family code, a natural voice picked, a server
+with a key that accepts the family). The device voice speaks only when the natural voice is not in use at all.
+- **One voice** (`src/meta/speech.js`, created in main.js; every `app.say` / `sayAll` / `sayWait`, the marker and problem panels
+  (through a thin `tts` facade) and every toast / pop line go through it). A line the screen reads (`say`: a card, a letter
+  line, a panel's question, Hear it) replaces what is playing. A toast's or a deed's line (`later`) never cuts anything: it is
+  handed over when its toast is *shown*, waits while a panel, the dictation, a card, a mini-game or the pause sheet is open, and
+  for the voice to be idle 0.9 s, plays one at a time, and is dropped after 20 s. Toasts with a line are released one at a time.
+  A trail day's effect toasts wait for that day's marker / event (the panel would cut them).
+- **Clips**: `ready(texts)` asks for the clips of a line and waits for them up to 9 s (asking again quietly); the line is then
+  played with `cloud.play` (not `tts.say`, which gives a clip slower than 4 s to load to the device voice); a slow clip is
+  retried, a missing one skipped. Screens that open a card or a panel wait at most 2.5 s for the clips ("a head start"), the
+  speech itself waits longer; the Post Office waits 6 s before the letter, the dictation's words (and their letters) are ready
+  before the spell panel opens.
+- **Prepared ahead** (`prepareVoice` → `speech.prepareBulk`, small batches of 8, one at a time, stepping aside whenever a line
+  is waiting for its own clip): the week's words and the alphabet, the fixed lines (including the first-run "How the trail
+  works" card), the river, then **this leg** (lookout, nation fact, the people at the stop and their gifts and offers,
+  the landmark card, every letter line the leg's letter can be made of), the child's mile-marker sentences, the next leg, then
+  the rest. The list is `collectVoiceTexts` in `src/meta/voiceTexts.js`. Said just in time, never ahead: word problems and their
+  work, the P.S. with the three words, the closing with the child's name, a letter line that tells pounds, the daily challenge,
+  the Derby result, the dog's berries, riddles.
+- **Tests**: `tools/content-audit.mjs` compares every string the UI can speak (the content walked independently and the string
+  literals handed to the voice in `src/main.js` and `src/ui/*.js`) with that list; `tools/ui-smoke.mjs` "the letter home with
+  instrumented engines" asserts zero device-voice utterances, zero overlapping or cancelled utterances, and that a toast line and
+  a deed line fired during the dictation wait for it.

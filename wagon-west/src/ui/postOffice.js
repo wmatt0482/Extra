@@ -72,7 +72,7 @@ export function createPostOffice(app) {
       cur = { letter, words: picks, done: false, text: '' };
       const psText = letter.ps || `P.S. My spelling words this week: ${words.join(', ')}.`;
       const signed = `${letter.close || 'Love,'} ${(app.player && app.player.name) || ''}`.trim();
-      await Promise.all([app.voiceFor([letter.opening || 'Dear everyone back home,', ...letter.lines, PS_INTRO, READ_BACK, psText, signed].map((t) => app.spoken(t))), sleep(app.beat(400))]);
+      await Promise.all([app.voiceFor([letter.opening || 'Dear everyone back home,', ...letter.lines, PS_INTRO, READ_BACK, psText, signed].map((t) => app.spoken(t)), 6000), sleep(app.beat(400))]);
       await line(letter.opening || 'Dear everyone back home,', 'po-open');
       for (const l of letter.lines) { if (app.screen !== 'post') return { cancelled: true }; await line(l); }
       if (app.screen !== 'post') return { cancelled: true };
