@@ -13,7 +13,7 @@
   command = "bash build.sh"
   # skip the deploy when a push did not touch the site, the games, the functions (netlify/: sync + natural voice),
   # their dependencies or this file
-  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- site build.sh car-jump trail-blazer fraction-fright wagon-west netlify netlify.toml package.json package-lock.json"
+  ignore = "git diff --quiet $CACHED_COMMIT_REF $COMMIT_REF -- site build.sh car-jump trail-blazer fraction-fright wagon-west build-crew netlify netlify.toml package.json package-lock.json"
 
 [build.environment]
   # the repo root holds an unrelated Next.js app. Dependencies are installed (the sync function bundles
@@ -99,3 +99,19 @@
     Cache-Control = "public, max-age=300"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "no-referrer"
+
+# Build Crew uses local pinned Three.js and Rapier; relative modules require the trailing slash.
+[[redirects]]
+  from = "/build-crew"
+  to = "/build-crew/"
+  status = 301
+
+[[headers]]
+  for = "/build-crew/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+
+[[headers]]
+  for = "/build-crew/manifest.webmanifest"
+  [headers.values]
+    Content-Type = "application/manifest+json"

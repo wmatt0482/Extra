@@ -1,0 +1,14 @@
+{
+  "fixture": "8 cubes, 1.2 m sides, 24 kg, mu .9, restitution .07, 12 solver iterations, 1200 fixed 1/60 steps",
+  "rapier": {
+    "maxHorizontalDrift": 0.0003693420077694838,
+    "maxHeightError": 0.025684356689453125,
+    "cpuMs": 149.30258400000002
+  },
+  "cannon": {
+    "maxHorizontalDrift": 0.14339243030133733,
+    "maxHeightError": 0.016611559494858597,
+    "cpuMs": 54.91533300000003
+  },
+  "note": "Different solver/damping implementations; this measures this setup, not all possible tuning. Rapier CPU includes yard recovery/event logic."
+}

@@ -1,0 +1,173 @@
+// Headless Node checks of the real Rapier simulation and the save logic (SPEC §7): all ten jobs solved through the
+// same production axes the browser uses (tools/solution.mjs), a tall stack that stays upright and falls asleep, grab
+// range, held-toy exclusion and machine reset, chassis collision with a wall, the wrecking ball staying on its crane
+// across hops, and the sync merge's commutativity, reset rule and bounds. Timings go to RESULTS_DIR.
+import assert from 'node:assert/strict';
+import { writeFileSync } from 'node:fs';
+import { resultsPath } from './runner.mjs';
+import { performance } from 'node:perf_hooks';
+import { initPhysics, Yard, DT, RAPIER } from '../src/physics.mjs';
+import { ROUNDS, SANDBOX } from '../src/content.mjs';
+import { Mission, evaluate } from '../src/missions.mjs';
+import { defaultSave, normalize, normalizeYard, mergeBc } from '../src/meta/save.mjs';
+import { solve } from './solution.mjs';
+await initPhysics();
+const report = {};
+let yard, mission;
+const state = () => ({
+  active: yard.active,
+  held: yard.held?.id,
+  blocks: yard.poses(),
+  machines: yard.machines.map((m) => ({
+    kind: m.kind,
+    x: m.x,
+    z: m.z,
+    yaw: m.yaw,
+    swing: m.swing,
+    lift: m.lift,
+    reach: m.reach,
+    tip: { ...m.tip },
+  })),
+  status: mission.status,
+  complete: mission.complete,
+});
+// Steps the simulation exactly as the game loop does: a physics step, then the mission check on the new poses.
+const advance = (axes, n) => {
+  for (let i = 0; i < n; i++) {
+    yard.step(axes);
+    mission.step(yard.poses(), yard.held?.id, DT);
+  }
+  return state();
+};
+for (const round of ROUNDS) {
+  yard = new Yard(round);
+  mission = new Mission(round);
+  const start = performance.now();
+  await solve({ state, advance, action: () => yard.grab(), select: (i) => yard.select(i) }, round.id);
+  report[round.id] = {
+    simulatedSeconds: Math.round(yard.time),
+    cpuMs: Math.round(performance.now() - start),
+    complete: mission.complete,
+  };
+  yard.destroy();
+  console.log(`PASS job ${round.id}`);
+}
+// A tower must remain upright and sleeping without a grab. This is separate from mission flags.
+yard = new Yard({
+  ...SANDBOX,
+  toys: Array.from({ length: 8 }, (_, i) => ({ type: 'cube', x: 5, y: 0.61 + i * 1.21, z: 5 })),
+});
+const t0 = performance.now();
+for (let i = 0; i < 1200; i++) yard.step();
+const poses = yard.poses(),
+  maxDrift = Math.max(...poses.map((b) => Math.hypot(b.position.x - 5, b.position.z - 5)));
+assert(maxDrift < 0.15);
+assert(poses.every((b, i) => Math.abs(b.position.y - (0.6 + i * 1.2)) < 0.1));
+report.stack = {
+  blocks: 8,
+  seconds: 20,
+  maxDrift,
+  cpuMs: performance.now() - t0,
+  sleeping: yard.blocks.every((b) => b.body.isSleeping()),
+};
+assert(report.stack.sleeping);
+assert(evaluate(ROUNDS[0], poses).done, 'a tall settled stack inside a delivery square counts');
+yard.destroy();
+console.log('PASS stable eight-block stack and sleep');
+yard = new Yard(ROUNDS[0]);
+for (let i = 0; i < 100; i++) yard.step();
+assert.equal(yard.grab(), false, 'tool cannot grab remotely');
+const first = yard.blocks[0];
+first.body.setTranslation({ x: yard.tool.x, y: yard.tool.y, z: yard.tool.z }, true);
+assert(yard.grab());
+yard.step({ lift: 1 });
+assert.equal(evaluate(ROUNDS[0], yard.poses(), first.id).done, false);
+yard.resetMachine();
+assert.equal(yard.held, null);
+assert(yard.poses().every((b) => Number.isFinite(b.position.y)));
+yard.destroy();
+console.log('PASS grab range, held exclusion, recovery');
+yard = new Yard({ ...ROUNDS[0], props: [{ x: -6, y: 1, z: 0, size: [4, 2, 0.6] }] });
+for (let i = 0; i < 300; i++) yard.step({ drive: 1 });
+assert(yard.machine.z < -1.5, 'assisted chassis stops at a solid wall');
+yard.destroy();
+console.log('PASS chassis obstacle collision');
+yard = new Yard({ ...SANDBOX, machines: ['skid', 'excavator', 'crane'] });
+yard.select(2);
+yard.wreck();
+const owner = yard.machine;
+yard.select(0);
+for (let i = 0; i < 120; i++) yard.step({ drive: 1 });
+assert(
+  Math.abs(yard.ball.translation().x - owner.tip.x) < 0.25,
+  'wrecking ball stays attached to its crane when switching machines',
+);
+yard.destroy();
+console.log('PASS wrecking-ball ownership across machine hops');
+// Terrain stamps: what is drawn is what is solid. The hill's collider surface must follow the height machines ride
+// on (groundAt), a cube dropped on its crown must rest on it, and a cube in a pit must settle at the bottom.
+yard = new Yard({ ...SANDBOX, machines: ['skid'], toys: [] });
+assert(yard.stamp('hill', 6, 6) && yard.stamp('pit', -6, 6));
+yard.world.step();
+for (const angle of [0, 0.26, 1.1, 2.4]) {
+  for (const r of [0, 0.4, 0.9, 1.4, 1.8]) {
+    const x = 6 + r * Math.sin(angle),
+      z = 6 + r * Math.cos(angle),
+      hit = yard.world.castRay(new RAPIER.Ray({ x, y: 5, z }, { x: 0, y: -1, z: 0 }), 10, true);
+    assert(
+      Math.abs(5 - hit.timeOfImpact - yard.groundAt(x, z)) < 0.08,
+      `hill surface at r=${r} matches its ride height`,
+    );
+  }
+}
+assert(yard.groundAt(6, 6) > 0.5 && yard.groundAt(6, 6) < 0.7, 'a hill is a low mound');
+assert.equal(yard.groundAt(-6, 6), -0.9, 'a pit is recessed');
+yard.spawn({ type: 'cube', color: '#e65e4b', x: 6, y: 3, z: 6 });
+yard.spawn({ type: 'cube', color: '#e65e4b', x: -6, y: 3, z: 6 });
+for (let i = 0; i < 300; i++) yard.step();
+const [onHill, inPit] = yard.poses();
+assert(
+  Math.abs(onHill.position.y - (yard.groundAt(onHill.position.x, onHill.position.z) + 0.6)) < 0.25,
+  'a cube rests on the mound',
+);
+assert(onHill.position.y > 1 && onHill.position.y < 1.4);
+assert(Math.abs(inPit.position.y - (-0.9 + 0.6)) < 0.1, 'a cube falls to the bottom of the pit');
+yard.destroy();
+console.log('PASS terrain stamps: mound and pit colliders match what is drawn');
+// The ramp is a wedge: its collider surface follows groundAt along the whole slope, it is solid behind the high edge
+// (a ray from above never lands below the slope), and a dropped cube comes to rest on it rather than inside it.
+yard = new Yard({ ...SANDBOX, machines: ['skid'], toys: [] });
+assert(yard.stamp('ramp', -6, -6));
+yard.world.step();
+for (const dx of [-1.8, 0, 1.8]) {
+  for (const dz of [-1.9, -1, 0, 1, 1.9]) {
+    const hit = yard.world.castRay(new RAPIER.Ray({ x: -6 + dx, y: 5, z: -6 + dz }, { x: 0, y: -1, z: 0 }), 10, true);
+    assert(Math.abs(5 - hit.timeOfImpact - yard.groundAt(-6 + dx, -6 + dz)) < 0.05, `ramp surface at dz=${dz}`);
+  }
+}
+assert(Math.abs(yard.groundAt(-6, -4.1) - 1.8) < 0.1 && yard.groundAt(-6, -7.9) < 0.1, 'a ramp climbs 1.8 m along z');
+yard.spawn({ type: 'cube', color: '#e65e4b', x: -6, y: 4, z: -6.5 });
+for (let i = 0; i < 400; i++) yard.step();
+const [onRamp] = yard.poses();
+assert(onRamp.position.y > yard.groundAt(onRamp.position.x, onRamp.position.z) - 0.05, 'a cube rests on the ramp, not in it');
+yard.destroy();
+console.log('PASS terrain stamps: ramp wedge collider matches what is drawn');
+const a = defaultSave(),
+  b = defaultSave();
+a.done = [1, 2];
+a.rewards = ['cream'];
+b.done = [1, 3];
+b.rewards = ['leaf'];
+a.play['2026-10-31'] = { rounds: 2, seconds: 20 };
+b.play['2026-10-31'] = { rounds: 1, seconds: 50 };
+const merged = mergeBc({ updatedAt: 1, data: a }, { updatedAt: 2, data: b });
+assert.deepEqual(merged.done, [1, 2, 3]);
+assert.equal(merged.play['2026-10-31'].seconds, 50);
+assert.deepEqual(merged, mergeBc({ updatedAt: 2, data: b }, { updatedAt: 1, data: a }));
+b.resetAt = 20;
+assert.deepEqual(mergeBc({ updatedAt: 40, data: a }, { updatedAt: 1, data: b }).done, b.done);
+assert.equal(normalizeYard({ toys: Array(100).fill({ type: 'cube', x: Infinity }) }).toys.length, 64);
+assert.deepEqual(normalize({ done: [-2, 50, 1, 1] }).done, [1]);
+console.log('PASS commutative merge, reset, bounds');
+writeFileSync(resultsPath('physics-results.json'), JSON.stringify(report, null, 2) + '\n');
+console.log('All physics and mission checks passed.');

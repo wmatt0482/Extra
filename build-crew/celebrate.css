@@ -1,0 +1,103 @@
+/* The job-complete reward sheet. The yard celebrates first (rounds.js holds the sheet for a few seconds); then the
+   sheet slides in with the reward drawn large on a slate plate. The plate uses the HUD's slate, line and amber
+   tokens, so it reads like the rest of the control panels. Loaded after style.css. */
+
+/* After a job completes the hint line stays empty until the next job starts (also when a machine card is pressed). */
+html.job-done .hint {
+  display: none;
+}
+
+/* The sheet over the finished yard: a light veil and little blur, so the build stays visible behind it. */
+#modal:has(.reward-art) {
+  background: #08101b99;
+  backdrop-filter: blur(3px);
+  animation: sheet-veil 0.35s ease-out both;
+}
+#modal:has(.reward-art) .modal-card {
+  animation: sheet-in 0.55s cubic-bezier(0.18, 0.85, 0.25, 1) both;
+}
+
+.reward-art {
+  position: relative;
+  margin: 10px 0 6px;
+  padding: 14px 14px 16px;
+  background: #0f1b26;
+  border: 1px solid #465460;
+  border-bottom: 5px solid #f2b538;
+  border-radius: 4px;
+  overflow: hidden;
+}
+/* A hazard-stripe edge, like the markings on the site fence. */
+.reward-art::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 5px;
+  background: repeating-linear-gradient(135deg, #f2b538 0 8px, #172531 8px 16px);
+}
+.reward-art svg {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: auto;
+  max-height: 230px;
+  margin: 0 auto;
+  animation: reward-stamp 0.5s 0.25s cubic-bezier(0.2, 1.4, 0.4, 1) both;
+}
+
+@keyframes sheet-veil {
+  from {
+    background-color: #08101b00;
+  }
+}
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(70px);
+  }
+}
+@keyframes reward-stamp {
+  from {
+    opacity: 0;
+    transform: scale(1.16);
+  }
+}
+
+/* Phones: a shorter picture keeps the three buttons on screen without scrolling. */
+@media (max-width: 560px) {
+  .reward-art {
+    padding: 10px 10px 13px;
+  }
+  .reward-art svg {
+    max-height: 150px;
+  }
+  #modal:has(.reward-art) .modal-actions {
+    margin-top: 12px;
+  }
+}
+@media (max-height: 520px) {
+  .reward-art svg {
+    max-height: 110px;
+  }
+}
+
+/* Calm motion: the sheet only fades in. */
+.reduced-motion #modal:has(.reward-art),
+.reduced-motion #modal:has(.reward-art) .modal-card,
+.reduced-motion .reward-art svg {
+  animation: sheet-fade 0.25s ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  #modal:has(.reward-art),
+  #modal:has(.reward-art) .modal-card,
+  .reward-art svg {
+    animation: sheet-fade 0.25s ease-out both;
+  }
+}
+@keyframes sheet-fade {
+  from {
+    opacity: 0;
+  }
+}
