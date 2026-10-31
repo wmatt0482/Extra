@@ -16,7 +16,7 @@ import { completeDay, refreshStreak } from '../../spell-jump/src/meta/engagement
 import { ROUNDS, SANDBOX, MACHINES, TOYS, COLORS, VERSION, HINTS, VOICE_LINES } from './content.mjs';
 import { initPhysics, Yard, DT } from './physics.mjs';
 import { Mission } from './missions.mjs';
-import { Scene } from './scene.js';
+import { Scene } from './scene/scene.js';
 import { createControls } from './controls.js';
 import { defaultSave, loadSave, normalize, normalizeYard } from './meta/save.mjs';
 import { registerSync, writeSave } from './meta/sync.js';
