@@ -1,13 +1,18 @@
-// Fast isolated offline regression with host-side deadlines; a stuck worker cannot stall the full smoke suite.
+// A fast, isolated offline regression: register the service worker, save a sandbox, go offline, reload and restore
+// the saved site. Every step has a host-side deadline, so a stuck worker fails this check quickly instead of stalling
+// the full browser smoke. The trace is rewritten after each stage, so a failure shows how far it got.
 import { writeFileSync } from 'node:fs';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+import { loadPlaywright, resultsPath, SWIFTSHADER_ARGS } from './runner.mjs';
+const { chromium } = await loadPlaywright();
 const trace = [],
-  output = new URL('../docs/offline-results.json', import.meta.url);
+  output = resultsPath('offline-results.json');
+/** Records a stage in the trace file and the console. */
 const mark = (stage, extra = {}) => {
   trace.push({ stage, ...extra });
   writeFileSync(output, JSON.stringify({ passed: false, trace }, null, 2));
   console.log(stage);
 };
+/** Fails with a labelled error instead of hanging when a step does not finish within ms. */
 async function bounded(p, label, ms = 15000) {
   let timer;
   try {
@@ -19,10 +24,7 @@ async function bounded(p, label, ms = 15000) {
     clearTimeout(timer);
   }
 }
-const browser = await chromium.launch({
-  headless: true,
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
-});
+const browser = await chromium.launch({ headless: true, args: SWIFTSHADER_ARGS });
 try {
   const context = await browser.newContext({ viewport: { width: 1024, height: 768 } }),
     page = await context.newPage(),

@@ -1,11 +1,12 @@
-// SwiftShader correctness/performance baseline. This does not certify an iPad GPU's frame rate.
+// The frame-time sample (SPEC §6): a sandbox with 64 toys and all three machines, driven for a moment, then 120 frames
+// measured after the adaptive quality controller settles. It asserts the SwiftShader wall-frame ceiling, the CPU update
+// budget and the draw-call and triangle caps. This is a correctness/performance baseline on software rendering; it does
+// not certify an iPad GPU's frame rate.
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser = await chromium.launch({
-  headless: true,
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
-});
+import { loadPlaywright, resultsPath, SWIFTSHADER_ARGS } from './runner.mjs';
+const { chromium } = await loadPlaywright();
+const browser = await chromium.launch({ headless: true, args: SWIFTSHADER_ARGS });
 try {
   const page = await browser.newPage({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1 });
   await page.goto((process.env.BASE_URL || 'http://localhost:8080') + '/build-crew/?nosw=1&perf=1');
@@ -49,9 +50,12 @@ try {
     renderer: p.renderer,
     effectiveDpr: p.effectiveDpr,
     limits: { p95FrameMs: 350, p95UpdateMs: 16.7, drawCalls: 150, triangles: 120000 },
-    note: 'The 350 ms software-only wall-frame ceiling accounts for runner variance; it is not the physical 16.7 ms target. CPU update, draw-call and triangle budgets remain independent guards. Physical iPad and modest-laptop GPU checks remain manual.',
+    note:
+      'The 350 ms software-only wall-frame ceiling accounts for runner variance; it is not the physical 16.7 ms ' +
+      'target. CPU update, draw-call and triangle budgets remain independent guards. Physical iPad and ' +
+      'modest-laptop GPU checks remain manual.',
   };
-  writeFileSync(new URL('../docs/frame-results.json', import.meta.url), JSON.stringify(result, null, 2) + '\n');
+  writeFileSync(resultsPath('frame-results.json'), JSON.stringify(result, null, 2) + '\n');
   console.log(result);
   assert(result.p95FrameMs < 350);
   assert(result.p95UpdateMs < 16.7);

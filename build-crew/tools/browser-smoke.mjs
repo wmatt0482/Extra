@@ -1,24 +1,17 @@
-// Real WebGL and real Rapier, including ten solutions via production axes. No mocks or completion overrides.
+// The full browser check with real WebGL (SwiftShader) and real Rapier: it solves all ten jobs through the production
+// axes and Grab button (tools/solution.mjs, run inside the page), then checks the sandbox save and reload, sibling
+// profile isolation, the Parent Zone PIN, report and unlock, real-time keyboard and touch-stick input, responsive
+// layouts, a full offline reload and natural-voice preparation through a fake transport. No mocks of the game and no
+// completion overrides. Screenshots go to SHOTS_DIR (default docs/screenshots); results to RESULTS_DIR.
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { solve } from './solution.mjs';
+import { fileURLToPath } from 'node:url';
+import { loadPlaywright, resultsPath, SWIFTSHADER_ARGS } from './runner.mjs';
 const game = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-let pw;
-for (const candidate of [
-  process.env.PLAYWRIGHT_MODULE,
-  'playwright',
-  '/Users/Matt/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright/index.mjs',
-].filter(Boolean))
-  try {
-    pw = await import(candidate);
-    break;
-  } catch {}
-if (!pw) throw Error('Install Playwright outside the game and set PLAYWRIGHT_MODULE to its index.mjs.');
+const pw = await loadPlaywright();
 let stage = 'boot';
+/** Fails with a labelled error instead of hanging when a browser step does not finish within ms. */
 async function bounded(p, label, ms = 15000) {
   stage = label;
   let timer;
@@ -34,15 +27,13 @@ async function bounded(p, label, ms = 15000) {
 const BASE = process.env.BASE_URL || 'http://localhost:8080',
   shots = process.env.SHOTS_DIR || path.join(game, 'docs/screenshots');
 mkdirSync(shots, { recursive: true });
-const launch = {
-  headless: true,
-  args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'],
-};
+const launch = { headless: true, args: SWIFTSHADER_ARGS };
 if (process.env.CHROMIUM_PATH) launch.executablePath = process.env.CHROMIUM_PATH;
 const browser = await pw.chromium.launch(launch);
 const errors = [],
   logs = [],
   results = { solutions: [], checks: [] };
+// A host-side deadline: a wedged browser still produces a failure report instead of a silent hang.
 const watchdog = setTimeout(() => {
   const failure = {
     message: 'Browser smoke exceeded its host deadline',
@@ -51,7 +42,7 @@ const watchdog = setTimeout(() => {
     logs: logs.slice(-30),
     completed: results,
   };
-  writeFileSync(path.join(game, 'docs/browser-failure.json'), JSON.stringify(failure, null, 2));
+  writeFileSync(resultsPath('browser-failure.json'), JSON.stringify(failure, null, 2));
   console.error(failure);
   browser.close().catch(() => {});
   setTimeout(() => process.exit(1), 1500);
@@ -64,15 +55,19 @@ context.on('page', (p) =>
   }),
 );
 page.on('pageerror', (e) => errors.push(e.stack || e.message));
+/** Waits until the game has booted (the test hook exists). */
 async function ready(p = page) {
   await p.waitForFunction(() => window.__buildCrew, { timeout: 30000 });
 }
+/** Adds a builder through the real on-screen flow. */
 async function addBuilder(p, name) {
   await p.locator('#add-player').click();
   await p.keyboard.type(name);
   await p.keyboard.press('Enter');
   await p.locator(`[data-profile]`).filter({ hasText: name }).waitFor();
 }
+/** The kid-rules audit: no native inputs or external links outside the Parent Zone, no horizontal overflow, and
+ *  every visible button at least 43 px square. */
 async function audit(p) {
   const result = await p.evaluate(() => ({
     native: [...document.querySelectorAll('input,textarea,select')].filter((e) => !e.closest('#pz')).length,
@@ -318,7 +313,7 @@ try {
   console.log('PASS UI stage');
   results.checks.push('natural voice prepareVoice and just-in-time voiceFor');
   assert.deepEqual(errors, []);
-  writeFileSync(path.join(game, 'docs/browser-results.json'), JSON.stringify(results, null, 2) + '\n');
+  writeFileSync(resultsPath('browser-results.json'), JSON.stringify(results, null, 2) + '\n');
   console.log('All browser checks passed.');
 } catch (e) {
   const failure = { message: e.message, stage, errors, logs: logs.slice(-30), completed: results };
@@ -329,7 +324,7 @@ try {
       3000,
     );
   } catch {}
-  writeFileSync(path.join(game, 'docs/browser-failure.json'), JSON.stringify(failure, null, 2));
+  writeFileSync(resultsPath('browser-failure.json'), JSON.stringify(failure, null, 2));
   try {
     await bounded(page.screenshot({ path: path.join(shots, 'failure.png') }), 'failure screenshot', 5000);
   } catch {}

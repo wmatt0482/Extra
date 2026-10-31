@@ -1,5 +1,10 @@
+// Headless Node checks of the real Rapier simulation and the save logic (SPEC §7): all ten jobs solved through the
+// same production axes the browser uses (tools/solution.mjs), a tall stack that stays upright and falls asleep, grab
+// range, held-toy exclusion and machine reset, chassis collision with a wall, the wrecking ball staying on its crane
+// across hops, and the sync merge's commutativity, reset rule and bounds. Timings go to RESULTS_DIR.
 import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
+import { resultsPath } from './runner.mjs';
 import { performance } from 'node:perf_hooks';
 import { initPhysics, Yard, DT, RAPIER } from '../src/physics.mjs';
 import { ROUNDS, SANDBOX } from '../src/content.mjs';
@@ -26,6 +31,7 @@ const state = () => ({
   status: mission.status,
   complete: mission.complete,
 });
+// Steps the simulation exactly as the game loop does: a physics step, then the mission check on the new poses.
 const advance = (axes, n) => {
   for (let i = 0; i < n; i++) {
     yard.step(axes);
@@ -115,5 +121,5 @@ assert.deepEqual(mergeBc({ updatedAt: 40, data: a }, { updatedAt: 1, data: b }).
 assert.equal(normalizeYard({ toys: Array(100).fill({ type: 'cube', x: Infinity }) }).toys.length, 64);
 assert.deepEqual(normalize({ done: [-2, 50, 1, 1] }).done, [1]);
 console.log('PASS commutative merge, reset, bounds');
-writeFileSync(new URL('../docs/physics-results.json', import.meta.url), JSON.stringify(report, null, 2) + '\n');
+writeFileSync(resultsPath('physics-results.json'), JSON.stringify(report, null, 2) + '\n');
 console.log('All physics and mission checks passed.');

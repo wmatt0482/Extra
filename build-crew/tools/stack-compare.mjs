@@ -1,4 +1,6 @@
-// Optional comparison tool: cannon-es is installed outside the game and never shipped to the browser.
+// Optional solver comparison behind the Rapier choice (SPEC §2): the same eight-cube stack settles for 20 s in Rapier
+// (through the real Yard) and in cannon-es 0.20.0, and the drift and height error of each are written to
+// docs/stack-comparison.json. cannon-es is installed outside the game (CANNON_MODULE) and never shipped.
 import { writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import { initPhysics, Yard } from '../src/physics.mjs';
@@ -60,7 +62,9 @@ const result = {
     blocks.map((b) => b.position),
     cannonMs,
   ),
-  note: 'Different solver/damping implementations; this measures this setup, not all possible tuning. Rapier CPU includes yard recovery/event logic.',
+  note:
+    'Different solver/damping implementations; this measures this setup, not all possible tuning. ' +
+    'Rapier CPU includes yard recovery/event logic.',
 };
 writeFileSync(new URL('../docs/stack-comparison.json', import.meta.url), JSON.stringify(result, null, 2) + '\n');
 rapier.destroy();

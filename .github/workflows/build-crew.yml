@@ -11,6 +11,9 @@ jobs:
   playable:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      # The tools write *-results.json outside the tree by default; CI collects them in docs/ for the evidence upload.
+      RESULTS_DIR: ${{ github.workspace }}/build-crew/docs
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

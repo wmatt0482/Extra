@@ -1,4 +1,7 @@
-// A reusable operator for both Node and browser. It sends only production axes and Grab/Release; never sets a pose.
+// A scripted operator that solves any of the ten jobs, shared by the Node physics tests and the browser smoke. It
+// only sends production control axes and Grab/Release through the caller's state/advance/action/select callbacks, and
+// never sets a pose, so a job completes only if the real machines really move the toys. The routes are deliberately
+// slow and careful: drive along a lane at z = -6.2, approach square on, lift high, then place and let things settle.
 import { ROUNDS, MACHINES } from '../src/content.mjs';
 const clamp = (v, a = -1, b = 1) => Math.max(a, Math.min(b, v));
 const angle = (a) => Math.atan2(Math.sin(a), Math.cos(a));
@@ -20,6 +23,7 @@ export async function solve({ state, advance, action, select }, id) {
   const tick = async (a, n = 12) => {
     s = await advance(a, n);
   };
+  // Raises or lowers the tool to height y, then waits for the load to stop swinging.
   async function height(y) {
     for (let i = 0; i < 100; i++) {
       const m = await get(),
@@ -29,6 +33,7 @@ export async function solve({ state, advance, action, select }, id) {
     }
     await tick({}, 40);
   }
+  // Turns the chassis on the spot to face yaw.
   async function rotate(yaw) {
     for (let i = 0; i < 140; i++) {
       const m = await get(),
@@ -38,6 +43,7 @@ export async function solve({ state, advance, action, select }, id) {
     }
     await tick({}, 25);
   }
+  // Drives the chassis centre to (x, z): steer toward it, creep forward only when nearly facing it, then square up.
   async function move(x, z) {
     for (let i = 0; i < 350; i++) {
       const m = await get(),
@@ -52,6 +58,7 @@ export async function solve({ state, advance, action, select }, id) {
     await tick({}, 35);
     await rotate(0);
   }
+  // Gets to (x, z) via the lane, so the machine never cuts through the pad or the props.
   async function route(x, z) {
     let m = await get();
     await move(m.x, -6.2);
