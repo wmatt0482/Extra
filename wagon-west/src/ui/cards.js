@@ -44,12 +44,12 @@ export function cardFace(card, { flippable = false, small = false } = {}) {
 }
 
 /** The pop: cards queue up and flip in one at a time near the top of the screen (pointer-events none). */
-export function createCardPop(root, { sfx = null } = {}) {
+export function createCardPop(root, { sfx = null, hold = () => false } = {}) {
   const queue = [];
   let showing = false;
   const log = [];
   function next() {
-    const it = queue.shift();
+    const it = queue[0];
     if (!it) { showing = false; root.hidden = true; root.replaceChildren(); return; }
     showing = true;
     root.hidden = false;
@@ -57,6 +57,12 @@ export function createCardPop(root, { sfx = null } = {}) {
       cardFace(it.card, { small: true }),
       h('span', { class: 'cpop-label' }, it.dup ? 'Again! +1 token' : it.suitDone ? 'New card! A full suit!' : 'New card!'));
     root.replaceChildren(el);
+    // a panel, card or question is open, or the pop would sit on text or a button: it waits, unseen, and comes out when clear
+    root.style.visibility = 'hidden';
+    const held = hold(root);
+    root.style.visibility = '';
+    if (held) { root.hidden = true; root.replaceChildren(); setTimeout(next, 300); return; }
+    queue.shift();
     if (sfx && sfx.chime) try { sfx.chime(); } catch (_) { /* ignore */ }
     setTimeout(next, POP_MS);
   }

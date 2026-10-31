@@ -123,6 +123,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     if (S.spotted) { ctx.fillStyle = 'rgba(60,40,20,.8)'; ctx.font = '700 14px system-ui, sans-serif'; ctx.fillText(`(${S.spotted})`, w * 0.75, h * 0.62); }
     if (S.mini) {
       ctx.fillStyle = 'rgba(30,20,10,.35)'; ctx.fillRect(0, 0, w, h);
+      if (S.mini.kind === 'ford') { ctx.fillStyle = 'rgba(63,134,173,.85)'; ctx.fillRect(0, Math.round(h * 0.8), w, h - Math.round(h * 0.8)); }   // the river band (debugMini)
       ctx.fillStyle = '#fff6e0'; ctx.font = '700 18px system-ui, sans-serif'; ctx.textAlign = 'center';
       const k = S.mini.kind;
       ctx.fillText(k === 'hunt' ? `Bow: ${S.mini.left} arrows left · ${S.mini.hits} got`
@@ -352,6 +353,8 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     pause() { S.playing = false; clearTimeout(miniTimer); miniTimer = 0; cancelAnimationFrame(raf); raf = 0; },
     destroy() { S.destroyed = true; stopMini(); cancelAnimationFrame(raf); canvas.removeEventListener('pointerdown', onPointer); window.removeEventListener('keydown', onKey); if (ro) ro.disconnect(); },
     resize,
+    /** (tests) the ford's river band, css px on the canvas: the lower fifth, drawn as water while a ford runs. */
+    debugMini() { return S.mini && S.mini.kind === 'ford' ? { kind: 'ford', band: { x: 0, y: Math.round(h * 0.8), w, h: h - Math.round(h * 0.8) } } : null; },
     getState() {
       return { backdrop: S.backdrop, milesDone: S.travel.milesDone, weather: S.travel.weather, moving: !!S.travel.moving,
         biome: S.leg.biome, legId: S.leg.id, pace: S.travel.pace, view: S.backdrop, playing: S.playing, reducedMotion: !!reducedMotion,

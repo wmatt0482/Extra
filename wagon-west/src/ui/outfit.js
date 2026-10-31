@@ -102,7 +102,7 @@ export function createOutfit(app) {
         h('span', { class: 'ow-a-stats' }, a.feedLb ? `Eats ${a.feedLb} lb of feed a day` : 'Eats prairie grass'));
       b.addEventListener('click', () => { if (lock) return; draft.animal = a.id; animalTab(); });
       return b;
-    })), lock ? h('p', { class: 'ow-note' }, 'The team is set for this season.') : null);
+    })), ...(lock ? [h('p', { class: 'ow-note' }, 'The team is set for this season.')] : []));
     footButtons();
   }
   function partyTab() {

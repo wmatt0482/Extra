@@ -34,19 +34,25 @@ export function deedsPage(app) {
 }
 
 /** The pop for a newly earned deed. say(text) reads it aloud; sfx.chime() when it flips in. */
-export function createDeedPop(root, { sfx = null, say = () => {}, ms = DEED_POP_MS, waitFor = () => false } = {}) {
+export function createDeedPop(root, { sfx = null, say = () => {}, ms = DEED_POP_MS, waitFor = () => false, hold = () => false } = {}) {
   const queue = [];
   const log = [];
   let showing = false;
   function next() {
     if (queue.length && waitFor()) { showing = true; setTimeout(next, 300); return; }      // (a trail card is popping in the same place: it goes first)
-    const d = queue.shift();
+    const d = queue[0];
     if (!d) { showing = false; root.hidden = true; root.replaceChildren(); return; }
     showing = true;
     root.hidden = false;
     root.replaceChildren(h('div', { class: 'dpop-card', 'data-deed': d.id },
       h('span', { class: 'dpop-emoji', 'aria-hidden': 'true' }, d.emoji),
       h('span', { class: 'dpop-text' }, h('span', { class: 'dpop-label' }, 'New deed!'), h('span', { class: 'dpop-name' }, d.name), h('span', { class: 'dpop-how' }, d.how))));
+    // a panel, card or question is open, or the pop would sit on text or a button: it waits, unseen, and comes out when clear
+    root.style.visibility = 'hidden';
+    const held = hold(root);
+    root.style.visibility = '';
+    if (held) { root.hidden = true; root.replaceChildren(); setTimeout(next, 300); return; }
+    queue.shift();
     if (sfx && sfx.chime) { try { sfx.chime(); } catch (_) { /* ignore */ } }
     try { say(d.say); } catch (_) { /* ignore */ }
     setTimeout(next, ms);

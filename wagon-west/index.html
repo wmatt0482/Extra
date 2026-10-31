@@ -684,11 +684,17 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .rv-body { align-items: stretch; }
 .rv-play, .rv-result { align-self: center; width: min(560px, 100%); display: grid; gap: 4px; padding: 10px 16px; text-align: center; background: rgba(31,21,13,.88); }
 .rv-play b { font: 400 18px/1.1 var(--font-display); color: var(--accent); }
+/* the crossing's prompt (ford, float) is a slim strip in the top row, beside the back button, never over the water the child
+   taps or steers through (playtest 1.2 W6): the title steps aside while it plays; the river band stays clear */
+#screen-river.rv-playing .topbar h2 { visibility: hidden; }
+.rv-play { position: absolute; z-index: 3; top: calc(var(--pad-t) + 4px); left: calc(var(--pad-l) + 62px); right: calc(var(--pad-r) + 8px); width: auto; align-self: auto;
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 0 12px; padding: 6px 14px; border-radius: 12px; }
+.rv-play b { font-size: 17px; white-space: nowrap; }
+.rv-play .rv-status { min-height: 0; font-size: 15px; }
 .rv-status { min-height: 20px; font: 700 16px/1.25 var(--font-body); }
 .rv-status.go { color: var(--go); } .rv-status.hot { color: #ffcf9a; }
 .rv-result { background: var(--paper); color: var(--paper-ink); border-color: #a07a4c; font: 700 17px/1.35 var(--font-body); }
 #screen-river.rv-playing { pointer-events: none; }
-#screen-river.rv-playing .rv-body { justify-content: flex-end; }
 #screen-river.rv-playing button { pointer-events: auto; }
 /* the Talk row on the stop screen */
 .stop-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; }

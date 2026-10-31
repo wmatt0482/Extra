@@ -85,6 +85,7 @@ import { createPeople, START_STOP } from './ui/people.js';
 import { createDeedPop, deedTexts } from './ui/deeds.js';
 import { createCamp } from './ui/camp.js';
 import { createCardPop, ownedCards, sayOf } from './ui/cards.js';
+import { createToaster, popHeld } from './ui/toasts.js';
 import { PS_INTRO, READ_BACK } from './ui/postOffice.js';
 import { createPostOffice } from './ui/postOffice.js';
 import { createJournal } from './ui/journal.js';
@@ -202,6 +203,10 @@ async function boot() {
   let spellSession = createSpellSession();
   let screen = 'players', paused = false, T = null, mini = null, storeKinds = 0, pendingDone = null;
   const toastsEl = $('#toasts');
+  // Toasts and pops wait while a panel, card, question or mini-game is open, and sit only where they touch nothing the
+  // child reads or presses (src/ui/toasts.js; playtest 1.2 W3-W5). v2/mini/derby are declared further down: read lazily.
+  const readingOpen = () => { try { return !!(app.overlayOpen() || v2.play || v2.bar || mini || derby); } catch (_) { return false; } };
+  const toaster = createToaster(toastsEl, { blocked: readingOpen });
   const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || !!mini || !!derby;
   let derby = null;                       // Fort Derby in progress: { leg, markers, bursts, resolve }
   let campVisit = null;                   // this camp visit: { context, line (a companion spoke: their card) }
@@ -419,7 +424,7 @@ async function boot() {
     trail: { show() {}, hide() {} }, stop: { show() {}, hide() {} }, river, post: postOffice, journal: createJournal(app), results, home: homeUI,
     camp: createCamp(app), derby: { show() {}, hide() {} }, dog: dogUI,
   };
-  const cardPop = createCardPop($('#cardpop'), { sfx: Sfx });
+  const cardPop = createCardPop($('#cardpop'), { sfx: Sfx, hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) });
   // the voice: Spell Jump's tts, with the natural voice when the family has a code and the player picked one in Spell Jump
   const cloud = createCloudVoice({ getCode: () => sync.code, getWords: () => { try { return currentPlayerId ? WS.activeList(Profiles.loadWords(currentPlayerId)).words : []; } catch (_) { return []; } }, audio: Audio });
   tts.setCloud(cloud);
@@ -570,9 +575,7 @@ async function boot() {
   function effectToast(text, say) {
     if (!text) return null;
     const t = h('div', { class: 'toast fx', role: 'status' }, text);
-    toastsEl.append(t);
-    while (toastsEl.children.length > 3) toastsEl.firstChild.remove();
-    setTimeout(() => t.remove(), 4800);
+    toaster.add(t, 4800);
     if (say) app.say(say);
     return t;
   }
@@ -590,9 +593,7 @@ async function boot() {
     const t = h('div', { class: 'toast fx skill', role: 'status', 'data-skill': skill.id || '', 'data-who': who || '' },
       c ? h('span', { class: 'sk-face', html: companionSvg(c), 'aria-hidden': 'true' }) : null,
       h('span', { class: 'sk-text' }, c ? h('b', {}, c.name) : null, h('span', {}, line)));
-    toastsEl.append(t);
-    while (toastsEl.children.length > 3) toastsEl.firstChild.remove();
-    setTimeout(() => t.remove(), 5200);
+    toaster.add(t, 5200);
     app.say(c && !line.startsWith(c.name) ? `${c.name}: ${line}` : line);
     return t;
   }
@@ -663,7 +664,7 @@ async function boot() {
     for (const [k, s] of Object.entries(screens)) if (k !== name && s.hide) s.hide();
     screen = name;
     document.documentElement.dataset.screen = name;
-    if (name === 'trail' || name === 'results') toastsEl.replaceChildren();
+    toaster.clear();                      // (what showed on the screen left, and the plain lines that waited for it, are done; an effect line stays queued)
     $('#stage').hidden = !STAGE_SCREENS.includes(name);
     $('#backdrop').hidden = STAGE_SCREENS.includes(name);
     if (STAGE_SCREENS.includes(name)) { S('resize'); S('play'); } else S('pause');
@@ -686,10 +687,7 @@ async function boot() {
     } catch (e) { console.warn('[WagonWest] music', e); }
   }
   function toast(text) {
-    const t = h('div', { class: 'toast' }, text);
-    toastsEl.append(t);
-    while (toastsEl.children.length > 3) toastsEl.firstChild.remove();
-    setTimeout(() => t.remove(), 2700);
+    toaster.add(h('div', { class: 'toast' }, text), 2700);
   }
 
   // ---------- settings (this device) ----------
@@ -1722,7 +1720,7 @@ async function boot() {
   const v2 = { play: null, raft: null, bar: null };
   const peopleUI = createPeople(app);
   screens.stop = peopleUI;
-  const deedPop = createDeedPop($('#deedpop'), { sfx: Sfx, say: (t) => { voiceFor([t]).then(() => app.say(t)); }, waitFor: () => cardPop.showing });
+  const deedPop = createDeedPop($('#deedpop'), { sfx: Sfx, say: (t) => { voiceFor([t]).then(() => app.say(t)); }, waitFor: () => cardPop.showing, hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) });
   const RAFT_BENDS = 4;
   const RAFT_INTRO = 'The last stretch: a raft down the Columbia River to the Willamette Valley! Steer around the rocks. At every bend, answer a fact and the raft rolls on.';
   const seedFor = (tag) => { const J = save.journey; return hashString(`${currentPlayerId}:${J ? J.legId : ''}:${J ? num(J.day) : 0}:${J ? num(J.legStarts) : 0}:${tag}`); };
@@ -1986,8 +1984,10 @@ async function boot() {
   window.__wagonWest = {
     app, pz, sync, tts, store, river, postOffice, results, hud, markerPanel, problemPanel, spellPanel, card, wagonPanel,
     get scene() { return scene; }, get screen() { return screen; }, get save() { return save; }, get facts() { return facts; },
+    get reading() { return { overlay: app.overlayOpen(), play: !!v2.play, bar: !!v2.bar, mini: !!mini, derby: !!derby }; },   // (tests: what holds the toasts)
+    holdTrail(on) { if (T) T.busy = !!on; return !!T; },   // (a test hook: the day loop waits, as it does under a scripted event)
     get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb } : null; },
-    JA, cloud, Music, cardPop, camp: screens.camp,
+    JA, cloud, Music, cardPop, toaster, camp: screens.camp,
     peopleUI, deedPop, get v2() { return { play: v2.play ? v2.play.fn : null, raft: v2.raft ? { ...v2.raft } : null }; },    // (v1.2 app two)
     get derby() { return derby ? { markers: derby.markers, bursts: derby.bursts.slice(), busy: derby.busy } : null; },
     get lastDerby() { return lastDerby; }, get lastQuickDraw() { return lastQuickDraw; }, get music() { return { ...musicState }; },

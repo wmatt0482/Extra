@@ -328,10 +328,13 @@ export function createFord(opts, emit, S, hooks, biomeId) {
     phase: phaseNow(), progress: r3(D.prog),
   });
   D.summary = () => ({ ...D.state(), finished: D.phase === 'landed' });
-  D.debug = () => {
+  /** The river band the child watches and taps on (css px on the canvas): from the swell's crest down to the bottom edge,
+   *  between the two banks. The app keeps its prompt out of this box (ui-smoke checks it). */
+  const bandOf = (L) => { const g = geo(L), y = g.ys - 14 * L.k; return { x: g.lFlat, y, w: g.rFlat - g.lFlat, h: L.H - y }; };
+  D.debug = (L) => {
     const i = swellAt(D.clock), p = D.clock - FORD.lead - D.off;
     const q = p < 0 ? p : p % FORD.period;
-    return { ...D.state(), clock: D.clock, intensity: i, calm: i <= FORD.thresh, ready: D.restT <= 0 && D.phase === 'cross', rest: D.restT, sinceSwell: q, off: D.off, wob: D.wob, wet: D.wet };
+    return { ...D.state(), clock: D.clock, intensity: i, calm: i <= FORD.thresh, ready: D.restT <= 0 && D.phase === 'cross', rest: D.restT, sinceSwell: q, off: D.off, wob: D.wob, wet: D.wet, band: L ? bandOf(L) : null };
   };
   return D;
 }

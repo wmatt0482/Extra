@@ -59,7 +59,7 @@ export function createResults(app) {
     const tier = queue[0];
     const b = h('button', { class: 'btn btn-gold', id: 'res-crate-open', 'data-sfx': '' }, h('span', { html: app.icon('crate') }), `Open the ${CRATES[tier].name.toLowerCase()}`);
     b.addEventListener('click', () => { const o = app.openCrate(); if (!o) return; R.opened = o; paintCrate(); app.refreshCash(); });
-    box.replaceChildren(b, queue.length > 1 ? h('small', {}, `${queue.length - 1} more waiting`) : null);
+    box.replaceChildren(...[b, queue.length > 1 ? h('small', {}, `${queue.length - 1} more waiting`) : null].filter(Boolean));
   }
   $('#res-camp').addEventListener('click', () => app.go('title'));
   $('#res-journal').addEventListener('click', () => app.go('journal'));
