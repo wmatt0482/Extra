@@ -2,9 +2,10 @@
 // axes and Grab button (tools/solution.mjs, run inside the page), then checks the sandbox save and reload, sibling
 // profile isolation, the Parent Zone PIN, report and unlock, real-time keyboard and touch-stick input, responsive
 // layouts, a full offline reload and natural-voice preparation through a fake transport. No mocks of the game and no
-// completion overrides. Screenshots go to SHOTS_DIR (default docs/screenshots); results to RESULTS_DIR.
+// completion overrides. Screenshots go to SHOTS_DIR (default <tmp>/build-crew-shots); results to RESULTS_DIR.
 import assert from 'node:assert/strict';
 import { mkdirSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPlaywright, resultsPath, SWIFTSHADER_ARGS } from './runner.mjs';
@@ -25,7 +26,7 @@ async function bounded(p, label, ms = 15000) {
   }
 }
 const BASE = process.env.BASE_URL || 'http://localhost:8080',
-  shots = process.env.SHOTS_DIR || path.join(game, 'docs/screenshots');
+  shots = process.env.SHOTS_DIR || path.join(os.tmpdir(), 'build-crew-shots');
 mkdirSync(shots, { recursive: true });
 const launch = { headless: true, args: SWIFTSHADER_ARGS };
 if (process.env.CHROMIUM_PATH) launch.executablePath = process.env.CHROMIUM_PATH;
@@ -46,7 +47,7 @@ const watchdog = setTimeout(() => {
   console.error(failure);
   browser.close().catch(() => {});
   setTimeout(() => process.exit(1), 1500);
-}, 420000);
+}, 600000);
 const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 const page = await context.newPage();
 context.on('page', (p) =>
@@ -57,7 +58,7 @@ context.on('page', (p) =>
 page.on('pageerror', (e) => errors.push(e.stack || e.message));
 /** Waits until the game has booted (the test hook exists). */
 async function ready(p = page) {
-  await p.waitForFunction(() => window.__buildCrew, { timeout: 30000 });
+  await p.waitForFunction(() => window.__buildCrew, undefined, { timeout: 90000 });
 }
 /** Adds a builder through the real on-screen flow. */
 async function addBuilder(p, name) {
@@ -85,6 +86,40 @@ async function audit(p) {
   assert.equal(result.external, 0);
   assert.equal(result.overflow, false);
   assert.deepEqual(result.small, []);
+}
+/** True when no two of the given selectors' visible boxes overlap (a: the one panel, b: each thing it must clear). */
+async function clears(p, a, others) {
+  return p.evaluate(
+    ([a, others]) => {
+      const box = (s) => {
+        const e = document.querySelector(s);
+        if (!e || e.hidden || !e.offsetParent) return null;
+        const r = e.getBoundingClientRect();
+        return r.width && r.height ? r : null;
+      };
+      const A = box(a);
+      return others.flatMap((s) => {
+        const B = box(s);
+        return A && B && A.left < B.right && B.left < A.right && A.top < B.bottom && B.top < A.bottom ? [s] : [];
+      });
+    },
+    [a, others],
+  );
+}
+/** For each of these sandbox controls: visible, and the topmost element at its centre is the control itself. */
+async function hitTest(p, ids) {
+  return p.evaluate(
+    (ids) =>
+      Object.fromEntries(
+        ids.map((id) => {
+          const b = document.getElementById(id),
+            r = b.getBoundingClientRect(),
+            e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+          return [id, !b.hidden && r.width > 0 && !!e && (e === b || b.contains(e))];
+        }),
+      ),
+    ids,
+  );
 }
 try {
   await page.goto(BASE + '/build-crew/?test=1&nosw=1');
@@ -144,6 +179,31 @@ try {
   await page.screenshot({ path: path.join(shots, 'sandbox.png') });
   stage = 'profile isolation';
   await page.locator('#home').click();
+  // The title with a finished profile and a saved site (thumbnail and every look) must keep its panel clear of the
+  // BUILD CREW wordmark, the footer note and the sound button at the desktop, tablet and phone sizes.
+  stage = 'title layout';
+  for (const [width, height] of [
+    [1280, 800],
+    [1024, 768],
+    [390, 844],
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.waitForTimeout(250);
+    assert(await page.locator('#saved-thumb img').count(), 'the saved-site thumbnail is on the title');
+    assert((await page.locator('#looks button').count()) >= 5, 'the finished profile shows its looks');
+    assert.deepEqual(
+      await clears(page, '#title', ['.brand-title', '.foot-note', '#sound-title', '#title-head']),
+      [],
+      `title panel clear of the footer at ${width}x${height}`,
+    );
+    assert.deepEqual(await clears(page, '#looks', ['.brand-title', '.foot-note', '#sound-title']), []);
+    await audit(page);
+    if (width === 1280) await page.screenshot({ path: path.join(shots, 'title-finished.png') });
+  }
+  await page.setViewportSize({ width: 1280, height: 800 });
+  console.log('PASS UI stage');
+  results.checks.push('title panel clears the footer with a finished profile at 1280x800, 1024x768 and 390x844');
+  stage = 'profile isolation';
   await addBuilder(page, 'Sibling');
   assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).done.length, 0);
   assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).yard, null);
@@ -214,6 +274,46 @@ try {
     'portrait hint clears the action buttons',
   );
   await live.screenshot({ path: path.join(shots, 'portrait.png') });
+  // The sandbox tray on a phone: it stops above the drive deck, so Wrecking ball and Clear site can be tapped for
+  // every machine's deck (the excavator's has an extra row of joint buttons).
+  stage = 'phone tray';
+  await live.locator('#open-tray').click();
+  await live.screenshot({ path: path.join(shots, 'tray-390x844.png') });
+  for (const machine of ['skid', 'excavator', 'crane']) {
+    await live.locator(`[data-machine="${machine}"]`).click();
+    await live.waitForTimeout(150);
+    const hits = await hitTest(live, ['wreck', 'clear-yard', 'close-tray']);
+    assert.deepEqual(hits, { wreck: true, 'clear-yard': true, 'close-tray': true }, `tray buttons hit with ${machine}`);
+    assert.deepEqual(await clears(live, '#tray', ['.drive-deck']), [], `tray clear of the ${machine} deck`);
+  }
+  await live.locator('[data-machine="skid"]').click();
+  // Clear site asks first: one tap changes nothing, the question goes away by itself, two taps clear the site.
+  stage = 'clear site confirm';
+  const count = () => live.evaluate(() => window.__buildCrew.state.blocks.length);
+  const materials = await count();
+  assert(materials > 0);
+  await live.locator('#clear-yard').click();
+  assert.equal(await live.locator('#clear-yard').textContent(), 'Yes, clear');
+  assert.equal(await live.locator('#clear-ask').textContent(), 'Clear site?');
+  assert.equal(await count(), materials, 'one tap does not clear the site');
+  await live.waitForTimeout(4400);
+  assert.equal(await live.locator('#clear-yard').textContent(), 'Clear site', 'the question resets itself');
+  assert.equal(await count(), materials);
+  await live.locator('#clear-yard').click();
+  await live.locator('#clear-yard').click();
+  assert.equal(await count(), 0, 'the second tap clears the site');
+  assert.equal(await live.locator('#clear-yard').textContent(), 'Clear site');
+  // Toasts take turns in a slot under the hint: never over the hint or the deck, and never two at once.
+  stage = 'toast slot';
+  await live.evaluate(async () => {
+    const hud = await import('/build-crew/src/app/hud.js');
+    hud.showHint('Tap a clear patch of ground for your hill.');
+    hud.toast('Terrain placed.');
+    hud.toast('Site cleared.');
+  });
+  assert.equal(await live.locator('.toast').count(), 1, 'one toast at a time');
+  assert.deepEqual(await clears(live, '.toast', ['#hint', '.drive-deck']), []);
+  await live.locator('#close-tray').click();
   await live.locator('#home').click();
   await live.setViewportSize({ width: 844, height: 390 });
   await audit(live);
@@ -246,6 +346,53 @@ try {
   await bounded(offlineContext.close(), 'offline context close');
   console.log('PASS UI stage');
   results.checks.push('full offline reload including WASM, shared modules and saved yard');
+  // ?test=1 must do nothing on a real host: the hooks and the all-jobs unlock are local-only.
+  stage = 'test flag gate';
+  assert.deepEqual(
+    await page.evaluate(async () => {
+      const { isLocalHost } = await import('/build-crew/src/app/state.js');
+      return [
+        'localhost',
+        '127.0.0.1',
+        'kid.local',
+        'learninglab.fun',
+        'www.learninglab.fun',
+        'notlocalhost.com',
+        'x.local.evil.com',
+      ].map(isLocalHost);
+    }),
+    [true, true, true, false, false, false, false],
+  );
+  assert(await page.evaluate(() => !!window.__buildCrew.test), 'localhost keeps the test hooks');
+  const served = new URL(BASE);
+  const remoteBrowser = await pw.chromium.launch({
+    ...launch,
+    args: [
+      ...SWIFTSHADER_ARGS,
+      `--host-resolver-rules=MAP learninglab.test ${served.hostname}`,
+      `--unsafely-treat-insecure-origin-as-secure=http://learninglab.test:${served.port}`,
+    ],
+  });
+  try {
+    const rc = await remoteBrowser.newContext({ viewport: { width: 1024, height: 768 } });
+    const rp = await rc.newPage();
+    rp.on('pageerror', (e) => errors.push(e.message));
+    await rp.goto(`http://learninglab.test:${served.port}/build-crew/?test=1&nosw=1`);
+    await ready(rp);
+    assert.equal(await rp.evaluate(() => location.hostname), 'learninglab.test');
+    assert.equal(await rp.evaluate(() => !!window.__buildCrew.test), false, 'no test hooks on a real host');
+    await addBuilder(rp, 'Remote');
+    await rp.locator('#jobs').click();
+    for (const id of [2, 5, 10]) {
+      assert.equal(await rp.locator(`[data-job="${id}"]`).isDisabled(), true, `job ${id} stays locked with ?test=1`);
+    }
+    assert.equal(await rp.locator('[data-job="1"]').isDisabled(), false);
+    await rc.close();
+  } finally {
+    await remoteBrowser.close();
+  }
+  console.log('PASS UI stage');
+  results.checks.push('?test=1 hooks and job unlock only on localhost, 127.0.0.1 and .local hosts');
   // Prove that known and new phrases use prepared natural clips with a fake transport, never a Google key.
   stage = 'natural voice context';
   const voiceContext = await bounded(
