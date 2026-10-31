@@ -5,7 +5,7 @@
 // MACHINE table below, so a new machine is a table row (plus its model in scene/machines.js).
 import RAPIER from '../vendor/rapier.mjs';
 import { TOYS, MACHINES } from './content.mjs';
-import { RECESS, hillHeight, hillPoints } from './terrain.mjs';
+import { RECESS, hillHeight, hillPoints, rampHeight, rampPoints } from './terrain.mjs';
 export { RAPIER };
 
 let ready;
@@ -127,11 +127,11 @@ function moveJoint(m, d, joint, amount) {
 }
 
 /** The ground's height under a terrain stamp at local offset (dx, dz) metres from the stamp's centre. A hill is a
- *  low mound, a pit and the water sit in recesses, and a ramp climbs 1.8 m along z. */
+ *  low mound, a pit and the water sit in recesses, and a ramp is a wedge climbing 1.8 m along z. */
 const STAMP_HEIGHT = {
   pit: () => RECESS.pit,
   water: () => RECESS.water,
-  ramp: (dx, dz) => ((dz + 2) / 4) * 1.8,
+  ramp: (dx, dz) => rampHeight(dz),
   hill: (dx, dz) => hillHeight(Math.hypot(dx, dz)),
 };
 
@@ -504,7 +504,7 @@ export class Yard {
   }
 
   /** Places a terrain stamp on the tile nearest (x, z). Pits and water lower the tile; a hill adds a low mound and a
-   *  ramp a tilted slab. Returns false when the yard already has 12 stamps or the tile is taken. */
+   *  ramp a wedge. Returns false when the yard already has 12 stamps or the tile is taken. */
   stamp(kind, x, z) {
     if (this.stamps.length >= 12) return false;
     x = clamp(Math.round((x - 2) / 4) * 4 + 2, -YARD.half, YARD.half);
@@ -517,12 +517,10 @@ export class Yard {
       // The mound's solid is the convex hull of the very points the scene draws.
       const hull = RAPIER.ColliderDesc.convexHull(new Float32Array(hillPoints()));
       if (hull) this.world.createCollider(hull.setTranslation(x, 0, z).setFriction(1));
-    } else {
-      const c = RAPIER.ColliderDesc.cuboid(2, 0.16, 2.2)
-        .setTranslation(x, 0.9, z)
-        .setRotation({ x: Math.sin(-0.43 / 2), y: 0, z: 0, w: Math.cos(0.43 / 2) })
-        .setFriction(1);
-      this.world.createCollider(c);
+    } else if (kind === 'ramp') {
+      // The wedge's solid is the convex hull of the very corners the scene draws.
+      const hull = RAPIER.ColliderDesc.convexHull(new Float32Array(rampPoints()));
+      if (hull) this.world.createCollider(hull.setTranslation(x, 0, z).setFriction(1));
     }
     this.onEvent({ type: 'stamp', stamp: s });
     return true;

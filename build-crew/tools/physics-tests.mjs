@@ -134,6 +134,24 @@ assert(onHill.position.y > 1 && onHill.position.y < 1.4);
 assert(Math.abs(inPit.position.y - (-0.9 + 0.6)) < 0.1, 'a cube falls to the bottom of the pit');
 yard.destroy();
 console.log('PASS terrain stamps: mound and pit colliders match what is drawn');
+// The ramp is a wedge: its collider surface follows groundAt along the whole slope, it is solid behind the high edge
+// (a ray from above never lands below the slope), and a dropped cube comes to rest on it rather than inside it.
+yard = new Yard({ ...SANDBOX, machines: ['skid'], toys: [] });
+assert(yard.stamp('ramp', -6, -6));
+yard.world.step();
+for (const dx of [-1.8, 0, 1.8]) {
+  for (const dz of [-1.9, -1, 0, 1, 1.9]) {
+    const hit = yard.world.castRay(new RAPIER.Ray({ x: -6 + dx, y: 5, z: -6 + dz }, { x: 0, y: -1, z: 0 }), 10, true);
+    assert(Math.abs(5 - hit.timeOfImpact - yard.groundAt(-6 + dx, -6 + dz)) < 0.05, `ramp surface at dz=${dz}`);
+  }
+}
+assert(Math.abs(yard.groundAt(-6, -4.1) - 1.8) < 0.1 && yard.groundAt(-6, -7.9) < 0.1, 'a ramp climbs 1.8 m along z');
+yard.spawn({ type: 'cube', color: '#e65e4b', x: -6, y: 4, z: -6.5 });
+for (let i = 0; i < 400; i++) yard.step();
+const [onRamp] = yard.poses();
+assert(onRamp.position.y > yard.groundAt(onRamp.position.x, onRamp.position.z) - 0.05, 'a cube rests on the ramp, not in it');
+yard.destroy();
+console.log('PASS terrain stamps: ramp wedge collider matches what is drawn');
 const a = defaultSave(),
   b = defaultSave();
 a.done = [1, 2];

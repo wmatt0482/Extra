@@ -6,7 +6,7 @@
 import * as T from '../../vendor/three.module.js';
 import { canvasTexture } from './kit.js';
 import { BUDGET } from './quality.js';
-import { HILL, RECESS, hillProfile } from '../terrain.mjs';
+import { HILL, RAMP_FACES, RECESS, hillProfile, rampPoints } from '../terrain.mjs';
 
 /** The first-flight yard (SPEC §5): gravel, weathered steel and muted greens under a pale industrial sky. */
 export const YARD_THEME = {
@@ -364,9 +364,22 @@ function hillGeometry(env) {
   return env.hillGeo;
 }
 
+/** The ramp's mesh: the wedge whose corners the physics hull is built from (terrain.mjs), flat shaded. */
+function rampGeometry(env) {
+  if (!env.rampGeo) {
+    const p = rampPoints(),
+      out = [];
+    for (const face of RAMP_FACES) for (const i of face) out.push(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+    env.rampGeo = new T.BufferGeometry();
+    env.rampGeo.setAttribute('position', new T.Float32BufferAttribute(out, 3));
+    env.rampGeo.computeVertexNormals();
+  }
+  return env.rampGeo;
+}
+
 /** Redraws the terrain stamps into stampGroup. A hill is a low earth mound; a pit is a dark floor 0.9 m down inside
  *  dark walls with a raised amber rim around its opening; water is a shallow bed with a blue surface and sandy banks;
- *  a ramp is a sloped slab. Each matches its collider in physics.mjs. */
+ *  a ramp is a wedge. Each matches its collider in physics.mjs. */
 export function syncStamps(env, kit, stampGroup, stamps) {
   const c = env.theme.stamps;
   stampGroup.clear();
@@ -390,8 +403,10 @@ export function syncStamps(env, kit, stampGroup, stamps) {
       mound.castShadow = mound.receiveShadow = true;
       stampGroup.add(mound);
     } else {
-      const slope = kit.box(stampGroup, s.x, 0.9, s.z, 4, 0.32, 4.4, c.slope);
-      slope.rotation.x = -0.43;
+      const wedge = new T.Mesh(rampGeometry(env), kit.mat(c.slope, { flatShading: true }));
+      wedge.position.set(s.x, 0, s.z);
+      wedge.castShadow = wedge.receiveShadow = true;
+      stampGroup.add(wedge);
     }
   }
 }

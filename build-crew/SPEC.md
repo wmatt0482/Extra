@@ -132,7 +132,7 @@ Single implementation owner: Codex. Existing game folders remain untouched excep
 | src/app/parent.js | Shared Parent Zone adapter, Build Crew report and options |
 | src/app/loop.js | Fixed-step game loop (max 3 steps a frame), one pose read per frame, frame samples |
 | src/content.mjs | Ten jobs, toy types, machine metadata, rewards and known spoken phrases |
-| src/terrain.mjs | Terrain stamp shapes shared by physics and scene (the hill mound's profile and height, recess depths) |
+| src/terrain.mjs | Terrain stamp shapes shared by physics and scene (the hill mound's profile and height, the ramp wedge's corners and faces, recess depths) |
 | src/physics.mjs | Rapier world, bodies, fixed step, machines and joints (`MACHINE` table), physical grab/release, terrain, snapshot |
 | src/missions.mjs | Pure pose/velocity/ghost matching and settled completion |
 | src/scene/scene.js | Scene façade the app uses: renderer, round set-up, per-frame draw, thumbnail, disposal |

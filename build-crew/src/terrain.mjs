@@ -37,3 +37,26 @@ export function hillPoints() {
   }
   return out;
 }
+
+/** A ramp is a wedge on one 4 m tile: flat on the ground at its low edge (z = -2) and `rise` metres tall at its high
+ *  edge (z = +2), a straight slope between. */
+export const RAMP = { half: 2, rise: 1.8 };
+
+/** The wedge's surface height at local depth dz (-half..half) from the tile centre. */
+export const rampHeight = (dz) => ((dz + RAMP.half) / (2 * RAMP.half)) * RAMP.rise;
+
+/** The wedge's six corners relative to the tile centre as a flat [x, y, z, ...] list, shared by the drawn mesh and the
+ *  physics convex hull. */
+export function rampPoints() {
+  const { half: h, rise: r } = RAMP;
+  return [-h, 0, -h, h, 0, -h, -h, 0, h, h, 0, h, -h, r, h, h, r, h];
+}
+
+/** The wedge's faces as triples of corner indexes into rampPoints(), wound counter-clockwise seen from outside. */
+export const RAMP_FACES = [
+  [0, 5, 1], [0, 4, 5], // the slope
+  [2, 5, 4], [2, 3, 5], // the tall back
+  [0, 2, 4], // left side
+  [1, 5, 3], // right side
+  [0, 3, 2], [0, 1, 3], // underside
+];
