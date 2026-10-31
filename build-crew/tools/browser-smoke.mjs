@@ -21,7 +21,7 @@ try{
   await page.goto(BASE+'/build-crew/?test=1&nosw=1');await ready();await addBuilder(page,'Builder');await page.screenshot({path:path.join(shots,'title.png')});await audit(page);
   for(let id=1;id<=10;id++){
     await page.evaluate(id=>window.__buildCrew.test.start(id),id);await page.evaluate(()=>window.__buildCrew.test.advance({},120));await page.waitForTimeout(200);await audit(page);await page.screenshot({path:path.join(shots,`round-${String(id).padStart(2,'0')}.png`)});
-    const s=await solve({state:()=>page.evaluate(()=>window.__buildCrew.state),advance:(axes,n)=>page.evaluate(({axes,n})=>window.__buildCrew.test.advance(axes,n),{axes,n}),action:a=>page.evaluate(a=>window.__buildCrew.test.action(a),a),select:async i=>{await page.locator('[data-machine]').nth(i).click();}},id);
+    const s=await page.evaluate(async id=>{const {solve}=await import('./tools/solution.mjs');const api=window.__buildCrew;return solve({state:()=>api.state,advance:(axes,n)=>api.test.advance(axes,n),action:a=>api.test.action(a),select:i=>document.querySelectorAll('[data-machine]')[i].click()},id);},id);
     assert(s.complete);await page.locator('#next-round').waitFor();await page.screenshot({path:path.join(shots,`finished-${String(id).padStart(2,'0')}.png`)});results.solutions.push({id,complete:true,placed:s.status.count});console.log(`PASS browser solution ${id}`);
   }
   assert.equal((await page.evaluate(()=>window.__buildCrew.state.save)).done.length,10);

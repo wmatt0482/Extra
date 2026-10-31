@@ -5,7 +5,7 @@ export function createControls(canvas,{action,orbit,zoom,tap}){
   const isInput=e=>e.target.closest('input,textarea,select,#pz');
   const special={Space:'grab',KeyE:'hop',KeyR:'reset',Escape:'pause',KeyH:'horn'};
   const codes=['KeyW','KeyA','KeyS','KeyD','KeyI','KeyJ','KeyK','KeyL','KeyU','KeyO','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight'];
-  window.addEventListener('keydown',e=>{if(!enabled||isInput(e))return;if(codes.includes(e.code)||special[e.code])e.preventDefault();if(special[e.code]&&!e.repeat)action(special[e.code]);keys.add(e.code);});
+  window.addEventListener('keydown',e=>{if(!enabled||isInput(e))return;if(e.target.closest('button')&&['Space','Enter'].includes(e.code))return;if(codes.includes(e.code)||special[e.code])e.preventDefault();if(special[e.code]&&!e.repeat)action(special[e.code]);keys.add(e.code);});
   window.addEventListener('keyup',e=>keys.delete(e.code));window.addEventListener('blur',neutral);document.addEventListener('visibilitychange',neutral);
   for(const stick of document.querySelectorAll('[data-stick]')){
     let finger=null;const dot=stick.querySelector('.stick-dot');
