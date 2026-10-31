@@ -133,6 +133,6 @@ export class Scene {
     this.camera.position.set(this.target.x+Math.sin(this.yaw)*Math.cos(this.pitch)*dist,this.target.y+Math.sin(this.pitch)*dist,this.target.z+Math.cos(this.yaw)*Math.cos(this.pitch)*dist);this.camera.lookAt(this.target);this.renderer.render(this.scene,this.camera);
   }
   thumbnail(){this.render(0);const cv=document.createElement('canvas');cv.width=320;cv.height=180;cv.getContext('2d').drawImage(this.canvas,0,0,320,180);return cv.toDataURL('image/jpeg',.65);}
-  adapt(ms){this.slowFrames=ms>18?(this.slowFrames||0)+1:Math.max(0,(this.slowFrames||0)-1);if(this.slowFrames>45&&this.renderer.getPixelRatio()>1){this.renderer.setPixelRatio(1);this.resize();}}
+  adapt(ms,frameMs){this.slowFrames=ms>18||frameMs>28?(this.slowFrames||0)+1:Math.max(0,(this.slowFrames||0)-1);const ratio=this.renderer.getPixelRatio();if(this.slowFrames>45&&ratio>.6){this.slowFrames=0;this.renderer.setPixelRatio(ratio>1?1:ratio>.75?.75:.6);if(ratio<=1){this.sun.shadow.mapSize.set(512,512);this.sun.shadow.map?.dispose();this.sun.shadow.map=null;this.sun.shadow.needsUpdate=true;}this.resize();}}
   destroy(){window.removeEventListener('resize',this.resize);this.clearRound();const geometries=new Set(),materials=new Set();this.scene.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)for(const m of Array.isArray(o.material)?o.material:[o.material])materials.add(m);});geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());this.labelTexture.dispose();this.renderer.dispose();}
 }

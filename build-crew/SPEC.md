@@ -100,9 +100,9 @@ Sound: shared synthesized UI effects, separate low engine tones per machine, hyd
 
 ## 6. Performance budget
 
-Target physical iPad and modest laptop at 60 fps; actual device validation must be reported separately from SwiftShader. Resolution cap 1.5 DPR, adaptive toward 1 DPR when render cost is high; shadows 1024², one shadow-casting directional light; ≤64 dynamic toy bodies, ≤3 machines, ≤12 terrain stamps, ≤120 particles and 72 instanced tire marks, ≤150 draw calls and ≤120k triangles. Physics steps are bounded to 3 per rendered frame. Sleeping far toys are left asleep; never cull a body out of an active stack. Release all GPU and WASM resources between jobs.
+Target physical iPad and modest laptop at 60 fps; actual device validation must be reported separately from SwiftShader. Resolution cap 1.5 DPR, adaptive through 1 / 0.75 / 0.6 DPR after sustained slow wall-frame intervals; shadows 1024² (512² in the lowest tiers), one shadow-casting directional light; ≤64 dynamic toy bodies, ≤3 machines, ≤12 terrain stamps, ≤120 particles and 72 instanced tire marks, ≤150 draw calls and ≤120k triangles. Physics steps are bounded to 3 per rendered frame. Sleeping far toys are left asleep; never cull a body out of an active stack. Release all GPU and WASM resources between jobs.
 
-Record median/p95 frame intervals, CPU update cost, render calls and triangles in a repeatable browser test with environment details. SwiftShader is a correctness baseline and has a separate generous wall-frame threshold; it cannot certify iPad GPU performance. No unverified 60 fps claim in the PR.
+After the quality controller settles, record median/p95 frame intervals, CPU update cost, render calls and triangles in a repeatable browser test with environment details. SwiftShader is a correctness baseline and has a separate generous wall-frame threshold; it cannot certify iPad GPU performance. No unverified 60 fps claim in the PR.
 
 ## 7. Saves, shared services, recovery and verification
 
