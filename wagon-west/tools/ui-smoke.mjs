@@ -810,10 +810,10 @@ async function v12Journey(page, layout, grab) {
   check(wp.stacks.flour && wp.stacks.flour.units === 6 && wp.stacks.flour.items === 6 && wp.stacks.bacon.units === 5 && wp.stacks.beans.units === 4 && /^Flour · 6 sacks$/.test(wp.stacks.flour.label) && /^Bacon · 5 sides$/.test(wp.stacks.bacon.label) && /^Beans · 4 bags$/.test(wp.stacks.beans.label),
     `food as stacks: ${Object.entries(wp.stacks).map(([k, v]) => `${v.label}`).join(', ')}`);
   check(/^Food for \d+ days? · .+ (in \d+ days?|is here)$/.test(wp.days), `in plain words: "${wp.days}"`);
-  check(/1: for a wheel/.test(wp.goods.parts) && /none: a raft can soak a sack/.test(wp.goods.rope) && /1: .*more keeps everyone warm/.test(wp.goods.blankets) && /15: a hunt uses 5/.test(wp.goods.arrows) && /\d+: good for trading/.test(wp.goods.pelts) && /not yet/.test(wp.goods.yoke),
+  check(/1: for a wheel/.test(wp.goods.parts) && /none: a raft can soak a sack/.test(wp.goods.rope) && /1: .*(more keeps everyone warm|enough for cold nights)/.test(wp.goods.blankets) && /15: a hunt uses 5/.test(wp.goods.arrows) && /\d+: good for trading/.test(wp.goods.pelts) && /not yet/.test(wp.goods.yoke),
     `the other goods with counts: ${['parts', 'rope', 'blankets', 'arrows', 'pelts', 'yoke'].map((k) => `${k} ${wp.goods[k]}`).join(' | ').slice(0, 220)}`);
   check(/are fresh/.test(wp.animals), `the team: "${wp.animals.trim()}"`);
-  check(wp.comps.length === 3 && wp.comps.every((c) => c.face && c.text.length > 40) && wp.comps.some((c) => /Ada/.test(c.text) && /Fixes wheels|fixes one breakdown/i.test(c.text)), `the party with moods and their skill lines (${wp.comps.map((c) => c.id).join(', ')})`);
+  check(wp.comps.length === 3 && wp.comps.every((c) => c.face && c.text.length > 40) && wp.comps.some((c) => /Ada/.test(c.text) && /Fixes wheels|fixes one breakdown|Mends one wagon breakdown/i.test(c.text)), `the party with moods and their skill lines (${wp.comps.map((c) => c.id).join(', ')})`);
   check(/Ask Eli: how many days\?$/.test(wp.eli) && !wp.eliOff && wp.paused, 'the panel has "Ask Eli: how many days?" and the trail waits behind it');
   await shot(page, layout, '25-wagon');
   await audit(page, layout.insets, 'Wagon panel');
@@ -914,7 +914,8 @@ async function v12Journey(page, layout, grab) {
   await setJ(page, `J.goods.arrows = 15;`);
   // a breakdown with a spare part: "Fix it" / "Work it out for a token"
   const breakdown = { id: 'wheel', kind: 'breakdown', part: 'wheel', needsPart: true, name: 'A wheel comes off', text: 'Bump! A wheel comes off in a rut.', say: 'Bump! A wheel comes off in a rut.', fix: 'A quick fix and we roll on!' };
-  await setJ(page, `J.parts = 1; J.goods.parts = 1;`);
+  // (Ada is in the party: her free fix is spent for this leg so the spare part is what gets used)
+  await setJ(page, `J.parts = 1; J.goods.parts = 1; if (J.trip) J.trip.forgeUsed = true;`);
   await forceDay(page, { event: breakdown });
   await cardWith(page, 'A wheel comes off');
   const b1 = await J(page, () => ({ text: document.querySelector('#tc-text').textContent, go: document.querySelector('#tc-go').textContent, alt: document.querySelector('#tc-alt').hidden ? '' : document.querySelector('#tc-alt').textContent, kicker: document.querySelector('#tc-kicker').textContent }));
