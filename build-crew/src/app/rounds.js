@@ -1,7 +1,9 @@
 // A job's (or the sandbox's) life: building the physics yard and showing it, starting a job with its camera, HUD and
 // spoken goal, one fixed physics step with the mission check and first-use hints, the player's one-shot actions
-// (grab, hop, reset, horn, pause), the pause sheet, and finishing a job: the reward is recorded once, the yard
-// celebrates and the sheet offers the next job. Completion only ever comes from the mission check on real poses.
+// (grab, hop, reset, horn, pause), the pause sheet, and finishing a job: the reward is recorded once and put on the
+// machine, the yard celebrates for a few seconds (camera sweep, confetti, sparks, dust, horn fanfare, music stinger)
+// and then the sheet slides in with the reward drawn large and offers the next job. Completion only ever comes from
+// the mission check on real poses; nothing in the celebration needs a press or runs against a clock the child feels.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { Audio } from '../../../spell-jump/src/audio.js';
@@ -12,11 +14,39 @@ import { Yard, DT } from '../physics.mjs';
 import { Mission } from '../missions.mjs';
 import { Music } from '../meta/music.js';
 import { Sound } from '../meta/sound.js';
+import { PAINTS, rewardArt } from '../scene/machines.js';
 import { app, persist, account, activePlay, setSetting } from './state.js';
 import { MACHINE_UI, toast, showHint, modal, closeModal, renderMachines, updateUI } from './hud.js';
 import { prepareVoice, say } from './voice.js';
 import { showTitle } from './title.js';
 import { resetClock } from './loop.js';
+
+/** How long the job-complete show runs before the reward sheet, and the short beat used in calm motion (ms). */
+const SHOW_MS = 2800;
+const CALM_MS = 450;
+
+/** The hint line, unless the job is already done: after completion nothing is shown until the next job starts. */
+function hint(text) {
+  if (!app.jobDone) showHint(text);
+}
+
+/** Marks the current job as finished (or not) for the hint line and the stylesheet. */
+function setJobDone(done) {
+  app.jobDone = done;
+  document.documentElement.classList.toggle('job-done', done);
+}
+
+/** Ends a celebration that is still running (a new world replaced it): the controls come back. */
+function cancelCelebration() {
+  const show = app.celebration;
+  if (!show) return;
+  clearTimeout(show.timer);
+  app.celebration = null;
+  if (app.screen === 'play' && app.paused) {
+    app.paused = false;
+    app.controls?.setEnabled(true);
+  }
+}
 
 /** The machines this builder may drive in the sandbox: the skid steer, plus any earned (or parent-unlocked). */
 export function availableMachines() {
@@ -26,6 +56,8 @@ export function availableMachines() {
 /** Replaces the physics yard with a new one for `round` (optionally restoring a saved sandbox) and shows it with
  *  the builder's paint, decal and the saved daylight. Physics events become sounds and effects. */
 export function makeWorld(round, snapshot) {
+  cancelCelebration();
+  setJobDone(false);
   app.yard?.destroy();
   app.yard = new Yard(round, {
     onEvent(event) {
@@ -40,6 +72,10 @@ export function makeWorld(round, snapshot) {
   scene.setRound(app.yard);
   scene.paint = app.save.paint;
   scene.decal = app.save.decal;
+  // The roof horn follows the builder's save, wherever it changes.
+  if (!Object.getOwnPropertyDescriptor(scene, 'horn')) {
+    Object.defineProperty(scene, 'horn', { get: () => app.save.horn, configurable: true });
+  }
   scene.daylightTo(snapshot?.daylight ?? 0.72);
   resetClock();
 }
@@ -77,7 +113,7 @@ export function startRound(id, { restore = false } = {}) {
   updateUI();
   app.hintIndex = 0;
   app.said = new Set();
-  showHint(MACHINES[app.yard.machine.kind].hint);
+  hint(MACHINES[app.yard.machine.kind].hint);
   prepareVoice();
   say(round.goal);
   account();
@@ -105,22 +141,53 @@ export function step(input) {
   const arm = Math.abs(input.lift || 0) + Math.abs(input.tool || 0);
   if (arm > 0.1 && !app.said.has('tool')) {
     app.said.add('tool');
-    showHint(
+    hint(
       yard.held ? 'Carry it to the outline, then release.' : 'Bring the tool close to a block, then press Grab.',
     );
   }
   if (Math.abs(input.drive || 0) > 0.1 && !app.said.has('drive')) {
     app.said.add('drive');
-    showHint('Try I and K, or the right stick, to lift your tool.');
+    hint('Try I and K, or the right stick, to lift your tool.');
   }
   return poses;
 }
 
-/** The job is complete: record the job, its reward and today's count once, celebrate, and offer what comes next. */
+/** Where the finished build stands: the middle of the blocks resting on the pad (or the pad's middle), the ground
+ *  level under them and a radius that covers them. The celebration frames and showers this spot. */
+function buildSpot(yard) {
+  const pad = yard.round.pad,
+    near = yard
+      .poses()
+      .filter(
+        (b) => Math.abs(b.position.x - pad.x) <= pad.w / 2 + 1 && Math.abs(b.position.z - pad.z) <= pad.d / 2 + 1,
+      );
+  if (!near.length) return { x: pad.x, y: 0, z: pad.z, radius: 3 };
+  const x = near.reduce((n, b) => n + b.position.x, 0) / near.length,
+    z = near.reduce((n, b) => n + b.position.z, 0) / near.length,
+    low = Math.min(...near.map((b) => b.position.y)),
+    high = Math.max(...near.map((b) => b.position.y)),
+    spread = Math.max(...near.map((b) => Math.hypot(b.position.x - x, b.position.z - z)));
+  const base = Math.max(0, low - 0.6);
+  return { x, y: base, z, mid: (base + high) / 2 + 0.4, radius: Math.max(2.5, spread + 1.5, (high - base) * 0.8) };
+}
+
+/** Puts the reward just earned on the machine: a paint, a decal or the bell horn becomes the builder's current look. */
+function equipReward(save, unlock) {
+  if (PAINTS[unlock]) save.paint = unlock;
+  else if (unlock === 'star' || unlock === 'stripe') save.decal = unlock;
+  else if (unlock === 'bell') save.horn = 'bell';
+  app.scene.paint = save.paint;
+  app.scene.decal = save.decal;
+}
+
+/** The job is complete: record the job, its reward and today's count once, put the reward on the machine, and start
+ *  the celebration. The reward sheet follows when it ends (a beat after a fade in calm motion). */
 function win() {
-  if (app.screen !== 'play') return;
+  if (app.screen !== 'play' || app.celebration) return;
   const r = app.yard.round,
-    save = app.save;
+    save = app.save,
+    scene = app.scene,
+    calm = app.settings.reducedMotion;
   account();
   if (!save.done.includes(r.id)) {
     save.done.push(r.id);
@@ -129,15 +196,37 @@ function win() {
     save.play[key] ||= { rounds: 0, seconds: 0 };
     save.play[key].rounds++;
     completeDay(save, Date.now());
+    equipReward(save, r.unlock);
   }
   persist();
   app.ping('round');
-  app.scene.celebrate();
-  Music.celebrate();
-  Audio.coin();
+  // The job is done: the hint line empties and stays empty until the next job starts. Controls rest during the show.
+  setJobDone(true);
+  showHint('');
+  app.paused = true;
+  app.controls.clear();
+  app.controls.setEnabled(false);
+  account();
   updateUI();
+  const spot = buildSpot(app.yard);
+  scene.rig.celebrate({ x: spot.x, y: spot.mid ?? 1, z: spot.z }, spot.radius, SHOW_MS, calm);
+  scene.effects.celebrate({ x: spot.x, y: spot.y, z: spot.z }, spot.radius);
+  Sound.fanfare(save.horn === 'bell');
+  Music.celebrate();
+  const show = (app.celebration = {});
+  show.timer = setTimeout(() => reveal(show), calm ? CALM_MS : SHOW_MS);
+}
+
+/** The celebration is over: the reward sheet slides in with the reward drawn large and offers what comes next. */
+function reveal(show) {
+  if (app.celebration !== show) return;
+  app.celebration = null;
+  if (app.screen !== 'play') return;
+  const r = app.yard.round;
+  app.paused = false;
+  Audio.coin();
   modal('JOB COMPLETE', [
-    h('div', { class: 'celebration-stamp', html: icon('trophy') }),
+    h('div', { class: 'reward-art', html: rewardArt(r.unlock, app.yard.machine.kind, app.save.paint) }),
     h('p', {}, `Job complete. Unlocked: ${r.reward}.`),
     h(
       'div',
@@ -171,14 +260,14 @@ export function resetBlocks() {
   app.scene.overview = false;
   renderMachines();
   updateUI();
-  showHint('All set. Resume!');
+  hint('All set. Resume!');
 }
 
 /** A one-shot action from a key, a gamepad button or the HUD. Pause works whenever a job is open; the rest only
  *  during active play. */
 export function action(a) {
   if (a === 'pause') {
-    if (app.screen !== 'play') return;
+    if (app.screen !== 'play' || app.celebration) return;
     if (!$('#modal').hidden) {
       closeModal();
       return;
@@ -189,9 +278,9 @@ export function action(a) {
   if (!activePlay()) return;
   const yard = app.yard;
   if (a === 'grab') {
-    if (!yard.grab()) showHint('Bring the tool close to a block, then press Grab.');
-    else if (yard.held) showHint('Raise the load clear of the ground, then move to the outline.');
-    else if (MACHINE_UI[yard.machine.kind].releaseHint) showHint(MACHINE_UI[yard.machine.kind].releaseHint);
+    if (!yard.grab()) hint('Bring the tool close to a block, then press Grab.');
+    else if (yard.held) hint('Raise the load clear of the ground, then move to the outline.');
+    else if (MACHINE_UI[yard.machine.kind].releaseHint) hint(MACHINE_UI[yard.machine.kind].releaseHint);
     updateUI();
   }
   if (a === 'hop') {
@@ -202,7 +291,13 @@ export function action(a) {
     yard.resetMachine();
     toast('Back on steady ground.');
   }
-  if (a === 'horn') Sound.horn(app.save.horn === 'bell');
+  if (a === 'horn') {
+    const m = yard.machine;
+    Sound.horn(app.save.horn === 'bell');
+    // The roof horn swells and a little dust-pale puff leaves its mouth.
+    app.scene.honkAt = performance.now();
+    app.scene.emit({ x: m.x + Math.sin(m.yaw) * 0.6, y: m.y + 2.8, z: m.z + Math.cos(m.yaw) * 0.6 }, '#f1e6c2', 6);
+  }
 }
 
 /** The pause sheet: resume, back to base, and the sound, music and motion settings. */

@@ -1,5 +1,6 @@
 // Machine sounds: a low engine tone whose pitch is set per machine and rises with driving, a hydraulic whine while a
-// tool moves, and short low thunks for impacts scaled by contact force. UI effects (coins, clicks) come from the shared
+// tool moves, short low thunks for impacts scaled by contact force, the roof horn (a stock air horn or the brass bell
+// horn) and the horn fanfare that opens the job-complete show. UI effects (coins, clicks) come from the shared
 // Spell Jump Audio module instead. Nothing plays until the first gesture unlocks the AudioContext.
 let ctx,
   bus,
@@ -68,9 +69,70 @@ export const Sound = {
     o.start();
     o.stop(t + d + 0.02);
   },
-  // The stock horn, or the bell horn earned at job 7.
+  // One brass-like horn voice: two slightly detuned saws through a low-pass filter that opens as the note swells. Used
+  // by the horn and the fanfare.
+  brass(f, start, dur, vol = 0.1, bright = 1) {
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime + start,
+      filter = ctx.createBiquadFilter(),
+      g = ctx.createGain();
+    filter.type = 'lowpass';
+    filter.Q.value = 1.4;
+    filter.frequency.setValueAtTime(f * 1.5, t);
+    filter.frequency.linearRampToValueAtTime(f * (3.5 + bright * 2), t + Math.min(0.12, dur * 0.4));
+    filter.frequency.linearRampToValueAtTime(f * 2.4, t + dur);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.035);
+    g.gain.setValueAtTime(vol, t + Math.max(0.04, dur - 0.14));
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    filter.connect(g).connect(bus);
+    for (const detune of [-6, 6]) {
+      const o = ctx.createOscillator();
+      o.type = 'sawtooth';
+      o.frequency.value = f;
+      o.detune.value = detune;
+      o.connect(filter);
+      o.start(t);
+      o.stop(t + dur + 0.03);
+    }
+  },
+  // A struck-bell ring: a sine with two inharmonic partials that die away slowly.
+  ring(f, start, dur, vol = 0.1) {
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime + start;
+    for (const [mult, share] of [[1, 1], [2.76, 0.45], [5.4, 0.2]]) {
+      const o = ctx.createOscillator(),
+        g = ctx.createGain();
+      o.type = 'sine';
+      o.frequency.value = f * mult;
+      g.gain.setValueAtTime(vol * share, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur / (mult > 1 ? 1.8 : 1));
+      o.connect(g).connect(bus);
+      o.start(t);
+      o.stop(t + dur + 0.03);
+    }
+  },
+  // The roof horn. Stock is a deep two-tone air horn (a minor third apart); the bell horn earned at job 7 is a higher
+  // brass chord with a bell ring on top.
   horn(bell) {
-    this.note(bell ? 660 : 180, 0.65, 0.25);
+    if (bell) {
+      for (const f of [392, 494, 587]) this.brass(f, 0, 0.7, 0.07, 1.4);
+      this.ring(1175, 0.02, 1.1, 0.05);
+    } else {
+      for (const f of [147, 175]) this.brass(f, 0, 0.7, 0.11, 0.6);
+    }
+  },
+  // The job-complete fanfare, in the key of the music (C): two short calls, then a long open chord. The bell horn
+  // plays it an octave higher with bell rings.
+  fanfare(bell) {
+    const o = bell ? 2 : 1,
+      calls = [
+        [196, 0, 0.17],
+        [262, 0.2, 0.17],
+      ];
+    for (const [f, at, d] of calls) this.brass(f * o, at, d, bell ? 0.07 : 0.1);
+    for (const f of [262, 330, 392, 523]) this.brass(f * o, 0.42, 1.25, bell ? 0.05 : 0.07, 1.2);
+    if (bell) for (const [f, at] of [[1047, 0.44], [1319, 0.6], [1568, 0.76]]) this.ring(f, at, 1, 0.04);
   },
   suspend() {
     ctx?.suspend().catch(() => {});

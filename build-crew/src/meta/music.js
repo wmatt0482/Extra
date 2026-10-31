@@ -17,7 +17,9 @@ let ctx,
   ticks = 0,
   allowed = true,
   ducked = false,
-  playing = false;
+  playing = false,
+  /** AudioContext time before which the tune stays silent, so the celebration stinger plays alone. */
+  holdUntil = 0;
 /** Plays one plucked note: a fast 8 ms attack, then an exponential fade over dur seconds. */
 function tone(note, dur, gain, type = 'triangle', delay = 0) {
   if (!ctx || ctx.state !== 'running') return;
@@ -39,7 +41,7 @@ function sync() {
   if (bus) bus.gain.setTargetAtTime(allowed && playing ? (ducked ? 0.025 : 0.08) : 0, ctx.currentTime, 0.12);
   if (ctx && !timer)
     timer = setInterval(() => {
-      if (!allowed || !playing || ctx.state !== 'running') return;
+      if (!allowed || !playing || ctx.state !== 'running' || ctx.currentTime < holdUntil) return;
       if (ticks === 0) {
         const [note, length] = phrase[index++ % phrase.length];
         tone(note, 0.13 * length, 0.48);
@@ -51,7 +53,7 @@ function sync() {
     }, 145);
 }
 /** The music controls the app uses: unlock after a gesture, on (the setting), play (title and jobs, not modals),
- *  duck (while the voice speaks), suspend/resume (tab visibility) and a short celebration arpeggio. */
+ *  duck (while the voice speaks), suspend/resume (tab visibility) and the celebration stinger. */
 export const Music = {
   unlock() {
     if (!ctx) {
@@ -83,7 +85,16 @@ export const Music = {
   resume() {
     if (playing) ctx?.resume().catch(() => {});
   },
+  // The job-complete stinger, in the tune's key (C major): a rising run from C4 up to E5 that lands on a full C major
+  // chord over a low C, lasting about 2 s. The tune rests while it plays and picks up where it left off.
   celebrate() {
-    [48, 55, 64, 72].forEach((n, i) => tone(n, 0.35, 0.5, 'triangle', i * 0.085));
+    if (!ctx || ctx.state !== 'running') return;
+    holdUntil = ctx.currentTime + 2.2;
+    [60, 64, 67, 72, 76].forEach((n, i) => {
+      tone(n, 0.3, 0.55, 'triangle', 0.35 + i * 0.1);
+      tone(n + 12, 0.18, 0.1, 'sine', 0.35 + i * 0.1);
+    });
+    for (const n of [48, 64, 67, 72, 79]) tone(n, 1.4, n < 50 ? 0.7 : 0.4, n < 50 ? 'sine' : 'triangle', 0.95);
+    tone(36, 1.5, 0.7, 'sine', 0.95);
   },
 };
