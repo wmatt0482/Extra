@@ -262,7 +262,7 @@ function exposeHooks() {
         camera: { yaw: scene.yaw, pitch: scene.pitch, distance: scene.distance },
         stamps: yard.stamps.map((s) => ({ ...s })),
         save: normalize(app.save),
-        voice: { engine: tts.engine, clips: cloud.count(), active: cloud.active },
+        voice: { engine: app.lastEngine || '', clips: cloud.count(), active: cloud.active },
       };
     },
     get performance() {

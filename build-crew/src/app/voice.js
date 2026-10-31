@@ -233,6 +233,9 @@ export function hush() {
 // The HUD (hud.js, tray.js) shows hints, toasts and the tray without knowing about the voice. This watches those three
 // places and reads, once per builder per device, each hint the first time it appears, the toasts worth hearing, and
 // the tray tip the first time the tray opens. Only lines that were prepared (KNOWN) are ever spoken.
+/** Toasts the device voice may also read (it keeps its short footprint: the job, the reward and the save). tray.js shows
+ *  the toast only; the voice reads it from here, so it is never said twice. */
+const DEVICE_TOASTS = ['Site saved.'];
 const heardKey = () => `buildCrew.${app.playerId}.heard`;
 function heard(line) {
   try {
@@ -250,11 +253,11 @@ function markHeard(line) {
 
 /** Reads `line` after the current speech; with `once`, only the first time this builder meets it. */
 const queued = new Set();
-function sayFirst(raw, once = true) {
+function sayFirst(raw, once = true, extra = true) {
   const line = speakable(raw);
   if (!app.playerId || !KNOWN.has(line) || queued.has(line) || (once && heard(line))) return;
   queued.add(line);
-  say(line, { queue: true, extra: true, maxAgeMs: 10000 })
+  say(line, { queue: true, extra, maxAgeMs: 10000 })
     .then((spoken) => spoken && once && markHeard(line))
     .finally(() => queued.delete(line));
 }
@@ -262,6 +265,9 @@ function sayFirst(raw, once = true) {
 function watchScreen() {
   const watch = (el, opts, fn) => el && new MutationObserver(fn).observe(el, opts);
   watch($('#hint'), { childList: true, characterData: true, subtree: true }, () => {
+    // on a touch screen the strip falls back to the job's goal after a few seconds (class 'goal'): the goal was read when
+    // the job started, so that change is not a hint
+    if ($('#hint').classList.contains('goal')) return;
     const text = $('#hint').textContent.trim();
     if (text && !app.jobDone) sayFirst(text);
   });
@@ -269,7 +275,7 @@ function watchScreen() {
     for (const r of records)
       for (const n of r.addedNodes) {
         const text = n.textContent?.trim();
-        if (text && SPOKEN_TOASTS.includes(text)) sayFirst(text, false);
+        if (text && SPOKEN_TOASTS.includes(text)) sayFirst(text, false, !DEVICE_TOASTS.includes(text));
       }
   });
   watch($('#tray'), { attributes: true, attributeFilter: ['hidden'] }, () => {

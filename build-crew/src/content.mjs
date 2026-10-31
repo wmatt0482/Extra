@@ -2,7 +2,7 @@
 // may speak. It is plain data with no imports, so physics, missions, the scene, the app and the Node tests all read the
 // same numbers. The later sites and machines described in SPEC.md are deliberately absent until they are built.
 /** The game version reported by pings and the Parent Zone (the service worker has its own cache version). */
-export const VERSION = '0.3.0';
+export const VERSION = '0.4.0';
 /** The five paint colors for loads: red first, because the jobs say "red loads"; also the confetti colors. */
 export const COLORS = ['#c6412f', '#e9aa26', '#287da5', '#64816b', '#87909c'];
 /** Toy shapes. size is [width, height, depth] in metres (a cylinder uses width as its diameter), mass in kilograms.
@@ -219,6 +219,19 @@ export const STAMPS = ['hill', 'pit', 'ramp', 'water'];
 export const STAMP_HINT = (kind) => `Tap a clear patch of ground for your ${kind}.`;
 /** The tip under the materials tray (also printed in index.html), read the first time a builder opens the tray. */
 export const TRAY_TIP = 'New materials arrive at the striped bay. Terrain: pick a stamp, then tap the ground.';
+/** The wording of the hints on a touch screen (a phone has no keys): drag a stick or tap a button. hud.js shows these
+ *  through `touchHint`, and the voice prepares the same words, so the hint a phone shows is the line it hears. */
+export const TOUCH_TEXT = {
+  [MACHINES.skid.hint]: 'Drag the left stick to drive. This skid steer turns on the spot.',
+  [MACHINES.excavator.hint]: 'Drag the right stick up to lift. Left and right reach out and in.',
+  [MACHINES.crane.hint]: 'Drag the right stick up and down to lift the magnet. Left and right swings the boom.',
+  [HINT.drive]: 'Try dragging the left stick to drive.',
+  [HINT.lift]: 'Try dragging the right stick to lift your tool.',
+  [HINT.hop]: 'Tap Hop to jump into another machine.',
+};
+/** A hint as a touch screen shows it: the touch wording, and "press Grab" becomes "tap Grab". */
+export const touchHint = (text) => (text && (TOUCH_TEXT[text] || text.replace(/\bpress Grab\b/, 'tap Grab'))) || text;
+
 /** Toasts the voice reads aloud (the others are only shown): short, calm confirmations and the two "why not" notes. */
 export const SPOKEN_TOASTS = [
   'Back on steady ground.',
@@ -274,6 +287,9 @@ export const SPOKEN = {
   fixed: [
     ...machineHints,
     ...[HINT.drive, HINT.lift, HINT.grab, HINT.carry, HINT.raise, HINT.tilt, HINT.resume].map(speakable),
+    // the same hints worded for a touch screen (see touchHint): a phone shows these, so a phone hears these
+    ...Object.values(TOUCH_TEXT).map(speakable),
+    speakable(touchHint(HINT.grab)),
     ...STAMPS.map((k) => STAMP_HINT(k)),
     TRAY_TIP,
     ...SPOKEN_TOASTS,

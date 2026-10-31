@@ -227,9 +227,10 @@ try {
   await page.locator('.pz-tabs [data-tab="report"]').click();
   await page.locator('#bc-report .pz-chart').first().waitFor();
   assert.equal(await page.locator('#bc-report .pz-chart').count(), 2);
-  // The report says which quality tier this device runs at and every change the controller made.
+  // The report says which quality tier this device runs at and every change the controller made. By now ten jobs have
+  // run, so on a loaded software renderer the controller may already have stepped the shadows down: any step is valid.
   assert.equal(await page.locator('#bc-quality').count(), 1);
-  assert.match(await page.locator('#bc-quality').textContent(), /Quality tier: desktop.*Resolution: .*Shadows: 1024.*Changes this session:/);
+  assert.match(await page.locator('#bc-quality').textContent(), /Quality tier: desktop.*Resolution: .*Shadows: (1024|512|contact discs only).*Changes this session:/);
   await page.screenshot({ path: path.join(shots, 'parent-report.png') });
   await page.locator('.pz-tabs [data-tab="options"]').click();
   await page.locator('#bc-unlock').click();

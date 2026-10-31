@@ -7,7 +7,6 @@ import { TOYS, COLORS } from '../content.mjs';
 import { normalizeYard } from '../meta/save.mjs';
 import { app, persist, flush } from './state.js';
 import { MACHINE_UI, toast, showHint, renderMachines, updateUI } from './hud.js';
-import { say } from './voice.js';
 
 /** Where tray materials arrive: the striped spawn bay. */
 const BAY = { x: -10, z: 10 };
@@ -183,7 +182,6 @@ export function saveYard() {
     localStorage.setItem(`buildCrew.${app.playerId}.thumb`, app.scene.thumbnail());
   } catch {}
   toast('Site saved.');
-  say('Site saved.');
 }
 
 /** Wires the daylight slider: a custom button-style slider (no native input) driven by pointer drag or the arrow,

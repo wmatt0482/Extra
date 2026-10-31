@@ -29,6 +29,12 @@ const C = await import('../src/content.mjs');
   must(src.includes(C.HINT.tilt), 'hud.js releaseHint differs from HINT.tilt');
   must(src.includes('Tap a clear patch of ground for your ${kind}.'), 'tray.js stamp hint changed');
   must(src.replace(/\s+/g, ' ').includes(C.TRAY_TIP), 'index.html tray tip differs from TRAY_TIP');
+  // touch wording: hud.js must take it from content.mjs (no copy that could drift), and every hint a phone can show is prepared
+  must(/touchHint/.test(read('src/app/hud.js')) && !/Drag the left stick to drive/.test(read('src/app/hud.js')), 'hud.js has its own touch wording');
+  for (const [k, v] of Object.entries(C.TOUCH_TEXT)) must(known.has(C.speakable(v)), `touch hint "${v}" (for "${k}") is not prepared`);
+  for (const t of [C.HINT.drive, C.HINT.lift, C.HINT.grab, C.HINT.carry, C.HINT.raise, C.HINT.tilt, C.HINT.resume, ...Object.values(C.MACHINES).map((m) => m.hint)])
+    must(known.has(C.speakable(C.touchHint(t))), `touch form of "${t}" is not prepared`);
+  must(C.touchHint(C.HINT.grab).includes('tap Grab') && !C.touchHint(C.HINT.grab).includes('press'), 'touch grab hint still says press');
   for (const t of C.SPOKEN_TOASTS) must(src.includes(`'${t}'`), `toast "${t}" is not in the source any more`);
   for (const t of [...C.SPOKEN_TOASTS, C.TRAY_TIP, ...C.STAMPS.map((k) => C.STAMP_HINT(k)), ...Object.values(C.MACHINES).map((m) => C.speakable(m.hint))]) must(known.has(t), `"${t}" is not prepared`);
   for (const r of C.ROUNDS) for (const t of C.SPOKEN.job(r)) must(known.has(t) && t.length <= 200 && !/undefined|SS-|EX-|CR-/.test(t), `bad line "${t}"`);

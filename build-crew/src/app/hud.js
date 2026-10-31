@@ -3,7 +3,7 @@
 // differs by machine on screen comes from the MACHINE_UI table, keyed by kind like the physics and scene tables.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
-import { MACHINES } from '../content.mjs';
+import { MACHINES, touchHint } from '../content.mjs';
 import { Music } from '../meta/music.js';
 import { app, account } from './state.js';
 
@@ -43,24 +43,10 @@ export const MACHINE_UI = {
 /** True when the page uses the touch layout (a touch screen is the main pointer, or ?touch=1). */
 export const isTouch = () => document.documentElement.classList.contains('touch');
 
-/** The wording of the hints for a touch screen. The keyboard wording stays in content.mjs for a laptop; a phone is told
- *  to drag a stick or tap a button instead of pressing keys it does not have. */
-const TOUCH_TEXT = {
-  'WASD or the left stick drives. This skid steer turns on the spot.':
-    'Drag the left stick to drive. This skid steer turns on the spot.',
-  'Lift with I or the right stick. J and L reach out and in.':
-    'Drag the right stick up to lift. Left and right reach out and in.',
-  'I and K lift the magnet. J and L swing the boom.':
-    'Drag the right stick up and down to lift the magnet. Left and right swings the boom.',
-  'Try W or the left stick to drive.': 'Try dragging the left stick to drive.',
-  'Try I and K, or the right stick, to lift your tool.': 'Try dragging the right stick to lift your tool.',
-  'Press E to hop into another machine.': 'Tap Hop to jump into another machine.',
-};
-
 /** The hint as shown on this device: the touch wording on a touch screen, otherwise unchanged. */
 export function hintText(text) {
   if (!isTouch() || !text) return text;
-  return TOUCH_TEXT[text] || text.replace(/\bpress Grab\b/, 'tap Grab');
+  return touchHint(text);
 }
 
 /** Short vibration (ms or a pattern) for grabbing and placing, where the device has it. Off in calm motion. */
