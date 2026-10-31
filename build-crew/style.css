@@ -21,3 +21,4 @@ button{font-weight:650;border:1px solid #516473;background:#203343;box-shadow:no
 .hint{background:#14232ff2;color:#edf4f8}.modal-card p{color:#bdcbd6}.job-label p{color:#cad8e1}.intro{color:#c4d1dc}
 .pz-head button,.pz-sync-line{color:#eef4f8}
 @media(max-height:600px) and (min-width:650px){.title{bottom:12px;overflow-y:auto}#title-foot .brand-title{display:none}}
+@media(max-height:600px) and (min-width:650px){#title-foot{justify-content:flex-end}}
