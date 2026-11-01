@@ -626,7 +626,7 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.3\.2 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.3\.3 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
   check(await J(page, () => document.querySelector('#opt-voice-line').textContent === 'Device voice' && !!document.querySelector('#opt-voice-test')), 'Options: the voice line ("Device voice": no natural voice picked) and "Say a test line"');
   await page.click('#opt-voice-test');
   await page.waitForFunction(() => /voice spoke/.test(document.querySelector('#opt-voice-result').textContent), null, { timeout: 8000 }).catch(() => {});

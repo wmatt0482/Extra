@@ -168,6 +168,18 @@ spoken string against that list; ui-smoke plays the letter with instrumented eng
 
 - VERSION 1.3.2; the service worker is `wagon-west-v1.3.2`.
 
+## 1.3.3
+
+Owner report: "the math game says 9x12 is 96". The shown text, spoken text, worked lines and graded answer of every problem
+agree with the true arithmetic for every ladder fact, kind, season and purse (`tools/journey-tests.mjs` sweep, ~9000 problems),
+so no wrong product was ever printed. The real fault found here: a problem the purse cap, a season's scaling or a trade's
+limit had changed (a "9 × 12" drawn from the ladder but asked as 9 × 3) was still recorded on the ladder as the drawn fact.
+`problemFor` now returns `asked`, the fact its sentence really asks (null for ×1 / ×0 or the no-fact ration), and the app
+records `asked`, passes the typed wrong answer only when the question's answer is the fact's answer (a two-step ration or
+repair is not), and counts a scout only for the fact that was scouted.
+
+- VERSION 1.3.3; the service worker is `wagon-west-v1.3.3`.
+
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail

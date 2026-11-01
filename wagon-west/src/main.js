@@ -48,7 +48,7 @@ import { loadFactsData, writeFactsData } from '../../trail-blazer/src/meta/save.
 import { nextFact, recordAnswer } from '../../trail-blazer/src/facts/store.js';
 import { createSession as createFactSession } from '../../trail-blazer/src/facts/scheduler.js';
 import { activeFacts } from '../../trail-blazer/src/facts/store.js';
-import { factParts, normFact } from '../../trail-blazer/src/facts/facts.js';
+import { factAnswer, factParts, normFact } from '../../trail-blazer/src/facts/facts.js';
 import { hintFor, spokenHint } from '../../trail-blazer/src/facts/hints.js';
 import { cloudVoiceInfo } from '../../spell-jump/src/tts/voices.js';
 import { loadSkills as loadFracSkills } from '../../fraction-fright/src/meta/save.js';
@@ -95,7 +95,7 @@ import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
 import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.3.2';
+const VERSION = '1.3.3';
 // the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
 // is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];
@@ -791,7 +791,9 @@ async function boot() {
   }
   /** The problem's fact when it is one the ladder knows (a table fact, or the ladder's own pick), canonical; else null. */
   function ladderFactOf(p, pick) {
-    const k = p && typeof p.fact === 'string' ? normFact(p.fact) : null;
+    // v1.3.3: what the problem REALLY asked (p.asked, from the numbers in its sentence), not the fact its numbers were drawn
+    // from: a purse-capped "9 × 12" is a 9 × 6, a season-scaled price or a capped trade is another fact (or none)
+    const k = p && typeof p.fact === 'string' ? (p.asked !== undefined ? (p.asked ? normFact(p.asked) : null) : normFact(p.fact)) : null;
     if (!k) return null;
     if (pick && normFact(pick.fact) === k) return k;
     const fp = factParts(k);
@@ -865,7 +867,9 @@ async function boot() {
     logKind(save, kind, !!res.correct);
     logPlay(save, { problems: 1, problemsRight: res.correct ? 1 : 0 });
     const lf = ladderFactOf(p, pick);
-    if (lf) recordFact(lf, { correct: res.correct, quick: false, fixed: !res.correct && res.fixed, ms: res.ms, given: res.given }, pick);
+    // (the typed wrong answer goes on the fact's record only when the question's answer IS the fact's answer: a two-step ration or
+    // repair asks for pounds left / good spokes, and "98 good bolts" is not a wrong answer to 9 × 12)
+    if (lf) recordFact(lf, { correct: res.correct, quick: false, fixed: !res.correct && res.fixed, ms: res.ms, given: Number(p.answer) === factAnswer(lf) ? res.given : null }, pick && normFact(pick.fact) === lf ? pick : null);
     app.persist();
     checkDaily();
     return res;

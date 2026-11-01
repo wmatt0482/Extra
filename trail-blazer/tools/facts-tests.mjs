@@ -9,7 +9,7 @@
 import assert from 'node:assert/strict';
 import {
   ALL_FAMILIES, STOCK_FAMILIES, addSubFacts, factAnswer, factFamilies, factFamily, factKey, factSpoken, factText, familyFacts, fullSentence,
-  difficulty, isCommutative, normFact, parseCustom, parseFact, questionSentence, answerSentence, setFacts,
+  difficulty, divisionTwins, isCommutative, normFact, parseCustom, parseFact, questionSentence, answerSentence, setFacts,
 } from '../src/facts/facts.js';
 import { numberWords, spokenText } from '../src/facts/spoken.js';
 import { hintFor, hintSpoken } from '../src/facts/hints.js';
@@ -584,7 +584,7 @@ test('Report patterns in plain words: misses cluster, division weaker, slow on b
   const kinds = lines.map((x) => x.kind);
   assert.ok(kinds.includes('cluster') && /Misses cluster in ×8/.test(lines.find((x) => x.kind === 'cluster').text), JSON.stringify(lines));   // a × miss counts for the harder family
   assert.ok(kinds.includes('division'), 'Division is weaker'); assert.ok(kinds.includes('slow-big') && /6 × 7/.test(lines.find((x) => x.kind === 'slow-big').text));
-  assert.ok(lines.some((x) => x.kind === 'adjacent' && /like 7 × 8 → /.test(x.text)));
+  assert.ok(lines.some((x) => x.kind === 'adjacent' && /like 7 × 8: answered /.test(x.text)));
   assert.ok(inverseCluster(d, T0));
   const t = reportText(d, 'Mia', T0 + 3 * DAY_MS); assert.match(t, /Patterns: .*Misses cluster/);
 });
@@ -1212,6 +1212,80 @@ test('progressSeries: the last n days, counts carried across quiet days, percent
   assert.deepEqual(ps.mastered.slice(0, 3), [null, null, null], 'before the log: nothing');
   assert.deepEqual(ps.mastered.slice(3), [0, 0, 0, 0], 'carried');
   assert.ok(ps.ladderPct[3] >= 0 && ps.ladderPct[6] === ps.ladderPct[3]);
+});
+
+// ---- v1.8.1 sweep: "9 × 12 is 96" must be impossible. Every a, b in 0 … 12, × and ÷ and the related facts: the answer, the
+// spoken forms, the strategy hint, every pattern hint (every wrong answer typed 0 … 1300), the families, the division inverse ----
+const stmts = (text) => [...String(text).replace(/take away \d+ × \d+ \(\d+\)/g, 'take away X').replace(/take away \d+ × \d+/g, 'take away X').matchAll(/(\d+)\s*([×÷+−])\s*(\d+)\s*(?:=|is)\s*(\d+)/g)];
+const trueStmt = (m) => { const a = +m[1], b = +m[3], c = +m[4]; return (m[2] === '×' ? a * b : m[2] === '÷' ? a / b : m[2] === '+' ? a + b : a - b) === c; };
+test('sweep a, b in 0 … 12: answers, text, spoken form, families and the strategy hint are true arithmetic (× both ways, ÷, the inverse)', () => {
+  let n = 0;
+  for (let a = 0; a <= 12; a++) for (let b = 0; b <= 12; b++) {
+    const k = factKey(a, 'x', b), ans = a * b, tag = `${a}x${b}`;
+    assert.equal(factAnswer(k), ans, tag); assert.equal(factAnswer(`${b}x${a}`) , ans, tag);
+    assert.equal(normFact(`${a} × ${b}`), k, tag); assert.equal(normFact(`${b} × ${a}`), k, tag);
+    for (const flip of [false, true]) {
+      const shown = factText(k, flip), m = /^(\d+) × (\d+)$/.exec(shown);
+      assert.ok(m && Number(m[1]) * Number(m[2]) === ans, `${tag} shown "${shown}"`);
+      assert.equal(fullSentence(k, flip), `${factSpoken(k, flip)} is ${numberWords(ans)}.`);
+      const h = hintFor(k, flip);
+      for (const st of stmts(h)) assert.ok(trueStmt(st), `${tag} flip=${flip} hint "${h}": ${st[0]} is false`);
+      const last = [...h.matchAll(/\d+/g)].map((x) => Number(x[0])).pop();
+      assert.equal(last, ans, `${tag} flip=${flip}: hint "${h}" ends on ${last}, not ${ans}`);
+    }
+    if (b >= 1 && a >= 1) {            // the division inverse: ab ÷ b = a and ab ÷ a = b, hinted with a true × fact
+      for (const [d, q] of [[b, a], [a, b]]) {
+        const f = `${ans}/${d}`; assert.equal(factAnswer(f), q, f);
+        const h = hintFor(f); for (const st of stmts(h)) assert.ok(trueStmt(st), `${f}: "${h}"`);
+        assert.equal([...h.matchAll(/\d+/g)].map((x) => Number(x[0])).pop(), q, `${f}: "${h}"`);
+        assert.ok(divisionTwins(k).includes(f) || a === 0 || b === 0, `${f} is a twin of ${k}`);
+      }
+    }
+    n++;
+  }
+  assert.equal(n, 169);
+  // the 12 family, in every family listing
+  for (let m = 2; m <= 12; m++) {
+    assert.ok(familyFacts(12).includes(factKey(12, 'x', m))); assert.equal(factAnswer(factKey(12, 'x', m)), 12 * m);
+    assert.ok(familyMembers('x12').includes(factKey(12, 'x', m))); assert.ok(familyMembers('d12').includes(`${12 * m}/12`));
+    assert.ok(familyMembers('x9').includes(factKey(9, 'x', m))); assert.ok(familyMembers('d9').includes(`${9 * m}/9`));
+  }
+  assert.equal(factAnswer('9x12'), 108); assert.equal(factText('9x12', true), '12 × 9'); assert.equal(fullSentence('9x12'), 'nine times twelve is one hundred eight.');
+  assert.equal(hintFor('9x12'), '10 × 12 is 120, take away 12 is 108'); assert.equal(factAnswer('108/12'), 9); assert.equal(factAnswer('108/9'), 12);
+  assert.deepEqual(divisionTwins('9x12'), ['108/9', '108/12']);
+});
+test('sweep: every pattern hint (every wrong answer 0 … 1300 for every × and ÷ fact up to 12) is true arithmetic and ends on the real answer', () => {
+  let n = 0, hinted = 0;
+  const facts = [];
+  for (let a = 1; a <= 12; a++) for (let b = a; b <= 12; b++) { facts.push(`${a}x${b}`); facts.push(`${a * b}/${a}`, `${a * b}/${b}`); }
+  for (const fact of facts) for (const flip of [false, true]) {
+    const ans = factAnswer(fact);
+    for (let g = 0; g <= 1300; g++) {
+      if (g === ans) continue;
+      const t = patternHint(fact, flip, hintKind(fact, g, {}), g);
+      n++;
+      if (!t) continue;
+      hinted++;
+      for (const st of stmts(t)) assert.ok(trueStmt(st), `${fact} flip=${flip} given=${g}: "${t}": ${st[0]} is false`);
+      const last = [...t.matchAll(/\d+/g)].map((x) => Number(x[0])).pop();
+      assert.ok(last === ans || /not \d+$/.test(t), `${fact} given=${g}: "${t}" ends on ${last}, not ${ans}`);
+    }
+  }
+  assert.ok(n > 400000 && hinted > 1500, `${n} / ${hinted}`);
+  // the miss everyone makes: 9 × 12 typed 96 (8 × 12): the hint names the right fact, and the report names the typed number as typed
+  assert.equal(patternHint('9x12', false, 'adjacent', 96), '8 × 12 is 96, then one more 12 is 108');
+  assert.equal(patternHint('9x12', false, 'adjacent', 132), '11 × 12 is 132, take away 2 × 12 (24) is 108', 'a two-step slip names the amount, never reads as the false "2 × 12 is 108"');
+  const d = defaultFacts(T0);
+  for (let i = 0; i < 2; i++) recordAnswer(d, '9x12', { correct: false, given: 96 }, T0 + i);
+  const line = patternSummary(d, T0 + 1000).find((x) => x.kind === 'off-by-operand');
+  assert.ok(line && line.text.includes('answered 96') && !/→/.test(line.text), line && line.text);
+});
+test('sweep: the Fact Grid cells (× and ÷ views, 12 × 12) show answers that match the fact they open', () => {
+  for (let r = 1; r <= 12; r++) for (let c = 1; c <= 12; c++) {
+    const x = factKey(r, 'x', c), dv = `${r * c}/${r}`;
+    assert.equal(factAnswer(x), r * c); assert.equal(factAnswer(dv), c);
+    assert.ok(familyFacts(r, { division: true }).includes(dv) || c < 2, dv);
+  }
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);
