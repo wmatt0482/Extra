@@ -98,7 +98,9 @@ export const STAMPEDE = { held: 15 };
 /** The goods the General Store sells that the content's GOODS table does not list (src/content/legs.js is not ours). The second yoke
  *  (v1.3): $42 × the fort's price level (Kearny $50, Laramie $67, Bridger $80, Hall $92; was $30 from Independence, which every child
  *  bought on leg 1), sold from Fort Kearny on (fromLeg 2 = leg.n of the first stop that has it): it competes with the food and the blankets. */
-export const EXTRA_GOODS = [{ id: 'yoke', name: 'A second yoke', unit: 'yoke', emoji: '🐂', price: 42, fromLeg: 2 }];
+export const EXTRA_GOODS = [{ id: 'yoke', name: 'A second yoke', unit: 'yoke', emoji: '🐂', price: 42, fromLeg: 2 },
+  // v1.4: the shiny fishing spoon (bought once, never used up; $3 × the price level, sold from Fort Kearny on)
+  { id: 'spoon', name: 'Shiny spoon', unit: 'spoon', emoji: '🥄', price: 3, fromLeg: 2, max: 1 }];
 export const EXTRA_GOOD_BY_ID = Object.fromEntries(EXTRA_GOODS.map((g) => [g.id, g]));
 /** Is this extra good on the shelf at this stop? `fromLeg` is the number (leg.n) of the first leg whose stop sells it; the
  *  Independence store (leg null) sells only what has fromLeg 0. Goods the content's GOODS table lists are always on sale. */
@@ -161,3 +163,31 @@ export const crateFor = (stars) => CRATE_BY_STARS[Math.min(3, (stars || []).filt
 
 /** The mood word for a spirit value. */
 export const moodOf = (spirit) => (spirit >= MOOD.happy ? 'happy' : spirit >= MOOD.fine ? 'fine' : 'tired');
+
+// ---- v1.4: Frodo and the river (SPEC v1.4 §3.0). Pure fun: nothing here asks a question, gates anything or can be failed. ----
+/** The dog's nose (the trail, once the dog has joined): 2 or 3 slots a leg between `from` and `to` of the leg's miles, at least
+ *  `spacingMi` apart; the kinds by `weights` once the berry patch and a quest item have their slots (a snake only in `snakeBiomes`,
+ *  at most one rabbit and one snake a leg); `unseenBias` = the chance a find is one the sketchbook does not have yet; `spirit` =
+ *  what a snake warning or a rabbit chase gives the party; `chaseLate` = the share of the run after which a call is "late"; `lead` = the miles
+ *  before its slot that a free day may already take it (a day is a marker day about every second day, so without it the dog would miss many legs). */
+export const NOSE = { perLeg: [2, 3], from: 0.15, to: 0.92, spacingMi: 25, weights: { find: 0.55, rabbit: 0.25, snake: 0.2 },
+  snakeBiomes: ['prairie', 'bluffs', 'highdesert'], unseenBias: 0.7, spirit: 5, chaseLate: 0.8, lead: 45 };
+/** Fetch at camp: three throws a visit; the distance (0..1 of the field) sets the treats (`at` = the thresholds); 12 % of throws
+ *  bring back a find instead of the stick, and 2 % the shiny spoon (while the wagon has none). */
+export const FETCH = { throws: 3, at: [0.34, 0.67], treats: [1, 2, 3], itemChance: 0.12, spoonChance: 0.02 };
+/** Fishing 2.0: four casts a session, a wiggled-off fish is cast again once; `strainMaxMs` of a held red wobble and it wiggles off;
+ *  `warnMs` = the yellow shiver before a wobble; at most `lbCap` lb of food a session; `lbScale` tunes the species' pounds so the
+ *  journey's mean session stays at 1.3's (the economy sim checks it); `junkChance` a cast; `cameoChance` a session (the dog);
+ *  `bottleChance` = the share of junk casts that is the bottle while its quest can start; `helpAt` = the sturgeon waits for a second
+ *  tap at this progress; `helpSpeed` = the reel speed once helped; `biteS` = seconds until a bite. */
+export const FISHING = { casts: 4, retriesPerCast: 1, strainMaxMs: 500, warnMs: 250, lbCap: 24, lbScale: 1, junkChance: 0.1,
+  cameoChance: 0.3, bottleChance: 0.35, hopperMax: 12, helpAt: 0.5, helpSpeed: 2, biteS: [1.3, 3.5] };
+/** Trail moments: the dust devil (35 % of the plains / desert legs, never two legs running; one token for every hat), the meteor
+ *  shower (half the arrival evenings, at most once in `gapLegs` legs), the skipping stones, and the trail facts (70 % of the legs
+ *  that have one left; placed between `from` and `to` of the leg). Note: the content's `MOMENTS` (src/content/moments.js) is the
+ *  text; this is the number table. */
+export const MOMENTS = { dustDevil: { biomes: ['prairie', 'bluffs', 'highdesert'], chance: 0.35, gapLegs: 1, tokenAll: 1, from: 0.25, to: 0.8, lead: 45 },
+  meteors: { chance: 0.5, gapLegs: 3, stars: 8 }, stones: { throws: 3, maxSkips: 12, startSkips: 1 },
+  facts: { chance: 0.7, from: 0.3, to: 0.85, lead: 45 } };
+/** What the blacksmith at a fort pays for old iron: $1 × the season's price level a horseshoe. */
+export const HORSESHOE = { price: 1 };

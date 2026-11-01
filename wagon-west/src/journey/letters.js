@@ -9,6 +9,7 @@ import { COMPANION_BY_ID } from '../content/companions.js';
 import { EVENT_BY_ID } from '../content/events.js';
 import { animalOf, legOf, nationFor } from './route.js';
 import { hashSeed } from './rng.js';
+import { questLetterKeys } from './quests.js';
 
 /** Letters kept on the journey (the save keeps its own journal too). */
 export const LETTERS_KEPT = 36;
@@ -105,12 +106,14 @@ export function happenedKeys(J, legEvents) {
     if (rv && rv.how) add(rv.soakedLb > 0 && lineSource(`${rv.how}-wet`).length ? `${rv.how}-wet` : rv.how);
     if (!keys.some((k) => ['ford', 'ford-wet', 'float', 'float-wet', 'ferry'].includes(k))) add('river');
   }
+  // v1.4: a side quest given back (or mailed) on this leg has its own line
+  for (const k of questLetterKeys(J, J.legId)) add(k);
   if (J.mood === 'happy' || (t.seen && t.seen.happy && !t.seen.tired)) add('happy');
   else if (J.mood === 'tired' || (t.seen && t.seen.tired)) add('tired');
   return keys;
 }
 
-// fill {stop} {river} {width} {animal} {name} {food} {nation}
+// fill {stop} {river} {width} {animal} {name} {food} {nation} {dog} (v1.4: the dog's name, so a line can say "Frodo found an old horseshoe")
 function fill(line, J, key) {
   const leg = legOf(J.legId) || {};
   const nation = nationFor(leg);
@@ -119,7 +122,7 @@ function fill(line, J, key) {
   const v = {
     stop: (leg.stop && leg.stop.name) || leg.name || 'the next stop', river: (leg.stop && leg.stop.name) || 'river',
     width: (leg.river && leg.river.width) || 'wide', animal: animalOf(J.animal).name.toLowerCase(), name: companionFor(J, key),
-    food, nation: nation ? nation.name : 'local',
+    food, nation: nation ? nation.name : 'local', dog: (J.dog && J.dog.name) || 'the dog',
   };
   return String(line).replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : ''));
 }

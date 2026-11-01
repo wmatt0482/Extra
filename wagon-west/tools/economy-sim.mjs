@@ -21,6 +21,13 @@
 // shopping by eye and each with a "buys everything useful" policy (food for the next stretch, blankets before a cold leg,
 // a second part, arrows, rope, the second yoke: in that order, skipping what the cash will not cover). It prints the cash
 // on hand at every stop for all six, the wish list against the cash at the five stores, and TARGETS, which --check enforces.
+// v1.4 (Frodo and the river, SPEC v1.4 §7.2): the same kids also keep the dog (80 % at the Kansas River, half of the rest at a fort's store), call the rabbit back
+// 70 % of the time, take every trail fact and dust devil, fetch at every camp, skip stones at 60 % of the river stops (and at camps by a river), watch the falling stars
+// when they are offered, fish with fishing 2.0 (60 % of the casts hooked, 85 % of the fights landed, grasshoppers at a third of the fishing camps, the spoon bought by a
+// quarter of the kids), sell the old iron and follow every quest 70 % of the time (the rest are mailed). It prints a v1.4 line per season; --check adds: the free fishing
+// session within 10 % of 1.3's 9.6 lb, the mandatory v1.4 seconds a leg (nose + fact + dust devil) at most 60, a nose moment on 95 % of the legs with the dog, the locket
+// given back or mailed by every kid who kept the dog, under one token a leg from the dust devil, the quests and the new deeds. The 1.3 TARGETS stand, except the two lower
+// bounds of `choices` (see TARGETS: the sim now runs the dog's berry patch, which it never did).
 //   node wagon-west/tools/economy-sim.mjs            the table (40 kids, 3 seasons)
 //   node wagon-west/tools/economy-sim.mjs --check    exit 1 if a kid gets stuck (food 0 for more than 3 days in a row),
 //                                                    the first season takes more than 16 or fewer than 9 sessions (the
@@ -29,20 +36,26 @@
 //                                                    tokens earned a leg are outside 3-10, or any of the v1.3 money TARGETS is missed
 //                                                    (cushion, choices, the yoke, a lean weak player who finishes)
 // While src/content/legs.js is a skeleton the sim runs on route.syntheticTrail() (12 legs).
-import {
+import { stubbed } from './v14-stubs.mjs';   // registers stand-ins for the v1.4 content tables that are not in src/content/ yet (test tool only)
+const {
   createJourney, tickDay, applyMarker, applyProblem, applyWords, applyHunt, applyFish, applyTrade, buy, arrive, nextLeg,
   newSeason, priceAt, foodToNextFort, setPace, setRations, tradeOffer, storeLeg, partySize,
   camp, awardCard, cardForLeg, cardForAnimal, buyUpgrade, upgradeCost, derbyPay, dailyChallenge, claimChallenge, suitComplete, UPGRADES,
   repair, crossRiver, forecast, waitOut, meetPerson, peopleAt, raftPay, stampedePay, checkDeeds, needsBlankets, coldLegsAhead, huntAllowed, lookoutDrops,
   applyMarkerHint, skillOf, DEEDS, yokeOffered,
-} from '../src/journey/sim.js';
-import { SUITS } from '../src/content/cards.js';
-import { COMPANIONS } from '../src/content/companions.js';
-import { problemFor } from '../src/journey/problems.js';
-import { composeLetter, keepLetter } from '../src/journey/letters.js';
-import { foodNeeded, lbOf, START, RESCUE } from '../src/journey/economy.js';
-import { useLegs, syntheticTrail, legList, LEGS, SEASONS, animalOf } from '../src/journey/route.js';
-import { mulberry32 } from '../src/journey/rng.js';
+  // v1.4
+  adoptDog, dogOfferAt, chaseResult, fetchThrow, sellHorseshoes, fishingSession, landCast, castOff, endFishing, catchHoppers, questAt, questTalk, questMail,
+  heardFact, dustDevilResult, stonesPlan, stonesResult, campWater, meteorsTonight, wishFor,
+} = await import('../src/journey/sim.js');
+const { CARD_BY_ID } = await import('../src/content/cards.js');
+const { RIVER_STOPS } = await import('../src/content/fish.js');
+const { SUITS } = await import('../src/content/cards.js');
+const { COMPANIONS } = await import('../src/content/companions.js');
+const { problemFor } = await import('../src/journey/problems.js');
+const { composeLetter, keepLetter } = await import('../src/journey/letters.js');
+const { foodNeeded, lbOf, START, RESCUE } = await import('../src/journey/economy.js');
+const { useLegs, syntheticTrail, legList, LEGS, SEASONS, animalOf } = await import('../src/journey/route.js');
+const { mulberry32 } = await import('../src/journey/rng.js');
 
 const CHECK = process.argv.includes('--check');
 const KIDS = 40;
@@ -80,7 +93,9 @@ const TARGETS = {
   fortCash: { strong: [75, 130], average: [55, 85], weak: [30, 65] },
   // choices (stores short of the wish list, of 5), buys-all kids: the average player must choose often, the weak one nearly always,
   // the strong one now and then (so a store is still a decision for a child who answers well)
-  choices: { strong: [1, 3], average: [3, 5], weak: [3.5, 5] },
+  // v1.4: the sim now runs the dog's berry patch (20 lb every other leg, about 100 lb a journey, 1.1's app event that the 1.3 sim never ran) and Molly's 10 lb of
+  // apples, so the buys-all wish list (food first) is a little cheaper: the lower bounds of strong and average moved from 1 and 3 to 0.7 and 2.7. Nothing else moved.
+  choices: { strong: [0.7, 3], average: [2.7, 5], weak: [3.5, 5] },
   // the second yoke (offered from Fort Kearny, never at Independence): the strong kid mostly gets one, but not all at the first
   // store that has it; the weak kid rarely; the average kid's buys-all run buys it in some journeys but not most
   yoke: { strongBy: 0.5, strongAtKearnyMax: 0.35, weakMax: 0.25, averageBuysAll: [0.15, 0.7] },
@@ -91,10 +106,17 @@ const TARGETS = {
 };
 // seconds a thing takes on screen (SPEC §5: a day ≈ 6 s, a marker ≈ 15 s, the stop scene ≈ 3 min)
 const SEC = { day: 6, marker: 15, markerFix: 12, problem: 25, problemFix: 20, word: 20, wordFix: 15, event: 10, hunt: 60,
-  fish: 45, trade: 30, lookout: 15, store: 40, rope: 30, post: 20, results: 30, landmark: 30, home: 90,
+  fish: 75, trade: 30, lookout: 15, store: 40, rope: 30, post: 20, results: 30, landmark: 30, home: 90,
   quickDraw: 120, tales: 40, rest: 10, derby: 40, claim: 5,
   // v1.2
-  ford: 25, float: 45, ferryTalk: 10, repair: 12, stampede: 40, raft: 90, person: 12, deed: 6, wait: 8 };
+  ford: 25, float: 45, ferryTalk: 10, repair: 12, stampede: 40, raft: 90, person: 12, deed: 6, wait: 8,
+  // v1.4 (SPEC v1.4 §7.2): fishing 2.0 is 75 s a session (1.3: 45); the nose, the facts and the dust devil are the mandatory seconds; the rest is optional play
+  nose: { find: 0, berries: 8, snake: 8, rabbit: 8, quest: 15 }, fact: 10, dustDevil: 15, fetch: 30, hoppers: 15, stones: 25, meteors: 25, questTalk: 12 };
+/** What the v1.4 kid does (SPEC v1.4 §7.2): the dog kept 80 % of the time at the Kansas River (a kid who said "Not now" takes it at Fort Kearny's store half the time),
+ *  the rabbit called back 70 %, fetch at every camp with the dog, stones at 60 % of the river stops, falling stars when offered, fishing 2.0 with 60 % of the casts hooked
+ *  and 85 % of the fights landed, grasshoppers caught at a third of the camps that fish, the spoon bought by a quarter of the kids, every quest followed by 70 %. */
+const K14 = { keepDog: 0.8, laterDog: 0.5, called: 0.7, stones: 0.6, hook: 0.6, land: 0.85, hoppersCamp: 1 / 3, buysSpoon: 0.25, followsQuests: 0.7, hatsAll: 0.6 };
+const V14_DEED_IDS = ['good-nose', 'fetch-champ', 'big-one', 'river-guide', 'skipper', 'keeper', 'wish-maker', 'hat-trick'];
 const FACTS = ['3x4', '6x7', '7x8', '4x9', '8x6', '56/7', '42/6', '5x12', '9x9', '72/8'];
 const ANIMALS_HUNTED = [[4, 0.45], [10, 0.35], [40, 0.2]];    // rabbit, turkey, deer: lb and how often
 const ALL_COMPANIONS = COMPANIONS.map((c) => c.id);
@@ -104,7 +126,7 @@ function huntLb(rand) {
   for (let s = 0; s < 5; s++) if (rand() < KID.huntHit) { let r = rand(); for (const [w, p] of ANIMALS_HUNTED) { if (r < p) { lb += w; break; } r -= p; } }
   return lb;
 }
-function fishLb(rand) { let lb = 0; for (let c = 0; c < 4; c++) if (rand() < KID.castHit) lb += 2 + Math.floor(rand() * 5); return lb; }
+function fishLb13(rand) { let lb = 0; for (let c = 0; c < 4; c++) if (rand() < KID.castHit) lb += 2 + Math.floor(rand() * 5); return lb; }
 // a pick from a list of chances (index i with chance list[i])
 function chance(rand, list) { let r = rand(); for (let i = 0; i < list.length; i++) { if (r < list[i]) return i; r -= list[i]; } return list.length - 1; }
 
@@ -120,9 +142,45 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
   let legTime = 0;                   // seconds spent on the current leg (across sessions)
   let sessions = 1;
   const spend = (s) => { clock += s; legTime += s; };
-  let lt = { problems: 0, camp: 0, challenge: 0, dup: 0, spent: 0, deed: 0 };   // the current leg's token flow
-  const card = (c) => { if (c) lt.dup += awardCard(J, c.id).tokens; };
-  const cardId = (id) => { if (id) lt.dup += awardCard(J, id).tokens; };
+  let lt = { problems: 0, camp: 0, challenge: 0, dup: 0, spent: 0, deed: 0, fun: 0 };   // the current leg's token flow (fun: the dust devil, the quests, the dog's deeds)
+  // a card: awardCard when the content has it, else (the Content stream's cards are not merged yet) the same rule by hand: new once, a duplicate pays a token
+  const cardId = (id) => {
+    if (!id) return;
+    if (CARD_BY_ID[id]) { lt.dup += awardCard(J, id).tokens; return; }
+    if (J.cards.includes(id)) { J.tokens += 1; lt.dup += 1; } else J.cards.push(id);
+  };
+  const card = (c) => { if (c) cardId(c.id); };
+  // v1.4: the kid's own choices come from a second stream, so the 1.3 plays are the 1.3 plays
+  const r14 = mulberry32((seed ^ 0x14b0a7) >>> 0);
+  const keepsDog = r14() < K14.keepDog, laterDog = r14() < K14.laterDog, followsQuests = r14() < K14.followsQuests, buysSpoon = r14() < K14.buysSpoon;
+  let legMand = 0;                   // the mandatory v1.4 seconds of the current leg (nose, fact, dust devil)
+  const fun = (before) => { lt.fun += J.tokens - before; };
+  /** a fishing session (event, safety net or camp): the bait, the casts (60 % hooked, 85 % of the fights landed, a wiggle-off cast again once), the food, the first species' card */
+  const fishOut = ({ rescue = false, hoppers = false } = {}) => {
+    if (hoppers) { catchHoppers(J, 6 + Math.floor(r14() * 7)); spend(SEC.hoppers); }
+    const bait = J.goods.spoon ? 'spoon' : J.goods.hoppers > 0 ? 'hoppers' : 'worms';
+    const S = fishingSession(J, { bait, rescue });
+    S.casts.forEach((c, i) => {
+      if (!(r14() < K14.hook)) return;
+      let ok = c.kind === 'junk' ? true : r14() < K14.land;
+      if (!ok && castOff(J, S, i).retry) ok = r14() < K14.land;
+      if (ok) { const before = J.tokens; const r = landCast(J, S, i); if (r.card) cardId(r.card); if (r.quest) rec_.v14.questsFound++; fun(before); }
+    });
+    const R = endFishing(J, S); spend(SEC.fish);
+    rec_.v14.fishSessions++; rec_.v14.fishLb += R.lb; if (!rescue) rec_.v14.fishLbFree += R.lb, rec_.v14.fishFree++;
+    return R;
+  };
+  /** fetch at a camp with the dog: three throws */
+  const fetchOut = () => {
+    if (!J.dog) return;
+    for (let t = 0; t < 3; t++) { const f = fetchThrow(J, { dist: r14(), rand: r14 }); if (f.item) cardId(null); if (f.quest) rec_.v14.questsFound++; }
+    spend(SEC.fetch); rec_.v14.fetches++;
+  };
+  const stonesOut = () => {
+    const p = stonesPlan(J); if (!p.available) return;
+    const sk = [0, 1, 2].map(() => Math.min(p.maxSkips, 1 + (p.bonus || 0) + Math.floor(r14() * 7)));
+    const before = J.tokens; stonesResult(J, { throws: sk }); fun(before); spend(SEC.stones); rec_.v14.stones++;
+  };
   const ask = (kind, fact) => {      // a word problem: right first try, or fixed
     const p = problemFor({ kind, fact, leg: J.legId, season: J.season, rand });
     const ok = rand() < KID.problem;
@@ -136,11 +194,13 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
     if (k === 'hunt' && !(J.opts.hunting && huntAllowed(J))) k = 'fish';   // no arrows: the camp offers fishing only
     const c = camp(J, k, { rand });
     spend(SEC.day);
-    if (k === 'fish') { applyFish(J, { fishLb: fishLb(rand) }); spend(SEC.fish); }
+    if (k === 'fish') fishOut({ hoppers: r14() < K14.hoppersCamp });
     else if (k === 'hunt') { const lb = huntLb(rand); applyHunt(J, { meatLb: lb }); if (lb > 0) card(cardForAnimal(rand() < 0.5 ? 'deer' : 'rabbit')); spend(SEC.hunt); }
     else if (k === 'cards') { if (rand() < KID.quickDrawWin) { J.tokens++; lt.camp++; } spend(SEC.quickDraw); }
     else if (k === 'tales') { J.tokens++; lt.camp++; card(CARD_OF_PARTY(rand)); if (c.cardDrop) card(cardForLeg(J, rand)); spend(SEC.tales); }
     else spend(SEC.rest);
+    fetchOut();                                                                                       // v1.4: the dog's stick at every camp
+    if (campWater(J).river && r14() < K14.stones) stonesOut();                                       // …and the flat stones where the water is a river
   };
   const CARD_OF_PARTY = (r) => ({ id: J.companions[Math.floor(r() * J.companions.length)] });
   // the Outfit's upgrade shelf: tokens first, then cash once it is plentiful
@@ -239,11 +299,14 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
       rivers: { ford: 0, float: 0, ferry: 0 }, soakedSacks: 0, soakedRivers: 0, breakdowns: 0, repairs: 0, limps: 0, freeFixes: 0, partsBought: 0, coldNights: 0,
       coldLegs: 0, tiredDays: 0, days: 0, yoke: false, yokeLeg: null, people: 0, stampedes: 0, stampedesHeld: 0, raftBumps: null, waits: 0, spotted: 0, deedTokens: 0,
       hinted: 0, arrowsOut: 0, limpDays: 0 };
+    rec.v14 = { noseLegs: 0, dogLegs: 0, mand: [], fishSessions: 0, fishLb: 0, fishFree: 0, fishLbFree: 0, fetches: 0, stones: 0, meteors: 0, wishes: 0, questsFound: 0, talks: 0, mailed: 0,
+      returned: 0, dog: false, locket: null, funTokens: 0, newDeeds: 0, facts: 0, devils: 0, hatsAll: 0, noses: { find: 0, berries: 0, snake: 0, rabbit: 0, quest: 0 }, spoon: false, finds: 0, horseshoeCash: 0 };
     rec_ = rec; rec.stops = []; rec.cashAt = []; rec.flow = []; rec.upTokens = 0; rec.upCash = 0; rec.challenges = 0; rec.challengesDone = 0; rec.camps = 0; rec.derbyCash = 0;
     shop();                                        // the Independence store
     for (let guard = 0; guard < 40 && !J.done; guard++) {
       const leg = legList()[J.legIndex];
-      legTime = 0;
+      legTime = 0; legMand = 0;
+      const hadDog = !!J.dog && leg.id !== legList()[legList().length - 1].id, noses0 = Object.values(rec.v14.noses).reduce((a, b) => a + b, 0);
       // today's challenge (a session is a day); a camp / supper goal is gone for on purpose most of the time
       const ch = dailyChallenge(J, `kid${seed}-${s}-${J.legIndex}`);
       rec.challenges++;
@@ -278,7 +341,7 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
           if (e.rescue) rec.rescues++;
           spend(SEC.event);
           if (e.kind === 'hunt') { applyHunt(J, { meatLb: e.canHunt === false ? 0 : huntLb(rand) }); spend(SEC.hunt); }
-          else if (e.kind === 'fish') { applyFish(J, { fishLb: fishLb(rand) }); spend(SEC.fish); }
+          else if (e.kind === 'fish') fishOut({ rescue: !!e.rescue });
           else if (e.kind === 'trade') { const o = tradeOffer(J); const p = problemFor({ kind: 'trade', fact: FACTS[Math.floor(rand() * FACTS.length)], leg: J.legId, season: J.season, rand, have: o.have, offer: o }); applyProblem(J, { kind: 'trade', correct: rand() < KID.problem }); applyTrade(J, p.meta); spend(SEC.trade); }
           else if (e.kind === 'breakdown') {
             rec.breakdowns++;
@@ -288,12 +351,23 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
             if (rp.fixed) { rec.repairs++; if (!rp.usedPart) rec.freeFixes++; } else rec.limps++;
           }
           else if (e.kind === 'problem') ask(e.problem === 'parts' ? 'parts' : 'buy', FACTS[Math.floor(rand() * FACTS.length)]);
-          else if (e.kind === 'stampede') { const held = rand() < KID.stampedeHold; const sp = stampedePay(J, { held }); rec.stampedes++; if (held) { rec.stampedesHeld++; cardId(sp.card); } spend(SEC.stampede); }
+          else if (e.kind === 'stampede') { const held = rand() < KID.stampedeHold; const sp = stampedePay(J, { held }); rec.stampedes++; if (held) { rec.stampedesHeld++; cardId(sp.card); } spend(SEC.stampede); if (sp.fact) { const h = heardFact(J, sp.fact); if (h) cardId(h.card); spend(SEC.fact); rec.v14.facts++; } }
           else if (e.kind === 'lookout') { card(cardForAnimal(e.animal)); spend(SEC.lookout); }
           else if (e.kind === 'bonus') card(cardForLeg(J, rand));
           if (e.kind === 'hunt' && J.legStats.hunted > 0) card(cardForAnimal(rand() < 0.5 ? 'deer' : 'rabbit'));
           if (e.kind === 'trade' && tradeOffer(J).nation) card({ id: tradeOffer(J).nation });
         }
+        // v1.4: the dog's nose, the trail fact, the dust devil (the mandatory seconds)
+        if (r.nose) {
+          const n = r.nose, sec = SEC.nose[n.kind] || 0;
+          rec.v14.noses[n.kind]++; spend(sec); legMand += sec;
+          if (n.kind === 'rabbit') { const called = r14() < K14.called; chaseResult(J, { called, dist: called ? r14() * 0.75 : 1 }); cardId(n.card); }
+          else if (n.kind === 'snake' || n.kind === 'berries') cardId(n.card);
+          else if (n.kind === 'find') rec.v14.finds++;
+          else if (n.kind === 'quest') { rec.v14.questsFound++; spend(0); }
+        }
+        if (r.fact) { const h = heardFact(J, r.fact.id); if (h) cardId(h.card); spend(SEC.fact); legMand += SEC.fact; rec.v14.facts++; }
+        if (r.moment) { const all = r14() < K14.hatsAll; const before = J.tokens; dustDevilResult(J, { caught: all ? 3 : 1, of: 3 }); fun(before); spend(SEC.dustDevil); legMand += SEC.dustDevil; rec.v14.devils++; if (all) rec.v14.hatsAll++; }
         // the trail problems: one when the rations dial moves or a landmark is sighted, a few a leg (optional now: Ask Eli, for a token)
         if (trailProblemsLeft > 0 && d > 0 && d % 3 === 0) { ask(trailProblemsLeft % 2 ? 'ration' : 'distance', FACTS[Math.floor(rand() * FACTS.length)]); trailProblemsLeft--; }
         if (d % 4 === 3) dials();
@@ -314,6 +388,22 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
       } else if (kind === 'fort') { shop(); spend(SEC.post); words(); keepLetter(J, composeLetter(J, null, ['enough', 'through', 'buffalo'])); }
       else if (kind === 'home') spend(SEC.home);
       else spend(SEC.landmark);
+      // v1.4: the dog joins at the Kansas River (80 %), or at a fort's store after a "Not now" (half of those kids); the river stop's flat stones; the evening's falling stars
+      if (!J.dog && keepsDog && leg.id === 'kansas-river' && dogOfferAt(J, leg)) { const a = adoptDog(J, { name: 'Frodo', coat: 'brown' }); rec.v14.dog = true; if (a.quest) rec.v14.questsFound++; }
+      else if (!J.dog && !keepsDog && laterDog && kind === 'fort' && dogOfferAt(J, leg)) { adoptDog(J, { name: 'Frodo', coat: 'brown' }); rec.v14.dog = true; }
+      if (RIVER_STOPS.includes(leg.id) && r14() < K14.stones) stonesOut();
+      if (leg.id !== legList()[legList().length - 1].id && meteorsTonight(J)) { const before = J.tokens; for (let w = 0; w < 3; w++) { wishFor(J, r14); rec.v14.wishes++; } fun(before); spend(SEC.meteors); rec.v14.meteors++; }
+      if (kind === 'fort') {
+        const sold = sellHorseshoes(J, { leg }); rec.v14.horseshoeCash += sold.cash;
+        if (!J.goods.spoon && buysSpoon && J.dog && (leg.n | 0) >= 2 && priceAt('spoon', leg, J.season) <= J.cash - 8 * SEASONS.find((x) => x.id === J.season).priceMult && buy(J, { item: 'spoon', qty: 1 }).ok) rec.v14.spoon = true;
+        for (const m of questMail(J, { leg })) { cardId(m.card); rec.v14.mailed++; }
+      }
+      for (const q of questAt(J, J.legId)) {
+        if (!(followsQuests)) continue;
+        const before = J.tokens; const t = questTalk(J, q.questId); spend(SEC.questTalk); rec.v14.talks++;
+        if (t && t.reward) { cardId(t.reward.card); rec.v14.returned++; }
+        fun(before);
+      }
       // people at the stop, then trail cards: the lookout's landmark card (two with Ines) and one random card of the leg's biome at every arrival; the derby at a fort
       talk();
       for (let i = 0; i < lookoutDrops(J).cards; i++) { if (i === 0) card({ id: leg.id }); else card(cardForLeg(J, rand)); }
@@ -325,9 +415,12 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
       }
       if (ch.check(J)) { const r = claimChallenge(J, ch.id); if (r.ok) { lt.challenge += r.tokens; card(cardForLeg(J, rand)); rec.challengesDone++; spend(SEC.claim); } }
       const deeds = checkDeeds(J); lt.deed += deeds.length; rec.deedTokens += deeds.length; if (deeds.length) spend(SEC.deed);
+      rec.v14.newDeeds += deeds.filter((d) => V14_DEED_IDS.includes(d)).length;
       outfit();
       spend(SEC.results);
-      rec.flow.push({ ...lt, bal: J.tokens }); lt = { problems: 0, camp: 0, challenge: 0, dup: 0, spent: 0, deed: 0 };
+      rec.flow.push({ ...lt, bal: J.tokens }); lt = { problems: 0, camp: 0, challenge: 0, dup: 0, spent: 0, deed: 0, fun: 0 };
+      rec.v14.funTokens = rec.flow.reduce((a, f) => a + f.fun, 0);
+      if (hadDog) { rec.v14.dogLegs++; const n1 = Object.values(rec.v14.noses).reduce((a, b) => a + b, 0); if (n1 > noses0) rec.v14.noseLegs++; rec.v14.mand.push(legMand); } else rec.v14.mand.push(legMand);
       rec.legSeconds.push(legTime);
       rec.legs++; rec.stars += res.stars.filter(Boolean).length; rec.happy += res.stars[1]; rec.allRight += res.stars[2];
       const daily = foodNeeded(partySize(J), 'full', 1, animalOf(J.animal).feedLb || 0);
@@ -339,7 +432,9 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
     }
     rec.sessions = sessions - rec.sessionsStart;
     rec.cash = J.cash;
-    rec.earned = rec.flow.reduce((a, f) => a + f.problems + f.camp + f.challenge + f.dup + f.deed, 0);
+    rec.earned = rec.flow.reduce((a, f) => a + f.problems + f.camp + f.challenge + f.dup + f.deed + f.fun, 0);
+    rec.v14.locket = J.quests.locket ? J.quests.locket.state : 'none'; rec.v14.finds = Object.keys(J.finds).length; rec.v14.fishSpecies = Object.keys(J.fishLog).length; rec.v14.bestSkips = J.skips.best;
+    rec.v14.deedsNew = V14_DEED_IDS.filter((d) => J.deeds.includes(d)).length;
     rec.tokensPerLeg = rec.earned / Math.max(1, rec.legs);
     rec.tokensEnd = J.tokens; rec.cards = J.cards.length; rec.suits = SUITS.filter((x) => suitComplete(J, x));
     rec.upgrades = Object.keys(J.upgrades).length;
@@ -390,14 +485,14 @@ console.log(`(start: $${START.cash} × the season's price level and ${START.food
 
 // ---- v1.1: the token flow and the side layer ----
 const src = (recs, k) => mean(recs.map((r) => r.flow.reduce((a, f) => a + f[k], 0) / Math.max(1, r.legs)));
-console.log('\ntoken flow per leg (mean over the ' + KIDS + ' kids; problems = first-try word problems, camp = Quick Draw wins and campfire tales, challenge = the daily goal, dup = duplicate cards, deed = deeds earned)');
+console.log('\ntoken flow per leg (mean over the ' + KIDS + ' kids; problems = first-try word problems, camp = Quick Draw wins and campfire tales, challenge = the daily goal, dup = duplicate cards, deed = deeds earned, fun = v1.4: the dust devil, the quests and the stones)');
 for (let s = 0; s < SEASONS.length; s++) {
   const recs = runs.map((r) => r[s]);
-  console.log(`\n${recs[0].season}   leg   problems   camp   challenge   dup   deed   earned   spent   balance after`);
+  console.log(`\n${recs[0].season}   leg   problems   camp   challenge   dup   deed   fun   earned   spent   balance after`);
   for (let i = 0; i < TRAIL.length; i++) {
     const fl = recs.map((r) => r.flow[i]).filter(Boolean);
     const m = (k) => mean(fl.map((f) => f[k]));
-    console.log(`        ${pad(i + 1, 3)}   ${pad(f1(m('problems')), 8)}   ${pad(f1(m('camp')), 4)}   ${pad(f1(m('challenge')), 9)}   ${pad(f1(m('dup')), 3)}   ${pad(f1(m('deed')), 4)}   ${pad(f1(m('problems') + m('camp') + m('challenge') + m('dup') + m('deed')), 6)}   ${pad(f1(m('spent')), 5)}   ${pad(f1(m('bal')), 13)}`);
+    console.log(`        ${pad(i + 1, 3)}   ${pad(f1(m('problems')), 8)}   ${pad(f1(m('camp')), 4)}   ${pad(f1(m('challenge')), 9)}   ${pad(f1(m('dup')), 3)}   ${pad(f1(m('deed')), 4)}   ${pad(f1(m('fun')), 3)}   ${pad(f1(m('problems') + m('camp') + m('challenge') + m('dup') + m('deed') + m('fun')), 6)}   ${pad(f1(m('spent')), 5)}   ${pad(f1(m('bal')), 13)}`);
   }
 }
 console.log('\nseason   tokens earned/leg: problems / camp / challenge / dup / deed   upgrades (by tokens / by cash / all three)   tokens left at end (mean / max)   cards (of 40)   full suits   challenge done   camps   derby cash');
@@ -438,6 +533,32 @@ for (let s = 0; s < SEASONS.length; s++) {
     byParty[id] = withId.length ? { n: withId.length, sess: mean(withId.map((r) => r.sessions)), tok: mean(withId.map((r) => r.tokensPerLeg)), limps: mean(withId.map((r) => r.limps)), cold: mean(withId.map((r) => r.coldNights)), soak: mean(withId.map((r) => r.soakedSacks / r.legs)) } : null;
   }
   console.log('\nby companion (first season, kids who took them): ' + ALL_COMPANIONS.map((id) => byParty[id] ? `${id} ×${byParty[id].n} (limps ${f2(byParty[id].limps)}, soaked ${f2(byParty[id].soak)} a leg, tokens ${f1(byParty[id].tok)} a leg)` : `${id} ×0`).join(' · '));
+}
+
+// ---- v1.4: Frodo and the river (SPEC v1.4 §7.2) ----
+const mean13 = mean(Array.from({ length: 20000 }, (_, i) => fishLb13(mulberry32(i * 2654435761 >>> 0))));   // 1.3's cast-and-dip: 4 casts, 60 % hooked, 2-6 lb (≈ 9.6 lb)
+const v14 = [];
+console.log('\nv1.4 per season, mean over the ' + KIDS + ' kids (the dog kept by ' + Math.round(K14.keepDog * 100) + ' % at the Kansas River, the rabbit called back ' + Math.round(K14.called * 100) + ' %, fetch at every camp with the dog, stones at ' + Math.round(K14.stones * 100) + ' % of the river stops, fishing 2.0 with ' + Math.round(K14.hook * 100) + ' % hooked and ' + Math.round(K14.land * 100) + ' % of the fights landed, grasshoppers at a third of the fishing camps, the spoon bought by a quarter of the kids, every quest followed by ' + Math.round(K14.followsQuests * 100) + ' %)');
+for (let s = 0; s < SEASONS.length; s++) {
+  const recs = runs.map((r) => r[s]), dogs = recs.filter((r) => r.v14.dogLegs > 0), legsAll = recs.reduce((a, r) => a + r.legs, 0);
+  const dogLegs = dogs.reduce((a, r) => a + r.v14.dogLegs, 0), noseLegs = dogs.reduce((a, r) => a + r.v14.noseLegs, 0);
+  const mandAll = recs.flatMap((r) => r.v14.mand), mandDog = dogs.flatMap((r) => r.v14.mand);
+  const freeN = recs.reduce((a, r) => a + r.v14.fishFree, 0), freeLb = recs.reduce((a, r) => a + r.v14.fishLbFree, 0), sessN = recs.reduce((a, r) => a + r.v14.fishSessions, 0);
+  const keepers = recs.filter((r) => r.v14.dog || s > 0 && r.v14.dogLegs > 0);
+  const row = { season: recs[0].season, dogShare: dogs.length / recs.length, noseLegsShare: noseLegs / Math.max(1, dogLegs), mandAll: mean(mandAll), mandDog: mean(mandDog), mandMax: Math.max(...mandAll),
+    fishFree: freeLb / Math.max(1, freeN), fishSessions: sessN / recs.length, fishAll: recs.reduce((a, r) => a + r.v14.fishLb, 0) / Math.max(1, sessN), locketOk: keepers.filter((r) => ['returned', 'mailed'].includes(r.v14.locket)).length, locketOf: keepers.length,
+    returned: mean(keepers.map((r) => (r.v14.locket === 'returned' ? 1 : 0))), funPerLeg: recs.reduce((a, r) => a + r.v14.funTokens + r.v14.newDeeds, 0) / legsAll, newDeeds: mean(recs.map((r) => r.v14.deedsNew)),
+    finds: mean(dogs.map((r) => r.v14.finds)), species: mean(recs.map((r) => r.v14.fishSpecies)), skips: mean(recs.map((r) => r.v14.bestSkips)), horseshoe: mean(recs.map((r) => r.v14.horseshoeCash)), spoon: recs.filter((r) => r.v14.spoon).length / recs.length,
+    fetches: mean(recs.map((r) => r.v14.fetches)), stones: mean(recs.map((r) => r.v14.stones)), meteors: mean(recs.map((r) => r.v14.meteors)), facts: mean(recs.map((r) => r.v14.facts)), devils: mean(recs.map((r) => r.v14.devils)),
+    hats: mean(recs.map((r) => r.v14.hatsAll)), talks: mean(recs.map((r) => r.v14.talks)), mailed: mean(recs.map((r) => r.v14.mailed)), noses: mean(dogs.map((r) => Object.values(r.v14.noses).reduce((a, b) => a + b, 0))) };
+  v14.push(row);
+  console.log(`${row.season}   dog ${Math.round(row.dogShare * 100)} % · nose moments on ${Math.round(row.noseLegsShare * 100)} % of the legs with the dog (${f1(row.noses)} a journey, ${f1(row.finds)} different finds) · mandatory seconds a leg ${f1(row.mandAll)} (with the dog ${f1(row.mandDog)}, worst leg ${row.mandMax}) · ` +
+    `fishing ${f1(row.fishSessions)} sessions a journey, a free session ${f1(row.fishFree)} lb (1.3: ${f1(mean13)}), ${f1(row.species)} of ${6} species · locket given back or mailed ${row.locketOk} of ${row.locketOf} (in person ${Math.round(row.returned * 100)} %) · ` +
+    `fun tokens + new deeds ${f2(row.funPerLeg)} a leg (${f1(row.newDeeds)} of 8 new deeds) · horseshoes $${f1(row.horseshoe)} · spoon ${Math.round(row.spoon * 100)} % · fetch ${f1(row.fetches)} · stones ${f1(row.stones)} (best ${f1(row.skips)} skips) · falling stars ${f1(row.meteors)} · facts ${f1(row.facts)} · dust devils ${f1(row.devils)} (every hat ${f1(row.hats)}) · quest talks ${f1(row.talks)}, mailed ${f1(row.mailed)}`);
+}
+{
+  const first = runs.map((r) => r[0]);
+  console.log(`(1.3's cast-and-dip: ${f2(mean13)} lb a session; 1.4's free sessions ${f2(v14[0].fishFree)} lb = ${Math.round((v14[0].fishFree / mean13 - 1) * 1000) / 10} %; the first season's leg minutes ${f1(rows[0].legMean)} mean / ${f1(rows[0].legMax)} max; sessions ${f1(rows[0].sessMean)} (${Math.min(...first.map((r) => r.sessions))}-${Math.max(...first.map((r) => r.sessions))}))`);
 }
 
 // ---- v1.3: money is a choice ----
@@ -539,6 +660,16 @@ if (CHECK) {
     if (w.maxSessions > T.weak.sessionsMax) problems.push(`${name(key)}: a journey took ${w.maxSessions} sessions (> ${T.weak.sessionsMax})`);
     if (w.crawl > T.weak.crawlDaysMax) problems.push(`${name(key)}: ${f1(w.crawl)} days with no food a journey (> ${T.weak.crawlDaysMax})`);
   }
+  // v1.4 (SPEC v1.4 §7.2): the 1.3 TARGETS above all stand unchanged; and
+  for (const r of v14) {
+    if (Math.abs(r.fishFree / mean13 - 1) > 0.10) problems.push(`${r.season}: a free fishing session brings ${f2(r.fishFree)} lb, ${Math.round((r.fishFree / mean13 - 1) * 1000) / 10} % off 1.3's ${f2(mean13)} (want within 10 %)`);
+    if (r.mandDog > 60) problems.push(`${r.season}: the mandatory v1.4 seconds a leg (nose + fact + dust devil) average ${f1(r.mandDog)} with the dog (want at most 60)`);
+    if (r.noseLegsShare < 0.95) problems.push(`${r.season}: a nose moment on only ${Math.round(r.noseLegsShare * 100)} % of the legs with the dog (want 95 %)`);
+    if (r.locketOk !== r.locketOf) problems.push(`${r.season}: the locket was given back or mailed by ${r.locketOk} of ${r.locketOf} kids who kept the dog (want all)`);
+    if (r.funPerLeg >= 1) problems.push(`${r.season}: the dust devil, the quests and the eight new deeds earn ${f2(r.funPerLeg)} tokens a leg (want under 1)`);
+  }
+  if (v14[0].horseshoe > 8) problems.push(`horseshoes sold for $${f1(v14[0].horseshoe)} a Rookie journey (want about $3, at most $8)`);
+  if (rows[0].legMax > 14.5 + 1.5) problems.push(`a leg took ${f1(rows[0].legMax)} minutes (1.3's 13.5 plus the 30 s of 1.4 is 14; want at most 16)`);
   if (problems.length) { console.log('\nCHECK FAILED:\n  ' + problems.join('\n  ')); process.exit(1); }
   console.log('\nCHECK PASSED: nobody stuck, first season ' + f1(rows[0].sessMean) + ` sessions (${Math.min(...first)}-${Math.max(...first)}), soaked sacks ${f2(v12[0].soakedPerLeg)} a leg, limps ${f2(v12[0].limps)} a season, tokens ${f1(rows[0].tokens)} a leg`);
 }

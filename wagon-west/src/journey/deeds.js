@@ -1,4 +1,4 @@
-// Deeds (SPEC v1.2 §4): twenty things a family can do on the trail that are worth a badge in the Journal's "Deeds" page and
+// Deeds (SPEC v1.2 §4, v1.4 §3.8: twenty-eight now): twenty things a family can do on the trail that are worth a badge in the Journal's "Deeds" page and
 // a trade token. None of them is a gate (SPEC §1): they are all things the trail rewards by playing it well, and none is
 // ever taken away. Each is a pure test over the journey's counters (J.totals, J.cards, J.animals, J.met), so a deed is
 // earned the moment its counter says so, whichever way the child got there.
@@ -6,6 +6,7 @@
 //   checkDeeds(J) → the ids earned by this call (also pushed to J.deeds, +1 token each); [] when nothing new.
 // The app calls checkDeeds after an arrival, a river, a repair, a camp, a derby, a raft, a stampede, a person met.
 import { legList } from './route.js';
+import { FISH } from '../content/fish.js';
 
 export const DEEDS = [
   { id: 'dry-feet', name: 'Dry feet', emoji: '👣', how: 'Cross every river of a year without soaking a sack of flour.', say: 'Dry feet! Every river crossed, and not one sack of flour got wet.' },
@@ -28,6 +29,15 @@ export const DEEDS = [
   { id: 'wait-it-out', name: 'Wait it out', emoji: '⛈️', how: 'Wait out a storm at camp.', say: 'Wait it out! You let the storm pass.' },
   { id: 'gold-rush', name: 'Gold rush', emoji: '🥇', how: 'Earn a gold crate on three legs.', say: 'Gold rush! Three golden legs.' },
   { id: 'trader', name: 'Trader', emoji: '🤝', how: 'Trade for ten goods at the trading posts.', say: 'Trader! Ten goods traded fairly.' },
+  // v1.4: Frodo and the river (pure fun; each +1 token, once)
+  { id: 'good-nose', name: 'Good nose', emoji: '🐕', how: 'The dog brings back six different finds.', say: 'Good nose! Six different finds from the dog.' },
+  { id: 'fetch-champ', name: 'Fetch champ', emoji: '🥎', how: 'Earn twenty-five treats at fetch.', say: 'Fetch champ! Twenty-five treats earned at fetch.' },
+  { id: 'big-one', name: 'The big one', emoji: '🐋', how: 'Land a white sturgeon.', say: 'The big one! A white sturgeon, landed at last.' },
+  { id: 'river-guide', name: 'River guide', emoji: '🎣', how: 'Catch all six kinds of fish.', say: 'River guide! All six kinds of fish are in the log.' },
+  { id: 'skipper', name: 'Skipper', emoji: '🪨', how: 'Skip a stone seven times in one throw.', say: 'Skipper! Seven skips in a single throw.' },
+  { id: 'keeper', name: 'Keeper', emoji: '📿', how: 'Give a treasure back to the person it belongs to.', say: 'Keeper! You gave it back to its owner.' },
+  { id: 'wish-maker', name: 'Wish maker', emoji: '🌠', how: 'Make six wishes on falling stars.', say: 'Wish maker! Six wishes on falling stars.' },
+  { id: 'hat-trick', name: 'Hat trick', emoji: '🎩', how: 'Catch every hat in a dust devil.', say: 'Hat trick! Every hat caught in the dust devil.' },
 ];
 export const DEED_BY_ID = Object.fromEntries(DEEDS.map((d) => [d.id, d]));
 /** Tokens a deed pays when it is earned. */
@@ -59,6 +69,15 @@ const TESTS = {
   'wait-it-out': (J, T) => n(T.waitedOut) >= 1,
   'gold-rush': (J, T) => n(T.goldLegs) >= 3,
   trader: (J, T) => n(T.traded) >= 10,
+  // v1.4
+  'good-nose': (J) => J.finds && Object.values(J.finds).filter((x) => n(x) > 0).length >= 6,
+  'fetch-champ': (J, T) => Math.max(n(T.treats), J.dog ? n(J.dog.treats) : 0) >= 25,
+  'big-one': (J, T) => n(T.sturgeon) >= 1 || !!(J.fishLog && J.fishLog['white-sturgeon'] && n(J.fishLog['white-sturgeon'].n) > 0),
+  'river-guide': (J) => !!J.fishLog && FISH.length > 0 && FISH.every((f) => J.fishLog[f.id] && n(J.fishLog[f.id].n) > 0),
+  skipper: (J) => !!J.skips && n(J.skips.best) >= 7,
+  keeper: (J, T) => n(T.questsDone) >= 1,
+  'wish-maker': (J) => Array.isArray(J.wishes) && J.wishes.length >= 6,
+  'hat-trick': (J, T) => n(T.hatsAll) >= 1,
 };
 
 /** Is this deed's test true right now (earned or not)? */
