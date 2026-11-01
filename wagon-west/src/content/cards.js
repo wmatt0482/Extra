@@ -1,4 +1,4 @@
-// The trail cards (SPEC v1.1 §3): a collection of 40 cards in four suits, shown in the Journal's "Cards" page. Each card
+// The trail cards (SPEC v1.1 §3, v1.4 §2.6): a collection of 54 cards in six suits, shown in the Journal's "Cards" page. Each card
 // is a picture (an emoji, drawn on a card face by the UI: no new art) and one true line a 4th grader can read. The
 // suits: the twelve landmarks (id = the leg id, so a lookout drops its card), the eight nations (id = the nation id,
 // dropped at a trading post), twelve animals and plants of the trail (dropped by a spotted animal, a hunt or a catch,
@@ -9,13 +9,17 @@
 // seen: journey/sim.js cardForLeg draws from the leg's biome). `say` is the spoken line (numbers as words, no
 // abbreviations). Kid rules (SPEC §1): no death, illness or weapons in any line; the rattlesnake is named only as
 // "give it room".
-export const SUITS = ['landmark', 'nation', 'wild', 'companion'];
-export const SUIT_NAMES = { landmark: 'Landmarks', nation: 'Nations', wild: 'Trail wildlife and plants', companion: 'Companions' };
+export const SUITS = ['landmark', 'nation', 'wild', 'companion', 'river', 'tales'];
+export const SUIT_NAMES = { landmark: 'Landmarks', nation: 'Nations', wild: 'Trail wildlife and plants', companion: 'Companions',
+  river: 'Fish of the trail', tales: 'Trail tales' };
 
 const L = (id, name, emoji, fact, say) => ({ id, suit: 'landmark', name, emoji, fact, say: say || fact, source: `SOURCES.md#${id}` });
 const N = (id, name, emoji, fact, say) => ({ id, suit: 'nation', name, emoji, fact, say: say || fact, source: `SOURCES.md#${id}` });
 const W = (id, name, emoji, biomes, fact, say) => ({ id, suit: 'wild', name, emoji, biomes, fact, say: say || fact, source: `SOURCES.md#card-${id}` });
 const C = (id, name, emoji, fact) => ({ id, suit: 'companion', name, emoji, fact, say: fact });
+const R = (id, name, emoji, fact, say) => ({ id, suit: 'river', name, emoji, fact, say: say || fact, source: `SOURCES.md#fish-${id}` });
+const T = (id, name, emoji, fact, say) => ({ id, suit: 'tales', name, emoji, fact, say: say || fact, source: `SOURCES.md#fact-${id}` });
+const Q = (id, name, emoji, fact) => ({ id, suit: 'tales', name, emoji, fact, say: fact });   // a quest card: a story, no source
 
 export const CARDS = [
   // ---- landmarks (12): id = the leg id ----
@@ -84,6 +88,29 @@ export const CARDS = [
   C('doctor', 'Mabel the doctor', '🩺', 'Mabel knows every bird on the trail by its song.'),
   C('carpenter', 'Tomas the carpenter', '🪚', 'Tomas says to measure twice and cut once, and he could build a bridge, a barn or a bench.'),
   C('storyteller', 'Ines the storyteller', '📖', 'Ines says every rock out here has a story, and she knows how to find it.'),
+
+  // ---- fish of the trail (6, v1.4): id = the species id (fish.js) ----
+  R('channel-catfish', 'Channel catfish', '🐟', 'Channel catfish have whiskers that help them find food in muddy water, and the channel catfish is the state fish of Kansas.'),
+  R('hornyhead-chub', 'Hornyhead chub', '🐟', 'Hornyhead chubs swam in the Sweetwater River in wagon-train days. They disappeared from it for a long time, and in 2020 scientists brought them back.',
+    'Hornyhead chubs swam in the Sweetwater River in wagon-train days. They disappeared from it for a long time, and in twenty twenty scientists brought them back.'),
+  R('cutthroat-trout', 'Cutthroat trout', '🐟', 'Cutthroat trout are named for the red-orange mark under their jaw, and they are native to the mountain streams west of South Pass.'),
+  R('white-sturgeon', 'White sturgeon', '🐟', 'The white sturgeon is the biggest freshwater fish in North America, and it can live for more than 100 years.',
+    'The white sturgeon is the biggest freshwater fish in North America, and it can live for more than one hundred years.'),
+  R('redband-trout', 'Redband trout', '🐟', 'Redband trout are rainbow trout of the Columbia River country, with a rosy red stripe along each side.'),
+  R('chinook-salmon', 'Chinook salmon', '🐟', 'Chinook salmon are the biggest of the Pacific salmon, and people also call them king salmon.'),
+
+  // ---- trail tales (8, v1.4): the six trail facts (id = the fact id) and the two quest cards ----
+  T('far-off-crack', 'Far-off rifles', '🌄', 'In the 1870s, hide hunters took so many bison that the great herds nearly vanished. Today bison herds are growing again in parks and on tribal lands.',
+    'In the eighteen seventies, hide hunters took so many bison that the great herds nearly vanished. Today bison herds are growing again in parks and on tribal lands.'),
+  T('bison-thunder', 'Bison thunder', '⛈️', 'Bison herds on the plains numbered in the thousands, and a running herd makes the ground rumble like thunder.'),
+  T('grizzly-ridge', 'A grizzly on the ridge', '🐻', 'Grizzly bears once roamed the Great Plains. Today, outside Alaska, most grizzlies in the United States live in the mountains of Wyoming, Montana, Idaho and Washington.'),
+  T('wolf-song', 'Wolves singing', '🌕', 'Gray wolves once roamed the plains near the bison herds. In 1995 wolves were brought back to Yellowstone National Park, and they live there today.',
+    'Gray wolves once roamed the plains near the bison herds. In nineteen ninety-five wolves were brought back to Yellowstone National Park, and they live there today.'),
+  T('prairie-glow', 'A glow on the prairie', '🌅', 'Fire is part of the prairie. The grasses have deep roots, so after a fire they grow back green and fast.'),
+  T('pronghorn-race', 'A pronghorn race', '💨', 'Pronghorn are built for long races: they can keep running at about 40 miles an hour for a long way, not just for a quick dash.',
+    'Pronghorn are built for long races: they can keep running at about forty miles an hour for a long way, not just for a quick dash.'),
+  Q('locket', "Molly's locket", '📿', 'You found Molly\'s locket by the Kansas River and gave it back to her at Fort Laramie.'),
+  Q('marble', "Sam's marble", '🔵', "Sam's best blue marble, his thank-you for the note in a bottle."),
 ];
 export const CARD_BY_ID = Object.fromEntries(CARDS.map((c) => [c.id, c]));
 /** The cards of one suit, in album order. */

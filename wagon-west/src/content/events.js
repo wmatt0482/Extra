@@ -4,7 +4,7 @@
 // | 'tongue': needs a spare part, see sim.repair) and 'stampede' (prairie / bluffs: the scene's BRAKE game, sim.stampedePay).
 // A 'rest' event may carry `weather` ('storm' | 'rain' | 'snow': what sim.forecast shows ahead), and the 'snow' one is
 // `cold: true` (the party needs one blanket for every two people, sim.needsBlankets). Every kind has two or more events
-// except stampede (one), and every biome (prairie, bluffs, highdesert, mountains, gorge, valley) has at least one event of
+// except stampede (one; v1.4: it carries `fact: 'bison-thunder'`, the trail fact heard after the season's first stampede), and every biome (prairie, bluffs, highdesert, mountains, gorge, valley) has at least one event of
 // five different kinds, so the "never two of the same kind in a leg" rule can always be met. No event names a companion
 // (the party picks three of eight, so a name could be absent); `say` has no digits. Nobody is ever hurt or sick: wagons
 // break and get stuck, people get tired.
@@ -52,7 +52,7 @@ export const EVENTS = [
     text: 'A big eagle circles high above the wagon. Everyone stops to look up.', say: 'A big eagle circles high above the wagon. Everyone stops to look up.', fix: 'It soars away over the hills.' },
   // stampede (v1.2): the herd thunders across the trail; the scene's BRAKE game (sim.stampedePay)
   { id: 'stampede', name: 'A bison stampede', biomes: ['prairie', 'bluffs'], kind: 'stampede', animal: 'bison',
-    text: 'The ground shakes! A bison herd thunders toward the wagon. Hold the wagon steady.', say: 'The ground shakes! A bison herd thunders toward the wagon. Hold the wagon steady.', fix: 'The herd rumbles away in a cloud of dust.' },
+    text: 'The ground shakes! A bison herd thunders toward the wagon. Hold the wagon steady.', say: 'The ground shakes! A bison herd thunders toward the wagon. Hold the wagon steady.', fix: 'The herd rumbles away in a cloud of dust.', fact: 'bison-thunder' },
   // trade: a trading scene with the nation of the leg (nations.js)
   { id: 'trade', name: 'A trading post', biomes: null, kind: 'trade',
     text: 'A trading post! Time to trade.', say: 'A trading post! Time to trade.', fix: 'A good trade.' },

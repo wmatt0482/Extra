@@ -2,7 +2,8 @@
 // three spelling words (each dictated and typed on the spell panel). Written in a nine-year-old's voice: short, a
 // little funny, never scary. {stop}, {river}, {width}, {animal}, {name} (a companion's name), {food} (pounds) and
 // {nation} are filled by src/journey/letters.js. Keys: arrived / river / tired / happy, then one key per event id in
-// events.js (the journey picks the lines for what happened), 3 to 4 lines each.
+// events.js (the journey picks the lines for what happened), 3 to 4 lines each; v1.4 adds the keys of the dog, fishing,
+// the quests and the trail moments (below), where {dog} is the dog's name.
 export const LETTER_OPEN = ['Dear Grandma,', 'Dear Uncle Theo,', 'Dear Miss Carter,', 'Dear everyone back home,', 'Dear Aunt June,', 'Dear Grandpa,'];
 export const LETTER_LINES = {
   arrived: [
@@ -133,6 +134,79 @@ export const LETTER_LINES = {
     'We saw silver salmon in the river and caught some for supper.',
     'The salmon were flashing in the river, and we caught a few. They were delicious.',
     'I fished for salmon today. They are slippery and strong!',
+  ],
+  // ---- v1.4 (SPEC §2.7): the dog, fishing 2.0, the quests and the trail moments. 3 lines each, no {food}. {dog} is the dog's
+  // name; only the keys that happen with the dog use it (a letter line that names the dog is chosen only when there is one).
+  // `far-off-crack` and `prairie-glow` have no letter line, on purpose. ----
+  nose: [
+    '{dog} ran off the trail today and came back with a surprise.',
+    'Every time {dog} sniffs something out in the grass, I wonder what the surprise will be.',
+    '{dog} found something new today, and I added it to my sketchbook.',
+  ],
+  chase: [
+    '{dog} chased a jackrabbit all the way to the horizon, and then came trotting back.',
+    'A jackrabbit zipped by and {dog} zoomed after it. We all cheered when {dog} came back.',
+    '{dog} went racing after a jackrabbit today. The rabbit won, but {dog} had fun.',
+  ],
+  snake: [
+    '{dog} stopped short and barked and barked, and a rattlesnake slid away into the grass.',
+    'A rattlesnake was sunning on the trail. {dog} warned us, and we gave it plenty of room.',
+    'Good dog! {dog} spotted a rattlesnake before any of us did.',
+  ],
+  fetch: [
+    'We played fetch by the campfire, and {dog} ran so fast, ears flapping.',
+    'I threw the stick as far as I could, and {dog} brought it right back.',
+    'After supper {dog} and I played fetch until {dog} flopped down by the fire.',
+  ],
+  sturgeon: [
+    'I caught a white sturgeon today! It was so big it took two of us to pull it in.',
+    'A giant white sturgeon bit my line, and a friend helped me reel it in. It was longer than I am tall!',
+    'Guess what I caught? A white sturgeon, one of the biggest fish in all of North America.',
+  ],
+  'fish-boot': [
+    'I fished all afternoon and caught an old boot. Somebody is walking around with one wet sock!',
+    'My big catch today was a boot. Everybody laughed, and so did I.',
+    'I felt a tug on my line, and up came an old boot instead of a fish.',
+  ],
+  'quest-locket': [
+    'We found a little silver locket by the river. It belongs to a girl named Molly Rowe, and it is going back to her.',
+    'Molly Rowe dropped her grandma\'s locket at the Kansas River, and our dog found it. Now it is back where it belongs.',
+    'I hope Molly smiles when she opens her grandma\'s locket again.',
+  ],
+  'quest-note': [
+    'I fished a bottle out of the river with a note inside from a boy named Sam, who is headed for The Dalles.',
+    'A bottle came up on my fishing line with a hello from Sam. I hope he knows his note floated a long way.',
+    'Sam sent a note in a bottle, and I got to say hello back. Notes in bottles really do float a long way.',
+  ],
+  'dust-devil': [
+    'A dust devil whirled across the trail and blew every hat right off our heads.',
+    'Whoosh! A dust devil snatched our hats, and we ran around catching them.',
+    'We chased our hats all over the prairie after a dust devil came through.',
+  ],
+  stones: [
+    'I skipped a stone across the river today, and it hopped and hopped and hopped.',
+    'We skipped stones on the riverbank. My best throw made the water ring again and again.',
+    'I found a flat stone and skipped it on the water. Count the rings next time!',
+  ],
+  meteors: [
+    'Falling stars streaked across the sky tonight, and I made a wish on one.',
+    'We lay by the fire and watched falling stars. I tapped one and made a wish.',
+    'The night sky was full of falling stars. I will not tell you my wish, but it was a good one.',
+  ],
+  'grizzly-ridge': [
+    'We saw a grizzly bear way up on a ridge. We stayed together and gave it lots of room.',
+    'A grizzly bear lifted its nose to sniff the wind high on a faraway ridge, and then it ambled off.',
+    'Far away on a ridge, a big grizzly bear watched the wagon go by. It never came any closer.',
+  ],
+  'wolf-song': [
+    'At sunset we heard wolves singing from far across the plain.',
+    'The wolves sang to each other from a faraway ridge tonight. It was beautiful.',
+    'We listened to the wolves sing while the sun went down. They sounded like a faraway choir.',
+  ],
+  'pronghorn-race': [
+    'A pronghorn raced our wagon today and won.',
+    'A pronghorn ran right alongside the wagon, then zoomed ahead and left us in the dust.',
+    'We had a race with a pronghorn. It did not even look tired.',
   ],
 };
 export const LETTER_PS = 'P.S. My spelling words this week: {w1}, {w2} and {w3}.';

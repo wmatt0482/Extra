@@ -32,11 +32,26 @@ daily missions: about five facts (mile markers), about four applications (store,
 three words (the river, or the letter). A new season (1850, then 1853) reruns the same twelve legs with higher prices
 and bigger numbers, like the cups in Trail Blazer, so the same story carries a longer runway of difficulty.
 
+## Pure play, on purpose (v1.4)
+
+Version 1.4 (the dog's finds and fetch, the fishing fight, the dust devil, stone skipping, the falling stars, the two side
+quests and the trail facts) adds no question, no gate and no way to fail. That is a design choice, not a gap. The learning
+spine is the mile marker's fact and the letter's three words, and it stays exactly as it was; the new things sit around it.
+Free play does three jobs for it. It is the **rest between retrieval bouts**: the spacing research behind row 1 depends on
+the child coming back tomorrow, and a trail with things to find, a dog to call back and a fish to land is a reason to come
+back that does not feel like practice (row 12: a habit cue, never a punishment). It builds **the world the facts live in**:
+the catfish is on the Platte, the trout begin west of South Pass, a grizzly is a far-off shape on a ridge, so that a lookout
+fact about a river or an animal lands on something the child has already met (row 11, with every fact traced in
+`SOURCES.md`). And it keeps **effort and reward separate**: nothing here pays cash or food beyond a small, tuned amount, and
+nothing is held back for a miss, so the math and the spelling are never the price of the fun (row 6; Deci, Koestner & Ryan
+1999). The worst outcomes are a muddy dog, a fish that wiggles off, a hat in the sagebrush or a stone that sinks, and each
+is fixed by trying again.
+
 ## What the game never does
 
 - **No one dies, is sick in a scary way, or is hurt.** The party is tired (rests a day), the wagon is stuck (a fact
   frees it), the food is low (the next stop, a hunt or a fishing hole fixes it).
-- **No guns.** Hunting is a cartoon bow: a puff, the animal flops over, "Got one!". No blood and no corpses.
+- **No guns.** Hunting is a cartoon bow: a puff, the animal flops over, "Got one!". No blood and no corpses. (One trail fact, at the owner's request, mentions a far-off sound of hunters beyond a ridge; nothing is drawn, nobody in the party is armed, SPEC v1.4 §1.7.)
 - **No timers, lives, energy or pressure text.** A day passes in a few seconds, but the child never races a clock,
   and the sim has no countdown on a question.
 - **No multiple choice.** Every answer is typed. A wrong answer clears at once, and the right one is shown with the work.
