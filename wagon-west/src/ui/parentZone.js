@@ -11,6 +11,9 @@
 // v1.1: Options → the voice line says which engine reads the game ("Natural voice: Ava · 312 clips ready" when the
 // natural voice is picked in Spell Jump and the family has a code, else "Device voice"), and "Say a test line" speaks
 // one line and reports which engine spoke it (tts.engine).
+// v1.4: Options → "Far-off sounds on the trail" (rifles at a distance, wolves, a bear on a ridge, a prairie fire; default on) and
+// Report → one "Trail fun" line (finds, fish, biggest fish, best skips, quests given back). This tab is grown-up text, outside the
+// kid-rule audits, so the switch may name what it turns off.
 import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spell-jump/src/spelling/profiles.js';
 import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
@@ -18,6 +21,9 @@ import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { dayChart, lastDays, rangeChips } from '../../../spell-jump/src/ui/chart.js';
 import { ANIMAL_BY_ID } from '../content/legs.js';
 import { COMPANION_BY_ID } from '../content/companions.js';
+import { FINDS } from '../content/finds.js';
+import { FISH, FISH_BY_ID } from '../content/fish.js';
+import { QUESTS } from '../content/quests.js';
 import { PROBLEM_KINDS } from '../meta/save.js';
 import { drawAvatar } from './players.js';
 
@@ -262,6 +268,7 @@ export function createParentZone(app) {
       `This week: markers ${pctText(w.markersRight, w.markers)} right (${w.markersRight} of ${w.markers}), problems ${pctText(w.problemsRight, w.problems)} (${w.problemsRight} of ${w.problems}), words ${pctText(w.wordsRight, w.words)} first try (${w.wordsRight} of ${w.words})`,
       `All time: ${tot.legs} legs, ${save.stickers.length} stickers, ${save.letters.length} letters, ${save.seasonsDone} seasons finished`,
       J ? `Now: ${app.seasonOf(J).year}, leg ${(J.legIndex || 0) + 1} of ${app.legs.length}` : 'Now: not on the trail yet',
+      ...(J ? [funLine(save)] : []),
       '', 'Problems by kind'];
     for (const k of PROBLEM_KINDS) { const x = save.kinds[k]; if (x && x.n) lines.push(`${KIND_LABEL[k]}: ${x.right} of ${x.n} right the first time (${pctText(x.right, x.n)})`); }
     const play = Object.entries(save.play).sort().reverse().slice(0, 14);
@@ -270,6 +277,17 @@ export function createParentZone(app) {
   }
   const dayName = (k) => new Date(k + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const playText = (x) => `${x.legs} leg${x.legs === 1 ? '' : 's'} · markers ${x.markersRight}/${x.markers} · problems ${x.problemsRight}/${x.problems} · words ${x.wordsRight}/${x.words}`;
+  /** "Trail fun" (v1.4): finds of nine, fish of six, the biggest fish, the best skips, quests given back. */
+  function funLine(save) {
+    const J = save.journey;
+    if (!J) return '';
+    const finds = Object.values(J.finds || {}).filter((n) => Number(n) > 0).length;
+    const fish = Object.values(J.fishLog || {}).filter((e) => e && Number(e.n) > 0).length;
+    const b = J.fishBest && J.fishBest.species ? FISH_BY_ID[J.fishBest.species] : null;
+    const skips = Number(J.skips && J.skips.best) || 0;
+    const quests = Array.isArray(J.questsDone) ? J.questsDone.length : 0;
+    return `Trail fun: ${finds} of ${FINDS.length} finds · ${fish} of ${FISH.length} fish kinds${b ? ` · biggest fish: ${b.name.toLowerCase()}, ${J.fishBest.in} in` : ''} · best skip: ${skips} · ${quests} of ${QUESTS.length} quests given back`;
+  }
   function totals(save) {
     const t = { legs: 0, markers: 0, markersRight: 0, problems: 0, problemsRight: 0, words: 0, wordsRight: 0 };
     for (const x of Object.values(save.play)) for (const k of Object.keys(t)) t[k] += x[k] || 0;
@@ -303,6 +321,7 @@ export function createParentZone(app) {
         h('div', { class: 'pw-small', id: 'report-week-line' }, `Markers ${pctText(w.markersRight, w.markers)} right · problems ${pctText(w.problemsRight, w.problems)} · words ${pctText(w.wordsRight, w.words)} first try`)),
       ...chartBlock(save, now),
       h('div', { class: 'pz-help pz-first', id: 'report-summary' }, `All time: ${t.legs} legs · markers ${pctText(t.markersRight, t.markers)} right · problems ${pctText(t.problemsRight, t.problems)} · words ${pctText(t.wordsRight, t.words)} · ${save.stickers.length} stickers · ${save.letters.length} letters`),
+      save.journey ? h('div', { class: 'pz-help', id: 'report-fun' }, funLine(save)) : null,
       h('div', { class: 'hud-label pz-sec' }, 'Problems by kind'),
       kindRows.length ? h('div', { class: 'pz-table-wrap' }, h('table', { class: 'pz-table', id: 'report-kinds' },
         h('thead', {}, h('tr', {}, ...['Kind', 'Asked', 'Right first try', '%'].map((x) => h('th', {}, x)))), h('tbody', {}, ...kindRows)))
@@ -439,6 +458,7 @@ export function createParentZone(app) {
       toggle('Reduced motion', 'Calmer scene, no confetti', st.reducedMotion, (v) => app.setSetting('reducedMotion', v), 'opt-motion'),
       toggle('Hunting', 'A cartoon bow hunt when the trail finds tracks (no blood: the animal flops over, "Got one!"). Off: those stops become fishing.', st.hunting !== false, (v) => app.setSetting('hunting', v), 'opt-hunting'),
       toggle('Fractions at rivers', 'The rope toss after the river words: throw the rope to the landing (3/4 of the way across). Off: the words only.', st.fractions !== false, (v) => app.setSetting('fractions', v), 'opt-fractions'),
+      toggle('Far-off sounds on the trail (rifles, wolves, a bear on a ridge, a prairie fire)', 'Short trail facts with a sound far away: bison hunters\' rifles beyond the ridge (nothing drawn, the wagon safe), wolves singing, a grizzly on a ridge, a prairie fire glowing. On by default; Off skips those four.', st.farSounds !== false, (v) => app.setSetting('farSounds', v), 'opt-far-sounds'),
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with the other three games')),
         h('button', { class: 'btn btn-sm', id: 'opt-pin', onclick: () => { pinMode = 'reset'; pinEntry = ''; view = 'pin'; render(); } }, 'Change PIN')),

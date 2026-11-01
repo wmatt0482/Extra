@@ -634,6 +634,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .mk-fact.riddle .mk-eq { display: none; }
 .mk-fact.riddle .pn-tiles { font: 400 clamp(36px, 7vmin + 1vw, 64px)/1 var(--font-display); }
 .st-derby { width: 100%; min-width: 0; grid-column: 1 / -1; white-space: normal; }
+.st-horseshoes { width: 100%; min-width: 0; grid-column: 1 / -1; white-space: normal; line-height: 1.15; padding: 8px 12px; font-size: 14px; text-align: left; }
 .ow-lookhead { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; flex: none; }
 .ow-up { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 12px; border-radius: 10px; background: var(--ink-2); border: 2px solid var(--line); }
 .ow-up.on { border-color: var(--go); }
@@ -829,6 +830,76 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .st-foot { display: flex; align-items: center; gap: 8px 10px; }
 .st-what { margin: 0; font: 700 12.5px/1.3 var(--font-body); color: #f2dfbd; flex: 1; min-width: 0; }
 .st-work { flex: none; }
+/* ---------- v1.4: Frodo and the river (find pop, the dog's name button, bait, the journal's Finds and Fish log, camp's longer row) ---------- */
+#findpop { position: absolute; left: 50%; top: 38%; z-index: 45; transform: translateX(-50%); pointer-events: none; width: max-content; max-width: min(92vw, 420px); }
+.fpop-card { display: flex; align-items: center; gap: 12px; padding: 8px 16px 8px 10px; border-radius: 16px; background: rgba(31,21,13,.92); border: 2px solid var(--accent); animation: cardIn .5s cubic-bezier(.2,1.4,.4,1) both; }
+.fpop-card.new { border-color: var(--go); }
+.fpop-card.live { animation-duration: .25s; }
+.fpop-emoji { font-size: 34px; line-height: 1; flex: none; }
+.fpop-text { display: grid; gap: 2px; min-width: 0; }
+.fpop-label { font: 800 11px/1 var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--go); }
+.fpop-name { font: 400 17px/1.1 var(--font-display); color: var(--accent); }
+.fpop-line { font: 700 12.5px/1.3 var(--font-body); color: var(--text); }
+.reduced-motion .fpop-card { animation: none; }
+/* the dog's name: the big call-back button while the dog chases a jackrabbit (a tap on the name) */
+#dog-call.dog-call { position: absolute; left: 0; right: 0; margin-inline: auto; width: max-content; top: 36%; z-index: 12; min-height: 68px; min-width: 180px; padding: 0 28px; font-size: 26px; animation: dogPulse .7s ease-in-out infinite alternate; }
+@keyframes dogPulse { to { filter: brightness(1.14); } }
+.reduced-motion #dog-call.dog-call { animation: none; }
+/* fishing: three big bait buttons above the bar before the first cast */
+#mini { flex-direction: column; align-items: center; gap: 8px; }
+.mini-bar { max-width: 100%; border-radius: 26px; }
+#mini-text { flex: 1 1 auto; min-width: 0; }
+.bait-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; pointer-events: none; }
+.bait-btn { pointer-events: auto; display: grid; justify-items: center; align-content: center; gap: 2px; min-width: 104px; min-height: 66px; padding: 6px 14px; border-radius: 14px; background: rgba(31,21,13,.94); border: 3px solid var(--accent); box-shadow: 0 5px 0 rgba(0,0,0,.45); font: 400 15px/1.1 var(--font-display); color: #fff; }
+.bait-btn:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(0,0,0,.45); }
+.bait-btn .bait-emoji { font-size: 26px; line-height: 1; }
+.bait-btn small { font: 800 12px/1 var(--font-body); color: var(--muted); }
+.bait-btn[disabled] { opacity: .5; filter: grayscale(.8); box-shadow: none; }
+.bait-btn.pick { border-color: var(--go); }
+/* the journal's Finds page */
+.find-grid, .fish-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 10px; }
+.find-tile, .fish-tile { position: relative; display: grid; justify-items: center; align-content: start; gap: 3px; min-height: 112px; padding: 10px 6px; border-radius: 12px; border: 2px dashed var(--line); background: rgba(31,21,13,.6); color: var(--muted); text-align: center; }
+.find-tile.got, .fish-tile.got { border-style: solid; border-color: var(--accent); background: var(--paper); color: var(--paper-ink); }
+.find-emoji, .fish-emoji { font-size: 32px; line-height: 1.1; }
+.find-tile:not(.got) .find-emoji, .fish-tile:not(.got) .fish-emoji { opacity: .5; }
+.find-name, .fish-name { font: 400 14px/1.1 var(--font-display); }
+.find-sub, .fish-sub, .fish-where { font: 700 12px/1.25 var(--font-body); }
+.fish-where { color: #6b4426; }
+.fish-tile.best { box-shadow: 0 0 0 3px rgba(242,179,61,.5); }
+.fish-crown { position: absolute; top: 2px; right: 6px; font-size: 20px; line-height: 1; }
+.find-jar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; }
+.find-jar-emoji { font-size: 34px; line-height: 1; }
+.find-jar-text { display: grid; gap: 2px; font: 700 14px/1.3 var(--font-body); color: var(--muted); }
+.find-jar-text b, .find-wishes > b, .find-quests > b, .fish-odd > b, .fish-skips > b, .fish-family > b { font: 400 17px/1.1 var(--font-display); color: var(--text); }
+.find-wishes, .find-quests, .fish-odd, .fish-skips, .fish-family { display: grid; gap: 8px; padding: 10px 14px; }
+.fish-skips span { font: 700 14px/1.3 var(--font-body); color: var(--muted); }
+.find-wish-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.find-wish { padding: 6px 12px; border-radius: 999px; background: var(--paper); color: var(--paper-ink); font: 800 13px/1.2 var(--font-body); }
+.find-quest-list, .fam-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font: 700 14px/1.35 var(--font-body); }
+.find-quest-list li { padding: 6px 10px; border-radius: 8px; background: var(--ink-2); border: 2px solid var(--line); }
+.find-quest-list li[data-state="returned"] { border-color: var(--go); }
+.find-quest-list li[data-state="carried"] { border-color: var(--accent); }
+.fam-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px; padding: 4px 10px; border-radius: 8px; background: var(--ink-2); }
+.fam-list b { font: 400 15px/1 var(--font-display); color: var(--accent); }
+.fam-who { font: 800 13px/1 var(--font-body); color: var(--muted); }
+.fish-odd-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.fish-odd-chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 999px; background: var(--ink-2); border: 2px solid var(--line); font: 800 13px/1.2 var(--font-body); }
+.fish-odd-chip[data-n="0"] { opacity: .55; }
+/* the Talk row: a quest person carries a badge (a question mark for a clue, a heart for the owner) */
+.stop-person .stop-person-badge { position: absolute; top: 2px; left: 5px; font-size: 16px; line-height: 1; }
+.stop-person.quest { border-color: var(--accent); }
+/* camp: up to ten choices, so the row scrolls on a short screen */
+.camp-acts { overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; min-height: 0; }
+.camp-body { min-height: 0; }
+@media (orientation: landscape) and (max-height: 500px) {
+  .camp-act { min-height: 92px; padding: 6px 6px; gap: 2px; }
+  .camp-emoji { font-size: 26px; }
+  .camp-line { font-size: 11.5px; }
+  .camp-acts.many .camp-act { min-height: 66px; }
+  .camp-acts.many .camp-line { display: none; }
+  #jr-tabs .seg-btn { padding: 0 8px; min-width: 44px; font-size: 14px; }
+  #dog-call.dog-call { top: 30%; }
+}
 /* ---------- portrait: the same flow, stacked ---------- */
 @media (orientation: portrait) {
   /* the scene keeps a landscape-ish box (the wagon sits at ~0.8 of its height), sky above and earth below it */
@@ -891,7 +962,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   #res-next { grid-column: 1 / -1; grid-row: 1; min-height: 60px; font-size: 21px; }
   .tc-foot { flex-wrap: wrap; } .tc-go { flex: 1 1 100%; }
   #screen-journal .topbar, #screen-camp .topbar { flex-wrap: wrap; row-gap: 8px; }
-  #jr-tabs { width: 100%; } #jr-tabs .seg-btn { flex: 1; min-width: 0; padding: 0 6px; }
+  #jr-tabs { width: 100%; flex-wrap: wrap; } #jr-tabs .seg-btn { flex: 1 1 22%; min-width: 44px; padding: 0 6px; }
+  #dog-call.dog-call { top: 30%; }
+  #findpop { top: 34%; }
   .camp-acts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cards-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
   .tcard { min-height: 0; } .tcard-emoji { font-size: 28px; } .tcard-name { font-size: 11px; }
@@ -1033,6 +1106,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
         <button class="btn icon-btn" id="btn-pause" aria-label="Pause"><span data-icon="pause"></span></button>
       </div>
     </div>
+    <button class="btn btn-gold btn-big dog-call" id="dog-call" type="button" data-sfx hidden><span aria-hidden="true">🐕</span><span id="dog-call-name">Dog</span>!</button>
     <div class="hud-bottom">
       <div class="dial"><div class="hud-label">Pace</div><div class="seg" id="dial-pace" role="radiogroup" aria-label="Pace"></div></div>
       <button class="btn btn-sm btn-gold hud-eli" id="btn-eli" type="button" data-sfx hidden><span aria-hidden="true">🧭</span>Ask Eli: how many days?</button>
@@ -1050,7 +1124,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
     <div class="camp-body">
       <div class="camp-acts" id="camp-acts"></div>
       <p class="camp-note camp-arrows" id="camp-arrows" hidden>No arrows: fishing only. Arrows are sold at the next fort.</p>
-      <p class="camp-note"><span id="camp-food"></span> · each one takes a day, and the trail waits</p>
+      <p class="camp-note"><span id="camp-food"></span> · fishing, cards, tales and rest take a day; the games do not, and the trail waits</p>
     </div>
     <div class="camp-foot">
       <button class="btn" id="camp-stop" data-sfx><span data-icon="flag"></span>Stop for today</button>
@@ -1176,10 +1250,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   <div class="pn" id="panel-marker" hidden></div>
   <div class="pn" id="panel-problem" hidden></div>
   <div id="card" hidden></div>
-  <div id="mini" hidden><div class="mini-bar"><span id="mini-text">Tap to loose an arrow</span><button class="btn btn-sm" id="mini-done" data-sfx>Done</button></div></div>
+  <div id="mini" hidden><div class="bait-row" id="bait-row" hidden></div><div class="mini-bar"><span id="mini-text">Tap to loose an arrow</span><button class="btn btn-sm" id="mini-done" data-sfx>Done</button></div></div>
   <div id="spell" hidden></div>
   <div id="cardpop" aria-live="polite" hidden></div>
   <div id="deedpop" aria-live="polite" hidden></div>
+  <div id="findpop" aria-live="polite" hidden></div>
 
   <!-- ===== Pause ===== -->
   <div class="modal" id="panel-pause" hidden>

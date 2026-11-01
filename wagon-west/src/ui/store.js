@@ -7,6 +7,8 @@
 // yoke, parts, rope, blankets and arrows rows say in one line what each does. "Done shopping" leaves (on to the post
 // office at a fort, onto the trail at Independence).
 // v1.1: at a fort, "Race the mail wagon" (Fort Derby, once per fort visit: main.js app.runDerby) sits under the stats.
+// v1.4: the shiny fishing spoon is a row from Fort Kearny on (bought once: the row then says "on the wagon"), and while the dog's old
+// horseshoes are in the wagon, "Sell old horseshoes to the blacksmith: $N" sits under the stats (app.horseshoes() / sellHorseshoes()).
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 
 /** One line on what each good is for (the foods say what a unit holds). */
@@ -19,8 +21,9 @@ export const WHAT = Object.freeze({
   blankets: 'Blankets for cold nights: one for every two people.',
   arrows: 'Arrows for the bow: a hunt uses five.',
   yoke: 'A second yoke: four animals pull, three more miles a day, and they tire slower.',
+  spoon: 'A shiny fishing spoon: big salmon and trout chase it. It is never used up.',
 });
-const EMOJI = { yoke: '🐂', parts: '⚙️', rope: '🪢', blankets: '🧣', arrows: '🏹' };
+const EMOJI = { yoke: '🐂', parts: '⚙️', rope: '🪢', blankets: '🧣', arrows: '🏹', spoon: '🥄' };
 const UNIT_PLURAL = { sack: 'sacks', side: 'sides', bag: 'bags', set: 'sets', coil: 'coils', blanket: 'blankets', bundle: 'bundles', yoke: 'yokes' };
 
 export function createStore(app) {
@@ -29,6 +32,7 @@ export function createStore(app) {
   const doneBtn = $('#store-done');
   let ctx = null;      // { leg, place, resolve, nextText, derby }
   let busy = false;
+  let sold = '';        // the horseshoe sale's note (a toast has no clear spot on this screen)
   function paint() {
     if (!ctx) return;
     const J = app.save.journey;
@@ -39,9 +43,10 @@ export function createStore(app) {
       const id = g.item || g.id;
       const price = Math.max(1, Math.round(Number(g.price) || 1));
       const have = app.have(id);
-      const owned = id === 'yoke' && have.n >= 1;
+      const once = id === 'yoke' || id === 'spoon';                    // (bought once)
+      const owned = once && have.n >= 1;
       const poor = !owned && cash < price;
-      const haveText = id === 'yoke' ? (owned ? 'on the wagon' : 'not yet') : have.n > 0 ? `${have.n}${id === 'arrows' ? ' arrows' : ''} in the wagon` : 'none in the wagon';
+      const haveText = once ? (owned ? 'on the wagon' : 'not yet') : have.n > 0 ? `${have.n}${id === 'arrows' ? ' arrows' : ''} in the wagon` : 'none in the wagon';
       const cta = owned ? 'On the wagon' : poor ? `Earn $${money(price - cash)} more` : 'Tap to buy one';
       const buy = h('button', { class: 'st-good' + (poor ? ' poor' : ''), 'data-good': id, 'data-sfx': '', disabled: busy || owned || poor, 'aria-label': `${g.name}, $${money(price)} a ${g.unit || 'one'}. ${haveText}. ${cta}.` },
         h('span', { class: 'st-emoji', 'aria-hidden': 'true' }, g.emoji || EMOJI[id] || '📦'),
@@ -57,7 +62,7 @@ export function createStore(app) {
       });
       const foot = h('div', { class: 'st-foot' }, h('p', { class: 'st-what' }, WHAT[id] || (g.lb ? `${g.lb} lb of food a ${g.unit}.` : '')));
       const row = h('div', { class: 'card st-row', 'data-row': id }, buy, foot);
-      if (id !== 'yoke') {
+      if (!once) {
         const work = h('button', { class: 'btn btn-sm st-work', 'data-good': id, 'data-sfx': '', disabled: busy }, 'Work it out');
         work.setAttribute('aria-label', `Work it out: the shopkeeper's question about ${(UNIT_PLURAL[g.unit] || g.name).toLowerCase()}, for a trade token`);
         work.addEventListener('click', async () => {
@@ -76,9 +81,25 @@ export function createStore(app) {
       h('div', { class: 'st-stat' }, h('span', {}, 'Trade tokens'), h('b', { id: 'store-tokens' }, String(J.tokens || 0)), h('small', {}, '"Work it out" earns one')),
       app.foodHint() ? h('p', { class: 'st-note', id: 'store-hint' }, app.foodHint()) : null,
       h('p', { class: 'st-note' }, 'Tap a good to buy one. "Work it out" is the shopkeeper\'s question, for a token.'),
-      ctx.derby && app.derbyReady() ? derbyButton() : null].filter(Boolean));
+      ctx.derby && app.derbyReady() ? derbyButton() : null,
+      horseshoeButton(),
+      sold ? h('p', { class: 'st-note', id: 'store-sold' }, sold) : null].filter(Boolean));
     doneBtn.querySelector('.bt-label').textContent = ctx.nextText;
     doneBtn.disabled = busy;
+  }
+  /** "Sell old horseshoes to the blacksmith: $N" while the wagon holds some (the dog's finds). */
+  function horseshoeButton() {
+    const hs = typeof app.horseshoes === 'function' ? app.horseshoes() : null;
+    if (!hs || !(hs.n > 0)) return null;
+    const b = h('button', { class: 'btn btn-gold st-horseshoes', id: 'store-horseshoes', 'data-sfx': '', disabled: busy, 'data-n': String(hs.n), 'data-cash': String(hs.cash) },
+      h('span', { 'aria-hidden': 'true' }, '🐴'), `Sell old horseshoes to the blacksmith: $${money(hs.cash)}`);
+    b.addEventListener('click', () => {
+      if (busy || !ctx) return;
+      const r = app.sellHorseshoes();
+      if (r && r.n) sold = `Sold ${r.n} old horseshoe${r.n === 1 ? '' : 's'} to the blacksmith for $${money(r.cash)}.`;
+      paint();
+    });
+    return b;
   }
   function derbyButton() {
     const b = h('button', { class: 'btn btn-gold st-derby', id: 'store-derby', 'data-sfx': '', disabled: busy }, h('span', { 'aria-hidden': 'true' }, '🏁'), 'Race the mail wagon');
@@ -95,7 +116,7 @@ export function createStore(app) {
     /** Open the store; resolves when the child is done shopping. { leg, place, nextText, derby (a fort: the race) } */
     open({ leg, place, nextText = 'Done shopping', derby = false }) {
       if (ctx) ctx.resolve(false);
-      return new Promise((resolve) => { ctx = { leg, place, nextText, derby, resolve }; app.go('store'); });
+      return new Promise((resolve) => { ctx = { leg, place, nextText, derby, resolve }; sold = ''; app.go('store'); });
     },
     show() { paint(); },
     hide() {},

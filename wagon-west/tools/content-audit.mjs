@@ -11,6 +11,12 @@
 //      companions, cards, people and their offers, deeds, the letters' templates) and the string literals the source hands to the
 //      voice (effectToast / toast second argument, say:, app.say, sayWait, a card's text:), each compared with the collected list;
 //      lines that exist only at run time are listed by name and prepared just in time (speech.js ready()).
+//   6. (v1.4) the weapon words: WEAPONS (guns, gunshots, rifles, muskets, pistols, bullets, shoot, shot ...) in every walked string and
+//      every string literal, except the two exact phrases of WEAPON_ALLOW ('Far-off rifles', 'The far-off crack of rifles beyond the
+//      ridge.'), which may occur only in TRAIL_FACTS['far-off-crack'] and the card 'far-off-crack' and must both be in that fact (SPEC
+//      v1.4 section 1.7); and the voice walk of the new content (finds, junk, wishes, MOMENTS, quests, trail facts, the new cards and
+//      deeds, the companions' help lines, the new letter lines, DOG_LINES filled with 'Frodo'), each reachable by
+//      collectVoiceTexts({ legId, playerName: 'Mia', dogName: 'Frodo' }) for some leg.
 // The Parent Zone is for grown-ups and is not here. Exit code 1 on any hit.
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -22,17 +28,41 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // here; keep the two identical (the self-check below fails if ui-smoke's copy has drifted).
 export const BANNED = /\b(kill(s|ed|ing)?|die[sd]?|dying|dead|death|grave|blood|gun|lives|life left|wrong|timer|countdown|hurry|time'?s up|seconds? left|game over|lose|lost|fail(ed)?|dysentery|snakebite|starv(e|ing|ed))\b/i;
 
+// (v1.4, SPEC section 1.7) weapon words: no gun is drawn, named in the UI, a toast or a letter. Two exact phrases of one trail fact are
+// allowed. Source of truth for both constants: tools/ui-smoke.mjs (the same drift check as BANNED).
+export const WEAPONS = /\b(guns?|gunshots?|gunfire|rifles?|muskets?|pistols?|bullets?|shoot|shoots|shooting|shot)\b/i;
+export const WEAPON_ALLOW = ['Far-off rifles', 'The far-off crack of rifles beyond the ridge.'];
+const ALLOW_FILES = ['src/content/trailFacts.js', 'src/content/cards.js'];       // the only modules that may hold the phrases
+const ALLOW_OWNER = 'far-off-crack';                                                // ... and only inside the fact / the card of this id
+
 const hits = [];
 let seen = 0;
-const note = (where, s) => { const m = String(s).match(BANNED); if (m) hits.push(`${where}: "${m[0]}" in "${String(s).replace(/\s+/g, ' ').slice(0, 90)}"`); };
+const stripAllowed = (t) => WEAPON_ALLOW.reduce((x, p) => x.split(p).join(' '), String(t));
+const hasAllowed = (t) => WEAPON_ALLOW.some((p) => String(t).includes(p));
+/** Check one string: the banned words, then the weapon words (after taking out an allowed phrase where it is allowed: `owner` is the
+ *  id of the object the string belongs to). */
+const note = (where, s, owner = null) => {
+  const t = String(s);
+  const short = t.replace(/\s+/g, ' ').slice(0, 90);
+  const m = t.match(BANNED);
+  if (m) hits.push(`${where}: "${m[0]}" in "${short}"`);
+  let rest = t;
+  if (hasAllowed(t)) {
+    if (owner === ALLOW_OWNER) rest = stripAllowed(t);               // (the fact and its card, wherever the journey re-exports them)
+    else hits.push(`${where}: an allowed weapon phrase outside TRAIL_FACTS['${ALLOW_OWNER}'] and its card (no stray allowance) in "${short}"`);
+  }
+  const w = rest.match(WEAPONS);
+  if (w) hits.push(`${where}: weapon word "${w[0]}" in "${short}"`);
+};
 
-/** Walk any value: strings are checked, arrays / objects recursed (cycle-safe), functions skipped. */
-function walk(v, where, stack = new Set()) {
-  if (typeof v === 'string') { seen++; note(where, v); return; }
+/** Walk any value: strings are checked, arrays / objects recursed (cycle-safe), functions skipped. `owner` = the id of the nearest object with one. */
+function walk(v, where, stack = new Set(), owner = null) {
+  if (typeof v === 'string') { seen++; note(where, v, owner); return; }
   if (!v || typeof v !== 'object' || stack.has(v)) return;
   stack.add(v);
-  if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${where}[${i}]`, stack));
-  else for (const [k, x] of Object.entries(v)) walk(x, `${where}.${k}`, stack);
+  const own = typeof v.id === 'string' ? v.id : owner;
+  if (Array.isArray(v)) v.forEach((x, i) => walk(x, `${where}[${i}]`, stack, own));
+  else for (const [k, x] of Object.entries(v)) walk(x, `${where}.${k}`, stack, own);
   stack.delete(v);
 }
 
@@ -40,6 +70,11 @@ function walk(v, where, stack = new Set()) {
 const smoke = readFileSync(path.join(root, 'tools/ui-smoke.mjs'), 'utf8').match(/^const BANNED = (\/.*\/i);/m);
 if (!smoke) { console.log('could not find BANNED in tools/ui-smoke.mjs'); process.exit(1); }
 if (smoke[1] !== String(BANNED)) { console.log(`the banned list drifted from ui-smoke.mjs:\n  smoke ${smoke[1]}\n  audit ${BANNED}`); process.exit(1); }
+
+const smokeWeap = readFileSync(path.join(root, 'tools/ui-smoke.mjs'), 'utf8').match(/^const WEAPONS = (\/.*\/i);/m);
+const smokeAllow = readFileSync(path.join(root, 'tools/ui-smoke.mjs'), 'utf8').match(/^const WEAPON_ALLOW = (\[.*\]);/m);
+if (!smokeWeap || smokeWeap[1] !== String(WEAPONS)) { console.log(`the weapon list drifted from ui-smoke.mjs:\n  smoke ${smokeWeap && smokeWeap[1]}\n  audit ${WEAPONS}`); process.exit(1); }
+if (!smokeAllow || JSON.stringify(eval(smokeAllow[1])) !== JSON.stringify(WEAPON_ALLOW)) { console.log(`the weapon allowlist drifted from ui-smoke.mjs:\n  smoke ${smokeAllow && smokeAllow[1]}\n  audit ${JSON.stringify(WEAPON_ALLOW)}`); process.exit(1); }
 
 const jsIn = (dir) => readdirSync(path.join(root, dir)).filter((f) => f.endsWith('.js')).sort().map((f) => `${dir}/${f}`);
 const files = [...jsIn('src/content'), ...jsIn('src/journey')];
@@ -49,6 +84,15 @@ const mods = {};
 for (const f of files) {
   mods[f] = await import(pathToFileURL(path.join(root, f)).href);
   for (const [name, val] of Object.entries(mods[f])) if (typeof val !== 'function') walk(val, `${f}:${name}`);
+}
+
+// (v1.4) the allowlist and the content agree: TRAIL_FACTS['far-off-crack'] holds both exact phrases (its title, its text)
+{
+  const TF = mods['src/content/trailFacts.js'];
+  const fact = TF && (TF.TRAIL_FACTS || []).find((x) => x.id === ALLOW_OWNER);
+  if (!TF) console.log(`SKIP weapons allowlist agreement: src/content/trailFacts.js is not in this tree yet`);
+  else if (!fact) hits.push(`TRAIL_FACTS has no '${ALLOW_OWNER}' fact`);
+  else for (const ph of WEAPON_ALLOW) if (!`${fact.title} ${fact.text}`.includes(ph)) hits.push(`TRAIL_FACTS['${ALLOW_OWNER}'] no longer contains the allowed phrase "${ph}"`);
 }
 
 // the text the journey layer builds at run time: today's challenge on every leg, every day key (all six kinds come up)
@@ -96,7 +140,13 @@ for (const f of files) {
   for (const s of strings) {
     seen++;
     const m = s.match(BANNED);
-    if (m) lit.push(`${f}: "${m[0]}" in ${s.replace(/\s+/g, ' ').slice(0, 90)}`);
+    const short = s.replace(/\s+/g, ' ').slice(0, 90);
+    if (m) lit.push(`${f}: "${m[0]}" in ${short}`);
+    // (v1.4) the weapon words in a literal: the two allowed phrases only in the modules that hold the fact and its card
+    let rest = s;
+    if (hasAllowed(s)) { if (ALLOW_FILES.includes(f)) rest = stripAllowed(s); else lit.push(`${f}: an allowed weapon phrase outside its fact and card in ${short}`); }
+    const w = rest.match(WEAPONS);
+    if (w) lit.push(`${f}: weapon word "${w[0]}" in ${short}`);
   }
 }
 // a literal is a hit only if the same text is not already reported from the walk above
@@ -109,7 +159,7 @@ const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
 const stripStop = (t) => norm(t).replace(/[.!?]$/, '');
 // what prepareVoice can reach: its list for every leg (a leg's letters are prepared when that leg starts), as clip pieces
 const reachable = new Set();
-for (const leg of ALL_LEGS) for (const t of speechChunks(collectVoiceTexts({ legId: leg.id, playerName: 'Mia' }).ordered)) reachable.add(norm(t));
+for (const leg of ALL_LEGS) for (const t of speechChunks(collectVoiceTexts({ legId: leg.id, playerName: 'Mia', dogName: 'Frodo' }).ordered)) reachable.add(norm(t));
 const reachableLoose = new Set([...reachable].map(stripStop));
 const has = (t) => speechChunks([t]).every((c) => reachable.has(norm(c)) || reachableLoose.has(stripStop(c)));
 const missingVoice = [];
@@ -141,6 +191,38 @@ for (const [key, list] of Object.entries(LETTER_LINES)) {
     const re = new RegExp('^' + regexQuote(line).replace(/\{(\w+)\}/g, '.+') + '$');
     if (![...reachable].some((t) => re.test(t))) missingVoice.push(`letter line ${key}: "${line.slice(0, 80)}"`);
   }
+}
+// 5a'. (v1.4) the new content, walked on its own: every find, junk, wish, MOMENTS line, quest line, trail fact, fish landing line, bait line,
+// companion help line and DOG_LINES (filled with 'Frodo'); the new cards and deeds are in the loops above (every CARDS / DEEDS entry)
+const sayOf1 = (x) => (x ? x.say || x.text || '' : '');
+const leaves = (v, out = []) => {                       // every line in a tree of { text, say } leaves, strings and arrays
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) v.forEach((x) => leaves(x, out));
+  else if (v && typeof v === 'object') { if ('text' in v || 'say' in v) out.push(sayOf1(v)); else Object.values(v).forEach((x) => leaves(x, out)); }
+  return out;
+};
+const have14 = ['finds', 'fish', 'moments', 'quests', 'trailFacts'].map((m) => !!mods[`src/content/${m}.js`]);
+if (!have14.every(Boolean)) console.log('SKIP the voice walk of the 1.4 content: not every src/content module (finds, fish, moments, quests, trailFacts) is in this tree yet');
+else {
+  const { FINDS, WISHES } = mods['src/content/finds.js'];
+  const { FISH, JUNK, BAITS } = mods['src/content/fish.js'];
+  const { MOMENTS, DOG_LINES } = mods['src/content/moments.js'];
+  const { QUESTS } = mods['src/content/quests.js'];
+  const { TRAIL_FACTS } = mods['src/content/trailFacts.js'];
+  for (const f of FINDS) need(`find ${f.id}`, sayOf1(f));
+  for (const j of JUNK) need(`junk ${j.id}`, sayOf1(j));
+  for (const w of WISHES) need(`wish ${w.id}`, sayOf1(w));
+  for (const f of FISH) need(`fish ${f.id} landing`, sayOf1(f.land));
+  for (const b of BAITS) need(`bait ${b.id}`, b.text);
+  for (const t of leaves(MOMENTS)) need('MOMENTS line', t);
+  for (const [k, t] of Object.entries(DOG_LINES)) need(`DOG_LINES.${k}`, String(t).replace(/\{dog\}/g, 'Frodo'));
+  for (const f of TRAIL_FACTS) need(`trail fact ${f.id}`, sayOf1(f));
+  for (const q of QUESTS) {
+    need(`quest ${q.id} item`, sayOf1(q.item)); need(`quest ${q.id} mailed`, sayOf1(q.mailed));
+    for (const st of q.steps || []) need(`quest ${q.id} clue at ${st.at}`, (st.lines || []).join(' '));
+    need(`quest ${q.id} owner`, (q.owner.lines || []).join(' '));
+  }
+  for (const c of COMPANIONS) need(`companion ${c.id} help`, c.lines && c.lines.help);
 }
 // 5b. the string literals the source hands to the voice (effectToast / toast second argument, say:, app.say, sayWait, a card's text:)
 const dynamic = [];
@@ -174,8 +256,8 @@ for (const f of voiceFiles) {
 // main.js must really prepare this list
 const mainSrc = readFileSync(path.join(root, 'src/main.js'), 'utf8');
 if (!/collectVoiceTexts\(/.test(mainSrc) || !/prepareBulk\(/.test(mainSrc)) missingVoice.push('src/main.js prepareVoice() does not prepare collectVoiceTexts() through speech.prepareBulk()');
-for (const t of allVoiceTexts({ playerName: 'Mia' })) need('allVoiceTexts', t);
-console.log(`voice coverage: ${reachable.size} prepared lines reachable (a leg's list: ${collectVoiceTexts({ legId: 'fort-kearny', playerName: 'Mia' }).ordered.length}), ${sites} call sites read, ${dynamic.length} built at run time and prepared just in time`);
+for (const t of allVoiceTexts({ playerName: 'Mia', dogName: 'Frodo' })) need('allVoiceTexts', t);
+console.log(`voice coverage: ${reachable.size} prepared lines reachable (a leg's list: ${collectVoiceTexts({ legId: 'fort-kearny', playerName: 'Mia', dogName: 'Frodo' }).ordered.length}), ${sites} call sites read, ${dynamic.length} built at run time and prepared just in time`);
 for (const d of dynamic) console.log('  · ' + d);
 
 console.log(`content audit: ${files.length} modules, ${problems} word problems, ${seen} strings checked`);

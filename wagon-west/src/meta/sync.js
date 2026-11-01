@@ -18,11 +18,16 @@
 //           collection is never lost to "the later doc"), and the tokens the max, explicitly · the dog (J.dog, stored
 //           by the app on the journey) kept from the other side when the later one has none · suitsDone union · the
 //           daily challenge: the later doc's, claimed when either side claimed the same day's challenge.
+// v1.4      after the rules above, merge14(s.journey, o.journey) (src/journey/collections.js, the Journey stream's: finds per id max,
+//           fish log per species n max and the bigger fish, junk max, personal best the bigger, skips best / throws / per river max,
+//           wishes and finished quests union, the longest fetch max; and, on the same journey, the further state of each quest, the
+//           trail facts heard union, the spoon max): both devices end with both devices' records. Settings.farSounds is this device's.
 import { registerSyncKind } from '../../../spell-jump/src/sync/client.js';
 import { mergeStreak } from '../../../spell-jump/src/sync/merge.js';
 import { registerTrailBlazerSync } from '../../../trail-blazer/src/meta/sync.js';
 import { LOOK_KINDS } from '../ui/looks.js';
 import { PLAY_FIELDS, normalize, normalizeLegsLog, normalizeLetters, saveKey } from './save.js';
+import * as Sim from '../journey/sim.js';          // (v1.4: merge14, the journey's own collections rules; a namespace import so an older journey module still loads)
 
 const clone = (x) => (x == null ? x : JSON.parse(JSON.stringify(x)));
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -61,6 +66,14 @@ export function mergeWw(local, remote) {
     if (!s.journey.dog && o.journey.dog) s.journey.dog = clone(o.journey.dog);
     // v1.2: deeds earned and people met are collections too: the union of both sides
     for (const k of ['deeds', 'met']) if (s.journey[k] !== undefined || o.journey[k] !== undefined) s.journey[k] = unionCards(s.journey[k], o.journey[k]);
+    // v1.4: the dog's finds, the fish log, the skipping stones, the wishes and the quests (the journey's own rules)
+    if (typeof Sim.merge14 === 'function') {
+      try {
+        if (typeof Sim.ensureJourney === 'function') { Sim.ensureJourney(s.journey); Sim.ensureJourney(o.journey); }     // (both sides filled with the 1.4 fields)
+        const m = Sim.merge14(s.journey, o.journey);                                                                    // (in place, or the merged journey returned)
+        if (m && typeof m === 'object' && m !== s.journey && Number.isFinite(m.legIndex)) s.journey = m;
+      } catch (e) { console.warn('[WagonWest] merge14', e); }
+    }
   }
   s.suitsDone = uniq(s.suitsDone, o.suitsDone);
   if (o.daily && s.daily && o.daily.key === s.daily.key && o.daily.id === s.daily.id && o.daily.claimed) s.daily.claimed = true;

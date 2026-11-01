@@ -12,7 +12,7 @@
 
 const INTERACTIVE = new Set(['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA', 'A']);
 const SKIP_TAGS = new Set(['SCRIPT', 'STYLE', 'CANVAS', 'TEMPLATE', 'NOSCRIPT', 'LINK', 'META']);
-const HUD_SURFACES = '.hud-box, .hud-faces, .cpop-card, .dpop-card';                 // the trail's HUD boxes count as reading surfaces even where they hold only pictures (the party's faces)
+const HUD_SURFACES = '.hud-box, .hud-faces, .cpop-card, .dpop-card, .fpop-card';                 // the trail's HUD boxes count as reading surfaces even where they hold only pictures (the party's faces)
 const MARGIN = 3;                                  // px of air around a box that counts as touching
 const MAX_SHOWN = 3, MAX_PENDING = 10, TICK_MS = 250, MAX_WAIT_MS = 25000, PLAIN_WAIT_MS = 8000;
 const STEP = 14, EDGE = 8;                         // px: how far each try slides down; air kept at the bottom edge

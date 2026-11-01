@@ -8,8 +8,9 @@
 import { h } from '../../../spell-jump/src/ui/dom.js';
 import { CARDS, SUITS, SUIT_NAMES, cardsOf } from '../content/cards.js';
 
-export const SUIT_NAME = Object.freeze({ landmark: 'Landmarks', nation: 'Nations', wild: 'Animals and plants', companion: 'Companions' });
-export const SUIT_ICON = Object.freeze({ landmark: '⛰️', nation: '🪶', wild: '🌿', companion: '🤠' });
+// v1.4: two more suits, 'river' (the six fish of the trail) and 'tales' (the trail facts and the two quest cards): 54 cards in six suits
+export const SUIT_NAME = Object.freeze({ landmark: 'Landmarks', nation: 'Nations', wild: 'Animals and plants', companion: 'Companions', river: 'Fish of the trail', tales: 'Trail tales' });
+export const SUIT_ICON = Object.freeze({ landmark: '⛰️', nation: '🪶', wild: '🌿', companion: '🤠', river: '🐟', tales: '📖' });
 export const POP_MS = 1500;
 
 /** The suits in album order: [{ id, name }] whatever shape SUITS has (ids, objects, or a map). */

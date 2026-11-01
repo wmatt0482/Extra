@@ -6,7 +6,10 @@
 //   tip    an OPTIONAL 'parts' puzzle on the problem panel for a trade token ("Work it out" / "Not now")
 //   trade  a fair trade like the trading posts ("Trade" / "No thanks"): the trade problem at the person's own rate
 // Nothing here is a gate: the stop's big button ("To the ferry", "Into the fort", …) is always one tap away, and a gift
-// turned down is just a friendly visit. The module draws and drives; the journey owns the people and the gifts, main.js
+// turned down is just a friendly visit.
+// v1.4: the people of a side quest (JA.questAt(J, stopId): a clue-giver with a ❓ badge, the owner of what the dog found with a 💛
+// badge) stand in the same row; a tap runs JA.questTalk (a card with their lines, said; on the owner the reward: the card, a trade
+// token, a gift of food). Walking past them is fine: the post office sends the thing ahead. The module draws and drives; the journey owns the people and the gifts, main.js
 // lends the panels through app.v2 (showCard, runProblem, dropCard, checkDeeds, curLeg, JA).
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 
@@ -38,10 +41,16 @@ export function createPeople(app) {
   let busy = false;
   const JA = () => app.v2.JA;
 
+  /** The quest people at this stop ([] before the Journey stream's quests exist): { questId, role, person, lines, badge }. */
+  function questsAt(stopId) {
+    const J = app.save.journey;
+    try { return typeof JA().questAt === 'function' ? JA().questAt(J, stopId) || [] : []; } catch (e) { console.warn('[WagonWest] questAt', e); return []; }
+  }
   function paint() {
     if (!V) { wrap.hidden = true; return; }
     const J = app.save.journey;
     const list = JA().peopleAt(J, V.leg.id);
+    const quests = questsAt(V.leg.id);
     wrap.hidden = false;
     title.textContent = (V.leg.stop && V.leg.stop.name) || V.leg.name;
     goText.textContent = STOP_BUTTON[V.leg.stop && V.leg.stop.kind] || 'Continue';
@@ -53,7 +62,14 @@ export function createPeople(app) {
         h('span', { class: 'stop-person-name' }, p.name));
       b.addEventListener('click', () => { talk(p.id).catch((e) => console.error('[WagonWest] talk', e)); });
       return b;
-    }));
+    }).concat(quests.map((q) => {
+      const b = h('button', { class: 'stop-person quest', 'data-person': q.person.id, 'data-quest': q.questId, 'data-role': q.role, 'data-sfx': '', disabled: busy, 'aria-label': `${q.person.name}, ${q.person.role}${q.role === 'owner' ? ': you have something for them' : ': they may know something'}` },
+        h('span', { class: 'stop-person-badge', 'aria-hidden': 'true' }, q.badge || (q.role === 'owner' ? '💛' : '❓')),
+        h('span', { class: 'stop-person-emoji', 'aria-hidden': 'true' }, q.person.emoji),
+        h('span', { class: 'stop-person-name' }, q.person.name));
+      b.addEventListener('click', () => { talkQuest(q).catch((e) => console.error('[WagonWest] quest talk', e)); });
+      return b;
+    })));
     go.disabled = busy;
   }
   function done(ok) { if (!V) return; const v = V; V = null; wrap.hidden = true; v.resolve(ok); }
@@ -122,17 +138,41 @@ export function createPeople(app) {
     } finally { busy = false; paint(); }
   }
 
+  /** A quest person (v1.4): their lines on a card, said; the clue is kept (the next stop's person knows more), the owner pays the reward. */
+  async function talkQuest(q) {
+    const J = app.save.journey;
+    if (!J || busy || typeof JA().questTalk !== 'function') return;
+    busy = true; paint();
+    try {
+      let r = null;
+      try { r = JA().questTalk(J, q.questId); } catch (e) { console.warn('[WagonWest] questTalk', e); }
+      app.persist();
+      const lines = ((r && r.lines) || q.lines || []).join(' ');
+      await app.v2.showCard({ kicker: cap(q.person.role), title: q.person.name, text: lines, say: lines, sticker: { emoji: q.person.emoji, name: '' }, tone: 'trade', button: 'Thanks!' });
+      if (!V) return;
+      const rw = r && r.reward;
+      if (rw) {
+        if (rw.card) app.v2.dropCard(rw.card);
+        if (rw.tokens) app.effectToast(`+${rw.tokens} trade token${rw.tokens === 1 ? '' : 's'}`);
+        if (rw.food && rw.food.lb) app.effectToast(`+${Math.round(rw.food.lb)} lb of ${rw.food.what || 'food'}`);
+      }
+      app.persist();
+      app.refreshCash();
+      app.v2.checkDeeds();
+    } finally { busy = false; paint(); }
+  }
+
   return {
     show() { if (!V) wrap.hidden = true; },
     hide() { done(false); },
     /** Does this leg's stop have people to talk to? */
-    has(leg) { const J = app.save.journey; return !!(J && leg && JA().peopleAt(J, leg.id).length); },
+    has(leg) { const J = app.save.journey; return !!(J && leg && (JA().peopleAt(J, leg.id).length || questsAt(leg.id).length)); },
     /** Show the Talk row for the stop; resolves true when the child taps the stop's button, false when they left. */
     visit(leg) {
       if (V) done(false);
       return new Promise((resolve) => { V = { leg, resolve }; busy = false; paint(); });
     },
-    talk,
+    talk, talkQuest,
     get isOpen() { return !!V; },
     get busy() { return busy; },
   };

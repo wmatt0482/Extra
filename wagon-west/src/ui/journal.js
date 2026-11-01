@@ -9,8 +9,10 @@ import { drawMap } from './map.js';
 import { albumPage } from './cards.js';
 import { deedsPage } from './deeds.js';
 import { metCard } from './people.js';
+import { findsPage } from './finds.js';
+import { fishLogPage } from './fishLog.js';
 
-const PAGES = [['letters', 'Letters'], ['stickers', 'Stickers'], ['map', 'Map'], ['cards', 'Cards'], ['deeds', 'Deeds']];
+const PAGES = [['letters', 'Letters'], ['stickers', 'Stickers'], ['map', 'Map'], ['cards', 'Cards'], ['deeds', 'Deeds'], ['finds', 'Finds'], ['fish', 'Fish log']];
 
 export function createJournal(app) {
   const tabs = $('#jr-tabs');
@@ -57,7 +59,7 @@ export function createJournal(app) {
   function render() {
     renderTabs();
     body.dataset.page = page;
-    body.replaceChildren(...(page === 'letters' ? letters() : page === 'stickers' ? stickers() : page === 'cards' ? albumPage(app) : page === 'deeds' ? deedsPage(app) : map()));
+    body.replaceChildren(...(page === 'letters' ? letters() : page === 'stickers' ? stickers() : page === 'cards' ? albumPage(app) : page === 'deeds' ? deedsPage(app) : page === 'finds' ? findsPage(app) : page === 'fish' ? fishLogPage(app) : map()));
     body.scrollTop = 0;
   }
   return { show(opts = {}) { if (opts.page) page = opts.page; render(); }, hide() {}, get page() { return page; } };

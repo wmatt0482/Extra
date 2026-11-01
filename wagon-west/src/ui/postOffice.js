@@ -5,6 +5,7 @@
 // app.spellWords records it in the child's own word store); a spelled word fills its blank. The finished letter is
 // read back aloud and kept in the journal (text only, the newest 36; parents read them in the Parent Zone; nothing
 // is ever sent anywhere). R1 holds: a word is never on screen before it is spelled (only the blanks are).
+// v1.4: before the letter, a card for each thing the post office sends ahead to its owner (a quest the child walked past: app.questMail).
 // v1.1: the natural voice has the letter's sentences prepared before it is read (app.voiceFor: the opening, the lines,
 // the P.S. with the words, the closing), and the read-back is one sentence per utterance (each one a clip).
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
@@ -64,6 +65,7 @@ export function createPostOffice(app) {
       foot.hidden = true;
       const picks = app.pickWords(3);
       const words = picks.map((p) => p.word);
+      if (typeof app.questMail === 'function') { await app.questMail(leg); if (app.screen !== 'post') return { cancelled: true }; }      // (v1.4: before the letter, which tells it)
       let letter = null;
       try { letter = composeLetter(app.save.journey, app.legEvents(), words); } catch (e) { console.error('[post] composeLetter failed', e); }
       if (!letter || !Array.isArray(letter.lines)) {
