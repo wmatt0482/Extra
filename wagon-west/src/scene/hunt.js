@@ -10,7 +10,7 @@
 // deer are half and half, bison mostly stand about and amble off after a near miss. The first arrow of a hunt shows
 // a faint dotted path, never again. A miss is a thunk in the grass and the animal keeps going. A hit is the same puff
 // and flop as ever. The hunt event gains lead: true when the animal was moving at the hit; the yields are the same
-// (rabbit 10, turkey 15, deer 40; the pronghorn is 20 lb and the bison 40, the journey just adds whatever comes).
+// (rabbit 10, turkey 15, deer 40; the pronghorn is 12 lb and the bison 24, so the new animals keep a hunt's mean within 10 % of 1.3's; the journey just adds whatever comes).
 // The keyboard shoots at the aim line (the pointer's last x on a laptop, the middle otherwise): Space is a timing game.
 // Spawns come from the seed, so a seeded hunt replays the same.
 //

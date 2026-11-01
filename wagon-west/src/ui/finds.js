@@ -24,14 +24,14 @@ const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
 export function createFindPop(root, { sfx = null, hold = () => false, waitFor = () => false, say = null } = {}) {
   const queue = [];
   const log = [];
-  let showing = false, visible = false, timer = 0;       // showing: something is queued or up; visible: a pop is drawn this moment
+  let showing = false, visible = false, timer = 0, current = null;       // showing: something is queued or up; visible: a pop is drawn this moment
   function next() {
     timer = 0;
     visible = false;
     const it = queue[0];
     if (!it) { showing = false; root.hidden = true; root.replaceChildren(); return; }
     showing = true;
-    if (!it.live && waitFor()) { timer = setTimeout(next, 300); return; }          // a card or a deed is popping in the same place: it goes first
+    if (!it.live && waitFor()) { root.hidden = true; root.replaceChildren(); timer = setTimeout(next, 300); return; }          // a card or a deed is popping in the same place: it goes first (the find before this one is gone from the screen meanwhile)
     root.hidden = false;
     root.replaceChildren(h('div', { class: 'fpop-card' + (it.first ? ' new' : '') + (it.live ? ' live' : ''), 'data-find': it.id || '' },
       h('span', { class: 'fpop-emoji', 'aria-hidden': 'true' }, it.emoji || '🐾'),
@@ -47,7 +47,7 @@ export function createFindPop(root, { sfx = null, hold = () => false, waitFor = 
       if (held) { root.hidden = true; root.replaceChildren(); timer = setTimeout(next, 300); return; }
     }
     queue.shift();
-    visible = true;
+    visible = true; current = it;
     if (sfx && sfx.chime && !it.quiet) { try { sfx.chime(); } catch (_) { /* ignore */ } }
     if (it.say && say) { try { say(it.say); } catch (_) { /* ignore */ } }              // (its line is read when the pop is SHOWN, behind whatever is playing)
     timer = setTimeout(next, it.ms || (it.live ? WISH_POP_MS : FIND_POP_MS));
@@ -59,6 +59,14 @@ export function createFindPop(root, { sfx = null, hold = () => false, waitFor = 
       log.push(item.id || item.name);
       queue.push(item);
       if (!showing) next();
+    },
+    /** A card, a bar or a bait row has just opened over the place this pop is drawn: it steps aside (back to the front of the queue, unseen) and comes out again when clear. */
+    suspend() {
+      if (!visible || !current || current.live) return;
+      if (timer) clearTimeout(timer);
+      queue.unshift({ ...current, quiet: true, say: '' });
+      visible = false; current = null; root.hidden = true; root.replaceChildren();
+      timer = setTimeout(next, 300);
     },
     clear() { queue.length = 0; if (timer) clearTimeout(timer); timer = 0; showing = false; visible = false; root.hidden = true; root.replaceChildren(); },
     get showing() { return showing; },

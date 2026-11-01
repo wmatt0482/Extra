@@ -197,7 +197,8 @@ async function boot() {
   // Toasts and pops wait while a panel, card, question or mini-game is open, and sit only where they touch nothing the
   // child reads or presses (src/ui/toasts.js; playtest 1.2 W3-W5). v2/mini/derby are declared further down: read lazily.
   let dayFlow = false;                    // a trail day's marker / event is about to open: its toasts wait for it (their lines would be cut by it)
-  const readingOpen = () => { try { return !!(app.overlayOpen() || v2.play || v2.bar || mini || derby || dayFlow); } catch (_) { return false; } };
+  let vignetteOn = false;               // (v1.4 playtest: a trail fact's far-off scene plays with nothing on top of it: toasts wait, as they do for a mini-game)
+  const readingOpen = () => { try { return !!(app.overlayOpen() || v2.play || v2.bar || mini || derby || dayFlow || vignetteOn); } catch (_) { return false; } };
   const toaster = createToaster(toastsEl, { blocked: readingOpen, say: (t) => speech.later(t), speaking: () => speech.ambientPending });
   const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || !!mini || !!derby;
   let derby = null;                       // Fort Derby in progress: { leg, markers, bursts, resolve }
@@ -451,7 +452,7 @@ async function boot() {
    *  `ms` (the screen opens meanwhile: the speech itself waits for its clip); resolves at once when the device voice reads. */
   function voiceFor(texts, ms = HEAD_START_MS) { return speech.ready(texts, ms); }
   /** A trail card with its sentence ready in the natural voice. */
-  async function showCard(opts) { await voiceFor([opts.say || opts.text]); return card.show(opts); }
+  async function showCard(opts) { await voiceFor([opts.say || opts.text]); if (findPop) findPop.suspend(); return card.show(opts); }      // (a find pop up over the card's place steps aside)
   const pz = createParentZone(app);
 
   function refreshCash() {
@@ -1241,13 +1242,14 @@ async function boot() {
   function runMini(kind) {
     return new Promise((resolve) => {
       const J = save.journey;
-      mini = { kind, lb: 0, hits: 0, resolve, done: false, card: false };
+      mini = { kind, lb: 0, hits: 0, leads: 0, resolve, done: false, card: false };
       $('#mini-text').textContent = kind === 'hunt' ? 'The bow: tap the animals' : 'The line: tap when it dips';
       $('#mini-done').textContent = kind === 'hunt' ? 'Done hunting' : 'Done fishing';
       $('#mini').hidden = false;
       // the scene owns the pointer (the canvas) and Space while it runs: no focused button may catch Space's keyup
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       document.documentElement.classList.add('in-mini');
+      document.documentElement.classList.toggle('in-hunt', kind === 'hunt');       // (v1.4 playtest: the hunt's bar sits up in the hills, clear of the three lanes the animals cross in)
       const seed = hashString(`${currentPlayerId}:${J.legId}:${J.day}`);
       if (kind === 'hunt') S('startHunt', { seed, shots: 5 }); else S('startFish', { seed, casts: 4 });
       if (!scene) finishMini();
@@ -1259,12 +1261,12 @@ async function boot() {
     m.done = true;
     mini = null;
     $('#mini').hidden = true;
-    document.documentElement.classList.remove('in-mini');
+    document.documentElement.classList.remove('in-mini', 'in-hunt');
     const J = save.journey;
     const lb = Math.max(0, Math.round(total != null ? num(total) : m.lb));
     try { if (m.kind === 'hunt') JA.applyHunt(J, { meatLb: lb }); else JA.applyFish(J, { fishLb: lb }); } catch (e) { console.warn('[WagonWest] apply mini', e); }
     app.persist();
-    toast(lb ? `+${lb} lb of food for the wagon` : 'Nothing this time. The trail has more');
+    toast(lb ? `+${lb} lb of food for the wagon${m.leads ? ` (${m.leads === 1 ? 'a good lead' : m.leads + ' good leads'}!)` : ''}` : 'Nothing this time. The trail has more');
     m.resolve(lb);
   }
   $('#mini-done').addEventListener('click', () => {
@@ -1281,7 +1283,8 @@ async function boot() {
     if (v2Event(evt)) return;           // ---- v1.2 (app two): the ford / float / raft / stampede events ----
     if (evt.type === 'hunt' && mini && mini.kind === 'hunt') {
       Sfx.twang();
-      if (evt.hit) { mini.lb += num(evt.meatLb); mini.hits += 1; toast('Got one!'); if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal)); } }
+      if (evt.hit) { mini.lb += num(evt.meatLb); mini.hits += 1; if (evt.lead) mini.leads += 1; toast(evt.lead ? 'Good lead! Got one!' : 'Got one!');   // (v1.4: a running animal needs a lead; no deed or token is named for it, so it is only recorded: the toast and the hunt's report line)
+       if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal)); } }
     } else if (evt.type === 'huntEnd' && mini && mini.kind === 'hunt') finishMini(Number.isFinite(evt.meatLb) ? evt.meatLb : null);
     else if (evt.type === 'fish' && mini && mini.kind === 'fish') { Sfx.plop(); mini.lb += num(evt.lb); mini.hits += 1; toast(`A ${evt.size || ''} fish!`.replace('  ', ' ')); if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal || 'fish') || animalCard('salmon')); } }
     else if (evt.type === 'animalSpotted') onSpotted(evt.animal);
@@ -1346,14 +1349,17 @@ async function boot() {
         if (how !== 'results') return;
       }
     }
-    finishLeg(leg);
+    return finishLeg(leg);
   }
-  function finishLeg(leg) {
+  async function finishLeg(leg) {
     const J = save.journey;
     const now = Date.now();
     let a = null;
     try { a = JA.arrive(J); } catch (e) { console.error('[WagonWest] arrive threw', e); }
     a = a || { stars: [true, false, false], cash: { arrival: 0, stars: 0, total: 0 }, sticker: leg.sticker, crate: null };
+    // (v1.4: a quest item the nose never reached on this leg is found as the party arrives (arrive()'s result.quest): the dog trots back with it, the item card, before the results)
+    const arrivedQuest = questIdOf(a.quest);
+    if (arrivedQuest && J.dog) { try { await dogFetchesQuest(arrivedQuest); } catch (e) { console.warn('[WagonWest] arrival quest item', e); } if (save.journey !== J) return; }
     // the arrival's card (one of the leg's biome), and the daily challenge looks at the finished leg before it resets
     try { if (typeof JA.cardForLeg === 'function') dropCard(JA.cardForLeg(J, Math.random)); } catch (e) { console.warn('[WagonWest] cardForLeg', e); }
     checkDaily();
@@ -1793,6 +1799,7 @@ async function boot() {
     $('#mini-done').textContent = button;
     v2.bar = act;
     $('#mini').hidden = false;
+    if (findPop) findPop.suspend();
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     document.documentElement.classList.add('in-mini');
   }
@@ -2073,7 +2080,7 @@ async function boot() {
       S('setTravel', { milesDone: num(J.milesDone), pace: J.pace, rations: J.rations, weather: 'dusk', mood: J.mood, foodLow: false, moving: false });
     } else S('setTravel', { moving: false });
     if (fact.sound) Sfx.ambient(fact.sound);
-    if (fact.ambient && sceneHas('ambient')) { S('ambient', fact.ambient); await waitScene('ambientEnd', 12000); }
+    if (fact.ambient && sceneHas('ambient')) { vignetteOn = true; try { S('ambient', fact.ambient); await waitScene('ambientEnd', 12000); } finally { vignetteOn = false; } }
     if (T !== r && r) return;
     await showCard({ kicker: 'Along the trail', title: tf.title, text: tf.text, say: tf.say || tf.text, tone: 'lookout', button: 'Wow' });
     let hf = null;
@@ -2527,7 +2534,7 @@ async function boot() {
     get scene() { return scene; }, get screen() { return screen; }, get save() { return save; }, get facts() { return facts; },
     get reading() { return { overlay: app.overlayOpen(), play: !!v2.play, bar: !!v2.bar, mini: !!mini, derby: !!derby }; },   // (tests: what holds the toasts)
     holdTrail(on) { if (T) { T.busy = !!on; T.held = !!on; } return !!T; },   // (a test hook: the day loop waits, as it does under a scripted event)
-    get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb } : null; },
+    get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb, leads: mini.leads || 0 } : null; },
     JA, cloud, Music, cardPop, toaster, camp: screens.camp,
     peopleUI, deedPop, get v2() { return { play: v2.play ? v2.play.fn : null, raft: v2.raft ? { ...v2.raft } : null }; },    // (v1.2 app two)
     get derby() { return derby ? { markers: derby.markers, bursts: derby.bursts.slice(), busy: derby.busy } : null; },

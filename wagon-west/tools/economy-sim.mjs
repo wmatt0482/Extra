@@ -36,7 +36,6 @@
 //                                                    tokens earned a leg are outside 3-10, or any of the v1.3 money TARGETS is missed
 //                                                    (cushion, choices, the yoke, a lean weak player who finishes)
 // While src/content/legs.js is a skeleton the sim runs on route.syntheticTrail() (12 legs).
-import { stubbed } from './v14-stubs.mjs';   // registers stand-ins for the v1.4 content tables that are not in src/content/ yet (test tool only)
 const {
   createJourney, tickDay, applyMarker, applyProblem, applyWords, applyHunt, applyFish, applyTrade, buy, arrive, nextLeg,
   newSeason, priceAt, foodToNextFort, setPace, setRations, tradeOffer, storeLeg, partySize,
@@ -118,7 +117,8 @@ const SEC = { day: 6, marker: 15, markerFix: 12, problem: 25, problemFix: 20, wo
 const K14 = { keepDog: 0.8, laterDog: 0.5, called: 0.7, stones: 0.6, hook: 0.6, land: 0.85, hoppersCamp: 1 / 3, buysSpoon: 0.25, followsQuests: 0.7, hatsAll: 0.6 };
 const V14_DEED_IDS = ['good-nose', 'fetch-champ', 'big-one', 'river-guide', 'skipper', 'keeper', 'wish-maker', 'hat-trick'];
 const FACTS = ['3x4', '6x7', '7x8', '4x9', '8x6', '56/7', '42/6', '5x12', '9x9', '72/8'];
-const ANIMALS_HUNTED = [[4, 0.45], [10, 0.35], [40, 0.2]];    // rabbit, turkey, deer: lb and how often
+// rabbit, turkey, deer: lb and how often (1.3: 0.45 / 0.35 / 0.2, mean 13.3 lb a hit); v1.4's leading hunt adds the pronghorn (12 lb, 13 % of the animals) and the bison (24 lb, 10 %): the first three scaled by 0.77, mean 14.2 lb a hit (+6.8 %, inside the 10 % the food targets allow)
+const ANIMALS_HUNTED = [[4, 0.3465], [10, 0.2695], [40, 0.154], [12, 0.13], [24, 0.1]];
 const ALL_COMPANIONS = COMPANIONS.map((c) => c.id);
 
 function huntLb(rand) {

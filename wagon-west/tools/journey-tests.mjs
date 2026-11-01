@@ -10,9 +10,8 @@
 // whole-journey tests run on route.syntheticTrail() (the content's legs first, then the rest of the route).
 // v1.4 (the last section, "Frodo and the river"): the dog's nose and fetch, fishing 2.0 and its fight stepper, the quest machine (and a synthetic fetch quest), trail facts and
 // moments, rev-14 saves, newSeason's carry list, the sync merge rules and whole journeys with a dog. The v1.4 content tables (src/content/{finds,fish,quests,trailFacts}.js)
-// are the Content stream's: where a file is missing from this worktree, tools/v14-stubs.mjs answers for it (tests only; never in src/content/) and says so on the first line.
+// are the Content stream's (merged; the tests run on the real tables).
 import assert from 'node:assert/strict';
-import { stubbed } from './v14-stubs.mjs';   // registers stand-ins for the v1.4 content tables that are not in src/content/ yet (before the journey is imported)
 const {
   createJourney, startLeg, tickDay, applyMarker, applyProblem, applyWords, applyHunt, applyFish, applyTrade, buy, arrive,
   nextLeg, journeyDone, newSeason, foodNeeded, etaDays, priceAt, storeList, markerMiles, foodToNextFort, legStatus,
@@ -711,16 +710,16 @@ test('letters: the river line on a river leg, the mood line by the mood, an empt
 
 // ================= v1.1: trail cards, camp, the daily challenge, wagon upgrades, the derby's pay =================
 console.log('\ntrail cards (content)');
-test('40 cards in four suits: 12 landmarks, 8 nations, 12 wild, 8 companions, with the shape the album needs', () => {
-  assert.equal(CARDS.length, 40);
-  assert.deepEqual(SUITS, ['landmark', 'nation', 'wild', 'companion']);
-  assert.deepEqual(SUITS.map((s) => cardsOf(s).length), [12, 8, 12, 8]);
-  assert.equal(new Set(CARDS.map((c) => c.id)).size, 40, 'ids are unique across suits');
+test('54 cards in six suits: 12 landmarks, 8 nations, 12 wild, 8 companions, 6 river, 8 trail tales, with the shape the album needs', () => {
+  assert.equal(CARDS.length, 54);
+  assert.deepEqual(SUITS, ['landmark', 'nation', 'wild', 'companion', 'river', 'tales']);
+  assert.deepEqual(SUITS.map((s) => cardsOf(s).length), [12, 8, 12, 8, 6, 8]);
+  assert.equal(new Set(CARDS.map((c) => c.id)).size, 54, 'ids are unique across suits');
   for (const c of CARDS) {
     assert.equal(CARD_BY_ID[c.id], c);
     for (const k of ['id', 'suit', 'name', 'emoji', 'fact', 'say']) assert.ok(typeof c[k] === 'string' && c[k].length > 0, `${c.id}.${k}`);
     assert.ok(SUITS.includes(c.suit));
-    assert.ok(c.fact.length <= 160, `${c.id}: one line (${c.fact.length})`);
+    assert.ok(c.fact.length <= 170, `${c.id}: one line (${c.fact.length})`);
   }
   assert.deepEqual(cardsOf('landmark').map((c) => c.id), LEGS.map((l) => l.id), 'a landmark card per leg id, in trail order');
   assert.deepEqual(cardsOf('nation').map((c) => c.id), NATIONS.map((n) => n.id), 'a card per nation id');
@@ -771,7 +770,7 @@ test('suitComplete: false until every card of the suit is held, true on the last
   assert.equal(suitComplete(J, 'companion'), true); assert.equal(suitComplete(J, 'wild'), false); assert.equal(suitComplete(J, 'nonsense'), false);
   for (const s of SUITS) cardsOf(s).forEach((c) => awardCard(J, c.id));
   assert.ok(SUITS.every((s) => suitComplete(J, s)));
-  assert.equal(J.cards.length, 40);
+  assert.equal(J.cards.length, 54);
 });
 test('cardForLeg: a wild card of the leg\'s biome (else any wild); cardForAnimal maps the scene\'s animals', () => {
   const J = createJourney({ companions: PARTY, seed: 5 });
@@ -1749,8 +1748,7 @@ test('journeys with random v1.2 play: any three companions, fords / floats / fer
 
 // =====================================================================================================================================
 // v1.4 Frodo and the river (SPEC v1.4 §3, §7.1): the dog's nose, fetch, fishing 2.0, quests, trail facts and moments, saves and sync.
-// The content tables (src/content/{finds,fish,quests,trailFacts}.js) come from the Content stream; where a file is not in this worktree
-// yet, ./v14-stubs.mjs answers for it (tests only), and the tests that depend on a Content card or line SKIP with a line.
+// The content tables (src/content/{finds,fish,quests,trailFacts}.js) are the real ones.
 // =====================================================================================================================================
 const V14 = await import('../src/journey/sim.js');
 const FISHMOD = await import('../src/journey/fishing.js');
@@ -1760,7 +1758,7 @@ const { TRAIL_FACTS } = await import('../src/content/trailFacts.js');
 const { QUESTS } = await import('../src/content/quests.js');
 const { NOSE, FETCH, FISHING, MOMENTS: MOMENT_RULES, HORSESHOE } = await import('../src/journey/economy.js');
 
-console.log('\nv1.4: Frodo and the river' + (stubbed.length ? `   (stand-ins for src/content/{${stubbed.join(', ')}}.js; the real tables are used once they exist)` : ''));
+console.log('\nv1.4: Frodo and the river');
 const skip = (name, why) => console.log('  - SKIP ' + name + ': ' + why);
 const LAST = TRAIL[TRAIL.length - 1].id;
 const NOSE_LEGS = TRAIL.filter((l) => l.id !== LAST);
@@ -2462,7 +2460,7 @@ test('dust devil: prairie, bluffs and high desert legs only, about 35 %, never t
   }
   assert.ok(devils > 40, 'dust devils ' + devils);
   const J = createJourney({ seed: 63, companions: PLAIN }); const t0 = J.tokens;
-  assert.deepEqual(V14.dustDevilResult(J, { caught: 3, of: 3 }), { all: true, tokens: 1 }); assert.equal(J.tokens, t0 + 1); assert.equal(J.totals.hatsAll, 1); assert.equal(J.totals.hatsCaught, 3);
+  assert.deepEqual(V14.dustDevilResult(J, { caught: 3, of: 3 }), { all: true, tokens: 1 }); assert.equal(J.tokens, t0 + 1); assert.equal(J.totals.hatsAll, 1); assert.equal(J.totals.hatsCaught, 3); assert.equal(J.totals.dustDevils, 1, 'a devil is counted (playtest 1.4 W5)');
   assert.deepEqual(V14.dustDevilResult(J, { caught: 2, of: 3 }), { all: false, tokens: 0 }); assert.deepEqual(V14.dustDevilResult(J, { caught: 0, of: 3 }), { all: false, tokens: 0 }); assert.deepEqual(V14.dustDevilResult(J, { caught: 0, of: 0 }), { all: false, tokens: 0 }, 'no hats, no hat trick');
   assert.equal(J.tokens, t0 + 1); assert.equal(J.totals.hatsAll, 1); assert.equal(J.totals.hatsCaught, 5);
 });

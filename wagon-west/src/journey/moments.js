@@ -80,7 +80,7 @@ export function dustDevilResult(J, { caught = 0, of = 0 } = {}) {
   const all = n >= 1 && c >= n;
   const tokens = all ? MOMENTS.dustDevil.tokenAll : 0;
   J.tokens = (J.tokens | 0) + tokens;
-  J.totals.hatsCaught += c; if (all) J.totals.hatsAll++;
+  J.totals.dustDevils++; J.totals.hatsCaught += c; if (all) J.totals.hatsAll++;
   J.moments.dustDevilLeg = J.legIndex | 0;
   happen(J, 'dust-devil');
   return { all, tokens };

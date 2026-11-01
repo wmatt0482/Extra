@@ -17,9 +17,8 @@
 // { type: 'fishHelped', i } · { type: 'fishOff', i } · { type: 'fishLand', i } · { type: 'fishCameo', i, kind } ·
 // { type: 'fishingEnd', landed, casts }; sounds go out as { type: 'sfx', cue: 'splash' | 'reel' (on) | 'wobble' | 'snap' }.
 
-// INTEGRATION: the Journey stream's stepper lives in src/journey/fishing.js. Until it is merged this stand-in (same
-// signature) is used; the swap is this one line:
-import { createFight, fightStep, fightHelp } from './fightStandin.js';
+// The fight stepper is the Journey stream's pure one (src/journey/fishing.js); this file only draws what its state says.
+import { createFight, fightStep, fightHelp } from '../journey/fishing.js';
 import { devSession } from './devSession.js';
 
 import { TAU, OUT, mulberry32, clamp, lerp, ease, shade, mkCanvas, drawText, rrect } from './util.js';

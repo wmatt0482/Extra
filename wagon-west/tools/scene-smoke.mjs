@@ -296,7 +296,7 @@ try {
     }
     const plan = ['lead', 'still', 'lead-miss', 'key', 'miss'];
     let wantHits = 0, wantMeat = 0, wantLead = 0;
-    const MEATS = { ...MEAT, pronghorn: 20, bison: 40 };
+    const MEATS = { ...MEAT, pronghorn: 12, bison: 24 };
     let flightSeen = null;
     for (const [i, how] of plan.entries()) {
       if (how === 'miss') {
@@ -1724,7 +1724,7 @@ try {
       ev = await run({}, () => window.__ww.scene.ambient('wolves'), 'ambientEnd'); check(j(ev) === j([{ type: 'ambientEnd', kind: 'wolves' }]), `mock ambient → ${j(ev)}`);
       ev = await run({}, () => { window.__ww.scene.startChase({ seed: 1 }); setTimeout(() => window.__ww.scene.chaseCall(), 5); }, 'chaseEnd'); check(j(ev) === j([{ type: 'chase', dist: 0.4 }, { type: 'chaseEnd', called: true, dist: 0.4 }]), `mock chase 'call' → ${j(ev)}`);
       ev = await run({}, () => window.__ww.scene.startChase({ seed: 1 }), 'chaseEnd'); check(j(ev) === j([{ type: 'chaseEnd', called: false, dist: 1 }]), `mock chase, no call → ${j(ev)}`);
-      ev = await run({ chase: 'late' }, () => { window.__ww.scene.startChase({ seed: 1 }); setTimeout(() => window.__ww.scene.chaseCall(), 5); }, 'chaseEnd'); check(j(ev) === j([{ type: 'chase', dist: 0.9 }, { type: 'chaseEnd', called: true, dist: 0.9 }]), `mock chase 'late' → ${j(ev)}`);
+      ev = await run({ chase: 'late' }, () => { window.__ww.scene.startChase({ seed: 1 }); setTimeout(() => window.__ww.scene.chaseCall(), 5); }, 'chaseEnd'); check(j(ev) === j([{ type: 'chaseEnd', called: false, dist: 1 }]), `mock chase 'late' (the call comes too late) → ${j(ev)}`);
       ev = await run({}, () => { const sc = window.__ww.scene; sc.startFetch({ seed: 1, throws: 3 }); window.__fetchTimer = setInterval(() => sc.fetchBring(), 10); }, 'fetchEnd'); await page.evaluate(() => clearInterval(window.__fetchTimer));
       check(j(ev.filter((e) => e.type === 'fetchThrow').map((e) => e.dist)) === j([0.2, 0.5, 0.9]) && ev.filter((e) => e.type === 'fetchBack').length === 3 && ev[ev.length - 1].best === 0.9 && ev[ev.length - 1].throws === 3, `mock fetch: throws 0.2, 0.5, 0.9, three returns, fetchEnd ${j(ev[ev.length - 1])}`);
       ev = await run({}, () => window.__ww.scene.startHoppers({ seed: 1, n: 6 }), 'hoppersEnd'); check(j(ev.filter((e) => e.type === 'hopper').map((e) => e.caught)) === '[1,2,3,4]' && ev[ev.length - 1].caught === 4, `mock hoppers (default 4) → ${j(ev.map((e) => e.caught))}`);

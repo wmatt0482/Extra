@@ -623,6 +623,10 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .camp-note { margin: 0; font: 700 13px/1.3 var(--font-body); color: var(--muted); text-align: center; }
 .camp-foot { display: flex; justify-content: flex-end; gap: 12px; flex: none; padding-top: 8px; }
 .in-mini #screen-camp { visibility: hidden; }
+/* v1.4 playtest: skipping stones is played on the stop screen, a full-size layer above the canvas; its taps must reach the scene (only the Talk panel takes them) */
+.in-hunt #mini { bottom: auto; top: calc(var(--pad-t) + 108px); }
+#screen-stop { pointer-events: none; }
+#screen-stop .stop-wrap { pointer-events: auto; }
 #screen-derby { pointer-events: none; }
 .derby-top { display: flex; justify-content: center; }
 #screen-dog { background: linear-gradient(rgba(31,21,13,.55), rgba(31,21,13,.86) 60%); }

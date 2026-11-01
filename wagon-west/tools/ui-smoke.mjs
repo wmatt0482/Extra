@@ -200,11 +200,17 @@ async function quiet(page) {
  * Play until `until(state)` is true. plan: { markerMiss: [n…] (miss these marker numbers, 1-based), onEach(state) }.
  * Returns the log of what was answered.
  */
+// (integration: the journey now plans the dog's nose, a trail fact and a dust devil on every leg, and a day that drives itself fires them. The 1.0-1.3
+// sections below test toasts, cards and pops that must not be crowded by those, so while QUIET_14 is on every drive empties the leg's v1.4 plan; the v1.4 sections
+// (funTest) switch it off and play the nose, the facts and the devil through their hooks.)
+let QUIET_14 = true;
+const quiet14 = (page) => page.evaluate(() => { const w = window.__wagonWest, Jn = w && w.save && w.save.journey; if (Jn && Jn.trip) { if (Array.isArray(Jn.trip.nose)) Jn.trip.nose = []; Jn.trip.fact = null; Jn.trip.dustDevil = null; } }).catch(() => {});
 async function drive(page, until, plan = {}, timeout = 90000) {
   const log = { markers: [], problems: [], cards: [], words: [], throws: 0, minis: 0 };
   const end = Date.now() + timeout;
   let lastMini = null;
   while (Date.now() < end) {
+    if (QUIET_14) await quiet14(page);
     const s = await W(page);
     if (await until(s)) return log;
     if (plan.onEach) await plan.onEach(s, log);
@@ -2100,6 +2106,8 @@ async function v12Journal(page, layout, grab) {
 async function v12Camp(page, layout, grab) {
   console.log('  -- v1.2 (app two): camp: no arrows, wait out the storm --');
   await setJ(page, `J.done = false; J.goods.arrows = 0; J.deeds = J.deeds.filter((d) => d !== 'wait-it-out'); J.totals.waitedOut = 0;`);
+  // (the dog's games would make seven cards and the no-arrows note: a crowded camp where an effect line waits for a clear spot, up to 25 s; this block is about the storm, so camp has no games here)
+  await J(page, () => { window.__wagonWest.app.funCamp = () => []; });
   await toTrail(page, 'kansas-river');
   let opened = false;
   for (let k = 0; k < 12 && !opened; k++) {
@@ -2334,12 +2342,14 @@ async function funNose(page, layout, grab) {
   await hold(page, true);
   await page.waitForTimeout(150);
   await quietTrail(page);
+  // (the quest section earned a burst of deeds: their pops show one after another, 3.4 s each, and a find pop waits behind a deed pop that is drawn)
+  await page.waitForFunction(() => !window.__wagonWest.deedPop.showing, null, { timeout: 40000 }).catch(() => {});
   // a find
   const f0 = await funState(page);
   const firstOne = !(f0.finds.horseshoe > 0);
   check(await hook(page, 'playNose', 'find', 'horseshoe'), 'a find (the old horseshoe)');
   await waitFn(page, () => document.querySelector('.fpop-card[data-find="horseshoe"]')).catch(async (e) => {
-    console.log('    (find pop did not show: ' + JSON.stringify(await J(page, () => { const w = window.__wagonWest; return { findPop: { showing: w.findPop.showing, visible: w.findPop.visible, log: w.findPop.log }, cardpopHidden: document.querySelector('#cardpop').hidden, deedpopHidden: document.querySelector('#deedpop').hidden, reading: w.reading, card: w.card.isOpen, toasts: w.toaster.shown, waiting: w.toaster.waiting, travel: w.travel, screen: w.screen, dog: !!w.save.journey.dog, finds: w.fun.finds }; })) + ')');
+    console.log('    (find pop did not show: ' + JSON.stringify(await J(page, () => { const w = window.__wagonWest; return { findPop: { showing: w.findPop.showing, visible: w.findPop.visible, log: w.findPop.log }, cardpopHidden: document.querySelector('#cardpop').hidden, deedpopHidden: document.querySelector('#deedpop').hidden, deedPop: { showing: w.deedPop.showing, log: w.deedPop.log, html: document.querySelector('#deedpop').textContent.slice(0, 60) }, cardPop: { showing: w.cardPop.showing, log: w.cardPop.log.slice(-3) }, reading: w.reading, card: w.card.isOpen, toasts: w.toaster.shown, waiting: w.toaster.waiting, travel: w.travel, screen: w.screen, dog: !!w.save.journey.dog, finds: w.fun.finds }; })) + ')');
     throw e;
   });
   const pop = await J(page, () => ({ txt: document.querySelector('.fpop-card').textContent, newR: !!document.querySelector('.fpop-label'), top: document.querySelector('#findpop').getBoundingClientRect().top }));
@@ -2358,7 +2368,7 @@ async function funNose(page, layout, grab) {
   // the arrowhead is sketched, never kept
   const g0 = (await funState(page)).goods;
   await hook(page, 'playNose', 'find', 'arrowhead');
-  await waitFn(page, () => window.__wagonWest.fun.finds.arrowhead === 1);
+  await waitFn(page, () => window.__wagonWest.fun.finds.arrowhead === 1).catch(async (e) => { console.log('    (arrowhead: ' + JSON.stringify(await J(page, () => { const w = window.__wagonWest; return { finds: w.fun.finds, travel: w.travel, screen: w.screen, findPop: { showing: w.findPop.showing, visible: w.findPop.visible, log: w.findPop.log } }; })) + ')'); throw e; });
   const g1 = (await funState(page)).goods;
   check(JSON.stringify(g0) === JSON.stringify(g1), 'the arrowhead is sketched and left where it lay: nothing goes in the wagon');
   await page.waitForFunction(() => !window.__wagonWest.findPop.showing, null, { timeout: 12000 });
@@ -2796,6 +2806,10 @@ async function funFamily(page, layout, grab) {
 }
 
 async function funTest(browser, layout) {
+  QUIET_14 = false;
+  try { await funTest14(browser, layout); } finally { QUIET_14 = true; }
+}
+async function funTest14(browser, layout) {
   console.log(`\n=== v1.4 Frodo and the river (${layout.name}) ===`);
   const { ctx, page, errors } = await playSetup(browser, layout);
   if (!(await funReady(page))) {

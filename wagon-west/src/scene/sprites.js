@@ -340,8 +340,8 @@ export const GAME_ANIMALS = {
   turkey: { meatLb: 15, r: 22, speed: 85, hop: 0 },
   deer: { meatLb: 40, r: 34, speed: 115, hop: 0.6 },
   // v1.4 (the leading hunt): pronghorn race, bison stand about; drawn by drawCritter (see drawHuntCritter in hunt.js)
-  pronghorn: { meatLb: 20, r: 27, speed: 175, hop: 0.6 },
-  bison: { meatLb: 40, r: 34, speed: 60, hop: 0 },
+  pronghorn: { meatLb: 12, r: 27, speed: 175, hop: 0.6 },
+  bison: { meatLb: 24, r: 34, speed: 60, hop: 0 },
 };
 export function dizzy(c, x, y, t) {
   c.beginPath();

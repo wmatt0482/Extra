@@ -216,6 +216,11 @@ it (the mock scene's new hooks in tests), the content is `src/content/{finds,fis
 - Test hooks on `window.__wagonWest`: `playNose(kind, findId?)`, `playFact(id)`, `playMoment('dustDevil')`,
   `fishNow({ bait })`, `jumpLeg(legId)`, `fun`, `sceneEvent(evt)`. `FUN_ONLY=1 node wagon-west/tools/ui-smoke.mjs` runs
   just the v1.4 sections (they print SKIP until the journey's and the mock scene's 1.4 hooks are in the tree).
+- Integration (all four streams on one tree): the scene's fight stepper is the journey's (`src/journey/fishing.js`), the mock scene's 'late'
+  chase ends `chaseEnd { called: false }`, `arrive()`'s `result.quest` is shown as the item card before the results, the hunt event's
+  `lead` flag is shown ("Good lead!") and counted in the hunt's line, pronghorn (12 lb) and bison (24 lb) are hunt animals (the mean hunt
+  stays within 10 % of 1.3's; `tools/economy-sim.mjs` models them). `tools/v14-stubs.mjs` is gone: the tests run on the real content.
+  ui-smoke empties the leg's v1.4 plan while it drives the 1.0-1.3 sections (`QUIET_14`) so a dog's find does not crowd their toasts.
 - VERSION 1.4.0; the service worker is `wagon-west-v1.4.0`.
 
 ## Data and sync

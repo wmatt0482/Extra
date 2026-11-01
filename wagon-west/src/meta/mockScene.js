@@ -35,7 +35,7 @@
 //   window.__mockScript: dogRun(kind) / dogWarn() end after shotMs ('dogBack' { kind } / 'dogWarnEnd'), ambient(kind) after
 //   2 x shotMs ('ambientEnd' { kind }); startChase: chase 'call' (default: chaseCall() → true, 'chase' { dist: 0.4 }, then
 //   'chaseEnd' { called: true, dist: 0.4 }; no call by 6 x shotMs → 'chaseEnd' { called: false, dist: 1 }) or 'late' (the
-//   call is held until 6 x shotMs, then 'chase' + 'chaseEnd' { called: true, dist: 0.9 }); startFetch: fetch [0.2, 0.5, 0.9]
+//   call comes too late: chaseCall() → false, nothing is called, and at 6 x shotMs 'chaseEnd' { called: false, dist: 1 }: the dog is muddy); startFetch: fetch [0.2, 0.5, 0.9]
 //   the throws' dists → 'fetchThrow' { n, dist }, the app's fetchBring() → 'fetchBack' { n }, then 'fetchEnd' { throws, best };
 //   startHoppers: hoppers 4 (caught of n) → 'hopper' { caught } per catch, 'hoppersEnd'; startStones: stones [3, 5, 2] skips per
 //   throw (a bonus adds to the first) → 'skip' { n } per skip, 'stone' { throw, skips }, 'stonesEnd' { throws, best };
@@ -54,7 +54,7 @@ const SKIES = {
 const GROUNDS = { prairie: '#a9b85a', bluffs: '#c49a62', highdesert: '#c8ad78', mountains: '#7f9a6a', gorge: '#6f8f6a', valley: '#8fbf5f' };
 const HUNT = [{ animal: 'rabbit', meatLb: 4 }, { animal: 'turkey', meatLb: 10 }, { animal: 'deer', meatLb: 30 }];
 // INTEGRATION: swap this one line for '../journey/fishing.js' when the Journey stream's stepper is merged (same signature)
-import { createFight, fightStep, fightHelp } from '../scene/fightStandin.js';
+import { createFight, fightStep, fightHelp } from '../journey/fishing.js';
 import { devSession } from '../scene/devSession.js';
 const FISH = [{ size: 'small', lb: 2 }, { size: 'medium', lb: 4 }, { size: 'big', lb: 7 }];
 
@@ -392,11 +392,10 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     startChase() {
       stopMini();
       const late = script().chase === 'late';
-      const m = S.mini = { v14: true, kind: 'chase', phase: 'out', pending: false, state: () => ({ kind: 'chase', phase: m.phase }), summary: () => ({ called: false, dist: 0 }) };
-      m.resume = () => { m.phase = 'end'; if (late && m.pending) { emit('chase', { dist: 0.9 }); stopMini(); emit('chaseEnd', { called: true, dist: 0.9 }); } else { stopMini(); emit('chaseEnd', { called: false, dist: 1 }); } };
+      const m = S.mini = { v14: true, kind: 'chase', phase: 'out', state: () => ({ kind: 'chase', phase: m.phase }), summary: () => ({ called: false, dist: 0 }) };
+      m.resume = () => { m.phase = 'end'; stopMini(); emit('chaseEnd', { called: false, dist: 1 }); };
       m.call = () => {
-        if (m.phase !== 'out') return false;
-        if (late) { m.pending = true; return true; }
+        if (m.phase !== 'out' || late) return false;     // ('late': the call comes too late, the dog is already a dot on the horizon: nothing is called)
         clearTimeout(miniTimer); m.phase = 'back'; emit('chase', { dist: 0.4 });
         miniTimer = setTimeout(() => { if (S.mini !== m) return; stopMini(); emit('chaseEnd', { called: true, dist: 0.4 }); }, shotMs());
         return true;
