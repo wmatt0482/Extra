@@ -22,6 +22,7 @@ import { hintFor, spokenHint } from '../../../trail-blazer/src/facts/hints.js';
 import { QUICK_MS } from '../../../trail-blazer/src/facts/scheduler.js';
 import { createNumpad } from '../../../trail-blazer/src/ui/numpad.js';
 
+export const CHECK_RIGHT_MS = 600;
 export const RIGHT_MS = 1000;
 export const SHOW_MS = 2500;
 export const WRONG_FLASH_MS = 450;
@@ -44,8 +45,14 @@ export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => 
   const hint = h('div', { class: 'pn-hint', id: 'mk-hint', hidden: true });
   const pad = createNumpad({ onDigit: (d) => type(d), onBack: () => back(), onGo: () => go() });
   const titleText = h('span', { class: 'pn-title-text', id: 'mk-title' }, 'Mile marker');
+  // v1.5 mode 'check' (the Pit Crew Check, Trail Blazer's placement staircase): the same layout without the fix-it routine: a thin progress bar and a
+  // "Later" way out that always works; a miss shows the fact with its answer and goes on
+  const bar = h('span', { class: 'pn-progress-bar' });
+  const progress = h('div', { class: 'pn-progress', id: 'mk-progress', role: 'progressbar', 'aria-label': 'Pit Crew Check progress', hidden: true }, bar);
+  const exit = h('button', { class: 'btn btn-sm pn-exit', id: 'mk-exit', 'data-sfx': '', hidden: true }, 'Later');
   const card = h('div', { class: 'pn-card card', role: 'dialog', 'aria-labelledby': 'mk-title' },
-    h('div', { class: 'pn-top' }, h('span', { class: 'pn-title' }, h('span', { class: 'pn-post', 'aria-hidden': 'true' }), titleText), chip, hear),
+    h('div', { class: 'pn-top' }, h('span', { class: 'pn-title' }, h('span', { class: 'pn-post', 'aria-hidden': 'true' }), titleText), chip, exit, hear),
+    progress,
     h('div', { class: 'pn-main' }, factEl = h('div', { class: 'mk-fact' }, q, h('span', { class: 'mk-eq' }, '='), tiles), msg, hint),
     h('div', { class: 'pn-pad' }, pad.el));
   root.replaceChildren(card);
@@ -102,6 +109,7 @@ export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => 
     const ok = Number(S.typed) === S.answer;
     if (S.state === 'ask') {
       S.ms = Math.round(performance.now() - S.t0);
+      if (S.mode === 'check') { checkAnswered(ok); return; }
       if (ok) {
         const quick = S.ms <= QUICK_MS;
         S.state = 'right';
@@ -126,6 +134,28 @@ export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => 
     }
     miss(true);
   }
+  // the Pit Crew Check: a right answer goes on at once; a miss shows the fact with its answer (read aloud) and goes on; nothing to copy
+  function checkAnswered(ok) {
+    const quick = ok && S.ms <= QUICK_MS;
+    if (ok) {
+      S.state = 'right';
+      setMsg(quick ? `${S.answer}! Quick!` : `${S.answer}!`, quick ? 'quick' : 'go');
+      if (sfx) sfx.nice();
+      if (speakable()) { try { tts.cancel(); } catch (_) { /* ignore */ } }
+      paint();
+      later(() => finish({ correct: true, quick, fixed: false, ms: S.ms, given: null }), CHECK_RIGHT_MS);
+      return;
+    }
+    S.given = Number(S.typed);
+    S.typed = '';
+    S.state = 'show';
+    hint.hidden = true;
+    setMsg(`${factText(S.fact, S.flip)} = ${S.answer}`, 'model');
+    paint();
+    say(fullSentence(S.fact, S.flip));
+    later(() => finish({ correct: false, quick: false, fixed: false, ms: S.ms, given: S.given }), SHOW_MS);
+  }
+  exit.addEventListener('click', () => { if (S && S.mode === 'check') { try { tts.cancel(); } catch (_) { /* ignore */ } finish({ cancelled: true, exit: true }); } });
   // the typed answer goes within half a second; then the fact with its answer (and the hint), read aloud
   function miss(copy) {
     S.state = 'bad';
@@ -177,12 +207,17 @@ export function createMarkerPanel(root, { tts, audio, sfx = null, aloud = () => 
     get fact() { return S ? S.fact : null; },
     get answer() { return S ? S.answer : null; },
     get riddle() { return S && S.riddle ? S.riddle.text : null; },
+    get mode() { return S ? S.mode : null; },
     /** Ask one fact. { fact, flip, index (0-based), total, title, chipText, riddle: { text, say } }. Resolves
      *  { correct, quick, fixed, ms, given } or { cancelled }. */
-    open({ fact, flip = false, index = 0, total = 0, title = 'Mile marker', chipText = '', riddle = null } = {}) {
+    open({ fact, flip = false, index = 0, total = 0, title = 'Mile marker', chipText = '', riddle = null, mode = 'marker', progress: prog = 0, exitText = 'Later' } = {}) {
       if (S) finish({ cancelled: true });
       return new Promise((resolve) => {
-        S = { fact, flip, answer: factAnswer(fact), state: 'ask', typed: '', t0: 0, resolve, timers: [], ms: 0, given: null, hintText: '', riddle: riddle && riddle.text ? riddle : null };
+        S = { fact, flip, answer: factAnswer(fact), state: 'ask', typed: '', t0: 0, resolve, timers: [], ms: 0, given: null, hintText: '', mode, riddle: riddle && riddle.text ? riddle : null };
+        root.dataset.mode = mode;
+        progress.hidden = mode !== 'check'; exit.hidden = mode !== 'check'; exit.textContent = exitText;
+        bar.style.width = `${Math.round(Math.max(0, Math.min(1, prog)) * 100)}%`;
+        progress.setAttribute('aria-valuenow', String(Math.round(prog * 100)));
         titleText.textContent = title;
         chip.textContent = chipText || (total > 0 ? `Marker ${index + 1} of ${total}` : '');
         chip.hidden = !chip.textContent;

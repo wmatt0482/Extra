@@ -6,11 +6,11 @@
 // The cards are the journey's (J.cards, the Journey stream's awardCard / suitComplete; the content is
 // src/content/cards.js: CARDS, SUITS, cardsOf). This module only draws; it keeps no data.
 import { h } from '../../../spell-jump/src/ui/dom.js';
-import { CARDS, SUITS, SUIT_NAMES, cardsOf } from '../content/cards.js';
+import { CARDS, SUITS, SUIT_NAMES, cardsOf, CARD_SETS, DECOR_BY_ID } from '../content/cards.js';
 
 // v1.4: two more suits, 'river' (the six fish of the trail) and 'tales' (the trail facts and the two quest cards): 54 cards in six suits
-export const SUIT_NAME = Object.freeze({ landmark: 'Landmarks', nation: 'Nations', wild: 'Animals and plants', companion: 'Companions', river: 'Fish of the trail', tales: 'Trail tales' });
-export const SUIT_ICON = Object.freeze({ landmark: '⛰️', nation: '🪶', wild: '🌿', companion: '🤠', river: '🐟', tales: '📖' });
+export const SUIT_NAME = Object.freeze({ landmark: 'Landmarks', nation: 'Nations', wild: 'Animals and plants', companion: 'Companions', river: 'Fish of the trail', tales: 'Trail tales', gold: 'The gold rush' });
+export const SUIT_ICON = Object.freeze({ landmark: '⛰️', nation: '🪶', wild: '🌿', companion: '🤠', river: '🐟', tales: '📖', gold: '🪙' });
 export const POP_MS = 1500;
 
 /** The suits in album order: [{ id, name }] whatever shape SUITS has (ids, objects, or a map). */
@@ -108,5 +108,26 @@ export function albumPage(app) {
         return b;
       }))));
   }
+  return out;
+}
+
+/** The Journal's "Sets" tab (v1.5): the sixteen card sets that cut across the suits, each with its progress, its cards (found ones lit) and the wagon
+ *  decoration a full set unlocks (the line it says when complete; the decoration lit once earned). app: { save, say }. */
+export function setsPage(app) {
+  const J = app.save.journey;
+  const have = ownedCards(J);
+  const done = new Set(app.save.setsDone || []);
+  const out = [h('p', { class: 'jr-note cards-total', id: 'sets-total' }, `${done.size} of ${CARD_SETS.length} card sets complete · a full set earns a decoration for the wagon (wear two in Outfit → Look)`)];
+  out.push(h('div', { class: 'sets-grid', id: 'sets-grid' }, ...CARD_SETS.map((st) => {
+    const got = st.cards.filter((id) => have.has(id)).length;
+    const dec = DECOR_BY_ID[st.decor];
+    const complete = done.has(st.id);
+    const card = h('button', { class: 'card set-card' + (complete ? ' full' : ''), 'data-set': st.id, 'data-sfx': '', 'aria-label': `${st.name}: ${got} of ${st.cards.length}. ${complete ? st.say : 'Decoration: ' + (dec ? dec.name : '')}` },
+      h('div', { class: 'set-head' }, h('b', {}, st.name), h('span', { class: 'cards-count', 'data-count': `${got}/${st.cards.length}` }, `${got} of ${st.cards.length}`)),
+      h('div', { class: 'set-cards' }, ...st.cards.map((id) => { const c = CARDS.find((x) => x.id === id); return h('span', { class: 'set-mini' + (have.has(id) ? ' got' : ''), 'data-card': id, 'aria-hidden': 'true' }, have.has(id) && c ? c.emoji : '?'); })),
+      h('div', { class: 'set-decor' + (complete ? ' got' : '') }, h('span', { 'aria-hidden': 'true' }, complete && dec ? dec.emoji : '🔒'), h('span', {}, dec ? dec.name : '')));
+    card.addEventListener('click', () => app.say(complete ? st.say : `${st.name}. ${got} of ${st.cards.length} cards.`));
+    return card;
+  })));
   return out;
 }

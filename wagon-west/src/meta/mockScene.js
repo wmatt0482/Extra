@@ -28,6 +28,15 @@
 //   last raftGo() → 'raftEnd' { bumps, bends }; startStampede({ seed }) → 'stampede' { good } per wave (3), then
 //   'stampedeEnd' { held } (held when 2 or more were good). endMiniGame() ends any of them (no event) and returns the
 //   summary so far. getState().mini = { kind: 'ford' | 'float' | 'raft' | 'stampede', left, phase, … }.
+//   v1.5 (The Long Trail; SPEC v1.5 §4, scripted, every step shotMs apart): startPan({ seed, pans, rich }) → per pan 'panSwirled' { n, quality }
+//   (quality 0.7, or ?mockPan=0.8 / __mockScript.pan) that WAITS for panReveal({ flakes, nugget }), then 'pan' { n, flakes, nugget }, after the last
+//   'panEnd' { pans }; startRocker({ seed, rounds }) → 'rockerRound' { n, beats } (0.75, or __mockScript.rocker) that waits for rockerReveal({ flakes }),
+//   then 'rockerEnd' { rounds }; startSnub({ seed, drops }) → 'snub' { good } per drop, then 'snubEnd' { smooth } (smooth unless ?mockSnub=0 or
+//   __mockScript.snub = false); startSail({ seed, length }) → 'sailMarker' { n, of: 4 } that waits for sailGo(), 'sail' { bump } per bump
+//   (__mockScript.bumps, default 0), then 'sailEnd' { bumps }; setHomestead(o) keeps the call in window.__mock.lastHomestead (and draws the pieces as
+//   words), buildPiece(id) → 'buildDone' { id } (window.__mock.builds lists them); setBackdrop knows 'diggings', 'sea' and 'homestead';
+//   setParty({ wagon: { decor }, packMules }) and setTravel({ dry }) are kept and listed in the corner. getState().mini = { kind: 'pan' | 'rocker' |
+//   'snub' | 'sail', phase, … }.
 // Timing for tests: window.__mockScript = { shotMs } (default 650 ms between shots / casts). 'ready' fires once after the first frame.
 //   v1.2 scripts: __mockScript.ford = 'soaked' (default dry), .bumps = n rocks hit by the float / the raft (default 1),
 //   .stampede = [bool, bool, bool] (the waves braked on the beat; default all true).
@@ -54,6 +63,7 @@ const SKIES = {
 };
 const GROUNDS = { prairie: '#a9b85a', bluffs: '#c49a62', highdesert: '#c8ad78', mountains: '#7f9a6a', gorge: '#6f8f6a', valley: '#8fbf5f',
   basin: '#e6dcbe', sierra: '#a9a6a0', siskiyou: '#a69c7c', goldcountry: '#bf7a4a', sea: '#b98a54' };
+const urlNum = (k, d) => { try { const v = new URLSearchParams(location.search).get(k); return v == null || v === '' || !Number.isFinite(Number(v)) ? d : Number(v); } catch (_) { return d; } };
 const HUNT = [{ animal: 'rabbit', meatLb: 4 }, { animal: 'turkey', meatLb: 10 }, { animal: 'deer', meatLb: 30 }];
 // INTEGRATION: swap this one line for '../journey/fishing.js' when the Journey stream's stepper is merged (same signature)
 import { createFight, fightStep, fightHelp } from '../journey/fishing.js';
@@ -554,7 +564,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
               : S.mini && S.mini.kind === 'raft' ? { kind: 'raft', n: S.mini.n, of: S.mini.of, left: S.mini.left, waiting: S.mini.waiting, phase: S.mini.waiting ? 'wait' : 'play' }
                 : S.mini && S.mini.kind === 'stampede' ? { kind: 'stampede', left: S.mini.left, good: S.mini.good, phase: 'play' }
                   : S.mini ? { kind: S.mini.kind, left: S.mini.left, hits: S.mini.hits, [S.mini.kind === 'hunt' ? 'meatLb' : 'fishLb']: S.mini.meat, phase: 'play' } : null,
-        dog: S.party.dog ? { ...S.party.dog } : null, mock: true };
+        dog: S.party.dog ? { ...S.party.dog } : null, decor: (S.party.wagon.decor || []).slice(), packMules: !!S.party.packMules, dry: !!S.travel.dry, mock: true };
     },
   };
   // ---- v1.5 (The Long Trail; SPEC v1.5 §4.4): gold, the rope, the voyage and the farm, scripted like v1.4 (every step shotMs apart, in the real scene's order) ----
@@ -566,11 +576,12 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
   //     sailGo() (→ true), the last sailGo() → 'sailEnd' { bumps } shotMs later
   //   setHomestead(o): kept (window.__mock.lastHomestead = o) and drawn as text; buildPiece(id) → 'buildDone' { id } shotMs later (window.__mock.lastBuild = id);
   //   setFork({ id, options }): kept and drawn as text; setTravel({ dry }) and setParty({ wagon: { decor }, packMules }) are kept in the state
+  const mockNote = (k, v) => { if (typeof window !== 'undefined') { window.__mock = window.__mock || {}; window.__mock[k] = v; } };
   const step15 = (fn) => { clearTimeout(miniTimer); miniTimer = setTimeout(fn, shotMs()); };
   const mini15 = (kind, extra, state) => { stopMini(); const m = S.mini = { v14: true, kind, ...extra }; m.state = () => ({ kind, ...state(m) }); m.summary = () => ({ finished: false, ...state(m) }); kick(); return m; };
   const v15 = {
     startPan({ pans = 3, rich = [] } = {}) {
-      const plan = script().pan;
+      const plan = script().pan !== undefined ? script().pan : urlNum('mockPan', 0.8);
       const m = mini15('pan', { n: 1, pans, phase: 'swirl', q: 0, flakes: 0, nugget: false, revealed: 0 }, (m) => ({ phase: m.phase, n: m.n, pans, meter: m.phase === 'swirl' ? 0.5 : 1, rich: (Array.isArray(rich) ? rich : []).includes(m.n - 1), quality: m.q, flakes: m.flakes, nugget: m.nugget }));
       const swirled = () => { if (S.mini !== m || m.phase !== 'swirl') return; m.q = Array.isArray(plan) ? Number(plan[(m.n - 1) % plan.length]) : Number.isFinite(Number(plan)) ? Number(plan) : 0.8; m.phase = 'swirled'; emit('panSwirled', { n: m.n, quality: m.q }); };
       m.reveal = (r) => {
@@ -578,7 +589,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
         m.phase = 'reveal'; m.flakes = Math.max(1, Math.floor(Number(r && r.flakes) || 1)); m.nugget = !!(r && r.nugget);
         step15(() => {
           if (S.mini !== m) return;
-          m.revealed++; emit('pan', { n: m.n, flakes: m.flakes, nugget: m.nugget });
+          m.revealed++; mockNote('lastPan', { n: m.n, flakes: m.flakes, nugget: m.nugget }); emit('pan', { n: m.n, flakes: m.flakes, nugget: m.nugget });
           if (m.n >= pans) { m.phase = 'end'; step15(() => { if (S.mini !== m) return; stopMini(); emit('panEnd', { pans }); }); } else { m.n++; m.phase = 'swirl'; m.flakes = 0; m.nugget = false; step15(swirled); }
         });
         return true;
@@ -588,13 +599,13 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     },
     panReveal(r) { return !!(S.mini && S.mini.kind === 'pan' && S.mini.reveal(r || {})); },
     startRocker({ rounds = 3 } = {}) {
-      const beats = Number.isFinite(Number(script().rocker)) ? Number(script().rocker) : 0.8;
+      const beats = Number.isFinite(Number(script().rocker)) ? Number(script().rocker) : urlNum('mockRocker', 0.8);
       const m = mini15('rocker', { n: 1, rounds, phase: 'rock', flakes: 0, done: 0 }, (m) => ({ phase: m.phase, n: m.n, rounds, beat: 0, beats: m.phase === 'rock' ? 0 : beats, flakes: m.flakes }));
       const round = () => { if (S.mini !== m || m.phase !== 'rock') return; m.phase = 'swirled'; emit('rockerRound', { n: m.n, beats }); };
       m.reveal = (r) => {
         if (S.mini !== m || m.phase !== 'swirled') return false;
         m.phase = 'reveal'; m.flakes = Math.max(2, Math.floor(Number(r && r.flakes) || 2));
-        step15(() => { if (S.mini !== m) return; m.done++; if (m.n >= rounds) { stopMini(); emit('rockerEnd', { rounds }); } else { m.n++; m.phase = 'rock'; step15(round); } });
+        step15(() => { if (S.mini !== m) return; m.done++; mockNote('lastRocker', { n: m.n, flakes: m.flakes }); if (m.n >= rounds) { stopMini(); emit('rockerEnd', { rounds }); } else { m.n++; m.phase = 'rock'; step15(round); } });
         return true;
       };
       m.summary = () => ({ rounds: m.done, finished: false });
@@ -602,7 +613,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     },
     rockerReveal(r) { return !!(S.mini && S.mini.kind === 'rocker' && S.mini.reveal(r || {})); },
     startSnub({ drops = 3 } = {}) {
-      const sc = script().snub, goodAt = (i) => (Array.isArray(sc) ? !!sc[i % sc.length] : sc !== 'bumpy');
+      const sc = script().snub !== undefined ? script().snub : (urlNum('mockSnub', 1) === 0 ? 'bumpy' : undefined), goodAt = (i) => (Array.isArray(sc) ? !!sc[i % sc.length] : sc !== 'bumpy');
       const m = mini15('snub', { drop: 1, drops, good: 0, bumps: 0, phase: 'slide' }, (m) => ({ phase: m.phase, drop: Math.min(m.drop, drops), drops, good: m.good, bumps: m.bumps, s: m.drop / drops, held: false }));
       const next = () => {
         if (S.mini !== m) return;
@@ -635,7 +646,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     setFork(f) { S.fork = f && typeof f === 'object' ? { id: f.id, options: Array.isArray(f.options) ? f.options.map((o) => ({ ...o })) : [] } : null; draw(); },
     setHomestead(o = {}) { S.farm = { site: o.site || 'willamette', name: o.name || '', pieces: { ...(o.pieces || {}) }, animals: o.animals || null }; if (typeof window !== 'undefined') { window.__mock = window.__mock || {}; window.__mock.lastHomestead = o; } draw(); },
     buildPiece(id) {
-      if (typeof window !== 'undefined') { window.__mock = window.__mock || {}; window.__mock.lastBuild = id; }
+      if (typeof window !== 'undefined') { window.__mock = window.__mock || {}; window.__mock.lastBuild = id; (window.__mock.builds = window.__mock.builds || []).push(id); }
       setTimeout(() => { if (!S.destroyed) emit('buildDone', { id }); }, shotMs());
       return true;
     },

@@ -166,6 +166,15 @@ export function createToaster(root, { blocked = () => false, say = null, speakin
       home();
       arm();
     },
+    /** A screen was left: the lines tagged with its name (el.dataset.scope, an effect line made while it was up, like camp's "Three throws!") go, shown or
+     *  waiting (v1.5 playtest U1: they used to outlive the screen and sit on the trail). */
+    clearScope(scope) {
+      if (!scope) return;
+      for (const el of shown().reverse()) if (el.dataset.scope === scope) { const it = el._item; if (it) clearTimeout(it.timer); el.remove(); }
+      for (let i = pending.length - 1; i >= 0; i--) if (pending[i].el.dataset.scope === scope) { note('cleared', pending[i]); pending.splice(i, 1); }
+      if (!root.children.length) home();
+      arm();
+    },
     pump,
     /** (tests) why a toast would wait right now: the hard hold, and what the layer touches at its default place. */
     diagnose() {
@@ -183,11 +192,14 @@ export function createToaster(root, { blocked = () => false, say = null, speakin
   };
 }
 
-/** For a pop (a card, a deed): held while a panel, card, question or mini-game is open, while `hold()` says so (the
- *  results screen's table is what the child reads there), and while its box, as drawn now, touches a toast. */
+/** For a pop (a card, a deed, a find): held while a panel, card, question or mini-game is open, while `hold()` says so (the
+ *  results screen's table is what the child reads there), while its box, as drawn now, touches a toast, and (v1.5 playtest U2) while it would sit on a
+ *  control or a line the child reads on the screen (camp's cards, a store row, an instruction): it waits, unseen, and comes out where it is clear. */
 export function popHeld(root, { blocked = () => false, hold = () => false } = {}) {
   if (blocked() || hold()) return true;
   const box = root.getBoundingClientRect();
   const toasts = [...document.querySelectorAll('#toasts .toast')].filter((t) => t.style.visibility !== 'hidden').map((el) => ({ el, r: el.getBoundingClientRect() }));
-  return hitsOf(box, toasts).length > 0;
+  if (hitsOf(box, toasts).length > 0) return true;
+  const reading = readingBoxes(root).filter((b) => !b.el.closest('#cardpop, #deedpop, #findpop, #toasts'));
+  return hitsOf(box, reading).length > 0;
 }

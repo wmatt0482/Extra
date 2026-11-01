@@ -1,4 +1,4 @@
-// Deeds (SPEC v1.2 §4): twenty things a family can do on the trail, each a badge in the Journal's fifth page, "Deeds".
+// Deeds (SPEC v1.2 §4; v1.5: 53 of them, grouped on the page: the trail, the routes, gold, the farm, collections): things a family can do on the trail, each a badge in the Journal's fifth page, "Deeds".
 // A badge shows its emoji, its name and the one line that says how to earn it; the earned ones are lit (gold edge, a
 // check mark), the rest faint: a tap on any badge reads its line aloud. Nothing here is ever a gate and nothing is ever
 // taken away (the journey stream's deeds.js owns the tests and the token; checkDeeds(J) → the new ids).
@@ -16,12 +16,23 @@ export const earnedDeeds = (J) => new Set(Array.isArray(J && J.deeds) ? J.deeds 
 /** Every line the deed pop may say (for the natural voice to prepare). */
 export const deedTexts = () => DEEDS.map((d) => d.say);
 
-/** The Journal's "Deeds" page: a note with the count, then a grid of badges. */
+/** The groups of the page (v1.5), in order; a deed not listed is in the first ("the trail"). */
+export const DEED_GROUPS = Object.freeze([
+  { id: 'trail', name: 'The trail', ids: ['dry-feet', 'mail-beater', 'full-wagon', 'people-person', 'cold-proof', 'fixer', 'spelling-ferry', 'marker-master', 'summiteer', 'homesteader', 'raft-rider', 'bison-brake', 'yoke-up', 'camper', 'wait-it-out', 'gold-rush', 'trader', 'angler', 'archer'] },
+  { id: 'routes', name: 'The routes', ids: ['long-trail', 'california-bound', 'barlow', 'laurel-hill', 'shortcut', 'lander', 'dry-drive', 'ice-in-july', 'axle-grease', 'every-way', 'veteran', 'pioneer'] },
+  { id: 'gold', name: 'Gold', ids: ['gold-road', 'first-flake', 'nugget', 'gold-fever', 'rocker', 'home-by-sea', 'beaver-money'] },
+  { id: 'farm', name: 'The farm', ids: ['cabin', 'barn-raising', 'name-plate', 'full-farm', 'two-homes'] },
+  { id: 'collections', name: 'Collections', ids: ['card-shark', 'set-collector', 'good-nose', 'fetch-champ', 'big-one', 'river-guide', 'skipper', 'keeper', 'wish-maker', 'hat-trick'] },
+]);
+/** The group a deed is in. */
+export const groupOfDeed = (id) => (DEED_GROUPS.find((g) => g.ids.includes(id)) || DEED_GROUPS[0]).id;
+
+/** The Journal's "Deeds" page: "Deeds (53)" and the count, then the badges in their groups. */
 export function deedsPage(app) {
   const have = earnedDeeds(app.save.journey);
   const got = DEEDS.filter((d) => have.has(d.id)).length;
-  const out = [h('p', { class: 'jr-note', id: 'deeds-total' }, `${got} of ${DEEDS.length} deeds earned · each one is a small badge for something done well on the trail`)];
-  out.push(h('div', { class: 'dd-grid', id: 'dd-grid' }, ...DEEDS.map((d) => {
+  const out = [h('h3', { class: 'jr-h', id: 'deeds-title' }, `Deeds (${DEEDS.length})`), h('p', { class: 'jr-note', id: 'deeds-total' }, `${got} of ${DEEDS.length} deeds earned · each one is a small badge for something done well on the trail`)];
+  const badge = (d) => {
     const on = have.has(d.id);
     const b = h('button', { class: 'dd-badge' + (on ? ' got' : ''), 'data-deed': d.id, 'data-sfx': '', 'aria-label': `${d.name}: ${on ? 'earned' : 'not yet'}. ${d.how}` },
       h('span', { class: 'dd-emoji', 'aria-hidden': 'true' }, d.emoji),
@@ -29,7 +40,14 @@ export function deedsPage(app) {
       h('span', { class: 'dd-how' }, d.how));
     b.addEventListener('click', () => app.say(on ? d.say : d.how));
     return b;
-  })));
+  };
+  const listed = new Set(DEED_GROUPS.flatMap((g) => g.ids));
+  DEED_GROUPS.forEach((g, gi) => {
+    const mine = DEEDS.filter((d) => g.ids.includes(d.id) || (gi === 0 && !listed.has(d.id)));
+    if (!mine.length) return;
+    const n = mine.filter((d) => have.has(d.id)).length;
+    out.push(h('section', { class: 'dd-group', 'data-group': g.id }, h('div', { class: 'dd-head' }, h('b', {}, g.name), h('small', {}, `${n} of ${mine.length}`)), h('div', { class: 'dd-grid', id: gi === 0 ? 'dd-grid' : null }, ...mine.map(badge))));
+  });
   return out;
 }
 

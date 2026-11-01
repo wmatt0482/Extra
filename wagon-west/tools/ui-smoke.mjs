@@ -39,6 +39,15 @@
 // deed pop, not held, skipped), people at the stops (the Talk row; food, tip, trade and card gifts; met marks; "People
 // person"), the Journal's Deeds page and "People met", camp with no arrows and "Wait out the storm"; the audits on every
 // new screen and a kid-rule text audit.
+// v1.5 (app; LT_ONLY=1 runs only this part, LT_SECTIONS=picker,forks,barlow,california,gold,farm,sets,journal,fixes,voice,placement picks sections): a new year (the picker:
+// the first journey skips it; Where with the Gold Road locked until a Willamette arrival; How hard with Veteran open and Pioneer locked with its reason; Parents can keep
+// it to Rookie; the Outfit's Family step and Mateo and Hattie; carry-over), the Fort Hall fork (Agnes, both buttons the same size, Oregon first and focused, both lines
+// spoken, choosing California replans, the map draws every way), The Dalles and South Pass (a closed way shows why), the Barlow toll (an IOU when the purse is short) and
+// Laurel Hill on the mock, the Humboldt without a ferry, a dry stretch, a California journey to the Sacramento claim, a Gold Road journey (the news, the garden's food, three
+// scripted pans and the pouch count, the cradle, the Nisenan guide's card, Sutter's Fort, the voyage's four markers, the bank card, Beaver money in the farm), the homestead
+// (the cabin with savings, a garden row with tokens, Work it out, the barn with gold, a greyed piece with its reason, the scene's buildDone, the farm on the title map grows,
+// two farms), sets and decorations, the journal's nine pages, Parents (the route, tier, year, forks, journeys finished, the farm line, reset this journey only), the Pit Crew
+// Check (offered on the first store, Later three times, the check, tiered problems), the four 1.4 playtest fixes, the voice's prepared lists, the audits of every new screen.
 // v1.4 (app; FUN_ONLY=1 runs only this part, FUN_SECTIONS=kansas,quest,nose,camp,fishing,moments,family picks sections): the Kansas River
 // crossing → the dog offer → the namer → the locket card; the Talk rows with Mrs. Platt ❓, Josh ❓ and Molly 💛 → the locket given back
 // (its card, the token, 10 lb of apples) and, for a child who walks past, the mailed card at the next post office; the dog's nose
@@ -87,8 +96,8 @@ const failures = [];
 let passed = 0;
 const check = (cond, msg) => { if (!cond) { failures.push(msg); console.log('  ✗ ' + msg); } else { passed++; console.log('  ✓ ' + msg); } };
 const LAYOUTS = [
-  { name: 'landscape', width: 844, height: 390, insets: { t: 0, r: 47, b: 21, l: 47 }, legs: 2 },
-  { name: 'portrait', width: 390, height: 844, insets: { t: 47, r: 0, b: 34, l: 0 }, legs: 2 },
+  { name: 'landscape', width: 844, height: 390, insets: { t: 0, r: 47, b: 21, l: 47 }, legs: 3 },
+  { name: 'portrait', width: 390, height: 844, insets: { t: 47, r: 0, b: 34, l: 0 }, legs: 3 },
 ];
 // kid-facing words that must never show (SPEC §1); the Parent Zone is for grown-ups and is left out
 const BANNED = /\b(kill(s|ed|ing)?|die[sd]?|dying|dead|death|grave|blood|gun|lives|life left|wrong|timer|countdown|hurry|time'?s up|seconds? left|game over|lose|lost|fail(ed)?|dysentery|snakebite|starv(e|ing|ed))\b/i;
@@ -177,6 +186,7 @@ const W = (page) => J(page, () => {
     card: w.card.isOpen, cardTitle: w.card.title, spell: w.spellPanel.isOpen ? w.spellPanel.mode : null, word: w.spellPanel.word, kbOn: !!document.querySelector('#sp-keyboard:not(.is-disabled)'),
     mini: w.mini, travel: w.travel, rope: w.river.rope, rvRope: !document.querySelector('#rv-rope').hidden, rvFoot: !document.querySelector('#rv-foot').hidden,
     rvChoice: !document.querySelector('#rv-choice').hidden, bait: !document.querySelector('#bait-row').hidden, stopOpen: w.peopleUI.isOpen, stopBusy: w.peopleUI.busy, v2play: w.v2.play,
+    fork: !!(w.forkPanel && w.forkPanel.isOpen), dig: !!(w.diggings && w.diggings.isOpen), digBusy: !!(w.diggings && w.diggings.busy), mMode: w.markerPanel.mode,
     poFoot: !document.querySelector('#po-foot').hidden, storeOpen: w.store.isOpen, storeBusy: w.store.busy, journey: w.save.journey && { legIndex: w.save.journey.legIndex, legId: w.save.journey.legId, milesDone: w.save.journey.milesDone, cash: w.save.journey.cash, food: w.save.journey.food, tokens: w.save.journey.tokens, rations: w.save.journey.rations, pace: w.save.journey.pace } };
 });
 async function typeDigits(page, root, digits) {
@@ -215,9 +225,11 @@ async function drive(page, until, plan = {}, timeout = 90000) {
     if (await until(s)) return log;
     if (plan.onEach) await plan.onEach(s, log);
     if (plan.patient && (s.marker === 'ask' || s.problem === 'ask' || s.card || s.spell || s.stopOpen || s.poFoot || (s.screen === 'river' && (s.rvFoot || s.rvChoice)) || s.storeOpen)) await quiet(page);
-    if (s.marker === 'ask') {
+    if (s.fork) { const way = plan.fork || null; log.forks = [...(log.forks || []), way || 'first']; await page.click(way ? `#fk-cards .fk-go[data-way="${way}"]` : '#fk-cards .fk-go:not([disabled])'); }
+    else if (s.dig && !s.digBusy) { log.digs = (log.digs || 0) + 1; const b = (plan.dig !== 'leave' && (await page.$('#dg-btns [data-dig="pan"]'))) || (plan.dig !== 'leave' && (await page.$('#dg-btns [data-dig="rocker"]'))) || (await page.$('#dg-btns [data-dig="leave"]')); if (b) await b.click(); }
+    else if (s.marker === 'ask') {
       // a 'fact' event and a card game ask on the same panel ("Quick fact" / "Card game"); only real mile markers count
-      if (!s.mReal) { await typeDigits(page, '#panel-marker', s.mAns); await page.waitForTimeout(60); continue; }
+      if (!s.mReal || s.mMode === 'check') { await typeDigits(page, '#panel-marker', s.mAns); await page.waitForTimeout(60); continue; }
       const n = log.markers.length + 1;
       const miss = (plan.markerMiss || []).includes(n);
       log.markers.push(miss ? 'missed' : 'right');
@@ -226,7 +238,7 @@ async function drive(page, until, plan = {}, timeout = 90000) {
     } else if (s.marker === 'copy') await typeDigits(page, '#panel-marker', s.mAns);
     else if (s.problem === 'ask') { log.problems.push(s.pKind); await typeDigits(page, '#panel-problem', s.pAns); }
     else if (s.problem === 'copy') await typeDigits(page, '#panel-problem', s.pAns);
-    else if (s.card) { log.cards.push(s.cardTitle); await page.click('#tc-go'); }
+    else if (s.card) { log.cards.push(s.cardTitle); await page.click(/^Pit Crew Check$/.test(s.cardTitle) ? '#tc-alt' : '#tc-go'); }
     else if (s.screen === 'dog') {
       // the dog at Fort Kearny ("Keep it!" above): a coat, the name on the on-screen keyboard
       log.dog = true;
@@ -312,6 +324,8 @@ async function runLayout(browser, layout) {
   const pid = await J(page, () => window.__wagonWest.app.currentPlayerId);
   const fam = await J(page, () => JSON.parse(localStorage.getItem('spellJump.family')));
   check(fam.players.length === 1 && fam.players[0].name === 'Mia', 'the player Mia is in the family record shared with the other games');
+  // (v1.5: Mia already has a Trail Blazer ladder, so the Pit Crew Check is not offered in the sections below; the "placement" section plays it with a second child)
+  await J(page, () => { window.__wagonWest.facts.xp = 5; });
 
   // ---------- title ----------
   const t0 = await J(page, () => ({ label: document.querySelector('#btn-trail-label').textContent, action: document.querySelector('#btn-trail').dataset.action, stops: document.querySelectorAll('#title-map .map-stop').length, wagon: !!document.querySelector('#title-map .map-wagon'), words: Number(document.querySelector('#title-words-n').textContent) }));
@@ -526,7 +540,12 @@ async function runLayout(browser, layout) {
   check(play1 && play1.legs === 1 && play1.markers === leg1.markers.length && play1.words === 3 && play1.problems >= 3, `today's log: ${JSON.stringify(play1)}`);
 
   if (layout.legs >= 2) {
-    // ---------- leg 2: the hunt, the fort, the store and the letter ----------
+    // ---------- leg 2 (v1.5): Alcove Spring, a landmark: its lookout, no store, no post; leg 3 is Fort Kearny ----------
+    await page.click('#res-next');
+    await page.waitForSelector(visibleSel('#screen-trail'));
+    const legA = await drive(page, (s) => s.screen === 'results', {});
+    check(legA.markers.length >= 4 && await J(page, () => window.__wagonWest.save.stickers.includes('alcove-spring')), `leg 2, Alcove Spring: ${legA.markers.length} mile markers, its sticker; a landmark has no store and no post office`);
+    // ---------- leg 3: the hunt, the fort, the store and the letter ----------
     await page.click('#res-next');
     await page.waitForSelector(visibleSel('#screen-trail'));
     let storeBought = false, letterChecked = false, derbyRun = false, derbyChecked = false;
@@ -573,7 +592,7 @@ async function runLayout(browser, layout) {
     check(leg2.minis >= 1, 'leg 2: the hunt ran on the scene (scripted on the mock: 5 shots, hit / miss)');
     check(storeBought && leg2.words.length === 3, `the fort: a store problem and the letter's three words (${leg2.words.join(', ')})`);
     const letters = await J(page, () => window.__wagonWest.save.letters);
-    check(letters.length === 1 && leg2.words.every((w) => letters[0].text.includes(w)) && /\n[^\n]+,\s*Mia\s*$/.test(letters[0].text), 'the letter is kept in the journal with the three words, signed "Mia"');
+    check(letters.length === 1 && leg2.words.every((w) => letters[0].text.includes(w)) && /\n[^\n]+,\s*Mia\s*$/.test(letters[0].text), `the letter is kept in the journal with the three words, signed "Mia"${letters.length === 1 ? '' : ` (${letters.length} letters)`} ${JSON.stringify((letters[letters.length - 1] || {}).text || '').slice(-60)}`);
     check(await J(page, () => window.__spoken.some((t) => /^Here is your letter/.test(t))), 'the letter is read back aloud');
     check(await J(page, () => (window.__wagonWest.save.journey.goods || {}).pelts >= 0 && window.__wagonWest.save.journey.legStats != null), 'the journey carries on (leg 3 started by nextLeg)');
     const v11 = await J(page, () => {
@@ -604,7 +623,7 @@ async function runLayout(browser, layout) {
   const album = await J(page, () => ({ suits: [...document.querySelectorAll('.cards-suit')].map((x) => `${x.dataset.suit}:${x.querySelector('.cards-count').textContent}`),
     owned: document.querySelectorAll('.cards-grid button.tcard').length, none: document.querySelectorAll('.cards-grid .tcard.none').length, total: document.querySelector('#cards-total').textContent,
     have: (window.__wagonWest.save.journey.cards || []).length }));
-  check(album.suits.length === 6 && /^landmark:\d+ of \d+$/.test(album.suits[0]) && album.owned === album.have && album.owned + album.none >= 54, `journal → Cards: six suits (${album.suits.join(', ')}), ${album.owned} cards face up, the rest face down`);
+  check(album.suits.length === 7 && /^landmark:\d+ of \d+$/.test(album.suits[0]) && album.owned === album.have && album.owned + album.none >= 126, `journal → Cards: seven suits (${album.suits.join(', ')}), ${album.owned} cards face up, the rest face down`);
   await audit(page, layout.insets, 'journal (cards)');
   const flip0 = await J(page, () => window.__spoken.length);
   await page.click('.cards-grid button.tcard[data-card="kansas-river"]');
@@ -614,7 +633,7 @@ async function runLayout(browser, layout) {
   await grab();
   await page.click('#jr-tabs [data-page="deeds"]');
   const dd0 = await J(page, () => ({ badges: document.querySelectorAll('.dd-badge').length, lit: [...document.querySelectorAll('.dd-badge.got')].map((b) => b.dataset.deed) }));
-  check(dd0.badges === 28 && dd0.lit.includes('spelling-ferry'), `v1.2 journal → Deeds: 28 badges, the earned ones lit (${dd0.lit.join(', ')})`);
+  check(dd0.badges === 53 && dd0.lit.length >= 1 && await J(page, () => /^Deeds \(53\)$/.test(document.querySelector('#deeds-title').textContent) && document.querySelectorAll('.dd-group').length === 5), `v1.2 journal → Deeds (53): ${dd0.badges} badges in five groups, the earned ones lit (${dd0.lit.join(', ')})`);
   await audit(page, layout.insets, 'journal (deeds)');
   await page.click('#jr-tabs [data-page="map"]');
   check(await J(page, () => /^People met · \d+ of \d+$/.test(document.querySelector('#met-card b').textContent)), 'v1.2 journal → Map: "People met" below the map');
@@ -653,7 +672,7 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.4\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.5\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
   // v1.4: "Far-off sounds on the trail" (default on) turns the four far facts off: it is the journey's J.opts.farSounds too
   const far0 = await J(page, () => ({ on: document.querySelector('#opt-far-sounds').getAttribute('aria-checked'), label: document.querySelector('#opt-far-sounds').getAttribute('aria-label') }));
   check(far0.on === 'true' && /^Far-off sounds on the trail/.test(far0.label), `Options: "${far0.label}" is On by default`);
@@ -1109,7 +1128,7 @@ async function v12Journey(page, layout, grab) {
 
   // ----- Nora's tip before the answer (the teacher in the party) -----
   if (await J(page, () => typeof window.__wagonWest.JA.teacherTip === 'function')) {
-    await setJ(page, `if (J.trip) J.trip.tipGiven = false;`);
+    await setJ(page, `if (J.trip) { J.trip.tipGiven = false; J.trip.tipUsed = false; J.trip.nextMarker = 0; J.milesDone = 1; }`);       // (v1.5: the earlier sections keep the wagon short of the first marker; the legs are longer: start the leg over so a marker comes)
     const tip = { sawTip: false, tipBeforeAnswer: false };
     const stop = Date.now() + 60000;
     while (Date.now() < stop) {
@@ -1207,6 +1226,7 @@ async function quickV12(browser, layout) {
     });
   }, { insets: layout.insets });
   await page.goto(URL0, { waitUntil: 'networkidle' });
+  await J(page, () => localStorage.setItem('trailBlazer.pmia.facts', JSON.stringify({ v: 4, xp: 5 })));      // (v1.5: the child already has a Trail Blazer ladder: no Pit Crew Check card in these sections)
   await page.click('[data-player="pmia"]');
   await page.waitForSelector(visibleSel('#screen-title'));
   await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'oxen', companions: ['blacksmith', 'teacher', 'fiddler'] }, { fresh: true }); });
@@ -1358,6 +1378,7 @@ async function voiceTest(browser, layout) {
   }, { insets: layout.insets });
   await page.goto(URL0, { waitUntil: 'networkidle' });
   await page.waitForSelector(visibleSel('#screen-players'));
+  await J(page, () => localStorage.setItem('trailBlazer.pmia.facts', JSON.stringify({ v: 4, xp: 5 })));      // (v1.5: the child already has a Trail Blazer ladder: no Pit Crew Check card in these sections)
   await page.click('[data-player="pmia"]');
   await page.waitForSelector(visibleSel('#screen-title'));
   await page.waitForFunction(() => window.__cloudAsked.length >= 2, null, { timeout: 5000 }).catch(() => {});
@@ -1536,6 +1557,7 @@ async function voiceLetterTest(browser, layout) {
   await page.addInitScript(installVoiceInstruments, { msPerChar: 5, prepBase: 120, prepPerText: 25 });
   await page.goto(URL0, { waitUntil: 'networkidle' });
   await page.waitForSelector(visibleSel('#screen-players'));
+  await J(page, () => localStorage.setItem('trailBlazer.pmia.facts', JSON.stringify({ v: 4, xp: 5 })));      // (v1.5: the child already has a Trail Blazer ladder: no Pit Crew Check card in these sections)
   await page.click('[data-player="pmia"]');
   await page.waitForSelector(visibleSel('#screen-title'));
   await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'oxen', companions: ['blacksmith', 'scout', 'cook'] }, { fresh: true }); });
@@ -1623,7 +1645,7 @@ const spokenHas = async (page, re, ms = 5000) => {
   return ok;
 };
 
-async function playSetup(browser, layout) {
+async function playSetup(browser, layout, { walk = true } = {}) {
   const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await routeFonts(ctx);
   const errors = [];
@@ -1650,8 +1672,10 @@ async function playSetup(browser, layout) {
   }, { insets: layout.insets });
   await page.goto(URL0, { waitUntil: 'networkidle' });
   await page.evaluate(() => document.fonts && document.fonts.ready);
+  await J(page, () => localStorage.setItem('trailBlazer.pmia.facts', JSON.stringify({ v: 4, xp: 5 })));      // (v1.5: the child already has a Trail Blazer ladder: no Pit Crew Check card in these sections)
   await page.click('[data-player="pmia"]');
   await page.waitForSelector(visibleSel('#screen-title'));
+  if (!walk) return { ctx, page, errors };
   await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'mules', companions: ['blacksmith', 'teacher', 'fiddler'] }, { fresh: true }); });
   await skipIndependenceTalk(page);
   await page.waitForSelector(visibleSel('#screen-store'));
@@ -2861,6 +2885,7 @@ async function funVoiceTest(browser, layout) {
   await page.addInitScript(installVoiceInstruments, { msPerChar: 4, prepBase: 60, prepPerText: 8 });
   await page.goto(URL0, { waitUntil: 'networkidle' });
   await page.waitForSelector(visibleSel('#screen-players'));
+  await J(page, () => localStorage.setItem('trailBlazer.pmia.facts', JSON.stringify({ v: 4, xp: 5 })));      // (v1.5: the child already has a Trail Blazer ladder: no Pit Crew Check card in these sections)
   await page.click('[data-player="pmia"]');
   await page.waitForSelector(visibleSel('#screen-title'));
   await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'oxen', companions: ['blacksmith', 'scout', 'cook'] }, { fresh: true }); });
@@ -2947,6 +2972,722 @@ function staticAudit() {
   check(ext.length === 0, 'index.html: no links to another site');
 }
 
+
+// ---------- v1.5 (app): The Long Trail (LT_ONLY=1 runs only this part; LT_SECTIONS=forks,gold picks sections) ----------
+// Every section plays on the mock scene (?mock=1): the pan / rocker / snub / sail / homestead are its scripted hooks (SPEC v1.5 §4). The child "Mia" has a
+// Trail Blazer ladder already (no Pit Crew Check card); the "placement" section uses a second child with an untouched one.
+/** The party is a day from the stop of leg `legId` (a leg of the journey's plan), at its last mile, and the trail runs on by itself. */
+async function nearEnd(page, legId) {
+  await J(page, (legId) => { window.__wagonWest.jumpLeg(legId, { hold: true }); }, legId);
+  await page.waitForTimeout(250);
+  await J(page, () => {
+    const w = window.__wagonWest, Jn = w.save.journey, t = Jn.trip, leg = w.JA.currentLeg(Jn);
+    Jn.milesDone = leg.miles - 1; t.nextMarker = t.markers.length; for (const e of t.events) e.fired = true;
+    Jn.food = Math.max(Jn.food, 400); Jn.foods.flour = Math.max(Jn.foods.flour, 300); Jn.cash = Math.max(Jn.cash, 60);
+    w.holdTrail(false);
+  });
+}
+/** A new journey of a route / tier / branches (the test hook), at its start, on the trail screen with the first day held. */
+async function ltJourney(page, opts) {
+  const ok = await J(page, (o) => { const w = window.__wagonWest; w.settle && w.settle(); return w.newJourney(o); }, opts);
+  if (!ok) throw new Error('newJourney refused ' + JSON.stringify(opts));
+  await J(page, () => { const w = window.__wagonWest; try { w.card.close(); } catch (_) { /* ignore */ } w.app.go('title'); });
+  await page.waitForSelector(visibleSel('#screen-title'));
+}
+/** The Willamette farm exists (named), a journey ended there, savings in it: what the Gold Road, the farm and Veteran need. */
+const ltFarm = (page, { savings = 120, gold = 80, name = 'Rose Hill', site = 'willamette' } = {}) => J(page, (o) => {
+  const w = window.__wagonWest, s = w.save;
+  w.JA.foundSite(s.farm, o.site, { name: o.name, year: 1847 });
+  s.farm.savingsIn = Math.max(s.farm.savingsIn, o.savings); s.farm.goldIn = Math.max(s.farm.goldIn, o.gold);
+  if (!s.ledger.journeys.some((j) => j.end === o.site)) { s.ledger.journeys.push({ id: `seed-${o.site}`, at: 1, route: 'emigrant', branches: {}, tier: 'rookie', year: 1847, journeyN: s.ledger.journeys.length + 1, end: o.site, stars: 30, legs: 20 }); s.ledger.year = Math.max(s.ledger.year, 1848); s.ledger.routesDone = [...new Set([...s.ledger.routesDone, o.site === 'willamette' ? 'oregon' : 'california'])]; }
+  w.app.persist();
+}, { savings, gold, name, site });
+const ltBtnSizes = (page, sel) => J(page, (sel) => [...document.querySelectorAll(sel)].map((b) => { const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; }), sel);
+
+
+async function ltPlacement(browser, layout) {
+  console.log('  -- the Pit Crew Check: offered on the first store or marker, Later three times, then the check; the problems take the ladder\'s shape --');
+  const { ctx, page, errors } = await playSetup(browser, layout, { walk: false });
+  await J(page, () => { const a = window.__wagonWest.app; const p = a.createPlayer('Ben', '#3bb273'); a.selectPlayer(p.id || p); });
+  const needs0 = await J(page, () => { const w = window.__wagonWest; return { need: w.JA.needsPlacement(w.facts, { offered: 0 }), none: w.JA.needsPlacement(null), three: w.JA.needsPlacement(w.facts, { offered: 3 }) }; });
+  check(needs0.need === true && needs0.none === false && needs0.three === false, 'a child with an untouched ladder: needsPlacement true (false with no store to read, and after three offers)');
+  await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Rusty', animal: 'oxen', companions: ['blacksmith', 'scout', 'cook'] }, { fresh: true }); });
+  await skipIndependenceTalk(page);
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'Pit Crew Check', null, { timeout: 8000 });
+  const c1 = await J(page, () => ({ text: document.querySelector('#tc-text').textContent, go: document.querySelector('#tc-go').textContent, alt: document.querySelector('#tc-alt').textContent, offers: window.__wagonWest.save.seen.placeOffers, where: window.__wagonWest.lastPlacement && window.__wagonWest.lastPlacement.where }));
+  check(/Before you answer questions, the pit crew checks what you've got\. About 15 quick facts\./.test(c1.text) && c1.go === 'Start' && c1.alt === 'Later' && c1.where === 'store', `the offer on the first store: "${c1.text}" · ${c1.go} · ${c1.alt}`);
+  check(await spokenHas(page, /pit crew checks what you've got\. About fifteen quick facts/), 'the offer is read aloud (the number in words)');
+  await shot(page, layout, '30-pit-crew-offer');
+  await audit(page, layout.insets, 'the Pit Crew Check offer');
+  await page.click('#tc-alt');
+  await page.waitForSelector(visibleSel('#screen-store'));
+  check((await J(page, () => window.__wagonWest.save.seen.placeOffers)) === 1, '"Later" never blocks: the store opens (offered once)');
+  await page.click('#store-done');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen); await page.click('#tc-go');
+  await page.waitForSelector(visibleSel('#screen-trail'));
+  await J(page, () => window.__wagonWest.holdTrail(true));
+  // the next marker (the hook is what the first marker calls): Later again; the third offer: Start
+  await J(page, () => { window.__wagonWest.offerPlacement('marker'); });
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'Pit Crew Check');
+  await page.click('#tc-alt');
+  await page.waitForFunction(() => !window.__wagonWest.card.isOpen);
+  await J(page, () => { window.__wagonWest.offerPlacement('marker'); });
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'Pit Crew Check');
+  check((await J(page, () => window.__wagonWest.save.seen.placeOffers)) === 3, 'asked again at the next marker, and again: the third offer');
+  await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.markerPanel.state === 'ask' && window.__wagonWest.markerPanel.mode === 'check', null, { timeout: 8000 });
+  const ck = await J(page, () => ({ title: document.querySelector('#mk-title').textContent, chip: document.querySelector('#mk-chip').textContent, bar: !document.querySelector('#mk-progress').hidden, exit: !document.querySelector('#mk-exit').hidden && document.querySelector('#mk-exit').textContent }));
+  check(ck.title === 'Pit Crew Check' && /^Fact 1$/.test(ck.chip) && ck.bar && ck.exit === 'Later', `the check runs on the marker panel in check mode: "${ck.title}", "${ck.chip}", a progress bar, "${ck.exit}"`);
+  await shot(page, layout, '31-pit-crew-check');
+  await audit(page, layout.insets, 'the Pit Crew Check (a fact)');
+  // answer it all right and quickly
+  let n = 0;
+  for (let k = 0; k < 120; k++) {
+    const s = await W(page);
+    if (s.marker === 'ask' && s.mMode === 'check') { n += 1; await typeDigits(page, '#panel-marker', s.mAns); }
+    else if (s.marker === 'closed' && !(await J(page, () => window.__wagonWest.card.isOpen))) break;
+    await page.waitForTimeout(80);
+  }
+  const done = await J(page, () => { const w = window.__wagonWest, f = w.facts; return { placement: !!f.placement, took: w.lastPlacement && w.lastPlacement.took, records: Object.keys(f.records || {}).length, need: w.JA.needsPlacement(f, { offered: 0 }), tier: w.JA.problemTierFor(f), fam: ((f.frontier || {}).families || []).slice() }; });
+  check(done.placement && done.took && n >= 8 && done.records >= 8 && done.need === false, `the check ran ${n} facts, wrote the ladder (${done.records} records, a placement, frontier ${done.fam.join(' ')}) and is not offered again`);
+  await J(page, () => { window.__wagonWest.offerPlacement('marker'); });
+  await page.waitForTimeout(300);
+  check(await J(page, () => !window.__wagonWest.card.isOpen), 'and nothing is offered after it');
+  // the problems take the ladder's shape: the top tier asks a two-step ration (the pounds eaten, then the pounds left)
+  const shapes = await J(page, () => {
+    const w = window.__wagonWest, JA = w.JA, out = {};
+    for (const fam of [['x2'], ['x7'], ['x12']]) { w.facts.frontier = { ...(w.facts.frontier || {}), families: fam }; out[fam[0]] = JA.problemTierFor(w.facts); }
+    return out;
+  });
+  check(shapes.x2 === 0 && shapes.x7 === 1 && shapes.x12 === 2, `problemTierFor follows the ladder: ×2 → ${shapes.x2}, ×7 → ${shapes.x7}, ×12 → ${shapes.x12}`);
+  await J(page, () => { window.__wagonWest.holdTrail(true); window.__wagonWest.app.v2.runProblem('ration', { title: 'Ask Eli: the food' }); });
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
+  const t2 = await J(page, () => { const p = window.__wagonWest.problemPanel.problem; return { parts: p.parts && p.parts.length, answers: p.answers, text: p.text, kind: p.kind }; });
+  check(t2.parts === 2 && Array.isArray(t2.answers) && t2.answers.length === 2, `at the top tier a ration is two steps asked in turn: "${t2.text.slice(0, 60)}…" (${t2.parts} parts)`);
+  let steps = 0;
+  for (let k = 0; k < 40; k++) { const s = await W(page); if (s.problem === 'ask') { steps += 1; await typeDigits(page, '#panel-problem', s.pAns); await page.waitForTimeout(1300); } else if (s.problem === 'closed') break; else await page.waitForTimeout(100); }
+  check(steps === 2, 'both steps typed (the pounds eaten, the pounds left), each right on the first try');
+  check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 3).join(' | ') : ''}`);
+  await ctx.close();
+}
+
+// ----- the picker, the Outfit's Family step, carry-over -----
+async function ltPicker(page, layout, grab) {
+  console.log('  -- a new year: where, how hard, who; carry-over --');
+  // the first journey ever goes straight to the Outfit
+  const first = await J(page, () => ({ label: document.querySelector('#btn-trail-label').textContent, journeys: window.__wagonWest.save.ledger.journeys.length, J: !!window.__wagonWest.save.journey }));
+  check(first.label === 'Pack the wagon' && first.journeys === 0 && !first.J, `no journey yet: "${first.label}"`);
+  await page.click('#btn-trail');
+  await page.waitForSelector(visibleSel('#screen-outfit'));
+  const t1 = await J(page, () => [...document.querySelectorAll('#ow-tabs .seg-btn')].map((b) => b.dataset.tab).join(','));
+  check(t1 === 'name,animal,party,look', `the first journey skips Where and How hard and has no Family step: ${t1}`);
+  await J(page, () => window.__wagonWest.app.go('title'));
+  // a journey finished at the Willamette, with a card, tokens and a dog to carry
+  await ltJourney(page, { route: 'emigrant', tier: 'rookie' });
+  await J(page, () => { const w = window.__wagonWest, Jn = w.save.journey; Jn.cards = ['bison', 'kansas-river']; Jn.tokens = 17; Jn.deeds = ['camper']; Jn.cash = 77; Jn.done = true; w.JA.adoptDog(Jn, { name: 'Frodo', coat: 'spotted' }); w.closeFinished(Jn); w.app.go('title'); });
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const t2 = await J(page, () => ({ label: document.querySelector('#btn-trail-label').textContent, line: document.querySelector('#title-season').textContent, year: window.__wagonWest.save.ledger.year, journeys: window.__wagonWest.save.ledger.journeys.length, savings: window.__wagonWest.JA.farmBalance(window.__wagonWest.save.farm).savings }));
+  check(t2.label === 'A new year' && t2.year === 1848 && t2.journeys === 1 && t2.savings === 77 && /1847 · Rookie · The emigrant trail$/.test(t2.line), `a finished journey: "${t2.label}", the year is 1848, $${t2.savings} banked in the farm, "${t2.line}"`);
+  await page.click('#btn-trail');
+  await page.waitForSelector(visibleSel('#screen-year'));
+  const w1 = await J(page, () => ({ title: document.querySelector('#yr-title').textContent, cards: [...document.querySelectorAll('#yr-body .yr-card')].map((b) => `${b.dataset.pick}${b.classList.contains('locked') ? ':locked' : ''}`), hear: document.querySelectorAll('#yr-body .yr-hear').length, steps: [...document.querySelectorAll('#yr-steps .yr-step')].map((x) => x.textContent) }));
+  check(w1.title === 'Where to this year?' && w1.cards.join(',') === 'emigrant,gold-road' && w1.hear === 2, `Where: ${w1.cards.join(', ')} (the Gold Road is open: a journey ended in the Willamette)`);
+  await shot(page, layout, '32-year-where');
+  await audit(page, layout.insets, 'a new year (where)');
+  await grab();
+  // locked until a Willamette arrival: the same ledger with the journey ended in California
+  await J(page, () => { const w = window.__wagonWest; w.save.ledger.journeys[0].end = 'sacramento'; w.app.go('title'); });
+  await page.click('#btn-trail'); await page.waitForSelector(visibleSel('#screen-year'));
+  const w2 = await J(page, () => ({ cards: [...document.querySelectorAll('#yr-body .yr-card')].map((b) => `${b.dataset.pick}${b.classList.contains('locked') ? ':locked' : ''}`), why: document.querySelector('#yr-body [data-pick="gold-road"] .yr-line').textContent }));
+  check(w2.cards.join(',') === 'emigrant,gold-road:locked' && w2.why === 'Reach the Willamette Valley to hear the news', `the Gold Road is locked until a Willamette arrival: "${w2.why}"`);
+  await J(page, () => { const w = window.__wagonWest; w.save.ledger.journeys[0].end = 'willamette'; w.app.go('title'); });
+  await page.click('#btn-trail'); await page.waitForSelector(visibleSel('#screen-year'));
+  await page.click('#yr-body [data-pick="emigrant"]');
+  await page.waitForFunction(() => document.querySelector('#yr-title').textContent === 'How hard a trail?');
+  const h1 = await J(page, () => ({ cards: [...document.querySelectorAll('#yr-body .yr-card')].map((b) => `${b.dataset.pick}${b.classList.contains('locked') ? ':locked' : ''}`), why: document.querySelector('#yr-body [data-pick="pioneer"] .yr-line').textContent, vet: document.querySelector('#yr-body [data-pick="veteran"]').innerText }));
+  check(h1.cards.join(',') === 'rookie,veteran,pioneer:locked' && h1.why === 'Finish a Veteran journey.' && /Less cash, more storms/.test(h1.vet), `How hard: Veteran open, Pioneer locked ("${h1.why}")`);
+  await shot(page, layout, '33-year-how');
+  await audit(page, layout.insets, 'a new year (how hard)');
+  await grab();
+  await page.click('#yr-body [data-pick="veteran"]');
+  await page.waitForSelector(visibleSel('#screen-outfit'));
+  const o1 = await J(page, () => ({ tabs: [...document.querySelectorAll('#ow-tabs .seg-btn')].map((b) => b.dataset.tab).join(','), ask: document.querySelector('#ow-family-ask') && document.querySelector('#ow-family-ask').textContent, fams: document.querySelectorAll('.ow-fam').length, on: document.querySelector('.ow-fam.on') && document.querySelector('.ow-fam.on').dataset.family }));
+  check(o1.tabs === 'family,name,animal,party,look' && o1.ask === 'Whose wagon comes west in 1848?' && o1.fams === 6 && o1.on === 'uncle-theo', `Who: a Family step (${o1.ask}) with ${o1.fams} wagons, Uncle Theo's chosen`);
+  await shot(page, layout, '34-outfit-family');
+  await audit(page, layout.insets, 'outfit (family)');
+  await page.click('.ow-fam[data-family="aunt-june"]');
+  await page.click('#ow-tabs [data-tab="name"]');                 // Name (prefilled with the last wagon's name)
+  check(await J(page, () => /Test Wagon/.test(document.querySelector('#ow-name').textContent)), 'a new year keeps the last wagon\'s name as the pick');
+  await page.click('#ow-tabs [data-tab="party"]');                // Party: Mateo and Hattie have joined
+  const party = await J(page, () => ({ ids: [...document.querySelectorAll('.ow-comp[data-companion]')].map((b) => b.dataset.companion), on: [...document.querySelectorAll('.ow-comp.on')].map((b) => b.dataset.companion), skill: document.querySelector('.ow-comp[data-companion="packer"] .ow-c-skill') && document.querySelector('.ow-comp[data-companion="packer"] .ow-c-skill').textContent }));
+  check(party.ids.includes('packer') && party.ids.includes('prospector') && party.on.length === 3 && /twentieth/.test(party.skill || ''), `Mateo and Hattie are offered from the second journey (${party.ids.length} companions); the last party is kept (${party.on.join(', ')}); "${party.skill}"`);
+  await page.click('#ow-next');                                   // Look
+  await page.click('#ow-next');                                   // To the store
+  await skipIndependenceTalk(page);
+  await page.waitForSelector(visibleSel('#screen-store'));
+  const v1 = await J(page, () => { const Jn = window.__wagonWest.save.journey; return { tier: Jn.tier, season: Jn.season, family: Jn.family, year: Jn.year, n: Jn.journeyN, route: Jn.route, cash: Jn.cash, cards: Jn.cards.slice(), tokens: Jn.tokens, deeds: Jn.deeds.slice(), dog: Jn.dog && Jn.dog.name, fx: window.__wagonWest.JA.TIER_FX.veteran, food: Jn.food, parts: Jn.parts, bank: Jn.banked }; });
+  check(v1.tier === 'veteran' && v1.family === 'aunt-june' && v1.year === 1848 && v1.n === 2 && v1.route === 'emigrant' && v1.cash === v1.fx.startCash && v1.food === v1.fx.startFood, `a Veteran journey in 1848 for Aunt June's wagon: $${v1.cash} to start, ${v1.food} lb of food`);
+  check(v1.cards.includes('bison') && v1.cards.includes('kansas-river') && v1.tokens === 17 && v1.deeds.includes('camper') && v1.dog === 'Frodo' && !v1.bank, `carried over: the trail cards (${v1.cards.length}), ${v1.tokens} trade tokens, the deeds, the dog; the cash was banked, not carried`);
+  await page.click('#store-done');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen).catch(() => {}); await closeCards(page);
+  // the parent can keep it to Rookie: no "how hard" step
+  await J(page, () => { const w = window.__wagonWest; w.app.setSetting('chooseTier', false); w.settle(); const Jn = w.save.journey; Jn.done = true; w.closeFinished(Jn); w.app.go('title'); });
+  await page.click('#btn-trail'); await page.waitForSelector(visibleSel('#screen-year'));
+  await page.click('#yr-body [data-pick="emigrant"]');
+  await page.waitForSelector(visibleSel('#screen-outfit'));
+  check(await J(page, () => window.__wagonWest.app.settings.chooseTier === false && window.__wagonWest.save.ledger.year === 1849), 'Parents → "Let the child choose how hard" off: Where, then straight to the Outfit (Rookie only), and the year turned to 1849');
+  await J(page, () => { window.__wagonWest.app.setSetting('chooseTier', true); window.__wagonWest.app.go('title'); });
+}
+
+// ----- forks -----
+async function ltForks(page, layout, grab) {
+  console.log('  -- the forks: Fort Hall (Agnes), The Dalles, South Pass --');
+  await J(page, () => { window.__spoken.length = 0; });
+  await ltJourney(page, { route: 'emigrant', tier: 'rookie', year: 1847, journeyN: 1 });
+  await toStop(page, 'fort-hall');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen);
+  await closeCards(page, 1);
+  await page.waitForSelector(visibleSel('#panel-fork'));
+  const f1 = await J(page, () => ({ q: document.querySelector('#fk-q').textContent, who: document.querySelector('.fk-name-role').textContent, ways: [...document.querySelectorAll('#fk-cards .fk-card')].map((c) => c.dataset.way), lean: document.querySelector('#fk-lean') && document.querySelector('#fk-lean').textContent,
+    focus: document.activeElement && document.activeElement.dataset.way, lines: [...document.querySelectorAll('#fk-cards .fk-line')].map((x) => x.textContent), counts: [...document.querySelectorAll('.fk-count')].map((x) => x.textContent), hear: document.querySelectorAll('.fk-hear').length, first: !!document.querySelector('#fk-first') }));
+  check(f1.q === 'Which way from Fort Hall?' && /^Agnes, a clerk at the fort$/i.test(f1.who) && f1.ways.join() === 'oregon,california', `the fork card: Agnes asks "${f1.q}", Oregon first (the first trip leans toward it)`);
+  check(f1.lean === 'Your family planned on Oregon. You can still change your mind.' && f1.focus === 'oregon' && f1.first, 'the lean line is shown and read, "On to Oregon" has the focus; the first-time line is shown');
+  const sizes = await ltBtnSizes(page, '#fk-cards .fk-go');
+  check(sizes.length === 2 && sizes[0][0] === sizes[1][0] && sizes[0][1] === sizes[1][1] && sizes[0][1] >= 44, `both buttons are the same size (${sizes.map((s) => s.join('×')).join(' and ')})`);
+  check(f1.lines.length === 2 && f1.counts.length === 2 && /more stops/.test(f1.counts[0]) && /no store/.test(f1.counts[0]) && f1.hear === 2, `one true line per way, "${f1.counts[0]}", a Hear it each`);
+  check(await spokenHas(page, /Which way from Fort Hall\?/) && await spokenHas(page, /Your family planned on Oregon/) && await spokenHas(page, /West along the Snake River/) && await spokenHas(page, /South at the Raft River/), 'the question, the lean line and both lines are read aloud');
+  await shot(page, layout, '35-fort-hall-fork');
+  await audit(page, layout.insets, 'the Fort Hall fork');
+  await grab();
+  // leaving keeps it pending
+  await page.click('.fk-leave');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const pend = await J(page, () => ({ line: document.querySelector('#title-next').textContent, label: document.querySelector('#btn-trail-label').textContent, ring: !!document.querySelector('#title-map .map-fork-ring'), br: Object.keys(window.__wagonWest.save.journey.branches).length }));
+  check(pend.line === 'A choice at Fort Hall' && pend.label === 'Keep going' && pend.ring && pend.br === 0, `"Decide later" keeps it pending: "${pend.line}", the map rings Fort Hall`);
+  await page.click('#btn-trail');
+  await page.waitForSelector(visibleSel('#panel-fork'));
+  await page.click('#fk-cards .fk-go[data-way="california"]');
+  await page.waitForFunction(() => window.__wagonWest.lastFork && window.__wagonWest.lastFork.pick === 'california');
+  const ch = await J(page, () => { const Jn = window.__wagonWest.save.journey; return { br: { ...Jn.branches }, n: Jn.plan.length, ids: Jn.plan.slice(15).map((p) => p.id), seen: window.__wagonWest.save.seen.forks }; });
+  check(ch.br['fort-hall'] === 'california' && ch.n === 24 && ch.ids[0] === 'raft-river' && ch.seen['fort-hall'], `California chosen: the plan is ${ch.n} legs (${ch.ids.slice(0, 3).join(', ')} …)`);
+  await closeCards(page, 2);
+  // the stop goes on (Agnes in the Talk row, then the store); leave it and look at the map
+  await page.waitForFunction(() => window.__wagonWest.peopleUI.isOpen, null, { timeout: 15000 });
+  check(await J(page, () => !!document.querySelector('.stop-person[data-person="agnes"]')), 'Agnes stands in the Talk row at Fort Hall too');
+  await J(page, () => window.__wagonWest.app.go('title'));
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const mp = await J(page, () => { const m = document.querySelector('#title-map'); return { ahead: m.querySelectorAll('.map-ahead').length, edges: [...m.querySelectorAll('.map-ahead')].map((p) => p.dataset.edge), travelled: Number(m.dataset.travelled) }; });
+  check(mp.ahead >= 30 && mp.edges.includes('fort-hall>raft-river') && mp.edges.includes('fort-hall>snake-river') && mp.edges.includes('south-pass>sublette-cutoff'), `the map draws every way faint and dashed (${mp.ahead} lines: both ways from Fort Hall, the cutoff)`);
+  await shot(page, layout, '36-title-map-california');
+  await audit(page, layout.insets, 'title (the map with every route)');
+  // The Dalles: the raft or the Barlow Road
+  await ltJourney(page, { route: 'emigrant', year: 1847, journeyN: 1, branches: { 'fort-hall': 'oregon' } });
+  await J(page, () => { window.__spoken.length = 0; });
+  await toStop(page, 'the-dalles');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen); await closeCards(page, 1);
+  await page.waitForSelector(visibleSel('#panel-fork'));
+  const f2 = await J(page, () => ({ q: document.querySelector('#fk-q').textContent, who: document.querySelector('.fk-name-role').textContent, ways: [...document.querySelectorAll('#fk-cards .fk-card')].map((c) => c.dataset.way + (c.classList.contains('closed') ? ':closed' : '')), lean: !!document.querySelector('#fk-lean') }));
+  check(f2.q === 'Which way from The Dalles?' && /Ben/.test(f2.who) && f2.ways.join() === 'columbia,barlow' && !f2.lean, `The Dalles: Ben asks "${f2.q}": ${f2.ways.join(' or ')}`);
+  await shot(page, layout, '37-dalles-fork');
+  await audit(page, layout.insets, 'the Dalles fork');
+  await page.click('#fk-cards .fk-go[data-way="barlow"]');
+  await page.waitForFunction(() => window.__wagonWest.lastFork && window.__wagonWest.lastFork.pick === 'barlow');
+  check(await J(page, () => window.__wagonWest.save.journey.plan.slice(-1)[0].id) === 'barlow-road', 'the Barlow Road chosen: the plan ends on it (a toll road, no raft)');
+  await closeCards(page, 2);
+  // South Pass: the Lander Road is closed before 1858 and open from it
+  await ltJourney(page, { route: 'emigrant', year: 1850, journeyN: 2 });
+  await toStop(page, 'south-pass');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen); await closeCards(page, 1);
+  await page.waitForSelector(visibleSel('#panel-fork'));
+  const f3 = await J(page, () => ({ q: document.querySelector('#fk-q').textContent, ways: [...document.querySelectorAll('#fk-cards .fk-card')].map((c) => c.dataset.way + (c.classList.contains('closed') ? ':closed' : '')), why: document.querySelector('#fk-cards .fk-card.closed .fk-line') && document.querySelector('#fk-cards .fk-card.closed .fk-line').textContent, dis: document.querySelector('#fk-cards .fk-card.closed .fk-go').disabled, lean: !!document.querySelector('#fk-lean') }));
+  check(f3.ways.join() === 'main,sublette,lander:closed' && f3.why === 'The Lander Road opens in 1858.' && f3.dis && !f3.lean, `South Pass in 1850: ${f3.ways.join(', ')} ("${f3.why}")`);
+  await audit(page, layout.insets, 'the South Pass fork (a closed way)');
+  await page.click('#fk-cards .fk-go[data-way="sublette"]');
+  await page.waitForFunction(() => window.__wagonWest.lastFork && window.__wagonWest.lastFork.pick === 'sublette');
+  const sub = await J(page, () => window.__wagonWest.save.journey.plan.map((p) => p.id));
+  check(sub.includes('sublette-cutoff') && !sub.includes('fort-bridger'), 'the Sublette Cutoff chosen: no Fort Bridger store on the plan');
+  await closeCards(page, 2);
+  await ltJourney(page, { route: 'emigrant', year: 1858, journeyN: 3 });
+  await toStop(page, 'south-pass');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen); await closeCards(page, 1);
+  await page.waitForSelector(visibleSel('#panel-fork'));
+  check(await J(page, () => [...document.querySelectorAll('#fk-cards .fk-card')].map((c) => c.dataset.way + (c.classList.contains('closed') ? ':closed' : '')).join()) === 'main,sublette,lander', 'and in 1858 the Lander Road is open');
+  await page.click('#fk-cards .fk-go[data-way="lander"]');
+  await page.waitForFunction(() => window.__wagonWest.lastFork && window.__wagonWest.lastFork.pick === 'lander');
+  await closeCards(page, 2);
+  await J(page, () => window.__wagonWest.app.go('title'));
+}
+
+// ----- the toll, Laurel Hill, a dry stretch, a river with no ferry -----
+async function ltBarlow(page, layout, grab) {
+  console.log('  -- the Barlow Road: the toll and its IOU, Laurel Hill; the Humboldt has no ferry; the Forty-Mile Desert --');
+  await ltJourney(page, { route: 'emigrant', year: 1847, journeyN: 1, branches: { 'fort-hall': 'oregon', 'the-dalles': 'barlow' } });
+  await J(page, () => { window.__wagonWest.save.journey.cash = 3; });
+  await toTrail(page, 'barlow-road');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && /gate/.test(document.querySelector('#tc-kicker').textContent), null, { timeout: 8000 });
+  const t1 = await J(page, () => ({ title: document.querySelector('#tc-title').textContent, text: document.querySelector('#tc-text').textContent, go: document.querySelector('#tc-go').textContent }));
+  check(t1.title === 'An IOU at the gate' && /asks \$5 for the wagon/.test(t1.text) && t1.go === 'The toll keeper writes an IOU', `a short purse: "${t1.title}": "${t1.go}"`);
+  check(await spokenHas(page, /asks five dollars for the wagon/), 'the toll is said just in time with its amount (in words)');
+  await shot(page, layout, '38-toll-iou');
+  await audit(page, layout.insets, 'the toll gate (an IOU)');
+  await page.click('#tc-go');
+  await closeCards(page);                                         // (the coach card follows on a first trail)
+  const iou = await J(page, () => { const Jn = window.__wagonWest.save.journey; return { cash: Jn.cash, toll: { ...Jn.trip.toll } }; });
+  check(iou.cash === 3 && iou.toll.iou && !iou.toll.paid, `nothing is taken: $${iou.cash} still in the purse, the toll is an IOU`);
+  // Laurel Hill on the mock: the rope slide
+  await J(page, () => { window.__mockScript.snub = true; window.__wagonWest.holdTrail(true); });
+  const cash0 = await J(page, () => window.__wagonWest.save.journey.cash);
+  check(await hook(page, 'playEvent', 'laurel-hill'), 'Laurel Hill: the event card');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen); await page.click('#tc-go');
+  await page.waitForFunction(() => window.__wagonWest.v2.play === 'startSnub', null, { timeout: 8000 });
+  await shot(page, layout, '39-laurel-hill');
+  await audit(page, layout.insets, 'Laurel Hill (the rope slide)');
+  await page.waitForFunction(() => window.__wagonWest.v2.play === null, null, { timeout: 15000 });
+  await page.waitForTimeout(300);
+  const lh = await J(page, () => { const w = window.__wagonWest, Jn = w.save.journey; return { cash: Jn.cash, snubs: Jn.totals.snubs, smooth: Jn.totals.snubsSmooth, deeds: Jn.deeds.includes('laurel-hill') }; });
+  check(lh.snubs === 1 && lh.smooth === 1 && lh.cash > cash0 && lh.deeds && await toastSeen(page, /Safe at the bottom/, 6000), `Laurel Hill, a smooth slide: +$${lh.cash - cash0}, the "Laurel Hill" deed, "Safe at the bottom, and everybody cheers!"`);
+  // with the cash for it: "Pay the toll"
+  await J(page, () => { const w = window.__wagonWest; w.settle(); w.save.journey.cash = 40; });
+  await toTrail(page, 'barlow-road');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && /Pay the toll/.test(document.querySelector('#tc-go').textContent), null, { timeout: 8000 });
+  await page.click('#tc-go');
+  await closeCards(page);
+  const paid = await J(page, () => { const Jn = window.__wagonWest.save.journey; return { cash: Jn.cash, toll: { ...Jn.trip.toll } }; });
+  check(paid.toll.paid && paid.cash === 35, `with the cash: "Pay the toll" takes $5 (${paid.cash} left)`);
+  await J(page, () => window.__wagonWest.app.go('title'));
+  // California: the Humboldt has no ferry; the Forty-Mile Desert is dry
+  await ltJourney(page, { route: 'emigrant', year: 1849, journeyN: 2, branches: { 'fort-hall': 'california' } });
+  await toStop(page, 'humboldt-river');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen); await closeCards(page, 1);
+  await page.waitForFunction(() => window.__wagonWest.peopleUI.isOpen, null, { timeout: 15000 }).catch(() => {});
+  if (await J(page, () => window.__wagonWest.peopleUI.isOpen)) await page.click('#stop-go');
+  await page.waitForSelector(visibleSel('#rv-choice'));
+  const hum = await J(page, () => ({ hows: [...document.querySelectorAll('#rv-opts .rv-opt')].map((b) => b.dataset.how).join(), spoken: window.__spoken.slice(-3) }));
+  check(hum.hows === 'ford,float', `the Humboldt River has no ferry: ${hum.hows} only`);
+  await shot(page, layout, '40-humboldt-no-ferry');
+  await audit(page, layout.insets, 'the Humboldt crossing (ford or float)');
+  await J(page, () => window.__wagonWest.app.go('title'));
+  await J(page, () => { const w = window.__wagonWest; w.settle(); });
+  await toTrail(page, 'forty-mile-desert');
+  await J(page, () => { window.__wagonWest.save.journey.upgrades = {}; });
+  await toastSeen(page, /dry stretch/, 20000).catch(() => {});
+  const dry1 = await J(page, () => [...window.__wagonWest.toaster.log, ...window.__wagonWest.toaster.shown, ...window.__wagonWest.toaster.waiting].find((t) => /dry stretch/.test(t)) || '');
+  check(/no water barrel/.test(dry1), `the Forty-Mile Desert without the barrel: "${dry1}"`);
+  await J(page, () => { const w = window.__wagonWest; w.holdTrail(true); w.settle(); });
+}
+
+// ----- California's end: the Sacramento claim -----
+async function ltCalifornia(page, layout, grab) {
+  console.log('  -- the California Trail: the claim at its end --');
+  await ltJourney(page, { route: 'emigrant', year: 1849, journeyN: 2, branches: { 'fort-hall': 'california' } });
+  await J(page, () => { const Jn = window.__wagonWest.save.journey; Jn.cash = 61; });
+  await nearEnd(page, 'sacramento-valley');
+  await drive(page, (s) => s.screen === 'results', {}, 120000);
+  const r1 = await J(page, () => ({ title: document.querySelector('#res-title').textContent, tier: document.querySelector('#res-tier').textContent, parts: [...document.querySelectorAll('#res-bank .rb-part')].map((x) => x.textContent), next: document.querySelector('#res-next-text').textContent, deeds: [...document.querySelectorAll('#res-deeds .res-deed')].map((x) => x.textContent) }));
+  check(r1.title === 'Your claim in California!' && /Rookie · 1849/.test(r1.tier) && r1.parts.some((p) => /^\+\$6\d in savings$/.test(p)) && r1.parts.some((p) => /oxen to the pasture/.test(p)) && r1.next === 'To the farm', `home at the claim: "${r1.title}", ${r1.tier}, the bank card (${r1.parts.join(' · ')})`);
+  check(r1.deeds.some((d) => /California bound/.test(d)), 'the "California bound" deed is on the results');
+  await shot(page, layout, '41-results-claim');
+  await audit(page, layout.insets, 'results (the bank card)');
+  await grab();
+  await page.click('#res-next');
+  await page.waitForSelector(visibleSel('#screen-home'));
+  check(await J(page, () => document.querySelector('#home-title').textContent) === 'The Sacramento Valley', 'a new farm is named on the 1.0 keyboard: "The Sacramento Valley"');
+  for (const k of 'claim') await page.click(`#hs-keyboard .kb-key[data-key="${k}"]`);
+  await page.click('#hs-keyboard .kb-enter');
+  await page.waitForSelector(visibleSel('#screen-farm'));
+  const fm = await J(page, () => ({ title: document.querySelector('#farm-title').textContent, sub: document.querySelector('#farm-sub').textContent, sites: window.__wagonWest.farmUI.site, seg: !document.querySelector('#farm-sites').hidden }));
+  check(fm.title === 'Claim' && /Sacramento Valley claim/.test(fm.sub) && fm.sites === 'sacramento', `the farm screen opens on the new claim: "${fm.title}" (${fm.sub})`);
+  await shot(page, layout, '42-farm-claim');
+  await audit(page, layout.insets, 'the farm (a new claim)');
+  await grab();
+}
+
+// ----- the Gold Road: start, the diggings, the cradle, Sutter's Fort, the voyage, home -----
+async function ltGold(page, layout, grab) {
+  console.log('  -- the Gold Road: the news, the diggings, the voyage home --');
+  await ltFarm(page, { savings: 120, gold: 0 });
+  await J(page, () => { const w = window.__wagonWest, s = w.save; s.farm.sites.willamette.pieces = { cabin: 1, 'trophy-shelf': 1, garden: 2 }; w.app.persist(); window.__mockScript.pan = 0.8; window.__mockScript.rocker = 0.9; });
+  await J(page, () => { const w = window.__wagonWest; w.app.setSetting('panning', true); w.app.startYear({ route: 'gold-road', tier: 'rookie' }); });
+  await page.waitForSelector(visibleSel('#screen-outfit'));
+  check(await J(page, () => [...document.querySelectorAll('#ow-tabs .seg-btn')].map((b) => b.dataset.tab).join(',')) === 'name,animal,party,look', 'the Gold Road is the child setting out from the farm: no relative\'s wagon (no Family step)');
+  await J(page, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Gold Dust', animal: 'mules', companions: ['prospector', 'packer', 'cook'] }, { fresh: true }); });
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && document.querySelector('#tc-kicker').textContent === 'News from California!', null, { timeout: 10000 });
+  const nw = await J(page, () => ({ text: document.querySelector('#tc-text').textContent, go: document.querySelector('#tc-go').textContent, route: window.__wagonWest.save.journey.route, gift: window.__wagonWest.save.journey.farmGift }));
+  check(/summer of 1848 a ship brought word to Oregon that gold had been found in California/.test(nw.text) && nw.route === 'gold-road' && nw.gift === 40, `the news reaches the farm: "${nw.text.slice(0, 60)}…", the garden sends ${nw.gift} lb along`);
+  await shot(page, layout, '43-gold-news');
+  await page.click('#tc-go');
+  await page.waitForSelector(visibleSel('#screen-store'));
+  const st = await J(page, () => ({ title: document.querySelector('#store-title').textContent, other: window.__wagonWest.save.journey.foods.other, food: window.__wagonWest.save.journey.food }));
+  check(/Oregon City$/.test(st.title) && st.other >= 40, `the Oregon City store ("${st.title}") with the farm's food on the wagon (${st.other} lb of other food)`);
+  await page.click('#store-done');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen).catch(() => {}); await closeCards(page);
+  check(await J(page, () => window.__wagonWest.app.sceneName === 'mock scene' && window.__wagonWest.scene.getState().mock), 'the mock scene is the one running');
+  // Clear Creek: three scripted pans
+  await J(page, () => window.__wagonWest.app.go('title'));
+  await nearEnd(page, 'clear-creek');
+  await drive(page, (s) => s.dig, {}, 60000);
+  await page.waitForSelector(visibleSel('#dg'));
+  const d1 = await J(page, () => ({ pouch: document.querySelector('#dg-pouch').textContent, btns: [...document.querySelectorAll('#dg-btns .btn')].map((b) => b.textContent), back: window.__wagonWest.scene.getState().backdrop }));
+  check(d1.pouch === '0 nuggets · 0 flakes' && /^Pan for gold3 pans$/.test(d1.btns[0]) && d1.btns[d1.btns.length - 1] === 'On we go' && d1.back === 'diggings', `the creek: the diggings backdrop, the pouch "${d1.pouch}", "${d1.btns.join('" · "')}"`);
+  await shot(page, layout, '44-diggings');
+  await audit(page, layout.insets, 'the diggings');
+  await grab();
+  await page.click('#dg-btns [data-dig="pan"]');
+  await page.waitForFunction(() => window.__wagonWest.save.trip.dig.pans === 3 && !window.__wagonWest.diggings.busy, null, { timeout: 20000 });
+  const d2 = await J(page, () => { const w = window.__wagonWest, Jn = w.save.journey; const n = w.JA.nuggetsOf(Jn.gold); return { flakes: Jn.gold, pouch: document.querySelector('#dg-pouch').textContent, want: `${n.nuggets} nugget${n.nuggets === 1 ? '' : 's'} · ${n.flakes} flake${n.flakes === 1 ? '' : 's'}`, pans: Jn.totals.pans, deed: Jn.deeds.includes('first-flake'), cards: Jn.cards.filter((c) => /^gold-/.test(c)), btns: [...document.querySelectorAll('#dg-btns .btn')].map((b) => b.dataset.dig) }; });
+  check(d2.flakes >= 3 && d2.pouch === d2.want && d2.pans === 3 && d2.deed && d2.cards.includes('gold-pan') && d2.btns.join() === 'leave', `three pans (at least a flake each): ${d2.flakes} flakes, the pouch says "${d2.pouch}", the "First flake" deed, the cards ${d2.cards.join(', ')}`);
+  check(await spokenHas(page, /^(Look at that gold!|A nugget!)$/) && await spokenHas(page, /flakes?!$/), 'each reveal is said ("Look at that gold!", "Five flakes!")');
+  const gold0 = d2.flakes;
+  await page.click('#dg-btns [data-dig="leave"]');
+  await drive(page, (s) => s.screen === 'results', { dig: 'leave' }, 90000);
+  check(await J(page, (g) => /Gold in the pouch/.test(document.querySelector('#res-gold').textContent) && Number(document.querySelector('#res-gold').dataset.flakes) === g, gold0), 'the results show the gold found on a digging leg');
+  // Coloma: the cradle too
+  await J(page, () => window.__wagonWest.app.go('title'));
+  await nearEnd(page, 'coloma');
+  await drive(page, (s) => s.dig, { }, 90000);
+  const d3 = await J(page, () => [...document.querySelectorAll('#dg-btns .btn')].map((b) => b.dataset.dig).join());
+  check(d3 === 'pan,rocker,leave', `Coloma has the cradle beside the pan: ${d3}`);
+  await page.click('#dg-btns [data-dig="rocker"]');
+  await page.waitForFunction(() => window.__wagonWest.save.trip.dig.rocker === 3 && !window.__wagonWest.diggings.busy, null, { timeout: 20000 });
+  const d4 = await J(page, () => { const Jn = window.__wagonWest.save.journey; return { rr: Jn.totals.rockerRounds, beat: Jn.totals.rockerBeat, deed: Jn.deeds.includes('rocker'), card: Jn.cards.includes('gold-rocker') }; });
+  check(d4.rr === 3 && d4.beat >= 1 && d4.deed && d4.card, `the cradle: 3 rounds, on the beat ${d4.beat} times, the "Rock the cradle" deed and card`);
+  // the Nisenan guide gives the "gold fever" card
+  await J(page, () => window.__wagonWest.app.go('title'));
+  await J(page, () => { window.__wagonWest.settle(); });
+  await toStop(page, 'coloma');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen); await closeCards(page, 1);
+  await page.waitForFunction(() => window.__wagonWest.peopleUI.isOpen, null, { timeout: 15000 });
+  const fev0 = await J(page, () => window.__wagonWest.save.journey.cards.includes('gold-fever'));
+  await page.click('.stop-person[data-person="nisenan-guide"]');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'A Nisenan guide');
+  await closeCards(page, 1);
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && window.__wagonWest.card.title === 'Gold fever', null, { timeout: 6000 });
+  const gf = await J(page, () => ({ kicker: document.querySelector('#tc-kicker').textContent, text: document.querySelector('#tc-text').textContent }));
+  check(!fev0 && gf.kicker === 'A Nisenan guide' && /rushed onto the homelands of California’s Native nations/.test(gf.text), `the Nisenan guide hands out the "Gold fever" card: "${gf.text.slice(0, 70)}…"`);
+  await closeCards(page, 2);
+  await page.waitForFunction(() => !window.__wagonWest.peopleUI.busy);
+  check(await J(page, () => window.__wagonWest.save.journey.cards.includes('gold-fever')), 'and it is in the album (the comic gold-fever event hands out nothing)');
+  await J(page, () => window.__wagonWest.app.go('title'));
+  // Sutter's Fort: a store at its own level
+  await toStop(page, 'sutters-fort');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen); await closeCards(page, 1);
+  await page.waitForFunction(() => window.__wagonWest.peopleUI.isOpen, null, { timeout: 15000 });
+  await page.click('#stop-go');
+  await page.waitForSelector(visibleSel('#screen-store'));
+  const sf = await J(page, () => { const w = window.__wagonWest; return { title: document.querySelector('#store-title').textContent, flour: Number(document.querySelector('[data-row="flour"] .st-price').textContent.replace(/\D+/g, ' ').trim().split(' ')[0]), base: w.JA.priceAt('flour', null, 'rookie') }; });
+  check(/Sutter’s Fort$/.test(sf.title) && sf.flour > sf.base * 2, `Sutter's Fort sells at its own level ("${sf.title}": flour $${sf.flour} against $${sf.base} at Independence)`);
+  await J(page, () => window.__wagonWest.app.go('title'));
+  // the voyage home: four markers on the marker panel, titled "Up the coast"
+  await J(page, () => { const w = window.__wagonWest; w.settle(); w.save.journey.cash = 50; });
+  await toTrail(page, 'home-by-sea');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && document.querySelector('#tc-title').textContent === 'Up the coast!', null, { timeout: 10000 });
+  await shot(page, layout, '45-voyage');
+  await page.click('#tc-go');
+  const titles = [];
+  const log = await drive(page, (s) => s.screen === 'results', { async onEach(s) { if (s.marker === 'ask' && s.mTitle === 'Up the coast') { const chip = await J(page, () => document.querySelector('#mk-chip').textContent); if (!titles.includes(chip)) titles.push(chip); } } }, 120000);
+  check(titles.join('|') === 'Marker 1 of 4|Marker 2 of 4|Marker 3 of 4|Marker 4 of 4', `the voyage: four "Up the coast" markers (${titles.join(', ')})`);
+  check(await spokenHas(page, /^Up the coast!$/) && await spokenHas(page, /^Over the bar!$/), 'the cue lines are said ("Up the coast!", "Over the bar!")');
+  const r2 = await J(page, () => ({ title: document.querySelector('#res-title').textContent, parts: [...document.querySelectorAll('#res-bank .rb-part')].map((x) => x.textContent), next: document.querySelector('#res-next-text').textContent, sails: window.__wagonWest.save.journey.totals.sails, deeds: [...document.querySelectorAll('#res-deeds .res-deed')].map((x) => x.textContent) }));
+  check(r2.title === 'Home with your gold!' && r2.parts.some((p) => /of Beaver money$/.test(p)) && r2.sails === 1 && r2.next === 'To the farm', `home by sea: "${r2.title}", the bank card (${r2.parts.join(' · ')})`);
+  check(r2.deeds.some((d) => /Home by sea/.test(d)) && await J(page, () => window.__wagonWest.save.journey.deeds.includes('beaver-money')), `the deeds: ${r2.deeds.join(', ')} on the results, and "Beaver money" in the journey's (gold brought home)`);
+  await shot(page, layout, '46-results-home-gold');
+  await audit(page, layout.insets, 'results (home with gold)');
+  await grab();
+  await page.click('#res-next');
+  await page.waitForSelector(visibleSel('#screen-farm'));
+  const fb = await J(page, () => ({ nuggets: window.__wagonWest.JA.farmBalance(window.__wagonWest.save.farm), purse: document.querySelector('[data-purse="gold"] b').textContent }));
+  check(fb.nuggets.flakes > 0 && /nugget/.test(fb.purse), `Beaver money is in the farm: ${fb.nuggets.nuggets} nuggets and ${fb.nuggets.flakes % 10} flakes (the farm screen says "${fb.purse}")`);
+}
+
+// ----- the homestead -----
+async function ltFarmScreen(page, layout, grab) {
+  console.log('  -- the homestead: the purses, building, Work it out, two farms --');
+  await J(page, () => {
+    const w = window.__wagonWest, s = w.save;
+    s.farm.sites = {}; s.farm.savingsIn = 0; s.farm.savingsOut = 0; s.farm.goldIn = 0; s.farm.goldOut = 0; s.farm.log = [];
+    w.JA.foundSite(s.farm, 'willamette', { name: 'Rose Hill', year: 1847 }); w.JA.foundSite(s.farm, 'sacramento', { name: 'Claim', year: 1849 });
+    s.farm.savingsIn = 150; s.farm.goldIn = 90; w.newJourney({ route: 'emigrant', tier: 'rookie', year: 1850 }); s.journey.tokens = 60; w.app.go('title'); window.__mock && (window.__mock.builds = []);
+  });
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const t0 = await J(page, () => ({ farms: [...document.querySelectorAll('#title-map .map-farm')].map((g) => `${g.dataset.site}:${g.dataset.stage}`), btn: !document.querySelector('#btn-farm').hidden, label: document.querySelector('#btn-farm').textContent }));
+  check(t0.btn && t0.farms.join() === 'willamette:0,sacramento:0', `the title map shows both farms as tents (${t0.farms.join(', ')}) and "${t0.label}"`);
+  await page.click('#title-map .map-farm[data-site="willamette"]');
+  await page.waitForSelector(visibleSel('#screen-farm'));
+  const f0 = await J(page, () => ({ title: document.querySelector('#farm-title').textContent, purses: [...document.querySelectorAll('.farm-purse')].map((p) => `${p.dataset.purse}`), groups: [...document.querySelectorAll('.fm-group')].map((g) => g.dataset.group), garden: document.querySelector('[data-build="garden"]').disabled, why: document.querySelector('.fm-row[data-piece="garden"] .fm-status').textContent, seg: !document.querySelector('#farm-sites').hidden,
+    empty: document.querySelector('#farm-empty').textContent, hs: window.__mock.lastHomestead && window.__mock.lastHomestead.site }));
+  check(f0.title === 'Rose Hill' && f0.purses.join() === 'tokens,savings,gold' && f0.groups.join() === 'savings,tokens,gold' && f0.seg && /tent and a campfire/.test(f0.empty) && f0.hs === 'willamette', `the farm: three purses, the pieces by purse, a site switcher, "${f0.empty}"`);
+  check(f0.garden && f0.why === 'needs the cabin first', `a greyed piece shows its reason: "${f0.why}"`);
+  await shot(page, layout, '47-farm-empty');
+  await audit(page, layout.insets, 'the farm (no cabin yet)');
+  await grab();
+  await page.click('[data-build="cabin"]');
+  await page.waitForFunction(() => window.__wagonWest.lastBuild && window.__wagonWest.lastBuild.piece === 'cabin' && !window.__wagonWest.farmUI.busy, null, { timeout: 12000 });
+  const c1 = await J(page, () => { const w = window.__wagonWest; return { pieces: window.__mock.lastHomestead.pieces, builds: window.__mock.builds.slice(), deed: w.save.journey.deeds.includes('cabin'), savings: w.JA.farmBalance(w.save.farm).savings, shelf: !!w.save.farm.sites.willamette.pieces['trophy-shelf'] }; });
+  check(c1.pieces.cabin === 1 && c1.builds.includes('cabin') && c1.deed && c1.shelf && c1.savings === 110, `the cabin, paid from savings ($${c1.savings} left), the scene's buildPiece + buildDone, the "A cabin of your own" deed, the trophy shelf with it`);
+  // a garden row with tokens
+  const tok0 = await J(page, () => window.__wagonWest.save.journey.tokens);
+  await page.click('[data-build="garden"]');
+  await page.waitForFunction(() => window.__wagonWest.lastBuild && window.__wagonWest.lastBuild.piece === 'garden' && !window.__wagonWest.farmUI.busy, null, { timeout: 12000 });
+  const tok1 = await J(page, () => window.__wagonWest.save.journey.tokens);
+  check(tok1 === tok0 - 30 && await J(page, () => window.__mock.lastHomestead.pieces.garden === 1), `a garden row costs trade tokens (${tok0} → ${tok1})`);
+  // Work it out on the well
+  await page.click('[data-work="well"]');
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
+  const wk = await J(page, () => ({ text: document.querySelector('#pp-text').textContent, ans: window.__wagonWest.problemPanel.answer, bal: window.__wagonWest.JA.farmBalance(window.__wagonWest.save.farm).savings }));
+  check(wk.text === `The well costs $25 and the farm has $${wk.bal}. How much is left?` && wk.ans === wk.bal - 25, `Work it out: "${wk.text}"`);
+  await shot(page, layout, '48-farm-work-it-out');
+  await audit(page, layout.insets, 'the farm (Work it out)');
+  const tk0 = await J(page, () => window.__wagonWest.save.journey.tokens);
+  await typeDigits(page, '#panel-problem', wk.ans);
+  await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'closed', null, { timeout: 8000 });
+  check((await J(page, () => window.__wagonWest.save.journey.tokens)) === tk0 + 1 && await J(page, () => !document.querySelector('[data-work="well"]')), 'right on the first try: a trade token, and the question is offered once a piece');
+  // the barn with gold
+  await page.click('[data-build="fence"]');
+  await page.waitForFunction(() => window.__wagonWest.lastBuild && window.__wagonWest.lastBuild.piece === 'fence' && !window.__wagonWest.farmUI.busy, null, { timeout: 12000 });
+  const nug0 = await J(page, () => window.__wagonWest.JA.farmBalance(window.__wagonWest.save.farm).nuggets);
+  await page.click('[data-build="barn"]');
+  await page.waitForFunction(() => window.__wagonWest.lastBuild && window.__wagonWest.lastBuild.piece === 'barn' && !window.__wagonWest.farmUI.busy, null, { timeout: 12000 });
+  const b1 = await J(page, () => { const w = window.__wagonWest; return { nuggets: w.JA.farmBalance(w.save.farm).nuggets, deed: w.save.journey.deeds.includes('barn-raising'), pieces: { ...w.save.farm.sites.willamette.pieces } }; });
+  check(b1.nuggets === nug0 - 5 && b1.deed && b1.pieces.barn === 1, `the barn is built with Beaver money (${nug0} → ${b1.nuggets} nuggets) and the "Barn raising" deed`);
+  // a tapped piece says its line and its fact; the scene's tap
+  await page.click('.fm-info[data-piece-info="apple-tree"]');
+  const det = await J(page, () => document.querySelector('#farm-detail').textContent);
+  check(/Apple tree/.test(det) && /Luelling/.test(det), `a tapped piece: "${det.slice(0, 80)}…"`);
+  await J(page, () => window.__wagonWest.sceneEvent({ type: 'homesteadTap', slot: 'house', piece: 'cabin' }));
+  check(await J(page, () => window.__wagonWest.farmUI.selected) === 'cabin', "the scene's 'homesteadTap' selects the piece");
+  // the other farm and the title map
+  await page.click('#farm-sites [data-site="sacramento"]');
+  check(await J(page, () => document.querySelector('#farm-title').textContent === 'Claim' && !document.querySelector('[data-build="apple-tree"]') && !!document.querySelector('[data-build="vineyard"]') && window.__mock.lastHomestead.site === 'sacramento'), 'the other farm: the Sacramento claim has a vineyard and no apple trees');
+  await page.click('#farm-sites [data-site="willamette"]');
+  await J(page, () => window.__wagonWest.app.go('title'));
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const t1 = await J(page, () => [...document.querySelectorAll('#title-map .map-farm')].map((g) => `${g.dataset.site}:${g.dataset.stage}`).join());
+  check(t1 === 'willamette:2,sacramento:0', `the title map's farm grows: ${t1} (a cabin with a barn)`);
+  await shot(page, layout, '49-title-farm');
+  // the journal's Farm page
+  await page.click('#btn-journal'); await page.waitForSelector(visibleSel('#screen-journal'));
+  await page.click('#jr-tabs [data-page="farm"]');
+  const jf = await J(page, () => ({ sites: document.querySelectorAll('.jr-farm').length, log: [...document.querySelectorAll('#farm-log li')].map((x) => x.textContent), pouch: document.querySelector('#farm-pouch').textContent }));
+  check(jf.sites === 2 && jf.log.some((l) => /1850: raised the barn with Beaver money/.test(l)) && /Beaver money/.test(jf.pouch), `the journal's Farm page: two farms, the log ("${jf.log[0]}")`);
+  await audit(page, layout.insets, 'journal (farm)');
+  await grab();
+  await J(page, () => window.__wagonWest.app.go('title'));
+}
+
+// ----- sets and decorations -----
+async function ltSets(page, layout, grab) {
+  console.log('  -- card sets and wagon decorations --');
+  await ltJourney(page, { route: 'emigrant', year: 1850, journeyN: 2 });
+  await J(page, () => { const w = window.__wagonWest; w.save.journey.cards = ['kansas-river', 'alcove-spring', 'fort-kearny', 'kansa', 'pawnee']; w.save.setsDone = []; w.save.cosmetics.owned.decor = []; w.save.cosmetics.equipped.decor = []; w.app.go('title'); });
+  await J(page, () => { window.__wagonWest.dropCard('wild-plum'); });
+  await page.waitForTimeout(400);
+  const s1 = await J(page, () => { const w = window.__wagonWest; return { sets: w.save.setsDone.slice(), owned: w.save.cosmetics.owned.decor.slice(), worn: w.save.cosmetics.equipped.decor.slice(), scene: w.scene.getState().decor }; });
+  check(s1.sets.join() === 'jumping-off' && s1.owned.join() === 'sunflower-cover' && s1.worn.join() === 'sunflower-cover', `a full set pays its decoration once (${s1.sets.join()} → ${s1.owned.join()}), worn at once`);
+  check(JSON.stringify(s1.scene) === '["sunflower-cover"]', `the scene draws it on the wagon (setParty wagon.decor: ${JSON.stringify(s1.scene)})`);
+  await J(page, () => { const w = window.__wagonWest; w.dropCard('wild-plum'); w.checkSetsNow(); });
+  check(await J(page, () => window.__wagonWest.save.setsDone.length) === 1, 'a set pays only once');
+  // two more sets: only two decorations are worn at a time
+  await J(page, () => { const w = window.__wagonWest; for (const id of ['ash-hollow', 'chimney-rock', 'scotts-bluff', 'fort-laramie', 'north-platte']) w.dropCard(id); w.dropCard('lakota'); });
+  await J(page, () => { const w = window.__wagonWest; for (const id of ['independence-rock', 'ice-slough', 'south-pass', 'green-river', 'fort-bridger']) w.dropCard(id); w.dropCard('shoshone'); });
+  await page.waitForTimeout(300);
+  const s2 = await J(page, () => { const w = window.__wagonWest; return { sets: w.save.setsDone.slice(), owned: w.save.cosmetics.owned.decor.slice(), worn: w.save.cosmetics.equipped.decor.slice(), collector: w.save.journey.deeds.includes('set-collector') }; });
+  check(s2.sets.length === 3 && s2.owned.length === 3 && s2.worn.length === 2 && s2.collector, `three sets: ${s2.owned.length} decorations owned, two worn at a time (${s2.worn.join(', ')}), the "Set collector" deed`);
+  await J(page, () => window.__wagonWest.app.go('outfit', { tab: 'look' }));
+  await page.waitForSelector(visibleSel('#screen-outfit'));
+  const dec = await J(page, () => ({ items: document.querySelectorAll('#ow-decor .ow-dec').length, on: [...document.querySelectorAll('#ow-decor .ow-dec.on')].map((b) => b.dataset.look), owned: [...document.querySelectorAll('#ow-decor .ow-dec:not(.locked)')].map((b) => b.dataset.look) }));
+  check(dec.items === 16 && dec.on.length === 2 && dec.owned.length === 3, `Outfit → Look: sixteen decorations (${dec.owned.length} earned, ${dec.on.length} worn)`);
+  await shot(page, layout, '50-look-decor');
+  await audit(page, layout.insets, 'outfit (decorations)');
+  const third = dec.owned.find((x) => !dec.on.includes(x));
+  await page.click(`#ow-decor [data-look="${third}"]`);
+  check(await J(page, () => window.__wagonWest.save.cosmetics.equipped.decor.length) === 2, 'wearing a third replaces the one worn longest: still two');
+  await page.click(`#ow-decor .ow-dec.locked >> nth=0`);
+  await J(page, () => window.__wagonWest.app.go('journal'));
+  await page.waitForSelector(visibleSel('#screen-journal'));
+  await page.click('#jr-tabs [data-page="cards"]');
+  await page.click('.jr-sub [data-ctab="sets"]');
+  const sg = await J(page, () => ({ sets: document.querySelectorAll('.set-card').length, full: document.querySelectorAll('.set-card.full').length, total: document.querySelector('#sets-total').textContent }));
+  check(sg.sets === 16 && sg.full === 3 && /3 of 16/.test(sg.total), `journal → Cards → Sets: sixteen sets, three complete ("${sg.total}")`);
+  await audit(page, layout.insets, 'journal (card sets)');
+  await shot(page, layout, '51-journal-sets');
+  await grab();
+}
+
+// ----- the journal's pages, Parents -----
+async function ltJournal(page, layout, grab) {
+  console.log('  -- the journal: nine pages; Parents: the route, the years, the resets --');
+  await J(page, () => window.__wagonWest.app.go('journal'));
+  await page.waitForSelector(visibleSel('#screen-journal'));
+  const tabs = await J(page, () => [...document.querySelectorAll('#jr-tabs .seg-btn')].map((b) => b.dataset.page).join());
+  check(tabs === 'letters,stickers,map,cards,deeds,farm,finds,fish', `the journal's pages: ${tabs}`);
+  await page.click('#jr-tabs [data-page="stickers"]');
+  const st = await J(page, () => ({ routes: [...document.querySelectorAll('.jr-sub .seg-btn')].map((b) => b.dataset.sroute).join(), n: document.querySelectorAll('.jr-sticker').length }));
+  check(st.routes === 'oregon,california,gold,shortcuts' && st.n === 20, `Stickers: tabs by route (${st.routes}), Oregon has ${st.n}`);
+  const counts = {};
+  for (const r of ['california', 'gold', 'shortcuts']) { await page.click(`.jr-sub [data-sroute="${r}"]`); counts[r] = await J(page, () => document.querySelectorAll('.jr-sticker').length); }
+  check(counts.california === 9 && counts.gold === 12 && counts.shortcuts === 4, `California 9, the Gold Road 12, Shortcuts 4 (${JSON.stringify(counts)})`);
+  await audit(page, layout.insets, 'journal (stickers by route)');
+  await page.click('#jr-tabs [data-page="map"]');
+  const mp = await J(page, () => ({ labels: document.querySelectorAll('.jr-map .map-label').length, roads: document.querySelectorAll('#routes-card .rt-item').length, farms: document.querySelectorAll('.jr-map .map-farm').length, text: document.querySelector('#routes-card b').textContent }));
+  check(mp.labels >= 4 && mp.roads === 10 && mp.farms === 2 && /Roads travelled/.test(mp.text), `Map: every road, the roads travelled ("${mp.text}"), both farms`);
+  await audit(page, layout.insets, 'journal (map: roads travelled)');
+  await shot(page, layout, '52-journal-map');
+  await grab();
+  await J(page, () => window.__wagonWest.app.go('title'));
+  // Parents: the route, the years, the farm, placement; reset this journey only
+  await page.click('#btn-parents');
+  await page.waitForSelector(visibleSel('#pz'));
+  if (await J(page, () => !!document.querySelector('.pinpad'))) {
+    const set = await J(page, () => document.querySelector('#pin-title').textContent);
+    for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`);
+    await page.waitForTimeout(250);
+    if (/Choose/.test(set)) for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`);
+  }
+  await page.waitForSelector('.pz-tabs');
+  await page.click('.pz-tabs [data-tab="journey"]');
+  const pj = await J(page, () => ({ route: document.querySelector('#jr-route [data-k="route"]').textContent, tier: document.querySelector('#jr-route [data-k="tier"]').textContent, year: document.querySelector('#jr-route [data-k="year"]').textContent, forks: document.querySelector('#jr-route [data-k="forks"]').textContent,
+    rows: document.querySelectorAll('#jr-journeys tbody tr').length, farm: document.querySelector('#jr-farm').textContent, place: document.querySelector('#jr-placement').textContent, where: document.querySelector('#jr-where-line').textContent }));
+  check(/Route: The emigrant trail/.test(pj.route) && /Difficulty: Rookie/.test(pj.tier) && /Year: 1850 · journey 2/.test(pj.year) && /Forks chosen/.test(pj.forks), `Parents → Journey: ${pj.route} · ${pj.tier} · ${pj.year}`);
+  check(pj.rows >= 1 && /Willamette Valley farm “Rose Hill”: 5 of 18 pieces/.test(pj.farm) && /Pit Crew Check/.test(pj.place), `the journeys finished (${pj.rows}), the farm in one line ("${pj.farm.slice(0, 70)}…"), "${pj.place.slice(0, 40)}…"`);
+  await audit(page, layout.insets, 'Parent Zone (Journey, v1.5)');
+  await shot(page, layout, '53-pz-journey');
+  // options
+  await page.click('.pz-tabs [data-tab="options"]');
+  check(await J(page, () => document.querySelector('#opt-choose-tier').getAttribute('aria-checked') === 'true' && document.querySelector('#opt-panning').getAttribute('aria-checked') === 'true'), 'Options: "Let the child choose how hard" and "Gold panning", both on');
+  await audit(page, layout.insets, 'Parent Zone (Options, v1.5)');
+  // reset this journey only: the farm, the ledger, the cards and the sets stay
+  await page.click('.pz-tabs [data-tab="journey"]');
+  const before = await J(page, () => { const w = window.__wagonWest; return { pieces: Object.keys(w.save.farm.sites.willamette.pieces).length, ledger: w.save.ledger.journeys.length, sets: w.save.setsDone.length, cards: w.save.journey.cards.length, legIndex: w.save.journey.legIndex }; });
+  await J(page, () => { const w = window.__wagonWest; w.save.journey.legIndex = 0; });
+  await page.click(`[id^="pz-reset-journey-"]`);
+  await page.click(`[id^="pz-reset-journey-"][id$="-yes"]`);
+  await page.waitForTimeout(300);
+  const after = await J(page, () => { const w = window.__wagonWest; return { pieces: Object.keys(w.save.farm.sites.willamette.pieces).length, ledger: w.save.ledger.journeys.length, sets: w.save.setsDone.length, cards: w.save.journey.cards.length, mile: w.save.journey.milesDone, stamp: w.save.journeyResetAt, name: w.save.journey.wagonName, route: w.save.journey.route }; });
+  check(after.pieces === before.pieces && after.ledger === before.ledger && after.sets === before.sets && after.cards === before.cards && after.stamp > 0 && after.mile === 0, `"Reset this journey only": the farm (${after.pieces} pieces), the ledger, the ${after.sets} sets and the ${after.cards} cards stay; the journey starts over (stamp ${after.stamp > 0})`);
+  check(await J(page, () => !!document.querySelector('[id^="pz-reset-all-"]') && /farm too|farm,/.test(document.querySelector('[id^="pz-reset-all-"]').closest('.row').textContent)), 'the full reset says it clears the farm too');
+  await page.click('.pz-tabs [data-tab="report"]');
+  check(await J(page, () => /Legs by route: The emigrant trail \d+/.test(document.querySelector('#report-routes').textContent)), 'Report: the legs by route');
+  await page.click('#report-copy');
+  check(await J(page, () => /Now: 1850, The emigrant trail, Rookie/.test(document.querySelector('#report-text').textContent) && /Journeys finished:/.test(document.querySelector('#report-text').textContent)), 'Copy report adds the route and the tier');
+  await page.click('#pz-close');
+}
+
+// ----- panning off, the four playtest fixes -----
+async function ltFixes(page, layout, grab) {
+  console.log('  -- panning off; the 1.4 playtest fixes: camp toasts, pops, the bar, the stones --');
+  await ltFarm(page, {});
+  await ltJourney(page, { route: 'gold-road', tier: 'rookie', year: 1850, journeyN: 3 });
+  await J(page, () => { const w = window.__wagonWest; w.app.setSetting('panning', false); w.save.journey.cash = 20; });
+  await nearEnd(page, 'clear-creek');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen); await closeCards(page, 1);
+  await page.waitForFunction(() => window.__wagonWest.peopleUI.isOpen, null, { timeout: 15000 }); await page.click('#stop-go');
+  await page.waitForFunction(() => window.__wagonWest.card.isOpen && /creek/i.test(document.querySelector('#tc-kicker').textContent), null, { timeout: 8000 });
+  const pf = await J(page, () => ({ text: document.querySelector('#tc-text').textContent, gold: window.__wagonWest.save.journey.gold, dig: window.__wagonWest.diggings.isOpen }));
+  check(/^The gold you found at the creek is yours to take home\. \d+ nuggets? · \d+ flakes?\.$/.test(pf.text) && pf.gold >= 3 && !pf.dig, `Gold panning off: the gold is given as a find with a card ("${pf.text}")`);
+  await J(page, () => { window.__wagonWest.app.setSetting('panning', true); window.__wagonWest.settle(); window.__wagonWest.app.go('title'); });
+  // a dog, then camp
+  await ltJourney(page, { route: 'emigrant', year: 1847, journeyN: 1 });
+  await J(page, () => { const w = window.__wagonWest; w.JA.adoptDog(w.save.journey, { name: 'Frodo', coat: 'spotted' }); w.app.persist(); w.app.selectPlayer(w.app.currentPlayerId); });
+  await toTrail(page, 'kansas-river');
+  await toCamp(page);
+  // (U1) a line made at camp goes with camp
+  await J(page, () => { window.__wagonWest.app.effectToast('Three throws! The dog flops down by the fire, happy.'); });
+  check(await hasToast(page, /Three throws!/), 'at camp: an effect line is raised');
+  await leaveCamp(page);
+  await page.waitForTimeout(400);
+  const stale = await J(page, () => [...window.__wagonWest.toaster.shown, ...window.__wagonWest.toaster.waiting].filter((t) => /Three throws/.test(t)));
+  check(stale.length === 0, 'playtest U1: leaving camp takes its effect line with it (it is not up, or waiting, on the trail)');
+  // (U2) a deed pop does not sit on the camp's cards
+  await toCamp(page);
+  await J(page, () => { window.__wagonWest.deedPop.pop('camper'); });
+  let covered = 0, drawn = 0;
+  for (let k = 0; k < 14; k++) {
+    const g = await J(page, () => { const pop = document.querySelector('#deedpop'); const card = pop && pop.querySelector('.dpop-card'); if (!pop || pop.hidden || !card) return { drawn: false, hit: false }; const r = card.getBoundingClientRect(); const hit = [...document.querySelectorAll('.camp-act')].some((b) => { const q = b.getBoundingClientRect(); return r.left < q.right && r.right > q.left && r.top < q.bottom && r.bottom > q.top; }); return { drawn: true, hit }; });
+    if (g.drawn) drawn += 1; if (g.hit) covered += 1;
+    await page.waitForTimeout(100);
+  }
+  check(covered === 0, `playtest U2: a deed pop never sits on the camp's cards (drawn ${drawn} of 14 looks, covering ${covered})`);
+  // (U3) the camp's bar sits clear of the dog by the fire during fetch
+  await J(page, () => { window.__mockScript.fetch = [0.5, 0.9, 0.2]; window.__wagonWest.app.campActivity('fetch'); });
+  await page.waitForFunction(() => !document.querySelector('#mini').hidden, null, { timeout: 8000 });
+  const bar = await J(page, () => { const r = document.querySelector('#mini .mini-bar').getBoundingClientRect(); return { top: r.top, bottom: r.bottom, H: innerHeight }; });
+  check(bar.bottom < bar.H * 0.5, `playtest U3: during fetch the camp's bar is up under the title bar (${Math.round(bar.top)}-${Math.round(bar.bottom)} of ${bar.H} px), clear of the dog by the fire`);
+  await shot(page, layout, '54-camp-fetch-bar');
+  await page.waitForFunction(() => document.querySelector('#mini').hidden, null, { timeout: 20000 });
+  // (U5) a stone that skips twelve ends the game there
+  await J(page, () => { window.__mockScript.stones = [12, 12, 12]; });
+  const sk0 = await J(page, () => window.__wagonWest.save.journey.skips.throws | 0);
+  await J(page, () => { window.__wagonWest.app.campActivity('stones'); });
+  await page.waitForFunction(() => document.querySelector('#mini').hidden && !window.__wagonWest.reading.play, null, { timeout: 25000 }).catch(() => {});
+  await page.waitForTimeout(300);
+  const sk = await J(page, () => { const sk = window.__wagonWest.save.journey.skips; return { best: sk.best, throws: sk.throws | 0 }; });
+  check(sk.best === 12 && sk.throws - sk0 === 1 && await toastSeen(page, /As far as a stone can skip/, 4000), `playtest U5: a stone that skips twelve ends the game there (${sk.throws - sk0} throw, best ${sk.best}), not twelve skips on every throw`);
+  await J(page, () => { window.__mockScript.stones = [3, 5, 2]; });
+  await leaveCamp(page);
+  await J(page, () => window.__wagonWest.settle());
+}
+
+// ----- the voice: the new lines are in the prepared list -----
+async function ltVoice(page, layout) {
+  console.log('  -- the voice: fork lines in the leg before a fork, the creek\'s cues in the leg before a digging --');
+  const r = await J(page, async () => {
+    const vt = await import('/wagon-west/src/meta/voiceTexts.js');
+    const { FORKS } = await import('/wagon-west/src/content/routes.js');
+    const { ALL_LEGS } = await import('/wagon-west/src/content/legs.js');
+    const { LOOKOUTS } = await import('/wagon-west/src/content/lookouts.js');
+    const out = { forkMissing: [], cueMissing: [], lookMissing: [], farm: null };
+    const chunks = (list) => new Set(list.map((t) => String(t).replace(/\s+/g, ' ').trim()));
+    const fortHall = chunks(vt.collectVoiceTexts({ legId: 'fort-hall', playerName: 'Mia' }).leg);
+    for (const o of FORKS['fort-hall'].options) { for (const t of [`${o.name}. ${o.line.say}`, o.line.say]) if (!fortHall.has(t)) out.forkMissing.push(t.slice(0, 40)); }
+    if (!fortHall.has(FORKS['fort-hall'].leanLine.say)) out.forkMissing.push('lean');
+    const clear = chunks(vt.collectVoiceTexts({ legId: 'clear-creek', playerName: 'Mia' }).leg);
+    for (const t of ['Scoop!', 'Swirl, swirl!', 'Tip it now!', 'Look at that gold!', 'A nugget!', 'Rock it!']) if (!clear.has(t)) out.cueMissing.push(t);
+    const next = chunks(vt.collectVoiceTexts({ legId: 'south-pass', plan: ['south-pass', 'green-river'], playerName: 'Mia' }).next);
+    out.nextOk = next.has((LOOKOUTS['green-river'].say));
+    for (const l of ALL_LEGS) { const own = chunks(vt.collectVoiceTexts({ legId: l.id, playerName: 'Mia' }).leg); const say = (LOOKOUTS[l.lookout] || {}).say; if (say && !own.has(String(say).replace(/\s+/g, ' ').trim()) && say.length < 190) out.lookMissing.push(l.id); }
+    const none = vt.collectVoiceTexts({ legId: 'fort-kearny', playerName: 'Mia', farmName: '' }).ordered.filter((t) => /Dear everyone at|See you at|[{}]/.test(t));
+    const named = vt.collectVoiceTexts({ legId: 'fort-kearny', playerName: 'Mia', farmName: 'Rose Hill' }).ordered.filter((t) => /Dear everyone at Rose Hill/.test(t));
+    out.farm = { none: none.length, named: named.length };
+    out.total = vt.collectVoiceTexts({ legId: 'fort-kearny', playerName: 'Mia' }).ordered.length;
+    return out;
+  });
+  check(r.forkMissing.length === 0, `the Fort Hall fork's lines (both ways, the lean line) are in Fort Hall's prepared list${r.forkMissing.length ? ' — missing ' + r.forkMissing.join('; ') : ''}`);
+  check(r.cueMissing.length === 0, `the creek's cue lines are in Clear Creek's list${r.cueMissing.length ? ' — missing ' + r.cueMissing.join(', ') : ''}`);
+  check(r.nextOk && r.lookMissing.length === 0, `the next leg of the plan is prepared (Green River after South Pass); every leg's own list holds its lookout${r.lookMissing.length ? ' — missing ' + r.lookMissing.join(', ') : ''}`);
+  check(r.farm.none === 0 && r.farm.named >= 1, `"Dear everyone at {farm}," only once the farm is named (${r.farm.named} with a farm, ${r.farm.none} stray without)`);
+}
+
+async function ltTest(browser, layout) {
+  console.log(`\n=== v1.5 The Long Trail (${layout.name}) ===`);
+  QUIET_14 = true;
+  const { ctx, page, errors } = await playSetup(browser, layout, { walk: false });
+  await J(page, () => { window.__wagonWest.facts.xp = 5; window.__mockScript.shotMs = 60; });
+  const texts = [];
+  const grab = async () => texts.push(await kidText(page));
+  const only = (process.env.LT_SECTIONS || '').split(',').filter(Boolean);
+  const sec = async (name, fn) => {
+    if (only.length && !only.includes(name)) return;
+    try { await J(page, () => window.__wagonWest.settle()); await fn(page, layout, grab); } catch (e) { failures.push(`${name} crashed: ${e && e.message}`); console.log(`  ✗ ${name} crashed: ${e && e.message}`); try { await shot(page, layout, `crash-${name}`, 0); } catch (_) { /* ignore */ } }
+  };
+  await sec('picker', ltPicker);
+  await sec('forks', ltForks);
+  await sec('barlow', ltBarlow);
+  await sec('california', ltCalifornia);
+  await sec('gold', ltGold);
+  await sec('farm', ltFarmScreen);
+  await sec('sets', ltSets);
+  await sec('journal', ltJournal);
+  await sec('fixes', ltFixes);
+  await sec('voice', ltVoice);
+  const bad = texts.map((t) => (t.match(BANNED) || [])[0]).filter(Boolean);
+  const guns = texts.map((t) => weaponIn(t)).filter(Boolean);
+  check(bad.length === 0 && guns.length === 0, `kid-rule text audit of the v1.5 screens${bad.length || guns.length ? ' — found: ' + [...bad, ...guns].join(', ') : ''}`);
+  check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 4).join(' | ') : ''}`);
+  await ctx.close();
+  if (!only.length) { try { await ltPlacement(browser, layout); } catch (e) { failures.push('placement crashed: ' + (e && e.message)); console.log('  ✗ placement crashed: ' + (e && e.message)); } }
+  else if (only.includes('placement')) { try { await ltPlacement(browser, layout); } catch (e) { failures.push('placement crashed: ' + (e && e.message)); console.log('  ✗ placement crashed: ' + (e && e.message)); } }
+}
+
 const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
@@ -2954,11 +3695,13 @@ try {
   for (const layout of LAYOUTS.filter((l) => !process.env.ONLY || l.name === process.env.ONLY)) {
     if (process.env.QUICK) { await quickV12(browser, layout); continue; }
     if (process.env.FUN_ONLY) { await funTest(browser, layout); await funVoiceTest(browser, layout); continue; }       // v1.4 only
+    if (process.env.LT_ONLY) { await ltTest(browser, layout); continue; }                                              // v1.5 only
     if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await runLayout(browser, layout);
     if (!process.env.PLAY_ONLY) await voiceTest(browser, layout);
     if (!process.env.PLAY_ONLY) await voiceLetterTest(browser, layout);
     if (!process.env.VOICE_ONLY) await playTest(browser, layout);
     if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await funTest(browser, layout);          // v1.4: Frodo and the river
+    if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await ltTest(browser, layout);           // v1.5: The Long Trail
     if (!process.env.PLAY_ONLY) await funVoiceTest(browser, layout);
   }
   if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await mockMiniGames(browser);

@@ -13,6 +13,9 @@
 // syncs, and the laptop gets it → both play offline → after the 409 merge no letter, no sticker and no token is lost,
 // cash and tokens are the max, the trail cards (v1.1, J.cards) the union, and laptop, ipad and server agree → Trail Blazer on the same device keeps Wagon West's
 // sync metadata. No console errors (the 404 / 409s and aborts are expected).
+// v1.5: the homestead: two devices build different pieces offline and both stay built; a spend on one device and a bank on the other both survive; a doc
+// written by an older build (no farm, no ledger) merges without erasing them; "Reset this journey only" keeps the farm, the ledger and the card sets on both,
+// and a fork chosen on one device is kept (the plan rebuilt); sets and decorations are unions.
 import { execSync, spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import os from 'node:os';
@@ -117,7 +120,7 @@ async function main() {
     const L = laptop.page, I = ipad.page;
 
     console.log('\n=== laptop: Mia packs the wagon, plays a mile marker, creates a family code; the ipad joins ===');
-    const miaId = await J(L, () => { const a = window.__wagonWest.app; const p = a.createPlayer('Mia', '#ff3b5c'); a.selectPlayer(p.id || p); return a.currentPlayerId; });
+    const miaId = await J(L, () => { const a = window.__wagonWest.app; const p = a.createPlayer('Mia', '#ff3b5c'); a.selectPlayer(p.id || p); window.__wagonWest.facts.xp = 5; return a.currentPlayerId; });      // (v1.5: Mia already has a Trail Blazer ladder: no Pit Crew Check card here)
     await J(L, () => { window.__wagonWest.app.outfitDone({ wagonName: 'Dusty', animal: 'oxen', companions: ['blacksmith', 'scout', 'cook'] }, { fresh: true }); });
     await L.waitForFunction(() => window.__wagonWest.peopleUI.isOpen);     // Independence's Talk row comes first now
     await L.click('#stop-go');
@@ -230,6 +233,51 @@ async function main() {
     check(f.fishLog['channel-catfish'] && f.fishLog['channel-catfish'].n === 2 && f.fishBest && f.fishBest.in === 62, 'the fish log merges per species and the personal best is the bigger fish');
     check(Array.isArray(f.wishes) && f.wishes.includes('oxen-fly') && f.wishes.includes('apple-pie-rain') && f.dog && f.dog.name === 'Frodo', `the wishes are the union and the dog is kept (${(f.wishes || []).join(', ')}, ${f.dog && f.dog.name})`);
     check(JSON.stringify(lv) === JSON.stringify(iv) && lv.sturgeon === 62 && lv.skips === 7 && lv.pinecone === 1, `laptop and ipad agree in memory too (${JSON.stringify(lv)})`);
+
+    console.log('\n=== v1.5: the farm, the ledger and the sets across two devices ===');
+    // both devices are synced and share a farm "Rose Hill" with a cabin and savings
+    const farmOf = (p) => J(p, () => { const s = window.__wagonWest.save; const w = s.farm.sites.willamette; return { name: w && w.name, pieces: w ? { ...w.pieces } : null, sIn: s.farm.savingsIn, sOut: s.farm.savingsOut, gIn: s.farm.goldIn, gOut: s.farm.goldOut, journeys: s.ledger.journeys.map((j) => j.id), year: s.ledger.year, sets: s.setsDone.slice(), decor: s.cosmetics.owned.decor.slice(), forks: s.journey && { ...s.journey.branches }, plan: s.journey && s.journey.plan.length }; });
+    await edit(L, (s) => { const JA = window.__wagonWest.JA; JA.foundSite(s.farm, 'willamette', { name: 'Rose Hill', year: 1847 }); s.farm.savingsIn = 100; s.farm.goldIn = 60; s.ledger.year = 1848; s.ledger.journeys.push({ id: 's1847-1', at: 5000, route: 'emigrant', branches: {}, tier: 'rookie', year: 1847, journeyN: 1, end: 'willamette', stars: 30, legs: 20 }); s.ledger.routesDone = ['oregon']; const r = JA.buildPiece(s.farm, 'willamette', 'cabin', s.journey); if (!r.ok) throw new Error('cabin ' + r.why); });
+    await wwSync(L, 'syncNow'); await wwSync(I, 'pullNow');
+    let fi = await farmOf(I);
+    check(fi.name === 'Rose Hill' && fi.pieces && fi.pieces.cabin === 1 && fi.sIn === 100 && fi.journeys.length === 1 && fi.year === 1848, `the ipad got the farm (${fi.name}: ${Object.keys(fi.pieces || {}).join(', ')}), $${fi.sIn} in, the ledger (${fi.journeys.length} journey, year ${fi.year})`);
+    online.laptop = false; online.ipad = false;
+    // the laptop builds a well (a spend) and finishes a card set; the ipad builds the fence, banks a journey (an earning) and chooses nothing yet
+    await edit(L, (s) => { const JA = window.__wagonWest.JA; const r = JA.buildPiece(s.farm, 'willamette', 'well', s.journey); if (!r.ok) throw new Error('well ' + r.why); s.setsDone.push('jumping-off'); s.cosmetics.owned.decor.push('sunflower-cover'); s.cosmetics.equipped.decor = ['sunflower-cover']; });
+    await edit(I, (s) => { const JA = window.__wagonWest.JA; const r = JA.buildPiece(s.farm, 'willamette', 'fence', s.journey); if (!r.ok) throw new Error('fence ' + r.why); s.farm.savingsIn += 25; s.farm.goldIn += 15; s.setsDone.push('platte-road'); s.cosmetics.owned.decor.push('pennant-chimney'); });
+    const fl0 = await farmOf(L), fi0 = await farmOf(I);
+    online.laptop = true; online.ipad = true;
+    await wwSync(L, 'syncNow'); await wwSync(I, 'syncNow'); await wwSync(L, 'pullNow'); await wwSync(I, 'pullNow');
+    const fs = (await serverDoc(code, `${miaId}.ww`)).data;
+    const sp = (fs.farm.sites.willamette || {}).pieces || {};
+    check(sp.cabin === 1 && sp.well === 1 && sp.fence === 1, `both devices' pieces stay built on the server: ${Object.keys(sp).join(', ')}`);
+    check(fs.farm.savingsIn === Math.max(fl0.sIn, fi0.sIn) && fs.farm.savingsIn === 125 && fs.farm.savingsOut === Math.max(fl0.sOut, fi0.sOut) && fs.farm.goldIn === 75, `a spend on one device and an earning on the other both survive (in $${fs.farm.savingsIn}, out $${fs.farm.savingsOut}, gold in ${fs.farm.goldIn}); a balance is never conjured: in - out = $${fs.farm.savingsIn - fs.farm.savingsOut}`);
+    check(['jumping-off', 'platte-road'].every((x) => fs.setsDone.includes(x)) && ['sunflower-cover', 'pennant-chimney'].every((x) => fs.cosmetics.owned.decor.includes(x)), `the card sets and their decorations are unions (${fs.setsDone.join(', ')})`);
+    const fl1 = await farmOf(L), fi1 = await farmOf(I);
+    check(JSON.stringify(fl1.pieces) === JSON.stringify(fi1.pieces) && fl1.sIn === fi1.sIn && fl1.sOut === fi1.sOut && fl1.journeys.length === 1 && fi1.journeys.length === 1, 'laptop and ipad agree on the farm and the ledger in memory too');
+    // an older build's doc (no farm, no ledger, no sets: its normalize drops what it does not know) merges without erasing them
+    online.laptop = false; online.ipad = false;
+    await edit(L, (s) => { s.letters.push({ at: 9500, leg: 'fort-kearny', season: 's1847', text: 'Dear Miss Carter,\nLaptop wrote this while the ipad ran an older build.' }); });
+    await edit(I, (s) => { delete s.farm; delete s.ledger; delete s.setsDone; s.letters.push({ at: 9000, leg: 'fort-kearny', season: 's1847', text: 'Dear Grandma,\nAn older build wrote this.' }); });
+    online.laptop = true; online.ipad = true;
+    await wwSync(L, 'syncNow'); await wwSync(I, 'syncNow'); await wwSync(L, 'pullNow'); await wwSync(I, 'pullNow');
+    const fo = (await serverDoc(code, `${miaId}.ww`)).data;
+    check(fo.farm && fo.farm.sites.willamette && fo.farm.sites.willamette.pieces.well === 1 && fo.ledger && fo.ledger.journeys.length === 1 && fo.setsDone.includes('platte-road'), 'a doc written by an older build (no farm / ledger / sets) did not erase them in the merge');
+    check((await farmOf(I)).pieces && (await farmOf(I)).pieces.well === 1 && (await farmOf(L)).sIn === 125, 'and both devices still have the farm');
+    // a fork chosen on one device is kept; the plan is rebuilt
+    online.laptop = false; online.ipad = false;
+    await edit(L, (s) => { const w = window.__wagonWest; w.JA.chooseBranch(s.journey, 'fort-hall', 'california'); });
+    const pl = await farmOf(L);
+    online.laptop = true; online.ipad = true;
+    await wwSync(L, 'syncNow'); await wwSync(I, 'syncNow'); await wwSync(L, 'pullNow'); await wwSync(I, 'pullNow');
+    const pi = await farmOf(I);
+    check(pl.forks && pl.forks['fort-hall'] === 'california' && pi.forks && pi.forks['fort-hall'] === 'california' && pi.plan > 20, `a fork chosen on the laptop is on the ipad too (Fort Hall: ${pi.forks && pi.forks['fort-hall']}, ${pi.plan} legs)`);
+    // "Reset this journey only" keeps the farm, the ledger and the sets on both devices
+    await J(L, (id) => window.__wagonWest.app.resetJourneyFor(id), miaId);
+    await wwSync(L, 'syncNow'); await wwSync(I, 'pullNow');
+    const rl = await farmOf(L), ri = await farmOf(I);
+    check(rl.pieces && rl.pieces.well === 1 && ri.pieces && ri.pieces.well === 1 && ri.journeys.length === 1 && ri.sets.includes('platte-road'), 'Reset this journey only: the farm, the ledger and the sets are still there on both devices');
+    check(ri.forks && Object.keys(ri.forks).length === 0, 'and the ipad took the new journey (the old one was written before the stamp)');
 
     console.log('\n=== a reset on one device wins ===');
     await J(L, (id) => window.__wagonWest.app.resetSaveFor(id), miaId);

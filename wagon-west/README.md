@@ -1,8 +1,8 @@
 # Wagon West
 
 Learning Lab's fourth game (`learninglab.fun/wagon-west/`): a covered wagon travels the 2,000 miles from Independence,
-Missouri to the Willamette Valley, one landmark a session, and the learning is both 4th-grade math and the week's
-spelling words, in the places a real journey needed them. `SPEC.md` is the design (§0–§7) and the build contract
+Missouri to Oregon (or, from Fort Hall, California; or, from the Willamette farm, south on the Gold Road), one landmark a
+session, and the learning is both 4th-grade math and the week's spelling words, in the places a real journey needed them. `SPEC.md` is the design (§0–§7) and the build contract
 (§8–§13); this file is how the app is put together and how to run it.
 
 ## Run it
@@ -223,6 +223,66 @@ it (the mock scene's new hooks in tests), the content is `src/content/{finds,fis
   ui-smoke empties the leg's v1.4 plan while it drives the 1.0-1.3 sections (`QUIET_14`) so a dog's find does not crowd their toasts.
 - VERSION 1.4.0; the service worker is `wagon-west-v1.4.0`.
 
+## 1.5
+
+The Long Trail (SPEC "v1.5", owner, Nov 1: "Need to scale this much better" and "Maybe they can choose where to go also"). The
+trail is 20 legs of 60-160 miles on the same 2,000 (a leg is still one session), with three forks, a second route, years, tiers,
+a homestead that grows, and collections with long tails. The journey stream decides (`src/journey/{route,seasons,homestead,gold,
+adaptive,sim,...}.js`), the content stream writes the legs, routes, people, cards and sets (`src/content/*`), the scene draws
+(`?mock=1` uses `src/meta/mockScene.js`'s scripted pan / rocker / snub / sail / homestead); this stream drives and speaks.
+
+- **The title** draws every route on `src/ui/map.js` (the emigrant trunk, the forks as their own lines, the Gold Road, the voyage as a
+  dotted line up the coast). The lines travelled (the ledger's journeys and the journey in progress) are inked in the wagon's paint on
+  a dark outline, the rest faint and dashed but always visible; a way not open yet has a lock and its year ("1858"); a fork waiting is
+  circled and the title says "A choice at Fort Hall". The farms are small cabins that grow (tent, cabin, farm with a barn, full farm);
+  a tap opens the farm. The line under the logo is "1849 · Veteran · The emigrant trail". Buttons: **Hit the trail** / **Keep going** /
+  **A new year**, Journal, Outfit, Parents, and **The farm** once there is one.
+- **A new year** (`src/ui/yearPicker.js`, screen `#year`): the first journey ever goes straight to the Outfit (emigrant trail, Rookie).
+  Later years pick **where** (The emigrant trail; The Gold Road, locked with "Reach the Willamette Valley to hear the news" until a
+  journey ended in the Willamette) and **how hard** (Rookie, Veteran, Pioneer: blurbs, what changes, how a locked tier opens; Parents →
+  Options → "Let the child choose how hard" off = Rookie only and the step is skipped), then the Outfit is **who** (a Family step from the
+  second emigrant journey: "Uncle Theo's wagon, 1849", flavour only; Mateo and Hattie among the companions). `startSeason` makes the
+  journey (the ledger's year and journey number; cards, deeds, tokens, upgrades, challenges, the dog and v1.4's collections carried).
+- **Forks** (`src/ui/forkPanel.js`): on arriving at Fort Hall (Oregon or California), South Pass (by Fort Bridger, the Sublette Cutoff,
+  the Lander Road: from the second journey) and The Dalles (the Columbia raft or the Barlow Road), before the stop's other scenes: the
+  explainer's portrait, the question, one card per way (its name, ONE true line, "9 more stops · no store"), buttons of the same size and a
+  Hear it each; everything read in order. The first trip leans toward Oregon (first, focused, "Your family planned on Oregon. You can still
+  change your mind."); from 1849 Agnes adds the gold-fields line; a closed way shows why. "Decide later" keeps it pending.
+- **The Barlow Road**: a toll card at the leg's start (`payToll`: $5 × the price level, or an IOU when the purse is short, never a
+  stranded wagon) and Laurel Hill (a `snub` event: `startSnub`, `applySnub`). **Dry stretches** (the Sublette Cutoff, the Forty-Mile
+  Desert): a line says whether the water barrel is aboard. The Humboldt has no ferry (ford or float only).
+- **The Gold Road**: starts at the farm with the news (the lookout card) and the garden's food, an Oregon City store at 1.3 prices;
+  **the diggings** (`src/ui/diggings.js`: Clear Creek, the Feather River, Coloma, the Sacramento claim from 1848) with the gold pouch
+  ("3 nuggets · 7 flakes", ten flakes a nugget), the **pan** (`startPan`, the journey's `panOutcome`, `panReveal`, "Five flakes!") and, at
+  Coloma, the **rocker**; leaving the creek and coming back loses nothing; **Parents → Options → Gold panning** off gives the gold as a
+  find with a card. **The voyage home** is a sail with four "Up the coast" markers and the Columbia bar. The Nisenan guide at Coloma hands
+  out the "Gold fever" card (the owner's call; the comic gold-fever event hands out nothing).
+- **The homestead**: arriving at a trail's end closes the journey (`closeJourney`: savings, Beaver money, the team banked into the farm,
+  the ledger written, the year turned), the results show the bank card ("+$74 in savings · 6 nuggets of Beaver money · 2 oxen to the
+  pasture"), the child names a new farm on the 1.0 keyboard, and the farm screen opens (`src/ui/homestead.js`): the three purses, the
+  pieces grouped by the purse that prices them, **Build** (greyed with its reason), **Work it out** on a savings piece (a token, once a
+  piece), a tapped piece's line and fact, a site switcher with two farms, the scene's `buildPiece`. Nothing decays, nothing is lost.
+- **The journal** has nine pages: Letters; Stickers (tabs by route); Map (every road, the roads travelled, the farms, people met);
+  Cards (and a **Sets** tab: 16 sets and their wagon decorations, worn two at a time in Outfit → Look); **Deeds (53)** in groups;
+  **Farm**; Finds; Fish log.
+- **Letters** tell the legs since the last post and open "Dear everyone at {farm}," only once the farm is named (`app.farmName()`).
+- **Adaptive math**: the Pit Crew Check (Trail Blazer's staircase through the journey's `placementSetup`, on the marker panel in
+  `check` mode) is offered on the first store or mile marker while the child's ladder is untouched ("Later" asks again, at most three
+  times); `problemFor` takes `tier: problemTierFor(facts)` (two-step rations and distances and a change-back buy at the top tier).
+- **Parents**: Journey shows the route, tier, year, forks chosen, the journeys finished (year · route · tier · stars), the farms, whether
+  the Pit Crew Check was offered, **Reset this journey only** (the farm, the ledger, the cards and the sets stay) and the full reset (the
+  farm too); Options has the two new switches; Report adds the legs by route, and Copy report the route and the tier.
+- **Save and sync** (`v: 1`, new fields normalized): `ledger`, `farm`, `setsDone`, `cosmetics.*.decor`, `seen.forks / placeOffers /
+  worked`, `journeyResetAt`, `trip.dig / look`; `mergeWw` runs the journey stream's `mergeWw15` (every rule a union or a max, so an older
+  build's doc never erases them) and drops a journey last written before another device's journey reset.
+- **Playtest 1.4 fixes**: a camp effect line goes with camp (`toaster.clearScope`), a card / deed / find pop waits where it would sit on a
+  control or a line the child reads (`popHeld` + `readingBoxes`), the camp's bar sits under the title bar so it no longer covers the dog,
+  and a stone that skips twelve ends the game there (one top throw instead of three).
+- Test hooks: `newJourney({ route, tier, branches, year, journeyN })`, `closeFinished()`, `checkSetsNow()`, `forkPanel`, `diggings`,
+  `lastFork`, `lastBuild`, `lastPlacement`; the mock scene: `?mockPan=0.8`, `?mockSnub=0|1`, `__mockScript.{pan,rocker,snub,bumps}`,
+  `window.__mock.lastHomestead / builds`.
+- VERSION 1.5.0; the service worker is `wagon-west-v1.5.0`.
+
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail
@@ -230,6 +290,6 @@ Blazer's kinds (`tb`, `facts`) so the facts the mile markers record sync from he
 built in. Merge: a reset wins; the journey is the later doc's (cash and tokens the max; the trail cards the union; v1.4: the
 dog's finds, the fish log, the skipping stones, the wishes and the quests by the journey's `merge14`);
 stickers,
-letters, looks and the leg log are unions; the per-day log and the per-kind tallies take the max; crates keep the longer
+letters, looks and the leg log are unions (v1.5: the ledger, the farm and the card sets by `mergeWw15`); the per-day log and the per-kind tallies take the max; crates keep the longer
 queue; the streak follows Spell Jump's rule. The family server must list `ww` among its kinds
 (`car-jump/src/sync/protocol.mjs`).

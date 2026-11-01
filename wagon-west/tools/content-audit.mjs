@@ -17,6 +17,11 @@
 //      v1.4 section 1.7); and the voice walk of the new content (finds, junk, wishes, MOMENTS, quests, trail facts, the new cards and
 //      deeds, the companions' help lines, the new letter lines, DOG_LINES filled with 'Frodo'), each reachable by
 //      collectVoiceTexts({ legId, playerName: 'Mia', dogName: 'Frodo' }) for some leg.
+//   7. (v1.5, The Long Trail) the voice coverage of ALL 45 legs of every route (the lookout, nation fact, people and their gifts and offers, landmark card and letters of
+//      each one, with its people, lookouts, fork lines and letters), the fork lines (every way, the lean line, the 1849 line, the explainers), the tier blurbs, the year
+//      picker, the family names, every piece of the homestead (name, line, fact), the card sets and the decorations, the gold cards and the creek's cue lines, the
+//      fixed lines of the new screens (V15); the `{farm}` letter openings and closings only when the farm is named (none of them without it); no digit in any `say` of
+//      the new content; the tiered problems (tier 0, 1 and 2 of every kind) in the kid-rule walk.
 // The Parent Zone is for grown-ups and is not here. Exit code 1 on any hit.
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -98,7 +103,7 @@ for (const f of files) {
 // the text the journey layer builds at run time: today's challenge on every leg, every day key (all six kinds come up)
 const { createJourney, startLeg } = mods['src/journey/sim.js'];
 const { dailyChallenge } = mods['src/journey/challenge.js'];
-const { LEGS: ALL_LEGS } = mods['src/content/legs.js'];
+const { ALL_LEGS } = mods['src/content/legs.js'];             // (v1.5: all 45 legs of every route, not just the default plan)
 for (const leg of ALL_LEGS) {
   for (let d = 0; d < 24; d++) {
     const J = createJourney({ seed: d + 1 });
@@ -111,7 +116,8 @@ for (const leg of ALL_LEGS) {
 // 3. the word problems: every kind x a spread of facts x the seasons x every nation / leg
 const { problemFor, PROBLEM_KINDS } = mods['src/journey/problems.js'];
 const { NATIONS } = mods['src/content/nations.js'];
-const { SEASONS, LEGS } = mods['src/content/legs.js'];
+const { SEASONS } = mods['src/content/legs.js'];
+const LEGS = ALL_LEGS;
 const FACTS = [null, '2x3', '3x4', '4x6', '5x5', '6x7', '7x8', '8x9', '9x9', '12x12', '11x2', '10x10', '23x4', '56/7', '63/9', '42/6', '81/9', '144/12', '36/4'];
 let problems = 0;
 for (const kind of PROBLEM_KINDS) {
@@ -122,11 +128,13 @@ for (const kind of PROBLEM_KINDS) {
         const rand = () => { state = (state + 0x6D2B79F5) >>> 0; let t = state; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
         const leg = LEGS[(seed + problems) % LEGS.length];
         const nation = kind === 'trade' ? NATIONS[(seed + problems) % NATIONS.length].id : undefined;
-        let p = null;
-        try { p = problemFor({ kind, fact, leg, season: season.id, rand, nation, have: 7, cash: 40, shelf: 4 }); } catch (_) { p = null; }
-        if (!p) continue;
-        problems++;
-        walk({ text: p.text, say: p.say, work: p.work, parts: p.parts }, `problem:${kind}:${fact}`);
+        for (const tier of [0, 1, 2]) {              // (v1.5: the ladder's three shapes: two-step rations and distances and a change-back buy at tier 2)
+          let p = null;
+          try { p = problemFor({ kind, fact, leg, season: season.id, rand, nation, have: 7, cash: 40, shelf: 4, tier }); } catch (_) { p = null; }
+          if (!p) continue;
+          problems++;
+          walk({ text: p.text, say: p.say, work: p.work, parts: p.parts }, `problem:${kind}:${fact}:tier${tier}`);
+        }
       }
     }
   }
@@ -159,7 +167,8 @@ const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
 const stripStop = (t) => norm(t).replace(/[.!?]$/, '');
 // what prepareVoice can reach: its list for every leg (a leg's letters are prepared when that leg starts), as clip pieces
 const reachable = new Set();
-for (const leg of ALL_LEGS) for (const t of speechChunks(collectVoiceTexts({ legId: leg.id, playerName: 'Mia', dogName: 'Frodo' }).ordered)) reachable.add(norm(t));
+const FARM = 'Rose Hill';
+for (const leg of ALL_LEGS) for (const t of speechChunks(collectVoiceTexts({ legId: leg.id, playerName: 'Mia', dogName: 'Frodo', farmName: FARM }).ordered)) reachable.add(norm(t));
 const reachableLoose = new Set([...reachable].map(stripStop));
 const has = (t) => speechChunks([t]).every((c) => reachable.has(norm(c)) || reachableLoose.has(stripStop(c)));
 const missingVoice = [];
@@ -183,7 +192,7 @@ for (const c of COMPANIONS) {
 for (const c of CARDS) need(`card ${c.id}`, c.say || (c.fact && (c.fact.say || c.fact.text)) || (typeof c.fact === 'string' ? c.fact : ''));
 for (const p of PEOPLE) { need(`person ${p.id}`, p.lines.join(' ')); if (p.gift && p.gift.text) need(`person ${p.id} gift`, p.gift.text); }
 for (const d of DEEDS) need(`deed ${d.id}`, d.say);
-for (const o of LETTER_OPEN) need('letter opening', spoken(o));
+for (const o of LETTER_OPEN) need('letter opening', spoken(o.replace(/\{farm\}/g, FARM)));
 // the letters' templates: each one matches a collected line (a line that tells a number of pounds is said just in time)
 for (const [key, list] of Object.entries(LETTER_LINES)) {
   for (const line of list) {
@@ -253,6 +262,62 @@ for (const f of voiceFiles) {
     }
   }
 }
+// 5c. (v1.5) the Long Trail's new content, each reachable by collectVoiceTexts for some leg
+{
+  const { FORKS } = mods['src/content/routes.js'];
+  const { TIERS } = mods['src/content/tiers.js'];
+  const { FAMILIES } = mods['src/content/families.js'];
+  const { HOMESTEAD_PIECES } = mods['src/content/homestead.js'];
+  const { CARD_SETS, DECOR } = mods['src/content/cards.js'];
+  const { PERSON_BY_ID } = mods['src/content/people.js'];
+  const { LEG_BY_ID } = mods['src/content/legs.js'];
+  const vt = await import(pathToFileURL(path.join(root, 'src/meta/voiceTexts.js')).href);
+  const yp = await import(pathToFileURL(path.join(root, 'src/ui/yearPicker.js')).href);
+  const fk = await import(pathToFileURL(path.join(root, 'src/ui/forkPanel.js')).href);
+  const dg = await import(pathToFileURL(path.join(root, 'src/ui/diggings.js')).href);
+  const sayOfX = (x) => (x ? x.say || x.text || '' : '');
+  for (const f of Object.values(FORKS)) {
+    const at = LEG_BY_ID[f.at] || {};
+    need(`fork ${f.id} question`, `Which way from ${(at.stop && at.stop.name) || at.name}?`);
+    if (f.leanLine) need(`fork ${f.id} lean line`, sayOfX(f.leanLine));
+    for (const o of f.options) { need(`fork ${f.id}/${o.id} name and line`, `${o.name}. ${sayOfX(o.line)}`); need(`fork ${f.id}/${o.id} line`, sayOfX(o.line)); if (o.lineFrom1849) need(`fork ${f.id}/${o.id} 1849 line`, sayOfX(o.lineFrom1849)); if (o.fromYear) need(`fork ${f.id}/${o.id} closed`, `${o.name} opens in ${o.fromYear}.`); }
+    const who = PERSON_BY_ID[f.explainer];
+    if (who) need(`fork ${f.id} explainer ${who.id}`, who.lines.join(' '));
+  }
+  need('fork first-time line', fk.FORK_FIRST);
+  for (const t of TIERS) { need(`tier ${t.id} blurb`, yp.tierSay(t)); if (t.opens) need(`tier ${t.id} how it opens`, `${t.name}. ${t.opens}`); }
+  for (const t of yp.yearTexts()) need('year picker', t);
+  for (const f of FAMILIES) need(`family ${f.id}`, f.name);
+  for (const p of HOMESTEAD_PIECES) { need(`piece ${p.id} name`, p.name); need(`piece ${p.id} line`, p.say); if (p.fact) need(`piece ${p.id} fact`, sayOfX(p.fact)); }
+  for (const st of CARD_SETS) { need(`set ${st.id} line`, st.say); need(`set ${st.id} name`, st.name); }
+  for (const d of DECOR) need(`decoration ${d.id}`, d.name);
+  for (const t of dg.diggingTexts()) need('the creek', t);
+  for (const [k, t] of Object.entries(vt.V15)) if (k !== 'TOLL_IOU_BUTTON') need(`V15.${k}`, t);
+  // no digit in any say of the new content (numbers are words so the voice reads them right)
+  const digits = [];
+  const noDigits = (where, t) => { if (t && /\d/.test(String(t))) digits.push(`${where}: "${String(t).slice(0, 70)}"`); };
+  for (const f of Object.values(FORKS)) for (const o of f.options) { noDigits(`fork ${o.id} say`, o.line.say); if (o.lineFrom1849) noDigits(`fork ${o.id} 1849 say`, o.lineFrom1849.say); }
+  for (const p of HOMESTEAD_PIECES) { noDigits(`piece ${p.id} say`, p.say); if (p.fact) noDigits(`piece ${p.id} fact say`, p.fact.say); }
+  for (const st of CARD_SETS) noDigits(`set ${st.id} say`, st.say);
+  for (const [k, t] of Object.entries(vt.V15)) if (k !== 'PLACE_OFFER') noDigits(`V15.${k}`, t);
+  for (const t of PEOPLE_SAYS()) noDigits('person', t);
+  if (digits.length) { hits.push(...digits.map((d) => `digit in a spoken line — ${d}`)); }
+  // `{farm}` openings and closings only when the farm is named
+  const unfarmed = vt.collectVoiceTexts({ legId: 'fort-hall', playerName: 'Mia', dogName: 'Frodo', farmName: '' }).ordered;
+  const braces = unfarmed.filter((t) => /[{}]/.test(t));
+  if (braces.length) missingVoice.push(`a line with an unfilled {…} in the unfarmed list: "${braces[0].slice(0, 80)}"`);
+  const farmed = vt.collectVoiceTexts({ legId: 'fort-hall', playerName: 'Mia', dogName: 'Frodo', farmName: FARM }).ordered;
+  if (!farmed.some((t) => /Dear everyone at Rose Hill[,.]/.test(t)) || !farmed.some((t) => /See you at Rose Hill[,.] Mia/.test(t))) missingVoice.push('the farm-named list lacks "Dear everyone at Rose Hill," or "See you at Rose Hill, Mia"');
+  if (unfarmed.some((t) => /Dear everyone at|Dear family at|See you at/.test(t))) missingVoice.push('the unfarmed list holds a farm opening or closing');
+  // every ALL_LEGS leg's list has its own lookout and people (a leg's list is what the leg starts with)
+  for (const leg of ALL_LEGS) {
+    const own = new Set(speechChunks(vt.collectVoiceTexts({ legId: leg.id, playerName: 'Mia', dogName: 'Frodo', farmName: FARM }).leg).map(norm));
+    const look = LOOKOUTS[leg.lookout];
+    if (look && !speechChunks([look.say || look.text]).every((c) => own.has(norm(c)))) missingVoice.push(`leg ${leg.id}: its own list lacks its lookout`);
+    for (const p of PEOPLE.filter((x) => x.stop === leg.id)) if (!speechChunks([p.lines.join(' ')]).every((c) => own.has(norm(c)))) missingVoice.push(`leg ${leg.id}: its own list lacks ${p.id}`);
+  }
+}
+function PEOPLE_SAYS() { return PEOPLE.flatMap((p) => [p.lines.join(' '), p.gift && p.gift.text]).filter(Boolean); }
 // main.js must really prepare this list
 const mainSrc = readFileSync(path.join(root, 'src/main.js'), 'utf8');
 if (!/collectVoiceTexts\(/.test(mainSrc) || !/prepareBulk\(/.test(mainSrc)) missingVoice.push('src/main.js prepareVoice() does not prepare collectVoiceTexts() through speech.prepareBulk()');

@@ -46,12 +46,13 @@ export const RIVER_OPTS = Object.freeze([
 ]);
 export const RIVER_PROMPT = 'How will you cross the river?';
 export const RIVER_SAY = `${RIVER_PROMPT} Ford, float, or ferry?`;
+export const RIVER_SAY_NOFERRY = `${RIVER_PROMPT} Ford or float?`;        // (v1.5: a river with no ferry, the Humboldt)
 export const FORD_LINES = Object.freeze({ title: 'Ford the river', start: 'Tap on the calm water.', good: 'Good push!', bad: 'Whoa, a wave!' });
 export const FLOAT_LINES = Object.freeze({ title: 'Float across', start: 'Drag left and right to steer past the rocks.', bump: 'Bump! A rock. Hold on.' });
 export const SOAKED_LINE = 'A sack of flour got soaked. Soggy biscuits tonight!';
 export const ROPE_LINE = 'The rope held the raft steady. One coil is used up.';
 /** Every fixed line the crossing may say (for the natural voice to prepare). */
-export const riverChoiceTexts = () => [RIVER_SAY, FORD_LINES.start, FLOAT_LINES.start, SOAKED_LINE, ROPE_LINE];
+export const riverChoiceTexts = () => [RIVER_SAY, RIVER_SAY_NOFERRY, FORD_LINES.start, FLOAT_LINES.start, SOAKED_LINE, ROPE_LINE];
 
 /** What the ferryman says about a landing (said = "three quarters"): every line, for the natural voice to prepare. */
 export const riverLines = (said) => ({
@@ -209,9 +210,9 @@ export function createRiver(app) {
     if (o.svg) sp.innerHTML = o.svg;
     return sp;
   }
-  function paintChoice() {
+  function paintChoice(leg) {
     const safe = app.v2.floatSafe();
-    opts.replaceChildren(...RIVER_OPTS.map((o) => {
+    opts.replaceChildren(...RIVER_OPTS.filter((o) => o.how !== 'ferry' || !leg || leg.ferry !== false).map((o) => {
       const note = o.how === 'float' ? h('span', { class: 'rv-opt-note' + (safe.safe ? ' safe' : ''), 'data-safe': String(safe.safe) }, safe.safe ? safe.why : 'No rope: a bump can soak a sack of flour.') : null;
       const b = h('button', { class: 'card rv-opt', 'data-how': o.how, 'data-sfx': '' },
         iconSpan(o),
@@ -223,10 +224,12 @@ export function createRiver(app) {
     }));
   }
   /** Wait for a tap on one of the three ways across; null when the child left the river. */
-  function choose(run) {
-    paintChoice();
+  function choose(run, leg) {
+    paintChoice(leg);
     choice.hidden = false;
-    app.voiceFor([RIVER_SAY]).then(() => { if (cur === run && !run.cancelled && !choice.hidden) app.say(RIVER_SAY); });
+    const ask = leg && leg.ferry === false ? RIVER_SAY_NOFERRY : RIVER_SAY;
+    $('#rv-ask').textContent = RIVER_PROMPT;
+    app.voiceFor([ask]).then(() => { if (cur === run && !run.cancelled && !choice.hidden) app.say(ask); });
     return new Promise((resolve) => { run.pick = resolve; run.wake = () => resolve(null); });
   }
   function setStatus(text, kind = '') { status.textContent = text; status.className = 'rv-status' + (kind ? ' ' + kind : ''); }
@@ -331,7 +334,7 @@ export function createRiver(app) {
       app.scene.setBackdrop('river');
       await sleep(app.beat(500));
       if (cur !== run) return { cancelled: true };
-      const how = await choose(run);
+      const how = await choose(run, leg);
       if (!how || cur !== run) return { cancelled: true };
       last.how = how;
       let cr = null;

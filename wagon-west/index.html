@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <title>Wagon West</title>
-<meta name="description" content="Wagon West: take a covered wagon 2,000 miles from Independence to the Willamette Valley. Mile-marker facts, store problems, river words, letters home. A Learning Lab game.">
+<meta name="description" content="Wagon West: take a covered wagon 2,000 miles from Independence to Oregon or California, or south on the Gold Road. Mile-marker facts, store problems, river words, letters home, and a homestead to build. A Learning Lab game.">
 <meta name="theme-color" content="#1f150d">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -999,6 +999,176 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   .pn-hint { font-size: 13px; padding: 4px 10px; }
   .kb { --kgap: 5px; --kh: 44px; }
 }
+
+/* ===================== v1.5: The Long Trail ===================== */
+/* the map: every route fits a 960 x 460 view */
+.map-svg, .jr-map { aspect-ratio: 960 / 460; }
+.map-svg { max-height: 40vh; }
+.map-farm { cursor: pointer; }
+.map-farm:focus-visible { outline: 3px solid var(--cyan); }
+.map-done { transition: stroke .2s; }
+.map-fork-ring { animation: blink .8s steps(1) infinite alternate; }
+.reduced-motion .map-fork-ring { animation: none; }
+.menu-row[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+/* the year picker */
+#screen-year { background: linear-gradient(rgba(31,21,13,.7), rgba(31,21,13,.92)); }
+#yr-chip b { font: 400 17px/1 var(--font-display); color: var(--accent); }
+.yr-steps { display: flex; gap: 8px; flex: none; padding: 2px 0 6px; flex-wrap: wrap; }
+.yr-step { padding: 6px 12px; border-radius: 999px; background: var(--ink); border: 2px solid var(--line); font: 800 12px/1 var(--font-body); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); }
+.yr-step.on { color: var(--accent-ink); background: var(--accent); border-color: var(--accent-edge); }
+.yr-body { flex: 1; min-height: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; align-content: start; padding: 4px 4px 10px 2px; }
+#screen-year[data-step="where"] .yr-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.yr-cell { display: grid; gap: 6px; align-content: start; }
+.yr-card { display: grid; gap: 6px; align-content: start; text-align: left; padding: 12px 14px; min-height: 120px; }
+.yr-card.on { border-color: var(--accent); }
+.yr-card.locked { opacity: .62; border-style: dashed; }
+.yr-emoji { font-size: 34px; line-height: 1; }
+.yr-name { font: 400 21px/1.1 var(--font-display); color: var(--accent); }
+.yr-line { font: 700 15px/1.3 var(--font-body); color: #fff; }
+.yr-extra { font: 700 13px/1.25 var(--font-body); color: var(--muted); }
+.yr-extra::before { content: '+ '; color: var(--go); }
+.yr-hear { justify-self: start; }
+/* the fork panel */
+#panel-fork { z-index: 21; }
+.fk-sheet { width: min(100%, 940px); max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; touch-action: pan-y; }
+.fk-head { display: flex; align-items: center; gap: 12px; }
+.fk-who { font-size: 44px; line-height: 1; flex: none; }
+.fk-heads { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.fk-name-role { font: 800 12px/1.1 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.fk-q { margin: 0; font: 400 clamp(20px, 3vmin + 1vw, 28px)/1.1 var(--font-display); color: var(--accent); }
+.fk-lean, .fk-first { margin: 0; padding: 6px 12px; border-radius: 10px; background: rgba(242,179,61,.14); font: 700 15px/1.3 var(--font-body); }
+.fk-first { background: rgba(91,184,214,.14); color: var(--muted); }
+.fk-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+.fk-card { display: grid; gap: 6px; align-content: start; padding: 10px 12px 12px; }
+
+.fk-card.closed { opacity: .65; border-style: dashed; }
+.fk-name { font: 400 18px/1.1 var(--font-display); }
+.fk-line { margin: 0; font: 700 14px/1.3 var(--font-body); color: #fff; }
+.fk-extra { color: var(--accent); }
+.fk-count { margin: 0; font: 800 12px/1.2 var(--font-body); letter-spacing: .03em; color: var(--muted); }
+.fk-row { display: flex; gap: 8px; align-items: stretch; }
+.fk-go { flex: 1; min-width: 0; min-height: 56px; font-size: 18px; padding: 0 12px; white-space: normal; text-align: center; line-height: 1.1; }
+.fk-hear { flex: none; }
+.fk-leave { flex: none; }
+/* the diggings */
+.dg-pouch { position: absolute; right: var(--pad-r); top: calc(var(--pad-t) + 4px); z-index: 12; font-size: 15px; }
+.dg-wrap { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 var(--pad-r) var(--pad-b) var(--pad-l); display: flex; justify-content: center; pointer-events: none; }
+.dg-card { pointer-events: auto; width: min(640px, 100%); padding: 10px 14px 12px; display: grid; gap: 8px; background: rgba(31,21,13,.92); }
+.dg-title { font: 400 18px/1 var(--font-display); color: var(--accent); }
+.dg-line { margin: 0; font: 700 14px/1.3 var(--font-body); }
+.dg-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.dg-btns .btn { flex: 1 1 150px; flex-direction: column; gap: 2px; min-height: 56px; padding: 6px 12px; }
+.dg-btns small { font: 800 12px/1 var(--font-body); opacity: .8; }
+/* the homestead */
+#screen-farm { pointer-events: none; }
+#screen-farm .topbar, #screen-farm .farm-side, #screen-farm .farm-detail { pointer-events: auto; }
+#screen-farm .farm-main { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(250px, 340px); gap: 10px; }
+.farm-view { min-width: 0; min-height: 0; display: flex; flex-direction: column; justify-content: space-between; gap: 6px; }
+.farm-sub { margin: 4px 0 0; align-self: flex-start; padding: 6px 12px; border-radius: 999px; background: rgba(31,21,13,.82); font: 800 12px/1 var(--font-body); letter-spacing: .04em; pointer-events: auto; }
+.farm-empty { margin: 0; align-self: center; padding: 8px 14px; border-radius: 12px; background: rgba(31,21,13,.86); font: 700 15px/1.3 var(--font-body); }
+.farm-detail { padding: 8px 12px; background: rgba(31,21,13,.92); display: grid; gap: 3px; }
+.farm-detail b { font: 400 17px/1.1 var(--font-display); color: var(--accent); }
+.farm-detail p { margin: 0; font: 700 14px/1.3 var(--font-body); }
+.farm-detail .fm-fact { color: var(--muted); }
+.farm-side { min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.farm-purses { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; flex: none; }
+.farm-purse { display: flex; align-items: center; gap: 4px; padding: 5px 7px; border-radius: 12px; background: rgba(31,21,13,.9); border: 2px solid var(--line); min-width: 0; }
+.fp-flakes { font: 800 10px/1 var(--font-body); font-style: normal; color: var(--muted); }
+.fp-emoji { font-size: 20px; }
+.fp-text { display: grid; gap: 1px; min-width: 0; }
+.fp-text small { font: 800 10px/1 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.fp-text b { font: 400 13px/1.1 var(--font-display); color: var(--accent); white-space: nowrap; }
+.farm-tray { flex: 1; min-height: 0; display: grid; gap: 8px; align-content: start; padding: 8px; border-radius: var(--r); background: rgba(31,21,13,.9); border: 2px solid var(--line); }
+.fm-group { display: grid; gap: 6px; }
+.fm-head { display: flex; align-items: baseline; gap: 6px; font: 400 15px/1.1 var(--font-display); color: var(--accent); }
+.fm-head small { font: 800 11px/1 var(--font-body); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.fm-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 6px 8px; border-radius: 10px; background: var(--ink-2); border: 2px solid var(--line); }
+.fm-row.ready { border-color: var(--go); }
+.fm-row.built { opacity: .8; }
+.fm-row.sel { outline: 2px solid var(--cyan); }
+.fm-info { flex: 1 1 130px; min-width: 0; display: flex; align-items: center; gap: 8px; text-align: left; min-height: 44px; }
+.fm-emoji { font-size: 26px; flex: none; }
+.fm-text { display: grid; gap: 1px; min-width: 0; }
+.fm-text b { font: 400 14px/1.1 var(--font-display); }
+.fm-text b i { font-style: normal; color: var(--muted); font-family: var(--font-body); font-weight: 800; font-size: 12px; }
+.fm-status { font: 700 12px/1.2 var(--font-body); color: var(--muted); }
+.fm-cost { font: 800 12px/1 var(--font-body); color: var(--accent); white-space: nowrap; }
+.fm-build, .fm-work { min-height: 44px; }
+/* results */
+.res-tier { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: var(--ink); border: 2px solid var(--line); font: 800 13px/1 var(--font-body); color: var(--accent); white-space: nowrap; }
+.res-tier[data-tier="veteran"] { border-color: #c0c8d0; } .res-tier[data-tier="pioneer"] { border-color: var(--gold); }
+.res-extra { display: grid; gap: 6px; }
+.res-gold, .res-set, .res-bonus, .res-bank { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 10px; border-radius: 10px; background: rgba(242,179,61,.12); font: 700 14px/1.25 var(--font-body); }
+.res-bank { display: grid; background: rgba(127,191,79,.16); }
+.res-bank b, .res-bonus b { font: 800 11px/1 var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.rb-parts { display: flex; flex-wrap: wrap; gap: 6px; }
+.rb-part { padding: 4px 10px; border-radius: 999px; background: var(--ink); border: 2px solid var(--go); font: 800 13px/1.1 var(--font-body); }
+/* the journal's new pages */
+.jr-h { margin: 0; font: 400 20px/1.1 var(--font-display); color: var(--accent); }
+.jr-sub { align-self: start; flex-wrap: wrap; }
+.dd-group { display: grid; gap: 6px; }
+.dd-head { display: flex; align-items: baseline; gap: 10px; }
+.dd-head b { font: 400 16px/1.1 var(--font-display); color: var(--accent); }
+.dd-head small { font: 800 12px/1 var(--font-body); color: var(--muted); }
+.sets-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; }
+.set-card { display: grid; gap: 6px; padding: 10px 12px; text-align: left; }
+.set-card.full { border-color: var(--gold); }
+.set-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.set-head b { font: 400 16px/1.1 var(--font-display); }
+.set-cards { display: flex; flex-wrap: wrap; gap: 4px; }
+.set-mini { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 8px; background: var(--ink); border: 2px dashed var(--line); font-size: 17px; color: var(--dim); }
+.set-mini.got { border-style: solid; border-color: var(--accent); background: var(--paper); }
+.set-decor { display: flex; align-items: center; gap: 8px; font: 800 13px/1.2 var(--font-body); color: var(--muted); }
+.set-decor.got { color: var(--go); }
+.rt-list { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font: 700 14px/1.3 var(--font-body); color: var(--dim); }
+.rt-item.got { color: var(--text); }
+.farm-pouch, .jr-farm, .jr-log { padding: 10px 14px; display: grid; gap: 8px; }
+.farm-pouch .fp-row { display: flex; flex-wrap: wrap; gap: 6px 16px; font: 800 14px/1.2 var(--font-body); }
+.jr-farm-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.jr-farm-head b { font: 400 18px/1.1 var(--font-display); color: var(--accent); flex: 1 1 140px; }
+.jr-farm-head small { font: 800 12px/1 var(--font-body); color: var(--muted); }
+.jr-pieces { display: flex; flex-wrap: wrap; gap: 6px; }
+.jr-piece { padding: 4px 10px; border-radius: 999px; background: var(--ink); border: 2px solid var(--line); font: 800 13px/1.2 var(--font-body); }
+.jr-shelf { display: flex; align-items: center; gap: 6px; font: 700 14px/1.3 var(--font-body); }
+.plate { font-size: 24px; }
+/* the outfit: families, decorations */
+.ow-fam { border-left-width: 6px; }
+.ow-fam-emoji { display: grid; place-items: center; font-size: 30px; }
+.ow-dec { flex-direction: column; align-items: flex-start; gap: 2px; padding: 6px 12px; }
+.ow-dec.locked { opacity: .6; border-style: dashed; }
+.ow-dec small { color: var(--muted); font-weight: 700; }
+.ow-dec-emoji { font-size: 22px; }
+/* the marker panel as the Pit Crew Check */
+.pn-progress { grid-column: 1 / -1; height: 8px; border-radius: 99px; background: var(--ink); border: 2px solid var(--line); overflow: hidden; margin-top: -4px; }
+.pn-progress-bar { display: block; height: 100%; width: 0; background: var(--cyan); transition: width .3s; }
+.pn-exit { margin-left: 8px; }
+/* playtest 1.4 U3: the camp's bottom bar covered the dog by the fire; at camp the bar sits under the title bar */
+html[data-screen="camp"] #mini { bottom: auto; top: calc(var(--pad-t) + 62px); }
+.tc-go { white-space: normal; }
+@media (orientation: portrait) {
+  #screen-farm .farm-main { grid-template-columns: 1fr; grid-template-rows: minmax(0, 36%) minmax(0, 1fr); }
+  #screen-year[data-step="where"] .yr-body { grid-template-columns: 1fr; }
+  .fk-cards { grid-template-columns: 1fr; }
+  .fk-who { font-size: 34px; }
+  .dg-card { padding: 8px 10px 10px; }
+  .res-tier { order: 3; }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .yr-card { min-height: 0; padding: 8px 12px; }
+  .yr-emoji { font-size: 26px; }
+  .yr-name { font-size: 18px; }
+  .fk-sheet { padding: 8px 12px 10px; gap: 6px; }
+  .fk-card { padding: 8px 10px 10px; gap: 4px; }
+  .fk-go { min-height: 48px; font-size: 16px; }
+  .fk-lean, .fk-first { padding: 3px 10px; font-size: 14px; }
+  .fk-who { font-size: 34px; }
+  .map-svg { max-height: 36vh; }
+  .title-main { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); }
+  .title-left { gap: 3px; }
+  .season-line { margin-top: 2px; font-size: 12px; }
+  .title-skills { font-size: 12px; }
+  .map-card { padding: 4px; }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 .reduced-motion .toast, .reduced-motion .sp-banner, .reduced-motion .pn-tile, .reduced-motion .np-go.ready, .reduced-motion .kb-enter.ready, .reduced-motion .po-line, .reduced-motion .pp-line { animation: none; }
 </style>
@@ -1066,6 +1236,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
           <button class="btn" id="btn-journal" data-sfx><span data-icon="flag"></span>Journal</button>
           <button class="btn" id="btn-outfit" data-sfx><span data-icon="style"></span>Outfit</button>
           <button class="btn" id="btn-parents" data-sfx><span data-icon="lock"></span>Parents</button>
+          <button class="btn btn-cyan" id="btn-farm" data-sfx hidden><span aria-hidden="true">🏡</span>The farm</button>
         </div>
       </div>
     </div>
@@ -1080,6 +1251,34 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
     </div>
     <div class="ow-body" id="ow-body"></div>
     <div class="ow-foot" id="ow-foot"></div>
+  </section>
+
+  <!-- ===== A new year (src/ui/yearPicker.js): where, how hard; the Outfit is "who" ===== -->
+  <section class="screen" id="screen-year" data-screen="year" hidden>
+    <div class="topbar">
+      <button class="btn icon-btn" id="yr-back" aria-label="Back" data-sfx><span data-icon="back"></span></button>
+      <h2 id="yr-title">Where to this year?</h2>
+      <span class="chip" id="yr-chip"><b id="yr-year">1847</b></span>
+    </div>
+    <div class="yr-steps" id="yr-steps"></div>
+    <div class="yr-body scroll" id="yr-body"></div>
+  </section>
+
+  <!-- ===== The homestead (src/ui/homestead.js): the scene's farm and a build tray ===== -->
+  <section class="screen" id="screen-farm" data-screen="farm" hidden>
+    <div class="topbar">
+      <button class="btn icon-btn" data-back="title" aria-label="Back" data-sfx><span data-icon="back"></span></button>
+      <h2 id="farm-title">Your farm</h2>
+      <div class="seg" id="farm-sites" role="tablist" hidden></div>
+      <button class="btn btn-sm btn-gold" id="farm-next" data-sfx hidden>A new year</button>
+    </div>
+    <div class="farm-main">
+      <div class="farm-view"><p class="farm-sub" id="farm-sub"></p><p class="farm-empty" id="farm-empty" hidden></p><div class="card farm-detail" id="farm-detail" hidden></div></div>
+      <div class="farm-side">
+        <div class="farm-purses" id="farm-purses"></div>
+        <div class="farm-tray scroll" id="farm-tray"></div>
+      </div>
+    </div>
   </section>
 
   <!-- ===== The General Store (src/ui/store.js) ===== -->
@@ -1163,6 +1362,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
         <button class="btn btn-go btn-big stop-go" id="stop-go" data-sfx><span id="stop-go-text">Continue</span><span data-icon="right"></span></button>
       </div>
     </div>
+    <!-- v1.5 (src/ui/diggings.js): the creek with its gold pouch -->
+    <div class="chip dg-pouch" id="dg-pouch" role="status" aria-label="The gold pouch" hidden></div>
+    <div class="dg-wrap" id="dg" hidden>
+      <div class="card dg-card"><b class="dg-title">The creek</b><p class="dg-line" id="dg-line"></p><div class="dg-btns" id="dg-btns"></div></div>
+    </div>
   </section>
 
   <!-- ===== River crossing (src/ui/river.js) ===== -->
@@ -1211,7 +1415,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 
   <!-- ===== The valley: name the homestead ===== -->
   <section class="screen" id="screen-home" data-screen="home" hidden>
-    <div class="topbar"><h2>The Willamette Valley</h2></div>
+    <div class="topbar"><h2 id="home-title">The Willamette Valley</h2></div>
     <div class="hs-body">
       <div class="np-row"><div class="np-name" id="hs-name" aria-live="polite"></div></div>
       <div class="np-kb" id="hs-kb"></div>
@@ -1230,11 +1434,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 
   <!-- ===== Results (src/ui/results.js) ===== -->
   <section class="screen" id="screen-results" data-screen="results" hidden>
-    <div class="results-head"><h2 id="res-title">Arrived!</h2><span class="res-sticker" id="res-sticker" hidden></span></div>
+    <div class="results-head"><h2 id="res-title">Arrived!</h2><span class="res-tier" id="res-tier" hidden></span><span class="res-sticker" id="res-sticker" hidden></span></div>
     <div class="results-body">
       <div class="card res-main">
         <div class="res-stars" id="res-stars"></div>
         <div class="stat-grid" id="res-stats"></div>
+        <div class="res-extra" id="res-extra" hidden></div>
       </div>
       <div class="card res-pay">
         <table class="pay" id="res-pay"></table>
@@ -1252,6 +1457,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 
   <!-- ===== Panels over the stopped wagon ===== -->
   <div class="pn" id="panel-marker" hidden></div>
+  <div class="pn" id="panel-fork" hidden></div>
   <div class="pn" id="panel-problem" hidden></div>
   <div id="card" hidden></div>
   <div id="mini" hidden><div class="bait-row" id="bait-row" hidden></div><div class="mini-bar"><span id="mini-text">Tap to loose an arrow</span><button class="btn btn-sm" id="mini-done" data-sfx>Done</button></div></div>

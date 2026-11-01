@@ -14,12 +14,21 @@
 // v1.4: Options → "Far-off sounds on the trail" (rifles at a distance, wolves, a bear on a ridge, a prairie fire; default on) and
 // Report → one "Trail fun" line (finds, fish, biggest fish, best skips, quests given back). This tab is grown-up text, outside the
 // kid-rule audits, so the switch may name what it turns off.
+// v1.5 (The Long Trail, SPEC v1.5 §5.7): Journey shows the route, the tier, the year and the forks chosen, a table of the journeys finished (year ·
+// route · tier · stars), the farm in one line ("Willamette farm: 9 of 18 pieces"), whether the Pit Crew Check was offered, "Reset this journey only" (the
+// farm, the ledger, the cards and the sets stay) and the full reset (which says it clears the farm too); Options has "Let the child choose how hard"
+// (on; off = Rookie only) and "Gold panning" (on; off = the gold is given as a find); Report has the legs by route, and Copy report adds the route and
+// the tier.
 import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spell-jump/src/spelling/profiles.js';
 import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { dayChart, lastDays, rangeChips } from '../../../spell-jump/src/ui/chart.js';
-import { ANIMAL_BY_ID } from '../content/legs.js';
+import { ANIMAL_BY_ID, LEG_BY_ID } from '../content/legs.js';
+import { ROUTES, SITES } from '../content/routes.js';
+import { TIER_BY_ID } from '../content/tiers.js';
+import { homesteadView } from '../journey/homestead.js';
+import { routeOfLeg } from '../journey/route.js';
 import { COMPANION_BY_ID } from '../content/companions.js';
 import { FINDS } from '../content/finds.js';
 import { FISH, FISH_BY_ID } from '../content/fish.js';
@@ -212,31 +221,56 @@ export function createParentZone(app) {
   }
 
   // ---------- Journey: where the child is ----------
+  const routeName = (id) => (id === 'gold-road' ? ROUTES['gold-road'].name : ROUTES.emigrant.name);
+  const tierName = (J) => (TIER_BY_ID[J && (J.tier || J.season)] || TIER_BY_ID[(app.seasonOf(J) || {}).id] || TIER_BY_ID.rookie).name;
+  const WAYS = { 'south-pass:main': 'By Fort Bridger', 'south-pass:sublette': 'The Sublette Cutoff', 'south-pass:lander': 'The Lander Road', 'fort-hall:oregon': 'On to Oregon', 'fort-hall:california': 'South to California', 'the-dalles:columbia': 'The Columbia raft', 'the-dalles:barlow': 'The Barlow Road' };
+  const FORK_NAME = { 'south-pass': 'South Pass', 'fort-hall': 'Fort Hall', 'the-dalles': 'The Dalles' };
   function journeyTab(p) {
     const save = app.saveOf(p.id);
     const J = save.journey;
-    const season = app.seasonOf(J);
-    const legs = app.legs;
+    const legs = (J && Array.isArray(J.plan) && J.plan.length) ? J.plan : app.legs;
+    const L = save.ledger || { journeys: [] };
     let whereLine = 'Not on the trail yet: the first time, the child packs the wagon (name, animal, three companions).';
-    if (J && J.done) whereLine = `${season.year} · reached the Willamette Valley${save.homestead ? ` (homestead: ${save.homestead})` : ''}`;
+    const legAt = (i) => LEG_BY_ID[(legs[i] || {}).id] || legs[i] || {};
+    if (J && J.done) whereLine = `${J.year || app.seasonOf(J).year} · ${routeName(J.route)} · ${tierName(J)} · finished${save.homestead ? ` (homestead: ${save.homestead})` : ''}`;
     else if (J) {
-      const leg = legs[J.legIndex] || {};
+      const leg = legAt(J.legIndex);
       const under = save.trip && save.trip.legId === J.legId;
-      whereLine = `${season.year} ${season.name} · leg ${(J.legIndex || 0) + 1} of ${legs.length}: ${leg.from || ''} → ${(leg.stop && leg.stop.name) || leg.name || ''}${under ? (save.trip.stage === 'stop' ? ' (at the stop)' : ` (${money(J.milesDone || 0)} of ${money(leg.miles || 0)} mi)`) : ' (next)'}`;
+      whereLine = `${J.year || app.seasonOf(J).year} ${tierName(J)} · ${routeName(J.route)} · leg ${(J.legIndex || 0) + 1} of ${legs.length}: ${leg.from || ''} → ${(leg.stop && leg.stop.name) || leg.name || ''}${under ? (save.trip.stage === 'stop' ? ' (at the stop)' : ` (${money(J.milesDone || 0)} of ${money(((legs[J.legIndex] || {}).miles) || leg.miles || 0)} mi)`) : ' (next)'}`;
     }
     const out = [h('div', { class: 'where', id: 'jr-where' }, h('div', { class: 'label' }, `Where ${p.name} is`), h('div', { class: 'where-line', id: 'jr-where-line' }, whereLine),
-      J ? h('div', { class: 'pz-help' }, `Day ${J.day || 0} · $${money(J.cash)} · ${money(J.food)} lb of food · ${J.tokens || 0} trade tokens · ${save.stickers.length} stickers · ${save.seasonsDone} season${save.seasonsDone === 1 ? '' : 's'} finished`) : null)];
+      J ? h('div', { class: 'pz-help' }, `Day ${J.day || 0} · $${money(J.cash)} · ${money(J.food)} lb of food · ${J.tokens || 0} trade tokens · ${save.stickers.length} stickers · ${save.seasonsDone} journey${save.seasonsDone === 1 ? '' : 's'} finished`) : null)];
     if (J) {
       const animal = ANIMAL_BY_ID[J.animal] || { name: J.animal };
       const party = (Array.isArray(J.party) && J.party.length ? J.party : (J.companions || []).map((id) => ({ id, mood: J.mood })));
+      out.push(h('div', { class: 'hud-label pz-sec' }, 'The route'),
+        h('ul', { class: 'pat-list', id: 'jr-route' },
+          h('li', { 'data-k': 'route' }, `Route: ${routeName(J.route)}`),
+          h('li', { 'data-k': 'tier' }, `Difficulty: ${tierName(J)}`),
+          h('li', { 'data-k': 'year' }, `Year: ${J.year || app.seasonOf(J).year} · journey ${J.journeyN || 1}`),
+          h('li', { 'data-k': 'forks' }, `Forks chosen: ${Object.entries(J.branches || {}).map(([f, o]) => `${FORK_NAME[f] || f}: ${WAYS[`${f}:${o}`] || o}`).join(' · ') || 'none yet'}`)));
       out.push(h('div', { class: 'hud-label pz-sec' }, 'The party'),
         h('ul', { class: 'pat-list', id: 'jr-party' },
           h('li', {}, `Wagon: ${J.wagonName || 'unnamed'} · ${animal.name} · pace ${J.pace || 'steady'}, ${J.rations || 'plenty'} rations`),
           ...party.map((x) => { const c = COMPANION_BY_ID[x.id] || { name: x.id, role: '' }; return h('li', { 'data-companion': x.id }, `${c.name} ${c.role || ''} · ${x.mood || J.mood || 'happy'}`); })));
-      out.push(h('div', { class: 'pz-help pz-sec' }, 'One leg is one session (10 to 14 minutes): about five mile-marker facts from the Trail Blazer ladder, three or four word problems made from facts the child knows, and three spelling words from the Spell Jump list (at a river or in a letter). A miss never costs the leg: a slower day, or the same fair price.'));
-      out.push(...confirmRow('Reset the journey', `Back to Independence for ${p.name}, a new party (stickers, letters and the looks stay).`, 'Reset',
-        `Start ${p.name}'s journey over?`, 'Reset journey', () => { app.resetJourneyFor(p.id); app.toast('Journey reset'); render(); }, `pz-reset-journey-${p.id}`));
     }
+    // the years: every journey finished, and the farms
+    const rows = (Array.isArray(L.journeys) ? L.journeys : []).slice().reverse();
+    out.push(h('div', { class: 'hud-label pz-sec' }, 'Journeys finished'),
+      rows.length ? h('div', { class: 'pz-table-wrap' }, h('table', { class: 'pz-table', id: 'jr-journeys' },
+        h('thead', {}, h('tr', {}, ...['Year', 'Route', 'Tier', 'Stars'].map((x) => h('th', {}, x)))),
+        h('tbody', {}, ...rows.map((j) => h('tr', { 'data-journey': j.id }, h('td', { class: 'op' }, String(j.year)), h('td', {}, routeName(j.route)), h('td', {}, (TIER_BY_ID[j.tier] || {}).name || j.tier), h('td', {}, String(j.stars | 0)))))))
+        : h('div', { class: 'pz-help', id: 'jr-journeys' }, 'No journey finished yet.'));
+    const farmLines = SITES.filter((s) => save.farm && save.farm.sites && save.farm.sites[s.id]).map((s) => { const v = homesteadView(save.farm, s.id, J); return `${s.name}${save.farm.sites[s.id].name ? ` “${save.farm.sites[s.id].name}”` : ''}: ${v.built} of ${v.of} pieces`; });
+    out.push(h('div', { class: 'pz-help', id: 'jr-farm' }, farmLines.length ? farmLines.join(' · ') : 'No homestead yet: the first trail’s end founds one.'));
+    out.push(h('div', { class: 'pz-help', id: 'jr-placement' }, app.placementLine(p.id)));
+    if (J) {
+      out.push(h('div', { class: 'pz-help pz-sec' }, 'One leg is one session (8 to 14 minutes): about five mile-marker facts from the Trail Blazer ladder, three or four word problems made from facts the child knows, and three spelling words from the Spell Jump list (at a river, a ferry or in a letter). A miss never costs the leg: a slower day, or the same fair price. The word problems’ shape follows the ladder: big-number children get two-step rations and distances and change-back buys.'));
+      out.push(...confirmRow('Reset this journey only', `Start ${p.name}'s current journey over from mile 0 (same wagon, team and party). The farm, the journeys finished, the trail cards and the card sets stay.`, 'Reset this journey',
+        `Start ${p.name}'s journey over? The farm and the cards stay.`, 'Reset this journey', () => { app.resetJourneyFor(p.id); app.toast('Journey reset'); render(); }, `pz-reset-journey-${p.id}`));
+    }
+    out.push(...confirmRow('Reset everything', `Back to the very start for ${p.name}: the journey, the farm, the journeys finished, the cards and sets, the journal and the looks all clear. The other games, the facts and the words are not touched.`, 'Reset all',
+      `Clear ${p.name}'s whole Wagon West, farm included?`, 'Clear everything', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-all-${p.id}`));
     return out;
   }
 
@@ -267,13 +301,21 @@ export function createParentZone(app) {
       weekLine(w),
       `This week: markers ${pctText(w.markersRight, w.markers)} right (${w.markersRight} of ${w.markers}), problems ${pctText(w.problemsRight, w.problems)} (${w.problemsRight} of ${w.problems}), words ${pctText(w.wordsRight, w.words)} first try (${w.wordsRight} of ${w.words})`,
       `All time: ${tot.legs} legs, ${save.stickers.length} stickers, ${save.letters.length} letters, ${save.seasonsDone} seasons finished`,
-      J ? `Now: ${app.seasonOf(J).year}, leg ${(J.legIndex || 0) + 1} of ${app.legs.length}` : 'Now: not on the trail yet',
+      J ? `Now: ${J.year || app.seasonOf(J).year}, ${routeName(J.route)}, ${tierName(J)}, leg ${(J.legIndex || 0) + 1} of ${(J.plan && J.plan.length) || app.legs.length}` : 'Now: not on the trail yet',
+      `Legs by route: ${legsByRoute(save)}`,
+      `Journeys finished: ${(save.ledger.journeys || []).map((j) => `${j.year} ${routeName(j.route)} ${(TIER_BY_ID[j.tier] || {}).name || j.tier}`).join('; ') || 'none'}`,
       ...(J ? [funLine(save)] : []),
       '', 'Problems by kind'];
     for (const k of PROBLEM_KINDS) { const x = save.kinds[k]; if (x && x.n) lines.push(`${KIND_LABEL[k]}: ${x.right} of ${x.n} right the first time (${pctText(x.right, x.n)})`); }
     const play = Object.entries(save.play).sort().reverse().slice(0, 14);
     if (play.length) { lines.push('', 'Play'); for (const [d, x] of play) lines.push(`${dayName(d)}: ${playText(x)}`); }
     return lines.join('\n');
+  }
+  /** "Emigrant trail 24 · Gold Road 7" from the legs log. */
+  function legsByRoute(save) {
+    const n = { emigrant: 0, 'gold-road': 0 };
+    for (const l of save.legsLog || []) n[routeOfLeg(l.leg)] += 1;
+    return `${routeName('emigrant')} ${n.emigrant} · ${routeName('gold-road')} ${n['gold-road']} (the last ${(save.legsLog || []).length} legs)`;
   }
   const dayName = (k) => new Date(k + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
   const playText = (x) => `${x.legs} leg${x.legs === 1 ? '' : 's'} · markers ${x.markersRight}/${x.markers} · problems ${x.problemsRight}/${x.problems} · words ${x.wordsRight}/${x.words}`;
@@ -322,6 +364,7 @@ export function createParentZone(app) {
       ...chartBlock(save, now),
       h('div', { class: 'pz-help pz-first', id: 'report-summary' }, `All time: ${t.legs} legs · markers ${pctText(t.markersRight, t.markers)} right · problems ${pctText(t.problemsRight, t.problems)} · words ${pctText(t.wordsRight, t.words)} · ${save.stickers.length} stickers · ${save.letters.length} letters`),
       save.journey ? h('div', { class: 'pz-help', id: 'report-fun' }, funLine(save)) : null,
+      h('div', { class: 'pz-help', id: 'report-routes' }, `Legs by route: ${legsByRoute(save)}${save.journey ? ` · now ${routeName(save.journey.route)}, ${tierName(save.journey)}` : ''}`),
       h('div', { class: 'hud-label pz-sec' }, 'Problems by kind'),
       kindRows.length ? h('div', { class: 'pz-table-wrap' }, h('table', { class: 'pz-table', id: 'report-kinds' },
         h('thead', {}, h('tr', {}, ...['Kind', 'Asked', 'Right first try', '%'].map((x) => h('th', {}, x)))), h('tbody', {}, ...kindRows)))
@@ -458,6 +501,8 @@ export function createParentZone(app) {
       toggle('Reduced motion', 'Calmer scene, no confetti', st.reducedMotion, (v) => app.setSetting('reducedMotion', v), 'opt-motion'),
       toggle('Hunting', 'A cartoon bow hunt when the trail finds tracks (no blood: the animal flops over, "Got one!"). Off: those stops become fishing.', st.hunting !== false, (v) => app.setSetting('hunting', v), 'opt-hunting'),
       toggle('Fractions at rivers', 'The rope toss after the river words: throw the rope to the landing (3/4 of the way across). Off: the words only.', st.fractions !== false, (v) => app.setSetting('fractions', v), 'opt-fractions'),
+      toggle('Let the child choose how hard', 'A new year offers Rookie, Veteran and Pioneer (each opens as the one before is finished). Off: every new year is Rookie.', st.chooseTier !== false, (v) => app.setSetting('chooseTier', v), 'opt-choose-tier'),
+      toggle('Gold panning', 'The gold pan and the cradle at the diggings (a fun game: every pan finds at least a flake). Off: the gold is given as a find with a card.', st.panning !== false, (v) => app.setSetting('panning', v), 'opt-panning'),
       toggle('Far-off sounds on the trail (rifles, wolves, a bear on a ridge, a prairie fire)', 'Short trail facts with a sound far away: bison hunters\' rifles beyond the ridge (nothing drawn, the wagon safe), wolves singing, a grizzly on a ridge, a prairie fire glowing. On by default; Off skips those four.', st.farSounds !== false, (v) => app.setSetting('farSounds', v), 'opt-far-sounds'),
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with the other three games')),
@@ -480,7 +525,7 @@ export function createParentZone(app) {
       const card = h('div', { class: 'pz-player', 'data-player': p.id, style: { '--c': p.color } },
         h('div', { class: 'pz-player-head' }, cv, h('div', { class: 'name' }, p.name, h('div', { class: 'sub' }, `${app.whereFor(p.id)}, on this device`))),
         h('div', { class: 'pz-rename' }, input, save),
-        ...confirmRow('Reset Wagon West progress', `The journey, the journal (letters, stickers), the looks and the report back to the start for ${p.name}. The other games, the facts and the words are not touched.`, 'Reset',
+        ...confirmRow('Reset Wagon West progress', `The journey, the farm, the years, the journal (letters, stickers), the cards, the looks and the report back to the start for ${p.name}. The other games, the facts and the words are not touched.`, 'Reset',
           `Reset ${p.name}'s Wagon West progress?`, 'Reset', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-${p.id}`),
         ...confirmRow('Remove player', `Removes ${p.name} from the family in all four games, on every device, with all of ${p.name}'s data.`, 'Remove',
           `Remove ${p.name} for good, in every game?`, 'Remove', () => { app.removePlayer(p.id); render(); }, `pz-remove-${p.id}`));

@@ -38,6 +38,13 @@
 // Kansas River and the missing locket (the Talk row's quest people, the post office's mailed fallback), the journal's Finds and Fish
 // log pages, the spoon and the horseshoes at the store. The journey decides everything (src/journey/{dog,fishing,quests,moments,
 // collections}.js through sim.js); the scene draws it (the mock scene's hooks in tests); this file drives and speaks.
+// v1.5 (SPEC "v1.5", The Long Trail; the "// ---- v1.5 ..." blocks): the trail is 20 legs and has forks (the fork panel at Fort Hall, South Pass and The
+// Dalles: forkAt / chooseBranch), a toll (the Barlow Road: payToll), Laurel Hill (the rope slide: startSnub / applySnub), dry stretches (the water
+// barrel), a second route (the Gold Road from the farm: the diggings, the pan and the cradle, the voyage home by sea) and a second trail's end
+// (the Sacramento claim); every journey is a year (the ledger), starts from the last one (startSeason carries the cards, deeds, tokens, upgrades, the
+// dog and v1.4's collections) and closes at its trail's end into the homestead (closeJourney: savings, Beaver money, the team); the homestead has its
+// own screen (src/ui/homestead.js); card sets pay wagon decorations; the Pit Crew Check places the child on the first store or marker; word
+// problems take the shape of the child's ladder (problemFor's tier). The journey decides, the scene draws, this file drives and speaks.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -66,7 +73,16 @@ import * as Sim from './journey/sim.js';
 import * as Problems from './journey/problems.js';
 import * as Letters from './journey/letters.js';
 import * as Economy from './journey/economy.js';
-import { ANIMAL_BY_ID, LEGS, LEG_BY_ID, SEASONS, SEASON_BY_ID, GOODS } from './content/legs.js';
+import { ANIMAL_BY_ID, ALL_LEGS, LEGS, LEG_BY_ID, GOODS } from './content/legs.js';
+import { ROUTES, FORKS, SITES } from './content/routes.js';
+import { TIERS, TIER_BY_ID } from './content/tiers.js';
+import { FAMILIES } from './content/families.js';
+import { PIECE_BY_ID } from './content/homestead.js';
+import { CARD_SETS, DECOR_BY_ID } from './content/cards.js';
+import { PERSON_BY_ID } from './content/people.js';
+import { legList, routeStart, routeOfLeg } from './journey/route.js';
+import { checkAnswer, checkNext, checkProgress, applyCheck, createCheck } from '../../trail-blazer/src/facts/placement.js';
+import { refreshFrontier } from '../../trail-blazer/src/facts/store.js';
 import { COMPANION_BY_ID } from './content/companions.js';
 import { CARDS, CARD_BY_ID } from './content/cards.js';
 import { LOOKOUTS } from './content/lookouts.js';
@@ -82,7 +98,7 @@ import { Music } from './meta/music.js';
 import { registerWagonWestSync } from './meta/sync.js';
 import { addLetter, dayKeyOf, defaultSave, loadSave, loadSettings, logKind, logPlay, removeSave, writeSave, writeSettings } from './meta/save.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
-import { STOCK, equipLook, grantLook, itemOf, rollCrate } from './ui/looks.js';
+import { STOCK, equipLook, grantLook, itemOf, rollCrate, wornDecor } from './ui/looks.js';
 import { createPlayers } from './ui/players.js';
 import { createTitle } from './ui/title.js';
 import { companionSvg, createOutfit } from './ui/outfit.js';
@@ -93,6 +109,10 @@ import { createMarkerPanel, markerTexts } from './ui/markerPanel.js';
 import { createProblemPanel, problemTexts } from './ui/problemPanel.js';
 import { createCard } from './ui/card.js';
 import { createRiver } from './ui/river.js';
+import { createYearPicker } from './ui/yearPicker.js';
+import { createForkPanel } from './ui/forkPanel.js';
+import { createDiggings, pouchText, DIG_TEXT } from './ui/diggings.js';
+import { createHomestead, workProblem, FARM_TEXT } from './ui/homestead.js';
 // ---- v1.2 (app two): people and deeds ----
 import { createPeople, START_STOP } from './ui/people.js';
 import { createDeedPop } from './ui/deeds.js';
@@ -106,10 +126,10 @@ import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
 import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
-import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts } from './meta/voiceTexts.js';
+import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts, V15 } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 // the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
 // is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];
@@ -200,7 +220,7 @@ async function boot() {
   let vignetteOn = false;               // (v1.4 playtest: a trail fact's far-off scene plays with nothing on top of it: toasts wait, as they do for a mini-game)
   const readingOpen = () => { try { return !!(app.overlayOpen() || v2.play || v2.bar || mini || derby || dayFlow || vignetteOn); } catch (_) { return false; } };
   const toaster = createToaster(toastsEl, { blocked: readingOpen, say: (t) => speech.later(t), speaking: () => speech.ambientPending });
-  const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || !!mini || !!derby;
+  const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || forkPanel.isOpen || !!mini || !!derby;
   let derby = null;                       // Fort Derby in progress: { leg, markers, bursts, resolve }
   let campVisit = null;                   // this camp visit: { context, line (a companion spoke: their card) }
   let lastQuickDraw = null, lastDerby = null;   // (tests)
@@ -229,21 +249,23 @@ async function boot() {
     get currentPlayerId() { return currentPlayerId; },
     get player() { return Profiles.playerById(family, currentPlayerId); },
     get screen() { return screen; },
-    legs: LEGS,
+    /** The legs of the journey in progress, in order (its plan: 20 on the Oregon Trail, 24 to California, 12 on the Gold Road); the default plan with no journey. */
+    get legs() { return planLegs(save.journey); },
     legById: (id) => LEG_BY_ID[id] || null,
     beat,
     overlayOpen: () => panelOpen() || pz.isOpen || wagonPanel.isOpen || !$('#panel-pause').hidden,
     persist: () => { v2CheckDeeds(); writeSave(currentPlayerId, save); },   // (v1.2 app two: a deed is earned the moment its counter says so)
     saveOf: (id) => (id === currentPlayerId ? save : loadSave(id)),
-    /** "Leg 3 of 12 · 1847" for the picker tile and the Parent Zone. */
+    /** "Leg 3 of 20 · 1847" for the picker tile and the Parent Zone. */
     whereFor(id) {
       const s = app.saveOf(id), J = s.journey;
       if (!J) return 'Ready to pack the wagon';
-      if (J.done) return `In the valley · ${app.seasonOf(J).year}`;
-      return `Leg ${(J.legIndex || 0) + 1} of ${LEGS.length} · ${app.seasonOf(J).year}`;
+      if (J.done) return `${J.route === 'gold-road' ? 'Home with gold' : 'In the valley'} · ${app.seasonOf(J).year}`;
+      return `Leg ${(J.legIndex || 0) + 1} of ${(Array.isArray(J.plan) && J.plan.length) || LEGS.length} · ${app.seasonOf(J).year}`;
     },
     season: () => app.seasonOf(save.journey),
-    seasonOf: (J) => SEASON_BY_ID[J && J.season] || SEASONS[0],
+    /** A journey's tier as the screens read it: { id, name ('Rookie'), emoji, priceMult, numberMult, year }. */
+    seasonOf: (J) => ({ ...JA.seasonOf(J ? J.tier || J.season : null), year: J && Number.isFinite(J.year) ? J.year : yearNow() }),
     paintColor: () => (itemOf('paint', save.cosmetics.equipped.paint) || itemOf('paint', STOCK.paint)).color,
     weekWords() { if (!currentPlayerId) return 0; try { return WS.activeList(Profiles.loadWords(currentPlayerId)).words.length; } catch (_) { return 0; } },
     tokens: () => num(save.journey && save.journey.tokens),
@@ -287,11 +309,20 @@ async function boot() {
       writeSave(id, fresh);
       if (id === currentPlayerId) { stopTravel(); replaceInPlace(save, loadSave(id)); refreshCash(); }
     },
+    /** Parents → "Reset this journey only" (v1.5): the journey in progress starts over from mile 0 with the same wagon, team and party; the farm, the
+     *  ledger, the cards, the sets and what a journey carries stay. The stamp makes the other devices drop their older copy of the journey. */
     resetJourneyFor(id) {
       const s = app.saveOf(id);
-      s.journey = null; s.trip = null;
+      const old = s.journey;
+      if (old && !old.done) {
+        let n = null;
+        try { n = JA.startSeason(old, { route: old.route, tier: old.tier || 'rookie', family: old.family, animal: old.animal, companions: old.companions, wagonName: old.wagonName, hunting: old.opts && old.opts.hunting, ledger: s.ledger, farm: s.farm, seed: hashString(`${id}:reset:${Date.now()}`) }); } catch (e) { console.warn('[WagonWest] reset journey', e); }
+        s.journey = n || null;
+      }
+      s.trip = null;
+      s.journeyResetAt = Date.now();
       writeSave(id, s);
-      if (id === currentPlayerId) { stopTravel(); refreshCash(); }
+      if (id === currentPlayerId) { stopTravel(); if (s.journey) { ensureJ(); applySceneParty(); } refreshCash(); }
     },
     onFamilyChanged() { if (screen === 'title') screens.title.show(); },
     onParentZoneClosed() {
@@ -369,6 +400,8 @@ async function boot() {
     ropeFraction,
     openCrate,
     get panels() { return { marker: markerPanel, problem: problemPanel, spell: spellPanel, card }; },
+    get ledger() { return save.ledger; },
+    get farm() { return save.farm; },
     get cloud() { return cloud; },
   };
 
@@ -409,7 +442,11 @@ async function boot() {
     players: playersUI.players, newplayer: playersUI.newplayer, title: createTitle(app), outfit: createOutfit(app), store,
     trail: { show() {}, hide() {} }, stop: { show() {}, hide() {} }, river, post: postOffice, journal: createJournal(app), results, home: homeUI,
     camp: createCamp(app), derby: { show() {}, hide() {} }, dog: dogUI,
+    // ---- v1.5: the year picker and the homestead ----
+    year: createYearPicker(app), farm: createHomestead(app),
   };
+  const forkPanel = createForkPanel(app);
+  const diggings = createDiggings(app);
   let findPop = null;                     // (v1.4: the dog's finds and the wishes pop in the same place as a card: one at a time, a card first)
   const cardPop = createCardPop($('#cardpop'), { sfx: Sfx, hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) || !!(findPop && findPop.visible) });
   // the voice: Spell Jump's tts, with the natural voice when the family has a code and the player picked one in Spell Jump
@@ -445,7 +482,7 @@ async function boot() {
     try { if (facts) for (const f of activeFacts(facts)) for (const flip of [false, true]) factTexts.push(...markerTexts(f, flip)); } catch (e) { console.warn('[WagonWest] activeFacts', e); }
     const J = save.journey;
     const legId = (J && J.legId) || LEGS[0].id;
-    const c = collectVoiceTexts({ legId, factTexts, names: ((J && J.companions) || []).map((id) => (COMPANION_BY_ID[id] || {}).name).filter(Boolean), animal: J ? animalName() : '', playerName: (app.player && app.player.name) || '', dogName: (J && J.dog && J.dog.name) || '' });
+    const c = collectVoiceTexts({ legId, plan: J && Array.isArray(J.plan) ? J.plan.map((p) => p.id) : null, farmName: farmName(), factTexts, names: ((J && J.companions) || []).map((id) => (COMPANION_BY_ID[id] || {}).name).filter(Boolean), animal: J ? animalName() : '', playerName: (app.player && app.player.name) || '', dogName: (J && J.dog && J.dog.name) || '' });
     speech.prepareBulk([...listTexts(words), ...c.ordered]);
   }
   /** Just in time: the sentences about to be said (a generated problem, a letter, a riddle) as clips. Waits for them at most
@@ -462,7 +499,14 @@ async function boot() {
   }
   const replaceInPlace = (obj, fresh) => { for (const k of Object.keys(obj)) delete obj[k]; Object.assign(obj, fresh); };
   const partySize = (J) => { try { if (JA.partySize) return JA.partySize(J); } catch (_) { /* below */ } return ((J.party && J.party.length) || 3) + 1; };
-  const curLeg = () => { const J = save.journey; if (!J) return null; try { if (JA.currentLeg) { const l = JA.currentLeg(J); if (l) return LEG_BY_ID[l.id] || l; } } catch (_) { /* below */ } return LEG_BY_ID[J.legId] || LEGS[num(J.legIndex)] || null; };
+  /** The leg the party is on: the journey's plan leg (a branch's own miles: Soda Springs is 50 on the Sublette Cutoff), not the content's default. */
+  const curLeg = () => { const J = save.journey; if (!J) return null; try { if (JA.currentLeg) { const l = JA.currentLeg(J); if (l) return l; } } catch (_) { /* below */ } return LEG_BY_ID[J.legId] || null; };
+  /** The legs of a journey in order: its plan installed as the module table (the sim does it at every entry point); the default plan with none. */
+  function planLegs(J) {
+    if (!J) return LEGS;
+    try { JA.usePlan(J); const l = legList(); if (Array.isArray(l) && l.length) return l; } catch (_) { /* below */ }
+    return LEGS;
+  }
 
   // ---------- v1.2: the wagon's supplies, the skills, the forecast, the family map ----------
   const animalName = () => (save.journey && save.journey.animal === 'mules' ? 'mules' : 'oxen');
@@ -559,6 +603,7 @@ async function boot() {
   function effectToast(text, say) {
     if (!text) return null;
     const t = h('div', { class: 'toast fx', role: 'status' }, text);
+    if (screen === 'camp') t.dataset.scope = 'camp';          // (v1.5 playtest U1: a line made at camp goes with camp)
     toaster.add(t, 4800, { say });          // (the line is said when the toast is shown, behind whatever is playing)
     return t;
   }
@@ -576,6 +621,7 @@ async function boot() {
     const t = h('div', { class: 'toast fx skill', role: 'status', 'data-skill': skill.id || '', 'data-who': who || '' },
       c ? h('span', { class: 'sk-face', html: companionSvg(c), 'aria-hidden': 'true' }) : null,
       h('span', { class: 'sk-text' }, c ? h('b', {}, c.name) : null, h('span', {}, line)));
+    if (screen === 'camp') t.dataset.scope = 'camp';
     toaster.add(t, 5200, { say: c && !line.startsWith(c.name) ? `${c.name}: ${line}` : line });
     return t;
   }
@@ -638,13 +684,16 @@ async function boot() {
   document.addEventListener('pointerdown', () => { lastDown = performance.now(); }, true);
   document.addEventListener('click', (e) => { const t = performance.now(); if (lastDown < lastGo && t - lastGo < 500) { e.preventDefault(); e.stopPropagation(); } }, true);
 
-  const STAGE_SCREENS = ['trail', 'stop', 'store', 'river', 'post', 'results', 'home', 'camp', 'derby', 'dog'];
+  const STAGE_SCREENS = ['trail', 'stop', 'store', 'river', 'post', 'results', 'home', 'camp', 'derby', 'dog', 'farm'];
   function go(name, arg) {
     lastGo = performance.now();
     closePause();
     if (wagonPanel.isOpen) wagonPanel.close();
     if (name !== 'trail' && T) stopTravel();
     if (!['stop', 'store', 'river', 'post', 'home', 'derby', 'dog', 'camp'].includes(name)) { if (store.isOpen) store.leave(); }
+    if (name !== 'stop' && diggings.isOpen) diggings.hide();                  // (v1.5: leaving the creek)
+    if (forkPanel.isOpen) forkPanel.hide();                                  // (v1.5: a fork left pending stays pending)
+    const was = screen;
     if (name !== 'camp' && screens.camp && screens.camp.isOpen && !['dog'].includes(name)) screens.camp.leave();
     if (name !== 'derby' && derby) quitDerby();
     for (const el of $$('.screen')) el.hidden = el.dataset.screen !== name;
@@ -652,6 +701,7 @@ async function boot() {
     screen = name;
     document.documentElement.dataset.screen = name;
     toaster.clear();                      // (what showed on the screen left, and the plain lines that waited for it, are done; an effect line stays queued)
+    if (was !== name) toaster.clearScope(was);      // (v1.5 playtest U1: an effect line that belonged to the screen left, like camp's "Three throws!", goes with it)
     $('#stage').hidden = !STAGE_SCREENS.includes(name);
     $('#backdrop').hidden = STAGE_SCREENS.includes(name);
     if (STAGE_SCREENS.includes(name)) { S('resize'); S('play'); } else S('pause');
@@ -662,7 +712,7 @@ async function boot() {
     setTimeout(() => updater.check(), 0);
   }
   // ---------- the trail's music (./meta/music.js): the tune by leg, the mood by screen, off while a panel is open ----------
-  const MOOD_BY_SCREEN = { trail: 'trail', derby: 'trail', camp: 'camp', results: 'camp', title: 'camp', stop: 'camp', store: 'camp', river: 'trail', journal: 'camp', outfit: 'camp', home: 'camp', dog: 'camp', post: 'post' };
+  const MOOD_BY_SCREEN = { trail: 'trail', derby: 'trail', camp: 'camp', results: 'camp', title: 'camp', stop: 'camp', store: 'camp', river: 'trail', journal: 'camp', outfit: 'camp', home: 'camp', dog: 'camp', post: 'post', year: 'camp', farm: 'camp' };
   function syncMusic() {
     const J = save.journey;
     const tune = TUNES[Math.max(0, num(J && J.legIndex)) % TUNES.length];
@@ -724,8 +774,9 @@ async function boot() {
     S('setParty', {
       animal: J.animal,
       companions: partyLook(),
-      wagon: { paint: app.paintColor(), flag: save.cosmetics.equipped.flag, name: J.wagonName || '' },
+      wagon: { paint: app.paintColor(), flag: save.cosmetics.equipped.flag, name: J.wagonName || '', decor: wornDecor(save.cosmetics) },
       dog: J.dog ? { name: J.dog.name, coat: J.dog.coat, muddy: !!J.dog.muddy } : null,
+      packMules: J.route === 'gold-road',                      // (v1.5: two pack mules walk beside the wagon on the Gold Road)
     });
   }
   /** The party as the scene draws it: [{ id, hat, color }] (the first companion wears the hat the child equipped). */
@@ -736,31 +787,82 @@ async function boot() {
     const ids = (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)).slice(0, 3);
     return ids.map((id, i) => { const c = COMPANION_BY_ID[id] || { hat: 'wide', color: '#d9653b' }; return { id, hat: i === 0 && hat !== 'none' ? hat : c.hat, color: c.color }; });
   }
-  const backdropFor = (leg) => ({ river: 'river', fort: 'fort', landmark: 'landmark', home: 'valley' }[leg && leg.stop && leg.stop.kind] || 'landmark');
+  const backdropFor = (leg) => ({ river: 'river', fort: 'fort', landmark: 'landmark', home: 'valley', gold: 'diggings' }[leg && leg.stop && leg.stop.kind] || 'landmark');
 
-  // ---------- outfit → the Independence store → the trail ----------
+  // ---------- a new year → the outfit → the start store → the trail ----------
+  // ---- v1.5: the year (the ledger), the picker, the outfit, startSeason ----
+  const yearNow = () => (save.ledger && save.ledger.year) || 1847;
+  const journeyN = () => ((save.ledger && save.ledger.journeys && save.ledger.journeys.length) || 0) + 1;
+  let pendingNew = { route: 'emigrant', tier: 'rookie' };           // what the year picker chose, for the Outfit that follows
+  /** What the year picker shows: the year, the routes with whether they are open (and why not), the tiers with how they open. */
+  function yearInfo() {
+    const L = save.ledger;
+    const open = JA.tiersOpen(L);
+    return {
+      year: L.year, journeyN: journeyN(), chooseTier: settings.chooseTier !== false,
+      routes: JA.routesOpen(L).map((x) => ({ id: x.id, name: (ROUTES[x.id] || {}).name || x.id, open: x.open, why: x.why })),
+      tiers: TIERS.map((t) => ({ ...t, open: !!open[t.id] })),
+    };
+  }
+  /** "A new year" (or the first pack of the wagon): the first journey ever goes straight to the Outfit (the emigrant trail at Rookie), later years pick where and how hard. */
+  function beginYear() {
+    const J = save.journey;
+    if (J && J.done && !J.closed) closeFinished(J);
+    pendingNew = { route: 'emigrant', tier: 'rookie' };
+    if (!save.ledger.journeys.length && (!J || !J.done)) { go('outfit', { fresh: true, route: 'emigrant', tier: 'rookie' }); return; }
+    go('year');
+  }
+  function startYear(pick) {
+    const info = yearInfo();
+    const route = (info.routes.find((x) => x.id === (pick && pick.route)) || {}).open ? pick.route : 'emigrant';
+    const tier = (info.tiers.find((x) => x.id === (pick && pick.tier)) || {}).open && info.chooseTier ? pick.tier : 'rookie';
+    pendingNew = { route, tier };
+    go('outfit', { fresh: true, route, tier });
+  }
+  /** What the Outfit needs: whether it has a Family step (a relative's wagon comes west from the second emigrant journey), the year, the last journey's party. */
+  function outfitContext(opts = {}) {
+    const route = (opts && opts.route) || pendingNew.route || 'emigrant';
+    const n = journeyN();
+    const prev = save.journey;
+    return { family: route === 'emigrant' && n >= 2, year: yearNow(), journeyN: n, route,
+      familyDefault: route === 'emigrant' && n >= 2 ? FAMILIES[(n - 2) % FAMILIES.length].id : 'own',
+      defaults: prev ? { wagonName: prev.wagonName || '', animal: prev.animal || 'oxen', companions: (prev.companions || []).slice(0, 3) } : null };
+  }
+  /** A finished journey that was never closed (a 1.3 save done in the valley): bank it into the farm and write the ledger. */
+  function closeFinished(J) {
+    let c = null;
+    try { c = JA.closeJourney(J, save.ledger, save.farm, { at: Date.now() }); } catch (e) { console.warn('[WagonWest] closeJourney', e); }
+    if (c && c.site && save.farm.sites[c.site] && save.farm.sites[c.site].name && c.site === 'willamette' && !save.homestead) save.homestead = save.farm.sites[c.site].name;
+    app.persist();
+    return c;
+  }
   async function outfitDone(draft, { fresh }) {
     const old = save.journey;
     if (fresh || !old) {
-      const season = (old && old.done && pendingSeasonId()) || (old ? old.season : SEASONS[0].id);
       const prev = old;
-      save.journey = JA.createJourney({ season, wagonName: draft.wagonName, animal: draft.animal, companions: draft.companions, seed: hashString(`${currentPlayerId}:${Date.now()}`) });
-      carryOver(prev, save.journey, { carry: true });
+      const common = { family: draft.family || 'own', animal: draft.animal, companions: draft.companions, wagonName: draft.wagonName, ledger: save.ledger, farm: save.farm, hunting: settings.hunting !== false, seed: hashString(`${currentPlayerId}:${Date.now()}`) };
+      let n = null;
+      try { n = JA.startSeason(prev || null, { route: pendingNew.route, tier: pendingNew.tier, ...common }); } catch (e) { console.warn('[WagonWest] startSeason', e); }
+      if (!n) { try { n = JA.startSeason(prev || null, { route: 'emigrant', tier: 'rookie', ...common }); } catch (e) { console.warn('[WagonWest] startSeason', e); } }
+      if (!n) n = JA.createJourney({ tier: 'rookie', wagonName: draft.wagonName, animal: draft.animal, companions: draft.companions, seed: common.seed });
+      save.journey = n;
+      pendingNew = { route: 'emigrant', tier: 'rookie' };
+      carryOver(prev, save.journey);                         // (the cards, if startSeason was not the one to carry them)
       ensureJ();
       save.trip = null;
       if (typeof JA.setHunting === 'function') try { JA.setHunting(save.journey, settings.hunting !== false); } catch (_) { /* ignore */ }
       app.persist();
       applySceneParty();
-      await independenceStore();
+      await startStore();
       return;
     }
     const J = old;
     const partyChanged = J.animal !== draft.animal || String(J.companions || []) !== String(draft.companions);
     if (partyChanged && app.partyEditable()) {
       // nothing has happened on the trail yet: the journey is made again with the new party (the store's buys kept)
-      const keep = { cash: J.cash, parts: J.parts, goods: J.goods, foods: J.foods, animals: J.animals, tokens: J.tokens, cards: J.cards, upgrades: J.upgrades, challenges: J.challenges, dog: J.dog };
+      const keep = { cash: J.cash, parts: J.parts, goods: J.goods, foods: J.foods, animals: J.animals, tokens: J.tokens, cards: J.cards, deeds: J.deeds, upgrades: J.upgrades, challenges: J.challenges, dog: J.dog, farmGift: J.farmGift };
       if (!J.foods) keep.food = J.food;
-      const n = JA.createJourney({ season: J.season, wagonName: draft.wagonName, animal: draft.animal, companions: draft.companions, seed: J.seed });
+      const n = JA.createJourney({ route: J.route, tier: J.tier || J.season, year: J.year, journeyN: J.journeyN, family: J.family, branches: J.branches, wagonName: draft.wagonName, animal: draft.animal, companions: draft.companions, seed: J.seed, hunting: J.opts && J.opts.hunting });
       for (const [k, v] of Object.entries(keep)) if (v !== undefined) n[k] = v;
       save.journey = n;
     } else J.wagonName = draft.wagonName;
@@ -768,37 +870,41 @@ async function boot() {
     applySceneParty();
     go('title');
   }
-  /** What a new journey keeps from the old one: the trail cards (a collection across seasons). v1.4: the dog, the finds, the fish log and
-   *  the rest of the dog's and the river's collections are the journey's to carry (carry14 inside newSeason); `carry` is for a fresh
-   *  journey the Outfit makes after a finished one, which asks the journey to carry them (else the dog alone, as in 1.1). */
-  function carryOver(prev, n, { carry = false } = {}) {
+  /** What a new journey keeps from the old one: the trail cards (a collection across years). startSeason carries the rest (SPEC v1.5 §3.6: the cards, the deeds,
+   *  the tokens, the upgrades, the challenges, the dog and v1.4's collections); the dog alone for a journey the 1.4 way. */
+  function carryOver(prev, n) {
     if (!prev || !n) return;
     if (prev.cards && (!n.cards || (Array.isArray(n.cards) && !n.cards.length))) n.cards = JSON.parse(JSON.stringify(prev.cards));
-    if (!carry) return;
-    if (typeof JA.carry14 === 'function') { try { JA.carry14(prev, n); } catch (e) { console.warn('[WagonWest] carry14', e); } }
-    else if (prev.dog && !n.dog) n.dog = { ...prev.dog, muddy: false };
   }
-  function pendingSeasonId() {
+  /** The start of the route: Independence, or (the Gold Road) the farm and the news from California; its people, then the store, then the trail. */
+  async function startStore() {
     const J = save.journey;
-    const i = SEASONS.findIndex((s) => s.id === (J && J.season));
-    return SEASONS[Math.min(SEASONS.length - 1, i + 1)].id;
-  }
-  async function independenceStore() {
-    const J = save.journey;
+    const start = routeStart(J.route) || ROUTES.emigrant.start;
     S('setBackdrop', 'fort');
-    // v1.2 fix: the start town has people too (Mr. Hale, Clara, Amos): the same Talk row a fort has, then the store
-    if (peopleUI.has(START_STOP)) {
+    if (J.route === 'gold-road') {
+      go('stop');
+      const look = LOOKOUTS['gold-news'];
+      await showCard({ kicker: 'News from California!', title: 'Gold!', text: look ? look.text : '', say: look ? look.say : '', tone: 'lookout', button: 'To the store' });
+      if (screen !== 'stop') return;
+      dropCard('gold-news');
+      if (num(J.farmGift) > 0) { const t = `The farm sends ${num(J.farmGift)} lb of food along.`; effectToast(t, t); }
+    } else if (peopleUI.has(START_STOP)) {
+      // v1.2 fix: the start town has people too (Mr. Hale, Clara, Amos): the same Talk row a fort has, then the store
       go('stop');
       const on = await peopleUI.visit(START_STOP);
       if (!on || screen !== 'stop') return;
     }
     let leg = null;
     try { leg = JA.storeLeg ? JA.storeLeg(J) : null; } catch (_) { leg = null; }
-    const ok = await store.open({ leg, place: (LEGS[0] && LEGS[0].from) || 'Independence', nextText: 'Hit the trail' });
+    await offerPlacement('store');                 // (v1.5: the Pit Crew Check, on the first store or marker; "Later" asks again at the next)
+    if (screen === 'players') return;
+    const ok = await store.open({ leg, place: (start.store && start.store.name) || (LEGS[0] && LEGS[0].from) || 'Independence', nextText: 'Hit the trail' });
     if (ok) hitTrail();
   }
 
   // ---------- the store ----------
+  /** The shape the child's ladder gives a word problem (SPEC v1.5 §3.9b): 0 and 1 are 1.3.3's, 2 asks the ration and distance in two steps and the change on a buy. */
+  const probTier = () => { try { return typeof JA.problemTierFor === 'function' ? JA.problemTierFor(facts) : 1; } catch (_) { return 1; } };
   /** A fact from the child's ladder with the operation a problem needs ('x' or '/'), or null (problemFor picks). */
   function ladderPick(op = 'any') {
     if (!facts) return null;
@@ -834,6 +940,49 @@ async function boot() {
     if (fp.op === '/') return fp.b >= 1 && fp.b <= 12 && fp.a / fp.b <= 12 ? k : null;
     return null;
   }
+  // ---- v1.5: the Pit Crew Check (SPEC v1.5 §3.9a): offered on the first store or mile marker while the child's ladder is untouched ----
+  let placing = false;
+  /** Offer the check ("Before you answer questions, the pit crew checks what you've got. About 15 quick facts." · Start · Later): never a gate, never a timer;
+   *  "Later" asks again at the next store or marker, at most three times. Resolves true when the check was taken. */
+  async function offerPlacement(where) {
+    if (placing || !facts || !currentPlayerId) return false;
+    let need = false;
+    try { need = !!JA.needsPlacement(facts, { offered: num(save.seen.placeOffers) }); } catch (e) { console.warn('[WagonWest] needsPlacement', e); }
+    if (!need) return false;
+    placing = true;
+    try {
+      save.seen.placeOffers = num(save.seen.placeOffers) + 1;
+      app.persist();
+      lastPlacement = { where, took: false };
+      const c = await showCard({ kicker: 'The pit crew', title: 'Pit Crew Check', text: V15.PLACE_OFFER, say: V15.PLACE_SAY, tone: 'coach', button: 'Start', alt: 'Later' });
+      if (c !== true) return false;
+      const done = await runPlacement();
+      lastPlacement.took = done;
+      return done;
+    } finally { placing = false; }
+  }
+  let lastPlacement = null;
+  /** The check itself: Trail Blazer's staircase (createCheck with the journey's placementSetup) on the marker panel in 'check' mode; the answers move the
+   *  ladder (applyCheck writes the records, refreshFrontier moves the frontier) so the very next problem takes the child's shape. */
+  async function runPlacement() {
+    const d = facts;
+    const setup = JA.placementSetup(d, Date.now());
+    const st = createCheck({ tiers: setup.tiers, start: setup.start, division: setup.division }, Math.random);
+    let it;
+    while ((it = checkNext(st))) {
+      await voiceFor(markerTexts(it.fact, !!it.flip));
+      const res = await markerPanel.open({ fact: it.fact, flip: !!it.flip, index: st.items.length, mode: 'check', progress: checkProgress(st), title: 'Pit Crew Check', chipText: `Fact ${st.items.length + 1}`, exitText: 'Later' });
+      if (!res || res.cancelled) return false;                 // the way out always works: nothing is kept, the check comes back at the next store or marker
+      checkAnswer(st, res);
+    }
+    const now = Date.now();
+    applyCheck(d, st, now);
+    refreshFrontier(d, now, 'Pit Crew Check');
+    try { writeFactsData(currentPlayerId, d); } catch (e) { console.warn('[WagonWest] writeFactsData', e); }
+    effectToast(V15.PLACE_DONE, V15.PLACE_DONE);
+    app.persist();
+    return true;
+  }
   /** A tap on a good (SPEC v1.2 §5: the store without a gate): one unit at the listed price, no question. Returns
    *  { ok } or { ok: false, reason: 'poor' (need: dollars short) | 'have' }. */
   function storeTap(good) {
@@ -864,7 +1013,7 @@ async function boot() {
     let p = null, pick = null;
     for (let tries = 0; tries < 3 && !p; tries++) {
       pick = tries < 2 ? ladderPick(kind === 'buy' ? 'x' : '/') : null;
-      try { p = JA.problemFor({ kind, fact: pick ? pick.fact : null, leg, season: J.season, rand: Math.random, item, cash: num(J.cash), shelf: num(good.price) }); } catch (e) { console.warn('[WagonWest] problemFor', e); p = null; }
+      try { p = JA.problemFor({ kind, fact: pick ? pick.fact : null, leg, season: J.season, rand: Math.random, item, cash: num(J.cash), shelf: num(good.price), tier: probTier() }); } catch (e) { console.warn('[WagonWest] problemFor', e); p = null; }
       if (p && kind === 'buy' && num(p.answer) > num(J.cash)) p = null;
       // a divide must not ask about more money than the purse holds, nor about more sacks than the purse pays at the shelf's price
       // (a fact like 63 ÷ 9 cannot fit a purse a big "Work it out" already spent: the next try is a small one)
@@ -901,7 +1050,7 @@ async function boot() {
     const lf = ladderFactOf(p, pick);
     // (the typed wrong answer goes on the fact's record only when the question's answer IS the fact's answer: a two-step ration or
     // repair asks for pounds left / good spokes, and "98 good bolts" is not a wrong answer to 9 × 12)
-    if (lf) recordFact(lf, { correct: res.correct, quick: false, fixed: !res.correct && res.fixed, ms: res.ms, given: Number(p.answer) === factAnswer(lf) ? res.given : null }, pick && normFact(pick.fact) === lf ? pick : null);
+    if (lf) recordFact(lf, { correct: res.correct, quick: false, fixed: !res.correct && res.fixed, ms: res.ms, given: Number(p.answer) === factAnswer(lf) && !(Array.isArray(p.parts) && p.parts.length > 1) ? res.given : null }, pick && normFact(pick.fact) === lf ? pick : null);
     app.persist();
     checkDaily();
     return res;
@@ -910,7 +1059,7 @@ async function boot() {
     const J = save.journey;
     const pick = kind === 'parts' ? null : ladderPick(kind === 'divide' || kind === 'distance' ? '/' : 'x');
     let p = null;
-    try { p = JA.problemFor({ kind, fact: pick ? pick.fact : null, leg: curLeg(), season: J.season, rand: (T && T.rand) || Math.random, ...extra }); } catch (e) { console.warn('[WagonWest] problemFor', e); }
+    try { p = JA.problemFor({ kind, fact: pick ? pick.fact : null, leg: curLeg(), season: J.season, rand: (T && T.rand) || Math.random, tier: probTier(), ...extra }); } catch (e) { console.warn('[WagonWest] problemFor', e); }
     if (!p) return { cancelled: true };
     const res = await runProblemPanel(p, { kind, title, pick });
     return { ...res, problem: p };
@@ -936,8 +1085,10 @@ async function boot() {
     const n = Math.max(1, Math.round(num(marker && marker.n) || save.trip.markers));
     const leg = curLeg();
     const of = Math.max(n, Math.round(num(marker && (marker.of || marker.total)) || Math.floor(((leg && leg.miles) || 150) / 30)));
+    if (!opts.raft && !opts.sail) S('setTravel', { moving: false });
+    await offerPlacement('marker');                    // ---- v1.5: the Pit Crew Check, on the first store or marker (Later asks again at the next) ----
+    if (!T) return;
     const pick = ladderPick('any') || { fact: '6x7', flip: false };
-    if (!opts.raft) S('setTravel', { moving: false });
     // Nora's tip (once a leg when the teacher is in the party): the strategy hint BEFORE the answer
     let tip = '';
     try { if (typeof JA.teacherTip === 'function' && JA.teacherTip(J)) tip = hintFor(pick.fact, !!pick.flip) || ''; } catch (e) { console.warn('[WagonWest] teacherTip', e); }
@@ -947,13 +1098,13 @@ async function boot() {
       if (!T) return;
     }
     await voiceFor(markerTexts(pick.fact, !!pick.flip));
-    const res = await markerPanel.open({ fact: pick.fact, flip: !!pick.flip, index: n - 1, total: of, ...(opts.raft ? { title: 'Down the Columbia', chipText: `Bend ${n} of ${of}` } : {}) });
+    const res = await markerPanel.open({ fact: pick.fact, flip: !!pick.flip, index: n - 1, total: of, ...(opts.raft ? { title: 'Down the Columbia', chipText: `Bend ${n} of ${of}` } : opts.sail ? { title: 'Up the coast', chipText: `Marker ${n} of ${of}` } : {}) });
     if (res.cancelled) return;
     recordFact(pick.fact, res, pick);
     try { const am = JA.applyMarker(J, { correct: !!res.correct, quick: !!res.quick }); if (am && am.skill) skillLine(am.skill); } catch (e) { console.warn('[WagonWest] applyMarker', e); }
     logPlay(save, { markers: 1, markersRight: res.correct ? 1 : 0 });
     app.persist();
-    if (res.quick) toast(opts.raft ? 'A fast current!' : 'A tailwind! A few free miles');
+    if (res.quick) toast(opts.raft ? 'A fast current!' : opts.sail ? 'A fair wind!' : 'A tailwind! A few free miles');
     else if (!res.correct) toast('Fixed it. The wagon rolls on');
     checkDaily();
   }
@@ -1040,17 +1191,17 @@ async function boot() {
   function hitTrail() {
     if (!currentPlayerId) { go('players'); return; }
     const J = save.journey;
-    if (!J) { go('outfit', { fresh: true }); return; }
+    if (!J) { beginYear(); return; }
     if (J.done) { newSeason(); return; }
     const leg = curLeg();
     if (!leg) { go('title'); return; }
     if (!save.trip || save.trip.legId !== J.legId) {
-      save.trip = { legId: J.legId, stage: 'trail', events: [], asked: { ration: 0, distance: 0 }, markers: 0, at: Date.now(), tokens0: num(J.tokens) };
+      save.trip = { legId: J.legId, stage: 'trail', events: [], asked: { ration: 0, distance: 0 }, markers: 0, at: Date.now(), tokens0: num(J.tokens), gold0: num(J.gold), dig: { pans: 0, rocker: 0 } };
       app.persist();
       prepareVoice();                      // every leg start: the clips for this week's facts, words and lines
     }
     applySceneParty();
-    S('setLeg', { id: leg.id, biome: leg.biome, miles: leg.miles, stop: leg.stop, river: leg.river });
+    S('setLeg', { id: leg.id, biome: leg.biome, miles: leg.miles, stop: leg.stop, river: leg.river, painting: leg.painting, dry: leg.dry || null, voyage: !!leg.voyage });
     if (save.trip.stage === 'stop') { runStop(leg).catch((e) => console.error('[WagonWest] stop', e)); return; }
     try { Music.tune(TUNES[num(J.legIndex) % TUNES.length]); musicState.tune = TUNES[num(J.legIndex) % TUNES.length]; } catch (_) { /* ignore */ }
     S('setBackdrop', 'trail');
@@ -1062,14 +1213,41 @@ async function boot() {
     if (bugle && bugle !== 'none') Sfx.bugle(bugle);
     T = { leg, day: null, acc: 0, busy: false, last: 0, raf: 0, weather: 'clear', rand: rngFrom(hashString(`${currentPlayerId}:${J.legId}:${J.seed}:${J.day}`)) };
     T.raf = requestAnimationFrame(travelFrame);
-    // ---- v1.2 (app two): the last leg runs as the Columbia raft instead of the trail days ----
+    // ---- v1.2 (app two): the last leg of the Oregon Trail by the Columbia runs as the raft instead of the trail days; v1.5: the voyage home runs as a sail ----
     if (v2StartRaft(leg)) return;
-    if (!save.seen.coach) {
+    if (v2StartSail(leg)) return;
+    const r = T;
+    const tollNow = !!(leg.toll && tollDue(J));
+    if (tollNow || !save.seen.coach) {
       T.busy = true;
-      const r = T;
-      card.show({ kicker: 'How the trail works', title: 'Roll out!', tone: 'coach', button: "Let's roll", text: COACH_TEXT })      // (opens at once; its line waits for its clip)
-        .then(() => { save.seen.coach = true; app.persist(); if (T === r) { r.busy = false; r.last = 0; } });
+      (async () => {
+        if (tollNow) await runToll(leg);                   // ---- v1.5: the Barlow Road's gate, at the leg's start ----
+        if (T !== r) return;
+        if (!save.seen.coach) {
+          await card.show({ kicker: 'How the trail works', title: 'Roll out!', tone: 'coach', button: "Let's roll", text: COACH_TEXT });      // (opens at once; its line waits for its clip)
+          save.seen.coach = true; app.persist();
+        }
+        if (T === r) { r.busy = false; r.last = 0; }
+      })().catch((e) => { console.error('[WagonWest] start of leg', e); if (T === r) { r.busy = false; r.last = 0; } });
     }
+  }
+  // ---- v1.5: the toll gate (the Barlow Road): $5 a wagon in 1846 money; a short purse gets an IOU, never a stranded wagon ----
+  const tollDue = (J) => !!(J && J.trip && J.trip.toll && !J.trip.toll.paid && !J.trip.toll.iou);
+  async function runToll(leg) {
+    const J = save.journey;
+    if (!tollDue(J)) return;
+    const dollars = num(J.trip.toll.dollars);
+    const short = num(J.cash) < dollars;
+    const ask = `The Barlow Road is a toll road around Mount Hood. The toll keeper at the gate asks $${dollars} for the wagon.`;
+    const askSay = `The Barlow Road is a toll road around Mount Hood. The toll keeper at the gate asks ${JA.dollarWords(dollars)} for the wagon.`;
+    const text = short ? `${ask} ${V15.TOLL_SHORT}` : ask, say = short ? `${askSay} ${V15.TOLL_SHORT}` : askSay;
+    await showCard({ kicker: 'The toll gate', title: short ? 'An IOU at the gate' : 'Pay the toll', text, say, tone: 'event', button: short ? V15.TOLL_IOU_BUTTON : 'Pay the toll' });
+    if (!save.journey || save.journey !== J) return;
+    let t = null;
+    try { t = JA.payToll(J); } catch (e) { console.warn('[WagonWest] payToll', e); }
+    app.persist(); refreshCash();
+    if (t && t.paid) { Audio.cash(); effectToast(`The toll is paid: $${t.dollars}. The gate swings open.`, V15.TOLL_PAID); }
+    else effectToast(V15.TOLL_IOU, V15.TOLL_IOU);
   }
   function stopTravel() {
     v2Abort();                          // ---- v1.2 (app two): leaving mid-raft / mid-stampede ends the mini-game ----
@@ -1102,7 +1280,7 @@ async function boot() {
     r.acc += dt;
     const k = Math.min(1, r.acc / dayMs());
     const m = r.day.from + (r.day.to - r.day.from) * k;
-    S('setTravel', { milesDone: m, pace: J.pace, rations: J.rations, weather: r.weather, mood: J.mood, foodLow: !!r.day.res.foodLow, moving: k < 1 });
+    S('setTravel', { milesDone: m, pace: J.pace, rations: J.rations, weather: r.weather, mood: J.mood, foodLow: !!r.day.res.foodLow, moving: k < 1, dry: !!r.day.res.dry });
     hud.update(J, r.leg, { milesDone: m, foodLow: !!r.day.res.foodLow, ...hudExtra() });
     if (k >= 1) { const d = r.day; r.day = null; afterDay(r, d).catch((e) => console.error('[WagonWest] day', e)); }
   }
@@ -1132,6 +1310,7 @@ async function boot() {
     const skills = [...(Array.isArray(res.skills) ? res.skills : []), ...(res.skill ? [res.skill] : [])].filter((k, i, a) => k && a.findIndex((x) => x && x.id === k.id) === i);
     for (const k of skills) skillLine(k);
     if (res.spotted && res.spotted.card) { const n = res.spotted.name || res.spotted.animal || 'an animal'; effectToast(`A ${n} on the ridge! A new card for the album.`); dropCard(res.spotted.card); }
+    if (res.dry && !r.dryShown) { r.dryShown = true; const t = res.thirsty ? V15.DRY_THIRSTY : V15.DRY_BARREL; effectToast(t, t); }      // ---- v1.5: a dry stretch ----
     if (res.coldNight) effectToast('A cold night. There are not enough blankets, so the party rests a day. Blankets at the next fort will help.', 'A cold night. There are not enough blankets, so the party rests a day.');
     if (res.animalsTired) {
       if (!r.tiredShown) { r.tiredShown = true; effectToast(`The ${animalName()} need a rest, so we go steady today.`, `The ${animalName()} need a rest, so we go steady today.`); }
@@ -1156,7 +1335,7 @@ async function boot() {
   }
 
   // ---------- events ----------
-  const EVENT_BUTTON = { problem: 'Fix it', hunt: 'Grab the bow', fish: 'Cast a line', trade: 'Trade', rest: 'Deal the cards', lookout: 'What a sight', bonus: 'Yum!' };
+  const EVENT_BUTTON = { problem: 'Fix it', hunt: 'Grab the bow', fish: 'Cast a line', trade: 'Trade', rest: 'Deal the cards', lookout: 'What a sight', bonus: 'Yum!', spring: 'A cool drink', snub: 'Hold the rope!' };
   async function runEvent(ev) {
     const J = save.journey;
     if (!ev) return;
@@ -1171,10 +1350,11 @@ async function boot() {
       sayText = text;
     }
     if (ev.covered) { const c = COVER_LINE; text = `${text || ''}${c}`; sayText = `${sayText || ev.text || ''}${c}`; }
-    if (kind === 'lookout') { spotSure = true; S('spotAnimal', ev.animal || 'bison'); }
+    if (kind === 'lookout' && ev.animal !== null) { spotSure = true; S('spotAnimal', ev.animal || 'bison'); }       // (v1.5: ice and gold fever have no animal; the gold-fever card comes from the Nisenan guide at Coloma, not from this event)
     S('setTravel', { moving: false });
     if (kind === 'breakdown') { await runBreakdown(ev); return; }
     if (kind === 'stampede' && scene && typeof scene.startStampede === 'function') { await runStampede(ev); return; }   // ---- v1.2 (app two) ----
+    if (kind === 'snub') { await runSnub(ev); return; }          // ---- v1.5: Laurel Hill ----
     await showCard({ kicker: 'On the trail', title: ev.name || 'On the trail', text, say: sayText, tone: kind, button: EVENT_BUTTON[kind] || 'Continue' });
     if (!T) return;
     if (kind === 'bonus' && /berr|plum/i.test(`${ev.id} ${ev.name || ''} ${ev.text || ''}`)) dropCard(plumCard());
@@ -1185,6 +1365,7 @@ async function boot() {
     else if (kind === 'trade') await runTrade(ev);
     else if (kind === 'hunt') await runMini(kind);
     else if (kind === 'fish') await runFishing({ rescue: !!ev.rescue });         // (v1.4: Fishing 2.0; the safety net is a rescue session)
+    else if (kind === 'spring' && T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() });      // (v1.5: a hidden spring lifts the party; the sim did it)
     if (!T) return;
     if (ev.fix) toast(ev.fix);
     app.persist();
@@ -1288,6 +1469,7 @@ async function boot() {
     } else if (evt.type === 'huntEnd' && mini && mini.kind === 'hunt') finishMini(Number.isFinite(evt.meatLb) ? evt.meatLb : null);
     else if (evt.type === 'fish' && mini && mini.kind === 'fish') { Sfx.plop(); mini.lb += num(evt.lb); mini.hits += 1; toast(`A ${evt.size || ''} fish!`.replace('  ', ' ')); if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal || 'fish') || animalCard('salmon')); } }
     else if (evt.type === 'animalSpotted') onSpotted(evt.animal);
+    else if (evt.type === 'homesteadTap') screens.farm.tap(evt);          // ---- v1.5: a tap on the farm in the scene
     else if (evt.type === 'bark') Sfx.bark();
     else if (evt.type === 'derbyMarker') onDerbyMarker(evt);
     else if (evt.type === 'derbyEnd') onDerbyEnd(evt);
@@ -1305,18 +1487,28 @@ async function boot() {
     Sfx.cheer();
     await runStop(leg);
   }
+  /** The extra cards a stop of the Gold Road hands out (beside its landmark card). */
+  const STOP_CARDS = { coloma: 'sutters-mill', 'sutters-fort': 'who-got-rich' };
   async function runStop(leg) {
     const J = save.journey;
     S('setBackdrop', backdropFor(leg));
     go('stop');
     const kind = leg.stop && leg.stop.kind;
     const look = LOOKOUTS[leg.lookout] || null;
-    await showCard({ kicker: 'You made it!', title: (leg.stop && leg.stop.name) || leg.name, text: look ? look.text : '', say: look ? look.say : '', sticker: leg.sticker, tone: 'lookout',
-      button: peopleUI.has(leg) ? 'Look around' : kind === 'river' ? 'To the ferry' : kind === 'fort' ? 'Into the fort' : kind === 'home' ? 'Home at last' : 'Continue' });
-    if (screen !== 'stop') return;
-    if (look || CARD_BY_ID[leg.id]) dropCard(leg.id);      // the lookout's landmark card
+    if (!(save.trip && save.trip.look)) {            // (a stop revisited after a fork left pending shows its lookout once)
+      await showCard({ kicker: 'You made it!', title: (leg.stop && leg.stop.name) || leg.name, text: look ? look.text : '', say: look ? look.say : '', sticker: leg.sticker, tone: 'lookout',
+        button: peopleUI.has(leg) ? 'Look around' : kind === 'river' ? 'To the ferry' : kind === 'fort' ? 'Into the fort' : kind === 'home' ? 'Home at last' : kind === 'gold' ? 'To the creek' : 'Continue' });
+      if (screen !== 'stop') return;
+      if (look || CARD_BY_ID[leg.id]) dropCard(leg.id);      // the lookout's landmark card
+      if (STOP_CARDS[leg.id]) dropCard(STOP_CARDS[leg.id]);
+      if (save.trip) { save.trip.look = true; app.persist(); }
+    }
+    // ---- v1.5: a fork, before the stop's other scenes: the explainer, the question, an equal button for every way (it also settles the food plan for the store) ----
+    if (!(await askFork())) return;
     // ---- v1.2 (app two): the "Talk" row of the people at this stop (its big button goes on to the ferry / the fort / home) ----
     if (peopleUI.has(leg)) { const on = await peopleUI.visit(leg); if (!on || screen !== 'stop') return; }
+    let dig = null;
+    try { dig = typeof JA.goldAt === 'function' ? JA.goldAt(J) : null; } catch (_) { dig = null; }
     if (kind === 'river') {
       const rr = await river.run({ leg });
       if (rr.cancelled) { if (screen === 'river') go('title'); return; }
@@ -1325,6 +1517,7 @@ async function boot() {
       await offerDog(leg, { river: true, back: 'stop' });
       if (screen !== 'stop') return;
       if (RIVER_STOPS.includes(leg.id)) { await offerStones(leg); if (screen !== 'stop') return; }
+      if (dig) { if (!(await digHere(leg, dig))) return; }
     } else if (kind === 'fort') {
       let sl = leg;
       try { if (JA.storeLeg) sl = JA.storeLeg(J) || leg; } catch (_) { sl = leg; }
@@ -1334,10 +1527,12 @@ async function boot() {
       if (!ok) return;
       const po = await postOffice.run({ leg });
       if (po.cancelled) { if (screen === 'post') go('title'); return; }
-    } else if (kind === 'home') {
-      const name = await homeUI.ask();
-      if (name == null) return;
-      save.homestead = name;
+    } else {
+      if (dig) { if (!(await digHere(leg, dig))) return; }                 // ---- v1.5: the diggings (a landmark, Coloma, the Sacramento claim) ----
+      if (leg.post) {                                                      // ---- v1.5: a letter is written at the stops that have a post (the ends of the trails, a few on the long stretches) ----
+        const po = await postOffice.run({ leg });
+        if (po.cancelled) { if (screen === 'post') go('title'); return; }
+      }
     }
     // the evening of every arrival: camp before the results (never needed: "On to the results" goes straight on)
     if (kind !== 'home') {
@@ -1351,6 +1546,42 @@ async function boot() {
     }
     return finishLeg(leg);
   }
+  // ---- v1.5: the fork panel and the diggings, as the stop runs them ----
+  /** The fork at this stop, if any: resolves false when the child left (the choice stays pending: the title says "A choice at Fort Hall"). */
+  async function askFork() {
+    const J = save.journey;
+    let fork = null;
+    try { fork = JA.forkAt(J); } catch (e) { console.warn('[WagonWest] forkAt', e); }
+    if (!fork) return true;
+    const first = !save.seen.forks[fork.id];
+    const pick = await forkPanel.run(fork, { first });
+    if (pick == null) { if (screen === 'stop') go('title'); return false; }
+    let res = null;
+    try { res = JA.chooseBranch(J, fork.id, pick); } catch (e) { console.warn('[WagonWest] chooseBranch', e); }
+    save.seen.forks[fork.id] = true;
+    app.persist();
+    const opt = fork.options.find((o) => o.id === pick);
+    if (res && res.ok && opt) toast(`${opt.name}!`);
+    lastFork = { id: fork.id, pick, ok: !!(res && res.ok) };
+    prepareVoice();                          // the plan changed: the next legs' clips, this leg first
+    return true;
+  }
+  let lastFork = null;
+  /** The creek: panning (and the cradle at Coloma) with the gold pouch; when Parents turned panning off, the gold is given as a find with one card. */
+  async function digHere(leg, dig) {
+    const J = save.journey;
+    if (screen !== 'stop') go('stop');
+    if (settings.panning === false) {
+      diggings.giveAsFind(dig);
+      const t = `${DIG_TEXT.find} ${pouchText(JA.nuggetsOf, J.gold | 0)}.`;
+      await showCard({ kicker: 'At the creek', title: 'Gold!', text: t, say: DIG_TEXT.find, tone: 'bonus', button: 'On we go' });
+      return screen === 'stop';
+    }
+    S('setBackdrop', 'diggings');
+    const res = await diggings.run({ leg, dig });
+    if (screen === 'stop') S('setBackdrop', backdropFor(leg));
+    return res === 'leave' && screen === 'stop';
+  }
   async function finishLeg(leg) {
     const J = save.journey;
     const now = Date.now();
@@ -1362,6 +1593,9 @@ async function boot() {
     if (arrivedQuest && J.dog) { try { await dogFetchesQuest(arrivedQuest); } catch (e) { console.warn('[WagonWest] arrival quest item', e); } if (save.journey !== J) return; }
     // the arrival's card (one of the leg's biome), and the daily challenge looks at the finished leg before it resets
     try { if (typeof JA.cardForLeg === 'function') dropCard(JA.cardForLeg(J, Math.random)); } catch (e) { console.warn('[WagonWest] cardForLeg', e); }
+    // v1.5: the tier's bonus cards (Veteran on a 3-star leg, Pioneer every leg)
+    const bonus = [];
+    for (let i = 0; i < num(a.bonusCards); i++) { try { const r0 = dropCard(JA.cardForLeg(J, Math.random)); if (r0 && r0.id) bonus.push(r0.id); } catch (_) { /* ignore */ } }
     checkDaily();
     // (v1.4: the dog's leg count is the journey's: arrive() adds it, and a muddy dog gets its bath there)
     if (a.bath) { applySceneParty(); effectToast(MOMENTS.chase.bath.text, MOMENTS.chase.bath.say || MOMENTS.chase.bath.text); }
@@ -1377,15 +1611,23 @@ async function boot() {
     logPlay(save, { legs: 1 }, now);
     save.legsLog = [...save.legsLog, { at: now, leg: leg.id, season: J.season, stars: stars.filter(Boolean).length, markers: num(stats.markers), markersRight: num(stats.markersRight), problems: num(stats.problems), problemsRight: num(stats.problemsRight), words: num(stats.words), wordsRight: num(stats.wordsRight) }].slice(-40);
     const tokens = Math.max(0, num(J.tokens) - num(save.trip && save.trip.tokens0));
+    const goldGain = Math.max(0, num(J.gold) - num(save.trip && save.trip.gold0));
     const home = leg.stop && leg.stop.kind === 'home';
     let next = null;
     try { next = JA.nextLeg(J); } catch (e) { console.error('[WagonWest] nextLeg threw', e); }
     let done = !!J.done;
-    if (!next && !done && leg === LEGS[LEGS.length - 1]) { J.done = true; done = true; }
+    if (!next && !done && a.end) { J.done = true; done = true; }
     if (done) save.seasonsDone += 1;
+    // ---- v1.5: a trail's end banks the journey into the homestead there (the dollars left become savings, the gold Beaver money, the team the pasture) and turns the year ----
+    let bank = null;
+    if (done) {
+      const c = closeFinished(J);
+      if (c) bank = { savings: num(c.banked && c.banked.savings), flakes: num(c.banked && c.banked.flakes), animals: num(c.banked && c.banked.animals), trophy: c.trophy, site: c.site, firstHere: !!c.firstHere };
+    }
     // ---- v1.2 (app two): the deeds this leg earned (the arrival counted) go on the results ----
     v2CheckDeeds();
     const legDeeds = (save.trip && Array.isArray(save.trip.deeds)) ? save.trip.deeds.slice() : [];
+    const sets = legSets.splice(0);
     save.trip = null;
     app.persist();
     pingNow('leg');
@@ -1393,26 +1635,50 @@ async function boot() {
       tokens, sticker, crate: a.crate || null, stats, food: num(J.food), home: home || done };
     if (result.cash.total !== result.cash.arrival + result.cash.stars) result.cash.total = result.cash.arrival + result.cash.stars;
     result.deeds = legDeeds;               // (v1.2 app two)
+    // v1.5: the tier's badge, the bonus cards, the gold found on a digging leg, the sets completed, the bank card
+    result.tier = TIER_BY_ID[J.tier] || null; result.year = J.year;
+    result.bonus = bonus; result.sets = sets;
+    result.goldFound = goldGain > 0 ? { total: goldGain, text: pouchText(JA.nuggetsOf, goldGain) } : null;
+    if (bank) {
+      result.bank = bank; result.animalName = animalName(); result.nuggetsOf = JA.nuggetsOf;
+      result.homeTitle = J.route === 'gold-road' ? 'Home with your gold!' : bank.site === 'sacramento' ? 'Your claim in California!' : 'Home in the valley!';
+    }
     S('setBackdrop', home ? 'valley' : backdropFor(leg));
     go('results', result);
     Audio.cash();
     if (stars.every(Boolean)) setTimeout(() => Audio.fanfare(), 400);
     S('celebrate', 'star');
+    if (bank) {                                // the bank card is said (it has numbers: just in time)
+      const parts = bankSay(bank);
+      if (parts) { app.voiceFor([parts], 4000); app.sayLater(parts); }
+    }
   }
-  function newSeason() {
+  /** The bank card, as it is said ("Seventy-four dollars into savings, six nuggets of Beaver money, and two oxen to the pasture."). */
+  function bankSay(b) {
+    const w = JA.numberWords, parts = [];
+    if (b.savings > 0) parts.push(`${w(b.savings)} ${b.savings === 1 ? 'dollar' : 'dollars'} into savings`);
+    if (b.flakes > 0) { const n = JA.nuggetsOf(b.flakes); parts.push(n.nuggets ? `${w(n.nuggets)} ${n.nuggets === 1 ? 'nugget' : 'nuggets'}${n.flakes ? ` and ${w(n.flakes)} ${n.flakes === 1 ? 'flake' : 'flakes'}` : ''} of Beaver money` : `${w(n.flakes)} ${n.flakes === 1 ? 'flake' : 'flakes'} of gold dust`); }
+    if (b.animals > 0) parts.push(`${w(b.animals)} ${animalName()} to the pasture`);
+    if (!parts.length) return '';
+    return `Home! The wagon brings ${parts.length > 1 ? `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}` : parts[0]}.`;
+  }
+  /** "A new year": close the journey if it was not (a 1.3 save), then pick where and how hard (the first journey ever goes straight to the Outfit). */
+  function newSeason() { beginYear(); }
+  /** After the results of a trail's end: name the farm when it is new (1.0's homestead keyboard), then the homestead screen. */
+  async function arriveFarm() {
     const J = save.journey;
-    if (!J) { go('outfit', { fresh: true }); return; }
-    let n = null;
-    try { n = JA.newSeason ? JA.newSeason(J) : null; } catch (e) { console.warn('[WagonWest] newSeason', e); }
-    if (!n || !Number.isFinite(n.legIndex)) { go('outfit', { fresh: true }); return; }
-    carryOver(J, n);                     // (the cards; the journey's newSeason carried the dog and the collections)
-    save.journey = n;
-    ensureJ();
-    save.trip = null;
-    if (typeof JA.setHunting === 'function') try { JA.setHunting(n, settings.hunting !== false); } catch (_) { /* ignore */ }
-    app.persist();
-    toast(`${app.season().year}: ${app.season().name}`);
-    go('title');
+    const c = J && J.closeResult;
+    const siteId = (c && c.site) || null;
+    if (!siteId || !save.farm.sites[siteId]) { newSeason(); return; }
+    const s = save.farm.sites[siteId];
+    if (!s.name) {
+      const name = await homeUI.ask(siteId);
+      if (name == null) return;
+      JA.foundSite(save.farm, siteId, { name, year: J.year });
+      if (siteId === 'willamette') save.homestead = name;
+      app.persist();
+    }
+    go('farm', { site: siteId, fresh: true });
   }
 
   // ---------- the valley: the homestead the child names (the on-screen keyboard) ----------
@@ -1431,7 +1697,7 @@ async function boot() {
     return {
       show() { paint(); kb.setEnabled(true); kb.setActive(true); },
       hide() { kb.setActive(false); if (waiter) { const w = waiter; waiter = null; w(null); } },
-      ask() { name = ''; return new Promise((resolve) => { waiter = resolve; go('home'); }); },
+      ask(siteId = 'willamette') { name = ''; $('#home-title').textContent = siteId === 'sacramento' ? 'The Sacramento Valley' : 'The Willamette Valley'; return new Promise((resolve) => { waiter = resolve; go('home'); }); },
     };
   }
 
@@ -1461,8 +1727,29 @@ async function boot() {
       toast('A full suit! A golden crate');
     }
     cardPop.pop(cd, { dup: !r.new, suitDone: full });
+    if (r.new) checkSetsNow();
     app.persist(); refreshCash();
-    return r;
+    return { ...r, id: cd.id };
+  }
+  // ---- v1.5: a card set completed pays its wagon decoration once (save.setsDone), worn at once while fewer than two are worn ----
+  let legSets = [];
+  function checkSetsNow() {
+    const J = save.journey;
+    if (!J || typeof JA.checkSets !== 'function') return [];
+    let ids = [];
+    try { ids = JA.checkSets(J, save.setsDone) || []; } catch (e) { console.warn('[WagonWest] checkSets', e); }
+    for (const id of ids) {
+      const st = CARD_SETS.find((x) => x.id === id);
+      if (!st || save.setsDone.includes(id)) continue;
+      save.setsDone.push(id);
+      const dec = DECOR_BY_ID[st.decor];
+      grantLook(save.cosmetics, 'decor', st.decor);
+      if (wornDecor(save.cosmetics).length < 2) equipLook(save.cosmetics, 'decor', st.decor);
+      legSets.push({ id, name: st.name, emoji: dec ? dec.emoji : '', decorName: dec ? dec.name : '' });
+      effectToast(`A full set: ${st.name}!${dec ? ` The ${dec.name} is yours.` : ''}`, st.say);
+      applySceneParty();
+    }
+    return ids;
   }
   function onSpotted(animal) {
     const J = save.journey;
@@ -1552,7 +1839,7 @@ async function boot() {
   /** Campfire tales: a landmark or nation the trail has passed, read aloud, then a riddle (a fact in disguise): a token. */
   async function campfireTale() {
     const J = save.journey;
-    const legs = LEGS.slice(0, Math.max(1, num(J.legIndex) + 1));
+    const legs = planLegs(J).slice(0, Math.max(1, num(J.legIndex) + 1));
     const pool = [...new Set(legs.flatMap((l) => [l.id, l.nation]).filter(Boolean))].map((id) => CARD_BY_ID[id]).filter(Boolean);
     const tale = pool[Math.floor(Math.random() * pool.length)];
     if (tale) await showCard({ kicker: 'Campfire tales', title: tale.name, text: factOfCard(tale), say: sayOf(tale), sticker: { emoji: tale.emoji, name: tale.name }, tone: 'camp', button: 'A riddle!' });
@@ -1762,7 +2049,7 @@ async function boot() {
   // scene.raftGo()) / 'raft' { bump } / 'raftEnd' { bumps, bends }, startStampede → 'stampede' { good } / 'stampedeEnd'
   // { held }. playMini() starts one and resolves with its end event (null when the child left; a quiet synthetic end when
   // the scene has no such mini-game, so the journey never stalls); onSceneEvent hands the events over through v2Event().
-  const v2 = { play: null, raft: null, bar: null };
+  const v2 = { play: null, raft: null, bar: null, sail: null };
   const peopleUI = createPeople(app);
   screens.stop = peopleUI;
   const deedPop = createDeedPop($('#deedpop'), { sfx: Sfx, say: (t) => { app.sayLater(t); }, waitFor: () => cardPop.showing || !!(findPop && findPop.visible), hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) });
@@ -1820,6 +2107,12 @@ async function boot() {
       if (J && leg && J.legId === leg.id && !(J.trip && J.trip.arrived) && num(J.milesDone) < num(leg.miles)) J.milesDone = 0;
       try { markerPanel.cancel(); } catch (_) { /* ignore */ }
     }
+    if (v2.sail) {
+      const J = save.journey, leg = v2.sail.leg;
+      v2.sail = null;
+      if (J && leg && J.legId === leg.id && !(J.trip && J.trip.arrived) && num(J.milesDone) < num(leg.miles)) J.milesDone = 0;
+      try { markerPanel.cancel(); } catch (_) { /* ignore */ }
+    }
     if (v2.bar) hideBar();
   }
 
@@ -1866,10 +2159,87 @@ async function boot() {
     if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() });
   }
 
-  // ----- the Columbia raft: the last leg (the-dalles → willamette-valley) is a raft run, not trail days -----
+  // ----- Laurel Hill (v1.5, the Barlow Road): the wagon goes down the steep slope on a rope round a stump -----
+  async function runSnub(ev) {
+    const J = save.journey;
+    const text = ev.text || 'Laurel Hill! The slope is very steep, so the wagon goes down on a rope round a stump. Hold the rope!';
+    await showCard({ kicker: 'On the trail', title: ev.name || 'Laurel Hill', text, say: ev.say || text, tone: 'event', button: 'Hold the rope!' });
+    if (!T) return;
+    showBar('Press and hold to let the wagon slide, let go at each ledge', 'Skip', () => endPlay(true));
+    app.sayAll([V15.CUE_ROPE, V15.CUE_LET]);
+    const end = await playMini('startSnub', { seed: seedFor('snub'), drops: 3 }, { end: 'snubEnd', types: ['snub'], onEvent: (e) => { toast(e.good ? 'Smooth!' : 'Bump!'); } });
+    hideBar();
+    if (!end || !T) return;
+    const smooth = !!end.smooth;
+    let res = null;
+    try { res = JA.applySnub(J, { smooth }); } catch (e) { console.warn('[WagonWest] applySnub', e); }
+    if (res && res.card) { try { dropCard(JA.cardForLeg(J, Math.random)); } catch (_) { /* ignore */ } }
+    app.persist(); refreshCash(); Audio.cash();
+    const cash = num(res && res.cash);
+    if (smooth) effectToast(`${V15.SNUB_SMOOTH}${cash ? ` $${cash} for steady hands.` : ''}`, V15.SNUB_SMOOTH);
+    else effectToast(`${V15.SNUB_BUMPY}${cash ? ` $${cash} all the same.` : ''}`, V15.SNUB_BUMPY);
+    if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() });
+  }
+
+  // ----- the voyage home (v1.5, the Gold Road's last leg): a schooner up the coast, four markers, the Columbia bar -----
+  function v2StartSail(leg) {
+    const r = T;
+    if (!r || !leg || !leg.voyage) return false;
+    cancelAnimationFrame(r.raf);
+    r.busy = true; r.sail = true;
+    runSail(leg, r).catch((e) => { console.error('[WagonWest] sail', e); if (T === r) r.busy = false; });
+    return true;
+  }
+  const SAIL_MARKERS = 4;
+  async function runSail(leg, r) {
+    const J = save.journey;
+    J.milesDone = 0;                         // a sail always starts from the top: leaving mid-way loses nothing
+    S('setBackdrop', 'sea');
+    await showCard({ kicker: 'Home by sea', title: 'Up the coast!', text: V15.SAIL_INTRO, say: V15.SAIL_INTRO, tone: 'lookout', button: 'Set sail!' });
+    if (T !== r) return;
+    if (!ownedCards(J).has('schooner-home')) dropCard('schooner-home');
+    v2.sail = { leg, markers: 0 };
+    showBar('Steer the schooner: drag, or use the arrow keys', 'Stop for today', () => go('title'));
+    app.say(V15.CUE_COAST);
+    let end = await playMini('startSail', { seed: seedFor('sail'), length: SAIL_MARKERS }, {
+      end: 'sailEnd', types: ['sailMarker', 'sail'],
+      onEvent: (e) => { if (e.type === 'sailMarker') sailMarker(e, leg, r).catch((x) => console.error('[WagonWest] marker', x)); else if (e.bump) toast('A big swell! Hold on'); },
+    });
+    hideBar();
+    if (end && end.unavailable && T === r) {                    // no scene sail (an older scene): the four markers are asked all the same
+      for (let n = 1; n <= SAIL_MARKERS && T === r; n++) { v2.sail = { leg, markers: n }; await runMarker({ n, of: SAIL_MARKERS }, { sail: true }); }
+      end = { bumps: 0 };
+    }
+    v2.sail = null;
+    if (!end || T !== r) return;
+    const bumps = Math.max(0, Math.round(num(end.bumps)));
+    let pay = null;
+    try { pay = JA.sailPay(J, { bumps }); } catch (e) { console.warn('[WagonWest] sailPay', e); }
+    J.milesDone = leg.miles;
+    app.persist(); refreshCash(); Audio.cash();
+    hud.update(J, leg, { milesDone: leg.miles, ...hudExtra() });
+    effectToast(`Over the bar and into the Columbia!${num(pay && pay.cash) ? ` $${pay.cash} for the voyage.` : ''}`, V15.CUE_BAR);
+    await sleep(beat(3400));                 // the green shore
+    if (T !== r) return;
+    await arrival(r);
+  }
+  /** A marker on the voyage: a fact on the marker panel (chip "Marker n of 4"), recorded like a mile marker; then the schooner sails on. */
+  async function sailMarker(e, leg, r) {
+    const J = save.journey;
+    if (v2.sail) v2.sail.markers = num(e.n);
+    const of = Math.max(1, num(e.of) || SAIL_MARKERS);
+    hud.update(J, leg, { milesDone: Math.round(num(leg.miles) * Math.max(0, num(e.n) - 1) / of), ...hudExtra() });
+    await runMarker({ n: num(e.n), of }, { sail: true });
+    if (T !== r || !v2.play || !v2.sail) return;
+    hud.update(J, leg, { milesDone: Math.round(num(leg.miles) * num(e.n) / of), ...hudExtra() });
+    if (num(e.n) >= of) app.say(V15.CUE_BAR);              // the last stretch is the Columbia bar
+    S('sailGo');
+  }
+
+  // ----- the Columbia raft: the last leg of the Oregon Trail by the river (the-dalles → willamette-valley) is a raft run, not trail days -----
   function v2StartRaft(leg) {
     const r = T;
-    if (!r || !leg || !(leg.stop && leg.stop.kind === 'home') || !scene || typeof scene.startRaft !== 'function') return false;
+    if (!r || !leg || leg.id !== 'willamette-valley' || !(leg.stop && leg.stop.kind === 'home') || !scene || typeof scene.startRaft !== 'function') return false;
     cancelAnimationFrame(r.raf);
     r.busy = true; r.raft = true;
     runRaft(leg, r).catch((e) => { console.error('[WagonWest] raft', e); if (T === r) r.busy = false; });
@@ -1917,7 +2287,7 @@ async function boot() {
     const J = save.journey;
     if (!J || typeof JA.checkDeeds !== 'function') return [];
     let ids = [];
-    try { ids = JA.checkDeeds(J) || []; } catch (e) { console.warn('[WagonWest] checkDeeds', e); }
+    try { ids = JA.checkDeeds(J, save.ledger, save.farm) || []; } catch (e) { console.warn('[WagonWest] checkDeeds', e); }
     for (const id of ids) {
       if (save.trip) save.trip.deeds = [...(Array.isArray(save.trip.deeds) ? save.trip.deeds : []), id];
       deedPop.pop(id);
@@ -2135,11 +2505,19 @@ async function boot() {
     try { plan = JA.stonesPlan(J) || plan; } catch (e) { console.warn('[WagonWest] stonesPlan', e); }
     S('setBackdrop', 'river');
     showBar('Tap to throw, then tap as the stone touches the water', 'Done', () => endPlay(true));
+    const got = [];
+    const top = (JA.MOMENTS && JA.MOMENTS.stones && JA.MOMENTS.stones.maxSkips) || 12;
     const end = await playMini('startStones', { seed: seedFor('stones'), throws: plan.throws, bonus: plan.bonus }, { end: 'stonesEnd', types: ['skip', 'stone'],
-      onEvent: (e) => { if (e.type === 'skip') { barText(`${e.n} skip${e.n === 1 ? '' : 's'}!`); } else if (e.type === 'stone') { barText(`Throw ${num(e.throw)}: ${num(e.skips)} skip${num(e.skips) === 1 ? '' : 's'}`); } } });
+      onEvent: (e) => {
+        if (e.type === 'skip') { barText(`${e.n} skip${e.n === 1 ? '' : 's'}!`); return; }
+        barText(`Throw ${num(e.throw)}: ${num(e.skips)} skip${num(e.skips) === 1 ? '' : 's'}`);
+        got.push(num(e.skips));
+        // (v1.5, playtest 1.4 U5: a stone that skips as far as a stone can ends the game there: twelve skips on every throw is not three throws, it is one)
+        if (num(e.skips) >= top && num(e.throw) < plan.throws) { effectToast(`As far as a stone can skip: ${top} skips!`, V15.STONES_TOP); setTimeout(() => endPlay(true), beat(350)); }
+      } });
     hideBar();
     if (!end) return;
-    const throws = Array.isArray(end.throws) ? end.throws.map((n) => num(n)) : [];
+    const throws = Array.isArray(end.throws) && end.throws.length ? end.throws.map((n) => num(n)) : got;
     if (!throws.length) return;
     let res = null;
     try { res = typeof JA.stonesResult === 'function' ? JA.stonesResult(J, { throws }) : null; } catch (e) { console.warn('[WagonWest] stonesResult', e); }
@@ -2424,12 +2802,99 @@ async function boot() {
       JA.startLeg(J, legId);
       J.milesDone = 0;
       if (J.trip) J.trip.tipUsed = true;
-      save.trip = { legId, stage: 'trail', events: [], asked: { ration: 0, distance: 0 }, markers: 0, at: Date.now(), tokens0: num(J.tokens) };
+      save.trip = { legId, stage: 'trail', events: [], asked: { ration: 0, distance: 0 }, markers: 0, at: Date.now(), tokens0: num(J.tokens), gold0: num(J.gold), dig: { pans: 0, rocker: 0 } };
       app.persist();
       hitTrail();
       if (hold && T) { T.busy = true; T.held = true; }
       return true;
     },
+  });
+
+  // ---- v1.5: the year, the farm and the rest of what the screens ask of the app ----
+  const runLine = () => {
+    const J = save.journey;
+    if (!J) return { year: yearNow(), tier: TIERS[0].name, route: ROUTES.emigrant.name };
+    return { year: J.year || yearNow(), tier: (TIER_BY_ID[J.tier] || TIERS[0]).name, route: (ROUTES[J.route] || ROUTES.emigrant).name };
+  };
+  /** The fork waiting at the stop the party is at ({ id, at, name }), or null: the title says "A choice at Fort Hall". */
+  function pendingFork() {
+    const J = save.journey;
+    if (!J || J.done || !save.trip || save.trip.stage !== 'stop') return null;
+    let f = null;
+    try { f = JA.forkAt(J); } catch (_) { f = null; }
+    if (!f) return null;
+    const l = LEG_BY_ID[f.at] || {};
+    return { id: f.id, at: f.at, name: (l.stop && l.stop.name) || l.name || 'the fork' };
+  }
+  const hasFarm = () => !!(save.farm && save.farm.sites && Object.keys(save.farm.sites).length);
+  /** The farm's name for the letters ("Dear everyone at Rose Hill,"): the Willamette farm's, else any named farm's; '' until a farm is named. */
+  function farmName() {
+    const sites = (save.farm && save.farm.sites) || {};
+    return (sites.willamette && sites.willamette.name) || Object.values(sites).map((s) => s.name).find(Boolean) || save.homestead || '';
+  }
+  function openFarm(siteId) {
+    if (!currentPlayerId) return;
+    if (!save.farm.sites[siteId]) { toast('No farm there yet'); return; }
+    if (!['title', 'journal', 'results', 'farm'].includes(screen)) return;
+    go('farm', { site: siteId });
+  }
+  /** Draw the homestead of a site on the scene (pieces, the team, the dog, the decorations, the trophy plates). */
+  function sceneFarm(siteId) {
+    const s = save.farm.sites[siteId];
+    if (!s) return;
+    const J = save.journey;
+    S('setBackdrop', 'homestead');
+    const plates = (save.ledger.trophies || []).filter((t) => (siteId === 'sacramento' ? /:california$/ : /:(oregon|gold-road)$/).test(t)).map((t) => t.split(':')[0]);
+    S('setHomestead', { site: siteId, name: s.name, pieces: { ...s.pieces }, animals: { ...save.farm.animals }, dog: J && J.dog ? { name: J.dog.name, coat: J.dog.coat } : null,
+      decor: wornDecor(save.cosmetics), party: partyLook(), trophies: plates });
+  }
+  /** Build a piece at a farm: the journey pays and records it, the scene raises it, a deed may come. → buildPiece's result. */
+  async function farmBuild(siteId, pieceId) {
+    const J = save.journey;
+    let res = null;
+    try { res = JA.buildPiece(save.farm, siteId, pieceId, J); } catch (e) { console.warn('[WagonWest] buildPiece', e); }
+    if (!res || !res.ok) { toast((res && res.why) || 'Not yet'); return res; }
+    const p = PIECE_BY_ID[pieceId];
+    app.persist(); refreshCash(); Audio.cash();
+    lastBuild = { site: siteId, piece: pieceId, count: res.count, paid: res.paid };
+    toast(`${p ? p.name : 'The piece'}: built!`);
+    if (res.say) app.sayLater(res.say);
+    if (pieceId === 'name-plate' && save.farm.sites[siteId].name) { const t = `${save.farm.sites[siteId].name}!`; app.voiceFor([t], 1500); app.sayLater(t); }
+    sceneFarm(siteId);
+    if (sceneHas('buildPiece')) { const done = waitScene('buildDone', 6000); S('buildPiece', pieceId); await done; }
+    app.v2.checkDeeds();
+    app.persist();
+    return res;
+  }
+  let lastBuild = null;
+  /** "Work it out" on a savings piece: how much is left in savings after it (a 'buy' problem for a token; once a piece). */
+  async function farmWork(siteId, pieceId) {
+    const piece = PIECE_BY_ID[pieceId];
+    const cost = ((JA.HOMESTEAD_COST || {})[pieceId] || {}).savings | 0;
+    const have = JA.farmBalance(save.farm).savings;
+    if (!piece || !cost || have < cost) return null;
+    const p = workProblem(piece, cost, have, JA.numberWords);
+    save.seen.worked[`${siteId}:${pieceId}`] = true;
+    app.persist();
+    return runProblemPanel(p, { kind: 'buy', title: FARM_TEXT.workTitle, chipText: piece.name });
+  }
+  const placementLine = (id) => {
+    let f = null;
+    try { f = id === currentPlayerId ? facts : loadFactsData(id); } catch (_) { f = null; }
+    const offered = num(app.saveOf(id).seen.placeOffers);
+    if (f && f.placement) return 'Pit Crew Check: done (the problems fit the child’s Trail Blazer ladder)';
+    if (JA.hasFactsHistory(f)) return 'Pit Crew Check: not needed (the child already has a Trail Blazer ladder)';
+    return offered ? `Pit Crew Check: offered ${offered} time${offered === 1 ? '' : 's'}, not taken yet (it comes back at the next store or marker, up to three times)` : 'Pit Crew Check: will be offered at the first store or mile marker (about 15 quick facts; “Later” is always fine)';
+  };
+  Object.assign(app, {
+    yearNow, journeyN, yearInfo, startYear, beginYear, outfitContext, runLine, pendingFork, hasFarm, farmName, openFarm, sceneFarm, farmBuild, farmWork, placementLine, arriveFarm,
+    planLegs: () => planLegs(save.journey),
+    cancelSpeech: () => speech.cancel(),
+    sceneCall: (fn, ...a) => S(fn, ...a),
+    sceneHas,
+  });
+  Object.assign(app.v2, {
+    showBar, hideBar, rng: (tag) => rngFrom(seedFor(tag)),
   });
 
   // ---------- pause ----------
@@ -2485,6 +2950,7 @@ async function boot() {
     if (a === 'outfit') go('outfit', { fresh: true }); else if (a === 'season') newSeason(); else hitTrail();
   });
   $('#btn-journal').addEventListener('click', () => go('journal'));
+  $('#btn-farm').addEventListener('click', () => { const ids = SITES.map((s) => s.id).filter((id) => save.farm.sites[id]); if (ids.length) openFarm(screens.farm.site && save.farm.sites[screens.farm.site] ? screens.farm.site : ids[0]); });
   $('#btn-outfit').addEventListener('click', () => go('outfit', save.journey ? { tab: 'look' } : { fresh: true }));
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'sync' }));
   $('#btn-player').addEventListener('click', () => go('players'));
@@ -2511,7 +2977,7 @@ async function boot() {
 
   // the music goes quiet while a panel, the pause sheet or the Parent Zone is open, and comes back after
   const mo = new MutationObserver(() => syncMusic());
-  for (const id of ['panel-marker', 'panel-problem', 'spell', 'card', 'mini', 'panel-pause', 'panel-wagon', 'pz']) { const el = document.getElementById(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ['hidden'] }); }
+  for (const id of ['panel-marker', 'panel-problem', 'panel-fork', 'spell', 'card', 'mini', 'panel-pause', 'panel-wagon', 'pz']) { const el = document.getElementById(id); if (el) mo.observe(el, { attributes: true, attributeFilter: ['hidden'] }); }
 
   go('players');
   updateHooks.isSafe = () => safeToReload({ screen, busy: !!T || panelOpen(), parentZone: pz.isOpen });
@@ -2536,7 +3002,27 @@ async function boot() {
     holdTrail(on) { if (T) { T.busy = !!on; T.held = !!on; } return !!T; },   // (a test hook: the day loop waits, as it does under a scripted event)
     get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb, leads: mini.leads || 0 } : null; },
     JA, cloud, Music, cardPop, toaster, camp: screens.camp,
-    peopleUI, deedPop, get v2() { return { play: v2.play ? v2.play.fn : null, raft: v2.raft ? { ...v2.raft } : null }; },    // (v1.2 app two)
+    peopleUI, deedPop, get v2() { return { play: v2.play ? v2.play.fn : null, raft: v2.raft ? { ...v2.raft } : null, sail: v2.sail ? { ...v2.sail } : null }; },    // (v1.2 app two)
+    // ---- v1.5 ----
+    forkPanel, diggings, yearPicker: screens.year, farmUI: screens.farm,
+    get lastFork() { return lastFork; }, get lastBuild() { return lastBuild; }, get lastPlacement() { return lastPlacement; },
+    /** Tests only: a new journey on a route / tier / branches at a year (the ledger's journey number), at mile 0 on its first leg. */
+    newJourney({ route = 'emigrant', tier = 'rookie', branches = {}, year = null, journeyN: jn = null, companions = null, family = 'own' } = {}) {
+      const prev = save.journey && !save.journey.done ? null : save.journey;
+      const L = save.ledger;
+      if (year != null) L.year = year;
+      let n = null;
+      try { n = JA.startSeason(prev, { route, tier, family, animal: 'oxen', companions: companions || ['blacksmith', 'scout', 'cook'], wagonName: 'Test Wagon', ledger: L, farm: save.farm, seed: hashString(`${currentPlayerId}:t:${Date.now()}`) }); } catch (e) { console.warn(e); }
+      if (!n) return false;
+      if (jn != null) n.journeyN = jn;
+      for (const [f, o] of Object.entries(branches)) JA.chooseBranch(n, f, o);
+      stopTravel();
+      save.journey = n; save.trip = null;
+      ensureJ(); app.persist(); applySceneParty();
+      return true;
+    },
+    offerPlacement: (where) => offerPlacement(where || 'marker'), settle: () => { try { markerPanel.cancel(); problemPanel.cancel(); spellPanel.cancel(); card.close(); forkPanel.hide(); toaster.clear(true); if (findPop) findPop.clear(); } catch (_) { /* ignore */ } },
+    checkSetsNow: () => checkSetsNow(), closeFinished: (Jn) => closeFinished(Jn || save.journey),
     get derby() { return derby ? { markers: derby.markers, bursts: derby.bursts.slice(), busy: derby.busy } : null; },
     get lastDerby() { return lastDerby; }, get lastQuickDraw() { return lastQuickDraw; }, get music() { return { ...musicState }; },
     dropCard: (id) => dropCard(id), checkDaily: () => checkDaily(), dogBerries: () => app.playNose('berries'),

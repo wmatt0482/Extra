@@ -6,6 +6,10 @@
 // card are given the moment it is done, main.js app.daily()); a tap reads it aloud.
 // v1.2: the wagon's name and what the three companions are good at under the logo ("Ada fixes wheels · Eli scouts · Rosa
 // stretches the food"), and the family's other wagons as small wagons at their stops on the map (tap one: whose it is).
+// v1.5 (SPEC v1.5 §5.1): the map draws every route, fork and homestead (src/ui/map.js; the lines travelled are inked in the wagon's paint, the
+// farms are small cabins that grow, a tap opens the farm); the line under the logo names the year, the tier and the route ("1849 · Veteran · The
+// emigrant trail"); the big button is Hit the trail / Keep going / A new year, "The farm" sits beside Journal, Outfit and Parents once a farm
+// exists, and a pending fork says so ("A choice at Fort Hall").
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { streakNow } from '../../../spell-jump/src/meta/engagement.js';
 import { drawMap } from './map.js';
@@ -31,15 +35,17 @@ export function createTitle(app) {
     $('#title-words').setAttribute('aria-label', `${words} spelling words this week`);
     const legs = app.legs;
     const inLeg = !!(save.trip && J && save.trip.legId === J.legId);
-    const r = drawMap(map, { legs, J, inLeg, paint: app.paintColor(), family: app.familyWagons(), onFamily: (f) => app.toast(`${f.name}'s wagon`) });
-    const season = app.season();
+    const pending = app.pendingFork();
+    const r = drawMap(map, { J, inLeg, paint: app.paintColor(), family: app.familyWagons(), onFamily: (f) => app.toast(`${f.name}'s wagon`),
+      ledger: save.ledger, farm: save.farm, onFarm: (id) => app.openFarm(id), year: app.yearNow(), pending });
+    const run = app.runLine();
     let label = 'Hit the trail', text = '';
-    if (!J) { label = 'Pack the wagon'; text = `${season.year}: ${legs.length} stops from ${(legs[0] && legs[0].from) || 'Independence'} to the valley`; }
-    else if (J.done) { label = 'A new season'; text = `${save.homestead ? `${save.homestead} · ` : ''}You made it to the valley!`; }
+    if (!J) { label = 'Pack the wagon'; text = `${run.year}: ${legs.length} stops from ${(legs[0] && legs[0].from) || 'Independence'} to the valley`; }
+    else if (J.done) { label = 'A new year'; text = `${save.homestead ? `${save.homestead} · ` : ''}You made it to ${J.route === 'gold-road' ? 'home with your gold' : J.plan && J.plan.length && /sacramento/.test((J.plan[J.plan.length - 1] || {}).id || '') ? 'the Sacramento Valley' : 'the valley'}!`; }
     else if (inLeg) {
       const leg = legs[J.legIndex] || {};
       label = 'Keep going';
-      text = save.trip.stage === 'stop' ? `At ${leg.stop ? leg.stop.name : leg.name}` : `On the way to ${leg.stop ? leg.stop.name : leg.name} · ${money(Math.max(0, (leg.miles || 0) - (J.milesDone || 0)))} mi to go`;
+      text = save.trip.stage === 'stop' ? (pending ? `A choice at ${pending.name}` : `At ${leg.stop ? leg.stop.name : leg.name}`) : `On the way to ${leg.stop ? leg.stop.name : leg.name} · ${money(Math.max(0, (leg.miles || 0) - (J.milesDone || 0)))} mi to go`;
     } else {
       const leg = legs[J.legIndex] || {};
       text = `Next: ${leg.stop ? leg.stop.name : leg.name} · ${money(leg.miles || 0)} mi`;
@@ -48,7 +54,10 @@ export function createTitle(app) {
     $('#btn-trail-label').textContent = label;
     go.dataset.action = !J ? 'outfit' : J.done ? 'season' : 'trail';
     map.setAttribute('aria-label', r.next ? `The trail map. Next stop: ${r.next.name}.` : 'The trail map.');
-    $('#title-season').textContent = `${J && J.wagonName ? `${J.wagonName} · ` : ''}${season.year} · ${season.name}`;
+    $('#title-season').textContent = `${J && J.wagonName ? `${J.wagonName} · ` : ''}${run.year} · ${run.tier} · ${run.route}`;
+    const farmBtn = $('#btn-farm');
+    farmBtn.hidden = !app.hasFarm();
+    $('.menu-row').dataset.n = farmBtn.hidden ? '3' : '4';
     const crew = J ? (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)) : [];
     const skills = app.partyLine(crew);
     const sk = $('#title-skills');

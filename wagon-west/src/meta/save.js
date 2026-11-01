@@ -30,6 +30,18 @@
 // awardCard), the dog the child named is J.dog = { name, coat, legs, nextBerries } (the app stores it on the journey:
 // the journey stream does not model it), and the leg in progress remembers the Fort Derby race (trip.derby) and the
 // dog's berry patch (trip.berries) so neither repeats when a stop is resumed.
+// v1.5 (The Long Trail, SPEC v1.5 §3.8) keeps v: 1 and adds, all normalized (normalize drops what it does not know):
+//   ledger       the years: { year, journeys: [{ id, at, route, branches, tier, year, journeyN, end, stars, legs }], routesDone, branchesDone, tiersDone,
+//                trophies, lifetime } (journey/seasons.js newLedger / normalizeLedger)
+//   farm         the homesteads: { sites: { willamette | sacramento: { name, founded, pieces } }, savingsIn / Out, goldIn / Out, animals, log }
+//                (journey/homestead.js newFarm / normalizeFarm); nothing in it ever goes down but the Out counters
+//   setsDone     trail-card sets completed (each paid its wagon decoration once)
+//   cosmetics    + owned.decor (the earned decorations) and equipped.decor (the two worn, in order)
+//   seen         + forks: { [forkId]: true } (the first-time explanation shown), placeOffers (how many times the Pit Crew Check was offered) and
+//                worked: { 'site:piece': true } (the farm's "Work it out" for a token is offered once a piece)
+//   journeyResetAt  Parents → "Reset this journey only" (the farm, the ledger, the cards and the sets stay; a merge drops an older journey)
+//   homestead    (the 1.0 name) migrates into farm.sites.willamette.name for a 1.3 save done in the valley, and stays readable for an older build
+//   trip         + dig: { pans, rocker } (the digging at this stop so far)
 // v1.4 (Frodo and the river) adds no top-level field: everything new is on the journey (J.dog with treats and muddy, J.finds,
 // J.fishLog, J.fishJunk, J.fishBest, J.skips, J.wishes, J.quests, J.questsDone, J.factsHeard, J.moments, J.opts.farSounds and the
 // journey's rev 14, filled by the Journey stream's ensureJourney); `normalize` keeps an older journey whole for it to fill. The
@@ -37,7 +49,11 @@
 // writes it onto the journey (J.opts.farSounds) so a parent's choice also holds in the pure journey.
 import { localWrite } from '../../../spell-jump/src/sync/notify.js';
 import { defaultStreak, normalizeStreak } from '../../../spell-jump/src/meta/engagement.js';
-import { LOOK_KINDS, STOCK, itemOf } from '../ui/looks.js';
+import { DECOR_SLOTS, LOOK_KINDS, STOCK, itemOf } from '../ui/looks.js';
+import { newLedger, normalizeLedger } from '../journey/seasons.js';
+import { foundSite, newFarm, normalizeFarm } from '../journey/homestead.js';
+
+export { normalizeLedger, normalizeFarm };
 
 export const SAVE_VERSION = 1;
 export const SETTINGS_KEY = 'wagonWest.settings';
@@ -49,7 +65,7 @@ export const PLAY_FIELDS = Object.freeze(['legs', 'markers', 'markersRight', 'pr
 export const PROBLEM_KINDS = Object.freeze(['buy', 'divide', 'ration', 'distance', 'parts', 'trade', 'fact']);
 export const CRATE_TIERS = Object.freeze(['bronze', 'silver', 'gold']);
 
-export const defaultCosmetics = () => ({ owned: Object.fromEntries(LOOK_KINDS.map((k) => [k, []])), equipped: { ...STOCK } });
+export const defaultCosmetics = () => ({ owned: Object.fromEntries(LOOK_KINDS.map((k) => [k, []])), equipped: { ...STOCK, decor: [] } });
 export function defaultSave() {
   return {
     v: SAVE_VERSION,
@@ -65,12 +81,16 @@ export function defaultSave() {
     kinds: {},
     legsLog: [],
     homestead: '',
-    seen: { coach: false },
+    seen: { coach: false, forks: {}, placeOffers: 0, worked: {} },
     daily: { key: '', id: '', claimed: false },
     suitsDone: [],
+    ledger: newLedger(),
+    farm: newFarm(),
+    setsDone: [],
+    journeyResetAt: 0,
   };
 }
-export const defaultSettings = () => ({ sound: true, music: true, reducedMotion: false, hunting: true, fractions: true, farSounds: true });
+export const defaultSettings = () => ({ sound: true, music: true, reducedMotion: false, hunting: true, fractions: true, farSounds: true, chooseTier: true, panning: true });
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const int0 = (v) => Math.max(0, Math.floor(num(v)));
@@ -97,6 +117,9 @@ function normalizeTrip(t) {
     tokens0: int0(T.tokens0),
     derby: !!T.derby,
     berries: !!T.berries,
+    dig: { pans: int0(T.dig && T.dig.pans), rocker: int0(T.dig && T.dig.rocker) },
+    look: !!T.look,
+    gold0: int0(T.gold0),
   };
 }
 const letterKey = (l) => `${l.at}|${l.text}`;
@@ -142,6 +165,11 @@ function normalizeCosmetics(raw) {
   const owned = obj(r.owned) || {};
   for (const k of LOOK_KINDS) {
     c.owned[k] = [...new Set((Array.isArray(owned[k]) ? owned[k] : []).filter((id) => itemOf(k, id) && id !== STOCK[k]))];
+    if (k === 'decor') {            // the worn decorations: a list of at most two earned ones
+      const eq = r.equipped && Array.isArray(r.equipped.decor) ? r.equipped.decor : [];
+      c.equipped.decor = [...new Set(eq.filter((id) => c.owned.decor.includes(id)))].slice(0, DECOR_SLOTS);
+      continue;
+    }
     const eq = r.equipped && r.equipped[k];
     c.equipped[k] = itemOf(k, eq) && (eq === STOCK[k] || c.owned[k].includes(eq)) ? eq : STOCK[k];
   }
@@ -164,7 +192,19 @@ export function normalize(raw) {
   s.kinds = normalizeKinds(raw.kinds);
   s.legsLog = normalizeLegsLog(raw.legsLog);
   s.homestead = str(raw.homestead, 24);
-  s.seen = { coach: !!(raw.seen && raw.seen.coach) };
+  const seenForks = {};
+  if (raw.seen && obj(raw.seen.forks)) for (const [k, v] of Object.entries(raw.seen.forks)) if (v && /^[a-z0-9-]{1,32}$/.test(k)) seenForks[k] = true;
+  const worked = {};
+  if (raw.seen && obj(raw.seen.worked)) for (const [k, v] of Object.entries(raw.seen.worked).slice(0, 80)) if (v && /^[a-z0-9:-]{1,48}$/.test(k)) worked[k] = true;
+  s.seen = { coach: !!(raw.seen && raw.seen.coach), forks: seenForks, placeOffers: Math.min(9, int0(raw.seen && raw.seen.placeOffers)), worked };
+  s.ledger = normalizeLedger(raw.ledger);
+  s.farm = normalizeFarm(raw.farm);
+  s.setsDone = [...new Set((Array.isArray(raw.setsDone) ? raw.setsDone : []).filter((x) => typeof x === 'string' && x.length <= 40))];
+  s.journeyResetAt = int0(raw.journeyResetAt);
+  // a 1.3 save done in the valley: the homestead the child named is the Willamette farm's name; an older build still reads save.homestead
+  const done = !!(s.journey && s.journey.done) || s.seasonsDone > 0;
+  if (s.homestead && done && !s.farm.sites.willamette) foundSite(s.farm, 'willamette', { name: s.homestead, year: s.journey && Number.isFinite(s.journey.year) ? s.journey.year : 1847 });
+  else if (s.farm.sites.willamette && s.farm.sites.willamette.name && !s.homestead) s.homestead = str(s.farm.sites.willamette.name, 24);
   s.daily = normalizeDaily(raw.daily);
   s.suitsDone = [...new Set((Array.isArray(raw.suitsDone) ? raw.suitsDone : []).filter((x) => typeof x === 'string' && x.length <= 20))];
   if (num(raw.resetAt) > 0) s.resetAt = num(raw.resetAt);
