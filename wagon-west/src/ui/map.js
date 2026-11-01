@@ -187,7 +187,9 @@ export function drawMap(svg, { J = null, inLeg = false, paint, labels = 'next', 
     return `M${a[0]} ${a[1]}Q${mx.toFixed(1)} ${my.toFixed(1)} ${b[0]} ${b[1]}`;
   };
   const lockedLeg = (id) => { const l = LEG_BY_ID[id]; return !!(l && l.fromYear && year < l.fromYear); };
-  const edges = allEdges();
+  const edges = allEdges().slice();
+  // a journey on a plan the routes do not make (a 1.3 journey in progress keeps its twelve legs) draws its own edges too
+  if (J && plan.length) { let prev = START[J.route || 'emigrant'] || 'independence'; for (const p of plan) { if (!edges.some((e) => e.from === prev && e.to === p.id)) edges.push({ from: prev, to: p.id, route: J.route || 'emigrant' }); prev = p.id; } }
   for (const e of edges) {
     const d = lineD(e);
     if (!d) continue;

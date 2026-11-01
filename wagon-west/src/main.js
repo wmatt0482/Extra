@@ -80,7 +80,7 @@ import { FAMILIES } from './content/families.js';
 import { PIECE_BY_ID } from './content/homestead.js';
 import { CARD_SETS, DECOR_BY_ID } from './content/cards.js';
 import { PERSON_BY_ID } from './content/people.js';
-import { legList, routeStart, routeOfLeg } from './journey/route.js';
+import { legList, routeStart, routeOfLeg, seasonOf as routeSeasonOf } from './journey/route.js';
 import { checkAnswer, checkNext, checkProgress, applyCheck, createCheck } from '../../trail-blazer/src/facts/placement.js';
 import { refreshFrontier } from '../../trail-blazer/src/facts/store.js';
 import { COMPANION_BY_ID } from './content/companions.js';
@@ -265,7 +265,7 @@ async function boot() {
     },
     season: () => app.seasonOf(save.journey),
     /** A journey's tier as the screens read it: { id, name ('Rookie'), emoji, priceMult, numberMult, year }. */
-    seasonOf: (J) => ({ ...JA.seasonOf(J ? J.tier || J.season : null), year: J && Number.isFinite(J.year) ? J.year : yearNow() }),
+    seasonOf: (J) => ({ ...routeSeasonOf(J ? J.tier || J.season : null), year: J && Number.isFinite(J.year) ? J.year : yearNow() }),
     paintColor: () => (itemOf('paint', save.cosmetics.equipped.paint) || itemOf('paint', STOCK.paint)).color,
     weekWords() { if (!currentPlayerId) return 0; try { return WS.activeList(Profiles.loadWords(currentPlayerId)).words.length; } catch (_) { return 0; } },
     tokens: () => num(save.journey && save.journey.tokens),
@@ -977,6 +977,7 @@ async function boot() {
     }
     const now = Date.now();
     applyCheck(d, st, now);
+    if (lastPlacement) lastPlacement.items = st.items.length;
     refreshFrontier(d, now, 'Pit Crew Check');
     try { writeFactsData(currentPlayerId, d); } catch (e) { console.warn('[WagonWest] writeFactsData', e); }
     effectToast(V15.PLACE_DONE, V15.PLACE_DONE);
@@ -1489,7 +1490,9 @@ async function boot() {
   }
   /** The extra cards a stop of the Gold Road hands out (beside its landmark card). */
   const STOP_CARDS = { coloma: 'sutters-mill', 'sutters-fort': 'who-got-rich' };
+  let stopTok = 0;                      // (a stop that was left, by "Stop for today" or a jump, never carries on into the next screens: each run holds its number)
   async function runStop(leg) {
+    const tok = ++stopTok, stale = () => tok !== stopTok;
     const J = save.journey;
     S('setBackdrop', backdropFor(leg));
     go('stop');
@@ -1498,19 +1501,20 @@ async function boot() {
     if (!(save.trip && save.trip.look)) {            // (a stop revisited after a fork left pending shows its lookout once)
       await showCard({ kicker: 'You made it!', title: (leg.stop && leg.stop.name) || leg.name, text: look ? look.text : '', say: look ? look.say : '', sticker: leg.sticker, tone: 'lookout',
         button: peopleUI.has(leg) ? 'Look around' : kind === 'river' ? 'To the ferry' : kind === 'fort' ? 'Into the fort' : kind === 'home' ? 'Home at last' : kind === 'gold' ? 'To the creek' : 'Continue' });
-      if (screen !== 'stop') return;
+      if (screen !== 'stop' || stale()) return;
       if (look || CARD_BY_ID[leg.id]) dropCard(leg.id);      // the lookout's landmark card
       if (STOP_CARDS[leg.id]) dropCard(STOP_CARDS[leg.id]);
       if (save.trip) { save.trip.look = true; app.persist(); }
     }
     // ---- v1.5: a fork, before the stop's other scenes: the explainer, the question, an equal button for every way (it also settles the food plan for the store) ----
-    if (!(await askFork())) return;
+    if (!(await askFork()) || stale()) return;
     // ---- v1.2 (app two): the "Talk" row of the people at this stop (its big button goes on to the ferry / the fort / home) ----
-    if (peopleUI.has(leg)) { const on = await peopleUI.visit(leg); if (!on || screen !== 'stop') return; }
+    if (peopleUI.has(leg)) { const on = await peopleUI.visit(leg); if (!on || screen !== 'stop' || stale()) return; }
     let dig = null;
     try { dig = typeof JA.goldAt === 'function' ? JA.goldAt(J) : null; } catch (_) { dig = null; }
     if (kind === 'river') {
       const rr = await river.run({ leg });
+      if (stale()) return;
       if (rr.cancelled) { if (screen === 'river') go('title'); return; }
       // ---- v1.4: the far bank: the dog that has followed since the ferry (the Kansas River), then skipping stones ----
       go('stop');
@@ -1524,13 +1528,15 @@ async function boot() {
       const shop = store.open({ leg: sl, place: leg.stop.name, nextText: 'To the post office', derby: true });
       await offerDog(leg);
       const ok = await shop;
-      if (!ok) return;
+      if (!ok || stale()) return;
       const po = await postOffice.run({ leg });
+      if (stale()) return;
       if (po.cancelled) { if (screen === 'post') go('title'); return; }
     } else {
-      if (dig) { if (!(await digHere(leg, dig))) return; }                 // ---- v1.5: the diggings (a landmark, Coloma, the Sacramento claim) ----
+      if (dig) { if (!(await digHere(leg, dig)) || stale()) return; }                 // ---- v1.5: the diggings (a landmark, Coloma, the Sacramento claim) ----
       if (leg.post) {                                                      // ---- v1.5: a letter is written at the stops that have a post (the ends of the trails, a few on the long stretches) ----
         const po = await postOffice.run({ leg });
+        if (stale()) return;
         if (po.cancelled) { if (screen === 'post') go('title'); return; }
       }
     }
@@ -1538,10 +1544,10 @@ async function boot() {
     if (kind !== 'home') {
       go('stop');
       const c = await showCard({ kicker: 'Evening', title: 'Make camp tonight?', text: 'Fishing, a card game, a story by the fire, or a good rest.', say: CAMP_EVENING, tone: 'camp', button: 'On to the results', alt: 'Make camp' });
-      if (screen !== 'stop') return;
+      if (screen !== 'stop' || stale()) return;
       if (c === 'alt') {
         const how = await openCamp('arrival');
-        if (how !== 'results') return;
+        if (how !== 'results' || stale()) return;
       }
     }
     return finishLeg(leg);
@@ -3033,7 +3039,7 @@ async function boot() {
     sceneEvent: (e) => onSceneEvent(e),              // (tests: a scene event, as the scene would send it)
     get lastFishing() { return lastFishing; }, get chase() { return chase ? { ...chase } : null; },
     // a test hook: fire a trail event by id (or kind) on an idle trail, as the day loop would
-    playEvent(id) { const ev = EVENT_BY_ID[id] || EVENTS.find((e) => e.kind === id); if (!ev || !T || T.busy) return false; T.busy = true; runEvent(ev).catch((e) => console.error(e)).finally(() => { if (T) { T.busy = false; T.last = 0; } }); return true; },
+    playEvent(id) { const ev = EVENT_BY_ID[id] || EVENTS.find((e) => e.kind === id); if (!ev || !T || (T.busy && !T.held)) return false; const keep = !!T.held; T.busy = true; runEvent(ev).catch((e) => console.error(e)).finally(() => { if (T) { T.busy = keep; T.last = 0; } }); return true; },
   }; // debugging / smoke tests
   registerSW();
 }

@@ -192,6 +192,8 @@ export function createToaster(root, { blocked = () => false, say = null, speakin
   };
 }
 
+/** The screens where a pop waits for a clear place (camp's cards and the store's rows are what the child reads and taps). */
+const POP_CLEAR_SCREENS = new Set(['camp', 'store']);
 /** For a pop (a card, a deed, a find): held while a panel, card, question or mini-game is open, while `hold()` says so (the
  *  results screen's table is what the child reads there), while its box, as drawn now, touches a toast, and (v1.5 playtest U2) while it would sit on a
  *  control or a line the child reads on the screen (camp's cards, a store row, an instruction): it waits, unseen, and comes out where it is clear. */
@@ -200,6 +202,7 @@ export function popHeld(root, { blocked = () => false, hold = () => false } = {}
   const box = root.getBoundingClientRect();
   const toasts = [...document.querySelectorAll('#toasts .toast')].filter((t) => t.style.visibility !== 'hidden').map((el) => ({ el, r: el.getBoundingClientRect() }));
   if (hitsOf(box, toasts).length > 0) return true;
+  if (!POP_CLEAR_SCREENS.has(document.documentElement.dataset.screen)) return false;      // (the other screens are laid out around the pops: only a toast holds one there)
   const reading = readingBoxes(root).filter((b) => !b.el.closest('#cardpop, #deedpop, #findpop, #toasts'));
   return hitsOf(box, reading).length > 0;
 }

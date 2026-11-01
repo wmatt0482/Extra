@@ -48,7 +48,8 @@ export function cardFace(card, { flippable = false, small = false } = {}) {
 export function createCardPop(root, { sfx = null, hold = () => false } = {}) {
   const queue = [];
   let showing = false;
-  const log = [];
+  const log = [], trace = [];
+  const note = (what, id) => { trace.push(`${(performance.now() / 1000).toFixed(1)} ${what} ${id}`); if (trace.length > 24) trace.shift(); };
   function next() {
     const it = queue[0];
     if (!it) { showing = false; root.hidden = true; root.replaceChildren(); return; }
@@ -62,10 +63,17 @@ export function createCardPop(root, { sfx = null, hold = () => false } = {}) {
     root.style.visibility = 'hidden';
     const held = hold(root);
     root.style.visibility = '';
+    if (!held || !queue[0].noted) { queue[0].noted = true; note(held ? 'held' : 'shown', it.card.id); }
     if (held) { root.hidden = true; root.replaceChildren(); setTimeout(next, 300); return; }
-    queue.shift();
-    if (sfx && sfx.chime) try { sfx.chime(); } catch (_) { /* ignore */ }
-    setTimeout(next, POP_MS);
+    // drawn: a toast that came up in the same instant is answered a moment later (the pop steps back and waits its turn), then the card counts as shown
+    setTimeout(() => {
+      let again = false;
+      try { again = !!hold(root); } catch (_) { again = false; }
+      if (again) { note('stepped back', it.card.id); root.hidden = true; root.replaceChildren(); setTimeout(next, 300); return; }
+      queue.shift();
+      if (sfx && sfx.chime) try { sfx.chime(); } catch (_) { /* ignore */ }
+      setTimeout(next, Math.max(0, POP_MS - 250));
+    }, 250);
   }
   return {
     /** A card dropped: { card, dup, suitDone }. */
@@ -77,6 +85,7 @@ export function createCardPop(root, { sfx = null, hold = () => false } = {}) {
     },
     get showing() { return showing; },
     get log() { return log.slice(); },
+    get trace() { return trace.slice(); },
   };
 }
 

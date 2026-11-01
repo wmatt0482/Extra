@@ -2147,6 +2147,33 @@ ahead): the flake counts ("Seven flakes!"), the bank line, the farm's name plate
 lines are short `say` lines and must be in the prepared list (a cue that waits for a clip is worse than none);
 `tools/content-audit.mjs` checks them like every other spoken string.
 
+#### 5.9 App stream notes: what was built, and where it differs from §5 (for the integrator)
+- **Built**: the title map with every route, fork, farm and the lines travelled (`src/ui/map.js`); the year picker (`yearPicker.js`); the Outfit's Family step, Mateo and Hattie and
+  the decor kind in Look (`outfit.js`, `looks.js`: `LOOK_KINDS` gains `'decor'`, `equipped.decor` is a list of two); the fork panel (`forkPanel.js`); the Barlow toll with the IOU,
+  Laurel Hill (`startSnub` / `applySnub`), dry-stretch lines, the Humboldt without a ferry; the Gold Road start (the news card, the farm's food, the Oregon City store), the diggings
+  (`diggings.js`: the pan, the cradle, the pouch), the voyage (`startSail`, four "Up the coast" markers, `sailPay`); the bank card on the results, the farm's name on the 1.0
+  keyboard and the homestead screen (`homestead.js`); carry-over through `startSeason` / `closeJourney`; the journal's pages (Stickers by route, Map with the roads travelled,
+  Cards → Sets, Deeds (53) in five groups, Farm); the Parent Zone touch points; the Pit Crew Check; tiered problems; `voiceTexts.js` for every new line; `save.js` / `sync.js` for the
+  new fields and `mergeWw15`; `VERSION` '1.5.0', `sw.js` `wagon-west-v1.5.0`, the README.
+- **Deviations from §5**: (1) the Pit Crew Check runs on Wagon West's own marker panel in a new `mode: 'check'` over Trail Blazer's `createCheck` / `checkNext` / `checkAnswer` /
+  `applyCheck` (`pitCheck.js` is married to Trail Blazer's DOM); the offer is the `needsPlacement` card ("Start" / "Later", three times at most, counted in `save.seen.placeOffers`).
+  (2) The fork panel opens after the stop's lookout card (not before it), still before the Talk row, the river, the store and the post office; the fork is read with `forkAt(J)`, not
+  `arrive().fork` (`arrive()` pays the leg, and the cash must not reach the fort's store before the results do). (3) "Reset this journey only" starts the same journey over (a fresh
+  `startSeason` from the old one: same wagon, team and party, mile 0, what is carried kept) and stamps `journeyResetAt`; it does not leave the child with no journey. (4) "Let the child
+  choose how hard" and "Gold panning" are device settings like Hunting (`settings.chooseTier`, `settings.panning`), not synced. (5) The journal has eight pages, not six: v1.4's Finds
+  and Fish log stay. (6) The "Gold fever" card is handed out by the Nisenan guide at Coloma (a card the guide shows with its own words); the comic gold-fever event hands out nothing
+  (and the lookout events with `animal: null` spot no animal). (7) The farm's "Work it out" (a 'buy' problem: what is left in savings) is offered once per piece (`save.seen.worked`),
+  so a token cannot be farmed. (8) The bank card sits in the results' left card (the right one scrolls on a short screen), with the trophy plate. (9) Playtest 1.4 U5 (twelve skips on
+  every throw): the stones game ends at the first throw that skips as far as a stone can (`MOMENTS.stones.maxSkips`); the window itself is the scene's (±180 ms).
+- **Needs integration with the real scene** (the mock scene runs all of it; names as §4): `setBackdrop('diggings' | 'sea' | 'homestead')`, `setLeg({ painting, dry, voyage })`,
+  `setParty({ wagon: { decor }, packMules })`, `setTravel({ dry })`, `setHomestead({ site, name, pieces, animals, dog, decor, party, trophies })`, `buildPiece(id)` → `buildDone`,
+  the events `homesteadTap { slot, piece }`, `panSwirled { n, quality }` (the app answers `panReveal({ flakes, nugget })`) / `pan` / `panEnd`, `rockerRound { n, beats }` (the app
+  answers `rockerReveal({ flakes })`) / `rockerEnd`, `snub { good }` / `snubEnd { smooth }`, `sailMarker { n, of }` (the app answers `sailGo()`) / `sail { bump }` / `sailEnd { bumps }`.
+  The app says the cue lines itself ("Scoop!", "Swirl, swirl!", "Tip it now!", "Look at that gold!", "Rock it!", "Hold the rope!", "Let go!", "Up the coast!", "Over the bar!").
+- **For the journey stream** (not fixed here, files not ours): `LETTER_CLOSE` holds 'Home soon, with gold!' and `withFarm` only drops the `{farm}` lines, so an emigrant letter can close with it; §5's comment says it belongs to the way home on the Gold Road only (LETTER_GOLD.close).
+- **App robustness added in the integration pass**: each `runStop` holds a run number (a stop that was left, by "Stop for today" or a jump, never carries on into the store, the post office or the results); a card pop that a toast overlaps in the instant it was drawn steps back (cards.js); a pop waits for a clear place only on the camp and store screens (toasts.js `POP_CLEAR_SCREENS`), as the trail's HUD is laid out around pops.
+- **Tests**: `tools/ui-smoke.mjs` (`LT_ONLY=1` for the v1.5 sections, `LT_SECTIONS=…`), `tools/sync-smoke.mjs` (the farm merge scenario), `tools/content-audit.mjs` (all 45 legs, the new texts).
+
 ### 6. Streams and file ownership (four Sonnet agents, from the same commit after v1.4 is merged; the orchestrator integrates)
 Never touch another stream's files; never touch `car-jump/`, `trail-blazer/`, `fraction-fright/`, `spell-jump/`, `site/`,
 `build.sh`, `netlify.toml`. Each stream codes against the shapes in §2–§5; until Content lands, the journey and the tools run
