@@ -6,8 +6,10 @@
 // (game, fish, plums, a trade's corn): it is eaten first. A day then eats 50 / 30 / 20 % from flour / bacon / beans, and
 // when one of those is gone the rest of the day comes from whatever is left. A small ledger (J.foodOwed) carries the
 // fractions of a pound from day to day so the long-run ratio is exact while every day eats a whole number of pounds.
-import { FOOD_KINDS, EAT_RATIO, ARROWS, COLD_LEGS, COLD, COOK, foodNeeded } from './economy.js';
-import { animalOf, legList } from './route.js';
+import { FOOD_KINDS, EAT_RATIO, ARROWS, COLD_LEGS, COLD, COOK, PACK, foodNeeded } from './economy.js';
+import { animalOf, legList, legOf, tierOf } from './route.js';
+import { TIER_FX } from './economy.js';
+import { hashSeed } from './rng.js';
 import { skillOf } from './skills.js';
 
 const EAT = ['flour', 'bacon', 'beans'];
@@ -77,8 +79,8 @@ export function takeFlour(J, lb) {
 export function dailyNeed(J) {
   return foodNeeded(1 + (J.party ? J.party.length : 0), J.rations, 1, animalOf(J.animal).feedLb || 0);
 }
-/** Rosa's share of a day's food (1, or COOK.foodFactor with the cook in the party). */
-export const eatFactor = (J) => (skillOf(J, 'good-cooking') ? COOK.foodFactor : 1);
+/** Rosa's share of a day's food (1, or COOK.foodFactor with the cook in the party), and Mateo's (PACK.foodFactor, a twentieth less). */
+export const eatFactor = (J) => (skillOf(J, 'good-cooking') ? COOK.foodFactor : 1) * (skillOf(J, 'packing') ? PACK.foodFactor : 1);
 
 /** Eat one day: `need` whole pounds (times `factor`: the cook's 0.9, carried as a fraction in J.foodSave so the saving is
  *  exact over days), `other` first, then 50 / 30 / 20 % from flour / bacon / beans, then whatever is left; never more
@@ -129,18 +131,42 @@ export function foodDays(J) {
 export const huntAllowed = (J) => !!J && !!J.goods && (J.goods.arrows | 0) >= ARROWS.perHunt;
 
 // ---- blankets ----
-/** Does this leg (the current one, or `legId`) have cold nights? The south-pass and blue-mountains legs always do; a 'snow'
- *  event makes the current leg cold. */
+/** Is this leg a cold one by its own flag (v1.5: the content's `cold`; a leg that does not say falls back to economy.js COLD_LEGS)? */
+const baseCold = (leg) => (leg ? (leg.cold !== undefined ? !!leg.cold : COLD_LEGS.includes(leg.id)) : false);
+/** The tier's extra cold legs (SPEC v1.5 §3.2): Veteran one more mountain leg a journey (seeded, kept in J.xcold), Pioneer every mountains and sierra leg. */
+export function extraColdIds(J) {
+  const fx = TIER_FX[tierOf(J && (J.tier || J.season))] || TIER_FX.rookie;
+  if (fx.extraCold === 'all') return legList().filter((l) => !baseCold(l) && (l.biome === 'mountains' || l.biome === 'sierra')).map((l) => l.id);
+  if (fx.extraCold === 'one') return Array.isArray(J.xcold) ? J.xcold : [];
+  return [];
+}
+/** Keep the Veteran's one extra cold leg valid for the journey's plan (a fork may have changed the legs ahead): picked by the journey's seed among the mountain legs
+ *  ahead that are not cold already; kept while it is still in the plan. */
+export function ensureExtraCold(J) {
+  if (!J) return;
+  const fx = TIER_FX[tierOf(J.tier || J.season)] || TIER_FX.rookie;
+  if (fx.extraCold !== 'one') { if (J.xcold) J.xcold = []; return; }
+  const legs = legList();
+  const ahead = legs.map((l, i) => [l, i]).filter(([l, i]) => i >= (J.legIndex | 0) && !baseCold(l) && l.biome === 'mountains' && !l.voyage);
+  const cur = Array.isArray(J.xcold) && J.xcold.length ? J.xcold[0] : null;
+  if (cur && legs.some((l) => l.id === cur)) return;      // still on the plan (ahead or passed): it stays
+  J.xcold = ahead.length ? [ahead[hashSeed(J.seed, 'xcold') % ahead.length][0].id] : [];
+}
+/** Does this leg (the current one, or `legId`) have cold nights? The content's `cold` legs always do; so do the tier's extra cold legs; a 'snow' event makes the
+ *  current leg cold. */
 export function isColdLeg(J, legId) {
   const id = legId || (J && J.legId);
-  if (COLD_LEGS.includes(id)) return true;
+  const leg = legOf(id);
+  if (baseCold(leg) || (!leg && COLD_LEGS.includes(id))) return true;
+  if (J && extraColdIds(J).includes(id)) return true;
   return !legId && !!(J && J.trip && J.trip.snow);
 }
 /** Blankets for a cold leg: { need, have, short, cold, why } with need = one for every two people (rounded up) on a cold
  *  leg and 0 elsewhere, why = 'leg' | 'snow' | null. */
 export function needsBlankets(J, legId) {
   const people = 1 + (J && J.party ? J.party.length : 0);
-  const coldLeg = COLD_LEGS.includes(legId || (J && J.legId));
+  const id = legId || (J && J.legId);
+  const coldLeg = baseCold(legOf(id)) || (!legOf(id) && COLD_LEGS.includes(id)) || !!(J && extraColdIds(J).includes(id));
   const snow = !legId && !!(J && J.trip && J.trip.snow);
   const cold = coldLeg || snow;
   const need = cold ? Math.ceil(people / COLD.perBlanket) : 0;
@@ -152,5 +178,5 @@ export function needsBlankets(J, legId) {
 export function coldLegsAhead(J) {
   const legs = legList();
   const from = J && J.trip && J.trip.arrived ? (J.legIndex | 0) + 1 : (J && J.legIndex) | 0;
-  return legs.slice(from).filter((l) => COLD_LEGS.includes(l.id)).map((l) => l.id);
+  return legs.slice(from).filter((l) => baseCold(l) || (J && extraColdIds(J).includes(l.id))).map((l) => l.id);
 }

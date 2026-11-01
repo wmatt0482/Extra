@@ -143,6 +143,26 @@ function mule(c, ph, amp, body, dark) {
   c.beginPath(); c.moveTo(16, -44); c.quadraticCurveTo(24, -42, 26, -34); c.lineWidth = 4; c.strokeStyle = '#8a3b2b'; c.stroke();
   c.lineCap = 'butt';
 }
+// v1.5: one pack mule (the Gold Road) facing right, ground at (x, y): a mule with a bedroll, two sacks and a tin pot on its back
+export function drawPackMule(c, x, y, s, ph, amp) {
+  c.save(); c.translate(x, y); c.scale(s, s);
+  c.beginPath(); c.ellipse(0, 2, 30, 4, 0, 0, TAU); c.fillStyle = 'rgba(40,25,10,0.2)'; c.fill();
+  mule(c, ph, amp, MULE_COL[1], shade(MULE_COL[1], -0.3));
+  c.beginPath(); rrect(c, -22, -54, 40, 12, 5); outlineFill(c, '#c9a26a');           // the bedroll
+  c.beginPath(); c.moveTo(-14, -54); c.lineTo(-14, -42); c.moveTo(6, -54); c.lineTo(6, -42); c.lineWidth = 1.6; c.strokeStyle = '#7a4a26'; c.stroke();
+  c.beginPath(); rrect(c, -20, -44, 14, 14, 5); outlineFill(c, '#d8c9a0');           // a sack on each side
+  c.beginPath(); rrect(c, 2, -44, 14, 14, 5); outlineFill(c, '#c8b88a');
+  c.beginPath(); c.arc(-2, -58, 5, Math.PI, 0); c.lineTo(3, -54); c.lineTo(-7, -54); c.closePath(); outlineFill(c, '#8a8f98', 1.8); // a tin pot
+  c.restore();
+}
+// v1.5: one ox or one mule on its own (the farm's pasture); ground at (x, y), facing right unless dir is -1; ph the walk phase, amp the swing (0 standing)
+export function drawAnimal(c, kind, x, y, s, ph, amp, dir = 1, tone = 0) {
+  c.save(); c.translate(x, y); c.scale(s * dir, s);
+  c.beginPath(); c.ellipse(0, 2, 34, 4.5, 0, 0, TAU); c.fillStyle = 'rgba(40,25,10,0.2)'; c.fill();
+  const body = (kind === 'mules' ? MULE_COL : OX_COL)[tone % 2];
+  (kind === 'mules' ? mule : ox)(c, ph, amp, body, shade(body, -0.3));
+  c.restore();
+}
 export const OX_COL = ['#9b5a2e', '#c98a52'];
 export const MULE_COL = ['#7d6a5a', '#94806c'];
 // a team of four (two yoked pairs) facing right, the rear pair's front at x; returns the team's length in units

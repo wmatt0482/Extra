@@ -18,6 +18,13 @@
 //           collection is never lost to "the later doc"), and the tokens the max, explicitly · the dog (J.dog, stored
 //           by the app on the journey) kept from the other side when the later one has none · suitsDone union · the
 //           daily challenge: the later doc's, claimed when either side claimed the same day's challenge.
+// v1.5      the ledger (journeys union by id, the newest 60; year max; routesDone / branchesDone / trophies union; tiersDone and lifetime per field max),
+//           the farm (sites union; per site the later doc's name, founded min, pieces per id max; savings / gold earned and spent counters each max, so a
+//           spend on one device and an earning on the other both survive; animals max; log union) and setsDone (union) are the journey stream's mergeLedger /
+//           mergeFarm / mergeWw15 (src/journey/seasons.js, homestead.js), every rule a union or a max, so a doc written by an older build (which drops
+//           these fields) never erases them · cosmetics.owned.decor union, equipped.decor the later doc's (owned only) · seen.forks OR, seen.placeOffers
+//           max · on the same journey gold max and branches union (the plan is rebuilt) · journeyResetAt max, and a journey last written before another
+//           device's "Reset this journey only" stamp is dropped from the merge (the farm, the ledger, the cards and the sets are not touched).
 // v1.4      after the rules above, merge14(s.journey, o.journey) (src/journey/collections.js, the Journey stream's: finds per id max,
 //           fish log per species n max and the bigger fish, junk max, personal best the bigger, skips best / throws / per river max,
 //           wishes and finished quests union, the longest fetch max; and, on the same journey, the further state of each quest, the
@@ -46,6 +53,7 @@ export function unionCards(a, b) {
 }
 const sameJourney = (x, y) => !!(x && y && x.season === y.season && String(x.seed) === String(y.seed));
 
+export { mergeLedger, mergeFarm } from '../journey/sim.js';
 export function mergeWw(local, remote) {
   if (!local || !local.data) return clone(remote && remote.data);
   if (!remote || !remote.data) return clone(local.data);
@@ -53,6 +61,9 @@ export function mergeWw(local, remote) {
   const B = { updatedAt: remote.updatedAt, data: normalize(clone(remote.data)) };
   const ra = num(A.data.resetAt), rb = num(B.data.resetAt);
   if (ra !== rb) return ra > rb ? A.data : B.data;
+  // v1.5: "Reset this journey only" on one device: a journey last written before the stamp is dropped from the merge
+  const jr = Math.max(num(A.data.journeyResetAt), num(B.data.journeyResetAt));
+  if (jr) for (const X of [A, B]) if (num(X.data.journeyResetAt) < jr && num(X.updatedAt) < jr) { X.data.journey = null; X.data.trip = null; }
   const base = laterDoc(A, B);
   const s = clone(base.data), o = (base === A ? B : A).data;
   if (!s.journey && o.journey) { s.journey = clone(o.journey); s.trip = clone(o.trip); }
@@ -94,7 +105,19 @@ export function mergeWw(local, remote) {
   }
   s.legsLog = normalizeLegsLog([...s.legsLog, ...o.legsLog]);
   if (!s.homestead && o.homestead) s.homestead = o.homestead;
-  s.seen = { coach: !!(s.seen.coach || o.seen.coach) };
+  s.seen = { coach: !!(s.seen.coach || o.seen.coach), forks: { ...(o.seen.forks || {}), ...(s.seen.forks || {}) }, placeOffers: Math.max(num(s.seen.placeOffers), num(o.seen.placeOffers)), worked: { ...(o.seen.worked || {}), ...(s.seen.worked || {}) } };
+  // v1.5: the ledger, the farm, the sets, the worn decorations, the forks chosen on either device (the journey stream's pure merge)
+  if (typeof Sim.mergeWw15 === 'function') {
+    try {
+      const m = Sim.mergeWw15(s, o);
+      s.ledger = m.ledger; s.farm = m.farm; s.setsDone = m.setsDone;
+      s.cosmetics.equipped.decor = (m.cosmetics && m.cosmetics.equipped && m.cosmetics.equipped.decor) || s.cosmetics.equipped.decor;
+      s.journeyResetAt = Math.max(num(s.journeyResetAt), num(o.journeyResetAt));
+      if (s.journey && m.journey && sameJourney(s.journey, o.journey)) { s.journey.gold = Math.max(num(s.journey.gold), num(m.journey.gold)); if (m.journey.branches) s.journey.branches = m.journey.branches; if (m.journey.plan) s.journey.plan = m.journey.plan; }
+    } catch (e) { console.warn('[WagonWest] mergeWw15', e); }
+  }
+  // the farm's name is also the 1.0 homestead name (an older build reads save.homestead)
+  if (s.farm && s.farm.sites && s.farm.sites.willamette && s.farm.sites.willamette.name && !s.homestead) s.homestead = s.farm.sites.willamette.name.slice(0, 24);
   return normalize(s);
 }
 

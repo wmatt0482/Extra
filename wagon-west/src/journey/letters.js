@@ -4,10 +4,12 @@
 // trade, the river, how the party feels, the arrival), never from things that did not, so the letter reads back as
 // the child's own trip. The line variants live in src/content/letters.js; the choice among them is seeded by the
 // journey and the leg, so composing the same letter twice gives the same text.
-import { LETTER_LINES, LETTER_PS, LETTER_OPEN, LETTER_CLOSE } from '../content/letters.js';
+// v1.5: a letter tells the legs since the last letter (J.letterFrom → the current leg; a post is not at every stop): it picks the liveliest lines across them (a fork, a toll, a digging,
+// a river, a quest, an event, the stop's own line `stop:<legId>`), and opens with the farm's name once there is a farm ({farm}).
+import { LETTER_LINES, LETTER_PS, LETTER_OPEN, LETTER_CLOSE, LETTER_FARM, LETTER_GOLD } from '../content/letters.js';
 import { COMPANION_BY_ID } from '../content/companions.js';
 import { EVENT_BY_ID } from '../content/events.js';
-import { animalOf, legOf, nationFor } from './route.js';
+import { animalOf, legOf, nationFor, usePlan } from './route.js';
 import { hashSeed } from './rng.js';
 import { questLetterKeys } from './quests.js';
 
@@ -86,6 +88,7 @@ export function happenedKeys(J, legEvents) {
   const keys = [];
   const add = (k) => { if (k && lineSource(k).length && !keys.includes(k)) keys.push(k); };
   const kinds = new Set();
+  for (const k of Array.isArray(t.keys) ? t.keys : []) add(k);       // v1.5: what the sim noted (a fork chosen, the toll, a pan, a sail, a dry stretch)
   for (const id of ids) {
     const e = EVENT_BY_ID[id];
     const kind = e ? e.kind : id;
@@ -114,15 +117,15 @@ export function happenedKeys(J, legEvents) {
 }
 
 // fill {stop} {river} {width} {animal} {name} {food} {nation} {dog} (v1.4: the dog's name, so a line can say "Frodo found an old horseshoe")
-function fill(line, J, key) {
-  const leg = legOf(J.legId) || {};
+function fill(line, J, key, legId = null, farm = '') {
+  const leg = legOf(legId || J.legId) || {};
   const nation = nationFor(leg);
   const kind = (EVENT_BY_ID[key] && EVENT_BY_ID[key].kind) || key;
   const food = kind === 'hunt' ? J.legStats.hunted : kind === 'fish' ? J.legStats.fished : (EVENT_BY_ID[key] && EVENT_BY_ID[key].foodLb) || 20;
   const v = {
     stop: (leg.stop && leg.stop.name) || leg.name || 'the next stop', river: (leg.stop && leg.stop.name) || 'river',
     width: (leg.river && leg.river.width) || 'wide', animal: animalOf(J.animal).name.toLowerCase(), name: companionFor(J, key),
-    food, nation: nation ? nation.name : 'local', dog: (J.dog && J.dog.name) || 'the dog',
+    food, nation: nation ? nation.name : 'local', dog: (J.dog && J.dog.name) || 'the dog', farm: farm || 'home',
   };
   return String(line).replace(/\{(\w+)\}/g, (m, k) => (k in v ? String(v[k]) : ''));
 }
@@ -135,28 +138,85 @@ function psFor(words) {
   return LETTER_PS.replace(/\{w1\}, \{w2\} and \{w3\}/, list).replace(/\{w\d\}/g, list);
 }
 
+/** How lively a letter key is (lower = livelier) when a letter has more to tell than three lines: a fork, then a toll, Laurel Hill, a dry stretch or gold, a river,
+ *  a quest, an event, the stop's own line, then how the party feels. */
+function rankOf(key) {
+  if (/^fork-/.test(key) || ['sublette', 'lander', 'barlow'].includes(key)) return 0;
+  if (['toll', 'laurel-hill', 'dry', 'pan', 'nugget', 'rocker', 'sail', 'bar'].includes(key)) return 1;
+  if (['ford', 'ford-wet', 'float', 'float-wet', 'ferry', 'river'].includes(key)) return 2;
+  if (/^stop:/.test(key)) return 5;
+  if (['happy', 'tired'].includes(key)) return 6;
+  return 3;
+}
+const withFarm = (list, farm) => (farm ? list : list.filter((l) => !/\{farm\}/.test(l)));
+/** The Gold Road's closing ('Home soon, with gold!') is for the way home only: on the Gold Road once gold has been found or the party is at Coloma or later.
+ *  Any other letter (an emigrant trail, the Gold Road before its first flake) never closes with it. */
+function goldWayHome(J) {
+  if (!J || J.route !== 'gold-road') return false;
+  if ((J.gold | 0) > 0) return true;
+  const ids = (Array.isArray(J.plan) ? J.plan : []).map((p) => p && p.id);
+  const at = ids.indexOf('coloma');
+  return at >= 0 && (J.legIndex | 0) >= at;
+}
+const goldCloses = (J) => (goldWayHome(J) ? [] : (LETTER_GOLD && Array.isArray(LETTER_GOLD.close) ? LETTER_GOLD.close : ['Home soon, with gold!']));
+const notGold = (list, J) => { const g = goldCloses(J); return g.length ? list.filter((l) => !g.includes(l)) : list; };
+/** Opening and closing: the lines with {farm} only once there is a farm (a later emigrant journey and the Gold Road write to the people at the farm). */
+function openingFor(J, farm, seed) {
+  const all = Array.isArray(LETTER_OPEN) ? LETTER_OPEN : [];
+  const farmy = farm ? (LETTER_FARM && LETTER_FARM.open ? LETTER_FARM.open : all.filter((l) => /\{farm\}/.test(l))) : [];
+  const gold = (J.route === 'gold-road') ? (LETTER_GOLD && LETTER_GOLD.open ? LETTER_GOLD.open : farmy.filter((l) => /family at/.test(l))) : [];
+  const pool = gold.length ? gold : (farm && ((J.journeyN | 0) > 1 || J.route === 'gold-road') && farmy.length) ? farmy : withFarm(all, '');
+  return pickSeeded(pool.length ? pool : all, ...seed, 'open');
+}
+
 /** The letter for this leg: { opening, lines: [3 lines], ps, close, text, keys } (keys: the LETTER_LINES keys used,
  *  so a test or the journal can tell what each line is about). The arrival line comes first, then two things that
  *  happened; a leg with little to tell uses the other arrival wording rather than invent anything. The app appends
- *  the child's name under the closing. */
-export function composeLetter(J, legEvents, words = []) {
+ *  the child's name under the closing. v1.5: the letter tells the legs since the last one (J.letterFrom → the current leg): the arrival line, then the two liveliest things
+ *  across them in the order they happened; then J.letterFrom moves on (composing the same letter again gives the same text). `ctx.farm` is the farm's name ('' = no farm yet). */
+export function composeLetter(J, legEvents, words = [], ctx = {}) {
+  usePlan(J);
   const t = J.trip || {};
+  const farm = (ctx && ctx.farm) || '';
   const legId = J.legId || '';
+  const cur = J.legIndex | 0;
+  const memo = J.letterMemo && J.letterMemo.idx === cur ? J.letterMemo : null;
+  const from = Math.min(memo ? memo.from : (J.letterFrom | 0), cur);
   const seed = [J.seed, legId, J.legStarts];
   const hk = happenedKeys(J, legEvents);
+  const past = (Array.isArray(J.tale) ? J.tale : []).filter((e) => e && e.idx >= from && e.idx < cur);
   const arrivedOk = !!t.arrived && LETTER_LINES.arrived && LETTER_LINES.arrived.length;
   const picked = [];
-  if (arrivedOk) picked.push({ key: 'arrived', line: pickSeeded(LETTER_LINES.arrived, ...seed, 'arrived') });
-  for (const k of hk) if (picked.length < 3) picked.push({ key: k, line: pickSeeded(lineSource(k), ...seed, k) });
+  if (arrivedOk) picked.push({ key: 'arrived', legId, line: pickSeeded(LETTER_LINES.arrived, ...seed, 'arrived') });
+  const stopKey = `stop:${legId}`;
+  if (!past.length) {
+    // one leg to tell: its events in the order they happened, then (only if there is room) the stop's own line
+    for (const k of hk) if (picked.length < 3) picked.push({ key: k, legId, line: pickSeeded(lineSource(k), ...seed, k) });
+    if (picked.length < 3 && lineSource(stopKey).length) picked.push({ key: stopKey, legId, line: pickSeeded(lineSource(stopKey), ...seed, stopKey) });
+  } else {
+    // several legs: the two liveliest things across them (one line per key), told in the order they happened
+    const cand = [];
+    const pushKeys = (keys, lid, idx) => keys.forEach((k, order) => cand.push({ key: k, legId: lid, idx, rank: rankOf(k), order }));
+    for (const e of past) pushKeys([...(Array.isArray(e.keys) ? e.keys : []), ...(lineSource(`stop:${e.legId}`).length ? [`stop:${e.legId}`] : [])], e.legId, e.idx);
+    pushKeys([...hk, ...(lineSource(stopKey).length ? [stopKey] : [])], legId, cur);
+    cand.sort((x, y) => x.rank - y.rank || y.idx - x.idx || x.order - y.order);
+    const chosen = [], keysSeen = new Set();
+    for (const c of cand) { if (chosen.length >= 2) break; const k = c.key.startsWith('stop:') ? c.key : c.key; if (keysSeen.has(k) || !lineSource(c.key).length) continue; keysSeen.add(k); chosen.push(c); }
+    chosen.sort((x, y) => x.idx - y.idx || x.order - y.order);
+    for (const c of chosen) picked.push({ key: c.key, legId: c.legId, line: pickSeeded(lineSource(c.key), J.seed, c.legId, J.legStarts, c.key) });
+  }
   if (arrivedOk && picked.length < 3) {
     const other = LETTER_LINES.arrived.find((l) => !picked.some((p) => p.line === l));
-    if (other) picked.push({ key: 'arrived', line: other });
+    if (other) picked.push({ key: 'arrived', legId, line: other });
   }
-  const lines = picked.map((p) => fill(p.line, J, p.key));
-  const opening = pickSeeded(LETTER_OPEN, ...seed, 'open');
-  const close = pickSeeded(LETTER_CLOSE || ['Love,'], ...seed, 'close');
+  const lines = picked.map((p) => fill(p.line, J, p.key, p.legId, farm));
+  const opening = fill(openingFor(J, farm, seed), J, 'open', legId, farm);
+  const closes = notGold(withFarm(Array.isArray(LETTER_CLOSE) && LETTER_CLOSE.length ? LETTER_CLOSE : ['Love,'], farm), J);
+  const close = fill(pickSeeded(closes, ...seed, 'close'), J, 'close', legId, farm);
   const ps = psFor(words);
   const text = [opening, lines.join(' '), ps, close].filter(Boolean).join('\n');
+  J.letterMemo = { idx: cur, from };
+  J.letterFrom = cur + 1;
   return { opening, lines, ps, close, text, keys: picked.map((p) => p.key) };
 }
 

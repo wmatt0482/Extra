@@ -8,17 +8,24 @@
 // v1.1: the Look tab has two panes, Looks and Wagon: the wagon upgrades that matter on the trail (the Journey stream's
 // UPGRADES: a canvas cover, iron tires, a water barrel), each bought once with trade tokens or with cash, its effect
 // in one line (the token and cash sink: main.js app.upgrades / app.buyUpgrade).
+// v1.5: a new year's Outfit has a first step, Family (from the second emigrant journey: whose wagon comes west this year, "Uncle Theo's wagon, 1849";
+// flavour only, no stats; the Gold Road is the child's own family setting out from the farm), Mateo and Hattie join the companions from the second
+// journey (`fromJourney`), and Look has the wagon decorations the card sets unlock (two worn at a time).
 // v1.2: each companion's card says what they are good at in one line (their skill), and the Party step sums the three up
 // ("Ada fixes wheels · Eli scouts · Rosa stretches the food"), so who you pick matters on the trail.
 import { createKeyboard } from '../../../spell-jump/src/spelling/keyboard.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { ANIMALS } from '../content/legs.js';
 import { COMPANIONS } from '../content/companions.js';
-import { KIND_NAME, LOOKS, LOOK_KINDS, STOCK, owns } from './looks.js';
+import { FAMILIES } from '../content/families.js';
+import { CARD_SETS } from '../content/cards.js';
+import { DECOR_SLOTS, KIND_NAME, LOOKS, LOOK_KINDS, STOCK, owns, wornDecor } from './looks.js';
 import { partySummary, skillOfCompanion } from './wagonPanel.js';
 
 export const MAX_WAGON_NAME = 16;
 const TABS = [['name', 'Name'], ['animal', 'Animal'], ['party', 'Party'], ['look', 'Look']];
+const FAMILY_TAB = ['family', 'Family'];
+export const FAMILY_ASK = (year) => `Whose wagon comes west in ${year}?`;
 
 /** A companion's little portrait (inline SVG): the face, the colour, the hat by kind. */
 export function companionSvg(c, hatOverride = null) {
@@ -42,7 +49,8 @@ export function createOutfit(app) {
   const tabsEl = $('#ow-tabs');
   const body = $('#ow-body');
   const foot = $('#ow-foot');
-  let tab = 'name', draft = null, fresh = false, lookPane = 'looks';
+  let tab = 'name', draft = null, fresh = false, lookPane = 'looks', ctx = { family: false, year: 1847, journeyN: 1 };
+  const tabList = () => (ctx.family ? [FAMILY_TAB, ...TABS] : TABS);
 
   const kb = createKeyboard({
     id: 'ow-keyboard', enterLabel: 'Next',
@@ -62,7 +70,7 @@ export function createOutfit(app) {
   const locked = () => !fresh && !app.partyEditable();
 
   function renderTabs() {
-    tabsEl.replaceChildren(...TABS.map(([id, text]) => {
+    tabsEl.replaceChildren(...tabList().map(([id, text]) => {
       const b = h('button', { class: 'seg-btn' + (tab === id ? ' on' : ''), role: 'tab', 'aria-selected': String(tab === id), 'data-tab': id, 'data-sfx': '' }, text);
       b.addEventListener('click', () => setTab(id));
       return b;
@@ -70,8 +78,9 @@ export function createOutfit(app) {
   }
   function setTab(id) { tab = id; render(); }
   function next() {
-    const i = TABS.findIndex(([id]) => id === tab);
-    if (i < TABS.length - 1) setTab(TABS[i + 1][0]); else done();
+    const list = tabList();
+    const i = list.findIndex(([id]) => id === tab);
+    if (i < list.length - 1) setTab(list[i + 1][0]); else done();
   }
   function done() {
     draft.wagonName = cleanWagon(draft.wagonName) || 'Prairie Rose';
@@ -84,6 +93,18 @@ export function createOutfit(app) {
     foot.replaceChildren(b);
   }
 
+  function familyTab() {
+    body.replaceChildren(h('p', { class: 'ow-note', id: 'ow-family-ask' }, FAMILY_ASK(ctx.year)),
+      h('div', { class: 'ow-party ow-family scroll' }, ...FAMILIES.map((f) => {
+        const on = draft.family === f.id;
+        const b = h('button', { class: 'card ow-comp ow-fam' + (on ? ' on' : ''), 'data-family': f.id, 'aria-pressed': String(on), 'data-sfx': '' },
+          h('span', { class: 'ow-c-face ow-fam-emoji', 'aria-hidden': 'true' }, f.emoji),
+          h('span', { class: 'ow-c-text' }, h('b', {}, f.name), h('small', {}, `Coming west from ${f.from}`)));
+        b.addEventListener('click', () => { draft.family = f.id; familyTab(); app.say(`${f.name}, ${ctx.year}.`); });
+        return b;
+      })));
+    footButtons();
+  }
   function nameTab() {
     paintName();
     kb.setEnabled(true);
@@ -111,7 +132,7 @@ export function createOutfit(app) {
     body.replaceChildren(
       h('p', { class: 'ow-note', id: 'ow-party-count' }, lock ? 'The party is set for this season.' : `${n} of 3 chosen`),
       h('p', { class: 'ow-note ow-skills', id: 'ow-party-skills' }, partySummary(draft.companions) || 'Each friend is good at something on the trail.'),
-      h('div', { class: 'ow-party scroll' }, ...COMPANIONS.map((c) => {
+      h('div', { class: 'ow-party scroll' }, ...COMPANIONS.filter((c) => (c.fromJourney || 1) <= ctx.journeyN || draft.companions.includes(c.id)).map((c) => {
         const on = draft.companions.includes(c.id);
         const b = h('button', { class: 'card ow-comp' + (on ? ' on' : ''), 'data-companion': c.id, 'aria-pressed': String(on), 'data-sfx': '', style: { '--c': c.color }, disabled: lock && !on },
           h('span', { class: 'ow-c-face', html: companionSvg(c) }),
@@ -166,7 +187,23 @@ export function createOutfit(app) {
       footButtons(fresh ? 'To the store' : 'Done');
       return;
     }
-    const sections = LOOK_KINDS.map((kind) => {
+    const decorSection = () => {
+      const worn = wornDecor(cos);
+      return h('div', { class: 'ow-look ow-decor', id: 'ow-decor' },
+        h('div', { class: 'ow-sec' }, `${KIND_NAME.decor} · wear up to ${DECOR_SLOTS === 2 ? 'two' : DECOR_SLOTS}`),
+        h('div', { class: 'ow-items' }, ...LOOKS.decor.map((x) => {
+          const have = owns(cos, 'decor', x.id), on = worn.includes(x.id);
+          const set = CARD_SETS.find((st) => st.decor === x.id);
+          const b = h('button', { class: 'ow-item ow-dec' + (on ? ' on' : '') + (have ? '' : ' locked'), 'data-look': `decor:${x.id}`, 'data-sfx': '', 'aria-pressed': String(on), 'aria-label': have ? `${x.name}${on ? ', worn' : ''}` : `${x.name}: complete the set ${set ? set.name : ''}` },
+            h('span', { class: 'ow-dec-emoji', 'aria-hidden': 'true' }, have ? x.emoji : '🔒'), h('span', {}, x.name), have ? null : h('small', {}, set ? `Set: ${set.name}` : ''));
+          b.addEventListener('click', () => {
+            if (!have) { app.toast(set ? `Complete the "${set.name}" card set to get this` : 'A card set unlocks this'); return; }
+            app.equipLook('decor', x.id); lookTab();
+          });
+          return b;
+        })));
+    };
+    const sections = LOOK_KINDS.filter((k) => k !== 'decor').map((kind) => {
       const items = LOOKS[kind].filter((x) => owns(cos, kind, x.id) || x.tokens);
       return h('div', { class: 'ow-look' },
         h('div', { class: 'ow-sec' }, KIND_NAME[kind]),
@@ -183,22 +220,26 @@ export function createOutfit(app) {
           return b;
         })));
     });
-    body.replaceChildren(h('div', { class: 'ow-lookhead' }, paneTabs(), h('p', { class: 'ow-note', id: 'ow-tokens' }, `Trade tokens: ${tokens} · crates bring more looks`)), h('div', { class: 'ow-looks scroll' }, ...sections));
+    body.replaceChildren(h('div', { class: 'ow-lookhead' }, paneTabs(), h('p', { class: 'ow-note', id: 'ow-tokens' }, `Trade tokens: ${tokens} · crates bring more looks`)), h('div', { class: 'ow-looks scroll' }, ...sections, decorSection()));
     footButtons(fresh ? 'To the store' : 'Done');
   }
   function render() {
     renderTabs();
     if (tab !== 'name') kb.setActive(false);
     root.dataset.tab = tab;
-    if (tab === 'name') nameTab(); else if (tab === 'animal') animalTab(); else if (tab === 'party') partyTab(); else lookTab();
+    if (tab === 'family') familyTab(); else if (tab === 'name') nameTab(); else if (tab === 'animal') animalTab(); else if (tab === 'party') partyTab(); else lookTab();
   }
   return {
     show(opts = {}) {
       const J = app.save.journey;
       fresh = !J || !!opts.fresh;
-      draft = fresh ? { wagonName: '', animal: 'oxen', companions: [] }
-        : { wagonName: J.wagonName || '', animal: J.animal || 'oxen', companions: (J.companions || (J.party || []).map((p) => p.id)).slice(0, 3) };
-      tab = opts.tab || 'name';
+      const info = typeof app.outfitContext === 'function' ? app.outfitContext(opts) : { family: false, year: 1847, journeyN: 1, defaults: null };
+      ctx = { family: fresh && !!info.family, year: info.year, journeyN: info.journeyN };
+      // a new year keeps the wagon, the team and the party of the last journey as the starting picks (the child can change them)
+      const keep = fresh && info.defaults ? info.defaults : null;
+      draft = fresh ? { wagonName: keep ? keep.wagonName : '', animal: keep ? keep.animal : 'oxen', companions: keep ? keep.companions.slice(0, 3) : [], family: info.familyDefault || 'own' }
+        : { wagonName: J.wagonName || '', animal: J.animal || 'oxen', companions: (J.companions || (J.party || []).map((p) => p.id)).slice(0, 3), family: J.family || 'own' };
+      tab = opts.tab || (ctx.family ? 'family' : 'name');
       lookPane = opts.pane || 'looks';
       render();
     },

@@ -15,7 +15,10 @@
 // v1.4 (Frodo and the river) adds src/ui/finds.js and src/ui/fishLog.js (the journal's Finds and Fish log pages, the find pop) to the
 // shell; the Content and Journey streams' new modules (finds, fish, moments, quests, trailFacts; dog, fishing, quests, moments,
 // collections) and the scene's new files are OPTIONAL like v1.2's (the page also posts every module it loaded).
-const VERSION = 'wagon-west-v1.4.0';
+// v1.5 (The Long Trail) adds the year picker, the fork panel, the diggings and the homestead (src/ui/yearPicker.js, forkPanel.js, diggings.js,
+// homestead.js) to the shell; the content and journey modules that came with it (routes, tiers, families, homestead; seasons, homestead, gold,
+// adaptive) and Trail Blazer's placement staircase are OPTIONAL like v1.2's (the page also posts every module it loaded).
+const VERSION = 'wagon-west-v1.5.0';
 const PREFIX = 'wagon-west-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -64,6 +67,14 @@ const SHELL = [
   'src/ui/wagonPanel.js',
   'src/ui/finds.js',
   'src/ui/fishLog.js',
+  'src/ui/yearPicker.js',
+  'src/ui/forkPanel.js',
+  'src/ui/diggings.js',
+  'src/ui/homestead.js',
+  'src/content/routes.js',
+  'src/content/tiers.js',
+  'src/content/families.js',
+  'src/content/homestead.js',
 ];
 // The scene and the journey (the other streams' modules) and the shared modules of the other games (+ their imports):
 // cached when present; the page also posts every module it actually loaded (see 'cache-urls' below).
@@ -89,6 +100,12 @@ const OPTIONAL = [
   'src/journey/quests.js',
   'src/journey/moments.js',
   'src/journey/collections.js',
+  'src/journey/seasons.js',
+  'src/journey/homestead.js',
+  'src/journey/gold.js',
+  'src/journey/adaptive.js',
+  'src/journey/supplies.js',
+  'src/journey/skills.js',
   'src/scene/dog14.js',
   'src/scene/fishing2.js',
   'src/scene/camp14.js',
@@ -108,6 +125,10 @@ const OPTIONAL = [
   'src/scene/biomes.js',
   'src/scene/hunt.js',
   'src/scene/fish.js',
+  'src/scene/homestead.js',
+  'src/scene/gold.js',
+  'src/scene/snub.js',
+  'src/scene/sail.js',
   '../spell-jump/src/audio.js',
   '../spell-jump/src/ui/dom.js',
   '../spell-jump/src/ui/icons.js',
@@ -135,6 +156,9 @@ const OPTIONAL = [
   '../trail-blazer/src/facts/hints.js',
   '../trail-blazer/src/facts/scheduler.js',
   '../trail-blazer/src/facts/store.js',
+  '../trail-blazer/src/facts/placement.js',
+  '../trail-blazer/src/facts/adaptive.js',
+  '../trail-blazer/src/facts/scouts.js',
   '../trail-blazer/src/meta/save.js',
   '../trail-blazer/src/meta/sync.js',
   '../fraction-fright/src/meta/save.js',

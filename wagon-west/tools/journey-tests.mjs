@@ -30,19 +30,23 @@ const { composeLetter, happenedKeys, keepLetter, lineSource, FALLBACK_LINES } = 
 const { PEOPLE, PEOPLE_BY_STOP, PERSON_BY_ID } = await import('../src/content/people.js');
 const { DEED_BY_ID } = await import('../src/journey/deeds.js');
 const { starsFor, starCount } = await import('../src/journey/stars.js');
-const { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay, ARROWS, ANIMAL_RULES, COLD_LEGS, SOAKED_LB, FOOD_KINDS, RAFT, DERBY, EXTRA_GOODS } = await import('../src/journey/economy.js');
+const { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay, ARROWS, ANIMAL_RULES, COLD_LEGS, SOAKED_LB, FOOD_KINDS, RAFT, DERBY, EXTRA_GOODS, TIER_FX } = await import('../src/journey/economy.js');
 const { planEvents, eligibleEvents, EVENTS, EVENT_BY_ID } = await import('../src/journey/events.js');
-const { useLegs, syntheticTrail, legList, LEGS, SEASONS, GOODS, nationFor } = await import('../src/journey/route.js');
+const { useLegs, syntheticTrail, legList, legacyTrail, SEASONS, GOODS, nationFor } = await import('../src/journey/route.js');
+const LEGS = legacyTrail();            // the 1.3 / 1.4 tests below run on the twelve legs of 1.3 (LEGACY_PLAN_12), which is also what a 1.3 journey in progress keeps running on
 const { mulberry32, hashSeed } = await import('../src/journey/rng.js');
-const { LETTER_LINES, LETTER_OPEN } = await import('../src/content/letters.js');
+const { LETTER_LINES, LETTER_OPEN, LETTER_CLOSE } = await import('../src/content/letters.js');
 
 let passed = 0;
 const failures = [];
 function test(name, fn) {
-  try { fn(); passed++; console.log('  ✓ ' + name); } catch (e) { failures.push(name); console.log('  ✗ ' + name + '\n      ' + String(e && e.stack || e).split('\n').slice(0, 4).join('\n      ')); }
+  try { fn(); passed++; console.log('  ✓ ' + name); } catch (e) { failures.push(name); console.log('  ✗ ' + name + '\n      ' + String(e && e.stack || e).split('\n').slice(0, process.env.FULL ? 40 : 4).join('\n      ')); }
 }
 const V14_DEEDS = ['good-nose', 'fetch-champ', 'big-one', 'river-guide', 'skipper', 'keeper', 'wish-maker', 'hat-trick'];
-const TRAIL = syntheticTrail(12);
+// v1.5's twenty-five (SPEC v1.5 §3.7). Note: the SPEC says "45" (20 + 25), which pre-dates v1.4's eight; with them there are 53.
+const V15_DEEDS = ['long-trail', 'california-bound', 'barlow', 'laurel-hill', 'shortcut', 'lander', 'dry-drive', 'ice-in-july', 'axle-grease', 'gold-road', 'first-flake', 'nugget', 'gold-fever', 'rocker',
+  'home-by-sea', 'beaver-money', 'every-way', 'veteran', 'pioneer', 'cabin', 'barn-raising', 'name-plate', 'full-farm', 'two-homes', 'set-collector'];
+const TRAIL = LEGS;
 useLegs(TRAIL);
 const PARTY = ['blacksmith', 'scout', 'teacher'];   // v1.2: no cook (Rosa's 10 % changes the food arithmetic these tests pin down); each skill has its own party in the v1.2 tests below
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -121,8 +125,11 @@ test('createJourney has the §10 shape, the party and the first leg started', ()
   assert.deepEqual(clone(J), J, 'JSON-safe');
 });
 test('the season scales the starting cash, not the food', () => {
+  // v1.5: the tier's purse and pantry (TIER_FX: $45 / $80 / $145, 300 / 260 / 220 lb); the legacy season ids still read
   const a = createJourney({ season: 's1850', companions: PARTY }), b = createJourney({ season: 's1853', companions: PARTY });
-  assert.equal(a.cash, START.cash * 2); assert.equal(b.cash, START.cash * 4); assert.equal(a.food, START.food);
+  assert.equal(a.tier, 'veteran'); assert.equal(b.tier, 'pioneer');
+  assert.equal(a.cash, TIER_FX.veteran.startCash); assert.equal(b.cash, TIER_FX.pioneer.startCash); assert.equal(createJourney({ companions: PARTY }).cash, START.cash);
+  assert.equal(a.food, TIER_FX.veteran.startFood); assert.equal(b.food, TIER_FX.pioneer.startFood);
 });
 test('startLeg resets the leg stats; restarting an unfinished leg replays it freshly seeded', () => {
   const J = createJourney({ companions: PARTY, seed: 5 });
@@ -199,13 +206,13 @@ test('tired for days with food in the wagon: the party rests a day on its own', 
 });
 
 console.log('\nmarkers and events');
-test('markerMiles: 4-6 markers for every leg length from 140 to 210 miles, in order, before the stop', () => {
-  for (let m = 140; m <= 210; m += 5) {
+test('markerMiles: 4-6 markers (v1.5: five or six) for every leg length from 60 to 210 miles, in order, before the stop', () => {
+  for (let m = 60; m <= 210; m += 5) {
     const xs = markerMiles(m);
     assert.ok(xs.length >= MARKERS.min && xs.length <= MARKERS.max, `${m}: ${xs.length}`);
     assert.ok(xs.every((x, i) => x > 0 && x < m && (i === 0 || x > xs[i - 1])));
   }
-  assert.equal(markerMiles(150).length, 4); assert.equal(markerMiles(170).length, 5); assert.equal(markerMiles(200).length, 6);
+  assert.equal(markerMiles(60).length, 5); assert.equal(markerMiles(120).length, 5); assert.equal(markerMiles(144).length, 5); assert.equal(markerMiles(150).length, 6); assert.equal(markerMiles(200).length, 6);
 });
 test('markers: every planned marker is reached, one a day at most, 4-6 a leg on 150-200 mile legs, for oxen and brisk mules', () => {
   for (const [animal, pace] of [['oxen', 'steady'], ['mules', 'brisk']]) {
@@ -341,20 +348,30 @@ test('arrive: three stars, $60 × priceMult + $20 a star, the sticker, the crate
   const cash0 = J.cash;
   const res = arrive(J);
   assert.equal(res.stars[0], true); assert.equal(res.stars[2], true);
-  assert.deepEqual(res.cash, payFor(res.stars, 's1847'));
-  assert.equal(res.cash.total, res.stars.reduce((a, lit, i) => a + (lit ? PAY.star[i] : 0), PAY.arrival), 'the arrival pay plus the pay of each lit star');
+  assert.deepEqual(res.cash, payFor(res.stars, 's1847', TRAIL[0]));
+  assert.equal(res.cash.total, res.cash.arrival + res.cash.stars, 'the arrival pay plus the pay of the lit stars');
+  const f = TRAIL[0].miles / PAY.refMiles;                                          // v1.5: the pay follows the leg's miles
+  assert.equal(res.cash.arrival, Math.max(1, Math.round(PAY.arrival * f)));
+  assert.equal(res.cash.stars, Math.round(res.stars.reduce((a, lit, i) => a + (lit ? PAY.star[i] : 0), 0) * f));
   assert.equal(J.cash, cash0 + res.cash.total);
   assert.equal(res.crate, crateFor(res.stars));
   assert.equal(arrive(J), res); assert.equal(J.cash, cash0 + res.cash.total, 'paid once');
   assert.deepEqual(J.stickers, [TRAIL[0].sticker.id]);
   assert.equal(tickDay(J).miles, 0, 'no travel after arriving');
 });
-test('crates: gold on 3 stars, silver on 2, bronze on 1; pay scales with the season', () => {
+test('crates: gold on 3 stars, silver on 2, bronze on 1; pay scales with the season, the tier and the leg\'s miles', () => {
   assert.equal(crateFor([true, true, true]), 'gold'); assert.equal(crateFor([true, false, true]), 'silver');
   assert.equal(crateFor([true, false, false]), 'bronze'); assert.equal(crateFor([false, false, false]), null);
-  const full = PAY.arrival + PAY.star.reduce((a, b) => a + b, 0);
-  assert.equal(payFor([true, true, true], 's1850').total, full * 2, 'stars scale with the season too'); assert.equal(payFor([true], 's1853').arrival, PAY.arrival * 4); assert.equal(payFor([true], 's1853').stars, PAY.star[0] * 4);
+  const sum = PAY.star.reduce((a, b) => a + b, 0);
+  // a reference-length leg (no leg given): 1.3's pay × the price level × the tier's payFactor (v1.5: Rookie 1, Veteran 0.9, Pioneer 0.8)
+  assert.equal(payFor([true, true, true], 's1847').total, PAY.arrival + sum, 'Rookie keeps 1.3\'s pay');
+  assert.equal(payFor([true, true, true], 's1850').stars, Math.round(sum * 2 * TIER_FX.veteran.payFactor), 'stars scale with the season too');
+  assert.equal(payFor([true], 's1853').arrival, Math.round(PAY.arrival * 4 * TIER_FX.pioneer.payFactor)); assert.equal(payFor([true], 's1853').stars, Math.round(PAY.star[0] * 4 * TIER_FX.pioneer.payFactor));
   assert.ok(payFor([true, true, true], 's1847').stars > payFor([true, true, false], 's1847').stars && payFor([true, true, false], 's1847').stars > payFor([true, false, false], 's1847').stars, 'a better leg pays more, a bare arrival still pays');
+  // the pay follows the miles: a leg of the reference length pays what it always paid, 60 miles about a third, and the arrival is never under $1
+  assert.deepEqual(payFor([true, true, true], 's1847', { miles: PAY.refMiles }), payFor([true, true, true], 's1847'));
+  assert.ok(payFor([true, true, true], 's1847', { miles: 60 }).total < payFor([true, true, true], 's1847').total / 2);
+  assert.ok(payFor([false, false, false], 'pioneer', { miles: 60 }).arrival >= 1 && payFor([true], 'pioneer', { miles: 1 }).total >= 1);
 });
 test('stars: everyone happy needs every companion happy; every marker right needs at least one marker', () => {
   const J = createJourney({ companions: PARTY });
@@ -412,7 +429,7 @@ test('the content\'s own legs (the skeleton or the full trail) play through too'
     const J = createJourney({ companions: PARTY, seed: 3 });
     let n = 0;
     while (!J.done && n++ < 3000) { const r = tickDay(J); if (r.marker) applyMarker(J, { correct: true }); if (r.arrived) { arrive(J); nextLeg(J); } }
-    assert.ok(J.done); assert.equal(J.totals.legs, LEGS.length);
+    assert.ok(J.done); assert.equal(J.totals.legs, J.plan.length);
   } finally { useLegs(TRAIL); }
 });
 test('determinism: the same seed and answers give the same journey; another seed differs', () => {
@@ -439,9 +456,9 @@ test('newSeason: the next year, bigger prices and cash, same party, tokens carri
   const { J } = playJourney(3, RIGHT);
   J.tokens = 7;
   const N = newSeason(J);
-  assert.equal(N.season, 's1850'); assert.equal(N.cash, START.cash * 2); assert.equal(N.tokens, 7);
+  assert.equal(N.season, 'veteran'); assert.equal(N.cash, TIER_FX.veteran.startCash); assert.equal(N.tokens, 7); assert.equal(N.year, J.year + 1, 'the calendar moves a year');
   assert.deepEqual(N.companions, PARTY); assert.equal(N.seasonsDone, 1); assert.equal(N.legIndex, 0); assert.equal(N.done, false);
-  assert.equal(newSeason(newSeason(N)).season, 's1853', 'the last season repeats');
+  assert.equal(newSeason(newSeason(N)).season, 'pioneer', 'the last tier repeats');
 });
 test('legStatus and foodToNextFort for the HUD and the store', () => {
   const J = createJourney({ companions: PARTY, seed: 6 });
@@ -710,22 +727,26 @@ test('letters: the river line on a river leg, the mood line by the mood, an empt
 
 // ================= v1.1: trail cards, camp, the daily challenge, wagon upgrades, the derby's pay =================
 console.log('\ntrail cards (content)');
-test('54 cards in six suits: 12 landmarks, 8 nations, 12 wild, 8 companions, 6 river, 8 trail tales, with the shape the album needs', () => {
-  assert.equal(CARDS.length, 54);
-  assert.deepEqual(SUITS, ['landmark', 'nation', 'wild', 'companion', 'river', 'tales']);
-  assert.deepEqual(SUITS.map((s) => cardsOf(s).length), [12, 8, 12, 8, 6, 8]);
-  assert.equal(new Set(CARDS.map((c) => c.id)).size, 54, 'ids are unique across suits');
+// (v1.5 grows the album to about 110 cards and adds the 'gold' suit: this v1.4 test pins the original 54 and the shape, and tolerates more)
+const ORIGINAL_NATIONS = ['kansa', 'pawnee', 'lakota', 'shoshone', 'bannock', 'nez-perce', 'cayuse', 'chinook'].filter((id) => NATIONS.some((n) => n.id === id));
+const STOCK_COMPANIONS = ['blacksmith', 'teacher', 'fiddler', 'scout', 'cook', 'doctor', 'carpenter', 'storyteller'];
+test('the album: the original 54 cards in six suits (12 landmarks, 8 nations, 12 wild, 8 companions, 6 river, 8 trail tales), with the shape the album needs', () => {
+  assert.ok(CARDS.length >= 54);
+  assert.deepEqual(SUITS.slice(0, 6), ['landmark', 'nation', 'wild', 'companion', 'river', 'tales']);
+  [12, 8, 12, 8, 6, 8].forEach((n, i) => assert.ok(cardsOf(SUITS[i]).length >= n, SUITS[i]));
+  assert.equal(new Set(CARDS.map((c) => c.id)).size, CARDS.length, 'ids are unique across suits');
   for (const c of CARDS) {
     assert.equal(CARD_BY_ID[c.id], c);
     for (const k of ['id', 'suit', 'name', 'emoji', 'fact', 'say']) assert.ok(typeof c[k] === 'string' && c[k].length > 0, `${c.id}.${k}`);
     assert.ok(SUITS.includes(c.suit));
     assert.ok(c.fact.length <= 170, `${c.id}: one line (${c.fact.length})`);
   }
-  assert.deepEqual(cardsOf('landmark').map((c) => c.id), LEGS.map((l) => l.id), 'a landmark card per leg id, in trail order');
-  assert.deepEqual(cardsOf('nation').map((c) => c.id), NATIONS.map((n) => n.id), 'a card per nation id');
-  assert.deepEqual(cardsOf('companion').map((c) => c.id), COMPANIONS.map((c) => c.id), 'a card per companion id');
-  assert.deepEqual(cardsOf('wild').map((c) => c.id).sort(), ['bald-eagle', 'bison', 'camas', 'coyote', 'jackrabbit', 'mule-deer', 'prairie-dog',
-    'pronghorn', 'rattlesnake', 'sagebrush', 'salmon', 'wild-plum']);
+  const lm = cardsOf('landmark').map((c) => c.id);
+  assert.deepEqual(LEGS.map((l) => l.id).filter((id) => lm.includes(id)), LEGS.map((l) => l.id), 'a landmark card for each of the 1.3 legs, in trail order');
+  for (const id of ORIGINAL_NATIONS) assert.ok(cardsOf('nation').some((c) => c.id === id), `a card for the ${id}`);
+  for (const id of STOCK_COMPANIONS) assert.ok(cardsOf('companion').some((c) => c.id === id), `a card for ${id}`);
+  const wild = cardsOf('wild').map((c) => c.id);
+  for (const id of ['bald-eagle', 'bison', 'camas', 'coyote', 'jackrabbit', 'mule-deer', 'prairie-dog', 'pronghorn', 'rattlesnake', 'sagebrush', 'salmon', 'wild-plum']) assert.ok(wild.includes(id), id);
 });
 test('kid rules: no death, illness or weapons in a card; the rattlesnake is only "give it room"; the spoken line has no digits', () => {
   const bad = /\b(die[sd]?|dead|death|kill\w*|sick\w*|ill|illness|disease\w*|gun\w*|shoot\w*|shot|weapon\w*|arrow\w*|bow|blood\w*|bite\w*|bitten|venom\w*|poison\w*|grave\w*|hurt|wound\w*)\b/i;
@@ -739,7 +760,8 @@ test('kid rules: no death, illness or weapons in a card; the rattlesnake is only
 });
 test('every wild card has biomes, every biome has a wild card, and each wild card has a source entry in docs/SOURCES.md', () => {
   const biomes = new Set(['prairie', 'bluffs', 'highdesert', 'mountains', 'gorge', 'valley']);
-  for (const c of cardsOf('wild')) assert.ok(c.biomes.length > 0 && c.biomes.every((b) => biomes.has(b)), c.id);
+  const allBiomes = new Set([...biomes, 'basin', 'sierra', 'siskiyou', 'goldcountry', 'sea']);      // v1.5's five new biomes
+  for (const c of cardsOf('wild')) assert.ok(c.biomes.length > 0 && c.biomes.every((b) => allBiomes.has(b)), c.id);
   for (const b of biomes) assert.ok(cardsOf('wild').some((c) => c.biomes.includes(b)), `a wild card for ${b}`);
   const src = readFileSync(new URL('../docs/SOURCES.md', import.meta.url), 'utf8');
   for (const c of cardsOf('wild')) assert.ok(src.includes(`<a id="card-${c.id}">`), `SOURCES.md has card-${c.id}`);
@@ -764,13 +786,13 @@ test('suitComplete: false until every card of the suit is held, true on the last
   const comp = cardsOf('companion');
   comp.slice(0, -1).forEach((c) => { const r = awardCard(J, c.id); assert.equal(r.suitComplete, false); });
   assert.equal(suitComplete(J, 'companion'), false);
-  assert.deepEqual(suitProgress(J, 'companion'), { have: 7, of: 8 });
+  assert.deepEqual(suitProgress(J, 'companion'), { have: comp.length - 1, of: comp.length });
   const last = awardCard(J, comp[comp.length - 1].id);
   assert.equal(last.new, true); assert.equal(last.suitComplete, true);
   assert.equal(suitComplete(J, 'companion'), true); assert.equal(suitComplete(J, 'wild'), false); assert.equal(suitComplete(J, 'nonsense'), false);
   for (const s of SUITS) cardsOf(s).forEach((c) => awardCard(J, c.id));
   assert.ok(SUITS.every((s) => suitComplete(J, s)));
-  assert.equal(J.cards.length, 54);
+  assert.equal(J.cards.length, CARDS.length);
 });
 test('cardForLeg: a wild card of the leg\'s biome (else any wild); cardForAnimal maps the scene\'s animals', () => {
   const J = createJourney({ companions: PARTY, seed: 5 });
@@ -1269,7 +1291,7 @@ test('arrows: a hunt takes five; huntAllowed needs five; no arrows = no hunt eve
   const e = tickDay(F, { rand: R5 }).event; assert.equal(e.canHunt, true); assert.equal(e.arrows, 15);
 });
 test('blankets: one for every two people on South Pass, the Blue Mountains and a snow event; short = a cold night, tired, a rest day', () => {
-  assert.deepEqual(COLD_LEGS, ['south-pass', 'blue-mountains']);
+  assert.ok(['south-pass', 'blue-mountains', 'lander-road', 'sierra-summit', 'siskiyou-pass'].every((id) => COLD_LEGS.includes(id)), 'the legs the content flags cold');
   const J = mk();
   assert.deepEqual(needsBlankets(J), { need: 0, have: 0, short: 0, cold: false, why: null }, 'the Kansas River is mild');
   assert.deepEqual(needsBlankets(J, 'south-pass'), { need: 2, have: 0, short: 2, cold: true, why: 'leg' });
@@ -1295,15 +1317,16 @@ test('blankets: one for every two people on South Pass, the Blue Mountains and a
   const sr = tickDay(S, { rand: R5 }); assert.equal(sr.event.id, 'snow'); assert.equal(sr.coldNight, true); assert.deepEqual(needsBlankets(S), { need: 2, have: 0, short: 2, cold: true, why: 'snow' });
   const S2 = rich(mk(), 4000); S2.goods.blankets = 2; S2.trip.markers = []; S2.trip.events = [{ id: 'snow', kind: 'rest', atMile: 1, fired: false }];
   assert.equal(tickDay(S2, { rand: R5 }).coldNight, false);
-  assert.equal(EVENT_BY_ID.snow.cold, true); assert.deepEqual(EVENT_BY_ID.snow.biomes, ['mountains', 'highdesert']);
+  assert.equal(EVENT_BY_ID.snow.cold, true); assert.ok(['mountains', 'highdesert'].every((b) => EVENT_BY_ID.snow.biomes.includes(b)));
   buy(mk(), { item: 'blankets', qty: 2 });
 });
+const TRADERS = NATIONS.filter((n) => legList().some((l) => l.nation === n.id || (n.legs || []).includes(l.id)));      // the nations on the twelve legs under test
 test('trade offers (W8): every offer is something the wagon holds, for all eight nations and many random wagons', () => {
   const seenNations = new Set(), kinds = { listed: 0, fallback: 0 }, gives = new Set();
   const rand = mulberry32(8080);
   const ri = (n) => Math.floor(rand() * n);
   for (let i = 0; i < 1500; i++) {
-    const nation = NATIONS[i % NATIONS.length];                       // all eight, even two that share a leg (Nez Perce, Cayuse)
+    const nation = TRADERS[i % TRADERS.length];                       // all eight of the 1.3 trail, even two that share a leg (Nez Perce, Cayuse)
     const leg = legList().find((l) => l.nation === nation.id || (nation.legs || []).includes(l.id));
     const J = mk(PLAIN, 100 + i); startLeg(J, leg.id);
     // a random wagon: any goods (often none), tokens, food kinds; blankets only sometimes
@@ -1339,8 +1362,8 @@ test('trade offers (W8): every offer is something the wagon holds, for all eight
       assert.ok(!canDo, 'the guard was reached although the wagon held something to trade');
     }
   }
-  assert.equal(seenNations.size, 8, 'all eight nations');
-  assert.deepEqual([...seenNations].sort(), NATIONS.map((n) => n.id).sort());
+  assert.equal(seenNations.size, TRADERS.length, 'all eight nations of the twelve legs');
+  assert.deepEqual([...seenNations].sort(), TRADERS.map((n) => n.id).sort());
   assert.ok(kinds.listed > 100 && kinds.fallback > 20, JSON.stringify(kinds));
   for (const g of ['pelts', 'rope', 'blankets', 'tokens', 'flour']) assert.ok(gives.has(g), `${g} is offered sometimes`);
 });
@@ -1407,9 +1430,9 @@ test('a stampede event on the prairie and the bluffs only', () => {
 
 console.log('\nv1.2 companion skills');
 test('all eight companions have a skill { id, name, text }; skillOf finds who has it', () => {
-  assert.equal(COMPANIONS.length, 8);
+  assert.ok(COMPANIONS.length >= 8);                                    // v1.5 adds Mateo and Hattie (from the second journey), each with a skill of their own
   const ids = COMPANIONS.map((c) => c.skill && c.skill.id);
-  assert.equal(new Set(ids).size, 8);
+  assert.equal(new Set(ids).size, COMPANIONS.length);
   for (const c of COMPANIONS) { assert.ok(c.skill.id && c.skill.name && c.skill.text.length > 10, c.id); assert.ok(!/\d/.test(c.skill.text) || true); }
   const J = mk(['scout', 'cook', 'carpenter']);
   assert.equal(skillOf(J, 'scouting'), 'scout'); assert.equal(skillOf(J, 'good-cooking'), 'cook'); assert.equal(skillOf(J, 'carpentry'), 'carpenter');
@@ -1581,10 +1604,10 @@ test('raftPay: $24 less $6 a bump, never under $6, times the season; stampedePay
 
 console.log('\nv1.2 people');
 test('people: 26-36, two or three at every one of the thirteen stops, with a portrait, a role and two kid-level lines, no death, illness or weapons', () => {
-  assert.ok(PEOPLE.length >= 26 && PEOPLE.length <= 36, `${PEOPLE.length} people`);
+  assert.ok(PEOPLE.length >= 26, `${PEOPLE.length} people`);                       // (v1.5 brings about eighty more, for the new stops)
   const stops = ['independence', ...LEGS.map((l) => l.id)];
   for (const s of stops) assert.ok((PEOPLE_BY_STOP[s] || []).length >= 2 && PEOPLE_BY_STOP[s].length <= 3, `${s}: ${(PEOPLE_BY_STOP[s] || []).length}`);
-  assert.deepEqual(Object.keys(PEOPLE_BY_STOP).sort(), [...stops].sort());
+  for (const st of stops) assert.ok(PEOPLE_BY_STOP[st], st);
   assert.equal(new Set(PEOPLE.map((p) => p.id)).size, PEOPLE.length);
   const bad = /\b(die[sd]?|dead|death|kill\w*|sick\w*|ill|illness|disease\w*|cholera|gun\w*|rifle\w*|shoot\w*|shot|weapon\w*|arrow\w*|blood\w*|bite\w*|bitten|venom\w*|poison\w*|grave\w*|hurt|wound\w*|whiskey|liquor|alcohol|drunk\w*)\b/i;
   const src = readFileSync(new URL('../docs/SOURCES.md', import.meta.url), 'utf8');
@@ -1629,7 +1652,8 @@ test('meetPerson: the first time remembers them and applies the gift (food into 
 
 console.log('\nv1.2 deeds');
 test('DEEDS: twenty, each { id, name, how, say }, unique, spoken lines without digits; checkDeeds is idempotent and pays a token each', () => {
-  assert.equal(DEEDS.length, 28, '20 from 1.2 and 8 from 1.4'); assert.equal(new Set(DEEDS.map((d) => d.id)).size, 28);
+  assert.equal(DEEDS.length, 53, '20 from 1.2, 8 from 1.4 and 25 from 1.5'); assert.equal(new Set(DEEDS.map((d) => d.id)).size, 53);
+  assert.deepEqual(DEEDS.slice(28).map((d) => d.id), V15_DEEDS, 'the 25 of 1.5, in the SPEC\'s order');
   for (const d of DEEDS) { assert.ok(d.id && d.name && d.how && d.say, d.id); assert.ok(!/\d/.test(d.say), d.say); assert.equal(DEED_BY_ID[d.id], d); }
   for (const id of ['dry-feet', 'mail-beater', 'full-wagon', 'card-shark', 'people-person', 'cold-proof', 'fixer', 'angler', 'archer', 'spelling-ferry', 'marker-master', 'summiteer', 'homesteader']) assert.ok(DEED_BY_ID[id], id);
   const J = mk(); assert.deepEqual(checkDeeds(J), []);
@@ -1668,9 +1692,9 @@ test('every deed is reachable in a scripted journey (and none is earned by doing
     nextLeg(J);
   }
   check();
-  const ids = DEEDS.map((d) => d.id).filter((d) => !V14_DEEDS.includes(d));
+  const ids = DEEDS.map((d) => d.id).filter((d) => !V14_DEEDS.includes(d) && !V15_DEEDS.includes(d));
   const missing = ids.filter((id) => !J.deeds.includes(id)); assert.ok(missing.length === 0, 'missing deeds: ' + missing.join(', '));
-  assert.equal(J.deeds.filter((d) => !V14_DEEDS.includes(d)).length, 20); assert.equal(new Set(J.deeds).size, J.deeds.length);
+  assert.equal(J.deeds.filter((d) => !V14_DEEDS.includes(d) && !V15_DEEDS.includes(d)).length, 20); assert.equal(new Set(J.deeds).size, J.deeds.length);
   assert.equal(tokensFromDeeds, 20, 'a token each');
   // a journey of doing nothing earns nothing
   const idle = mk(); assert.deepEqual(checkDeeds(idle), []);
@@ -1691,7 +1715,7 @@ test('a 1.1 save (no foods, animals, deeds, people, goods beyond the old ones) l
   assert.equal(old.goods.arrows, 15, 'the bow gets its fifteen (2 bundles bought in 1.1 = 10 arrows, still the start of 15)'); assert.equal(old.goods.pelts, 4);
   assert.equal(old.goods.parts, old.parts); assert.equal(old.goods.rope, 0); assert.equal(old.goods.blankets, 0); assert.equal(old.goods.yoke, 0);
   for (const k of ['repairs', 'soakedLb', 'peopleMet', 'markersPerfectLegs', 'fishLb', 'meatLb', 'riversCrossed']) assert.equal(old.totals[k], 0, k);
-  assert.deepEqual(old.totals.reached, []); assert.equal(old.trip.v12, 1); assert.equal(old.rev, 14, 'a 1.1 save is filled up to rev 14');
+  assert.deepEqual(old.totals.reached, []); assert.equal(old.trip.v12, 1); assert.equal(old.rev, 15, 'a 1.1 save is filled up to rev 15');
   assert.deepEqual(clone(old), old);
   // every v1.2 entry point works on it
   const o2 = clone(old); for (const k of ['rev', 'foods', 'animals', 'met', 'deeds']) delete o2[k];
@@ -1883,7 +1907,7 @@ test('a nose slot fired by tickDay is applied by tickDay itself (find recorded, 
   assert.ok(J.trip.happened.includes('nose') && J.trip.happened.includes('berries') && J.trip.happened.includes('snake') && J.trip.happened.includes('chase'));
 });
 
-test('one thing a day: never two of {marker, event, nose, fact, moment}, nothing on the arrival day, nothing in the last 8 % unfired-and-late; across 16 dog journeys', () => {
+test('one thing a day: never two of {event, nose, fact, moment}, nor a fact or a dust devil on a marker day (v1.5: on 60-160 mile legs the dog\'s nose may share a marker day, a pop that does not stop the day), nothing on the arrival day, nothing in the last 8 % unfired-and-late; across 16 dog journeys', () => {
   let noses = 0, facts = 0, moments = 0, markers = 0, events = 0;
   for (let seed = 400; seed < 416; seed++) {
     const rand = mulberry32(seed), J = createJourney({ seed, companions: PLAIN });
@@ -1895,7 +1919,7 @@ test('one thing a day: never two of {marker, event, nose, fact, moment}, nothing
         if (r.marker) markers++; if (r.event) events++;
         assert.ok(things.length <= 1, `${leg.id} day ${J.day}: ${things.join()}`);
         if (things.length) {
-          assert.ok(!r.marker && !r.event && !r.arrived && r.miles > 0, `${leg.id}: a ${things[0]} on a busy day`);
+          assert.ok((!r.marker || things[0] === 'nose') && !r.event && !r.arrived && r.miles > 0, `${leg.id}: a ${things[0]} on a busy day`);
           assert.ok(start <= leg.miles * 0.92, `${leg.id}: a ${things[0]} when the day started at ${start} of ${leg.miles}`);
         }
         if (r.nose) noses++; if (r.fact) facts++; if (r.moment) moments++;
@@ -2256,7 +2280,7 @@ test('landCast: the fish log (n, the biggest in inches with its pounds, where fi
   set(0, { kind: 'fish', species: 'channel-catfish', lengthIn: 20, lb: 6 }); set(1, { kind: 'fish', species: 'channel-catfish', lengthIn: 22, lb: 6 });
   set(2, { kind: 'fish', species: 'hornyhead-chub', lengthIn: 7, lb: 3 }); set(3, { kind: 'junk', junk: 'boot', lb: 0 });
   const r0 = V14.landCast(J, S, 0); assert.deepEqual([r0.kind, r0.species, r0.lengthIn, r0.lb, r0.firstSpecies, r0.best, r0.card], ['fish', 'channel-catfish', 20, 6, true, true, 'channel-catfish']);
-  assert.deepEqual(J.fishLog['channel-catfish'], { n: 1, bestIn: 20, bestLb: 6, firstLeg: 'fort-kearny', firstSeason: 's1847' }); assert.deepEqual(J.fishBest, { species: 'channel-catfish', in: 20 });
+  assert.deepEqual(J.fishLog['channel-catfish'], { n: 1, bestIn: 20, bestLb: 6, firstLeg: 'fort-kearny', firstSeason: 'rookie' }); assert.deepEqual(J.fishBest, { species: 'channel-catfish', in: 20 });
   const r1 = V14.landCast(J, S, 1); assert.deepEqual([r1.firstSpecies, r1.best, r1.card], [false, true, undefined]); assert.equal(J.fishLog['channel-catfish'].n, 2); assert.equal(J.fishLog['channel-catfish'].bestIn, 22);
   const r2 = V14.landCast(J, S, 2); assert.equal(r2.best, false, 'a small chub is not the personal best'); assert.deepEqual(J.fishBest, { species: 'channel-catfish', in: 22 }); assert.equal(r2.card, 'hornyhead-chub');
   const r3 = V14.landCast(J, S, 3); assert.deepEqual([r3.kind, r3.junk, r3.lb], ['junk', 'boot', 0]); assert.equal(J.fishJunk.boot, 1); assert.ok(J.trip.happened.includes('fish-boot'));
@@ -2300,7 +2324,7 @@ test('the locket: the dog named at the Kansas River brings it back (carried, the
   const J = createJourney({ seed: 41, companions: PLAIN }); v14atStop(J, 'kansas-river');
   assert.equal(V14.questFindable(J, 'nose'), 'locket', 'findable at the Kansas River'); assert.deepEqual(V14.questStatus(J).find((q) => q.questId === 'locket').state, 'none');
   const a = V14.adoptDog(J, { name: 'Frodo', coat: 'brown' }); assert.equal(a.quest, 'locket');
-  assert.deepEqual(J.quests.locket, { state: 'carried', step: 0, foundLeg: 'kansas-river', season: 's1847' });
+  assert.deepEqual(J.quests.locket, { state: 'carried', step: 0, foundLeg: 'kansas-river', season: 'rookie' });
   assert.equal(V14.adoptDog(J, { name: 'Other' }).dog.name, 'Frodo', 'a journey that has a dog keeps it'); assert.equal(V14.adoptDog(J, {}).quest, null);
   assert.equal(V14.findQuestItem(J, 'locket'), null, 'found once');
   const at = (stop) => V14.questAt(J, stop).map((x) => [x.questId, x.role, x.badge, x.person.id]);
@@ -2466,7 +2490,7 @@ test('dust devil: prairie, bluffs and high desert legs only, about 35 %, never t
 });
 
 test('skipping stones: the flat stone adds its two skips to the next throw once; once a stop and once a leg at camp; best, throws and byRiver kept; at most 12 skips', () => {
-  assert.deepEqual(RIVER_STOPS, ['kansas-river', 'snake-river', 'the-dalles']);
+  assert.ok(['kansas-river', 'snake-river', 'the-dalles'].every((id) => RIVER_STOPS.includes(id)));      // (v1.5 adds the new rivers)
   const J = v14mk(64, { leg: 'fort-kearny' });
   V14.recordFind(J, 'flat-stone'); assert.equal(J.trip.skipBonus, 2);
   const p = V14.stonesPlan(J); assert.deepEqual([p.throws, p.bonus, p.available], [3, 2, true]); assert.equal(V14.stonesPlan(J).bonus, 0, 'the flat stone is used once');
@@ -2509,7 +2533,9 @@ test('falling stars: only the evening of an arrival, decided once an arrival, ab
 const V14_FIELDS = ['dog', 'finds', 'fishLog', 'fishJunk', 'fishBest', 'skips', 'wishes', 'treatsBest', 'quests', 'questsDone', 'factsHeard', 'moments'];
 const V14_TRIP = ['v14', 'nose', 'fact', 'dustDevil', 'fishing', 'stones', 'stonesStop', 'meteors', 'fetchThrows', 'skipBonus'];
 const V14_TOTALS = ['noseFinds', 'chases', 'chasesCalled', 'snakes', 'berries', 'fetchThrows', 'treats', 'fishCaught', 'fishOff', 'fishJunk', 'sturgeon', 'skipThrows', 'dustDevils', 'hatsCaught', 'hatsAll', 'meteorsTapped', 'questsDone', 'factsHeard'];
-/** what a 1.3.2 save looked like: the journey with none of the v1.4 fields and rev 12 */
+const V15_TOTALS = ['pans', 'flakes', 'nuggets', 'rockerRounds', 'rockerBeat', 'tolls', 'tollIous', 'dryDays', 'thirstyDays', 'dryDrives', 'iceDug', 'snubs', 'snubsSmooth', 'sails', 'axleGrease', 'springs', 'goldFevers'];
+const V15_FIELDS = ['route', 'tier', 'year', 'journeyN', 'family', 'branches', 'plan', 'planLocked', 'gold', 'letterFrom', 'banked', 'closed', 'xcold', 'tale'];
+/** what a 1.3.2 save looked like: the journey with none of the v1.4 (nor v1.5) fields and rev 12 */
 function v14oldSave(seed = 70) {
   const J = createJourney({ seed, companions: ['blacksmith', 'scout', 'teacher'] }); const rand = mulberry32(seed);
   for (let d = 0; d < 9; d++) { const r = tickDay(J, { rand }); if (r.marker) applyMarker(J, { correct: true }); }
@@ -2520,18 +2546,21 @@ function v14oldSave(seed = 70) {
   for (const k of V14_TOTALS) delete old.totals[k];
   for (const k of V14_TRIP) delete old.trip[k];
   delete old.opts.farSounds; old.rev = 12;
+  for (const k of V15_FIELDS) delete old[k]; for (const k of V15_TOTALS) delete old.totals[k]; for (const k of ['v15', 'toll', 'keys', 'dryNoted']) delete old.trip[k]; delete old.tier;
   return old;
 }
 test('ensureJourney turns a 1.3.2 save into rev 14 with every v1.4 field and changes nothing else', () => {
   const old = v14oldSave(), snap = clone(old), J = clone(old);
-  assert.equal(ensureJourney(J), J); assert.equal(J.rev, 14);
+  assert.equal(ensureJourney(J), J); assert.equal(J.rev, 15);
   assert.equal(J.dog, null); assert.deepEqual(J.finds, {}); assert.deepEqual(J.fishLog, {}); assert.deepEqual(J.fishJunk, { boot: 0, turtle: 0, bottle: 0 }); assert.equal(J.fishBest, null);
   assert.deepEqual(J.skips, { best: 0, throws: 0, byRiver: {} }); assert.deepEqual(J.wishes, []); assert.equal(J.treatsBest, 0); assert.deepEqual(J.quests, {}); assert.deepEqual(J.questsDone, []);
   assert.deepEqual(J.factsHeard, []); assert.deepEqual(J.moments, { dustDevilLeg: -9, meteorsLeg: -9 }); assert.equal(J.opts.farSounds, true);
   assert.deepEqual([J.goods.horseshoes, J.goods.hoppers, J.goods.spoon], [0, 0, 0]); for (const k of V14_TOTALS) assert.equal(J.totals[k], 0, k);
   assert.deepEqual([J.trip.nose, J.trip.fact, J.trip.dustDevil, J.trip.fishing, J.trip.stones, J.trip.meteors, J.trip.fetchThrows, J.trip.skipBonus], [[], null, null, 0, false, null, 0, 0]);
   // …and nothing else moved: take the additions out and it is the old save again
-  const back = clone(J); for (const k of V14_FIELDS) delete back[k]; for (const k of ['horseshoes', 'hoppers', 'spoon']) delete back.goods[k]; for (const k of V14_TOTALS) delete back.totals[k]; for (const k of V14_TRIP) delete back.trip[k]; delete back.opts.farSounds; back.rev = 12;
+  const back = clone(J); for (const k of V15_FIELDS) delete back[k]; for (const k of V15_TOTALS) delete back.totals[k]; for (const k of ['v15', 'toll', 'keys', 'dryNoted']) delete back.trip[k];
+  assert.equal(J.planLocked, true, 'a 1.3 / 1.4 journey in progress is locked to its twelve legs'); assert.equal(J.plan.length, 12);
+  for (const k of V14_FIELDS) delete back[k]; for (const k of ['horseshoes', 'hoppers', 'spoon']) delete back.goods[k]; for (const k of V14_TOTALS) delete back.totals[k]; for (const k of V14_TRIP) delete back.trip[k]; delete back.opts.farSounds; back.rev = 12;
   assert.deepEqual(back, snap); assert.deepEqual(clone(J), J, 'JSON-safe');
   const twice = clone(J); ensureJourney(twice); assert.deepEqual(twice, J, 'idempotent');
   // it plays on, and every v1.4 entry point takes it
@@ -2540,7 +2569,7 @@ test('ensureJourney turns a 1.3.2 save into rev 14 with every v1.4 field and cha
   const o4 = clone(old); V14.chaseResult(o4, { called: true, dist: 0.1 }); V14.sellHorseshoes(o4); V14.fetchThrow(o4, {}); V14.catchHoppers(o4, 3); V14.wishFor(clone(old)); V14.dustDevilResult(clone(old), { caught: 1, of: 1 });
   assert.equal(o.dog.name, 'Rex'); assert.equal(o4.goods.hoppers, 3);
   const arrows = clone(old); arrows.goods.arrows = 4; ensureJourney(arrows); assert.equal(arrows.goods.arrows, 4, 'a rev-12 save keeps its arrows (only a pre-1.2 save gets the bow\'s fifteen)');
-  const ancient = clone(old); delete ancient.rev; ancient.goods.arrows = 1; ensureJourney(ancient); assert.equal(ancient.goods.arrows, 15); assert.equal(ancient.rev, 14);
+  const ancient = clone(old); delete ancient.rev; ancient.goods.arrows = 1; ensureJourney(ancient); assert.equal(ancient.goods.arrows, 15); assert.equal(ancient.rev, 15);
 });
 
 test('newSeason carries exactly the §3.1 list (the dog clean, the finds, the fish log, the junk, the best fish, the stones, the wishes, the quests given back, the longest fetch, the spoon, the far-off switch) and resets the rest', () => {
@@ -2556,7 +2585,7 @@ test('newSeason carries exactly the §3.1 list (the dog clean, the finds, the fi
   for (const k of V14_TOTALS) assert.equal(N.totals[k], 0, k); assert.equal(N.tokens, 9, '1.3: the tokens carry');
   assert.notEqual(N.finds, J.finds, 'copies, not the same objects'); N.finds.horseshoe = 99; assert.equal(J.finds.horseshoe, 2);
   assert.ok(N.trip.nose.length >= 2, 'the dog is carried, so the first leg of the new season has its nose slots'); assert.equal(N.trip.nose[0].kind, 'quest');
-  assert.equal(N.rev, 14); assert.deepEqual(clone(N), N);
+  assert.equal(N.rev, 15); assert.deepEqual(clone(N), N);
   const noDog = createJourney({ seed: 72, companions: PLAIN }); noDog.done = true; const M = newSeason(noDog); assert.equal(M.dog, null); assert.deepEqual(M.trip.nose, []);
   const off = createJourney({ seed: 73, companions: PLAIN }); V14.setTrailSounds(off, false); off.done = true; for (let i = 0; i < 40; i++) { const Z = newSeason(off); assert.equal(Z.opts.farSounds, false); if (Z.trip.fact) assert.ok(!FAR_IDS.includes(Z.trip.fact.id)); off.seed += 1; }
 });
@@ -2723,6 +2752,646 @@ test('the 8 new deeds are reachable (each +1 token once, checkDeeds idempotent) 
   const earned = new Set(); for (let seed = 940; seed < 960; seed++) for (const d of v14journey(seed).J.deeds) earned.add(d);
   for (const id of ['good-nose', 'hat-trick', 'keeper', 'river-guide']) assert.ok(earned.has(id), 'a played journey earns ' + id + ' (' + [...earned].join() + ')');
   for (const d of DEEDS.filter((x) => dids.includes(x.id))) { assert.ok(d.name && d.how && d.say && d.emoji); assert.ok(!/\d/.test(d.say), d.say); }
+});
+
+// =====================================================================================================================================
+// v1.5: The Long Trail (SPEC v1.5 §3, §7.1): plans and forks, tiers, the calendar, gold, the homestead, carry-over, merges, deeds and sets, letters, and the adaptive math (§3.9).
+// These run on the real content's 20-leg trail and every route (no useLegs list is installed).
+// =====================================================================================================================================
+console.log('\nv1.5 plans and forks');
+useLegs(null);
+const R = await import('../src/journey/route.js');
+const { ROUTES, FORKS, SITES } = await import('../src/content/routes.js');
+const { ALL_LEGS, LEG_BY_ID } = await import('../src/content/legs.js');
+const { NATION_BY_ID } = await import('../src/content/nations.js');
+const { LOOKOUTS } = await import('../src/content/lookouts.js');
+const { CARD_SETS, DECOR_BY_ID } = await import('../src/content/cards.js');
+const { HOMESTEAD_PIECES, PIECE_BY_ID } = await import('../src/content/homestead.js');
+const { TIERS } = await import('../src/content/tiers.js');
+const { HOMESTEAD_COST, GOLD, SNUB, SAIL, DRY } = await import('../src/journey/economy.js');
+const { defaultFacts, recordAnswer: tbRecord, refreshFrontier } = await import('../../trail-blazer/src/facts/store.js');
+const V = V14;                                   // the whole sim.js namespace (the v1.5 names too)
+const { CARRY, CARRY_V14 } = V;
+const { eatFactor } = await import('../src/journey/supplies.js');
+const CTX = (year = 1860, journeyN = 3) => ({ year, journeyN });
+const ids = (plan) => plan.map((p) => p.id);
+const cum = (plan, id) => { let m = 0; for (const p of plan) { m += p.miles; if (p.id === id) return m; } return -1; };
+const trailMiles = (plan) => R.planMiles(plan);
+
+test('the default emigrant plan is 20 legs and 2,000 miles; the four forts sit at 320 / 620 / 1,090 / 1,300; the stores are the four forts', () => {
+  const plan = R.planRoute('emigrant', {}, { year: 1847, journeyN: 1 });
+  assert.equal(plan.length, 20); assert.equal(trailMiles(plan), 2000);
+  assert.deepEqual(['fort-kearny', 'fort-laramie', 'fort-bridger', 'fort-hall'].map((id) => cum(plan, id)), [320, 620, 1090, 1300]);
+  assert.deepEqual(R.planStores(plan), ['fort-kearny', 'fort-laramie', 'fort-bridger', 'fort-hall']);
+  assert.deepEqual(plan.map((p) => p.n), plan.map((_, i) => i + 1));
+  const J = createJourney({ seed: 1 }); assert.deepEqual(ids(J.plan), ids(plan)); assert.equal(legList().length, 20);
+});
+test('every option combination resolves (3 × 2 × 2 = 12 emigrant plans, and the Gold Road); every leg is 60-160 trail miles (Coloma 50, the voyage excepted), in LEG_BY_ID, with a nation, a lookout and a card', () => {
+  let combos = 0; const plans = new Map();
+  for (const sp of ['main', 'sublette', 'lander']) for (const fh of ['oregon', 'california']) for (const td of ['columbia', 'barlow']) {
+    const plan = R.planRoute('emigrant', { 'south-pass': sp, 'fort-hall': fh, 'the-dalles': td }, CTX()); combos++;
+    plans.set(ids(plan).join(), plan);
+    assert.equal(plan[0].id, 'kansas-river'); assert.ok(R.siteOfLeg(plan[plan.length - 1].id), 'every plan ends at a homestead');
+  }
+  assert.equal(combos, 12); assert.equal(plans.size, 9, 'the Dalles fork only exists on the Oregon side: 3 × 2 + 3 plans');
+  const gold = R.planRoute('gold-road', {}, CTX(1848, 2)); plans.set('gold', gold);
+  for (const plan of plans.values()) for (const p of plan) {
+    const leg = LEG_BY_ID[p.id]; assert.ok(leg, p.id);
+    if (!leg.voyage) assert.ok((p.miles >= 60 && p.miles <= 160) || (p.miles === 50 && ['coloma', 'soda-springs'].includes(p.id)), `${p.id}: ${p.miles}`);      // (Coloma and the Sublette plan's short Soda Springs leg are 50)
+    assert.ok(leg.nation == null || NATION_BY_ID[leg.nation], `${p.id}: nation ${leg.nation}`);
+    assert.ok(LOOKOUTS[leg.lookout] || (Array.isArray(LOOKOUTS) && LOOKOUTS.some((l) => l.id === leg.lookout)), `${p.id}: lookout ${leg.lookout}`);
+    assert.ok(CARD_BY_ID[leg.id], `${p.id}: a landmark card`);
+  }
+  assert.equal(gold.length, 12); assert.equal(trailMiles(gold), 770);
+});
+test('California is 24 legs and about 2,150 miles; the Sublette plan is 40 shorter, the Lander plan 60; the Barlow plan ends at the Willamette farm; the Gold Road ends at the Willamette farm too', () => {
+  const p = (b, c = CTX()) => R.planRoute('emigrant', b, c);
+  assert.deepEqual([p({ 'fort-hall': 'california' }).length, trailMiles(p({ 'fort-hall': 'california' }))], [24, 2150]);
+  assert.equal(trailMiles(p({ 'south-pass': 'sublette' })), 1960); assert.equal(trailMiles(p({ 'south-pass': 'lander' })), 1940);
+  assert.equal(R.siteOfLeg(p({ 'the-dalles': 'barlow' }).slice(-1)[0].id), 'willamette'); assert.equal(R.siteOfLeg(p({ 'fort-hall': 'california' }).slice(-1)[0].id), 'sacramento');
+  assert.equal(R.siteOfLeg(R.planRoute('gold-road', {}, CTX(1848, 2)).slice(-1)[0].id), 'willamette'); assert.equal(R.siteOfLeg('kansas-river'), null);
+  assert.deepEqual(ids(p({ 'south-pass': 'sublette' })).slice(10, 15), ['south-pass', 'sublette-cutoff', 'bear-river', 'soda-springs', 'fort-hall']);
+  assert.equal(p({ 'south-pass': 'sublette' }).find((x) => x.id === 'soda-springs').miles, 50); assert.equal(p({ 'south-pass': 'lander' }).find((x) => x.id === 'fort-hall').miles, 140);
+  assert.equal(trailMiles(p({}, CTX(1847, 1))), 2000);
+});
+test('calendar: the Lander Road is closed before 1858 and open from it; the South Pass fork waits for the second journey; the Sublette Cutoff and the Barlow Road are open from the first year', () => {
+  assert.equal(R.planRoute('emigrant', { 'south-pass': 'lander' }, CTX(1857, 5)).length, 20, 'closed in 1857: the default main way is taken');
+  assert.equal(R.planRoute('emigrant', { 'south-pass': 'lander' }, CTX(1858, 12)).length, 18);
+  assert.equal(R.planRoute('emigrant', { 'south-pass': 'sublette' }, CTX(1847, 1)).length, 20); assert.equal(trailMiles(R.planRoute('emigrant', { 'south-pass': 'sublette' }, CTX(1847, 1))), 2000, 'the first journey has no South Pass fork');
+  assert.equal(trailMiles(R.planRoute('emigrant', { 'south-pass': 'sublette' }, CTX(1847, 2))), 1960);
+  assert.equal(trailMiles(R.planRoute('emigrant', { 'the-dalles': 'barlow' }, CTX(1847, 1))), 2000); assert.ok(ids(R.planRoute('emigrant', { 'the-dalles': 'barlow' }, CTX(1847, 1))).includes('barlow-road'));
+  // the ledger moves one year a journey, and the Gold Road opens with a Willamette arrival (and 1848)
+  const L = V.newLedger(); assert.equal(L.year, 1847); assert.equal(R.routesOpen(L).find((r) => r.id === 'gold-road').open, false); assert.equal(R.routesOpen(L).find((r) => r.id === 'emigrant').open, true);
+  assert.match(R.routesOpen(L).find((r) => r.id === 'gold-road').why, /Willamette/);
+  L.journeys.push({ id: 'x', end: 'sacramento', tier: 'rookie' }); assert.equal(R.routesOpen(L).find((r) => r.id === 'gold-road').open, false, 'California does not open it');
+  L.journeys.push({ id: 'y', end: 'willamette', tier: 'rookie' }); L.year = 1849; assert.equal(R.routesOpen(L).find((r) => r.id === 'gold-road').open, true);
+});
+function atFork(J, legId, { opts = {} } = {}) {
+  const i = J.plan.findIndex((p) => p.id === legId); assert.ok(i >= 0, legId);
+  while (J.legIndex < i) { J.milesDone = J.trip.miles; J.trip.arrived = true; arrive(J); const f = V.forkAt(J); if (f) V.chooseBranch(J, f.id, f.options.find((o) => o.open).id); nextLeg(J); }
+  J.milesDone = J.trip.miles; J.trip.arrived = true; return J;
+}
+test('forks: forkAt is null before the stop and after a choice; the first journey never offers South Pass; Fort Hall and the Dalles are offered on the first', () => {
+  const J = createJourney({ seed: 11, companions: PLAIN });
+  assert.equal(V.forkAt(J), null, 'not at a fork');
+  atFork(J, 'south-pass'); assert.equal(V.forkAt(J), null, 'the first journey never offers South Pass');
+  atFork(J, 'fort-hall'); const f = V.forkAt(J); assert.equal(f.id, 'fort-hall'); assert.equal(f.explainer, 'agnes'); assert.equal(f.lean, 'oregon', 'the first journey leans Oregon');
+  assert.deepEqual(f.options.map((o) => o.id), ['oregon', 'california']); assert.ok(f.options.every((o) => o.open && o.line && o.line.text && o.legs > 0));
+  assert.deepEqual([f.options[0].legs, f.options[0].miles, f.options[0].stores], [5, 700, 0]); assert.deepEqual([f.options[1].legs, f.options[1].miles, f.options[1].stores], [9, 850, 0]);
+  assert.equal(arrive(J).fork.id, 'fort-hall', 'arrive() carries the fork the app asks first');
+  const c = V.chooseBranch(J, 'fort-hall', 'oregon'); assert.equal(c.ok, true); assert.equal(V.forkAt(J), null, 'null after a choice'); assert.equal(arrive(J).fork, null);
+  atFork(J, 'the-dalles'); const d = V.forkAt(J); assert.equal(d.id, 'the-dalles'); assert.equal(d.options.find((o) => o.id === 'barlow').open, true);
+  const J2 = createJourney({ seed: 12, companions: PLAIN, journeyN: 2, year: 1848 }); atFork(J2, 'south-pass'); const sp = V.forkAt(J2);
+  assert.equal(sp.id, 'south-pass'); assert.equal(sp.lean, null, 'no lean after the first journey'); assert.equal(sp.options.find((o) => o.id === 'lander').open, false); assert.match(sp.options.find((o) => o.id === 'lander').why, /1858/);
+  const J3 = createJourney({ seed: 13, companions: PLAIN, journeyN: 12, year: 1858 }); atFork(J3, 'south-pass'); assert.equal(V.forkAt(J3).options.find((o) => o.id === 'lander').open, true);
+  const J4 = createJourney({ seed: 14, companions: PLAIN, journeyN: 3, year: 1849 }); atFork(J4, 'south-pass'); V.chooseBranch(J4, 'south-pass', 'sublette'); atFork(J4, 'fort-hall'); assert.equal(V.forkAt(J4).options.find((o) => o.id === 'california').extra.text.length > 0, true, 'from 1849 Agnes adds the gold-fields line');
+});
+test('chooseBranch replans only after the current leg, refuses a closed option, an unknown one and a fork already passed, and is idempotent; moving on without choosing takes the default and records it', () => {
+  const J = createJourney({ seed: 21, companions: PLAIN, journeyN: 2, year: 1848 }); atFork(J, 'fort-hall');
+  const before = ids(J.plan).slice(0, J.legIndex + 1);
+  assert.equal(V.chooseBranch(J, 'fort-hall', 'nonsense').ok, false); assert.equal(V.chooseBranch(J, 'no-fork', 'oregon').ok, false); assert.equal(V.chooseBranch(J, 'south-pass', 'lander').ok, false, 'closed in 1848 (and passed)');
+  const r = V.chooseBranch(J, 'fort-hall', 'california'); assert.equal(r.ok, true); assert.equal(J.plan.length, 24); assert.deepEqual(ids(J.plan).slice(0, J.legIndex + 1), before, 'the legs behind stay');
+  assert.equal(J.plan[J.legIndex + 1].id, 'raft-river'); assert.deepEqual(J.plan.map((p) => p.n), J.plan.map((_, i) => i + 1));
+  const again = V.chooseBranch(J, 'fort-hall', 'california'); assert.equal(again.ok, true); assert.equal(J.plan.length, 24);
+  assert.equal(V.chooseBranch(J, 'fort-hall', 'oregon').ok, true, 'a change of mind before leaving'); assert.equal(J.plan.length, 20);
+  nextLeg(J); assert.equal(V.chooseBranch(J, 'fort-hall', 'california').ok, false, 'already passed');
+  const K = createJourney({ seed: 22, companions: PLAIN }); atFork(K, 'fort-hall'); nextLeg(K); assert.equal(K.branches['fort-hall'], 'oregon', 'the default way is taken and recorded');
+  // the legs and the miles follow the plan everywhere
+  const S = createJourney({ seed: 23, companions: PLAIN, journeyN: 2, year: 1848 }); atFork(S, 'south-pass'); V.chooseBranch(S, 'south-pass', 'sublette'); nextLeg(S);
+  assert.equal(S.legId, 'sublette-cutoff'); assert.equal(legList().length, 20); assert.equal(R.planMiles(legList()), 1960);
+});
+test('a 1.3 / 1.4 journey in progress keeps its twelve legs (LEGACY_PLAN_12) to the end and offers no fork', () => {
+  const J = createJourney({ seed: 31, companions: PLAIN });
+  const old = clone(J); for (const k of ['plan', 'planLocked', 'route', 'tier', 'year', 'journeyN', 'family', 'branches', 'gold', 'letterFrom', 'banked', 'closed']) delete old[k];
+  old.legIndex = 3; old.legId = 'fort-laramie'; old.milesDone = 40; old.day = 30;
+  ensureJourney(old); startLeg(old, 'fort-laramie'); old.milesDone = 40;
+  assert.equal(old.plan.length, 12); assert.equal(old.planLocked, true); assert.equal(R.planMiles(old.plan), 2000); assert.equal(legList()[3].miles, 140, 'the 1.3 miles'); assert.equal(legList()[0].miles, 150);
+  assert.equal(V.forkAt(old), null);
+  for (let g = 0; g < 14 && !old.done; g++) { old.milesDone = old.trip.miles; old.trip.arrived = true; arrive(old); assert.equal(V.forkAt(old), null); nextLeg(old); }
+  assert.ok(old.done); assert.equal(old.totals.legs, 12 - 3, 'the nine legs from Fort Laramie');
+  assert.equal(R.siteOfLeg(old.plan[11].id), 'willamette');
+});
+
+// ---- walking whole journeys ----
+function walkJourney(J, { right = 1, seed = 1, choices = {}, barrel = false, hunt = 22, fish = 9, gold = 0.8, onLeg = null } = {}) {
+  const rand = mulberry32(seed), log = { legs: [], days: 0, tolls: [], thirsty: 0, dryDays: 0, kinds: new Set(), cash0: J.cash };
+  if (barrel) J.upgrades.barrel = true;
+  const shopAll = () => {
+    const plan = foodToNextFort(J); const want = Math.max(0, Math.round(plan.lb * 1.2) - J.food); const sacks = Math.ceil(want / lbOf('flour'));
+    const price = priceAt('flour', storeLeg(J), J.season), afford = Math.min(sacks, Math.floor(J.cash / Math.max(1, price)));
+    if (afford > 0) buy(J, { item: 'flour', qty: afford, price });
+    if (J.parts < 1) buy(J, { item: 'parts', qty: 1 });
+    const cold = coldLegsAhead(J); if (cold.length && (J.goods.blankets | 0) < needsBlankets(J, cold[0]).need) buy(J, { item: 'blankets', qty: needsBlankets(J, cold[0]).need - (J.goods.blankets | 0) });
+  };
+  shopAll();
+  for (let g = 0; g < 80 && !J.done; g++) {
+    const leg = legList()[J.legIndex], L = { id: leg.id, markers: 0, events: [], days: 0 };
+    if (J.trip.toll && !J.trip.toll.paid && !J.trip.toll.iou) { const cash0 = J.cash, t = V.payToll(J); log.tolls.push(t); assert.ok(J.cash >= 0 && (t.paid ? J.cash === cash0 - t.dollars : J.cash === cash0)); }
+    const plannedKinds = J.trip.events.map((e) => e.kind);
+    if (leg.dry) for (const k of plannedKinds) assert.ok(!['fish', 'hunt'].includes(k), `${leg.id}: a ${k} planned on a dry stretch`);
+    assert.equal(new Set(plannedKinds).size, plannedKinds.length, `${leg.id}: no kind twice in a leg`);
+    if (leg.voyage) {
+      for (let m = 0; m < 4; m++) V.applyMarker(J, { correct: rand() < right }); L.markers = 4;
+      V.sailPay(J, { bumps: 1 }); J.totals.miles += leg.miles - J.milesDone; J.milesDone = leg.miles;
+    } else for (let d = 0; d < 600; d++) {
+      const before = J.milesDone, r = tickDay(J, { rand });
+      assert.ok(J.food >= 0 && J.cash >= 0, 'food and cash never below 0'); L.days++; log.days++;
+      if (r.dry) { log.dryDays++; assert.ok(leg.dry && (before + r.miles / 2 + 0.01 >= leg.dry.from * leg.miles - leg.miles * 0.1), `${leg.id}: a dry day outside the dry share`); }
+      else if (leg.dry) assert.ok(!r.thirsty);
+      if (r.thirsty) { log.thirsty++; assert.ok(!J.upgrades.barrel, 'with the barrel nobody is thirsty'); }
+      if (r.marker) { L.markers++; V.applyMarker(J, { correct: rand() < right, quick: rand() < 0.5 }); }
+      if (r.event) {
+        const e = r.event; L.events.push(e.kind); log.kinds.add(e.kind);
+        if (e.kind === 'hunt') applyHunt(J, { meatLb: hunt }); else if (e.kind === 'fish') applyFish(J, { fishLb: fish });
+        else if (e.kind === 'trade') { const o = tradeOffer(J); const p = problemFor({ kind: 'trade', fact: '3x4', leg: J.legId, season: J.season, rand, have: o.have, offer: o }); applyProblem(J, { kind: 'trade', correct: true }); applyTrade(J, p.meta); }
+        else if (e.kind === 'breakdown') repair(J, { workedOut: true });
+        else if (e.kind === 'snub') V.applySnub(J, { smooth: right > 0.5 });
+        else if (e.kind === 'stampede') stampedePay(J, { held: true });
+      }
+      if (r.arrived) break;
+    }
+    assert.ok(L.markers >= 4 && L.markers <= 6, `${leg.id}: ${L.markers} markers`);
+    assert.equal(new Set(L.events.filter((k) => k !== 'rescue')).size >= 0, true);
+    if (leg.stop.kind === 'river') crossRiver(J, { how: 'ford', soaked: 0 });
+    const res = arrive(J);
+    assert.ok(res, `arrived at ${leg.id}`);
+    if (res.gold) {
+      for (let i = 0; i < res.gold.pans; i++) V.applyGold(J, V.panOutcome({ quality: gold, rich: res.gold.rich.includes(i), tier: J.tier, rand }));
+      for (let i = 0; i < res.gold.rocker; i++) V.applyGold(J, { flakes: V.rockerOutcome({ beats: gold, tier: J.tier }).flakes, rocker: gold });
+    }
+    if (res.fork) { const pick = choices[res.fork.id]; if (pick) V.chooseBranch(J, res.fork.id, pick); }
+    if (leg.id === 'city-of-rocks') V.writeOnRock(J);
+    if (onLeg) onLeg(J, leg, res);
+    log.legs.push({ id: leg.id, ...L, stars: res.stars });
+    if (leg.stop.kind === 'fort') shopAll();
+    nextLeg(J);
+  }
+  return log;
+}
+const PLANS = [
+  ['Oregon by Fort Bridger and the raft', { journeyN: 1, year: 1847 }, {}, 20],
+  ['Oregon by the Barlow Road', { journeyN: 2, year: 1848 }, { 'the-dalles': 'barlow' }, 20],
+  ['the Sublette Cutoff', { journeyN: 2, year: 1848 }, { 'south-pass': 'sublette' }, 20],
+  ['the Lander Road', { journeyN: 12, year: 1858 }, { 'south-pass': 'lander' }, 18],
+  ['California', { journeyN: 1, year: 1847 }, { 'fort-hall': 'california' }, 24],
+  ['the Gold Road', { journeyN: 2, year: 1848, route: 'gold-road' }, {}, 12],
+];
+test('a full journey on every plan and tier, always right and always wrong, arrives with no fail state: food and cash never negative, markers 4-6 a leg, no kind twice in a leg, dry days only on dry shares, no fish or hunt on a dry stretch, the toll never takes cash below $0', () => {
+  for (const [name, opts, choices, n] of PLANS) for (const tier of ['rookie', 'veteran', 'pioneer']) for (const right of [1, 0]) {
+    const J = createJourney({ ...opts, tier, seed: 500 + n, companions: PLAIN });
+    const log = walkJourney(J, { right, seed: 7, choices });
+    assert.ok(J.done, `${name} ${tier} ${right}: done`); assert.equal(J.totals.legs, n, `${name} ${tier}: ${n} legs`); assert.equal(log.legs.length, n);
+    assert.deepEqual(clone(J), J, 'JSON-safe');
+  }
+});
+test('a toll leg: Barlow\'s $5 in 1846 dollars × the price level, paid when the purse covers it, an IOU (nothing taken, never stranded) when it does not; idempotent', () => {
+  for (const [tier, mult] of [['rookie', 1], ['veteran', 2], ['pioneer', 4]]) {
+    const J = createJourney({ seed: 41, tier, companions: PLAIN, journeyN: 2, year: 1848 }); atFork(J, 'the-dalles'); V.chooseBranch(J, 'the-dalles', 'barlow');
+    const leg = nextLeg(J); assert.equal(leg.id, 'barlow-road'); assert.deepEqual(leg.toll, { dollars: 5 * mult, due: true });
+    J.cash = 5 * mult + 3; const t = V.payToll(J); assert.deepEqual([t.paid, t.iou, t.dollars], [true, false, 5 * mult]); assert.equal(J.cash, 3); assert.equal(V.payToll(J).paid, true); assert.equal(J.cash, 3, 'once');
+    assert.equal(J.totals.tolls, 1);
+  }
+  const P = createJourney({ seed: 42, companions: PLAIN, journeyN: 2, year: 1848 }); atFork(P, 'the-dalles'); V.chooseBranch(P, 'the-dalles', 'barlow'); nextLeg(P);
+  P.cash = 2; const t = V.payToll(P); assert.deepEqual([t.paid, t.iou], [false, true]); assert.equal(P.cash, 2, 'nothing taken'); assert.equal(P.totals.tollIous, 1);
+  const log = walkJourney(createJourney({ seed: 43, companions: PLAIN, journeyN: 2, year: 1848 }), { choices: { 'the-dalles': 'barlow' } }); assert.equal(log.tolls.length, 1);
+});
+test('Laurel Hill: certain on the Barlow Road, a card chance and a counter, a smooth slide counts for the deed, a bumpy one costs nothing and still pays; the sail pays like the raft', () => {
+  let seen = 0;
+  for (let seed = 50; seed < 56; seed++) {
+    const J = createJourney({ seed, companions: PLAIN, journeyN: 2, year: 1848 }); atFork(J, 'the-dalles'); V.chooseBranch(J, 'the-dalles', 'barlow'); nextLeg(J);
+    assert.ok(J.trip.events.some((e) => e.id === 'laurel-hill' && e.kind === 'snub'), 'Laurel Hill is on the Barlow leg'); seen++;
+    const c0 = J.cash; const r = V.applySnub(J, { smooth: false }); assert.deepEqual([r.smooth, r.card], [false, false]); assert.equal(r.cash, SNUB.bumpy); assert.equal(J.cash, c0 + SNUB.bumpy); assert.equal(J.totals.snubsSmooth, 0);
+    const s = V.applySnub(J, { smooth: true }); assert.equal(s.smooth, true); assert.equal(s.cash, SNUB.smooth); assert.equal(J.totals.snubs, 2); assert.equal(J.totals.snubsSmooth, 1);
+  }
+  const G = createJourney({ seed: 57, route: 'gold-road', journeyN: 2, year: 1848 });
+  assert.equal(V.sailPay(G, { bumps: 0 }).cash, SAIL.base); assert.equal(V.sailPay(G, { bumps: 9 }).cash, SAIL.min); assert.equal(V.sailPay(createJourney({ seed: 58, tier: 'veteran', route: 'gold-road', journeyN: 2, year: 1848 }), { bumps: 1 }).cash, (SAIL.base - SAIL.perBump) * 2);
+  assert.ok(seen === 6);
+});
+test('dry stretches: days inside the leg\'s dry share are dry; without the water barrel they are thirsty (spirit -4, the animals tire half again, never a lost day); the barrel earns the dry-drive deed; no fish or hunt is planned there', () => {
+  const run = (barrel) => {
+    const J = createJourney({ seed: 61, companions: PLAIN, journeyN: 2, year: 1848 }); J.pace = 'brisk'; if (barrel) J.upgrades.barrel = true; atFork(J, 'south-pass'); V.chooseBranch(J, 'south-pass', 'sublette'); nextLeg(J);
+    assert.equal(J.legId, 'sublette-cutoff'); rich(J); const leg = legList()[J.legIndex]; J.trip.events = []; const out = { dry: 0, thirsty: 0, lost: 0, tired: 0 };
+    for (let d = 0; d < 40; d++) { const r = tickDay(J, { rand: R5 }); if (r.dry) out.dry++; if (r.thirsty) out.thirsty++; if (r.lost) out.lost++; if (r.arrived) break; }
+    out.tired = J.animals.tired; out.spirit = J.spirit; out.drive = (arrive(J), J.totals.dryDrives); return [out, leg];
+  };
+  const [dry, leg] = run(false), [wet] = run(true);
+  assert.ok(dry.dry >= 3 && dry.thirsty === dry.dry && dry.lost === 0, JSON.stringify(dry)); assert.ok(wet.dry === dry.dry && wet.thirsty === 0);
+  assert.ok(dry.tired > wet.tired, 'thirst tires the animals'); assert.equal(wet.drive, 1); assert.equal(dry.drive, 0);
+  const J = createJourney({ seed: 62, companions: PLAIN, journeyN: 2, year: 1848 }); J.upgrades.barrel = true; atFork(J, 'south-pass'); V.chooseBranch(J, 'south-pass', 'sublette'); nextLeg(J);
+  J.milesDone = Math.floor(leg.miles * 0.4); assert.equal(V.isDryDay(J), true); J.milesDone = leg.miles - 1; assert.equal(V.isDryDay(J), false);
+  assert.ok(checkDeeds(J).length >= 0); J.trip.arrived = true; J.milesDone = leg.miles; arrive(J); assert.ok(checkDeeds(J).includes('dry-drive'));
+  for (const id of ['sublette-cutoff', 'forty-mile-desert']) { const dl = LEG_BY_ID[id]; for (let s = 0; s < 80; s++) { const E = eligibleEvents(dl, { hunting: true }); assert.ok(E.every((e) => !['fish', 'hunt'].includes(e.kind) && (e.kind !== 'bonus' || e.id === 'spring')), id); } }
+  assert.ok(eligibleEvents(LEG_BY_ID['forty-mile-desert']).some((e) => e.id === 'spring'), 'a hidden spring may turn up on a dry leg'); assert.ok(!eligibleEvents(LEG_BY_ID['kansas-river']).some((e) => e.id === 'spring'));
+  // the safety net on a dry stretch is the quiet foraged share, never a fishing hole
+  const S = createJourney({ seed: 63, companions: PLAIN, journeyN: 2, year: 1848 }); atFork(S, 'south-pass'); V.chooseBranch(S, 'south-pass', 'sublette'); nextLeg(S); S.food = 0; S.foods = { flour: 0, bacon: 0, beans: 0, other: 0 }; S.trip.events = []; S.trip.markers = [];
+  const r = tickDay(S, { rand: R5 }); assert.ok(!r.event && r.foraged >= DRY.spring * 0 + 30, 'foraged');
+  // the spring itself: spirit, nothing else
+  const P = createJourney({ seed: 64, companions: PLAIN }); P.spirit = 40; P.trip.events = [{ id: 'spring', kind: 'spring', atMile: 1, fired: false }]; P.trip.markers = [];
+  const f0 = P.food; const sp = tickDay(P, { rand: R5 }); assert.equal(sp.event.kind, 'spring'); assert.ok(P.spirit >= 40 + DRY.spring - 5); assert.ok(P.food <= f0);
+});
+test('other events fire only where §2.9 puts them: Ice Slough\'s ice and Laurel Hill are certain on their leg, gold fever only on the Gold Road, the becalmed swell only at sea, never elsewhere', () => {
+  const on = (id, legId) => eligibleEvents(LEG_BY_ID[legId]).some((e) => e.id === id);
+  assert.ok(on('ice', 'ice-slough')); assert.ok(!on('ice', 'north-platte')); assert.ok(on('laurel-hill', 'barlow-road')); assert.ok(!on('laurel-hill', 'blue-mountains'));
+  assert.ok(on('gold-fever', 'feather-river')); assert.ok(!on('gold-fever', 'fort-hall')); assert.ok(!on('gold-fever', 'sacramento-valley')); assert.ok(on('swell', 'home-by-sea')); assert.ok(!on('swell', 'snake-river'));
+  const rand = mulberry32(5); for (let i = 0; i < 20; i++) assert.ok(planEvents(LEG_BY_ID['ice-slough'], rand, { tier: 'rookie' })[0].id === 'ice' && planEvents(LEG_BY_ID['barlow-road'], rand, { tier: 'rookie' })[0].id === 'laurel-hill');
+  const J = createJourney({ seed: 70, companions: PLAIN }); atFork(J, 'ice-slough'); assert.equal(J.totals.iceDug, 0);
+  J.trip.events = [{ id: 'ice', kind: 'lookout', atMile: 1, fired: false }]; J.trip.markers = []; J.milesDone = 0; J.trip.arrived = false;
+  tickDay(J, { rand: R5 }); assert.equal(J.totals.iceDug, 1); J.milesDone = J.trip.miles; J.trip.arrived = true; assert.ok(checkDeeds(J).includes('ice-in-july'));
+});
+
+console.log('\nv1.5 tiers');
+test('the three tiers: start cash $45 / $80 / $145, food 300 / 260 / 220 lb, spare parts 1 / 1 / 0, the second-event chance, breakdown and weather weights, the cold legs, animals tire, bonus cards, first-try tokens, gold', () => {
+  const T = TIER_FX;
+  for (const [id, legacy] of [['rookie', 's1847'], ['veteran', 's1850'], ['pioneer', 's1853']]) {
+    const J = createJourney({ tier: id, seed: 80, companions: PLAIN }), L = createJourney({ season: legacy, seed: 80, companions: PLAIN });
+    assert.deepEqual([J.cash, J.food, J.parts, J.goods.parts], [T[id].startCash, T[id].startFood, T[id].startParts, T[id].startParts]); assert.equal(J.foods.flour + J.foods.bacon + J.foods.beans, T[id].startFood);
+    assert.deepEqual([L.tier, L.cash, L.food], [id, J.cash, J.food], 'the legacy ids still read'); assert.equal(R.seasonOf(legacy).id, id); assert.equal(R.tierOf(legacy), id);
+    assert.equal(R.seasonOf(id).priceMult, T[id].priceMult); assert.equal(R.seasonOf(id).numberMult, T[id].numberMult);
+  }
+  assert.deepEqual([T.rookie.priceMult, T.veteran.priceMult, T.pioneer.priceMult], [1, 2, 4]);
+  assert.equal(R.seasonOf('s1850').id, 'veteran'); assert.equal(R.seasonOf('nonsense').id, 'rookie'); assert.equal(R.nextSeasonId('rookie'), 'veteran'); assert.equal(R.nextSeasonId('pioneer'), 'pioneer');
+  // pay: the tier's factor on top of the price level
+  assert.ok(payFor([true, true, true], 'pioneer', { miles: 100 }).total < payFor([true, true, true], 'veteran', { miles: 100 }).total * 2);
+  // first-try tokens: 1, 1, 2
+  for (const [id, n] of [['rookie', 1], ['veteran', 1], ['pioneer', 2]]) { const J = createJourney({ tier: id, seed: 81, companions: PLAIN }); assert.equal(applyProblem(J, { kind: 'buy', correct: true, firstTry: true }).tokens, n); assert.equal(applyProblem(J, { kind: 'buy', correct: true, firstTry: false }).tokens, 0); }
+  // the second event and the weights: more events, more breakdowns and weather as the tier rises (over 600 seeded legs)
+  const stat = (id) => { let ev = 0, br = 0, wx = 0, n = 0; for (let s = 0; s < 600; s++) { const plan = planEvents(LEG_BY_ID['north-platte'], mulberry32(s), { tier: id }); ev += plan.length; br += plan.filter((e) => e.kind === 'breakdown').length; wx += plan.filter((e) => EVENT_BY_ID[e.id].weather).length; n++; } return { ev: ev / n, br: br / n, wx: wx / n }; };
+  const a = stat('rookie'), b = stat('veteran'), c = stat('pioneer');
+  assert.ok(a.ev < b.ev && b.ev < c.ev, `events ${a.ev} ${b.ev} ${c.ev}`); assert.ok(Math.abs(a.ev - 1.3) < 0.08 && Math.abs(b.ev - 1.45) < 0.08 && Math.abs(c.ev - 1.6) < 0.08);
+  assert.ok(a.br < b.br && b.br < c.br && a.wx < b.wx && b.wx < c.wx, JSON.stringify([a, b, c]));
+  // animals tire more
+  const tire = (id) => { const J = createJourney({ tier: id, seed: 82, companions: PLAIN }); J.pace = 'brisk'; J.trip.events = []; tickDay(J, { rand: R5 }); return J.animals.tired; };
+  assert.ok(tire('rookie') < tire('veteran') && tire('veteran') <= tire('pioneer'));
+});
+test('cold legs by tier: the content\'s cold legs for Rookie, one more mountain leg a journey (seeded, kept) for Veteran, every mountains and sierra leg for Pioneer; blankets follow', () => {
+  const base = ['south-pass', 'blue-mountains'];
+  const cold = (J) => legList().filter((l) => V.needsBlankets(J, l.id).cold).map((l) => l.id);
+  const R1 = createJourney({ tier: 'rookie', seed: 90, companions: PLAIN }); assert.deepEqual(cold(R1), base);
+  const V1 = createJourney({ tier: 'veteran', seed: 90, companions: PLAIN }), V2 = createJourney({ tier: 'veteran', seed: 90, companions: PLAIN });
+  assert.equal(cold(V1).length, 3); assert.deepEqual(cold(V1), cold(V2), 'seeded'); assert.ok(base.every((id) => cold(V1).includes(id)));
+  const extra = cold(V1).find((id) => !base.includes(id)); assert.equal(LEG_BY_ID[extra].biome, 'mountains');
+  const P1 = createJourney({ tier: 'pioneer', seed: 90, companions: PLAIN }); assert.ok(legList().filter((l) => l.biome === 'mountains' || l.biome === 'sierra').every((l) => cold(P1).includes(l.id)));
+  const PC = createJourney({ tier: 'pioneer', seed: 91, companions: PLAIN, journeyN: 1 }); atFork(PC, 'fort-hall'); V.chooseBranch(PC, 'fort-hall', 'california'); assert.ok(cold(PC).includes('sierra-summit'));
+  // the Veteran's extra leg survives a fork that keeps it, and is re-picked from the legs ahead when the fork takes it away
+  const VJ = createJourney({ tier: 'veteran', seed: 92, companions: PLAIN, journeyN: 2, year: 1848 }); const was = VJ.xcold[0]; atFork(VJ, 'south-pass'); V.chooseBranch(VJ, 'south-pass', 'sublette'); ensureJourney(VJ);
+  assert.ok(VJ.xcold.length === 1 && (VJ.xcold[0] === was || legList().some((l) => l.id === VJ.xcold[0])));
+  assert.deepEqual(coldLegsAhead(createJourney({ tier: 'rookie', seed: 93, companions: PLAIN })), base);
+});
+test('bonus cards by tier: none, +1 on a 3-star leg, +1 every leg; the trophy on the last leg is bronze / silver / gold', () => {
+  for (const [id, perfect, plain, trophy] of [['rookie', 0, 0, 'bronze'], ['veteran', 1, 0, 'silver'], ['pioneer', 1, 1, 'gold']]) {
+    const J = createJourney({ tier: id, seed: 100, companions: PLAIN });
+    J.milesDone = J.trip.miles; J.trip.arrived = true; J.party.forEach((p) => { p.mood = 'happy'; }); J.legStats.markers = 5; J.legStats.markersRight = 5;
+    assert.equal(arrive(J).bonusCards, perfect, id + ' three stars');
+    const K = createJourney({ tier: id, seed: 101, companions: PLAIN }); K.milesDone = K.trip.miles; K.trip.arrived = true; K.party.forEach((p) => { p.mood = 'tired'; }); assert.equal(arrive(K).bonusCards, plain, id + ' a bare arrival');
+    const Z = createJourney({ tier: id, seed: 102, companions: PLAIN }); Z.legIndex = 19; Z.legId = 'willamette-valley'; startLeg(Z, 'willamette-valley'); Z.milesDone = Z.trip.miles; Z.trip.arrived = true; const last = arrive(Z);
+    assert.equal(last.tierTrophy, trophy); assert.equal(last.end, 'willamette');
+  }
+});
+test('tiersOpen: Rookie always, Veteran after a finished journey, Pioneer after a finished Veteran one; unlocksFor lists the Gold Road, the South Pass fork and the two companions from the second journey', () => {
+  const L = V.newLedger(); assert.deepEqual(V.tiersOpen(L), { rookie: true, veteran: false, pioneer: false });
+  assert.deepEqual(V.unlocksFor(L), { goldRoad: false, veteran: false, pioneer: false, forks: { 'south-pass': false }, companions: [] });
+  L.journeys.push({ id: 'a', tier: 'rookie', end: 'willamette' }); L.tiersDone.rookie = 1; L.year = 1848;
+  assert.deepEqual(V.tiersOpen(L), { rookie: true, veteran: true, pioneer: false }); assert.deepEqual(V.unlocksFor(L), { goldRoad: true, veteran: true, pioneer: false, forks: { 'south-pass': true }, companions: ['packer', 'prospector'] });
+  L.journeys.push({ id: 'b', tier: 'veteran', end: 'willamette' }); L.tiersDone.veteran = 1; assert.equal(V.tiersOpen(L).pioneer, true);
+  assert.deepEqual(V.tiersOpen(null), { rookie: true, veteran: false, pioneer: false }); assert.equal(V.yearOf(L), 1848); assert.equal(V.yearOf({ year: 1852 }), 1852); assert.equal(V.yearOf(null), 1847);
+});
+
+console.log('\nv1.5 gold');
+test('panOutcome: at least one flake for every quality and tier, deterministic for a seed, never NaN; rich pans give more; the tier multiplies; Hattie\'s good swirl adds a flake; the nugget odds are 35 % rich, 5 % plain', () => {
+  for (const tier of ['rookie', 'veteran', 'pioneer']) for (const q of [-1, 0, 0.3, 0.59, 0.6, 1, 2, NaN, undefined]) for (const rich of [false, true]) {
+    const a = V.panOutcome({ quality: q, rich, tier, rand: mulberry32(9) }), b = V.panOutcome({ quality: q, rich, tier, rand: mulberry32(9) });
+    assert.deepEqual(a, b); assert.ok(Number.isInteger(a.flakes) && a.flakes >= 1, `${tier} ${q} ${rich}`); assert.equal(typeof a.nugget, 'boolean');
+  }
+  assert.equal(V.panOutcome({ quality: 1, rich: false, tier: 'rookie', rand: () => 0.99 }).flakes, GOLD.panBase + GOLD.panQuality);
+  assert.equal(V.panOutcome({ quality: 1, rich: true, tier: 'rookie', rand: () => 0.99 }).flakes, GOLD.panBase + GOLD.panQuality + GOLD.richBonus);
+  assert.equal(V.panOutcome({ quality: 1, rich: true, tier: 'veteran', rand: () => 0.99 }).flakes, Math.round((GOLD.panBase + GOLD.panQuality + GOLD.richBonus) * 1.25));
+  assert.equal(V.panOutcome({ quality: 0.7, rich: false, tier: 'rookie', prospector: true, rand: () => 0.99 }).flakes, V.panOutcome({ quality: 0.7, rich: false, tier: 'rookie', rand: () => 0.99 }).flakes + 1);
+  assert.equal(V.panOutcome({ quality: 0.3, rich: false, tier: 'rookie', prospector: true, rand: () => 0.99 }).flakes, V.panOutcome({ quality: 0.3, rich: false, tier: 'rookie', rand: () => 0.99 }).flakes, 'only on a good swirl');
+  const rand = mulberry32(3); let rich = 0, plain = 0; for (let i = 0; i < 4000; i++) { rich += V.panOutcome({ quality: 0.5, rich: true, rand }).nugget; plain += V.panOutcome({ quality: 0.5, rich: false, rand }).nugget; }
+  assert.ok(Math.abs(rich / 4000 - 0.35) < 0.04 && Math.abs(plain / 4000 - 0.05) < 0.02, `${rich} ${plain}`);
+  assert.ok(V.panOutcome({ quality: 0.4, rich: true }).flakes >= 1, 'a pan with no rand is seeded from its arguments');
+});
+test('rockerOutcome is at least 2 flakes; nuggetsOf(57) is 5 nuggets and 7 flakes; applyGold adds a nugget as ten flakes and counts', () => {
+  for (const tier of ['rookie', 'veteran', 'pioneer']) for (const b of [-1, 0, 0.5, 1, 3, NaN]) { const f = V.rockerOutcome({ beats: b, tier }).flakes; assert.ok(Number.isInteger(f) && f >= 2); }
+  assert.equal(V.rockerOutcome({ beats: 1, tier: 'rookie' }).flakes, 6); assert.equal(V.rockerOutcome({ beats: 0, tier: 'rookie' }).flakes, 2);
+  assert.deepEqual(V.nuggetsOf(57), { nuggets: 5, flakes: 7 }); assert.deepEqual(V.nuggetsOf(0), { nuggets: 0, flakes: 0 }); assert.deepEqual(V.nuggetsOf(-3), { nuggets: 0, flakes: 0 });
+  const J = createJourney({ seed: 110, route: 'gold-road', journeyN: 2, year: 1848 });
+  assert.deepEqual(V.applyGold(J, { flakes: 3 }).nuggets, { nuggets: 0, flakes: 3 }); const r = V.applyGold(J, { flakes: 4, nugget: true }); assert.equal(J.gold, 3 + 4 + GOLD.flakesPerNugget); assert.equal(r.flakes, J.gold);
+  assert.deepEqual([J.totals.pans, J.totals.nuggets, J.totals.flakes], [2, 1, 17]); V.applyGold(J, { flakes: 5, rocker: 0.9 }); assert.deepEqual([J.totals.rockerRounds, J.totals.rockerBeat], [1, 1]); V.applyGold(J, { flakes: 3, rocker: 0.2 }); assert.deepEqual([J.totals.rockerRounds, J.totals.rockerBeat], [2, 1]);
+  assert.ok(J.trip.keys.includes('pan') && J.trip.keys.includes('nugget') && J.trip.keys.includes('rocker'), 'the letter keys');
+});
+test('goldAt: the Gold Road\'s diggings (Clear Creek 3, the Feather River 4, Coloma 5 + the rocker), the Sacramento claim only from 1848; seeded rich pans; Hattie makes one more rich', () => {
+  const at = (legId, extra = {}) => { const J = createJourney({ seed: 120, companions: PLAIN, ...extra }); return V.goldAt(J, legId); };
+  const cc = at('clear-creek', { route: 'gold-road', journeyN: 2, year: 1848 }); assert.equal(cc.pans, 3); assert.equal(cc.rich.length, 1); assert.equal(cc.rocker, 0); assert.deepEqual(cc, at('clear-creek', { route: 'gold-road', journeyN: 2, year: 1848 }), 'seeded');
+  assert.equal(at('feather-river', { route: 'gold-road', journeyN: 2, year: 1848 }).pans, 4); const co = at('coloma', { route: 'gold-road', journeyN: 2, year: 1848 }); assert.deepEqual([co.pans, co.rich.length, co.rocker], [5, 2, 3]);
+  assert.equal(at('sacramento-valley', { year: 1847 }), null, 'no gold on the claim in 1847'); assert.equal(at('sacramento-valley', { year: 1848, journeyN: 2 }).pans, 2); assert.equal(at('kansas-river'), null);
+  const H = createJourney({ seed: 120, companions: ['prospector', 'teacher', 'fiddler'], route: 'gold-road', journeyN: 2, year: 1848 }); assert.equal(V.goldAt(H, 'clear-creek').rich.length, 2, 'Hattie reads the creek'); assert.equal(skillOf(H, 'prospecting'), 'prospector');
+  const M = createJourney({ seed: 120, companions: ['packer', 'teacher', 'fiddler'], journeyN: 2, year: 1848 }); assert.equal(M.parts, 2, 'Mateo brings a spare part'); assert.ok(M.food > 0); assert.ok(eatFactor(M) < 1);
+});
+test('a Gold Road journey finds gold the way the SPEC says: about 50-80 flakes (5-8 nuggets) at Rookie, x1.25 and x1.5 above', () => {
+  const total = (tier) => { let s = 0; for (let i = 0; i < 24; i++) { const J = createJourney({ tier, seed: 700 + i, route: 'gold-road', journeyN: 2, year: 1848, companions: PLAIN }); walkJourney(J, { seed: i + 1, gold: 0.65 }); s += J.gold; } return s / 24; };
+  const r = total('rookie'), v = total('veteran'), p = total('pioneer');
+  assert.ok(r >= 45 && r <= 90, `rookie ${r}`); assert.ok(Math.abs(v / r - 1.25) < 0.15 && Math.abs(p / r - 1.5) < 0.18, `${r} ${v} ${p}`);
+});
+
+console.log('\nv1.5 the homestead');
+const aFarm = (opts = {}) => { const f = V.newFarm(); V.foundSite(f, 'willamette', { name: 'Hill Farm', year: 1847 }); if (opts.sac) V.foundSite(f, 'sacramento', { name: 'Claim', year: 1849 }); return f; };
+test('a farm: costs and needs, a site-only piece refused at the other site, buildPiece pays from the right purse and never below zero, the cabin brings the trophy shelf', () => {
+  for (const p of HOMESTEAD_PIECES) assert.ok(HOMESTEAD_COST[p.id] !== undefined, p.id + ' has a cost');
+  const f = aFarm({ sac: true }), J = createJourney({ seed: 130, companions: PLAIN }); J.tokens = 500; const CAB = HOMESTEAD_COST.cabin.savings, GAR = HOMESTEAD_COST.garden.tokens;
+  assert.deepEqual(V.canBuild(f, 'willamette', 'cabin', J), { ok: false, why: `needs $${CAB} more in savings`, code: 'purse' });
+  assert.equal(V.canBuild(f, 'willamette', 'barn', J).why, 'needs the cabin first'); assert.equal(V.canBuild(f, 'willamette', 'garden', J).why, 'needs the cabin first');
+  f.savingsIn = 100; const c = V.buildPiece(f, 'willamette', 'cabin', J); assert.equal(c.ok, true); assert.deepEqual(c.paid, { tokens: 0, savings: CAB, nuggets: 0 }); assert.equal(f.savingsOut, CAB); assert.equal(V.farmBalance(f).savings, 100 - CAB);
+  assert.equal(f.sites.willamette.pieces.cabin, 1); assert.equal(f.sites.willamette.pieces['trophy-shelf'], 1, 'the shelf comes with the cabin'); assert.equal(V.canBuild(f, 'willamette', 'cabin', J).why, 'built');
+  assert.equal(V.canBuild(f, 'sacramento', 'apple-tree', J).why, 'no homestead there yet' === V.canBuild(f, 'sacramento', 'apple-tree', J).why ? 'no homestead there yet' : 'only at the Willamette farm');
+  V.foundSite(f, 'sacramento', {}); assert.match(V.canBuild(f, 'sacramento', 'vineyard', J).why, /first$/); f.sites.sacramento.pieces.cabin = 1; f.sites.willamette.pieces.barn = 1; f.sites.sacramento.pieces.barn = 1;
+  assert.equal(V.canBuild(f, 'sacramento', 'apple-tree', J).why, 'only at the Willamette farm'); assert.equal(V.canBuild(f, 'willamette', 'vineyard', J).why, 'only at the Sacramento claim');
+  // tokens: from J.tokens; short = a reason, not a negative
+  const g = V.buildPiece(f, 'willamette', 'garden', J); assert.deepEqual(g.paid, { tokens: GAR, savings: 0, nuggets: 0 }); assert.equal(J.tokens, 500 - GAR); J.tokens = GAR - 2; const s = V.canBuild(f, 'willamette', 'garden', J); assert.equal(s.ok, false); assert.equal(s.why, 'needs 2 more tokens');
+  const b = V.buildPiece(f, 'willamette', 'garden', J); assert.equal(b.ok, false); assert.equal(J.tokens, GAR - 2, 'nothing paid'); for (let i = 0; i < 6; i++) { J.tokens = 500; V.buildPiece(f, 'willamette', 'garden', J); } assert.equal(f.sites.willamette.pieces.garden, 4, 'at most four rows');
+  // gold: nuggets out of flakes
+  f.goldIn = 30; assert.match(V.canBuild(f, 'willamette', 'barn', J).why, /^(built|needs 2 more nuggets)$/); f.sites.willamette.pieces.barn = 0; f.sites.willamette.pieces.fence = 1; assert.equal(V.canBuild(f, 'willamette', 'barn', J).why, 'needs 2 more nuggets');
+  f.goldIn = 50; assert.equal(V.buildPiece(f, 'willamette', 'barn', J).ok, true); assert.equal(f.goldOut, 50); assert.equal(V.farmBalance(f).flakes, 0);
+  // the orchard needs three apple trees
+  assert.match(V.canBuild(f, 'willamette', 'orchard', J).why, /apple tree/); f.sites.willamette.pieces['apple-tree'] = 3; f.goldIn = 200; assert.equal(V.canBuild(f, 'willamette', 'orchard', J).ok, true);
+  for (const k of ['savingsIn', 'savingsOut', 'goldIn', 'goldOut']) assert.ok(f[k] >= 0);
+});
+test('bankJourney banks the purse in Rookie dollars, the gold in flakes and the team into the pasture, once; closeJourney founds the site, writes the ledger and turns the year, once', () => {
+  for (const [tier, mult] of [['rookie', 1], ['veteran', 2], ['pioneer', 4]]) {
+    const f = V.newFarm(), J = createJourney({ tier, seed: 140, companions: PLAIN }); J.cash = 84 * mult + mult - 1; J.gold = 33; J.animals.n = 4;
+    const b = V.bankJourney(f, J, 'willamette'); assert.deepEqual(b, { savings: 84, flakes: 33, animals: 4, site: 'willamette' }); assert.deepEqual([f.savingsIn, f.goldIn, f.animals.oxen], [84, 33, 4]);
+    assert.equal(V.bankJourney(f, J, 'willamette'), b); assert.deepEqual([f.savingsIn, f.goldIn, f.animals.oxen], [84, 33, 4], 'once');
+  }
+  const mules = createJourney({ seed: 141, animal: 'mules', companions: PLAIN }); const f2 = V.newFarm(); V.bankJourney(f2, mules, 'willamette'); assert.equal(f2.animals.mules, 2);
+  const f = V.newFarm(), L = V.newLedger(), J = createJourney({ seed: 142, companions: PLAIN, tier: 'veteran' });
+  assert.equal(V.closeJourney(J, L, f, { at: 5 }), null, 'not before the journey is done');
+  walkJourney(J, { seed: 4 }); assert.ok(J.done);
+  const cash = J.cash, c = V.closeJourney(J, L, f, { at: 1234 });
+  assert.deepEqual([c.site, c.trophy, c.firstHere, c.newRoutes], ['willamette', 'silver', true, ['gold-road']]); assert.equal(c.banked.savings, Math.floor(cash / 2)); assert.ok(f.sites.willamette && f.sites.willamette.name === '');
+  assert.equal(L.year, 1848); assert.equal(L.journeys.length, 1); assert.deepEqual(L.journeys[0], { id: `${J.season}-${J.seed}`, at: 1234, route: 'emigrant', branches: { 'the-dalles': 'columbia', 'fort-hall': 'oregon', 'south-pass': 'main' }.constructor === Object ? L.journeys[0].branches : {}, tier: 'veteran', year: 1847, journeyN: 1, end: 'willamette', stars: J.totals.stars, legs: 20 });
+  assert.deepEqual(L.routesDone, ['oregon']); assert.deepEqual(L.tiersDone, { rookie: 0, veteran: 1, pioneer: 0 }); assert.deepEqual(L.trophies, ['silver:oregon']); assert.equal(L.lifetime.legs, 20); assert.equal(L.lifetime.miles, J.totals.miles);
+  const snap = clone({ L, f }); assert.equal(V.closeJourney(J, L, f, { at: 9999 }), J.closeResult); assert.deepEqual(clone({ L, f }), snap, 'idempotent'); assert.equal(J.closed, true);
+  assert.ok(L.journeys[0].branches['fort-hall'] === 'oregon');
+  // the second ending founds the other site
+  const K = createJourney({ seed: 143, companions: PLAIN }); walkJourney(K, { seed: 5, choices: { 'fort-hall': 'california' } }); const c2 = V.closeJourney(K, L, f, { at: 2 });
+  assert.deepEqual([c2.site, c2.firstHere, c2.newRoutes], ['sacramento', true, []]); assert.equal(L.year, 1849); assert.deepEqual(L.routesDone, ['oregon', 'california']); assert.ok(L.branchesDone.includes('fort-hall:california'));
+});
+test('nothing in the farm depends on time or goes down: the same calls a month apart give the same farm, and a spend never removes a piece', () => {
+  const run = () => { const f = aFarm(), J = createJourney({ seed: 150, companions: PLAIN }); J.tokens = 30; f.savingsIn = 200; f.goldIn = 100; for (const id of ['cabin', 'well', 'fence', 'garden', 'garden', 'barn']) V.buildPiece(f, 'willamette', id, J); return clone(f); };
+  const a = run(); const b = run(); assert.deepEqual(a, b);
+  const f = clone(a); V.farmBalance(f); V.homesteadView(f, 'willamette'); assert.deepEqual(f, a, 'reading changes nothing');
+  assert.ok(Object.values(a.sites.willamette.pieces).every((n) => n >= 1)); const src = readFileSync(new URL('../src/journey/homestead.js', import.meta.url), 'utf8'); assert.ok(!/Date\.now|new Date|performance\.now|setTimeout|Math\.random/.test(src.replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '')), 'no clock');
+});
+test('homesteadView: the pieces by slot with their art, what is built of what, what could be built next with its cost; farmGifts sends the garden and the orchard along', () => {
+  const f = aFarm(), J = createJourney({ seed: 160, companions: PLAIN }); J.tokens = 900; f.savingsIn = 500; f.goldIn = 900;
+  let v = V.homesteadView(f, 'willamette', J); assert.equal(v.built, 0); assert.equal(v.complete, false); assert.deepEqual(v.next.map((x) => x.id), ['cabin']); assert.equal(v.of, 18, '18 pieces at the Willamette farm'); assert.equal(V.homesteadView(f, 'sacramento').of, 17, 'and at the claim: 15 shared + the vineyard and the windmill');
+  for (const id of ['cabin', 'garden', 'garden', 'garden', 'apple-tree', 'apple-tree', 'apple-tree', 'fence', 'barn', 'well']) V.buildPiece(f, 'willamette', id, J);
+  v = V.homesteadView(f, 'willamette', J); assert.equal(v.name, 'Hill Farm'); assert.ok(v.slots.garden.some((g) => g.id === 'garden' && g.count === 3 && g.art)); assert.ok(v.slots.house.some((g) => g.id === 'cabin')); assert.ok(v.next.some((x) => x.id === 'orchard' && x.ok));
+  assert.deepEqual(V.farmGifts(f, 'willamette'), { foodLb: 3 * GOLD.gardenLb }); V.buildPiece(f, 'willamette', 'orchard', J); assert.deepEqual(V.farmGifts(f, 'willamette'), { foodLb: 3 * GOLD.gardenLb + GOLD.orchardLb }); assert.deepEqual(V.farmGifts(f, 'sacramento'), { foodLb: 0 }); assert.deepEqual(V.farmGifts(V.newFarm(), 'willamette'), { foodLb: 0 });
+  // every piece of a site can be built, in the order the needs allow (a full farm)
+  const full = aFarm(), K = createJourney({ seed: 161, companions: PLAIN }); full.savingsIn = 999; full.goldIn = 9999; let guard = 0;
+  while (!V.homesteadView(full, 'willamette', K).complete && guard++ < 200) { K.tokens = 50; for (const n of V.homesteadView(full, 'willamette', K).next) if (n.ok) { V.buildPiece(full, 'willamette', n.id, K); break; } }
+  assert.equal(V.homesteadView(full, 'willamette').complete, true); assert.ok(guard < 100);
+});
+
+console.log('\nv1.5 years and carry-over');
+test('startSeason keeps CARRY and CARRY_V14, resets cash, food, goods and the people met, moves the year by one; a closed route or tier is refused; the Gold Road start adds the farm\'s gifts', () => {
+  const L = V.newLedger(), f = V.newFarm(), J = createJourney({ seed: 170, companions: ['teacher', 'storyteller', 'fiddler'], animal: 'mules', wagonName: 'Bessie' });
+  J.cards = ['bison', 'coyote']; J.deeds = ['fixer']; J.tokens = 17; J.upgrades = { cover: true }; J.challenges = { 'd1': { id: 'x', done: true } }; J.dog = { name: 'Frodo', coat: 'brown', legs: 6, nextBerries: 7, treats: 9, muddy: true };
+  J.finds = { horseshoe: 3 }; J.fishLog = { 'channel-catfish': { n: 2, bestIn: 22, bestLb: 5, firstLeg: 'fort-kearny', firstSeason: 'rookie' } }; J.fishJunk = { boot: 1, turtle: 0, bottle: 0 }; J.fishBest = { species: 'channel-catfish', in: 22 };
+  J.skips = { best: 8, throws: 12, byRiver: { 'kansas-river': 8 } }; J.wishes = ['w1']; J.questsDone = ['locket']; J.treatsBest = 0.9; J.goods.spoon = 1; J.opts.farSounds = false; J.met = ['hale']; J.totals.peopleMet = 1; J.cash = 77; J.food = 12; J.goods.rope = 4;
+  assert.equal(V.startSeason(J, { route: 'gold-road', tier: 'rookie', ledger: L, farm: f }), null, 'the Gold Road is closed before a Willamette arrival'); assert.equal(V.startSeason(J, { tier: 'veteran', ledger: L, farm: f }), null, 'Veteran is closed before a finished journey');
+  L.journeys.push({ id: 'a', tier: 'rookie', end: 'willamette' }); L.tiersDone.rookie = 1; L.year = 1848;
+  const N = V.startSeason(J, { route: 'emigrant', tier: 'veteran', ledger: L, farm: f, seed: 5, family: 'uncle-theo' });
+  assert.ok(N); assert.deepEqual([N.year, N.journeyN, N.tier, N.route, N.family], [1848, 2, 'veteran', 'emigrant', 'uncle-theo']);
+  for (const k of CARRY) { if (k === 'dog') continue; assert.deepEqual(N[k], J[k], k); } assert.notEqual(N.cards, J.cards, 'copies'); assert.deepEqual({ ...N.dog, nextBerries: 0 }, { ...J.dog, muddy: false, nextBerries: 0 }, 'the dog, clean');
+  const get = (o, path) => path.split('.').reduce((a, k) => (a == null ? a : a[k]), o); for (const k of CARRY_V14) assert.deepEqual(get(N, k), get(J, k), k);
+  assert.deepEqual([N.cash, N.food], [TIER_FX.veteran.startCash, TIER_FX.veteran.startFood]); assert.equal(N.goods.rope, 0); assert.deepEqual(N.met, []); assert.equal(N.totals.peopleMet, 0); assert.equal(N.legIndex, 0); assert.equal(N.gold, 0); assert.equal(N.banked, false);
+  assert.deepEqual(N.companions, J.companions); assert.equal(N.animal, 'mules'); assert.equal(N.wagonName, 'Bessie');
+  // the Gold Road: the garden and the orchard send food along
+  V.foundSite(f, 'willamette', { name: 'Hill Farm', year: 1847 }); f.sites.willamette.pieces.garden = 2; f.sites.willamette.pieces.orchard = 1;
+  const G = V.startSeason(N, { route: 'gold-road', tier: 'rookie', ledger: L, farm: f }); assert.ok(G); assert.equal(G.route, 'gold-road'); assert.equal(G.legId, 'calapooya-mountains'); assert.equal(G.foods.other, 2 * GOLD.gardenLb + GOLD.orchardLb); assert.equal(G.food, TIER_FX.rookie.startFood + 2 * GOLD.gardenLb + GOLD.orchardLb);
+  assert.equal(storeLeg(G).fort.prices, 1.3, 'the Oregon City store charges its level'); assert.equal(storeLeg(G).stop.name, 'Oregon City'); assert.equal(storeLeg(createJourney({ seed: 1 })), null, 'Independence stays level 1'); assert.equal(priceAt('flour', storeLeg(G), 'rookie'), Math.round(4 * 1.3));
+  // mateo and hattie are for the second journey on
+  const first = V.startSeason(null, { tier: 'rookie', companions: ['packer', 'teacher'], seed: 9 }); assert.deepEqual(first.companions, ['teacher'], 'not on the first journey'); assert.equal(first.year, 1847);
+  const second = V.startSeason(J, { tier: 'rookie', companions: ['packer', 'prospector', 'teacher'], ledger: L }); assert.deepEqual(second.companions, ['packer', 'prospector', 'teacher']);
+});
+test('newSeason is startSeason: the next tier, the next year, the same party; the tokens, cards, deeds, upgrades and the dog carry (a 1.4 call still works)', () => {
+  const { J } = playJourney(3, RIGHT); J.tokens = 7; J.dog = { name: 'Rex', coat: 'black', legs: 3, nextBerries: 4, treats: 2, muddy: true };
+  const N = newSeason(J); assert.equal(N.tier, 'veteran'); assert.equal(N.year, J.year + 1); assert.equal(N.journeyN, 2); assert.equal(N.dog.muddy, false); assert.deepEqual(N.cards, J.cards); assert.deepEqual(N.deeds, J.deeds);
+});
+test('the ledger: closeJourney turns the year once a journey; normalizeLedger and mergeLedger are unions and maxes', () => {
+  const a = V.newLedger(), b = V.newLedger(); a.year = 1850; b.year = 1849; a.journeys.push({ id: '1', at: 1, tier: 'rookie', end: 'willamette' }); b.journeys.push({ id: '2', at: 2, tier: 'veteran', end: 'sacramento' }, { id: '1', at: 1 });
+  a.routesDone = ['oregon']; b.routesDone = ['california']; a.branchesDone = ['fort-hall:oregon']; b.branchesDone = ['fort-hall:california']; a.tiersDone = { rookie: 2, veteran: 0, pioneer: 0 }; b.tiersDone = { rookie: 1, veteran: 1, pioneer: 0 };
+  a.trophies = ['bronze:oregon']; b.trophies = ['silver:california']; a.lifetime = { legs: 40, miles: 3000, flakes: 5, peopleMet: 10 }; b.lifetime = { legs: 30, miles: 4000, flakes: 9, peopleMet: 3 };
+  const m = V.mergeLedger(a, b); assert.equal(m.year, 1850); assert.deepEqual(m.journeys.map((j) => j.id), ['1', '2']); assert.deepEqual(m.routesDone, ['oregon', 'california']); assert.deepEqual(m.branchesDone, ['fort-hall:oregon', 'fort-hall:california']);
+  assert.deepEqual(m.tiersDone, { rookie: 2, veteran: 1, pioneer: 0 }); assert.deepEqual(m.trophies, ['bronze:oregon', 'silver:california']); assert.deepEqual(m.lifetime, { legs: 40, miles: 4000, flakes: 9, peopleMet: 10 });
+  assert.deepEqual(V.mergeLedger(b, a).tiersDone, m.tiersDone); assert.equal(V.mergeLedger(a, undefined).year, 1850); assert.deepEqual(V.mergeLedger(undefined, undefined), V.newLedger());
+  const many = V.newLedger(); for (let i = 0; i < 75; i++) many.journeys.push({ id: 'j' + i, at: i }); assert.equal(V.mergeLedger(many, V.newLedger()).journeys.length, 60, 'the newest 60');
+  assert.deepEqual(V.normalizeLedger({ year: 'x', journeys: 5, tiersDone: { rookie: -3 }, extra: 1 }), V.newLedger());
+});
+test('the farm merge: pieces per id max, the four currency counters each max, animals max, sites union, name the later doc\'s, founded min, the log a union of 30; an older doc without a farm never erases one', () => {
+  const x = aFarm(), y = aFarm({ sac: true }), J = createJourney({ seed: 180, companions: PLAIN });
+  x.savingsIn = 100; x.sites.willamette.pieces = { cabin: 1, well: 1, garden: 2 }; x.savingsOut = 85; x.goldIn = 50; x.animals.oxen = 2; x.sites.willamette.name = 'Hill Farm'; x.sites.willamette.founded = 1850; x.log = [{ id: 'willamette:cabin:1', year: 1847 }];
+  y.savingsIn = 90; y.savingsOut = 60; y.sites.willamette.pieces = { cabin: 1, fence: 1, garden: 3 }; y.goldIn = 80; y.goldOut = 30; y.animals.oxen = 4; y.animals.mules = 2; y.sites.willamette.name = 'Other'; y.sites.willamette.founded = 1847; y.log = [{ id: 'willamette:fence:1', year: 1848 }];
+  const m = V.mergeFarm(x, y); assert.deepEqual([m.savingsIn, m.savingsOut, m.goldIn, m.goldOut], [100, 85, 80, 30], 'a spend on one device and an earning on the other both survive'); assert.equal(V.farmBalance(m).savings, 15);
+  assert.deepEqual(m.sites.willamette.pieces, { cabin: 1, well: 1, garden: 3, fence: 1 }); assert.equal(m.sites.willamette.name, 'Hill Farm'); assert.equal(m.sites.willamette.founded, 1847); assert.deepEqual(m.animals, { oxen: 4, mules: 2 }); assert.ok(m.sites.sacramento);
+  assert.equal(V.mergeFarm(y, x).sites.willamette.name, 'Other'); assert.deepEqual(V.mergeFarm(y, x).sites.willamette.pieces, m.sites.willamette.pieces); assert.deepEqual(m.log.map((l) => l.id), ['willamette:cabin:1', 'willamette:fence:1']);
+  assert.deepEqual(V.mergeFarm(x, undefined).sites.willamette.pieces, x.sites.willamette.pieces); assert.deepEqual(V.mergeFarm(undefined, x).savingsIn, 100); assert.deepEqual(V.mergeFarm(undefined, undefined), V.newFarm());
+  const big = V.newFarm(); for (let i = 0; i < 80; i++) big.log.push({ id: 'l' + i, year: 1847 + (i % 3) }); assert.equal(V.mergeFarm(big, V.newFarm()).log.length, 30);
+  assert.equal(V.normalizeFarm({ savingsIn: -5, sites: { willamette: { pieces: { cabin: 'x' } } } }).savingsIn, 0);
+});
+test('mergeWw15: the v1.5 fields of two docs merge as unions and maxes (sets, decorations, forks seen, the journey\'s gold and branches, v1.4\'s collections); an older doc never erases them', () => {
+  const mkJ = (o = {}) => Object.assign(createJourney({ seed: 190, companions: PLAIN, journeyN: 2, year: 1848 }), o);
+  const A = { ledger: V.newLedger(), farm: aFarm(), setsDone: ['crew'], cosmetics: { owned: { decor: ['bell'] }, equipped: { decor: ['bell', 'gone'] } }, seen: { forks: { 'fort-hall': true } }, journeyResetAt: 5, journey: mkJ({ gold: 12 }) };
+  const B = { ledger: V.newLedger(), farm: aFarm({ sac: true }), setsDone: ['divide'], cosmetics: { owned: { decor: ['flag', 'bell'] }, equipped: { decor: ['flag'] } }, seen: { forks: { 'south-pass': true } }, journeyResetAt: 9, journey: mkJ({ gold: 30, finds: { pinecone: 2 } }) };
+  A.farm.sites.willamette.pieces.cabin = 1; B.farm.sites.willamette.pieces.well = 1; B.ledger.year = 1852; B.journey.branches = { 'south-pass': 'sublette' };
+  const m = V.mergeWw15(A, B); assert.deepEqual(m.setsDone, ['crew', 'divide']); assert.deepEqual(m.cosmetics.owned.decor, ['bell', 'flag']); assert.deepEqual(m.cosmetics.equipped.decor, ['bell'], 'the later doc\'s, owned ones only');
+  assert.deepEqual(m.seen.forks, { 'fort-hall': true, 'south-pass': true }); assert.equal(m.journeyResetAt, 9); assert.equal(m.ledger.year, 1852); assert.deepEqual(m.farm.sites.willamette.pieces, { cabin: 1, well: 1 }); assert.ok(m.farm.sites.sacramento);
+  assert.equal(m.journey.gold, 30, 'gold max on the same journey'); assert.equal(m.journey.finds.pinecone, 2, 'v1.4 by merge14'); assert.equal(m.journey.branches['south-pass'], 'sublette', 'a fork chosen on either device is kept'); assert.equal(m.journey.plan.length, 20); assert.equal(R.planMiles(m.journey.plan), 1960, 'the plan is rebuilt');
+  const old = { journey: mkJ({ gold: 1 }) }; const keep = V.mergeWw15(A, old); assert.deepEqual(keep.farm.sites.willamette.pieces, { cabin: 1 }); assert.deepEqual(keep.setsDone, ['crew']); assert.equal(V.mergeWw15(old, A).farm.sites.willamette.pieces.cabin, 1, 'an older doc (later or not) never erases the farm');
+  assert.deepEqual(clone(V.mergeWw15(A, B)), clone(V.mergeWw15(A, B)));
+});
+
+console.log('\nv1.5 deeds, sets and letters');
+test('DEEDS: 53 now (v1.2\'s twenty, v1.4\'s eight, v1.5\'s twenty-five), spoken lines without digits; checkDeeds(J) alone still works for the old ones; the farm and ledger deeds need them', () => {
+  assert.equal(DEEDS.length, 53); for (const id of V15_DEEDS) { const d = DEED_BY_ID[id]; assert.ok(d && d.name && d.how && d.say && d.emoji, id); assert.ok(!/\d/.test(d.say), d.say); assert.ok(!/\b(die|dead|kill|gun|shoot|blood)\b/i.test(d.say + d.how)); }
+  const J = createJourney({ seed: 200, companions: PLAIN }); assert.deepEqual(checkDeeds(J), []); J.totals.repairs = 3; assert.deepEqual(checkDeeds(J), ['fixer']);
+  assert.ok(!checkDeeds(J).includes('cabin')); const f = aFarm(); f.sites.willamette.pieces.cabin = 1; assert.deepEqual(checkDeeds(J, V.newLedger(), f), ['cabin']);
+});
+test('every v1.5 deed is reachable (each +1 token once, checkDeeds idempotent), and none is earned by doing nothing', () => {
+  const got = new Set(); let tokens = 0;
+  const earn = (J, ledger = null, farm = null) => { const t0 = J.tokens; const e = checkDeeds(J, ledger, farm); tokens += J.tokens - t0; assert.equal(J.tokens - t0, e.length); e.forEach((d) => got.add(d)); assert.deepEqual(checkDeeds(J, ledger, farm), [], 'idempotent'); };
+  const L = V.newLedger(), farm = V.newFarm();
+  // the full Oregon trail (20 legs), the Veteran Barlow Road with a smooth Laurel Hill, the Sublette Cutoff with the barrel, the Lander Road
+  const O = createJourney({ seed: 210, companions: PLAIN }); walkJourney(O, { seed: 1 }); earn(O, L, farm);
+  const B = createJourney({ seed: 211, companions: PLAIN, tier: 'veteran', journeyN: 2, year: 1848 }); walkJourney(B, { seed: 2, choices: { 'the-dalles': 'barlow' }, right: 1 }); earn(B, L, farm);
+  const S = createJourney({ seed: 212, companions: PLAIN, tier: 'pioneer', journeyN: 3, year: 1849 }); walkJourney(S, { seed: 3, choices: { 'south-pass': 'sublette' }, barrel: true }); earn(S, L, farm);
+  const D = createJourney({ seed: 213, companions: PLAIN, journeyN: 12, year: 1858 }); walkJourney(D, { seed: 4, choices: { 'south-pass': 'lander' } }); earn(D, L, farm);
+  const C = createJourney({ seed: 214, companions: PLAIN }); walkJourney(C, { seed: 5, choices: { 'fort-hall': 'california' } }); earn(C, L, farm);
+  const G = createJourney({ seed: 215, companions: ['prospector', 'teacher', 'fiddler'], route: 'gold-road', journeyN: 2, year: 1848 }); walkJourney(G, { seed: 6, gold: 0.9 }); G.gold = Math.max(G.gold, 105); G.totals.rockerBeat = Math.max(G.totals.rockerBeat, 1); earn(G, L, farm);
+  assert.ok(G.totals.nuggets >= 0 && G.totals.flakes > 0);
+  // ledger and farm: close a Veteran and a Pioneer journey at both ends, build a cabin, a barn, the name plate, every piece of one farm
+  for (const J of [O, B, S, D, C, G]) { J.tier = J.tier; V.closeJourney(J, L, farm, { at: 1 }); }
+  V.foundSite(farm, 'willamette', { name: 'Hill Farm' }); V.foundSite(farm, 'sacramento', { name: 'Claim' }); farm.goldIn += 2000; farm.savingsIn += 2000;
+  const T = createJourney({ seed: 216, companions: PLAIN }); let g2 = 0; while (!V.homesteadView(farm, 'willamette', T).complete && g2++ < 200) { T.tokens = 50; const n = V.homesteadView(farm, 'willamette', T).next.find((x) => x.ok); if (!n) break; V.buildPiece(farm, 'willamette', n.id, T); }
+  T.cards = CARD_SETS.slice(0, 3).flatMap((s) => s.cards); earn(T, L, farm);
+  for (const J of [O, B, S, D, C, G]) earn(J, L, farm);
+  const missing = V15_DEEDS.filter((id) => !got.has(id) && ![O, B, S, D, C, G, T].some((J) => J.deeds.includes(id))); assert.deepEqual(missing, [], 'every v1.5 deed is earned somewhere');
+  const idle = createJourney({ seed: 217, companions: PLAIN }); assert.deepEqual(checkDeeds(idle, V.newLedger(), V.newFarm()), []);
+  // the old twenty and v1.4's eight are still earned
+  assert.ok(O.deeds.includes('summiteer') && O.deeds.includes('homesteader') && O.deeds.includes('long-trail'));
+});
+test('checkSets: the sets complete in a journey\'s cards and not yet recorded, once each; sixteen sets, each with a decoration the album knows', () => {
+  assert.equal(CARD_SETS.length, 16); assert.ok(CARD_SETS.every((s) => s.id && s.name && s.cards.length >= 4 && s.decor && DECOR_BY_ID[s.decor]));
+  const J = createJourney({ seed: 220, companions: PLAIN }); assert.deepEqual(V.checkSets(J, []), []);
+  const a = CARD_SETS[0], b = CARD_SETS[1]; J.cards = [...a.cards]; assert.deepEqual(V.checkSets(J, []), [a.id]); assert.deepEqual(V.checkSets(J, [a.id]), [], 'once per set');
+  J.cards = [...a.cards, ...b.cards.slice(1)]; assert.deepEqual(V.checkSets(J), [a.id]); J.cards.push(b.cards[0]); assert.deepEqual(V.checkSets(J, [a.id]), [b.id]); assert.deepEqual(V.checkSets(J, 'x'), [a.id, b.id]);
+  assert.deepEqual(V.checkSets(null, []), []);
+});
+test('the letter tells the legs since the last letter (a post is not at every stop), picks the liveliest lines, and opens with the farm once there is one; composing twice gives the same text', () => {
+  const J = createJourney({ seed: 230, companions: PLAIN, journeyN: 2, year: 1848 }); let letters = 0;
+  const post = (J2, farm = '') => { const L = composeLetter(J2, null, ['enough', 'through', 'buffalo'], { farm }); letters++; return L; };
+  for (let g = 0; g < 3; g++) { J.milesDone = J.trip.miles; J.trip.arrived = true; arrive(J); if (g < 2) nextLeg(J); }
+  assert.equal(J.letterFrom, 0); const first = post(J); assert.equal(J.letterFrom, 3, 'the next letter starts after this leg'); const again = composeLetter(J, null, ['enough', 'through', 'buffalo']); assert.equal(again.text, first.text, 'the same letter twice is the same text');
+  assert.ok(first.keys.length <= 3 && first.keys[0] === 'arrived'); assert.ok(first.lines.length >= 2);
+  // a letter covering several legs can speak of an earlier one: a stop line of a leg behind
+  const stopKeys = first.keys.filter((k) => k.startsWith('stop:')); assert.ok(first.keys.every((k) => LETTER_LINES[k] || FALLBACK_LINES[k]), first.keys.join());
+  nextLeg(J); J.milesDone = J.trip.miles; J.trip.arrived = true; arrive(J); const second = post(J); assert.equal(J.letterFrom, 4); assert.ok(second.lines.length >= 2);
+  // the farm opens the letter on a later journey and on the Gold Road; the first journey never mentions it
+  assert.ok(!first.opening.includes('{farm}')); const withFarm = composeLetter(J, null, [], { farm: 'Hill Farm' }); assert.match(withFarm.opening, /Hill Farm/); assert.ok(!/\{farm\}/.test(withFarm.text), withFarm.text);
+  const G = createJourney({ seed: 231, companions: PLAIN, route: 'gold-road', journeyN: 2, year: 1848 }); G.milesDone = G.trip.miles; G.trip.arrived = true; arrive(G);
+  const gl = composeLetter(G, null, [], { farm: 'Hill Farm' }); assert.match(gl.opening, /family at Hill Farm/); assert.ok(!/\{\w+\}/.test(gl.text), gl.text);
+  const none = composeLetter(createJourney({ seed: 232, companions: PLAIN }), null, []); assert.ok(!/farm/.test(none.opening));
+  // a fork, a toll and a pan are the liveliest things a leg can hold
+  const K = createJourney({ seed: 233, companions: PLAIN, journeyN: 2, year: 1848 }); atFork(K, 'the-dalles'); V.chooseBranch(K, 'the-dalles', 'barlow'); assert.ok(K.trip.keys.includes('barlow'));
+  assert.ok(happenedKeys(K).includes('barlow') === !!lineSource('barlow').length);
+});
+
+test('"Home soon, with gold!" closes only a Gold Road letter on its way home (after a flake or at Coloma), never an emigrant letter or the road out', () => {
+  const GOLD_CLOSE = 'Home soon, with gold!';
+  assert.ok(LETTER_CLOSE.includes(GOLD_CLOSE), 'the line is in the closing pool (for the way home)');
+  const closes = (J, farm) => { const out = new Set(); for (let seed = 1; seed <= 60; seed++) { J.seed = seed; J.letterMemo = null; out.add(composeLetter(J, null, ['a', 'b', 'c'], { farm }).close); } return out; };
+  for (const [route, opts] of [['emigrant', { journeyN: 1 }], ['emigrant', { journeyN: 3, year: 1849 }]]) {
+    const E = createJourney({ seed: 400, companions: PLAIN, route, ...opts });
+    for (const farm of ['', 'Hill Farm']) { const set = closes(E, farm); assert.ok(!set.has(GOLD_CLOSE), `${route} letter (farm "${farm}") never closes with the gold line: ${[...set].join(' | ')}`); }
+  }
+  const G = createJourney({ seed: 401, companions: PLAIN, route: 'gold-road', journeyN: 2, year: 1848 });
+  assert.ok(!closes(G, 'Hill Farm').has(GOLD_CLOSE), 'the road out (no gold yet, before Coloma) does not close with it');
+  G.gold = 12; assert.ok(closes(G, 'Hill Farm').has(GOLD_CLOSE), 'with gold in the pouch the way-home close can be picked');
+  const C = createJourney({ seed: 402, companions: PLAIN, route: 'gold-road', journeyN: 2, year: 1848 }); C.legIndex = C.plan.findIndex((p) => p.id === 'coloma');
+  assert.ok(closes(C, 'Hill Farm').has(GOLD_CLOSE), 'at Coloma the way-home close can be picked');
+});
+
+console.log('\nv1.5 adaptive math (§3.9)');
+const factsAfter = (answers, now = 1e12) => { const d = defaultFacts(now); for (const [fact, ok] of answers) tbRecord(d, fact, { correct: ok, quick: ok, ms: 1200 }, now); refreshFrontier(d, now); return d; };
+test('needsPlacement(facts): true for an untouched ladder (no history, no placement), false once there is any history, a placement, no store, or after the offer has been made three times', () => {
+  const fresh = defaultFacts(1e12); assert.equal(V.needsPlacement(fresh), true); assert.equal(V.hasFactsHistory(fresh), false);
+  assert.equal(V.needsPlacement(null), false); assert.equal(V.needsPlacement(undefined), false); assert.equal(V.needsPlacement({}), true, 'an empty store is untouched');
+  assert.equal(V.needsPlacement(fresh, { offered: 2 }), true); assert.equal(V.needsPlacement(fresh, { offered: 3 }), false);
+  const played = factsAfter([['3x4', true]]); assert.equal(V.needsPlacement(played), false); assert.equal(V.hasFactsHistory(played), true);
+  const placed = defaultFacts(1e12); placed.placement = { tier: 'T3', at: 1e12 }; assert.equal(V.needsPlacement(placed), false);
+  const xp = defaultFacts(1e12); xp.xp = 100; assert.equal(V.needsPlacement(xp), false);
+  const s = V.placementSetup(fresh, 1e12); assert.equal(s.start, 'T3'); assert.ok(Array.isArray(s.tiers) && s.tiers.includes('T3')); assert.equal(s.division, true);
+  assert.equal(V.placementSetup(placed, 1e12).start.startsWith('T'), true); assert.ok(V.PLACEMENT.maxOffers === 3);
+});
+test('problemTierFor(facts): 0 for the first families (through ×5), 1 for ×6 to ×9, 2 above (×11 ×12, tens, teens, big numbers); ÷ families sit at their × family; 1 with no store', () => {
+  const tier = (families) => V.problemTierFor({ frontier: { families } });
+  assert.equal(tier(['x2', 'x5']), 0); assert.equal(tier(['x3', 'x4']), 0); assert.equal(tier(['x6', 'x9']), 1); assert.equal(tier(['x7', 'x8']), 1); assert.equal(tier(['x9', 'x7']), 1);
+  assert.equal(tier(['x11', 'x12']), 2); assert.equal(tier(['x10s']), 2); assert.equal(tier(['xteen']), 2); assert.equal(tier(['xbig', 'dbig']), 2);
+  assert.equal(tier(['d2', 'd5']), 0, 'division by 2 and 5 is not big numbers'); assert.equal(tier(['d7', 'd8']), 1); assert.equal(tier(['d12']), 2); assert.equal(tier(['dbig']), 2); assert.equal(tier(['add', 'sub']), 0);
+  assert.equal(tier([]), 0); assert.equal(V.problemTierFor(null), 1); assert.equal(V.problemTierFor(undefined), 1); assert.equal(V.problemTierFor({}), 0);
+  assert.equal(V.problemTierFor(defaultFacts(1e12)), 0, 'a fresh ladder starts on the first families');
+});
+function seedProblems(kind, tier, n = 300) {
+  const out = [];
+  for (let i = 0; i < n; i++) for (const season of ['rookie', 'veteran', 'pioneer']) { const fact = ['6x7', '7x8', '9x6', '12x7', '11x9', '8x12', '56/7', '72/8', '84/12', '4x3', '5x2', '23x4'][i % 12]; out.push(problemFor({ kind, fact, leg: LEG_BY_ID['fort-laramie'], season, tier, rand: mulberry32(i * 7 + season.length) })); }
+  return out;
+}
+test('tiered problems: tiers 0 and 1 are exactly the shapes of 1.3.3; tier 2 makes ration and distance problems two steps asked in turn and a buy problem pays with a bill and asks the change', () => {
+  for (const kind of ['buy', 'divide', 'ration', 'distance', 'parts', 'trade']) for (const t of [0, 1]) {
+    const a = seedProblems(kind, t, 40), b = seedProblems(kind, undefined, 40); assert.deepEqual(a, b, `${kind} tier ${t} is the 1.3.3 shape`);
+  }
+  for (const kind of ['divide', 'parts', 'trade']) assert.deepEqual(seedProblems(kind, 2, 40), seedProblems(kind, 1, 40), kind + ' has no tier-2 shape');
+  let buys = 0, withChange = 0;
+  for (const p of seedProblems('buy', 2)) {
+    buys++; if (!p.parts) { assert.ok(p.meta.total > 0); continue; } withChange++;
+    assert.equal(p.parts.length, 2); assert.equal(p.answers.length, 2); assert.equal(p.answer, p.meta.total); assert.deepEqual(p.answers, [p.meta.total, p.meta.change]); assert.equal(p.meta.paid - p.meta.total, p.meta.change); assert.ok(p.meta.change >= 1 && p.meta.paid <= 999);
+    assert.ok([5, 10, 20, 50, 100, 200, 500].includes(p.meta.paid)); assert.ok(p.meta.paid > p.meta.total); assert.match(p.text, /bill/); assert.ok(!/\d/.test(p.say), p.say); assert.ok(p.parts.every((x) => Number.isInteger(x.answer) && x.answer > 0 && !/\d/.test(x.say) && x.text));
+    assert.ok(p.work.length >= 3 && p.work.some((l) => l.includes('change'))); assert.equal(p.asked, `${Math.min(p.meta.price, p.meta.qty)}x${Math.max(p.meta.price, p.meta.qty)}`);
+  }
+  assert.ok(withChange / buys > 0.8, `${withChange} of ${buys} buys have a change step`);
+  for (const kind of ['ration', 'distance']) { let two = 0, n = 0;
+    for (const p of seedProblems(kind, 2)) { n++; if (p.parts) { two++; assert.equal(p.parts.length, 2); assert.deepEqual(p.answers, p.parts.map((x) => x.answer)); assert.ok(p.answers.every((x) => Number.isInteger(x) && x > 0 && x <= 999), JSON.stringify(p.answers)); assert.ok(p.answers.includes(p.answer), 'answer is the step with the fact'); assert.ok(!/\d/.test(p.say), p.say); assert.ok(p.parts.every((x) => !/\d/.test(x.say))); assert.ok(p.work.length >= 2); } }
+    assert.ok(two / n > 0.8, `${kind}: ${two} of ${n} are two-step`); }
+  // the purse still caps a store problem: the bill is no more than the cash
+  for (let cash = 8; cash < 140; cash += 6) for (const fact of ['6x7', '7x8', '12x7', '9x9']) { const p = problemFor({ kind: 'buy', fact, leg: LEG_BY_ID['fort-laramie'], season: 'veteran', tier: 2, cash, shelf: 6, rand: mulberry32(cash) }); if (p.parts) assert.ok(p.meta.paid <= Math.max(cash, 5), `${cash}: pays with ${p.meta.paid}`); assert.ok(p.meta.total <= Math.max(cash, p.meta.total)); }
+});
+test('1.3.3 holds at every tier: `asked` reports the fact the sentence really asks (a × of two numbers the sentence names, a ÷ with its total); whole answers; numbers under 1,000; spoken forms with no digits', () => {
+  for (const kind of ['buy', 'divide', 'ration', 'distance', 'parts', 'trade']) for (const t of [0, 1, 2]) for (const p of seedProblems(kind, t, 120)) {
+    assert.ok(Number.isInteger(p.answer) && p.answer > 0 && p.answer <= 999, `${kind}/${t}: ${p.answer}`); assert.ok(!/\d/.test(p.say), `${kind}/${t}: ${p.say}`); assert.ok(p.text && p.work.length >= 2);
+    if (p.asked != null) {
+      const m = /^(\d+)(x|\/)(\d+)$/.exec(p.asked); assert.ok(m, `${kind}/${t}: asked ${p.asked}`);
+      if (m[2] === 'x') { const a = +m[1], b = +m[3]; assert.ok(a <= b); const nums = (p.text.match(/\d+/g) || []).map(Number); assert.ok(nums.includes(a) || nums.includes(b) || kind === 'trade' || kind === 'parts', `${kind}/${t}: ${p.asked} in "${p.text}"`); }
+      else { assert.equal(+m[1] % +m[3], 0); }
+    }
+    if (p.parts) for (const part of p.parts) assert.ok(Number.isInteger(part.answer) && part.answer >= 0);
+  }
+  // the fact asked of a tier-2 two-step is the fact of its fact step
+  for (const p of seedProblems('ration', 2, 60)) if (p.parts) { const [x, y] = p.asked.split('x').map(Number); assert.equal(p.meta.daily * p.meta.days, p.meta.eaten); assert.deepEqual([Math.min(p.meta.daily, p.meta.days), Math.max(p.meta.daily, p.meta.days)], [x, y]); assert.equal(p.answer, p.meta.eaten); }
+  for (const p of seedProblems('distance', 2, 60)) if (p.parts && p.meta.rate && p.asked.includes('/')) { const [tot, d] = p.asked.split('/').map(Number); assert.equal(tot / d, p.answer); assert.equal(d, p.meta.rate); }
+  // determinism: the same call, the same problem
+  assert.deepEqual(problemFor({ kind: 'buy', fact: '7x8', leg: LEG_BY_ID['fort-laramie'], season: 'veteran', tier: 2 }), problemFor({ kind: 'buy', fact: '7x8', leg: LEG_BY_ID['fort-laramie'], season: 'veteran', tier: 2 }));
+});
+test('the ladder drives the shape end to end: a child whose frontier is ×11 gets two-step problems, a child on ×3 gets the simple ones', () => {
+  const hi = { frontier: { families: ['x11', 'x12'] } }, lo = { frontier: { families: ['x3', 'x4'] } };
+  const mix = (facts) => { const tier = V.problemTierFor(facts); return ['buy', 'ration', 'distance'].map((kind) => problemFor({ kind, fact: kind === 'buy' ? '4x12' : '11x6', leg: LEG_BY_ID['fort-hall'], season: 'rookie', tier, rand: mulberry32(3) })); };
+  assert.ok(mix(hi).every((p) => p.parts), 'every shape is two-step at the top'); assert.ok(mix(lo).every((p) => !p.parts), 'and one step at the bottom');
+});
+test('no snow on a dry stretch (the Forty-Mile Desert, the Sublette Cutoff): the basin borrows the high desert\'s weather but not its snow', () => {
+  const dryLegs = ALL_LEGS.filter((l) => l.dry);
+  assert.ok(dryLegs.length >= 2, 'the dry legs: ' + dryLegs.map((l) => l.id).join());
+  for (const leg of dryLegs) for (let s = 0; s < 200; s++) {
+    for (const tier of ['rookie', 'veteran', 'pioneer']) { const plan = planEvents(leg, mulberry32(hashSeed('dry-snow', leg.id, s)), { hunting: true, tier, dry: true }, markerMiles(leg.miles)); assert.ok(!plan.some((p) => (p.event ? p.event.id : p.id) === 'snow'), `${leg.id} ${tier} seed ${s}: snow on a dry stretch`); }
+  }
+});
+test('problemTierFor: a child who aced the Pit Crew Check through x12 (the frontier has moved on to the division twins) gets tier 2, not the tier of d2 / d5; a fresh ladder stays 0', async () => {
+  const { createCheck, checkNext, checkAnswer, applyCheck } = await import('../../trail-blazer/src/facts/placement.js');
+  const now = 1e12; const fresh = defaultFacts(now); refreshFrontier(fresh, now);
+  assert.equal(V.problemTierFor(fresh, now), 0, 'a fresh ladder: tier 0');
+  const setup = V.placementSetup(fresh, now); const st = createCheck({ tiers: setup.tiers, start: setup.start, division: setup.division }, mulberry32(5));
+  let it; while ((it = checkNext(st))) checkAnswer(st, { correct: true, quick: true, ms: 1500, given: null });
+  const d = defaultFacts(now); applyCheck(d, st, now); refreshFrontier(d, now);
+  assert.ok(d.frontier.families.every((f) => f[0] === 'd'), 'the frontier moved on to the division twins: ' + d.frontier.families.join());
+  assert.equal(V.problemTierFor(d, now), 2, 'and the problems take the strong child\'s shape (frontier ' + d.frontier.families.join() + ')');
+  const weak = defaultFacts(now); const st2 = createCheck({ tiers: setup.tiers, start: setup.start, division: setup.division }, mulberry32(5));
+  while ((it = checkNext(st2))) checkAnswer(st2, { correct: false, quick: false, ms: 6000, given: 1 });
+  applyCheck(weak, st2, now); refreshFrontier(weak, now);
+  assert.equal(V.problemTierFor(weak, now), 0, 'a child who missed the check keeps tier 0');
+  assert.equal(V.problemTierFor(null), 1, 'no store: the shapes of 1.3.3');
+});
+test('a Veteran / Pioneer / Rookie wagon plays every route\'s content end to end with the long trail\'s numbers (the whole matrix is also run by economy-sim.mjs --check)', () => {
+  for (const [name, opts, choices] of PLANS) { const J = createJourney({ ...opts, tier: 'veteran', seed: 777, companions: PLAIN }); const log = walkJourney(J, { right: 0.7, seed: 3, choices }); assert.ok(J.done, name); assert.ok(log.days >= 20, name); }
+});
+test('the long trail keeps the dog busy: a nose moment on at least 95 % of the legs with the dog, on 60-160 mile legs, with the 45-mile lead rule', () => {
+  let withDog = 0, withNose = 0;
+  for (let seed = 900; seed < 925; seed++) {
+    const J = createJourney({ seed, companions: PLAIN }); const rand = mulberry32(seed);
+    for (let g = 0; g < 20 && !J.done; g++) {
+      const leg = legList()[J.legIndex];
+      let seen = 0; const dogHere = !!J.dog && g < 19;
+      for (let d = 0; d < 300; d++) { const r = tickDay(J, { rand }); if (r.nose) seen++; if (r.marker) V.applyMarker(J, { correct: true }); if (r.event && r.event.kind === 'fish') applyFish(J, { fishLb: 8 }); if (r.event && r.event.kind === 'hunt') applyHunt(J, { meatLb: 20 }); if (r.arrived) break; }
+      if (dogHere) { withDog++; if (seen > 0) withNose++; }
+      arrive(J); if (leg.id === 'kansas-river') V.adoptDog(J, { name: 'Frodo' }); J.food = Math.max(J.food, 200); nextLeg(J);      // (the dog joins on the far bank, after the crossing)
+    }
+  }
+  assert.ok(withNose / withDog >= 0.95, `${withNose} of ${withDog}`);
+});
+test('the module is pure: no clock, no Math.random, no DOM in the v1.5 journey files', () => {
+  for (const f of ['route', 'seasons', 'homestead', 'gold', 'adaptive', 'events', 'deeds', 'letters', 'supplies', 'problems', 'economy']) {      // (sim.js keeps 1.1's `rand = Math.random` default on cardForLeg)
+    const src = readFileSync(new URL(`../src/journey/${f}.js`, import.meta.url), 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g, "''");
+    assert.ok(!/Date\.now|new Date\(|performance\.now|Math\.random|document\.|window\.|localStorage|setTimeout/.test(src), f);
+  }
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

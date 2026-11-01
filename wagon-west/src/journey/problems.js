@@ -7,6 +7,9 @@
 // more, the related × fact for ÷, one line per step of a two-step problem), and a whole-number answer. The season's
 // numberMult makes the numbers bigger only where the sentence stays sensible (prices, pounds, miles) and never past
 // 999, so the spoken numbers stay in the range a 4th grader reads.
+// v1.5 (SPEC v1.5 §3.9): the SHAPE scales with the child's ladder: problemFor's `tier` option (adaptive.js problemTierFor(facts): 0 through ×5, 1 for ×6–×9, 2 above) keeps the
+// shapes of 1.3.3 for tiers 0 and 1; at tier 2 a ration and a distance problem are two steps asked in turn (`parts`, `answers`) and a buy problem adds a change-back step.
+// Whatever the tier, `answer` is the answer of the step that holds the fact, and `asked` reports the fact the sentence really asks (1.3.3).
 import { GOODS, legOf, seasonOf, nationFor } from './route.js';
 import { NATION_BY_ID } from '../content/nations.js';
 import { mulberry32, hashSeed, randInt, pick } from './rng.js';
@@ -53,8 +56,8 @@ const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 const article = (w) => (/^[aeiou]/i.test(w) ? 'an' : 'a');
 
 // the two renderings of a sentence: digits for the panel, words for the voice
-const TXT = { n: (n) => String(n), d: (n) => '$' + n, w: (n, one, many) => `${n} ${n === 1 ? one : many}` };
-const SAY = { n: numberWords, d: dollarWords, w: (n, one, many) => `${numberWords(n)} ${n === 1 ? one : many}` };
+const TXT = { n: (n) => String(n), d: (n) => '$' + n, w: (n, one, many) => `${n} ${n === 1 ? one : many}`, bill: (n) => '$' + n };
+const SAY = { n: numberWords, d: dollarWords, w: (n, one, many) => `${numberWords(n)} ${n === 1 ? one : many}`, bill: (n) => `${numberWords(n)} dollar` };
 const both = (tpl) => ({ text: tpl(TXT), say: tpl(SAY) });
 
 // ---- facts ----
@@ -172,12 +175,27 @@ function buy(f, rand, season, o) {
   const m = scaleFor(season.numberMult, (k) => x * k * qty <= MAX_NUMBER && (purse == null || x * k * qty <= purse));
   const price = x * m, total = price * qty;
   const it = itemFor(x, rand, o.item);
+  // tier 2: the child pays with a bill and works out the change (a second step; the bill is the smallest one over the total that the purse could hold)
+  const pay = (o.tier | 0) >= 2 ? BILLS.find((b) => b > total && b <= (purse == null ? MAX_NUMBER : Math.min(MAX_NUMBER, purse))) : null;
+  if (pay) {
+    const change = pay - total;
+    const s2 = both((F) => `${cap(article(it.one))} ${it.one} costs ${F.d(price)}. You buy ${F.w(qty, it.short, it.shorts)} and pay with a ${F.bill(pay)} bill. How much is that, and how much change do you get back?`);
+    const p1 = both((F) => `How much do ${F.w(qty, it.short, it.shorts)} cost?`);
+    const p2 = both((F) => `You pay with a ${F.bill(pay)} bill. How much change do you get back?`);
+    return { ...s2, answer: total, answers: [total, change], unit: '$',
+      parts: [{ ...p1, answer: total, unit: '$' }, { ...p2, answer: change, unit: '$' }],
+      work: lines(`${qty} ${qty === 1 ? it.short : it.shorts} at $${price} each: ${price} × ${qty}`, splitLine(price, qty), `${price} × ${qty} = ${total}, so it costs $${total}.`, `$${pay} − $${total} = $${change} in change.`),
+      asked: askedTimes(price, qty),
+      meta: { item: it.id, qty, price, total, paid: pay, change } };
+  }
   const s = both((F) => `${cap(article(it.one))} ${it.one} costs ${F.d(price)}. You buy ${F.w(qty, it.short, it.shorts)}. How much is that?`);
   return { ...s, answer: total, unit: '$',
     work: lines(`${qty} ${qty === 1 ? it.short : it.shorts} at $${price} each: ${price} × ${qty}`, splitLine(price, qty), `${price} × ${qty} = ${total}, so it costs $${total}.`),
     asked: askedTimes(price, qty),
     meta: { item: it.id, qty, price, total } };
 }
+/** The bills a change-back problem pays with (smallest that covers the total). */
+const BILLS = [5, 10, 20, 50, 100, 200, 500];
 
 function divide(f, rand, season, o) {
   const { d, q: qFact } = divisionOf(f, rand);
@@ -222,6 +240,17 @@ function ration(f, rand, season, o, leg) {
   const extra = 5 * randInt(rand, 1, 6);
   const m = scaleFor(season.numberMult, (k) => x * k * days + extra <= MAX_NUMBER);
   const daily = x * m, eaten = daily * days, have = eaten + extra, dest = destOf(leg, o.dest);
+  if ((o.tier | 0) >= 2) {
+    // tier 2: two steps asked in turn: the pounds eaten on the way (the fact), then the pounds left
+    const s2 = both((F) => `The party eats ${F.w(daily, 'pound', 'pounds')} of food a day. It is ${F.w(days, 'day', 'days')} to ${dest}. The wagon has ${F.n(have)} pounds. How many pounds will the party eat on the way, and how many will be left when you get there?`);
+    const p1 = both(() => 'How many pounds will the party eat on the way?');
+    const p2 = both(() => 'How many pounds will be left when you get there?');
+    return { ...s2, answer: eaten, answers: [eaten, extra], unit: 'lb',
+      parts: [{ ...p1, answer: eaten, unit: 'lb' }, { ...p2, answer: extra, unit: 'lb' }],
+      work: lines(`${daily} × ${days} = ${eaten} pounds eaten on the way`, splitLine(daily, days), `${have} − ${eaten} = ${extra} pounds left`),
+      asked: askedTimes(daily, days),
+      meta: { daily, days, eaten, have, left: extra } };
+  }
   const s = both((F) => `The party eats ${F.w(daily, 'pound', 'pounds')} of food a day. It is ${F.w(days, 'day', 'days')} to ${dest}. The wagon has ${F.n(have)} pounds. How many pounds will be left when you get there?`);
   return { ...s, answer: extra, unit: 'lb',
     work: lines(`${daily} × ${days} = ${eaten} pounds eaten on the way`, splitLine(daily, days), `${have} − ${eaten} = ${extra} pounds left`),
@@ -239,6 +268,19 @@ function distance(f, rand, season, o, leg) {
     const [rate, days0] = inRange(d) || !inRange(q) ? [d, q] : [q, d];
     const m = scaleFor(season.numberMult, (k) => rate * days0 * k <= MAX_NUMBER);
     const days = days0 * m, miles = rate * days;
+    const gone = (o.tier | 0) >= 2 ? 10 * randInt(rand, 2, 9) : 0;
+    if (gone > 0 && miles + gone <= MAX_NUMBER) {
+      // tier 2: part of the way is done: the miles left (a subtraction), then the days (the fact)
+      const total = miles + gone;
+      const s2 = both((F) => `${cap(dest)} is ${F.n(total)} miles away. The wagon has gone ${F.n(gone)} miles already, and it makes ${F.n(rate)} miles a day. How many miles are left, and how many more days will it take?`);
+      const p1 = both(() => 'How many miles are left?');
+      const p2 = both(() => 'How many more days will it take?');
+      return { ...s2, answer: days, answers: [miles, days], unit: 'days',
+        parts: [{ ...p1, answer: miles, unit: 'mi' }, { ...p2, answer: days, unit: 'days' }],
+        work: lines(`${total} − ${gone} = ${miles} miles left`, `${miles} ÷ ${rate}: think ${rate} × ? = ${miles}`, splitLine(rate, days), `${rate} × ${days} = ${miles}, so ${days} more ${days === 1 ? 'day' : 'days'}.`),
+        asked: askedDivide(rate, days),
+        meta: { miles: total, left: miles, gone, rate, days } };
+    }
     const s = both((F) => `${cap(dest)} is ${F.n(miles)} miles away. The wagon makes ${F.n(rate)} miles a day. How many days will it take?`);
     return { ...s, answer: days, unit: 'days',
       work: lines(`${miles} ÷ ${rate}: think ${rate} × ? = ${miles}`, splitLine(rate, days), `${rate} × ${days} = ${miles}, so it takes ${days} ${days === 1 ? 'day' : 'days'}.`),
@@ -249,6 +291,19 @@ function distance(f, rand, season, o, leg) {
   const { x, y: days } = factorsOf(f, rand);
   const m = scaleFor(season.numberMult, (k) => x * k <= 30 && x * k * days <= MAX_NUMBER);
   const rate = x * m, miles = rate * days;
+  const left = (o.tier | 0) >= 2 ? 10 * randInt(rand, 2, 9) : 0;
+  if (left > 0 && miles + left <= MAX_NUMBER) {
+    // tier 2: how far it goes (the fact), then how far is still to go
+    const total = miles + left;
+    const s2 = both((F) => `The wagon makes ${F.n(rate)} miles a day on the way to ${dest}, which is ${F.n(total)} miles from the start. How far does it go in ${F.w(days, 'day', 'days')}, and how many miles are left after that?`);
+    const p1 = both((F) => `How far does it go in ${F.w(days, 'day', 'days')}?`);
+    const p2 = both(() => 'How many miles are left after that?');
+    return { ...s2, answer: miles, answers: [miles, left], unit: 'mi',
+      parts: [{ ...p1, answer: miles, unit: 'mi' }, { ...p2, answer: left, unit: 'mi' }],
+      work: lines(`${rate} miles a day for ${days} ${days === 1 ? 'day' : 'days'}: ${rate} × ${days}`, splitLine(rate, days), `${rate} × ${days} = ${miles} miles.`, `${total} − ${miles} = ${left} miles left.`),
+      asked: askedTimes(rate, days),
+      meta: { miles, rate, days, total, left } };
+  }
   const s = both((F) => `The wagon makes ${F.n(rate)} miles a day on the way to ${dest}. How far does it go in ${F.w(days, 'day', 'days')}?`);
   return { ...s, answer: miles, unit: 'mi',
     work: lines(`${rate} miles a day for ${days} ${days === 1 ? 'day' : 'days'}: ${rate} × ${days}`, splitLine(rate, days), `${rate} × ${days} = ${miles} miles.`),
@@ -332,13 +387,14 @@ const MAKERS = { buy, divide, ration, distance, parts, trade };
  *  pelts you have; `offer`: tradeOffer(J)'s pick (what the wagon really holds, so the story always matches); `have`: the wagon's count, so the story never trades more). fact: a Trail Blazer fact id or null (small numbers). meta carries what the app needs to act on
  *  the answer (a buy's item / qty / price, a trade's giveN / getN). rand defaults to a generator seeded from the
  *  arguments, so the same call gives the same problem. `cash` (and `shelf`, the shelf price of the item) cap a 'buy' or
- *  'divide' store problem to what the purse covers (v1.3): a smaller multiple of the same fact stands in. */
-export function problemFor({ kind = 'buy', fact = null, leg = null, season = null, rand = null, ...o } = {}) {
+ *  'divide' store problem to what the purse covers (v1.3): a smaller multiple of the same fact stands in. v1.5: `tier` (0 | 1 | 2, adaptive.js problemTierFor): at 2 a 'ration'
+ *  or 'distance' problem is two steps (`parts` / `answers`) and a 'buy' pays with a bill and asks the change; 0 and 1 are the shapes of 1.3.3. */
+export function problemFor({ kind = 'buy', fact = null, leg = null, season = null, rand = null, tier = 1, ...o } = {}) {
   const k = MAKERS[kind] ? kind : 'buy';
   const l = legOf(leg);
   const s = seasonOf(season);
   const r = typeof rand === 'function' ? rand : mulberry32(hashSeed(k, fact, l ? l.id : '-', s.id));
   const f = parseFactId(fact);
-  const out = MAKERS[k](f, r, s, o, l);
+  const out = MAKERS[k](f, r, s, { ...o, tier: Number.isFinite(tier) ? tier : 1 }, l);
   return { kind: k, fact: fact == null ? null : String(fact), ...out };
 }

@@ -1887,7 +1887,8 @@ no cabin is a tent and a fire; the game never shows an empty field as a loss.
 #### 3.6 Years and carry-over (`seasons.js`, new)
 ```js
 export const CARRY = ['cards', 'deeds', 'tokens', 'upgrades', 'challenges', 'dog'];
-export const CARRY_V14 = [/* v1.4's collection fields on J (the dog's finds, the fish log, the locket, the trail facts heard): filled at integration */];
+export const CARRY_V14 = ['finds', 'fishLog', 'fishJunk', 'fishBest', 'skips', 'wishes', 'questsDone', 'treatsBest', 'goods.spoon', 'opts.farSounds'];
+// (the dog itself is in CARRY; collections.js `carry14` does the copying. v1.4's own rule resets what is per season: `quests` in progress, `factsHeard` and `moments`)
 newLedger() → { year: 1847, journeys: [], routesDone: [], branchesDone: [], tiersDone: { rookie: 0, veteran: 0, pioneer: 0 },
                 trophies: [], lifetime: { legs: 0, miles: 0, flakes: 0, peopleMet: 0 } }
 startSeason(prevJ | null, { route, tier, family, animal, companions, seed, ledger, farm }) → J
@@ -1948,6 +1949,56 @@ what it does not know, so each field below is added to `defaultSave` and `normal
 - `homestead` (the 1.0 name) migrates into `farm.sites.willamette.name` when a 1.3 save is done in the valley (and stays
   readable for an older build).
 - `journey` gains `route`, `tier`, `year`, `journeyN`, `family`, `branches`, `plan`, `gold`, `letterFrom`, `banked`, `closed`.
+
+#### 3.9 Adaptive math (`adaptive.js`, new; the owner's two additions, Nov 1)
+Wagon West reads the child's Trail Blazer facts store (`facts`, the shared fact ladder: `trailBlazer.<id>.facts`, or null), and imports the ladder's own
+functions (`tierOf`, `tiersFor`, `START_TIER`, `recheckStart`) from `trail-blazer/src/facts/*`, never copies them. Pure: no DOM, no clock.
+- **(a) Placement on the first store or marker.** When the ladder is untouched the app offers the Pit Crew Check (`trail-blazer/src/ui/pitCheck.js`) before
+  the first store or the first mile marker, whichever comes first, as "Before you answer questions, the pit crew checks what you've got. About 15 quick facts."
+  with Start and Later (never a gate, never a timer; "Later" asks again at the next store or marker, at most `PLACEMENT.maxOffers` = 3 times).
+  ```js
+  needsPlacement(facts, { offered = 0 } = {}) → bool     // true: a store exists, no placement, and no facts history
+  hasFactsHistory(facts) → bool                           // any record, any race, any XP, any gate answer, or a placement
+  placementSetup(facts, now) → { tiers, start, division } // what Trail Blazer's createCheck needs: tiersFor(facts.sets, facts, now), 'T3' for a first check
+                                                          // (recheckStart(facts) for a re-check), whether the ÷ twins are asked
+  PLACEMENT = { maxOffers: 3 }
+  ```
+  The app shows the check through whatever Trail Blazer screen hook it has (`createPitCheck(app, gatePanel).run({ kind: 'first' })`, or its own panel
+  over `createCheck` with `placementSetup`); the answers go through `recordAnswer` like every other fact, so the frontier, and with it the next decision (b),
+  moves at once. `needsPlacement(null)` is false (no store to read, nothing to offer).
+- **(b) Problem shape scales with the ladder.** `problemFor({ …, tier })` takes `tier` 0 | 1 | 2 from `problemTierFor(facts)`, the highest tier of the
+  child's frontier (`facts.frontier.families`, ÷ families counted at their × family, so ÷2 is not "big numbers"):
+  | tier | frontier | shapes |
+  |---|---|---|
+  | 0 | through ×5 (+ −, ×2 ×5 ×10, ×3 ×4) | exactly the 1.3.3 shapes |
+  | 1 | ×6 to ×9 (T3, T4) | exactly the 1.3.3 shapes |
+  | 2 | above (×11 ×12, tens, teens, big numbers) | **ration** and **distance** become two steps asked in turn (`parts`, `answers`): the pounds eaten on the way (the fact) and the pounds left; the miles left (a subtraction) and the days (the fact ÷), or the miles gone (the fact ×) and the miles still to go. A **buy** adds a change-back step: "You pay with a $50 bill. How much is that, and how much change do you get back?" (the bill is the smallest of 5, 10, 20, 50, 100, 200, 500 over the total that the purse can hold; none fits: the one-step buy). |
+  The other kinds (divide with its remainder, parts, trade) are the same at every tier. `problemTierFor(null)` is 1 (the shapes of 1.3.3); a fresh ladder (the
+  first families on the frontier) is 0. For a two-step problem `answer` is the answer of the **step that holds the fact** (so a wrong answer is still recorded
+  against the right fact), `answers` are all of them in order, `parts` is the panel's `[{ text, say, answer, unit }]` (the panel already asks `parts` in turn), and
+  **`asked` keeps reporting the fact the sentence really asks** (1.3.3): the × of the two numbers the fact step names, or the ÷ with its total. The numbers
+  stay whole and under 1,000; `say` and every part's `say` have no digits.
+- Tests: `needsPlacement` (fresh, played, placed, XP, null, three offers), `problemTierFor` for every family, tiers 0 and 1 byte-equal to the untiered call
+  over every kind, tier 2's shapes, `asked`, the purse cap, determinism. The sim kids carry a ladder tier by profile (strong 2, average 1, weak 0): a two-step
+  problem costs a little more time (`SEC.problemStep`).
+
+#### 3.10 Journey stream notes: what was built, and where it differs from §3 (for the integrator)
+- **Deeds: 53, not 45.** §3.7's "45" is 20 + 25 and pre-dates v1.4's eight; the 25 new ones are as the table, so `DEEDS.length` is 53 (20 + 8 + 25). The Journal's "Deeds (45)" is `DEEDS.length`.
+- **A due event may share a marker day, and the dog's nose too** (`tickDay`). On a 60-110 mile leg with 5-6 markers almost every travel day is a marker day: the SPEC's "an event only on a day without a marker" fired
+  only 46 % of the planned events (none on the 60-mile legs, so Ice Slough's ice never fired). Now a due event fires after the marker (the app asks the marker first, as for the safety net, v1.2), the nose
+  may share a marker day (and, past the leg's half with nothing yet, an event day), while the trail fact and the dust devil still need a day with nothing else. `planEvents` no longer nudges an event off a marker
+  mile where the markers are closer than 24 miles; a fort leg plans one event (its session is the store, the post office and the derby). **The App must play `res.marker`, then `res.event` / `res.nose`, in that order on one day.**
+- **Markers: `MARKERS = { spacing: 24, min: 5, max: 6 }`** (was 30 / 4 / 6): a 60-144 mile leg has 5, a longer one 6. Why: legs are 100 miles on average now, and the 1.3 four-to-six had become four on every leg.
+- **Pay**: `PAY = { arrival: 4, star: [1, 3, 14], refMiles: 167 }`: the SPEC's first pass star[2] 12 held the 1.3 money targets but left the strong kid short of the yoke; 14 is 1.3's own number.
+  `payFor` of a voyage leg is that of a 100-mile leg; the sail pays `sailPay`.
+- **Laurel Hill pays** (`SNUB = { cardChance: 0.5, smooth: 20, bumpy: 10 }` × the price level, in `applySnub` → `{ smooth, card, cash }`): the Barlow Road has no raft, and §7.2's "end cash within $10 of the raft's minus the toll" needs the slide to pay what the raft pays.
+- **Tiers**: Veteran `breakdownW` 1.4 and Pioneer 1.7 (the SPEC's 1.5 and 2.0 gave the Pioneer more than two limps a journey on the 850-mile California stretch with no store). Everything else is §3.2 as written.
+- **Homestead costs tuned** (`HOMESTEAD_COST`, §7.2 `--homestead`): cabin $40; token pieces 15-50 tokens (garden 30, flowers 20, mailbox 15, bench 20, coop 50, apple tree 45: the tokens' sink, about half of a farm-building kid's tokens);
+  gold pieces barn 5, orchard 4, frame house 7, mill 5, schoolhouse 8 nuggets (29 in all; vineyard 6, windmill 5). Result: cabin after journey 1 for every kid, the average kid's barn at journey 2.3, every Willamette piece at journey 7.2 (7-9), the strong kid's at 5.2 (5-6).
+- **Small additions** the SPEC does not name: `writeOnRock(J)` (City of Rocks, counts the 'axle-grease' deed), `applyGold(J, { flakes, nugget, rocker })` with a `rocker` beats value counts a round (and an on-the-beat one for the 'rocker' deed), `mergeWw15`, `mergeLedger`, `mergeFarm`, `normalizeLedger`, `normalizeFarm`
+  (the App's save.js / sync.js may call these instead of rewriting them), `J.tale` / `J.letterMemo` (so a letter can tell the legs since the last one and composing twice gives the same text), `J.xcold` (the Veteran's extra cold leg), `legacyTrail()` (the 1.3 twelve legs as leg objects),
+  `completedSets`, `homesteadView(farm, site, J)` takes the journey for the tokens and returns `next: [{ id, cost, ok, why }]`, `canBuild` also returns `code`.
+- `syntheticTrail(n)` stays the 1.3 twelve-leg helper (the long trail's other routes are the real content now); the 1.3 / 1.4 tests run on `legacyTrail()`, which is also what a 1.3 journey in progress keeps (`LEGACY_PLAN_12`, `planLocked`).
 
 ### 4. Scene contract (`src/scene/*`)
 
@@ -2076,7 +2127,7 @@ build (which drops the new fields) never erases them:
 - `setsDone` union; `cosmetics.owned.decor` union; `equipped.decor` the later doc's (owned only); `seen.forks` OR.
 - `journey`: 1.3's rules (the later doc's journey; cash and tokens max on the same journey; cards, deeds, met unions); on the
   same journey `gold` max and `branches` union (a fork chosen on either device is kept; the plan is rebuilt by `usePlan`).
-- v1.4's fields: by v1.4's own rules (the orchestrator lists them here at integration).
+- v1.4's fields: `merge14(s.journey, o.journey)` (collections.js, v1.4 §3.7): `finds` per id max · `fishLog` per species n max with the bigger `bestIn` and its lb / leg · `fishJunk` per kind max · `fishBest` the bigger · `skips.best`, `skips.throws` max, `byRiver` per key max · `wishes` and `questsDone` union · `treatsBest` max · `dog` the later doc's, `treats` max · and on the same journey `quests` per id the further state, `factsHeard` union, `goods.spoon` max. The Journey stream's `mergeWw15(s, o)` (seasons.js) does every rule of this list in one pure call (and calls `merge14`); `mergeLedger` and `mergeFarm` are its two parts.
 - `resetAt` still wins whole. Parent Zone's new "Reset this journey only" stamps `journeyResetAt` and keeps the farm, the
   ledger, the cards and the sets (a merge drops the other side's journey when it is older than the stamp).
 
@@ -2095,6 +2146,33 @@ nugget!", "Rock it!", "Hold the rope!", "Let go!", "Up the coast!", "Over the ba
 ahead): the flake counts ("Seven flakes!"), the bank line, the farm's name plate line, the toll with its amount. Mini-game cue
 lines are short `say` lines and must be in the prepared list (a cue that waits for a clip is worse than none);
 `tools/content-audit.mjs` checks them like every other spoken string.
+
+#### 5.9 App stream notes: what was built, and where it differs from §5 (for the integrator)
+- **Built**: the title map with every route, fork, farm and the lines travelled (`src/ui/map.js`); the year picker (`yearPicker.js`); the Outfit's Family step, Mateo and Hattie and
+  the decor kind in Look (`outfit.js`, `looks.js`: `LOOK_KINDS` gains `'decor'`, `equipped.decor` is a list of two); the fork panel (`forkPanel.js`); the Barlow toll with the IOU,
+  Laurel Hill (`startSnub` / `applySnub`), dry-stretch lines, the Humboldt without a ferry; the Gold Road start (the news card, the farm's food, the Oregon City store), the diggings
+  (`diggings.js`: the pan, the cradle, the pouch), the voyage (`startSail`, four "Up the coast" markers, `sailPay`); the bank card on the results, the farm's name on the 1.0
+  keyboard and the homestead screen (`homestead.js`); carry-over through `startSeason` / `closeJourney`; the journal's pages (Stickers by route, Map with the roads travelled,
+  Cards → Sets, Deeds (53) in five groups, Farm); the Parent Zone touch points; the Pit Crew Check; tiered problems; `voiceTexts.js` for every new line; `save.js` / `sync.js` for the
+  new fields and `mergeWw15`; `VERSION` '1.5.0', `sw.js` `wagon-west-v1.5.0`, the README.
+- **Deviations from §5**: (1) the Pit Crew Check runs on Wagon West's own marker panel in a new `mode: 'check'` over Trail Blazer's `createCheck` / `checkNext` / `checkAnswer` /
+  `applyCheck` (`pitCheck.js` is married to Trail Blazer's DOM); the offer is the `needsPlacement` card ("Start" / "Later", three times at most, counted in `save.seen.placeOffers`).
+  (2) The fork panel opens after the stop's lookout card (not before it), still before the Talk row, the river, the store and the post office; the fork is read with `forkAt(J)`, not
+  `arrive().fork` (`arrive()` pays the leg, and the cash must not reach the fort's store before the results do). (3) "Reset this journey only" starts the same journey over (a fresh
+  `startSeason` from the old one: same wagon, team and party, mile 0, what is carried kept) and stamps `journeyResetAt`; it does not leave the child with no journey. (4) "Let the child
+  choose how hard" and "Gold panning" are device settings like Hunting (`settings.chooseTier`, `settings.panning`), not synced. (5) The journal has eight pages, not six: v1.4's Finds
+  and Fish log stay. (6) The "Gold fever" card is handed out by the Nisenan guide at Coloma (a card the guide shows with its own words); the comic gold-fever event hands out nothing
+  (and the lookout events with `animal: null` spot no animal). (7) The farm's "Work it out" (a 'buy' problem: what is left in savings) is offered once per piece (`save.seen.worked`),
+  so a token cannot be farmed. (8) The bank card sits in the results' left card (the right one scrolls on a short screen), with the trophy plate. (9) Playtest 1.4 U5 (twelve skips on
+  every throw): the stones game ends at the first throw that skips as far as a stone can (`MOMENTS.stones.maxSkips`); the window itself is the scene's (±180 ms).
+- **Needs integration with the real scene** (the mock scene runs all of it; names as §4): `setBackdrop('diggings' | 'sea' | 'homestead')`, `setLeg({ painting, dry, voyage })`,
+  `setParty({ wagon: { decor }, packMules })`, `setTravel({ dry })`, `setHomestead({ site, name, pieces, animals, dog, decor, party, trophies })`, `buildPiece(id)` → `buildDone`,
+  the events `homesteadTap { slot, piece }`, `panSwirled { n, quality }` (the app answers `panReveal({ flakes, nugget })`) / `pan` / `panEnd`, `rockerRound { n, beats }` (the app
+  answers `rockerReveal({ flakes })`) / `rockerEnd`, `snub { good }` / `snubEnd { smooth }`, `sailMarker { n, of }` (the app answers `sailGo()`) / `sail { bump }` / `sailEnd { bumps }`.
+  The app says the cue lines itself ("Scoop!", "Swirl, swirl!", "Tip it now!", "Look at that gold!", "Rock it!", "Hold the rope!", "Let go!", "Up the coast!", "Over the bar!").
+- **For the journey stream** (not fixed here, files not ours): `LETTER_CLOSE` holds 'Home soon, with gold!' and `withFarm` only drops the `{farm}` lines, so an emigrant letter can close with it; §5's comment says it belongs to the way home on the Gold Road only (LETTER_GOLD.close).
+- **App robustness added in the integration pass**: each `runStop` holds a run number (a stop that was left, by "Stop for today" or a jump, never carries on into the store, the post office or the results); a card pop that a toast overlaps in the instant it was drawn steps back (cards.js); a pop waits for a clear place only on the camp and store screens (toasts.js `POP_CLEAR_SCREENS`), as the trail's HUD is laid out around pops.
+- **Tests**: `tools/ui-smoke.mjs` (`LT_ONLY=1` for the v1.5 sections, `LT_SECTIONS=…`), `tools/sync-smoke.mjs` (the farm merge scenario), `tools/content-audit.mjs` (all 45 legs, the new texts).
 
 ### 6. Streams and file ownership (four Sonnet agents, from the same commit after v1.4 is merged; the orchestrator integrates)
 Never touch another stream's files; never touch `car-jump/`, `trail-blazer/`, `fraction-fright/`, `spell-jump/`, `site/`,

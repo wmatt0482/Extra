@@ -67,7 +67,8 @@ export function createPostOffice(app) {
       const words = picks.map((p) => p.word);
       if (typeof app.questMail === 'function') { await app.questMail(leg); if (app.screen !== 'post') return { cancelled: true }; }      // (v1.4: before the letter, which tells it)
       let letter = null;
-      try { letter = composeLetter(app.save.journey, app.legEvents(), words); } catch (e) { console.error('[post] composeLetter failed', e); }
+      // (v1.5: the letter tells the legs since the last post, and opens with the farm's name once there is one: "Dear everyone at Rose Hill,")
+      try { letter = composeLetter(app.save.journey, app.legEvents(), words, { farm: app.farmName() }); } catch (e) { console.error('[post] composeLetter failed', e); }
       if (!letter || !Array.isArray(letter.lines)) {
         letter = { opening: 'Dear everyone back home,', lines: [`We made it to ${(leg.stop && leg.stop.name) || leg.name}.`], ps: `P.S. My spelling words this week: ${words.join(', ')}.`, text: '' };
       }

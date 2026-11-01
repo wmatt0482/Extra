@@ -67,6 +67,17 @@
 //   plays Sfx.* for them; ambient sounds are the app's: Sfx.ambient(fact.sound)).
 //   Hooks the new modules use on a mini: m.view ('keep' leaves the view alone, 'fish' = the pool view), m.halt (the wagon stops),
 //   m.drawSky / drawFar / drawBehind / drawOver, m.dogPose(L), m.hideHat(i), m.keyUp(L, 'space'), m.enter(L).
+// v1.5 (SPEC v1.5 §4: The Long Trail). New biomes (basin, sierra, siskiyou, goldcountry, sea), the dry stretch, the diggings, the voyage, the farm:
+//   setTravel({ ..., dry })   a dry day: heat shimmer, more dust, a water barrel on the wagon (dry: { barrel: false } hides it), no water in the basin's props
+//   setParty({ ..., wagon: { ..., decor: [id, id], barrel }, packMules })   decorations worn on the wagon; two pack mules trail it on the Gold Road
+//   setBackdrop('homestead' | 'diggings' | 'sea' | 'fork')   the farm, a creek bank for panning, the schooner's deck, a signpost at a fork
+//   setFork({ id: 'fort-hall' | 'the-dalles' | 'south-pass', options: [{ id, name }] })   the signpost's arms (defaults for the three forks)
+//   setHomestead({ site, name, pieces, animals, dog, decor, party, trophies })   scene.buildPiece(id) → buildDone { id }; taps → homesteadTap { slot, piece }
+//   scene.startPan({ seed, pans, rich }) · panReveal({ flakes, nugget }) → panSwirled { n, quality } · pan { n, flakes, nugget } · panEnd { pans }
+//   scene.startRocker({ seed, rounds }) · rockerReveal({ flakes }) → rockerRound { n, beats } · rockerEnd { rounds }
+//   scene.startSnub({ seed, drops }) → snub { good } · snubEnd { smooth, good, drops }      (Laurel Hill: hold to slide, let go at each ledge)
+//   scene.startSail({ seed, length }) · sailGo() → sailMarker { n, of } · sail { bump } · sailEnd { bumps }
+//   getState().mini.kind gains 'pan' | 'rocker' | 'snub' | 'sail'; getState() also carries dry, fork and (on the homestead) home.
 // Additions beyond §11: setReducedMotion(on); getState() also carries biome, legId, pace, view, scroll (px rolled, the
 // smoke test's "the wagon moved"), playing, reducedMotion, dog ({ name, coat } | null); endMiniGame() returns the
 // summary so far (and emits nothing); debugStep(n), debugPerf(reset), debugInfo(), debugMini(), debugInput(kind, a, b) for the dev
@@ -79,7 +90,12 @@
 
 import { clamp, approach, clearTextSprites } from './util.js';
 import { buildLayers, biomeOf, BIOMES } from './biomes.js';
-import { buildSetPiece, BACKDROPS, paintingFor } from './backdrops.js';
+import { buildSetPiece, BACKDROPS, paintingFor, FORK_DEFAULTS } from './backdrops.js';
+import { createPan, createRocker } from './gold.js';
+import { createSnub } from './snub.js';
+import { createSail } from './sail.js';
+import { createHome } from './homestead.js';
+import { WILD, wildKind } from './sprites15.js';
 import { paintColor, flagColor, personLook, dogCoat } from './sprites.js';
 import { createHunt } from './hunt.js';
 import { createFish } from './fish.js';
@@ -115,8 +131,8 @@ export function createScene(canvas, opts = {}) {
     L: null, layers: null, piece: null, approachPiece: null,
     leg: { id: 'kansas-river', biome: 'prairie', miles: 150, stop: { kind: 'river' } }, biome: 'prairie',
     party: null, ferryman: personLook('ferryman', '#6a8ac0', 'straw'),
-    travel: { milesDone: 0, pace: 'steady', rations: 'full', weather: 'clear', mood: 'fine', foodLow: false, moving: false },
-    backdrop: 'trail', view: 'trail',
+    travel: { milesDone: 0, pace: 'steady', rations: 'full', weather: 'clear', mood: 'fine', foodLow: false, moving: false, dry: false },
+    backdrop: 'trail', view: 'trail', dryMix: 0, fork: null, home: null, layersKey: '',
     scroll: 0, speed: 0, walkPh: 0, walkAmp: 0, wheelSpin: 0, wagonX: 0, partyPos: [{}, {}, {}],
     wxCur: 'clear', wxPrev: 'clear', wxMix: 1,
     critters: [], cheerT: 0, approach: 0, fade: 0,
@@ -126,6 +142,9 @@ export function createScene(canvas, opts = {}) {
   let dirtyLayers = true, dirtyPiece = true, dirtyApproach = true;
   let playing = false, destroyed = false, raf = 0, last = 0, drawQueued = 0, readySent = false;
   const perf = { frames: 0, update: 0, draw: 0, max: 0, builds: 0 };
+  // the farm (v1.5): built at once, drawn only while the 'homestead' backdrop shows; hooks as the mini-games (confetti, the party cheers)
+  const homeHooks = { celebrate(kind, x, y) { if (S.L) { burst(S, kind, x, y); S.cheerT = 1.8; } } };
+  S.home = createHome(S, (evt) => emit(evt), homeHooks);
 
   // ---------------------------------------------------------------- sizing
   function layout() {
@@ -163,14 +182,24 @@ export function createScene(canvas, opts = {}) {
 
   function rebuild() {
     const L = S.L;
-    if (dirtyLayers) { S.layers = buildLayers(S.biome, L); dirtyLayers = false; perf.builds++; }
-    if (dirtyPiece) { S.piece = S.backdrop === 'trail' ? null : buildSetPiece(S.backdrop, S.leg, L); dirtyPiece = false; perf.builds++; }
+    const lb = layerBiome(), dryBasin = lb === 'basin' && !!S.travel.dry, lk = lb + (dryBasin ? ':dry' : '') + '@' + L.W + 'x' + L.H + '/' + L.dpr;
+    if (dirtyLayers || S.layersKey !== lk) { S.layers = buildLayers(lb, L, { dry: dryBasin }); S.layersKey = lk; dirtyLayers = false; perf.builds++; }
+    if (dirtyPiece) { S.piece = S.backdrop === 'trail' || S.backdrop === 'homestead' ? null : buildSetPiece(S.backdrop, S.leg, L, { fork: S.fork }); dirtyPiece = false; perf.builds++; }
     if (dirtyApproach) {
       const kind = S.leg && S.leg.stop && S.leg.stop.kind;
       S.approachPiece = kind === 'landmark' || kind === 'fort' || kind === 'home' ? buildSetPiece('approach', S.leg, L) : null;
       dirtyApproach = false;
     }
   }
+
+  // the layers a backdrop stands on: the farm's biome by its site, the diggings' gold country, the schooner's sea
+  function layerBiome() {
+    if (S.backdrop === 'homestead' && S.home) return S.home.biome();
+    if (S.backdrop === 'diggings') return 'goldcountry';
+    if (S.backdrop === 'sea') return 'sea';
+    return S.biome;
+  }
+  const viewFor = (b) => (b === 'trail' ? 'trail' : b === 'homestead' ? 'home' : 'stop');
 
   // ---------------------------------------------------------------- the party
   function applyParty(p = {}) {
@@ -181,7 +210,9 @@ export function createScene(canvas, opts = {}) {
       looks: comps.slice(0, 3).map((c) => personLook(c && c.id, c && c.color, c && c.hat)),
       ids: comps.slice(0, 3).map((c) => String((c && c.id) || '')),
       bare: [],
-      wagon: { box: paintColor(w.paint), wheel: '#7a4a26', cover: '#f6efdc', flag: flagColor(w.flag), name: String(w.name || '').trim().toUpperCase().slice(0, 18) },
+      wagon: { box: paintColor(w.paint), wheel: '#7a4a26', cover: '#f6efdc', flag: flagColor(w.flag), name: String(w.name || '').trim().toUpperCase().slice(0, 18),
+        decor: Array.isArray(w.decor) ? w.decor.slice(0, 2).map(String) : [], barrel: !!w.barrel },
+      packMules: !!p.packMules,
     };
     const d = p.dog;
     S.party.bare = S.party.looks.map((l) => ({ ...l, hat: 'none' })); // v1.4: the dust devil's hats are off their heads
@@ -193,7 +224,7 @@ export function createScene(canvas, opts = {}) {
   function wagonTarget() {
     const L = S.L; if (!L) return 0;
     const k = L.k;
-    if (S.view === 'stop' || S.view === 'hunt' || S.view === 'fish' || S.view === 'stampede') return Math.max(112 * k, L.W * 0.3 - 86 * k);
+    if (S.view === 'stop' || S.view === 'hunt' || S.view === 'fish' || S.view === 'stampede' || S.view === 'home') return Math.max(112 * k, L.W * 0.3 - 86 * k);
     return L.W * 0.5 - 86 * k + (S.travel.pace === 'brisk' && S.travel.moving ? 14 * k : 0);
   }
   function placeParty() {
@@ -244,6 +275,9 @@ export function createScene(canvas, opts = {}) {
   function update(dt) {
     const L = S.L, k = L.k, tr = S.travel;
     S.t += dt;
+    S.dryMix = approach(S.dryMix, S.travel.dry ? 1 : 0, 2, dt);
+    if (S.dryMix < 0.005 && !S.travel.dry) S.dryMix = 0;
+    if (S.view === 'home' && S.home) { S.home.update(L, dt); S.scroll = S.home.cam; }
     if (S.wxMix < 1) S.wxMix = Math.min(1, S.wxMix + dt / (S.rm ? 0.5 : 1.5));
     S.fade = Math.max(0, S.fade - dt * (S.rm ? 4 : 2.5));
     // rolling
@@ -315,9 +349,14 @@ export function createScene(canvas, opts = {}) {
     return { x: ((e.clientX - r.left) * S.L.W) / Math.max(1, r.width), y: ((e.clientY - r.top) * S.L.H) / Math.max(1, r.height) };
   }
   const owns = () => !!S.mini && S.mini.input !== false;
-  let dragging = false;
+  const homeOn = () => S.backdrop === 'homestead' && S.view === 'home' && !S.mini && !!S.home;
+  let dragging = false, homeDrag = false;
   const onDown = (e) => {
-    if (!owns() || !playing || destroyed) return;
+    if (!owns()) {
+      if (homeOn() && playing && !destroyed) { const p = toLocal(e); S.home.down(S.L, p.x, p.y); homeDrag = true; try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic */ } }
+      return;
+    }
+    if (!playing || destroyed) return;
     e.preventDefault();
     const p = toLocal(e);
     if (e.pointerType === 'mouse') S.mini.move(S.L, p.x, p.y); // the keyboard's aim line follows a mouse, not a finger
@@ -325,11 +364,15 @@ export function createScene(canvas, opts = {}) {
     if (S.mini && S.mini.drag) { dragging = true; try { canvas.setPointerCapture(e.pointerId); } catch (err) { /* synthetic events have no pointer to capture */ } }
   };
   const onMove = (e) => {
+    if (homeDrag && homeOn()) { const p = toLocal(e); S.home.move(S.L, p.x, p.y); requestDraw(); return; }
     if (!owns() || !playing) return;
     if (dragging && S.mini.drag) { const p = toLocal(e); S.mini.drag(S.L, p.x, p.y); }
     else if (e.pointerType === 'mouse') { const p = toLocal(e); S.mini.move(S.L, p.x, p.y); }
   };
-  const onUp = () => { if (dragging) { dragging = false; if (S.mini && S.mini.release) S.mini.release(); } };
+  const onUp = (e) => {
+    if (homeDrag) { homeDrag = false; if (homeOn() && e && e.clientX != null && e.type !== 'pointercancel' && e.type !== 'lostpointercapture') { const p = toLocal(e); S.home.up(S.L, p.x, p.y); } else if (S.home) S.home.drag = null; requestDraw(); return; }
+    if (dragging) { dragging = false; if (S.mini && S.mini.release) S.mini.release(); }
+  };
   const keyName = (e) => (e.code === 'Enter' || e.key === 'Enter' ? 'enter' : e.code === 'Space' || e.key === ' ' ? 'space' : e.code === 'ArrowLeft' || e.key === 'ArrowLeft' ? 'left' : e.code === 'ArrowRight' || e.key === 'ArrowRight' ? 'right' : e.code === 'KeyB' || e.key === 'b' || e.key === 'B' ? 'brake' : null);
   const onKey = (e) => {
     if (!owns() || !playing || destroyed) return;
@@ -354,9 +397,16 @@ export function createScene(canvas, opts = {}) {
   globalThis.addEventListener && globalThis.addEventListener('blur', onBlur);
 
   // ---------------------------------------------------------------- mini-games
-  let savedTouch = '', touchTaken = false;
+  let savedTouch = '', touchTaken = false, homeTouch = false;
+  // the farm pans by drag: the canvas keeps the finger while it is shown
+  function syncHomeTouch() {
+    const want = S.backdrop === 'homestead' && !S.mini;
+    if (want && !homeTouch && !touchTaken) { savedTouch = canvas.style.touchAction; canvas.style.touchAction = 'none'; homeTouch = true; }
+    else if (!want && homeTouch) { if (!touchTaken) canvas.style.touchAction = savedTouch; homeTouch = false; }
+  }
   function openMini(m) {
     if (S.mini) closeMini();
+    if (homeTouch) { canvas.style.touchAction = savedTouch; homeTouch = false; } // the mini-game saves and restores the touch action itself
     S.mini = m;
     S.view = m.view === 'keep' ? S.view : (m.view || m.kind);
     S.fade = m.view === 'keep' ? 0 : S.rm ? 0.5 : 1;
@@ -366,10 +416,11 @@ export function createScene(canvas, opts = {}) {
   }
   function closeMini() {
     S.mini = null; dragging = false;
-    S.view = S.backdrop === 'trail' ? 'trail' : 'stop';
+    S.view = viewFor(S.backdrop);
     S.fade = S.rm ? 0.5 : 1;
     S.wagonX = wagonTarget();
     if (touchTaken) { canvas.style.touchAction = savedTouch; touchTaken = false; }
+    syncHomeTouch();
     requestDraw();
   }
   // celebrate(kind, x, y): confetti / sparkles (x, y: where a 'star' goes off) and the party cheers
@@ -389,7 +440,7 @@ export function createScene(canvas, opts = {}) {
 
   // fonts may arrive after the first text sprites were cached (the wagon's name, the signs)
   if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
-    document.fonts.ready.then(() => { if (destroyed) return; clearTextSprites(); dirtyPiece = dirtyApproach = true; requestDraw(); }).catch(() => {});
+    document.fonts.ready.then(() => { if (destroyed) return; clearTextSprites(); dirtyPiece = dirtyApproach = true; if (S.home) { S.home.staticKey = ''; S.home.sprites.clear(); } requestDraw(); }).catch(() => {});
   }
 
   // ---------------------------------------------------------------- the API
@@ -399,7 +450,7 @@ export function createScene(canvas, opts = {}) {
       const biome = biomeOf(leg.biome);
       const stop = leg.stop && typeof leg.stop === 'object' ? leg.stop : { kind: leg.stop || 'landmark' };
       if (biome !== S.biome) dirtyLayers = true;
-      S.leg = { id: String(leg.id || ''), biome, miles: +leg.miles || 0, stop, river: leg.river || null };
+      S.leg = { id: String(leg.id || ''), biome, miles: +leg.miles || 0, stop, river: leg.river || null, painting: leg.painting ? String(leg.painting) : null };
       S.biome = biome;
       dirtyPiece = dirtyApproach = true;
       requestDraw();
@@ -413,6 +464,7 @@ export function createScene(canvas, opts = {}) {
       if (t.rations) tr.rations = t.rations;
       if (t.mood) tr.mood = t.mood;
       if (t.foodLow != null) tr.foodLow = !!t.foodLow;
+      if (t.dry != null) { const was = !!tr.dry; tr.dry = t.dry ? { barrel: !(t.dry && typeof t.dry === 'object' && t.dry.barrel === false) } : false; if (was !== !!tr.dry) { dirtyApproach = dirtyApproach; } }
       if (t.moving != null) tr.moving = !!t.moving;
       if (t.weather) {
         const w = wxOf(t.weather);
@@ -425,19 +477,22 @@ export function createScene(canvas, opts = {}) {
       const next = BACKDROPS.includes(b) ? b : 'trail';
       if (next === S.backdrop) return;
       S.backdrop = next;
-      if (!S.mini) { S.view = next === 'trail' ? 'trail' : 'stop'; S.fade = S.rm ? 0.5 : 1; S.wagonX = wagonTarget(); }
+      if (!S.mini) { S.view = viewFor(next); S.fade = S.rm ? 0.5 : 1; S.wagonX = wagonTarget(); }
       dirtyPiece = true;
+      if (next === 'homestead' || S.layersKey.startsWith('valley') || S.layersKey.startsWith('goldcountry') || S.layersKey.startsWith('sea')) dirtyLayers = true;
+      if (next === 'homestead' && S.L && S.home) S.home.center(S.L, 'house');
+      syncHomeTouch();
       setVisualWeather();
       requestDraw();
     },
-    spotAnimal(kind) {
-      const def = CRITTERS[kind];
+    spotAnimal(kind0) {
+      const wk = CRITTERS[kind0] ? null : wildKind(kind0), kind = wk || kind0, def = wk ? WILD[wk] : CRITTERS[kind];  // v1.5: beaver, sage-grouse, meadowlark, tule-elk, osprey, pika, river-otter, mountain-quail
       if (!def || !S.L) return false;
       const L = S.L, k = L.k;
       S.critters.push({
         kind, n: def.n, dir: def.dir, speed: def.speed, gait: def.gait, sky: def.sky, ph: Math.random() * 6, spotted: false,
         x: def.dir < 0 ? L.W + 60 * k : -60 * k,
-        y: def.sky ? L.H * 0.24 : L.bands.ground[0] + L.H * 0.045, s: def.sky ? 0.9 * k : 0.62 * k,
+        y: def.sky ? L.H * (kind === 'meadowlark' ? 0.4 : 0.24) : L.bands.ground[0] + L.H * 0.045, s: def.sky ? 0.9 * k : (wk ? 0.72 : 0.62) * k, wild: !!wk,
       });
       return true;
     },
@@ -505,6 +560,23 @@ export function createScene(canvas, opts = {}) {
     startFishing(o = {}) { return start14(createFishing(o || {}, emit, S, hooks14, S.biome)); },
     fishingRetry(i, fight) { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.retry(i, fight)); },
     fishingHelp() { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.callHelp()); },
+    // ---- v1.5: gold, the rope, the voyage, the farm (SPEC v1.5 §4)
+    startPan(o = {}) { return start14(createPan(o || {}, emit, S, hooks14)); },
+    panReveal(r) { const ok = !!(S.mini && S.mini.kind === 'pan' && S.mini.reveal(r || {})); requestDraw(); return ok; },
+    startRocker(o = {}) { return start14(createRocker(o || {}, emit, S, hooks14)); },
+    rockerReveal(r) { const ok = !!(S.mini && S.mini.kind === 'rocker' && S.mini.reveal(r || {})); requestDraw(); return ok; },
+    startSnub(o = {}) { return start14(createSnub(o || {}, emit, S, hooks14)); },
+    startSail(o = {}) { return start14(createSail(o || {}, emit, S, hooks14)); },
+    sailGo() { const ok = !!(S.mini && S.mini.kind === 'sail' && S.mini.go()); requestDraw(); return ok; },
+    setFork(f) {
+      if (!f || typeof f !== 'object') return;
+      const id = ['fort-hall', 'the-dalles', 'south-pass'].includes(f.id) ? f.id : 'fort-hall';
+      const opts = Array.isArray(f.options) && f.options.length ? f.options.slice(0, 3).map((o, i) => ({ id: String((o && o.id) || i), name: String((o && (o.name || o.label)) || (o && o.id) || '').slice(0, 40) })) : null;
+      S.fork = { id, options: opts || FORK_DEFAULTS[id].map((o) => ({ ...o })), glow: f.glow ? String(f.glow) : null };
+      dirtyPiece = true; requestDraw();
+    },
+    setHomestead(o = {}) { S.home.set(o || {}); dirtyLayers = true; requestDraw(); },
+    buildPiece(id) { const ok = S.home.build(id); requestDraw(); return ok; },
     // ---- v1.1: the dog
     dogBark() {
       if (!S.dog || destroyed) return false;
@@ -549,6 +621,8 @@ export function createScene(canvas, opts = {}) {
         mini: S.mini ? S.mini.state() : null,
         biome: S.biome, legId: S.leg.id, pace: tr.pace, view: S.view, scroll: Math.round(S.scroll * 10) / 10,
         playing, reducedMotion: S.rm, dog: S.dog ? { name: S.dog.name, coat: S.dog.coat, muddy: !!S.dog.muddy } : null,
+        dry: !!tr.dry, fork: S.fork ? { id: S.fork.id, options: S.fork.options.map((o) => o.name) } : null, home: S.backdrop === 'homestead' && S.home ? S.home.state() : null,
+        packMules: !!(S.party && S.party.packMules), decor: S.party ? S.party.wagon.decor.slice() : [],
       };
     },
     // ---- debug (not contract): the dev page and the smoke test
@@ -567,9 +641,10 @@ export function createScene(canvas, opts = {}) {
       const L = S.L || {};
       return {
         W: L.W, H: L.H, dpr: L.dpr, k: L.k, canvasW: canvas.width, canvasH: canvas.height,
-        speed: S.speed, wagonX: S.wagonX, wxCur: S.wxCur, wxMix: S.wxMix, critters: S.critters.map((c) => c.kind),
+        speed: S.speed, wagonX: S.wagonX, wxCur: S.wxCur, wxMix: S.wxMix, critters: S.critters.map((c) => c.kind), dryMix: S.dryMix, layersKey: S.layersKey,
+        barrel: !!(S.travel.dry && S.travel.dry.barrel !== false) || !!S.party.wagon.barrel, packMules: !!S.party.packMules, fork: S.piece && S.piece.kind === 'fork' ? S.piece.anchors.arms.map((a) => a.id) : null,
         piece: S.piece ? S.piece.kind : null, painting: S.piece && S.piece.painting ? S.piece.painting : null,
-        paintingFor: paintingFor(S.leg.id), approach: S.approach, approachPainting: S.approachPiece ? S.approachPiece.painting : null,
+        paintingFor: paintingFor(S.leg), approach: S.approach, approachPainting: S.approachPiece ? S.approachPiece.painting : null,
         particles: { ...S.fx.drawn }, flashes: S.fx.flashes, layersBiome: S.layers ? S.layers.id : null, builds: perf.builds,
         party: S.party.looks.map((l) => l.hat), animal: S.party.animal, wagonName: S.party.wagon.name, fade: S.fade,
         dog: S.dog ? {
@@ -580,9 +655,15 @@ export function createScene(canvas, opts = {}) {
       };
     },
     debugMini() { return S.mini && S.L ? S.mini.debug(S.L) : null; },
+    debugHome() { return S.L && S.home ? { ...S.home.state(), geo: S.home.geoOf(S.L), slots: Object.fromEntries(['edge', 'orchard', 'barn', 'house', 'yard', 'garden', 'creek', 'pasture', 'gate'].map((k) => [k, S.home.slotPoint(S.L, k)])) } : null; },
     // feeds the running mini-game the same calls a real input would, whether or not the scene is playing (the smoke test)
     debugInput(kind, a, b) {
       const m = S.mini, L = S.L;
+      if (!m && L && S.home && S.backdrop === 'homestead') { // the farm: a tap (x, y) or a pan (dx)
+        if (kind === 'tap') return S.home.tapAt(L, a, b);
+        if (kind === 'pan') { S.home.cam = clamp(S.home.cam + a, 0, Math.max(0, S.home.geoOf(L).camMax)); requestDraw(); return true; }
+        if (kind === 'slot') return S.home.slotPoint(L, a);
+      }
       if (!m || !L || destroyed || m.input === false) return false;
       if (kind === 'pointer') { const r = m.pointer(L, a, b); if (m.drag) dragging = true; return r; }
       if (kind === 'drag') { if (m.drag) m.drag(L, a, b); return true; }

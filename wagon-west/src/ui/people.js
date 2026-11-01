@@ -12,6 +12,13 @@
 // token, a gift of food). Walking past them is fine: the post office sends the thing ahead. The module draws and drives; the journey owns the people and the gifts, main.js
 // lends the panels through app.v2 (showCard, runProblem, dropCard, checkDeeds, curLeg, JA).
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
+import { CARD_BY_ID } from '../content/cards.js';
+// v1.5: Hugo at City of Rocks lets you write your wagon's name on a granite spire with axle grease (the 'axle-grease' deed: JA.writeOnRock), and the
+// Nisenan guide at Coloma hands out the "Gold fever" card (the owner's call: the card that says what the gold rush did to California's Native nations
+// comes from a person of that nation, not from the comic gold-fever event).
+export const ROCK_ASK = 'Hugo holds out his pot of axle grease. Write your wagon’s name on a granite spire?';
+export const ROCK_DONE = 'There it is, in axle grease: your wagon’s name on the rock!';
+export const GUIDE_CARD_KICKER = 'A Nisenan guide';
 
 const STOP_BUTTON = { river: 'To the ferry', fort: 'Into the fort', home: 'Home at last', start: 'To the store' };
 /** The start town as a stop (it is not a leg): the Talk row there works like a fort's, its big button goes to the store. */
@@ -132,10 +139,31 @@ export function createPeople(app) {
       const r = JA().meetPerson(J, id);
       app.persist();
       if (r.first && r.gift) await gift(person, r.gift);
+      if (V && person.id === 'hugo') await rockName(person);
+      if (V && r.first && person.id === 'nisenan-guide') await goldFeverCard(person);
       app.persist();
       app.refreshCash();
       app.v2.checkDeeds();
     } finally { busy = false; paint(); }
+  }
+
+  /** Hugo's pot of axle grease: write the wagon's name on the rock (once a visit; the deed counts it). */
+  async function rockName(person) {
+    const J = app.save.journey;
+    if (!J || typeof JA().writeOnRock !== 'function') return;
+    const c = await app.v2.showCard({ kicker: person.name, title: 'Axle grease', text: ROCK_ASK, say: ROCK_ASK, sticker: { emoji: person.emoji, name: '' }, tone: 'trade', button: 'Write it!', alt: 'Not now' });
+    if (c !== true || !V) return;
+    let r = null;
+    try { r = JA().writeOnRock(J); } catch (e) { console.warn('[WagonWest] writeOnRock', e); }
+    if (r && r.ok) { app.effectToast(ROCK_DONE, ROCK_DONE); app.persist(); app.v2.checkDeeds(); }
+  }
+  /** The Nisenan guide's card about gold fever: the card's own words, read aloud, from the people it is about. */
+  async function goldFeverCard(person) {
+    const cd = CARD_BY_ID['gold-fever'];
+    if (!cd) return;
+    const text = typeof cd.fact === 'string' ? cd.fact : (cd.fact && cd.fact.text) || '';
+    await app.v2.showCard({ kicker: GUIDE_CARD_KICKER, title: cd.name, text, say: cd.say || (cd.fact && cd.fact.say) || text, sticker: { emoji: cd.emoji, name: '' }, tone: 'trade', button: 'Thank you' });
+    if (V) app.v2.dropCard('gold-fever');
   }
 
   /** A quest person (v1.4): their lines on a card, said; the clue is kept (the next stop's person knows more), the owner pays the reward. */

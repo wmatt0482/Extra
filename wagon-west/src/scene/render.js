@@ -9,7 +9,8 @@
 
 import { TAU, OUT, clamp, lerp, ease, mix, shade, rgba, mkCanvas, mulberry32, drawText } from './util.js';
 import { BIOMES, SPEED } from './biomes.js';
-import { drawWagon, drawTeam, drawPerson, drawCritter, drawCampfire, drawDog } from './sprites.js';
+import { drawWagon, drawTeam, drawPerson, drawCritter, drawCampfire, drawDog, drawPackMule } from './sprites.js';
+import { drawWagonExtras, drawWild } from './sprites15.js';
 
 // ---------------------------------------------------------------- weather looks
 export const WEATHERS = ['clear', 'rain', 'storm', 'dusk', 'snow'];
@@ -93,7 +94,7 @@ export function updateFx(S, dt) {
   // dust behind the wheels and hooves while rolling
   const speed = S.speed;
   if (S.view === 'trail' && speed > 4 * k) {
-    fx.dustAcc += dt * (speed / (60 * k)) * 9 * w.dust * (rm ? 0.3 : 1) * (S.biome === 'gorge' || S.biome === 'valley' ? 0.6 : 1);
+    fx.dustAcc += dt * (speed / (60 * k)) * 9 * w.dust * (1 + 1.3 * S.dryMix) * (rm ? 0.3 : 1) * (S.biome === 'gorge' || S.biome === 'valley' || S.biome === 'siskiyou' || S.biome === 'sea' ? 0.6 : 1);
     while (fx.dustAcc >= 1) {
       fx.dustAcc -= 1;
       const p = fx.dust.find((q) => !q.on);
@@ -181,13 +182,26 @@ function drawSky(ctx, S) {
 }
 
 // ---------------------------------------------------------------- layers
-function blitLayer(ctx, S, layer, speed) {
+function blitLayer(ctx, S, layer, speed, dy = 0) {
   const L = S.L, P = L.P, d = L.ldpr;
   let off = (S.scroll * speed) % P; if (off < 0) off += P;
   off = Math.round(off * L.dpr) / L.dpr;
   const sw = layer.cv.width, sh = layer.cv.height;
-  for (let x = -off; x < L.W; x += P) ctx.drawImage(layer.cv, 0, 0, sw, sh, x, layer.y0, P, layer.h);
+  for (let x = -off; x < L.W; x += P) ctx.drawImage(layer.cv, 0, 0, sw, sh, x, layer.y0 + dy, P, layer.h);
   void d;
+}
+// the schooner heaves: the swells and the rail move a little against each other (none with reduced motion)
+const heave = (S, k, a, ph) => (S.biome === 'sea' && !S.rm && S.view !== 'home' ? Math.sin(S.t * 1.1 + ph) * a * k : 0);
+// heat shimmer on a dry stretch: a warm haze over the plain and a few wavering light bands near the horizon
+function drawHeat(ctx, S) {
+  const L = S.L, W = L.W, k = L.k, m = S.dryMix, y0 = L.base.far - L.H * 0.03, y1 = L.base.near;
+  ctx.fillStyle = `rgba(255,232,180,${0.12 * m})`; ctx.fillRect(0, y0, W, y1 - y0 + 8 * k);
+  ctx.beginPath();
+  for (let i = 0; i < 5; i++) {
+    const y = y0 + ((y1 - y0) * (i + 0.5)) / 5, ph = S.t * (S.rm ? 0 : 2.2) + i * 1.3;
+    for (let x = 0; x <= W + 12; x += 12) { const yy = y + Math.sin(x * 0.035 + ph) * 2.4 * k; if (x === 0) ctx.moveTo(x, yy); else ctx.lineTo(x, yy); }
+  }
+  ctx.lineWidth = 2.4 * k; ctx.strokeStyle = `rgba(255,255,245,${0.16 * m})`; ctx.stroke();
 }
 function blitPiece(ctx, p, x, y, s) {
   if (s === 1) ctx.drawImage(p.cv, p.x0, p.y0, p.w, p.h);
@@ -213,7 +227,14 @@ function drawTrain(ctx, S) {
   const L = S.L, k = L.k, gy = L.gy;
   const bob = S.walkAmp > 0.05 && !S.rm ? Math.abs(Math.sin(S.walkPh * 2)) * 1.4 : 0;
   drawTeam(ctx, S.wagonX + 96 * k, gy, k, S.party.animal, S.walkPh * 0.9, S.walkAmp * 0.9, S.view === 'stop' && S.backdrop === 'camp');
+  if (S.party.packMules) for (let j = 0; j < 2; j++) { // the Gold Road: two pack mules trail the wagon on a rope
+    const mx = S.wagonX - (170 + j * 74) * k;
+    if (j === 0) { ctx.beginPath(); ctx.moveTo(S.wagonX - 58 * k, gy - 22 * k); ctx.lineTo(mx + 28 * k, gy - 30 * k); ctx.lineWidth = 1.6 * k; ctx.strokeStyle = OUT; ctx.stroke(); }
+    drawPackMule(ctx, mx, gy + (j ? 2 : -2) * k, k * 0.82, S.walkPh * 0.9 + j * 1.6, S.walkAmp * 0.9);
+  }
   drawWagon(ctx, S.wagonX, gy, k, S.party.wagon, S.wheelSpin, bob, S.t);
+  const dryBarrel = !!(S.travel.dry && S.travel.dry.barrel !== false) || !!S.party.wagon.barrel;
+  drawWagonExtras(ctx, S.wagonX, gy, k, S.party.wagon, bob, S.t, S.rm, dryBarrel);
 }
 
 // the party's dog (v1.1), placed by the engine (S.dogPos); the derby draws its own running dog
@@ -227,11 +248,11 @@ function drawPartyDog(ctx, S) {
 function drawCritters(ctx, S, sky) {
   const L = S.L, k = L.k;
   for (const c of S.critters) {
-    const isSky = c.kind === 'eagle';
+    const isSky = c.kind === 'eagle' || (c.wild && c.sky);
     if (isSky !== sky) continue;
     for (let j = 0; j < c.n; j++) {
-      const x = c.x - c.dir * j * 46 * k * (c.kind === 'bison' ? 1 : 0.8), y = c.y + (j % 2) * 5 * k;
-      drawCritter(ctx, c.kind, x, y, c.s, c.dir, c.ph + j * 1.3);
+      const x = c.x - c.dir * j * 46 * k * (c.kind === 'bison' ? 1 : c.wild ? 0.5 : 0.8), y = c.y + (j % 2) * 5 * k;
+      if (c.wild) drawWild(ctx, c.kind, x, y, c.s, c.dir, c.ph + j * 1.3); else drawCritter(ctx, c.kind, x, y, c.s, c.dir, c.ph + j * 1.3);
     }
   }
 }
@@ -326,6 +347,12 @@ function drawStopLife(ctx, S) {
     ctx.beginPath(); ctx.ellipse(rx, ry + 5 * k, rw * 0.55, 4 * k, 0, 0, TAU); ctx.strokeStyle = 'rgba(255,255,255,0.5)'; ctx.lineWidth = 1.5 * k; ctx.stroke();
     drawPerson(ctx, rx + rw * 0.25, ry - 6 * k, k * 0.9, S.ferryman, 0, 0, 0, -1);
     ctx.beginPath(); ctx.moveTo(rx + rw * 0.18, ry - 70 * k); ctx.lineTo(rx + rw * 0.05, ry + 14 * k); ctx.lineWidth = 3 * k; ctx.strokeStyle = '#6a4a2a'; ctx.stroke();
+  } else if (sp.kind === 'diggings') {
+    // the water runs and the gold glints in it
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) { const y = a.top + 26 * k + ((i * 31 * k + t * (rm ? 0 : 10)) % (L.H - a.top - 30 * k)), x = ((i * 173 + t * (rm ? 4 : 14) * (1 + (i % 3))) % (L.W + 60)) - 30; ctx.moveTo(x, y); ctx.lineTo(x + 16 * k, y); }
+    ctx.lineWidth = 2 * k; ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.stroke();
+    for (const g of a.glints) { const tw = rm ? 0.5 : 0.5 + 0.5 * Math.sin(t * 3 + g.ph); if (tw < 0.55) continue; const r = (3 + 4 * tw) * k; ctx.beginPath(); ctx.moveTo(g.x - r, g.y); ctx.lineTo(g.x + r, g.y); ctx.moveTo(g.x, g.y - r); ctx.lineTo(g.x, g.y + r); ctx.lineWidth = 1.8 * k; ctx.strokeStyle = `rgba(255,240,160,${tw})`; ctx.stroke(); }
   } else if (sp.kind === 'valley' && a.smokeX) {
     ctx.fillStyle = 'rgba(240,240,240,0.7)';
     for (let i = 0; i < 4; i++) {
@@ -354,7 +381,17 @@ export function drawFrame(ctx, S) {
   if (view === 'stop' && S.piece && S.piece.z === 'cover') {
     blitPiece(ctx, S.piece, 0, 0, 1);
     drawConfetti(ctx, S);
-  } else if ((view === 'fish' || view === 'ford') && S.mini) {
+  } else if (view === 'home' && S.home) {
+    // the farm: its own ground and pieces over the valley (or gold country) layers, which follow the camera
+    drawSky(ctx, S);
+    drawCritters(ctx, S, true);
+    blitLayer(ctx, S, ly.far, SPEED.far);
+    blitLayer(ctx, S, ly.mid, SPEED.mid);
+    blitLayer(ctx, S, ly.near, SPEED.near);
+    S.home.draw(ctx, L, S.t, S.rm);
+    drawWeather(ctx, S);
+    drawConfetti(ctx, S);
+  } else if ((view === 'fish' || view === 'ford' || view === 'snub') && S.mini) {
     drawSky(ctx, S);
     blitLayer(ctx, S, ly.far, SPEED.far);
     blitLayer(ctx, S, ly.mid, SPEED.mid);
@@ -362,7 +399,7 @@ export function drawFrame(ctx, S) {
     S.mini.draw(ctx, L, S.t, S.rm);
     drawWeather(ctx, S);
     if (view === 'ford') drawConfetti(ctx, S);
-  } else if ((view === 'float' || view === 'raft') && S.mini) {
+  } else if ((view === 'float' || view === 'raft' || view === 'sail') && S.mini) {
     // a river seen from above, painted by the mini-game itself (no sky, no parallax)
     S.mini.draw(ctx, L, S.t, S.rm);
     drawWeather(ctx, S);
@@ -381,9 +418,11 @@ export function drawFrame(ctx, S) {
       const x = lerp(W + 10, W * 0.8 - p.w * s * 0.5, e), y = L.bands.far[1] - p.h * s + 4 * L.k;
       blitPiece(ctx, p, x, y, s);
     }
-    blitLayer(ctx, S, ly.mid, SPEED.mid);
+    const hv = heave(S, L.k, 3, 0);
+    blitLayer(ctx, S, ly.mid, SPEED.mid, hv);
     if (view === 'stop' && S.piece && S.piece.z === 'mid') blitPiece(ctx, S.piece, 0, 0, 1);
-    blitLayer(ctx, S, ly.near, SPEED.near);
+    blitLayer(ctx, S, ly.near, SPEED.near, hv * 0.4);
+    if (S.dryMix > 0.01) drawHeat(ctx, S);
     blitLayer(ctx, S, ly.ground, SPEED.ground);
     if (S.wxCur === 'snow' || S.wxPrev === 'snow') {
       ctx.globalAlpha = 0.45 * (S.wxCur === 'snow' ? S.wxMix : 1 - S.wxMix);

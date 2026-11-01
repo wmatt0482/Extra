@@ -12,13 +12,21 @@
 // fish of its water; `rest` every find, piece of junk, wish, trail fact, quest line, companion help line (funTexts). Said just in
 // time (never ahead, they have counts, sizes and names in them): the fishing summary and a catch with its inches, the treat
 // counts, the skip count, the horseshoe sale, the trail fact's dog line when the dog is named later.
+// v1.5 adds (SPEC v1.5 §5.8): `ALL_LEGS` (45 legs of every route, in the journey's own `plan` order when it is given) for the lookouts, the nations, the
+// people and their gifts, the landmark cards and the letters of EVERY leg; the explainers and the fork lines (every way, the lean line, the 1849 line) in
+// the leg before a fork (this leg when it is the fork's stop, or the next one); the creek's cue lines in the leg before a digging; the Gold Road's start;
+// and, in the rest, the tier blurbs, the year picker, the family names, the farm's pieces (names, lines, facts), the card sets and their decorations, the
+// gold cards, and the fixed lines of the new mini-games and screens (`V15`). `{farm}` letter openings and closings are made only once the farm is named
+// (`farmName`). Said just in time (never ahead): the flake counts ("Seven flakes!"), the bank line, the farm's name plate line, the toll with its amount.
 import { LOOKOUTS } from '../content/lookouts.js';
 import { NATIONS, NATION_BY_ID, FALLBACK_TRADES, TRADE_GOOD_NAMES } from '../content/nations.js';
 import { EVENTS } from '../content/events.js';
 import { COMPANIONS } from '../content/companions.js';
-import { CARDS, CARD_BY_ID } from '../content/cards.js';
+import { CARDS, CARD_BY_ID, CARD_SETS, DECOR } from '../content/cards.js';
 import { PEOPLE_BY_STOP } from '../content/people.js';
-import { LEGS, LEG_BY_ID, ANIMALS } from '../content/legs.js';
+import { LEGS, ALL_LEGS, LEG_BY_ID, ANIMALS } from '../content/legs.js';
+import { FORKS } from '../content/routes.js';
+import { FAMILIES } from '../content/families.js';
 import { LETTER_LINES, LETTER_OPEN, LETTER_CLOSE } from '../content/letters.js';
 import { FALLBACK_LINES } from '../journey/letters.js';
 import { tradeLine, createJourney, startLeg, crossRiver } from '../journey/sim.js';
@@ -27,6 +35,11 @@ import { riverChoiceTexts, riverTexts } from '../ui/river.js';
 import { deedTexts } from '../ui/deeds.js';
 import { sayOf } from '../ui/cards.js';
 import { PS_INTRO, READ_BACK } from '../ui/postOffice.js';
+import { yearTexts } from '../ui/yearPicker.js';
+import { FORK_FIRST, forkTexts } from '../ui/forkPanel.js';
+import { diggingTexts } from '../ui/diggings.js';
+import { farmTexts } from '../ui/homestead.js';
+import { ROCK_ASK, ROCK_DONE } from '../ui/people.js';
 import { spokenLine } from '../ui/problemPanel.js';
 import { FINDS, WISHES } from '../content/finds.js';
 import { FISH, JUNK, BAITS, WATERS } from '../content/fish.js';
@@ -43,12 +56,30 @@ export const RIVER_ACROSS = 'You are across the river.';
 export const HUNT_FISH_ONLY = 'Fresh tracks by the trail, and a stream beside them. Get the fishing line out.';
 export const HUNT_NO_ARROWS = 'Fresh tracks by the trail, but the quiver is empty. A creek runs right beside them: fishing only today. Arrows at the next fort!';
 export const COVER_LINE = ' The canvas cover keeps everyone dry and cheerful.';
+/** v1.5's fixed lines (main.js reads them by name): the Pit Crew Check, the toll gate, a dry stretch, Laurel Hill, the voyage home and its cues. */
+export const V15 = Object.freeze({
+  PLACE_OFFER: "Before you answer questions, the pit crew checks what you've got. About 15 quick facts.",       // (the card's text; PLACE_SAY is what is said: numbers in words)
+  PLACE_SAY: "Before you answer questions, the pit crew checks what you've got. About fifteen quick facts.",
+  PLACE_DONE: 'The pit crew has what it needs. Now the questions fit you.',
+  TOLL_SHORT: 'The purse is short, so the toll keeper writes an IOU, a promise to pay, and waves the wagon through.',
+  TOLL_IOU_BUTTON: 'The toll keeper writes an IOU',
+  TOLL_IOU: 'The toll keeper writes an IOU, a promise to pay, and waves the wagon through.',
+  TOLL_PAID: 'The toll is paid, and the gate swings open.',
+  DRY_BARREL: 'A dry stretch with no water. The water barrel keeps everyone going.',
+  DRY_THIRSTY: 'A dry stretch with no water barrel on the wagon: everyone is thirsty and the animals tire. A water barrel helps.',
+  SNUB_SMOOTH: 'Safe at the bottom, and everybody cheers!',
+  SNUB_BUMPY: 'Bump, bump, bump! A cloud of dust, and everybody laughs.',
+  SAIL_INTRO: 'Home by sea! The schooner sails up the coast from San Francisco to the Columbia River. Steer through the swells. At every marker, answer a fact and the schooner sails on.',
+  STONES_TOP: 'As far as a stone can skip!',
+  CUE_ROPE: 'Hold the rope!', CUE_LET: 'Let go!', CUE_COAST: 'Up the coast!', CUE_BAR: 'Over the bar!',
+});
 /** The fixed lines of the panels and the effects (the order matters: main.js reads [6] and [7]). */
 export const FIXED_LINES = ['Now you: type the answer', 'Now you: type the answer from memory', 'Fixed it!', PS_INTRO, READ_BACK, TEST_LINE,
   CAMP_EVENING, DOG_OFFER,
   'A cold night. There are not enough blankets, so the party rests a day.', 'The oxen need a rest, so we go steady today.', 'The mules need a rest, so we go steady today.',
   'The wagon limps along slowly to the next fort.', 'A spare part is used.', 'The new part mends the wagon. No more limping.',
-  'The raft is across!', 'You held them!', 'Pfft, dust everywhere!', COACH_TEXT, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, 'Your turn!', 'Good game!'];
+  'The raft is across!', 'You held them!', 'Pfft, dust everywhere!', COACH_TEXT, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, 'Your turn!', 'Good game!',
+  ...Object.values(V15).filter((t) => t !== V15.TOLL_IOU_BUTTON), FORK_FIRST, ROCK_ASK, ROCK_DONE];
 
 /** A line as the voice says it ("$56" → "56 dollars"; no doubled full stop after a comma or a full stop). */
 export const spoken = (text) => spokenLine(text).replace(/([.!?])\.$/, '$1').replace(/[,;:]\.$/, '.');
@@ -66,6 +97,7 @@ const animalNames = ANIMALS.map((a) => a.name.toLowerCase());
 /** What the people at a stop say, and what they offer (the card's text for the talk, the gift, the trade). */
 export function peopleTexts(stopId) {
   const out = [];
+  if (stopId === 'city-of-rocks') out.push(ROCK_ASK, ROCK_DONE);
   for (const p of PEOPLE_BY_STOP[stopId] || []) {
     out.push(p.lines.join(' '));
     const g = p.gift;
@@ -79,7 +111,7 @@ export function peopleTexts(stopId) {
   return out;
 }
 /** Every letter line this leg's letter can be made of (the lines that tell a number of pounds are said just in time). */
-export function letterTexts(legId, { names = null, animal = '', playerName = '', dogName = '' } = {}) {
+export function letterTexts(legId, { names = null, animal = '', playerName = '', dogName = '', farmName = '' } = {}) {
   const leg = LEG_BY_ID[legId];
   if (!leg) return [];
   const nation = leg.nation && NATION_BY_ID[leg.nation];
@@ -90,17 +122,20 @@ export function letterTexts(legId, { names = null, animal = '', playerName = '',
     const list = LETTER_LINES[k] && LETTER_LINES[k].length ? LETTER_LINES[k] : FALLBACK_LINES[k] || [];
     for (const line of list) {
       if (/\{food\}/.test(line)) continue;
+      if (/\{farm\}/.test(line) && !farmName) continue;        // (v1.5: a line about the farm is made only once the farm is named)
       const fills = [{}];
       const vary = (name, values) => { const n = fills.splice(0); for (const f of n) for (const v of values) fills.push({ ...f, [name]: v }); };
       if (/\{dog\}/.test(line)) { if (!dogName) continue; vary('dog', [dogName]); }        // (a line about the dog is made only while there is a dog)
       if (/\{name\}/.test(line)) vary('name', comps);
       if (/\{animal\}/.test(line)) vary('animal', animal ? [String(animal).toLowerCase()] : animalNames);
-      const v0 = { stop: (leg.stop && leg.stop.name) || leg.name, river: (leg.stop && leg.stop.name) || 'river', width: (leg.river && leg.river.width) || 'wide', nation: nation ? nation.name : 'local' };
+      const v0 = { stop: (leg.stop && leg.stop.name) || leg.name, river: (leg.stop && leg.stop.name) || 'river', width: (leg.river && leg.river.width) || 'wide', nation: nation ? nation.name : 'local', farm: farmName || 'home' };
       for (const f of fills) out.push(spoken(String(line).replace(/\{(\w+)\}/g, (m, key) => (key in f ? f[key] : key in v0 ? v0[key] : ''))));
     }
   }
-  for (const o of LETTER_OPEN) out.push(spoken(o));
-  if (playerName) for (const c of LETTER_CLOSE || ['Love,']) out.push(spoken(`${c} ${playerName}`));
+  const farmy = (t) => /\{farm\}/.test(t);
+  const withFarm = (t) => String(t).replace(/\{farm\}/g, farmName);
+  for (const o of LETTER_OPEN) if (!farmy(o) || farmName) out.push(spoken(withFarm(o)));
+  if (playerName) for (const c of LETTER_CLOSE || ['Love,']) if (!farmy(c) || farmName) out.push(spoken(withFarm(`${c} ${playerName}`)));
   return out;
 }
 // ---------- v1.4: the dog, the finds, the fish, the quests and the trail facts ----------
@@ -131,14 +166,14 @@ function factTextsOf(legId) { return TRAIL_FACTS.filter((f) => !f.legs || f.legs
  *  where it can be found, and the mailed line at the forts after the owner's stop. */
 export function questTexts(stopId) {
   const out = [];
-  const idx = LEGS.findIndex((l) => l.id === stopId);
+  const idx = ALL_LEGS.findIndex((l) => l.id === stopId);
   for (const q of QUESTS) {
     for (const st of q.steps || []) if (st.at === stopId) out.push((st.lines || []).join(' '));
     if (q.owner && q.owner.at === stopId) out.push((q.owner.lines || []).join(' '));
     const f = q.find || {};
     if (q.item && ((f.legs || []).includes(stopId) || f.atStop === stopId)) out.push(sayOrText(q.item));
-    const oi = q.owner ? LEGS.findIndex((l) => l.id === q.owner.at) : -1;
-    if (q.mailed && oi >= 0 && idx > oi && LEGS[idx].stop && LEGS[idx].stop.kind === 'fort') out.push(sayOrText(q.mailed));
+    const oi = q.owner ? ALL_LEGS.findIndex((l) => l.id === q.owner.at) : -1;
+    if (q.mailed && oi >= 0 && idx > oi && ALL_LEGS[idx].stop && ALL_LEGS[idx].stop.kind === 'fort') out.push(sayOrText(q.mailed));
   }
   return out.filter(Boolean);
 }
@@ -174,11 +209,13 @@ export function legTexts(legId, ctx = {}) {
   out.push(...peopleTexts(legId));
   if (CARD_BY_ID[legId]) out.push(sayOf(CARD_BY_ID[legId]));
   out.push(...questTexts(legId), ...factTextsOf(legId), ...legFunTexts(legId));          // (v1.4)
+  if (ctx.forks !== false) for (const f of Object.values(FORKS)) if (f.at === legId) out.push(...forkTexts(f.id));            // (v1.5: the fork at this stop)
+  if (leg && leg.gold && ctx.forks !== false) out.push(...diggingTexts());                                                     // (v1.5: the creek's cue lines)
   if (leg && ctx.letters !== false) out.push(...letterTexts(legId, ctx));
   return out;
 }
 /** Independence, the start town: its lookout and the people at the outfitter's. */
-export const startTexts = () => [...(LOOKOUTS.independence ? [LOOKOUTS.independence.say || LOOKOUTS.independence.text] : []), ...peopleTexts('independence')];
+export const startTexts = () => [...(LOOKOUTS.independence ? [LOOKOUTS.independence.say || LOOKOUTS.independence.text] : []), ...(LOOKOUTS['gold-news'] ? [LOOKOUTS['gold-news'].say || LOOKOUTS['gold-news'].text] : []), ...peopleTexts('independence')];
 /** What the river says in every way a crossing can end (worked by the journey itself, so the words are the journey's). */
 export function riverResultTexts() {
   const out = [];
@@ -218,6 +255,13 @@ export function trailTexts() {
   out.push(...deedTexts());
   return out;
 }
+/** v1.5's screens: the year picker (where, how hard: the tier blurbs), the family names, the farm's pieces, the card sets and the wagon decorations, the creek. */
+export function longTrailTexts() {
+  const out = [...yearTexts(), ...farmTexts(), ...diggingTexts(), ...FAMILIES.map((f) => f.name), ...DECOR.map((d) => d.name)];
+  for (const st of CARD_SETS) out.push(st.say, st.name);
+  for (const f of Object.values(FORKS)) out.push(...forkTexts(f.id));
+  return out;
+}
 /** The river's own lines: the choice, the ford and float words, every landing sentence of the fractions in play, the results. */
 export function riverLineTexts() {
   const out = [...riverChoiceTexts(), ...riverResultTexts()];
@@ -234,19 +278,23 @@ export function riverLineTexts() {
  *   next   the next leg's lookout, nation, people (its letter is prepared when that leg starts)
  *   rest   the trail's events, companions, cards, deeds, then every other leg
  */
-export function collectVoiceTexts({ legId = LEGS[0].id, factTexts: markerFacts = [], names = null, animal = '', playerName = '', dogName = '' } = {}) {
-  const idx = Math.max(0, LEGS.findIndex((l) => l.id === legId));
-  const next = LEGS[idx + 1];
+export function collectVoiceTexts({ legId = LEGS[0].id, plan = null, farmName = '', factTexts: markerFacts = [], names = null, animal = '', playerName = '', dogName = '' } = {}) {
+  // the next leg: in the journey's own plan when it is given (a branch, California, the Gold Road), else in the order the legs are written
+  const ids = Array.isArray(plan) && plan.length ? plan : null;
+  const pi = ids ? ids.indexOf(legId) : -1;
+  const nextId = pi >= 0 ? ids[pi + 1] : (() => { const i = ALL_LEGS.findIndex((l) => l.id === legId); return i >= 0 ? (ALL_LEGS[i + 1] || {}).id : null; })();
+  const next = nextId ? LEG_BY_ID[nextId] : null;
   const first = uniq([...FIXED_LINES, ...startTexts(), ...riverLineTexts(), ...momentTexts(), ...dogTexts(dogName)]);
-  const leg = uniq(legTexts(legId, { names, animal, playerName, dogName }));
+  const leg = uniq(legTexts(legId, { names, animal, playerName, dogName, farmName }));
   const facts = uniq(markerFacts);
   const nextT = next ? uniq(legTexts(next.id, { letters: false })) : [];
-  const rest = uniq([...trailTexts(), ...LEGS.flatMap((l) => legTexts(l.id, { letters: false })), ...funTexts()]);
+  const rest = uniq([...trailTexts(), ...longTrailTexts(), ...ALL_LEGS.flatMap((l) => legTexts(l.id, { letters: false })), ...funTexts()]);
   return { first, leg, facts, next: nextT, rest, ordered: uniq([...first, ...leg, ...facts, ...nextT, ...rest]) };
 }
 /** Everything that can be known ahead, across the whole trail (what the audit compares the UI's strings with). */
-export function allVoiceTexts({ names = null, playerName = 'Mia', dogName = '' } = {}) {
+export function allVoiceTexts({ names = null, playerName = 'Mia', dogName = '', farmName = 'Rose Hill' } = {}) {
   const out = [...FIXED_LINES, ...riverLineTexts(), ...trailTexts(), ...peopleTexts('independence'), ...(LOOKOUTS.independence ? [LOOKOUTS.independence.say || LOOKOUTS.independence.text] : []), ...momentTexts(), ...dogTexts(dogName), ...funTexts()];
-  for (const l of LEGS) out.push(...legTexts(l.id, { names, playerName, dogName }));
+  for (const l of ALL_LEGS) out.push(...legTexts(l.id, { names, playerName, dogName, farmName }));
+  out.push(...longTrailTexts());
   return uniq(out);
 }

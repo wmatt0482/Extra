@@ -3,9 +3,24 @@
 // the leg, the sticker, and the crate (a gold crate on a 3-star leg, Trail Blazer's crate idea) opened with a tap. Then
 // Camp (the title, the journey waits here), Journal, or Next leg. Stopping here is always fine.
 // v1.2 (app two): "Deeds earned" lists the badges earned on the leg (result.deeds: ids; src/ui/deeds.js).
+// v1.5: the tier's badge ("🧭 Veteran · 1849"), the bonus cards the tier pays, the gold found on a digging leg ("3 nuggets · 7 flakes"), a card set
+// completed with the wagon decoration it unlocked, and, at a trail's end, the bank card ("+$74 in savings · 6 nuggets of Beaver money · 2 oxen to the
+// pasture") with a button to the farm (result.bank / result.tier / result.gold / result.sets / result.bonus).
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { CRATES, KIND_NAME, itemOf } from './looks.js';
 import { deedChips } from './deeds.js';
+import { CARD_BY_ID } from '../content/cards.js';
+
+/** The bank card's three parts: ["+$74 in savings", "6 nuggets of Beaver money", "2 oxen to the pasture"] (a part is left out when it is nothing). */
+export function bankParts(bank, animalName = 'oxen', nuggetsOf = (f) => ({ nuggets: Math.floor(f / 10), flakes: f % 10 })) {
+  if (!bank) return [];
+  const out = [];
+  if (bank.savings > 0) out.push(`+$${money(bank.savings)} in savings`);
+  if (bank.flakes > 0) { const n = nuggetsOf(bank.flakes); out.push(n.nuggets ? `${n.nuggets} nugget${n.nuggets === 1 ? '' : 's'}${n.flakes ? ` and ${n.flakes} flake${n.flakes === 1 ? '' : 's'}` : ''} of Beaver money` : `${n.flakes} flake${n.flakes === 1 ? '' : 's'} of gold dust`); }
+  if (bank.animals > 0) out.push(`${bank.animals} ${bank.animals === 1 ? animalName.replace(/s$/, '') : animalName} to the pasture`);
+  if (bank.trophy) out.push(`A ${bank.trophy} plate for the trophy shelf`);
+  return out;
+}
 
 const STAR_NAMES = ['Arrived', 'Everyone happy', 'Every marker right'];
 
@@ -15,7 +30,11 @@ export function createResults(app) {
     if (result) R = result;
     if (!R) return;
     const r = R;
-    $('#res-title').textContent = r.home ? 'Home in the valley!' : `Arrived at ${r.place}!`;
+    $('#res-title').textContent = r.home ? (r.homeTitle || 'Home in the valley!') : `Arrived at ${r.place}!`;
+    const badge = $('#res-tier');
+    badge.hidden = !r.tier;
+    if (r.tier) badge.replaceChildren(h('span', { 'aria-hidden': 'true' }, r.tier.emoji), h('span', {}, `${r.tier.name}${r.year ? ` · ${r.year}` : ''}`));
+    badge.dataset.tier = r.tier ? r.tier.id : '';
     $('#res-stars').replaceChildren(...STAR_NAMES.map((name, i) => h('div', { class: 'rs-star' + (r.stars[i] ? ' on' : ''), 'data-star': String(i), 'aria-label': `${name}: ${r.stars[i] ? 'yes' : 'not this time'}` },
       h('span', { html: app.icon('star') }), h('small', {}, name))));
     const s = r.stats || {};
@@ -36,9 +55,18 @@ export function createResults(app) {
     const earned = Array.isArray(r.deeds) ? r.deeds : [];
     dd.hidden = !earned.length;
     dd.replaceChildren(...(earned.length ? [h('b', {}, `Deed${earned.length > 1 ? 's' : ''} earned on this leg`), ...deedChips(earned)] : []));
+    // v1.5: the gold of a digging leg, the tier's bonus cards, a set completed, the bank card
+    const ex = $('#res-extra');
+    const extra = [];
+    if (r.goldFound) extra.push(h('div', { class: 'res-gold', id: 'res-gold', 'data-flakes': String(r.goldFound.total) }, h('span', { 'aria-hidden': 'true' }, '✨'), h('span', {}, `Gold in the pouch: ${r.goldFound.text}`)));
+    if (Array.isArray(r.bonus) && r.bonus.length) extra.push(h('div', { class: 'res-bonus', id: 'res-bonus' }, h('b', {}, `Bonus card${r.bonus.length > 1 ? 's' : ''}`), ...r.bonus.map((id) => { const c = CARD_BY_ID[id]; return c ? h('span', { class: 'res-deed', 'data-card': id }, h('span', { 'aria-hidden': 'true' }, c.emoji), h('span', {}, c.name)) : null; })));
+    for (const st of Array.isArray(r.sets) ? r.sets : []) extra.push(h('div', { class: 'res-set', 'data-set': st.id }, h('span', { 'aria-hidden': 'true' }, st.emoji || '🎖️'), h('span', {}, `A full set: ${st.name}! ${st.decorName ? `You earned the ${st.decorName}.` : ''}`)));
+    if (r.bank) extra.push(h('div', { class: 'res-bank', id: 'res-bank' }, h('b', {}, 'Home! The wagon brings to the farm'), h('div', { class: 'rb-parts' }, ...bankParts(r.bank, r.animalName, r.nuggetsOf).map((t) => h('span', { class: 'rb-part' }, t)))));
+    ex.hidden = !extra.length;
+    ex.replaceChildren(...extra);
     paintCrate();
-    $('#res-next-text').textContent = r.home ? 'A new season' : 'Next leg';
-    $('#res-next').dataset.action = r.home ? 'season' : 'next';
+    $('#res-next-text').textContent = r.home ? (r.bank ? 'To the farm' : 'A new year') : 'Next leg';
+    $('#res-next').dataset.action = r.home ? (r.bank ? 'farm' : 'season') : 'next';
   }
   function stat(big, label, id) { return h('div', { class: 'stat', 'data-stat': id }, h('b', {}, big), h('span', {}, label)); }
   function paintCrate() {
@@ -63,6 +91,6 @@ export function createResults(app) {
   }
   $('#res-camp').addEventListener('click', () => app.go('title'));
   $('#res-journal').addEventListener('click', () => app.go('journal'));
-  $('#res-next').addEventListener('click', () => { if ($('#res-next').dataset.action === 'season') app.newSeason(); else app.hitTrail(); });
+  $('#res-next').addEventListener('click', () => { const a = $('#res-next').dataset.action; if (a === 'season') app.newSeason(); else if (a === 'farm') app.arriveFarm(); else app.hitTrail(); });
   return { show, hide() {}, get last() { return R; } };
 }

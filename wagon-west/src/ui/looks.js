@@ -3,10 +3,16 @@
 // yet, rarer ones in better crates, cash when everything is owned) and what trade tokens buy. v1.1: every look can be
 // bought with tokens (common 8, rare 14, legendary 20: tokens pile up on the trail, so the looks are a generous sink
 // next to the wagon upgrades), and crates still drop them.
+// v1.5: a fifth kind, 'decor': the wagon decorations a full trail-card set unlocks (src/content/cards.js CARD_SETS / DECOR). They are
+// never sold or dropped by a crate; owned.decor lists the ones earned, equipped.decor is the (at most two) worn ones, in order.
 // Pure: no DOM, no storage; `rand` comes in.
-export const LOOK_KINDS = Object.freeze(['paint', 'flag', 'bugle', 'hat']);
-export const KIND_NAME = Object.freeze({ paint: 'Wagon paint', flag: 'Flag', bugle: 'Bugle call', hat: "Companion's hat" });
+import { DECOR } from '../content/cards.js';
+
+export const LOOK_KINDS = Object.freeze(['paint', 'flag', 'bugle', 'hat', 'decor']);
+export const KIND_NAME = Object.freeze({ paint: 'Wagon paint', flag: 'Flag', bugle: 'Bugle call', hat: "Companion's hat", decor: 'Decorations' });
 export const STOCK = Object.freeze({ paint: 'canvas', flag: 'none', bugle: 'none', hat: 'none' });
+/** How many decorations are worn at a time. */
+export const DECOR_SLOTS = 2;
 
 export const LOOKS = Object.freeze({
   paint: [
@@ -39,10 +45,13 @@ export const LOOKS = Object.freeze({
     { id: 'feather', name: 'Feather cap', color: '#7fb85a', rarity: 'rare', tokens: 14 },
     { id: 'top', name: 'Tall top hat', color: '#2a2230', rarity: 'legendary', tokens: 20 },
   ],
+  decor: DECOR.map((d) => ({ id: d.id, name: d.name, emoji: d.emoji, at: d.at, rarity: 'set' })),
 });
 const ITEM = Object.fromEntries(LOOK_KINDS.flatMap((k) => LOOKS[k].map((x) => [`${k}:${x.id}`, { ...x, kind: k }])));
 export const itemOf = (kind, id) => ITEM[`${kind}:${id}`] || null;
 export const owns = (cos, kind, id) => id === STOCK[kind] || ((cos && cos.owned && cos.owned[kind]) || []).includes(id);
+/** The decorations worn now, in order (owned ones only, at most two). */
+export const wornDecor = (cos) => ((cos && cos.equipped && Array.isArray(cos.equipped.decor)) ? cos.equipped.decor : []).filter((id) => owns(cos, 'decor', id)).slice(0, DECOR_SLOTS);
 
 // crate tiers: the chance of each rarity, and the cash when every look is owned
 export const CRATES = Object.freeze({
@@ -53,7 +62,7 @@ export const CRATES = Object.freeze({
 /** Roll a crate: { kind, id, name, rarity } (a look not owned yet) or { cash } when everything is owned. */
 export function rollCrate(cos, tier = 'bronze', rand = Math.random) {
   const t = CRATES[tier] || CRATES.bronze;
-  const missing = Object.values(ITEM).filter((x) => x.rarity !== 'stock' && !owns(cos, x.kind, x.id));
+  const missing = Object.values(ITEM).filter((x) => x.rarity !== 'stock' && x.rarity !== 'set' && !owns(cos, x.kind, x.id));
   if (!missing.length) return { cash: t.cash };
   const by = { common: [], rare: [], legendary: [] };
   for (const x of missing) by[x.rarity].push(x);
@@ -68,11 +77,18 @@ export function rollCrate(cos, tier = 'bronze', rand = Math.random) {
 /** Grant a look (crate or tokens); false when already owned. */
 export function grantLook(cos, kind, id) {
   if (!itemOf(kind, id) || owns(cos, kind, id)) return false;
+  if (!Array.isArray(cos.owned[kind])) cos.owned[kind] = [];
   cos.owned[kind].push(id);
   return true;
 }
+/** Wear a look. A decoration toggles: worn -> taken off; two are worn at a time, a third replaces the one worn longest. */
 export function equipLook(cos, kind, id) {
   if (!owns(cos, kind, id)) return false;
+  if (kind === 'decor') {
+    const worn = wornDecor(cos);
+    cos.equipped.decor = worn.includes(id) ? worn.filter((x) => x !== id) : [...worn, id].slice(-DECOR_SLOTS);
+    return true;
+  }
   cos.equipped[kind] = id;
   return true;
 }
