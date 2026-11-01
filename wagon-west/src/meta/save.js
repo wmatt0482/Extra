@@ -1,5 +1,5 @@
 // Wagon West's own save, per player: `wagonWest.<playerId>.save` (SPEC §12 "Data"); device settings (sound, music,
-// reduced motion, hunting, fractions at rivers) at `wagonWest.settings`. The family (players, PIN, family code) is
+// reduced motion, hunting, fractions at rivers, far-off sounds) at `wagonWest.settings`. The family (players, PIN, family code) is
 // Spell Jump's record, read and written only through ../spell-jump/src/spelling/profiles.js; the child's math facts
 // and spelling words are Trail Blazer's and Spell Jump's own stores, written through their modules (recordAnswer,
 // recordSpell), never copied here. Same rules as Fraction Fright's save.js: every localStorage access is wrapped (a
@@ -30,6 +30,11 @@
 // awardCard), the dog the child named is J.dog = { name, coat, legs, nextBerries } (the app stores it on the journey:
 // the journey stream does not model it), and the leg in progress remembers the Fort Derby race (trip.derby) and the
 // dog's berry patch (trip.berries) so neither repeats when a stop is resumed.
+// v1.4 (Frodo and the river) adds no top-level field: everything new is on the journey (J.dog with treats and muddy, J.finds,
+// J.fishLog, J.fishJunk, J.fishBest, J.skips, J.wishes, J.quests, J.questsDone, J.factsHeard, J.moments, J.opts.farSounds and the
+// journey's rev 14, filled by the Journey stream's ensureJourney); `normalize` keeps an older journey whole for it to fill. The
+// Parent Zone's "Far-off sounds on the trail" is a device setting (settings.farSounds, like hunting) and `JA.setTrailSounds(J, on)`
+// writes it onto the journey (J.opts.farSounds) so a parent's choice also holds in the pure journey.
 import { localWrite } from '../../../spell-jump/src/sync/notify.js';
 import { defaultStreak, normalizeStreak } from '../../../spell-jump/src/meta/engagement.js';
 import { LOOK_KINDS, STOCK, itemOf } from '../ui/looks.js';
@@ -65,7 +70,7 @@ export function defaultSave() {
     suitsDone: [],
   };
 }
-export const defaultSettings = () => ({ sound: true, music: true, reducedMotion: false, hunting: true, fractions: true });
+export const defaultSettings = () => ({ sound: true, music: true, reducedMotion: false, hunting: true, fractions: true, farSounds: true });
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const int0 = (v) => Math.max(0, Math.floor(num(v)));

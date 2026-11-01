@@ -39,7 +39,7 @@ export function createDeedPop(root, { sfx = null, say = () => {}, ms = DEED_POP_
   const log = [];
   let showing = false;
   function next() {
-    if (queue.length && waitFor()) { showing = true; setTimeout(next, 300); return; }      // (a trail card is popping in the same place: it goes first)
+    if (queue.length && waitFor()) { showing = true; root.hidden = true; root.replaceChildren(); setTimeout(next, 300); return; }      // (a trail card is popping in the same place: it goes first; the deed before this one is gone from the screen, never left drawn while the next waits: a stale pop would hold the card and the find pop back for good)
     const d = queue[0];
     if (!d) { showing = false; root.hidden = true; root.replaceChildren(); return; }
     showing = true;

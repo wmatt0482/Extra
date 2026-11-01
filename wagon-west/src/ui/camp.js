@@ -8,6 +8,10 @@
 // v1.2 (app two): Hunting is hidden while there are no arrows (huntAllowed(J) false: "No arrows: fishing only"), and
 // "Wait out the storm" is added while the forecast shows rain, a storm or snow (app.waitOut(): a rest day, the weather
 // then costs nothing); the scout's forecast line shows once a visit when he sees it two days ahead.
+// v1.4: four more choices that cost no day and no food (a game and a rest for the dog): Fetch (with the dog), Catch grasshoppers
+// (bait; when the tin is not full), Skip stones (once a leg, when the leg's water is a river) and Falling stars (the evening of an
+// arrival on a clear night). app.funCamp(context) says which are on offer; main.js runs them (app.campActivity). Fishing becomes
+// Fishing 2.0 (bait, a reel, the fish log): still a day.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { COMPANION_BY_ID } from '../content/companions.js';
 
@@ -17,6 +21,12 @@ export const CAMP_ACTS = Object.freeze([
   { id: 'cards', emoji: '🃏', name: 'Quick Draw', line: 'Facts against {who}. First to 7 wins a token.' },
   { id: 'tales', emoji: '🔥', name: 'Campfire tales', line: 'A story by the fire, then a riddle: a token.' },
   { id: 'rest', emoji: '🛌', name: 'Rest', line: 'A quiet day. Everyone feels better.' },
+]);
+export const FUN_ACTS = Object.freeze([
+  { id: 'fetch', emoji: '🦴', name: 'Fetch', line: 'Throw the stick for the dog. The farther, the more treats.' },
+  { id: 'hoppers', emoji: '🦗', name: 'Catch grasshoppers', line: 'Bait for fishing: trout and chubs love it.' },
+  { id: 'stones', emoji: '🪨', name: 'Skip stones', line: 'Flat stones on smooth water. How many skips?' },
+  { id: 'stars', emoji: '🌠', name: 'Falling stars', line: 'Tap a falling star and make a wish.' },
 ]);
 export const WAIT_ACT = Object.freeze({ id: 'wait', emoji: '⛈️', name: 'Wait out the storm', line: 'Rest a day under the canvas. The weather then costs nothing.' });
 const WEATHER = ['rain', 'storm', 'snow'];
@@ -50,11 +60,15 @@ export function createCamp(app) {
     const noArrows = app.settings.hunting !== false && !bowOk();
     const storm = ctx.context === 'trail' ? weatherAhead() : null;
     const list = CAMP_ACTS.filter((a) => a.id !== 'hunt' || (app.settings.hunting !== false && !noArrows));
+    let fun = [];
+    try { fun = typeof app.funCamp === 'function' ? app.funCamp(ctx.context) : []; } catch (e) { console.warn('[WagonWest] funCamp', e); }
+    list.push(...FUN_ACTS.filter((a) => fun.includes(a.id)));
     if (storm) list.push(WAIT_ACT);
     $('#camp-arrows').hidden = !noArrows;
     if (storm && storm.skill && !ctx.scoutSaid) { ctx.scoutSaid = true; app.skillLine(storm.skill); }
+    acts.classList.toggle('many', list.length > 5);         // (a longer row: on a short landscape screen the one-line notes go, so a toast still has room above the cards)
     acts.replaceChildren(...list.map((a) => {
-      const b = h('button', { class: 'card camp-act', 'data-act': a.id, 'data-sfx': '', disabled: busy },
+      const b = h('button', { class: 'card camp-act' + (FUN_ACTS.includes(a) ? ' fun' : ''), 'data-act': a.id, 'data-sfx': '', disabled: busy, 'aria-label': `${a.name}: ${a.line.replace('{who}', name)}` },
         h('span', { class: 'camp-emoji', 'aria-hidden': 'true' }, a.emoji),
         h('span', { class: 'camp-name' }, a.name),
         h('span', { class: 'camp-line' }, a.line.replace('{who}', name)));

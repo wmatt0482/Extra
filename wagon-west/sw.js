@@ -12,7 +12,10 @@
 // v1.1 adds the trail's music (src/meta/music.js), the trail cards (src/content/cards.js, src/ui/cards.js) and Camp.
 // v1.2 adds the Wagon panel (src/ui/wagonPanel.js); the other streams' v1.2 modules (people, deeds, the mini-games) are in
 // OPTIONAL below: cached when present.
-const VERSION = 'wagon-west-v1.3.3';
+// v1.4 (Frodo and the river) adds src/ui/finds.js and src/ui/fishLog.js (the journal's Finds and Fish log pages, the find pop) to the
+// shell; the Content and Journey streams' new modules (finds, fish, moments, quests, trailFacts; dog, fishing, quests, moments,
+// collections) and the scene's new files are OPTIONAL like v1.2's (the page also posts every module it loaded).
+const VERSION = 'wagon-west-v1.4.0';
 const PREFIX = 'wagon-west-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -59,6 +62,8 @@ const SHELL = [
   'src/ui/camp.js',
   'src/ui/cards.js',
   'src/ui/wagonPanel.js',
+  'src/ui/finds.js',
+  'src/ui/fishLog.js',
 ];
 // The scene and the journey (the other streams' modules) and the shared modules of the other games (+ their imports):
 // cached when present; the page also posts every module it actually loaded (see 'cache-urls' below).
@@ -74,6 +79,20 @@ const OPTIONAL = [
   'src/journey/challenge.js',
   'src/journey/deeds.js',
   'src/content/people.js',
+  'src/content/finds.js',
+  'src/content/fish.js',
+  'src/content/moments.js',
+  'src/content/quests.js',
+  'src/content/trailFacts.js',
+  'src/journey/dog.js',
+  'src/journey/fishing.js',
+  'src/journey/quests.js',
+  'src/journey/moments.js',
+  'src/journey/collections.js',
+  'src/scene/dog14.js',
+  'src/scene/fishing2.js',
+  'src/scene/camp14.js',
+  'src/scene/ambient.js',
   'src/ui/people.js',
   'src/ui/deeds.js',
   'src/scene/derby.js',

@@ -13,6 +13,10 @@
 //       rope, blankets, arrows, pelts, yoke } (parts mirrors J.parts), animals: { n: 2|4, tired: 0..100 }, limp, halfPart,
 //       met: [personId], deeds: [deedId], totals.{repairs, soakedLb, peopleMet, …}, trip.{lostDays, coldAt, spotAt, river, …}.
 //       New entry points: repair, crossRiver, forecast, waitOut, meetPerson, raftPay, stampedePay, teacherTip, checkDeeds.
+// v1.4 adds (SPEC v1.4 §3, same rule: ensureJourney fills every one on an older save and sets J.rev = 14): the dog (J.dog = { name, coat,
+//       legs, nextBerries, treats, muddy }, dog.js), finds, fishLog / fishJunk / fishBest (fishing.js), skips, wishes, quests / questsDone
+//       (quests.js), factsHeard, moments (moments.js), goods.{horseshoes, hoppers, spoon}, opts.farSounds, totals.* (V14_COUNTERS) and
+//       trip.{nose, fact, dustDevil, fishing, stones, meteors, fetchThrows, skipBonus}. tickDay emits { nose, fact, moment } beside the rest.
 // J = { v, season, seed, wagonName, animal, companions: [id],
 //       legIndex, legId, milesDone (into the leg), day (journey days), cash, food (lb), parts, goods: { id: n },
 //       tokens, pace: 'steady'|'brisk', rations: 'full'|'plenty'|'lean', spirit (0-100), mood: 'happy'|'fine'|'tired',
@@ -45,8 +49,15 @@ import { hashSeed, mulberry32, drawFrom, randInt } from './rng.js';
 import { nationFor } from './route.js';
 import { skillOf, skillInfo, partySkills } from './skills.js';
 import { ensureFoods, syncFood, addFoodKind, takeFlour, eatFood, eatFactor, foodDays, huntAllowed, needsBlankets, coldLegsAhead, dailyNeed } from './supplies.js';
+import { NOSE, MOMENTS as MOMENT_RULES, EXTRA_GOOD_BY_ID, offeredAt } from './economy.js';
+import { V14_COUNTERS, fill14, carry14, merge14 } from './collections.js';
+import * as DOG from './dog.js';
+import * as FISHING_API from './fishing.js';
+import * as QUESTS_API from './quests.js';
+import * as MOMENTS_API from './moments.js';
 
 export const JOURNEY_VERSION = 1;
+FISHING_API.setQuestHooks({ questFindable: QUESTS_API.questFindable, findQuestItem: QUESTS_API.findQuestItem });   // the scene imports fishing.js alone, so the quest machine is handed in here
 const clamp = (x, lo, hi) => Math.max(lo, Math.min(hi, x));
 const emptyLegStats = () => ({ markers: 0, markersRight: 0, problems: 0, problemsRight: 0, words: 0, wordsRight: 0, hunted: 0, fished: 0 });
 // the counters that are plain numbers (ensureJourney defaults each on an older save); `reached` and `crossed` are lists
@@ -57,6 +68,7 @@ const emptyTotals = () => {
   const T = { legs: 0, stars: 0, miles: 0, days: 0, markers: 0, markersRight: 0, problems: 0, problemsRight: 0, words: 0,
     wordsRight: 0, hunted: 0, fished: 0, traded: 0, bought: 0, crawlDays: 0, maxCrawlDays: 0, byKind: {}, reached: [], crossed: [] };
   for (const k of V12_COUNTERS) T[k] = 0;
+  for (const k of V14_COUNTERS) T[k] = 0;
   return T;
 };
 
@@ -67,6 +79,19 @@ function tripV12(J, leg) {
   return { v12: 1, lostDays: 0, coldAt: COLD_LEGS.includes(leg.id) ? Math.max(1, Math.round(leg.miles * (0.35 + 0.3 * a))) : null,
     coldDone: false, coldOk: false, coldNightHere: false, snow: false, spotAt: Math.max(1, Math.round(leg.miles * (0.2 + 0.5 * b))), spotPick: c,
     spotted: false, forgeUsed: false, tipUsed: false, cookSaid: false, pepCool: 0, foodLowSeen: false, river: null, ferryCounted: false, limped: false };
+}
+
+// ---- the leg's v1.4 plan: the nose slots, the trail fact, the dust devil, and the counters the mini-games use ----
+const tripV14 = () => ({ v14: 1, nose: [], fact: null, dustDevil: null, fishing: 0, stones: false, stonesStop: false, meteors: null, fetchThrows: 0, skipBonus: 0 });
+/** Plan what the leg holds beyond 1.3: the dog's nose slots (only with a dog), the trail fact and the dust devil. Each has its own seeded
+ *  stream (J.seed, the leg, how many legs were started), so the 1.3 plan (markers, events, moods) is exactly what it was. */
+function planV14(J, leg) {
+  const t = J.trip;
+  if (!t) return;
+  const seeded = (tag) => mulberry32(hashSeed(J.seed, leg.id, J.legStarts, 'v14', tag));
+  t.nose = DOG.planNose(J, leg, seeded('nose'));
+  t.fact = MOMENTS_API.planFact(J, leg, seeded('fact'));
+  t.dustDevil = MOMENTS_API.planDustDevil(J, leg, seeded('dust'));
 }
 
 /** Fill in the v1.1 and v1.2 fields on a journey from an older save (1.0 has no cards, upgrades, challenges or camp counters;
@@ -86,7 +111,7 @@ export function ensureJourney(J) {
   ensureFoods(J);
   if (!Number.isFinite(J.parts)) J.parts = 0;
   if (!J.goods || typeof J.goods !== 'object') J.goods = {};
-  if (J.rev !== 12) {
+  if (!(J.rev >= 12)) {
     // a 1.1 save: arrows were a store item nobody used; give the bow its 15 (or the bundles bought, five arrows each)
     J.goods.arrows = Math.max(ARROWS.start, (J.goods.arrows | 0) * ARROWS.perBundle);
     J.rev = 12;
@@ -110,6 +135,10 @@ export function ensureJourney(J) {
       Object.assign(t, plan);
     }
   }
+  // v1.4: the dog, the finds, the fish log, the quests … and the trip's counters (a leg already in progress gets no nose slots, fact or dust devil)
+  fill14(J);
+  if (t && !t.v14) Object.assign(t, tripV14());
+  J.rev = 14;
   return J;
 }
 
@@ -129,7 +158,7 @@ export function createJourney({ season = 's1847', wagonName = '', animal = 'oxen
   const s = seasonOf(season);
   const comps = (Array.isArray(companions) ? companions : []).filter((c) => typeof c === 'string').slice(0, 3);
   const J = {
-    v: JOURNEY_VERSION, rev: 12, season: s.id, seed: typeof seed === 'number' ? seed >>> 0 : hashSeed(seed),
+    v: JOURNEY_VERSION, rev: 14, season: s.id, seed: typeof seed === 'number' ? seed >>> 0 : hashSeed(seed),
     wagonName: String(wagonName || '').slice(0, 24), animal: animalOf(animal).id, companions: comps,
     legIndex: 0, legId: legAt(0) ? legAt(0).id : null, milesDone: 0, day: 0,
     cash: Math.round(START.cash * s.priceMult), food: START.food, foods: { ...START.foods }, foodOwed: { flour: 0, bacon: 0, beans: 0 }, foodSave: 0,
@@ -153,6 +182,7 @@ export function startLeg(J, legId) {
   const leg = legAt(idx);
   if (!leg) { J.done = true; return null; }
   const leavingStop = !!(J.trip && J.trip.arrived);
+  const keepSkips = J.trip ? J.trip.skipBonus | 0 : 0;      // v1.4: a flat stone found on one leg is thrown at the next river
   J.legStarts = (J.legStarts | 0) + 1;
   J.legIndex = idx; J.legId = leg.id; J.milesDone = 0; J.legStats = emptyLegStats(); J.done = false;
   const rand = mulberry32(hashSeed(J.seed, leg.id, J.legStarts));
@@ -163,8 +193,10 @@ export function startLeg(J, legId) {
   J.trip = {
     legId: leg.id, miles: leg.miles, markers, nextMarker: 0, events, happened: [], usedKinds: [], slow: false, restDays: 0,
     tiredDays: 0, rescueCooldown: 0, rescuePending: false, crawlDays: 0, days: 0, offsets, seen: { happy: false, tired: false },
-    arrived: false, result: null, traded: 0, rng: hashSeed(J.seed, leg.id, J.legStarts, 'days'), ...tripV12(J, leg),
+    arrived: false, result: null, traded: 0, rng: hashSeed(J.seed, leg.id, J.legStarts, 'days'), ...tripV12(J, leg), ...tripV14(),
   };
+  J.trip.skipBonus = keepSkips;
+  planV14(J, leg);
   refreshMood(J);
   return leg;
 }
@@ -251,7 +283,7 @@ export function tickDay(J, { rand } = {}) {
   const t = J.trip, leg = currentLeg(J);
   const idle = { arrived: !!(t && t.arrived), event: null, marker: null, foodLow: false, miles: 0, rest: false, crawl: false,
     slow: false, foraged: 0, restNext: null, day: J.day, food: J.food, mood: J.mood, lost: false, limp: !!J.limp, animalsTired: false,
-    coldNight: false, cold: null, spotted: null, skill: null, skills: [], needsPart: false };
+    coldNight: false, cold: null, spotted: null, skill: null, skills: [], needsPart: false, nose: null, fact: null, moment: null };
   if (J.done || !t || !leg || t.arrived) return idle;
   const r = typeof rand === 'function' ? rand : () => drawFrom(t, 'rng');
   const animal = animalOf(J.animal);
@@ -286,6 +318,7 @@ export function tickDay(J, { rand } = {}) {
   }
   // move: never past a second marker in one day; a marker day stops short of the stop
   const pos = t.markers;
+  const startMile = J.milesDone;
   let to = J.milesDone + miles;
   if (t.nextMarker + 1 < pos.length && to >= pos[t.nextMarker + 1]) to = pos[t.nextMarker + 1] - 1;
   let marker = null;
@@ -342,6 +375,9 @@ export function tickDay(J, { rand } = {}) {
   }
   if (event && event.kind === 'bonus') addSkill('good-cooking');
   else if (ate.saved > 0 && !t.cookSaid) { t.cookSaid = true; addSkill('good-cooking', { savedLb: ate.saved }); }
+  // v1.4: one thing a day after the marker and the event: the dog's nose, the trail fact, the dust devil (a quiet day only)
+  const fun = v14Day(J, leg, { marker, event, arrived, rest, miles, startMile });
+  if (fun.nose || fun.fact || fun.moment) refreshMood(J);
   // tired for a few days with food in the wagon: the party rests a day on its own (SPEC §1: tired → rests a day)
   let restNext = coldNight ? 'cold' : event && event.kind === 'rest' && !event.waitedOut ? 'event' : null;
   if (J.mood === 'tired' && J.food > 0 && !rest) t.tiredDays++; else t.tiredDays = 0;
@@ -350,7 +386,42 @@ export function tickDay(J, { rand } = {}) {
   const foodLow = J.food < need * 3;
   if (foodLow) t.foodLowSeen = true;
   return { arrived, event, marker, foodLow, miles, rest, crawl, slow, foraged, restNext, day: J.day, food: J.food, mood: J.mood,
-    lost, limp: !!J.limp, animalsTired, coldNight, cold, spotted, skill: skills[0] || null, skills, needsPart: !!(event && event.needsPart) };
+    lost, limp: !!J.limp, animalsTired, coldNight, cold, spotted, skill: skills[0] || null, skills, needsPart: !!(event && event.needsPart),
+    nose: fun.nose, fact: fun.fact, moment: fun.moment };
+}
+
+/** The day's v1.4 thing, if any (SPEC §3.6): nothing on a marker day, an event day, a rest or lost day, or the arrival day. In order: the first due nose
+ *  slot (applied here: a find recorded, the berries' food added, the snake's spirit, a quest item found — so a reload loses nothing; the rabbit waits
+ *  for chaseResult), then the trail fact, then the dust devil. A thing that is blocked waits for the next free day; one still unfired when a day
+ *  starts past its slot's limit (NOSE.to, facts.to, dustDevil.to of the leg) is dropped, never carried into the next leg. */
+function v14Day(J, leg, { marker, event, arrived, rest, miles, startMile }) {
+  const out = { nose: null, fact: null, moment: null };
+  const t = J.trip;
+  if (marker || event || arrived || rest || miles <= 0) return out;
+  const L = leg.miles;
+  const late = (frac) => startMile > Math.floor(frac * L);
+  // the nose
+  if (Array.isArray(t.nose)) {
+    for (const sl of t.nose) if (!sl.fired && late(NOSE.to)) { sl.fired = true; sl.dropped = true; }
+    const idx = t.nose.findIndex((sl) => !sl.fired && sl.atMile - NOSE.lead <= J.milesDone);
+    if (idx >= 0) { t.nose[idx].fired = true; out.nose = DOG.fireNose(J, t.nose[idx], idx); return out; }
+  }
+  // the trail fact
+  const f = t.fact;
+  if (f && !f.fired && late(MOMENT_RULES.facts.to)) { f.fired = true; f.dropped = true; }
+  if (f && !f.fired && f.atMile - MOMENT_RULES.facts.lead <= J.milesDone) {
+    const def = MOMENTS_API.factDef(f.id);
+    if (def) { f.fired = true; out.fact = { id: def.id, night: def.when === 'night', ambient: def.ambient, sound: def.sound }; return out; }
+    f.fired = true;
+  }
+  // the dust devil
+  const dd = t.dustDevil;
+  if (dd && !dd.fired && late(MOMENT_RULES.dustDevil.to)) { dd.fired = true; dd.dropped = true; }
+  if (dd && !dd.fired && dd.atMile - MOMENT_RULES.dustDevil.lead <= J.milesDone) {
+    dd.fired = true; J.moments.dustDevilLeg = J.legIndex | 0;
+    out.moment = { kind: 'dustDevil' };
+  }
+  return out;
 }
 
 /** A mile marker answered (the app's gate panel). Right: the party cheers (mood up a notch), quick: a tailwind of 3
@@ -544,10 +615,10 @@ export function storeLeg(J) {
 export function buy(J, { item, qty = 1, price } = {}) {
   ensureJourney(J);
   const id = typeof item === 'object' && item ? item.id : item;
-  const q = id === 'yoke' ? Math.min(1, Math.max(0, Math.floor(Number(qty) || 0))) : Math.max(0, Math.floor(Number(qty) || 0));
+  const q = id === 'yoke' || id === 'spoon' ? Math.min(1, Math.max(0, Math.floor(Number(qty) || 0))) : Math.max(0, Math.floor(Number(qty) || 0));
   const p = Number.isFinite(price) ? Math.max(0, Math.round(price)) : priceAt(id, storeLeg(J), J.season);
   const cost = q * p;
-  if (!id || cost > J.cash || (id === 'yoke' && (J.animals.n >= 4 || !yokeOffered(storeLeg(J))))) return { ok: false, cost, cash: J.cash, foodLb: 0 };
+  if (!id || cost > J.cash || (id === 'yoke' && J.animals.n >= 4) || (id === 'spoon' && J.goods.spoon > 0) || (EXTRA_GOOD_BY_ID[id] && !offeredAt(id, storeLeg(J)))) return { ok: false, cost, cash: J.cash, foodLb: 0 };
   J.cash -= cost;
   let foodLb = 0;
   if (isFood(id)) { foodLb = q * lbOf(id); addFoodKind(J, id, foodLb); }
@@ -577,6 +648,16 @@ export function arrive(J) {
   J.totals.legs++; J.totals.stars += starCount(stars);
   const T = J.totals;
   J.animals.tired = Math.max(0, J.animals.tired - ANIMAL_RULES.stopRelief);
+  // v1.4: the dog has been along for the leg (the berry patch rhythm counts it) and gets a bath in the creek at the stop
+  let bath = false;
+  if (J.dog) { J.dog.legs = (J.dog.legs | 0) + 1; bath = !!J.dog.muddy; J.dog.muddy = false; }
+  t.fetchThrows = 0;
+  // v1.4: a quest slot the nose never reached (a leg with no free day) is found as the party arrives, so the quest is never starved
+  let quest = null;
+  if (J.dog && Array.isArray(t.nose)) {
+    const sl = t.nose.find((x) => !x.fired && x.kind === 'quest');
+    if (sl) { sl.fired = true; sl.dropped = true; const id = QUESTS_API.questFindable(J, 'nose'); const got = id && QUESTS_API.findQuestItem(J, id); if (got) quest = { id, item: got.item }; }
+  }
   const mended = !!(J.limp && leg.stop && leg.stop.kind === 'fort');
   if (leg.stop && leg.stop.kind === 'fort') J.limp = false;
   if (!T.reached.includes(leg.id)) T.reached.push(leg.id);
@@ -584,7 +665,7 @@ export function arrive(J) {
   if (stars[2]) T.markersPerfectLegs++;
   if (!t.foodLowSeen) T.fullWagonLegs++;
   if (leg.id === 'blue-mountains' && t.coldOk && !t.coldNightHere) T.blueProof++;
-  t.result = { legId: leg.id, stars, cash, sticker, crate: crateFor(stars), ...(mended ? { mended: true } : {}) };
+  t.result = { legId: leg.id, stars, cash, sticker, crate: crateFor(stars), ...(mended ? { mended: true } : {}), ...(bath ? { bath: true } : {}), ...(quest ? { quest } : {}) };
   return t.result;
 }
 
@@ -617,6 +698,8 @@ export function newSeason(J, overrides = {}) {
   N.tokens = J.tokens;
   N.cards = J.cards.slice(); N.upgrades = { ...J.upgrades }; N.challenges = JSON.parse(JSON.stringify(J.challenges));   // the album, the wagon and the day's claims carry over
   N.deeds = J.deeds.slice();                                                                                              // v1.2: the badges are kept (the people and the counters start over)
+  carry14(J, N);                                                                                                           // v1.4: the dog, the finds, the fish log, the stones, the wishes … (collections.js)
+  if (N.trip) { const leg = currentLeg(N); if (leg) planV14(N, leg); }                                                     // the first leg is planned again now that the dog and the switch are carried
   N.seasonsDone = (J.seasonsDone | 0) + (J.done ? 1 : 0);
   return N;
 }
@@ -769,7 +852,7 @@ export function stampedePay(J, { held = false } = {}) {
   ensureJourney(J);
   const cash = held ? Math.round(STAMPEDE.held * seasonOf(J.season).priceMult) : 0;
   J.cash += cash; J.totals.stampedes++; if (held) J.totals.stampedesHeld++;
-  return { cash, card: held ? 'bison' : null, held: !!held };
+  return { cash, card: held ? 'bison' : null, held: !!held, fact: MOMENTS_API.stampedeFact(J) };    // v1.4: 'bison-thunder' until it has been heard this season
 }
 
 /** Talk to a person at a stop (SPEC v1.2 §4). The first time: they are remembered (J.met, totals.peopleMet) and their gift is
@@ -827,6 +910,10 @@ export function camp(J, kind = 'rest', { rand } = {}) {
     if (!t.happened.includes('camp')) t.happened.push('camp');
   }
   J.animals.tired = Math.max(0, J.animals.tired - ANIMAL_RULES.restRelief);
+  // v1.4: a night at camp washes a muddy dog, and the next visit's fetch has its three throws again
+  const bath = !!(J.dog && J.dog.muddy);
+  if (J.dog) J.dog.muddy = false;
+  if (t) t.fetchThrows = 0;
   const skills = [];
   let gain = k === 'rest' ? MOOD.camp.rest : MOOD.camp.other;
   const fid = skillInfo(J, 'fiddle');
@@ -837,7 +924,7 @@ export function camp(J, kind = 'rest', { rand } = {}) {
   J.spirit = clamp(J.spirit + gain, 0, MOOD.max);
   refreshMood(J);
   return { day: J.day, food: J.food, mood: J.mood, kind: k, foodEaten: ate.eaten, skill: skills[0] || null, skills, cardDrop,
-    spiritBonus: fid ? SKILL_FX.fiddlerCamp : 0, noArrows: k === 'hunt' && !huntAllowed(J) };
+    spiritBonus: fid ? SKILL_FX.fiddlerCamp : 0, noArrows: k === 'hunt' && !huntAllowed(J), bath };
 }
 
 /** The cash price of an upgrade for this journey (1847 dollars × the season's priceMult) and its token price. */
@@ -905,7 +992,10 @@ const ANIMAL_CARD = { bison: 'bison', pronghorn: 'pronghorn', coyote: 'coyote', 
   'prairie-dog': 'prairie-dog', prairiedog: 'prairie-dog', rattlesnake: 'rattlesnake', rabbit: 'jackrabbit', jackrabbit: 'jackrabbit',
   deer: 'mule-deer', 'mule-deer': 'mule-deer', salmon: 'salmon',
   // v1.1 integration: a catch of any size is the salmon card; berries are the wild plum
-  fish: 'salmon', trout: 'salmon', berries: 'wild-plum', plum: 'wild-plum', 'wild-plum': 'wild-plum' };
+  fish: 'salmon', trout: 'salmon', berries: 'wild-plum', plum: 'wild-plum', 'wild-plum': 'wild-plum',
+  // v1.4: each species of the fish log has its own card (the content's 'river' suit)
+  'channel-catfish': 'channel-catfish', 'hornyhead-chub': 'hornyhead-chub', 'cutthroat-trout': 'cutthroat-trout', 'white-sturgeon': 'white-sturgeon',
+  'redband-trout': 'redband-trout', 'chinook-salmon': 'chinook-salmon' };
 /** The card for an animal the scene spotted or the bow brought home ('bison' | 'pronghorn' | 'coyote' | 'eagle' | 'rabbit' |
  *  'deer' …): the card object, or null when there is none (a turkey, a trout). */
 export function cardForAnimal(animal) {
@@ -921,3 +1011,38 @@ export { ANIMALS };
 export { syncFood, foodDays, huntAllowed, needsBlankets, coldLegsAhead, skillOf, skillInfo, partySkills };
 export { DEEDS, DEED_BY_ID, checkDeeds, deedMet } from './deeds.js';
 export { PEOPLE, PEOPLE_BY_STOP, PERSON_BY_ID } from '../content/people.js';
+
+// ---- v1.4: Frodo and the river (SPEC v1.4 §3): the dog, fishing 2.0, the quests, the trail moments, the collections ----
+export { NOSE, FETCH, FISHING, HORSESHOE } from './economy.js';
+export { MOMENT_RULES as MOMENTS };
+export { carry14, merge14, fill14, V14_COUNTERS };
+// the dog (dog.js); the ones that move the party's spirit also refresh the mood words
+export const { dogOfferAt, planNose, drawFind, fetchThrow, sellHorseshoes } = DOG;
+/** The dog joins (see dog.js): { dog, quest }. */
+export function adoptDog(J, opts) { ensureJourney(J); return DOG.adoptDog(J, opts); }
+/** The dog's find is kept (see dog.js): { id, first, n, goods?, effect? }. */
+export function recordFind(J, findId) { ensureJourney(J); const r = DOG.recordFind(J, findId); refreshMood(J); return r; }
+/** The rabbit chase's outcome (see dog.js): { muddy, line, card }. */
+export function chaseResult(J, opts) { ensureJourney(J); const r = DOG.chaseResult(J, opts); refreshMood(J); return r; }
+// fishing 2.0 (fishing.js); the scene imports createFight / fightStep / fightHelp from fishing.js itself
+export const { waterOf, baitsAvailable, catchHoppers, fishingSession, createFight, fightStep, fightHelp, fightOutcome, castOff, landCast, familyRecords, skipsBoard } = FISHING_API;
+/** The session is over: the food goes into the wagon once (the landed pounds, at most FISHING.lbCap; a safety-net session is worth at least RESCUE.minLb),
+ *  and the spoken summary is built from fixed parts. Idempotent. → { lb, topUp, caught: [{ species, lengthIn }], junk: [id], newSpecies: [id], best, summary: { text, say } }. */
+export function endFishing(J, session) {
+  ensureJourney(J);
+  if (!session) return null;
+  if (session.result) return session.result;
+  const base = FISHING_API.sessionLb(session);
+  const lb = FISHING_API.rescueFloor(base, session.rescue);
+  const topUp = lb - base;
+  applyFish(J, { fishLb: lb });
+  const part = FISHING_API.summarizeSession(J, session, lb);
+  session.result = { lb, topUp, ...part };
+  return session.result;
+}
+// the quests (quests.js)
+export const { useQuests, questList, questFindable, findQuestItem, questAt, questMail, questStatus } = QUESTS_API;
+/** Talk to the person of a quest at this stop (see quests.js): { role, lines, step, of, done, reward? }. */
+export function questTalk(J, id) { ensureJourney(J); const r = QUESTS_API.questTalk(J, id); refreshMood(J); return r; }
+// the trail moments and facts (moments.js)
+export const { setTrailSounds, factsFor, planFact, heardFact, stampedeFact, planDustDevil, dustDevilResult, stonesPlan, stonesResult, campWater, meteorsTonight, wishFor } = MOMENTS_API;

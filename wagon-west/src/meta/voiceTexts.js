@@ -7,6 +7,11 @@
 // fact the ladder picks (markerTexts, prepared per active fact by prepareVoice and again when shown), the P.S. with the
 // week's three words, the letter's name under the closing, a letter line that tells a number of pounds, the daily
 // challenge, the Derby result with its margin, the dog berries line with the dog's name, a riddle for a fact.
+// v1.4 adds (SPEC v1.4 §5.6): `first` the moments' lines (MOMENTS), the bait and fishing lines and DOG_LINES filled with the
+// dog's name (`dogName`); `leg` this leg's quest people (questTexts), trail facts (factTexts), the finds of its biome and the
+// fish of its water; `rest` every find, piece of junk, wish, trail fact, quest line, companion help line (funTexts). Said just in
+// time (never ahead, they have counts, sizes and names in them): the fishing summary and a catch with its inches, the treat
+// counts, the skip count, the horseshoe sale, the trail fact's dog line when the dog is named later.
 import { LOOKOUTS } from '../content/lookouts.js';
 import { NATIONS, NATION_BY_ID, FALLBACK_TRADES, TRADE_GOOD_NAMES } from '../content/nations.js';
 import { EVENTS } from '../content/events.js';
@@ -23,6 +28,11 @@ import { deedTexts } from '../ui/deeds.js';
 import { sayOf } from '../ui/cards.js';
 import { PS_INTRO, READ_BACK } from '../ui/postOffice.js';
 import { spokenLine } from '../ui/problemPanel.js';
+import { FINDS, WISHES } from '../content/finds.js';
+import { FISH, JUNK, BAITS, WATERS } from '../content/fish.js';
+import { MOMENTS, DOG_LINES } from '../content/moments.js';
+import { QUESTS } from '../content/quests.js';
+import { TRAIL_FACTS } from '../content/trailFacts.js';
 
 export const TEST_LINE = 'Wagon West is ready to roll.';
 export const COACH_TEXT = 'The wagon rolls on its own. Pace and rations are your two dials. At each mile marker, type one fact. Tap the food box to look in the wagon. Stop any time: the journey waits right here.';
@@ -69,7 +79,7 @@ export function peopleTexts(stopId) {
   return out;
 }
 /** Every letter line this leg's letter can be made of (the lines that tell a number of pounds are said just in time). */
-export function letterTexts(legId, { names = null, animal = '', playerName = '' } = {}) {
+export function letterTexts(legId, { names = null, animal = '', playerName = '', dogName = '' } = {}) {
   const leg = LEG_BY_ID[legId];
   if (!leg) return [];
   const nation = leg.nation && NATION_BY_ID[leg.nation];
@@ -82,6 +92,7 @@ export function letterTexts(legId, { names = null, animal = '', playerName = '' 
       if (/\{food\}/.test(line)) continue;
       const fills = [{}];
       const vary = (name, values) => { const n = fills.splice(0); for (const f of n) for (const v of values) fills.push({ ...f, [name]: v }); };
+      if (/\{dog\}/.test(line)) { if (!dogName) continue; vary('dog', [dogName]); }        // (a line about the dog is made only while there is a dog)
       if (/\{name\}/.test(line)) vary('name', comps);
       if (/\{animal\}/.test(line)) vary('animal', animal ? [String(animal).toLowerCase()] : animalNames);
       const v0 = { stop: (leg.stop && leg.stop.name) || leg.name, river: (leg.stop && leg.stop.name) || 'river', width: (leg.river && leg.river.width) || 'wide', nation: nation ? nation.name : 'local' };
@@ -92,6 +103,66 @@ export function letterTexts(legId, { names = null, animal = '', playerName = '' 
   if (playerName) for (const c of LETTER_CLOSE || ['Love,']) out.push(spoken(`${c} ${playerName}`));
   return out;
 }
+// ---------- v1.4: the dog, the finds, the fish, the quests and the trail facts ----------
+const sayOrText = (x) => (x ? x.say || x.text || '' : '');
+/** Every spoken line in a tree of `{ text, say }` leaves, strings and arrays (the content's MOMENTS). */
+function leafLines(v, out = []) {
+  if (typeof v === 'string') out.push(v);
+  else if (Array.isArray(v)) v.forEach((x) => leafLines(x, out));
+  else if (v && typeof v === 'object') {
+    if (typeof v.text === 'string' || typeof v.say === 'string') out.push(sayOrText(v));
+    else Object.values(v).forEach((x) => leafLines(x, out));
+  }
+  return out;
+}
+/** A line that names the dog, made with the dog's name. */
+export const dogFill = (t, dogName) => String(t).replace(/\{dog\}/g, dogName);
+/** The fixed lines of the dog, fetch, fishing and the trail moments (MOMENTS) and the bait lines. */
+export function momentTexts() { return [...leafLines(MOMENTS), ...BAITS.map((b) => b.text)]; }
+/** The lines that name the dog (DOG_LINES), with the dog's name; none until there is a dog. */
+export function dogTexts(dogName = '') { return dogName ? Object.values(DOG_LINES).map((t) => dogFill(t, dogName)) : []; }
+/** What a find, a piece of junk or a wish is read as. */
+export const findSay = (f) => sayOrText(f);
+/** The finds of a biome (every find for `null` biomes). */
+const findsOf = (biome) => FINDS.filter((f) => !f.biomes || f.biomes.includes(biome));
+/** The trail facts of a leg (a fact with `legs: null` can come on any leg), as read: the fact's `say` else its text. */
+function factTextsOf(legId) { return TRAIL_FACTS.filter((f) => !f.legs || f.legs.includes(legId)).map(sayOrText); }
+/** What the people of a quest say at one stop (every step and the owner there, joined as the Talk card reads them), the item's text
+ *  where it can be found, and the mailed line at the forts after the owner's stop. */
+export function questTexts(stopId) {
+  const out = [];
+  const idx = LEGS.findIndex((l) => l.id === stopId);
+  for (const q of QUESTS) {
+    for (const st of q.steps || []) if (st.at === stopId) out.push((st.lines || []).join(' '));
+    if (q.owner && q.owner.at === stopId) out.push((q.owner.lines || []).join(' '));
+    const f = q.find || {};
+    if (q.item && ((f.legs || []).includes(stopId) || f.atStop === stopId)) out.push(sayOrText(q.item));
+    const oi = q.owner ? LEGS.findIndex((l) => l.id === q.owner.at) : -1;
+    if (q.mailed && oi >= 0 && idx > oi && LEGS[idx].stop && LEGS[idx].stop.kind === 'fort') out.push(sayOrText(q.mailed));
+  }
+  return out.filter(Boolean);
+}
+/** The trail facts that can come on a leg. */
+export const factTexts = factTextsOf;
+/** The fish of a leg's water (their landing lines), the junk it can bring up, and the finds of its biome. */
+export function legFunTexts(legId) {
+  const leg = LEG_BY_ID[legId];
+  const water = WATERS[legId];
+  const out = [];
+  for (const f of FISH) if (water && f.waters && f.waters[water]) out.push(sayOrText(f.land), CARD_BY_ID[f.card] ? sayOf(CARD_BY_ID[f.card]) : '');
+  for (const j of JUNK) if (!j.waters || (water && j.waters.includes(water))) out.push(sayOrText(j));
+  if (leg) out.push(...findsOf(leg.biome).map(findSay));
+  return out;
+}
+/** Everything the dog, the water and the trail can say that is not tied to one leg: every find, junk, wish, trail fact, quest line,
+ *  fish landing line and companion help line (the rest of the list). */
+export function funTexts() {
+  const out = [...FINDS.map(findSay), ...JUNK.map(findSay), ...WISHES.map(findSay), ...TRAIL_FACTS.map(sayOrText), ...FISH.map((f) => sayOrText(f.land))];
+  for (const q of QUESTS) out.push(...questTexts(q.owner.at), ...(q.steps || []).map((st) => (st.lines || []).join(' ')), (q.owner.lines || []).join(' '), sayOrText(q.item), sayOrText(q.mailed));
+  for (const c of COMPANIONS) if (c.lines && c.lines.help) out.push(c.lines.help);
+  return out;
+}
+
 /** The lines tied to one leg: its lookout, the nation's fact, the people and their offers, its landmark card, its letter. */
 export function legTexts(legId, ctx = {}) {
   const leg = LEG_BY_ID[legId];
@@ -102,6 +173,7 @@ export function legTexts(legId, ctx = {}) {
   if (n && n.fact) out.push(n.fact.say || n.fact.text);
   out.push(...peopleTexts(legId));
   if (CARD_BY_ID[legId]) out.push(sayOf(CARD_BY_ID[legId]));
+  out.push(...questTexts(legId), ...factTextsOf(legId), ...legFunTexts(legId));          // (v1.4)
   if (leg && ctx.letters !== false) out.push(...letterTexts(legId, ctx));
   return out;
 }
@@ -158,23 +230,23 @@ export function riverLineTexts() {
  * facts (the caller works them out: they come from the child's own ladder).
  *   first  the fixed lines and the river (a card or a panel can open at any moment)
  *   leg    this leg: lookout, nation, people and their offers, landmark card, letter lines
- *   facts  the child's mile marker sentences
+ *   facts  the child's mile marker sentences (`factTexts`; v1.4: the trail facts are `factTexts(legId)` below, in `leg`)
  *   next   the next leg's lookout, nation, people (its letter is prepared when that leg starts)
  *   rest   the trail's events, companions, cards, deeds, then every other leg
  */
-export function collectVoiceTexts({ legId = LEGS[0].id, factTexts = [], names = null, animal = '', playerName = '' } = {}) {
+export function collectVoiceTexts({ legId = LEGS[0].id, factTexts: markerFacts = [], names = null, animal = '', playerName = '', dogName = '' } = {}) {
   const idx = Math.max(0, LEGS.findIndex((l) => l.id === legId));
   const next = LEGS[idx + 1];
-  const first = uniq([...FIXED_LINES, ...startTexts(), ...riverLineTexts()]);
-  const leg = uniq(legTexts(legId, { names, animal, playerName }));
-  const facts = uniq(factTexts);
+  const first = uniq([...FIXED_LINES, ...startTexts(), ...riverLineTexts(), ...momentTexts(), ...dogTexts(dogName)]);
+  const leg = uniq(legTexts(legId, { names, animal, playerName, dogName }));
+  const facts = uniq(markerFacts);
   const nextT = next ? uniq(legTexts(next.id, { letters: false })) : [];
-  const rest = uniq([...trailTexts(), ...LEGS.flatMap((l) => legTexts(l.id, { letters: false }))]);
+  const rest = uniq([...trailTexts(), ...LEGS.flatMap((l) => legTexts(l.id, { letters: false })), ...funTexts()]);
   return { first, leg, facts, next: nextT, rest, ordered: uniq([...first, ...leg, ...facts, ...nextT, ...rest]) };
 }
 /** Everything that can be known ahead, across the whole trail (what the audit compares the UI's strings with). */
-export function allVoiceTexts({ names = null, playerName = 'Mia' } = {}) {
-  const out = [...FIXED_LINES, ...riverLineTexts(), ...trailTexts(), ...peopleTexts('independence'), ...(LOOKOUTS.independence ? [LOOKOUTS.independence.say || LOOKOUTS.independence.text] : [])];
-  for (const l of LEGS) out.push(...legTexts(l.id, { names, playerName }));
+export function allVoiceTexts({ names = null, playerName = 'Mia', dogName = '' } = {}) {
+  const out = [...FIXED_LINES, ...riverLineTexts(), ...trailTexts(), ...peopleTexts('independence'), ...(LOOKOUTS.independence ? [LOOKOUTS.independence.say || LOOKOUTS.independence.text] : []), ...momentTexts(), ...dogTexts(dogName), ...funTexts()];
+  for (const l of LEGS) out.push(...legTexts(l.id, { names, playerName, dogName }));
   return uniq(out);
 }

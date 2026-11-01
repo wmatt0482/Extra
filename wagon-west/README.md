@@ -49,7 +49,7 @@ Stopping is always fine: every day is saved and "Make camp" leaves the journey w
 | `src/meta/save.js` · `sync.js` | the save (`wagonWest.<id>.save`, settings `wagonWest.settings`) and the `ww` sync kind with its merge |
 | `src/meta/mockScene.js` | the scene API (§11) as a placeholder drawing with scripted hunting / fishing (`?mock=1`) |
 | `src/meta/sfx.js` · `selfUpdate.js` | sound effects; reload on a safe screen after an update |
-| `src/ui/*` | players, title + map, outfit + looks, store, HUD, trail card, marker / problem panels, river, post office, journal, results, Parent Zone, the spell panel's re-wording; v1.1 camp (`camp.js`) and trail cards (`cards.js`); v1.2 the Wagon panel (`wagonPanel.js`) |
+| `src/ui/*` | players, title + map, outfit + looks, store, HUD, trail card, marker / problem panels, river, post office, journal, results, Parent Zone, the spell panel's re-wording; v1.1 camp (`camp.js`) and trail cards (`cards.js`); v1.2 the Wagon panel (`wagonPanel.js`); v1.4 the find pop and the Finds page (`finds.js`) and the Fish log page (`fishLog.js`) |
 | `sw.js` · `manifest.webmanifest` · `icons/` | the PWA (`tools/make-icons.mjs` draws the wagon icon) |
 
 The journey (`src/journey/*`), the scene (`src/scene/*`) and the content (`src/content/*`) are the other streams'.
@@ -178,13 +178,57 @@ limit had changed (a "9 × 12" drawn from the ladder but asked as 9 × 3) was st
 records `asked`, passes the typed wrong answer only when the question's answer is the fact's answer (a two-step ration or
 repair is not), and counts a scout only for the fact that was scouted.
 
-- VERSION 1.3.3; the service worker is `wagon-west-v1.3.3`.
+- (VERSION 1.3.3 and `wagon-west-v1.3.3`, superseded by 1.4.0 below.)
+
+## 1.4
+
+Frodo and the river (SPEC "v1.4", owner, Nov 1: "Frodo only interacts with wild plums it seems. Need more fun things that
+happen on the route. Fishing could also be more fun. Think of more side quests." and facts along the trail). Pure fun:
+nothing asks a question, gates anything or can be failed; the mile markers and the letter's words are untouched. The
+journey decides everything (`src/journey/{dog,fishing,quests,moments,collections}.js`, through `sim.js`), the scene draws
+it (the mock scene's new hooks in tests), the content is `src/content/{finds,fish,moments,quests,trailFacts}.js`; the app
+(`src/main.js`, the "v1.4" block, `src/ui/finds.js`, `src/ui/fishLog.js`) drives and speaks.
+
+- **Frodo's nose** (afterDay's `res.nose`): a find (the dog dashes off and trots back; a pop with the find's line read, a
+  "New!" ribbon on a first one, into the journal's Finds page; the arrowhead is sketched and left where it lay), a snake
+  warning (a card, the rattlesnake card), a rabbit chase (the dog's name is a 64 px button: called in time he skids round,
+  late or never he is muddy until the next stop or camp, that is all), the berry patch (now a nose slot of the journey's),
+  and a quest item. **Fetch** at camp (three throws, treats by distance, now and then a find), **Catch grasshoppers**
+  (bait), **Skip stones** (at the river stops after the crossing, and once a leg at a river camp), **Falling stars** (the
+  evening of an arrival on a clear night: a wish for every star tapped). None of the camp games costs a day or food.
+- **Fishing 2.0** (the trail's fishing events and camp's Fishing): pick bait (worms, grasshoppers from the tin, the shiny
+  spoon from a fort store), cast and dip as before, then the fight: hold to reel, let go on the red, the sturgeon takes
+  two. Junk (a boot, a snapping turtle, a bottle with a note). The fish log, personal bests and the Family records board
+  are journal pages (Fish log). One spoken summary card ends a session.
+- **Trail facts** (`res.fact`): a short vignette with a sound, then a card with one true fact and its card for the album
+  (the new suits "Fish of the trail" and "Trail tales": 54 cards in six suits). The four far-off ones (rifles beyond the
+  ridge, wolves, a grizzly on a far ridge, a prairie fire) can be turned off: **Parents → Options → Far-off sounds on the
+  trail**. The dust devil (tap the hats) and the stampede's "Bison thunder" card.
+- **The missing locket**: the dog joins on the far bank of the Kansas River (not at Fort Kearny), brings back a silver locket;
+  people in the Talk row (❓ clues, a 💛 owner) lead to Molly Rowe at Fort Laramie. A child who walks past gets the card from
+  the post office. The bottle note (fished up) leads to Sam at The Dalles. A new quest is one entry in `QUESTS`.
+- **Voice**: every new spoken string is in `voiceTexts.js` (`momentTexts`, `dogTexts`, `questTexts`, `factTexts`,
+  `funTexts`); the fishing summary, a catch with its inches, the treat counts, the skip count and the horseshoe sale are
+  prepared just in time. `tools/content-audit.mjs` also checks the weapon words (`WEAPONS`; only the two exact phrases of
+  the far-off rifles fact, `WEAPON_ALLOW`, may use one).
+- **Save and sync**: no new top-level field (everything is on `J`, filled by `ensureJourney`); `mergeWw` ends with the
+  journey's `merge14`. `settings.farSounds` is this device's.
+- Test hooks on `window.__wagonWest`: `playNose(kind, findId?)`, `playFact(id)`, `playMoment('dustDevil')`,
+  `fishNow({ bait })`, `jumpLeg(legId)`, `fun`, `sceneEvent(evt)`. `FUN_ONLY=1 node wagon-west/tools/ui-smoke.mjs` runs
+  just the v1.4 sections (they print SKIP until the journey's and the mock scene's 1.4 hooks are in the tree).
+- Integration (all four streams on one tree): the scene's fight stepper is the journey's (`src/journey/fishing.js`), the mock scene's 'late'
+  chase ends `chaseEnd { called: false }`, `arrive()`'s `result.quest` is shown as the item card before the results, the hunt event's
+  `lead` flag is shown ("Good lead!") and counted in the hunt's line, pronghorn (12 lb) and bison (24 lb) are hunt animals (the mean hunt
+  stays within 10 % of 1.3's; `tools/economy-sim.mjs` models them). `tools/v14-stubs.mjs` is gone: the tests run on the real content.
+  ui-smoke empties the leg's v1.4 plan while it drives the 1.0-1.3 sections (`QUIET_14`) so a dog's find does not crowd their toasts.
+- VERSION 1.4.0; the service worker is `wagon-west-v1.4.0`.
 
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail
 Blazer's kinds (`tb`, `facts`) so the facts the mile markers record sync from here too; Spell Jump's `words` kind is
-built in. Merge: a reset wins; the journey is the later doc's (cash and tokens the max; the trail cards the union);
+built in. Merge: a reset wins; the journey is the later doc's (cash and tokens the max; the trail cards the union; v1.4: the
+dog's finds, the fish log, the skipping stones, the wishes and the quests by the journey's `merge14`);
 stickers,
 letters, looks and the leg log are unions; the per-day log and the per-kind tallies take the max; crates keep the longer
 queue; the streak follows Spell Jump's rule. The family server must list `ww` among its kinds

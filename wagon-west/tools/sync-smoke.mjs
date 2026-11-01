@@ -125,6 +125,11 @@ async function main() {
     await L.click('#store-done');
     await L.waitForFunction(() => window.__wagonWest.card.isOpen);
     await L.click('#tc-go');
+    // (v1.4: a trail fact's card or a dust devil may come first: a child taps through them)
+    for (let k = 0; k < 150 && !(await J(L, () => window.__wagonWest.markerPanel.state === 'ask')); k++) {
+      if (await J(L, () => window.__wagonWest.card.isOpen)) await L.click('#tc-go').catch(() => {});
+      else await L.waitForTimeout(100);
+    }
     await L.waitForFunction(() => window.__wagonWest.markerPanel.state === 'ask', null, { timeout: 15000 });
     const ans = await J(L, () => window.__wagonWest.markerPanel.answer);
     for (const d of String(ans)) await L.click(`#panel-marker .np-key[data-key="${d}"]`);
@@ -191,6 +196,40 @@ async function main() {
     check(['bison', 'eagle'].every((id) => lc.includes(id) && ic.includes(id)), 'both devices hold every card after the merge');
     const lm = await mem(L), im = await mem(I);
     check(lm.letters.length === 4 && im.letters.length === 4 && lm.cash === s.journey.cash && im.tokens === s.journey.tokens, 'laptop, ipad and server agree (in memory too)');
+
+    console.log('\n=== v1.4: one device catches a sturgeon, the other skips seven stones: both records survive ===');
+    online.laptop = false; online.ipad = false;
+    await edit(L, (s) => {
+      const Jn = s.journey;
+      Jn.fishLog = Jn.fishLog || {}; Jn.finds = Jn.finds || {};
+      Jn.fishLog['white-sturgeon'] = { n: 1, bestIn: 62, bestLb: 14, firstLeg: 'snake-river', firstSeason: Jn.season };
+      Jn.fishBest = { species: 'white-sturgeon', in: 62 };
+      Jn.finds.horseshoe = 2;
+      Jn.wishes = ['oxen-fly'];
+      Jn.dog = Jn.dog || { name: 'Frodo', coat: 'brown', legs: 1, nextBerries: 2, treats: 3, muddy: false };
+    });
+    await edit(I, (s) => {
+      const Jn = s.journey;
+      Jn.skips = { best: 7, throws: 3, byRiver: { 'kansas-river': 7 } };
+      Jn.finds = Jn.finds || {};
+      Jn.finds.pinecone = 1; Jn.finds.horseshoe = 1;
+      Jn.wishes = ['apple-pie-rain'];
+      Jn.fishLog = Jn.fishLog || {};
+      Jn.fishLog['channel-catfish'] = { n: 2, bestIn: 20, bestLb: 5, firstLeg: 'kansas-river', firstSeason: Jn.season };
+    });
+    online.laptop = true; online.ipad = true;
+    await wwSync(L, 'syncNow');
+    await wwSync(I, 'syncNow');
+    await wwSync(L, 'pullNow');
+    await wwSync(I, 'pullNow');
+    const f = (await serverDoc(code, `${miaId}.ww`)).data.journey;
+    const v14 = (p) => J(p, () => { const Jn = window.__wagonWest.save.journey; return { sturgeon: Jn.fishLog && Jn.fishLog['white-sturgeon'] && Jn.fishLog['white-sturgeon'].bestIn, catfish: Jn.fishLog && Jn.fishLog['channel-catfish'] && Jn.fishLog['channel-catfish'].n, skips: Jn.skips && Jn.skips.best, horseshoe: Jn.finds && Jn.finds.horseshoe, pinecone: Jn.finds && Jn.finds.pinecone, wishes: (Jn.wishes || []).slice().sort(), best: Jn.fishBest && Jn.fishBest.in, dog: Jn.dog && Jn.dog.name }; });
+    const lv = await v14(L), iv = await v14(I);
+    check(f.fishLog && f.fishLog['white-sturgeon'] && f.fishLog['white-sturgeon'].bestIn === 62 && f.skips && f.skips.best === 7, `the server has both records: the sturgeon (${f.fishLog && f.fishLog['white-sturgeon'] && f.fishLog['white-sturgeon'].bestIn} in) and the seven skips (${f.skips && f.skips.best})`);
+    check(f.finds && f.finds.horseshoe === 2 && f.finds.pinecone === 1, `the finds are the union: the bigger count per find (${JSON.stringify(f.finds)})`);
+    check(f.fishLog['channel-catfish'] && f.fishLog['channel-catfish'].n === 2 && f.fishBest && f.fishBest.in === 62, 'the fish log merges per species and the personal best is the bigger fish');
+    check(Array.isArray(f.wishes) && f.wishes.includes('oxen-fly') && f.wishes.includes('apple-pie-rain') && f.dog && f.dog.name === 'Frodo', `the wishes are the union and the dog is kept (${(f.wishes || []).join(', ')}, ${f.dog && f.dog.name})`);
+    check(JSON.stringify(lv) === JSON.stringify(iv) && lv.sturgeon === 62 && lv.skips === 7 && lv.pinecone === 1, `laptop and ipad agree in memory too (${JSON.stringify(lv)})`);
 
     console.log('\n=== a reset on one device wins ===');
     await J(L, (id) => window.__wagonWest.app.resetSaveFor(id), miaId);

@@ -30,6 +30,14 @@
 // the Columbia raft on the last leg, the buffalo stampede event, the people at the stops (./ui/people.js: the Talk row),
 // deeds (./ui/deeds.js: checkDeeds after what can earn one, the pop, the Journal page, the results list), camp's arrows /
 // wait-out. The scene's four mini-games run through playMini() / the scene event hook at the end of onSceneEvent.
+// v1.4 (SPEC "v1.4", Frodo and the river; the "// ---- v1.4 ..." block): pure fun, nothing asks a question and nothing can be
+// failed. The dog's nose on the trail (finds, a snake warning, the rabbit chase with the big name button, the berry patch and a
+// quest item: afterDay's res.nose), the trail facts with their sounds and cards (res.fact; the Parent Zone can turn the far-off ones
+// off), the dust devil (res.moment), the stampede's bison-thunder card, Fetch / Catch grasshoppers / Skip stones / Falling stars at
+// camp, Fishing 2.0 (bait, a reel, the fish log; the summary card), skipping stones at the river stops, the dog joining at the
+// Kansas River and the missing locket (the Talk row's quest people, the post office's mailed fallback), the journal's Finds and Fish
+// log pages, the spoon and the horseshoes at the store. The journey decides everything (src/journey/{dog,fishing,quests,moments,
+// collections}.js through sim.js); the scene draws it (the mock scene's hooks in tests); this file drives and speaks.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -64,6 +72,11 @@ import { CARDS, CARD_BY_ID } from './content/cards.js';
 import { LOOKOUTS } from './content/lookouts.js';
 import { EVENTS, EVENT_BY_ID } from './content/events.js';
 import { NATIONS, NATION_BY_ID } from './content/nations.js';
+import { FIND_BY_ID, WISH_BY_ID } from './content/finds.js';
+import { RIVER_STOPS, FISH_BY_ID, BAIT_BY_ID, JUNK_BY_ID, WATER_NAMES } from './content/fish.js';
+import { MOMENTS, DOG_LINES } from './content/moments.js';
+import { QUEST_BY_ID } from './content/quests.js';
+import { TRAIL_FACT_BY_ID } from './content/trailFacts.js';
 import { Sfx } from './meta/sfx.js';
 import { Music } from './meta/music.js';
 import { registerWagonWestSync } from './meta/sync.js';
@@ -88,6 +101,7 @@ import { createCardPop, ownedCards, sayOf } from './ui/cards.js';
 import { createToaster, popHeld } from './ui/toasts.js';
 import { createPostOffice } from './ui/postOffice.js';
 import { createJournal } from './ui/journal.js';
+import { createFindPop, findLine } from './ui/finds.js';
 import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
@@ -95,7 +109,7 @@ import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
 import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.3.3';
+const VERSION = '1.4.0';
 // the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
 // is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];
@@ -183,7 +197,8 @@ async function boot() {
   // Toasts and pops wait while a panel, card, question or mini-game is open, and sit only where they touch nothing the
   // child reads or presses (src/ui/toasts.js; playtest 1.2 W3-W5). v2/mini/derby are declared further down: read lazily.
   let dayFlow = false;                    // a trail day's marker / event is about to open: its toasts wait for it (their lines would be cut by it)
-  const readingOpen = () => { try { return !!(app.overlayOpen() || v2.play || v2.bar || mini || derby || dayFlow); } catch (_) { return false; } };
+  let vignetteOn = false;               // (v1.4 playtest: a trail fact's far-off scene plays with nothing on top of it: toasts wait, as they do for a mini-game)
+  const readingOpen = () => { try { return !!(app.overlayOpen() || v2.play || v2.bar || mini || derby || dayFlow || vignetteOn); } catch (_) { return false; } };
   const toaster = createToaster(toastsEl, { blocked: readingOpen, say: (t) => speech.later(t), speaking: () => speech.ambientPending });
   const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || !!mini || !!derby;
   let derby = null;                       // Fort Derby in progress: { leg, markers, bursts, resolve }
@@ -395,7 +410,8 @@ async function boot() {
     trail: { show() {}, hide() {} }, stop: { show() {}, hide() {} }, river, post: postOffice, journal: createJournal(app), results, home: homeUI,
     camp: createCamp(app), derby: { show() {}, hide() {} }, dog: dogUI,
   };
-  const cardPop = createCardPop($('#cardpop'), { sfx: Sfx, hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) });
+  let findPop = null;                     // (v1.4: the dog's finds and the wishes pop in the same place as a card: one at a time, a card first)
+  const cardPop = createCardPop($('#cardpop'), { sfx: Sfx, hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) || !!(findPop && findPop.visible) });
   // the voice: Spell Jump's tts, with the natural voice when the family has a code and the player picked one in Spell Jump
   const cloud = createCloudVoice({ getCode: () => sync.code, getWords: () => { try { return currentPlayerId ? WS.activeList(Profiles.loadWords(currentPlayerId)).words : []; } catch (_) { return []; } }, audio: Audio });
   tts.setCloud(cloud);
@@ -429,14 +445,14 @@ async function boot() {
     try { if (facts) for (const f of activeFacts(facts)) for (const flip of [false, true]) factTexts.push(...markerTexts(f, flip)); } catch (e) { console.warn('[WagonWest] activeFacts', e); }
     const J = save.journey;
     const legId = (J && J.legId) || LEGS[0].id;
-    const c = collectVoiceTexts({ legId, factTexts, names: ((J && J.companions) || []).map((id) => (COMPANION_BY_ID[id] || {}).name).filter(Boolean), animal: J ? animalName() : '', playerName: (app.player && app.player.name) || '' });
+    const c = collectVoiceTexts({ legId, factTexts, names: ((J && J.companions) || []).map((id) => (COMPANION_BY_ID[id] || {}).name).filter(Boolean), animal: J ? animalName() : '', playerName: (app.player && app.player.name) || '', dogName: (J && J.dog && J.dog.name) || '' });
     speech.prepareBulk([...listTexts(words), ...c.ordered]);
   }
   /** Just in time: the sentences about to be said (a generated problem, a letter, a riddle) as clips. Waits for them at most
    *  `ms` (the screen opens meanwhile: the speech itself waits for its clip); resolves at once when the device voice reads. */
   function voiceFor(texts, ms = HEAD_START_MS) { return speech.ready(texts, ms); }
   /** A trail card with its sentence ready in the natural voice. */
-  async function showCard(opts) { await voiceFor([opts.say || opts.text]); return card.show(opts); }
+  async function showCard(opts) { await voiceFor([opts.say || opts.text]); if (findPop) findPop.suspend(); return card.show(opts); }      // (a find pop up over the card's place steps aside)
   const pz = createParentZone(app);
 
   function refreshCash() {
@@ -463,7 +479,7 @@ async function boot() {
     if (typeof JA.foodNeeded !== 'function') return null;
     try { const per = JA.foodNeeded(partySize(J), J.rations || 'plenty', 1, (ANIMAL_BY_ID[J.animal] || {}).feedLb || 0); return per > 0 ? Math.floor(num(J.food) / per) : null; } catch (_) { return null; }
   }
-  const goodsOf = (J) => { const g = J.goods && typeof J.goods === 'object' ? J.goods : {}; return { parts: num(J.parts !== undefined ? J.parts : g.parts), rope: num(g.rope), blankets: num(g.blankets), arrows: num(g.arrows), pelts: num(g.pelts), yoke: num(g.yoke) }; };
+  const goodsOf = (J) => { const g = J.goods && typeof J.goods === 'object' ? J.goods : {}; return { parts: num(J.parts !== undefined ? J.parts : g.parts), rope: num(g.rope), blankets: num(g.blankets), arrows: num(g.arrows), pelts: num(g.pelts), yoke: num(g.yoke), spoon: num(g.spoon), horseshoes: num(g.horseshoes), hoppers: num(g.hoppers) }; };
   const animalsOf = (J) => { const a = J.animals && typeof J.animals === 'object' ? J.animals : {}; return { n: num(a.n, 2), tired: num(a.tired) }; };
   const animalsTiredNow = (J) => !!J && animalsOf(J).tired > 70;
   function blanketsOf(J) {
@@ -609,7 +625,12 @@ async function boot() {
     go('title');
   }
   /** The Journey stream fills the 1.1 fields (cards, upgrades, challenges) on a journey saved by 1.0. */
-  function ensureJ() { const J = save.journey; if (J && typeof JA.ensureJourney === 'function') { try { JA.ensureJourney(J); } catch (e) { console.warn('[WagonWest] ensureJourney', e); } } }
+  function ensureJ() {
+    const J = save.journey;
+    if (J && typeof JA.ensureJourney === 'function') { try { JA.ensureJourney(J); } catch (e) { console.warn('[WagonWest] ensureJourney', e); } }
+    // v1.4: the Parent Zone's "Far-off sounds on the trail" (this device's setting) is written onto the journey (J.opts.farSounds)
+    if (J && typeof JA.setTrailSounds === 'function') { try { JA.setTrailSounds(J, settings.farSounds !== false); } catch (e) { console.warn('[WagonWest] setTrailSounds', e); } }
+  }
 
   // Ghost-click guard (same as the other games): swallow a click that lands just after a screen change when its
   // pointerdown came before the change
@@ -663,6 +684,7 @@ async function boot() {
     if (key === 'sound') { Audio.setSound(settings.sound); Sfx.setSound(settings.sound); }
     if (key === 'music') { Audio.music(false); try { Music.on(settings.music); } catch (_) { /* ignore */ } }
     if (key === 'hunting' && save.journey && typeof JA.setHunting === 'function') { try { JA.setHunting(save.journey, settings.hunting); app.persist(); } catch (_) { /* ignore */ } }
+    if (key === 'farSounds' && save.journey && typeof JA.setTrailSounds === 'function') { try { JA.setTrailSounds(save.journey, settings.farSounds); app.persist(); } catch (_) { /* ignore */ } }
     if (key === 'reducedMotion') {
       document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);
       if (scene && typeof scene.setReducedMotion === 'function') S('setReducedMotion', settings.reducedMotion);
@@ -699,14 +721,20 @@ async function boot() {
   function applySceneParty() {
     const J = save.journey;
     if (!J) return;
-    const hat = save.cosmetics.equipped.hat;
-    const ids = (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)).slice(0, 3);
     S('setParty', {
       animal: J.animal,
-      companions: ids.map((id, i) => { const c = COMPANION_BY_ID[id] || { hat: 'wide', color: '#d9653b' }; return { id, hat: i === 0 && hat !== 'none' ? hat : c.hat, color: c.color }; }),
+      companions: partyLook(),
       wagon: { paint: app.paintColor(), flag: save.cosmetics.equipped.flag, name: J.wagonName || '' },
-      dog: J.dog ? { name: J.dog.name, coat: J.dog.coat } : null,
+      dog: J.dog ? { name: J.dog.name, coat: J.dog.coat, muddy: !!J.dog.muddy } : null,
     });
+  }
+  /** The party as the scene draws it: [{ id, hat, color }] (the first companion wears the hat the child equipped). */
+  function partyLook() {
+    const J = save.journey;
+    if (!J) return [];
+    const hat = save.cosmetics.equipped.hat;
+    const ids = (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)).slice(0, 3);
+    return ids.map((id, i) => { const c = COMPANION_BY_ID[id] || { hat: 'wide', color: '#d9653b' }; return { id, hat: i === 0 && hat !== 'none' ? hat : c.hat, color: c.color }; });
   }
   const backdropFor = (leg) => ({ river: 'river', fort: 'fort', landmark: 'landmark', home: 'valley' }[leg && leg.stop && leg.stop.kind] || 'landmark');
 
@@ -717,7 +745,7 @@ async function boot() {
       const season = (old && old.done && pendingSeasonId()) || (old ? old.season : SEASONS[0].id);
       const prev = old;
       save.journey = JA.createJourney({ season, wagonName: draft.wagonName, animal: draft.animal, companions: draft.companions, seed: hashString(`${currentPlayerId}:${Date.now()}`) });
-      carryOver(prev, save.journey);
+      carryOver(prev, save.journey, { carry: true });
       ensureJ();
       save.trip = null;
       if (typeof JA.setHunting === 'function') try { JA.setHunting(save.journey, settings.hunting !== false); } catch (_) { /* ignore */ }
@@ -740,11 +768,15 @@ async function boot() {
     applySceneParty();
     go('title');
   }
-  /** What a new journey keeps from the old one: the trail cards (a collection across seasons) and the dog. */
-  function carryOver(prev, n) {
+  /** What a new journey keeps from the old one: the trail cards (a collection across seasons). v1.4: the dog, the finds, the fish log and
+   *  the rest of the dog's and the river's collections are the journey's to carry (carry14 inside newSeason); `carry` is for a fresh
+   *  journey the Outfit makes after a finished one, which asks the journey to carry them (else the dog alone, as in 1.1). */
+  function carryOver(prev, n, { carry = false } = {}) {
     if (!prev || !n) return;
     if (prev.cards && (!n.cards || (Array.isArray(n.cards) && !n.cards.length))) n.cards = JSON.parse(JSON.stringify(prev.cards));
-    if (prev.dog && !n.dog) n.dog = { ...prev.dog };
+    if (!carry) return;
+    if (typeof JA.carry14 === 'function') { try { JA.carry14(prev, n); } catch (e) { console.warn('[WagonWest] carry14', e); } }
+    else if (prev.dog && !n.dog) n.dog = { ...prev.dog, muddy: false };
   }
   function pendingSeasonId() {
     const J = save.journey;
@@ -1078,14 +1110,17 @@ async function boot() {
     r.busy = true;
     app.persist();                              // every day is saved: stopping anywhere loses nothing
     const J = save.journey;
-    dayFlow = !!(d.res.marker || d.res.event);  // (a day with a marker or an event: its effect toasts wait for that panel / card, which would cut their lines; a quiet day holds nothing)
+    dayFlow = !!(d.res.marker || d.res.event || d.res.nose || d.res.fact || d.res.moment);  // (a day with a marker, an event or a moment: its effect toasts wait for that panel / card, which would cut their lines; a quiet day holds nothing)
     try {
       dayEffects(d.res, r);
       if (d.res.marker) await runMarker(d.res.marker);
       if (T !== r) return;
       if (d.res.event) await runEvent(d.res.event);
       if (T !== r) return;
-      if (!d.res.event && !d.res.marker && dogBerriesDue(r)) { await dogBerries(); if (T !== r) return; }
+      // ---- v1.4: one thing a day, after the marker and the event (the journey's order): the dog's nose, a trail fact, the dust devil ----
+      if (d.res.nose) { await runNose(d.res.nose, r); if (T !== r) return; }
+      if (d.res.fact) { await runFact(d.res.fact, r); if (T !== r) return; }
+      if (d.res.moment && d.res.moment.kind === 'dustDevil') { await runDustDevil(r); if (T !== r) return; }
     } finally { dayFlow = false; }
     hud.update(J, r.leg, { milesDone: num(J.milesDone), foodLow: !!d.res.foodLow, ...hudExtra() });
     if (d.res.arrived || num(J.milesDone) >= r.leg.miles) { await arrival(r); return; }
@@ -1148,7 +1183,8 @@ async function boot() {
       else await runFactPanel(ev.name || 'Quick fact');
     } else if (kind === 'rest') await runFactPanel('Card game');
     else if (kind === 'trade') await runTrade(ev);
-    else if (kind === 'hunt' || kind === 'fish') await runMini(kind);
+    else if (kind === 'hunt') await runMini(kind);
+    else if (kind === 'fish') await runFishing({ rescue: !!ev.rescue });         // (v1.4: Fishing 2.0; the safety net is a rescue session)
     if (!T) return;
     if (ev.fix) toast(ev.fix);
     app.persist();
@@ -1206,13 +1242,14 @@ async function boot() {
   function runMini(kind) {
     return new Promise((resolve) => {
       const J = save.journey;
-      mini = { kind, lb: 0, hits: 0, resolve, done: false, card: false };
+      mini = { kind, lb: 0, hits: 0, leads: 0, resolve, done: false, card: false };
       $('#mini-text').textContent = kind === 'hunt' ? 'The bow: tap the animals' : 'The line: tap when it dips';
       $('#mini-done').textContent = kind === 'hunt' ? 'Done hunting' : 'Done fishing';
       $('#mini').hidden = false;
       // the scene owns the pointer (the canvas) and Space while it runs: no focused button may catch Space's keyup
       if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
       document.documentElement.classList.add('in-mini');
+      document.documentElement.classList.toggle('in-hunt', kind === 'hunt');       // (v1.4 playtest: the hunt's bar sits up in the hills, clear of the three lanes the animals cross in)
       const seed = hashString(`${currentPlayerId}:${J.legId}:${J.day}`);
       if (kind === 'hunt') S('startHunt', { seed, shots: 5 }); else S('startFish', { seed, casts: 4 });
       if (!scene) finishMini();
@@ -1224,12 +1261,12 @@ async function boot() {
     m.done = true;
     mini = null;
     $('#mini').hidden = true;
-    document.documentElement.classList.remove('in-mini');
+    document.documentElement.classList.remove('in-mini', 'in-hunt');
     const J = save.journey;
     const lb = Math.max(0, Math.round(total != null ? num(total) : m.lb));
     try { if (m.kind === 'hunt') JA.applyHunt(J, { meatLb: lb }); else JA.applyFish(J, { fishLb: lb }); } catch (e) { console.warn('[WagonWest] apply mini', e); }
     app.persist();
-    toast(lb ? `+${lb} lb of food for the wagon` : 'Nothing this time. The trail has more');
+    toast(lb ? `+${lb} lb of food for the wagon${m.leads ? ` (${m.leads === 1 ? 'a good lead' : m.leads + ' good leads'}!)` : ''}` : 'Nothing this time. The trail has more');
     m.resolve(lb);
   }
   $('#mini-done').addEventListener('click', () => {
@@ -1241,10 +1278,13 @@ async function boot() {
   });
   function onSceneEvent(evt) {
     if (!evt) return;
+    if (evt.type === 'sfx') { sceneSfx(evt); return; }       // ---- v1.4: the scene names the cue (splash, reel { on }, wobble, skip, plunk, twinkle, whoosh, snap); the app plays it
+    feedWaiters(evt);                   // ---- v1.4: a flow waiting for dogBack / chaseEnd / ambientEnd … (they never compete with playMini's own events)
     if (v2Event(evt)) return;           // ---- v1.2 (app two): the ford / float / raft / stampede events ----
     if (evt.type === 'hunt' && mini && mini.kind === 'hunt') {
       Sfx.twang();
-      if (evt.hit) { mini.lb += num(evt.meatLb); mini.hits += 1; toast('Got one!'); if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal)); } }
+      if (evt.hit) { mini.lb += num(evt.meatLb); mini.hits += 1; if (evt.lead) mini.leads += 1; toast(evt.lead ? 'Good lead! Got one!' : 'Got one!');   // (v1.4: a running animal needs a lead; no deed or token is named for it, so it is only recorded: the toast and the hunt's report line)
+       if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal)); } }
     } else if (evt.type === 'huntEnd' && mini && mini.kind === 'hunt') finishMini(Number.isFinite(evt.meatLb) ? evt.meatLb : null);
     else if (evt.type === 'fish' && mini && mini.kind === 'fish') { Sfx.plop(); mini.lb += num(evt.lb); mini.hits += 1; toast(`A ${evt.size || ''} fish!`.replace('  ', ' ')); if (!mini.card) { mini.card = true; dropCard(animalCard(evt.animal || 'fish') || animalCard('salmon')); } }
     else if (evt.type === 'animalSpotted') onSpotted(evt.animal);
@@ -1280,6 +1320,11 @@ async function boot() {
     if (kind === 'river') {
       const rr = await river.run({ leg });
       if (rr.cancelled) { if (screen === 'river') go('title'); return; }
+      // ---- v1.4: the far bank: the dog that has followed since the ferry (the Kansas River), then skipping stones ----
+      go('stop');
+      await offerDog(leg, { river: true, back: 'stop' });
+      if (screen !== 'stop') return;
+      if (RIVER_STOPS.includes(leg.id)) { await offerStones(leg); if (screen !== 'stop') return; }
     } else if (kind === 'fort') {
       let sl = leg;
       try { if (JA.storeLeg) sl = JA.storeLeg(J) || leg; } catch (_) { sl = leg; }
@@ -1304,18 +1349,22 @@ async function boot() {
         if (how !== 'results') return;
       }
     }
-    finishLeg(leg);
+    return finishLeg(leg);
   }
-  function finishLeg(leg) {
+  async function finishLeg(leg) {
     const J = save.journey;
     const now = Date.now();
     let a = null;
     try { a = JA.arrive(J); } catch (e) { console.error('[WagonWest] arrive threw', e); }
     a = a || { stars: [true, false, false], cash: { arrival: 0, stars: 0, total: 0 }, sticker: leg.sticker, crate: null };
+    // (v1.4: a quest item the nose never reached on this leg is found as the party arrives (arrive()'s result.quest): the dog trots back with it, the item card, before the results)
+    const arrivedQuest = questIdOf(a.quest);
+    if (arrivedQuest && J.dog) { try { await dogFetchesQuest(arrivedQuest); } catch (e) { console.warn('[WagonWest] arrival quest item', e); } if (save.journey !== J) return; }
     // the arrival's card (one of the leg's biome), and the daily challenge looks at the finished leg before it resets
     try { if (typeof JA.cardForLeg === 'function') dropCard(JA.cardForLeg(J, Math.random)); } catch (e) { console.warn('[WagonWest] cardForLeg', e); }
     checkDaily();
-    if (J.dog) J.dog.legs = num(J.dog.legs) + 1;
+    // (v1.4: the dog's leg count is the journey's: arrive() adds it, and a muddy dog gets its bath there)
+    if (a.bath) { applySceneParty(); effectToast(MOMENTS.chase.bath.text, MOMENTS.chase.bath.say || MOMENTS.chase.bath.text); }
     const stats = { ...(J.legStats || {}) };
     const stars = (a.stars || []).slice(0, 3).map(Boolean);
     while (stars.length < 3) stars.push(false);
@@ -1356,7 +1405,7 @@ async function boot() {
     let n = null;
     try { n = JA.newSeason ? JA.newSeason(J) : null; } catch (e) { console.warn('[WagonWest] newSeason', e); }
     if (!n || !Number.isFinite(n.legIndex)) { go('outfit', { fresh: true }); return; }
-    carryOver(J, n);
+    carryOver(J, n);                     // (the cards; the journey's newSeason carried the dog and the collections)
     save.journey = n;
     ensureJ();
     save.trip = null;
@@ -1433,7 +1482,7 @@ async function boot() {
   /** Open Camp ('trail': from the trail or the pause menu; 'arrival': the evening of an arrival). Resolves how it was left. */
   async function openCamp(context = 'trail') {
     if (!save.journey) return null;
-    campVisit = { context, line: false };
+    campVisit = { context, line: false, stars: false };
     S('setBackdrop', 'camp');
     S('setTravel', { moving: false });
     const how = await screens.camp.open({ context });
@@ -1445,10 +1494,18 @@ async function boot() {
   async function campActivity(kind) {
     const J = save.journey;
     if (!J) return;
+    if (['fetch', 'hoppers', 'stones', 'stars'].includes(kind)) { await funActivity(kind); try { screens.camp.refresh(); } catch (_) { /* ignore */ } return; }      // ---- v1.4: no day, no food ----
     const who = campCompanion();
-    try { if (typeof JA.camp === 'function') { const cr = JA.camp(J, kind, { rand: Math.random }); if (cr && cr.skill) skillLine(cr.skill); } } catch (e) { console.warn('[WagonWest] camp', e); }
+    try {
+      if (typeof JA.camp === 'function') {
+        const cr = JA.camp(J, kind, { rand: Math.random });
+        if (cr && cr.skill) skillLine(cr.skill);
+        if (cr && cr.bath) { applySceneParty(); effectToast(MOMENTS.chase.bath.text, MOMENTS.chase.bath.say || MOMENTS.chase.bath.text); }       // ---- v1.4: the muddy dog's bath in the creek ----
+      }
+    } catch (e) { console.warn('[WagonWest] camp', e); }
     app.persist(); refreshCash(); screens.camp.refresh();
-    if (kind === 'fish' || kind === 'hunt') { await runMini(kind); companionLine(who, true); }
+    if (kind === 'fish') { await runFishing(); companionLine(who, true); }
+    else if (kind === 'hunt') { await runMini(kind); companionLine(who, true); }
     else if (kind === 'cards') { await quickDraw(who); companionLine(who, false); }
     else if (kind === 'tales') { await campfireTale(); companionLine(who, true); }
     else { toast('A good rest. Everyone feels better'); companionLine(who, true, 'happy'); }
@@ -1563,44 +1620,45 @@ async function boot() {
   function onDerbyEnd(evt) { const d = derby; if (!d) return; derby = null; d.resolve({ won: !!evt.won, margin: num(evt.margin), markers: num(evt.markers), bursts: num(evt.bursts) }); }
   function quitDerby() { const d = derby; if (!d) return; derby = null; S('endDerby'); markerPanel.cancel(); d.resolve(null); }
 
-  // ---------- the dog (SPEC v1.1 §3): offered at Fort Kearny's store, named on the keyboard ----------
-  const KEARNY = Math.max(0, LEGS.findIndex((l) => l.id === 'fort-kearny'));
-  async function offerDog(leg) {
+  // ---------- the dog (SPEC v1.1 §3, v1.4 §1.5): offered on the far bank of the Kansas River (and, for a child who said "Not now", at
+  // every fort store), named on the keyboard; the journey's adoptDog makes it ----------
+  /** Does a dog get offered at this leg's stop now? (the journey's dogOfferAt: no dog, and the Kansas River or a fort from the second leg) */
+  function dogOfferHere(J, leg) {
+    if (!J || J.dog || !leg) return false;
+    try { if (typeof JA.dogOfferAt === 'function') return !!JA.dogOfferAt(J, leg); } catch (e) { console.warn('[WagonWest] dogOfferAt', e); }
+    return leg.id === 'kansas-river' || (leg.stop && leg.stop.kind === 'fort' && num(leg.n) >= 2);
+  }
+  async function offerDog(leg, { river = false, back = 'store' } = {}) {
     const J = save.journey;
-    if (!J || J.dog || LEGS.indexOf(leg) < KEARNY) return;
-    const c = await showCard({ kicker: 'At the fort', title: 'A new friend', text: DOG_OFFER, say: DOG_OFFER, tone: 'camp', button: 'Keep it!', alt: 'Not now' });
-    if (c !== true || screen !== 'store' || J !== save.journey) return;
+    if (!dogOfferHere(J, leg)) return;
+    const offer = river ? MOMENTS.dogOffer : { text: DOG_OFFER, say: DOG_OFFER };
+    const c = await showCard({ kicker: river ? 'On the far bank' : 'At the fort', title: 'A new friend', text: offer.text, say: offer.say || offer.text, tone: 'camp', button: 'Keep it!', alt: 'Not now' });
+    if (c !== true || screen !== back || J !== save.journey) return;
     const got = await dogUI.ask();
+    let quest = null;
     if (got && J === save.journey) {
-      J.dog = { name: got.name, coat: got.coat, legs: 0, nextBerries: 1 };
+      let a = null;
+      try { a = typeof JA.adoptDog === 'function' ? JA.adoptDog(J, { name: got.name, coat: got.coat }) : null; } catch (e) { console.warn('[WagonWest] adoptDog', e); }
+      if (!a || !J.dog) J.dog = { name: got.name, coat: got.coat, legs: 0, nextBerries: 1, treats: 0, muddy: false };
+      quest = a && a.quest ? (typeof a.quest === 'string' ? a.quest : a.quest.id) : null;
       app.persist();
       applySceneParty();
       S('dogBark');
-      toast(`${got.name} joins the party!`);
+      const joined = dogLine(DOG_LINES.joins);
+      toast(joined);
+      speech.later(joined);               // (said at once, behind what is playing: the store and the stop have no clear spot for a toast to be shown, and its line is said only when it is)
+      prepareVoice();                    // the dog's name is in a dozen lines now: their clips, this leg first
     }
-    if (screen === 'dog') go('store');
+    if (screen === 'dog') go(back);
+    if (quest && J === save.journey && screen === back) await dogFetchesQuest(quest);
   }
-  function dogBerriesDue(r) {
-    const J = save.journey;
-    return !!(J && J.dog && save.trip && !save.trip.berries && num(J.dog.legs) >= num(J.dog.nextBerries) && num(J.milesDone) >= r.leg.miles * 0.35 && num(J.milesDone) < r.leg.miles);
-  }
-  /** The dog's berry patch (the 'berries' bonus, fired by the app every other leg, with the dog's name in it). */
-  async function dogBerries() {
-    const J = save.journey;
-    const ev = EVENT_BY_ID.berries || { id: 'berries', kind: 'bonus', foodLb: 20, name: 'Wild berries' };
-    save.trip.berries = true;
-    save.trip.events = [...save.trip.events, 'berries'].slice(0, 8);
-    J.dog.nextBerries = num(J.dog.legs) + 2;
-    const lb = num(ev.foodLb) || 20;
-    J.food = num(J.food) + lb;
-    if (J.trip && Array.isArray(J.trip.happened) && !J.trip.happened.includes('berries')) J.trip.happened.push('berries');
-    app.persist();
-    S('dogBark');
-    S('setTravel', { moving: false });
-    const text = `${J.dog.name} runs off barking and comes back by a patch of wild plums. Everyone picks!`;
-    await showCard({ kicker: 'On the trail', title: `${J.dog.name} found berries!`, text, say: text, tone: 'bonus', button: 'Yum!' });
-    toast(`+${lb} lb of plums for the wagon`);
-    dropCard(plumCard());
+  /** The dog trots back with a quest item (the locket at the Kansas River): the item's card, "Keep it safe". */
+  async function dogFetchesQuest(questId) {
+    const q = QUEST_BY_ID[questId], J = save.journey;
+    if (!q || !J || !J.dog) return;
+    S('dogRun', 'quest', { emoji: q.item.emoji });
+    if (sceneHas('dogRun')) await waitScene('dogBack', 9000);
+    await showCard({ kicker: `${J.dog.name} found something!`, title: q.item.name, text: q.item.text, say: q.item.say || q.item.text, sticker: { emoji: q.item.emoji, name: '' }, tone: 'camp', button: 'Keep it safe' });
   }
   function createDogNamer() {
     let name = '', coat = DOG_COATS[0], waiter = null;
@@ -1707,7 +1765,7 @@ async function boot() {
   const v2 = { play: null, raft: null, bar: null };
   const peopleUI = createPeople(app);
   screens.stop = peopleUI;
-  const deedPop = createDeedPop($('#deedpop'), { sfx: Sfx, say: (t) => { app.sayLater(t); }, waitFor: () => cardPop.showing, hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) });
+  const deedPop = createDeedPop($('#deedpop'), { sfx: Sfx, say: (t) => { app.sayLater(t); }, waitFor: () => cardPop.showing || !!(findPop && findPop.visible), hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) });
   const RAFT_BENDS = 4;
   const seedFor = (tag) => { const J = save.journey; return hashString(`${currentPlayerId}:${J ? J.legId : ''}:${J ? num(J.day) : 0}:${J ? num(J.legStarts) : 0}:${tag}`); };
   function playMini(fn, opts, { end, types = [], onEvent = null } = {}) {
@@ -1741,11 +1799,13 @@ async function boot() {
     $('#mini-done').textContent = button;
     v2.bar = act;
     $('#mini').hidden = false;
+    if (findPop) findPop.suspend();
     if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
     document.documentElement.classList.add('in-mini');
   }
   function hideBar() {
     v2.bar = null;
+    $('#bait-row').hidden = true;
     if (mini) return;
     $('#mini').hidden = true;
     document.documentElement.classList.remove('in-mini');
@@ -1800,6 +1860,9 @@ async function boot() {
     app.persist(); refreshCash();
     if (held) { effectToast(`You held them!${num(pay && pay.cash) ? ` $${pay.cash} for steady hands, and a bison card.` : ''}`, 'You held them!'); Audio.cash(); }
     else effectToast('Pfft, dust everywhere! The herd rumbles away and the wagon is fine.', 'Pfft, dust everywhere!');
+    // v1.4: the first stampede of a season ends with the bison-thunder card (the rumble, the thousands, the wagon trains that waited)
+    const fid = pay && pay.fact ? pay.fact : (typeof JA.stampedeFact === 'function' && !pay ? JA.stampedeFact(J) : null);
+    if (fid && TRAIL_FACT_BY_ID[fid] && T) await runFact({ id: fid, night: false, ambient: null, sound: TRAIL_FACT_BY_ID[fid].sound }, T);
     if (T) hud.update(J, T.leg, { milesDone: num(J.milesDone), ...hudExtra() });
   }
 
@@ -1867,6 +1930,505 @@ async function boot() {
       JA, showCard, runProblem, runProblemPanel, ladderPick, dropCard, curLeg,
       playMini, endPlay: () => endPlay(), seed: seedFor, cross: v2Cross, floatSafe: v2FloatSafe,
       checkDeeds: () => { const ids = v2CheckDeeds(); if (ids.length) { app.persist(); refreshCash(); } return ids; },
+    },
+  });
+
+  // ---- v1.4: Frodo and the river (SPEC v1.4 §5) ----
+  // The journey decides (J.dog, the finds, the fish, the quests, the moments: src/journey/*), the scene draws (vignettes and
+  // mini-games on the same playMini() / waitScene() rails as v1.2's), and this block drives and speaks. Every journey call is
+  // guarded (typeof JA.x === 'function') so an older journey or scene never stops the trail; nothing here can be failed.
+  const waiters = [];                       // { types, resolve, t }: a flow waiting for one scene event (dogBack, chaseEnd, ambientEnd …)
+  const introSaid = new Set();              // a mini-game's intro line is spoken the first time only
+  let chase = null;                         // the rabbit chase in progress: { called }
+  let lastFishing = null;                   // (tests) the last fishing session: { lb, caught, junk, newSpecies, summary }
+  const sceneHas = (fn) => !!scene && typeof scene[fn] === 'function';
+  const dogOf = () => (save.journey && save.journey.dog) || null;
+  /** A line that names the dog, with the dog's name ("The dog" before there is one). */
+  function dogLine(t) { const d = dogOf(); return String(t).replace(/\{dog\}/g, d ? d.name : 'The dog'); }
+  /** Wait for a scene event (or `ms`): resolves the event, or null. */
+  function waitScene(types, ms = 9000) {
+    return new Promise((resolve) => {
+      if (!scene) { setTimeout(() => resolve(null), 0); return; }
+      const w = { types: Array.isArray(types) ? types : [types], resolve, t: 0 };
+      w.t = setTimeout(() => { const i = waiters.indexOf(w); if (i >= 0) waiters.splice(i, 1); resolve(null); }, ms);
+      waiters.push(w);
+    });
+  }
+  function feedWaiters(evt) {
+    for (let i = waiters.length - 1; i >= 0; i--) { const w = waiters[i]; if (w.types.includes(evt.type)) { waiters.splice(i, 1); clearTimeout(w.t); w.resolve(evt); } }
+  }
+  /** The scene's sound cues (it draws, the app plays: src/meta/sfx.js). */
+  function sceneSfx(evt) {
+    try {
+      if (evt.cue === 'reel') Sfx.reel(!!evt.on);
+      else if (typeof Sfx[evt.cue] === 'function' && evt.cue !== 'ambient') Sfx[evt.cue]();
+    } catch (_) { /* a sound never stops the trail */ }
+  }
+  const barText = (t) => { $('#mini-text').textContent = t; };
+  const introOnce = (key, line) => { if (line && !introSaid.has(key)) { introSaid.add(key); app.say(line.say || line.text); } };
+  const questIdOf = (x) => (!x ? null : typeof x === 'string' ? x : x.id || (x.quest && (typeof x.quest === 'string' ? x.quest : x.quest.id)) || null);
+  const hatsInPlay = () => partyLook().filter((p) => p.hat && p.hat !== 'none');
+  /** A thing the dog brought back (a find the journey has recorded): the pop with its line read, a "New!" ribbon on a first one. */
+  function popFind(f) {
+    const find = f && FIND_BY_ID[f.id];
+    if (!find || !findPop) return;
+    findPop.pop({ id: find.id, emoji: find.emoji, name: find.name, text: find.text, say: findLine(find), first: !!f.first });
+  }
+  function onTrailRun(fn) {              // (tests) a flow on an idle (or held: holdTrail) trail, as the day loop would run it
+    const r = T;
+    if (!r || (r.busy && !r.held)) return false;
+    const keep = !!r.held;
+    r.busy = true;
+    Promise.resolve().then(fn).catch((e) => console.error('[WagonWest] v1.4 flow', e)).finally(() => { if (T === r) { r.busy = keep; r.last = 0; } });
+    return true;
+  }
+
+  // ----- the dog's nose (§1.1): a find, a snake warning, a rabbit chase, the berry patch, a quest item -----
+  async function runNose(nose, r) {
+    const J = save.journey;
+    if (!nose || !J || !J.dog) return;
+    if (nose.kind === 'find') return noseFind(nose);                       // (the day does not stop for a find)
+    S('setTravel', { moving: false });
+    if (nose.kind === 'berries') return noseBerries(nose);
+    if (nose.kind === 'quest') return noseQuest(nose);
+    if (nose.kind === 'snake') return noseSnake(nose);
+    if (nose.kind === 'rabbit') return noseRabbit(r);
+  }
+  function noseFind(nose) {
+    const f = nose.find;
+    if (!f || !FIND_BY_ID[f.id]) return;
+    S('dogRun', 'find', { emoji: FIND_BY_ID[f.id].emoji });
+    const line = dogLine(DOG_LINES.found);
+    effectToast(line, line);
+    if (!sceneHas('dogRun')) { popFind(f); return; }
+    // (the day does not stop for a find: the dog is back in a few seconds and the pop comes out then)
+    waitScene('dogBack', 9000).then(() => { popFind(f); app.persist(); });
+    if (f.effect && f.effect.spirit && T) hud.update(save.journey, T.leg, { milesDone: num(save.journey.milesDone), ...hudExtra() });
+  }
+  async function noseBerries(nose) {
+    const J = save.journey, d = J.dog;
+    S('dogRun', 'berries', { emoji: '🍑' });
+    if (sceneHas('dogRun')) await waitScene('dogBack', 9000);
+    S('dogBark');
+    const lb = num(nose.foodLb) || 20;
+    const text = `${d.name} runs off barking and comes back by a patch of wild plums. Everyone picks!`;
+    await showCard({ kicker: 'On the trail', title: `${d.name} found berries!`, text, say: text, tone: 'bonus', button: 'Yum!' });
+    toast(`+${lb} lb of plums for the wagon`);
+    dropCard(nose.card ? cardOf(nose.card) : plumCard());
+    app.persist();
+  }
+  async function noseQuest(nose) {
+    const id = questIdOf(nose.quest);
+    if (id) await dogFetchesQuest(id);
+    app.persist();
+  }
+  async function noseSnake(nose) {
+    const J = save.journey, d = J.dog;
+    S('dogWarn');
+    Sfx.bark();
+    if (sceneHas('dogWarn')) await waitScene('dogWarnEnd', 9000);
+    await showCard({ kicker: 'On the trail', title: `${d.name} barks a warning!`, text: MOMENTS.snake.text, say: MOMENTS.snake.say || MOMENTS.snake.text, tone: 'lookout', button: 'Good dog!' });
+    dropCard(nose && nose.card ? cardOf(nose.card) : animalCard('rattlesnake'));
+    app.persist();
+  }
+  /** The rabbit chase: the dog's name is a big button; a tap in the first part of the run and he skids round and trots back. Late
+   *  or never: he comes back muddy from nose to tail. That is the whole penalty (the journey's chaseResult). */
+  async function noseRabbit() {
+    const J = save.journey, d = J.dog;
+    const btn = $('#dog-call');
+    $('#dog-call-name').textContent = d.name;
+    let end = null;
+    if (sceneHas('startChase')) {
+      chase = { called: false };
+      btn.hidden = false;
+      const line = dogLine(DOG_LINES.chase);
+      effectToast(line, line);
+      const endP = waitScene('chaseEnd', 16000);
+      S('startChase', { seed: seedFor('chase') });
+      end = await endP;
+      btn.hidden = true;
+      chase = null;
+    }
+    const called = end ? !!end.called : true;
+    const dist = end && Number.isFinite(end.dist) ? end.dist : (end ? 1 : 0);
+    let cr = null;
+    try { cr = typeof JA.chaseResult === 'function' ? JA.chaseResult(J, { called, dist }) : null; } catch (e) { console.warn('[WagonWest] chaseResult', e); }
+    cr = cr || { muddy: !called, line: called ? 'good' : 'muddy' };
+    const m = MOMENTS.chase[cr.line === 'good' ? 'good' : 'muddy'];
+    effectToast(m.text, m.say || m.text);
+    applySceneParty();                                     // (muddy: the mud overlay until a stop or a camp)
+    dropCard(cr.card ? cardOf(cr.card) : animalCard('jackrabbit'));
+    app.persist(); refreshCash();
+  }
+  $('#dog-call').addEventListener('click', () => {
+    if (!chase || chase.called) return;
+    chase.called = true;
+    const ok = S('chaseCall');
+    if (ok !== false) $('#dog-call').hidden = true;
+  });
+  window.addEventListener('keydown', (e) => {                           // (a laptop keyboard: Space or Enter calls the dog while the button shows)
+    if (!chase || chase.called || $('#dog-call').hidden || screen !== 'trail') return;
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); $('#dog-call').click(); }
+  });
+
+  // ----- trail facts (§1.6): a vignette with a sound, then a card with one true fact and its card for the album -----
+  async function runFact(fact, r) {
+    const J = save.journey, tf = fact && TRAIL_FACT_BY_ID[fact.id];
+    if (!J || !tf) return;
+    if (fact.night && r) {
+      r.weather = 'dusk';
+      S('setTravel', { milesDone: num(J.milesDone), pace: J.pace, rations: J.rations, weather: 'dusk', mood: J.mood, foodLow: false, moving: false });
+    } else S('setTravel', { moving: false });
+    if (fact.sound) Sfx.ambient(fact.sound);
+    if (fact.ambient && sceneHas('ambient')) { vignetteOn = true; try { S('ambient', fact.ambient); await waitScene('ambientEnd', 12000); } finally { vignetteOn = false; } }
+    if (T !== r && r) return;
+    await showCard({ kicker: 'Along the trail', title: tf.title, text: tf.text, say: tf.say || tf.text, tone: 'lookout', button: 'Wow' });
+    let hf = null;
+    try { hf = typeof JA.heardFact === 'function' ? JA.heardFact(J, tf.id) : null; } catch (e) { console.warn('[WagonWest] heardFact', e); }
+    dropCard((hf && hf.card) || tf.card);
+    if (tf.id === 'grizzly-ridge' && J.dog) { const l = dogLine(DOG_LINES.grizzly); effectToast(l, l); }
+    app.persist();
+  }
+
+  // ----- the dust devil (§1.4): the hats fly, tap to catch them -----
+  async function runDustDevil(r) {
+    const J = save.journey;
+    const hats = hatsInPlay();
+    if (!hats.length) return;
+    S('setTravel', { moving: false });
+    const intro = MOMENTS.dustDevil.intro;
+    await showCard({ kicker: 'On the trail', title: 'A dust devil!', text: intro.text, say: intro.say || intro.text, tone: 'event', button: 'Tap the hats!' });
+    if (T !== r) return;
+    showBar('Tap the hats!', 'Skip', () => endPlay(true));
+    const end = await playMini('startDustDevil', { seed: seedFor('dust'), hats }, { end: 'dustDevilEnd', types: ['hat'], onEvent: (e) => { if (e.caught) Sfx.chime(); } });
+    hideBar();
+    if (!end || T !== r) return;
+    const of = Number.isFinite(end.of) && end.of > 0 ? end.of : hats.length;
+    const caught = Math.max(0, Math.min(of, num(end.caught)));
+    let res = null;
+    try { res = typeof JA.dustDevilResult === 'function' ? JA.dustDevilResult(J, { caught, of }) : null; } catch (e) { console.warn('[WagonWest] dustDevilResult', e); }
+    const all = res ? !!res.all : caught >= of;
+    const m = all ? MOMENTS.dustDevil.all : MOMENTS.dustDevil.some;
+    effectToast(m.text, m.say || m.text);
+    if (all) { Audio.cash(); toast(`+${num(res && res.tokens) || 1} trade token`); }
+    else if (J.dog) { const l = dogLine(DOG_LINES.hats); effectToast(l, l); }
+    app.persist(); refreshCash();
+  }
+
+  // ----- skipping stones (§1.4): at the river stops after the crossing, and once a leg at a river camp -----
+  /** Are the stones still to be skipped here? (the journey keeps one flag for the stop and one for the camp of the leg) */
+  function stonesFree(J) {
+    const t = J && J.trip;
+    return !!t && typeof JA.stonesPlan === 'function' && !t[t.arrived ? 'stonesStop' : 'stones'];
+  }
+  async function offerStones(leg) {
+    const J = save.journey;
+    if (!J || !stonesFree(J)) return;
+    const m = MOMENTS.stones.intro;
+    const c = await showCard({ kicker: 'The river bank', title: 'Skip stones?', text: m.text, say: m.say || m.text, tone: 'camp', button: 'Skip stones', alt: 'On we go' });
+    if (c !== true || screen !== 'stop') return;
+    await runStones();
+  }
+  async function runStones() {
+    const J = save.journey;
+    let plan = { throws: 3, bonus: 0 };
+    try { plan = JA.stonesPlan(J) || plan; } catch (e) { console.warn('[WagonWest] stonesPlan', e); }
+    S('setBackdrop', 'river');
+    showBar('Tap to throw, then tap as the stone touches the water', 'Done', () => endPlay(true));
+    const end = await playMini('startStones', { seed: seedFor('stones'), throws: plan.throws, bonus: plan.bonus }, { end: 'stonesEnd', types: ['skip', 'stone'],
+      onEvent: (e) => { if (e.type === 'skip') { barText(`${e.n} skip${e.n === 1 ? '' : 's'}!`); } else if (e.type === 'stone') { barText(`Throw ${num(e.throw)}: ${num(e.skips)} skip${num(e.skips) === 1 ? '' : 's'}`); } } });
+    hideBar();
+    if (!end) return;
+    const throws = Array.isArray(end.throws) ? end.throws.map((n) => num(n)) : [];
+    if (!throws.length) return;
+    let res = null;
+    try { res = typeof JA.stonesResult === 'function' ? JA.stonesResult(J, { throws }) : null; } catch (e) { console.warn('[WagonWest] stonesResult', e); }
+    const best = res ? num(res.best) : Math.max(0, ...throws);
+    if (res && res.newBest) effectToast(MOMENTS.stones.best.text, MOMENTS.stones.best.say || MOMENTS.stones.best.text);
+    else toast(`Best throw: ${best} skip${best === 1 ? '' : 's'}`);
+    Audio.cash();
+    app.persist();
+  }
+
+  // ----- camp's games (§1.2, §1.3, §1.4): none of them costs a day or food -----
+  /** Which of camp's extra choices are on offer: 'fetch' | 'hoppers' | 'stones' | 'stars'. */
+  function funCamp(context) {
+    const J = save.journey;
+    if (!J) return [];
+    const out = [];
+    if (J.dog) out.push('fetch');
+    const max = (JA.FISHING && JA.FISHING.hopperMax) || 12;
+    if (typeof JA.catchHoppers === 'function' && num(J.goods && J.goods.hoppers) < max) out.push('hoppers');
+    let cw = null;
+    try { cw = typeof JA.campWater === 'function' ? JA.campWater(J) : null; } catch (_) { cw = null; }
+    if (cw && cw.river && stonesFree(J)) out.push('stones');
+    if (context === 'arrival' && campVisit && !campVisit.stars) {
+      let tonight = false;
+      try { tonight = typeof JA.meteorsTonight === 'function' && !!JA.meteorsTonight(J); } catch (_) { tonight = false; }
+      if (tonight) out.push('stars');
+    }
+    return out;
+  }
+  async function funActivity(kind) {
+    if (kind === 'fetch') await funFetch();
+    else if (kind === 'hoppers') await funHoppers();
+    else if (kind === 'stones') await runStones();
+    else if (kind === 'stars') await funMeteors();
+    if (screen === 'camp') S('setBackdrop', 'camp');
+    app.persist(); refreshCash();
+  }
+  async function funFetch() {
+    const J = save.journey;
+    if (!J || !J.dog) return;
+    introOnce('fetch', MOMENTS.fetch.intro);
+    showBar(MOMENTS.fetch.intro.text, 'Done', () => endPlay(true));
+    S('setBackdrop', 'camp');
+    let thrown = 0;
+    const end = await playMini('startFetch', { seed: seedFor('fetch'), throws: (JA.FETCH && JA.FETCH.throws) || 3 }, { end: 'fetchEnd', types: ['fetchThrow', 'fetchBack'],
+      onEvent: (e) => {
+        if (e.type !== 'fetchThrow') return;
+        thrown += 1;
+        let r = null;
+        try { r = typeof JA.fetchThrow === 'function' ? JA.fetchThrow(J, { dist: num(e.dist), rand: Math.random }) : null; } catch (x) { console.warn('[WagonWest] fetchThrow', x); }
+        r = r || { treats: 1, item: null };
+        const item = r.item ? FIND_BY_ID[r.item] : null;
+        const treats = Math.max(0, Math.min(3, Math.round(num(r.treats))));
+        barText(item ? dogLine(DOG_LINES.fetchFind) : treats ? MOMENTS.fetch.treats[treats - 1] : 'Good throw!');
+        if (item) popFind({ id: item.id, first: !!r.first });
+        S('fetchBring', { item: item ? 'find' : 'stick', emoji: item ? item.emoji : '🪵' });
+        app.persist();
+      } });
+    hideBar();
+    if (end && !end.early && thrown) effectToast(MOMENTS.fetch.tired.text, MOMENTS.fetch.tired.say || MOMENTS.fetch.tired.text);
+  }
+  async function funHoppers() {
+    const J = save.journey;
+    introOnce('hoppers', MOMENTS.hoppers.intro);
+    showBar(MOMENTS.hoppers.intro.text, 'Done', () => endPlay(true));
+    S('setBackdrop', 'camp');
+    const end = await playMini('startHoppers', { seed: seedFor('hoppers'), n: 6 }, { end: 'hoppersEnd', types: ['hopper'], onEvent: (e) => { if (e.caught) Sfx.plop(); } });
+    hideBar();
+    if (!end) return;
+    let r = null;
+    try { r = JA.catchHoppers(J, Math.max(0, Math.round(num(end.caught)))); } catch (e) { console.warn('[WagonWest] catchHoppers', e); }
+    const have = r ? num(r.have) : 0, max = (JA.FISHING && JA.FISHING.hopperMax) || 12;
+    if (have >= max) effectToast(MOMENTS.hoppers.full.text, MOMENTS.hoppers.full.say || MOMENTS.hoppers.full.text);
+    else toast(`${have} grasshopper${have === 1 ? '' : 's'} in the bait tin`);
+  }
+  async function funMeteors() {
+    const J = save.journey;
+    if (campVisit) campVisit.stars = true;
+    const m = MOMENTS.meteors;
+    introOnce('stars', m.intro);
+    showBar(m.intro.text, 'Done', () => endPlay(true));
+    S('setBackdrop', 'camp');
+    let wishes = 0;
+    const end = await playMini('startMeteors', { seed: seedFor('meteors'), n: (JA.MOMENTS && JA.MOMENTS.meteors && JA.MOMENTS.meteors.stars) || 8 }, { end: 'meteorsEnd', types: ['meteor'],
+      onEvent: () => {
+        let w = null;
+        try { w = typeof JA.wishFor === 'function' ? JA.wishFor(J, Math.random) : null; } catch (x) { console.warn('[WagonWest] wishFor', x); }
+        const wish = w && WISH_BY_ID[w.id];
+        if (!wish) return;
+        wishes += 1;
+        findPop.pop({ id: wish.id, emoji: '🌠', name: w.first ? 'A new wish' : 'A wish', text: wish.text, first: !!w.first, live: true, quiet: true });
+        app.persist();
+      } });
+    hideBar();
+    if (end) effectToast(m.end.text, m.end.say || m.end.text);
+  }
+
+  // ----- Fishing 2.0 (§1.3): bait, the cast and the dip, the fight (hold to reel, let go on the red), the log -----
+  function chooseBait(baits) {
+    return new Promise((resolve) => {
+      const row = $('#bait-row');
+      row.replaceChildren(...baits.map((b) => {
+        const def = BAIT_BY_ID[b.id] || { name: b.id, emoji: '🎣', text: '' };
+        const sub = b.id === 'hoppers' ? (b.n > 0 ? `${b.n} in the tin` : 'none yet') : b.id === 'spoon' ? (b.ok ? 'never used up' : 'at a fort store') : 'always there';
+        const btn = h('button', { class: 'bait-btn', 'data-bait': b.id, 'data-sfx': '', disabled: b.ok === false, 'aria-label': `${def.name}: ${def.text || sub}` },
+          h('span', { class: 'bait-emoji', 'aria-hidden': 'true' }, def.emoji), h('span', {}, def.name), h('small', {}, sub));
+        btn.addEventListener('click', () => { row.hidden = true; resolve(b.id); });
+        return btn;
+      }));
+      row.hidden = false;
+      showBar('Pick your bait', 'Done fishing', () => { row.hidden = true; resolve(null); });
+    });
+  }
+  /** One fishing session: the trail's fishing event (`rescue` for the safety net) or camp's Fishing. Resolves the pounds of fish. */
+  async function runFishing({ rescue = false, bait: preset = null } = {}) {
+    const J = save.journey;
+    if (!J) return 0;
+    if (typeof JA.fishingSession !== 'function' || !sceneHas('startFishing')) return runMini('fish');      // an older scene or journey: 1.0's cast and dip
+    const baits = typeof JA.baitsAvailable === 'function' ? JA.baitsAvailable(J) : [{ id: 'worms', ok: true }];
+    const bait = preset || await chooseBait(baits);
+    if (!bait) {
+      hideBar();
+      if (rescue) {                                          // (the safety net never leaves the wagon without food: a child who skips the line still gets the minimum)
+        try { const r0 = JA.endFishing(J, JA.fishingSession(J, { bait: 'worms', rescue: true })); app.persist(); if (r0 && num(r0.lb)) toast(`+${Math.round(num(r0.lb))} lb of fish for the wagon`); } catch (e) { console.warn('[WagonWest] rescue fishing', e); }
+      }
+      return 0;
+    }
+    let session = null;
+    try { session = JA.fishingSession(J, { bait, rescue }); } catch (e) { console.warn('[WagonWest] fishingSession', e); }
+    if (!session) { hideBar(); return 0; }
+    app.persist();                                          // (the plan used the tin and the seed counter)
+    const look = partyLook();
+    const hid = campCompanion();
+    const helperLook = look.find((l) => l.id === hid) || look[0] || null;
+    const helperC = helperLook ? COMPANION_BY_ID[helperLook.id] : null;
+    const m = MOMENTS.fishing;
+    const got = { caught: [], cards: [], questId: null, newSpecies: [] };
+    showBar(m.hint.text, 'Done fishing', () => endPlay(true));
+    const end = await playMini('startFishing', { seed: seedFor('fishing'), water: session.water, bait, casts: session.casts, cameo: session.cameo || null, helper: helperLook, dog: !!J.dog },
+      { end: 'fishingEnd', types: ['fishHook', 'fishMiss', 'fishPhase', 'fishWobble', 'fishHelp', 'fishHelped', 'fishOff', 'fishLand', 'fishCameo'], onEvent: (e) => fishEvent(e, session, got, helperC, m) });
+    hideBar();
+    Sfx.reel(false);
+    let r = null;
+    try { r = JA.endFishing(J, session); } catch (e) { console.warn('[WagonWest] endFishing', e); }
+    r = r || { lb: 0, caught: [], junk: [], newSpecies: [], best: false, summary: { text: m.none.text, say: m.none.say || m.none.text } };
+    lastFishing = { lb: num(r.lb), caught: r.caught || [], junk: r.junk || [], newSpecies: r.newSpecies || [], best: !!r.best, summary: r.summary, bait };
+    app.persist(); refreshCash();
+    if (!end || screen === 'title' || screen === 'players') return num(r.lb);
+    for (const sp of r.newSpecies || []) { const f = FISH_BY_ID[sp]; if (f && !got.cards.includes(f.card)) { got.cards.push(f.card); dropCard(f.card); } }
+    const sum = r.summary || { text: m.none.text, say: m.none.say || m.none.text };
+    await showCard({ kicker: 'Fishing', title: num(r.lb) ? 'A good catch!' : 'No bites this time', text: sum.text, say: sum.say || sum.text, tone: 'bonus', button: 'To the wagon' });
+    if ((r.newSpecies || []).length) effectToast(m.newSpecies.text, m.newSpecies.say || m.newSpecies.text);
+    if (num(r.lb)) toast(`+${Math.round(num(r.lb))} lb of fish for the wagon`);
+    if (got.questId && QUEST_BY_ID[got.questId]) {
+      const it = QUEST_BY_ID[got.questId].item;
+      await showCard({ kicker: 'In the bottle', title: it.name, text: it.text, say: it.say || it.text, sticker: { emoji: it.emoji, name: '' }, tone: 'camp', button: 'Keep it safe' });
+    }
+    app.persist();
+    return num(r.lb);
+  }
+  function fishEvent(e, session, got, helperC, m) {
+    const J = save.journey;
+    // (the reel, the wobble, the splash and the turtle's snap are the scene's cues: sceneSfx plays them)
+    if (e.type === 'fishHook') { Sfx.plop(); barText(m.hint.text); }
+    else if (e.type === 'fishMiss') barText(m.swam.text);
+    else if (e.type === 'fishPhase') { if (e.phase !== 'reel') Sfx.reel(false); }
+    else if (e.type === 'fishHelp') { barText(`${m.help.text}${helperC ? ` Tap ${helperC.name}.` : J.dog ? ` ${J.dog.name} is on the way.` : ''}`); }
+    else if (e.type === 'fishHelped') barText(helperC && helperC.lines && helperC.lines.help ? `${helperC.name}: “${helperC.lines.help}”` : J.dog ? dogLine(DOG_LINES.help) : 'Two on the rod!');
+    else if (e.type === 'fishOff') {
+      Sfx.reel(false); barText(m.off.text);
+      let co = null;
+      try { co = JA.castOff(J, session, e.i); } catch (x) { console.warn('[WagonWest] castOff', x); }
+      if (co && co.retry && co.fight) S('fishingRetry', e.i, co.fight);
+    } else if (e.type === 'fishLand') {
+      Sfx.reel(false);
+      let lr = null;
+      try { lr = JA.landCast(J, session, e.i); } catch (x) { console.warn('[WagonWest] landCast', x); }
+      lr = lr || {};
+      if (lr.kind === 'junk') {
+        const jk = JUNK_BY_ID[lr.junk];
+        barText(jk ? jk.text : 'Something odd on the line!');
+        const qid = questIdOf(lr.quest);
+        if (qid) got.questId = qid;
+      } else {
+        const f = FISH_BY_ID[lr.species];
+        Sfx.chime();
+        let t = f ? `${f.land.text} ${num(lr.lengthIn) ? `${Math.round(num(lr.lengthIn))} inches. ` : ''}` : 'Got one! ';
+        if (lr.best) t += `${m.best.text} `;
+        if (lr.firstSpecies) { t += m.newSpecies.text; got.newSpecies.push(lr.species); }
+        barText(t.trim());
+        if (f) got.caught.push(f.id);
+        const card = lr.card || (lr.firstSpecies && f ? f.card : null);
+        if (card && !got.cards.includes(card)) { got.cards.push(card); dropCard(card); }
+      }
+    } else if (e.type === 'fishCameo') barText(dogLine(e.kind === 'steal' ? DOG_LINES.steal : DOG_LINES.splash));
+  }
+
+  // ----- the old iron the dog brings (§1.1) and the store -----
+  Object.assign(app, {
+    /** Camp's extra choices (fetch, grasshoppers, stones, falling stars). */
+    funCamp,
+    /** What the wagon's old horseshoes sell for at a fort store: { n, cash } or null. */
+    horseshoes() {
+      const J = save.journey;
+      const n = J ? num(J.goods && J.goods.horseshoes) : 0;
+      if (!n) return null;
+      const price = (JA.HORSESHOE && JA.HORSESHOE.price) || 1;
+      return { n, cash: n * price * num(app.season().priceMult, 1) };
+    },
+    sellHorseshoes() {
+      const J = save.journey;
+      if (!J || typeof JA.sellHorseshoes !== 'function') return null;
+      let r = null;
+      try { r = JA.sellHorseshoes(J, { leg: curLeg() }); } catch (e) { console.warn('[WagonWest] sellHorseshoes', e); }
+      if (r && r.n) {
+        Audio.cash();
+        const text = `The blacksmith buys ${r.n} old horseshoe${r.n === 1 ? '' : 's'} for $${r.cash}.`;
+        effectToast(text);
+        app.sayLater(app.spoken(text));          // (read at once, behind whatever is playing: the store has no clear spot for a toast, and the sale should be heard)
+        app.persist(); refreshCash();
+      }
+      return r;
+    },
+    /** The post office: what was sent ahead to its owner (a quest walked past), one card each, before the letter. */
+    async questMail(leg) {
+      const J = save.journey;
+      if (!J || typeof JA.questMail !== 'function') return;
+      let list = [];
+      try { list = JA.questMail(J, { leg }) || []; } catch (e) { console.warn('[WagonWest] questMail', e); }
+      for (const m of list) {
+        const q = QUEST_BY_ID[m.questId];
+        await showCard({ kicker: 'Post office', title: q ? q.name : 'Sent ahead', text: m.text, say: m.text, sticker: q ? { emoji: q.item.emoji, name: '' } : null, tone: 'trade', button: 'Good' });
+        if (m.card) dropCard(m.card);
+      }
+      if (list.length) { app.persist(); app.v2.checkDeeds(); }
+    },
+  });
+  findPop = createFindPop($('#findpop'), { sfx: Sfx, say: (t) => speech.later(t), hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }), waitFor: () => !$('#cardpop').hidden || !$('#deedpop').hidden });         // (a card or a deed pop that is DRAWN now: one that only waits its turn behind a toast must not hold this one back)
+
+  // ----- test hooks (§5.11) -----
+  function makeNose(kind, findId) {
+    const J = save.journey, leg = curLeg();
+    if (kind === 'find') {
+      let id = findId;
+      if (!id && typeof JA.drawFind === 'function') { try { id = JA.drawFind(J, leg, Math.random, {}); } catch (_) { id = null; } }
+      id = id || 'pinecone';
+      let rf = null;
+      try { rf = typeof JA.recordFind === 'function' ? JA.recordFind(J, id) : null; } catch (e) { console.warn('[WagonWest] recordFind', e); }
+      return { kind, find: rf || { id, first: true, n: 1 } };
+    }
+    if (kind === 'berries') {
+      const lb = 20;
+      if (typeof JA.addFoodKind === 'function') { try { JA.addFoodKind(J, 'other', lb); } catch (_) { J.food = num(J.food) + lb; } } else J.food = num(J.food) + lb;
+      return { kind, foodLb: lb };
+    }
+    if (kind === 'quest') {
+      let id = null, f = null;
+      try { id = JA.questFindable(J, 'nose'); f = id ? JA.findQuestItem(J, id) : null; } catch (_) { id = null; }
+      return f ? { kind, quest: { id: questIdOf(f.quest) || id, item: f.item } } : null;
+    }
+    return { kind };
+  }
+  Object.assign(app, {
+    playNose: (kind, findId) => { const n = makeNose(kind, findId); return n ? onTrailRun(() => runNose(n, T)) : false; },
+    playFact(id) {
+      const tf = TRAIL_FACT_BY_ID[id];
+      return tf ? onTrailRun(() => runFact({ id, night: tf.when === 'night', ambient: tf.ambient || null, sound: tf.sound }, T)) : false;
+    },
+    playMoment: (kind) => (kind === 'dustDevil' ? onTrailRun(() => runDustDevil(T)) : false),
+    /** A fishing session on an idle trail or at camp (`bait` skips the choice). Returns at once: the session plays on. */
+    fishNow({ bait = null } = {}) {
+      if (T && (!T.busy || T.held)) { const r = T, keep = !!r.held; r.busy = true; runFishing({ bait }).catch((e) => console.error(e)).finally(() => { if (T === r) { r.busy = keep; r.last = 0; } }); return true; }
+      if (screen === 'camp' || screen === 'stop') { runFishing({ bait }).catch((e) => console.error(e)); return true; }
+      return false;
+    },
+    /** Tests only: start leg `legId` at mile 0 and go to the trail (for the Snake's sturgeon and The Dalles' Sam). */
+    jumpLeg(legId, { hold = false } = {}) {          // hold: the day loop is held still from the first frame (holdTrail), so nothing opens before a test acts
+      const J = save.journey;
+      if (!J || !LEG_BY_ID[legId] || typeof JA.startLeg !== 'function') return false;
+      stopTravel();
+      try { card.close(); } catch (_) { /* ignore */ }
+      JA.startLeg(J, legId);
+      J.milesDone = 0;
+      if (J.trip) J.trip.tipUsed = true;
+      save.trip = { legId, stage: 'trail', events: [], asked: { ration: 0, distance: 0 }, markers: 0, at: Date.now(), tokens0: num(J.tokens) };
+      app.persist();
+      hitTrail();
+      if (hold && T) { T.busy = true; T.held = true; }
+      return true;
     },
   });
 
@@ -1971,13 +2533,19 @@ async function boot() {
     app, pz, sync, tts, speech, store, river, postOffice, results, hud, markerPanel, problemPanel, spellPanel, card, wagonPanel,
     get scene() { return scene; }, get screen() { return screen; }, get save() { return save; }, get facts() { return facts; },
     get reading() { return { overlay: app.overlayOpen(), play: !!v2.play, bar: !!v2.bar, mini: !!mini, derby: !!derby }; },   // (tests: what holds the toasts)
-    holdTrail(on) { if (T) T.busy = !!on; return !!T; },   // (a test hook: the day loop waits, as it does under a scripted event)
-    get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb } : null; },
+    holdTrail(on) { if (T) { T.busy = !!on; T.held = !!on; } return !!T; },   // (a test hook: the day loop waits, as it does under a scripted event)
+    get travel() { return T ? { legId: T.leg.id, busy: T.busy, day: !!T.day } : null; }, get paused() { return paused; }, get mini() { return mini ? { kind: mini.kind, lb: mini.lb, leads: mini.leads || 0 } : null; },
     JA, cloud, Music, cardPop, toaster, camp: screens.camp,
     peopleUI, deedPop, get v2() { return { play: v2.play ? v2.play.fn : null, raft: v2.raft ? { ...v2.raft } : null }; },    // (v1.2 app two)
     get derby() { return derby ? { markers: derby.markers, bursts: derby.bursts.slice(), busy: derby.busy } : null; },
     get lastDerby() { return lastDerby; }, get lastQuickDraw() { return lastQuickDraw; }, get music() { return { ...musicState }; },
-    dropCard: (id) => dropCard(id), checkDaily: () => checkDaily(), dogBerries: () => (T && !T.busy && save.journey && save.journey.dog ? (T.busy = true, dogBerries().finally(() => { if (T) { T.busy = false; T.last = 0; } }), true) : false),
+    dropCard: (id) => dropCard(id), checkDaily: () => checkDaily(), dogBerries: () => app.playNose('berries'),
+    // ---- v1.4 test hooks (SPEC §5.11) ----
+    playNose: (kind, findId) => app.playNose(kind, findId), playFact: (id) => app.playFact(id), playMoment: (kind) => app.playMoment(kind),
+    fishNow: (opts) => app.fishNow(opts), jumpLeg: (id, opts) => app.jumpLeg(id, opts), findPop,
+    get fun() { const Jn = save.journey || {}; return { dog: Jn.dog || null, finds: Jn.finds || {}, fishLog: Jn.fishLog || {}, quests: Jn.quests || {}, skips: Jn.skips || {}, wishes: Jn.wishes || [], factsHeard: Jn.factsHeard || [] }; },
+    sceneEvent: (e) => onSceneEvent(e),              // (tests: a scene event, as the scene would send it)
+    get lastFishing() { return lastFishing; }, get chase() { return chase ? { ...chase } : null; },
     // a test hook: fire a trail event by id (or kind) on an idle trail, as the day loop would
     playEvent(id) { const ev = EVENT_BY_ID[id] || EVENTS.find((e) => e.kind === id); if (!ev || !T || T.busy) return false; T.busy = true; runEvent(ev).catch((e) => console.error(e)).finally(() => { if (T) { T.busy = false; T.last = 0; } }); return true; },
   }; // debugging / smoke tests

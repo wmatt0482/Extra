@@ -69,14 +69,15 @@ function wagonMark(x, y, paint = '#f3ead7') {
  * labels: 'next' (the title: the next stop only) | 'all' (the journal: every stop), stickers: [ids earned] }.
  */
 /** A small family wagon (one of the other players) at (x, y), in their colour; a roomy transparent hit area for a finger. */
-function famWagon(x, y, color, id) {
-  const g = el('g', { class: 'map-fam', 'data-player': id, role: 'button', tabindex: 0, 'aria-label': 'A wagon from your family. Tap to see whose.', transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` });
+function famWagon(x, y, color, id, dog = false) {
+  const g = el('g', { class: 'map-fam', 'data-player': id, 'data-dog': dog ? '1' : '0', role: 'button', tabindex: 0, 'aria-label': dog ? 'A wagon from your family, with a dog. Tap to see whose.' : 'A wagon from your family. Tap to see whose.', transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})` });
   g.append(el('circle', { class: 'fam-hit', cx: 0, cy: 0, r: 34, fill: 'transparent', stroke: 'none' }),
     el('ellipse', { cx: 0, cy: 12, rx: 17, ry: 3, fill: 'rgba(60,35,15,.25)' }),
     el('rect', { x: -12, y: 2, width: 24, height: 6, rx: 1.5, fill: '#6b4426' }),
     el('path', { d: 'M-11.5 3 Q0 -15 11.5 3Z', fill: color || '#f3ead7', stroke: '#4a2c16', 'stroke-width': 2 }),
     el('circle', { cx: -7, cy: 10, r: 4, fill: '#fff6e0', stroke: '#4a2c16', 'stroke-width': 2 }),
     el('circle', { cx: 7, cy: 10, r: 4, fill: '#fff6e0', stroke: '#4a2c16', 'stroke-width': 2 }));
+  if (dog) g.append(el('text', { class: 'fam-dog', x: 17, y: 12, 'font-size': 15, 'aria-hidden': 'true' }, '🐕'));      // (v1.4: a small dog beside a wagon whose journey has one)
   return g;
 }
 
@@ -118,7 +119,7 @@ export function drawMap(svg, { legs = [], J = null, inLeg = false, paint, labels
     const x = pa.x + (pb.x - pa.x) * fa.p, y = pa.y + (pb.y - pa.y) * fa.p;
     const key = `${fa.legsDone}:${Math.round(fa.p * 10)}`;
     const k = seenAt[key] = (seenAt[key] || 0) + 1;
-    const g = famWagon(x + (k - 1) * 30, y + 34, f.color, f.id);
+    const g = famWagon(x + (k - 1) * 30, y + 34, f.color, f.id, !!(f.J && f.J.dog));
     const tap = () => { if (typeof onFamily === 'function') onFamily(f); };
     g.addEventListener('click', tap);
     g.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tap(); } });

@@ -31,12 +31,31 @@
 // Timing for tests: window.__mockScript = { shotMs } (default 650 ms between shots / casts). 'ready' fires once after the first frame.
 //   v1.2 scripts: __mockScript.ford = 'soaked' (default dry), .bumps = n rocks hit by the float / the raft (default 1),
 //   .stampede = [bool, bool, bool] (the waves braked on the beat; default all true).
+//   v1.4 (Frodo and the river; SPEC v1.4 §4.4): the same API as the real scene, scripted, every step shotMs apart, driven by
+//   window.__mockScript: dogRun(kind) / dogWarn() end after shotMs ('dogBack' { kind } / 'dogWarnEnd'), ambient(kind) after
+//   2 x shotMs ('ambientEnd' { kind }); startChase: chase 'call' (default: chaseCall() → true, 'chase' { dist: 0.4 }, then
+//   'chaseEnd' { called: true, dist: 0.4 }; no call by 6 x shotMs → 'chaseEnd' { called: false, dist: 1 }) or 'late' (the
+//   call comes too late: chaseCall() → false, nothing is called, and at 6 x shotMs 'chaseEnd' { called: false, dist: 1 }: the dog is muddy); startFetch: fetch [0.2, 0.5, 0.9]
+//   the throws' dists → 'fetchThrow' { n, dist }, the app's fetchBring() → 'fetchBack' { n }, then 'fetchEnd' { throws, best };
+//   startHoppers: hoppers 4 (caught of n) → 'hopper' { caught } per catch, 'hoppersEnd'; startStones: stones [3, 5, 2] skips per
+//   throw (a bonus adds to the first) → 'skip' { n } per skip, 'stone' { throw, skips }, 'stonesEnd' { throws, best };
+//   startMeteors: meteors 5 (tapped of 8) → 'meteor' { n }, 'meteorsEnd' { tapped, of }; startDustDevil: hats 'all' | n →
+//   'hat' { id, caught } per hat, 'dustDevilEnd' { caught, of }; startFishing: fishing [{ hook: true, fight: 'land' | 'off' |
+//   'help' }, …] per cast (default every cast hooked and landed), run with the REAL fight stepper (land = held except in the
+//   wobbles, off = held throughout, help = as land and it waits at the help phase for fishingHelp()); events 'fishHook',
+//   'fishPhase', 'fishHelp', 'fishHelped', 'fishOff' (then fishingRetry(i, fight) re-runs the cast once), 'fishMiss',
+//   'fishLand', 'fishCameo', 'fishingEnd' { landed, casts }. hunt: ['still' | 'lead' | 'miss' | 'lead-miss', …] per arrow:
+//   'hunt' { hit, animal, meatLb, lead } (a still hit, a running hit with lead: true, a miss). getState().mini carries
+//   { kind, phase, … } for each (fishing: { kind: 'fishing', cast, phase, progress, wobble, warn }).
 const SKIES = {
   prairie: ['#8fc6e8', '#f6e3b4'], bluffs: ['#9cc3e0', '#f2d2a0'], highdesert: ['#a8cfe6', '#f4d9a8'],
   mountains: ['#7fb2dc', '#e4ecf2'], gorge: ['#8db8d4', '#d9e6e8'], valley: ['#92cbe6', '#eef2c8'],
 };
 const GROUNDS = { prairie: '#a9b85a', bluffs: '#c49a62', highdesert: '#c8ad78', mountains: '#7f9a6a', gorge: '#6f8f6a', valley: '#8fbf5f' };
 const HUNT = [{ animal: 'rabbit', meatLb: 4 }, { animal: 'turkey', meatLb: 10 }, { animal: 'deer', meatLb: 30 }];
+// INTEGRATION: swap this one line for '../journey/fishing.js' when the Journey stream's stepper is merged (same signature)
+import { createFight, fightStep, fightHelp } from '../journey/fishing.js';
+import { devSession } from '../scene/devSession.js';
 const FISH = [{ size: 'small', lb: 2 }, { size: 'medium', lb: 4 }, { size: 'big', lb: 7 }];
 
 export function createScene(canvas, { onEvent = () => {}, reducedMotion = false } = {}) {
@@ -126,6 +145,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
       if (S.mini.kind === 'ford') { ctx.fillStyle = 'rgba(63,134,173,.85)'; ctx.fillRect(0, Math.round(h * 0.8), w, h - Math.round(h * 0.8)); }   // the river band (debugMini)
       ctx.fillStyle = '#fff6e0'; ctx.font = '700 18px system-ui, sans-serif'; ctx.textAlign = 'center';
       const k = S.mini.kind;
+      if (S.mini.v14) { ctx.fillText(`${k}: ${S.mini.state().phase || ''}`, w / 2, h * 0.4); ctx.textAlign = 'start'; return; }
       ctx.fillText(k === 'hunt' ? `Bow: ${S.mini.left} arrows left · ${S.mini.hits} got`
         : k === 'fish' ? `Line: ${S.mini.left} casts left · ${S.mini.hits} bites`
           : k === 'ford' ? `Ford: tap on the calm beat (${S.mini.left} left)`
@@ -216,11 +236,16 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     if (!m || m.kind !== 'hunt' || !S.playing) return;
     clearTimeout(miniTimer);
     const i = m.shots - m.left;
-    const hit = i % 2 === 0;
-    const a = HUNT[(m.seed + i) % HUNT.length];
+    // v1.4 __mockScript.hunt = ['still' | 'lead' | 'miss' | 'lead-miss', …] per shot (cycled): a still hit, a running hit
+    // (lead: true) or a miss; without it the old alternation (hit, miss, …) with lead: false. An entry may also be an
+    // object { hit, lead, animal, meatLb }.
+    const plan = Array.isArray(script().hunt) && script().hunt.length ? script().hunt[i % script().hunt.length] : null;
+    let hit = i % 2 === 0, lead = false, a = HUNT[(m.seed + i) % HUNT.length];
+    if (plan && typeof plan === 'object') { hit = plan.hit !== false; lead = !!plan.lead; a = { animal: plan.animal || a.animal, meatLb: Number.isFinite(plan.meatLb) ? plan.meatLb : a.meatLb }; }
+    else if (plan) { hit = plan === 'still' || plan === 'lead'; lead = plan === 'lead'; if (plan === 'lead') a = { animal: 'rabbit', meatLb: 4 }; else if (plan === 'still') a = { animal: 'deer', meatLb: 30 }; }
     m.left -= 1;
-    if (hit) { m.hits += 1; m.meat += a.meatLb; }
-    emit('hunt', { hit, animal: a.animal, meatLb: hit ? a.meatLb : 0 });
+    if (hit) { m.hits += 1; m.meat += a.meatLb; if (lead) m.leadHits = (m.leadHits || 0) + 1; }
+    emit('hunt', { hit, animal: hit ? a.animal : (plan ? null : a.animal), meatLb: hit ? a.meatLb : 0, lead: hit && lead });
     if (m.left <= 0) { const out = { meatLb: m.meat, hits: m.hits, shots: m.shots }; stopMini(); draw(); emit('huntEnd', out); return; }
     draw();
     miniTimer = setTimeout(huntShot, shotMs());
@@ -244,6 +269,23 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
   const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => resize()) : null;
   if (ro) ro.observe(canvas);
 
+  // v1.4 helpers: a vignette ends with one event after `mult` x shotMs; a sequence runs `steps` scripted steps shotMs apart
+  function vignette(kind, mult, evt) {
+    stopMini();
+    const m = S.mini = { v14: true, kind, state: () => ({ kind, phase: 'play' }), summary: () => ({ finished: false }) };
+    m.resume = () => { if (S.mini !== m) return; stopMini(); const { type, ...rest } = evt; emit(type, rest); };
+    kick(); miniTimer = setTimeout(m.resume, shotMs() * mult);
+    return true;
+  }
+  function sequence(kind, steps, fn, extra = {}) {
+    stopMini();
+    const pick = (m) => Object.fromEntries(Object.keys(extra).map((k) => [k, m[k]]));
+    const m = S.mini = { v14: true, kind, i: 0, ...extra, state: () => ({ kind, phase: 'play', ...pick(m) }), summary: () => ({ ...pick(m), finished: false }) };
+    const tick = () => { if (S.mini !== m) return; const i = m.i++; fn(i, m); if (S.mini === m && m.i < steps) miniTimer = setTimeout(tick, shotMs()); };
+    m.resume = tick;
+    kick(); miniTimer = setTimeout(tick, shotMs());
+    return true;
+  }
   const scene = {
     setLeg(leg = {}) { S.leg = { ...S.leg, ...leg }; draw(); },
     setParty(p = {}) { S.party = { ...S.party, ...p, wagon: { ...S.party.wagon, ...(p.wagon || {}) }, dog: p.dog === undefined ? S.party.dog : (p.dog ? { ...p.dog } : null) }; draw(); },
@@ -273,6 +315,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     endMiniGame() {
       if (S.derby) return scene.endDerby();
       const m = S.mini;
+      if (m && m.v14) { const o = m.summary(); stopMini(); draw(); return o; }
       const out = !m ? null
         : m.kind === 'hunt' ? { meatLb: m.meat, hits: m.hits, shots: m.shots - m.left }
           : m.kind === 'fish' ? { fishLb: m.meat, caught: m.hits, casts: m.shots - m.left }
@@ -342,12 +385,147 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
       stopMini(); draw();
       return out;
     },
+    // ---- v1.4 (scripted; see the header) ----
+    dogRun(kind = 'find') { return vignette('dogRun', 1, { type: 'dogBack', kind }); },
+    dogWarn() { return vignette('dogWarn', 1, { type: 'dogWarnEnd' }); },
+    ambient(kind = 'crack') { return vignette('ambient', 2, { type: 'ambientEnd', kind }); },
+    startChase() {
+      stopMini();
+      const late = script().chase === 'late';
+      const m = S.mini = { v14: true, kind: 'chase', phase: 'out', state: () => ({ kind: 'chase', phase: m.phase }), summary: () => ({ called: false, dist: 0 }) };
+      m.resume = () => { m.phase = 'end'; stopMini(); emit('chaseEnd', { called: false, dist: 1 }); };
+      m.call = () => {
+        if (m.phase !== 'out' || late) return false;     // ('late': the call comes too late, the dog is already a dot on the horizon: nothing is called)
+        clearTimeout(miniTimer); m.phase = 'back'; emit('chase', { dist: 0.4 });
+        miniTimer = setTimeout(() => { if (S.mini !== m) return; stopMini(); emit('chaseEnd', { called: true, dist: 0.4 }); }, shotMs());
+        return true;
+      };
+      kick(); miniTimer = setTimeout(m.resume, shotMs() * 6);
+      return true;
+    },
+    chaseCall() { return !!(S.mini && S.mini.kind === 'chase' && S.mini.call()); },
+    startFetch({ throws = 3 } = {}) {
+      stopMini();
+      const plan = Array.isArray(script().fetch) && script().fetch.length ? script().fetch : [0.2, 0.5, 0.9];
+      const m = S.mini = { v14: true, kind: 'fetch', n: 0, throws, best: 0, phase: 'ready', state: () => ({ kind: 'fetch', phase: m.phase, n: m.n, throws, best: m.best }), summary: () => ({ throws: m.n, best: m.best }) };
+      const throwNext = () => {
+        if (S.mini !== m) return;
+        const dist = plan[m.n % plan.length]; m.n++; m.best = Math.max(m.best, dist); m.phase = 'wait';
+        emit('fetchThrow', { n: m.n, dist });
+      };
+      m.resume = throwNext;
+      m.bring = () => {
+        if (m.phase !== 'wait') return false;
+        m.phase = 'run';
+        miniTimer = setTimeout(() => {
+          if (S.mini !== m) return;
+          emit('fetchBack', { n: m.n });
+          if (m.n >= throws) { m.phase = 'flop'; miniTimer = setTimeout(() => { if (S.mini !== m) return; const o = { throws: m.n, best: m.best }; stopMini(); emit('fetchEnd', o); }, shotMs()); }
+          else { m.phase = 'ready'; miniTimer = setTimeout(throwNext, shotMs()); }
+        }, shotMs());
+        return true;
+      };
+      kick(); miniTimer = setTimeout(throwNext, shotMs());
+      return true;
+    },
+    fetchBring() { return !!(S.mini && S.mini.kind === 'fetch' && S.mini.bring()); },
+    startHoppers({ n = 6 } = {}) {
+      const want = Number.isFinite(Number(script().hoppers)) ? Math.max(0, Math.min(n, Number(script().hoppers))) : Math.min(4, n);
+      return sequence('hoppers', want + 1, (i, m) => (i < want ? (m.caught = i + 1, emit('hopper', { caught: i + 1 })) : (stopMini(), emit('hoppersEnd', { caught: want }))), { caught: 0 });
+    },
+    startStones({ throws = 3, bonus = 0 } = {}) {
+      const plan = (Array.isArray(script().stones) && script().stones.length ? script().stones : [3, 5, 2]).slice();
+      const res = [];
+      return sequence('stones', throws + 1, (i, m) => {
+        if (i < throws) { const sk = (plan[i % plan.length] | 0) + (i === 0 ? bonus : 0); for (let j = 1; j <= sk; j++) emit('skip', { n: j }); res.push(sk); m.throw = i + 1; emit('stone', { throw: i + 1, skips: sk }); }
+        else { stopMini(); emit('stonesEnd', { throws: res.slice(), best: Math.max(0, ...res) }); }
+      }, { throw: 0 });
+    },
+    startMeteors({ n = 8 } = {}) {
+      const want = Number.isFinite(Number(script().meteors)) ? Math.max(0, Math.min(n, Number(script().meteors))) : Math.min(5, n);
+      return sequence('meteors', want + 1, (i, m) => (i < want ? (m.tapped = i + 1, emit('meteor', { n: i + 1 })) : (stopMini(), emit('meteorsEnd', { tapped: want, of: n }))), { tapped: 0 });
+    },
+    startDustDevil({ hats = [] } = {}) {
+      const list = (Array.isArray(hats) ? hats : []).filter((h) => h && h.hat !== 'none');
+      const want = script().hats == null || script().hats === 'all' ? list.length : Math.max(0, Math.min(list.length, Number(script().hats) || 0));
+      return sequence('dustDevil', list.length + 1, (i, m) => (i < list.length ? (i < want && (m.caught = i + 1), emit('hat', { id: list[i].id, caught: i < want })) : (stopMini(), emit('dustDevilEnd', { caught: want, of: list.length }))), { caught: 0 });
+    },
+    startFishing(o = {}) {
+      stopMini();
+      const sess = Array.isArray(o.casts) ? { casts: o.casts } : devSession({ seed: Number(o.seed) || 1, water: o.water || 'kansas', bait: o.bait || 'worms', casts: Math.max(1, Number(o.casts) || 4) });
+      const casts = sess.casts, plan = Array.isArray(script().fishing) ? script().fishing : [];
+      const m = S.mini = {
+        v14: true, kind: 'fishing', i: 0, landed: 0, phase: 'cast', fs: null, waitHelp: false, waitRetry: false, retried: {}, retryFight: null, cameo: o.cameo || null,
+        state: () => ({ kind: 'fishing', cast: Math.min(casts.length, m.i + 1), phase: m.phase, progress: m.fs ? m.fs.progress : 0, wobble: !!(m.fs && m.fs.wobble), warn: !!(m.fs && m.fs.warn), landed: m.landed }),
+        summary: () => ({ landed: m.landed, casts: m.i }),
+      };
+      const next = () => {
+        if (S.mini !== m) return;
+        m.i++; m.fs = null;
+        if (m.i >= casts.length) { m.phase = 'end'; const out = { landed: m.landed, casts: casts.length }; stopMini(); emit('fishingEnd', out); return; }
+        m.phase = 'cast'; miniTimer = setTimeout(runCast, shotMs());
+      };
+      // run the real stepper with the scripted pattern: 'land' holds except in the wobbles (and the warning), 'off' holds throughout
+      const sim = (fight, pattern) => {
+        let fs = m.fs || createFight(fight);
+        for (let t = 0; t < 120000; t += 16) {
+          const wob = fs.wobble || fs.warn;
+          fs = fightStep(fs, 16, pattern === 'off' ? true : !wob);
+          m.fs = fs;
+          if (fs.phase === 'help' || fs.phase === 'landed' || fs.phase === 'off') return fs;
+        }
+        return fs;
+      };
+      const finish = (fs) => {
+        if (S.mini !== m) return;
+        if (fs.phase === 'help') {
+          m.phase = 'help'; m.waitHelp = true; emit('fishPhase', { i: m.i, phase: 'help' }); emit('fishHelp', { i: m.i });
+          return;
+        }
+        emit('fishPhase', { i: m.i, phase: fs.phase });
+        if (fs.phase === 'off') {
+          m.phase = 'off'; m.waitRetry = true; emit('fishOff', { i: m.i });
+          miniTimer = setTimeout(() => {
+            if (S.mini !== m) return;
+            m.waitRetry = false;
+            if (m.retryFight) { const f = m.retryFight; m.retryFight = null; m.fs = null; m.phase = 'fight'; emit('fishHook', { i: m.i }); finish(sim(f, 'land')); } else next();
+          }, shotMs());
+          return;
+        }
+        m.landed++; m.phase = 'land'; emit('fishLand', { i: m.i });
+        if (m.cameo && (m.cameo.at | 0) === m.i && casts[m.i].kind === 'fish') emit('fishCameo', { i: m.i, kind: m.cameo.kind === 'steal' ? 'steal' : 'splash' });
+        miniTimer = setTimeout(next, shotMs());
+      };
+      const runCast = () => {
+        if (S.mini !== m) return;
+        const c = casts[m.i], pl = plan[m.i % Math.max(1, plan.length)] || {};
+        if (pl.hook === false) { m.phase = 'away'; emit('fishMiss', { i: m.i }); miniTimer = setTimeout(next, shotMs()); return; }
+        m.phase = 'fight'; emit('fishHook', { i: m.i }); emit('fishPhase', { i: m.i, phase: 'reel' });
+        const style = pl.fight || 'land';
+        const fs = sim(c.fight, style === 'off' ? 'off' : 'land');
+        miniTimer = setTimeout(() => finish(fs), shotMs());
+      };
+      m.help = () => {
+        if (!m.waitHelp) return false;
+        m.waitHelp = false; m.fs = fightHelp(m.fs); emit('fishHelped', { i: m.i }); m.phase = 'fight';
+        const fs = sim(casts[m.i].fight, 'land');
+        miniTimer = setTimeout(() => finish(fs), shotMs());
+        return true;
+      };
+      m.retry = (i, fight) => { if (!m.waitRetry || i !== m.i || m.retried[i] || !fight) return false; m.retried[i] = true; m.retryFight = fight; return true; };
+      m.resume = runCast;
+      kick(); miniTimer = setTimeout(runCast, shotMs());
+      return true;
+    },
+    fishingRetry(i, fight) { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.retry(i, fight)); },
+    fishingHelp() { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.help()); },
     dogBark() { if (!S.party.dog) return false; S.barkT = 30; kick(); setTimeout(() => emit('bark', {}), 0); return true; },
     setReducedMotion(on) { reducedMotion = !!on; draw(); },
     play() {
       S.playing = true;
       const STEP = { derby: derbyNext, hunt: huntShot, fish: fishCast, ford: fordStep, float: floatStep, raft: raftBend, stampede: stampedeStep };
-      if (S.mini && !miniTimer && !(S.derby && S.derby.waiting) && !S.mini.waiting) miniTimer = setTimeout(STEP[S.mini.kind] || fishCast, shotMs());
+      if (S.mini && S.mini.v14) { if (!miniTimer && S.mini.resume) miniTimer = setTimeout(S.mini.resume, shotMs()); }
+      else if (S.mini && !miniTimer && !(S.derby && S.derby.waiting) && !S.mini.waiting) miniTimer = setTimeout(STEP[S.mini.kind] || fishCast, shotMs());
       kick();
     },
     pause() { S.playing = false; clearTimeout(miniTimer); miniTimer = 0; cancelAnimationFrame(raf); raf = 0; },
@@ -359,6 +537,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
       return { backdrop: S.backdrop, milesDone: S.travel.milesDone, weather: S.travel.weather, moving: !!S.travel.moving,
         biome: S.leg.biome, legId: S.leg.id, pace: S.travel.pace, view: S.backdrop, playing: S.playing, reducedMotion: !!reducedMotion,
         mini: S.derby ? { kind: 'derby', progress: S.derby.pos, mailProgress: S.derby.mail, left: S.derby.of - S.derby.n, phase: S.derby.phase, markers: S.derby.n, bursts: S.derby.bursts.length, won: S.derby.won }
+          : S.mini && S.mini.v14 ? S.mini.state()
           : S.mini && S.mini.kind === 'ford' ? { kind: 'ford', left: S.mini.left, good: S.mini.good, pushes: S.mini.i, phase: 'play' }
             : S.mini && S.mini.kind === 'float' ? { kind: 'float', left: S.mini.left, bumps: S.mini.bumps, phase: 'play' }
               : S.mini && S.mini.kind === 'raft' ? { kind: 'raft', n: S.mini.n, of: S.mini.of, left: S.mini.left, waiting: S.mini.waiting, phase: S.mini.waiting ? 'wait' : 'play' }

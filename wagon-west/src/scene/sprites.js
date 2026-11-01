@@ -233,6 +233,12 @@ function hatPath(c, hat, hx, hy, col) {
     default: return;
   }
 }
+// a hat on its own (v1.4: the dust devil's flying hats): the brim centre at (x, y), a head-width of ~20 units
+export function drawHat(c, hat, x, y, s, col, ang = 0) {
+  c.save(); c.translate(x, y); c.rotate(ang); c.scale(s, s);
+  hatPath(c, hat, 0, 6, col);
+  c.restore();
+}
 // a companion walking right; ph = walk phase, amp = swing (0 standing), cheer = 0..1 (arms up, a hop)
 export function drawPerson(c, x, y, s, look, ph, amp, cheer = 0, dir = 1) {
   c.save(); c.translate(x, y); c.scale(s * dir, s);
@@ -333,8 +339,11 @@ export const GAME_ANIMALS = {
   rabbit: { meatLb: 10, r: 18, speed: 150, hop: 1 },
   turkey: { meatLb: 15, r: 22, speed: 85, hop: 0 },
   deer: { meatLb: 40, r: 34, speed: 115, hop: 0.6 },
+  // v1.4 (the leading hunt): pronghorn race, bison stand about; drawn by drawCritter (see drawHuntCritter in hunt.js)
+  pronghorn: { meatLb: 12, r: 27, speed: 175, hop: 0.6 },
+  bison: { meatLb: 24, r: 34, speed: 60, hop: 0 },
 };
-function dizzy(c, x, y, t) {
+export function dizzy(c, x, y, t) {
   c.beginPath();
   for (let i = 0; i < 3; i++) {
     const a = t * 5 + (i * TAU) / 3, sx = x + Math.cos(a) * 12, sy = y + Math.sin(a) * 4;
@@ -499,8 +508,9 @@ export const DOG_COATS = {
 export const dogCoat = (coat) => (DOG_COATS[coat] ? coat : 'brown');
 // ph: trot phase (any real; the frame flips at each integer) ; amp > 0 = trotting ; t: seconds (the tail) ;
 // bark: 0 (none) .. 1 (just barked; fades to 0) ; dir: 1 right / -1 left ; sit: the sitting pose
-export function drawDog(c, x, y, s, coat, ph, amp, t, bark, dir, sit) {
-  const C = DOG_COATS[coat] || DOG_COATS.brown;
+export function drawDog(c, x, y, s, coat, ph, amp, t, bark, dir, sit, mud = 0) {
+  let C = DOG_COATS[coat] || DOG_COATS.brown;
+  if (mud) C = { body: shade(C.body, -0.12), ear: shade(C.ear, -0.1), muzzle: shade(C.muzzle, -0.12), spots: C.spots, black: C === DOG_COATS.black };
   const lean = bark > 0 ? Math.sin(Math.min(1, (1 - bark) * 1.4) * Math.PI) : 0;
   c.save(); c.translate(x, y); c.scale(s * dir, s);
   c.beginPath(); c.ellipse(0, 1.5, 17, 3, 0, 0, TAU); c.fillStyle = 'rgba(40,25,10,0.22)'; c.fill();
@@ -552,8 +562,21 @@ export function drawDog(c, x, y, s, coat, ph, amp, t, bark, dir, sit) {
     c.beginPath(); c.moveTo(hx + 4, hy + 5); c.lineTo(hx + 12, hy + 3.5); c.lineTo(hx + 9.5, hy + 8.5); c.closePath(); outlineFill(c, '#e88aa0', 1.6);
   }
   c.beginPath(); c.arc(hx + 12.2, hy + 0.5 - lean, 1.9, 0, TAU); c.fillStyle = OUT; c.fill();
-  c.beginPath(); c.arc(hx + 2.8, hy - 3, 1.4, 0, TAU); c.fillStyle = C === DOG_COATS.black ? '#f4ecd8' : OUT; c.fill();
+  c.beginPath(); c.arc(hx + 2.8, hy - 3, 1.4, 0, TAU); c.fillStyle = (C === DOG_COATS.black || C.black) ? '#f4ecd8' : OUT; c.fill();
   c.beginPath(); c.ellipse(hx - 3.5, hy - 0.5 - lean * 2, 3, 6.5, 0.35 - lean * 0.6, 0, TAU); outlineFill(c, C.ear, 1.8);
+  if (mud) { // v1.4: muddy from nose to tail: brown splatters on the coat, muddy paws, a nose smudge and a drip
+    c.fillStyle = '#6b4a2c';
+    c.beginPath();
+    if (sit && bark <= 0) { c.ellipse(-8, -8, 5, 3.4, 0.2, 0, TAU); c.moveTo(6, -14); c.ellipse(4, -14, 3.6, 2.6, 0, 0, TAU); c.moveTo(14, -3); c.ellipse(12, -3, 3.2, 3.6, 0, 0, TAU); c.moveTo(5, -1.5); c.ellipse(2, -1.5, 5, 2.2, 0, 0, TAU); }
+    else {
+      c.ellipse(-6, -17, 6, 3.6, 0.15, 0, TAU); c.moveTo(11, -18); c.ellipse(7, -18, 4.6, 3, 0, 0, TAU); c.moveTo(-13, -14); c.ellipse(-12, -13, 3, 2.6, 0, 0, TAU);
+      for (const lx of [-7, 13]) { c.moveTo(lx + 3.6, -4); c.ellipse(lx, -4, 3.6, 4.6, 0, 0, TAU); }
+      for (const lx of [-11, 10]) { c.moveTo(lx + 3, -3); c.ellipse(lx, -3, 3, 3.8, 0, 0, TAU); }
+    }
+    c.moveTo(hx + 12.5, hy + 3); c.ellipse(hx + 10.4, hy + 3, 3.4, 2.4, 0, 0, TAU); c.moveTo(hx + 2, hy - 4); c.ellipse(hx - 1, hy - 4, 3.6, 2.6, 0, 0, TAU);
+    c.fill();
+    c.beginPath(); c.ellipse(hx + 9.5, hy + 9 + Math.max(0, Math.sin(t * 3)) * 1.5, 1.3, 2.2, 0, 0, TAU); c.fill();
+  }
   if (bark > 0) { // two little sound arcs in front of the mouth
     c.globalAlpha *= Math.min(1, bark * 2.5);
     c.beginPath(); c.arc(hx + 14, hy + 3, 4.5, -0.7, 0.7);

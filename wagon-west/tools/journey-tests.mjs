@@ -8,8 +8,11 @@
 // determinism; the word problems (every kind × every stock fact and the big tiers: whole answers, the work, a spoken
 // form with no digits); and the letters (only lines that happened). While src/content/legs.js is a skeleton the
 // whole-journey tests run on route.syntheticTrail() (the content's legs first, then the rest of the route).
+// v1.4 (the last section, "Frodo and the river"): the dog's nose and fetch, fishing 2.0 and its fight stepper, the quest machine (and a synthetic fetch quest), trail facts and
+// moments, rev-14 saves, newSeason's carry list, the sync merge rules and whole journeys with a dog. The v1.4 content tables (src/content/{finds,fish,quests,trailFacts}.js)
+// are the Content stream's (merged; the tests run on the real tables).
 import assert from 'node:assert/strict';
-import {
+const {
   createJourney, startLeg, tickDay, applyMarker, applyProblem, applyWords, applyHunt, applyFish, applyTrade, buy, arrive,
   nextLeg, journeyDone, newSeason, foodNeeded, etaDays, priceAt, storeList, markerMiles, foodToNextFort, legStatus,
   setPace, setRations, setHunting, tradeOffer, tradeLine, partySize, storeLeg,
@@ -17,27 +20,28 @@ import {
   dailyChallenge, claimChallenge, UPGRADES,
   repair, crossRiver, forecast, waitOut, meetPerson, peopleAt, raftPay, stampedePay, teacherTip, applyMarkerHint, markerHintReady, lookoutDrops, campKinds,
   foodDays, huntAllowed, needsBlankets, spareGoods, coldLegsAhead, skillOf, skillInfo, partySkills, syncFood, speedBonus, effectivePace, checkDeeds, DEEDS, yokeOffered,
-} from '../src/journey/sim.js';
-import { CARDS, CARD_BY_ID, SUITS, cardsOf } from '../src/content/cards.js';
-import { NATIONS, FALLBACK_TRADES } from '../src/content/nations.js';
-import { COMPANIONS } from '../src/content/companions.js';
+} = await import('../src/journey/sim.js');
+const { CARDS, CARD_BY_ID, SUITS, cardsOf } = await import('../src/content/cards.js');
+const { NATIONS, FALLBACK_TRADES } = await import('../src/content/nations.js');
+const { COMPANIONS } = await import('../src/content/companions.js');
 import { readFileSync } from 'node:fs';
-import { problemFor, parseFactId, splitLine, numberWords, dollarWords, PROBLEM_KINDS } from '../src/journey/problems.js';
-import { composeLetter, happenedKeys, keepLetter, lineSource, FALLBACK_LINES } from '../src/journey/letters.js';
-import { PEOPLE, PEOPLE_BY_STOP, PERSON_BY_ID } from '../src/content/people.js';
-import { DEED_BY_ID } from '../src/journey/deeds.js';
-import { starsFor, starCount } from '../src/journey/stars.js';
-import { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay, ARROWS, ANIMAL_RULES, COLD_LEGS, SOAKED_LB, FOOD_KINDS, RAFT, DERBY, EXTRA_GOODS } from '../src/journey/economy.js';
-import { planEvents, eligibleEvents, EVENTS, EVENT_BY_ID } from '../src/journey/events.js';
-import { useLegs, syntheticTrail, legList, LEGS, SEASONS, GOODS, nationFor } from '../src/journey/route.js';
-import { mulberry32, hashSeed } from '../src/journey/rng.js';
-import { LETTER_LINES, LETTER_OPEN } from '../src/content/letters.js';
+const { problemFor, parseFactId, splitLine, numberWords, dollarWords, PROBLEM_KINDS } = await import('../src/journey/problems.js');
+const { composeLetter, happenedKeys, keepLetter, lineSource, FALLBACK_LINES } = await import('../src/journey/letters.js');
+const { PEOPLE, PEOPLE_BY_STOP, PERSON_BY_ID } = await import('../src/content/people.js');
+const { DEED_BY_ID } = await import('../src/journey/deeds.js');
+const { starsFor, starCount } = await import('../src/journey/stars.js');
+const { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay, ARROWS, ANIMAL_RULES, COLD_LEGS, SOAKED_LB, FOOD_KINDS, RAFT, DERBY, EXTRA_GOODS } = await import('../src/journey/economy.js');
+const { planEvents, eligibleEvents, EVENTS, EVENT_BY_ID } = await import('../src/journey/events.js');
+const { useLegs, syntheticTrail, legList, LEGS, SEASONS, GOODS, nationFor } = await import('../src/journey/route.js');
+const { mulberry32, hashSeed } = await import('../src/journey/rng.js');
+const { LETTER_LINES, LETTER_OPEN } = await import('../src/content/letters.js');
 
 let passed = 0;
 const failures = [];
 function test(name, fn) {
   try { fn(); passed++; console.log('  ✓ ' + name); } catch (e) { failures.push(name); console.log('  ✗ ' + name + '\n      ' + String(e && e.stack || e).split('\n').slice(0, 4).join('\n      ')); }
 }
+const V14_DEEDS = ['good-nose', 'fetch-champ', 'big-one', 'river-guide', 'skipper', 'keeper', 'wish-maker', 'hat-trick'];
 const TRAIL = syntheticTrail(12);
 useLegs(TRAIL);
 const PARTY = ['blacksmith', 'scout', 'teacher'];   // v1.2: no cook (Rosa's 10 % changes the food arithmetic these tests pin down); each skill has its own party in the v1.2 tests below
@@ -304,7 +308,7 @@ test('priceAt / storeList: the good × the fort × the season, whole dollars', (
   assert.equal(priceAt('flour', fort, 's1847'), Math.round(4 * fort.fort.prices));
   assert.equal(priceAt('flour', null, 's1850'), 8); assert.equal(priceAt('flour', null, 's1853'), 16);
   const list = storeList(fort, 's1850');
-  assert.equal(list.length, GOODS.length + 1, 'every good plus the second yoke');
+  assert.equal(list.length, GOODS.length + 2, 'every good plus the second yoke and (v1.4) the shiny spoon');
   assert.deepEqual(list.find((g) => g.id === 'yoke'), { id: 'yoke', name: 'A second yoke', unit: 'yoke', lb: 0, emoji: '🐂', food: false, price: priceAt('yoke', fort, 's1850') });
   assert.equal(priceAt('yoke', null, 's1847'), 42); assert.equal(priceAt('yoke', fort, 's1847'), Math.round(42 * fort.fort.prices));
   assert.ok(!storeList(null, 's1847').some((g) => g.id === 'yoke'), 'Independence has no second yoke'); assert.equal(storeList(null, 's1847').length, GOODS.length);
@@ -706,16 +710,16 @@ test('letters: the river line on a river leg, the mood line by the mood, an empt
 
 // ================= v1.1: trail cards, camp, the daily challenge, wagon upgrades, the derby's pay =================
 console.log('\ntrail cards (content)');
-test('40 cards in four suits: 12 landmarks, 8 nations, 12 wild, 8 companions, with the shape the album needs', () => {
-  assert.equal(CARDS.length, 40);
-  assert.deepEqual(SUITS, ['landmark', 'nation', 'wild', 'companion']);
-  assert.deepEqual(SUITS.map((s) => cardsOf(s).length), [12, 8, 12, 8]);
-  assert.equal(new Set(CARDS.map((c) => c.id)).size, 40, 'ids are unique across suits');
+test('54 cards in six suits: 12 landmarks, 8 nations, 12 wild, 8 companions, 6 river, 8 trail tales, with the shape the album needs', () => {
+  assert.equal(CARDS.length, 54);
+  assert.deepEqual(SUITS, ['landmark', 'nation', 'wild', 'companion', 'river', 'tales']);
+  assert.deepEqual(SUITS.map((s) => cardsOf(s).length), [12, 8, 12, 8, 6, 8]);
+  assert.equal(new Set(CARDS.map((c) => c.id)).size, 54, 'ids are unique across suits');
   for (const c of CARDS) {
     assert.equal(CARD_BY_ID[c.id], c);
     for (const k of ['id', 'suit', 'name', 'emoji', 'fact', 'say']) assert.ok(typeof c[k] === 'string' && c[k].length > 0, `${c.id}.${k}`);
     assert.ok(SUITS.includes(c.suit));
-    assert.ok(c.fact.length <= 160, `${c.id}: one line (${c.fact.length})`);
+    assert.ok(c.fact.length <= 170, `${c.id}: one line (${c.fact.length})`);
   }
   assert.deepEqual(cardsOf('landmark').map((c) => c.id), LEGS.map((l) => l.id), 'a landmark card per leg id, in trail order');
   assert.deepEqual(cardsOf('nation').map((c) => c.id), NATIONS.map((n) => n.id), 'a card per nation id');
@@ -766,7 +770,7 @@ test('suitComplete: false until every card of the suit is held, true on the last
   assert.equal(suitComplete(J, 'companion'), true); assert.equal(suitComplete(J, 'wild'), false); assert.equal(suitComplete(J, 'nonsense'), false);
   for (const s of SUITS) cardsOf(s).forEach((c) => awardCard(J, c.id));
   assert.ok(SUITS.every((s) => suitComplete(J, s)));
-  assert.equal(J.cards.length, 40);
+  assert.equal(J.cards.length, 54);
 });
 test('cardForLeg: a wild card of the leg\'s biome (else any wild); cardForAnimal maps the scene\'s animals', () => {
   const J = createJourney({ companions: PARTY, seed: 5 });
@@ -1071,7 +1075,7 @@ test('createJourney: foods split 50 / 30 / 20 of the 300 lb, J.food is their pla
   const J = mk();
   assert.deepEqual(J.foods, { flour: 150, bacon: 90, beans: 60, other: 0 });
   assert.equal(J.food, 300); assert.equal(typeof Object.getOwnPropertyDescriptor(J, 'food').value, 'number', 'a plain number, not a getter');
-  assert.deepEqual(J.goods, { parts: 1, rope: 0, blankets: 0, arrows: 15, pelts: 6, yoke: 0 });
+  assert.deepEqual(J.goods, { parts: 1, rope: 0, blankets: 0, arrows: 15, pelts: 6, yoke: 0, horseshoes: 0, hoppers: 0, spoon: 0 }, 'v1.4 adds horseshoes, the grasshopper tin and the spoon');
   assert.deepEqual(J.animals, { n: 2, tired: 0 }); assert.equal(J.limp, false); assert.deepEqual(J.met, []); assert.deepEqual(J.deeds, []);
   assert.deepEqual(clone(J), J);
   assert.equal(syncFood(J), 300);
@@ -1567,8 +1571,8 @@ test('raftPay: $24 less $6 a bump, never under $6, times the season; stampedePay
     const want = [24, 18, 12, 6, 6, 6];
     want.forEach((w, bumps) => { const J = createJourney({ season: s.id, companions: PLAIN, seed: 5 }); const c0 = J.cash; const r = raftPay(J, { bumps }); assert.equal(r.cash, w * s.priceMult); assert.equal(J.cash, c0 + r.cash); });
     const J = createJourney({ season: s.id, companions: PLAIN, seed: 5 }); const c0 = J.cash;
-    assert.deepEqual(stampedePay(J, { held: true }), { cash: 15 * s.priceMult, card: 'bison', held: true }); assert.equal(J.cash, c0 + 15 * s.priceMult);
-    assert.deepEqual(stampedePay(J, { held: false }), { cash: 0, card: null, held: false }); assert.equal(J.cash, c0 + 15 * s.priceMult);
+    assert.deepEqual(stampedePay(J, { held: true }), { cash: 15 * s.priceMult, card: 'bison', held: true, fact: 'bison-thunder' }); assert.equal(J.cash, c0 + 15 * s.priceMult);
+    assert.deepEqual(stampedePay(J, { held: false }), { cash: 0, card: null, held: false, fact: 'bison-thunder' }); assert.equal(J.cash, c0 + 15 * s.priceMult);
     assert.deepEqual([J.totals.stampedes, J.totals.stampedesHeld], [2, 1]);
   }
   assert.ok(CARD_BY_ID.bison); assert.deepEqual(RAFT, { base: 24, perBump: 6, min: 6 });
@@ -1625,7 +1629,7 @@ test('meetPerson: the first time remembers them and applies the gift (food into 
 
 console.log('\nv1.2 deeds');
 test('DEEDS: twenty, each { id, name, how, say }, unique, spoken lines without digits; checkDeeds is idempotent and pays a token each', () => {
-  assert.equal(DEEDS.length, 20); assert.equal(new Set(DEEDS.map((d) => d.id)).size, 20);
+  assert.equal(DEEDS.length, 28, '20 from 1.2 and 8 from 1.4'); assert.equal(new Set(DEEDS.map((d) => d.id)).size, 28);
   for (const d of DEEDS) { assert.ok(d.id && d.name && d.how && d.say, d.id); assert.ok(!/\d/.test(d.say), d.say); assert.equal(DEED_BY_ID[d.id], d); }
   for (const id of ['dry-feet', 'mail-beater', 'full-wagon', 'card-shark', 'people-person', 'cold-proof', 'fixer', 'angler', 'archer', 'spelling-ferry', 'marker-master', 'summiteer', 'homesteader']) assert.ok(DEED_BY_ID[id], id);
   const J = mk(); assert.deepEqual(checkDeeds(J), []);
@@ -1664,9 +1668,9 @@ test('every deed is reachable in a scripted journey (and none is earned by doing
     nextLeg(J);
   }
   check();
-  const ids = DEEDS.map((d) => d.id);
+  const ids = DEEDS.map((d) => d.id).filter((d) => !V14_DEEDS.includes(d));
   const missing = ids.filter((id) => !J.deeds.includes(id)); assert.ok(missing.length === 0, 'missing deeds: ' + missing.join(', '));
-  assert.equal(J.deeds.length, 20); assert.equal(new Set(J.deeds).size, 20);
+  assert.equal(J.deeds.filter((d) => !V14_DEEDS.includes(d)).length, 20); assert.equal(new Set(J.deeds).size, J.deeds.length);
   assert.equal(tokensFromDeeds, 20, 'a token each');
   // a journey of doing nothing earns nothing
   const idle = mk(); assert.deepEqual(checkDeeds(idle), []);
@@ -1687,7 +1691,7 @@ test('a 1.1 save (no foods, animals, deeds, people, goods beyond the old ones) l
   assert.equal(old.goods.arrows, 15, 'the bow gets its fifteen (2 bundles bought in 1.1 = 10 arrows, still the start of 15)'); assert.equal(old.goods.pelts, 4);
   assert.equal(old.goods.parts, old.parts); assert.equal(old.goods.rope, 0); assert.equal(old.goods.blankets, 0); assert.equal(old.goods.yoke, 0);
   for (const k of ['repairs', 'soakedLb', 'peopleMet', 'markersPerfectLegs', 'fishLb', 'meatLb', 'riversCrossed']) assert.equal(old.totals[k], 0, k);
-  assert.deepEqual(old.totals.reached, []); assert.equal(old.trip.v12, 1); assert.equal(old.rev, 12);
+  assert.deepEqual(old.totals.reached, []); assert.equal(old.trip.v12, 1); assert.equal(old.rev, 14, 'a 1.1 save is filled up to rev 14');
   assert.deepEqual(clone(old), old);
   // every v1.2 entry point works on it
   const o2 = clone(old); for (const k of ['rev', 'foods', 'animals', 'met', 'deeds']) delete o2[k];
@@ -1740,6 +1744,985 @@ test('journeys with random v1.2 play: any three companions, fords / floats / fer
     assert.deepEqual(clone(J), J);
   }
   assert.ok(breakdowns > 20 && colds >= 1 && soaked > 0, `breakdowns ${breakdowns}, limps ${limps}, cold nights ${colds}, soaked ${soaked}`);
+});
+
+// =====================================================================================================================================
+// v1.4 Frodo and the river (SPEC v1.4 §3, §7.1): the dog's nose, fetch, fishing 2.0, quests, trail facts and moments, saves and sync.
+// The content tables (src/content/{finds,fish,quests,trailFacts}.js) are the real ones.
+// =====================================================================================================================================
+const V14 = await import('../src/journey/sim.js');
+const FISHMOD = await import('../src/journey/fishing.js');
+const { FINDS, FIND_BY_ID, WISHES } = await import('../src/content/finds.js');
+const { FISH, FISH_BY_ID, JUNK, WATERS, WATER_NAMES, RIVER_STOPS, BAITS } = await import('../src/content/fish.js');
+const { TRAIL_FACTS } = await import('../src/content/trailFacts.js');
+const { QUESTS } = await import('../src/content/quests.js');
+const { NOSE, FETCH, FISHING, MOMENTS: MOMENT_RULES, HORSESHOE } = await import('../src/journey/economy.js');
+
+console.log('\nv1.4: Frodo and the river');
+const skip = (name, why) => console.log('  - SKIP ' + name + ': ' + why);
+const LAST = TRAIL[TRAIL.length - 1].id;
+const NOSE_LEGS = TRAIL.filter((l) => l.id !== LAST);
+/** a journey on a given leg with a dog (adopted the way the app does it: after the leg's arrival at the Kansas River, or mid-trail by hand) */
+function v14mk(seed = 3, { dog = true, leg = null, party = PLAIN, season = 's1847' } = {}) {
+  const J = createJourney({ companions: party, seed, season });
+  if (leg) startLeg(J, leg);
+  if (dog) V14.adoptDog(J, { name: 'Frodo', coat: 'spotted' });
+  return J;
+}
+/** arrive at the leg's stop without playing the days (the plans are what the tests read) */
+function v14arrive(J) { const leg = legList()[J.legIndex]; J.milesDone = leg.miles; J.trip.arrived = true; return arrive(J); }
+const v14kinds = (plan) => plan.map((s) => s.kind);
+
+test('no dog, no nose: no slots on any leg of any seed, and tickDay never emits a nose moment', () => {
+  for (let seed = 1; seed <= 60; seed++) {
+    const J = createJourney({ seed, companions: PLAIN });
+    assert.equal(J.dog, null);
+    for (const leg of TRAIL) { startLeg(J, leg.id); assert.deepEqual(J.trip.nose, [], leg.id); }
+  }
+  const rand = mulberry32(5), J = createJourney({ seed: 5, companions: PLAIN });
+  for (let g = 0; g < 14 && !J.done; g++) {
+    for (let d = 0; d < 80; d++) { const r = tickDay(J, { rand }); assert.equal(r.nose, null); if (r.marker) applyMarker(J, { correct: true }); if (r.arrived) break; }
+    arrive(J); nextLeg(J);
+  }
+  assert.deepEqual(V14.planNose(J, TRAIL[0], rand), [], 'planNose without a dog is empty');
+});
+
+test('with a dog: 2 or 3 slots a leg (both happen), at least 25 miles apart, none past 92 % of the leg, in order, over 1,000 seeded legs', () => {
+  const counts = { 2: 0, 3: 0 };
+  for (let k = 0; k < 1000; k++) {
+    const J = v14mk(100 + k);
+    const leg = NOSE_LEGS[k % NOSE_LEGS.length];
+    startLeg(J, leg.id);
+    const plan = J.trip.nose;
+    assert.ok(plan.length === 2 || plan.length === 3, `${leg.id}: ${plan.length} slots`);
+    counts[plan.length]++;
+    plan.forEach((s, i) => {
+      assert.ok(s.atMile >= Math.round(NOSE.from * leg.miles) && s.atMile <= 0.92 * leg.miles, `${leg.id} mile ${s.atMile} of ${leg.miles}`);
+      assert.equal(s.fired, false);
+      if (i) assert.ok(s.atMile - plan[i - 1].atMile >= NOSE.spacingMi, `${leg.id}: ${plan[i - 1].atMile} then ${s.atMile}`);
+    });
+  }
+  assert.ok(counts[2] > 300 && counts[3] > 300, 'even odds: ' + JSON.stringify(counts));
+  assert.ok(Math.abs(counts[2] - 500) < 90, 'about even: ' + counts[2]);
+  const J = v14mk(9); startLeg(J, LAST); assert.deepEqual(J.trip.nose, [], 'the raft leg has no trail days, so no slots');
+});
+
+test('the berry patch: the first leg after the dog joins, then every other leg (1.1\'s rhythm, now the journey\'s); the dog joining before or after the arrival is counted', () => {
+  for (const namedBeforePay of [true, false]) {
+    const J = createJourney({ seed: 21, companions: PLAIN });
+    J.milesDone = TRAIL[0].miles; J.trip.arrived = true;
+    if (namedBeforePay) { V14.adoptDog(J, { name: 'Frodo' }); arrive(J); } else { arrive(J); V14.adoptDog(J, { name: 'Frodo' }); }
+    const rows = [];
+    for (let i = 1; i < 11; i++) { nextLeg(J); const had = v14kinds(J.trip.nose).includes('berries'); rows.push(had ? 'B' : '.'); v14arrive(J); }
+    assert.equal(rows.join(''), 'B.B.B.B.B.', `named before the arrival pay: ${namedBeforePay}`);
+  }
+  assert.deepEqual(clone(V14.adoptDog(createJourney({ seed: 1 }), { name: 'Frodo-the-Great-and-Terrible', coat: 'black' }).dog),
+    { name: 'Frodo-the-Gr', coat: 'black', legs: 0, nextBerries: 1, treats: 0, muddy: false }, 'the 1.1 shape + treats and muddy; the name is cut at 12');
+});
+
+test('at most one rabbit and one snake a leg; the snake only in the prairie, bluffs and high desert; every kind occurs over many legs', () => {
+  const seen = new Set();
+  for (let k = 0; k < 1200; k++) {
+    const J = v14mk(300 + k);
+    const leg = NOSE_LEGS[k % NOSE_LEGS.length];
+    J.dog.nextBerries = 0;
+    startLeg(J, leg.id);
+    const ks = v14kinds(J.trip.nose);
+    ks.forEach((x) => seen.add(x));
+    assert.ok(ks.filter((x) => x === 'rabbit').length <= 1 && ks.filter((x) => x === 'snake').length <= 1, ks.join());
+    if (ks.includes('snake')) assert.ok(NOSE.snakeBiomes.includes(leg.biome), `snake on a ${leg.biome} leg`);
+  }
+  assert.deepEqual([...seen].sort(), ['berries', 'find', 'rabbit', 'snake'], 'no quest slot once the locket is carried');
+  let snakes = 0, mountains = 0;
+  for (let k = 0; k < 600; k++) { const J = v14mk(900 + k); startLeg(J, 'south-pass'); mountains++; if (v14kinds(J.trip.nose).includes('snake')) snakes++; }
+  assert.equal(snakes, 0);
+});
+
+test('finds: only of the leg\'s biome, the spoon never while owned, the arrowhead (sketch) never adds goods, the unseen first', () => {
+  for (const leg of TRAIL) {
+    const J = v14mk(5, { leg: leg.id });
+    const r = mulberry32(leg.n * 17);
+    for (let i = 0; i < 400; i++) {
+      const id = V14.drawFind(J, leg, r);
+      const f = FIND_BY_ID[id];
+      assert.ok(f && (!Array.isArray(f.biomes) || f.biomes.includes(leg.biome)), `${id} on ${leg.biome}`);
+    }
+    J.goods.spoon = 1;
+    for (let i = 0; i < 3000; i++) assert.notEqual(V14.drawFind(J, leg, r), 'spoon', 'never while owned');
+    for (let i = 0; i < 3000; i++) assert.notEqual(V14.drawFind(J, leg, r, { fromFetch: true }), 'spoon', 'a fetch rolls the spoon itself');
+  }
+  const J = v14mk(6);
+  assert.ok(FIND_BY_ID.arrowhead.keep === 'sketch');
+  const a = V14.recordFind(J, 'arrowhead'); assert.deepEqual([a.id, a.first, a.n, a.goods], ['arrowhead', true, 1, undefined]);
+  assert.ok(!('arrowhead' in J.goods)); assert.equal(Object.keys(J.goods).sort().join(), 'arrows,blankets,hoppers,horseshoes,parts,pelts,rope,spoon,yoke');
+  const h = V14.recordFind(J, 'horseshoe'); assert.deepEqual(h.goods, { id: 'horseshoes', n: 1 }); V14.recordFind(J, 'horseshoe'); assert.equal(J.goods.horseshoes, 2); assert.equal(J.finds.horseshoe, 2);
+  const sp = V14.recordFind(J, 'spoon'); assert.deepEqual(sp.goods, { id: 'spoon', n: 1 }); V14.recordFind(J, 'spoon'); assert.equal(J.goods.spoon, 1, 'one spoon is all there is');
+  J.spirit = 98; const chip = V14.recordFind(J, 'buffalo-chip'); assert.deepEqual(chip.effect, { spirit: 5 }); assert.equal(J.spirit, MOOD.max, 'spirit capped');
+  const st = V14.recordFind(J, 'flat-stone'); assert.deepEqual(st.effect, { skips: 2 }); assert.equal(J.trip.skipBonus, 2);
+  assert.equal(V14.recordFind(J, 'no-such-find'), null);
+  // the unseen first (unseenBias 0.7): with eight of nine seen the ninth comes up far more often than its weight
+  const K = v14mk(7, { leg: 'chimney-rock' }); const bl = legList()[2];
+  for (const f of FINDS) if (f.id !== 'arrowhead') K.finds[f.id] = 1;
+  K.goods.spoon = 1;
+  const r = mulberry32(8); let ar = 0; for (let i = 0; i < 2000; i++) if (V14.drawFind(K, bl, r) === 'arrowhead') ar++;
+  assert.ok(ar > 1250, `arrowhead ${ar} of 2000 (the only unseen find in the bluffs)`);
+});
+
+test('a nose slot fired by tickDay is applied by tickDay itself (find recorded, berries fed, snake cheers, quest found) and the rabbit waits', () => {
+  const J = v14mk(31, { leg: 'chimney-rock' });
+  const rand = mulberry32(2);
+  J.trip.events = []; J.trip.nose = [{ atMile: 3, kind: 'find', fired: false }, { atMile: 60, kind: 'berries', fired: false }, { atMile: 90, kind: 'snake', fired: false }, { atMile: 120, kind: 'rabbit', fired: false }];
+  const got = [];
+  for (let d = 0; d < 40; d++) { const f0 = J.food, r = tickDay(J, { rand }); if (r.marker) applyMarker(J, { correct: true }); if (r.nose) got.push({ ...r.nose, foodBefore: f0, sp: J.spirit }); if (r.arrived) break; }
+  assert.deepEqual(got.map((g) => g.kind), ['find', 'berries', 'snake', 'rabbit']);
+  assert.ok(FIND_BY_ID[got[0].find.id] && got[0].find.first === true && got[0].find.n === 1);
+  assert.equal(got[1].foodLb, 20); assert.equal(got[1].card, 'wild-plum'); assert.equal(J.totals.berries, 1);
+  assert.equal(got[2].card, 'rattlesnake'); assert.equal(J.totals.snakes, 1);
+  assert.equal(got[3].card, 'jackrabbit'); assert.equal(J.totals.chases, 0, 'the rabbit\'s outcome waits for chaseResult');
+  assert.equal(J.totals.noseFinds, 1); assert.equal(J.finds[got[0].find.id], 1);
+  assert.ok(J.trip.happened.includes('nose') && J.trip.happened.includes('berries') && J.trip.happened.includes('snake') && J.trip.happened.includes('chase'));
+});
+
+test('one thing a day: never two of {marker, event, nose, fact, moment}, nothing on the arrival day, nothing in the last 8 % unfired-and-late; across 16 dog journeys', () => {
+  let noses = 0, facts = 0, moments = 0, markers = 0, events = 0;
+  for (let seed = 400; seed < 416; seed++) {
+    const rand = mulberry32(seed), J = createJourney({ seed, companions: PLAIN });
+    for (let g = 0; g < 14 && !J.done; g++) {
+      const leg = legList()[J.legIndex];
+      for (let d = 0; d < 120; d++) {
+        const start = J.milesDone, r = tickDay(J, { rand });
+        const things = [r.nose && 'nose', r.fact && 'fact', r.moment && 'moment'].filter(Boolean);
+        if (r.marker) markers++; if (r.event) events++;
+        assert.ok(things.length <= 1, `${leg.id} day ${J.day}: ${things.join()}`);
+        if (things.length) {
+          assert.ok(!r.marker && !r.event && !r.arrived && r.miles > 0, `${leg.id}: a ${things[0]} on a busy day`);
+          assert.ok(start <= leg.miles * 0.92, `${leg.id}: a ${things[0]} when the day started at ${start} of ${leg.miles}`);
+        }
+        if (r.nose) noses++; if (r.fact) facts++; if (r.moment) moments++;
+        if (r.marker) applyMarker(J, { correct: true });
+        if (r.fact) V14.heardFact(J, r.fact.id);
+        if (r.arrived) { assert.equal(r.nose, null); assert.equal(r.fact, null); assert.equal(r.moment, null); break; }
+      }
+      arrive(J);
+      if (leg.id === 'kansas-river') V14.adoptDog(J, { name: 'Frodo' });
+      nextLeg(J);
+    }
+  }
+  assert.ok(noses > 150 && facts > 30 && moments > 8 && markers > 500 && events > 150, JSON.stringify({ noses, facts, moments, markers, events }));
+});
+
+test('tickDay: the emitted shapes are { nose: null | {kind …}, fact: null | { id, night, ambient, sound }, moment: null | { kind: "dustDevil" } }', () => {
+  const J = v14mk(8, { leg: 'fort-kearny' });
+  J.trip.events = []; J.trip.nose = []; J.trip.fact = { id: 'wolf-song', atMile: 10, fired: false }; J.trip.dustDevil = null;
+  let r; do { r = tickDay(J, { rand: mulberry32(1) }); if (r.marker) applyMarker(J, { correct: true }); } while (!r.fact && !r.arrived);
+  const wolf = TRAIL_FACTS.find((f) => f.id === 'wolf-song');
+  assert.deepEqual(r.fact, { id: 'wolf-song', night: true, ambient: wolf.ambient, sound: wolf.sound });
+  assert.deepEqual(Object.keys(r).filter((k) => ['nose', 'fact', 'moment'].includes(k)).sort(), ['fact', 'moment', 'nose']);
+  const K = v14mk(9, { leg: 'chimney-rock' }); K.trip.events = []; K.trip.nose = []; K.trip.fact = null; K.trip.dustDevil = { atMile: 10, fired: false };
+  let q; do { q = tickDay(K, { rand: mulberry32(1) }); if (q.marker) applyMarker(K, { correct: true }); } while (!q.moment && !q.arrived);
+  assert.deepEqual(q.moment, { kind: 'dustDevil' }); assert.equal(K.moments.dustDevilLeg, K.legIndex);
+});
+
+test('chaseResult: called early = clean, late or never = muddy; spirit +5 either way; nothing is ever taken away; arrive and camp wash the dog', () => {
+  const J = v14mk(11, { leg: 'fort-laramie' });
+  const snap = () => clone({ food: J.food, foods: J.foods, cash: J.cash, goods: J.goods, cards: J.cards, tokens: J.tokens, parts: J.parts, finds: J.finds });
+  for (const [called, dist, muddy] of [[true, 0.1, false], [true, 0.79, false], [true, 0.8, true], [true, 1, true], [false, 1, true], [false, 0.2, true]]) {
+    J.spirit = 40; J.dog.muddy = false;
+    const before = snap(), c0 = J.totals.chasesCalled;
+    const r = V14.chaseResult(J, { called, dist });
+    assert.deepEqual(r, { muddy, line: muddy ? 'muddy' : 'good', card: 'jackrabbit' }, JSON.stringify({ called, dist }));
+    assert.equal(J.dog.muddy, muddy); assert.equal(J.spirit, 40 + NOSE.spirit); assert.deepEqual(snap(), before, 'nothing taken away');
+    assert.equal(J.totals.chasesCalled, c0 + (called ? 1 : 0));
+  }
+  V14.chaseResult(J, { called: false, dist: 1 }); assert.equal(J.dog.muddy, true);
+  const c = camp(J, 'rest', { rand: mulberry32(1) }); assert.equal(c.bath, true); assert.equal(J.dog.muddy, false);
+  assert.equal(camp(J, 'rest', { rand: mulberry32(1) }).bath, false, 'a clean dog needs no bath');
+  V14.chaseResult(J, { called: false, dist: 1 }); v14arrive(J);
+  assert.equal(J.trip.result.bath, true); assert.equal(J.dog.muddy, false); assert.equal(arrive(J).bath, true, 'idempotent');
+  assert.equal(J.dog.legs, 1, 'arrive counts the leg the dog was along for');
+  assert.equal(V14.chaseResult(createJourney({ seed: 2 }), { called: true, dist: 0.1 }).muddy, false, 'no dog: harmless');
+});
+
+test('fetchThrow: treats at FETCH.at (1, 2, 3), three throws a visit then nothing, camp and arrive reset it, no day passes, items about 12 % of throws', () => {
+  const J = v14mk(12, { leg: 'fort-laramie' }); const rand = mulberry32(4);
+  const day0 = J.day, food0 = J.food;
+  assert.deepEqual([0.1, 0.339, 0.34, 0.5, 0.669, 0.67, 1].map((d) => { J.trip.fetchThrows = 0; return V14.fetchThrow(J, { dist: d, rand: () => 0.99 }).treats; }), [1, 1, 2, 2, 2, 3, 3]);
+  J.trip.fetchThrows = 0; J.dog.treats = 0; J.treatsBest = 0;
+  const a = V14.fetchThrow(J, { dist: 0.2, rand: () => 0.99 }), b = V14.fetchThrow(J, { dist: 0.5, rand: () => 0.99 }), c = V14.fetchThrow(J, { dist: 0.9, rand: () => 0.99 });
+  assert.deepEqual([a.treats, b.treats, c.treats, a.left, b.left, c.left], [1, 2, 3, 2, 1, 0]);
+  assert.deepEqual(V14.fetchThrow(J, { dist: 1, rand: () => 0.99 }), { treats: 0, item: null, left: 0 }, 'a fourth throw: the dog flops down by the fire');
+  assert.equal(J.dog.treats, 6); assert.equal(J.treatsBest, 0.9); assert.equal(J.totals.treats, 14 + 6, 'the totals count every treat'); assert.equal(J.totals.fetchThrows, 7 + 3);
+  camp(J, 'rest', { rand }); const d1 = J.day; assert.equal(J.trip.fetchThrows, 0, 'camp resets the visit');
+  assert.equal(V14.fetchThrow(J, { dist: 0.5, rand: () => 0.99 }).treats, 2); assert.equal(J.day, d1, 'a throw costs no day');
+  const f = v14mk(13, { leg: 'fort-laramie' }); f.trip.fetchThrows = 0; V14.fetchThrow(f, { dist: 1, rand: () => 0.99 }); assert.equal(f.day, 0); assert.equal(f.food, 300);
+  assert.equal(J.day, day0 + 1, 'only the camp day passed'); void food0;
+  // items: 12 % over 10,000 throws, the spoon about 2 % of throws while the wagon has none
+  const K = v14mk(14, { leg: 'fort-laramie' }); const r2 = mulberry32(99);
+  let items = 0, spoons = 0; const bl = legList()[3];
+  for (let i = 0; i < 10000; i++) { K.trip.fetchThrows = 0; const had = K.goods.spoon; const t = V14.fetchThrow(K, { dist: r2(), rand: r2 }); if (t.item) items++; if (t.spoon) { spoons++; assert.equal(had, 0); K.goods.spoon = 0; } if (t.item && t.item !== 'spoon') assert.ok(FIND_BY_ID[t.item].biomes === null || FIND_BY_ID[t.item].biomes.includes(bl.biome)); }
+  assert.ok(items > 1080 && items < 1320, `items ${items} of 10000`);
+  assert.ok(spoons > 140 && spoons < 260, `spoons ${spoons} of 10000`);
+  assert.deepEqual(V14.fetchThrow(createJourney({ seed: 3 }), { dist: 1 }), { treats: 0, item: null, left: 0 }, 'no dog, no fetch');
+});
+
+test('sellHorseshoes: $1 × the season\'s price level each; the spoon is $3 × the price level, from Fort Kearny on, one only', () => {
+  for (const [season, mult] of [['s1847', 1], ['s1850', 2], ['s1853', 4]]) {
+    const J = v14mk(15, { season }); J.goods.horseshoes = 3; const c0 = J.cash;
+    assert.deepEqual(V14.sellHorseshoes(J, { leg: 'fort-kearny' }), { n: 3, cash: 3 * HORSESHOE.price * mult }); assert.equal(J.cash, c0 + 3 * mult); assert.equal(J.goods.horseshoes, 0);
+    assert.deepEqual(V14.sellHorseshoes(J, {}), { n: 0, cash: 0 });
+  }
+  assert.deepEqual(EXTRA_GOODS.find((g) => g.id === 'spoon'), { id: 'spoon', name: 'Shiny spoon', unit: 'spoon', emoji: '🥄', price: 3, fromLeg: 2, max: 1 });
+  const J = createJourney({ seed: 16, companions: PLAIN }); J.cash = 100;
+  assert.equal(buy(J, { item: 'spoon' }).ok, false, 'not at Independence'); assert.ok(!storeList(null, 's1847').some((g) => g.id === 'spoon'));
+  const kearny = TRAIL[1]; startLeg(J, kearny.id); J.milesDone = kearny.miles; J.trip.arrived = true;
+  assert.ok(storeList(kearny, 's1847').some((g) => g.id === 'spoon')); assert.equal(priceAt('spoon', kearny, 's1847'), Math.round(3 * kearny.fort.prices));
+  const b = buy(J, { item: 'spoon', qty: 5 }); assert.equal(b.ok, true); assert.equal(b.cost, priceAt('spoon', kearny, 's1847')); assert.equal(J.goods.spoon, 1);
+  assert.equal(buy(J, { item: 'spoon' }).ok, false, 'never a second'); assert.equal(J.goods.spoon, 1);
+  const poor = createJourney({ seed: 17, companions: PLAIN }); startLeg(poor, kearny.id); poor.trip.arrived = true; poor.cash = 1; assert.equal(buy(poor, { item: 'spoon' }).ok, false); assert.equal(poor.cash, 1, 'never below $0');
+});
+
+test('sim.js exports every name §6 gives the Journey stream (the app imports only sim.js)', () => {
+  const names = ['dogOfferAt', 'adoptDog', 'planNose', 'drawFind', 'recordFind', 'chaseResult', 'fetchThrow', 'sellHorseshoes', 'waterOf', 'baitsAvailable', 'catchHoppers', 'fishingSession', 'createFight', 'fightStep', 'fightHelp',
+    'fightOutcome', 'castOff', 'landCast', 'endFishing', 'familyRecords', 'skipsBoard', 'useQuests', 'questList', 'questFindable', 'findQuestItem', 'questAt', 'questTalk', 'questMail', 'questStatus', 'setTrailSounds', 'factsFor',
+    'planFact', 'heardFact', 'stampedeFact', 'planDustDevil', 'dustDevilResult', 'stonesPlan', 'stonesResult', 'campWater', 'meteorsTonight', 'wishFor', 'carry14', 'merge14', 'tickDay', 'stampedePay', 'arrive', 'camp', 'newSeason', 'checkDeeds'];
+  for (const n of names) assert.equal(typeof V14[n], 'function', n);
+  for (const n of ['NOSE', 'FETCH', 'FISHING', 'MOMENTS', 'HORSESHOE', 'DEEDS']) assert.ok(V14[n] && typeof V14[n] === 'object', n);
+  assert.deepEqual(Object.keys(V14.NOSE).sort(), ['chaseLate', 'from', 'lead', 'perLeg', 'snakeBiomes', 'spacingMi', 'spirit', 'to', 'unseenBias', 'weights']);
+  assert.deepEqual(V14.FETCH, { throws: 3, at: [0.34, 0.67], treats: [1, 2, 3], itemChance: 0.12, spoonChance: 0.02 });
+  assert.deepEqual([V14.FISHING.casts, V14.FISHING.retriesPerCast, V14.FISHING.strainMaxMs, V14.FISHING.warnMs, V14.FISHING.lbCap, V14.FISHING.junkChance, V14.FISHING.cameoChance, V14.FISHING.bottleChance, V14.FISHING.hopperMax, V14.FISHING.helpAt, V14.FISHING.helpSpeed], [4, 1, 500, 250, 24, 0.1, 0.3, 0.35, 12, 0.5, 2]);
+  assert.deepEqual(V14.HORSESHOE, { price: 1 }); assert.deepEqual([V14.MOMENTS.meteors.chance, V14.MOMENTS.meteors.gapLegs, V14.MOMENTS.stones.throws, V14.MOMENTS.stones.maxSkips, V14.MOMENTS.facts.chance, V14.MOMENTS.dustDevil.chance], [0.5, 3, 3, 12, 0.7, 0.35]);
+});
+
+test('a slot that is still unfired when a day starts past its limit is dropped and never carried into the next leg; a quest slot the nose never reached is found as the party arrives', () => {
+  const J = v14mk(120, { leg: 'fort-laramie' }); J.trip.events = []; J.trip.fact = null; J.trip.dustDevil = null;
+  J.trip.nose = [{ atMile: 130, kind: 'find', fired: false }]; J.milesDone = Math.floor(0.92 * 140) + 1; J.trip.nextMarker = J.trip.markers.length; J.trip.slow = true;   // a slow day, so the party does not arrive today
+  const r = tickDay(J, { rand: mulberry32(1) }); assert.equal(r.nose, null); assert.equal(J.trip.nose[0].fired, true); assert.equal(J.trip.nose[0].dropped, true); assert.equal(J.totals.noseFinds, 0);
+  v14arrive(J); nextLeg(J); assert.ok(J.trip.nose.every((s) => s.fired === false && !s.dropped), 'the next leg has a plan of its own'); assert.equal(J.trip.nose.length >= 2, true);
+  const K = createJourney({ seed: 121, companions: PLAIN }); K.dog = { name: 'Rex', coat: 'brown', legs: 3, nextBerries: 99, treats: 0, muddy: false }; startLeg(K, 'chimney-rock');
+  assert.equal(K.trip.nose[0].kind, 'quest'); K.trip.nose[0].fired = false; assert.equal(K.quests.locket, undefined);
+  const res = v14arrive(K); assert.deepEqual(res.quest, { id: 'locket', item: QUESTS.find((q) => q.id === 'locket').item }); assert.equal(K.quests.locket.state, 'carried'); assert.equal(K.quests.locket.step, 1);
+  const L = createJourney({ seed: 122, companions: PLAIN }); L.dog = { name: 'Rex', coat: 'brown', legs: 3, nextBerries: 99, treats: 0, muddy: false }; startLeg(L, 'fort-laramie'); assert.equal(v14arrive(L).quest, undefined, 'no quest slot, nothing found');
+});
+
+// ---- fishing 2.0 ----
+const WATER_LEGS = Object.keys(WATERS).map((id) => TRAIL.find((l) => l.id === id)).filter(Boolean);
+function v14fisher(legId, seed = 1, extra = {}) { const J = createJourney({ seed, companions: PLAIN }); if (legId !== J.legId) startLeg(J, legId); Object.assign(J, extra); return J; }
+
+test('fishing.js stands alone for the scene: createFight, fightStep, fightHelp, and nothing from the sim is needed to import it', () => {
+  for (const k of ['createFight', 'fightStep', 'fightHelp', 'fightOutcome', 'waterOf', 'fishingSession', 'castOff', 'landCast']) assert.equal(typeof FISHMOD[k], 'function', k);
+  const src = readFileSync(new URL('../src/journey/fishing.js', import.meta.url), 'utf8');
+  const imports = [...src.matchAll(/^import .* from '([^']+)'/gm)].map((m) => m[1]).sort();
+  assert.deepEqual(imports, ['../content/fish.js', './economy.js', './rng.js'], 'the scene imports this file: it keeps to the fish tables, the rng and the economy numbers');
+  for (const k of ['createFight', 'fightStep', 'fightHelp']) assert.equal(V14[k], FISHMOD[k], 'sim.js re-exports the same function');
+});
+
+test('waterOf: the leg\'s water from the content table, the Kansas by default; baitsAvailable and catchHoppers (the tin holds 12)', () => {
+  for (const [id, w] of Object.entries(WATERS)) { assert.equal(V14.waterOf(id), w); assert.equal(V14.waterOf({ id }), w); assert.equal(V14.waterOf({ legId: id }), w); }
+  assert.equal(V14.waterOf('nowhere'), 'kansas'); assert.equal(V14.waterOf(null), 'kansas');
+  const J = v14fisher('fort-bridger');
+  assert.deepEqual(V14.baitsAvailable(J), [{ id: 'worms', ok: true }, { id: 'hoppers', n: 0, ok: false }, { id: 'spoon', ok: false }]);
+  assert.deepEqual(V14.catchHoppers(J, 5), { added: 5, have: 5 }); assert.deepEqual(V14.catchHoppers(J, 20), { added: 7, have: 12 }); assert.deepEqual(V14.catchHoppers(J, 1), { added: 0, have: 12 });
+  J.goods.spoon = 1; assert.deepEqual(V14.baitsAvailable(J).map((b) => [b.id, b.ok]), [['worms', true], ['hoppers', true], ['spoon', true]]); assert.equal(V14.baitsAvailable(J)[1].n, 12);
+});
+
+test('a session: four casts, species only from the water\'s table, the sturgeon only on the Snake and the Columbia and at most one a session, the turtle only on the Kansas and the Platte', () => {
+  let sturgeons = 0, turtles = 0, junk = 0, casts = 0;
+  for (const leg of WATER_LEGS) {
+    const water = WATERS[leg.id];
+    for (let i = 0; i < 300; i++) {
+      const J = v14fisher(leg.id, 50 + i, i % 3 === 0 ? { dog: { name: 'Frodo', coat: 'brown', legs: 0, nextBerries: 1, treats: 0, muddy: false } } : {});
+      const S = V14.fishingSession(J, { rand: mulberry32(i * 31 + leg.n) });
+      assert.equal(S.casts.length, FISHING.casts); assert.equal(S.water, water); assert.equal(S.waterName, WATER_NAMES[water]);
+      assert.ok(S.id && S.bait === 'worms' && S.rescue === false);
+      let st = 0;
+      S.casts.forEach((c, ci) => {
+        casts++;
+        assert.equal(c.i, ci); assert.equal(c.retries, 0); assert.ok(c.biteS >= 0.5 && c.biteS <= FISHING.biteS[1], 'bite ' + c.biteS);
+        assert.ok(c.fight.reelMs > 0 && c.fight.strainMaxMs === FISHING.strainMaxMs && c.fight.warnMs === FISHING.warnMs && c.fight.helpAt === FISHING.helpAt);
+        if (c.kind === 'fish') {
+          const f = FISH_BY_ID[c.species];
+          assert.ok(f && f.waters[water] > 0, `${c.species} in ${water}`);
+          assert.ok(c.lengthIn >= f.sizeIn[0] && c.lengthIn <= f.sizeIn[1], 'size'); assert.ok(c.lb >= 1 && c.lb <= f.lb[1] * FISHING.lbScale + 1, 'lb ' + c.lb);
+          assert.equal(c.fight.help, !!f.help); assert.ok(c.fight.wobbles.length > 5 && c.fight.wobbles.every(([a, b], k, w) => b - a === Math.round(f.fight.wobbleS * 1000) && (!k || a > w[k - 1][1])));
+          if (f.onePerSession) { st++; sturgeons++; assert.ok(['snake', 'columbia'].includes(water), 'sturgeon in ' + water); }
+        } else {
+          junk++;
+          const j = JUNK.find((x) => x.id === c.junk); assert.ok(j && (!j.waters || j.waters.includes(water)), `${c.junk} in ${water}`);
+          assert.deepEqual(c.fight.wobbles, [], 'junk reels in with no wobbles'); assert.equal(c.lb, 0);
+          if (c.junk === 'turtle') { turtles++; assert.ok(['kansas', 'platte'].includes(water)); }
+          if (c.junk === 'bottle') assert.ok(QUESTS.find((q) => q.id === 'bottle-note').find.legs.includes(leg.id), 'the bottle only on the legs where its quest can start: ' + leg.id);
+        }
+      });
+      assert.ok(st <= 1, 'one sturgeon a session');
+      if (S.cameo) { assert.ok(J.dog && S.cameo.at >= 0 && S.cameo.at < FISHING.casts && ['splash', 'steal'].includes(S.cameo.kind)); }
+    }
+  }
+  assert.ok(sturgeons > 30 && turtles > 10, `sturgeons ${sturgeons} turtles ${turtles}`);
+  assert.ok(Math.abs(junk / casts - FISHING.junkChance) < 0.02, `junk ${junk / casts}`);
+});
+
+test('bait: grasshoppers are used one a cast (the rest fall back to worms) and bite sooner and run bigger on trout and chubs; the spoon is never used up and runs bigger; junk is 10 % a cast', () => {
+  const J = v14fisher('fort-bridger', 3); J.goods.hoppers = 2;
+  const S = V14.fishingSession(J, { bait: 'hoppers', rand: mulberry32(1) });
+  assert.equal(S.bait, 'hoppers'); assert.deepEqual(S.casts.map((c) => c.bait), ['hoppers', 'hoppers', 'worms', 'worms']); assert.equal(J.goods.hoppers, 0, 'two used at plan time');
+  assert.equal(V14.fishingSession(J, { bait: 'hoppers', rand: mulberry32(1) }).bait, 'worms', 'an empty tin is worms');
+  assert.equal(V14.fishingSession(J, { bait: 'spoon', rand: mulberry32(1) }).bait, 'worms', 'no spoon, no spoon bait');
+  assert.equal(V14.fishingSession(J, { bait: 'nonsense', rand: mulberry32(1) }).bait, 'worms');
+  J.goods.spoon = 1; const sp = V14.fishingSession(J, { bait: 'spoon', rand: mulberry32(1) }); assert.deepEqual(sp.casts.map((c) => c.bait), ['spoon', 'spoon', 'spoon', 'spoon']); assert.equal(J.goods.spoon, 1, 'never used up');
+  const stats = (leg, bait, n = 500) => {
+    const out = { len: [], bite: [], salmon: 0, trout: 0, fish: 0, junk: 0, casts: 0 };
+    for (let i = 0; i < n; i++) {
+      const K = v14fisher(leg, 700 + i); K.goods.hoppers = 12; K.goods.spoon = 1;
+      for (const c of V14.fishingSession(K, { bait, rand: mulberry32(i * 7 + 3) }).casts) {
+        out.casts++; if (c.kind === 'junk') { out.junk++; continue; }
+        out.fish++; out.len.push((c.lengthIn - FISH_BY_ID[c.species].sizeIn[0]) / (FISH_BY_ID[c.species].sizeIn[1] - FISH_BY_ID[c.species].sizeIn[0])); out.bite.push(c.biteS);
+        if (c.species === 'chinook-salmon') out.salmon++; if (c.species === 'cutthroat-trout') out.trout++;
+      }
+    }
+    return out;
+  };
+  const m = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const worms = stats('fort-bridger', 'worms'), hop = stats('fort-bridger', 'hoppers'), spoon = stats('fort-bridger', 'spoon');
+  assert.ok(m(hop.bite) < m(worms.bite) * 0.9, `hoppers bite sooner: ${m(hop.bite)} vs ${m(worms.bite)}`);
+  assert.ok(m(hop.len) > m(worms.len) + 0.05, `hoppers run bigger: ${m(hop.len)} vs ${m(worms.len)}`);
+  assert.ok(m(spoon.len) > m(worms.len) + 0.1, `the spoon runs bigger: ${m(spoon.len)} vs ${m(worms.len)}`);
+  assert.ok(Math.abs(worms.junk / worms.casts - FISHING.junkChance) < 0.02 && Math.abs(spoon.junk / spoon.casts - FISHING.junkChance) < 0.02, 'junk 10 % a cast');
+  const cw = stats('the-dalles', 'worms'), cs = stats('the-dalles', 'spoon');
+  assert.ok(cs.salmon / cs.fish >= cw.salmon / cw.fish, 'on the Columbia the spoon draws salmon at least as often');
+  const sn = stats('snake-river', 'worms'), ss = stats('snake-river', 'spoon');
+  assert.ok(ss.trout / ss.fish > sn.trout / sn.fish, 'on the Snake the spoon draws trout more often than worms do');
+});
+
+test('the bottle: only while its quest can start (Fort Laramie to Fort Bridger waters), once a season, then the note is carried', () => {
+  const J = v14fisher('fort-laramie', 61);
+  assert.equal(V14.questFindable(J, 'fish'), 'bottle-note');
+  let bottle = null, planned = 0;
+  for (let i = 0; i < 400 && !bottle; i++) {
+    const S = V14.fishingSession(J, { rand: mulberry32(i + 1) });
+    S.casts.forEach((c, ci) => { if (c.junk === 'bottle') { planned++; if (!bottle) { bottle = { S, ci }; } } });
+    assert.ok(S.casts.filter((c) => c.junk === 'bottle').length <= 1, 'one bottle a session');
+  }
+  assert.ok(bottle, 'a bottle comes up');
+  const r = V14.landCast(J, bottle.S, bottle.ci);
+  assert.equal(r.junk, 'bottle'); assert.equal(r.quest.id, 'bottle-note'); assert.equal(r.quest.item.id, 'bottle-note'); assert.equal(J.quests['bottle-note'].state, 'carried'); assert.equal(J.fishJunk.bottle, 1);
+  assert.equal(V14.landCast(J, bottle.S, bottle.ci), r, 'landing the same cast twice changes nothing'); assert.equal(J.fishJunk.bottle, 1);
+  for (let i = 0; i < 600; i++) for (const c of V14.fishingSession(J, { rand: mulberry32(9000 + i) }).casts) assert.notEqual(c.junk, 'bottle', 'once a season');
+  // not on a leg outside its range, nor on a water without bottles
+  for (const leg of ['kansas-river', 'fort-hall', 'snake-river', 'the-dalles']) {
+    const K = v14fisher(leg, 62); assert.equal(V14.questFindable(K, 'fish'), null, leg);
+    for (let i = 0; i < 150; i++) for (const c of V14.fishingSession(K, { rand: mulberry32(i + 5) }).casts) assert.notEqual(c.junk, 'bottle');
+  }
+});
+
+/** a scripted hand on the reel: [{ atMs, down }] that holds, then lets go for every red window (from its start) and presses again `lagMs` after it ends */
+function v14release(fight, lagMs = 100, upTo = 90000) {
+  const p = [{ atMs: 0, down: true }];
+  for (const [s, e] of fight.wobbles) { if (s > upTo) break; p.push({ atMs: s, down: false }, { atMs: e + lagMs, down: true }); }
+  return p;
+}
+const v14fightsOf = () => FISH.map((f) => { const J = v14fisher(WATER_LEGS.find((l) => f.waters[WATERS[l.id]]).id, 5); const S = V14.fishingSession(J, { rand: mulberry32(2) }); return { f, fight: { ...S.casts[0].fight }, cast: S.casts[0] }; });
+const v14fightFor = (f) => { const leg = WATER_LEGS.find((l) => f.waters[WATERS[l.id]]).id; for (let i = 0; i < 300; i++) { const S = V14.fishingSession(v14fisher(leg, i), { rand: mulberry32(i) }); const c = S.casts.find((x) => x.species === f.id); if (c) return c; } return null; };
+
+test('fightStep: deterministic; holding through every wobble ends "off"; letting go in every red window ends "landed" (pressing 100 ms after each window ends); only reel / help / off / landed', () => {
+  const phases = new Set();
+  for (const f of FISH) {
+    const c = v14fightFor(f); assert.ok(c, 'a cast of ' + f.id);
+    const hold = FISHMOD.fightOutcome(c.fight, [{ atMs: 0, down: true }]);
+    assert.equal(hold.phase, 'off', `${f.id}: held through the red`); assert.ok(hold.ms < 6000, 'it wiggles off at the first wobble: ' + hold.ms);
+    if (f.help) {
+      // a sturgeon: reel by the red window, stop at half way for the second tap, then land it (below)
+      assert.equal(c.fight.help, true);
+      continue;
+    }
+    const a = FISHMOD.fightOutcome(c.fight, v14release(c.fight)), b = FISHMOD.fightOutcome(c.fight, v14release(c.fight));
+    assert.deepEqual(a, b, 'the same inputs, the same states');
+    assert.equal(a.phase, 'landed', `${f.id}: ${JSON.stringify({ phase: a.phase, ms: a.ms, p: a.progress })}`); assert.equal(a.progress, 1);
+    assert.ok(a.ms > 1000 && a.ms < 30000, `${f.id} lands in ${a.ms} ms`);
+    // never any other phase, step by step
+    let s = FISHMOD.createFight(c.fight); const hand = v14release(c.fight);
+    for (let t = 0; t < 40000 && s.phase === 'reel'; t += 16) { const down = hand.filter((e) => e.atMs <= t).pop().down; s = FISHMOD.fightStep(s, 16, down); phases.add(s.phase); assert.ok(s.progress >= 0 && s.progress <= 1 && s.strain >= 0); }
+  }
+  assert.deepEqual([...phases].sort(), ['landed', 'reel']);
+  // an idle hand never lands anything and never loses it either: the progress just stays at 0
+  const idle = FISHMOD.fightOutcome(v14fightFor(FISH[0]).fight, [], { maxMs: 20000 });
+  assert.deepEqual([idle.phase, idle.progress], ['reel', 0]);
+  // the pure stepper does not change its input
+  const c0 = v14fightFor(FISH[0]); const s0 = FISHMOD.createFight(c0.fight), snap = JSON.stringify(s0); FISHMOD.fightStep(s0, 100, true); assert.equal(JSON.stringify(s0), snap);
+  // the wobble flag and the yellow shiver come before the red
+  let s = FISHMOD.createFight(c0.fight); const [w0] = c0.fight.wobbles; let sawWarn = false, sawRed = false, warnBeforeRed = true;
+  for (let t = 0; t < w0[1] + 200; t += 10) { s = FISHMOD.fightStep(s, 10, false); if (s.warn) { sawWarn = true; if (!sawRed) warnBeforeRed = true; } if (s.wobble) { if (!sawWarn) warnBeforeRed = false; sawRed = true; } }
+  assert.ok(sawWarn && sawRed && warnBeforeRed, 'a yellow shiver 0.25 s before the red');
+});
+
+test('the sturgeon waits at half way for the second tap (fightHelp), then reels at double speed; the dog or a companion is the helper', () => {
+  const sturgeon = FISH.find((f) => f.help); const c = v14fightFor(sturgeon);
+  let s = FISHMOD.createFight(c.fight), t = 0, helpedAt = null, redUntil = -1;
+  while (t < 120000 && s.phase === 'reel') {
+    if (s.wobble || s.warn) redUntil = t + 100;
+    s = FISHMOD.fightStep(s, 10, t >= redUntil); t += 10;
+  }
+  assert.equal(s.phase, 'help'); assert.equal(s.progress, FISHING.helpAt); assert.equal(s.helped, false);
+  const frozen = JSON.stringify(s);
+  for (let i = 0; i < 300; i++) assert.equal(JSON.stringify(FISHMOD.fightStep(s, 16, i % 2 === 0)), frozen, 'nothing changes until the second tap');
+  const h = FISHMOD.fightHelp(s); assert.equal(h.phase, 'reel'); assert.equal(h.helped, true); assert.equal(FISHMOD.fightHelp(h), h, 'only a waiting fight takes help');
+  assert.equal(FISHMOD.fightHelp(FISHMOD.createFight(c.fight)).phase, 'reel');
+  // double speed: the same second of holding gains twice as much once helped
+  const calm = { ...c.fight, wobbles: [], help: false };
+  const a = FISHMOD.fightStep({ ...FISHMOD.createFight(calm), progress: 0.2 }, 1000, true), b = FISHMOD.fightStep({ ...FISHMOD.createFight(calm), progress: 0.2, helped: true }, 1000, true);
+  assert.ok(Math.abs((b.progress - 0.2) - 2 * (a.progress - 0.2)) < 1e-9, 'helpSpeed ' + [a.progress, b.progress]);
+  let u = h; t = 0; redUntil = -1;
+  while (t < 120000 && u.phase === 'reel') { if (u.wobble || u.warn) redUntil = t + 100; u = FISHMOD.fightStep(u, 10, t >= redUntil); t += 10; }
+  assert.equal(u.phase, 'landed'); assert.ok(t < 12000, 'half a sturgeon at double speed: ' + t);
+  // fightOutcome with the help press scripted at 5 s
+  const o = FISHMOD.fightOutcome(c.fight, [...v14release(c.fight), { atMs: 20000, help: true }]);
+  assert.ok(['landed', 'off'].includes(o.phase));
+  const noHelp = FISHMOD.fightOutcome(c.fight, v14release(c.fight)); assert.equal(noHelp.phase, 'help', 'without the second tap it waits');
+  // landing a sturgeon is worth the pounds the content says, counted once, with the counters the deeds read
+  const J = v14fisher('snake-river', 70); const S = V14.fishingSession(J, { rand: mulberry32(3) });
+  S.casts[1] = { ...S.casts[1], kind: 'fish', species: 'white-sturgeon', junk: undefined, lengthIn: 60, lb: 14 };
+  const r = V14.landCast(J, S, 1); assert.equal(J.totals.sturgeon, 1); assert.equal(J.fishLog['white-sturgeon'].n, 1); assert.equal(r.card, 'white-sturgeon'); assert.ok(J.trip.happened.includes('sturgeon'));
+});
+
+test('castOff: a fish that wiggled off is cast again once, with a fresh fight, and only once; junk and bad casts retry nothing', () => {
+  const J = v14fisher('fort-kearny', 80); let S, i;
+  for (let k = 1; k < 100; k++) { S = V14.fishingSession(J, { rand: mulberry32(k) }); i = S.casts.findIndex((c) => c.kind === 'fish'); if (i >= 0) break; }
+  const c = S.casts[i], first = clone(c.fight), off0 = J.totals.fishOff;
+  const r1 = V14.castOff(J, S, i); assert.equal(r1.retry, true); assert.ok(r1.fight && r1.fight.wobbles.length > 5); assert.equal(c.retries, 1); assert.equal(c.fight, r1.fight);
+  assert.notDeepEqual(r1.fight.wobbles, first.wobbles, 'a fresh fight'); assert.equal(r1.fight.reelMs, first.reelMs);
+  const r2 = V14.castOff(J, S, i); assert.deepEqual(r2, { retry: false }); assert.equal(c.retries, 1, 'once and only once'); assert.equal(J.totals.fishOff, off0 + 2);
+  const j = S.casts.findIndex((x) => x.kind === 'junk'); if (j >= 0) assert.deepEqual(V14.castOff(J, S, j), { retry: false });
+  assert.deepEqual(V14.castOff(J, S, 9), { retry: false });
+  // the retry is deterministic (the same session replays the same retry)
+  const S2 = V14.fishingSession(v14fisher('fort-kearny', 80), { rand: mulberry32(S.casts.length ? 1 : 1) }), S3 = V14.fishingSession(v14fisher('fort-kearny', 80), { rand: mulberry32(1) });
+  assert.deepEqual(S2, S3);
+});
+
+test('fishingSession is seeded: the same journey, leg, day and counter give the same session; the next session differs; the counter is on the trip', () => {
+  const a = v14fisher('chimney-rock', 90), b = v14fisher('chimney-rock', 90);
+  const s1 = V14.fishingSession(a), s2 = V14.fishingSession(b); assert.deepEqual(s1, s2); assert.equal(a.trip.fishing, 1);
+  const s3 = V14.fishingSession(a); assert.notDeepEqual(s3.casts, s1.casts); assert.notEqual(s3.id, s1.id); assert.equal(a.trip.fishing, 2);
+  const c = v14fisher('chimney-rock', 91); assert.notDeepEqual(V14.fishingSession(c).casts, s1.casts, 'another seed');
+  assert.deepEqual(clone(s1), s1, 'a session is plain JSON');
+});
+
+// ---- food, the log, the summary, the family's records ----
+/** a kid at the rod (the economy sim's): 60 % of the casts hooked, 85 % of the fights landed (a wiggle-off is cast again once) */
+function v14kid(J, r, { hook = 0.6, land = 0.85, bait = 'worms', rescue = false } = {}) {
+  const S = V14.fishingSession(J, { bait, rescue, rand: r });
+  S.casts.forEach((c, i) => {
+    if (!(r() < hook)) return;
+    if (c.kind === 'junk') { V14.landCast(J, S, i); return; }
+    let ok = r() < land;
+    if (!ok && V14.castOff(J, S, i).retry) ok = r() < land;
+    if (ok) V14.landCast(J, S, i);
+  });
+  return { S, R: V14.endFishing(J, S) };
+}
+test('a session\'s food: at most 24 lb however many fish, applied once; a safety-net session is worth at least 30; idempotent', () => {
+  for (let i = 0; i < 300; i++) {
+    const J = v14fisher(i % 2 ? 'snake-river' : 'the-dalles', 200 + i); const f0 = J.food;
+    const S = V14.fishingSession(J, { rand: mulberry32(i + 1) });
+    S.casts.forEach((c, k) => V14.landCast(J, S, k));
+    const raw = S.casts.reduce((a, c) => a + c.lb, 0), R = V14.endFishing(J, S);
+    assert.equal(R.lb, Math.min(24, raw)); assert.ok(R.lb <= FISHING.lbCap); assert.equal(R.topUp, 0); assert.equal(J.food, f0 + R.lb); assert.equal(J.foods.other, R.lb);
+    assert.equal(V14.endFishing(J, S), R, 'idempotent'); assert.equal(J.food, f0 + R.lb, 'the food goes in once');
+    assert.equal(J.legStats.fished, R.lb); assert.equal(J.totals.fishLb, R.lb);
+  }
+  const J = v14fisher('fort-kearny', 5); const f0 = J.food;
+  const S = V14.fishingSession(J, { rescue: true, rand: mulberry32(2) }); assert.equal(S.rescue, true);
+  const R = V14.endFishing(J, S); assert.equal(R.lb, RESCUE.minLb); assert.equal(R.topUp, RESCUE.minLb); assert.equal(J.food, f0 + RESCUE.minLb, 'a rescue session with no catch is worth 30 lb');
+  assert.ok(R.lb >= 30);
+  const K = v14fisher('fort-kearny', 6); const S2 = V14.fishingSession(K, { rescue: true, rand: mulberry32(3) }); V14.landCast(K, S2, S2.casts.findIndex((c) => c.kind === 'fish') >= 0 ? S2.casts.findIndex((c) => c.kind === 'fish') : 0);
+  const R2 = V14.endFishing(K, S2); assert.ok(R2.lb >= 30 && R2.lb - R2.topUp <= 24);
+  // the trail's safety net: tickDay hands over a fish event with rescue true and the session tops up through applyFish as it always has
+  const T = v14fisher('fort-kearny', 7); T.foods = { flour: 0, bacon: 0, beans: 0, other: 0 }; syncFood(T); T.trip.events = [];
+  let ev = null; for (let d = 0; d < 6 && !ev; d++) { const r = tickDay(T, { rand: mulberry32(d) }); ev = r.event; if (r.marker) applyMarker(T, { correct: true }); }
+  if (ev && ev.kind === 'fish') { const ss = V14.fishingSession(T, { rescue: ev.rescue, rand: mulberry32(4) }); assert.ok(V14.endFishing(T, ss).lb >= 30); }
+});
+
+test('the economy kid (60 % hooked, 85 % of the fights landed) brings home a mean session within 10 % of 1.3\'s 9.6 lb, at every leg\'s water and over the journey', () => {
+  const mean = (xs) => xs.reduce((a, b) => a + b, 0) / xs.length;
+  const perLeg = TRAIL.map((leg) => mean(Array.from({ length: 600 }, (_, i) => { const J = v14fisher(leg.id, 3000 + i); return v14kid(J, mulberry32(i * 13 + leg.n)).R.lb; })));
+  const all = mean(perLeg);
+  assert.ok(Math.abs(all - 9.6) / 9.6 <= 0.10, `mean session ${all.toFixed(2)} lb (per leg ${perLeg.map((x) => x.toFixed(1)).join(' ')})`);
+  assert.ok(perLeg.every((x) => x > 4 && x < 20), 'no leg\'s water is a famine or a feast: ' + perLeg.map((x) => x.toFixed(1)));
+  // grasshoppers and the spoon do not push a session past the cap
+  for (const bait of ['hoppers', 'spoon']) for (let i = 0; i < 200; i++) { const J = v14fisher('the-dalles', 4000 + i); J.goods.hoppers = 12; J.goods.spoon = 1; assert.ok(v14kid(J, mulberry32(i), { bait, hook: 1, land: 1 }).R.lb <= 24); }
+});
+
+test('landCast: the fish log (n, the biggest in inches with its pounds, where first caught), fishBest follows the biggest inches, the card comes with a new species only; junk is counted, the turtle let go', () => {
+  const J = v14fisher('fort-kearny', 8); const S = V14.fishingSession(J, { rand: mulberry32(1) });
+  const set = (i, o) => { S.casts[i] = { ...S.casts[i], ...o }; };
+  set(0, { kind: 'fish', species: 'channel-catfish', lengthIn: 20, lb: 6 }); set(1, { kind: 'fish', species: 'channel-catfish', lengthIn: 22, lb: 6 });
+  set(2, { kind: 'fish', species: 'hornyhead-chub', lengthIn: 7, lb: 3 }); set(3, { kind: 'junk', junk: 'boot', lb: 0 });
+  const r0 = V14.landCast(J, S, 0); assert.deepEqual([r0.kind, r0.species, r0.lengthIn, r0.lb, r0.firstSpecies, r0.best, r0.card], ['fish', 'channel-catfish', 20, 6, true, true, 'channel-catfish']);
+  assert.deepEqual(J.fishLog['channel-catfish'], { n: 1, bestIn: 20, bestLb: 6, firstLeg: 'fort-kearny', firstSeason: 's1847' }); assert.deepEqual(J.fishBest, { species: 'channel-catfish', in: 20 });
+  const r1 = V14.landCast(J, S, 1); assert.deepEqual([r1.firstSpecies, r1.best, r1.card], [false, true, undefined]); assert.equal(J.fishLog['channel-catfish'].n, 2); assert.equal(J.fishLog['channel-catfish'].bestIn, 22);
+  const r2 = V14.landCast(J, S, 2); assert.equal(r2.best, false, 'a small chub is not the personal best'); assert.deepEqual(J.fishBest, { species: 'channel-catfish', in: 22 }); assert.equal(r2.card, 'hornyhead-chub');
+  const r3 = V14.landCast(J, S, 3); assert.deepEqual([r3.kind, r3.junk, r3.lb], ['junk', 'boot', 0]); assert.equal(J.fishJunk.boot, 1); assert.ok(J.trip.happened.includes('fish-boot'));
+  assert.equal(J.totals.fishCaught, 3); assert.equal(J.totals.fishJunk, 1);
+  const R = V14.endFishing(J, S);
+  assert.equal(R.lb, 15); assert.deepEqual(R.caught.map((c) => c.species), ['channel-catfish', 'channel-catfish', 'hornyhead-chub']); assert.deepEqual(R.junk, ['boot']); assert.deepEqual(R.newSpecies, ['channel-catfish', 'hornyhead-chub']); assert.equal(R.best, true);
+  assert.equal(R.summary.text, 'Two channel catfish, a hornyhead chub and an old boot. Fifteen pounds of fish for the wagon.'); assert.equal(R.summary.say, R.summary.text);
+  // the sturgeon beats everything
+  const S2 = V14.fishingSession(v14fisher('snake-river', 9), { rand: mulberry32(2) }); S2.casts[0] = { ...S2.casts[0], kind: 'fish', species: 'white-sturgeon', lengthIn: 60, lb: 14 };
+  V14.landCast(J, S2, 0); assert.deepEqual(J.fishBest, { species: 'white-sturgeon', in: 60 });
+  // the turtle is let go; the bottle starts the note quest only while it can
+  const T = v14fisher('fort-laramie', 10); const S3 = V14.fishingSession(T, { rand: mulberry32(2) });
+  S3.casts[0] = { ...S3.casts[0], kind: 'junk', junk: 'turtle', lb: 0 }; assert.equal(V14.landCast(T, S3, 0).released, true);
+  // summaries: counted words, no digits, plurals
+  const U = v14fisher('fort-kearny', 11); const S4 = V14.fishingSession(U, { rand: mulberry32(5) });
+  S4.casts[0] = { ...S4.casts[0], kind: 'fish', species: 'channel-catfish', lengthIn: 15, lb: 4 }; S4.casts[1] = { ...S4.casts[1], kind: 'junk', junk: 'boot', lb: 0 }; S4.casts[2] = { ...S4.casts[2], kind: 'junk', junk: 'boot', lb: 0 }; S4.casts[3] = { ...S4.casts[3], kind: 'junk', junk: 'turtle', lb: 0 };
+  [0, 1, 2, 3].forEach((i) => V14.landCast(U, S4, i));
+  assert.equal(V14.endFishing(U, S4).summary.text, 'A channel catfish, two old boots and a snapping turtle. Four pounds of fish for the wagon.');
+  const V = v14fisher('fort-kearny', 12); const S5 = V14.fishingSession(V, { rand: mulberry32(6) }); S5.casts.forEach((c, i) => { if (c.kind === 'fish') S5.casts[i] = { ...c, kind: 'junk', junk: 'boot', lb: 0 }; });
+  S5.casts.forEach((c, i) => V14.landCast(V, S5, i)); const none = V14.endFishing(V, S5).summary.text; assert.ok(/boot/.test(none));
+  const W = v14fisher('fort-kearny', 13); const S6 = V14.fishingSession(W, { rand: mulberry32(7) }); assert.equal(V14.endFishing(W, S6).summary.text, 'No bites this time. The river has more.');
+  for (let i = 0; i < 300; i++) { const X = v14fisher(WATER_LEGS[i % WATER_LEGS.length].id, 500 + i); const { R: rr } = v14kid(X, mulberry32(i)); assert.ok(!/\d/.test(rr.summary.text), rr.summary.text); assert.ok(/\.$/.test(rr.summary.text)); }
+  assert.equal(V14.landCast(J, S, 9), null);
+});
+
+test('familyRecords and skipsBoard over three players: the biggest of each species with the player\'s name, ties keep the earlier, the board sorted best first', () => {
+  const mkp = (playerId, name, fishLog, best) => ({ playerId, name, J: { fishLog, skips: { best } } });
+  const rec = (bestIn) => ({ n: 1, bestIn, bestLb: 3, firstLeg: 'fort-kearny', firstSeason: 's1847' });
+  const players = [mkp('p1', 'Mia', { 'channel-catfish': rec(20), 'hornyhead-chub': rec(6) }, 7), mkp('p2', 'Leo', { 'channel-catfish': rec(24), 'cutthroat-trout': rec(12) }, 9), mkp('p3', 'Ava', { 'channel-catfish': rec(24), 'hornyhead-chub': rec(6) }, 7)];
+  assert.deepEqual(V14.familyRecords(players), { 'channel-catfish': { name: 'Leo', playerId: 'p2', lengthIn: 24 }, 'hornyhead-chub': { name: 'Mia', playerId: 'p1', lengthIn: 6 }, 'cutthroat-trout': { name: 'Leo', playerId: 'p2', lengthIn: 12 } });
+  assert.deepEqual(V14.skipsBoard(players), [{ name: 'Leo', playerId: 'p2', best: 9 }, { name: 'Mia', playerId: 'p1', best: 7 }, { name: 'Ava', playerId: 'p3', best: 7 }]);
+  assert.deepEqual(V14.familyRecords([]), {}); assert.deepEqual(V14.skipsBoard(null), []); assert.deepEqual(V14.skipsBoard([{ playerId: 'x', name: 'X', J: {} }]), [], 'no skips yet, no row');
+  assert.deepEqual(V14.familyRecords([{ playerId: 'x', name: 'X', J: null }, { playerId: 'y', name: 'Y', J: { fishLog: { 'redband-trout': rec(9) } } }]), { 'redband-trout': { name: 'Y', playerId: 'y', lengthIn: 9 } });
+});
+
+// ---- the quests ----
+function v14atStop(J, legId) { const leg = legList().find((l) => l.id === legId); startLeg(J, legId); J.milesDone = leg.miles; J.trip.arrived = true; return leg; }
+const LOCKET = QUESTS.find((q) => q.id === 'locket');
+
+test('the locket: the dog named at the Kansas River brings it back (carried, the first clue Fort Kearny), the Talk row shows ❓ and 💛, clues advance in order, Molly returns it from any step', () => {
+  const J = createJourney({ seed: 41, companions: PLAIN }); v14atStop(J, 'kansas-river');
+  assert.equal(V14.questFindable(J, 'nose'), 'locket', 'findable at the Kansas River'); assert.deepEqual(V14.questStatus(J).find((q) => q.questId === 'locket').state, 'none');
+  const a = V14.adoptDog(J, { name: 'Frodo', coat: 'brown' }); assert.equal(a.quest, 'locket');
+  assert.deepEqual(J.quests.locket, { state: 'carried', step: 0, foundLeg: 'kansas-river', season: 's1847' });
+  assert.equal(V14.adoptDog(J, { name: 'Other' }).dog.name, 'Frodo', 'a journey that has a dog keeps it'); assert.equal(V14.adoptDog(J, {}).quest, null);
+  assert.equal(V14.findQuestItem(J, 'locket'), null, 'found once');
+  const at = (stop) => V14.questAt(J, stop).map((x) => [x.questId, x.role, x.badge, x.person.id]);
+  assert.deepEqual(at('fort-kearny'), [['locket', 'clue', '❓', 'q-platt']]); assert.deepEqual(at('chimney-rock'), [['locket', 'clue', '❓', 'q-josh']]); assert.deepEqual(at('fort-laramie'), [['locket', 'owner', '💛', 'q-molly']]); assert.deepEqual(at('fort-hall'), []);
+  assert.equal(V14.questTalk(J, 'locket'), null, 'nobody to talk to at the Kansas River');
+  v14atStop(J, 'fort-kearny');
+  const t1 = V14.questTalk(J, 'locket'); assert.deepEqual([t1.role, t1.step, t1.of, t1.done, t1.lines.length], ['clue', 1, 2, false, 2]); assert.equal(J.quests.locket.step, 1);
+  const again = V14.questTalk(J, 'locket'); assert.equal(again.again, true); assert.equal(J.quests.locket.step, 1, 'idempotent per step'); assert.deepEqual(at('fort-kearny'), [], 'a clue given is gone from the row');
+  v14atStop(J, 'chimney-rock'); const t2 = V14.questTalk(J, 'locket'); assert.deepEqual([t2.role, t2.step, t2.done], ['clue', 2, false]);
+  const tok0 = J.tokens, other0 = J.foods.other, food0 = J.food;
+  v14atStop(J, 'fort-laramie'); const t3 = V14.questTalk(J, 'locket');
+  assert.deepEqual([t3.role, t3.done, t3.step, t3.of], ['owner', true, 2, 2]); assert.deepEqual(t3.reward, { tokens: 1, food: { what: 'dried apples', lb: 10 }, card: 'locket' });
+  assert.equal(J.tokens, tok0 + 1); assert.equal(J.foods.other, other0 + 10); assert.equal(J.food, food0 + 10); assert.equal(J.quests.locket.state, 'returned'); assert.deepEqual(J.questsDone, ['locket']); assert.equal(J.totals.questsDone, 1);
+  const rep = V14.questTalk(J, 'locket'); assert.equal(rep.again, true); assert.equal(rep.reward, undefined); assert.equal(J.tokens, tok0 + 1, 'a quest pays once');
+  assert.deepEqual(V14.questAt(J, 'fort-laramie'), []); assert.equal(V14.questFindable(J, 'nose'), null, 'once a season');
+  assert.deepEqual(V14.questMail(J, { leg: 'fort-bridger' }), [], 'nothing to mail: it was given back');
+  // the letter home has its line on the leg it was returned
+  assert.ok(J.quests.locket.doneLeg === 'fort-laramie');
+  const st = V14.questStatus(J).find((q) => q.questId === 'locket'); assert.deepEqual([st.state, st.step, st.of, st.ever, st.owner.at], ['returned', 2, 2, true, 'fort-laramie']);
+  // from any step: walk straight to Molly with no clues heard
+  const K = createJourney({ seed: 42, companions: PLAIN }); v14atStop(K, 'kansas-river'); V14.adoptDog(K, { name: 'Rex' }); v14atStop(K, 'fort-laramie');
+  assert.equal(K.quests.locket.step, 0); const t4 = V14.questTalk(K, 'locket'); assert.equal(t4.role, 'owner'); assert.equal(K.quests.locket.state, 'returned');
+});
+
+test('the locket by the nose: a dog from an earlier season finds it on the Kansas River leg, a dog named at Fort Kearny on the Chimney Rock leg; clues already behind are skipped; never past Chimney Rock', () => {
+  const J0 = createJourney({ seed: 43, companions: PLAIN }); v14atStop(J0, 'kansas-river'); V14.adoptDog(J0, { name: 'Frodo' }); J0.done = true;
+  const J = newSeason(J0); assert.equal(J.dog.name, 'Frodo'); assert.equal(J.legId, 'kansas-river'); assert.equal(J.quests.locket, undefined); assert.equal(J.trip.nose[0].kind, 'quest', 'the first nose slot');
+  assert.equal(J.trip.nose[0].quest, 'locket'); const rand = mulberry32(3); let found = null;
+  for (let d = 0; d < 40 && !found; d++) { const r = tickDay(J, { rand }); if (r.marker) applyMarker(J, { correct: true }); if (r.nose && r.nose.kind === 'quest') found = r.nose; if (r.arrived) break; }
+  assert.ok(found && found.quest.id === 'locket' && found.quest.item.id === 'locket', 'the item comes back'); assert.equal(J.quests.locket.state, 'carried'); assert.equal(J.quests.locket.step, 0);
+  // named at Fort Kearny's store after a "Not now"
+  const K = createJourney({ seed: 44, companions: PLAIN }); v14atStop(K, 'fort-kearny'); assert.equal(V14.adoptDog(K, { name: 'Rex' }).quest, null, 'the Kansas River is behind: nothing found at the store');
+  startLeg(K, 'chimney-rock'); assert.equal(K.trip.nose[0].kind, 'quest'); const fired = DOGFIRE(K, 0);
+  assert.equal(fired.kind, 'quest'); assert.equal(K.quests.locket.state, 'carried'); assert.equal(K.quests.locket.step, 1, 'Fort Kearny\'s clue is behind: heard on the way');
+  assert.deepEqual(V14.questAt(K, 'fort-kearny'), []); assert.equal(V14.questAt(K, 'chimney-rock').length, 1);
+  // never found past Chimney Rock
+  for (const id of ['fort-laramie', 'independence-rock', 'south-pass', 'fort-bridger', 'fort-hall', 'snake-river', 'blue-mountains', 'the-dalles']) {
+    const L = createJourney({ seed: 45, companions: PLAIN }); L.dog = { name: 'Rex', coat: 'brown', legs: 3, nextBerries: 9, treats: 0, muddy: false }; startLeg(L, id);
+    assert.equal(V14.questFindable(L, 'nose'), null, id); assert.ok(!v14kinds(L.trip.nose).includes('quest'), id);
+  }
+  for (const id of ['kansas-river', 'fort-kearny', 'chimney-rock']) { const L = createJourney({ seed: 46, companions: PLAIN }); L.dog = { name: 'Rex', coat: 'brown', legs: 3, nextBerries: 9, treats: 0, muddy: false }; startLeg(L, id); assert.equal(V14.questFindable(L, 'nose'), 'locket', id); }
+});
+function DOGFIRE(J, i) { return V14.questFindable(J, 'nose') ? tickUntilNose(J) : null; }
+function tickUntilNose(J) { const rand = mulberry32(9); for (let d = 0; d < 60; d++) { const r = tickDay(J, { rand }); if (r.marker) applyMarker(J, { correct: true }); if (r.nose) return r.nose; if (r.arrived) break; } return null; }
+
+test('questMail: a carried quest whose owner\'s stop is behind is mailed at the next post office (the card, no tokens, no food); not at the owner\'s own stop; once', () => {
+  const J = createJourney({ seed: 47, companions: PLAIN }); v14atStop(J, 'kansas-river'); V14.adoptDog(J, { name: 'Frodo' });
+  v14atStop(J, 'fort-laramie'); assert.deepEqual(V14.questMail(J, { leg: 'fort-laramie' }), [], 'Molly is here: not mailed yet'); assert.equal(J.quests.locket.state, 'carried');
+  v14atStop(J, 'fort-bridger'); const tok0 = J.tokens, food0 = J.food;
+  const m = V14.questMail(J, { leg: 'fort-bridger' }); assert.deepEqual(m, [{ questId: 'locket', text: LOCKET.mailed.text, card: 'locket' }]);
+  assert.equal(J.quests.locket.state, 'mailed'); assert.equal(J.tokens, tok0); assert.equal(J.food, food0); assert.deepEqual(J.questsDone, ['locket']); assert.equal(J.totals.questsDone, 0, 'keeper means given back in person');
+  assert.deepEqual(V14.questMail(J, { leg: 'fort-bridger' }), []); assert.equal(V14.questTalk(J, 'locket'), null);
+  assert.deepEqual(V14.questStatus(J).find((q) => q.questId === 'locket').state, 'mailed');
+  // the letter: a line for the leg it was returned or mailed on
+  const lines = lineSource('quest-locket'); if (lines.length) { assert.ok(happenedKeys(J).includes('quest-locket')); } else skip('the letter line of a returned quest', 'no LETTER_LINES["quest-locket"] in this worktree yet (the Content stream writes it)');
+});
+
+test('once a season, new once ever: a new season starts the quest over (questsDone kept); the card is new the first time and a duplicate token after', () => {
+  const J = createJourney({ seed: 48, companions: PLAIN }); v14atStop(J, 'kansas-river'); V14.adoptDog(J, { name: 'Frodo' }); v14atStop(J, 'fort-laramie'); V14.questTalk(J, 'locket'); J.done = true;
+  const N = newSeason(J); assert.deepEqual(N.quests, {}); assert.deepEqual(N.questsDone, ['locket']); assert.equal(V14.questFindable(N, 'nose'), 'locket', 'a new season, a new locket');
+  if (CARD_BY_ID.locket) { const a = awardCard(N, 'locket'); assert.equal(a.new, true); const t0 = N.tokens; const b = awardCard(N, 'locket'); assert.deepEqual([b.new, b.tokens], [false, 1]); assert.equal(N.tokens, t0 + 1); }
+  else skip('the locket card is new once ever', 'src/content/cards.js has no "locket" card in this worktree yet');
+});
+
+test('a synthetic "glove" quest found by fetch runs through the same functions, untouched (useQuests)', () => {
+  const P = (id, name) => ({ id, name, emoji: '🧤', role: 'a traveler' });
+  const glove = { id: 'glove', name: 'The glove', card: 'glove-card', letter: 'quest-glove', item: { id: 'glove', name: 'A red glove', emoji: '🧤', text: 'A red glove.' },
+    find: { via: 'fetch', legs: ['fort-laramie', 'independence-rock'] }, steps: [{ at: 'independence-rock', person: P('q-g1', 'Gus'), lines: ['A girl lost a red glove.', 'She went on to South Pass.'] }],
+    owner: { at: 'south-pass', person: P('q-g2', 'Greta'), lines: ['My glove!', 'Thank you.'] }, reward: { tokens: 2 }, mailed: { text: 'The glove goes ahead to South Pass.' } };
+  V14.useQuests([glove]);
+  try {
+    assert.deepEqual(V14.questList(), [glove]); const J = createJourney({ seed: 49, companions: PLAIN }); v14atStop(J, 'kansas-river'); V14.adoptDog(J, { name: 'Frodo' });
+    assert.equal(V14.questFindable(J, 'fetch'), null, 'not on the Kansas River leg'); assert.equal(V14.questFindable(J, 'nose'), null);
+    startLeg(J, 'fort-laramie'); assert.equal(V14.questFindable(J, 'fetch'), 'glove'); assert.equal(V14.questFindable(J, 'fish'), null); assert.ok(!v14kinds(J.trip.nose).includes('quest'));
+    let got = null; for (let i = 0; i < 400 && !got; i++) { J.trip.fetchThrows = 0; const t = V14.fetchThrow(J, { dist: 0.5, rand: mulberry32(i + 1) }); if (t.quest) got = t; }
+    assert.ok(got && got.quest.id === 'glove' && got.quest.item.id === 'glove' && got.item === null); assert.equal(J.quests.glove.state, 'carried'); assert.equal(J.quests.glove.step, 0);
+    assert.equal(V14.questFindable(J, 'fetch'), null, 'found once');
+    assert.deepEqual(V14.questAt(J, 'independence-rock').map((x) => x.role), ['clue']); assert.deepEqual(V14.questAt(J, 'south-pass').map((x) => [x.role, x.badge]), [['owner', '💛']]);
+    v14atStop(J, 'independence-rock'); assert.equal(V14.questTalk(J, 'glove').step, 1);
+    const tok = J.tokens, food = J.food; v14atStop(J, 'south-pass'); const r = V14.questTalk(J, 'glove'); assert.deepEqual(r.reward, { tokens: 2, card: 'glove-card' }); assert.equal(J.tokens, tok + 2); assert.equal(J.food, food, 'no food gift');
+    assert.equal(J.quests.glove.state, 'returned'); assert.deepEqual(V14.questStatus(J).map((q) => q.questId), ['glove']);
+    const M = createJourney({ seed: 50, companions: PLAIN }); startLeg(M, 'fort-laramie'); const f = V14.findQuestItem(M, 'glove'); assert.equal(f.quest.id, 'glove'); v14atStop(M, 'fort-hall');
+    assert.deepEqual(V14.questMail(M, { leg: 'fort-hall' }).map((x) => x.questId), ['glove']);
+    assert.equal(JSON.stringify(Object.keys(clone(M.quests))), '["glove"]');
+  } finally { V14.useQuests(null); }
+  assert.deepEqual(V14.questList().map((q) => q.id), QUESTS.map((q) => q.id), 'the content\'s quests are back');
+});
+
+// ---- trail facts and moments ----
+const FAR_IDS = TRAIL_FACTS.filter((f) => f.far).map((f) => f.id);
+test('trail facts: planned only on their legs, at most one a leg, MOMENTS.facts.chance of the legs that have one left, a mile between 30 % and 85 %; never twice a season', () => {
+  assert.deepEqual([...FAR_IDS].sort(), ['far-off-crack', 'grizzly-ridge', 'prairie-glow', 'wolf-song'], 'the four far-off facts');
+  let have = 0, planned = 0;
+  for (const leg of TRAIL) {
+    for (let seed = 1; seed <= 200; seed++) {
+      const J = createJourney({ seed: seed * 3 + leg.n, companions: PLAIN }); startLeg(J, leg.id);
+      const ids = V14.factsFor(J, leg);
+      for (const id of ids) { const f = TRAIL_FACTS.find((x) => x.id === id); assert.ok(f.when === 'day' || f.when === 'night'); assert.ok(!f.legs || f.legs.includes(leg.id)); }
+      const f = J.trip.fact;
+      if (leg.id === LAST) { assert.equal(f, null, 'no trail days on the raft'); continue; }
+      if (ids.length) have++;
+      if (f) {
+        planned++; assert.ok(ids.includes(f.id) && ids[0] === f.id, 'the first of factsFor in the content\'s order'); assert.equal(f.fired, false);
+        assert.ok(f.atMile >= Math.round(0.3 * leg.miles) && f.atMile <= Math.round(0.85 * leg.miles), 'mile ' + f.atMile);
+      } else if (!ids.length) assert.equal(f, null);
+    }
+  }
+  assert.ok(planned / have > 0.62 && planned / have < 0.78, `chance ${planned / have}`);
+  // across a journey: at most one a leg, none twice, about eight a season at most
+  for (let seed = 500; seed < 520; seed++) {
+    const rand = mulberry32(seed), J = createJourney({ seed, companions: PLAIN }); const heard = [];
+    for (let g = 0; g < 14 && !J.done; g++) {
+      let n = 0;
+      for (let d = 0; d < 120; d++) { const r = tickDay(J, { rand }); if (r.marker) applyMarker(J, { correct: true }); if (r.fact) { n++; heard.push(r.fact.id); assert.deepEqual(V14.heardFact(J, r.fact.id).first, true); } if (r.arrived) break; }
+      assert.ok(n <= 1, 'one a leg'); arrive(J); nextLeg(J);
+    }
+    assert.equal(new Set(heard).size, heard.length, 'never twice a season: ' + heard.join()); assert.ok(heard.length <= TRAIL_FACTS.length - 1);
+  }
+});
+
+test('heardFact: the card id for the app, new once a season; setTrailSounds(false) removes exactly the four far-off facts (and they are never planned); the stampede\'s fact once a season', () => {
+  const J = createJourney({ seed: 60, companions: PLAIN });
+  const h = V14.heardFact(J, 'pronghorn-race'); assert.deepEqual(h, { card: 'pronghorn-race', first: true }); assert.deepEqual(J.factsHeard, ['pronghorn-race']); assert.equal(J.totals.factsHeard, 1);
+  assert.deepEqual(V14.heardFact(J, 'pronghorn-race'), { card: 'pronghorn-race', first: false }); assert.equal(J.totals.factsHeard, 1); assert.equal(V14.heardFact(J, 'nonsense'), null);
+  assert.ok(!V14.factsFor(J, 'chimney-rock').includes('pronghorn-race'), 'heard once, not offered again this season');
+  const K = createJourney({ seed: 61, companions: PLAIN });
+  const union = (opts) => { const s = new Set(); for (const leg of TRAIL) for (const id of V14.factsFor(K, leg)) s.add(id); return [...s]; };
+  const on = union(); assert.equal(V14.setTrailSounds(K, false), false); assert.equal(K.opts.farSounds, false); const off = union();
+  assert.deepEqual(on.filter((id) => !off.includes(id)).sort(), [...FAR_IDS].sort(), 'exactly the four far-off facts');
+  assert.ok(off.length >= 1 && off.every((id) => !FAR_IDS.includes(id)));
+  for (let seed = 1; seed <= 400; seed++) { const L = createJourney({ seed, companions: PLAIN }); V14.setTrailSounds(L, false); for (const leg of TRAIL) { startLeg(L, leg.id); if (L.trip.fact) assert.ok(!FAR_IDS.includes(L.trip.fact.id)); } }
+  assert.equal(V14.setTrailSounds(K, true), true); assert.deepEqual(union().sort(), [...on].sort());
+  // the stampede: the fact until it has been heard this season
+  const S = createJourney({ seed: 62, companions: PLAIN });
+  assert.equal(V14.stampedeFact(S), 'bison-thunder'); assert.equal(stampedePay(S, { held: false }).fact, 'bison-thunder'); assert.equal(stampedePay(S, { held: true }).fact, 'bison-thunder');
+  assert.deepEqual(V14.heardFact(S, 'bison-thunder'), { card: 'bison-thunder', first: true });
+  assert.equal(stampedePay(S, { held: true }).fact, null, 'once a season'); assert.equal(V14.stampedeFact(S), null);
+  assert.ok(!on.includes('bison-thunder') && !V14.factsFor(S, 'chimney-rock').includes('bison-thunder'), 'it is not an ambient day or night fact');
+  S.done = true; const N = newSeason(S); assert.equal(V14.stampedeFact(N), 'bison-thunder', 'a new season');
+});
+
+test('dust devil: prairie, bluffs and high desert legs only, about 35 %, never two legs running; dustDevilResult pays a token only when every hat is caught', () => {
+  let eligible = 0, planned = 0;
+  for (const leg of TRAIL) for (let seed = 1; seed <= 300; seed++) {
+    const J = createJourney({ seed: seed * 5 + leg.n, companions: PLAIN }); startLeg(J, leg.id); const d = J.trip.dustDevil;
+    if (MOMENT_RULES.dustDevil.biomes.includes(leg.biome) && leg.id !== LAST) eligible++;
+    if (d) { planned++; assert.ok(MOMENT_RULES.dustDevil.biomes.includes(leg.biome), 'only ' + leg.biome); assert.ok(d.atMile >= Math.round(0.25 * leg.miles) && d.atMile <= Math.round(0.8 * leg.miles)); assert.equal(d.fired, false); }
+  }
+  assert.ok(Math.abs(planned / eligible - 0.35) < 0.04, `${planned / eligible}`);
+  let ran = 0, devils = 0;
+  for (let seed = 700; seed < 760; seed++) {
+    const rand = mulberry32(seed), J = createJourney({ seed, companions: PLAIN }); let last = -9;
+    for (let g = 0; g < 14 && !J.done; g++) {
+      for (let d = 0; d < 120; d++) { const r = tickDay(J, { rand }); if (r.marker) applyMarker(J, { correct: true }); if (r.moment) { devils++; assert.ok(J.legIndex - last > 1, 'never two legs running'); last = J.legIndex; } if (r.arrived) break; }
+      arrive(J); nextLeg(J); ran++;
+    }
+  }
+  assert.ok(devils > 40, 'dust devils ' + devils);
+  const J = createJourney({ seed: 63, companions: PLAIN }); const t0 = J.tokens;
+  assert.deepEqual(V14.dustDevilResult(J, { caught: 3, of: 3 }), { all: true, tokens: 1 }); assert.equal(J.tokens, t0 + 1); assert.equal(J.totals.hatsAll, 1); assert.equal(J.totals.hatsCaught, 3); assert.equal(J.totals.dustDevils, 1, 'a devil is counted (playtest 1.4 W5)');
+  assert.deepEqual(V14.dustDevilResult(J, { caught: 2, of: 3 }), { all: false, tokens: 0 }); assert.deepEqual(V14.dustDevilResult(J, { caught: 0, of: 3 }), { all: false, tokens: 0 }); assert.deepEqual(V14.dustDevilResult(J, { caught: 0, of: 0 }), { all: false, tokens: 0 }, 'no hats, no hat trick');
+  assert.equal(J.tokens, t0 + 1); assert.equal(J.totals.hatsAll, 1); assert.equal(J.totals.hatsCaught, 5);
+});
+
+test('skipping stones: the flat stone adds its two skips to the next throw once; once a stop and once a leg at camp; best, throws and byRiver kept; at most 12 skips', () => {
+  assert.deepEqual(RIVER_STOPS, ['kansas-river', 'snake-river', 'the-dalles']);
+  const J = v14mk(64, { leg: 'fort-kearny' });
+  V14.recordFind(J, 'flat-stone'); assert.equal(J.trip.skipBonus, 2);
+  const p = V14.stonesPlan(J); assert.deepEqual([p.throws, p.bonus, p.available], [3, 2, true]); assert.equal(V14.stonesPlan(J).bonus, 0, 'the flat stone is used once');
+  const r = V14.stonesResult(J, { throws: [2, 5, 3] }); assert.deepEqual([r.best, r.newBest], [5, true]); assert.deepEqual(J.skips, { best: 5, throws: 3, byRiver: { 'fort-kearny': 5 } }); assert.equal(J.totals.skipThrows, 3);
+  const again = V14.stonesResult(J, { throws: [12, 12, 12] }); assert.equal(again.repeat, true); assert.equal(again.best, 0); assert.equal(J.skips.best, 5, 'once at camp a leg'); assert.equal(V14.stonesPlan(J).available, false);
+  // the stop (arrived) is its own place
+  J.milesDone = legList()[1].miles; J.trip.arrived = true; assert.equal(V14.stonesPlan(J).available, true);
+  const s = V14.stonesResult(J, { throws: [99, 4] }); assert.deepEqual([s.best, s.newBest], [MOMENT_RULES.stones.maxSkips, true]); assert.equal(J.skips.best, 12); assert.equal(J.skips.throws, 5);
+  assert.equal(V14.stonesResult(J, { throws: [1] }).repeat, true);
+  const K = v14mk(65, { leg: 'snake-river' }); K.skips.best = 4; K.milesDone = 1; const lo = V14.stonesResult(K, { throws: [2, 3] }); assert.deepEqual([lo.best, lo.newBest], [3, false]); assert.equal(K.skips.best, 4); assert.deepEqual(K.skips.byRiver, { 'snake-river': 3 });
+  assert.deepEqual(V14.campWater(v14fisher('kansas-river', 1)), { water: 'kansas', name: WATER_NAMES.kansas, river: true });
+  assert.equal(V14.campWater(v14fisher('fort-laramie', 1)).river, true); assert.equal(V14.campWater(v14fisher('independence-rock', 1)).water, 'sweetwater');
+  assert.equal(V14.campWater(v14fisher('fort-bridger', 1)).river, false, 'a creek'); assert.equal(V14.campWater(v14fisher('blue-mountains', 1)).river, false); assert.equal(V14.campWater(v14fisher('fort-hall', 1)).river, true);
+});
+
+test('falling stars: only the evening of an arrival, decided once an arrival, about half, never twice in three legs, never in the valley; a wish card per tap, twelve different ones first', () => {
+  const J = createJourney({ seed: 66, companions: PLAIN });
+  assert.equal(V14.meteorsTonight(J), false, 'not before the arrival'); assert.equal(J.trip.meteors, null);
+  let yes = 0, n = 0;
+  for (let seed = 800; seed < 1000; seed++) {
+    const K = createJourney({ seed, companions: PLAIN }); let last = -9;
+    for (let g = 0; g < 12; g++) {
+      v14arrive(K);
+      const a = V14.meteorsTonight(K), b = V14.meteorsTonight(K); assert.equal(a, b, 'decided once'); assert.equal(K.trip.meteors, a);
+      if (K.legId === LAST) assert.equal(a, false, 'never in the valley');
+      if (a) { assert.ok(K.legIndex - last >= MOMENT_RULES.meteors.gapLegs, `legs ${last} then ${K.legIndex}`); last = K.legIndex; yes++; }
+      if (K.legId !== LAST) n++;
+      nextLeg(K);
+    }
+  }
+  assert.ok(yes / n > 0.15 && yes / n < 0.4, `${yes} of ${n} (a half of the evenings the gap allows)`);
+  const W = createJourney({ seed: 67, companions: PLAIN }); const seen = new Set(); const rand = mulberry32(2);
+  for (let i = 0; i < WISHES.length; i++) { const w = V14.wishFor(W, rand); assert.equal(w.first, true); assert.ok(WISHES.some((x) => x.id === w.id)); seen.add(w.id); }
+  assert.equal(seen.size, WISHES.length); assert.deepEqual([...W.wishes].sort(), WISHES.map((x) => x.id).sort()); assert.equal(W.totals.meteorsTapped, WISHES.length);
+  assert.equal(V14.wishFor(W, rand).first, false, 'a repeat after all twelve'); assert.equal(W.wishes.length, WISHES.length);
+  const snowy = createJourney({ seed: 68, companions: PLAIN }); v14arrive(snowy); snowy.trip.snow = true; assert.equal(V14.meteorsTonight(snowy), false);
+});
+
+// ---- saves, seasons, sync ----
+const V14_FIELDS = ['dog', 'finds', 'fishLog', 'fishJunk', 'fishBest', 'skips', 'wishes', 'treatsBest', 'quests', 'questsDone', 'factsHeard', 'moments'];
+const V14_TRIP = ['v14', 'nose', 'fact', 'dustDevil', 'fishing', 'stones', 'stonesStop', 'meteors', 'fetchThrows', 'skipBonus'];
+const V14_TOTALS = ['noseFinds', 'chases', 'chasesCalled', 'snakes', 'berries', 'fetchThrows', 'treats', 'fishCaught', 'fishOff', 'fishJunk', 'sturgeon', 'skipThrows', 'dustDevils', 'hatsCaught', 'hatsAll', 'meteorsTapped', 'questsDone', 'factsHeard'];
+/** what a 1.3.2 save looked like: the journey with none of the v1.4 fields and rev 12 */
+function v14oldSave(seed = 70) {
+  const J = createJourney({ seed, companions: ['blacksmith', 'scout', 'teacher'] }); const rand = mulberry32(seed);
+  for (let d = 0; d < 9; d++) { const r = tickDay(J, { rand }); if (r.marker) applyMarker(J, { correct: true }); }
+  camp(J, 'fish', { rand }); applyFish(J, { fishLb: 12 }); buy(J, { item: 'rope', qty: 1 });
+  const old = clone(J);
+  for (const k of V14_FIELDS) delete old[k];
+  for (const k of ['horseshoes', 'hoppers', 'spoon']) delete old.goods[k];
+  for (const k of V14_TOTALS) delete old.totals[k];
+  for (const k of V14_TRIP) delete old.trip[k];
+  delete old.opts.farSounds; old.rev = 12;
+  return old;
+}
+test('ensureJourney turns a 1.3.2 save into rev 14 with every v1.4 field and changes nothing else', () => {
+  const old = v14oldSave(), snap = clone(old), J = clone(old);
+  assert.equal(ensureJourney(J), J); assert.equal(J.rev, 14);
+  assert.equal(J.dog, null); assert.deepEqual(J.finds, {}); assert.deepEqual(J.fishLog, {}); assert.deepEqual(J.fishJunk, { boot: 0, turtle: 0, bottle: 0 }); assert.equal(J.fishBest, null);
+  assert.deepEqual(J.skips, { best: 0, throws: 0, byRiver: {} }); assert.deepEqual(J.wishes, []); assert.equal(J.treatsBest, 0); assert.deepEqual(J.quests, {}); assert.deepEqual(J.questsDone, []);
+  assert.deepEqual(J.factsHeard, []); assert.deepEqual(J.moments, { dustDevilLeg: -9, meteorsLeg: -9 }); assert.equal(J.opts.farSounds, true);
+  assert.deepEqual([J.goods.horseshoes, J.goods.hoppers, J.goods.spoon], [0, 0, 0]); for (const k of V14_TOTALS) assert.equal(J.totals[k], 0, k);
+  assert.deepEqual([J.trip.nose, J.trip.fact, J.trip.dustDevil, J.trip.fishing, J.trip.stones, J.trip.meteors, J.trip.fetchThrows, J.trip.skipBonus], [[], null, null, 0, false, null, 0, 0]);
+  // …and nothing else moved: take the additions out and it is the old save again
+  const back = clone(J); for (const k of V14_FIELDS) delete back[k]; for (const k of ['horseshoes', 'hoppers', 'spoon']) delete back.goods[k]; for (const k of V14_TOTALS) delete back.totals[k]; for (const k of V14_TRIP) delete back.trip[k]; delete back.opts.farSounds; back.rev = 12;
+  assert.deepEqual(back, snap); assert.deepEqual(clone(J), J, 'JSON-safe');
+  const twice = clone(J); ensureJourney(twice); assert.deepEqual(twice, J, 'idempotent');
+  // it plays on, and every v1.4 entry point takes it
+  const rand = mulberry32(4); const r = tickDay(J, { rand }); assert.ok(r.miles >= 0 && 'nose' in r && r.nose === null);
+  const o = clone(old); V14.adoptDog(o, { name: 'Rex' }); const o2 = clone(old); V14.fishingSession(o2); const o3 = clone(old); V14.stonesPlan(o3); V14.factsFor(clone(old), 'fort-kearny'); V14.meteorsTonight(clone(old)); V14.questAt(clone(old), 'fort-kearny'); V14.questStatus(clone(old));
+  const o4 = clone(old); V14.chaseResult(o4, { called: true, dist: 0.1 }); V14.sellHorseshoes(o4); V14.fetchThrow(o4, {}); V14.catchHoppers(o4, 3); V14.wishFor(clone(old)); V14.dustDevilResult(clone(old), { caught: 1, of: 1 });
+  assert.equal(o.dog.name, 'Rex'); assert.equal(o4.goods.hoppers, 3);
+  const arrows = clone(old); arrows.goods.arrows = 4; ensureJourney(arrows); assert.equal(arrows.goods.arrows, 4, 'a rev-12 save keeps its arrows (only a pre-1.2 save gets the bow\'s fifteen)');
+  const ancient = clone(old); delete ancient.rev; ancient.goods.arrows = 1; ensureJourney(ancient); assert.equal(ancient.goods.arrows, 15); assert.equal(ancient.rev, 14);
+});
+
+test('newSeason carries exactly the §3.1 list (the dog clean, the finds, the fish log, the junk, the best fish, the stones, the wishes, the quests given back, the longest fetch, the spoon, the far-off switch) and resets the rest', () => {
+  const J = v14mk(71, { leg: 'fort-laramie' }); const rand = mulberry32(1);
+  J.dog.muddy = true; J.dog.legs = 5; J.dog.treats = 11; J.finds = { horseshoe: 2, pinecone: 1 }; J.fishLog = { 'channel-catfish': { n: 2, bestIn: 22, bestLb: 5, firstLeg: 'fort-kearny', firstSeason: 's1847' } }; J.fishJunk = { boot: 2, turtle: 0, bottle: 1 };
+  J.fishBest = { species: 'channel-catfish', in: 22 }; J.skips = { best: 8, throws: 12, byRiver: { 'kansas-river': 8 } }; J.wishes = ['oxen-fly']; J.questsDone = ['locket']; J.treatsBest = 0.9; J.goods.spoon = 1; J.opts.farSounds = false;
+  J.quests = { 'bottle-note': { state: 'carried', step: 1, foundLeg: 'fort-laramie', season: 's1847' } }; J.factsHeard = ['wolf-song']; J.moments = { dustDevilLeg: 3, meteorsLeg: 2 }; J.goods.horseshoes = 4; J.goods.hoppers = 7; J.goods.rope = 3; J.tokens = 9;
+  J.totals.treats = 11; J.totals.fishCaught = 5; J.done = true;
+  const N = newSeason(J);
+  assert.deepEqual({ ...N.dog, nextBerries: 0 }, { ...J.dog, muddy: false, nextBerries: 0 }, 'the dog, clean (the new leg\'s plan may have moved the berry counter)'); assert.deepEqual(N.finds, J.finds); assert.deepEqual(N.fishLog, J.fishLog); assert.deepEqual(N.fishJunk, J.fishJunk); assert.deepEqual(N.fishBest, J.fishBest);
+  assert.deepEqual(N.skips, J.skips); assert.deepEqual(N.wishes, J.wishes); assert.deepEqual(N.questsDone, J.questsDone); assert.equal(N.treatsBest, 0.9); assert.equal(N.goods.spoon, 1); assert.equal(N.opts.farSounds, false);
+  assert.deepEqual(N.quests, {}); assert.deepEqual(N.factsHeard, []); assert.deepEqual(N.moments, { dustDevilLeg: -9, meteorsLeg: -9 }); assert.equal(N.goods.horseshoes, 0); assert.equal(N.goods.hoppers, 0); assert.equal(N.goods.rope, 0);
+  for (const k of V14_TOTALS) assert.equal(N.totals[k], 0, k); assert.equal(N.tokens, 9, '1.3: the tokens carry');
+  assert.notEqual(N.finds, J.finds, 'copies, not the same objects'); N.finds.horseshoe = 99; assert.equal(J.finds.horseshoe, 2);
+  assert.ok(N.trip.nose.length >= 2, 'the dog is carried, so the first leg of the new season has its nose slots'); assert.equal(N.trip.nose[0].kind, 'quest');
+  assert.equal(N.rev, 14); assert.deepEqual(clone(N), N);
+  const noDog = createJourney({ seed: 72, companions: PLAIN }); noDog.done = true; const M = newSeason(noDog); assert.equal(M.dog, null); assert.deepEqual(M.trip.nose, []);
+  const off = createJourney({ seed: 73, companions: PLAIN }); V14.setTrailSounds(off, false); off.done = true; for (let i = 0; i < 40; i++) { const Z = newSeason(off); assert.equal(Z.opts.farSounds, false); if (Z.trip.fact) assert.ok(!FAR_IDS.includes(Z.trip.fact.id)); off.seed += 1; }
+});
+
+test('merge14: each rule of §3.7, both ways (the later doc is s; finds, fish, stones, wishes, quests given back and the longest fetch are never lost)', () => {
+  const rec = (n, bestIn, bestLb, firstLeg) => ({ n, bestIn, bestLb, firstLeg, firstSeason: 's1847' });
+  const mkJ = (o = {}) => { const J = createJourney({ seed: 80, companions: PLAIN }); Object.assign(J, o); return J; };
+  const A = () => mkJ({ finds: { horseshoe: 2, pinecone: 1 }, fishLog: { 'channel-catfish': rec(3, 20, 5, 'kansas-river'), 'hornyhead-chub': rec(1, 6, 3, 'independence-rock') }, fishJunk: { boot: 2, turtle: 0, bottle: 1 },
+    fishBest: { species: 'channel-catfish', in: 20 }, skips: { best: 5, throws: 9, byRiver: { 'kansas-river': 5, 'snake-river': 2 } }, wishes: ['oxen-fly', 'bison-dance'], questsDone: ['locket'], treatsBest: 0.5,
+    dog: { name: 'Frodo', coat: 'brown', legs: 4, nextBerries: 6, treats: 10, muddy: false }, quests: { locket: { state: 'carried', step: 1, foundLeg: 'kansas-river', season: 's1847' } }, factsHeard: ['wolf-song'], cash: 50, tokens: 3 });
+  const B = () => mkJ({ finds: { horseshoe: 1, 'hawk-feather': 3 }, fishLog: { 'channel-catfish': rec(5, 22, 6, 'fort-kearny'), 'white-sturgeon': rec(1, 60, 14, 'snake-river') }, fishJunk: { boot: 1, turtle: 3, bottle: 0 },
+    fishBest: { species: 'white-sturgeon', in: 60 }, skips: { best: 7, throws: 4, byRiver: { 'kansas-river': 3, 'the-dalles': 7 } }, wishes: ['bison-dance', 'pie-rain'], questsDone: ['bottle-note'], treatsBest: 0.9,
+    dog: { name: 'Rex', coat: 'black', legs: 2, nextBerries: 3, treats: 25, muddy: true }, quests: { locket: { state: 'returned', step: 2, foundLeg: 'kansas-river', season: 's1847' }, 'bottle-note': { state: 'carried', step: 0, foundLeg: 'fort-laramie', season: 's1847' } }, factsHeard: ['grizzly-ridge', 'wolf-song'], cash: 10, tokens: 8 });
+  const sorted = (xs) => [...xs].sort();
+  for (const [s, o, name] of [[A(), B(), 'a later'], [B(), A(), 'b later']]) {
+    const m = V14.merge14(s, o);
+    assert.equal(m, s, 'merges into the later doc and returns it');
+    assert.deepEqual(m.finds, { horseshoe: 2, pinecone: 1, 'hawk-feather': 3 }, name);
+    assert.deepEqual(m.fishLog['channel-catfish'], { n: 5, bestIn: 22, bestLb: 6, firstLeg: 'fort-kearny', firstSeason: 's1847' }, name + ': n max, the bigger with its lb / leg');
+    assert.deepEqual(m.fishLog['hornyhead-chub'], rec(1, 6, 3, 'independence-rock')); assert.deepEqual(m.fishLog['white-sturgeon'], rec(1, 60, 14, 'snake-river'));
+    assert.deepEqual(m.fishJunk, { boot: 2, turtle: 3, bottle: 1 }); assert.deepEqual(m.fishBest, { species: 'white-sturgeon', in: 60 });
+    assert.deepEqual(m.skips, { best: 7, throws: 9, byRiver: { 'kansas-river': 5, 'snake-river': 2, 'the-dalles': 7 } });
+    assert.deepEqual(sorted(m.wishes), ['bison-dance', 'oxen-fly', 'pie-rain']); assert.deepEqual(sorted(m.questsDone), ['bottle-note', 'locket']); assert.equal(m.treatsBest, 0.9);
+    assert.equal(m.dog.treats, 25, 'treats max'); assert.equal(m.dog.name, name === 'a later' ? 'Frodo' : 'Rex', 'the later doc\'s dog');
+    // the same journey (season + seed): quests per id the further state, step max; facts union; the spoon max
+    assert.deepEqual(m.quests.locket.state, 'returned'); assert.equal(m.quests.locket.step, 2); assert.deepEqual(m.quests['bottle-note'], { state: 'carried', step: 0, foundLeg: 'fort-laramie', season: 's1847' });
+    assert.deepEqual(sorted(m.factsHeard), ['grizzly-ridge', 'wolf-song']);
+    assert.equal(m.cash, name === 'a later' ? 50 : 10, 'everything else stays the later doc\'s'); assert.equal(m.tokens, name === 'a later' ? 3 : 8);
+  }
+  // a dog on one side only comes across; a quest further along wins whichever side it is on; mailed sits between carried and returned
+  const s1 = A(), o1 = B(); s1.dog = null; assert.equal(V14.merge14(s1, o1).dog.name, 'Rex'); const s2 = A(); const o2 = B(); o2.dog = null; assert.equal(V14.merge14(s2, o2).dog.name, 'Frodo');
+  const rank = (a, b) => V14.merge14(mkJ({ quests: { q: { state: a, step: 0 } } }), mkJ({ quests: { q: { state: b, step: 0 } } })).quests.q.state;
+  assert.deepEqual([rank('none', 'carried'), rank('carried', 'mailed'), rank('mailed', 'returned'), rank('returned', 'carried'), rank('mailed', 'carried'), rank('carried', 'none')], ['carried', 'mailed', 'returned', 'returned', 'mailed', 'carried']);
+  const sp = (a, b) => { const x = mkJ(), y = mkJ(); x.goods.spoon = a; y.goods.spoon = b; return V14.merge14(x, y).goods.spoon; }; assert.deepEqual([sp(0, 1), sp(1, 0), sp(0, 0), sp(1, 1)], [1, 1, 0, 1]);
+  // another journey (a different seed or season): the quests, the facts heard and the spoon stay the later doc's; the collections still merge
+  const x = A(), y = B(); y.seed = 81; x.goods.spoon = 0; y.goods.spoon = 1; const mm = V14.merge14(x, y);
+  assert.equal(mm.quests.locket.state, 'carried'); assert.equal(mm.quests['bottle-note'], undefined); assert.deepEqual(mm.factsHeard, ['wolf-song']); assert.equal(mm.goods.spoon, 0); assert.equal(mm.finds['hawk-feather'], 3); assert.equal(mm.fishBest.in, 60);
+  const x2 = A(), y2 = B(); y2.season = 's1850'; assert.equal(V14.merge14(x2, y2).quests['bottle-note'], undefined);
+  // older journeys (no v1.4 fields) on either side: nothing throws, nothing is lost
+  const old = clone(v14oldSave(82)); const m1 = V14.merge14(A(), old); assert.deepEqual(m1.finds, A().finds); const old2 = clone(old); const m2 = V14.merge14(old2, A()); assert.equal(m2.finds.horseshoe, 2);
+  assert.equal(V14.merge14(null, A()), null); assert.ok(V14.merge14(A(), null)); assert.deepEqual(clone(m2), m2);
+  const before = clone(B()); V14.merge14(A(), before); assert.deepEqual(before, clone(B()), 'the other side is only read');
+});
+
+// ---- a whole journey with a dog, every moment taken ----
+/** the kid of the economy sim's v1.4 play: keeps the dog, calls it back from the rabbit 70 % of the time, takes every trail fact and dust devil, fishes (events, camps), fetches at camp, skips stones,
+ *  watches the falling stars, talks to everyone with a ❓ or a 💛, buys the spoon at Fort Kearny, sells the old iron */
+function v14journey(seed, { right = 1, season = 's1847', keepDog = true } = {}) {
+  const rand = mulberry32(seed), J = createJourney({ seed, season, companions: PARTY });
+  const log = { noses: 0, finds: 0, chases: 0, called: 0, snakes: 0, berries: 0, quests: 0, facts: 0, devils: 0, fetches: 0, fish: 0, stones: 0, meteors: 0, talks: 0, mailed: 0, legs: 0 };
+  shop(J);
+  for (let guard = 0; guard < 40 && !J.done; guard++) {
+    const leg = legList()[J.legIndex];
+    for (let d = 0; d < 400; d++) {
+      const r = tickDay(J, { rand });
+      assert.ok(J.food >= 0 && J.cash >= 0, 'food and cash never below 0');
+      if (r.marker) applyMarker(J, { correct: rand() < right, quick: rand() < 0.5 });
+      if (r.event) {
+        const e = r.event;
+        if (e.kind === 'hunt') applyHunt(J, { meatLb: 20 });
+        else if (e.kind === 'fish') { v14kid(J, rand, { rescue: e.rescue }); log.fish++; }
+        else if (e.kind === 'trade') { const offer = tradeOffer(J); const p = problemFor({ kind: 'trade', fact: '3x4', leg: J.legId, season: J.season, rand, have: offer.have }); applyProblem(J, { kind: 'trade', correct: true }); applyTrade(J, p.meta); }
+        else if (e.kind === 'problem') applyProblem(J, { kind: 'fact', correct: rand() < right });
+        else if (e.kind === 'breakdown') repair(J, { workedOut: true });
+        else if (e.kind === 'stampede') { const sp = stampedePay(J, { held: rand() < 0.5 }); if (sp.fact) { V14.heardFact(J, sp.fact); log.facts++; } }
+      }
+      if (r.nose) {
+        log.noses++;
+        if (r.nose.kind === 'find') { log.finds++; assert.ok(r.nose.find.id); }
+        else if (r.nose.kind === 'rabbit') { const called = rand() < 0.7; V14.chaseResult(J, { called, dist: called ? rand() * 0.7 : 1 }); log.chases++; if (called) log.called++; }
+        else if (r.nose.kind === 'snake') log.snakes++; else if (r.nose.kind === 'berries') log.berries++; else if (r.nose.kind === 'quest') log.quests++;
+      }
+      if (r.fact) { V14.heardFact(J, r.fact.id); log.facts++; }
+      if (r.moment) { V14.dustDevilResult(J, { caught: rand() < 0.6 ? 3 : 1, of: 3 }); log.devils++; }
+      if (r.arrived) break;
+    }
+    applyWords(J, { asked: 3, right: 3 });
+    const res = arrive(J); assert.ok(res, 'arrived at ' + leg.id);
+    if (leg.stop.kind === 'river') {
+      crossRiver(J, { how: 'ford', soaked: 0 });
+      if (RIVER_STOPS.includes(leg.id)) { const p = V14.stonesPlan(J); const sk = [1, 2, 3].map(() => Math.min(12, 1 + p.bonus + Math.floor(rand() * 6))); V14.stonesResult(J, { throws: sk }); log.stones++; }
+    }
+    if (leg.id === 'kansas-river' && keepDog && rand() < 0.8) V14.adoptDog(J, { name: 'Frodo', coat: 'brown' });
+    if (leg.stop.kind === 'fort') {
+      if (!J.dog && keepDog && V14.dogOfferAt(J, leg)) V14.adoptDog(J, { name: 'Frodo', coat: 'brown' });
+      V14.questMail(J, { leg }); V14.sellHorseshoes(J, { leg }); shop(J);
+      if (J.dog && !J.goods.spoon && rand() < 0.25) buy(J, { item: 'spoon' });
+    }
+    for (const q of V14.questAt(J, J.legId)) { const t = V14.questTalk(J, q.questId); if (t) log.talks++; }
+    if (J.legIndex % 3 === 2 && leg.id !== LAST) {
+      if (J.dog) { for (let k = 0; k < 3; k++) V14.fetchThrow(J, { dist: rand(), rand }); log.fetches++; }
+      if (V14.campWater(J).river) { V14.stonesResult(J, { throws: [3, 4] }); log.stones++; }
+      if (V14.meteorsTonight(J)) { for (let k = 0; k < 3; k++) V14.wishFor(J, rand); log.meteors++; }
+      J.goods.hoppers = 0; V14.catchHoppers(J, 6); v14kid(J, rand, { bait: 'hoppers' }); camp(J, 'fish', { rand });
+    }
+    checkDeeds(J); log.legs++;
+    assert.deepEqual(clone(J), J, 'JSON-safe at every stop');
+    nextLeg(J);
+  }
+  return { J, log };
+}
+test('a 12-leg journey with a dog, every moment taken (nose, chase, facts, dust devils, fetch, fishing, stones, falling stars, quests): arrives at every stop, no fail state, food and cash never negative, JSON-safe', () => {
+  const tot = {};
+  for (let seed = 900; seed < 920; seed++) {
+    const { J, log } = v14journey(seed);
+    assert.ok(J.done, 'seed ' + seed); assert.equal(J.totals.legs, 12); assert.equal(log.legs, 12);
+    for (const [k, v] of Object.entries(log)) tot[k] = (tot[k] || 0) + v;
+    if (J.dog) assert.ok(['returned', 'mailed'].includes(J.quests.locket.state), 'the locket finds Molly one way or the other: ' + J.quests.locket.state);
+  }
+  for (const k of ['noses', 'finds', 'chases', 'snakes', 'berries', 'facts', 'devils', 'fetches', 'fish', 'stones', 'talks']) assert.ok(tot[k] > 0, k + ' ' + JSON.stringify(tot));
+  // the same seed replays the same journey
+  const a = v14journey(907), b = v14journey(907); assert.deepEqual(a.J, b.J); assert.notDeepEqual(a.J.finds, v14journey(908).J.finds);
+  // a wrong-every-time kid still arrives (nothing here asks a question, and no moment can be failed)
+  const w = v14journey(930, { right: 0 }); assert.ok(w.J.done);
+  // all three seasons
+  for (const s of ['s1850', 's1853']) assert.ok(v14journey(931, { season: s }).J.done);
+});
+
+test('the letter home: {dog} is a fill (the dog\'s name), the v1.4 keys are picked when they happened and never otherwise', () => {
+  const J = createJourney({ seed: 90, companions: PLAIN }); J.dog = { name: 'Frodo', coat: 'brown', legs: 0, nextBerries: 9, treats: 0, muddy: false };
+  const have = (k) => lineSource(k).length > 0;
+  const keys = ['nose', 'chase', 'snake', 'fetch', 'sturgeon', 'fish-boot', 'quest-locket', 'quest-note', 'dust-devil', 'stones', 'meteors', 'grizzly-ridge', 'wolf-song', 'pronghorn-race'];
+  const present = keys.filter(have);
+  if (present.length < keys.length) skip('letter lines for ' + keys.filter((k) => !have(k)).join(', '), 'the Content stream writes LETTER_LINES; until it merges those keys are not in this worktree');
+  // keys that happened are offered; keys that did not never are
+  J.trip.happened.push(...keys); const hk = happenedKeys(J); for (const k of hk) assert.ok(keys.includes(k) || LETTER_LINES[k] || FALLBACK_LINES[k] || EVENT_BY_ID[k] || ['happy', 'tired', 'river'].includes(k), k);
+  for (const k of present) assert.ok(hk.includes(k), k);
+  const K = createJourney({ seed: 91, companions: PLAIN }); for (const k of keys) assert.ok(!happenedKeys(K).includes(k), 'nothing happened: ' + k);
+  // a {dog} line says the dog's name (the test injects a line; the content's own may or may not use the fill)
+  const saved = LETTER_LINES.nose; LETTER_LINES.nose = ['{dog} found an old horseshoe today!', '{dog} found something!', '{dog} dashed off and came back with a gift.'];
+  try { J.trip.arrived = true; J.trip.happened = ['nose']; const L = composeLetter(J, null, ['a', 'b', 'c']); assert.ok(L.lines.some((l) => /^Frodo /.test(l)), L.lines.join(' | ')); assert.ok(!/\{/.test(L.text)); }
+  finally { if (saved) LETTER_LINES.nose = saved; else delete LETTER_LINES.nose; }
+  const noDog = createJourney({ seed: 92, companions: PLAIN }); LETTER_LINES.nose = ['{dog} found something!']; try { noDog.trip.happened = ['nose']; assert.ok(!/\{/.test(composeLetter(noDog, null, ['a', 'b', 'c']).text)); } finally { if (saved) LETTER_LINES.nose = saved; else delete LETTER_LINES.nose; }
+  // a returned quest has its line on the leg it was returned
+  const Q = createJourney({ seed: 93, companions: PLAIN }); v14atStop(Q, 'kansas-river'); V14.adoptDog(Q, { name: 'Frodo' }); v14atStop(Q, 'fort-laramie'); V14.questTalk(Q, 'locket');
+  const savedQ = LETTER_LINES['quest-locket']; LETTER_LINES['quest-locket'] = ['Molly got her locket back!', 'Molly cried happy tears.', 'The locket is home.'];
+  try { assert.ok(happenedKeys(Q).includes('quest-locket')); startLeg(Q, 'fort-bridger'); assert.ok(!happenedKeys(Q).includes('quest-locket'), 'only on the leg it happened'); }
+  finally { if (savedQ) LETTER_LINES['quest-locket'] = savedQ; else delete LETTER_LINES['quest-locket']; }
+});
+
+test('the 8 new deeds are reachable (each +1 token once, checkDeeds idempotent) and none is earned by doing nothing', () => {
+  const dids = V14_DEEDS;
+  for (const id of dids) assert.ok(DEED_BY_ID[id], id);
+  const J = createJourney({ seed: 95, companions: PLAIN }); assert.deepEqual(checkDeeds(J), []);
+  const earn = (id) => { const t0 = J.tokens; const got = checkDeeds(J); assert.ok(got.includes(id), `${id} earned: ${got}`); assert.equal(J.tokens, t0 + got.length); assert.deepEqual(checkDeeds(J), [], 'idempotent'); };
+  // good-nose: six different finds
+  startLeg(J, 'chimney-rock'); for (const id of ['horseshoe', 'ox-shoe', 'magpie-feather', 'hawk-feather', 'arrowhead']) V14.recordFind(J, id); assert.ok(!checkDeeds(J).includes('good-nose')); V14.recordFind(J, 'pinecone'); J.deeds.length = 0; earn('good-nose');
+  // fetch-champ: 25 treats
+  V14.adoptDog(J, { name: 'Frodo' }); for (let v = 0; v < 8; v++) { J.trip.fetchThrows = 0; for (let k = 0; k < 3; k++) V14.fetchThrow(J, { dist: 0.1, rand: () => 0.99 }); } assert.equal(J.dog.treats, 24); assert.ok(!checkDeeds(J).includes('fetch-champ')); J.trip.fetchThrows = 0; V14.fetchThrow(J, { dist: 0.1, rand: () => 0.99 }); earn('fetch-champ');
+  // big-one and river-guide
+  const K = v14fisher('snake-river', 97); const S2 = V14.fishingSession(K, { rand: mulberry32(2) });
+  S2.casts[0] = { ...S2.casts[0], kind: 'fish', species: 'white-sturgeon', lengthIn: 60, lb: 14 }; V14.landCast(K, S2, 0); assert.deepEqual(checkDeeds(K), ['big-one']); assert.equal(K.tokens, 1);
+  const L = v14fisher('snake-river', 98);
+  for (const f of FISH) { const SS = V14.fishingSession(L, { rand: mulberry32(3) }); SS.casts[0] = { ...SS.casts[0], kind: 'fish', species: f.id, lengthIn: f.sizeIn[0], lb: f.lb[0] }; V14.landCast(L, SS, 0); if (f !== FISH[FISH.length - 1]) assert.ok(!checkDeeds(L).includes('river-guide')); }
+  assert.ok(checkDeeds(L).includes('river-guide'), 'all six species');
+  // skipper: seven in one throw
+  const M = v14mk(99, { leg: 'fort-kearny' }); V14.stonesResult(M, { throws: [6, 6] }); assert.ok(!checkDeeds(M).includes('skipper')); M.trip.stones = false; V14.stonesResult(M, { throws: [7] }); assert.ok(checkDeeds(M).includes('skipper'));
+  // keeper: given back in person (mailing does not count); wish-maker: six wishes; hat-trick: every hat
+  const Q = createJourney({ seed: 100, companions: PLAIN }); v14atStop(Q, 'kansas-river'); V14.adoptDog(Q, { name: 'Frodo' }); v14atStop(Q, 'fort-bridger'); V14.questMail(Q, { leg: 'fort-bridger' }); assert.ok(!checkDeeds(Q).includes('keeper'));
+  const R = createJourney({ seed: 101, companions: PLAIN }); v14atStop(R, 'kansas-river'); V14.adoptDog(R, { name: 'Frodo' }); v14atStop(R, 'fort-laramie'); V14.questTalk(R, 'locket'); assert.ok(checkDeeds(R).includes('keeper'));
+  const W = createJourney({ seed: 102, companions: PLAIN }); const rand = mulberry32(1); for (let i = 0; i < 5; i++) V14.wishFor(W, rand); assert.ok(!checkDeeds(W).includes('wish-maker')); V14.wishFor(W, rand); assert.ok(checkDeeds(W).includes('wish-maker'));
+  const H = createJourney({ seed: 103, companions: PLAIN }); V14.dustDevilResult(H, { caught: 2, of: 3 }); assert.ok(!checkDeeds(H).includes('hat-trick')); V14.dustDevilResult(H, { caught: 3, of: 3 }); assert.ok(checkDeeds(H).includes('hat-trick'));
+  // and in a played journey the deeds come the way they do in life
+  const earned = new Set(); for (let seed = 940; seed < 960; seed++) for (const d of v14journey(seed).J.deeds) earned.add(d);
+  for (const id of ['good-nose', 'hat-trick', 'keeper', 'river-guide']) assert.ok(earned.has(id), 'a played journey earns ' + id + ' (' + [...earned].join() + ')');
+  for (const d of DEEDS.filter((x) => dids.includes(x.id))) { assert.ok(d.name && d.how && d.say && d.emoji); assert.ok(!/\d/.test(d.say), d.say); }
 });
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

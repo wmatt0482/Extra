@@ -47,6 +47,26 @@
 //     good } per wave, { type: 'stampedeEnd', held } (held = 2 or more good). mini = { kind: 'stampede', wave, waves,
 //     left, good, phase: 'warn' | 'run' | 'cue' | 'brake' | 'dust' | 'settle', held }
 //   Each ends with a short cheer and goes back to the backdrop on its own 2 s later (the raft's vista holds 4 s).
+// v1.4 (SPEC v1.4 §4: Frodo and the river). Vignettes (the dog's nose and the trail facts: 2-6 s over the day, no pointer, the
+// view stays as it is) and mini-games (they own the pointer and Space while they run); every kind is in getState().mini
+// with { kind, phase, … }; endMiniGame() ends any of them with the summary so far and no event:
+//   setParty({ …, dog: { name, coat, muddy } | null })   muddy draws the mud (spots, a darker coat, a drip) until setParty clears it
+//   scene.dogRun(kind = 'find' | 'berries' | 'quest', { emoji })  → { type: 'dogBack', kind }      scene.dogWarn() → 'dogWarnEnd'
+//   scene.startChase({ seed }) · scene.chaseCall() → bool → { type: 'chase', dist } · { type: 'chaseEnd', called, dist }
+//   scene.ambient('crack' | 'grizzly' | 'wolves' | 'fireglow' | 'pronghorn') → { type: 'ambientEnd', kind }
+//   scene.startFetch({ seed, throws }) · scene.fetchBring({ item, emoji }) → bool → fetchThrow { n, dist } · fetchBack { n } · fetchEnd { throws, best }
+//   scene.startHoppers({ seed, n }) → hopper { caught } · hoppersEnd { caught }
+//   scene.startStones({ seed, throws, bonus }) → skip { n } · stone { throw, skips } · stonesEnd { throws, best }
+//   scene.startMeteors({ seed, n }) → meteor { n } · meteorsEnd { tapped, of }
+//   scene.startDustDevil({ seed, hats: [{ id, hat, color }] }) → hat { id, caught } · dustDevilEnd { caught, of }
+//   scene.startFishing({ seed, water, bait, casts, cameo, helper, dog }) · scene.fishingRetry(i, fight) · scene.fishingHelp() →
+//     fishHook / fishMiss / fishPhase / fishHelp / fishHelped / fishOff / fishLand / fishCameo { i, … } · fishingEnd { landed, casts }
+//   The hunt (v1.4): arrows fly 0.5-0.8 s and come down where the child tapped; running animals need a lead, grazing ones do not;
+//   'hunt' events carry lead: true for a hit on a running animal.
+//   Sounds: { type: 'sfx', cue: 'splash' | 'reel' ({ on }) | 'wobble' | 'skip' | 'plunk' | 'twinkle' | 'whoosh' | 'snap' } (the app
+//   plays Sfx.* for them; ambient sounds are the app's: Sfx.ambient(fact.sound)).
+//   Hooks the new modules use on a mini: m.view ('keep' leaves the view alone, 'fish' = the pool view), m.halt (the wagon stops),
+//   m.drawSky / drawFar / drawBehind / drawOver, m.dogPose(L), m.hideHat(i), m.keyUp(L, 'space'), m.enter(L).
 // Additions beyond §11: setReducedMotion(on); getState() also carries biome, legId, pace, view, scroll (px rolled, the
 // smoke test's "the wagon moved"), playing, reducedMotion, dog ({ name, coat } | null); endMiniGame() returns the
 // summary so far (and emits nothing); debugStep(n), debugPerf(reset), debugInfo(), debugMini(), debugInput(kind, a, b) for the dev
@@ -67,6 +87,11 @@ import { createDerby } from './derby.js';
 import { createFord } from './ford.js';
 import { createRun } from './rafting.js';
 import { createStampede } from './stampede.js';
+import { createFishing } from './fishing2.js';
+import { createDogRun, createDogWarn, createChase } from './dog14.js';
+import { createAmbient } from './ambient.js';
+import { createFetch, createHoppers } from './camp14.js';
+import { createStones, createMeteors, createDustDevil } from './play14.js';
 import { drawFrame, updateFx, createFx, burst, wxOf, WEATHERS } from './render.js';
 
 const CRITTERS = {
@@ -96,7 +121,7 @@ export function createScene(canvas, opts = {}) {
     wxCur: 'clear', wxPrev: 'clear', wxMix: 1,
     critters: [], cheerT: 0, approach: 0, fade: 0,
     mini: null, t: 0, rm: !!opts.reducedMotion, fx: createFx(),
-    dog: null, dogPos: { x: 0, y: 0, dir: 1, sit: false, amp: 0 }, dogPh: 0, dogBarkT: 0, barks: 0, lastBarkAt: -9,
+    dog: null, dogPos: { x: 0, y: 0, dir: 1, sit: false, amp: 0, sc: 1, ph: null, hide: false }, dogPh: 0, runs: 0, dogBarkT: 0, barks: 0, lastBarkAt: -9,
   };
   let dirtyLayers = true, dirtyPiece = true, dirtyApproach = true;
   let playing = false, destroyed = false, raf = 0, last = 0, drawQueued = 0, readySent = false;
@@ -154,10 +179,13 @@ export function createScene(canvas, opts = {}) {
     S.party = {
       animal: p.animal === 'mules' ? 'mules' : 'oxen',
       looks: comps.slice(0, 3).map((c) => personLook(c && c.id, c && c.color, c && c.hat)),
+      ids: comps.slice(0, 3).map((c) => String((c && c.id) || '')),
+      bare: [],
       wagon: { box: paintColor(w.paint), wheel: '#7a4a26', cover: '#f6efdc', flag: flagColor(w.flag), name: String(w.name || '').trim().toUpperCase().slice(0, 18) },
     };
     const d = p.dog;
-    S.dog = d && typeof d === 'object' ? { name: String(d.name || '').trim().slice(0, 24), coat: dogCoat(d.coat) } : null;
+    S.party.bare = S.party.looks.map((l) => ({ ...l, hat: 'none' })); // v1.4: the dust devil's hats are off their heads
+    S.dog = d && typeof d === 'object' ? { name: String(d.name || '').trim().slice(0, 24), coat: dogCoat(d.coat), muddy: !!d.muddy } : null;
     if (!S.dog) S.dogBarkT = 0;
   }
   applyParty();
@@ -190,10 +218,14 @@ export function createScene(canvas, opts = {}) {
       const rolling = S.walkAmp > 0.05;
       D.x = x + 190 * k + (rolling && !S.rm ? Math.sin(S.t * 0.5) * 18 * k : 0); D.y = gy + 30 * k; D.dir = 1; D.sit = false; D.amp = rolling ? 1 : 0;
     }
+    D.sc = 1; D.ph = null; D.hide = false;
+    const pose = S.mini && S.mini.dogPose ? S.mini.dogPose(S.L) : null; // v1.4: a vignette places the dog itself
+    if (pose) { D.x = pose.x; D.y = pose.y; D.dir = pose.dir; D.sit = !!pose.sit; D.amp = pose.amp || 0; D.sc = pose.sc || 1; D.ph = pose.ph != null ? pose.ph : null; D.hide = !!pose.hide; }
   }
   // the dog is drawn on the trail, at the outdoor stops and in the derby (not in the post office, the hunt or fishing)
   function dogVisible() {
     if (!S.dog) return false;
+    if (S.view === 'fish') return !!(S.mini && S.mini.showDog); // fishing and the river games draw their own dog
     if (S.view === 'derby' || S.view === 'trail' || S.view === 'stampede') return true;
     return S.view === 'stop' && S.backdrop !== 'post';
   }
@@ -215,9 +247,9 @@ export function createScene(canvas, opts = {}) {
     if (S.wxMix < 1) S.wxMix = Math.min(1, S.wxMix + dt / (S.rm ? 0.5 : 1.5));
     S.fade = Math.max(0, S.fade - dt * (S.rm ? 4 : 2.5));
     // rolling
-    const moving = S.view === 'trail' && !!tr.moving;
+    const moving = S.view === 'trail' && !!tr.moving && !(S.mini && S.mini.halt);
     const base = (tr.pace === 'brisk' ? 92 : 68) * (S.party.animal === 'mules' ? 1.1 : 1) * (tr.foodLow ? 0.7 : 1) * (tr.mood === 'tired' ? 0.85 : 1);
-    S.speed = approach(S.speed, moving ? base * k : 0, 2.2, dt);
+    S.speed = approach(S.speed, moving ? base * k : 0, S.mini && S.mini.halt ? 7 : 2.2, dt);
     if (!moving && S.speed < 0.5 * k) S.speed = 0;
     S.scroll += S.speed * dt;
     S.walkPh += (S.speed / k) * dt * 0.11;
@@ -298,10 +330,11 @@ export function createScene(canvas, opts = {}) {
     else if (e.pointerType === 'mouse') { const p = toLocal(e); S.mini.move(S.L, p.x, p.y); }
   };
   const onUp = () => { if (dragging) { dragging = false; if (S.mini && S.mini.release) S.mini.release(); } };
-  const keyName = (e) => (e.code === 'ArrowLeft' || e.key === 'ArrowLeft' ? 'left' : e.code === 'ArrowRight' || e.key === 'ArrowRight' ? 'right' : e.code === 'KeyB' || e.key === 'b' || e.key === 'B' ? 'brake' : null);
+  const keyName = (e) => (e.code === 'Enter' || e.key === 'Enter' ? 'enter' : e.code === 'Space' || e.key === ' ' ? 'space' : e.code === 'ArrowLeft' || e.key === 'ArrowLeft' ? 'left' : e.code === 'ArrowRight' || e.key === 'ArrowRight' ? 'right' : e.code === 'KeyB' || e.key === 'b' || e.key === 'B' ? 'brake' : null);
   const onKey = (e) => {
     if (!owns() || !playing || destroyed) return;
     if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); if (!e.repeat) S.mini.key(S.L); return; }
+    if (e.code === 'Enter' || e.key === 'Enter') { if (S.mini.enter) { e.preventDefault(); if (!e.repeat) S.mini.enter(S.L); } return; }
     const n = keyName(e);
     if (n && S.mini.keyDown && S.mini.keyDown(S.L, n, !!e.repeat)) e.preventDefault();
   };
@@ -310,7 +343,7 @@ export function createScene(canvas, opts = {}) {
     const n = keyName(e);
     if (n && S.mini.keyUp) S.mini.keyUp(S.L, n);
   };
-  const onBlur = () => { if (S.mini && S.mini.keyUp) { S.mini.keyUp(S.L, 'left'); S.mini.keyUp(S.L, 'right'); } };
+  const onBlur = () => { if (S.mini && S.mini.keyUp) { S.mini.keyUp(S.L, 'left'); S.mini.keyUp(S.L, 'right'); S.mini.keyUp(S.L, 'space'); } if (S.mini && S.mini.release) S.mini.release(); };
   canvas.addEventListener('pointerdown', onDown, { passive: false });
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
@@ -325,8 +358,8 @@ export function createScene(canvas, opts = {}) {
   function openMini(m) {
     if (S.mini) closeMini();
     S.mini = m;
-    S.view = m.kind;
-    S.fade = S.rm ? 0.5 : 1;
+    S.view = m.view === 'keep' ? S.view : (m.view || m.kind);
+    S.fade = m.view === 'keep' ? 0 : S.rm ? 0.5 : 1;
     S.wagonX = wagonTarget();
     if (m.input !== false) { savedTouch = canvas.style.touchAction; canvas.style.touchAction = 'none'; touchTaken = true; }
     requestDraw();
@@ -341,6 +374,18 @@ export function createScene(canvas, opts = {}) {
   }
   // celebrate(kind, x, y): confetti / sparkles (x, y: where a 'star' goes off) and the party cheers
   const derbyHooks = { celebrate(kind, x, y) { if (S.L) { burst(S, kind, x, y); S.cheerT = 1.8; } } };
+  // v1.4: what the new mini-games and vignettes may ask of the engine (sounds go out as { type: 'sfx', cue } events)
+  const hooks14 = {
+    ...derbyHooks,
+    bark() { if (S.dog && !destroyed) bark(); },
+    sfx(cue, extra) { emit({ type: 'sfx', cue, ...(extra || {}) }); },
+    hasDog: () => !!S.dog,
+    dog: () => S.dog,
+    companions: () => S.party,
+    // a vignette whose subject (the dog) is missing ends at once, so the app never waits for it
+    missing(endEvt) { queueMicrotask(() => { if (!destroyed) emit(endEvt); }); return false; },
+  };
+  const start14 = (m) => { if (!destroyed && S.L) openMini(m); return !!m; };
 
   // fonts may arrive after the first text sprites were cached (the wagon's name, the signs)
   if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
@@ -433,6 +478,33 @@ export function createScene(canvas, opts = {}) {
       requestDraw();
       return ok;
     },
+    // ---- v1.4: Frodo and the river (SPEC v1.4 §4)
+    dogRun(kind = 'find', o = {}) {
+      if (!S.dog) return hooks14.missing({ type: 'dogBack', kind });
+      return start14(createDogRun(kind, o || {}, emit, S, hooks14, S.runs++));
+    },
+    dogWarn() {
+      if (!S.dog) return hooks14.missing({ type: 'dogWarnEnd' });
+      return start14(createDogWarn(emit, S, hooks14));
+    },
+    startChase(o = {}) {
+      if (!S.dog) return hooks14.missing({ type: 'chaseEnd', called: false, dist: 1 });
+      return start14(createChase(o || {}, emit, S, hooks14));
+    },
+    chaseCall() { return !!(S.mini && S.mini.kind === 'chase' && S.mini.call()); },
+    ambient(kind = 'crack') { return start14(createAmbient(kind, emit, S, hooks14)); },
+    startFetch(o = {}) {
+      if (!S.dog) return hooks14.missing({ type: 'fetchEnd', throws: 0, best: 0 });
+      return start14(createFetch(o || {}, emit, S, hooks14));
+    },
+    fetchBring(o = {}) { return !!(S.mini && S.mini.kind === 'fetch' && S.mini.bring(o || {})); },
+    startHoppers(o = {}) { return start14(createHoppers(o || {}, emit, S, hooks14)); },
+    startStones(o = {}) { return start14(createStones(o || {}, emit, S, hooks14)); },
+    startMeteors(o = {}) { return start14(createMeteors(o || {}, emit, S, hooks14)); },
+    startDustDevil(o = {}) { return start14(createDustDevil(o || {}, emit, S, hooks14)); },
+    startFishing(o = {}) { return start14(createFishing(o || {}, emit, S, hooks14, S.biome)); },
+    fishingRetry(i, fight) { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.retry(i, fight)); },
+    fishingHelp() { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.callHelp()); },
     // ---- v1.1: the dog
     dogBark() {
       if (!S.dog || destroyed) return false;
@@ -476,7 +548,7 @@ export function createScene(canvas, opts = {}) {
         backdrop: S.backdrop, milesDone: tr.milesDone, weather: tr.weather, moving: !!tr.moving,
         mini: S.mini ? S.mini.state() : null,
         biome: S.biome, legId: S.leg.id, pace: tr.pace, view: S.view, scroll: Math.round(S.scroll * 10) / 10,
-        playing, reducedMotion: S.rm, dog: S.dog ? { name: S.dog.name, coat: S.dog.coat } : null,
+        playing, reducedMotion: S.rm, dog: S.dog ? { name: S.dog.name, coat: S.dog.coat, muddy: !!S.dog.muddy } : null,
       };
     },
     // ---- debug (not contract): the dev page and the smoke test
