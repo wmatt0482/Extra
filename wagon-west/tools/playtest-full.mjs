@@ -1,5 +1,11 @@
 // Wagon West full-journey playtest on the REAL scene (no ?mock=1), as a 4th grader would play it.
 // Independence -> the Willamette Valley, all 12 legs, then the results, the journal and the Parent Zone report.
+// v1.4 (Frodo and the river): the dog is kept at the Kansas River (named Frodo) and its nose is played on the trail (a find, the snake, the
+// rabbit chase called late, then washed at camp), fetch / grasshoppers / skipping stones / falling stars at camp and the river banks, fishing 2.0
+// at every kind of water with the bait row (worms, grasshoppers, the spoon), the wiggle-off, the sturgeon's helper tap and a junk catch, the dust
+// devil, the locket from the Kansas River to Fort Laramie, the bottle note, the trail facts (the far-off rifles, the grizzly, the wolves, the
+// prairie glow, the pronghorn race), a LEAD hunt shot and a still one, the journal's Finds and Fish log pages and the Parent Zone's far-off switch.
+// Every new screen's shot is named `…-v14-…` (convert those to JPEG for docs/playtest-1.4-shots). v14-summary.json holds what the run saw.
 //   BASE_URL=http://localhost:8082 SHOTS_DIR=/some/folder node wagon-west/tools/playtest-full.mjs
 // Env: BASE_URL (default http://localhost:8082), SHOTS_DIR (screenshots, default <os tmp>/wagon-west-playtest),
 //      DAY_SEC (a trail day in seconds, default 6 = the game's own), MAX_LEGS (stop after N legs), HEADED=1.
@@ -61,6 +67,11 @@ const P = {                     // the plan: how this kid plays
 };
 const note = (kind, key, msg, shot = '') => { findings.push({ kind, key, msg, shot, leg: curLeg + 1 }); log(`  !! [${kind}] ${key}: ${msg}`); };
 const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'x';
+
+// ---------- v1.4: what the run makes sure it sees ----------
+const V = { dogName: 'Frodo', baitIx: 0, bait: [], noses: [], facts: [], fishing: [], stones: [], fetch: [], hoppers: [], meteors: [], hats: [], hunts: [], chases: [], lateDone: false, wiggleDone: false, helped: 0, wiggled: 0,
+  camp: { fetch: 0, hoppers: 0, stones: 0, stars: 0 }, campSeen: new Set(), legFun: [], notes: [] };
+const BAIT_PLAN = ['worms', 'hoppers', 'hoppers', 'worms', 'hoppers', 'spoon', 'spoon', 'hoppers', 'spoon', 'spoon', 'worms'];   // the bait row, as a kid would try them (the first one on offer is taken)
 
 // words a kid must never see (SPEC 1) and pressure candidates to read by hand
 const BANNED = /\b(kill(s|ed|ing)?|die[sd]?|dying|dead|death|grave|blood|bloody|gun|guns|shoot(s|ing)?|lives|life left|timer|countdown|hurry|time'?s up|seconds? left|game over|lose|lost|fail(ed)?|dysentery|snakebite|starv(e|ing|ed)|sick|disease|cholera|drown(s|ed|ing)?)\b/i;
@@ -162,6 +173,7 @@ const W = () => ev(() => {
     stopOpen: w.peopleUI.isOpen, stopBusy: w.peopleUI.busy, v2play: w.v2.play, poFoot: !$('#po-foot').hidden,
     storeOpen: w.store.isOpen, storeBusy: w.store.busy, campBusy: w.camp && w.camp.busy,
     popCard: !$('#cardpop').hidden ? $('#cardpop').textContent : '', popDeed: !$('#deedpop').hidden ? $('#deedpop').textContent : '',
+    bait: !!$('#bait-row') && !$('#bait-row').hidden, findPop: $('#findpop') && !$('#findpop').hidden ? $('#findpop').textContent : '', campCtx: w.camp ? w.camp.context : null, dogCall: !!$('#dog-call') && !$('#dog-call').hidden,
     toasts: [...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent),
     j: J && { legIndex: J.legIndex, legId: J.legId, milesDone: J.milesDone, day: J.day, cash: J.cash, food: J.food, tokens: J.tokens, rations: J.rations, pace: J.pace, goods: J.goods && { ...J.goods }, animals: J.animals && { ...J.animals }, foods: J.foods && { ...J.foods }, done: J.done, limp: J.limp, deeds: (J.deeds || []).length, cards: Array.isArray(J.cards) ? J.cards.length : 0, met: (J.met || []).length },
   };
@@ -214,19 +226,31 @@ async function sceneMiniStep(s) {
     if (!h.ok) note('blocks play', what, `a tap at (${Math.round(px)}, ${Math.round(py)}) lands on ${h.what}, not the canvas: the ${what} cannot be played by touch there`, '');
   };
   if (m.kind === 'hunt') {
-    if (!miniMeta.shotsSeen.has('hunt' + curLeg + ':' + s.j.day)) { miniMeta.shotsSeen.add('hunt' + curLeg + ':' + s.j.day); await snap(`hunt-start`, { force: true, wait: 700 }); }
+    if (!miniMeta.shotsSeen.has('hunt' + curLeg + ':' + s.j.day)) { miniMeta.shotsSeen.add('hunt' + curLeg + ':' + s.j.day); miniMeta.huntStart = Date.now(); await snap(`hunt-start`, { force: true, wait: 700 }); }
+    if (m.left <= 0 && m.arrows === 0) { if (!miniMeta.huntLogged || miniMeta.huntLogged !== curLeg + ':' + s.j.day) { miniMeta.huntLogged = curLeg + ':' + s.j.day; V.hunts.push({ leg: curLeg + 1, hits: m.hits, leadHits: m.leadHits, meatLb: m.meatLb }); } return true; }
     if (m.arrows > 0 || m.left <= 0) return true;
-    const alive = m.animals.filter((a) => a.state === 'run' && a.x > 40 && a.x < c.W - 40);
+    // the shots a kid makes: 1 a LEAD shot at a running animal (aim ahead of it), 2 a still shot (aim at it), 3 a wild tap at the sky, then lead, still
+    const fired = 5 - m.left;
+    const alive = m.animals.filter((a) => a.state === 'alive' && a.x > 70 && a.x < c.W - 70);
     if (!alive.length) return true;
-    miniMeta.huntMiss++;
-    let tx, ty;
-    if (miniMeta.huntMiss === 2) { tx = c.W * 0.5; ty = c.H * 0.4; }       // a kid's wild tap at the sky
-    else { const a = alive.sort((p, q) => Math.abs(p.x - c.W / 2) - Math.abs(q.x - c.W / 2))[0]; tx = a.x + a.dir * 25; ty = a.y; }
+    const running = alive.filter((a) => a.running && a.aim.x > 30 && a.aim.x < c.W - 30), still = alive.filter((a) => !a.moving && a.mode === 'graze');
+    const kind = ['lead', 'still', 'sky', 'lead', 'still'][fired];
+    const waited = Date.now() - (miniMeta.lastHuntShot || miniMeta.huntStart || Date.now());
+    let tx, ty, how = kind;
+    if (kind === 'sky') { tx = c.W * 0.5; ty = c.H * 0.4; }
+    else if (kind === 'lead' && running.length) { const a = running.sort((p, q) => Math.abs(p.x - c.W / 2) - Math.abs(q.x - c.W / 2))[0]; tx = a.aim.x; ty = a.aim.y; }
+    else if (kind === 'still' && still.length) { const a = still.sort((p, q) => Math.abs(p.x - c.W / 2) - Math.abs(q.x - c.W / 2))[0]; tx = a.x; ty = a.y; }
+    else if (waited < 7000) return true;                              // wait a while for the kind of animal this shot is meant for
+    else { const a = alive.find((q) => !q.running || (q.aim.x > 30 && q.aim.x < c.W - 30)) || alive[0]; how = 'any'; if (a.running) { tx = Math.max(30, Math.min(c.W - 30, a.aim.x)); ty = a.aim.y; } else { tx = a.x; ty = a.y; } }
     const [px, py] = toPage(c, tx, ty);
     { const h = await hitIsCanvas(px, py); if (!h.ok) { miniMeta.huntBlocked = (miniMeta.huntBlocked || 0) + 1; if (miniMeta.huntBlocked <= 3) note('wrong', 'bow (hunt)', `a tap on an animal at (${Math.round(px)}, ${Math.round(py)}) lands on ${h.what} instead of the canvas (the hunt bar covers the low lane); the arrow is never loosed`, await snap('hunt-blocked-tap', { force: true, wait: 50 })); } }
+    miniMeta.lastHuntShot = Date.now();
+    log(`  hunt shot ${fired + 1}: ${how}${how !== 'sky' ? ' at a ' + (alive.find((a) => Math.abs((a.running ? a.aim.x : a.x) - tx) < 1) || {}).kind : ''}`);
     await page.touchscreen.tap(px, py);
-    if (miniMeta.huntMiss === 3) await snap('hunt-arrow-flight', { force: true, wait: 120 });
-    await page.waitForTimeout(350);
+    if (fired === 0) { await snap('v14-hunt-arrow-in-flight-lead', { force: true, wait: 160 }); }
+    if (fired === 1) { await snap('v14-hunt-arrow-in-flight-still', { force: true, wait: 160 }); }
+    await page.waitForTimeout(450);
+    if (fired < 2) await snap(`v14-hunt-after-shot-${fired + 1}`, { force: true, wait: 500 });
     return true;
   }
   if (m.kind === 'fish') {
@@ -285,6 +309,65 @@ async function sceneMiniStep(s) {
     await snap('derby-race-m' + m.markers, { wait: 500 });
     return true;
   }
+  // ---- v1.4 ----
+  if (m.kind === 'dogRun') { if (m.phase === 'show') await snap(`v14-dog-brings-${m.what}`, { wait: 200 }); else if (m.phase === 'gone') await snap(`v14-dog-dashes-off-${m.what}`, { wait: 30 }); await page.waitForTimeout(80); return true; }
+  if (m.kind === 'dogWarn') { await snap(`v14-dog-warns-snake-${m.phase}`, { wait: 250 }); await page.waitForTimeout(100); return true; }
+  if (m.kind === 'ambient') {
+    await snap(`v14-ambient-${m.what}`, { wait: 1900 });
+    if (m.what === 'grizzly' && m.bear && !(m.bear.feetFrac < 0.62 && m.bear.hFrac < 0.3)) note('wrong', 'grizzly on the ridge', `the bear is not on a far ridge: feet at ${Math.round(m.bear.feetFrac * 100)} % of the height, ${Math.round(m.bear.hFrac * 100)} % tall`);
+    await page.waitForTimeout(250); return true;
+  }
+  if (m.kind === 'chase') {
+    const vis = await ev(() => { const b = document.querySelector('#dog-call'); if (!b || b.hidden) return null; const r = b.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width, h: r.height }; });
+    if (!vis) { await page.waitForTimeout(40); return true; }
+    if (!miniMeta.chaseShot) { miniMeta.chaseShot = true; await snap('v14-chase-name-button', { force: true, wait: 600 }); }
+    const late = !V.lateDone;                                       // the first chase is called LATE (muddy); later ones in good time
+    if (late ? (m.dist >= 0.86 && m.phase === 'out') : m.dist >= 0.25) {
+      if (late) { V.lateDone = true; await snap('v14-chase-called-late', { force: true, wait: 0 }); }
+      const hit = await hitIsCanvas(vis.x, vis.y);
+      V.chases.push({ leg: curLeg + 1, late, dist: m.dist, tapOn: hit.what });
+      await page.touchscreen.tap(vis.x, vis.y);
+      await page.waitForTimeout(300);
+      await snap(late ? 'v14-chase-after-the-late-call' : 'v14-chase-after-the-call', { force: true, wait: 700 });
+    } else await page.waitForTimeout(30);
+    return true;
+  }
+  if (m.kind === 'fishing') return await playFishing(c);
+  if (m.kind === 'stones') return await playStones(c);
+  if (m.kind === 'fetch') return await playFetch(c, m);
+  if (m.kind === 'hoppers') {
+    await snap('v14-hoppers-play', { wait: 900 });
+    const hs = (m.hoppers || []).filter((q) => q.x > 40 && q.x < c.W - 40);
+    if (!hs.length) { await page.waitForTimeout(80); return true; }
+    const [px, py] = toPage(c, hs[0].x, hs[0].y);
+    await checkTap(px, py, 'grasshoppers');
+    await page.touchscreen.tap(px, py);
+    await page.waitForTimeout(160);
+    return true;
+  }
+  if (m.kind === 'meteors') {
+    await snap('v14-falling-stars', { wait: 2200 });
+    const st = (m.stars || [])[0];
+    if (!st) { await page.waitForTimeout(100); return true; }
+    const [px, py] = toPage(c, st.x, st.y);
+    await checkTap(px, py, 'falling stars');
+    await page.touchscreen.tap(px, py);
+    await snap('v14-falling-star-wish', { wait: 150 });
+    await page.waitForTimeout(260);
+    return true;
+  }
+  if (m.kind === 'dustDevil') {
+    await snap('v14-dust-devil-hats-fly', { wait: 1400 });
+    const hats = (m.hats || []).filter((q) => q.inReach && q.x > 20 && q.x < c.W - 20);
+    const leave = V.hats.length === 0 && m.of > 1 && m.caught >= m.of - 1;       // the first devil: leave one hat in the sagebrush (the dog brings it back)
+    if (!hats.length || leave) { await page.waitForTimeout(90); return true; }
+    const [px, py] = toPage(c, hats[0].x, hats[0].y);
+    await checkTap(px, py, 'dust devil hats');
+    await page.touchscreen.tap(px, py);
+    await snap('v14-dust-devil-hat-caught', { wait: 120 });
+    await page.waitForTimeout(150);
+    return true;
+  }
   return false;
 }
 
@@ -322,6 +405,11 @@ async function storeRoutine(s) {
       if (!did && legIx >= 1 && !(j.animals && j.animals.n >= 4) && j.cash > 120 && await buy('yoke')) did = true;
       if (!did) break;
     }
+    // v1.4: the shiny spoon (once, from Fort Kearny on) and the old horseshoes the dog found
+    const hs = await ev(() => { const b = document.querySelector('#store-horseshoes'); return b ? { n: b.dataset.n, cash: b.dataset.cash, label: b.textContent } : null; });
+    if (hs) { await snap('v14-store-horseshoes-row', { force: true, wait: 200 }); await ev(() => document.querySelector('#store-horseshoes').click()); await page.waitForTimeout(500); await snap('v14-store-horseshoes-sold', { force: true, wait: 300 }); V.legFun.push({ leg: legIx + 1, where: 'store', horseshoes: hs }); }
+    const spoonRow = await ev(() => { const b = document.querySelector('.st-good[data-good="spoon"]'); return b ? { disabled: b.disabled, text: b.textContent } : null; });
+    if (spoonRow) { await snap('v14-store-spoon-row', { force: true, wait: 200 }); if (!spoonRow.disabled) { await buy('spoon'); await snap('v14-store-spoon-bought', { force: true, wait: 300 }); V.legFun.push({ leg: legIx + 1, where: 'store', spoon: 'bought', row: spoonRow }); } }
     await snap(`store-${s.j.legId}-after-buying`, { force: true, wait: 250 });
   }
   if (!storeState.worked && !P.storeWorkedAt.has(legIx)) {
@@ -339,6 +427,224 @@ async function storeRoutine(s) {
   return 'store-done';
 }
 
+// ---------- v1.4: Frodo and the river ----------
+const J14 = () => ev(() => {
+  const J = window.__wagonWest.save.journey;
+  if (!J) return null;
+  return { legId: J.legId, dog: J.dog ? { ...J.dog } : null, finds: J.finds, fishLog: J.fishLog, fishJunk: J.fishJunk, fishBest: J.fishBest, quests: J.quests, questsDone: J.questsDone, factsHeard: J.factsHeard,
+    wishes: J.wishes, skips: J.skips, goods: J.goods && { ...J.goods }, totals: J.totals && { ...J.totals }, cards: J.cards, opts: J.opts, tokens: J.tokens, cash: J.cash, spirit: J.spirit };
+});
+/** Camp on an arrival evening while there is still something new to play there (falling stars, fetch, grasshoppers, stones), and always on the first legs. */
+function campWanted() {
+  const c = V.camp;
+  if (curLeg <= 2) return true;
+  return curLeg <= 9 && !(c.stars >= 1 && c.fetch >= 2 && c.hoppers >= 1 && c.stones >= 1);
+}
+async function arrivalCamp(s) {
+  const key = (a) => `${s.j.legId}:${a}`;
+  await snap(`v14-camp-arrival-${s.j.legId}`, { wait: 700 });
+  const offered = await ev(() => [...document.querySelectorAll('.camp-act.fun')].filter((b) => !b.disabled).map((b) => b.dataset.act));
+  const lim = { stars: 1, hoppers: 2, fetch: 2, stones: 1 };
+  const next = ['stars', 'hoppers', 'fetch', 'stones'].find((a) => offered.includes(a) && V.camp[a] < lim[a] && !V.campSeen.has(key(a)));
+  if (next) {
+    V.campSeen.add(key(next)); V.camp[next]++;
+    log(`  camp (arrival): ${next} (offered: ${offered.join(', ')})`);
+    await ev((a) => document.querySelector(`.camp-act[data-act="${a}"]`).click(), next);
+    await page.waitForTimeout(400);
+    return 'camp-' + next;
+  }
+  const j = await J14();
+  V.legFun.push({ leg: curLeg + 1, where: 'arrival camp', offered, muddyAtCamp: !!(j && j.dog && j.dog.muddy) });
+  await snap(`v14-camp-arrival-${s.j.legId}-done`, { force: true, wait: 300 });
+  await ev(() => document.querySelector('#camp-back').click());
+  await page.waitForTimeout(500);
+  return 'camp-leave';
+}
+async function pickBait(s) {
+  const avail = await ev(() => [...document.querySelectorAll('#bait-row .bait-btn')].map((b) => ({ id: b.dataset.bait, ok: !b.disabled, sub: (b.querySelector('small') || {}).textContent || '' })));
+  await snap(`v14-bait-row-${s.j.legId}`, { force: true, wait: 350 });
+  const want = BAIT_PLAN[V.baitIx++ % BAIT_PLAN.length];
+  const pick = avail.find((b) => b.id === want && b.ok) || avail.find((b) => b.ok);
+  V.bait.push({ leg: s.j.legId, want, pick: pick && pick.id, avail });
+  if (!pick) { note('wrong', 'bait row', 'no bait on offer: ' + JSON.stringify(avail)); await ev(() => document.querySelector('#mini-done').click()); return 'bait'; }
+  await ev((id) => document.querySelector(`#bait-row [data-bait="${id}"]`).click(), pick.id);
+  await page.waitForTimeout(250);
+  return 'bait';
+}
+/** Pick the fishing seed counter so the next session has what this leg wants (a boot or turtle, the bottle, the sturgeon): a steering of luck, the play is real. */
+async function steerFishing(want) {
+  const plan = BAIT_PLAN[V.baitIx % BAIT_PLAN.length];
+  return ev(({ want, plan }) => {
+    const w = window.__wagonWest, J = w.save.journey, JA = w.JA;
+    if (!J || !J.trip || typeof JA.fishingSession !== 'function') return { k: -1 };
+    const av = JA.baitsAvailable(J);
+    const bait = (av.find((b) => b.id === plan && b.ok) || av.find((b) => b.ok) || { id: 'worms' }).id;
+    const base = J.trip.fishing | 0;
+    for (let k = 0; k < 800; k++) {
+      const c = JSON.parse(JSON.stringify(J)); c.trip.fishing = base + k;
+      let ses; try { ses = JA.fishingSession(c, { bait }); } catch (_) { return { k: -2 }; }
+      const names = ses.casts.map((x) => x.species || x.junk);
+      const ok = want === 'sturgeon' ? names.includes('white-sturgeon') : want === 'bottle' ? names.includes('bottle') : want === 'junk' ? ses.casts.some((x) => x.kind === 'junk') : want === 'fish2' ? names.filter((n) => n !== 'boot' && n !== 'turtle' && n !== 'bottle').length >= 3 : true;
+      if (ok) { J.trip.fishing = base + k; return { k, bait, names, water: ses.water }; }
+    }
+    return { k: -3, bait };
+  }, { want, plan });
+}
+async function v14Fish(want, label) {
+  const st = await steerFishing(want);
+  log(`  fishing (${label}): steered for "${want}": ${JSON.stringify(st)}`);
+  if (st.k < 0) note('script', 'fishing steer', `no session with "${want}" found (${JSON.stringify(st)})`);
+  const ok = await ev(() => window.__wagonWest.playEvent('fish'));
+  if (!ok) return null;
+  const t0 = Date.now();
+  await playUntil((s2) => s2.travel && !s2.travel.busy && !s2.card && !s2.sm && !s2.bait, {}, 240000, `fishing ${label}`);
+  const f = await ev(() => window.__wagonWest.lastFishing);
+  V.fishing.push({ leg: curLeg + 1, label, want, steer: st, secs: Math.round((Date.now() - t0) / 1000), result: f });
+  return 'v14-fish-' + label;
+}
+async function v14Nose(kind) {
+  const ok = await ev((k) => window.__wagonWest.playNose(k), kind);
+  if (!ok) return null;
+  const t0 = Date.now();
+  await page.waitForTimeout(300);
+  await playUntil((s2) => s2.travel && !s2.travel.busy && !s2.card && !s2.sm && !s2.findPop, {}, 90000, `nose ${kind}`);
+  const j = await J14();
+  V.noses.push({ leg: curLeg + 1, kind, secs: Math.round((Date.now() - t0) / 1000), muddy: !!(j && j.dog && j.dog.muddy), finds: j && Object.keys(j.finds || {}).length });
+  return 'v14-nose-' + kind;
+}
+async function v14Fact(id) {
+  const ok = await ev((i) => window.__wagonWest.playFact(i), id);
+  if (!ok) return null;
+  await page.waitForTimeout(300);
+  await playUntil((s2) => s2.travel && !s2.travel.busy && !s2.card && !s2.sm, {}, 90000, `fact ${id}`);
+  V.facts.push({ leg: curLeg + 1, id });
+  return 'v14-fact-' + id;
+}
+async function v14Moment(kind) {
+  const ok = await ev((k) => window.__wagonWest.playMoment(k), kind);
+  if (!ok) return null;
+  await page.waitForTimeout(300);
+  await playUntil((s2) => s2.travel && !s2.travel.busy && !s2.card && !s2.sm, {}, 90000, `moment ${kind}`);
+  const j = await J14();
+  V.hats.push({ leg: curLeg + 1, kind, hatsCaught: j && j.totals && j.totals.hatsCaught, hatsAll: j && j.totals && j.totals.hatsAll, dustDevils: j && j.totals && j.totals.dustDevils });
+  return 'v14-moment-' + kind;
+}
+/** The v1.4 detours, by leg and mile (each once). Every one only plays when the trail is idle. */
+const V14_PLAN = [
+  { leg: 0, miles: 20, key: 'fish-kansas', run: () => v14Fish('junk', 'kansas') },
+  { leg: 0, miles: 95, key: 'fact-glow', run: () => v14Fact('prairie-glow') },
+  { leg: 1, miles: 12, key: 'nose-find', run: () => v14Nose('find') },
+  { leg: 1, miles: 24, key: 'nose-snake', run: () => v14Nose('snake') },
+  { leg: 1, miles: 38, key: 'nose-rabbit-late', run: () => v14Nose('rabbit') },
+  { leg: 1, miles: 52, key: 'fact-rifles', run: () => v14Fact('far-off-crack') },
+  { leg: 1, miles: 135, key: 'fact-wolves', run: () => v14Fact('wolf-song') },
+  { leg: 2, miles: 14, key: 'dust-devil', run: () => v14Moment('dustDevil') },
+  { leg: 2, miles: 56, key: 'fish-platte', run: () => v14Fish('fish2', 'platte') },
+  { leg: 2, miles: 100, key: 'nose-find-2', run: () => v14Nose('find') },
+  { leg: 3, miles: 70, key: 'fact-rifles-2', run: () => v14Fact('far-off-crack') },
+  { leg: 4, miles: 20, key: 'fish-bottle', run: () => v14Fish('bottle', 'sweetwater-bottle') },
+  { leg: 5, miles: 20, key: 'fact-grizzly', run: () => v14Fact('grizzly-ridge') },
+  { leg: 5, miles: 60, key: 'fish-sweetwater2', run: () => v14Fish('fish2', 'south-pass') },
+  { leg: 6, miles: 30, key: 'fish-creek', run: () => v14Fish('fish2', 'creek') },
+  { leg: 7, miles: 30, key: 'fish-bear', run: () => v14Fish('fish2', 'bear') },
+  { leg: 7, miles: 90, key: 'fact-pronghorn', run: () => v14Fact('pronghorn-race') },
+  { leg: 8, miles: 20, key: 'fish-snake-sturgeon', run: () => v14Fish('sturgeon', 'snake') },
+  { leg: 9, miles: 25, key: 'fish-blue', run: () => v14Fish('fish2', 'blue') },
+  { leg: 10, miles: 20, key: 'fish-columbia', run: () => v14Fish('sturgeon', 'columbia') },
+];
+async function v14Detours(s, once) {
+  for (const d of V14_PLAN) {
+    if (d.leg !== curLeg || s.j.milesDone < d.miles || !once('v14-' + d.key)) continue;
+    const r = await d.run();
+    if (!r) { P.specials.delete('v14-' + d.key); return null; }
+    return r;
+  }
+  return null;
+}
+
+// ---------- v1.4: the new mini-games, played with real pointer input ----------
+async function playFishing(c) {
+  const t0 = Date.now();
+  let held = false, tapEarly = false, lastFight = '';
+  const [cx, cy] = toPage(c, c.W * 0.5, c.H * 0.7);
+  const up = async () => { if (held) { await page.mouse.up().catch(() => {}); held = false; } };
+  const down = async () => { if (!held) { await page.mouse.move(cx, cy); await page.mouse.down(); held = true; } };
+  while (Date.now() - t0 < 150000) {
+    const m = await ev(() => { const sc = window.__wagonWest.scene; return sc && sc.debugMini ? sc.debugMini() : null; });
+    if (!m || m.kind !== 'fishing') break;
+    const tag = m.species || m.junk || 'x';
+    if (m.phase === 'end') { await up(); break; }                  // (the summary card is the app's now: step() answers it)
+    if (m.phase === 'wait' && !tapEarly && V.fishing.length === 0 && m.pt > 0.6) { tapEarly = true; await snap('v14-fishing-wait-for-a-bite', { force: true, wait: 50 }); await page.touchscreen.tap(cx, cy); await snap('v14-fishing-early-tap', { force: true, wait: 150 }); await page.waitForTimeout(300); continue; }
+    if (m.phase === 'bite') { await up(); await snap('v14-fishing-bite-' + tag, { wait: 40 }); await page.touchscreen.tap(cx, cy); await page.waitForTimeout(150); continue; }
+    if (m.phase === 'fight') {
+      if (m.fight === 'help') {
+        await up();
+        await snap('v14-fishing-sturgeon-it-takes-two', { wait: 500 });
+        const [hx, hy] = toPage(c, m.helpSpot.x, m.helpSpot.y);
+        await checkHelpTap(hx, hy);
+        await page.touchscreen.tap(hx, hy); V.helped++;
+        await snap('v14-fishing-sturgeon-helper-tapped', { force: true, wait: 400 });
+        await page.waitForTimeout(250); continue;
+      }
+      if (m.fight === 'reel') {
+        const danger = m.warn || m.wobble;
+        const wantWiggle = !V.wiggleDone && V.fishing.length === 0;      // the very first fight: hold straight through the red (the fish wiggles off, cast again)
+        if (wantWiggle) { await down(); if (m.wobble) await snap('v14-fishing-line-red-held', { wait: 20 }); }
+        else if (danger && held) { if (m.wobble) await snap('v14-fishing-line-red-let-go-' + tag, { wait: 10 }); else await snap('v14-fishing-line-yellow-' + tag, { wait: 10 }); await up(); }
+        else if (!danger && !held) await down();
+        if (!wantWiggle && !danger && m.progress > 0.55) await snap('v14-fishing-reeling-in-' + tag, { wait: 20 });
+        lastFight = m.fight;
+      } else await up();
+    } else { await up(); if (m.phase === 'off' && !V.wiggleDone && V.fishing.length === 0) { V.wiggleDone = true; V.wiggled++; await snap('v14-fishing-it-wiggled-off', { force: true, wait: 120 }); } if (m.phase === 'land') await snap('v14-fishing-landed-' + tag, { wait: 250 }); if (m.junk && m.phase === 'land') await snap('v14-fishing-junk-' + m.junk, { wait: 10 }); }
+    await page.waitForTimeout(18);
+  }
+  await up();
+  return true;
+}
+async function checkHelpTap(px, py) {
+  const h = await hitIsCanvas(px, py);
+  if (!h.ok) note('blocks play', 'fishing (sturgeon helper)', `the helper's portrait at (${Math.round(px)}, ${Math.round(py)}) is covered by ${h.what}: the second tap cannot be made by touch there`);
+}
+async function playStones(c) {
+  const t0 = Date.now();
+  const [cx, cy] = toPage(c, c.W * 0.5, c.H * 0.7);
+  const first = V.stones.length === 0;
+  let sinkOn = false;
+  while (Date.now() - t0 < 60000) {
+    const m = await ev(() => { const sc = window.__wagonWest.scene; return sc && sc.debugMini ? sc.debugMini() : null; });
+    if (!m || m.kind !== 'stones') break;
+    if (m.phase === 'ready') { if (m.throw === 0) { await snap('v14-stones-ready', { wait: 300 }); await checkTapHit(cx, cy, 'skipping stones'); } await page.touchscreen.tap(cx, cy); await page.waitForTimeout(150); sinkOn = first && m.throw === 2; continue; }
+    if (m.phase === 'dip' && !sinkOn) { await page.touchscreen.tap(cx, cy); await page.waitForTimeout(60); continue; }
+    if (m.phase === 'air' && m.needTap && !sinkOn && m.nextKissIn != null && m.nextKissIn <= 0.11) { await page.touchscreen.tap(cx, cy); if (m.skips === 3) await snap('v14-stones-skipping', { wait: 0 }); await page.waitForTimeout(60); continue; }
+    if (m.phase === 'sink') await snap('v14-stones-plunk', { wait: 60 });
+    await page.waitForTimeout(12);
+  }
+  const m2 = await ev(() => { const sc = window.__wagonWest.scene; return sc && sc.debugMini ? sc.debugMini() : null; });
+  V.stones.push({ leg: curLeg + 1, res: m2 && m2.res });
+  return true;
+}
+async function playFetch(c, m) {
+  if (m.phase !== 'ready') return true;
+  const pull = [0.35, 0.7, 0.98][Math.min(2, m.n)];
+  const a = m.anchor;
+  const [ax, ay] = toPage(c, a.x + 4, a.y), [bx, by] = toPage(c, a.x + m.maxPull * pull, a.y);
+  if (m.n === 0) { await snap('v14-fetch-ready', { wait: 400 }); await checkTapHit(ax, ay, 'fetch (the stick)'); }
+  await page.mouse.move(ax, ay); await page.mouse.down();
+  await page.mouse.move((ax + bx) / 2, ay, { steps: 3 }); await page.mouse.move(bx, by, { steps: 3 });
+  if (m.n === 1) await snap('v14-fetch-aim-ghost-arc', { force: true, wait: 120 });
+  await page.mouse.up();
+  V.fetch.push({ leg: curLeg + 1, n: m.n + 1, pull });
+  await page.waitForTimeout(500);
+  if (m.n === 0) await snap('v14-fetch-dog-runs', { force: true, wait: 300 });
+  await page.waitForTimeout(1500);
+  if (m.n === 2) await snap('v14-fetch-dog-flops-by-the-fire', { force: true, wait: 1800 });
+  return true;
+}
+async function checkTapHit(px, py, what) {
+  const h = await hitIsCanvas(px, py);
+  if (!h.ok) note('blocks play', what, `a touch at (${Math.round(px)}, ${Math.round(py)}) lands on ${h.what}, not the canvas`);
+}
+
 // ---------- one step of "play whatever is on the screen" ----------
 let inStop = false;
 let inTitleTour = false;
@@ -353,13 +659,15 @@ async function step(plan = {}) {
   for (const t of s.toasts) if (!toastsSeen.has(t)) { toastsSeen.add(t); if (toastsSeen.size <= 60) await snap(`toast-${t.slice(0, 28)}`, { force: true, wait: 30 }); }
   const key = [s.screen, s.card && s.cardTitle, s.marker, s.problem, s.spell, s.sm && s.sm.kind, s.mini && s.mini.kind, s.j && s.j.milesDone, s.rvChoice, s.stopOpen].join('|');
   if (key !== lastKey) { lastKey = key; lastChange = Date.now(); }
+  if (s.findPop && !popsSeen.has('find:' + s.findPop)) { popsSeen.add('find:' + s.findPop); await snap('v14-find-pop-' + s.findPop.slice(0, 22), { force: true, wait: 250 }); }
   if (plan.onEach) { const r = await plan.onEach(s); if (r) return r; }
+  if (s.bait) return await pickBait(s);
 
   if (s.card) {
     await snap(`card-${s.cardTitle}`);
     // choices the plan makes at certain cards
     let alt = false;
-    if (s.cardTitle === 'Make camp tonight?' && !P.campDone.has(curLeg) && [1, 3, 8].includes(curLeg)) { alt = true; P.campDone.add(curLeg); }
+    if (s.cardTitle === 'Make camp tonight?' && !P.campDone.has(curLeg) && campWanted()) { alt = true; P.campDone.add(curLeg); }
     if (s.cardAlt && /dog|friend/i.test(s.cardTitle)) alt = false;
     await ev((alt) => { const b = alt ? document.querySelector('#tc-alt') : document.querySelector('#tc-go'); if (b) b.click(); }, alt);
     await page.waitForTimeout(120);
@@ -390,9 +698,9 @@ async function step(plan = {}) {
     return 'spell';
   }
   if (s.screen === 'dog') {
-    await snap('dog-name');
+    await snap('v14-dog-name-at-the-kansas-river');
     await page.click('#dog-coats [data-coat="spotted"]');
-    for (const k of 'biscuit') await page.click(`#dog-keyboard .kb-key[data-key="${k}"]`);
+    for (const k of 'frodo') await page.click(`#dog-keyboard .kb-key[data-key="${k}"]`);
     await snap('dog-name-typed', { force: true });
     await page.click('#dog-keyboard .kb-enter');
     return 'dog';
@@ -450,6 +758,7 @@ async function step(plan = {}) {
     await page.click('#hs-keyboard .kb-enter');
     return 'home';
   }
+  if (s.screen === 'camp' && s.campCtx === 'arrival' && !s.campBusy && !s.card && !s.mini && !s.sm) return await arrivalCamp(s);
   if (s.screen === 'camp') return null;
   // the title in the middle of a journey (after a results / journal / outfit visit): "Hit the trail" / "Keep going"
   if (s.screen === 'title' && s.j && !inTitleTour) { await snap('title-on-the-way', { wait: 500 }); await page.waitForTimeout(300); await ev(() => document.querySelector('#btn-trail').click()); return 'title-go'; }
@@ -494,6 +803,7 @@ async function onTrailIdle(s) {
   const L = curLeg;
   const once = (k) => { if (P.specials.has(k)) return false; P.specials.add(k); return true; };
   const miles = s.j.milesDone;
+  { const r = await v14Detours(s, once); if (r) return r; }
   if (L === 0 && miles > 25 && once('hud-tour')) {
     if (!idle(await W())) { P.specials.delete('hud-tour'); return null; }
     await snap('trail-hud', { force: true, wait: 400 });
@@ -530,7 +840,7 @@ async function onTrailIdle(s) {
   if (L === 1 && miles > 70 && once('hunt-event')) { await ev(() => window.__wagonWest.playEvent('hunt')); await settle(90000); return 'hunt'; }
   if (L === 1 && miles > 110 && once('trade-event')) { await ev(() => window.__wagonWest.playEvent('trade')); await settle(60000); return 'trade'; }
   if (L === 2 && miles > 30 && once('axle')) { await ev(() => window.__wagonWest.playEvent('axle')); await settle(40000); await snap('after-breakdown', { force: true }); return 'axle'; }
-  if (L === 2 && miles > 70 && once('fish-event')) { await ev(() => window.__wagonWest.playEvent('fish')); await settle(60000); return 'fish'; }
+  if (false && L === 2 && miles > 70 && once('fish-event')) { await ev(() => window.__wagonWest.playEvent('fish')); await settle(170000); return 'fish'; }
   if (L === 3 && miles > 25 && once('camp-tour')) { return await campTour(['fish', 'hunt', 'cards', 'tales', 'rest']); }
   if (L === 4 && miles > 40 && once('storm-forecast')) { await ev(() => window.__wagonWest.playEvent('storm')); await settle(60000); return 'storm'; }
   if (L === 5 && miles > 40 && once('snow')) { await ev(() => window.__wagonWest.playEvent('snow')); await settle(60000); return 'snow'; }
@@ -595,9 +905,15 @@ async function journalTour() {
   log('  journal tabs:', tabs.join(','));
   for (const t of tabs) {
     await ev((t) => document.querySelector(`#jr-tabs [data-page="${t}"]`).click(), t);
-    await snap(`journal-${t}`, { force: true, wait: 500 });
+    const v = /^(finds|fish)$/.test(t) ? 'v14-' : '';
+    await snap(`${v}journal-${t}`, { force: true, wait: 500 });
     await ev(() => { const b = document.querySelector('#jr-body'); if (b) b.scrollTop = b.scrollHeight; });
-    await snap(`journal-${t}-scrolled`, { force: true, wait: 300, audits: false });
+    await snap(`${v}journal-${t}-scrolled`, { force: true, wait: 300, audits: false });
+    if (v) {
+      const txt = await ev(() => (document.querySelector('#jr-body') || {}).innerText || '');
+      texts[`JOURNAL ${t.toUpperCase()} PAGE`] = txt.replace(/\s+/g, ' ');
+    }
+    if (t === 'cards') { await ev(() => { const b = document.querySelector('#jr-body'); if (b) b.scrollTop = 0; }); const suits = await ev(() => [...document.querySelectorAll('#jr-body .suit, #jr-body h3, #jr-body .hud-label')].map((e) => e.textContent.trim()).slice(0, 12)); texts['JOURNAL CARDS SUITS'] = suits; }
     if (t === 'cards') {
       const first = await ev(() => { const b = document.querySelector('.cards-grid button.tcard'); return b ? b.dataset.card : null; });
       if (first) { await ev((c) => document.querySelector(`.cards-grid button.tcard[data-card="${c}"]`).click(), first); await snap('journal-cards-flipped', { force: true, wait: 700 }); }
@@ -724,6 +1040,13 @@ async function main() {
       await snap(`results-leg-${L + 1}-scrolled`, { force: true, wait: 300, audits: false });
       const rj = await jq();
       log(`  leg ${L + 1} done: cash $${rj.cash} food ${Math.round(rj.food)} tokens ${rj.tokens} cards ${rj.cards} deeds ${rj.deeds} met ${rj.met}`);
+      try {
+        const jf = await J14();
+        const fs = { leg: L + 1, where: 'results', dog: jf.dog && { name: jf.dog.name, muddy: jf.dog.muddy, legs: jf.dog.legs }, finds: Object.keys(jf.finds || {}).length, fish: Object.fromEntries(Object.entries(jf.fishLog || {}).map(([k, v]) => [k, v.n])), junk: jf.fishJunk, quests: jf.quests, factsHeard: jf.factsHeard, tokens: jf.tokens };
+        V.legFun.push(fs);
+        log(`  v14: ${JSON.stringify(fs)}`);
+        if (L === 1 && jf.dog && jf.dog.muddy) note('wrong', 'the muddy dog', 'the dog is still muddy at the results of the leg after the late chase (arrival and camp should have washed him)', await snap('v14-dog-still-muddy-at-results', { force: true, wait: 50 }));
+      } catch (e) { log('  (v14 status failed: ' + e.message + ')'); }
       try { writeFileSync(path.join(SHOTS, `state-after-leg-${L + 1}.json`), JSON.stringify(await ctx.storageState())); } catch (_) { /* ignore */ }
       if (L === 11) break;
       if (L === 1 || L === 4 || L === 8) {
@@ -776,20 +1099,38 @@ async function main() {
           texts['PARENT REPORT TEXT (after copy)'] = await ev(() => { const e = document.querySelector('#report-text'); return e ? e.textContent : ''; });
           texts['PARENT REPORT FULL PAGE'] = await ev(() => document.querySelector('#pz').innerText.replace(/\s+/g, ' '));
         }
+        if (t === 'options') {
+          await ev(() => { const b = document.querySelector('#opt-far-sounds'); if (b) b.scrollIntoView({ block: 'center' }); });
+          const st0 = await ev(() => { const b = document.querySelector('#opt-far-sounds'); return b ? b.getAttribute('aria-checked') : null; });
+          await snap('v14-pz-far-off-sounds-on', { force: true, wait: 400, audits: false });
+          await ev(() => document.querySelector('#opt-far-sounds').click());
+          await page.waitForTimeout(300);
+          const st1 = await ev(() => document.querySelector('#opt-far-sounds').getAttribute('aria-checked'));
+          const jo = await ev(() => { const J = window.__wagonWest.save.journey; return { journey: J && J.opts, settings: window.__wagonWest.app.settings.farSounds }; });
+          await snap('v14-pz-far-off-sounds-off', { force: true, wait: 300, audits: false });
+          V.farSwitch = { before: st0, after: st1, state: jo };
+          if (!(st0 === 'true' && st1 === 'false')) note('wrong', 'Parent Zone', `the far-off sounds switch did not flip (${st0} -> ${st1})`);
+          if (jo.settings !== false && !(jo.journey && jo.journey.farSounds === false)) note('wrong', 'Parent Zone', `the far-off switch is off but neither the setting nor the journey says so: ${JSON.stringify(jo)}`);
+          await ev(() => document.querySelector('#opt-far-sounds').click());
+          await page.waitForTimeout(250);
+          V.farSwitch.restored = await ev(() => document.querySelector('#opt-far-sounds').getAttribute('aria-checked'));
+        }
         if (t === 'journey') texts['PARENT JOURNEY TAB'] = await ev(() => document.querySelector('#pz').innerText.replace(/\s+/g, ' '));
       }
       await ev(() => document.querySelector('#pz-close').click());
     } else note('script', 'end', 'not on the title after the journey; skipped the Parent Zone');
 
     // ---- final dump of the journey state for the report ----
-    const final = await ev(() => { const w = window.__wagonWest; const J = w.save.journey; return { journey: J && { legIndex: J.legIndex, done: J.done, cash: J.cash, tokens: J.tokens, food: J.food, deeds: J.deeds, cards: J.cards, met: J.met, totals: J.totals, season: J.season }, stickers: w.save.stickers, letters: (w.save.letters || []).length, legsLog: w.save.legsLog, play: w.save.play }; });
+    const final = await ev(() => { const w = window.__wagonWest; const J = w.save.journey; return { journey: J && { dog: J.dog, finds: J.finds, fishLog: J.fishLog, fishJunk: J.fishJunk, quests: J.quests, questsDone: J.questsDone, factsHeard: J.factsHeard, wishes: J.wishes, skips: J.skips, legIndex: J.legIndex, done: J.done, cash: J.cash, tokens: J.tokens, food: J.food, deeds: J.deeds, cards: J.cards, met: J.met, totals: J.totals, season: J.season }, stickers: w.save.stickers, letters: (w.save.letters || []).length, legsLog: w.save.legsLog, play: w.save.play }; });
     writeFileSync(path.join(SHOTS, 'final-state.json'), JSON.stringify(final, null, 1));
+    V.final = await J14();
   } catch (e) {
     note('script', 'run aborted', String(e && e.stack || e).slice(0, 500));
     try { await snap('ABORT', { force: true }); } catch (_) { /* ignore */ }
   } finally {
     try { writeFileSync(path.join(SHOTS, 'spoken.json'), JSON.stringify(await ev(() => window.__spoken || []), null, 1)); } catch (_) { /* ignore */ }
     writeFileSync(path.join(SHOTS, 'findings.json'), JSON.stringify(findings, null, 1));
+    try { writeFileSync(path.join(SHOTS, 'v14-summary.json'), JSON.stringify({ ...V, campSeen: [...V.campSeen] }, null, 1)); } catch (_) { /* ignore */ }
     writeFileSync(path.join(SHOTS, 'texts.json'), JSON.stringify(texts, null, 1));
     writeFileSync(path.join(SHOTS, 'console-errors.json'), JSON.stringify(errors, null, 1));
     await browser.close();

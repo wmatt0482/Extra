@@ -1,0 +1,1689 @@
+{
+ "dogName": "Frodo",
+ "baitIx": 11,
+ "bait": [
+  {
+   "leg": "kansas-river",
+   "want": "worms",
+   "pick": "worms",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": false,
+     "sub": "none yet"
+    },
+    {
+     "id": "spoon",
+     "ok": false,
+     "sub": "at a fort store"
+    }
+   ]
+  },
+  {
+   "leg": "chimney-rock",
+   "want": "hoppers",
+   "pick": "hoppers",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": true,
+     "sub": "6 in the tin"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  },
+  {
+   "leg": "fort-laramie",
+   "want": "hoppers",
+   "pick": "hoppers",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": true,
+     "sub": "2 in the tin"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  },
+  {
+   "leg": "independence-rock",
+   "want": "worms",
+   "pick": "worms",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": false,
+     "sub": "none yet"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  },
+  {
+   "leg": "south-pass",
+   "want": "hoppers",
+   "pick": "worms",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": false,
+     "sub": "none yet"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  },
+  {
+   "leg": "fort-bridger",
+   "want": "spoon",
+   "pick": "spoon",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": false,
+     "sub": "none yet"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  },
+  {
+   "leg": "fort-hall",
+   "want": "spoon",
+   "pick": "spoon",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": false,
+     "sub": "none yet"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  },
+  {
+   "leg": "snake-river",
+   "want": "hoppers",
+   "pick": "worms",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": false,
+     "sub": "none yet"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  },
+  {
+   "leg": "snake-river",
+   "want": "spoon",
+   "pick": "spoon",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": false,
+     "sub": "none yet"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  },
+  {
+   "leg": "blue-mountains",
+   "want": "spoon",
+   "pick": "spoon",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": true,
+     "sub": "6 in the tin"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  },
+  {
+   "leg": "the-dalles",
+   "want": "worms",
+   "pick": "worms",
+   "avail": [
+    {
+     "id": "worms",
+     "ok": true,
+     "sub": "always there"
+    },
+    {
+     "id": "hoppers",
+     "ok": true,
+     "sub": "6 in the tin"
+    },
+    {
+     "id": "spoon",
+     "ok": true,
+     "sub": "never used up"
+    }
+   ]
+  }
+ ],
+ "noses": [
+  {
+   "leg": 2,
+   "kind": "find",
+   "secs": 11,
+   "muddy": false,
+   "finds": 3
+  },
+  {
+   "leg": 2,
+   "kind": "snake",
+   "secs": 5,
+   "muddy": false,
+   "finds": 3
+  },
+  {
+   "leg": 2,
+   "kind": "rabbit",
+   "secs": 11,
+   "muddy": true,
+   "finds": 3
+  },
+  {
+   "leg": 3,
+   "kind": "find",
+   "secs": 7,
+   "muddy": false,
+   "finds": 7
+  }
+ ],
+ "facts": [
+  {
+   "leg": 1,
+   "id": "prairie-glow"
+  },
+  {
+   "leg": 2,
+   "id": "far-off-crack"
+  },
+  {
+   "leg": 2,
+   "id": "wolf-song"
+  },
+  {
+   "leg": 4,
+   "id": "far-off-crack"
+  },
+  {
+   "leg": 6,
+   "id": "grizzly-ridge"
+  },
+  {
+   "leg": 8,
+   "id": "pronghorn-race"
+  }
+ ],
+ "fishing": [
+  {
+   "leg": 1,
+   "label": "kansas",
+   "want": "junk",
+   "steer": {
+    "k": 0,
+    "bait": "worms",
+    "names": [
+     "channel-catfish",
+     "channel-catfish",
+     "channel-catfish",
+     "turtle"
+    ],
+    "water": "kansas"
+   },
+   "secs": 46,
+   "result": {
+    "lb": 16,
+    "caught": [
+     {
+      "species": "channel-catfish",
+      "lengthIn": 23.7
+     },
+     {
+      "species": "channel-catfish",
+      "lengthIn": 23.9
+     },
+     {
+      "species": "channel-catfish",
+      "lengthIn": 15.5
+     }
+    ],
+    "junk": [
+     "turtle"
+    ],
+    "newSpecies": [
+     "channel-catfish"
+    ],
+    "best": true,
+    "summary": {
+     "text": "Three channel catfish and a snapping turtle. Sixteen pounds of fish for the wagon.",
+     "say": "Three channel catfish and a snapping turtle. Sixteen pounds of fish for the wagon."
+    },
+    "bait": "worms"
+   }
+  },
+  {
+   "leg": 3,
+   "label": "platte",
+   "want": "fish2",
+   "steer": {
+    "k": 0,
+    "bait": "hoppers",
+    "names": [
+     "channel-catfish",
+     "channel-catfish",
+     "channel-catfish",
+     "channel-catfish"
+    ],
+    "water": "platte"
+   },
+   "secs": 41,
+   "result": {
+    "lb": 19,
+    "caught": [
+     {
+      "species": "channel-catfish",
+      "lengthIn": 16.8
+     },
+     {
+      "species": "channel-catfish",
+      "lengthIn": 20.1
+     },
+     {
+      "species": "channel-catfish",
+      "lengthIn": 23.8
+     },
+     {
+      "species": "channel-catfish",
+      "lengthIn": 15.4
+     }
+    ],
+    "junk": [],
+    "newSpecies": [],
+    "best": false,
+    "summary": {
+     "text": "Four channel catfish. Nineteen pounds of fish for the wagon.",
+     "say": "Four channel catfish. Nineteen pounds of fish for the wagon."
+    },
+    "bait": "hoppers"
+   }
+  },
+  {
+   "leg": 5,
+   "label": "sweetwater-bottle",
+   "want": "bottle",
+   "steer": {
+    "k": 0,
+    "bait": "worms",
+    "names": [
+     "bottle",
+     "hornyhead-chub",
+     "hornyhead-chub",
+     "hornyhead-chub"
+    ],
+    "water": "sweetwater"
+   },
+   "secs": 32,
+   "result": {
+    "lb": 8,
+    "caught": [
+     {
+      "species": "hornyhead-chub",
+      "lengthIn": 5.4
+     },
+     {
+      "species": "hornyhead-chub",
+      "lengthIn": 5.1
+     },
+     {
+      "species": "hornyhead-chub",
+      "lengthIn": 4.3
+     }
+    ],
+    "junk": [
+     "bottle"
+    ],
+    "newSpecies": [
+     "hornyhead-chub"
+    ],
+    "best": false,
+    "summary": {
+     "text": "Three hornyhead chubs and a bottle with a note. Eight pounds of fish for the wagon.",
+     "say": "Three hornyhead chubs and a bottle with a note. Eight pounds of fish for the wagon."
+    },
+    "bait": "worms"
+   }
+  },
+  {
+   "leg": 6,
+   "label": "south-pass",
+   "want": "fish2",
+   "steer": {
+    "k": 0,
+    "bait": "worms",
+    "names": [
+     "hornyhead-chub",
+     "hornyhead-chub",
+     "hornyhead-chub",
+     "hornyhead-chub"
+    ],
+    "water": "sweetwater"
+   },
+   "secs": 36,
+   "result": {
+    "lb": 13,
+    "caught": [
+     {
+      "species": "hornyhead-chub",
+      "lengthIn": 7.3
+     },
+     {
+      "species": "hornyhead-chub",
+      "lengthIn": 6.2
+     },
+     {
+      "species": "hornyhead-chub",
+      "lengthIn": 6.9
+     },
+     {
+      "species": "hornyhead-chub",
+      "lengthIn": 5.1
+     }
+    ],
+    "junk": [],
+    "newSpecies": [],
+    "best": false,
+    "summary": {
+     "text": "Four hornyhead chubs. Thirteen pounds of fish for the wagon.",
+     "say": "Four hornyhead chubs. Thirteen pounds of fish for the wagon."
+    },
+    "bait": "worms"
+   }
+  },
+  {
+   "leg": 7,
+   "label": "creek",
+   "want": "fish2",
+   "steer": {
+    "k": 0,
+    "bait": "spoon",
+    "names": [
+     "cutthroat-trout",
+     "cutthroat-trout",
+     "cutthroat-trout",
+     "cutthroat-trout"
+    ],
+    "water": "creek"
+   },
+   "secs": 47,
+   "result": {
+    "lb": 18,
+    "caught": [
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 11.1
+     },
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 14.1
+     },
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 15.5
+     },
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 13.1
+     }
+    ],
+    "junk": [],
+    "newSpecies": [
+     "cutthroat-trout"
+    ],
+    "best": false,
+    "summary": {
+     "text": "Four cutthroat trout. Eighteen pounds of fish for the wagon.",
+     "say": "Four cutthroat trout. Eighteen pounds of fish for the wagon."
+    },
+    "bait": "spoon"
+   }
+  },
+  {
+   "leg": 8,
+   "label": "bear",
+   "want": "fish2",
+   "steer": {
+    "k": 0,
+    "bait": "spoon",
+    "names": [
+     "cutthroat-trout",
+     "boot",
+     "cutthroat-trout",
+     "cutthroat-trout"
+    ],
+    "water": "bear"
+   },
+   "secs": 38,
+   "result": {
+    "lb": 12,
+    "caught": [
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 11.4
+     },
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 13.4
+     },
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 11
+     }
+    ],
+    "junk": [
+     "boot"
+    ],
+    "newSpecies": [],
+    "best": false,
+    "summary": {
+     "text": "Three cutthroat trout and an old boot. Twelve pounds of fish for the wagon.",
+     "say": "Three cutthroat trout and an old boot. Twelve pounds of fish for the wagon."
+    },
+    "bait": "spoon"
+   }
+  },
+  {
+   "leg": 9,
+   "label": "snake",
+   "want": "sturgeon",
+   "steer": {
+    "k": 0,
+    "bait": "worms",
+    "names": [
+     "cutthroat-trout",
+     "white-sturgeon",
+     "cutthroat-trout",
+     "cutthroat-trout"
+    ],
+    "water": "snake"
+   },
+   "secs": 51,
+   "result": {
+    "lb": 24,
+    "caught": [
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 14.3
+     },
+     {
+      "species": "white-sturgeon",
+      "lengthIn": 79.2
+     },
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 12.1
+     },
+     {
+      "species": "cutthroat-trout",
+      "lengthIn": 8.1
+     }
+    ],
+    "junk": [],
+    "newSpecies": [
+     "white-sturgeon"
+    ],
+    "best": true,
+    "summary": {
+     "text": "Three cutthroat trout and a white sturgeon. Twenty-four pounds of fish for the wagon.",
+     "say": "Three cutthroat trout and a white sturgeon. Twenty-four pounds of fish for the wagon."
+    },
+    "bait": "worms"
+   }
+  },
+  {
+   "leg": 10,
+   "label": "blue",
+   "want": "fish2",
+   "steer": {
+    "k": 0,
+    "bait": "spoon",
+    "names": [
+     "redband-trout",
+     "boot",
+     "redband-trout",
+     "redband-trout"
+    ],
+    "water": "blue"
+   },
+   "secs": 45,
+   "result": {
+    "lb": 13,
+    "caught": [
+     {
+      "species": "redband-trout",
+      "lengthIn": 10.6
+     },
+     {
+      "species": "redband-trout",
+      "lengthIn": 14
+     },
+     {
+      "species": "redband-trout",
+      "lengthIn": 11.2
+     }
+    ],
+    "junk": [
+     "boot"
+    ],
+    "newSpecies": [
+     "redband-trout"
+    ],
+    "best": false,
+    "summary": {
+     "text": "Three redband trout and an old boot. Thirteen pounds of fish for the wagon.",
+     "say": "Three redband trout and an old boot. Thirteen pounds of fish for the wagon."
+    },
+    "bait": "spoon"
+   }
+  },
+  {
+   "leg": 11,
+   "label": "columbia",
+   "want": "sturgeon",
+   "steer": {
+    "k": 4,
+    "bait": "worms",
+    "names": [
+     "white-sturgeon",
+     "chinook-salmon",
+     "chinook-salmon",
+     "chinook-salmon"
+    ],
+    "water": "columbia"
+   },
+   "secs": 56,
+   "result": {
+    "lb": 24,
+    "caught": [
+     {
+      "species": "white-sturgeon",
+      "lengthIn": 82.9
+     },
+     {
+      "species": "chinook-salmon",
+      "lengthIn": 37.2
+     },
+     {
+      "species": "chinook-salmon",
+      "lengthIn": 39.2
+     },
+     {
+      "species": "chinook-salmon",
+      "lengthIn": 25.3
+     }
+    ],
+    "junk": [],
+    "newSpecies": [
+     "chinook-salmon"
+    ],
+    "best": true,
+    "summary": {
+     "text": "A white sturgeon and three Chinook salmon. Twenty-four pounds of fish for the wagon.",
+     "say": "A white sturgeon and three Chinook salmon. Twenty-four pounds of fish for the wagon."
+    },
+    "bait": "worms"
+   }
+  }
+ ],
+ "stones": [
+  {
+   "leg": 1,
+   "res": null
+  },
+  {
+   "leg": 9,
+   "res": null
+  },
+  {
+   "leg": 11,
+   "res": null
+  }
+ ],
+ "fetch": [
+  {
+   "leg": 1,
+   "n": 1,
+   "pull": 0.35
+  },
+  {
+   "leg": 1,
+   "n": 2,
+   "pull": 0.7
+  },
+  {
+   "leg": 1,
+   "n": 3,
+   "pull": 0.98
+  },
+  {
+   "leg": 9,
+   "n": 1,
+   "pull": 0.35
+  },
+  {
+   "leg": 9,
+   "n": 2,
+   "pull": 0.7
+  },
+  {
+   "leg": 9,
+   "n": 3,
+   "pull": 0.98
+  }
+ ],
+ "hoppers": [],
+ "meteors": [],
+ "hats": [
+  {
+   "leg": 3,
+   "kind": "dustDevil",
+   "hatsCaught": 2,
+   "hatsAll": 0,
+   "dustDevils": 0
+  }
+ ],
+ "hunts": [
+  {
+   "leg": 2,
+   "hits": 4,
+   "leadHits": 2,
+   "meatLb": 50
+  },
+  {
+   "leg": 3,
+   "hits": 4,
+   "leadHits": 3,
+   "meatLb": 144
+  },
+  {
+   "leg": 4,
+   "hits": 4,
+   "leadHits": 2,
+   "meatLb": 55
+  }
+ ],
+ "chases": [
+  {
+   "leg": 2,
+   "late": true,
+   "dist": 0.863,
+   "tapOn": "#dog-call-name"
+  },
+  {
+   "leg": 2,
+   "late": false,
+   "dist": 0.252,
+   "tapOn": "#dog-call-name"
+  },
+  {
+   "leg": 5,
+   "late": false,
+   "dist": 0.259,
+   "tapOn": "#dog-call-name"
+  },
+  {
+   "leg": 11,
+   "late": false,
+   "dist": 0.27,
+   "tapOn": "#dog-call-name"
+  }
+ ],
+ "lateDone": true,
+ "wiggleDone": true,
+ "helped": 2,
+ "wiggled": 1,
+ "camp": {
+  "fetch": 2,
+  "hoppers": 2,
+  "stones": 0,
+  "stars": 1
+ },
+ "campSeen": [
+  "kansas-river:stars",
+  "kansas-river:hoppers",
+  "kansas-river:fetch",
+  "snake-river:hoppers",
+  "snake-river:fetch"
+ ],
+ "legFun": [
+  {
+   "leg": 1,
+   "where": "arrival camp",
+   "offered": [
+    "fetch",
+    "hoppers"
+   ],
+   "muddyAtCamp": false
+  },
+  {
+   "leg": 1,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 1
+   },
+   "finds": 1,
+   "fish": {
+    "channel-catfish": 3
+   },
+   "junk": {
+    "boot": 0,
+    "turtle": 1,
+    "bottle": 0
+   },
+   "quests": {
+    "locket": {
+     "state": "carried",
+     "step": 0,
+     "foundLeg": "kansas-river",
+     "season": "s1847"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow"
+   ],
+   "tokens": 9
+  },
+  {
+   "leg": 2,
+   "where": "store",
+   "spoon": "bought",
+   "row": {
+    "disabled": false,
+    "text": "🥄Shiny spoon$4 a spoonnot yetTap to buy one"
+   }
+  },
+  {
+   "leg": 2,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 2
+   },
+   "finds": 3,
+   "fish": {
+    "channel-catfish": 3
+   },
+   "junk": {
+    "boot": 0,
+    "turtle": 1,
+    "bottle": 0
+   },
+   "quests": {
+    "locket": {
+     "state": "carried",
+     "step": 1,
+     "foundLeg": "kansas-river",
+     "season": "s1847"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song"
+   ],
+   "tokens": 11
+  },
+  {
+   "leg": 3,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 3
+   },
+   "finds": 7,
+   "fish": {
+    "channel-catfish": 7
+   },
+   "junk": {
+    "boot": 0,
+    "turtle": 1,
+    "bottle": 0
+   },
+   "quests": {
+    "locket": {
+     "state": "carried",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song"
+   ],
+   "tokens": 2
+  },
+  {
+   "leg": 4,
+   "where": "store",
+   "horseshoes": {
+    "n": "1",
+    "cash": "1",
+    "label": "🐴Sell old horseshoes to the blacksmith: $1"
+   }
+  },
+  {
+   "leg": 4,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 4
+   },
+   "finds": 7,
+   "fish": {
+    "channel-catfish": 11
+   },
+   "junk": {
+    "boot": 0,
+    "turtle": 1,
+    "bottle": 0
+   },
+   "quests": {
+    "locket": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847",
+     "doneLeg": "fort-laramie"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song"
+   ],
+   "tokens": 6
+  },
+  {
+   "leg": 5,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 5
+   },
+   "finds": 7,
+   "fish": {
+    "channel-catfish": 11,
+    "hornyhead-chub": 3
+   },
+   "junk": {
+    "boot": 0,
+    "turtle": 1,
+    "bottle": 1
+   },
+   "quests": {
+    "locket": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847",
+     "doneLeg": "fort-laramie"
+    },
+    "bottle-note": {
+     "state": "carried",
+     "step": 0,
+     "foundLeg": "independence-rock",
+     "season": "s1847"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song"
+   ],
+   "tokens": 2
+  },
+  {
+   "leg": 6,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 6
+   },
+   "finds": 8,
+   "fish": {
+    "channel-catfish": 11,
+    "hornyhead-chub": 7
+   },
+   "junk": {
+    "boot": 0,
+    "turtle": 1,
+    "bottle": 1
+   },
+   "quests": {
+    "locket": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847",
+     "doneLeg": "fort-laramie"
+    },
+    "bottle-note": {
+     "state": "carried",
+     "step": 0,
+     "foundLeg": "independence-rock",
+     "season": "s1847"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song",
+    "grizzly-ridge"
+   ],
+   "tokens": 9
+  },
+  {
+   "leg": 7,
+   "where": "store",
+   "horseshoes": {
+    "n": "1",
+    "cash": "1",
+    "label": "🐴Sell old horseshoes to the blacksmith: $1"
+   }
+  },
+  {
+   "leg": 7,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 7
+   },
+   "finds": 8,
+   "fish": {
+    "channel-catfish": 11,
+    "hornyhead-chub": 7,
+    "cutthroat-trout": 4
+   },
+   "junk": {
+    "boot": 0,
+    "turtle": 1,
+    "bottle": 1
+   },
+   "quests": {
+    "locket": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847",
+     "doneLeg": "fort-laramie"
+    },
+    "bottle-note": {
+     "state": "carried",
+     "step": 1,
+     "foundLeg": "independence-rock",
+     "season": "s1847"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song",
+    "grizzly-ridge"
+   ],
+   "tokens": 5
+  },
+  {
+   "leg": 8,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 8
+   },
+   "finds": 8,
+   "fish": {
+    "channel-catfish": 11,
+    "hornyhead-chub": 7,
+    "cutthroat-trout": 7
+   },
+   "junk": {
+    "boot": 1,
+    "turtle": 1,
+    "bottle": 1
+   },
+   "quests": {
+    "locket": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847",
+     "doneLeg": "fort-laramie"
+    },
+    "bottle-note": {
+     "state": "carried",
+     "step": 2,
+     "foundLeg": "independence-rock",
+     "season": "s1847"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song",
+    "grizzly-ridge",
+    "pronghorn-race"
+   ],
+   "tokens": 15
+  },
+  {
+   "leg": 9,
+   "where": "arrival camp",
+   "offered": [
+    "fetch",
+    "hoppers"
+   ],
+   "muddyAtCamp": false
+  },
+  {
+   "leg": 9,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 9
+   },
+   "finds": 8,
+   "fish": {
+    "channel-catfish": 11,
+    "hornyhead-chub": 7,
+    "cutthroat-trout": 14,
+    "white-sturgeon": 1
+   },
+   "junk": {
+    "boot": 1,
+    "turtle": 1,
+    "bottle": 1
+   },
+   "quests": {
+    "locket": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847",
+     "doneLeg": "fort-laramie"
+    },
+    "bottle-note": {
+     "state": "carried",
+     "step": 2,
+     "foundLeg": "independence-rock",
+     "season": "s1847"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song",
+    "grizzly-ridge",
+    "pronghorn-race"
+   ],
+   "tokens": 12
+  },
+  {
+   "leg": 10,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 10
+   },
+   "finds": 8,
+   "fish": {
+    "channel-catfish": 11,
+    "hornyhead-chub": 7,
+    "cutthroat-trout": 14,
+    "white-sturgeon": 1,
+    "redband-trout": 3
+   },
+   "junk": {
+    "boot": 2,
+    "turtle": 1,
+    "bottle": 1
+   },
+   "quests": {
+    "locket": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847",
+     "doneLeg": "fort-laramie"
+    },
+    "bottle-note": {
+     "state": "carried",
+     "step": 2,
+     "foundLeg": "independence-rock",
+     "season": "s1847"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song",
+    "grizzly-ridge",
+    "pronghorn-race"
+   ],
+   "tokens": 19
+  },
+  {
+   "leg": 11,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 11
+   },
+   "finds": 8,
+   "fish": {
+    "channel-catfish": 11,
+    "hornyhead-chub": 7,
+    "cutthroat-trout": 14,
+    "white-sturgeon": 2,
+    "redband-trout": 3,
+    "chinook-salmon": 3
+   },
+   "junk": {
+    "boot": 2,
+    "turtle": 1,
+    "bottle": 1
+   },
+   "quests": {
+    "locket": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847",
+     "doneLeg": "fort-laramie"
+    },
+    "bottle-note": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "independence-rock",
+     "season": "s1847",
+     "doneLeg": "the-dalles"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song",
+    "grizzly-ridge",
+    "pronghorn-race"
+   ],
+   "tokens": 29
+  },
+  {
+   "leg": 12,
+   "where": "results",
+   "dog": {
+    "name": "Frodo",
+    "muddy": false,
+    "legs": 12
+   },
+   "finds": 8,
+   "fish": {
+    "channel-catfish": 11,
+    "hornyhead-chub": 7,
+    "cutthroat-trout": 14,
+    "white-sturgeon": 2,
+    "redband-trout": 3,
+    "chinook-salmon": 3
+   },
+   "junk": {
+    "boot": 2,
+    "turtle": 1,
+    "bottle": 1
+   },
+   "quests": {
+    "locket": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "kansas-river",
+     "season": "s1847",
+     "doneLeg": "fort-laramie"
+    },
+    "bottle-note": {
+     "state": "returned",
+     "step": 2,
+     "foundLeg": "independence-rock",
+     "season": "s1847",
+     "doneLeg": "the-dalles"
+    }
+   },
+   "factsHeard": [
+    "prairie-glow",
+    "far-off-crack",
+    "bison-thunder",
+    "wolf-song",
+    "grizzly-ridge",
+    "pronghorn-race"
+   ],
+   "tokens": 31
+  }
+ ],
+ "notes": [],
+ "farSwitch": {
+  "before": "true",
+  "after": "false",
+  "state": {
+   "journey": {
+    "hunting": true,
+    "farSounds": false
+   },
+   "settings": false
+  },
+  "restored": "true"
+ },
+ "final": {
+  "legId": "willamette-valley",
+  "dog": {
+   "name": "Frodo",
+   "coat": "spotted",
+   "legs": 12,
+   "nextBerries": 11,
+   "treats": 16,
+   "muddy": false
+  },
+  "finds": {
+   "buffalo-chip": 2,
+   "arrowhead": 2,
+   "flat-stone": 3,
+   "ox-shoe": 2,
+   "hawk-feather": 3,
+   "horseshoe": 4,
+   "magpie-feather": 3,
+   "pinecone": 3
+  },
+  "fishLog": {
+   "channel-catfish": {
+    "n": 11,
+    "bestIn": 23.9,
+    "bestLb": 6,
+    "firstLeg": "kansas-river",
+    "firstSeason": "s1847"
+   },
+   "hornyhead-chub": {
+    "n": 7,
+    "bestIn": 7.3,
+    "bestLb": 4,
+    "firstLeg": "independence-rock",
+    "firstSeason": "s1847"
+   },
+   "cutthroat-trout": {
+    "n": 14,
+    "bestIn": 15.5,
+    "bestLb": 5,
+    "firstLeg": "fort-bridger",
+    "firstSeason": "s1847"
+   },
+   "white-sturgeon": {
+    "n": 2,
+    "bestIn": 82.9,
+    "bestLb": 16,
+    "firstLeg": "snake-river",
+    "firstSeason": "s1847"
+   },
+   "redband-trout": {
+    "n": 3,
+    "bestIn": 14,
+    "bestLb": 5,
+    "firstLeg": "blue-mountains",
+    "firstSeason": "s1847"
+   },
+   "chinook-salmon": {
+    "n": 3,
+    "bestIn": 39.2,
+    "bestLb": 8,
+    "firstLeg": "the-dalles",
+    "firstSeason": "s1847"
+   }
+  },
+  "fishJunk": {
+   "boot": 2,
+   "turtle": 1,
+   "bottle": 1
+  },
+  "fishBest": {
+   "species": "white-sturgeon",
+   "in": 82.9
+  },
+  "quests": {
+   "locket": {
+    "state": "returned",
+    "step": 2,
+    "foundLeg": "kansas-river",
+    "season": "s1847",
+    "doneLeg": "fort-laramie"
+   },
+   "bottle-note": {
+    "state": "returned",
+    "step": 2,
+    "foundLeg": "independence-rock",
+    "season": "s1847",
+    "doneLeg": "the-dalles"
+   }
+  },
+  "questsDone": [
+   "locket",
+   "bottle-note"
+  ],
+  "factsHeard": [
+   "prairie-glow",
+   "far-off-crack",
+   "bison-thunder",
+   "wolf-song",
+   "grizzly-ridge",
+   "pronghorn-race"
+  ],
+  "wishes": [
+   "coyote-talk",
+   "big-fish",
+   "wagon-boat",
+   "cloud-bed",
+   "mud-pudding",
+   "wildflowers",
+   "second-dessert",
+   "oxen-fly"
+  ],
+  "skips": {
+   "best": 12,
+   "throws": 9,
+   "byRiver": {
+    "kansas-river": 12,
+    "snake-river": 12,
+    "the-dalles": 12
+   }
+  },
+  "goods": {
+   "parts": 1,
+   "rope": 0,
+   "blankets": 0,
+   "arrows": 0,
+   "pelts": 6,
+   "yoke": 0,
+   "horseshoes": 2,
+   "hoppers": 6,
+   "spoon": 1
+  },
+  "totals": {
+   "legs": 12,
+   "stars": 25,
+   "miles": 1849,
+   "days": 132,
+   "markers": 58,
+   "markersRight": 47,
+   "problems": 28,
+   "problemsRight": 28,
+   "words": 15,
+   "wordsRight": 13,
+   "hunted": 341,
+   "fished": 185,
+   "traded": 120,
+   "bought": 164,
+   "crawlDays": 0,
+   "maxCrawlDays": 0,
+   "byKind": {
+    "parts": {
+     "n": 6,
+     "right": 6
+    },
+    "buy": {
+     "n": 3,
+     "right": 3
+    },
+    "distance": {
+     "n": 1,
+     "right": 1
+    },
+    "trade": {
+     "n": 11,
+     "right": 11
+    },
+    "divide": {
+     "n": 2,
+     "right": 2
+    },
+    "fact": {
+     "n": 5,
+     "right": 5
+    }
+   },
+   "reached": [
+    "kansas-river",
+    "fort-kearny",
+    "chimney-rock",
+    "fort-laramie",
+    "independence-rock",
+    "south-pass",
+    "fort-bridger",
+    "fort-hall",
+    "snake-river",
+    "blue-mountains",
+    "the-dalles",
+    "willamette-valley"
+   ],
+   "crossed": [
+    "kansas-river",
+    "snake-river",
+    "the-dalles"
+   ],
+   "camps": 5,
+   "derbyPlayed": 4,
+   "derbyWon": 4,
+   "repairs": 2,
+   "repairsWorkedOut": 0,
+   "forgeFixes": 0,
+   "halfFixes": 0,
+   "breakdowns": 2,
+   "limps": 1,
+   "soakedLb": 25,
+   "riversCrossed": 3,
+   "soakedCrossings": 1,
+   "fordCount": 1,
+   "floatCount": 1,
+   "ferryCount": 1,
+   "ferryPerfect": 1,
+   "ropeUsed": 1,
+   "peopleMet": 35,
+   "markersPerfectLegs": 1,
+   "fullWagonLegs": 12,
+   "goldLegs": 1,
+   "coldNights": 0,
+   "blueProof": 1,
+   "fishLb": 185,
+   "meatLb": 341,
+   "raftRuns": 1,
+   "raftClean": 0,
+   "stampedes": 2,
+   "stampedesHeld": 2,
+   "waitedOut": 0,
+   "spotted": 11,
+   "noseFinds": 19,
+   "chases": 4,
+   "chasesCalled": 4,
+   "snakes": 0,
+   "berries": 4,
+   "fetchThrows": 6,
+   "treats": 16,
+   "fishCaught": 40,
+   "fishOff": 1,
+   "fishJunk": 4,
+   "sturgeon": 2,
+   "skipThrows": 9,
+   "dustDevils": 0,
+   "hatsCaught": 2,
+   "hatsAll": 0,
+   "meteorsTapped": 8,
+   "questsDone": 2,
+   "factsHeard": 6
+  },
+  "cards": [
+   "wild-plum",
+   "channel-catfish",
+   "jackrabbit",
+   "pronghorn",
+   "prairie-glow",
+   "kansas-river",
+   "kansa",
+   "coyote",
+   "rattlesnake",
+   "far-off-crack",
+   "bison",
+   "bison-thunder",
+   "pawnee",
+   "prairie-dog",
+   "wolf-song",
+   "fort-kearny",
+   "chimney-rock",
+   "lakota",
+   "cook",
+   "fort-laramie",
+   "locket",
+   "mule-deer",
+   "hornyhead-chub",
+   "shoshone",
+   "independence-rock",
+   "grizzly-ridge",
+   "bald-eagle",
+   "south-pass",
+   "cutthroat-trout",
+   "fort-bridger",
+   "sagebrush",
+   "pronghorn-race",
+   "fort-hall",
+   "bannock",
+   "white-sturgeon",
+   "snake-river",
+   "redband-trout",
+   "blue-mountains",
+   "nez-perce",
+   "cayuse",
+   "chinook-salmon",
+   "the-dalles",
+   "marble",
+   "willamette-valley",
+   "chinook"
+  ],
+  "opts": {
+   "hunting": true,
+   "farSounds": true
+  },
+  "tokens": 31,
+  "cash": 61,
+  "spirit": 100
+ }
+}
