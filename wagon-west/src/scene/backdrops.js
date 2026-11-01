@@ -10,12 +10,26 @@
 import { TAU, OUT, mulberry32, hashStr, shade, mix, mkCanvas, rrect, drawText } from './util.js';
 import { BIOMES, biomeOf, paint } from './biomes.js';
 import { drawPerson, personLook } from './sprites.js';
+import { PAINTINGS15, schooner, adobeFort } from './paintings15.js';
 
-export const BACKDROPS = ['trail', 'fort', 'river', 'landmark', 'camp', 'post', 'valley'];
+export const BACKDROPS = ['trail', 'fort', 'river', 'landmark', 'camp', 'post', 'valley', 'homestead', 'diggings', 'sea', 'fork'];
+// the signposts at the three forks: the arms' words (the app may pass its own names with setFork)
+export const FORK_DEFAULTS = {
+  'fort-hall': [{ id: 'oregon', name: 'Oregon' }, { id: 'california', name: 'California' }],
+  'the-dalles': [{ id: 'columbia', name: 'The Columbia' }, { id: 'barlow', name: 'Barlow Road' }],
+  'south-pass': [{ id: 'main', name: 'Fort Bridger' }, { id: 'sublette', name: 'Sublette Cutoff' }, { id: 'lander', name: 'Lander Road' }],
+};
 
-// which painting a leg id gets (matched loosely so the Content stream's exact ids do not have to be known here)
-export function paintingFor(legId) {
-  const id = String(legId || '').toLowerCase();
+// legs whose painting is not named like the leg (the leg's own `painting` field says so when the app passes it; this keeps the scene right when it does not)
+const LEG_PAINTING = { 'rogue-river': 'table-rocks', 'sacramento-valley': 'sacramento-claim', 'sutters-fort': 'adobe-fort', 'umpqua-river': 'river', 'humboldt-river': 'river', 'truckee-river': 'river', 'feather-river': 'river' };
+// which painting a leg gets: its `painting` field first (pass the leg object), then its id (a leg named for its painting), then a loose match so a leg with none
+// gets the generic butte, never an error. paintingFor('chimney-rock') still works with an id alone.
+export function paintingFor(legOrId) {
+  const leg = legOrId && typeof legOrId === 'object' ? legOrId : null;
+  const id = String(leg ? leg.id : legOrId || '').toLowerCase();
+  if (leg && leg.painting && PAINTINGS[leg.painting]) return String(leg.painting);
+  if (id !== 'generic' && PAINTINGS[id]) return id;
+  if (LEG_PAINTING[id]) return LEG_PAINTING[id];
   if (id.includes('chimney')) return 'chimney';
   if (id.includes('independence') && id.includes('rock')) return 'independence';
   if (id.includes('south-pass') || id.includes('southpass') || /(^|-)pass($|-)/.test(id)) return 'southpass';
@@ -31,7 +45,7 @@ export function paintingFor(legId) {
 const fillOut = (c, fill, lw) => { c.fillStyle = fill; c.fill(); c.lineWidth = lw; c.strokeStyle = OUT; c.lineJoin = 'round'; c.stroke(); };
 
 // ---------------------------------------------------------------- pieces shared by several scenes
-function palisade(c, x0, x1, base, h, k, withTower, flagCol) {
+export function palisade(c, x0, x1, base, h, k, withTower, flagCol) {
   const lw = 2 * k, logW = 13 * k;
   c.beginPath();
   for (let x = x0; x < x1; x += logW) {
@@ -62,7 +76,7 @@ function gate(c, x, base, w, h, k) {
   c.beginPath(); c.moveTo(x, base); c.lineTo(x - w * 0.35, base + 4 * k); c.lineTo(x - w * 0.35, base - h + 6 * k); c.lineTo(x, base - h); c.closePath(); fillOut(c, '#a0703e', 2 * k);
   c.beginPath(); c.moveTo(x + w, base); c.lineTo(x + w * 1.35, base + 4 * k); c.lineTo(x + w * 1.35, base - h + 6 * k); c.lineTo(x + w, base - h); c.closePath(); fillOut(c, '#a0703e', 2 * k);
 }
-function storeFront(c, x, base, k, title, signCol) {
+export function storeFront(c, x, base, k, title, signCol) {
   const w = 150 * k, h = 66 * k, fh = 96 * k, lw = 2.2 * k;
   // false front
   c.beginPath(); c.moveTo(x, base); c.lineTo(x, base - fh); c.lineTo(x + w * 0.2, base - fh); c.lineTo(x + w * 0.2, base - fh - 8 * k); c.lineTo(x + w * 0.8, base - fh - 8 * k); c.lineTo(x + w * 0.8, base - fh); c.lineTo(x + w, base - fh); c.lineTo(x + w, base); c.closePath();
@@ -91,7 +105,7 @@ function storeFront(c, x, base, k, title, signCol) {
   c.beginPath(); c.rect(x + w + 24 * k, base - 18 * k, 20 * k, 18 * k); fillOut(c, '#c8a060', lw);
   c.beginPath(); c.moveTo(x + w + 24 * k, base - 18 * k); c.lineTo(x + w + 44 * k, base); c.moveTo(x + w + 44 * k, base - 18 * k); c.lineTo(x + w + 24 * k, base); c.lineWidth = 1.4 * k; c.strokeStyle = '#8a6030'; c.stroke();
 }
-function cabin(c, x, base, k) {
+export function cabin(c, x, base, k) {
   const w = 130 * k, h = 62 * k, lw = 2.2 * k;
   // chimney (stone) behind the roof edge
   c.beginPath(); c.rect(x + w * 0.72, base - h - 46 * k, 18 * k, 50 * k); fillOut(c, '#9a948a', lw);
@@ -127,7 +141,7 @@ function garden(c, x, base, w, k) {
   c.beginPath(); for (let i = 0; i < 3; i++) { const y = base - 11 * k + i * 5 * k; for (let gx = x + 6 * k; gx < x + w - 4 * k; gx += 11 * k) { c.moveTo(gx + 3.2 * k, y); c.arc(gx, y, 3.2 * k, 0, TAU); } }
   c.fillStyle = '#5fae3e'; c.fill(); c.lineWidth = 1; c.strokeStyle = '#2f5a1e'; c.stroke();
 }
-function barn(c, x, base, k) {
+export function barn(c, x, base, k) {
   const w = 96 * k, h = 58 * k, lw = 2.2 * k;
   c.beginPath(); c.moveTo(x, base); c.lineTo(x, base - h); c.lineTo(x + w * 0.2, base - h - 26 * k); c.lineTo(x + w * 0.8, base - h - 26 * k); c.lineTo(x + w, base - h); c.lineTo(x + w, base); c.closePath(); fillOut(c, '#c0473a', lw);
   c.beginPath(); c.rect(x + w * 0.3, base - 40 * k, w * 0.4, 40 * k); fillOut(c, '#8a2b22', lw);
@@ -246,6 +260,7 @@ const PAINTINGS = {
     paint.mesa(c, cx + 150 * s, b, 120 * s, 70 * s, mix(pal.far, '#c99a63', 0.4), OUT, 2.2 * s);
   },
 };
+Object.assign(PAINTINGS, PAINTINGS15);
 export const PAINTING_IDS = Object.keys(PAINTINGS);
 
 // ---------------------------------------------------------------- the set pieces
@@ -261,14 +276,15 @@ function canvasFor(L, x0, y0, x1, y1, fn) {
 }
 
 // kind: a backdrop id (or 'approach' for the stop seen from the trail); returns null for 'trail'
-export function buildSetPiece(kind, leg, L) {
+export function buildSetPiece(kind, leg, L, extra = {}) {
   const { W, H, k } = L;
   const biome = biomeOf(leg && leg.biome), pal = BIOMES[biome];
   const legId = leg && leg.id;
   const base = L.bands.ground[0] + 0.03 * H; // where stop buildings stand (just on the ground, behind the trail)
   if (kind === 'fort') {
-    const x0 = W * 0.46, sx = Math.max(W * 0.5, W - 210 * k);
+    const x0 = W * 0.46, sx = Math.max(W * 0.5, W - 210 * k), adobe = paintingFor(leg) === 'adobe-fort';
     const out = canvasFor(L, x0 - 30 * k, base - 230 * k, W, base + 6 * k, (c) => {
+      if (adobe) adobeWall(c, x0, W + 14 * k, base - 8 * k, 80 * k, k); else
       palisade(c, x0, W + 14 * k, base - 8 * k, 80 * k, k, true, '#d9534f');
       gate(c, Math.min(W - 60 * k, x0 + 200 * k), base - 8 * k, 40 * k, 62 * k, k);
       storeFront(c, sx, base + 4 * k, k, 'GENERAL STORE');
@@ -301,7 +317,7 @@ export function buildSetPiece(kind, leg, L) {
     const id = kind === 'approach' ? approachPainting(leg) : paintingFor(legId);
     const s = Math.min(k * 1.15, (W * 0.5) / 240);
     const cx = W * 0.68, b = L.bands.mid[1] - 0.01 * H;
-    const out = canvasFor(L, cx - 250 * s, b - 215 * s, cx + 250 * s, b + 12 * s, (c) => PAINTINGS[id](c, cx, b, s, pal));
+    const out = canvasFor(L, cx - 250 * s, b - 215 * s, cx + 250 * s, b + 12 * s, (c) => PAINTINGS[id](c, cx, b, s, pal, { cabin }));
     return { kind, z: 'mid', painting: id, ...out, anchors: { cx, base: b } };
   }
   if (kind === 'camp') {
@@ -313,6 +329,10 @@ export function buildSetPiece(kind, leg, L) {
     });
     return { kind, z: 'ground', ...out, anchors: { fireX: W * 0.62, fireY: L.gy + 10 * k } };
   }
+  if (kind === 'valley' && ['home-by-sea', 'sacramento-claim', 'barlow-road'].includes(paintingFor(leg))) return buildSetPiece('landmark', leg, L); // the end of the sea, the claim, the Barlow Road: their own paintings
+  if (kind === 'diggings') return buildDiggings(leg, L, pal);
+  if (kind === 'sea') return buildDeck(L);
+  if (kind === 'fork') return buildFork(L, extra && extra.fork);
   if (kind === 'valley') {
     const cx = W * 0.6, b = base;
     let smoke = null;
@@ -331,10 +351,96 @@ export function buildSetPiece(kind, leg, L) {
 // the stop the trail is heading for, seen on the horizon while approaching
 function approachPainting(leg) {
   const kind = leg && leg.stop && leg.stop.kind;
-  if (kind === 'fort') return 'fort';
-  if (kind === 'home') return 'homestead';
+  if (kind === 'fort') return paintingFor(leg) === 'adobe-fort' ? 'adobe-fort' : 'fort';
+  if (kind === 'home') { const p = paintingFor(leg); return p === 'generic' ? 'homestead' : p; }
   if (kind === 'river') return 'river';
   return paintingFor(leg && leg.id);
+}
+
+// Sutter's Fort for the stop: whitewashed adobe walls, a central building with a flag, a round-arched gate (the fort scene with fortStyle 'adobe')
+function adobeWall(c, x0, x1, base, h, k) {
+  const lw = 2.2 * k, wall = '#f0e6cc', roof = '#b86a46';
+  c.beginPath(); c.rect(x0, base - h, x1 - x0, h); fillOut(c, wall, lw);
+  c.beginPath(); c.rect(x1 - (x1 - x0) * 0.4, base - h, (x1 - x0) * 0.4, h); c.fillStyle = '#d8cba8'; c.fill();
+  c.beginPath(); for (let x = x0 + 6 * k; x < x1; x += 20 * k) { c.moveTo(x, base - h); c.lineTo(x, base - h - 6 * k); } c.lineWidth = 9 * k; c.strokeStyle = wall; c.stroke();
+  const bx = x0 + 18 * k, bw = 74 * k, bh = h * 1.7;
+  c.beginPath(); c.rect(bx, base - bh, bw, bh); fillOut(c, wall, lw);
+  c.beginPath(); c.moveTo(bx - 8 * k, base - bh); c.lineTo(bx + bw / 2, base - bh - 24 * k); c.lineTo(bx + bw + 8 * k, base - bh); c.closePath(); fillOut(c, roof, lw);
+  c.beginPath(); c.rect(bx + bw * 0.38, base - bh * 0.72, bw * 0.24, 14 * k); fillOut(c, '#3a2a22', 1.4 * k);
+  const fx = bx + bw / 2, fy = base - bh - 24 * k;
+  c.beginPath(); c.moveTo(fx, fy); c.lineTo(fx, fy - 40 * k); c.lineWidth = 2.6 * k; c.strokeStyle = OUT; c.stroke();
+  c.beginPath(); c.moveTo(fx, fy - 40 * k); c.lineTo(fx + 30 * k, fy - 34 * k); c.lineTo(fx, fy - 26 * k); c.closePath(); fillOut(c, '#3f6fb5', 1.4 * k);
+  c.beginPath(); c.rect(fx, fy - 40 * k, 12 * k, 8 * k); c.fillStyle = '#ffffff'; c.fill();
+}
+// the diggings: a creek bank in the foreground (the pan's close-up goes over it), tents, a sluice box, a rocker, glints in the water
+function buildDiggings(leg, L, pal) {
+  const { W, H, k } = L, gy = L.gy, top = gy + 34 * k;
+  const glints = [];
+  const out = canvasFor(L, 0, top - 30 * k, W, H + 2, (c) => {
+    const r = mulberry32(hashStr('diggings'));
+    // the near bank: gravel, then the creek
+    c.beginPath(); c.moveTo(0, top + 6 * k); for (let x = 0; x <= W; x += 12) c.lineTo(x, top + Math.sin(x * 0.012) * 4 * k + (x > W * 0.5 ? -4 * k : 4 * k)); c.lineTo(W, H + 2); c.lineTo(0, H + 2); c.closePath();
+    c.fillStyle = '#4f9cc6'; c.fill(); c.lineWidth = 2.4; c.strokeStyle = OUT; c.stroke();
+    c.beginPath(); c.rect(0, top + 22 * k, W, H - top); c.fillStyle = '#69b6dc'; c.fill();
+    c.beginPath(); for (let i = 0; i < 18; i++) { const x = r() * W, y = top + 16 * k + r() * (H - top - 20 * k); c.moveTo(x, y); c.lineTo(x + (14 + r() * 24) * k, y); } c.lineWidth = 2 * k; c.strokeStyle = 'rgba(255,255,255,0.6)'; c.stroke();
+    for (let i = 0; i < 9; i++) { const x = r() * W, y = top + 30 * k + r() * (H - top - 44 * k); paint.rock(c, x, y, (8 + r() * 10) * k, '#9a9aa4', '#30303a', 1.6); glints.push({ x: x + 10 * k, y: y - 8 * k, ph: r() * TAU }); }
+    // the gravel bars at both ends, with a tent and a sluice box and a rocker on them
+    for (const [x0, x1] of [[-20, W * 0.12], [W * 0.7, W + 20]]) { c.beginPath(); c.moveTo(x0, top - 2 * k); c.quadraticCurveTo((x0 + x1) / 2, top - 22 * k, x1, top - 2 * k); c.lineTo(x1, top + 34 * k); c.quadraticCurveTo((x0 + x1) / 2, top + 50 * k, x0, top + 34 * k); c.closePath(); fillOut(c, '#d8c9a4', 2 * k); }
+    paint.tent(c, W * 0.955, top + 8 * k, 58 * k, 42 * k, '#eadfc4', OUT, 1.8 * k);
+    for (const lx of [-34, -10, 14, 38]) { c.beginPath(); c.moveTo(W * 0.86 + lx * k, top + 6 * k); c.lineTo(W * 0.86 + lx * k, top + 30 * k); c.lineWidth = 3 * k; c.strokeStyle = '#6a4a2a'; c.stroke(); }
+    c.beginPath(); c.moveTo(W * 0.86 - 44 * k, top - 10 * k); c.lineTo(W * 0.86 + 46 * k, top + 6 * k); c.lineTo(W * 0.86 + 46 * k, top + 14 * k); c.lineTo(W * 0.86 - 44 * k, top - 2 * k); c.closePath(); fillOut(c, '#b98a54', 1.8 * k);
+    c.beginPath(); c.moveTo(W * 0.86 - 42 * k, top - 6 * k); c.lineTo(W * 0.86 + 44 * k, top + 9 * k); c.lineWidth = 3 * k; c.strokeStyle = '#7dc4e8'; c.stroke();
+    c.beginPath(); c.moveTo(W * 0.76 - 24 * k, top - 12 * k); c.lineTo(W * 0.76 + 20 * k, top - 2 * k); c.lineTo(W * 0.76 + 20 * k, top + 8 * k); c.lineTo(W * 0.76 - 24 * k, top - 2 * k); c.closePath(); fillOut(c, '#c0925a', 1.8 * k);
+  });
+  return { kind: 'diggings', z: 'ground', ...out, anchors: { top, glints } };
+}
+// the schooner's deck for the voyage: the mainmast with its sail, the rigging, a bell
+function buildDeck(L) {
+  const { W, H, k } = L, base = L.bands.ground[0] + 0.03 * H, mx = W * 0.88;
+  const out = canvasFor(L, 0, 0, W, base + 8 * k, (c) => {
+    const sx0 = mx - W * 0.2;
+    c.beginPath(); c.moveTo(mx - 6 * k, H * 0.05); c.quadraticCurveTo(sx0 - 10 * k, H * 0.28, sx0, H * 0.5); c.lineTo(mx - 6 * k, H * 0.52); c.closePath(); fillOut(c, '#ffffff', 2.6 * k);
+    c.beginPath(); for (let i = 1; i < 5; i++) { const t = i / 5; c.moveTo(mx - 6 * k, H * (0.05 + 0.47 * t)); c.quadraticCurveTo(lerpN(mx, sx0, 0.7), H * (0.1 + 0.4 * t), lerpN(mx, sx0, 0.92 * t + 0.08), H * (0.2 + 0.3 * t)); } c.lineWidth = 1.4 * k; c.strokeStyle = '#d0c4a8'; c.stroke();
+    c.beginPath(); c.rect(mx - 9 * k, H * 0.03, 18 * k, base - H * 0.03); fillOut(c, '#a8703e', 2.6 * k);
+    c.beginPath(); c.rect(mx - 11 * k, base - 36 * k, 22 * k, 36 * k); fillOut(c, '#8a5a30', 2.2 * k);
+    c.beginPath(); for (const y of [0.2, 0.34, 0.48]) { c.moveTo(mx - 9 * k, H * y); c.lineTo(mx + 9 * k, H * y); } c.lineWidth = 3 * k; c.strokeStyle = '#4a4a52'; c.stroke();
+    // rigging to the rail
+    c.beginPath(); c.moveTo(mx, H * 0.06); c.lineTo(W * 0.5, base - 10 * k); c.moveTo(mx, H * 0.06); c.lineTo(W * 0.3, base - 10 * k); c.moveTo(mx, H * 0.24); c.lineTo(W * 0.64, base - 10 * k);
+    c.lineWidth = 1.8 * k; c.strokeStyle = 'rgba(43,29,20,0.8)'; c.stroke();
+    c.beginPath(); c.moveTo(mx + 9 * k, H * 0.56); c.lineTo(mx + 22 * k, H * 0.56); c.lineTo(mx + 22 * k, H * 0.6); c.lineWidth = 2 * k; c.strokeStyle = OUT; c.stroke();
+    c.beginPath(); c.moveTo(mx + 14 * k, H * 0.6); c.quadraticCurveTo(mx + 14 * k, H * 0.585, mx + 22 * k, H * 0.585); c.quadraticCurveTo(mx + 30 * k, H * 0.585, mx + 30 * k, H * 0.615); c.closePath(); fillOut(c, '#e0b84a', 1.6 * k);
+  });
+  return { kind: 'sea', z: 'ground', ...out, anchors: {} };
+}
+const lerpN = (a, b, t) => a + (b - a) * t;
+// the signpost at a fork: tall post, one arm per option pointing the way on, and the trail splitting beyond it
+function buildFork(L, fork) {
+  const { W, H, k } = L, f = fork || { id: 'fort-hall', options: FORK_DEFAULTS['fort-hall'] }, opts = f.options && f.options.length ? f.options : FORK_DEFAULTS[f.id] || FORK_DEFAULTS['fort-hall'];
+  const n = Math.min(3, opts.length), cx = Math.min(W - 150 * k, W * 0.74), base = L.bands.ground[0] + 0.05 * H, gy = L.gy;
+  const anchors = { cx, base, arms: [] };
+  const out = canvasFor(L, 0, base - 250 * k, W, H + 2, (c) => {
+    // the trail splits at the sign: one ribbon per option, fanning toward the right (up the page is farther away)
+    const ys = n === 2 ? [-1, 1] : [-1, 0, 1];
+    ys.forEach((dir, i) => {
+      const ey = dir === 0 ? gy - 4 * k : dir < 0 ? L.bands.ground[0] + 14 * k : H - 8 * k, ew = dir === 0 ? 18 : dir < 0 ? 12 : 30;
+      c.beginPath(); c.moveTo(cx - 40 * k, gy + 8 * k); c.bezierCurveTo(cx + 20 * k, gy + 8 * k, cx + 70 * k, ey, W + 10, ey); c.lineWidth = ew * k; c.lineCap = 'round'; c.strokeStyle = shade(BIOMES.prairie.trail, -0.12); c.stroke(); c.lineWidth = (ew - 5) * k; c.strokeStyle = BIOMES.prairie.trail; c.stroke(); c.lineCap = 'butt';
+    });
+    // the post, and the arms: boards pointing right, each a little higher or lower the way it leads
+    const top = base - 190 * k;
+    c.beginPath(); c.moveTo(cx, gy + 4 * k); c.lineTo(cx, top); c.lineWidth = 12 * k; c.strokeStyle = OUT; c.stroke(); c.lineWidth = 7.4 * k; c.strokeStyle = '#8a5a2e'; c.stroke();
+    c.beginPath(); c.arc(cx, top - 4 * k, 8 * k, 0, TAU); fillOut(c, '#a8703e', 2 * k);
+    opts.slice(0, 3).forEach((o, i) => {
+      const lvl = n === 2 ? [0, 1][i] : [0, 1, 2][i], y = top + 26 * k + lvl * 46 * k, w = 148 * k, h = 34 * k, x = cx + 4 * k, tilt = n === 2 ? (i === 0 ? -0.1 : 0.1) : (i - 1) * 0.1;
+      const glow = f.glow && f.glow === o.id;
+      c.save(); c.translate(cx, y); c.rotate(tilt);
+      c.beginPath(); c.moveTo(-w * 0.28, -h / 2); c.lineTo(w * 0.62, -h / 2); c.lineTo(w * 0.8, 0); c.lineTo(w * 0.62, h / 2); c.lineTo(-w * 0.28, h / 2); c.closePath(); fillOut(c, glow ? '#ffe8a0' : '#f4ead0', 2.4 * k);
+      c.beginPath(); c.arc(-w * 0.18, 0, 3.2 * k, 0, TAU); c.fillStyle = '#6a4a2a'; c.fill();
+      drawText(c, String(o.name || '').toUpperCase(), 12 * k, w * 0.2, 0, '#6a3a1a', null, w * 0.7);
+      c.restore();
+      anchors.arms.push({ id: o.id, x: cx + w * 0.3, y });
+    });
+  });
+  return { kind: 'fork', z: 'ground', ...out, anchors };
 }
 
 // the post office: an interior that covers the whole scene (the window shows the leg's sky)

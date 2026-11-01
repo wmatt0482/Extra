@@ -33,6 +33,12 @@
 // missed dip, junk, the sturgeon's second tap and fishingHelp(), the dog's two cameos, the sfx cue events), keyboard fishing, reduced
 // motion and portrait for each, and the MOCK scene's scripts (hunt, chase, fetch, hoppers, stones, meteors, hats, fishing) producing the
 // same event sequences. The hunt (section 4) now covers the 0.5-0.8 s arrow flight, a lead hit, a still hit, a lead miss and the mix.
+// v1.5 (The Long Trail), section 13: the five new biomes and the new backdrops in landscape, portrait and wide; the 26 new paintings (and every leg id of every plan
+// resolving to one); Sutter's Fort in adobe and the Sacramento claim; the dry stretch (haze, dust, the barrel, the basin's river rebuilt), the 16 decorations and the pack
+// mules; the gold pan (scoop, swirl by circling or by the beat, tip, panSwirled, panReveal, pan, panEnd; a poor swirl still ends with a flake), the rocker, Laurel Hill
+// (smooth, bumpy, early, Space), the voyage (markers that wait for sailGo, steered 0 bumps, left alone bumps), endMiniGame on each; the homestead at both sites with no
+// pieces, half and all of them, the raising of a barn and a small piece (both orders of setHomestead and buildPiece), taps and drags; the three forks' signposts; the MOCK
+// scene's scripts; perf cases for each. Env: V15_ONLY=1 runs only section 13 and the perf cases.
 // Env: V14_ONLY=1 runs only section 12 and the perf cases, PERF_ONLY=1 only the perf section, PERF_FILTER='stones|stars' picks perf cases.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
@@ -131,7 +137,7 @@ async function keySpace(page) {
 await ensureServer();
 const browser = await chromium.launch();
 try {
-  if (!process.env.V14_ONLY && !process.env.PERF_ONLY) { // V14_ONLY=1 runs only section 12 (the v1.4 scenes), PERF_ONLY=1 only the perf section
+  if (!process.env.V14_ONLY && !process.env.PERF_ONLY && !process.env.V15_ONLY) { // V14_ONLY=1 runs only section 12 (the v1.4 scenes), PERF_ONLY=1 only the perf section
   // ---- 1. API, ready, state shape ----
   {
     const { page, context, errors } = await open(browser);
@@ -1244,7 +1250,7 @@ try {
   }
 
   // ---- 12. v1.4 (Frodo and the river): the dog's vignettes, the trail facts, the camp and river games, fishing 2.0 ----
-  if (!process.env.PERF_ONLY) {
+  if (!process.env.PERF_ONLY && !process.env.V15_ONLY) {
     const API_14 = ['dogRun', 'dogWarn', 'startChase', 'chaseCall', 'ambient', 'startFetch', 'fetchBring', 'startHoppers', 'startStones', 'startMeteors', 'startDustDevil', 'startFishing', 'fishingRetry', 'fishingHelp'];
     const dbg = (page) => page.evaluate(() => window.__ww.scene.debugMini());
     const pointer = (page, x, y) => page.evaluate(([x, y]) => window.__ww.scene.debugInput('pointer', x, y), [x, y]);
@@ -1752,6 +1758,582 @@ try {
     }
   }
 
+  // ---- 13. v1.5 (The Long Trail): five biomes, 26 paintings, the dry stretch, decorations, gold, Laurel Hill, the voyage, the farm, the forks ----
+  if (!process.env.PERF_ONLY && !process.env.V14_ONLY) {
+    const PORTRAIT = { width: 390, height: 844 }, LAND = { width: 844, height: 390 }, BIG = { width: 1280, height: 800 };
+    const NEW_BIOMES = ['basin', 'sierra', 'siskiyou', 'goldcountry', 'sea'];
+    const NEW_BACKDROPS = ['homestead', 'diggings', 'sea', 'fork'];
+    const API_15 = ['startPan', 'panReveal', 'startRocker', 'rockerReveal', 'startSnub', 'startSail', 'sailGo', 'setHomestead', 'buildPiece', 'setFork', 'endMiniGame'];
+    const dbg = (page) => page.evaluate(() => window.__ww.scene.debugMini());
+    const inp = (page, k, a, b) => page.evaluate(([k, a, b]) => window.__ww.scene.debugInput(k, a, b), [k, a, b]);
+    const clearEv = (page) => page.evaluate(() => { window.__ww.events.length = 0; });
+    const evs = (page, t) => page.evaluate((t) => window.__ww.events.filter((e) => e.type === t), t);
+    const mini = (page) => page.evaluate(() => window.__ww.scene.getState().mini);
+    const pause = (page) => page.evaluate(() => window.__ww.scene.pause());
+    const J = (a) => JSON.stringify(a);
+    // Space held down / let go (the scene must be running to hear the keys)
+    const spaceHold = async (page, down) => { await page.evaluate(() => window.__ww.scene.play()); await (down ? page.keyboard.down('Space') : page.keyboard.up('Space')); await page.evaluate(() => window.__ww.scene.pause()); };
+    // content, read in node: every leg, route and piece the scene has to draw
+    const { ALL_LEGS } = await import('../src/content/legs.js');
+    const { ROUTES, FORKS } = await import('../src/content/routes.js');
+    const { HOMESTEAD_PIECES } = await import('../src/content/homestead.js');
+    const { DECOR } = await import('../src/content/cards.js');
+    const bd = await import('../src/scene/backdrops.js');
+    const biomesMod = await import('../src/scene/biomes.js');
+    const hs = await import('../src/scene/homestead.js');
+
+    // ---- the contract, without a browser: names, ids, every leg of every plan has a painting other than 'generic'
+    {
+      check(NEW_BIOMES.every((b) => biomesMod.BIOME_IDS.includes(b)) && biomesMod.BIOME_IDS.length === 11, `BIOME_IDS has the five new biomes (${biomesMod.BIOME_IDS.length})`);
+      check(NEW_BACKDROPS.every((b) => bd.BACKDROPS.includes(b)), `BACKDROPS has ${NEW_BACKDROPS.join(', ')}`);
+      const ids = new Set(); for (const r of Object.values(ROUTES)) for (const st of r.steps) { if (typeof st === 'string') ids.add(st); else if (st.leg) ids.add(st.leg); }
+      for (const f of Object.values(FORKS)) for (const o of f.options) for (const st of o.steps) { if (typeof st === 'string') ids.add(st); else if (st.leg) ids.add(st.leg); }
+      const legById = Object.fromEntries(ALL_LEGS.map((l) => [l.id, l]));
+      const bad = [...ids].filter((id) => !legById[id] || bd.paintingFor(legById[id]) === 'generic' || bd.paintingFor(id) === 'generic');
+      check(ids.size >= 40 && bad.length === 0, `every leg id of every plan (${ids.size}) resolves to a painting other than 'generic', by the leg and by its id alone (bad: ${bad.join(',') || 'none'})`);
+      const wrong = ALL_LEGS.filter((l) => l.painting && !bd.PAINTING_IDS.includes(l.painting));
+      check(wrong.length === 0, `every leg.painting is a painting the scene has (missing: ${wrong.map((l) => l.painting).join(',') || 'none'}; ${bd.PAINTING_IDS.length} paintings in all)`);
+      const diff = ALL_LEGS.filter((l) => l.painting && bd.paintingFor(l) !== l.painting);
+      check(diff.length === 0, `paintingFor(leg) reads leg.painting first (${diff.map((l) => l.id).join(',') || 'all 45 legs agree'})`);
+      const slotBad = HOMESTEAD_PIECES.filter((p) => hs.PIECE_SLOT[p.id] !== p.slot || (hs.PIECE_MAX[p.id] || 1) !== p.max);
+      check(slotBad.length === 0, `the scene's piece slots and counts agree with content/homestead.js (${slotBad.map((p) => p.id).join(',') || 'all ' + HOMESTEAD_PIECES.length + ' pieces'})`);
+      check(hs.HOME_SLOTS.join() === 'edge,orchard,barn,house,yard,garden,creek,pasture,gate', 'the slots run left to right as the contract says');
+      check(DECOR.length === 16, `the 16 decorations of content/cards.js (${DECOR.length})`);
+    }
+
+    // ---- API, five biomes x the backdrops, landscape and portrait (and a wide screen) ----
+    {
+      const { page, context, errors } = await open(browser, { moving: '0' });
+      const miss = await page.evaluate((n) => n.filter((k) => typeof window.__ww.scene[k] !== 'function'), API_15);
+      check(miss.length === 0, `the scene has the v1.5 API (missing: ${miss.join(',') || 'none'})`);
+      await context.close();
+    }
+    for (const [tag, vp] of [['land', LAND], ['port', PORTRAIT], ['wide', BIG]]) {
+      const { page, context, errors } = await open(browser, { moving: '0' }, vp);
+      await pause(page);
+      let minVar = 1e9, worst = '';
+      const cases = [];
+      for (const b of NEW_BIOMES) for (const d of ['trail', 'landmark', 'fort', 'river', 'camp']) cases.push([b, d]);
+      cases.push(['goldcountry', 'diggings'], ['sea', 'sea'], ['goldcountry', 'homestead'], ['valley', 'homestead'], ['prairie', 'fork']);
+      for (const [biome, backdrop] of cases) {
+        await page.evaluate(([biome, backdrop]) => { const sc = window.__ww.scene; sc.setLeg({ id: 'chimney-rock', biome, miles: 160, stop: { kind: 'landmark' } }); sc.setBackdrop(backdrop); }, [biome, backdrop]);
+        await step(page, 40);
+        const v = await variety(page); if (v < minVar) { minVar = v; worst = `${biome}/${backdrop}`; }
+        const s = await state(page);
+        if (s.backdrop !== backdrop || s.biome !== biome) check(false, `${tag} ${biome}/${backdrop}: state says ${s.biome}/${s.backdrop}`);
+        if (backdrop === 'trail' || backdrop === 'diggings' || backdrop === 'sea') await shot(page, `v15-${tag}-${biome}-${backdrop}`);
+      }
+      check(minVar >= 12, `${tag} (${vp.width}x${vp.height}): all ${cases.length} new biome x backdrop frames are drawn, not blank (fewest colours ${minVar} at ${worst})`);
+      check(errors.real().length === 0, `${tag}: new biomes x backdrops: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+
+    // ---- the paintings: every new leg's painting, by the leg object, in both layouts ----
+    for (const [tag, vp] of [['land', LAND], ['port', PORTRAIT]]) {
+      const { page, context, errors } = await open(browser, { moving: '0' }, vp);
+      await pause(page);
+      const NEW = ALL_LEGS.filter((l) => l.painting && !['chimney', 'independence', 'southpass', 'soda', 'bluemtns', 'gorge', 'homestead', 'river', 'fort'].includes(l.painting) && !['kansas-river', 'fort-kearny', 'chimney-rock', 'fort-laramie', 'north-platte', 'independence-rock', 'south-pass', 'green-river', 'fort-bridger', 'soda-springs', 'fort-hall', 'snake-river', 'blue-mountains', 'the-dalles', 'willamette-valley'].includes(l.id));
+      let minVar = 1e9, worst = '', wrongP = [];
+      const seen = new Set();
+      for (const leg of NEW) {
+        const kind = leg.stop && leg.stop.kind;
+        const backdrop = kind === 'fort' ? 'fort' : kind === 'home' ? 'valley' : 'landmark';
+        await page.evaluate(([leg, bdn]) => { const sc = window.__ww.scene; sc.setLeg({ id: leg.id, biome: leg.biome, miles: leg.miles, stop: leg.stop, river: leg.river, painting: leg.painting }); sc.setBackdrop(bdn); }, [leg, backdrop]);
+        await step(page, 30);
+        const v = await variety(page); if (v < minVar) { minVar = v; worst = leg.id; }
+        const i = await info(page);
+        const want = backdrop === 'landmark' || backdrop === 'valley' ? leg.painting : null;
+        if (want && i.painting !== want) wrongP.push(`${leg.id}:${i.painting}`);
+        seen.add(leg.painting);
+        if (tag === 'land') await shot(page, `v15-painting-${leg.id}`);
+      }
+      check(NEW.length >= 24 && minVar >= 12, `${tag}: ${NEW.length} new legs draw their ${seen.size} paintings, not blank (fewest colours ${minVar} at ${worst})`);
+      check(wrongP.length === 0, `${tag}: each leg's painting is the one the leg names (${wrongP.join(' ') || 'all'})`);
+      // the approach: the stop rises on the horizon as its own painting (Sutter's Fort adobe, the claim, the Barlow Road)
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setBackdrop('trail'); sc.setLeg({ id: 'sutters-fort', biome: 'goldcountry', miles: 80, stop: { kind: 'fort', name: "Sutter's Fort" }, painting: 'adobe-fort' }); sc.setTravel({ milesDone: 75, moving: false }); });
+      await step(page, 30);
+      const ia = await info(page);
+      check(ia.approachPainting === 'adobe-fort', `${tag}: Sutter's Fort rises on the horizon as the adobe fort (${ia.approachPainting})`);
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setLeg({ id: 'sutters-fort', biome: 'goldcountry', miles: 80, stop: { kind: 'fort', name: "Sutter's Fort" }, painting: 'adobe-fort' }); sc.setBackdrop('fort'); });
+      await step(page, 30); await shot(page, `v15-${tag}-adobe-fort`);
+      check((await variety(page)) > 20 && (await info(page)).piece === 'fort', `${tag}: Sutter's Fort uses the fort backdrop in the adobe style`);
+      // the Sacramento claim arrival: the home stop draws the claim among the oaks, and the party cheers
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setLeg({ id: 'sacramento-valley', biome: 'goldcountry', miles: 100, stop: { kind: 'home' }, painting: 'sacramento-claim' }); sc.setBackdrop('valley'); sc.celebrate('arrived'); });
+      await step(page, 30); await shot(page, `v15-${tag}-sacramento-claim`);
+      const ic = await info(page);
+      check(ic.painting === 'sacramento-claim' && ic.particles.conf > 0, `${tag}: the Sacramento claim arrival: the claim's painting and the confetti (${ic.painting}, ${ic.particles.conf} pieces)`);
+      // arriving by sea: the home stop of the voyage
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setLeg({ id: 'home-by-sea', biome: 'sea', miles: 600, stop: { kind: 'home' }, painting: 'home-by-sea' }); sc.setBackdrop('valley'); });
+      await step(page, 30);
+      check((await info(page)).painting === 'home-by-sea' && (await variety(page)) > 20, `${tag}: home by sea draws the schooner`);
+      check(errors.real().length === 0, `${tag}: paintings: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+
+    // ---- the dry stretch (dust, shimmer, a barrel), decorations and pack mules ----
+    {
+      const { page, context, errors } = await open(browser, { biome: 'basin', moving: '1', pace: 'brisk' }, LAND);
+      await pause(page);
+      await step(page, 90);
+      const dry0 = await info(page), key0 = dry0.layersKey;
+      const snap = (p) => p.evaluate(() => { const c = document.getElementById('c'); const t = document.createElement('canvas'); t.width = 64; t.height = 32; const g = t.getContext('2d'); g.drawImage(c, 0, 0, 64, 32); return Array.from(g.getImageData(0, 0, 64, 32).data); });
+      const a = await snap(page);
+      await page.evaluate(() => window.__ww.scene.setTravel({ dry: true }));
+      await step(page, 120);
+      const dry1 = await info(page), b = await snap(page), s1 = await state(page);
+      const diffPx = (x, y) => { let n = 0; for (let i = 0; i < x.length; i += 4) if (Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2]) > 30) n++; return n; };
+      check(s1.dry === true && dry1.barrel === true && dry1.dryMix > 0.9, `dry: setTravel({ dry }) shows in the state, the barrel is on the wagon, the haze has come in (mix ${dry1.dryMix.toFixed(2)})`);
+      check(diffPx(a, b) > 20, `dry: the picture changes (shimmer, haze, the barrel): ${diffPx(a, b)} of 2048 sample pixels`);
+      check(key0 !== dry1.layersKey && /:dry/.test(dry1.layersKey), `dry: the basin's river and willows are rebuilt out of the props (${key0.split('@')[0]} → ${dry1.layersKey.split('@')[0]})`);
+      await shot(page, 'v15-dry-basin');
+      await page.evaluate(() => window.__ww.scene.setTravel({ dry: { barrel: false } }));
+      await step(page, 30);
+      check((await info(page)).barrel === false && (await state(page)).dry === true, 'dry: { barrel: false } keeps the haze and hides the barrel');
+      await page.evaluate(() => window.__ww.scene.setTravel({ dry: false }));
+      await step(page, 180);
+      const dry2 = await info(page);
+      check(dry2.dryMix < 0.05 && !/:dry/.test(dry2.layersKey), `dry: the day ends and the haze goes (mix ${dry2.dryMix.toFixed(2)})`);
+      // dust: more of it on a dry day (the same brisk run)
+      const dustOn = async (dry) => { await page.evaluate((d) => { window.__ww.scene.setTravel({ dry: d, moving: true, pace: 'brisk' }); }, dry); await step(page, 200); let tot = 0; for (let i = 0; i < 60; i++) { await step(page, 1); tot += (await info(page)).particles.dust; } return tot; };
+      const dDry = await dustOn(true), dWet = await dustOn(false);
+      check(dDry > dWet * 1.25, `dry: more dust behind the wheels (${dDry} vs ${dWet} puffs over 60 frames)`);
+      // decorations: each of the 16, two at a time, and the pack mules
+      const ids = DECOR.map((d) => d.id);
+      await page.evaluate(() => window.__ww.scene.setTravel({ moving: false, dry: false }));
+      let drew = 0;
+      for (let i = 0; i < ids.length; i += 2) {
+        const pair = ids.slice(i, i + 2);
+        await page.evaluate((pair) => { const sc = window.__ww.scene; sc.setParty({ animal: 'oxen', companions: [{ id: 'a', hat: 'cap', color: '#d9534f' }, { id: 'b', hat: 'wide', color: '#5b8c5a' }, { id: 'c', hat: 'bonnet', color: '#f0a500' }], wagon: { paint: 'classic', flag: 'red', name: 'Lucky', decor: pair } }); }, pair);
+        await step(page, 12);
+        const s = await state(page);
+        if (J(s.decor) === J(pair)) drew++;
+        if (i === 0) await shot(page, 'v15-decor-1');
+      }
+      check(drew === 8, `decorations: all 16 DECOR ids are accepted two at a time and drawn without errors (${drew} of 8 pairs)`);
+      const before = await snap(page);
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setParty({ animal: 'oxen', companions: [{ id: 'a', hat: 'cap', color: '#d9534f' }, { id: 'b', hat: 'wide', color: '#5b8c5a' }, { id: 'c', hat: 'bonnet', color: '#f0a500' }], wagon: { paint: 'classic', flag: 'red', name: 'Lucky', decor: ['pennant-chimney', 'bell-brass'] }, packMules: true }); sc.setTravel({ moving: true }); });
+      await step(page, 60); await shot(page, 'v15-packmules');
+      const after = await snap(page), sm = await state(page);
+      check(sm.packMules === true && (await info(page)).packMules === true && diffPx(before, after) > 5, `pack mules: two mules trail the wagon on the Gold Road (state ${sm.packMules}, picture changed ${diffPx(before, after)})`);
+      check(errors.real().length === 0, `dry, decorations, pack mules: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+
+    // ---- the gold pan: scoop, swirl, tip, panSwirled, the reveal ----
+    for (const [tag, vp] of [['land', LAND], ['port', PORTRAIT]]) {
+      const run = async (mode, rich) => {
+        const { page, context, errors } = await open(browser, { backdrop: 'diggings', leg: 'clear-creek', moving: '0' }, vp);
+        await pause(page);
+        await page.evaluate((rich) => { window.__ww.scene.startPan({ seed: 4, pans: 2, rich }); }, rich);
+        await step(page, 20);
+        const m0 = await mini(page);
+        let d = await dbg(page), sw = [];
+        for (let n = 1; n <= 2; n++) {
+          // scoop
+          d = await dbg(page);
+          await inp(page, 'pointer', d.cx, d.cy); await step(page, 40);
+          // swirl: a circle at `rate` rad/s, or taps on / off the beat
+          d = await dbg(page);
+          const startPhase = (await mini(page)).phase;
+          let frames = 0, a = 0;
+          if (mode === 'circle' || mode === 'slow') {
+            const rate = mode === 'circle' ? 4 : 0.8;
+            await inp(page, 'pointer', d.cx + d.rx * 0.8, d.cy);
+            while ((await mini(page)).phase === 'swirl' && frames < 2400) { a += rate / 60; await inp(page, 'drag', d.cx + Math.cos(a) * d.rx * 0.8, d.cy + Math.sin(a) * d.ry * 0.8); await step(page, 1); frames++; }
+            await inp(page, 'release');
+          } else if (mode === 'beat' || mode === 'offbeat') {
+            const t0 = await page.evaluate(() => window.__ww.scene.debugMini().pt);
+            let taps = 0; frames = 0;
+            while ((await mini(page)).phase === 'swirl' && frames < 2400) {
+              const pt = (await dbg(page)).pt, ph = pt % d.beat;
+              const want = mode === 'beat' ? Math.abs(ph) < 0.02 : Math.abs(ph - d.beat / 2) < 0.02;
+              if (want && frames - taps > 10) { await inp(page, 'pointer', d.cx, d.cy); await inp(page, 'release'); taps = frames; }
+              await step(page, 1); frames++;
+            }
+            void t0;
+          }
+          // tip: wait for the rim to glow, then tap
+          await step(page, 4);
+          const mt = await mini(page);
+          if (mt.phase === 'tip') { for (let i = 0; i < 120; i++) { const ph = (await dbg(page)).pt; if (Math.abs((ph % 1.5) - 0.75) < 0.03) break; await step(page, 1); } await inp(page, 'pointer', d.cx, d.cy); }
+          await step(page, 70);
+          const mq = await mini(page);
+          sw.push({ n, phase: mq.phase, quality: mq.quality, startPhase, swirlFrames: frames });
+          // the app answers with the pan's outcome (at least one flake, whatever the swirl); a nugget on the second pan
+          const flakes = 1 + Math.round(mq.quality * 3) + (rich.includes(n - 1) ? 2 : 0);
+          const ok = await page.evaluate(([f, nug]) => window.__ww.scene.panReveal({ flakes: f, nugget: nug }), [flakes, n === 2]);
+          sw[sw.length - 1].reveal = ok;
+          await step(page, 330);
+        }
+        const out = { sw, m0, swirled: await evs(page, 'panSwirled'), pans: await evs(page, 'pan'), end: await evs(page, 'panEnd'), left: await mini(page), errors: errors.real() };
+        if (mode === 'circle' && tag === 'land') { /* screenshots are in the mid-action script of the scratchpad */ }
+        await context.close();
+        return out;
+      };
+      const good = await run('circle', [0]);
+      check(good.m0 && good.m0.kind === 'pan' && good.m0.phase === 'scoop' && good.m0.pans === 2, `${tag}: startPan shows in the state as { kind: 'pan', phase: 'scoop', pans } (${J(good.m0)})`);
+      check(good.swirled.length === 2 && good.swirled.every((e, i) => e.n === i + 1 && e.quality >= 0 && e.quality <= 1), `${tag}: a circling finger: panSwirled for both pans with a quality 0..1 (${J(good.swirled.map((e) => e.quality))})`);
+      check(good.swirled[0].quality >= 0.9, `${tag}: a steady circle is a good swirl (quality ${good.swirled[0].quality})`);
+      check(good.sw.every((s) => s.reveal === true && s.startPhase === 'swirl'), `${tag}: panReveal is taken after panSwirled (${J(good.sw.map((s) => s.reveal))})`);
+      check(good.pans.length === 2 && good.pans[0].n === 1 && good.pans[1].nugget === true && good.pans[0].flakes >= 1, `${tag}: 'pan' { n, flakes, nugget } per pan, flakes ≥ 1 (${J(good.pans.map((e) => [e.n, e.flakes, e.nugget]))})`);
+      check(good.end.length === 1 && good.end[0].pans === 2, `${tag}: panEnd { pans } after the last (${J(good.end)})`);
+      check(good.left === null, `${tag}: the scene goes back to its backdrop after the pan (mini ${J(good.left)})`);
+      check(good.errors.length === 0, `${tag}: pan: no console errors (${good.errors.join(' | ')})`);
+      const slow = await run('slow', []);
+      check(slow.swirled.length === 2 && slow.end.length === 1 && slow.pans.every((e) => e.flakes >= 1), `${tag}: a poor (slow) swirl still ends, with at least one flake each (quality ${J(slow.swirled.map((e) => e.quality))})`);
+      check(slow.swirled[0].quality < good.swirled[0].quality, `${tag}: a slow swirl scores lower than a steady one (${slow.swirled[0].quality} < ${good.swirled[0].quality})`);
+      const onb = await run('beat', []), offb = await run('offbeat', []);
+      check(onb.end.length === 1 && offb.end.length === 1, `${tag}: tapping on the beat, and off it, both finish the pans`);
+      check(onb.swirled[0].quality > offb.swirled[0].quality, `${tag}: taps on the beat swirl better than taps off it (${onb.swirled[0].quality} > ${offb.swirled[0].quality})`);
+      check(onb.m0 && good.sw[0].swirlFrames > 0, `${tag}: the swirl takes real input (${good.sw[0].swirlFrames} frames)`);
+    }
+    {
+      // endMiniGame mid-pan, a pan left alone waits, a rich pan is flagged, Space scoops and tips, reduced motion
+      const { page, context, errors } = await open(browser, { backdrop: 'diggings', leg: 'clear-creek', moving: '0', rm: '1' }, LAND);
+      await pause(page);
+      await page.evaluate(() => window.__ww.scene.startPan({ seed: 2, pans: 3, rich: [1] }));
+      await step(page, 600);
+      check((await mini(page)).phase === 'scoop' && (await mini(page)).rich === false, 'pan: left alone it simply waits at the scoop (no timer, no loss)');
+      await keySpace(page); await step(page, 60);
+      check((await mini(page)).phase === 'swirl', 'pan: Space scoops');
+      const sum = await page.evaluate(() => window.__ww.scene.endMiniGame());
+      check(sum && sum.pans === 0 && (await state(page)).mini === null && (await evs(page, 'panEnd')).length === 0, `pan: endMiniGame() returns the summary so far and emits nothing (${J(sum)})`);
+      check(errors.real().length === 0, 'pan: reduced motion, no console errors');
+      await context.close();
+    }
+
+    // ---- the rocker at Coloma ----
+    for (const [tag, vp] of [['land', LAND], ['port', PORTRAIT]]) {
+      const play = async (mode) => {
+        const { page, context, errors } = await open(browser, { backdrop: 'diggings', leg: 'coloma', moving: '0' }, vp);
+        await pause(page);
+        await page.evaluate(() => window.__ww.scene.startRocker({ seed: 3, rounds: 3 }));
+        await step(page, 10);
+        const m0 = await mini(page); const rounds = [];
+        for (let r = 0; r < 3; r++) {
+          let tapped = -1, n = 0;
+          while ((await mini(page)).phase !== 'swirled' && n < 1500) {
+            const d = await dbg(page), p = (d.rt - d.lead) / d.period, b = Math.round(p);
+            if (mode !== 'none' && b >= 0 && b > tapped && Math.abs(p - b) * d.period < 0.03) { tapped = b; if (mode === 'keys') await inp(page, 'keydown', b % 2 === 0 ? 'left' : 'right'); else await inp(page, 'pointer', 10, 10); }
+            await step(page, 1); n++;
+          }
+          const ev = await evs(page, 'rockerRound'); rounds.push(ev[ev.length - 1]);
+          const ok = await page.evaluate((fl) => window.__ww.scene.rockerReveal({ flakes: fl }), 2 + (r + 1));
+          rounds[rounds.length - 1].reveal = ok;
+          for (let k = 0; k < 200; k += 3) { const mm = await mini(page); if (!mm || (r < 2 && mm.phase !== 'reveal')) break; await step(page, 3); }
+          await step(page, r === 2 ? 200 : 2);
+        }
+        const out = { m0, rounds, end: await evs(page, 'rockerEnd'), left: await mini(page), errors: errors.real() };
+        await context.close();
+        return out;
+      };
+      const on = await play('pointer');
+      check(on.m0 && on.m0.kind === 'rocker' && on.m0.rounds === 3, `${tag}: startRocker shows in the state (${J(on.m0)})`);
+      check(on.rounds.length === 3 && on.rounds.every((e, i) => e && e.n === i + 1 && e.beats >= 0.85 && e.reveal === true), `${tag}: tapping every beat: rockerRound { n, beats } with most rocks on the beat, rockerReveal accepted (${J(on.rounds.map((e) => e && e.beats))})`);
+      check(on.end.length === 1 && on.end[0].rounds === 3 && on.left === null, `${tag}: rockerEnd { rounds: 3 } and back to the backdrop`);
+      const ks = await play('keys');
+      check(ks.rounds.every((e) => e && e.beats >= 0.85), `${tag}: ← → on the beat count as well (${J(ks.rounds.map((e) => e && e.beats))})`);
+      const none = await play('none');
+      check(none.rounds.every((e) => e && e.beats === 0) && none.end.length === 1, `${tag}: no rocking at all still ends every round (beats 0) and the game ends: nothing fails`);
+      check(on.errors.length + ks.errors.length + none.errors.length === 0, `${tag}: rocker: no console errors`);
+    }
+
+    // ---- Laurel Hill: hold to slide, let go at each ledge ----
+    for (const [tag, vp] of [['land', LAND], ['port', PORTRAIT]]) {
+      const run = async (mode, drops = 3) => {
+        const { page, context, errors } = await open(browser, { leg: 'barlow-road', biome: 'mountains', moving: '0' }, vp);
+        await pause(page);
+        await page.evaluate((n) => window.__ww.scene.startSnub({ seed: 5, drops: n }), drops);
+        await step(page, 12);
+        const m0 = await mini(page);
+        let n = 0, earlyDone = false, sawBumpDust = false;
+        while (n < 2400 && !(await evs(page, 'snubEnd')).length) {
+          const d = await dbg(page), s1 = await mini(page);
+          if (s1.phase === 'wait') await (mode === 'space' ? spaceHold(page, true) : inp(page, 'pointer', 10, 10));
+          if (mode === 'smooth' || mode === 'space') {
+            if (s1.phase === 'slide' && d.s >= d.ledge.s0 - 0.024) await (mode === 'space' ? spaceHold(page, false) : inp(page, 'release'));
+          } else if (mode === 'early') {
+            if (s1.phase === 'slide' && !earlyDone && d.s > 0.04 && s1.drop === 1) { await inp(page, 'release'); earlyDone = true; }
+            if (s1.phase === 'slide' && earlyDone && d.s >= d.ledge.s0 - 0.024) await inp(page, 'release');
+          } // 'bumpy': never let go
+          await step(page, 1); n++;
+        }
+        await step(page, 200);
+        const out = { m0, snubs: await evs(page, 'snub'), end: await evs(page, 'snubEnd'), left: await mini(page), errors: errors.real(), n };
+        await context.close();
+        return out;
+      };
+      const sm = await run('smooth');
+      check(sm.m0 && sm.m0.kind === 'snub' && sm.m0.drops === 3, `${tag}: startSnub shows in the state (${J(sm.m0)})`);
+      check(sm.snubs.length === 3 && sm.snubs.every((e) => e.good === true) && sm.end.length === 1 && sm.end[0].smooth === true, `${tag}: let go at each ledge: three good drops, snubEnd { smooth: true } (${J(sm.snubs.map((e) => e.good))} ${J(sm.end.map((e) => e.smooth))})`);
+      check(sm.left === null, `${tag}: Laurel Hill ends and the scene goes back`);
+      const bp = await run('bumpy');
+      check(bp.snubs.length === 3 && bp.snubs.every((e) => e.good === false) && bp.end.length === 1 && bp.end[0].smooth === false && bp.end[0].good === 0, `${tag}: holding all the way bumps every drop (the wagon never breaks): snubEnd { smooth: false } (${J(bp.snubs.map((e) => e.good))})`);
+      const ea = await run('early');
+      check(ea.snubs.length === 3 && ea.snubs[0].good === true && ea.end[0].smooth === true, `${tag}: letting go early only waits (no penalty): hold again and the drop is still good (${J(ea.snubs.map((e) => e.good))})`);
+      const sp = await run('space', 2);
+      check(sp.snubs.length === 2 && sp.snubs.every((e) => e.good) && sp.end[0].drops === 2, `${tag}: Space holds the rope as well, and two drops are two drops (${J(sp.snubs)})`);
+      check(sm.errors.length + bp.errors.length + ea.errors.length + sp.errors.length === 0, `${tag}: snub: no console errors`);
+    }
+
+    // ---- the voyage home ----
+    for (const [tag, vp] of [['land', LAND], ['port', PORTRAIT]]) {
+      const run = async (mode, length = 4) => {
+        const { page, context, errors } = await open(browser, { leg: 'home-by-sea', biome: 'sea', moving: '0' }, vp);
+        await pause(page);
+        await page.evaluate((n) => window.__ww.scene.startSail({ seed: 9, length: n }), length);
+        await step(page, 10);
+        const m0 = await mini(page);
+        let n = 0, markers = [], waitedOk = true, sawBar = false;
+        while (n < 4000 && !(await evs(page, 'sailEnd')).length) {
+          const d = await dbg(page), s1 = await mini(page);
+          if (s1.phase === 'bar') sawBar = true;
+          if (s1.waiting) {
+            // the ship waits: nothing moves until sailGo
+            const before = await mini(page); await step(page, 90); const after = await mini(page);
+            if (before.progress !== after.progress || after.phase !== 'marker') waitedOk = false;
+            markers.push(s1.n);
+            await page.evaluate(() => window.__ww.scene.sailGo());
+          }
+          if (mode === 'steer') {
+            const nxt = d.swells.filter((x) => x.z < d.zs + 0.04 && !x.hit).sort((a, b) => b.z - a.z)[0];
+            if (nxt) { const dx = nxt.g - d.u; await inp(page, 'keyup', 'left'); await inp(page, 'keyup', 'right'); if (Math.abs(dx) > 0.02) await inp(page, 'keydown', dx < 0 ? 'left' : 'right'); }
+          }
+          await step(page, 2); n += 2;
+        }
+        await step(page, 200);
+        const out = { m0, markers, waitedOk, sawBar, markersEv: await evs(page, 'sailMarker'), bumps: await evs(page, 'sail'), end: await evs(page, 'sailEnd'), left: await mini(page), errors: errors.real(), n };
+        await context.close();
+        return out;
+      };
+      const st1 = await run('steer');
+      check(st1.m0 && st1.m0.kind === 'sail' && st1.m0.of === 4, `${tag}: startSail shows in the state (${J(st1.m0)})`);
+      check(st1.markersEv.length === 4 && st1.markersEv.every((e, i) => e.n === i + 1 && e.of === 4), `${tag}: four markers "Up the coast", n of 4 (${J(st1.markersEv.map((e) => e.n))})`);
+      check(st1.waitedOk, `${tag}: at each marker the ship waits in calm water until sailGo()`);
+      check(st1.bumps.length === 0 && st1.end.length === 1 && st1.end[0].bumps === 0 && st1.sawBar, `${tag}: steered through every gap (and over the Columbia bar): sailEnd { bumps: 0 } (${J(st1.end)})`);
+      check(st1.left === null, `${tag}: the voyage ends and the scene goes back`);
+      const al = await run('alone');
+      check(al.bumps.length >= 1 && al.end.length === 1 && al.end[0].bumps === al.bumps.length, `${tag}: a ship left alone bumps (${al.bumps.length}) and still gets home: sailEnd { bumps } (${J(al.end)})`);
+      const sh = await run('steer', 2);
+      check(sh.markersEv.length === 2 && sh.markersEv[1].of === 2 && sh.end.length === 1, `${tag}: length 2 is two markers`);
+      check(st1.errors.length + al.errors.length + sh.errors.length === 0, `${tag}: sail: no console errors`);
+    }
+    {
+      // endMiniGame early on the voyage and on the rocker: the summary so far, no end event
+      const { page, context, errors } = await open(browser, { leg: 'home-by-sea', biome: 'sea', moving: '0' }, LAND);
+      await pause(page);
+      await page.evaluate(() => window.__ww.scene.startSail({ seed: 1, length: 4 })); await step(page, 100);
+      const s1 = await page.evaluate(() => window.__ww.scene.endMiniGame());
+      check(s1 && 'bumps' in s1 && (await state(page)).mini === null && (await evs(page, 'sailEnd')).length === 0, `sail: endMiniGame() ends it with the summary so far and no event (${J(s1)})`);
+      await page.evaluate(() => window.__ww.scene.startSnub({ seed: 1 })); await step(page, 20);
+      const s2 = await page.evaluate(() => window.__ww.scene.endMiniGame());
+      check(s2 && 'good' in s2 && (await state(page)).mini === null && (await evs(page, 'snubEnd')).length === 0, `snub: endMiniGame() the same (${J(s2)})`);
+      await page.evaluate(() => window.__ww.scene.startRocker({ seed: 1 })); await step(page, 20);
+      const s3 = await page.evaluate(() => window.__ww.scene.endMiniGame());
+      check(s3 && 'rounds' in s3 && (await state(page)).mini === null, `rocker: endMiniGame() the same (${J(s3)})`);
+      check(errors.real().length === 0, 'early endings: no console errors');
+      await context.close();
+    }
+
+    // ---- the homestead: the farm at both sites, empty, half and full; the raising; taps; the pan ----
+    {
+      const SITE_PIECES = (site) => HOMESTEAD_PIECES.filter((p) => !p.sites || p.sites.includes(site));
+      const count = (p) => (hs.PIECE_MAX[p.id] || 1);
+      for (const [tag, vp] of [['land', LAND], ['port', PORTRAIT], ['wide', BIG]]) {
+        const { page, context, errors } = await open(browser, { backdrop: 'homestead', moving: '0' }, vp);
+        await pause(page);
+        let minVar = 1e9; const picks = {};
+        for (const site of ['willamette', 'sacramento']) {
+          const all = SITE_PIECES(site), half = all.slice(0, Math.ceil(all.length / 2));
+          for (const [name, list] of [['none', []], ['half', half], ['full', all]]) {
+            const pieces = Object.fromEntries(list.map((p) => [p.id, name === 'half' ? Math.ceil(count(p) / 2) : count(p)]));
+            await page.evaluate(([site, pieces]) => { const sc = window.__ww.scene; sc.setHomestead({ site, name: 'Sunny Acres', pieces, animals: { oxen: 4, mules: 2 }, dog: { name: 'Frodo', coat: 'spotted' }, decor: ['weathervane-salmon'], party: [{ id: 'a', hat: 'cap', color: '#d9534f' }, { id: 'b', hat: 'wide', color: '#5b8c5a' }, { id: 'c', hat: 'bonnet', color: '#f0a500' }], trophies: ['bronze', 'silver', 'gold'] }); sc.setBackdrop('homestead'); }, [site, pieces]);
+            await step(page, 40);
+            const v = await variety(page); if (v < minVar) minVar = v;
+            picks[`${site}-${name}`] = v;
+            if (tag !== 'wide' || name === 'full') await shot(page, `v15-${tag}-farm-${site}-${name}`);
+            const s = await state(page);
+            if (!(s.home && s.home.site === site && Object.keys(s.home.pieces).length === list.length)) check(false, `${tag} ${site}/${name}: getState().home says ${J(s.home)}`);
+          }
+        }
+        check(minVar >= 20, `${tag} (${vp.width}x${vp.height}): the farm at both sites with no pieces, half and all of them: drawn, not blank (fewest colours ${minVar})`);
+        check((await state(page)).home.pieces.vineyard === 1 && (await state(page)).home.site === 'sacramento', `${tag}: the Sacramento claim has its vineyard and windmill`);
+        check(errors.real().length === 0, `${tag}: farm: no console errors (${errors.real().join(' | ')})`);
+        await context.close();
+      }
+      // the raising
+      const { page, context, errors } = await open(browser, { backdrop: 'homestead', moving: '0', site: 'willamette' }, LAND);
+      await pause(page);
+      const farm = (pieces) => ({ site: 'willamette', name: 'Sunny Acres', pieces, animals: { oxen: 4, mules: 0 }, dog: { name: 'Frodo', coat: 'brown' }, decor: [], party: null, trophies: [] });
+      await page.evaluate((f) => { const sc = window.__ww.scene; sc.setHomestead(f); sc.setBackdrop('homestead'); }, farm({ cabin: 1, well: 1 }));
+      await step(page, 30);
+      // the app builds first, then tells the scene (order 1): setHomestead with the new count, then buildPiece
+      await clearEv(page);
+      await page.evaluate((f) => { const sc = window.__ww.scene; sc.setHomestead(f); window.__ok = sc.buildPiece('barn'); }, farm({ cabin: 1, well: 1, barn: 1 }));
+      await step(page, 30);
+      let ms = (await state(page)).home;
+      check(await page.evaluate(() => window.__ok) === true && ms.building && ms.building.id === 'barn' && ms.building.big === true, `the raising: a barn goes up in beats, not at once (${J(ms.building)})`);
+      const early = await variety(page); await shot(page, 'v15-farm-barn-frame');
+      let frames = 30;
+      while (!(await evs(page, 'buildDone')).length && frames < 400) { await step(page, 5); frames += 5; }
+      const bdone = await evs(page, 'buildDone');
+      check(bdone.length === 1 && bdone[0].id === 'barn' && frames / 60 > 1.5 && frames / 60 < 4, `the barn raises and emits buildDone { id: 'barn' } after ${(frames / 60).toFixed(1)} s`);
+      check((await info(page)).particles.conf > 0, 'the barn raising ends with a cheer and confetti');
+      check((await state(page)).home.pieces.barn === 1 && (await state(page)).home.building === null, 'the barn stays built once it is raised');
+      await step(page, 60);
+      // order 2: buildPiece first, the scene adds the piece itself; a small piece pops in
+      await clearEv(page);
+      const ok2 = await page.evaluate(() => window.__ww.scene.buildPiece('flowers'));
+      await step(page, 10);
+      const pop = (await state(page)).home;
+      check(ok2 === true && pop.building && pop.building.big === false && pop.pieces.flowers === 1, `a small piece pops in: buildPiece('flowers') first adds it itself (${J(pop.pieces.flowers)}, big ${pop.building && pop.building.big})`);
+      let f2 = 10; while (!(await evs(page, 'buildDone')).length && f2 < 200) { await step(page, 5); f2 += 5; }
+      check((await evs(page, 'buildDone')).length === 1 && f2 / 60 < 1.6, `small pieces finish in ${(f2 / 60).toFixed(1)} s with buildDone { id: 'flowers' }`);
+      check((await page.evaluate(() => window.__ww.scene.buildPiece('nonsense'))) === false, 'buildPiece of an unknown id is false and builds nothing');
+      for (let i = 0; i < 3; i++) await page.evaluate(() => window.__ww.scene.buildPiece('flowers'));
+      await step(page, 600);
+      check((await state(page)).home.pieces.flowers === 3 && (await page.evaluate(() => window.__ww.scene.buildPiece('flowers'))) === false, 'flower beds stop at three, and a piece at its most is not raised again');
+      // the weathervane and nothing decays: the same farm a long while later draws the same picture
+      await page.evaluate((f) => { const sc = window.__ww.scene; sc.setHomestead({ ...f, decor: ['weathervane-salmon'], trophies: ['bronze'] }); }, farm({ cabin: 1, 'trophy-shelf': 1, barn: 1, fence: 1, corral: 1, cow: 1, 'apple-tree': 3, orchard: 1 }));
+      await step(page, 30);
+      const s0 = await page.evaluate(() => { const c = document.getElementById('c'); const t = document.createElement('canvas'); t.width = 96; t.height = 48; t.getContext('2d').drawImage(c, 0, 0, 96, 48); return t.toDataURL(); });
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setReducedMotion(true); }); await step(page, 5);
+      await page.evaluate(() => window.__ww.scene.debugStep(60 * 60 * 24 * 30, false));
+      const noop = (await state(page)).home;
+      check(Object.keys(noop.pieces).length === 8 && noop.pieces['apple-tree'] === 3, 'nothing decays: a month of sim time later the farm still has every piece');
+      check(errors.real().length === 0, `the raising: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+    {
+      // taps and drags: a tap names the slot and its top piece; a drag pans the farm (portrait) and is not a tap
+      const { page, context, errors } = await open(browser, { backdrop: 'homestead', moving: '0' }, PORTRAIT);
+      await pause(page);
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setHomestead({ site: 'willamette', name: 'Sunny Acres', pieces: { cabin: 1, barn: 1, well: 1, garden: 2, 'name-plate': 1, fence: 1, 'apple-tree': 3 }, animals: { oxen: 2, mules: 0 }, dog: null, decor: [], party: null, trophies: [] }); sc.setBackdrop('homestead'); });
+      await step(page, 30);
+      const h0 = await page.evaluate(() => window.__ww.scene.debugHome());
+      check(h0.geo.camMax > 100, `portrait: the farm is wider than the phone (${Math.round(h0.geo.Wd)} px in ${390}) and pans`);
+      const cam0 = h0.cam;
+      // a real drag with the mouse
+      await page.evaluate(() => window.__ww.scene.play());
+      await clearEv(page);
+      await page.mouse.move(300, 600); await page.mouse.down(); await page.mouse.move(150, 600, { steps: 6 }); await page.mouse.up();
+      await page.evaluate(() => window.__ww.scene.pause());
+      const h1 = await page.evaluate(() => window.__ww.scene.debugHome());
+      check(h1.cam > cam0 + 60 && (await evs(page, 'homesteadTap')).length === 0, `portrait: a drag pans the farm (${cam0} → ${h1.cam}) and is not a tap`);
+      // taps on each slot
+      const taps = {};
+      for (const slot of ['barn', 'house', 'orchard', 'garden', 'gate', 'pasture', 'yard', 'edge', 'creek']) {
+        await page.evaluate((slot) => { const sc = window.__ww.scene; sc.setBackdrop('homestead'); sc.debugInput('pan', -9999); }, slot);
+        await page.evaluate((slot) => { const h = window.__ww.scene.debugHome(); window.__pt = h.slots[slot]; }, slot);
+        const pt = await page.evaluate(() => window.__pt);
+        const evt = await page.evaluate(([x, y]) => window.__ww.scene.debugInput('tap', x, y), [pt.x + 0, pt.y]);
+        taps[slot] = evt;
+      }
+      check(taps.barn && taps.barn.slot === 'barn' && taps.barn.piece === 'barn', `taps: the barn names its slot and piece (${J(taps.barn)})`);
+      check(taps.house && taps.house.slot === 'house' && taps.house.piece === 'cabin', `taps: the house is the cabin (${J(taps.house)})`);
+      check(taps.garden && taps.garden.slot === 'garden' && taps.garden.piece === 'garden' && taps.gate.piece === 'name-plate' && taps.pasture.piece === 'fence', `taps: the garden, the gate's name plate and the pasture's fence`);
+      check(taps.orchard && taps.orchard.slot === 'orchard' && taps.orchard.piece === 'apple-tree', `taps: the orchard is its apple trees (${J(taps.orchard)})`);
+      check(taps.creek && taps.creek.slot === 'creek' && taps.creek.piece === null && taps.edge.piece === null && taps.yard.piece === 'well', `taps: an empty slot says piece: null so the app can show what could go there (creek ${J(taps.creek)})`);
+      check((await evs(page, 'homesteadTap')).length >= 9, 'taps: every tap emits homesteadTap');
+      check(errors.real().length === 0, 'taps: no console errors');
+      await context.close();
+    }
+
+    // ---- the forks: a signpost at Fort Hall, The Dalles and South Pass ----
+    for (const [tag, vp] of [['land', LAND], ['port', PORTRAIT]]) {
+      const { page, context, errors } = await open(browser, { moving: '0' }, vp);
+      await pause(page);
+      const res = {};
+      for (const [id, leg, biome, n] of [['fort-hall', 'fort-hall', 'highdesert', 2], ['the-dalles', 'the-dalles', 'gorge', 2], ['south-pass', 'south-pass', 'mountains', 3]]) {
+        await page.evaluate(([id, leg, biome]) => { const sc = window.__ww.scene; sc.setLeg({ id: leg, biome, miles: 100, stop: { kind: 'landmark' } }); sc.setFork({ id }); sc.setBackdrop('fork'); }, [id, leg, biome]);
+        await step(page, 30);
+        const i = await info(page), s = await state(page);
+        res[id] = { arms: i.fork, state: s.fork, v: await variety(page), piece: i.piece };
+        await shot(page, `v15-${tag}-fork-${id}`);
+      }
+      check(res['fort-hall'].arms.length === 2 && res['fort-hall'].state.options[0] === 'Oregon' && res['fort-hall'].state.options[1] === 'California', `${tag}: Fort Hall's signpost points to Oregon and California (${J(res['fort-hall'].state)})`);
+      check(res['the-dalles'].arms.length === 2 && /Barlow/.test(res['the-dalles'].state.options[1]), `${tag}: The Dalles: the Columbia or the Barlow Road (${J(res['the-dalles'].state.options)})`);
+      check(res['south-pass'].arms.length === 3 && res['south-pass'].piece === 'fork', `${tag}: South Pass has three arms (${J(res['south-pass'].arms)})`);
+      check(Object.values(res).every((r) => r.v > 15), `${tag}: the three signposts are drawn, not blank`);
+      // the app's own words, and a glow on the chosen arm
+      await page.evaluate(() => window.__ww.scene.setFork({ id: 'fort-hall', options: [{ id: 'oregon', name: 'On to Oregon' }, { id: 'california', name: 'South to California' }], glow: 'california' }));
+      await step(page, 20);
+      check(J((await state(page)).fork.options) === J(['On to Oregon', 'South to California']), `${tag}: setFork takes the app's option names`);
+      check(errors.real().length === 0, `${tag}: forks: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+
+    // ---- the new wild cards' animals cross the background (spotAnimal learns eight more)
+    {
+      const { page, context, errors } = await open(browser, { moving: '0' }, LAND);
+      const kinds = ['beaver', 'sage-grouse', 'meadowlark', 'tule-elk', 'osprey', 'pika', 'river-otter', 'mountain-quail'];
+      const crossed = [];
+      for (const k of kinds) {
+        await pause(page); await clearEv(page);
+        const ok = await page.evaluate((k) => window.__ww.scene.spotAnimal(k), k);
+        await step(page, 50); if (k === 'beaver' || k === 'tule-elk' || k === 'osprey' || k === 'mountain-quail') await shot(page, `v15-animal-${k}`);
+        let n = 0; while (!(await evs(page, 'animalSpotted')).length && n < 1200) { await step(page, 5); n += 5; }
+        const e = await evs(page, 'animalSpotted');
+        if (ok === true && e.length === 1 && e[0].animal === k && (await variety(page)) > 12) crossed.push(k);
+      }
+      check(crossed.length === 8, `spotAnimal: all eight new animals cross and emit animalSpotted (${crossed.join(', ')})`);
+      await pause(page); await clearEv(page);
+      check((await page.evaluate(() => window.__ww.scene.spotAnimal('western-meadowlark'))) === true && (await page.evaluate(() => window.__ww.scene.spotAnimal('unicorn'))) === false, 'spotAnimal: the card id western-meadowlark is the meadowlark, and an unknown animal is false');
+      check(errors.real().length === 0, `new animals: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+
+    // ---- the mock scene: the same API, scripted ----
+    {
+      const { page, context, errors } = await open(browser, { mock: '1', biome: 'prairie', moving: '0' }, { width: 422, height: 195 });
+      const miss = await page.evaluate((n) => n.filter((k) => typeof window.__ww.scene[k] !== 'function'), API_15);
+      check(miss.length === 0 && (await state(page)).mock === true, `the mock scene has the v1.5 API (missing: ${miss.join(',') || 'none'})`);
+      const run = async (script, start, endType, wait = 30000) => {
+        await page.evaluate((s) => { window.__mockScript = { shotMs: 25, ...s }; window.__ww.events.length = 0; }, script);
+        await page.evaluate(start);
+        await page.waitForFunction((t) => window.__ww.events.some((e) => e.type === t), endType, { timeout: wait });
+        return page.evaluate(() => window.__ww.events.filter((e) => e.type !== 'ready' && e.type !== 'sfx').map((e) => { const { at, ...r } = e; return r; }));
+      };
+      // pan: panSwirled waits for panReveal; the stub answers each one
+      let ev = await run({ pan: 0.8 }, () => { const sc = window.__ww.scene; sc.startPan({ seed: 1, pans: 3, rich: [1] }); window.__rev = setInterval(() => { const m = sc.getState().mini; if (m && m.kind === 'pan' && m.phase === 'swirled') sc.panReveal({ flakes: 5, nugget: m.n === 3 }); }, 5); }, 'panEnd');
+      await page.evaluate(() => clearInterval(window.__rev));
+      check(J(ev.map((e) => e.type)) === J(['panSwirled', 'pan', 'panSwirled', 'pan', 'panSwirled', 'pan', 'panEnd']) && ev[0].quality === 0.8 && ev[5].nugget === true && ev[6].pans === 3, `mock pan: ${ev.map((e) => e.type + (e.n ? e.n : '')).join(' ')}`);
+      const pst = await run({ pan: [0.2, 0.9] }, () => window.__ww.scene.startPan({ seed: 1, pans: 2 }), 'panSwirled');
+      check(pst[0].quality === 0.2 && (await mini(page)).phase === 'swirled', 'mock pan: __mockScript.pan [0.2, 0.9] gives the first pan 0.2 and the scene waits for the reveal');
+      await page.evaluate(() => window.__ww.scene.endMiniGame());
+      // rocker
+      ev = await run({ rocker: 0.5 }, () => { const sc = window.__ww.scene; sc.startRocker({ seed: 1, rounds: 2 }); window.__rev = setInterval(() => { const m = sc.getState().mini; if (m && m.kind === 'rocker' && m.phase === 'swirled') sc.rockerReveal({ flakes: 4 }); }, 5); }, 'rockerEnd');
+      await page.evaluate(() => clearInterval(window.__rev));
+      check(J(ev.map((e) => e.type)) === J(['rockerRound', 'rockerRound', 'rockerEnd']) && ev[0].beats === 0.5 && ev[2].rounds === 2, `mock rocker: ${J(ev)}`);
+      // snub
+      ev = await run({}, () => window.__ww.scene.startSnub({ seed: 1, drops: 3 }), 'snubEnd');
+      check(J(ev) === J([{ type: 'snub', good: true }, { type: 'snub', good: true }, { type: 'snub', good: true }, { type: 'snubEnd', smooth: true, good: 3, drops: 3 }]), `mock snub (default smooth): ${J(ev.map((e) => e.good))} → ${J(ev[ev.length - 1])}`);
+      ev = await run({ snub: 'bumpy' }, () => window.__ww.scene.startSnub({ seed: 1, drops: 3 }), 'snubEnd');
+      check(ev[ev.length - 1].smooth === false && ev[ev.length - 1].good === 0, `mock snub 'bumpy': ${J(ev[ev.length - 1])}`);
+      ev = await run({ snub: [true, false, true] }, () => window.__ww.scene.startSnub({ seed: 1, drops: 3 }), 'snubEnd');
+      check(J(ev.filter((e) => e.type === 'snub').map((e) => e.good)) === '[true,false,true]' && ev[ev.length - 1].good === 2, 'mock snub [true, false, true]: the drops follow the script');
+      // sail
+      ev = await run({ sail: 2 }, () => { const sc = window.__ww.scene; sc.startSail({ seed: 1, length: 4 }); window.__rev = setInterval(() => { const m = sc.getState().mini; if (m && m.kind === 'sail' && m.waiting) sc.sailGo(); }, 5); }, 'sailEnd');
+      await page.evaluate(() => clearInterval(window.__rev));
+      check(J(ev.map((e) => e.type)) === J(['sail', 'sail', 'sailMarker', 'sailMarker', 'sailMarker', 'sailMarker', 'sailEnd']) && ev[2].n === 1 && ev[5].n === 4 && ev[5].of === 4 && ev[6].bumps === 2, `mock sail: ${ev.map((e) => e.type + (e.n || '')).join(' ')}`);
+      const mk = await run({ sail: 0 }, () => window.__ww.scene.startSail({ seed: 1, length: 4 }), 'sailMarker');
+      await page.waitForTimeout(150);
+      check(J(mk.map((e) => e.type)) === '["sailMarker"]' && (await mini(page)).waiting === true && (await page.evaluate(() => window.__ww.scene.sailGo())) === true, 'mock sail: the ship waits at the marker until sailGo() (→ true)');
+      await page.evaluate(() => window.__ww.scene.endMiniGame());
+      // the farm, the signpost, the dry day and the decorations are kept
+      await page.evaluate(() => { const sc = window.__ww.scene; window.__ww.events.length = 0; sc.setHomestead({ site: 'willamette', name: 'Sunny Acres', pieces: { cabin: 1, barn: 1 } }); sc.setBackdrop('homestead'); window.__bp = sc.buildPiece('barn'); });
+      await page.waitForFunction(() => window.__ww.events.some((e) => e.type === 'buildDone'), null, { timeout: 3000 });
+      const mh = await page.evaluate(() => ({ lh: window.__mock && window.__mock.lastHomestead, lb: window.__mock && window.__mock.lastBuild, st: window.__ww.scene.getState() }));
+      check(mh.lh && mh.lh.name === 'Sunny Acres' && mh.lb === 'barn' && mh.st.home && mh.st.home.pieces.barn === 1, `mock: setHomestead is kept (__mock.lastHomestead), buildPiece('barn') emits buildDone (${J(mh.st.home)})`);
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setFork({ id: 'south-pass' }); sc.setTravel({ dry: true }); sc.setParty({ wagon: { decor: ['bell-brass'] }, packMules: true }); });
+      const ms2 = await state(page);
+      check(ms2.dry === true && ms2.fork && ms2.fork.id === 'south-pass', 'mock: setFork and setTravel({ dry }) are kept in the state');
+      for (const b of NEW_BIOMES) { await page.evaluate((b) => window.__ww.scene.setLeg({ id: 'x', biome: b, miles: 100, stop: { kind: 'landmark' } }), b); }
+      check(errors.real().length === 0, `mock scene (v1.5): no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+  }
+
   // ---- 8. perf: real frames at 4x CPU throttle on a phone-sized canvas ----
   if (!process.env.SKIP_PERF) {
     const PERF_MS = Number(process.env.PERF_MS || 8);
@@ -1770,6 +2352,15 @@ try {
       ['fishing 2.0 (the fight bar, the line, the fish, the dog)', { biome: 'prairie', dog: 'brown' }, () => { const sc = window.__ww.scene; const go = () => sc.startFishing({ seed: 5, water: 'snake', casts: 8, helper: { id: 'scout', hat: 'wide', color: '#5b8c5a' }, dog: true, cameo: { at: 1, kind: 'splash' } }); go(); let held = false; setInterval(() => { const m = sc.debugMini(); if (!m) { go(); return; } if (m.phase === 'bite') { sc.debugInput('pointer', 1, 1); held = true; } else if (m.phase === 'fight') { if (m.fight === 'help') sc.fishingHelp(); const want = !(m.wobble || m.warn); if (want && !held) { sc.debugInput('pointer', 1, 1); held = true; } if (!want && held) { sc.debugInput('release'); held = false; } } }, 30); }],
       ['the rabbit chase with the dog on a rolling trail', { biome: 'prairie', dog: 'brown', moving: '1', pace: 'brisk' }, () => { const sc = window.__ww.scene; sc.startChase({ seed: 2 }); setInterval(() => { if (!sc.debugMini()) sc.startChase({ seed: 3 }); }, 200); }],
       ['Fort Derby with the dog (bursts and the finish)', { biome: 'highdesert', backdrop: 'fort', dog: 'brown' }, () => { const sc = window.__ww.scene; sc.startDerby({ seed: 3, length: 200 }); setInterval(() => { const s = sc.getState(); if (!s.mini) sc.startDerby({ seed: 4, length: 200 }); else if (s.mini.phase === 'wait') sc.derbyBurst(1); }, 60); }],
+      ['v1.5 a dry basin trail: haze, dust, the barrel, decorations and two pack mules', { biome: 'basin', pace: 'brisk', dog: 'brown' }, () => { const sc = window.__ww.scene; sc.setParty({ animal: 'mules', companions: [{ id: 'blacksmith', hat: 'cap', color: '#d9534f' }, { id: 'scout', hat: 'wide', color: '#5b8c5a' }, { id: 'cook', hat: 'bonnet', color: '#f0a500' }], wagon: { paint: 'red', flag: 'blue', name: 'Lucky Star', decor: ['pennant-chimney', 'bell-brass'] }, packMules: true, dog: { name: 'Frodo', coat: 'brown' } }); sc.setTravel({ dry: true, moving: true, pace: 'brisk' }); sc.spotAnimal('tule-elk'); }],
+      ['v1.5 the Sierra in snow (snow, pines, a pika crossing)', { biome: 'sierra', weather: 'snow', pace: 'brisk' }, () => { const sc = window.__ww.scene; sc.spotAnimal('pika'); sc.spotAnimal('osprey'); }],
+      ['v1.5 the schooner deck at sea (swells, rail, mast, a dusk sky)', { biome: 'sea', backdrop: 'sea', weather: 'dusk', dog: 'spotted' }, () => { window.__ww.scene.celebrate('arrived'); }],
+      ['v1.5 the voyage (swells, spray, the bar, steering)', { biome: 'sea' }, () => { const sc = window.__ww.scene; sc.startSail({ seed: 4, length: 4 }); setInterval(() => { const m = sc.getState().mini; if (!m) { sc.startSail({ seed: 5, length: 4 }); return; } if (m.waiting) sc.sailGo(); sc.debugInput('keydown', Math.sin(performance.now() / 700) > 0 ? 'right' : 'left'); }, 120); }],
+      ['v1.5 gold panning (the close-up, the swirl, the flakes) at the diggings', { biome: 'goldcountry', backdrop: 'diggings', leg: 'clear-creek', moving: '0' }, () => { const sc = window.__ww.scene; sc.startPan({ seed: 2, pans: 3, rich: [1] }); let a = 0; setInterval(() => { const m = sc.getState().mini; if (!m) { sc.startPan({ seed: 3, pans: 3, rich: [1] }); return; } const d = sc.debugMini(); if (m.phase === 'scoop') sc.debugInput('pointer', d.cx, d.cy); else if (m.phase === 'swirl') { a += 0.3; sc.debugInput('pointer', d.cx + d.rx * 0.8 * Math.cos(a), d.cy + d.ry * 0.8 * Math.sin(a)); sc.debugInput('drag', d.cx + d.rx * 0.8 * Math.cos(a + 0.3), d.cy + d.ry * 0.8 * Math.sin(a + 0.3)); } else if (m.phase === 'tip' && Math.sin((d.pt / 1.5) * 6.2832 - 1.5708) > 0.2) sc.debugInput('pointer', d.cx, d.cy); else if (m.phase === 'swirled') sc.panReveal({ flakes: 4, nugget: m.n === 2 }); }, 60); }],
+      ['v1.5 the rocker at Coloma (the cradle, the pour, the beat)', { biome: 'goldcountry', backdrop: 'diggings', leg: 'coloma', moving: '0' }, () => { const sc = window.__ww.scene; sc.startRocker({ seed: 2, rounds: 3 }); setInterval(() => { const m = sc.getState().mini; if (!m) { sc.startRocker({ seed: 3, rounds: 3 }); return; } if (m.phase === 'swirled') sc.rockerReveal({ flakes: 4 }); else sc.debugInput('pointer', 10, 10); }, 400); }],
+      ['v1.5 Laurel Hill (the slope, the rope, the dust)', { biome: 'mountains', leg: 'barlow-road', moving: '0' }, () => { const sc = window.__ww.scene; sc.startSnub({ seed: 2, drops: 3 }); setInterval(() => { const m = sc.getState().mini; if (!m) { sc.startSnub({ seed: 3, drops: 3 }); return; } const d = sc.debugMini(); if (m.phase === 'wait') sc.debugInput('pointer', 10, 10); else if (m.phase === 'slide' && d.s > d.ledge.s0 - 0.02 + (m.drop === 2 ? 0.1 : 0)) sc.debugInput('release'); }, 40); }],
+      ['v1.5 the farm at full build with a raising and the weather', { backdrop: 'homestead', weather: 'rain', dog: 'brown' }, () => { const sc = window.__ww.scene; const all = { cabin: 1, 'frame-house': 1, barn: 1, schoolhouse: 1, well: 1, fence: 1, corral: 1, cow: 1, garden: 4, flowers: 3, mailbox: 1, bench: 1, coop: 1, 'apple-tree': 6, orchard: 1, mill: 1, 'name-plate': 1, 'trophy-shelf': 1 }; sc.setHomestead({ site: 'willamette', name: 'Sunny Acres', pieces: { ...all, barn: 0 }, animals: { oxen: 4, mules: 4 }, dog: { name: 'Frodo', coat: 'brown' }, decor: ['weathervane-salmon'], party: null, trophies: ['bronze', 'silver', 'gold'] }); sc.setBackdrop('homestead'); setInterval(() => { const f = { site: 'willamette', name: 'Sunny Acres', animals: { oxen: 4, mules: 4 }, dog: { name: 'Frodo', coat: 'brown' }, decor: ['weathervane-salmon'], party: null, trophies: ['bronze'] }; sc.setHomestead({ ...f, pieces: { ...all, barn: 0 } }); sc.setHomestead({ ...f, pieces: all }); sc.buildPiece('barn'); }, 4000); }],
+      ['v1.5 the Sacramento claim (windmill, vineyard) in a portrait-sized farm', { backdrop: 'homestead', dog: 'spotted' }, () => { const sc = window.__ww.scene; sc.setHomestead({ site: 'sacramento', name: 'Gold Claim', pieces: { cabin: 1, well: 1, barn: 1, vineyard: 1, windmill: 1, fence: 1, corral: 1, garden: 3 }, animals: { oxen: 3, mules: 2 }, dog: { name: 'Frodo', coat: 'spotted' }, decor: [], party: null, trophies: [] }); sc.setBackdrop('homestead'); }],
     ]) {
       if (process.env.PERF_FILTER && !new RegExp(process.env.PERF_FILTER, 'i').test(name)) continue; // PERF_FILTER='stones|stars' runs some cases
       const { page, context, errors } = await open(browser, params);

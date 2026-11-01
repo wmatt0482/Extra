@@ -50,8 +50,10 @@
 const SKIES = {
   prairie: ['#8fc6e8', '#f6e3b4'], bluffs: ['#9cc3e0', '#f2d2a0'], highdesert: ['#a8cfe6', '#f4d9a8'],
   mountains: ['#7fb2dc', '#e4ecf2'], gorge: ['#8db8d4', '#d9e6e8'], valley: ['#92cbe6', '#eef2c8'],
+  basin: ['#a0d0ea', '#f6ebd2'], sierra: ['#6aa8dc', '#d6ecfb'], siskiyou: ['#86c0e8', '#e9f4f0'], goldcountry: ['#8cc4ea', '#fbeccb'], sea: ['#8fd0f0', '#f2f6f0'],
 };
-const GROUNDS = { prairie: '#a9b85a', bluffs: '#c49a62', highdesert: '#c8ad78', mountains: '#7f9a6a', gorge: '#6f8f6a', valley: '#8fbf5f' };
+const GROUNDS = { prairie: '#a9b85a', bluffs: '#c49a62', highdesert: '#c8ad78', mountains: '#7f9a6a', gorge: '#6f8f6a', valley: '#8fbf5f',
+  basin: '#e6dcbe', sierra: '#a9a6a0', siskiyou: '#a69c7c', goldcountry: '#bf7a4a', sea: '#b98a54' };
 const HUNT = [{ animal: 'rabbit', meatLb: 4 }, { animal: 'turkey', meatLb: 10 }, { animal: 'deer', meatLb: 30 }];
 // INTEGRATION: swap this one line for '../journey/fishing.js' when the Journey stream's stepper is merged (same signature)
 import { createFight, fightStep, fightHelp } from '../journey/fishing.js';
@@ -103,6 +105,14 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
       if (S.backdrop === 'fort' || S.backdrop === 'post') for (let i = 0; i < 12; i++) ctx.fillRect(w * 0.62 + i * 14, h * 0.5, 10, h * 0.26);
       if (S.backdrop === 'river') { ctx.fillStyle = '#4f9fc8'; ctx.fillRect(w * 0.55, h * 0.72, w * 0.45, h * 0.12); }
       if (S.backdrop === 'landmark') { ctx.beginPath(); ctx.moveTo(w * 0.7, h * 0.74); ctx.lineTo(w * 0.76, h * 0.3); ctx.lineTo(w * 0.82, h * 0.74); ctx.fill(); }
+      if (S.backdrop === 'diggings') { ctx.fillStyle = '#4f9fc8'; ctx.fillRect(0, h * 0.86, w, h * 0.14); }
+      if (S.backdrop === 'sea') { ctx.fillStyle = '#2f8fb8'; ctx.fillRect(0, h * 0.52, w, h * 0.2); }
+      if (S.backdrop === 'homestead' || S.backdrop === 'fork') { // (v1.5) the farm's name and pieces, or the signpost's words, as text
+        ctx.fillStyle = '#fff6e0'; ctx.font = '700 14px system-ui, sans-serif'; ctx.textAlign = 'center';
+        if (S.backdrop === 'fork') ctx.fillText(`Fork: ${S.fork && S.fork.id || ''} · ${((S.fork && S.fork.options) || []).map((o) => o.name || o.id).join(' | ')}`, w / 2, h * 0.4);
+        else { const f = S.farm || {}; ctx.fillText(`${f.name || 'Homestead'} (${f.site || 'willamette'}): ${Object.entries(f.pieces || {}).map(([k, n]) => `${k}${n > 1 ? '×' + n : ''}`).join(', ') || 'a tent'}`, w / 2, h * 0.4); }
+        ctx.textAlign = 'start';
+      }
     }
     // the wagon: wheels, the bed, the canvas top in its paint; the flag; the team in front; the companions beside it
     const bx = w * 0.36, by = h * 0.8;
@@ -290,7 +300,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     setLeg(leg = {}) { S.leg = { ...S.leg, ...leg }; draw(); },
     setParty(p = {}) { S.party = { ...S.party, ...p, wagon: { ...S.party.wagon, ...(p.wagon || {}) }, dog: p.dog === undefined ? S.party.dog : (p.dog ? { ...p.dog } : null) }; draw(); },
     setTravel(t = {}) { S.travel = { ...S.travel, ...t }; if (S.travel.moving) kick(); else draw(); },
-    setBackdrop(name) { S.backdrop = ['trail', 'fort', 'river', 'landmark', 'camp', 'post', 'valley'].includes(name) ? name : 'trail'; draw(); },
+    setBackdrop(name) { S.backdrop = ['trail', 'fort', 'river', 'landmark', 'camp', 'post', 'valley', 'homestead', 'diggings', 'sea', 'fork'].includes(name) ? name : 'trail'; draw(); },
     spotAnimal(kind) {
       S.spotted = kind; draw();
       setTimeout(() => {
@@ -536,6 +546,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     getState() {
       return { backdrop: S.backdrop, milesDone: S.travel.milesDone, weather: S.travel.weather, moving: !!S.travel.moving,
         biome: S.leg.biome, legId: S.leg.id, pace: S.travel.pace, view: S.backdrop, playing: S.playing, reducedMotion: !!reducedMotion,
+        dry: !!S.travel.dry, fork: S.fork || null, home: S.backdrop === 'homestead' && S.farm ? { site: S.farm.site, name: S.farm.name, pieces: { ...(S.farm.pieces || {}) } } : null,
         mini: S.derby ? { kind: 'derby', progress: S.derby.pos, mailProgress: S.derby.mail, left: S.derby.of - S.derby.n, phase: S.derby.phase, markers: S.derby.n, bursts: S.derby.bursts.length, won: S.derby.won }
           : S.mini && S.mini.v14 ? S.mini.state()
           : S.mini && S.mini.kind === 'ford' ? { kind: 'ford', left: S.mini.left, good: S.mini.good, pushes: S.mini.i, phase: 'play' }
@@ -546,6 +557,90 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
         dog: S.party.dog ? { ...S.party.dog } : null, mock: true };
     },
   };
+  // ---- v1.5 (The Long Trail; SPEC v1.5 §4.4): gold, the rope, the voyage and the farm, scripted like v1.4 (every step shotMs apart, in the real scene's order) ----
+  //   startPan({ pans, rich }): 'panSwirled' { n, quality } shotMs after the start (quality: __mockScript.pan, a number or one per pan, default 0.8) and then
+  //     WAITS for panReveal({ flakes, nugget }) → 'pan' { n, flakes, nugget } shotMs later → the next 'panSwirled', or 'panEnd' { pans } after the last
+  //   startRocker({ rounds }): 'rockerRound' { n, beats } (__mockScript.rocker, default 0.8), waits for rockerReveal({ flakes }) → next round or 'rockerEnd' { rounds }
+  //   startSnub({ drops }): 'snub' { good } per drop (__mockScript.snub: 'smooth' (default) | 'bumpy' | [bool, …]) then 'snubEnd' { smooth, good, drops }
+  //   startSail({ length }): __mockScript.sail bumps ('sail' { bump: true } each, before the first marker; default 1), 'sailMarker' { n, of } per marker, each WAITS for
+  //     sailGo() (→ true), the last sailGo() → 'sailEnd' { bumps } shotMs later
+  //   setHomestead(o): kept (window.__mock.lastHomestead = o) and drawn as text; buildPiece(id) → 'buildDone' { id } shotMs later (window.__mock.lastBuild = id);
+  //   setFork({ id, options }): kept and drawn as text; setTravel({ dry }) and setParty({ wagon: { decor }, packMules }) are kept in the state
+  const step15 = (fn) => { clearTimeout(miniTimer); miniTimer = setTimeout(fn, shotMs()); };
+  const mini15 = (kind, extra, state) => { stopMini(); const m = S.mini = { v14: true, kind, ...extra }; m.state = () => ({ kind, ...state(m) }); m.summary = () => ({ finished: false, ...state(m) }); kick(); return m; };
+  const v15 = {
+    startPan({ pans = 3, rich = [] } = {}) {
+      const plan = script().pan;
+      const m = mini15('pan', { n: 1, pans, phase: 'swirl', q: 0, flakes: 0, nugget: false, revealed: 0 }, (m) => ({ phase: m.phase, n: m.n, pans, meter: m.phase === 'swirl' ? 0.5 : 1, rich: (Array.isArray(rich) ? rich : []).includes(m.n - 1), quality: m.q, flakes: m.flakes, nugget: m.nugget }));
+      const swirled = () => { if (S.mini !== m || m.phase !== 'swirl') return; m.q = Array.isArray(plan) ? Number(plan[(m.n - 1) % plan.length]) : Number.isFinite(Number(plan)) ? Number(plan) : 0.8; m.phase = 'swirled'; emit('panSwirled', { n: m.n, quality: m.q }); };
+      m.reveal = (r) => {
+        if (S.mini !== m || m.phase !== 'swirled') return false;
+        m.phase = 'reveal'; m.flakes = Math.max(1, Math.floor(Number(r && r.flakes) || 1)); m.nugget = !!(r && r.nugget);
+        step15(() => {
+          if (S.mini !== m) return;
+          m.revealed++; emit('pan', { n: m.n, flakes: m.flakes, nugget: m.nugget });
+          if (m.n >= pans) { m.phase = 'end'; step15(() => { if (S.mini !== m) return; stopMini(); emit('panEnd', { pans }); }); } else { m.n++; m.phase = 'swirl'; m.flakes = 0; m.nugget = false; step15(swirled); }
+        });
+        return true;
+      };
+      m.summary = () => ({ pans: m.revealed, finished: false });
+      m.resume = swirled; step15(swirled); return true;
+    },
+    panReveal(r) { return !!(S.mini && S.mini.kind === 'pan' && S.mini.reveal(r || {})); },
+    startRocker({ rounds = 3 } = {}) {
+      const beats = Number.isFinite(Number(script().rocker)) ? Number(script().rocker) : 0.8;
+      const m = mini15('rocker', { n: 1, rounds, phase: 'rock', flakes: 0, done: 0 }, (m) => ({ phase: m.phase, n: m.n, rounds, beat: 0, beats: m.phase === 'rock' ? 0 : beats, flakes: m.flakes }));
+      const round = () => { if (S.mini !== m || m.phase !== 'rock') return; m.phase = 'swirled'; emit('rockerRound', { n: m.n, beats }); };
+      m.reveal = (r) => {
+        if (S.mini !== m || m.phase !== 'swirled') return false;
+        m.phase = 'reveal'; m.flakes = Math.max(2, Math.floor(Number(r && r.flakes) || 2));
+        step15(() => { if (S.mini !== m) return; m.done++; if (m.n >= rounds) { stopMini(); emit('rockerEnd', { rounds }); } else { m.n++; m.phase = 'rock'; step15(round); } });
+        return true;
+      };
+      m.summary = () => ({ rounds: m.done, finished: false });
+      m.resume = round; step15(round); return true;
+    },
+    rockerReveal(r) { return !!(S.mini && S.mini.kind === 'rocker' && S.mini.reveal(r || {})); },
+    startSnub({ drops = 3 } = {}) {
+      const sc = script().snub, goodAt = (i) => (Array.isArray(sc) ? !!sc[i % sc.length] : sc !== 'bumpy');
+      const m = mini15('snub', { drop: 1, drops, good: 0, bumps: 0, phase: 'slide' }, (m) => ({ phase: m.phase, drop: Math.min(m.drop, drops), drops, good: m.good, bumps: m.bumps, s: m.drop / drops, held: false }));
+      const next = () => {
+        if (S.mini !== m) return;
+        const good = goodAt(m.drop - 1); if (good) m.good++; else m.bumps++;
+        emit('snub', { good });
+        if (m.drop >= drops) { step15(() => { if (S.mini !== m) return; const out = { smooth: m.bumps === 0, good: m.good, drops }; stopMini(); emit('snubEnd', out); }); } else { m.drop++; step15(next); }
+      };
+      m.summary = () => ({ smooth: false, good: m.good, drops, finished: false });
+      m.resume = next; step15(next); return true;
+    },
+    startSail({ length = 4 } = {}) {
+      const bumps = Number.isFinite(Number(script().sail)) ? Math.max(0, Number(script().sail)) : 1;
+      const m = mini15('sail', { n: 0, of: length, waiting: false, bumps: 0, phase: 'sail' }, (m) => ({ phase: m.phase, n: Math.min(m.n + 1, length), of: length, bumps: m.bumps, u: 0.5, waiting: m.waiting, progress: m.n / (length + 1) }));
+      const marker = () => {
+        if (S.mini !== m || m.waiting) return;
+        m.n++; m.waiting = true; m.phase = 'marker';
+        if (m.n === 1) for (let i = 0; i < bumps; i++) { m.bumps++; emit('sail', { bump: true }); }
+        emit('sailMarker', { n: m.n, of: length });
+      };
+      m.go = () => {
+        if (S.mini !== m || !m.waiting) return false;
+        m.waiting = false;
+        if (m.n >= length) { m.phase = 'bar'; step15(() => { if (S.mini !== m) return; const out = { bumps: m.bumps }; stopMini(); emit('sailEnd', out); }); } else { m.phase = 'sail'; step15(marker); }
+        return true;
+      };
+      m.summary = () => ({ bumps: m.bumps, markers: m.n, finished: false });
+      m.resume = marker; step15(marker); return true;
+    },
+    sailGo() { return !!(S.mini && S.mini.kind === 'sail' && S.mini.go && S.mini.go()); },
+    setFork(f) { S.fork = f && typeof f === 'object' ? { id: f.id, options: Array.isArray(f.options) ? f.options.map((o) => ({ ...o })) : [] } : null; draw(); },
+    setHomestead(o = {}) { S.farm = { site: o.site || 'willamette', name: o.name || '', pieces: { ...(o.pieces || {}) }, animals: o.animals || null }; if (typeof window !== 'undefined') { window.__mock = window.__mock || {}; window.__mock.lastHomestead = o; } draw(); },
+    buildPiece(id) {
+      if (typeof window !== 'undefined') { window.__mock = window.__mock || {}; window.__mock.lastBuild = id; }
+      setTimeout(() => { if (!S.destroyed) emit('buildDone', { id }); }, shotMs());
+      return true;
+    },
+  };
+  Object.assign(scene, v15);
   resize();
   requestAnimationFrame(() => emit('ready'));      // once, after the first frame (the scene plays at once)
   return scene;
