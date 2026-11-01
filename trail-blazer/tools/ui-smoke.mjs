@@ -32,6 +32,7 @@ import { mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { runGateAgreement } from './gate-agreement.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
@@ -1056,6 +1057,8 @@ async function runLayout(browser, layout) {
 
   check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 4).join(' | ') : ''}`);
   await ctx.close();
+  // ---------- v1.8.1: question / answer agreement across 60 gates (race, turbo, hill), in its own fresh context and player ----------
+  await runGateAgreement(browser, layout, BASE, 60, { J, typeAnswer, check, visibleSel });
 }
 
 const srv = await ensureServer();

@@ -26,7 +26,7 @@ const { CARDS, CARD_BY_ID, SUITS, cardsOf } = await import('../src/content/cards
 const { NATIONS, FALLBACK_TRADES } = await import('../src/content/nations.js');
 const { COMPANIONS } = await import('../src/content/companions.js');
 import { readFileSync } from 'node:fs';
-const { problemFor, parseFactId, splitLine, numberWords, PROBLEM_KINDS } = await import('../src/journey/problems.js');
+const { problemFor, parseFactId, splitLine, numberWords, dollarWords, PROBLEM_KINDS } = await import('../src/journey/problems.js');
 const { composeLetter, happenedKeys, keepLetter, lineSource, FALLBACK_LINES } = await import('../src/journey/letters.js');
 const { PEOPLE, PEOPLE_BY_STOP, PERSON_BY_ID } = await import('../src/content/people.js');
 const { DEED_BY_ID } = await import('../src/journey/deeds.js');
@@ -573,6 +573,93 @@ test('trade problems use the leg\'s nation and never trade more than the wagon h
   assert.ok(p.text.includes(n.name)); assert.equal(p.meta.nation, n.id);
   const q = problemFor({ kind: 'trade', fact: '7x8', leg, have: 7 });
   assert.ok(q.meta.giveN <= 7);
+});
+// ---- v1.4.1 sweep: every ladder fact a × b (a, b in 0 … 12) and the ÷ twins, every kind, every season, a range of purses
+// and cash: the shown text, the spoken text, every worked line and the graded answer must agree with each other and with
+// the true arithmetic of the numbers the text itself names ("9 × 12 is 96" must be impossible) ----
+const eqLines = (line) => {
+  const bad = [];
+  for (const m of String(line).matchAll(/(\d+)\s*([×÷+−])\s*(\d+)\s*=\s*(\d+)/g)) {
+    const a = Number(m[1]), b = Number(m[3]), c = Number(m[4]);
+    const v = m[2] === '×' ? a * b : m[2] === '÷' ? a / b : m[2] === '+' ? a + b : a - b;
+    if (v !== c) bad.push(`${m[0]} (true: ${v})`);
+  }
+  return bad;
+};
+const spokenOfText = (t) => String(t).replace(/\$(\d+)/g, (m, d) => dollarWords(Number(d))).replace(/\d+/g, (d) => numberWords(Number(d)));
+const mathOfText = (p) => {
+  const t = p.text, n = (re) => { const m = re.exec(t); return m ? m.slice(1).map(Number) : null; };
+  switch (p.kind) {
+    case 'buy': { const m = n(/costs \$(\d+)\. You buy (\d+)/); return m && { answers: [m[0] * m[1]], nums: m }; }
+    case 'divide': { const m = n(/You have \$(\d+)\. .* cost \$(\d+) each/); return m && { answers: p.answers ? [Math.floor(m[0] / m[1]), m[0] % m[1]] : [Math.floor(m[0] / m[1])], nums: m }; }
+    case 'ration': { const m = n(/eats (\d+) pounds? of food a day\. It is (\d+) days? to .*? The wagon has (\d+) pounds/); if (m) return { answers: [m[2] - m[0] * m[1]], nums: m };
+      const r = n(/^(\d+) people each eat (\d+) pounds? of food a day\. How many pounds do they eat in (\d+) days/i) || n(/^\w+ people each eat (\d+) pounds? of food a day\. How many pounds do they eat in (\d+) days/); return null; }
+    case 'distance': { let m = n(/is (\d+) miles away\. The wagon makes (\d+) miles a day/); if (m) return { answers: [m[0] / m[1]], nums: m };
+      m = n(/makes (\d+) miles a day on the way to .*?\. How far does it go in (\d+) days?/); return m && { answers: [m[0] * m[1]], nums: m }; }
+    case 'parts': { let m = n(/shares (\d+) new .*? equally among (\d+) /); if (m) return { answers: [m[0] / m[1]], nums: m };
+      m = n(/has (\d+) spokes\. You check (\d+) wheels?\. (\d+) spokes? (?:is|are) broken/); if (m) return { answers: [m[0] * m[1] - m[2]], nums: m };
+      m = n(/You have (\d+) \w+ of \w+ with (\d+) \w+ in each \w+\. (\d+) \w+ (?:is|are) /); return m && { answers: [m[0] * m[1] - m[2]], nums: m }; }
+    case 'trade': { const m = n(/gives? (\d+) .*? for every (\d+)? ?.*?\. You (?:have|trade) (\d+)/); if (!m) return null;
+      const get = Number(/(\d+) [^.]*? for every/.exec(t)[1]), per = Number((/for every (\d+) /.exec(t) || [0, 1])[1]), giv = Number(/You (?:have|trade) (\d+)/.exec(t)[1]);
+      return { answers: [(giv / per) * get], nums: [get, per, giv] }; }
+    default: return null;
+  }
+};
+test('sweep: every ladder fact × every kind × every season × purses: text, spoken text, work lines and graded answer all agree', () => {
+  const facts = [null];
+  for (let a = 0; a <= 12; a++) for (let b = a; b <= 12; b++) { facts.push(`${a}x${b}`, `${b}x${a}`); if (a && a * b) { facts.push(`${a * b}/${a}`, `${a * b}/${b}`); } }
+  const purses = [undefined, 0, 3, 10, 20, 28, 45, 60, 100, 250, 2000], shelves = [0, 3, 9];
+  const seen = new Set();
+  let n = 0, checkedText = 0;
+  for (const kind of PROBLEM_KINDS) for (const season of SEASONS) for (const fact of facts) for (const cash of purses) for (const shelf of shelves) {
+    const p = problemFor({ kind, fact, leg: TRAIL[3], season: season.id, cash, shelf, have: 40, remainder: kind === 'divide' ? (n % 2 === 0) : undefined });
+    const key = `${kind}|${season.id}|${p.text}|${p.work.join('/')}`; if (seen.has(key)) continue; seen.add(key); n++;
+    const tag = `${kind} ${fact} ${season.id} cash=${cash} shelf=${shelf}: ${p.text} => ${p.answer} :: ${p.work.join(' // ')}`;
+    // 1. every equation in every worked line is true arithmetic
+    for (const w of p.work) { const bad = eqLines(w); assert.deepEqual(bad, [], `${tag}: wrong equation ${bad}`); }
+    // 2. the last worked line ends on the graded answer (the one the child is told)
+    const last = p.work[p.work.length - 1];
+    const ans = p.answers || [p.answer];
+    for (const a of ans) assert.ok(new RegExp(`(^|[^\\d])${a}([^\\d]|$)`).test(last), `${tag}: last line "${last}" does not name ${a}`);
+    // 3. the text's own numbers give the graded answer
+    const m = mathOfText(p);
+    if (m) { checkedText++; assert.deepEqual(ans, m.answers, `${tag}: the sentence says ${m.answers}`); }
+    // 4. the spoken text is the shown text, word for word
+    assert.equal(p.say.toLowerCase(), spokenOfText(p.text).toLowerCase(), `${tag}: say "${p.say}" vs text`);
+    if (p.parts) p.parts.forEach((q, i) => { assert.equal(q.answer, ans[i], tag); assert.equal(q.say.toLowerCase(), spokenOfText(q.text).toLowerCase(), tag); });
+    // 5. meta agrees with the answer and with the work line that names the product
+    const md = p.meta || {};
+    if (kind === 'buy') { assert.equal(md.price * md.qty, p.answer, tag); assert.ok(p.work[0].startsWith(`${md.qty} `) && p.work[0].includes(`$${md.price} each: ${md.price} × ${md.qty}`), `${tag}: first line`); }
+    if (kind === 'divide') { assert.equal(md.price * md.qty + (md.left || 0), md.total + (md.left || 0), tag); assert.equal(md.price * p.answer, p.answers ? md.total : md.total, tag); }
+    if (kind === 'distance') assert.equal(md.rate * md.days, md.miles, tag);
+    if (kind === 'trade') { assert.equal(md.getN, p.answer, tag); assert.equal(md.giveN / md.rate[0] * md.rate[1], md.getN, tag); assert.ok(md.giveN <= 40, tag); }
+    // 6. a store problem the purse capped is flagged as another fact than the ladder's (its shown numbers are what is graded)
+  }
+  assert.ok(n > 5000 && checkedText > 5000, `swept ${n}, text-checked ${checkedText}`);
+});
+test('sweep: problem.asked is the fact the sentence really asks (a capped / scaled / trade-limited 9 × 12 is not recorded as 9 × 12)', () => {
+  const ask = (a) => { const m = /^(\d+)x(\d+)$/.exec(a); if (m) return { op: 'x', a: +m[1], b: +m[2], ans: m[1] * m[2] }; const d = /^(\d+)\/(\d+)$/.exec(a); return { op: '/', a: +d[1], b: +d[2], ans: d[1] / d[2] }; };
+  let n = 0, differs = 0;
+  for (const kind of PROBLEM_KINDS) for (const season of SEASONS) for (const fact of ['9x12', '12x9', '108/12', '108/9', '8x12', '7x8', '23x4', '91/7']) for (const cash of [undefined, 12, 28, 45, 100, 400]) {
+    const p = problemFor({ kind, fact, season: season.id, cash, shelf: 3, have: 31 });
+    if (p.asked === undefined) assert.fail(`${kind} ${fact}: no asked`);
+    if (p.asked === null) continue;
+    n++;
+    const a = ask(p.asked), md = p.meta;
+    if (p.asked !== fact && p.asked !== `${Math.min(...fact.split('x').map(Number))}x${Math.max(...fact.split('x').map(Number))}`) differs++;
+    if (kind === 'buy') assert.deepEqual([a.op, a.ans], ['x', md.price * md.qty]);
+    if (kind === 'divide') assert.deepEqual([a.op, a.ans, a.b], ['/', md.qty, md.price]);
+    if (kind === 'ration') assert.equal(a.ans, md.eaten);
+    if (kind === 'distance') assert.equal(a.ans, p.answer === md.days ? md.days : md.miles);
+    if (kind === 'trade') assert.equal(a.ans, md.getN);
+    if (kind === 'parts' && p.work[0].includes('÷')) assert.equal(a.ans, p.answer);
+  }
+  assert.ok(n > 300 && differs > 20, `asked ${n}, differing from the pick ${differs}`);
+  // the playtest example: 9 × 12 with $45 in the purse is a 9 × 3 (or smaller), and says so
+  const q = problemFor({ kind: 'buy', fact: '9x12', season: 's1847', item: 'flour', cash: 45, shelf: 3 });
+  assert.equal(q.fact, '9x12'); assert.equal(q.asked, '3x9'); assert.equal(q.answer, 27);
+  const full = problemFor({ kind: 'buy', fact: '9x12', season: 's1847', item: 'flour' });
+  assert.equal(full.asked, '9x12'); assert.equal(full.answer, 108);
 });
 test('parseFactId and numberWords', () => {
   assert.deepEqual(parseFactId('7x8'), { op: 'x', a: 7, b: 8, p: 56 });

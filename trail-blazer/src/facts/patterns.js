@@ -119,7 +119,7 @@ export function patternHint(fact, flip, kind, given) {
     const k = Math.abs(n.d);
     const start = n.first ? `${n.c} × ${n.x} is ${g}` : `${n.x} × ${n.c} is ${g}`;
     if (n.d < 0) return `${start}, then ${k === 1 ? `one more ${n.x}` : `${k} more ${n.x}s`} is ${ans}`;
-    return `${start}, take away ${k === 1 ? `one ${n.x}` : `${k} × ${n.x}`} is ${ans}`;
+    return `${start}, take away ${k === 1 ? `one ${n.x}` : `${k} × ${n.x} (${k * n.x})`} is ${ans}`;   // ("take away 2 × 12 is 108" read as a false equation: the amount is in brackets)
   }
   if (kind === 'reversed') {
     if (ans < 100) return `${Math.floor(ans / 10)} tens and ${ans % 10} ones: ${ans}, not ${Number.isFinite(g) ? g : reverseDigits(ans)}`;
@@ -143,8 +143,9 @@ export function famList(fams) {
 /**
  * The week's patterns in plain words (Report → Patterns, the Start line): [{ kind, text }], strongest first.
  * "Misses cluster in ×7 and ×8" · "Division is weaker than multiplication" · "Slow on big numbers: 6 × 7, 8 × 9" ·
- * "Mixes up neighbouring facts (like 7 × 8 → 49)" · "Often one group off (like 7 × 8 → 48)" · "Sometimes swaps the
- * digits (like 56 → 65)" · "Mixes up the operation (like 7 × 8 → 15)".
+ * "Mixes up neighbouring facts (like 7 × 8: answered 49)" · "Often one group off (like 7 × 8: answered 48)" ·
+ * "Sometimes swaps the digits (like 56: answered 65)" · "Mixes up the operation (like 7 × 8: answered 15)". (The number after
+ * "answered" is what the child TYPED, a wrong answer; it was "7 × 8 → 49", which read like the game saying 7 × 8 is 49.)
  */
 export function patternSummary(d, now = Date.now(), days = 7) {
   const since = now - days * DAY_MS;
@@ -182,7 +183,7 @@ export function patternSummary(d, now = Date.now(), days = 7) {
     const n = real.filter((m) => m.kind === kind).length;
     if (n < min) return;
     const e = example(kind);
-    out.push({ kind, count: n, text: e ? `${text} (like ${factText(e.fact)} → ${e.given})` : text });
+    out.push({ kind, count: n, text: e ? `${text} (like ${factText(e.fact)}: answered ${e.given})` : text });
   };
   said('adjacent', 2, 'Mixes up neighbouring facts');
   said('off-by-operand', 2, 'Often one group off');

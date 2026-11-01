@@ -141,6 +141,15 @@ node trail-blazer/tools/make-icons.mjs     # regenerates icons/*.png
 `bash build.sh` at the repo root copies `trail-blazer/` to `dist/trail-blazer/` (without `tools/`, `docs/`,
 `dev.html`, `SPEC.md`), next to `dist/spell-jump/`.
 
+## 1.8.1 (a wrong-product report)
+
+Owner: "the math game says 9x12 is 96" (seen in Wagon West). Every answer, spoken sentence, strategy hint and pattern hint of
+every a × b (0 … 12), ÷ and related fact is now swept by `tools/facts-tests.mjs`, and `tools/ui-smoke.mjs` drives 60 gates
+(race, turbo, hill) asserting the question on screen, the spoken question, the graded and revealed answer and the recorded fact
+agree. Nothing wrong was found in those. Wording that read like a false equation is fixed: the Report's pattern lines said
+"(like 9 × 12 → 96)" where 96 is what the child TYPED, now "(like 9 × 12: answered 96)"; a two-step pattern hint said
+"take away 2 × 12 is 108", now "take away 2 × 12 (24) is 108". VERSION 1.8.1; the service worker is `trail-blazer-v1.8.1`.
+
 ## For parents
 
 Trail Blazer uses **the same family as Spell Jump**: the same players, the same parent PIN and the same family code.

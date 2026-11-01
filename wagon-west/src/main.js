@@ -56,7 +56,7 @@ import { loadFactsData, writeFactsData } from '../../trail-blazer/src/meta/save.
 import { nextFact, recordAnswer } from '../../trail-blazer/src/facts/store.js';
 import { createSession as createFactSession } from '../../trail-blazer/src/facts/scheduler.js';
 import { activeFacts } from '../../trail-blazer/src/facts/store.js';
-import { factParts, normFact } from '../../trail-blazer/src/facts/facts.js';
+import { factAnswer, factParts, normFact } from '../../trail-blazer/src/facts/facts.js';
 import { hintFor, spokenHint } from '../../trail-blazer/src/facts/hints.js';
 import { cloudVoiceInfo } from '../../spell-jump/src/tts/voices.js';
 import { loadSkills as loadFracSkills } from '../../fraction-fright/src/meta/save.js';
@@ -822,7 +822,9 @@ async function boot() {
   }
   /** The problem's fact when it is one the ladder knows (a table fact, or the ladder's own pick), canonical; else null. */
   function ladderFactOf(p, pick) {
-    const k = p && typeof p.fact === 'string' ? normFact(p.fact) : null;
+    // v1.3.3: what the problem REALLY asked (p.asked, from the numbers in its sentence), not the fact its numbers were drawn
+    // from: a purse-capped "9 × 12" is a 9 × 6, a season-scaled price or a capped trade is another fact (or none)
+    const k = p && typeof p.fact === 'string' ? (p.asked !== undefined ? (p.asked ? normFact(p.asked) : null) : normFact(p.fact)) : null;
     if (!k) return null;
     if (pick && normFact(pick.fact) === k) return k;
     const fp = factParts(k);
@@ -896,7 +898,9 @@ async function boot() {
     logKind(save, kind, !!res.correct);
     logPlay(save, { problems: 1, problemsRight: res.correct ? 1 : 0 });
     const lf = ladderFactOf(p, pick);
-    if (lf) recordFact(lf, { correct: res.correct, quick: false, fixed: !res.correct && res.fixed, ms: res.ms, given: res.given }, pick);
+    // (the typed wrong answer goes on the fact's record only when the question's answer IS the fact's answer: a two-step ration or
+    // repair asks for pounds left / good spokes, and "98 good bolts" is not a wrong answer to 9 × 12)
+    if (lf) recordFact(lf, { correct: res.correct, quick: false, fixed: !res.correct && res.fixed, ms: res.ms, given: Number(p.answer) === factAnswer(lf) ? res.given : null }, pick && normFact(pick.fact) === lf ? pick : null);
     app.persist();
     checkDaily();
     return res;

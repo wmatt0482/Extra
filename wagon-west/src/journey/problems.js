@@ -134,6 +134,12 @@ export function splitLine(a, b) {
   return null;
 }
 const lines = (...xs) => xs.filter(Boolean);
+/** v1.3.3: the fact a problem REALLY asks, as a Trail Blazer fact id: the × (a groups of b) or the ÷ (a total in groups of
+ *  b) whose numbers the sentence names, or null when a factor is 0 or 1. The ladder's pick can differ (the purse cap
+ *  halves a quantity, a season scales a price, a trade is capped by what the wagon holds): the store records what was
+ *  asked, never the pick the numbers were drawn from ("9 × 12" asked as 9 × 6 is a 9 × 6 answer). */
+const askedTimes = (a, b) => (a >= 2 && b >= 2 ? `${Math.min(a, b)}x${Math.max(a, b)}` : null);
+const askedDivide = (d, q) => (d >= 2 && q >= 2 ? `${d * q}/${d}` : null);
 
 // ---- the goods a problem is about ----
 const BIG_ITEMS = [
@@ -169,6 +175,7 @@ function buy(f, rand, season, o) {
   const s = both((F) => `${cap(article(it.one))} ${it.one} costs ${F.d(price)}. You buy ${F.w(qty, it.short, it.shorts)}. How much is that?`);
   return { ...s, answer: total, unit: '$',
     work: lines(`${qty} ${qty === 1 ? it.short : it.shorts} at $${price} each: ${price} × ${qty}`, splitLine(price, qty), `${price} × ${qty} = ${total}, so it costs $${total}.`),
+    asked: askedTimes(price, qty),
     meta: { item: it.id, qty, price, total } };
 }
 
@@ -186,6 +193,7 @@ function divide(f, rand, season, o) {
     const s = both((F) => `You have ${F.d(have)}. ${many} cost ${F.d(d)} each. How many ${it.shorts} can you buy?`);
     return { ...s, answer: q, unit: '',
       work: lines(`${have} ÷ ${d}: think ${d} × ? = ${have}`, splitLine(d, q), `${d} × ${q} = ${have}, so you can buy ${q} ${q === 1 ? it.short : it.shorts}.`),
+      asked: askedDivide(d, q),
       meta: { item: it.id, qty: q, price: d, total: have } };
   }
   const s = both((F) => `You have ${F.d(have)}. ${many} cost ${F.d(d)} each. How many ${it.shorts} can you buy, and how much money is left?`);
@@ -194,6 +202,7 @@ function divide(f, rand, season, o) {
   return { ...s, answer: q, answers: [q, r], unit: '',
     parts: [{ ...p1, answer: q, unit: '' }, { ...p2, answer: r, unit: '$' }],
     work: lines(`${have} ÷ ${d}: ${d} × ${q} = ${d * q} is the closest without going over`, splitLine(d, q), `${have} − ${d * q} = ${r}: ${q} ${q === 1 ? it.short : it.shorts} and $${r} left.`),
+    asked: askedDivide(d, q),
     meta: { item: it.id, qty: q, price: d, total: d * q, left: r } };
 }
 
@@ -205,6 +214,7 @@ function ration(f, rand, season, o, leg) {
     const s = both((F) => `${cap(F.n(people))} people each eat ${F.w(lb, 'pound', 'pounds')} of food a day. How many pounds do they eat in ${F.n(days)} days?`);
     return { ...s, answer: total, unit: 'lb',
       work: lines(`${people} × ${lb} = ${daily} pounds a day`, `${daily} × ${days} = ${total} pounds in ${days} days`),
+      asked: null,
       meta: { people, perPerson: lb, days, daily, total } };
   }
   // eaten on the way (the fact), then what is left (4.OA.3: two steps)
@@ -215,6 +225,7 @@ function ration(f, rand, season, o, leg) {
   const s = both((F) => `The party eats ${F.w(daily, 'pound', 'pounds')} of food a day. It is ${F.w(days, 'day', 'days')} to ${dest}. The wagon has ${F.n(have)} pounds. How many pounds will be left when you get there?`);
   return { ...s, answer: extra, unit: 'lb',
     work: lines(`${daily} × ${days} = ${eaten} pounds eaten on the way`, splitLine(daily, days), `${have} − ${eaten} = ${extra} pounds left`),
+    asked: askedTimes(daily, days),
     meta: { daily, days, eaten, have, left: extra } };
 }
 
@@ -231,6 +242,7 @@ function distance(f, rand, season, o, leg) {
     const s = both((F) => `${cap(dest)} is ${F.n(miles)} miles away. The wagon makes ${F.n(rate)} miles a day. How many days will it take?`);
     return { ...s, answer: days, unit: 'days',
       work: lines(`${miles} ÷ ${rate}: think ${rate} × ? = ${miles}`, splitLine(rate, days), `${rate} × ${days} = ${miles}, so it takes ${days} ${days === 1 ? 'day' : 'days'}.`),
+      asked: askedDivide(rate, days),
       meta: { miles, rate, days } };
   }
   // how far: miles a day × days (the rate grows with the season, up to a mule's brisk 30)
@@ -240,6 +252,7 @@ function distance(f, rand, season, o, leg) {
   const s = both((F) => `The wagon makes ${F.n(rate)} miles a day on the way to ${dest}. How far does it go in ${F.w(days, 'day', 'days')}?`);
   return { ...s, answer: miles, unit: 'mi',
     work: lines(`${rate} miles a day for ${days} ${days === 1 ? 'day' : 'days'}: ${rate} × ${days}`, splitLine(rate, days), `${rate} × ${days} = ${miles} miles.`),
+    asked: askedTimes(rate, days),
     meta: { miles, rate, days } };
 }
 
@@ -254,6 +267,7 @@ function parts(f, rand) {
     const s = both((F) => `The carpenter shares ${F.n(p)} new ${plural(st.thing)} equally among ${F.w(d, st.into, plural(st.into))}. How many ${plural(st.thing)} go in each ${st.into}?`);
     return { ...s, answer: q, unit: '',
       work: lines(`${p} ÷ ${d}: think ${d} × ? = ${p}`, splitLine(d, q), `${d} × ${q} = ${p}, so ${q} in each ${st.into}.`),
+      asked: askedDivide(d, q),
       meta: { total: p, groups: d, each: q } };
   }
   const { x, y } = factorsOf(f, rand);
@@ -265,12 +279,14 @@ function parts(f, rand) {
     const s = both((F) => `Each wagon wheel has ${F.n(per)} spokes. You check ${F.w(wheels, 'wheel', 'wheels')}. ${cap(F.w(k, 'spoke is', 'spokes are'))} broken. How many good spokes are there?`);
     return { ...s, answer: p - k, unit: '',
       work: lines(`${per} × ${wheels} = ${p} spokes in all`, splitLine(per, wheels), `${p} − ${k} = ${p - k} good spokes`),
+      asked: askedTimes(per, wheels),
       meta: { total: p, broken: k } };
   }
   const st = pick(rand, PART_STORIES);
   const s = both((F) => `You have ${F.w(y, st.box, plural(st.box))} of ${plural(st.thing)} with ${F.n(x)} ${plural(st.thing)} in each ${st.box}. ${cap(F.w(k, st.thing + ' is', plural(st.thing) + ' are'))} ${st.bad}. How many good ${plural(st.thing)} are there?`);
   return { ...s, answer: p - k, unit: '',
     work: lines(`${x} × ${y} = ${p} ${plural(st.thing)} in all`, splitLine(x, y), `${p} − ${k} = ${p - k} good ${plural(st.thing)}`),
+    asked: askedTimes(x, y),
     meta: { total: p, broken: k } };
 }
 
@@ -302,7 +318,7 @@ function trade(f, rand, season, o, leg) {
   const w = g === 1
     ? lines(`Each ${singular(give)} gets ${t} ${t === 1 ? singular(get) : get}: ${k} × ${t}`, splitLine(k, t), `${k} × ${t} = ${ans} ${ans === 1 ? singular(get) : get}`)
     : lines(`${n} ÷ ${g} = ${k} (${g} × ${k} = ${n}), so that is ${k} ${k === 1 ? 'trade' : 'trades'}`, splitLine(k, t), `${k} × ${t} = ${ans} ${ans === 1 ? singular(get) : get}`);
-  return { ...s, answer: ans, unit: '', work: w,
+  return { ...s, answer: ans, unit: '', work: w, asked: askedTimes(k, t),
     meta: { nation: nation ? nation.id : null, give: tr.give, get: tr.get, giveN: n, getN: ans, rate: [g, t] } };
 }
 
