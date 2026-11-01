@@ -774,7 +774,7 @@ async function boot() {
     S('setParty', {
       animal: J.animal,
       companions: partyLook(),
-      wagon: { paint: app.paintColor(), flag: save.cosmetics.equipped.flag, name: J.wagonName || '', decor: wornDecor(save.cosmetics) },
+      wagon: { paint: app.paintColor(), flag: save.cosmetics.equipped.flag, name: J.wagonName || '', decor: wornDecor(save.cosmetics), barrel: !!(J.upgrades && J.upgrades.barrel) },
       dog: J.dog ? { name: J.dog.name, coat: J.dog.coat, muddy: !!J.dog.muddy } : null,
       packMules: J.route === 'gold-road',                      // (v1.5: two pack mules walk beside the wagon on the Gold Road)
     });
@@ -904,7 +904,7 @@ async function boot() {
 
   // ---------- the store ----------
   /** The shape the child's ladder gives a word problem (SPEC v1.5 §3.9b): 0 and 1 are 1.3.3's, 2 asks the ration and distance in two steps and the change on a buy. */
-  const probTier = () => { try { return typeof JA.problemTierFor === 'function' ? JA.problemTierFor(facts) : 1; } catch (_) { return 1; } };
+  const probTier = () => { try { return typeof JA.problemTierFor === 'function' ? JA.problemTierFor(facts, Date.now()) : 1; } catch (_) { return 1; } };
   /** A fact from the child's ladder with the operation a problem needs ('x' or '/'), or null (problemFor picks). */
   function ladderPick(op = 'any') {
     if (!facts) return null;
@@ -1281,7 +1281,7 @@ async function boot() {
     r.acc += dt;
     const k = Math.min(1, r.acc / dayMs());
     const m = r.day.from + (r.day.to - r.day.from) * k;
-    S('setTravel', { milesDone: m, pace: J.pace, rations: J.rations, weather: r.weather, mood: J.mood, foodLow: !!r.day.res.foodLow, moving: k < 1, dry: !!r.day.res.dry });
+    S('setTravel', { milesDone: m, pace: J.pace, rations: J.rations, weather: r.weather, mood: J.mood, foodLow: !!r.day.res.foodLow, moving: k < 1, dry: r.day.res.dry ? { barrel: !!(J.upgrades && J.upgrades.barrel) } : false });     // (v1.5: a dry day draws the water barrel only when the wagon has one)
     hud.update(J, r.leg, { milesDone: m, foodLow: !!r.day.res.foodLow, ...hudExtra() });
     if (k >= 1) { const d = r.day; r.day = null; afterDay(r, d).catch((e) => console.error('[WagonWest] day', e)); }
   }
@@ -1507,7 +1507,7 @@ async function boot() {
       if (save.trip) { save.trip.look = true; app.persist(); }
     }
     // ---- v1.5: a fork, before the stop's other scenes: the explainer, the question, an equal button for every way (it also settles the food plan for the store) ----
-    if (!(await askFork()) || stale()) return;
+    if (!(await askFork(leg)) || stale()) return;
     // ---- v1.2 (app two): the "Talk" row of the people at this stop (its big button goes on to the ferry / the fort / home) ----
     if (peopleUI.has(leg)) { const on = await peopleUI.visit(leg); if (!on || screen !== 'stop' || stale()) return; }
     let dig = null;
@@ -1554,13 +1554,17 @@ async function boot() {
   }
   // ---- v1.5: the fork panel and the diggings, as the stop runs them ----
   /** The fork at this stop, if any: resolves false when the child left (the choice stays pending: the title says "A choice at Fort Hall"). */
-  async function askFork() {
+  async function askFork(leg) {
     const J = save.journey;
     let fork = null;
     try { fork = JA.forkAt(J); } catch (e) { console.warn('[WagonWest] forkAt', e); }
     if (!fork) return true;
     const first = !save.seen.forks[fork.id];
+    // (v1.5: the scene's signpost behind the panel: the arms carry the options' names)
+    S('setFork', { id: fork.id, options: fork.options.map((o) => ({ id: o.id, name: o.name })) });
+    S('setBackdrop', 'fork');
     const pick = await forkPanel.run(fork, { first });
+    if (screen === 'stop' || pick != null) S('setBackdrop', backdropFor(leg));
     if (pick == null) { if (screen === 'stop') go('title'); return false; }
     let res = null;
     try { res = JA.chooseBranch(J, fork.id, pick); } catch (e) { console.warn('[WagonWest] chooseBranch', e); }
@@ -2061,13 +2065,16 @@ async function boot() {
   const deedPop = createDeedPop($('#deedpop'), { sfx: Sfx, say: (t) => { app.sayLater(t); }, waitFor: () => cardPop.showing || !!(findPop && findPop.visible), hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) });
   const RAFT_BENDS = 4;
   const seedFor = (tag) => { const J = save.journey; return hashString(`${currentPlayerId}:${J ? J.legId : ''}:${J ? num(J.day) : 0}:${J ? num(J.legStarts) : 0}:${tag}`); };
+  // (v1.5: the pan, the cradle, Laurel Hill and the voyage draw their counters and hints along the top: the trail's top HUD steps aside while they run)
+  const mini15 = (on, fn = '') => { document.documentElement.classList.toggle('in-mini15', !!on); document.documentElement.classList.toggle('in-mini15-top', !!on && /^start(Pan|Rocker)$/.test(fn)); };
   function playMini(fn, opts, { end, types = [], onEvent = null } = {}) {
     return new Promise((resolve) => {
       if (v2.play) endPlay();
       if (!scene || typeof scene[fn] !== 'function') { setTimeout(() => resolve({ type: end, unavailable: true }), 0); return; }
       const p = { fn, end, types, onEvent, resolve };
       v2.play = p;
-      try { scene[fn](opts); } catch (e) { console.error(`[WagonWest] scene.${fn} threw`, e); v2.play = null; setTimeout(() => resolve({ type: end, unavailable: true }), 0); }
+      mini15(/^start(Pan|Rocker|Snub|Sail)$/.test(fn), fn);
+      try { scene[fn](opts); } catch (e) { console.error(`[WagonWest] scene.${fn} threw`, e); v2.play = null; mini15(false); setTimeout(() => resolve({ type: end, unavailable: true }), 0); }
     });
   }
   /** End the mini-game running now. early = the child chose to finish: resolves a synthetic end with what the scene
@@ -2075,14 +2082,14 @@ async function boot() {
   function endPlay(early = false) {
     const p = v2.play;
     if (!p) return;
-    v2.play = null;
+    v2.play = null; mini15(false);
     const sum = S('endMiniGame');
     p.resolve(early ? { type: p.end, early: true, ...(sum && typeof sum === 'object' ? sum : {}), held: false } : null);
   }
   function v2Event(evt) {
     const p = v2.play;
     if (!p) return false;
-    if (evt.type === p.end) { v2.play = null; p.resolve(evt); return true; }
+    if (evt.type === p.end) { v2.play = null; mini15(false); p.resolve(evt); return true; }
     if (p.types.includes(evt.type)) { if (p.onEvent) { try { p.onEvent(evt); } catch (e) { console.error('[WagonWest] mini event', e); } } return true; }
     return false;
   }

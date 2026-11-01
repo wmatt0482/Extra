@@ -35,7 +35,7 @@ const { planEvents, eligibleEvents, EVENTS, EVENT_BY_ID } = await import('../src
 const { useLegs, syntheticTrail, legList, legacyTrail, SEASONS, GOODS, nationFor } = await import('../src/journey/route.js');
 const LEGS = legacyTrail();            // the 1.3 / 1.4 tests below run on the twelve legs of 1.3 (LEGACY_PLAN_12), which is also what a 1.3 journey in progress keeps running on
 const { mulberry32, hashSeed } = await import('../src/journey/rng.js');
-const { LETTER_LINES, LETTER_OPEN } = await import('../src/content/letters.js');
+const { LETTER_LINES, LETTER_OPEN, LETTER_CLOSE } = await import('../src/content/letters.js');
 
 let passed = 0;
 const failures = [];
@@ -3268,6 +3268,21 @@ test('the letter tells the legs since the last letter (a post is not at every st
   assert.ok(happenedKeys(K).includes('barlow') === !!lineSource('barlow').length);
 });
 
+test('"Home soon, with gold!" closes only a Gold Road letter on its way home (after a flake or at Coloma), never an emigrant letter or the road out', () => {
+  const GOLD_CLOSE = 'Home soon, with gold!';
+  assert.ok(LETTER_CLOSE.includes(GOLD_CLOSE), 'the line is in the closing pool (for the way home)');
+  const closes = (J, farm) => { const out = new Set(); for (let seed = 1; seed <= 60; seed++) { J.seed = seed; J.letterMemo = null; out.add(composeLetter(J, null, ['a', 'b', 'c'], { farm }).close); } return out; };
+  for (const [route, opts] of [['emigrant', { journeyN: 1 }], ['emigrant', { journeyN: 3, year: 1849 }]]) {
+    const E = createJourney({ seed: 400, companions: PLAIN, route, ...opts });
+    for (const farm of ['', 'Hill Farm']) { const set = closes(E, farm); assert.ok(!set.has(GOLD_CLOSE), `${route} letter (farm "${farm}") never closes with the gold line: ${[...set].join(' | ')}`); }
+  }
+  const G = createJourney({ seed: 401, companions: PLAIN, route: 'gold-road', journeyN: 2, year: 1848 });
+  assert.ok(!closes(G, 'Hill Farm').has(GOLD_CLOSE), 'the road out (no gold yet, before Coloma) does not close with it');
+  G.gold = 12; assert.ok(closes(G, 'Hill Farm').has(GOLD_CLOSE), 'with gold in the pouch the way-home close can be picked');
+  const C = createJourney({ seed: 402, companions: PLAIN, route: 'gold-road', journeyN: 2, year: 1848 }); C.legIndex = C.plan.findIndex((p) => p.id === 'coloma');
+  assert.ok(closes(C, 'Hill Farm').has(GOLD_CLOSE), 'at Coloma the way-home close can be picked');
+});
+
 console.log('\nv1.5 adaptive math (§3.9)');
 const factsAfter = (answers, now = 1e12) => { const d = defaultFacts(now); for (const [fact, ok] of answers) tbRecord(d, fact, { correct: ok, quick: ok, ms: 1200 }, now); refreshFrontier(d, now); return d; };
 test('needsPlacement(facts): true for an untouched ladder (no history, no placement), false once there is any history, a placement, no store, or after the offer has been made three times', () => {
@@ -3332,6 +3347,28 @@ test('the ladder drives the shape end to end: a child whose frontier is ×11 get
   const hi = { frontier: { families: ['x11', 'x12'] } }, lo = { frontier: { families: ['x3', 'x4'] } };
   const mix = (facts) => { const tier = V.problemTierFor(facts); return ['buy', 'ration', 'distance'].map((kind) => problemFor({ kind, fact: kind === 'buy' ? '4x12' : '11x6', leg: LEG_BY_ID['fort-hall'], season: 'rookie', tier, rand: mulberry32(3) })); };
   assert.ok(mix(hi).every((p) => p.parts), 'every shape is two-step at the top'); assert.ok(mix(lo).every((p) => !p.parts), 'and one step at the bottom');
+});
+test('no snow on a dry stretch (the Forty-Mile Desert, the Sublette Cutoff): the basin borrows the high desert\'s weather but not its snow', () => {
+  const dryLegs = ALL_LEGS.filter((l) => l.dry);
+  assert.ok(dryLegs.length >= 2, 'the dry legs: ' + dryLegs.map((l) => l.id).join());
+  for (const leg of dryLegs) for (let s = 0; s < 200; s++) {
+    for (const tier of ['rookie', 'veteran', 'pioneer']) { const plan = planEvents(leg, mulberry32(hashSeed('dry-snow', leg.id, s)), { hunting: true, tier, dry: true }, markerMiles(leg.miles)); assert.ok(!plan.some((p) => (p.event ? p.event.id : p.id) === 'snow'), `${leg.id} ${tier} seed ${s}: snow on a dry stretch`); }
+  }
+});
+test('problemTierFor: a child who aced the Pit Crew Check through x12 (the frontier has moved on to the division twins) gets tier 2, not the tier of d2 / d5; a fresh ladder stays 0', async () => {
+  const { createCheck, checkNext, checkAnswer, applyCheck } = await import('../../trail-blazer/src/facts/placement.js');
+  const now = 1e12; const fresh = defaultFacts(now); refreshFrontier(fresh, now);
+  assert.equal(V.problemTierFor(fresh, now), 0, 'a fresh ladder: tier 0');
+  const setup = V.placementSetup(fresh, now); const st = createCheck({ tiers: setup.tiers, start: setup.start, division: setup.division }, mulberry32(5));
+  let it; while ((it = checkNext(st))) checkAnswer(st, { correct: true, quick: true, ms: 1500, given: null });
+  const d = defaultFacts(now); applyCheck(d, st, now); refreshFrontier(d, now);
+  assert.ok(d.frontier.families.every((f) => f[0] === 'd'), 'the frontier moved on to the division twins: ' + d.frontier.families.join());
+  assert.equal(V.problemTierFor(d, now), 2, 'and the problems take the strong child\'s shape (frontier ' + d.frontier.families.join() + ')');
+  const weak = defaultFacts(now); const st2 = createCheck({ tiers: setup.tiers, start: setup.start, division: setup.division }, mulberry32(5));
+  while ((it = checkNext(st2))) checkAnswer(st2, { correct: false, quick: false, ms: 6000, given: 1 });
+  applyCheck(weak, st2, now); refreshFrontier(weak, now);
+  assert.equal(V.problemTierFor(weak, now), 0, 'a child who missed the check keeps tier 0');
+  assert.equal(V.problemTierFor(null), 1, 'no store: the shapes of 1.3.3');
 });
 test('a Veteran / Pioneer / Rookie wagon plays every route\'s content end to end with the long trail\'s numbers (the whole matrix is also run by economy-sim.mjs --check)', () => {
   for (const [name, opts, choices] of PLANS) { const J = createJourney({ ...opts, tier: 'veteran', seed: 777, companions: PLAIN }); const log = walkJourney(J, { right: 0.7, seed: 3, choices }); assert.ok(J.done, name); assert.ok(log.days >= 20, name); }

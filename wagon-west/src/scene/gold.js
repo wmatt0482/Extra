@@ -267,7 +267,7 @@ export function createPan(opts, emit, S, hooks) {
   };
   D.state = () => ({ kind: 'pan', phase: D.phase, n: D.n, pans, meter: Math.round(D.meter * 1000) / 1000, rich: isRich(), quality: Math.round(D.quality * 1000) / 1000, flakes: D.flakes, nugget: D.nugget });
   D.summary = () => ({ pans: D.revealed, finished: D.phase === 'end' });
-  D.debug = (L) => ({ ...geo(L), phase: D.phase, beat: PAN.beat, pt: D.pt });
+  D.debug = (L) => ({ kind: 'pan', ...geo(L), phase: D.phase, beat: PAN.beat, pt: D.pt });
   startPan();
   return D;
 }
@@ -392,7 +392,7 @@ export function createRocker(opts, emit, S, hooks) {
   };
   D.state = () => ({ kind: 'rocker', phase: D.phase, n: D.n, rounds, beat: Math.max(0, Math.round(beatP() * 100) / 100), beats: Math.round((D.hits / ROCK.beats) * 1000) / 1000, flakes: D.flakes });
   D.summary = () => ({ rounds: D.phase === 'end' ? rounds : D.n - 1, finished: D.phase === 'end' });
-  D.debug = (L) => ({ ...geo(L), phase: D.phase, rt: D.rt, lead: ROCK.lead, period: ROCK.beat, win: ROCK.win });
+  D.debug = (L) => ({ kind: 'rocker', ...geo(L), phase: D.phase, rt: D.rt, lead: ROCK.lead, period: ROCK.beat, win: ROCK.win });
   startRound();
   return D;
 }

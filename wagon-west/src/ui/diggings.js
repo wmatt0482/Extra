@@ -74,7 +74,7 @@ export function createDiggings(app) {
     const left = V.dig.pans - startAt;
     if (left <= 0) return null;
     const richShift = rich.filter((i) => i >= startAt).map((i) => i - startAt);
-    V.busy = true; paint();
+    V.busy = true; paint(); wrap.hidden = true;        // (the creek's card steps off the scene while the pan is played: it covered the lower half of the pan and the touch)
     app.v2.showBar(DIG_TEXT.panBar, DIG_TEXT.barDone, () => app.v2.endPlay(true));
     app.sayAll(startAt === 0 ? [DIG_CUES.scoop, DIG_CUES.swirl, DIG_CUES.tip] : [DIG_CUES.scoop]);
     const prospector = !!(typeof JA().skillOf === 'function' && JA().skillOf(J, 'prospecting'));
@@ -98,7 +98,7 @@ export function createDiggings(app) {
       },
     });
     app.v2.hideBar();
-    V.busy = false;
+    V.busy = false; if (V) wrap.hidden = false;
     return end;
   }
   /** The cradle: rounds on the beat; each round shown when the scene reports it. */
@@ -107,7 +107,7 @@ export function createDiggings(app) {
     const startAt = done().rocker;
     const left = (V.dig.rocker | 0) - startAt;
     if (left <= 0) return null;
-    V.busy = true; paint();
+    V.busy = true; paint(); wrap.hidden = true;
     app.v2.showBar(DIG_TEXT.rockBar, DIG_TEXT.barDone, () => app.v2.endPlay(true));
     app.sayAll([DIG_CUES.rock]);
     const end = await app.v2.playMini('startRocker', { seed: app.v2.seed('rocker'), rounds: left }, {
@@ -126,7 +126,7 @@ export function createDiggings(app) {
       },
     });
     app.v2.hideBar();
-    V.busy = false;
+    V.busy = false; if (V) wrap.hidden = false;
     return end;
   }
   /** The trail cards the gold brings: the gold pan, the first flake, the first nugget, the rocker (never twice: a duplicate would be a token). */

@@ -218,6 +218,6 @@ export function createSail(opts, emit, S, hooks) {
   };
   D.state = () => ({ kind: 'sail', phase: D.phase, n: Math.min(D.stretch + 1, length), of: length, bumps: D.bumps, u: Math.round(D.u * 1000) / 1000, waiting: D.waiting, progress: Math.round(((D.stretch + (D.planI + 0) / Math.max(1, D.plan.length)) / (length + 1)) * 1000) / 1000 });
   D.summary = () => ({ bumps: D.bumps, markers: D.stretch, finished: D.ended });
-  D.debug = (L) => ({ u: D.u, zs: SAIL.zs, hull: hull(L) / L.W * 0.8, swells: D.swells.map((s) => ({ z: Math.round(s.z * 1000) / 1000, g: s.g, gw: s.gw, hit: s.hit })), plan: D.plan.map((p) => ({ at: p.at, g: p.g })), phase: D.phase, stretch: D.stretch, shore: D.shore });
+  D.debug = (L) => ({ kind: 'sail', u: D.u, zs: SAIL.zs, hull: hull(L) / L.W * 0.8, swells: D.swells.map((s) => ({ z: Math.round(s.z * 1000) / 1000, g: s.g, gw: s.gw, hit: s.hit })), plan: D.plan.map((p) => ({ at: p.at, g: p.g })), phase: D.phase, stretch: D.stretch, shore: D.shore });
   return D;
 }

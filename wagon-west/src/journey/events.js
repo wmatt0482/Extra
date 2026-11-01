@@ -25,7 +25,8 @@ export const CERTAIN = ['laurel-hill', 'ice'];
 /** The kind an event fires as: the hidden spring is its own kind (spirit, nothing else), Laurel Hill is 'snub' (the rope mini-game). */
 export const eventKind = (e) => (e.id === 'spring' ? 'spring' : e.id === 'laurel-hill' ? 'snub' : e.kind);
 
-const biomeOk = (e, l) => !Array.isArray(e.biomes) || e.biomes.includes(l.biome) || (BIOME_ALIAS[l.biome] ? e.biomes.includes(BIOME_ALIAS[l.biome]) : false);
+// (integration fix: no snow on a dry stretch: the basin borrows the high desert's weather, and the playtest met "snow soon" over the Forty-Mile Desert's heat shimmer)
+const biomeOk = (e, l) => !(e.id === 'snow' && l && l.dry) && (!Array.isArray(e.biomes) || e.biomes.includes(l.biome) || (BIOME_ALIAS[l.biome] ? e.biomes.includes(BIOME_ALIAS[l.biome]) : false));
 const isDry = (l, opts) => (opts && opts.dry != null ? !!opts.dry : !!(l && l.dry));
 
 /** The events that can happen on a leg: by biome, a trade only with a nation there, a hunt only when hunting is on; on a dry stretch no fish, no hunt and no

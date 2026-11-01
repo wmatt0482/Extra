@@ -92,7 +92,7 @@ export function createForkPanel(app) {
             leave),
           leanLine ? h('p', { class: 'fk-lean', id: 'fk-lean' }, leanLine) : null,
           first ? h('p', { class: 'fk-first', id: 'fk-first' }, FORK_FIRST) : null,
-          h('div', { class: 'fk-cards', id: 'fk-cards' }, ...cards)));
+          h('div', { class: 'fk-cards', id: 'fk-cards', 'data-n': String(cards.length) }, ...cards)));
         root.hidden = false;
         cur = { fork, resolve, first };
         // the reading: the question, the lean line (once), each way's name and line; a tap cuts it off

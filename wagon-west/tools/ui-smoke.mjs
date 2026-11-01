@@ -3060,10 +3060,12 @@ async function ltPlacement(browser, layout) {
   // the problems take the ladder's shape: the top tier asks a two-step ration (the pounds eaten, then the pounds left)
   const shapes = await J(page, () => {
     const w = window.__wagonWest, JA = w.JA, out = {};
-    for (const fam of [['x2'], ['x7'], ['x12']]) { w.facts.frontier = { ...(w.facts.frontier || {}), families: fam }; out[fam[0]] = JA.problemTierFor(w.facts); }
+    out.placed = JA.problemTierFor(w.facts, Date.now());      // (integration fix: a child who just aced the check through ×12 sits on the ÷ twins; the tier reads the known × families too)
+    for (const fam of [['x2'], ['x7'], ['x12']]) { out[fam[0]] = JA.problemTierFor({ ...w.facts, records: {}, placement: null, vouched: {}, scouts: {}, frontier: { ...(w.facts.frontier || {}), families: fam } }, Date.now()); }      // (a ladder with nothing known: the frontier alone)
     return out;
   });
   check(shapes.x2 === 0 && shapes.x7 === 1 && shapes.x12 === 2, `problemTierFor follows the ladder: ×2 → ${shapes.x2}, ×7 → ${shapes.x7}, ×12 → ${shapes.x12}`);
+  check(shapes.placed === 2, `a child who aced the Pit Crew Check (the frontier moved on to the ÷ twins) gets the top tier's shapes (tier ${shapes.placed})`);
   await J(page, () => { window.__wagonWest.holdTrail(true); window.__wagonWest.app.v2.runProblem('ration', { title: 'Ask Eli: the food' }); });
   await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
   const t2 = await J(page, () => { const p = window.__wagonWest.problemPanel.problem; return { parts: p.parts && p.parts.length, answers: p.answers, text: p.text, kind: p.kind }; });

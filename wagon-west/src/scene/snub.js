@@ -173,6 +173,6 @@ export function createSnub(opts, emit, S, hooks) {
   };
   D.state = () => ({ kind: 'snub', phase: D.phase, drop: Math.min(D.drop, drops), drops, good: D.good, bumps: D.bumps, s: Math.round(D.s * 1000) / 1000, held: D.held });
   D.summary = () => ({ smooth: D.ended && D.bumps === 0, good: D.good, drops, finished: D.ended });
-  D.debug = (L) => { const G = geo(L); const lg = G.ledges[Math.min(2, li())]; return { s: D.s, v: D.v, ledge: { s0: lg.s0, s1: lg.s1 }, phase: D.phase, vmax: SNUB_RUN.vmax, decel: SNUB_RUN.decel, tot: G.tot }; };
+  D.debug = (L) => { const G = geo(L); const lg = G.ledges[Math.min(2, li())]; return { kind: 'snub', s: D.s, v: D.v, ledge: { s0: lg.s0, s1: lg.s1 }, phase: D.phase, vmax: SNUB_RUN.vmax, decel: SNUB_RUN.decel, tot: G.tot }; };
   return D;
 }

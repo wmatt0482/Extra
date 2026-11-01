@@ -2,7 +2,7 @@
 //  (a) offers the Pit Crew Check placement when the ladder is untouched (needsPlacement; placementSetup hands the app what Trail Blazer's createCheck needs), and
 //  (b) scales the SHAPE of word problems with the ladder tier (problemTierFor → problemFor's `tier` option).
 // Pure: no DOM, no clock (the caller passes `now`), no storage, no Math.random. The ladder's own functions are imported from Trail Blazer, never copied.
-import { tierOf as ladderTierOf } from '../../../trail-blazer/src/facts/adaptive.js';
+import { tierOf as ladderTierOf, famInfo, ladder } from '../../../trail-blazer/src/facts/adaptive.js';
 import { tiersFor, START_TIER } from '../../../trail-blazer/src/facts/placement.js';
 import { recheckStart } from '../../../trail-blazer/src/facts/scouts.js';
 
@@ -43,11 +43,18 @@ const familyTier = (fam) => {
   return Number.isFinite(t) && t < 99 ? t : 0;
 };
 /** The problem tier for a child's ladder: from the highest family of their frontier (`facts.frontier.families`): 0 through ×5, 1 for ×6–×9, 2 above (×11 ×12, tens, teens,
- *  big numbers). 1 when there is no store (the shapes of 1.3.3); a child with no history has the first families on the frontier, so 0. */
-export function problemTierFor(facts) {
+ *  big numbers). 1 when there is no store (the shapes of 1.3.3); a child with no history has the first families on the frontier, so 0.
+ *  Integration fix: the frontier alone under-reads a strong child, because Trail Blazer's frontier moves on to the ÷ twins once the × families are known (a child who has
+ *  just aced the Pit Crew Check through ×12 sits on ÷2 ÷5, which counts as ×2). So the tier is the higher of the frontier's and that of the highest × / tens / teens family the ladder
+ *  already counts as known (`famInfo(...).known`: graduated, secure, or found fluent by the check). `now` only dates famInfo's one-week windows (the caller passes it; the module reads no clock). */
+export function problemTierFor(facts, now = 0) {
   if (!isObj(facts)) return PROBLEM_TIERS.mid;
   const fam = facts.frontier && Array.isArray(facts.frontier.families) ? facts.frontier.families : [];
   if (!fam.length) return PROBLEM_TIERS.low;
-  const top = Math.max(...fam.map(familyTier));
+  let top = Math.max(...fam.map(familyTier));
+  if (top <= MID_MAX) {
+    const at = Number.isFinite(Number(now)) && Number(now) > 0 ? Number(now) : Number(facts.updatedAt) || Number(facts.placement && facts.placement.at) || 0;
+    try { for (const f of ladder(facts.sets || {})) { if (f[0] === 'd' || f === 'add' || f === 'sub') continue; const t = familyTier(f); if (t > top && famInfo(facts, f, at).known) top = t; } } catch (_) { /* the frontier's own reading stands */ }
+  }
   return top > MID_MAX ? PROBLEM_TIERS.high : top >= 3 ? PROBLEM_TIERS.mid : PROBLEM_TIERS.low;
 }

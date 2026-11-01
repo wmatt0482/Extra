@@ -149,6 +149,17 @@ function rankOf(key) {
   return 3;
 }
 const withFarm = (list, farm) => (farm ? list : list.filter((l) => !/\{farm\}/.test(l)));
+/** The Gold Road's closing ('Home soon, with gold!') is for the way home only: on the Gold Road once gold has been found or the party is at Coloma or later.
+ *  Any other letter (an emigrant trail, the Gold Road before its first flake) never closes with it. */
+function goldWayHome(J) {
+  if (!J || J.route !== 'gold-road') return false;
+  if ((J.gold | 0) > 0) return true;
+  const ids = (Array.isArray(J.plan) ? J.plan : []).map((p) => p && p.id);
+  const at = ids.indexOf('coloma');
+  return at >= 0 && (J.legIndex | 0) >= at;
+}
+const goldCloses = (J) => (goldWayHome(J) ? [] : (LETTER_GOLD && Array.isArray(LETTER_GOLD.close) ? LETTER_GOLD.close : ['Home soon, with gold!']));
+const notGold = (list, J) => { const g = goldCloses(J); return g.length ? list.filter((l) => !g.includes(l)) : list; };
 /** Opening and closing: the lines with {farm} only once there is a farm (a later emigrant journey and the Gold Road write to the people at the farm). */
 function openingFor(J, farm, seed) {
   const all = Array.isArray(LETTER_OPEN) ? LETTER_OPEN : [];
@@ -200,7 +211,7 @@ export function composeLetter(J, legEvents, words = [], ctx = {}) {
   }
   const lines = picked.map((p) => fill(p.line, J, p.key, p.legId, farm));
   const opening = fill(openingFor(J, farm, seed), J, 'open', legId, farm);
-  const closes = withFarm(Array.isArray(LETTER_CLOSE) && LETTER_CLOSE.length ? LETTER_CLOSE : ['Love,'], farm);
+  const closes = notGold(withFarm(Array.isArray(LETTER_CLOSE) && LETTER_CLOSE.length ? LETTER_CLOSE : ['Love,'], farm), J);
   const close = fill(pickSeeded(closes, ...seed, 'close'), J, 'close', legId, farm);
   const ps = psFor(words);
   const text = [opening, lines.join(' '), ps, close].filter(Boolean).join('\n');
