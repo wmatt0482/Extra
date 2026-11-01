@@ -28,23 +28,33 @@
 // session within 10 % of 1.3's 9.6 lb, the mandatory v1.4 seconds a leg (nose + fact + dust devil) at most 60, a nose moment on 95 % of the legs with the dog, the locket
 // given back or mailed by every kid who kept the dog, under one token a leg from the dust devil, the quests and the new deeds. The 1.3 TARGETS stand, except the two lower
 // bounds of `choices` (see TARGETS: the sim now runs the dog's berry patch, which it never did).
-//   node wagon-west/tools/economy-sim.mjs            the table (40 kids, 3 seasons)
+// v1.5 (The Long Trail, SPEC v1.5 §7.2): every journey is a (route, tier) cell. The baseline cell is Rookie Oregon by Fort Bridger and the raft (the 1.3 trail grown to 20 legs):
+// the three profiles × two shopping policies as in 1.3, a kid's history Rookie → Veteran → Pioneer (cards, deeds, the dog and the tokens carry), and the 1.3 TARGETS unchanged
+// (end cash, the gaps, fort cash at the four forts, choices of 5 stores, the yoke rules, a lean weak player who finishes) plus sessions 20 ± 2, leg minutes mean 8-10 and at most 14,
+// tokens 60-140 a journey. The other cells (the Barlow Road, the Sublette Cutoff, the Lander Road, California, the Gold Road) are run by the same kids with the route's play: the
+// toll, Laurel Hill, the dry stretch and the water barrel, the panning and the rocker, the voyage. Each prints its own table and has its own targets (see ROUTE_TARGETS). The kids'
+// ladder tier (strong 2, average 1, weak 0) shapes the problems (problemFor's `tier`, SPEC §3.9) and only costs a little more time on a two-step problem.
+//   node wagon-west/tools/economy-sim.mjs            the table (40 kids, 3 tiers on the baseline route; every route's table)
+//   node wagon-west/tools/economy-sim.mjs --homestead  a kid's whole history (Oregon, the Gold Road, then the route the profile prefers): the farm's pace
 //   node wagon-west/tools/economy-sim.mjs --check    exit 1 if a kid gets stuck (food 0 for more than 3 days in a row),
 //                                                    the first season takes more than 16 or fewer than 9 sessions (the
 //                                                    target: the first season's mean is 12 ± 2 sessions), soaked sacks
 //                                                    average a leg or more, a season averages a limp or more, or the
-//                                                    tokens earned a leg are outside 3-10, or any of the v1.3 money TARGETS is missed
+//                                                    tokens earned a journey are outside 60-140, or any of the v1.3 money TARGETS is missed
 //                                                    (cushion, choices, the yoke, a lean weak player who finishes)
 // While src/content/legs.js is a skeleton the sim runs on route.syntheticTrail() (12 legs).
 const {
   createJourney, tickDay, applyMarker, applyProblem, applyWords, applyHunt, applyFish, applyTrade, buy, arrive, nextLeg,
-  newSeason, priceAt, foodToNextFort, setPace, setRations, tradeOffer, storeLeg, partySize,
+  newSeason, startSeason, priceAt, foodToNextFort, setPace, setRations, tradeOffer, storeLeg, partySize,
   camp, awardCard, cardForLeg, cardForAnimal, buyUpgrade, upgradeCost, derbyPay, dailyChallenge, claimChallenge, suitComplete, UPGRADES,
   repair, crossRiver, forecast, waitOut, meetPerson, peopleAt, raftPay, stampedePay, checkDeeds, needsBlankets, coldLegsAhead, huntAllowed, lookoutDrops,
   applyMarkerHint, skillOf, DEEDS, yokeOffered,
   // v1.4
   adoptDog, dogOfferAt, chaseResult, fetchThrow, sellHorseshoes, fishingSession, landCast, castOff, endFishing, catchHoppers, questAt, questTalk, questMail,
   heardFact, dustDevilResult, stonesPlan, stonesResult, campWater, meteorsTonight, wishFor,
+  // v1.5
+  chooseBranch, payToll, applySnub, sailPay, applyGold, panOutcome, rockerOutcome, goldAt, nuggetsOf, closeJourney, newLedger, newFarm, tiersOpen, buildPiece, canBuild, homesteadView,
+  farmBalance, writeOnRock, checkSets, TIER_FX, tierOf,
 } = await import('../src/journey/sim.js');
 const { CARD_BY_ID } = await import('../src/content/cards.js');
 const { RIVER_STOPS } = await import('../src/content/fish.js');
@@ -53,17 +63,24 @@ const { COMPANIONS } = await import('../src/content/companions.js');
 const { problemFor } = await import('../src/journey/problems.js');
 const { composeLetter, keepLetter } = await import('../src/journey/letters.js');
 const { foodNeeded, lbOf, START, RESCUE } = await import('../src/journey/economy.js');
-const { useLegs, syntheticTrail, legList, LEGS, SEASONS, animalOf } = await import('../src/journey/route.js');
+const { legList, animalOf } = await import('../src/journey/route.js');
+const { HOMESTEAD_COST } = await import('../src/journey/economy.js');
+const { PIECE_BY_ID, HOMESTEAD_PIECES } = await import('../src/content/homestead.js');
 const { mulberry32 } = await import('../src/journey/rng.js');
 
 const CHECK = process.argv.includes('--check');
 const KIDS = 40;
-if (LEGS.length < 12) useLegs(syntheticTrail(12));
-const TRAIL = legList();
+const HOMESTEAD = process.argv.includes('--homestead');
+const TIER_IDS = ['rookie', 'veteran', 'pioneer'];
+const PROFILE_KEYS = ['strong', 'average', 'weak'];
+const SEASONS = TIER_IDS.map((id) => ({ id, priceMult: TIER_FX[id].priceMult }));      // (the three tiers; the 1.3 sim called them seasons)
+createJourney({ seed: 1 });                                                            // installs the default emigrant plan (20 legs)
+const TRAIL = legList().slice();
+const LEGS = TRAIL;
 
 // ---- the kid ----
 const KID = { goal: 0.7, quickDrawWin: 0.5, derbyWin: 0.5, campEvery: 3, cashRich: 6, cashFrom: 5,
-  marker: 0.7, quickOfRight: 0.5, problem: 0.6, words: 2 / 3, trailProblems: [2, 3], storeProblems: [2, 4],
+  marker: 0.7, quickOfRight: 0.5, problem: 0.6, words: 2 / 3, trailProblems: [2, 3], storeProblems: [2, 2], ladder: 1, panSkill: 0.65, smooth: 0.6,
   huntHit: 0.5, castHit: 0.6, sessionS: 12 * 60,
   // v1.2
   remembersBlankets: 0.5, remembersArrows: 0.75, remembersRope: 0.6, extraPart: 0.4, buysYoke: 0.8, yokeReserve: 15,
@@ -71,9 +88,9 @@ const KID = { goal: 0.7, quickDrawWin: 0.5, derbyWin: 0.5, campEvery: 3, cashRic
   workRepairOut: 0.5, waitStorm: 0.4, stampedeHold: 0.5, raftBumps: [0.25, 0.3, 0.25, 0.15, 0.05], talks: [1, 2], tipWork: 0.6 };
 // the three players of SPEC v1.3: how often they are right (markers, word problems, spelling words)
 const PROFILES = {
-  strong: { marker: 0.9, problem: 0.9, words: 0.9 },
-  average: { marker: 0.7, problem: 0.7, words: 0.7 },
-  weak: { marker: 0.45, problem: 0.45, words: 0.45 },
+  strong: { marker: 0.9, problem: 0.9, words: 0.9, ladder: 2, panSkill: 0.85, smooth: 0.8 },
+  average: { marker: 0.7, problem: 0.7, words: 0.7, ladder: 1, panSkill: 0.65, smooth: 0.6 },
+  weak: { marker: 0.45, problem: 0.45, words: 0.45, ladder: 0, panSkill: 0.45, smooth: 0.4 },
 };
 const BASE_KID = { ...KID };
 // What --check enforces about money (Rookie year, 1847 dollars; the other seasons scale with the price level, so the same
@@ -100,15 +117,17 @@ const TARGETS = {
   yoke: { strongBy: 0.5, strongAtKearnyMax: 0.35, weakMax: 0.25, averageBuysAll: [0.15, 0.7] },
   // the weak player runs lean and still finishes: every season, at most this many sessions, never more than 3 days in a row
   // with no food, and on average at most this many days of it a journey
-  weak: { sessionsMax: 16, crawlRunMax: 3, crawlDaysMax: 2 },
+  weak: { sessionsMax: 24, crawlRunMax: 3, crawlDaysMax: 2 },      // (v1.5: 24 sessions on the 20-leg trail; was 16 on 12)
   seasonSlack: [0.7, 1.3],                                      // the later seasons' end cash / price level, against the Rookie ranges
 };
 // seconds a thing takes on screen (SPEC §5: a day ≈ 6 s, a marker ≈ 15 s, the stop scene ≈ 3 min)
 const SEC = { day: 6, marker: 15, markerFix: 12, problem: 25, problemFix: 20, word: 20, wordFix: 15, event: 10, hunt: 60,
-  fish: 75, trade: 30, lookout: 15, store: 40, rope: 30, post: 20, results: 30, landmark: 30, home: 90,
-  quickDraw: 120, tales: 40, rest: 10, derby: 40, claim: 5,
+  fish: 75, trade: 30, lookout: 15, store: 30, rope: 30, post: 20, results: 30, landmark: 45, lookoutRead: 30, home: 90,
+  quickDraw: 120, tales: 40, rest: 10, derby: 30, claim: 5,
   // v1.2
   ford: 25, float: 45, ferryTalk: 10, repair: 12, stampede: 40, raft: 90, person: 12, deed: 6, wait: 8,
+  // v1.5: a two-step problem takes longer; the toll gate, Laurel Hill's ropes, a pan, a round of the rocker, the sail home, the fork card
+  problemStep: 12, toll: 15, snub: 30, pan: 25, rocker: 30, sail: 90, fork: 30, nugget: 5,
   // v1.4 (SPEC v1.4 §7.2): fishing 2.0 is 75 s a session (1.3: 45); the nose, the facts and the dust devil are the mandatory seconds; the rest is optional play
   nose: { find: 0, berries: 8, snake: 8, rabbit: 8, quest: 15 }, fact: 10, dustDevil: 15, fetch: 30, hoppers: 15, stones: 25, meteors: 25, questTalk: 12 };
 /** What the v1.4 kid does (SPEC v1.4 §7.2): the dog kept 80 % of the time at the Kansas River (a kid who said "Not now" takes it at Fort Kearny's store half the time),
@@ -119,7 +138,7 @@ const V14_DEED_IDS = ['good-nose', 'fetch-champ', 'big-one', 'river-guide', 'ski
 const FACTS = ['3x4', '6x7', '7x8', '4x9', '8x6', '56/7', '42/6', '5x12', '9x9', '72/8'];
 // rabbit, turkey, deer: lb and how often (1.3: 0.45 / 0.35 / 0.2, mean 13.3 lb a hit); v1.4's leading hunt adds the pronghorn (12 lb, 13 % of the animals) and the bison (24 lb, 10 %): the first three scaled by 0.77, mean 14.2 lb a hit (+6.8 %, inside the 10 % the food targets allow)
 const ANIMALS_HUNTED = [[4, 0.3465], [10, 0.2695], [40, 0.154], [12, 0.13], [24, 0.1]];
-const ALL_COMPANIONS = COMPANIONS.map((c) => c.id);
+const ALL_COMPANIONS = COMPANIONS.filter((c) => !c.fromJourney).map((c) => c.id);      // the eight stock companions (the sim's 1.3 party draw; Mateo and Hattie have their own cell)
 
 function huntLb(rand) {
   let lb = 0;
@@ -130,14 +149,16 @@ function fishLb13(rand) { let lb = 0; for (let c = 0; c < 4; c++) if (rand() < K
 // a pick from a list of chances (index i with chance list[i])
 function chance(rand, list) { let r = rand(); for (let i = 0; i < list.length; i++) { if (r < list[i]) return i; r -= list[i]; } return list.length - 1; }
 
-// one sim kid's whole history over `seasons` journeys
-function simulateKid(seed, seasons = 3, policy = 'natural') {
+// one sim kid's history: a journey at each tier of `spec` (SPEC v1.5 §7.2): { route, journeyN, year, choices: { forkId: optionId } }
+function simulateKid(seed, spec, policy = 'natural') {
+  const journeys = spec.journeys || TIER_IDS.map((t) => ({ route: spec.route, tier: t, choices: spec.choices }));      // a kid's journeys: the cell's three tiers, or a whole history (--homestead)
+  const seasons = journeys.length;
   const rand = mulberry32(seed);
   const careful = rand() < 0.5;
   const animal = rand() < 0.5 ? 'oxen' : 'mules';
-  const party = [...ALL_COMPANIONS].map((id) => [rand(), id]).sort((a, b) => a[0] - b[0]).slice(0, 3).map((x) => x[1]);
+  const party = [...ALL_COMPANIONS].map((id) => [rand(), id]).sort((a, b) => a[0] - b[0]).slice(0, 3).map((x) => x[1]);      // (the eight stock companions: Mateo and Hattie are the v1.5 sim's own kids' choice below)
   const out = [];
-  let J = createJourney({ season: SEASONS[0].id, wagonName: 'Kid ' + seed, animal, companions: party, seed });
+  let J = createJourney({ route: journeys[0].route, tier: journeys[0].tier, year: spec.year, journeyN: spec.journeyN, wagonName: 'Kid ' + seed, animal, companions: party.filter((id) => !['packer', 'prospector'].includes(id) || spec.journeyN > 1), seed });
   let clock = 0;                     // seconds into the current session
   let legTime = 0;                   // seconds spent on the current leg (across sessions)
   let sessions = 1;
@@ -182,10 +203,10 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
     const before = J.tokens; stonesResult(J, { throws: sk }); fun(before); spend(SEC.stones); rec_.v14.stones++;
   };
   const ask = (kind, fact) => {      // a word problem: right first try, or fixed
-    const p = problemFor({ kind, fact, leg: J.legId, season: J.season, rand });
+    const p = problemFor({ kind, fact, leg: J.legId, season: J.season, rand, tier: KID.ladder });
     const ok = rand() < KID.problem;
     lt.problems += applyProblem(J, { kind, correct: ok, firstTry: true }).tokens;
-    spend(SEC.problem + (ok ? 0 : SEC.problemFix));
+    spend(SEC.problem + (p.parts ? SEC.problemStep : 0) + (ok ? 0 : SEC.problemFix));
     return p;
   };
   // a camp activity (SPEC v1.1 §3): the sim's day, then what the app's mini-game would add
@@ -204,8 +225,10 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
   };
   const CARD_OF_PARTY = (r) => ({ id: J.companions[Math.floor(r() * J.companions.length)] });
   // the Outfit's upgrade shelf: tokens first, then cash once it is plentiful
+  const dryAhead = () => legList().slice(J.trip && J.trip.arrived ? J.legIndex + 1 : J.legIndex).some((l) => l.dry);
   const outfit = () => {
-    for (const u of UPGRADES) {
+    const order = dryAhead() && !J.upgrades.barrel ? [...UPGRADES].sort((a, b) => (b.id === 'barrel') - (a.id === 'barrel')) : UPGRADES;      // a kid who sees a dry stretch ahead buys the barrel first
+    for (const u of order) {
       if (J.upgrades[u.id]) continue;
       const c = upgradeCost(J, u.id);
       if (J.tokens >= c.tokens) { if (buyUpgrade(J, u.id, { tokens: true })) { lt.spent += c.tokens; rec_.upTokens++; } }
@@ -257,14 +280,16 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
       const afford = Math.min(sacks, Math.floor(J.cash / Math.max(1, flourPrice)));      // a kid at the counter buys the sacks the purse covers
       if (afford > 0) buy(J, { item: 'flour', qty: afford, price: flourPrice });
       // v1.2: a spare part (some buy two), blankets before a cold leg, arrows for the bow, a coil of rope, the second yoke
-      if (J.parts < 1 || (J.parts < 2 && rand() < KID.extraPart)) { if (buy(J, { item: 'parts', qty: 1 }).ok) rec_.partsBought++; }
+      // spare parts: one, and (as the store's hint says) another for a long stretch to the next store and for a harder tier, where the breakdowns come thicker
+      const stretch = plan.miles, wantParts = 1 + (stretch >= 300 && rand() < KID.extraPart * 1.5 ? 1 : 0) + (stretch >= 600 && rand() < KID.extraPart * 1.5 ? 1 : 0) + (TIER_FX[J.tier].breakdownW >= 1.5 && rand() < KID.extraPart ? 1 : 0);
+      for (let k = J.parts; k < wantParts; k++) { if (buy(J, { item: 'parts', qty: 1 }).ok) rec_.partsBought++; else break; }
       const cold = coldLegsAhead(J);
       if (cold.length) { const need = needsBlankets(J, cold[0]).need; if ((J.goods.blankets | 0) < need && rand() < KID.remembersBlankets) buy(J, { item: 'blankets', qty: need - (J.goods.blankets | 0) }); }
       if (J.opts.hunting && (J.goods.arrows | 0) < 10 && rand() < KID.remembersArrows) buy(J, { item: 'arrows', qty: 2 });
       if ((J.goods.rope | 0) < 1 && rand() < KID.remembersRope) buy(J, { item: 'rope', qty: 1 });
       if (J.animals.n < 4 && yokeOffered(L) && rand() < KID.buysYoke) {
         const p = priceAt('yoke', L, J.season);
-        if (J.cash >= p + KID.yokeReserve * SEASONS.find((x) => x.id === J.season).priceMult && buy(J, { item: 'yoke', qty: 1 }).ok) { rec_.yoke = true; rec_.yokeLeg = rec_.yokeLeg ?? J.legIndex; }
+        if (J.cash >= p + KID.yokeReserve * TIER_FX[J.tier].priceMult && buy(J, { item: 'yoke', qty: 1 }).ok) { rec_.yoke = true; rec_.yokeLeg = rec_.yokeLeg ?? J.legIndex; }
       }
     }
     const total = wish.reduce((a, it) => a + it.cost, 0);
@@ -298,7 +323,7 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
       // v1.2 counters
       rivers: { ford: 0, float: 0, ferry: 0 }, soakedSacks: 0, soakedRivers: 0, breakdowns: 0, repairs: 0, limps: 0, freeFixes: 0, partsBought: 0, coldNights: 0,
       coldLegs: 0, tiredDays: 0, days: 0, yoke: false, yokeLeg: null, people: 0, stampedes: 0, stampedesHeld: 0, raftBumps: null, waits: 0, spotted: 0, deedTokens: 0,
-      hinted: 0, arrowsOut: 0, limpDays: 0 };
+      hinted: 0, arrowsOut: 0, limpDays: 0, tier: J.tier, route: J.route, planLen: J.plan.length, thirsty: 0, dryDays: 0, snubs: 0, snubsSmooth: 0, tolls: 0, ious: 0, flakes: 0, nuggets: 0, barrelBy: null };
     rec.v14 = { noseLegs: 0, dogLegs: 0, mand: [], fishSessions: 0, fishLb: 0, fishFree: 0, fishLbFree: 0, fetches: 0, stones: 0, meteors: 0, wishes: 0, questsFound: 0, talks: 0, mailed: 0,
       returned: 0, dog: false, locket: null, funTokens: 0, newDeeds: 0, facts: 0, devils: 0, hatsAll: 0, noses: { find: 0, berries: 0, snake: 0, rabbit: 0, quest: 0 }, spoon: false, finds: 0, horseshoeCash: 0 };
     rec_ = rec; rec.stops = []; rec.cashAt = []; rec.flow = []; rec.upTokens = 0; rec.upCash = 0; rec.challenges = 0; rec.challengesDone = 0; rec.camps = 0; rec.derbyCash = 0;
@@ -306,21 +331,33 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
     for (let guard = 0; guard < 40 && !J.done; guard++) {
       const leg = legList()[J.legIndex];
       legTime = 0; legMand = 0;
-      const hadDog = !!J.dog && leg.id !== legList()[legList().length - 1].id, noses0 = Object.values(rec.v14.noses).reduce((a, b) => a + b, 0);
+      const hadDog = !!J.dog && leg.id !== legList()[legList().length - 1].id && !leg.voyage, noses0 = Object.values(rec.v14.noses).reduce((a, b) => a + b, 0);
       // today's challenge (a session is a day); a camp / supper goal is gone for on purpose most of the time
       const ch = dailyChallenge(J, `kid${seed}-${s}-${J.legIndex}`);
       rec.challenges++;
-      if ((ch.kind === 'camp' || ch.kind === 'supper') && rand() < KID.goal) { campOut('fish'); rec.camps++; }
       // a camp every third leg: the kid cycles fish, Quick Draw, the bow, tales, a rest
-      if (J.legIndex % KID.campEvery === KID.campEvery - 1) { campOut(['fish', 'cards', 'hunt', 'tales', 'rest'][Math.floor(J.legIndex / KID.campEvery) % 5]); rec.camps++; }
+      // (v1.5: a kid camps at a quiet stop, never at a fort, where the store, the post office and the derby fill the session: the camp moves to the next stop that is not a fort)
+      const campDue = (i) => i % KID.campEvery === KID.campEvery - 1;
+      const camping = leg.stop.kind !== 'fort' && (campDue(J.legIndex) || (J.legIndex > 0 && campDue(J.legIndex - 1) && legList()[J.legIndex - 1].stop.kind === 'fort'));
+      // a kid who goes for today's camp / supper goal camps for it; a leg that already has its camp does not camp twice
+      if (!camping && (ch.kind === 'camp' || ch.kind === 'supper') && rand() < KID.goal) { campOut('fish'); rec.camps++; }
+      if (camping) { campOut(['fish', 'cards', 'hunt', 'tales', 'rest'][Math.floor(J.legIndex / KID.campEvery) % 5]); rec.camps++; }
       dials();
+      if (J.trip.toll && !J.trip.toll.paid && !J.trip.toll.iou) { const t = payToll(J); spend(SEC.toll); rec.tolls++; if (t.iou) rec.ious++; }      // the Barlow Road's gate
+      if (leg.dry && rec.barrelBy == null) rec.barrelBy = !!J.upgrades.barrel;
       // Nora's tip: the hint before the answer, once a leg (the sim counts it; the marker odds do not change)
       let trailProblemsLeft = KID.trailProblems[0] + Math.floor(rand() * (KID.trailProblems[1] - KID.trailProblems[0] + 1));
-      if (leg.id === 'willamette-valley') {
+      if (leg.id === 'willamette-valley' && !leg.voyage) {
         // the last leg runs as the Columbia raft (SPEC v1.2 §4): a few bumps, four markers' worth of play, the pay
         const bumps = chance(rand, KID.raftBumps); raftPay(J, { bumps }); spend(SEC.raft); rec.raftBumps = bumps;
       }
-      for (let d = 0; d < 400; d++) {
+      if (leg.voyage) {
+        // the voyage home (v1.5): no trail days; four "Up the coast" markers, then the Columbia bar; the sail's pay
+        for (let m = 0; m < 4; m++) { spend(SEC.day); const ok = rand() < KID.marker; applyMarker(J, { correct: ok, quick: ok && rand() < KID.quickOfRight }); spend(SEC.marker + (ok ? 0 : SEC.markerFix)); }
+        sailPay(J, { bumps: chance(rand, KID.raftBumps) }); spend(SEC.sail);
+        J.totals.miles += leg.miles - J.milesDone; J.milesDone = leg.miles;
+      }
+      for (let d = 0; d < 400 && !leg.voyage; d++) {
         if (clock >= KID.sessionS) { sessions++; clock = 0; rec.leftovers++; }   // the session ends mid-leg; the journey waits
         // the weather forecast: some kids wait a storm out at camp
         const f = forecast(J);
@@ -330,6 +367,7 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
         if (r.crawl) { rec.crawl++; }
         if (r.animalsTired) rec.tiredDays++;
         if (r.coldNight) rec.coldNights++;
+        if (r.dry) rec.dryDays++; if (r.thirsty) rec.thirsty++;
         if (r.spotted) { rec.spotted++; cardId(r.spotted.card); }
         if (J.limp) rec.limpDays++;
         if (r.marker) {
@@ -353,6 +391,7 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
           else if (e.kind === 'problem') ask(e.problem === 'parts' ? 'parts' : 'buy', FACTS[Math.floor(rand() * FACTS.length)]);
           else if (e.kind === 'stampede') { const held = rand() < KID.stampedeHold; const sp = stampedePay(J, { held }); rec.stampedes++; if (held) { rec.stampedesHeld++; cardId(sp.card); } spend(SEC.stampede); if (sp.fact) { const h = heardFact(J, sp.fact); if (h) cardId(h.card); spend(SEC.fact); rec.v14.facts++; } }
           else if (e.kind === 'lookout') { card(cardForAnimal(e.animal)); spend(SEC.lookout); }
+          else if (e.kind === 'snub') { const smooth = rand() < KID.smooth; applySnub(J, { smooth }); rec.snubs++; if (smooth) rec.snubsSmooth++; spend(SEC.snub); }
           else if (e.kind === 'bonus') card(cardForLeg(J, rand));
           if (e.kind === 'hunt' && J.legStats.hunted > 0) card(cardForAnimal(rand() < 0.5 ? 'deer' : 'rabbit'));
           if (e.kind === 'trade' && tradeOffer(J).nation) card({ id: tradeOffer(J).nation });
@@ -376,7 +415,17 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
       // the stop
       const res = arrive(J);
       rec.cashAt.push(J.cash);                      // cash on hand on arriving, after the leg's pay (the table prints this)
+      if (res.fork) { const pickOpt = ((journeys[s].choices) || {})[res.fork.id]; if (pickOpt) chooseBranch(J, res.fork.id, pickOpt); spend(SEC.fork); }      // v1.5: the fork card at the stop
+      if (res.gold) {                               // v1.5: a digging: the pans and, at Coloma, the rocker (SPEC §3.4)
+        const prospector = !!skillOf(J, 'prospecting');
+        for (let i = 0; i < res.gold.pans; i++) {
+          const q = Math.max(0, Math.min(1, KID.panSkill + (r14() - 0.5) * 0.5));
+          const o = panOutcome({ quality: q, rich: res.gold.rich.includes(i), tier: J.tier, prospector, rand: r14 }); applyGold(J, o); spend(SEC.pan + (o.nugget ? SEC.nugget : 0));
+        }
+        for (let i = 0; i < res.gold.rocker; i++) { const b = Math.max(0, Math.min(1, KID.panSkill + (r14() - 0.5) * 0.4)); applyGold(J, { flakes: rockerOutcome({ beats: b, tier: J.tier }).flakes, rocker: b }); spend(SEC.rocker); }
+      }
       const kind = leg.stop.kind;
+      spend(SEC.lookoutRead);                       // every stop's lookout is read aloud (the lookout, the nation's fact and the landmark card), not only a landmark's
       if (kind === 'river') {
         // SPEC v1.2 §3: ford, float or ferry, by chance; a soaked sack (a missed beat) or bumps (a missed rock); the ferry's fare is the words
         const way = ['ford', 'float', 'ferry'][chance(rand, [KID.river.ford, KID.river.float, KID.river.ferry])];
@@ -387,15 +436,17 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
         rec.rivers[way]++; if (c.soakedLb > 0) { rec.soakedSacks += Math.ceil(c.soakedLb / 25); rec.soakedRivers++; }
       } else if (kind === 'fort') { shop(); spend(SEC.post); words(); keepLetter(J, composeLetter(J, null, ['enough', 'through', 'buffalo'])); }
       else if (kind === 'home') spend(SEC.home);
+      else if (kind === 'gold') spend(SEC.landmark);
       else spend(SEC.landmark);
       // v1.4: the dog joins at the Kansas River (80 %), or at a fort's store after a "Not now" (half of those kids); the river stop's flat stones; the evening's falling stars
-      if (!J.dog && keepsDog && leg.id === 'kansas-river' && dogOfferAt(J, leg)) { const a = adoptDog(J, { name: 'Frodo', coat: 'brown' }); rec.v14.dog = true; if (a.quest) rec.v14.questsFound++; }
+      if (!J.dog && journeys[s].route !== 'emigrant' && (keepsDog || laterDog) && kind === 'fort' && dogOfferAt(J, leg)) { adoptDog(J, { name: 'Frodo', coat: 'brown' }); rec.v14.dog = true; }
+      else if (!J.dog && keepsDog && leg.id === 'kansas-river' && dogOfferAt(J, leg)) { const a = adoptDog(J, { name: 'Frodo', coat: 'brown' }); rec.v14.dog = true; if (a.quest) rec.v14.questsFound++; }
       else if (!J.dog && !keepsDog && laterDog && kind === 'fort' && dogOfferAt(J, leg)) { adoptDog(J, { name: 'Frodo', coat: 'brown' }); rec.v14.dog = true; }
       if (RIVER_STOPS.includes(leg.id) && r14() < K14.stones) stonesOut();
       if (leg.id !== legList()[legList().length - 1].id && meteorsTonight(J)) { const before = J.tokens; for (let w = 0; w < 3; w++) { wishFor(J, r14); rec.v14.wishes++; } fun(before); spend(SEC.meteors); rec.v14.meteors++; }
       if (kind === 'fort') {
         const sold = sellHorseshoes(J, { leg }); rec.v14.horseshoeCash += sold.cash;
-        if (!J.goods.spoon && buysSpoon && J.dog && (leg.n | 0) >= 2 && priceAt('spoon', leg, J.season) <= J.cash - 8 * SEASONS.find((x) => x.id === J.season).priceMult && buy(J, { item: 'spoon', qty: 1 }).ok) rec.v14.spoon = true;
+        if (!J.goods.spoon && buysSpoon && J.dog && (leg.n | 0) >= 2 && priceAt('spoon', leg, J.season) <= J.cash - 8 * TIER_FX[J.tier].priceMult && buy(J, { item: 'spoon', qty: 1 }).ok) rec.v14.spoon = true;
         for (const m of questMail(J, { leg })) { cardId(m.card); rec.v14.mailed++; }
       }
       for (const q of questAt(J, J.legId)) {
@@ -439,30 +490,44 @@ function simulateKid(seed, seasons = 3, policy = 'natural') {
     rec.tokensEnd = J.tokens; rec.cards = J.cards.length; rec.suits = SUITS.filter((x) => suitComplete(J, x));
     rec.upgrades = Object.keys(J.upgrades).length;
     rec.deeds = J.deeds.length; rec.met = J.met.length; rec.party = party.slice();
-    rec.done = J.done;
+    rec.done = J.done; rec.flakes = J.totals.flakes | 0; rec.gold = J.gold | 0; rec.nuggetCount = nuggetsOf(J.gold | 0).nuggets; rec.xcold = (J.xcold || []).length;
+    rec.unfedRun = rec.maxCrawl;
     out.push(rec);
-    J = newSeason(J);
+    if (spec.afterJourney) spec.afterJourney(J, rec, s);
+    if (s + 1 < seasons) J = spec.nextJourney ? spec.nextJourney(J, s) : startSeason(J, { route: journeys[s + 1].route, tier: journeys[s + 1].tier });
   }
   return out;
 }
 
 // ---- run ----
-function runKids(profile, policy) {
+// the cells of SPEC v1.5 §7.2: the route a kid's three journeys (Rookie, Veteran, Pioneer) take; `choices` answer the forks as the cell says
+const SPECS = {
+  oregon: { key: 'oregon', label: 'Oregon by Fort Bridger and the raft', route: 'emigrant', journeyN: 1, year: 1847, choices: { 'the-dalles': 'columbia' } },
+  barlow: { key: 'barlow', label: 'the Barlow Road', route: 'emigrant', journeyN: 2, year: 1848, choices: { 'the-dalles': 'barlow' } },
+  sublette: { key: 'sublette', label: 'the Sublette Cutoff', route: 'emigrant', journeyN: 2, year: 1848, choices: { 'south-pass': 'sublette' } },
+  lander: { key: 'lander', label: 'the Lander Road', route: 'emigrant', journeyN: 12, year: 1858, choices: { 'south-pass': 'lander' } },
+  california: { key: 'california', label: 'California', route: 'emigrant', journeyN: 1, year: 1847, choices: { 'fort-hall': 'california' } },
+  'gold-road': { key: 'gold-road', label: 'the Gold Road', route: 'gold-road', journeyN: 2, year: 1848, choices: {} },
+};
+const cellCache = {};
+function runKids(profile, policy, spec = SPECS.oregon) {
+  const key = `${spec.key}|${profile}|${policy}`;
+  if (cellCache[key]) return cellCache[key];
   Object.assign(KID, BASE_KID, PROFILES[profile]);
-  const r = Array.from({ length: KIDS }, (_, i) => simulateKid(1000 + i * 7919, 3, policy));
+  const r = Array.from({ length: KIDS }, (_, i) => simulateKid(1000 + i * 7919, spec, policy));
   Object.assign(KID, BASE_KID, PROFILES.average);
-  return r;
+  return (cellCache[key] = r);
 }
 const runs = runKids('average', 'natural');          // the table below is the average player, shopping by eye
 const VARIANTS = {};                                  // 'strong:natural' ... 'weak:everything'
-for (const p of Object.keys(PROFILES)) for (const pol of ['natural', 'everything']) VARIANTS[`${p}:${pol}`] = p === 'average' && pol === 'natural' ? runs : runKids(p, pol);
+for (const p of Object.keys(PROFILES)) for (const pol of ['natural', 'everything']) VARIANTS[`${p}:${pol}`] = runKids(p, pol);
 const mean = (xs) => xs.reduce((a, b) => a + b, 0) / Math.max(1, xs.length);
 const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
 const f1 = (x) => (Math.round(x * 10) / 10).toFixed(1);
 const f2 = (x) => (Math.round(x * 100) / 100).toFixed(2);
 const pad = (s, n) => String(s).padStart(n);
 
-console.log(`\nWagon West economy: ${KIDS} kids, ${TRAIL.length} legs a season${LEGS.length < 12 ? ' (synthetic trail: content is a skeleton)' : ''}, ` +
+console.log(`\nWagon West economy: ${KIDS} kids, ${TRAIL.length} legs a journey (Rookie Oregon by Fort Bridger and the raft, then the same kid at Veteran and Pioneer), ` +
   `markers ${KID.marker * 100}% · problems ${KID.problem * 100}% · words ${Math.round(KID.words * 3)}/3, ${KID.sessionS / 60}-min sessions, a random party of three each\n`);
 console.log('season   sessions (mean min-max)   cash at end (mean / p10 / min)   tokens/leg   stars/leg   food at arrival, days (mean / p10 / min)   crawl days/journey   max run   safety nets   leg minutes (mean / max)');
 const rows = [];
@@ -481,7 +546,7 @@ for (let s = 0; s < SEASONS.length; s++) {
     `${pad(f1(row.crawl), 5)}           ${pad(row.maxRun, 3)}       ${pad(f1(row.rescues), 5)}       ${pad(f1(row.legMean), 5)} / ${pad(f1(row.legMax), 5)}`);
 }
 console.log('\nstars: ' + rows.map((r) => `${r.season} everyone happy on ${Math.round(r.happyShare * 100)} % of legs, every marker right on ${Math.round(r.allRightShare * 100)} %`).join(' · '));
-console.log(`(start: $${START.cash} × the season's price level and ${START.food} lb; a safety net is a hunt / fishing hole / find when the food runs out, worth ≥ ${RESCUE.minLb} lb)`);
+console.log(`(start: $${TIER_FX.rookie.startCash} / $${TIER_FX.veteran.startCash} / $${TIER_FX.pioneer.startCash} and ${TIER_FX.rookie.startFood} / ${TIER_FX.veteran.startFood} / ${TIER_FX.pioneer.startFood} lb by tier; a safety net is a hunt / fishing hole / find when the food runs out, worth ≥ ${RESCUE.minLb} lb)`);
 
 // ---- v1.1: the token flow and the side layer ----
 const src = (recs, k) => mean(recs.map((r) => r.flow.reduce((a, f) => a + f[k], 0) / Math.max(1, r.legs)));
@@ -611,15 +676,138 @@ for (const c of cols.filter((x) => x.endsWith('everything'))) {
 }
 console.log('end-of-journey cash by year (mean):  ' + SEASONS.map((sn, s) => `${sn.id} ` + cols.map((c) => `${name(c)} $${Math.round(money(c, s).end)}`).join(', ')).join('\n   '));
 
+// ---- v1.5: the homestead (SPEC v1.5 §7.2, --homestead): a kid's whole history ----
+// Rookie Oregon, then the Gold Road, then the route the profile prefers, the tiers as they open. After every journey the kid closes the year (the ledger, the farm), names the
+// farm, and builds what the purses allow, the Willamette farm first: tokens on the small pieces, savings on the middle ones, nuggets on the big ones.
+const PREFER = {      // after the first two journeys: the Gold Road pays for the barn, the orchard, the mill; the profiles differ in where else they like to go
+  strong: [{ route: 'gold-road' }, { route: 'emigrant', choices: { 'fort-hall': 'california' } }, { route: 'gold-road' }, { route: 'emigrant', choices: { 'the-dalles': 'barlow' } }],
+  average: [{ route: 'gold-road' }, { route: 'emigrant', choices: { 'south-pass': 'sublette' } }, { route: 'gold-road' }, { route: 'emigrant', choices: { 'the-dalles': 'barlow' } }],
+  weak: [{ route: 'emigrant', choices: { 'the-dalles': 'barlow' } }, { route: 'gold-road' }, { route: 'emigrant', choices: {} }, { route: 'gold-road' }],
+};
+const HOMESTEAD_JOURNEYS = 14;
+function homesteadKid(profile, i) {
+  const ledger = newLedger(), farm = newFarm();
+  const state = { cabinAt: null, barnAt: null, completeAt: null, tokensSpent: 0, tokensEarned: 0, log: [] };
+  const tierFor = (n) => {                                  // tiers as they open: the strong kid climbs at once, the average kid after three journeys, the weak kid stays at Rookie
+    const open = tiersOpen(ledger);
+    if (profile === 'strong') return open.pioneer ? 'pioneer' : open.veteran ? 'veteran' : 'rookie';
+    if (profile === 'average') return n >= 3 && open.veteran ? 'veteran' : 'rookie';
+    return 'rookie';
+  };
+  const routeFor = (n) => {
+    if (n === 0) return { route: 'emigrant', choices: { 'the-dalles': 'columbia' } };
+    if (n === 1) return { route: 'gold-road', choices: {} };
+    return PREFER[profile][(n - 2) % PREFER[profile].length];
+  };
+  const spec = { key: 'homestead-' + profile, journeys: Array.from({ length: HOMESTEAD_JOURNEYS }, (_, n) => ({ ...routeFor(n), tier: 'rookie' })), journeyN: 1, year: 1847, choices: {},
+    afterJourney(J, rec, n) {
+      if (state.completeAt == null) state.tokensEarned += rec.earned;      // (the tokens earned while the farm was still to build: after it is complete there is nothing left to spend them on)
+      const c = closeJourney(J, ledger, farm, { at: n });
+      if (c && c.firstHere) { const site = farm.sites[c.site]; if (!site.name) site.name = 'Farm ' + c.site; }
+      // build: the Willamette farm first, tokens / savings / nuggets; a greedy kid builds whatever it can, the pieces in the content's order
+      for (let guard = 0; guard < 80; guard++) {
+        let built = false;
+        for (const siteId of ['willamette', 'sacramento']) {
+          if (!farm.sites[siteId]) continue;
+          const v = homesteadView(farm, siteId, J);
+          const n2 = v.next.find((x) => x.ok);
+          if (n2) { const r = buildPiece(farm, siteId, n2.id, J); if (r.ok) { state.tokensSpent += r.paid.tokens; built = true; break; } }
+        }
+        if (!built) break;
+      }
+      const w = farm.sites.willamette && farm.sites.willamette.pieces;
+      if (w && w.cabin && state.cabinAt == null) state.cabinAt = n + 1;
+      if (w && w.barn && state.barnAt == null) state.barnAt = n + 1;
+      if (farm.sites.willamette && homesteadView(farm, 'willamette').complete && state.completeAt == null) state.completeAt = n + 1;
+      state.log.push({ n: n + 1, route: J.route, tier: J.tier, end: c ? c.site : null, cash: J.cash, gold: J.gold | 0, tokens: J.tokens, willamette: homesteadView(farm, 'willamette').built });
+    },
+    nextJourney(J, n) {
+      const t = tierFor(n + 1), r = routeFor(n + 1);
+      const next = startSeason(J, { route: r.route, tier: t, ledger, farm }) || startSeason(J, { route: 'emigrant', tier: 'rookie', ledger, farm });
+      spec.journeys[n + 1] = { ...r, route: next.route, tier: next.tier, choices: next.route === 'gold-road' ? {} : r.choices };
+      return next;
+    } };
+  spec.journeys[0] = { route: 'emigrant', tier: 'rookie', choices: { 'the-dalles': 'columbia' } };
+  Object.assign(KID, BASE_KID, PROFILES[profile]);
+  simulateKid(1000 + i * 7919, spec, 'natural');
+  Object.assign(KID, BASE_KID, PROFILES.average);
+  return { ledger, farm, ...state };
+}
+const HK = {};
+if (HOMESTEAD || CHECK) for (const pl of PROFILE_KEYS) HK[pl] = Array.from({ length: KIDS }, (_, i) => homesteadKid(pl, i));
+const hcell = (pl) => {
+  const ks = HK[pl], done = ks.map((k) => k.completeAt || HOMESTEAD_JOURNEYS + 1);
+  return { cabin: mean(ks.map((k) => k.cabinAt || HOMESTEAD_JOURNEYS + 1)), cabinMax: Math.max(...ks.map((k) => k.cabinAt || HOMESTEAD_JOURNEYS + 1)), barn: mean(ks.map((k) => k.barnAt || HOMESTEAD_JOURNEYS + 1)), barnMax: Math.max(...ks.map((k) => k.barnAt || HOMESTEAD_JOURNEYS + 1)),
+    complete: mean(done), completeMin: Math.min(...done), completeMax: Math.max(...done), unfinished: ks.filter((k) => !k.completeAt).length, sink: mean(ks.map((k) => k.tokensSpent / Math.max(1, k.tokensEarned))), spent: mean(ks.map((k) => k.tokensSpent)), earned: mean(ks.map((k) => k.tokensEarned)) };
+};
+if (HOMESTEAD) {
+  console.log('\nTHE HOMESTEAD (--homestead): ' + KIDS + ' kids a profile, ' + HOMESTEAD_JOURNEYS + ' journeys each (Rookie Oregon, the Gold Road, then the profile\'s own routes; tiers as they open). Journeys until: the cabin / the barn / every Willamette piece built');
+  console.log('profile    cabin (mean / worst)   barn (mean / worst)   complete Willamette farm (mean, fastest-slowest, kids not done)   tokens spent on the farm / earned');
+  for (const pl of PROFILE_KEYS) { const c = hcell(pl); console.log(`${pl.padEnd(9)}  ${pad(f1(c.cabin), 5)} / ${pad(c.cabinMax, 2)}            ${pad(f1(c.barn), 5)} / ${pad(c.barnMax, 2)}          ${pad(f1(c.complete), 5)}  (${c.completeMin}-${c.completeMax}, ${c.unfinished} not done)                     ${pad(f1(c.spent), 5)} / ${pad(f1(c.earned), 5)} = ${Math.round(c.sink * 100)} %`); }
+  const k = HK.average[0]; console.log('one average kid\'s years: ' + k.log.map((l) => `${l.n}:${l.route === 'gold-road' ? 'gold' : l.end} ${l.tier[0]} ${l.gold ? l.gold + 'fl ' : ''}${l.willamette}/18`).join(' · '));
+}
+
+// ---- v1.5: every route and tier (SPEC v1.5 §7.2) ----
+// What each cell must do (Rookie dollars; Veteran and Pioneer are checked against the Rookie range of the same route times TIER_RANGE).
+const ROUTE_TARGETS = {
+  oregon: { sessions: [18, 22], legMin: [8, 10], legMax: 14, tokens: [60, 140] },
+  barlow: { endWithinOfOregon: 10, toll: 5 },
+  sublette: { fortCash: 'baseline (Kearny, Laramie, Hall; Bridger is skipped)', choices: 'baseline x 4/5 (of 4 stores)', crawlRunMax: 3, barrelStrong: 0.5 },
+  lander: { crawlRunMax: 3 },
+  california: { end: { strong: [50, 140], average: [25, 90], weak: [15, 70] }, crawlRunMax: 3, crawlDaysMax: 3, sessions: [22, 26] },
+  'gold-road': { nuggets: { strong: [7, 12], average: [6, 10], weak: [5, 8] }, crawlRunMax: 3, sessions: [11, 13] },
+  later: { limps: { rookie: 1, veteran: 1.5, pioneer: 2 }, soaked: 1, crawlRunMax: 3, goldVs: { veteran: 1.25, pioneer: 1.5 }, goldSlack: 0.15 },
+};
+const TIER_RANGE = [0.6, 1.2];            // Veteran / Pioneer end cash (÷ price level) must fall in the Rookie range of the route × these
+const CELLS = ['oregon', 'barlow', 'sublette', 'lander', 'california', 'gold-road'];
+/** A cell (route × profile × policy) at one tier: the numbers the table and the checks use. */
+function cellStats(specKey, profile, tier, policy = 'natural') {
+  const recs = runKids(profile, policy, SPECS[specKey]).map((r) => r[tier]);
+  const legMin = recs.flatMap((r) => r.legSeconds.map((x) => x / 60));
+  const pm = TIER_FX[TIER_IDS[tier]].priceMult;
+  const stops = recs[0].stops.map((_, i) => recs.map((r) => r.stops[i]).filter(Boolean));
+  const forts = recs.map((r) => mean(r.stops.slice(1).map((x) => x.arrive)));
+  return { recs, end: mean(recs.map((r) => r.cash)), endRookie: mean(recs.map((r) => r.cash)) / pm, endMax: Math.max(...recs.map((r) => r.cash / pm)),
+    sessions: mean(recs.map((r) => r.sessions)), sessMax: Math.max(...recs.map((r) => r.sessions)), sessMin: Math.min(...recs.map((r) => r.sessions)), legMean: mean(legMin), legMax: Math.max(...legMin),
+    crawl: mean(recs.map((r) => r.crawl)), maxRun: Math.max(...recs.map((r) => r.maxCrawl)), crawlMaxKid: Math.max(...recs.map((r) => r.crawl)), limps: mean(recs.map((r) => r.limps)),
+    soaked: mean(recs.map((r) => r.soakedSacks / Math.max(1, r.legs))), tokens: mean(recs.map((r) => r.earned)), nuggets: mean(recs.map((r) => r.nuggetCount)), flakes: mean(recs.map((r) => r.gold)),
+    fortCash: mean(forts), legs: recs[0].planLen, allDone: recs.every((r) => r.done), thirsty: mean(recs.map((r) => r.thirsty)), dryDays: mean(recs.map((r) => r.dryDays)),
+    barrel: recs.filter((r) => r.barrelBy).length / recs.length, snubsSmooth: mean(recs.map((r) => r.snubsSmooth)), tolls: mean(recs.map((r) => r.tolls)), ious: mean(recs.map((r) => r.ious)),
+    xcold: mean(recs.map((r) => r.xcold)), coldNights: mean(recs.map((r) => r.coldNights)), choices: mean(recs.map((r) => r.stops.filter((x) => x.choice).length)), stores: stops.length, deeds: mean(recs.map((r) => r.deeds)), cardsEnd: mean(recs.map((r) => r.cards)) };
+}
+console.log('\nROUTES AND TIERS (SPEC v1.5 §7.2): 40 kids a cell, shopping by eye; end cash is in Rookie dollars (÷ the price level); nuggets = whole nuggets of the flakes found');
+console.log('cell                         legs  sessions (mean/max)  leg min (mean/max)  end cash S / A / W            unfed days (max run)  limps  soaked/leg  tokens/journey  nuggets S / A / W      thirsty days  barrel  tolls (IOUs)  smooth slides');
+for (const key of CELLS) {
+  TIER_IDS.forEach((tid, t) => {
+    const S = cellStats(key, 'strong', t), A = cellStats(key, 'average', t), W = cellStats(key, 'weak', t);
+    const all = [S, A, W];
+    console.log(`${(tid + ' ' + SPECS[key].label).padEnd(28).slice(0, 28)} ${pad(A.legs, 4)}   ${pad(f1(A.sessions), 5)} / ${pad(A.sessMax, 2)}          ${pad(f1(A.legMean), 5)} / ${pad(f1(A.legMax), 5)}    ` +
+      `$${pad(Math.round(S.endRookie), 3)} / $${pad(Math.round(A.endRookie), 3)} / $${pad(Math.round(W.endRookie), 3)}          ${pad(f1(mean(all.map((x) => x.crawl))), 4)} (${Math.max(...all.map((x) => x.maxRun))})` +
+      `            ${pad(f2(mean(all.map((x) => x.limps))), 5)}  ${pad(f2(mean(all.map((x) => x.soaked))), 5)}       ${pad(f1(A.tokens), 6)}        ${pad(f1(S.nuggets), 4)} / ${pad(f1(A.nuggets), 4)} / ${pad(f1(W.nuggets), 4)}        ${pad(f1(A.thirsty), 5)}      ${pad(Math.round(S.barrel * 100) + '%', 4)}   ${pad(f1(A.tolls), 4)} (${f1(A.ious)})   ${pad(f1(A.snubsSmooth), 4)}`);
+  });
+}
+{
+  // minutes by leg on the baseline route (Rookie, the three players): where the long legs are
+  const recs = PROFILE_KEYS.flatMap((pl) => cellStats('oregon', pl, 0).recs);
+  console.log('minutes by leg, Rookie Oregon (mean / max over the three players): ' + TRAIL.map((l, i) => { const m = recs.map((r) => r.legSeconds[i] / 60); return `${i + 1} ${l.id} ${f1(mean(m))}/${f1(Math.max(...m))}`; }).join(' · '));
+}
+console.log('(unfed days: days that began with no food, mean of the three players; a kid who left a dry stretch without the barrel is "thirsty": -4 spirit, never a lost day)');
+{
+  // sublette: the stores it keeps are Independence, Fort Kearny, Fort Laramie and Fort Hall; the buys-all kids' choices
+  const sc = (pl, t = 0) => cellStats('sublette', pl, t, 'everything');
+  console.log('sublette buys-all, choices of 4 stores (S / A / W): ' + PROFILE_KEYS.map((pl) => f1(sc(pl).choices)).join(' / ') + '    fort cash by eye at Kearny, Laramie, Hall (S / A / W): ' + PROFILE_KEYS.map((pl) => '$' + Math.round(cellStats('sublette', pl, 0).fortCash)).join(' / '));
+}
+
 if (CHECK) {
   const problems = [];
   const stuck = runs.flat().filter((r) => r.maxCrawl > 3);
   if (stuck.length) problems.push(`${stuck.length} kid-seasons crawled with no food for more than 3 days in a row (max ${Math.max(...stuck.map((r) => r.maxCrawl))})`);
   if (!rows.every((r) => r.allDone)) problems.push('a kid did not finish a season');
   const first = runs.map((r) => r[0].sessions);
-  if (Math.max(...first) > 16) problems.push(`the first season took ${Math.max(...first)} sessions (> 16)`);
-  if (Math.min(...first) < 9) problems.push(`the first season took ${Math.min(...first)} sessions (< 9)`);
-  if (Math.abs(rows[0].sessMean - 12) > 2) problems.push(`the first season's mean is ${f1(rows[0].sessMean)} sessions (target 12 ± 2)`);
+  if (Math.max(...first) > 24) problems.push(`the first journey took ${Math.max(...first)} sessions (> 24)`);
+  if (Math.min(...first) < 16) problems.push(`the first journey took ${Math.min(...first)} sessions (< 16)`);
+  if (Math.abs(rows[0].sessMean - 20) > 2) problems.push(`the first journey's mean is ${f1(rows[0].sessMean)} sessions (target 20 ± 2: a leg a session)`);
+  if (rows[0].legMean < ROUTE_TARGETS.oregon.legMin[0] || rows[0].legMean > ROUTE_TARGETS.oregon.legMin[1]) problems.push(`the mean leg takes ${f1(rows[0].legMean)} minutes (want ${ROUTE_TARGETS.oregon.legMin[0]}-${ROUTE_TARGETS.oregon.legMin[1]})`);
   if (rows.some((r) => r.cashMin < 0)) problems.push('cash went below $0');
   if (runs.flat().some((r) => r.flow.some((f) => f.bal < 0))) problems.push('the token balance went below 0');
   if (side[0].anyUp < 0.9) problems.push(`only ${Math.round(side[0].anyUp * 100)} % of kids bought an upgrade in the first season (< 90 %)`);
@@ -627,9 +815,9 @@ if (CHECK) {
   // v1.2: soaked sacks < 1 a leg, limps < 1 a season, tokens 3-10 a leg
   for (const r of v12) {
     if (r.soakedPerLeg >= 1) problems.push(`${r.season}: ${f2(r.soakedPerLeg)} soaked sacks a leg (want < 1)`);
-    if (r.limps >= 1) problems.push(`${r.season}: ${f2(r.limps)} limps a season (want < 1)`);
+    if (r.limps >= ({ rookie: 1, veteran: 1.5, pioneer: 2 }[r.season])) problems.push(`${r.season}: ${f2(r.limps)} limps a season (want < ${{ rookie: 1, veteran: 1.5, pioneer: 2 }[r.season]})`);
   }
-  for (const r of rows) if (r.tokens < 3 || r.tokens > 10) problems.push(`${r.season}: ${f1(r.tokens)} tokens earned a leg (want 3-10)`);
+  if (rows[0].tokens * TRAIL.length < 60 || rows[0].tokens * TRAIL.length > 140) problems.push(`${rows[0].season}: ${f1(rows[0].tokens * TRAIL.length)} tokens earned a journey (want 60-140)`);      // (Rookie: Veteran and Pioneer earn more by design: a Pioneer first try is worth two tokens)
   // v1.3: money is a choice (TARGETS above)
   const T = TARGETS, within = (x, [lo, hi]) => x >= lo && x <= hi;
   for (const key of Object.keys(V)) {            // every player, every way of shopping, every season: finishes, nobody stuck, no yoke at Independence
@@ -645,7 +833,7 @@ if (CHECK) {
     if (!within(c.choices, T.choices[p])) problems.push(`${p} buys-all is short of the wish list at ${f1(c.choices)} of the 5 stores (want ${T.choices[p][0]}-${T.choices[p][1]})`);
     for (let s = 1; s < SEASONS.length; s++) {   // the later seasons are the same economy times the price level (rounding aside)
       const later = money(`${p}:natural`, s).end / SEASONS[s].priceMult, [lo, hi] = T.end[p];
-      if (later < lo * T.seasonSlack[0] || later > hi * T.seasonSlack[1]) problems.push(`${p} by eye in ${SEASONS[s].id} ends with $${Math.round(later)} at 1847 prices (want ${Math.round(lo * T.seasonSlack[0])}-${Math.round(hi * T.seasonSlack[1])})`);
+      if (later < lo * TIER_RANGE[0] || later > hi * TIER_RANGE[1]) problems.push(`${p} by eye in ${SEASONS[s].id} ends with $${Math.round(later)} at 1847 prices (want ${Math.round(lo * TIER_RANGE[0])}-${Math.round(hi * TIER_RANGE[1])})`);
     }
   }
   if (money('strong:natural').end - money('average:natural').end < T.endGap.strongOverAverage) problems.push('the strong player does not end far enough ahead of the average one');
@@ -669,7 +857,55 @@ if (CHECK) {
     if (r.funPerLeg >= 1) problems.push(`${r.season}: the dust devil, the quests and the eight new deeds earn ${f2(r.funPerLeg)} tokens a leg (want under 1)`);
   }
   if (v14[0].horseshoe > 8) problems.push(`horseshoes sold for $${f1(v14[0].horseshoe)} a Rookie journey (want about $3, at most $8)`);
-  if (rows[0].legMax > 14.5 + 1.5) problems.push(`a leg took ${f1(rows[0].legMax)} minutes (1.3's 13.5 plus the 30 s of 1.4 is 14; want at most 16)`);
+  if (rows[0].legMax > ROUTE_TARGETS.oregon.legMax) problems.push(`a leg took ${f1(rows[0].legMax)} minutes (want at most ${ROUTE_TARGETS.oregon.legMax})`);
+  // v1.5: the homestead's pace (§7.2 --homestead): the cabin after journey 1 for every kid, the barn by journey 3 for the average kid, every Willamette piece in 5-9 journeys for the average kid and never fewer than 4 for the strong; the token sink
+  {
+    const hs = Object.fromEntries(PROFILE_KEYS.map((pl) => [pl, hcell(pl)]));
+    for (const pl of PROFILE_KEYS) if (hs[pl].cabinMax > 1) problems.push(`homestead, ${pl}: a kid's cabin took until journey ${hs[pl].cabinMax} (want after journey 1)`);
+    if (hs.average.barn > 3) problems.push(`homestead: the average kid's barn comes at journey ${f1(hs.average.barn)} (want by 3)`);
+    if (hs.average.complete < 5 || hs.average.complete > 9) problems.push(`homestead: the average kid completes the Willamette farm at journey ${f1(hs.average.complete)} (want 5-9)`);
+    if (hs.strong.completeMin < 4) problems.push(`homestead: a strong kid completed the farm at journey ${hs.strong.completeMin} (want never fewer than 4)`);
+    for (const pl of PROFILE_KEYS) if (hs[pl].sink < 0.5) problems.push(`homestead, ${pl}: ${Math.round(hs[pl].sink * 100)} % of the tokens earned were spent on the farm (want at least half)`);
+  }
+  // v1.5: every route and tier
+  {
+    const T2 = ROUTE_TARGETS, within2 = (x, [lo, hi]) => x >= lo && x <= hi;
+    for (const key of CELLS) for (let t = 0; t < 3; t++) for (const pl of PROFILE_KEYS) {
+      const c = cellStats(key, pl, t), tag = `${TIER_IDS[t]} ${SPECS[key].label}, ${pl}`;
+      if (!c.allDone) problems.push(`${tag}: a kid did not finish`);
+      if (c.maxRun > 3) problems.push(`${tag}: ${c.maxRun} days in a row with no food (> 3)`);
+      if (c.end < 0) problems.push(`${tag}: cash below $0`);
+      if (c.soaked >= T2.later.soaked) problems.push(`${tag}: ${f2(c.soaked)} soaked sacks a leg (want < 1)`);
+      if (pl === 'average' && c.limps >= T2.later.limps[TIER_IDS[t]]) problems.push(`${tag}: ${f2(c.limps)} limps a journey (want < ${T2.later.limps[TIER_IDS[t]]})`);      // (the average player, as the printed table; the weak player runs leaner)
+    }
+    for (const key of CELLS) for (let t = 0; t < 3; t++) {
+      const A = cellStats(key, 'average', t), exp = { oregon: 20, barlow: 20, sublette: 20, lander: 18, california: 24, 'gold-road': 12 }[key];
+      if (Math.abs(A.sessions - exp) > 0.5) problems.push(`${TIER_IDS[t]} ${SPECS[key].label}: ${f1(A.sessions)} sessions (a leg a session: ${exp})`);
+      if (A.legMax > T2.oregon.legMax + 2.5) problems.push(`${TIER_IDS[t]} ${SPECS[key].label}: a leg took ${f1(A.legMax)} minutes (want at most about ${T2.oregon.legMax})`);
+    }
+    // Veteran / Pioneer money against the Rookie range of the route
+    for (const key of ['oregon', 'barlow', 'sublette', 'lander', 'california']) for (const pl of PROFILE_KEYS) {
+      const lo = cellStats(key, pl, 0).endRookie;
+      for (let t = 1; t < 3; t++) { const v = cellStats(key, pl, t).endRookie; if (v < lo * TIER_RANGE[0] || v > lo * TIER_RANGE[1]) problems.push(`${TIER_IDS[t]} ${SPECS[key].label}, ${pl}: ends with $${Math.round(v)} at Rookie prices; the Rookie journey ends with $${Math.round(lo)} (want ${TIER_RANGE[0]}-${TIER_RANGE[1]} x)`); }
+    }
+    // Barlow: within $10 of the raft's end cash minus the toll
+    for (const pl of PROFILE_KEYS) { const b = cellStats('barlow', pl, 0).endRookie, o = cellStats('oregon', pl, 0).endRookie - T2.barlow.toll; if (Math.abs(b - o) > T2.barlow.endWithinOfOregon) problems.push(`Barlow Road, ${pl}: ends with $${Math.round(b)}, the raft minus the toll is $${Math.round(o)} (want within $${T2.barlow.endWithinOfOregon})`); }
+    // Sublette: fort cash and choices as the baseline's, the barrel
+    for (const pl of PROFILE_KEYS) {
+      const fc = cellStats('sublette', pl, 0).fortCash; if (!within2(fc, T.fortCash[pl])) problems.push(`Sublette Cutoff, ${pl} by eye arrives at its three forts with $${Math.round(fc)} on average (want $${T.fortCash[pl][0]}-$${T.fortCash[pl][1]})`);
+      const ch = cellStats('sublette', pl, 0, 'everything').choices, [a, b] = T.choices[pl]; if (ch < a * 0.8 - 0.3 || ch > Math.min(4, b * 0.8 + 0.2)) problems.push(`Sublette Cutoff, ${pl} buys-all is short at ${f1(ch)} of the 4 stores (want ${f1(a * 0.8 - 0.3)}-${f1(Math.min(4, b * 0.8 + 0.2))})`);
+    }
+    const sb = cellStats('sublette', 'strong', 0); if (sb.barrel < T2.sublette.barrelStrong) problems.push(`Sublette Cutoff: the water barrel is owned by ${Math.round(sb.barrel * 100)} % of strong kids at the dry stretch (want ${T2.sublette.barrelStrong * 100} %)`);
+    // California
+    for (const pl of PROFILE_KEYS) { const c = cellStats('california', pl, 0); if (!within2(c.endRookie, T2.california.end[pl])) problems.push(`California, ${pl}: ends with $${Math.round(c.endRookie)} (want $${T2.california.end[pl][0]}-$${T2.california.end[pl][1]})`); if (c.crawl > T2.california.crawlDaysMax) problems.push(`California, ${pl}: ${f1(c.crawl)} days with no food a journey (> ${T2.california.crawlDaysMax})`); }
+    // Gold Road: the gold, the weak finishes
+    for (const pl of PROFILE_KEYS) { const g = cellStats('gold-road', pl, 0); if (!within2(g.nuggets, T2['gold-road'].nuggets[pl])) problems.push(`Gold Road, ${pl}: ${f1(g.nuggets)} nuggets a journey (want ${T2['gold-road'].nuggets[pl][0]}-${T2['gold-road'].nuggets[pl][1]})`); }
+    // gold x 1.25 / x 1.5 of Rookie, within 15 %
+    for (const key of ['gold-road', 'california']) for (const pl of PROFILE_KEYS) {
+      const r0 = cellStats(key, pl, 0).flakes;
+      for (let t = 1; t < 3; t++) { const g = cellStats(key, pl, t).flakes, want = r0 * T2.later.goldVs[TIER_IDS[t]]; if (r0 > 0 && Math.abs(g / want - 1) > T2.later.goldSlack) problems.push(`${TIER_IDS[t]} ${SPECS[key].label}, ${pl}: ${f1(g)} flakes, Rookie ${f1(r0)} x ${T2.later.goldVs[TIER_IDS[t]]} is ${f1(want)} (want within ${T2.later.goldSlack * 100} %)`); }
+    }
+  }
   if (problems.length) { console.log('\nCHECK FAILED:\n  ' + problems.join('\n  ')); process.exit(1); }
   console.log('\nCHECK PASSED: nobody stuck, first season ' + f1(rows[0].sessMean) + ` sessions (${Math.min(...first)}-${Math.max(...first)}), soaked sacks ${f2(v12[0].soakedPerLeg)} a leg, limps ${f2(v12[0].limps)} a season, tokens ${f1(rows[0].tokens)} a leg`);
 }

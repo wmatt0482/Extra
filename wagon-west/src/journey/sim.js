@@ -17,6 +17,10 @@
 //       legs, nextBerries, treats, muddy }, dog.js), finds, fishLog / fishJunk / fishBest (fishing.js), skips, wishes, quests / questsDone
 //       (quests.js), factsHeard, moments (moments.js), goods.{horseshoes, hoppers, spoon}, opts.farSounds, totals.* (V14_COUNTERS) and
 //       trip.{nose, fact, dustDevil, fishing, stones, meteors, fetchThrows, skipBonus}. tickDay emits { nose, fact, moment } beside the rest.
+// v1.5 adds (SPEC v1.5 §3, same rule: ensureJourney fills every one on an older save and sets J.rev = 15): the journey's own plan (J.route, J.branches, J.plan; route.js),
+//       the tier (J.tier; J.season is the tier id, a legacy 's18xx' still reads), the calendar (J.year, J.journeyN), the family (J.family), the gold pouch (J.gold, in flakes;
+//       gold.js), J.letterFrom (the letter tells the legs since the last one), J.banked / J.closed (seasons.js, homestead.js), totals.* (V15_COUNTERS) and trip.{toll, keys}.
+//       New entry points: payToll, applySnub, sailPay, isDryDay, writeOnRock, and re-exports of route / seasons / homestead / gold / adaptive.
 // J = { v, season, seed, wagonName, animal, companions: [id],
 //       legIndex, legId, milesDone (into the leg), day (journey days), cash, food (lb), parts, goods: { id: n },
 //       tokens, pace: 'steady'|'brisk', rations: 'full'|'plenty'|'lean', spirit (0-100), mood: 'happy'|'fine'|'tired',
@@ -34,27 +38,31 @@
 // food at 0 means the party crawls at 40 % and is tired until the safety net (a hunt or a fishing hole, economy.js
 // RESCUE) or the next fort feeds it; a breakdown with no spare part is a lost day and a slow wagon until the next fort;
 // cash never goes below $0; every leg arrives.
-import { ANIMALS, legAt, legIndexOf, legList, legOf, seasonOf, animalOf, nextSeasonId } from './route.js';
+import { ANIMALS, legAt, legIndexOf, legList, legOf, seasonOf, animalOf, nextSeasonId, usePlan, planRoute, planOf, isLegacyJourney, toolLegs, routeStart, tierOf, forkAt, chooseBranch as chooseBranchRaw, forkKey, siteOfLeg } from './route.js';
 import { START, MOOD, SPEED, MARKERS, RESCUE, TOKENS, RATIONS, PACES, foodNeeded, milesPerDay, etaDays, priceAt, storeList, payFor,
   crateFor, moodOf, isFood, lbOf, PELTS, UPGRADES, UPGRADE_BY_ID, UPGRADE_FX, DERBY, CARD_DUP_TOKENS, CAMP_KINDS,
-  FOOD_KINDS, ARROWS, ANIMAL_RULES, COLD_LEGS, COLD, SOAKED_LB, SKILL_FX, RAFT, STAMPEDE, yokeOffered } from './economy.js';
+  FOOD_KINDS, ARROWS, ANIMAL_RULES, COLD, SOAKED_LB, SKILL_FX, RAFT, STAMPEDE, yokeOffered, TIER_FX, DRY, SNUB, SAIL, PACK } from './economy.js';
 import { CARDS, CARD_BY_ID, cardsOf } from '../content/cards.js';
 import { COMPANION_BY_ID } from '../content/companions.js';
 import { PERSON_BY_ID, PEOPLE_BY_STOP } from '../content/people.js';
 import { NATION_BY_ID, FALLBACK_TRADES, TRADE_GOOD_NAMES } from '../content/nations.js';
 import { numberWords, singular } from './problems.js';
-import { planEvents, rescueEvent, eventPayload, EVENT_BY_ID } from './events.js';
+import { planEvents, rescueEvent, eventPayload, eventKind, EVENT_BY_ID } from './events.js';
 import { starsFor, hasArrived, starCount } from './stars.js';
 import { hashSeed, mulberry32, drawFrom, randInt } from './rng.js';
 import { nationFor } from './route.js';
 import { skillOf, skillInfo, partySkills } from './skills.js';
-import { ensureFoods, syncFood, addFoodKind, takeFlour, eatFood, eatFactor, foodDays, huntAllowed, needsBlankets, coldLegsAhead, dailyNeed } from './supplies.js';
+import { ensureFoods, syncFood, addFoodKind, takeFlour, eatFood, eatFactor, foodDays, huntAllowed, needsBlankets, coldLegsAhead, dailyNeed, isColdLeg, ensureExtraCold } from './supplies.js';
 import { NOSE, MOMENTS as MOMENT_RULES, EXTRA_GOOD_BY_ID, offeredAt } from './economy.js';
 import { V14_COUNTERS, fill14, carry14, merge14 } from './collections.js';
 import * as DOG from './dog.js';
 import * as FISHING_API from './fishing.js';
 import * as QUESTS_API from './quests.js';
 import * as MOMENTS_API from './moments.js';
+import { goldAt } from './gold.js';
+import { happenedKeys } from './letters.js';
+import { bindSim, startSeason } from './seasons.js';
+import { TIER_BY_ID } from '../content/tiers.js';
 
 export const JOURNEY_VERSION = 1;
 FISHING_API.setQuestHooks({ questFindable: QUESTS_API.questFindable, findQuestItem: QUESTS_API.findQuestItem });   // the scene imports fishing.js alone, so the quest machine is handed in here
@@ -64,11 +72,16 @@ const emptyLegStats = () => ({ markers: 0, markersRight: 0, problems: 0, problem
 const V12_COUNTERS = ['camps', 'derbyPlayed', 'derbyWon', 'repairs', 'repairsWorkedOut', 'forgeFixes', 'halfFixes', 'breakdowns', 'limps', 'soakedLb',
   'riversCrossed', 'soakedCrossings', 'fordCount', 'floatCount', 'ferryCount', 'ferryPerfect', 'ropeUsed', 'peopleMet', 'markersPerfectLegs',
   'fullWagonLegs', 'goldLegs', 'coldNights', 'blueProof', 'fishLb', 'meatLb', 'raftRuns', 'raftClean', 'stampedes', 'stampedesHeld', 'waitedOut', 'spotted'];
+// v1.5's plain-number counters on J.totals (the deeds read them): pans, flakes and nuggets found, rocker rounds (and the ones on the beat), tolls paid or owed, dry days (and thirsty
+// ones), dry stretches crossed with the barrel, ice dug, Laurel Hill slides (and smooth ones), sails, a name written on the rock, hidden springs, gold-fever sightings
+export const V15_COUNTERS = ['pans', 'flakes', 'nuggets', 'rockerRounds', 'rockerBeat', 'tolls', 'tollIous', 'dryDays', 'thirstyDays', 'dryDrives', 'iceDug', 'snubs', 'snubsSmooth',
+  'sails', 'axleGrease', 'springs', 'goldFevers'];
 const emptyTotals = () => {
   const T = { legs: 0, stars: 0, miles: 0, days: 0, markers: 0, markersRight: 0, problems: 0, problemsRight: 0, words: 0,
     wordsRight: 0, hunted: 0, fished: 0, traded: 0, bought: 0, crawlDays: 0, maxCrawlDays: 0, byKind: {}, reached: [], crossed: [] };
   for (const k of V12_COUNTERS) T[k] = 0;
   for (const k of V14_COUNTERS) T[k] = 0;
+  for (const k of V15_COUNTERS) T[k] = 0;
   return T;
 };
 
@@ -76,9 +89,38 @@ const emptyTotals = () => {
 function tripV12(J, leg) {
   const r = mulberry32(hashSeed(J.seed, leg.id, J.legStarts, 'v12'));
   const a = r(), b = r(), c = r();
-  return { v12: 1, lostDays: 0, coldAt: COLD_LEGS.includes(leg.id) ? Math.max(1, Math.round(leg.miles * (0.35 + 0.3 * a))) : null,
+  return { v12: 1, lostDays: 0, coldAt: isColdLeg(J, leg.id) ? Math.max(1, Math.round(leg.miles * (0.35 + 0.3 * a))) : null,
     coldDone: false, coldOk: false, coldNightHere: false, snow: false, spotAt: Math.max(1, Math.round(leg.miles * (0.2 + 0.5 * b))), spotPick: c,
     spotted: false, forgeUsed: false, tipUsed: false, cookSaid: false, pepCool: 0, foodLowSeen: false, river: null, ferryCounted: false, limped: false };
+}
+
+// ---- the leg's v1.5 plan: the toll (Barlow Road), the letter keys the sim adds (a toll paid, a pan, a sail …) ----
+const tripV15 = (J, leg) => ({ v15: 1, toll: leg.toll ? { dollars: Math.round(leg.toll * seasonOf(J.season).priceMult), paid: false, iou: false } : null, keys: [], dryNoted: false });
+
+/** Fill in the v1.5 fields on a journey from an older save: the route, the tier, the year, the plan (a 1.3 / 1.4 journey in progress keeps its twelve legs to the end and is
+ *  locked against forks), the gold, the letter marker. Returns true when the plan was made now for a journey that has not left its first mile (the caller plans the leg again). */
+function fill15(J) {
+  let replan = false;
+  if (!Array.isArray(J.plan) || !J.plan.length) {
+    const legacy = isLegacyJourney(J);
+    const tool = toolLegs();
+    J.plan = tool ? tool.map((l, i) => ({ id: l.id, miles: l.miles, from: l.from, to: l.to, n: i + 1 })) : planOf(J);
+    if (legacy || tool) J.planLocked = true;
+    replan = !legacy && !tool && !!J.trip && J.milesDone === 0 && J.day === 0;
+  }
+  if (typeof J.route !== 'string' || !J.route) J.route = 'emigrant';
+  J.tier = tierOf(J.season);
+  if (!Number.isFinite(J.year)) J.year = 1847;
+  if (!Number.isFinite(J.journeyN) || J.journeyN < 1) J.journeyN = 1;
+  if (typeof J.family !== 'string') J.family = 'own';
+  if (!J.branches || typeof J.branches !== 'object' || Array.isArray(J.branches)) J.branches = {};
+  J.gold = Math.max(0, Number.isFinite(J.gold) ? Math.floor(J.gold) : 0);
+  J.letterFrom = Math.max(0, Number.isFinite(J.letterFrom) ? Math.floor(J.letterFrom) : 0);
+  J.banked = !!J.banked; J.closed = !!J.closed;
+  if (!Array.isArray(J.xcold)) J.xcold = [];
+  if (!Array.isArray(J.tale)) J.tale = [];
+  for (const k of V15_COUNTERS) if (!Number.isFinite(J.totals[k])) J.totals[k] = 0;
+  return replan;
 }
 
 // ---- the leg's v1.4 plan: the nose slots, the trail fact, the dust devil, and the counters the mini-games use ----
@@ -99,6 +141,9 @@ function planV14(J, leg) {
  *  call it right after loading a save. A J.food that someone changed directly is adopted (see supplies.ensureFoods). */
 export function ensureJourney(J) {
   if (!J) return J;
+  if (!J.totals) J.totals = emptyTotals();
+  const replan15 = fill15(J);
+  usePlan(J);                                // the journey's plan is the module's leg table from here on
   if (!Array.isArray(J.cards)) J.cards = [];
   if (!J.upgrades || typeof J.upgrades !== 'object') J.upgrades = {};
   if (!J.challenges || typeof J.challenges !== 'object') J.challenges = {};
@@ -138,7 +183,12 @@ export function ensureJourney(J) {
   // v1.4: the dog, the finds, the fish log, the quests … and the trip's counters (a leg already in progress gets no nose slots, fact or dust devil)
   fill14(J);
   if (t && !t.v14) Object.assign(t, tripV14());
-  J.rev = 14;
+  // v1.5: the trip's toll and letter keys; the tier's extra cold leg
+  if (t && !t.v15) { const leg = legOf(t.legId) || currentLeg(J); Object.assign(t, leg ? tripV15(J, leg) : { v15: 1, toll: null, keys: [], dryNoted: false }); }
+  ensureExtraCold(J);
+  const wasOld = !(J.rev >= 15);
+  J.rev = 15;
+  if (replan15 && wasOld && J.legId) startLeg(J, J.legId);        // a journey not yet under way takes its first leg's miles from the new plan
   return J;
 }
 
@@ -151,23 +201,36 @@ export function markerMiles(miles) {
   const n = clamp(Math.floor((miles - 1) / MARKERS.spacing), MARKERS.min, MARKERS.max);
   return Array.from({ length: n }, (_, k) => Math.round((miles * (k + 1)) / (n + 1)));
 }
+/** n evenly spaced marker miles (the voyage's four "Up the coast" markers). */
+export const markerMilesN = (miles, n) => Array.from({ length: n }, (_, k) => Math.round((miles * (k + 1)) / (n + 1)));
+/** The voyage home has four markers (the learning spine); it ticks no trail days. */
+export const VOYAGE_MARKERS = 4;
 
-/** A new journey at Independence, the first leg started (so it can tick at once; the app may show the Independence
- *  store first: storeList(null, season)). Cash scales with the season's prices; food and parts do not. */
-export function createJourney({ season = 's1847', wagonName = '', animal = 'oxen', companions = [], seed = 1, hunting = true } = {}) {
-  const s = seasonOf(season);
+/** A new journey at the start of its route (Independence, or the farm on the Gold Road), the first leg started (so it can tick at once; the app may show the start store first:
+ *  storeList(storeLeg(J), tier)). v1.5: `tier` ('rookie' | 'veteran' | 'pioneer'; `season` still takes a legacy 's18xx'), `route`, `year`, `journeyN`, `family`, `branches`; cash, food and
+ *  parts are the tier's (TIER_FX); the plan is planRoute's (while a tool has installed a leg list with useLegs, that list). */
+export function createJourney({ route = 'emigrant', tier, season, year = 1847, journeyN = 1, family = 'own', branches = {}, wagonName = '', animal = 'oxen', companions = [], seed = 1, hunting = true } = {}) {
+  const s = seasonOf(tier || season || 'rookie'), fx = TIER_FX[s.id];
   const comps = (Array.isArray(companions) ? companions : []).filter((c) => typeof c === 'string').slice(0, 3);
+  const tool = toolLegs();
+  const plan = tool ? tool.map((l, i) => ({ id: l.id, miles: l.miles, from: l.from, to: l.to, n: i + 1 })) : planRoute(route, branches, { year, journeyN });
+  const food = fx.startFood, flour = Math.round(food * 0.5), bacon = Math.round(food * 0.3);
+  const packs = comps.some((c) => (COMPANION_BY_ID[c] || {}).skill && COMPANION_BY_ID[c].skill.id === 'packing');
+  const parts = fx.startParts + (packs ? PACK.parts : 0);
   const J = {
-    v: JOURNEY_VERSION, rev: 14, season: s.id, seed: typeof seed === 'number' ? seed >>> 0 : hashSeed(seed),
+    v: JOURNEY_VERSION, rev: 15, season: s.id, tier: s.id, seed: typeof seed === 'number' ? seed >>> 0 : hashSeed(seed),
+    route: tool ? 'emigrant' : route, year, journeyN, family, branches: { ...branches }, plan, planLocked: !!tool, gold: 0, letterFrom: 0, banked: false, closed: false,
     wagonName: String(wagonName || '').slice(0, 24), animal: animalOf(animal).id, companions: comps,
-    legIndex: 0, legId: legAt(0) ? legAt(0).id : null, milesDone: 0, day: 0,
-    cash: Math.round(START.cash * s.priceMult), food: START.food, foods: { ...START.foods }, foodOwed: { flour: 0, bacon: 0, beans: 0 }, foodSave: 0,
-    parts: START.parts, goods: { ...START.goods }, animals: { n: 2, tired: 0 }, limp: false, halfPart: 0, tokens: 0,
+    legIndex: 0, legId: plan[0] ? plan[0].id : null, milesDone: 0, day: 0,
+    cash: fx.startCash, food, foods: { flour, bacon, beans: food - flour - bacon, other: 0 }, foodOwed: { flour: 0, bacon: 0, beans: 0 }, foodSave: 0,
+    parts, goods: { ...START.goods, parts }, animals: { n: 2, tired: 0 }, limp: false, halfPart: 0, tokens: 0,
     pace: 'steady', rations: 'full', spirit: MOOD.start, mood: moodOf(MOOD.start),
     party: comps.map((id) => ({ id, mood: moodOf(MOOD.start) })), stickers: [], letters: [],
     legStats: emptyLegStats(), totals: emptyTotals(), opts: { hunting: hunting !== false }, legStarts: 0, seasonsDone: 0,
-    done: false, trip: null, cards: [], upgrades: {}, challenges: {}, met: [], deeds: [],
+    done: false, trip: null, cards: [], upgrades: {}, challenges: {}, met: [], deeds: [], xcold: [], tale: [],
   };
+  usePlan(J);
+  ensureExtraCold(J);
   if (J.legId) startLeg(J, J.legId);
   return J;
 }
@@ -182,23 +245,29 @@ export function startLeg(J, legId) {
   const leg = legAt(idx);
   if (!leg) { J.done = true; return null; }
   const leavingStop = !!(J.trip && J.trip.arrived);
+  if (leavingStop && J.trip.legId) {                       // v1.5: what the leg being left held, for a later letter (a post is not at every stop)
+    J.tale = (J.tale || []).filter((e) => e.idx !== J.legIndex);
+    J.tale.push({ legId: J.trip.legId, idx: J.legIndex | 0, keys: happenedKeys(J) });
+    if (J.tale.length > 24) J.tale.splice(0, J.tale.length - 24);
+  }
   const keepSkips = J.trip ? J.trip.skipBonus | 0 : 0;      // v1.4: a flat stone found on one leg is thrown at the next river
   J.legStarts = (J.legStarts | 0) + 1;
   J.legIndex = idx; J.legId = leg.id; J.milesDone = 0; J.legStats = emptyLegStats(); J.done = false;
   const rand = mulberry32(hashSeed(J.seed, leg.id, J.legStarts));
-  const markers = markerMiles(leg.miles);
-  const events = planEvents(leg, rand, { hunting: J.opts.hunting && huntAllowed(J), cook: !!skillOf(J, 'good-cooking') }, markers);
+  const markers = leg.voyage ? markerMilesN(leg.miles, VOYAGE_MARKERS) : markerMiles(leg.miles);
+  const events = planEvents(leg, rand, { hunting: J.opts.hunting && huntAllowed(J), cook: !!skillOf(J, 'good-cooking'), tier: J.tier, dry: !!leg.dry }, markers);
   const offsets = J.party.map(() => randInt(rand, -MOOD.spread, MOOD.spread));
   if (leavingStop) J.spirit = clamp(J.spirit + MOOD.stopRest, 0, MOOD.max);
   J.trip = {
     legId: leg.id, miles: leg.miles, markers, nextMarker: 0, events, happened: [], usedKinds: [], slow: false, restDays: 0,
     tiredDays: 0, rescueCooldown: 0, rescuePending: false, crawlDays: 0, days: 0, offsets, seen: { happy: false, tired: false },
-    arrived: false, result: null, traded: 0, rng: hashSeed(J.seed, leg.id, J.legStarts, 'days'), ...tripV12(J, leg), ...tripV14(),
+    arrived: false, result: null, traded: 0, rng: hashSeed(J.seed, leg.id, J.legStarts, 'days'), ...tripV12(J, leg), ...tripV14(), ...tripV15(J, leg),
   };
   J.trip.skipBonus = keepSkips;
   planV14(J, leg);
   refreshMood(J);
-  return leg;
+  // v1.5: a toll leg (the Barlow Road) returns its toll { dollars, due } (the app asks payToll); any other leg is returned as it is
+  return leg.toll ? { ...leg, toll: { dollars: J.trip.toll.dollars, due: !J.trip.toll.paid && !J.trip.toll.iou } } : leg;
 }
 
 /** Recompute the mood words from the spirit (and food): the party's and each companion's (their seeded offset). */
@@ -239,23 +308,31 @@ function freeFixOf(J) {
 function fireEvent(J, id, rescue, planned) {
   const t = J.trip, leg = currentLeg(J);
   const e = EVENT_BY_ID[id] || { id, kind: 'bonus' };
+  const kind = eventKind(e);
   t.happened.push(e.id);
-  t.usedKinds.push(e.kind);
+  t.usedKinds.push(kind);
   const extra = { rescue };
-  if (e.kind === 'bonus') {
+  if (kind === 'spring') {
+    // v1.5: a hidden spring on a dry stretch: the party is lifted, nothing else
+    J.spirit = clamp(J.spirit + DRY.spring, 0, MOOD.max); J.totals.springs++; extra.spirit = DRY.spring;
+  } else if (kind === 'snub') {
+    extra.snub = true;                                                                          // v1.5: Laurel Hill: the app runs startSnub, then applySnub
+  } else if (kind === 'bonus') {
     const lb = Math.max(e.foodLb || 20, rescue ? RESCUE.minLb : 0);
     addFoodKind(J, 'other', lb); extra.foodAdded = lb;
-  } else if (e.kind === 'rest') {
+  } else if (kind === 'rest') {
     if (planned && planned.waited) { extra.waitedOut = true; extra.covered = true; }            // the party waited it out at camp: nothing lost
     else { t.restDays = Math.max(t.restDays, 1); extra.covered = !!(J.upgrades && J.upgrades.cover); }
-  } else if (e.kind === 'breakdown') {
+  } else if (kind === 'breakdown') {
     // v1.2: the sim only notes it; the app calls repair(J, { workedOut }) (a spare part, Ada, Tomas, or a limp)
     J.totals.breakdowns++;
     extra.needsPart = true; extra.part = e.part; extra.havePart = J.parts > 0; extra.freeFix = freeFixOf(J);
-  } else if (e.kind === 'hunt' || e.kind === 'fish') {
+  } else if (kind === 'hunt' || kind === 'fish') {
     t.rescuePending = !!rescue;
-    if (e.kind === 'hunt') { extra.canHunt = huntAllowed(J); extra.arrows = J.goods.arrows | 0; }
+    if (kind === 'hunt') { extra.canHunt = huntAllowed(J); extra.arrows = J.goods.arrows | 0; }
   }
+  if (e.id === 'ice') J.totals.iceDug++;                                                       // v1.5: the ice at Ice Slough (the 'ice-in-july' deed)
+  if (e.id === 'gold-fever') J.totals.goldFevers++;
   return eventPayload(e.id, leg, extra);
 }
 
@@ -283,8 +360,9 @@ export function tickDay(J, { rand } = {}) {
   const t = J.trip, leg = currentLeg(J);
   const idle = { arrived: !!(t && t.arrived), event: null, marker: null, foodLow: false, miles: 0, rest: false, crawl: false,
     slow: false, foraged: 0, restNext: null, day: J.day, food: J.food, mood: J.mood, lost: false, limp: !!J.limp, animalsTired: false,
-    coldNight: false, cold: null, spotted: null, skill: null, skills: [], needsPart: false, nose: null, fact: null, moment: null };
+    coldNight: false, cold: null, spotted: null, skill: null, skills: [], needsPart: false, nose: null, fact: null, moment: null, dry: false, thirsty: false };
   if (J.done || !t || !leg || t.arrived) return idle;
+  if (leg.voyage) return idle;                  // v1.5: a voyage leg ticks no trail days: the app runs the sail (like the Columbia raft) and sets the miles from the scene
   const r = typeof rand === 'function' ? rand : () => drawFrom(t, 'rng');
   const animal = animalOf(J.animal);
   const up = J.upgrades;                       // v1.1 wagon upgrades: tires +2 miles, cover (weather costs no mood), barrel (lean = plenty)
@@ -309,11 +387,16 @@ export function tickDay(J, { rand } = {}) {
   // eat (v1.2: by kind, and Rosa's cooking makes it last a tenth longer)
   const need = dailyNeed(J);
   const ate = eatFood(J, need, eatFactor(J));
-  // the animals: a rest day restores them, a travel day tires them (brisk, mountains), the second yoke halves it
+  // v1.5: a day inside the leg's dry share (the Sublette Cutoff, the Forty-Mile Desert); without the water barrel it is a thirsty one (spirit down, the animals tire half again as much)
+  const dryNow = !!leg.dry && !rest && inDry(leg, J.milesDone + miles / 2);
+  const thirsty = dryNow && !up.barrel;
+  if (dryNow) { J.totals.dryDays++; if (thirsty) J.totals.thirstyDays++; if (Array.isArray(t.keys) && !t.keys.includes('dry')) t.keys.push('dry'); }
+  // the animals: a rest day restores them, a travel day tires them (brisk, mountains), the second yoke halves it; the tier tires them more, thirst more again
   if (rest) J.animals.tired = Math.max(0, J.animals.tired - ANIMAL_RULES.restRelief);
   else {
-    let add = (pace === 'brisk' ? ANIMAL_RULES.tireBrisk : 0) + (leg.biome === 'mountains' ? ANIMAL_RULES.tireMountains : 0);
-    if (J.animals.n >= 4) add = Math.round(add * ANIMAL_RULES.yokeTiring);
+    let add = (pace === 'brisk' ? ANIMAL_RULES.tireBrisk : 0) + (leg.biome === 'mountains' || leg.biome === 'sierra' ? ANIMAL_RULES.tireMountains : 0);
+    if (J.animals.n >= 4) add = add * ANIMAL_RULES.yokeTiring;
+    add = Math.round(add * (TIER_FX[J.tier] || TIER_FX.rookie).animalTire * (thirsty ? DRY.animalTire : 1));
     J.animals.tired = clamp(J.animals.tired + add, 0, ANIMAL_RULES.max);
   }
   // move: never past a second marker in one day; a marker day stops short of the stop
@@ -336,19 +419,20 @@ export function tickDay(J, { rand } = {}) {
   if (crawl) { t.crawlDays++; J.totals.crawlDays++; J.totals.maxCrawlDays = Math.max(J.totals.maxCrawlDays, t.crawlDays); } else t.crawlDays = 0;
   // an event: a planned one (never on a marker day), else the safety net when the food is about to run out
   let event = null, foraged = 0;
-  if (!marker && !arrived) {
+  if (!arrived) {                                    // v1.5: a due event may share a marker day (the app asks the marker first, as for the safety net): on a 60-110 mile leg almost every travel day has a marker, and half the planned events never fired
     const ev = t.events.find((e) => !e.fired && e.atMile <= to);
     if (ev) { ev.fired = true; event = fireEvent(J, ev.id, false, ev); }
   }
   if (!event && !arrived && J.food < need && t.rescueCooldown <= 0) {
     t.rescueCooldown = RESCUE.cooldown;
-    const rescue = rescueEvent(leg, [...t.usedKinds, ...t.events.map((e) => e.kind)], { hunting: J.opts.hunting && huntAllowed(J) });   // never a kind the leg has or will have
+    const rescue = rescueEvent(leg, [...t.usedKinds, ...t.events.map((e) => e.kind)], { hunting: J.opts.hunting && huntAllowed(J), dry: !!leg.dry });   // never a kind the leg has or will have
     if (rescue) event = fireEvent(J, rescue.id, true);
     else { foraged = RESCUE.minLb; addFoodKind(J, 'other', foraged); }
   }
   // the mood: rations and pace (or a rest day) move it; no food caps it at tired
   let d = MOOD.ration[up.barrel && J.rations === 'lean' ? 'plenty' : J.rations] ?? 0;
   d += rest ? (lost ? MOOD.lostDay : MOOD.rest) : (MOOD.pace[pace] ?? 0);
+  if (thirsty) d += DRY.spirit;
   if (event && event.kind === 'rest' && !up.cover && !event.waitedOut) d -= MOOD.weather;   // a wet, grumpy morning; the canvas cover keeps everyone dry
   J.spirit = clamp(J.spirit + d, 0, MOOD.max);
   if (J.food <= 0) J.spirit = Math.min(J.spirit, MOOD.hungryCap);
@@ -387,8 +471,12 @@ export function tickDay(J, { rand } = {}) {
   if (foodLow) t.foodLowSeen = true;
   return { arrived, event, marker, foodLow, miles, rest, crawl, slow, foraged, restNext, day: J.day, food: J.food, mood: J.mood,
     lost, limp: !!J.limp, animalsTired, coldNight, cold, spotted, skill: skills[0] || null, skills, needsPart: !!(event && event.needsPart),
-    nose: fun.nose, fact: fun.fact, moment: fun.moment };
+    nose: fun.nose, fact: fun.fact, moment: fun.moment, dry: dryNow, thirsty };
 }
+/** Is this mile inside the leg's dry share (leg.dry = { from, to }, fractions of the leg)? */
+const inDry = (leg, mile) => !!leg.dry && mile >= leg.dry.from * leg.miles && mile < leg.dry.to * leg.miles;
+/** Is the party on a dry stretch right now (the leg's dry share)? The water barrel matters there (tickDay's `thirsty`). */
+export const isDryDay = (J) => { const leg = currentLeg(J); return !!leg && inDry(leg, J.milesDone); };
 
 /** The day's v1.4 thing, if any (SPEC §3.6): nothing on a marker day, an event day, a rest or lost day, or the arrival day. In order: the first due nose
  *  slot (applied here: a find recorded, the berries' food added, the snake's spirit, a quest item found — so a reload loses nothing; the rabbit waits
@@ -397,15 +485,20 @@ export function tickDay(J, { rand } = {}) {
 function v14Day(J, leg, { marker, event, arrived, rest, miles, startMile }) {
   const out = { nose: null, fact: null, moment: null };
   const t = J.trip;
-  if (marker || event || arrived || rest || miles <= 0) return out;
+  if (arrived || rest || miles <= 0) return out;
+  // v1.5: on a 60-110 mile leg with 4-6 markers almost every travel day is a marker day, so the dog's nose (a pop that does not stop the day) may share a marker day (the app plays
+  // it after the marker); the trail fact and the dust devil, which take over the scene, still wait for a day with nothing else
   const L = leg.miles;
   const late = (frac) => startMile > Math.floor(frac * L);
+  // an event day is a busy one, except that a dog who has not yet had his moment by the leg's half may take it after the event (so no leg goes without)
+  if (event && !(Array.isArray(t.nose) && t.nose.length && !t.nose.some((sl) => sl.fired) && J.milesDone >= 0.5 * L)) return out;
   // the nose
   if (Array.isArray(t.nose)) {
     for (const sl of t.nose) if (!sl.fired && late(NOSE.to)) { sl.fired = true; sl.dropped = true; }
     const idx = t.nose.findIndex((sl) => !sl.fired && sl.atMile - NOSE.lead <= J.milesDone);
     if (idx >= 0) { t.nose[idx].fired = true; out.nose = DOG.fireNose(J, t.nose[idx], idx); return out; }
   }
+  if (marker || event) return out;
   // the trail fact
   const f = t.fact;
   if (f && !f.fired && late(MOMENT_RULES.facts.to)) { f.fired = true; f.dropped = true; }
@@ -468,7 +561,7 @@ export function applyProblem(J, { kind = 'other', correct, firstTry = true } = {
   let tokens = 0;
   if (correct) {
     J.legStats.problemsRight++; J.totals.problemsRight++; k.right++;
-    if (firstTry !== false) tokens = TOKENS.problemFirstTry;
+    if (firstTry !== false) tokens = (TIER_FX[tierOf(J.tier || J.season)] || TIER_FX.rookie).firstTryTokens || TOKENS.problemFirstTry;
   }
   J.tokens += tokens;
   return { tokens };
@@ -601,11 +694,16 @@ export function applyTrade(J, { giveN = 0, getN = 0, give, get, rate } = {}) {
   return { foodLb, got: n, gave, good: w, gaveGood: g, nation: nation ? nation.id : null };
 }
 
-/** The stop whose store the party is at: the arrived leg's fort, or Independence (null) before the first mile. */
+/** The stop whose store the party is at: the arrived leg's fort, or the route's start store (null for Independence) before the first mile. */
 export function storeLeg(J) {
   const leg = currentLeg(J);
   if (J.trip && J.trip.arrived) return leg;
-  return J.legIndex === 0 && J.milesDone === 0 ? null : leg;
+  if (J.legIndex === 0 && J.milesDone === 0) {
+    // before the first mile: the route's start store (Independence is level 1, no leg; the Gold Road's Oregon City is a stand-in at its level 1.3)
+    const start = routeStart(J.route);
+    return start && start.store && start.store.prices !== 1 ? { id: start.id, n: 0, name: start.store.name, fort: { prices: start.store.prices }, stop: { kind: 'fort', name: start.store.name } } : null;
+  }
+  return leg;
 }
 
 /** Buy at the General Store: qty × price (the price given, else priceAt here). Never below $0: when the cash does not
@@ -638,10 +736,10 @@ export function arrive(J) {
   ensureJourney(J);
   const t = J.trip, leg = currentLeg(J);
   if (!t || !leg || !hasArrived(J)) return null;
-  if (t.result) return t.result;
+  if (t.result) { t.result.fork = forkAt(J); return t.result; }      // (the fork is asked again until it is chosen)
   t.arrived = true;
   const stars = starsFor(J);
-  const cash = payFor(stars, J.season);
+  const cash = payFor(stars, J.season, leg);
   J.cash += cash.total;
   const sticker = leg.sticker || { id: leg.id, name: leg.name, emoji: '⭐' };
   if (!J.stickers.includes(sticker.id)) J.stickers.push(sticker.id);
@@ -665,7 +763,13 @@ export function arrive(J) {
   if (stars[2]) T.markersPerfectLegs++;
   if (!t.foodLowSeen) T.fullWagonLegs++;
   if (leg.id === 'blue-mountains' && t.coldOk && !t.coldNightHere) T.blueProof++;
-  t.result = { legId: leg.id, stars, cash, sticker, crate: crateFor(stars), ...(mended ? { mended: true } : {}), ...(bath ? { bath: true } : {}), ...(quest ? { quest } : {}) };
+  // v1.5: a dry stretch crossed with the water barrel on board; what the stop holds (a fork to choose, a digging, a letter), the end of the trail, the tier's extras
+  if (leg.dry && J.upgrades && J.upgrades.barrel) T.dryDrives++;
+  const fx = TIER_FX[J.tier] || TIER_FX.rookie, last = J.legIndex >= legList().length - 1, dig = goldAt(J);
+  const bonusCards = fx.bonusCards === 'every' ? 1 : fx.bonusCards === 'perfect' && stars.every(Boolean) ? 1 : 0;
+  t.result = { legId: leg.id, stars, cash, sticker, crate: crateFor(stars), ...(mended ? { mended: true } : {}), ...(bath ? { bath: true } : {}), ...(quest ? { quest } : {}),
+    post: !!(leg.post || (leg.stop && leg.stop.kind === 'fort')), end: last ? siteOfLeg(leg.id) : null, bonusCards,
+    tierTrophy: last ? (TIER_BY_ID[J.tier] || {}).trophy || null : null, gold: dig, fork: forkAt(J) };
   return t.result;
 }
 
@@ -674,6 +778,8 @@ export function arrive(J) {
 export function nextLeg(J) {
   if (J.done || !J.trip || !hasArrived(J)) return null;
   arrive(J);
+  const fork = forkAt(J);                                   // v1.5: moving on without choosing takes the default way (the first open option), and that is recorded
+  if (fork) chooseBranch(J, fork.id, (fork.options.find((o) => o.open) || fork.options[0]).id);
   if (J.legIndex + 1 >= legList().length) { J.done = true; return null; }
   return startLeg(J);
 }
@@ -685,24 +791,22 @@ export function journeyDone(J) {
   return { season: J.season, wagonName: J.wagonName, days: J.day, miles: T.miles, legs: T.legs, stars: T.stars,
     maxStars: legList().length * 3, cash: J.cash, tokens: J.tokens, stickers: J.stickers.slice(), letters: J.letters.length,
     markers: T.markers, markersRight: T.markersRight, problems: T.problems, problemsRight: T.problemsRight,
-    words: T.words, wordsRight: T.wordsRight, deeds: (J.deeds || []).length, peopleMet: T.peopleMet | 0, repairs: T.repairs | 0 };
+    words: T.words, wordsRight: T.wordsRight, deeds: (J.deeds || []).length, peopleMet: T.peopleMet | 0, repairs: T.repairs | 0,
+    route: J.route, tier: J.tier, year: J.year, gold: J.gold | 0, site: siteOfLeg((legList()[legList().length - 1] || {}).id) };
 }
 
-/** The next season's journey (a new J; the app replaces the old one): the next year's prices and numbers, a fresh
- *  start (cash × the season's priceMult), the same wagon and party unless overridden; trade tokens carry over. */
+/** The next journey (a new J; the app replaces the old one): by default the emigrant trail one tier up (the last tier repeats), the year after, the same wagon and party unless
+ *  overridden; a thin wrapper over seasons.startSeason (the cards, deeds, tokens, upgrades, challenges, the dog and v1.4's collections carry over). overrides: season / tier,
+ *  route, wagonName, animal, companions, seed, hunting, family. */
 export function newSeason(J, overrides = {}) {
   ensureJourney(J);
-  const season = overrides.season || nextSeasonId(J.season);
-  const N = createJourney({ season, wagonName: J.wagonName, animal: J.animal, companions: J.companions,
-    seed: hashSeed(J.seed, 'season', season, J.seasonsDone + 1), hunting: J.opts.hunting, ...overrides });
-  N.tokens = J.tokens;
-  N.cards = J.cards.slice(); N.upgrades = { ...J.upgrades }; N.challenges = JSON.parse(JSON.stringify(J.challenges));   // the album, the wagon and the day's claims carry over
-  N.deeds = J.deeds.slice();                                                                                              // v1.2: the badges are kept (the people and the counters start over)
-  carry14(J, N);                                                                                                           // v1.4: the dog, the finds, the fish log, the stones, the wishes … (collections.js)
-  if (N.trip) { const leg = currentLeg(N); if (leg) planV14(N, leg); }                                                     // the first leg is planned again now that the dog and the switch are carried
-  N.seasonsDone = (J.seasonsDone | 0) + (J.done ? 1 : 0);
-  return N;
+  const { season, tier, ...rest } = overrides;
+  const t = tierOf(season || tier || nextSeasonId(J.tier || J.season));
+  return startSeason(J, { route: 'emigrant', ...rest, tier: t, seed: rest.seed != null ? rest.seed : hashSeed(J.seed, 'season', t, (J.seasonsDone | 0) + 1) });
 }
+/** The first leg of a journey is planned again (the dog, the sounds switch and the quests are carried after createJourney has planned it). */
+function replanFirstLeg(J) { if (J.trip) { const leg = currentLeg(J); if (leg) planV14(J, leg); } }
+bindSim({ createJourney, replanFirstLeg });
 
 /** The food plan to the next fort (or the end of the trail): miles, days at the current pace, pounds at the current
  *  rations (Rosa's cooking counted), and whether the wagon has enough. Why: the store's hint ("you need about 300 pounds to
@@ -1046,3 +1150,65 @@ export const { useQuests, questList, questFindable, findQuestItem, questAt, ques
 export function questTalk(J, id) { ensureJourney(J); const r = QUESTS_API.questTalk(J, id); refreshMood(J); return r; }
 // the trail moments and facts (moments.js)
 export const { setTrailSounds, factsFor, planFact, heardFact, stampedeFact, planDustDevil, dustDevilResult, stonesPlan, stonesResult, campWater, meteorsTonight, wishFor } = MOMENTS_API;
+
+// ---- v1.5: The Long Trail (SPEC v1.5 §3): routes and forks, tiers, gold, the homestead, years, the adaptive math ----
+/** Choose an option at a fork (see route.js): records J.branches[forkId], replans the rest after the current leg, and adds the fork's line to the letter. → { ok, plan }. */
+export function chooseBranch(J, forkId, optionId) {
+  ensureJourney(J);
+  const r = chooseBranchRaw(J, forkId, optionId);
+  if (r.ok && J.trip) {
+    J.totals.forksChosen = (J.totals.forksChosen | 0) + 1;
+    const k = forkKey(forkId, optionId);
+    if (k && Array.isArray(J.trip.keys) && !J.trip.keys.includes(k)) J.trip.keys.push(k);
+  }
+  return r;
+}
+/** The toll at the start of a toll leg (the Barlow Road: $5 in 1846 dollars × the price level): the purse covers it (paid) or the toll keeper takes an IOU (nothing is
+ *  taken, the party is never stranded). Idempotent. → { paid, iou, dollars }. */
+export function payToll(J) {
+  ensureJourney(J);
+  const toll = J.trip && J.trip.toll;
+  if (!toll) return { paid: false, iou: false, dollars: 0 };
+  if (!toll.paid && !toll.iou) {
+    if (J.cash >= toll.dollars) { J.cash -= toll.dollars; toll.paid = true; } else { toll.iou = true; J.totals.tollIous++; }
+    J.totals.tolls++;
+    if (!J.trip.keys.includes('toll')) J.trip.keys.push('toll');
+  }
+  return { paid: toll.paid, iou: toll.iou, dollars: toll.dollars };
+}
+/** Laurel Hill's rope slide is over (the app ran startSnub): `smooth` is the scene's snubEnd. Counts the slide (and a smooth one, for the 'laurel-hill' deed), rolls a card
+ *  chance for a smooth one (seeded, so a reload gives the same roll), and pays SNUB.smooth (a bumpy slide SNUB.bumpy) × the price level, as the raft does on the Columbia: the Barlow
+ *  Road has no raft, so the economy stays where it was; nothing is lost when it was not smooth. → { smooth, card, cash }. */
+export function applySnub(J, { smooth = false } = {}) {
+  ensureJourney(J);
+  J.totals.snubs++;
+  if (smooth) J.totals.snubsSmooth++;
+  const card = !!smooth && mulberry32(hashSeed(J.seed, J.legId, J.legStarts, 'snub'))() < SNUB.cardChance;
+  const cash = Math.round((smooth ? SNUB.smooth : SNUB.bumpy) * seasonOf(J.season).priceMult);       // the Barlow Road has no raft: the rope slide pays what the raft pays (a bumpy slide still pays)
+  J.cash += cash;
+  return { smooth: !!smooth, card, cash };
+}
+/** The voyage home (the Gold Road's last leg; $24 less $6 a bump, never under $6, × the price level): added to cash. The sail is told in the letter. → { cash, bumps }. */
+export function sailPay(J, { bumps = 0 } = {}) {
+  ensureJourney(J);
+  const b = Math.max(0, bumps | 0);
+  const cash = Math.round(Math.max(SAIL.min, SAIL.base - SAIL.perBump * b) * seasonOf(J.season).priceMult);
+  J.cash += cash; J.totals.sails++;
+  if (J.trip) for (const k of ['sail', 'bar']) if (!J.trip.keys.includes(k)) J.trip.keys.push(k);
+  return { cash, bumps: b };
+}
+/** Write the wagon's name on a granite spire at City of Rocks (the stop's people offer it): only at that stop, counted for the 'axle-grease' deed. → { ok }. */
+export function writeOnRock(J) {
+  ensureJourney(J);
+  if (!J.trip || !J.trip.arrived || J.legId !== 'city-of-rocks') return { ok: false };
+  J.totals.axleGrease++;
+  return { ok: true };
+}
+
+export { forkAt, planRoute, usePlan, routesOpen, siteOfLeg, planMiles, planStores, tierOf } from './route.js';
+export { TIER_FX, GOLD, SAIL, HOMESTEAD_COST, DRY, PACK, tierFx } from './economy.js';
+export { goldAt, panOutcome, rockerOutcome, applyGold, nuggetsOf } from './gold.js';
+export { CARRY, CARRY_V14, newLedger, startSeason, closeJourney, tiersOpen, unlocksFor, yearOf, normalizeLedger, mergeLedger, mergeWw15 } from './seasons.js';
+export { newFarm, foundSite, farmBalance, canBuild, buildPiece, bankJourney, farmGifts, homesteadView, normalizeFarm, mergeFarm } from './homestead.js';
+export { needsPlacement, placementSetup, problemTierFor, hasFactsHistory, PLACEMENT, PROBLEM_TIERS } from './adaptive.js';
+export { checkSets } from './deeds.js';

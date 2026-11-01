@@ -6,12 +6,15 @@
 // child when the leg changes (reaching the stop moves the party to the next leg) and it can only be claimed once.
 // J.challenges = { [dayKey]: { id, done, kind, legId, met, base: { camps, fished, hunted, traded, words, wordsRight } } }
 // A challenge is never a gate (SPEC §1): nothing is taken away for not doing it, and the trail never needs it.
-import { legOf, nationFor } from './route.js';
+import { legOf, nationFor, usePlan } from './route.js';
 import { hashSeed, mulberry32, pick } from './rng.js';
 import { CHALLENGE_REWARD } from './economy.js';
 
 /** The kinds, in a fixed order (the day key picks one of those that fit the leg). */
-export const CHALLENGE_KINDS = ['markers', 'supper', 'river', 'reach', 'trade', 'camp'];
+// v1.5: 'pan' (at a digging: "Pan three flakes at Clear Creek") and 'barrel' (a dry stretch: "Cross the Forty-Mile Desert with the water barrel") come last, so the picks of the old kinds do not move
+export const CHALLENGE_KINDS = ['markers', 'supper', 'river', 'reach', 'trade', 'camp', 'pan', 'barrel'];
+/** Flakes a 'pan' challenge asks for. */
+export const PAN_GOAL = 3;
 
 const n = (x) => x | 0;
 // how far a counter has come since the challenge was made (a counter that went down means a new journey: count from 0)
@@ -19,7 +22,7 @@ const since = (cur, base) => (n(cur) >= n(base) ? n(cur) - n(base) : n(cur));
 
 function snapshot(J) {
   const T = J.totals || {};
-  return { camps: n(T.camps), fished: n(T.fished), hunted: n(T.hunted), traded: n(T.traded), words: n(T.words), wordsRight: n(T.wordsRight) };
+  return { camps: n(T.camps), fished: n(T.fished), hunted: n(T.hunted), traded: n(T.traded), words: n(T.words), wordsRight: n(T.wordsRight), flakes: n(T.flakes) };
 }
 
 function stopPhrase(leg) {
@@ -32,7 +35,8 @@ function stopPhrase(leg) {
 /** Which kinds fit this leg: river words only at a river, a trade only where a nation trades. */
 export function challengeKinds(leg) {
   const l = legOf(leg);
-  return CHALLENGE_KINDS.filter((k) => (k !== 'river' || (l && l.stop && l.stop.kind === 'river')) && (k !== 'trade' || (l && nationFor(l))));
+  return CHALLENGE_KINDS.filter((k) => (k !== 'river' || (l && l.stop && l.stop.kind === 'river')) && (k !== 'trade' || (l && nationFor(l)))
+    && (k !== 'pan' || (l && l.gold && l.gold.pans > 0)) && (k !== 'barrel' || (l && l.dry)));
 }
 
 // the live test of one kind against J and the record it was made with
@@ -52,6 +56,8 @@ function live(kind, J, rec) {
     case 'reach': return J.legId !== rec.legId || (!!J.trip && J.trip.legId === rec.legId && J.milesDone >= legOf(rec.legId).miles);
     case 'trade': return since(T.traded, b.traded) > 0;
     case 'camp': return since(T.camps, b.camps) > 0;
+    case 'pan': return since(T.flakes, b.flakes) >= PAN_GOAL;
+    case 'barrel': return !!(J.upgrades && J.upgrades.barrel) && (J.legId !== rec.legId || (!!J.trip && J.trip.legId === rec.legId && J.milesDone >= legOf(rec.legId).miles));
     default: return false;
   }
 }
@@ -63,6 +69,8 @@ function describe(kind, leg, hunting) {
     case 'river': return /^the /i.test(leg.stop.name) ? `Cross at ${leg.stop.name} with every word right` : `Cross the ${leg.stop.name} with every word right`;
     case 'reach': return `Reach ${stopPhrase(leg)}`;
     case 'trade': return 'Trade at a post';
+    case 'pan': return `Pan three flakes at ${/^the /i.test(leg.stop.name) ? leg.stop.name : leg.stop.name.replace(/,.*$/, '')}`;
+    case 'barrel': return `Cross ${stopPhrase(leg)} with the water barrel`;
     default: return 'Make camp once';
   }
 }
@@ -89,6 +97,7 @@ function build(J, dayKey, rec) {
  *  check(J) → bool }. The goal is picked from (dayKey, the current leg) and then kept in J.challenges[dayKey]; asking
  *  again the same day (even from a later leg) returns the same goal. */
 export function dailyChallenge(J, dayKey) {
+  usePlan(J);
   const key = String(dayKey);
   if (!J.challenges || typeof J.challenges !== 'object') J.challenges = {};
   let rec = J.challenges[key];
@@ -104,6 +113,7 @@ export function dailyChallenge(J, dayKey) {
 /** Claim a challenge's reward: once per day key, and only when its goal is met. Adds the token to J.tokens and returns
  *  { ok: true, tokens: 1, card: true } (the app then draws the card: cardForLeg + awardCard), else { ok: false }. */
 export function claimChallenge(J, id) {
+  usePlan(J);
   const key = String(id).split('|')[0];
   const rec = J.challenges && J.challenges[key];
   if (!rec || rec.id !== id || rec.done) return { ok: false };

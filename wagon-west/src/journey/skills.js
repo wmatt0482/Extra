@@ -14,6 +14,8 @@ export const SKILL = {
   peppermints: 'peppermints',   // Mabel the doctor: a tired party is rested again in one day
   carpentry: 'carpentry',       // Tomas the carpenter: the float is safe without rope, every second repair needs no part
   tales: 'tales',               // Ines the storyteller: a campfire tale always drops a card, a lookout drops two
+  packing: 'packing',           // v1.5 Mateo the mule packer: food goes a twentieth further, and one more spare part at the start of each journey
+  prospecting: 'prospecting',   // v1.5 Hattie the prospector: a good swirl finds one more flake, and one pan at each digging is rich
 };
 
 const companionIds = (J) => (Array.isArray(J && J.companions) ? J.companions : (Array.isArray(J && J.party) ? J.party.map((p) => p.id) : []));

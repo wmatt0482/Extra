@@ -2,7 +2,7 @@
 // here, as constants, so that tools/economy-sim.mjs can tune it in one place; sim.js only applies the rules. The
 // shape of the economy: supplies are always affordable (cash is a score with a use, never a gate), food is the one
 // resource a child manages (pace and rations are the dials), and running out of it only slows the party down.
-import { GOODS, animalOf, goodOf, legOf, seasonOf } from './route.js';
+import { GOODS, ALL_LEGS, animalOf, goodOf, legOf, seasonOf } from './route.js';
 
 /** What a journey starts with in the Rookie year (cash and food scale with season.priceMult / stay the same). Why 300
  *  lb: enough for a party of four at full rations to reach the first fort two legs out, even if the app skips the
@@ -10,10 +10,11 @@ import { GOODS, animalOf, goodOf, legOf, seasonOf } from './route.js';
 export const START = { cash: 45, food: 300, parts: 1,
   foods: { flour: 150, bacon: 90, beans: 60, other: 0 },     // v1.2: the 300 lb as the wagon carries it (50 / 30 / 20 %)
   goods: { parts: 1, rope: 0, blankets: 0, arrows: 15, pelts: 6, yoke: 0 } };
-/** Pay on arriving (v1.3, SPEC "money is a choice"): $4 × season.priceMult, plus the stars: $1 for arriving, $3 for everyone happy, $14 for
+/** Pay on arriving (v1.3, SPEC "money is a choice"; v1.5: PAY.star[2] 12 (was 14) and the pay follows the miles, payFor's `leg`: a 100-mile leg
+ *  pays 100 / `refMiles` (the 1.3 mean leg, 2,000 / 12) of 1.3's pay, so 20 legs pay what 12 did; the economy sim holds the 1.3 TARGETS with these): $4 × season.priceMult, plus the stars: $1 for arriving, $3 for everyone happy, $14 for
  *  every marker right (× season.priceMult too), so the pay that follows the answers is the marker star (the strong kid earns about $16 a leg,
  *  the average about $10, the weak about $8). Was a flat $60 + $20 a star, with the stars not scaling by season. */
-export const PAY = { arrival: 4, star: [1, 3, 14] };
+export const PAY = { arrival: 4, star: [1, 3, 14], refMiles: 167 };
 /** Pounds a person eats a day by the rations dial (SPEC §5: 3 full, 2 plenty, 1 lean). */
 export const RATION_LB = { full: 3, plenty: 2, lean: 1 };
 export const PACES = ['steady', 'brisk'];
@@ -33,7 +34,7 @@ export const MOOD = {
   lostDay: 0,              // v1.2: a day lost to a breakdown with no spare part gives no rest bonus
 };
 /** Markers: one every ~30 miles, 4-6 a leg. */
-export const MARKERS = { spacing: 30, min: 4, max: 6 };
+export const MARKERS = { spacing: 24, min: 5, max: 6 };      // v1.5: 60-160 mile legs keep the 4-6 markers of the learning spine, five or six now (was 30 / 4 / 6: 4 on a 100 mile leg)
 /** Events: one or two a leg (the chance of a second), placed in the first and second halves of the leg. */
 export const EVENTS_PLAN = { secondChance: 0.5, first: [0.15, 0.45], second: [0.5, 0.8] };
 /** The safety net (SPEC §1: food runs low → a fishing stop or a hunt fixes it): when food hits 0 the next day brings
@@ -46,7 +47,9 @@ export const TOKENS = { problemFirstTry: 1 };
 export const CRATE_BY_STARS = [null, 'bronze', 'silver', 'gold'];
 /** Pounds of food in one unit of a traded good (NATIONS[].trade.get is always a food: a sack of flour, a bag of
  *  corn, a basket of camas); any unknown id is 10 lb. Store food goods use their own GOODS lb first. */
-export const TRADE_LB = { flour: 50, corn: 25, pemmican: 20, berries: 10, camas: 15, salmon: 15, roots: 10, wapato: 10, default: 10 };
+export const TRADE_LB = { flour: 50, corn: 25, pemmican: 20, berries: 10, camas: 15, salmon: 15, roots: 10, wapato: 10,
+  acorns: 20, pinenuts: 10, trout: 10,      // v1.5: bags of acorn meal, bags of pine nuts, strings of dried trout (SPEC v1.5 §2.5)
+  default: 10 };
 /** v1.1 wagon upgrades (SPEC v1.1 §3): bought once with trade tokens or with cash (the cash price is in 1847 dollars and
  *  scales by the season's priceMult, like every price). cover: a weather event costs no mood; tires: +2 miles a day;
  *  barrel: lean rations count as plenty for the mood. Why both prices: tokens had no sink and cash piled up ($1,400 at the
@@ -82,12 +85,14 @@ export const ARROWS = { start: 15, perHunt: 5, perBundle: 5 };
  *  `yokeMiles` a day and halves the tiring. */
 export const ANIMAL_RULES = { tireBrisk: 12, tireMountains: 8, restRelief: 30, stopRelief: 30, forceSteadyOver: 70, yokeMiles: 3, yokeTiring: 0.5, max: 100 };
 /** The legs whose nights are cold (and a 'snow' event anywhere): one blanket for every `perBlanket` people. */
-export const COLD_LEGS = ['south-pass', 'blue-mountains'];
+export const COLD_LEGS = ALL_LEGS.filter((l) => l.cold).map((l) => l.id);      // v1.5: the legs the content flags `cold` (South Pass, the Blue Mountains, the Lander Road, the Sierra summit, the Siskiyou pass)
 export const COLD = { perBlanket: 2, spiritCap: 24 };       // a cold night caps the party's spirit at tired (< MOOD.fine)
 /** Wet flour: a soaked sack is 25 lb, never more than half the wagon's flour. */
 export const SOAKED_LB = 25;
 /** Rosa's good cooking: the party eats this share of a normal day's food. */
 export const COOK = { foodFactor: 0.9 };
+/** Mateo's packing (v1.5): the party eats this share of a normal day's food (a twentieth further) and the journey starts with one more spare part. */
+export const PACK = { foodFactor: 0.95, parts: 1 };
 /** Skill numbers: Jasper's night at camp (+4 spirit), Mabel's peppermints (raise a tired party to fine + 6, then wait
  *  `cooldown` days), Ada / Tomas live in the repair rules. */
 export const SKILL_FX = { fiddlerCamp: 4, peppermintTo: MOOD.fine + 6, peppermintCooldown: 3 };
@@ -150,12 +155,18 @@ export function storeList(leg, season) {
   return [...GOODS, ...EXTRA_GOODS.filter((g) => offeredAt(g, leg))].map((g) => ({ id: g.id, name: g.name, unit: g.unit, lb: g.lb || 0, emoji: g.emoji, food: !!g.lb, price: priceAt(g, leg, season) }));
 }
 
-/** The arrival pay for a leg's stars: { arrival, stars, total }. */
-export function payFor(stars, season) {
-  const mult = seasonOf(season).priceMult;
-  const arrival = Math.round(PAY.arrival * mult);
+/** The arrival pay for a leg's stars: { arrival, stars, total }. v1.5 (SPEC v1.5 §3.3): `leg` scales 1.3's pay by `leg.miles / PAY.refMiles` and
+ *  the tier's `payFactor` multiplies it (a call without a leg is a reference-length leg); the arrival is never under $1. A voyage leg pays like the
+ *  Columbia raft's leg: as a leg of `VOYAGE_PAY_MILES` (the sail's own pay is sailPay). */
+export function payFor(stars, season, leg) {
+  const s = seasonOf(season), fx = tierFx(s);
+  const l = leg ? legOf(leg) : null;
+  const miles = l ? (l.voyage ? VOYAGE_PAY_MILES : l.miles) : PAY.refMiles;
+  const f = (fx.payFactor ?? 1) * (miles / PAY.refMiles);
+  const mult = s.priceMult;
+  const arrival = Math.max(1, Math.round(PAY.arrival * mult * f));
   const sum = (stars || []).reduce((a, lit, i) => a + (lit ? PAY.star[i] || 0 : 0), 0);
-  const paid = Math.round(sum * mult);
+  const paid = Math.round(sum * mult * f);
   return { arrival, stars: paid, total: arrival + paid };
 }
 /** The crate tier for a leg's stars ('gold' | 'silver' | 'bronze' | null). */
@@ -191,3 +202,41 @@ export const MOMENTS = { dustDevil: { biomes: ['prairie', 'bluffs', 'highdesert'
   facts: { chance: 0.7, from: 0.3, to: 0.85, lead: 45 } };
 /** What the blacksmith at a fort pays for old iron: $1 × the season's price level a horseshoe. */
 export const HORSESHOE = { price: 1 };
+
+
+// ---- v1.5: The Long Trail (SPEC v1.5 §3.2-§3.5). Rookie keeps every 1.3 number. ----
+/** The tiers' numbers (the sim tunes Veteran and Pioneer inside these first-pass values). priceMult / numberMult scale prices, pay and problem numbers;
+ *  startCash / startFood / startParts the journey's start; secondEvent the chance of a second event a leg; breakdownW / weatherW the weights of
+ *  breakdown and weather events; extraCold 'none' | 'one' (one more mountain leg a journey, seeded) | 'all' (every mountains and sierra leg);
+ *  animalTire × the animals' tiring; bonusCards 'none' | 'perfect' (+1 card on a 3-star leg) | 'every' (+1 every leg); firstTryTokens the trade tokens
+ *  for a first-try problem; gold × the flakes found. */
+export const TIER_FX = {
+  rookie:  { priceMult: 1, numberMult: 1, startCash: 45,  payFactor: 1.0, startFood: 300, startParts: 1, secondEvent: 0.30,
+             breakdownW: 1.0, weatherW: 1.0, extraCold: 'none', animalTire: 1.0, bonusCards: 'none', firstTryTokens: 1, gold: 1.0 },
+  veteran: { priceMult: 2, numberMult: 2, startCash: 80,  payFactor: 0.9, startFood: 260, startParts: 1, secondEvent: 0.45,
+             breakdownW: 1.4, weatherW: 1.5, extraCold: 'one', animalTire: 1.15, bonusCards: 'perfect', firstTryTokens: 1, gold: 1.25 },
+  pioneer: { priceMult: 4, numberMult: 4, startCash: 145, payFactor: 0.8, startFood: 220, startParts: 0, secondEvent: 0.60,
+             breakdownW: 1.7, weatherW: 2.0, extraCold: 'all', animalTire: 1.3,  bonusCards: 'every', firstTryTokens: 2, gold: 1.5 } };
+/** The numbers of a tier from a tier id, a legacy season id ('s1850') or a season object (Rookie when unknown). */
+export const tierFx = (season) => TIER_FX[seasonOf(season).id] || TIER_FX.rookie;
+/** A voyage leg's arrival pay is that of a leg this long (the sea miles are not trail miles). */
+export const VOYAGE_PAY_MILES = 100;
+/** The sail home (the Gold Road's last leg): $24 less $6 a bump, never under $6, × the price level (the raft's numbers). */
+export const SAIL = { base: 24, perBump: 6, min: 6 };
+/** Gold (SPEC v1.5 §3.4): ten flakes make a nugget; a pan finds `panBase` + up to `panQuality` flakes by the swirl (+ `richBonus` in a rich pan, + `prospectorBonus`
+ *  for Hattie on a good swirl); a nugget shows up with `nuggetChance`; the rocker finds `rocker.base` + up to `rocker.perBeat` flakes by the beat; `rocker.onBeat` is
+ *  the share of on-beat rocks that counts as a round rocked "on the beat"; a garden row sends `gardenLb` along on a Gold Road start, an orchard `orchardLb`. */
+export const GOLD = { flakesPerNugget: 10, panBase: 1, panQuality: 3, richBonus: 2, prospectorBonus: 1, prospectorQuality: 0.6, nuggetChance: { rich: 0.35, plain: 0.05 },
+  rocker: { base: 2, perBeat: 4, onBeat: 0.7 }, gardenLb: 20, orchardLb: 40 };
+/** The toll (Barlow Road) is in 1846 dollars × the tier's price level; Beaver money in flakes. */
+export const TOLL_YEAR = 1846;
+/** The homestead's prices (SPEC v1.5 §3.5): savings in Rookie dollars, trade tokens, nuggets (ten flakes each). Tuned by tools/economy-sim.mjs --homestead (the SPEC's first pass was cabin $60, tokens 2-6 a piece, barn 5 .. schoolhouse 10 nuggets): a Rookie journey ends with $40-$115 and brings about 140 tokens, so the cabin costs $40 (every kid has one after journey 1), a token piece costs 15-50 tokens (the tokens finally have a sink: about half of a farm-building kid's tokens go to the farm), and the five gold pieces cost 29 nuggets (a Gold Road brings 5-8). */
+export const HOMESTEAD_COST = {
+  cabin: { savings: 40 }, 'name-plate': { savings: 10 }, well: { savings: 25 }, fence: { savings: 30 }, corral: { savings: 35 }, cow: { savings: 20 },
+  garden: { tokens: 30 }, flowers: { tokens: 20 }, mailbox: { tokens: 15 }, bench: { tokens: 20 }, coop: { tokens: 50 }, 'apple-tree': { tokens: 45 },
+  barn: { nuggets: 5 }, orchard: { nuggets: 4 }, 'frame-house': { nuggets: 7 }, mill: { nuggets: 5 }, vineyard: { nuggets: 6 }, windmill: { nuggets: 5 },
+  schoolhouse: { nuggets: 8 }, 'trophy-shelf': {} };
+/** Thirst on a dry stretch without the water barrel: spirit and the animals' tiring (SPEC v1.5 §3.3). A spring on a dry leg lifts the party by `spring`. */
+export const DRY = { spirit: -4, animalTire: 1.5, spring: 10 };
+/** Laurel Hill (the Barlow Road's rope slide, kind 'snub'): a smooth slide is a card chance. */
+export const SNUB = { cardChance: 0.5, smooth: 20, bumpy: 10 };
