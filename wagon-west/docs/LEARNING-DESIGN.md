@@ -30,7 +30,8 @@ agency, story) are explained in full.
 One session is one leg (10 to 14 minutes) and holds about **twelve learning moments**, in line with the other games'
 daily missions: about five facts (mile markers), about four applications (store, rations, distance, an event), and
 three words (the river, or the letter). A new season (1850, then 1853) reruns the same twelve legs with higher prices
-and bigger numbers, like the cups in Trail Blazer, so the same story carries a longer runway of difficulty.
+and bigger numbers, like the cups in Trail Blazer, so the same story carries a longer runway of difficulty. (From 1.5 the trail is
+twenty legs of 60 to 160 miles and the three tiers are Rookie, Veteran and Pioneer; a leg is still one session with the same spine, see below.)
 
 ## Pure play, on purpose (v1.4)
 
@@ -46,6 +47,24 @@ fact about a river or an animal lands on something the child has already met (ro
 nothing is held back for a miss, so the math and the spelling are never the price of the fun (row 6; Deci, Koestner & Ryan
 1999). The worst outcomes are a muddy dog, a fish that wiggles off, a hat in the sagebrush or a stone that sinks, and each
 is fixed by trying again.
+
+## The Long Trail (v1.5): three new rows and a longer runway
+
+Version 1.5 stretches the 2,000 miles from twelve legs to twenty, adds a choice of where to go, a second route (the Gold Road), three
+tiers and a farm that grows. The learning spine does not change: four to six mile-marker facts and three spelling words at every letter or
+ferry, in a leg that is still one session; a leg is shorter (60 to 160 miles), so a year is twenty sessions instead of twelve. The new
+rows below sit around the spine, as the 1.4 play did.
+
+| # | Technique | Source | Where in the game | Code |
+|---|-----------|--------|-------------------|------|
+| 13 | **Choice that is real and never hidden** (agency, extended) | Cordova & Lepper 1996 and Ryan & Deci 2000 (as row 7): choice and personalization raise engagement and learning; the choice has to matter and be understood | Three forks: **Fort Hall** (Oregon or California), **The Dalles** (the raft or the Barlow Road) and **South Pass** (by Fort Bridger, the Sublette Cutoff or the Lander Road). Each is a card with a person who says one true line per way, read aloud, and equal buttons; the first trip leans toward Oregon in order and focus only, never in size. A choice has a cost the child can see (a store skipped, a dry stretch, a toll), and no way is a mistake: every way arrives. | `src/content/routes.js` (`FORKS`, the lines), `src/content/people.js` (Agnes, Nell, Ben) |
+| 14 | **Progress the child can see, and keep** (the endowed-progress effect) | Nunes & Dreze 2006 (people work harder toward a goal they feel they have already started); Fuchs & Fuchs 1986 (as row 8) | The **farm**: arriving at a trail's end founds a homestead, and every journey banks what it brings (dollars left, gold, the team). Small pieces are bought with the trade tokens the learning earns, middle pieces with savings, big ones with Beaver money, so the work the child already does turns into something that stands in the scene. Nothing decays, nothing is lost, nothing has a timer: the loop is "go again and bring back more", never "come back or lose it". | `src/content/homestead.js` (`HOMESTEAD_PIECES`) |
+| 15 | **Place value in a story** (the base-ten exchange) | Common Core 4.NBT.A.1 and 4.NBT.A.2 (a digit stands for ten times the place to its right; read and compare multi-digit numbers); the standard "trade ten of one for one of the next" exchange used in base-ten manipulatives | Gold is counted in **flakes**, and ten flakes make one **nugget**; the pouch shows both ("five nuggets and seven flakes" for fifty-seven). Panning is the play; the pouch and the bank card are the place-value moment. The numbers are read as the child hears them, so the exchange is spoken as well as seen. Gold only builds the farm and never buys store goods, so the trail's money problems stay as they were. | `src/content/cards.js` (the flake and nugget cards), `src/journey/gold.js` |
+
+**Collections with long tails.** The 126 trail cards sit in sixteen sets that cut across the suits; a full set unlocks a wagon decoration. A set is a
+retrieval-friendly collection (a reason to read one more true line), and the decorations are painted things, never a nation's regalia. **Tiers**
+(Rookie, Veteran, Pioneer) change prices, weather and rewards, never a fail state. The **gold-rush story** is told as a journey and a craze; the
+cards that say who got rich and what the rush meant for California's Native nations are short, true, and flagged for a parent's read in `SOURCES.md`.
 
 ## What the game never does
 

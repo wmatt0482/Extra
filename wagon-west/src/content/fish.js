@@ -9,15 +9,28 @@
 // takes back while you let go, the line wobbles red every wobbleEvery seconds for wobbleS seconds); `help: true` = it takes two
 // to land it (the sturgeon, once a session); `bait` = the weight of each bait; `card` = the species' card (cards.js, suit river);
 // `land` = the card shown when it is landed. Every line is kid-safe: a fish that wiggles off is simply cast again.
-export const WATERS = { 'kansas-river': 'kansas', 'fort-kearny': 'platte', 'chimney-rock': 'platte', 'fort-laramie': 'platte',
-  'independence-rock': 'sweetwater', 'south-pass': 'sweetwater', 'fort-bridger': 'creek', 'fort-hall': 'bear', 'snake-river': 'snake',
-  'blue-mountains': 'blue', 'the-dalles': 'columbia', 'willamette-valley': 'columbia' };
+export const WATERS = { 'kansas-river': 'kansas', 'alcove-spring': 'bigblue', 'fort-kearny': 'platte', 'ash-hollow': 'platte', 'chimney-rock': 'platte',
+  'scotts-bluff': 'platte', 'fort-laramie': 'platte', 'north-platte': 'platte', 'independence-rock': 'sweetwater', 'ice-slough': 'sweetwater',
+  'south-pass': 'sweetwater', 'green-river': 'green', 'fort-bridger': 'creek', 'soda-springs': 'bear', 'fort-hall': 'bear', 'snake-river': 'snake',
+  'farewell-bend': 'snake', 'blue-mountains': 'blue', 'the-dalles': 'columbia', 'willamette-valley': 'columbia',
+  // v1.5 branches: the cutoff's stop is the Green River; the Lander Road follows mountain creeks; the Barlow Road ends at Oregon City
+  'sublette-cutoff': 'green', 'bear-river': 'bear', 'lander-road': 'creek', 'barlow-road': 'columbia',
+  // v1.5 California Trail (trout in the cold creeks and the Humboldt and Truckee; salmon and sturgeon in the Sacramento)
+  'raft-river': 'creek', 'city-of-rocks': 'creek', 'humboldt-wells': 'creek', 'humboldt-river': 'humboldt', 'big-meadows': 'humboldt',
+  'forty-mile-desert': 'humboldt', 'truckee-river': 'truckee', 'sierra-summit': 'creek', 'sacramento-valley': 'sacramento',
+  // v1.5 Gold Road (salmon in the big rivers, trout in the creeks)
+  'calapooya-mountains': 'willamette', 'umpqua-river': 'umpqua', 'canyon-creek': 'creek', 'rogue-river': 'rogue', 'siskiyou-pass': 'creek',
+  'mount-shasta': 'creek', 'castle-crags': 'sacramento', 'clear-creek': 'creek', 'feather-river': 'sacramento', 'sutters-fort': 'sacramento',
+  'coloma': 'creek', 'home-by-sea': 'columbia' };
 export const WATER_NAMES = { kansas: 'the Kansas River', platte: 'the Platte River', sweetwater: 'the Sweetwater River',
-  creek: 'a cold mountain creek', bear: 'the Bear River', snake: 'the Snake River', blue: 'a Blue Mountains creek', columbia: 'the Columbia River' };
-export const RIVER_STOPS = ['kansas-river', 'snake-river', 'the-dalles'];
+  creek: 'a cold mountain creek', bear: 'the Bear River', snake: 'the Snake River', blue: 'a Blue Mountains creek', columbia: 'the Columbia River',
+  bigblue: 'the Big Blue River', green: 'the Green River', humboldt: 'the Humboldt River', truckee: 'the Truckee River',
+  sacramento: 'the Sacramento River', willamette: 'the Willamette River', umpqua: 'the Umpqua River', rogue: 'the Rogue River' };
+export const RIVER_STOPS = ['kansas-river', 'north-platte', 'green-river', 'sublette-cutoff', 'snake-river', 'the-dalles', 'humboldt-river', 'truckee-river',
+  'umpqua-river', 'rogue-river', 'feather-river'];
 
 export const FISH = [
-  { id: 'channel-catfish', name: 'Channel catfish', emoji: '🐟', waters: { kansas: 1, platte: 1 },
+  { id: 'channel-catfish', name: 'Channel catfish', emoji: '🐟', waters: { kansas: 1, platte: 1, bigblue: 1, sacramento: 0.4 },
     sizeIn: [12, 24], lb: [3, 6], fight: { reelS: 2.6, pullPerS: 0.10, wobbleEvery: [1.4, 2.2], wobbleS: 0.7 }, help: false,
     bait: { worms: 1, hoppers: 0.6, spoon: 0.4 }, card: 'channel-catfish',
     land: { text: 'A channel catfish!', say: 'A channel catfish!' } },
@@ -25,11 +38,11 @@ export const FISH = [
     fight: { reelS: 1.4, pullPerS: 0.08, wobbleEvery: [1.6, 2.4], wobbleS: 0.6 }, help: false,
     bait: { worms: 1, hoppers: 1.2, spoon: 0.3 }, card: 'hornyhead-chub',
     land: { text: 'A hornyhead chub!', say: 'A hornyhead chub!' } },
-  { id: 'cutthroat-trout', name: 'Cutthroat trout', emoji: '🐟', waters: { creek: 1, bear: 1, snake: 0.6 }, sizeIn: [8, 16], lb: [3, 5],
+  { id: 'cutthroat-trout', name: 'Cutthroat trout', emoji: '🐟', waters: { creek: 1, bear: 1, snake: 0.6, green: 1, humboldt: 0.8, truckee: 1, willamette: 0.8, umpqua: 0.6, rogue: 0.3 }, sizeIn: [8, 16], lb: [3, 5],
     fight: { reelS: 2.0, pullPerS: 0.12, wobbleEvery: [1.0, 1.6], wobbleS: 0.6 }, help: false,
     bait: { worms: 0.7, hoppers: 1.2, spoon: 1 }, card: 'cutthroat-trout',
     land: { text: 'A cutthroat trout!', say: 'A cutthroat trout!' } },
-  { id: 'white-sturgeon', name: 'White sturgeon', emoji: '🐟', waters: { snake: 0.25, columbia: 0.05 }, sizeIn: [48, 84], lb: [12, 16],
+  { id: 'white-sturgeon', name: 'White sturgeon', emoji: '🐟', waters: { snake: 0.25, columbia: 0.05, sacramento: 0.05 }, sizeIn: [48, 84], lb: [12, 16],
     fight: { reelS: 6.0, pullPerS: 0.06, wobbleEvery: [1.6, 2.4], wobbleS: 0.8 }, help: true, onePerSession: true,
     bait: { worms: 1, hoppers: 0.5, spoon: 0.5 }, card: 'white-sturgeon',
     land: { text: 'A white sturgeon! What a giant!', say: 'A white sturgeon! What a giant!' } },
@@ -37,7 +50,7 @@ export const FISH = [
     fight: { reelS: 2.0, pullPerS: 0.12, wobbleEvery: [1.0, 1.6], wobbleS: 0.6 }, help: false,
     bait: { worms: 0.7, hoppers: 1.2, spoon: 1 }, card: 'redband-trout',
     land: { text: 'A redband trout!', say: 'A redband trout!' } },
-  { id: 'chinook-salmon', name: 'Chinook salmon', emoji: '🐟', waters: { columbia: 1 }, sizeIn: [24, 40], lb: [5, 8],
+  { id: 'chinook-salmon', name: 'Chinook salmon', emoji: '🐟', waters: { columbia: 1, willamette: 0.5, umpqua: 0.8, rogue: 1, sacramento: 0.8 }, sizeIn: [24, 40], lb: [5, 8],
     fight: { reelS: 3.2, pullPerS: 0.12, wobbleEvery: [1.2, 1.8], wobbleS: 0.7 }, help: false,
     bait: { worms: 0.4, hoppers: 0.3, spoon: 1.2 }, card: 'chinook-salmon',
     land: { text: 'A Chinook salmon!', say: 'A Chinook salmon!' } },
@@ -64,7 +77,7 @@ export const JUNK = [
     text: 'A snapping turtle on the line! It snaps at the air, so you let it go, and it paddles off with a splash.',
     say: 'A snapping turtle on the line! It snaps at the air, so you let it go, and it paddles off with a splash.',
     source: 'SOURCES.md#junk-snapping-turtle' },
-  { id: 'bottle', name: 'A bottle with a note', emoji: '📜', waters: ['platte', 'sweetwater', 'creek'], quest: 'bottle-note',
+  { id: 'bottle', name: 'A bottle with a note', emoji: '📜', waters: ['platte', 'sweetwater', 'creek', 'green'], quest: 'bottle-note',
     text: 'A glass bottle bobs up on the line, with a rolled-up note inside!',
     say: 'A glass bottle bobs up on the line, with a rolled-up note inside!' },
 ];

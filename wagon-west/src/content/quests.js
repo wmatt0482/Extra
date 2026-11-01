@@ -30,7 +30,7 @@ export const QUESTS = [
     item: { id: 'bottle-note', name: 'A note in a bottle', emoji: '📜',
       text: 'The note says: Hello! My name is Sam. Our wagon is going all the way to The Dalles. If you find this, come and say hello!',
       say: 'The note says: Hello! My name is Sam. Our wagon is going all the way to The Dalles. If you find this, come and say hello!' },
-    find: { via: 'fish', legs: ['fort-laramie', 'independence-rock', 'south-pass', 'fort-bridger'] },
+    find: { via: 'fish', legs: ['fort-laramie', 'north-platte', 'independence-rock', 'ice-slough', 'south-pass', 'green-river', 'fort-bridger'] },
     steps: [
       { at: 'fort-bridger', person: { id: 'q-ruby', name: 'Ruby', emoji: '👧', role: 'a girl at the trading post' },
         lines: ['Sam? The boy who plays the harmonica? His family bought flour here and rolled on west.', 'He said he dropped a bottle in the river for luck!'] },

@@ -1,4 +1,4 @@
-// The eight stock companions (SPEC §3): a child picks three. Each has a hat (the crate cosmetics reuse the kinds: cap,
+// The eight stock companions (SPEC §3): a child picks three. (v1.5 adds Mateo the mule packer and Hattie the prospector, offered from the second journey: `fromJourney: 2`.) Each has a hat (the crate cosmetics reuse the kinds: cap,
 // wide, bonnet, straw, bowler, hood, kerchief, none), a colour (all eight differ) and a few lines: trail chatter, and
 // one each for tired / happy, and (v1.4) `help`: the line they say when a big fish takes two to land (the white sturgeon). Warm and a little funny, never scary: nobody is ever sick or hurt, only tired.
 // v1.2 (SPEC v1.2 §2): every companion has one `skill = { id, name, text }` the journey sim acts on (src/journey/sim.js,
@@ -45,6 +45,17 @@ export const COMPANIONS = [
     lines: { trail: ['Did I ever tell you about the giant jackrabbit? No? Gather round.', 'Every rock out here has a story. Let me find this one\'s.', 'Once upon a time there was a wagon just like ours.'],
       tired: 'I am too sleepy to tell a story, and that never happens.', happy: 'This is the best chapter yet!',
       help: 'Hold on, I have got the rod! This one will be in my best story ever!' } },
+  // ---- v1.5 (SPEC §2.9): two companions offered from the second journey (`fromJourney: 2`) ----
+  { id: 'packer', name: 'Mateo', role: 'the mule packer', hat: 'wide', color: '#607d8b', fromJourney: 2,
+    skill: { id: 'packing', name: 'Packing', text: 'Food goes a twentieth further, and a spare part comes along on every journey.' },
+    lines: { trail: ['A good pack mule can climb anywhere. Just ask nicely.', 'Load the heavy things low, and the mules will thank you.', 'I never start a trip without one more spare part.'],
+      tired: 'Even the mules need a nap, and so do I.', happy: 'Every strap is tight and every mule is smiling!',
+      help: 'Hold on, I have got the rod! A mule packer never lets go of a rope.' } },
+  { id: 'prospector', name: 'Hattie', role: 'the prospector', hat: 'bonnet', color: '#7b3f61', fromJourney: 2,
+    skill: { id: 'prospecting', name: 'Prospecting', text: 'A good swirl finds one more flake, and she reads the creek: one pan at each digging is rich.' },
+    lines: { trail: ['Swirl, tip and look. That is the whole secret of panning.', 'Gold is heavy, and heavy things sink. Remember that.', 'A creek tells you where to dig, if you listen.'],
+      tired: 'My pan arm is tired. A rest by the creek would be lovely.', happy: 'I can feel a lucky pan coming!',
+      help: 'Hold on, I have got the rod! I have swirled bigger things than this.' } },
 ];
 export const COMPANION_BY_ID = Object.fromEntries(COMPANIONS.map((c) => [c.id, c]));
 /** The skill ids, one per companion (the sim's keys). */
