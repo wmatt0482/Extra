@@ -1,22 +1,22 @@
-// Wagon West full-journey playtest on the REAL scene (no ?mock=1), as a 4th grader would play it.
-// Independence -> the Willamette Valley, all 12 legs, then the results, the journal and the Parent Zone report.
-// v1.4 (Frodo and the river): the dog is kept at the Kansas River (named Frodo) and its nose is played on the trail (a find, the snake, the
-// rabbit chase called late, then washed at camp), fetch / grasshoppers / skipping stones / falling stars at camp and the river banks, fishing 2.0
-// at every kind of water with the bait row (worms, grasshoppers, the spoon), the wiggle-off, the sturgeon's helper tap and a junk catch, the dust
-// devil, the locket from the Kansas River to Fort Laramie, the bottle note, the trail facts (the far-off rifles, the grizzly, the wolves, the
-// prairie glow, the pronghorn race), a LEAD hunt shot and a still one, the journal's Finds and Fish log pages and the Parent Zone's far-off switch.
-// Every new screen's shot is named `…-v14-…` (convert those to JPEG for docs/playtest-1.4-shots). v14-summary.json holds what the run saw.
-//   BASE_URL=http://localhost:8082 SHOTS_DIR=/some/folder node wagon-west/tools/playtest-full.mjs
-// Env: BASE_URL (default http://localhost:8082), SHOTS_DIR (screenshots, default <os tmp>/wagon-west-playtest),
-//      DAY_SEC (a trail day in seconds, default 6 = the game's own), MAX_LEGS (stop after N legs), HEADED=1.
-//      PORTRAIT=1 (390x844 with iPhone insets), RESUME_STATE=<state-after-leg-N.json> START_LEG=N (carry on from a saved leg;
-//      every leg writes one), SEQ_START=<n> (first screenshot number, so a resumed run does not overwrite the first).
-// The bot taps and drags the real canvas for the bow, the line, the ford, the float, the Columbia raft and the BRAKE;
+// Wagon West 1.5 "The Long Trail": the full playtest on the REAL scene (no ?mock=1), as a 4th grader would play it, three journeys:
+//   J1 the default 20-leg Oregon trail (Independence to the Willamette Valley, Fort Hall: Oregon; The Dalles: the Barlow Road with its toll and Laurel Hill),
+//      the Pit Crew Check on the first store, the 1.4 moments (Frodo, fishing 2.0, noses, trail facts, the dust devil, camp games), the arrival: name the farm, the cabin built
+//   J2 the Gold Road (from the Willamette farm: the news, the 12 legs, panning at Clear Creek, the Feather River and Coloma, the rocker, Sutter's Fort store,
+//      the voyage home, Beaver money banked, a barn raised)
+//   J3 California at Veteran (the South Pass fork, the Fort Hall choice, the Forty-Mile Desert dry stretch, the Sierra, the Sacramento claim)
+// Every new screen's shot is named `v15-...` (JPEGs are also written to DOCS_SHOTS, default wagon-west/docs/playtest-1.5-shots); everything else goes to SHOTS_DIR as PNG.
+//   BASE_URL=http://localhost:8111 SHOTS_DIR=/some/folder node wagon-west/tools/playtest-full.mjs
+// Env: BASE_URL (default http://localhost:8082), SHOTS_DIR (all screenshots, default <os tmp>/wagon-west-playtest), DOCS_SHOTS (the v15 JPEGs; '' = none),
+//      DAY_SEC (a trail day in seconds, default 6 = the game's own; 2 makes the long run bearable), JOURNEYS (default '1,2,3'; '2,3' resumes from RESUME_STATE),
+//      MAX_LEGS (stop each journey after N legs, for a short check), HEADED=1, PORTRAIT=1 (390x844 with iPhone insets),
+//      RESUME_STATE=<state-after-*.json> (carry on from a saved storage state: every finished leg writes one), SEQ_START=<n> (first screenshot number),
+//      PITCH_ONLY=1 (only the Pit Crew Check on a fresh profile: it writes pit-check.json and stops).
+// The bot taps and drags the real canvas for the bow, the line, the ford, the float, the raft, the pan, the cradle, the rope and the schooner;
 // types every answer on the on-screen numpad / keyboard; reads the scene's own debug state only to know WHERE to tap.
 // It records findings (layout audit, kid-rule words, console errors, stalls, canvas hit-test) to <SHOTS_DIR>/findings.json,
-// the kid-visible text of every distinct screen to texts.json and everything the voice was asked to say to spoken.json.
+// the kid-visible text of every distinct screen to texts.json and everything the voice was asked to say to spoken.json; v15-summary.json holds what the run saw.
 import { execSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -25,11 +25,16 @@ const BASE = process.env.BASE_URL || 'http://localhost:8082';
 const URL0 = BASE + '/wagon-west/index.html?nosw=1';          // no ?mock=1: the real scene
 const SHOTS = process.env.SHOTS_DIR || path.join(os.tmpdir(), 'wagon-west-playtest');
 const DAY_SEC = Number(process.env.DAY_SEC || 6);
-const MAX_LEGS = Number(process.env.MAX_LEGS || 12);
+const MAX_LEGS = Number(process.env.MAX_LEGS || 99);
+const JOURNEYS = String(process.env.JOURNEYS || '1,2,3').split(',').map(Number);
+const DOCS = process.env.DOCS_SHOTS === undefined ? path.join(path.dirname(new URL(import.meta.url).pathname), '..', 'docs', 'playtest-1.5-shots') : process.env.DOCS_SHOTS;
+const PITCH_ONLY = !!process.env.PITCH_ONLY;
 const RESUME = process.env.RESUME_STATE || '';       // a state-after-leg-N.json from an earlier run: carry on from leg N+1 (START_LEG = N)
 const START_LEG = Number(process.env.START_LEG || 0);
+const RESUME_J = Number(process.env.RESUME_J || 1);
 const PORTRAIT = !!process.env.PORTRAIT;             // 390x844 with iPhone insets instead of 844x390 landscape
 mkdirSync(SHOTS, { recursive: true });
+if (DOCS) mkdirSync(DOCS, { recursive: true });
 
 async function loadPlaywright() {
   process.env.PLAYWRIGHT_BROWSERS_PATH ||= '/opt/pw-browsers';
@@ -52,9 +57,13 @@ const toastStale = new Set();
 const popsSeen = new Set();
 let seq = Number(process.env.SEQ_START || 0);
 let curLeg = 0;
+let curJ = 1;                   // the journey being played (1 Oregon, 2 Gold Road, 3 California)
 let page = null;
 const P = {                     // the plan: how this kid plays
-  river: { 'kansas-river': 'ford', 'snake-river': 'float', 'the-dalles': 'ferry' },
+  river: { 'kansas-river': 'ford', 'snake-river': 'float', 'the-dalles': 'ferry', 'humboldt-river': 'ford', 'truckee-river': 'float', 'umpqua-river': 'ferry', 'rogue-river': 'ford', 'feather-river': 'ferry', 'north-platte': 'ferry', 'green-river': 'ferry' },
+  forkWay: {},                  // fork id -> option id, set per journey
+  digsLeft: 0,
+  placeDone: false,
   markerMissEvery: 5,           // miss every 5th mile marker (the fix-it flow)
   markerCount: 0,
   spellMissLeft: 2,             // two deliberate spelling misses (a river word, then a letter word)
@@ -65,11 +74,11 @@ const P = {                     // the plan: how this kid plays
   campDone: new Set(),
   specials: new Set(),
 };
-const note = (kind, key, msg, shot = '') => { findings.push({ kind, key, msg, shot, leg: curLeg + 1 }); log(`  !! [${kind}] ${key}: ${msg}`); };
+const note = (kind, key, msg, shot = '') => { findings.push({ kind, key, msg, shot, journey: curJ, leg: curLeg + 1 }); log(`  !! [${kind}] ${key}: ${msg}`); };
 const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'x';
 
 // ---------- v1.4: what the run makes sure it sees ----------
-const V = { dogName: 'Frodo', baitIx: 0, bait: [], noses: [], facts: [], fishing: [], stones: [], fetch: [], hoppers: [], meteors: [], hats: [], hunts: [], chases: [], lateDone: false, wiggleDone: false, helped: 0, wiggled: 0,
+const V = { v15: { forks: [], tolls: [], snubs: [], pans: [], rockers: [], sails: [], dry: [], farms: [], banks: [], placement: null, order: [], gold: [], journeys: [] }, dogName: 'Frodo', baitIx: 0, bait: [], noses: [], facts: [], fishing: [], stones: [], fetch: [], hoppers: [], meteors: [], hats: [], hunts: [], chases: [], lateDone: false, wiggleDone: false, helped: 0, wiggled: 0,
   camp: { fetch: 0, hoppers: 0, stones: 0, stars: 0 }, campSeen: new Set(), legFun: [], notes: [] };
 const BAIT_PLAN = ['worms', 'hoppers', 'hoppers', 'worms', 'hoppers', 'spoon', 'spoon', 'hoppers', 'spoon', 'spoon', 'worms'];   // the bait row, as a kid would try them (the first one on offer is taken)
 
@@ -135,12 +144,13 @@ async function audit(insets, label, shot) {
 let INSETS = PORTRAIT ? { t: 47, r: 0, b: 34, l: 0 } : { t: 0, r: 47, b: 21, l: 47 };
 /** Screenshot + audits + text capture, once per distinct key (or always with force). */
 async function snap(key, { force = false, wait = 180, audits = true } = {}) {
-  const k = `L${curLeg}|${key}`;
+  const k = `J${curJ}L${curLeg}|${key}`;
   if (!force && seenKeys.has(k)) return null;
   seenKeys.add(k);
   await page.waitForTimeout(wait);
-  const name = `${String(++seq).padStart(3, '0')}-L${String(curLeg + 1).padStart(2, '0')}-${slug(key)}.png`;
+  const name = `${String(++seq).padStart(3, '0')}-J${curJ}L${String(curLeg + 1).padStart(2, '0')}-${slug(key)}.png`;
   try { await page.screenshot({ path: path.join(SHOTS, name) }); } catch (e) { note('script', key, 'screenshot failed: ' + e.message); }
+  if (DOCS && /^v15-/.test(key)) { try { await page.screenshot({ path: path.join(DOCS, name.replace(/\.png$/, '.jpg')), type: 'jpeg', quality: 58 }); } catch (_) { /* ignore */ } }
   let t = '';
   try { t = await kidText(); } catch (_) { /* ignore */ }
   texts[`${name} :: ${key}`] = t;
@@ -175,14 +185,28 @@ const W = () => ev(() => {
     popCard: !$('#cardpop').hidden ? $('#cardpop').textContent : '', popDeed: !$('#deedpop').hidden ? $('#deedpop').textContent : '',
     bait: !!$('#bait-row') && !$('#bait-row').hidden, findPop: $('#findpop') && !$('#findpop').hidden ? $('#findpop').textContent : '', campCtx: w.camp ? w.camp.context : null, dogCall: !!$('#dog-call') && !$('#dog-call').hidden,
     toasts: [...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent),
+    fork: w.forkPanel && w.forkPanel.isOpen ? w.forkPanel.fork : null, dig: !!(w.diggings && w.diggings.isOpen), digBusy: !!(w.diggings && w.diggings.busy),
+    digBtns: [...document.querySelectorAll('#dg-btns [data-dig]')].filter((b) => !b.disabled).map((b) => b.dataset.dig),
+    farmScreen: w.screen === 'farm',
     j: J && { legIndex: J.legIndex, legId: J.legId, milesDone: J.milesDone, day: J.day, cash: J.cash, food: J.food, tokens: J.tokens, rations: J.rations, pace: J.pace, goods: J.goods && { ...J.goods }, animals: J.animals && { ...J.animals }, foods: J.foods && { ...J.foods }, done: J.done, limp: J.limp, deeds: (J.deeds || []).length, cards: Array.isArray(J.cards) ? J.cards.length : 0, met: (J.met || []).length },
   };
 });
-const idle = (s) => s.screen === 'trail' && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && !s.sm && s.travel && !s.travel.busy && !s.paused && !s.wagonOpen;
+const idle = (s) => s.screen === 'trail' && !s.fork && s.marker === 'closed' && s.problem === 'closed' && !s.card && !s.mini && !s.sm && s.travel && !s.travel.busy && !s.paused && !s.wagonOpen;
 
 async function typeDigits(root, digits) {
-  for (const d of String(digits)) await page.click(`${root} .np-key[data-key="${d}"]`, { timeout: 4000 });
-  await page.click(`${root} .np-key[data-key="go"]`, { timeout: 4000 });
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      for (const d of String(digits)) await page.click(`${root} .np-key[data-key="${d}"]`, { timeout: 4000 });
+      await page.click(`${root} .np-key[data-key="go"]`, { timeout: attempt === 2 ? 4000 : 1500 });
+      return;
+    } catch (e) {
+      if (attempt === 2) throw e;
+      await page.waitForTimeout(500);       // (the panel was not taking digits yet, or moved on: look again)
+      const still = await ev((r) => { const el = document.querySelector(r); return !!el && !el.hidden; }, root);
+      if (!still) return;
+      await ev((r) => { const b = document.querySelector(`${r} .np-key.np-del, ${r} .np-key[data-key="del"], ${r} .np-key[data-key="back"]`); if (b) for (let i = 0; i < 4; i++) b.click(); }, root);
+    }
+  }
 }
 async function typeWord(word) {
   for (const ch of word) await page.click(`#sp-keyboard .kb-key[data-key="${ch === ' ' ? 'space' : ch}"]`, { timeout: 4000 });
@@ -217,6 +241,7 @@ async function releaseMouse() { if (mouse.down) { try { await page.mouse.up(); }
 async function sceneMiniStep(s) {
   const m = await ev(() => { const sc = window.__wagonWest.scene; return sc && sc.debugMini ? sc.debugMini() : null; });
   if (!m) { await releaseMouse(); return false; }
+  if (!m.kind && s.sm) m.kind = s.sm.kind;      // (the v1.5 minis' debug objects carry no kind: the state does)
   const c = await canvasBox();
   const checkTap = async (px, py, what) => {
     const k = what + ':' + curLeg;
@@ -368,7 +393,126 @@ async function sceneMiniStep(s) {
     await page.waitForTimeout(150);
     return true;
   }
+  // ---- v1.5 ----
+  if (m.kind === 'pan') return await playPan(c, m);
+  if (m.kind === 'rocker') return await playRocker(c, m);
+  if (m.kind === 'snub') return await playSnub(c, m);
+  if (m.kind === 'sail') return await playSail(c, m, s.sm);
   return false;
+}
+
+// ---------- v1.5: gold panning, the cradle, Laurel Hill and the voyage, played with real pointer input ----------
+const seen15 = new Set();
+const first15 = (k) => { const kk = `${curJ}:${k}`; if (seen15.has(kk)) return false; seen15.add(kk); return true; };
+const sleep15 = (ms) => new Promise((r) => setTimeout(r, ms));
+async function playPan(c, m) {
+  const [cx, cy] = toPage(c, m.cx, m.cy);
+  if (m.phase === 'scoop') {
+    if (first15('pan-scoop')) { await snap('v15-pan-scoop', { force: true, wait: 400 }); await checkTapHit(cx, cy, 'gold pan (scoop)'); }
+    await page.touchscreen.tap(cx, cy);
+    await page.waitForTimeout(300);
+    return true;
+  }
+  if (m.phase === 'swirl') {
+    if (first15('pan-swirl')) await snap('v15-pan-swirl', { force: true, wait: 200 });
+    // circles round the pan at about 4 rad/s (the scene's good swirl is 1.4 to 8.5): a steady finger
+    const rx = m.rx * 0.8, ry = m.ry * 0.8;
+    const t0 = Date.now();
+    let a = 0;
+    await page.mouse.move(...toPage(c, m.cx + rx, m.cy));
+    await page.mouse.down(); mouse.down = true;
+    let shot = false;
+    while (Date.now() - t0 < 14000) {
+      a = ((Date.now() - t0) / 1000) * 4.2;
+      await page.mouse.move(...toPage(c, m.cx + Math.cos(a) * rx, m.cy + Math.sin(a) * ry));
+      const mm = await ev(() => { const sc = window.__wagonWest.scene; return sc && sc.debugMini ? sc.debugMini() : null; });
+      if (!mm || mm.kind !== 'pan' || mm.phase !== 'swirl') break;
+      if (!shot && a > 7) { shot = true; await snap('v15-pan-swirl-meter', { force: true, wait: 0 }); }
+      await page.waitForTimeout(8);
+    }
+    await releaseMouse();
+    return true;
+  }
+  if (m.phase === 'tip') {
+    const glow = () => 0.5 + 0.5 * Math.sin((m.pt / 1.5) * Math.PI * 2 - Math.PI / 2);
+    // tap when the rim glows (re-read the clock: pt moves)
+    for (let i = 0; i < 400; i++) {
+      const mm = await ev(() => { const sc = window.__wagonWest.scene; return sc && sc.debugMini ? sc.debugMini() : null; });
+      if (!mm || mm.kind !== 'pan' || mm.phase !== 'tip') return true;
+      const g = 0.5 + 0.5 * Math.sin((mm.pt / 1.5) * Math.PI * 2 - Math.PI / 2);
+      if (g > 0.8) { if (first15('pan-tip')) await snap('v15-pan-tip-the-rim-glows', { force: true, wait: 0 }); await page.touchscreen.tap(cx, cy); await page.waitForTimeout(250); return true; }
+      await page.waitForTimeout(25);
+    }
+    return true;
+  }
+  if (m.phase === 'swirled' || m.phase === 'reveal') {
+    if (m.phase === 'reveal' && first15('pan-reveal')) await snap('v15-pan-reveal-flakes', { force: true, wait: 900 });
+    await page.waitForTimeout(150);
+    return true;
+  }
+  await page.waitForTimeout(100);
+  return true;
+}
+async function playRocker(c, m) {
+  if (m.phase === 'ready') { if (first15('rock-ready')) await snap('v15-rocker-ready', { force: true, wait: 300 }); await page.waitForTimeout(60); return true; }
+  if (m.phase === 'rock') {
+    if (first15('rock-go')) await snap('v15-rocker-rock-it', { force: true, wait: 50 });
+    const [px, py] = toPage(c, c.W * 0.5, c.H * 0.7);
+    // tap on each beat but two (a kid is not perfect): the scene's window is +-0.24 s
+    const done = new Set();
+    for (let guard = 0; guard < 900; guard++) {
+      const mm = await ev(() => { const sc = window.__wagonWest.scene; return sc && sc.debugMini ? sc.debugMini() : null; });
+      if (!mm || mm.kind !== 'rocker' || mm.phase !== 'rock') return true;
+      const p = (mm.rt - mm.lead) / mm.period, b = Math.round(p), d = (p - b) * mm.period;
+      const skip = b === 3 || b === 6;
+      if (b >= 0 && b < 8 && !done.has(b) && !skip && Math.abs(d) < 0.07) { done.add(b); await page.touchscreen.tap(px, py); if (done.size === 4 && first15('rock-mid')) await snap('v15-rocker-on-the-beat', { force: true, wait: 0 }); }
+      await page.waitForTimeout(12);
+    }
+    return true;
+  }
+  await page.waitForTimeout(120);
+  return true;
+}
+async function playSnub(c, m) {
+  const [px, py] = toPage(c, c.W * 0.5, c.H * 0.5);
+  const mid = (m.ledge.s0 + m.ledge.s1) / 2;
+  if (m.phase === 'wait') {
+    if (first15('snub-wait')) { await snap('v15-snub-laurel-hill-hold', { force: true, wait: 500 }); await checkTapHit(px, py, 'Laurel Hill (hold)'); }
+    await releaseMouse();
+    await page.mouse.move(px, py); await page.mouse.down(); mouse.down = true;
+    // the first drop: let go too early once (it just waits and the child holds again)
+    if (!playSnub.early && m.s < 0.01) { playSnub.early = true; await page.waitForTimeout(500); await releaseMouse(); await snap('v15-snub-let-go-early', { force: true, wait: 900 }); V.v15.snubs.push({ j: curJ, early: true }); }
+    return true;
+  }
+  if (m.phase === 'slide' || m.phase === 'skid') {
+    if (m.phase === 'slide') {
+      if (first15('snub-slide')) await snap('v15-snub-sliding-on-the-rope', { force: true, wait: 0 });
+      const stop = m.s + (m.v * m.v) / (2 * m.decel);
+      if (stop >= mid - 0.01 && mouse.down) { await releaseMouse(); await snap('v15-snub-let-go-at-the-ledge', { wait: 150 }); }
+    }
+    await page.waitForTimeout(8);
+    return true;
+  }
+  await releaseMouse();
+  if (m.phase === 'settle' && first15('snub-settle-' + m.s.toFixed(1))) await snap('v15-snub-smooth', { wait: 100 });
+  await page.waitForTimeout(100);
+  return true;
+}
+async function playSail(c, m, sm) {
+  const W_ = c.W;
+  if (m.phase === 'ready') { if (first15('sail-ready')) await snap('v15-sail-ready', { force: true, wait: 400 }); await page.waitForTimeout(80); return true; }
+  if (sm && sm.waiting) { await releaseMouse(); if (first15('sail-wait-' + (m.stretch || 0))) await snap('v15-sail-up-the-coast-marker', { wait: 600 }); await page.waitForTimeout(150); return true; }
+  if (m.phase === 'calm' || m.phase === 'end') { await releaseMouse(); if (first15('sail-' + m.phase)) await snap('v15-sail-' + (m.phase === 'calm' ? 'oregons-green-shore' : 'home'), { force: true, wait: 1500 }); await page.waitForTimeout(150); return true; }
+  const ahead = (m.swells || []).filter((q) => q.z < m.zs + 0.05 && !q.hit);
+  const sw = ahead.sort((a, b) => b.z - a.z)[0];
+  const target = sw ? sw.g : 0.5;
+  const [tx, ty] = toPage(c, target * W_, c.H * 0.8);
+  if (!mouse.down) { await page.mouse.move(...toPage(c, (m.u || 0.5) * W_, c.H * 0.8)); await page.mouse.down(); mouse.down = true; }
+  await page.mouse.move(tx, ty, { steps: 2 });
+  if (m.phase === 'bar' && first15('sail-bar')) await snap('v15-sail-over-the-columbia-bar', { force: true, wait: 300 });
+  if (m.phase === 'sail' && first15('sail-sail-' + (m.stretch || 0))) await snap('v15-sail-steering-through-the-gaps', { wait: 200 });
+  await page.waitForTimeout(16);
+  return true;
 }
 
 // ---------- the general store ----------
@@ -376,7 +520,8 @@ const storeState = { leg: -1, bought: false, worked: false, derby: false };
 async function jq() { return (await W()).j; }
 async function storeRoutine(s) {
   const legIx = s.j.legIndex;
-  if (storeState.leg !== legIx || s.screen !== 'store') { if (storeState.leg !== legIx) Object.assign(storeState, { leg: legIx, bought: false, worked: false, derby: false, tries: 0 }); }
+  const storeKey = curJ * 1000 + legIx;
+  if (storeState.leg !== storeKey || s.screen !== 'store') { if (storeState.leg !== storeKey) Object.assign(storeState, { leg: storeKey, bought: false, worked: false, derby: false, tries: 0 }); }
   await snap(`store-${s.j.legId}`, { wait: 400 });
   const buy = async (good) => {
     const ok = await ev((g) => { const b = document.querySelector(`.st-good[data-good="${g}"]`); if (!b || b.disabled) return false; b.click(); return true; }, good);
@@ -412,8 +557,8 @@ async function storeRoutine(s) {
     if (spoonRow) { await snap('v14-store-spoon-row', { force: true, wait: 200 }); if (!spoonRow.disabled) { await buy('spoon'); await snap('v14-store-spoon-bought', { force: true, wait: 300 }); V.legFun.push({ leg: legIx + 1, where: 'store', spoon: 'bought', row: spoonRow }); } }
     await snap(`store-${s.j.legId}-after-buying`, { force: true, wait: 250 });
   }
-  if (!storeState.worked && !P.storeWorkedAt.has(legIx)) {
-    P.storeWorkedAt.add(legIx); storeState.worked = true;
+  if (!storeState.worked && !P.storeWorkedAt.has(storeKey)) {
+    P.storeWorkedAt.add(storeKey); storeState.worked = true;
     const g = legIx % 2 === 0 ? 'flour' : 'beans';
     const clicked = await ev((g) => { const b = document.querySelector(`.st-work[data-good="${g}"]`); if (!b || b.disabled) return false; b.click(); return true; }, g);
     if (clicked) return 'work-it-out';
@@ -531,32 +676,32 @@ async function v14Moment(kind) {
 }
 /** The v1.4 detours, by leg and mile (each once). Every one only plays when the trail is idle. */
 const V14_PLAN = [
-  { leg: 0, miles: 20, key: 'fish-kansas', run: () => v14Fish('junk', 'kansas') },
-  { leg: 0, miles: 95, key: 'fact-glow', run: () => v14Fact('prairie-glow') },
-  { leg: 1, miles: 12, key: 'nose-find', run: () => v14Nose('find') },
-  { leg: 1, miles: 24, key: 'nose-snake', run: () => v14Nose('snake') },
-  { leg: 1, miles: 38, key: 'nose-rabbit-late', run: () => v14Nose('rabbit') },
-  { leg: 1, miles: 52, key: 'fact-rifles', run: () => v14Fact('far-off-crack') },
-  { leg: 1, miles: 135, key: 'fact-wolves', run: () => v14Fact('wolf-song') },
-  { leg: 2, miles: 14, key: 'dust-devil', run: () => v14Moment('dustDevil') },
-  { leg: 2, miles: 56, key: 'fish-platte', run: () => v14Fish('fish2', 'platte') },
-  { leg: 2, miles: 100, key: 'nose-find-2', run: () => v14Nose('find') },
-  { leg: 3, miles: 70, key: 'fact-rifles-2', run: () => v14Fact('far-off-crack') },
-  { leg: 4, miles: 20, key: 'fish-bottle', run: () => v14Fish('bottle', 'sweetwater-bottle') },
-  { leg: 5, miles: 20, key: 'fact-grizzly', run: () => v14Fact('grizzly-ridge') },
-  { leg: 5, miles: 60, key: 'fish-sweetwater2', run: () => v14Fish('fish2', 'south-pass') },
-  { leg: 6, miles: 30, key: 'fish-creek', run: () => v14Fish('fish2', 'creek') },
-  { leg: 7, miles: 30, key: 'fish-bear', run: () => v14Fish('fish2', 'bear') },
-  { leg: 7, miles: 90, key: 'fact-pronghorn', run: () => v14Fact('pronghorn-race') },
-  { leg: 8, miles: 20, key: 'fish-snake-sturgeon', run: () => v14Fish('sturgeon', 'snake') },
-  { leg: 9, miles: 25, key: 'fish-blue', run: () => v14Fish('fish2', 'blue') },
-  { leg: 10, miles: 20, key: 'fish-columbia', run: () => v14Fish('sturgeon', 'columbia') },
+  { leg: 'kansas-river', miles: 20, key: 'fish-kansas', run: () => v14Fish('junk', 'kansas') },
+  { leg: 'kansas-river', miles: 95, key: 'fact-glow', run: () => v14Fact('prairie-glow') },
+  { leg: 'alcove-spring', miles: 12, key: 'nose-find', run: () => v14Nose('find') },
+  { leg: 'alcove-spring', miles: 24, key: 'nose-snake', run: () => v14Nose('snake') },
+  { leg: 'alcove-spring', miles: 38, key: 'nose-rabbit-late', run: () => v14Nose('rabbit') },
+  { leg: 'alcove-spring', miles: 52, key: 'fact-rifles', run: () => v14Fact('far-off-crack') },
+  { leg: 'alcove-spring', miles: 85, key: 'fact-wolves', run: () => v14Fact('wolf-song') },
+  { leg: 'fort-kearny', miles: 14, key: 'dust-devil', run: () => v14Moment('dustDevil') },
+  { leg: 'fort-kearny', miles: 56, key: 'fish-platte', run: () => v14Fish('fish2', 'platte') },
+  { leg: 'fort-kearny', miles: 100, key: 'nose-find-2', run: () => v14Nose('find') },
+  { leg: 'ash-hollow', miles: 70, key: 'fact-rifles-2', run: () => v14Fact('far-off-crack') },
+  { leg: 'chimney-rock', miles: 20, key: 'fish-bottle', run: () => v14Fish('bottle', 'sweetwater-bottle') },
+  { leg: 'scotts-bluff', miles: 20, key: 'fact-grizzly', run: () => v14Fact('grizzly-ridge') },
+  { leg: 'scotts-bluff', miles: 40, key: 'fish-sweetwater2', run: () => v14Fish('fish2', 'south-pass') },
+  { leg: 'north-platte', miles: 30, key: 'fish-creek', run: () => v14Fish('fish2', 'creek') },
+  { leg: 'independence-rock', miles: 15, key: 'fish-bear', run: () => v14Fish('fish2', 'bear') },
+  { leg: 'independence-rock', miles: 45, key: 'fact-pronghorn', run: () => v14Fact('pronghorn-race') },
+  { leg: 'snake-river', miles: 20, key: 'fish-snake-sturgeon', run: () => v14Fish('sturgeon', 'snake') },
+  { leg: 'blue-mountains', miles: 25, key: 'fish-blue', run: () => v14Fish('fish2', 'blue') },
+  { leg: 'the-dalles', miles: 20, key: 'fish-columbia', run: () => v14Fish('sturgeon', 'columbia') },
 ];
 async function v14Detours(s, once) {
   for (const d of V14_PLAN) {
-    if (d.leg !== curLeg || s.j.milesDone < d.miles || !once('v14-' + d.key)) continue;
+    if (curJ !== 1 || d.leg !== s.j.legId || s.j.milesDone < d.miles || !once('v14-' + d.key)) continue;
     const r = await d.run();
-    if (!r) { P.specials.delete('v14-' + d.key); return null; }
+    if (!r) { P.specials.delete(curJ + ':v14-' + d.key); return null; }
     return r;
   }
   return null;
@@ -662,9 +807,39 @@ async function step(plan = {}) {
   if (s.findPop && !popsSeen.has('find:' + s.findPop)) { popsSeen.add('find:' + s.findPop); await snap('v14-find-pop-' + s.findPop.slice(0, 22), { force: true, wait: 250 }); }
   if (plan.onEach) { const r = await plan.onEach(s); if (r) return r; }
   if (s.bait) return await pickBait(s);
+  // ---- v1.5: the fork panel (an equal button for every way, the explainer reads them) ----
+  if (s.fork) {
+    await snap(`v15-fork-${s.fork}-${curJ}`, { wait: 700 });
+    const info = await ev(() => ({ btns: [...document.querySelectorAll('#fk-cards .fk-go')].map((b) => { const r = b.getBoundingClientRect(); return { way: b.dataset.way, disabled: b.disabled, w: Math.round(r.width), h: Math.round(r.height), focus: document.activeElement === b }; }),
+      q: (document.querySelector('#fk-q') || {}).textContent, lean: (document.querySelector('#fk-lean') || {}).textContent || '', first: (document.querySelector('#fk-first') || {}).textContent || '',
+      lines: [...document.querySelectorAll('#fk-cards .fk-card')].map((c) => c.innerText.replace(/\s+/g, ' ')) }));
+    const sceneNow = await ev(() => { try { const g = window.__wagonWest.scene.getState(); return { backdrop: g.backdrop, fork: g.fork }; } catch (_) { return null; } });
+    const want = P.forkWay[s.fork];
+    const pick = (info.btns.find((b) => b.way === want && !b.disabled) || info.btns.find((b) => !b.disabled) || {}).way;
+    const sizes = new Set(info.btns.map((b) => `${b.w}x${b.h}`));
+    V.v15.forks.push({ journey: curJ, leg: s.j.legId, fork: s.fork, question: info.q, lean: info.lean, first: info.first, ways: info.btns, sameSize: sizes.size === 1, focused: (info.btns.find((b) => b.focus) || {}).way || null, chose: pick, wanted: want, sceneBackdrop: sceneNow && sceneNow.backdrop, sceneFork: sceneNow && sceneNow.fork, lines: info.lines });
+    if (sizes.size > 1) note('wrong', `fork ${s.fork}`, `the fork's buttons are not all the same size: ${[...sizes].join(', ')}`);
+    await ev((w) => document.querySelector(`#fk-cards .fk-go[data-way="${w}"]`).click(), pick);
+    await page.waitForTimeout(500);
+    await snap(`v15-fork-${s.fork}-${curJ}-chosen-${pick}`, { force: true, wait: 300 });
+    return 'fork';
+  }
+  // ---- v1.5: the creek: pan until the pans are used, the cradle at Coloma, then on ----
+  if (s.dig && !s.digBusy && !s.sm && !s.card && s.marker === 'closed') {
+    const pouch = await ev(() => (document.querySelector('#dg-pouch') || {}).textContent || '');
+    await snap(`v15-diggings-${s.j.legId}`, { wait: 700 });
+    const pick = s.digBtns.includes('pan') ? 'pan' : s.digBtns.includes('rocker') ? 'rocker' : 'leave';
+    V.v15.gold.push({ journey: curJ, leg: s.j.legId, buttons: s.digBtns, pick, pouch: pouch.replace(/\s+/g, ' ').trim() });
+    log(`  diggings ${s.j.legId}: ${s.digBtns.join('/')} -> ${pick} (pouch: ${pouch.replace(/\s+/g, ' ').trim()})`);
+    await ev((p) => document.querySelector(`#dg-btns [data-dig="${p}"]`).click(), pick);
+    await page.waitForTimeout(400);
+    return 'dig-' + pick;
+  }
 
   if (s.card) {
-    await snap(`card-${s.cardTitle}`);
+    { const isV15 = /toll|laurel|pit crew|gold|beaver|up the coast|choice|desert|dry|sierra|humboldt|sutter|coloma|schooner|columbia bar|spring|ice |news from|salt|claim|barlow|sublette|lander|farm|nugget|flake|pan|cradle|rocker/i.test(`${s.cardTitle} ${s.cardKicker}`);
+      await snap(`${isV15 ? 'v15-' : ''}card-${s.cardTitle}`.slice(0, 60));
+      if (/pit crew/i.test(s.cardTitle) && !V.v15.placement) V.v15.placement = { before: await placementProbe() }; }
     // choices the plan makes at certain cards
     let alt = false;
     if (s.cardTitle === 'Make camp tonight?' && !P.campDone.has(curLeg) && campWanted()) { alt = true; P.campDone.add(curLeg); }
@@ -714,7 +889,10 @@ async function step(plan = {}) {
   } else await releaseMouse();
   if (s.screen === 'river' && s.rvChoice) {
     await snap(`river-choice-${s.j.legId}`, { wait: 500 });
-    const how = P.river[s.j.legId] || 'ferry';
+    const ways = await ev(() => [...document.querySelectorAll('#rv-opts .rv-opt')].map((b) => b.dataset.how));
+    const want = P.river[s.j.legId] || 'ferry';
+    const how = ways.includes(want) ? want : ways[0];
+    if (!ways.includes(want)) V.v15.order.push({ j: curJ, leg: s.j.legId, note: `river: wanted ${want}, on offer ${ways.join('/')}` });
     await page.click(`#rv-opts .rv-opt[data-how="${how}"]`);
     return 'river-choice';
   }
@@ -736,7 +914,7 @@ async function step(plan = {}) {
   if (s.screen === 'stop' && s.stopOpen && !s.stopBusy && !s.v2play && !inStop) {
     inStop = true;
     try {
-    await snap(`stop-${s.j.legId}-talk-row`, { wait: 500 });
+    await snap(`v15-stop-${s.j.legId}-talk-row`, { wait: 500 });
     const people = await ev(() => [...document.querySelectorAll('#stop-row .stop-person')].map((b) => b.dataset.person));
     for (const p of people) {
       await snap(`stop-${s.j.legId}-before-${p}`, { force: true, wait: 100 });
@@ -752,9 +930,9 @@ async function step(plan = {}) {
   if (s.screen === 'post') { await snap('post-office', { wait: 300 }); return null; }
   if (s.screen === 'store' && s.storeOpen && !s.storeBusy) return await storeRoutine(s);
   if (s.screen === 'home') {
-    await snap('home-name-your-homestead', { wait: 400 });
-    for (const k of 'sunny acres') await page.click(`#hs-keyboard .kb-key[data-key="${k === ' ' ? 'space' : k}"]`);
-    await snap('home-name-typed', { force: true });
+    await snap('v15-home-name-your-homestead', { wait: 400 });
+    for (const k of (curJ === 3 ? 'golden claim' : 'sunny acres')) await page.click(`#hs-keyboard .kb-key[data-key="${k === ' ' ? 'space' : k}"]`);
+    await snap('v15-home-name-typed', { force: true });
     await page.click('#hs-keyboard .kb-enter');
     return 'home';
   }
@@ -798,14 +976,154 @@ async function playUntil(until, plan = {}, timeout = 240000, label = '') {
   throw new Error('timeout in ' + label + ' ' + JSON.stringify(await W()).slice(0, 300));
 }
 
+// ---------- v1.5: the Pit Crew Check probe, the year picker and Outfit, the farm, the marker/event/nose order ----------
+/** What the child's Trail Blazer ladder says now, and the shape a word problem takes for it (SPEC v1.5 §3.9). */
+async function placementProbe() {
+  return ev(async () => {
+    const w = window.__wagonWest, f = w.facts, JA = w.JA;
+    const { LEG_BY_ID } = await import('/wagon-west/src/content/legs.js');
+    const tier = JA.problemTierFor(f);
+    const leg = LEG_BY_ID['fort-kearny'];
+    const shape = {};
+    for (const kind of ['ration', 'distance', 'buy']) {
+      try { const p = JA.problemFor({ kind, fact: kind === 'buy' ? '4x12' : '7x8', leg, season: 'rookie', tier, cash: 400, rand: () => 0.37 }); shape[kind] = { steps: p.parts ? p.parts.length : 1, answers: p.answers || null, text: String(p.text || '').slice(0, 160) }; } catch (e) { shape[kind] = { error: String(e.message).slice(0, 80) }; }
+    }
+    return { tier, frontier: f && f.frontier ? JSON.parse(JSON.stringify(f.frontier.families || [])) : null, placed: !!(f && (f.placement || f.placed)), history: JA.hasFactsHistory ? JA.hasFactsHistory(f) : null, needs: JA.needsPlacement(f, { offered: w.save.seen.placeOffers | 0 }), offered: w.save.seen.placeOffers | 0, shape };
+  });
+}
+/** Build what the purses allow at a farm, in the child's order; each build is played in the scene (the raising) and shot. */
+async function farmRoutine(label, order) {
+  await page.waitForSelector('#screen-farm:not([hidden])', { timeout: 8000 }).catch(() => note('blocks play', 'farm', `the farm screen did not open (${label})`));
+  await snap(`v15-farm-${label}-arrive`, { force: true, wait: 1200 });
+  const view = () => ev(() => ({ title: (document.querySelector('#farm-title') || {}).textContent, sub: (document.querySelector('#farm-sub') || {}).textContent, empty: (document.querySelector('#farm-empty') || {}).textContent || '',
+    purses: [...document.querySelectorAll('.farm-purse')].map((p) => p.textContent.replace(/\s+/g, ' ').trim()), rows: [...document.querySelectorAll('.fm-row')].map((r) => ({ id: r.dataset.piece, ready: r.classList.contains('ready'), built: r.classList.contains('built'), code: r.dataset.code })), home: (() => { try { return window.__wagonWest.scene.getState().home; } catch (_) { return null; } })() }));
+  const v0 = await view();
+  const rec = { journey: curJ, label, before: v0, built: [] };
+  V.v15.farms.push(rec);
+  log(`  farm ${label}: ${v0.title} | ${v0.purses.join(' | ')} | ready: ${v0.rows.filter((r) => r.ready).map((r) => r.id).join(',')}`);
+  const count = (id) => ev((id) => Object.values(window.__wagonWest.save.farm.sites).map((x) => (x.pieces && x.pieces[id]) | 0).reduce((q, r) => q + r, 0), id);
+  for (const id of order) {
+    const row = (await view()).rows.find((r) => r.id === id);
+    if (!row || (row.built && id !== 'garden')) continue;
+    if (!row.ready) { rec.built.push({ id, skipped: row.code || 'not ready' }); continue; }
+    const t0 = Date.now(), before = await count(id);
+    await ev((id) => document.querySelector(`[data-build="${id}"]`).click(), id);
+    await page.waitForTimeout(500);
+    if (['cabin', 'barn'].includes(id)) await snap(`v15-farm-${label}-raising-${id}`, { force: true, wait: 600 });
+    for (let k = 0; k < 120; k++) { if ((await count(id)) > before) break; await page.waitForTimeout(150); }
+    const now = await count(id);
+    await page.waitForTimeout(900);
+    await snap(`v15-farm-${label}-built-${id}-${now}`, { force: true, wait: 700 });
+    rec.built.push({ id, ok: now > before, count: now, secs: Math.round((Date.now() - t0) / 100) / 10 });
+    if (!(now > before)) note('wrong', `farm build ${id}`, `the ${id} was not built after the tap (${label})`);
+    await settle(6000);
+  }
+  // a tap on the scene (homesteadTap) and on a piece's info line
+  const c = await canvasBox();
+  const [px, py] = toPage(c, c.W * 0.5, c.H * 0.62);
+  await page.touchscreen.tap(px, py);
+  await page.waitForTimeout(500);
+  await snap(`v15-farm-${label}-tap-the-scene`, { force: true, wait: 300 });
+  const info = await ev(() => { const b = document.querySelector('[data-piece-info].sel, .fm-row.built [data-piece-info]'); if (b) { b.click(); return b.dataset.pieceInfo; } return null; });
+  if (info) await snap(`v15-farm-${label}-piece-info`, { force: true, wait: 400 });
+  rec.after = await view();
+  await snap(`v15-farm-${label}-done`, { force: true, wait: 400 });
+}
+const FARM_ORDER_1 = ['cabin', 'name-plate', 'fence', 'garden', 'garden', 'flowers', 'well'];
+const FARM_ORDER_2 = ['cabin', 'fence', 'barn', 'name-plate', 'well', 'corral', 'orchard', 'frame-house'];
+/** The title -> A new year -> where -> how hard -> Outfit (who), then the store. */
+async function newYear({ route, tier, pickCompanions = null }) {
+  const label = await ev(() => document.querySelector('#btn-trail-label').textContent);
+  await snap(`v15-title-${label}`, { force: true, wait: 700 });
+  const line = await ev(() => (document.querySelector('#title-season') || {}).textContent);
+  log(`  title: "${label}" / "${line}"`);
+  await ev(() => document.querySelector('#btn-trail').click());
+  const onYear = await page.waitForSelector('#screen-year:not([hidden])', { timeout: 4000 }).then(() => true, () => false);
+  if (onYear) {
+    await snap('v15-year-where', { force: true, wait: 600 });
+    const cards = await ev(() => [...document.querySelectorAll('#yr-body .yr-card')].map((b) => `${b.dataset.pick}${b.classList.contains('locked') ? ':locked' : ''}`));
+    V.v15.order.push({ j: curJ, year: 'where', cards });
+    await ev((r) => document.querySelector(`#yr-body [data-pick="${r}"]`).click(), route);
+    await page.waitForTimeout(500);
+    const how = await ev(() => document.querySelector('#yr-title').textContent === 'How hard a trail?');
+    if (how) {
+      await snap('v15-year-how-hard', { force: true, wait: 600 });
+      const tiers = await ev(() => [...document.querySelectorAll('#yr-body .yr-card')].map((b) => `${b.dataset.pick}${b.classList.contains('locked') ? ':locked' : ''}`));
+      V.v15.order.push({ j: curJ, year: 'how', cards: tiers });
+      await ev((t) => document.querySelector(`#yr-body [data-pick="${t}"]`).click(), tier);
+      await page.waitForTimeout(500);
+    }
+  }
+  await outfitDrive({ pickCompanions });
+}
+async function outfitDrive({ pickCompanions = null } = {}) {
+  for (let i = 0; i < 12; i++) {
+    const vis = await ev(() => !document.querySelector('#screen-outfit').hidden);
+    if (!vis) return;
+    const tab = await ev(() => (document.querySelector('#ow-tabs .seg-btn.on') || {}).dataset?.tab || '');
+    await snap(`${curJ > 1 || tab === 'family' ? 'v15-' : ''}outfit-${tab || 'step'}-${curJ}`, { force: true, wait: 500 });
+    if (tab === 'name') {
+      const hasKb = await ev(() => !!document.querySelector('#ow-keyboard'));
+      const cur = await ev(() => (document.querySelector('#ow-name') || {}).textContent || '');
+      if (hasKb && (!cur || /Name your wagon/.test(cur))) { for (const k of 'sunny') await page.click(`#ow-keyboard .kb-key[data-key="${k}"]`); await page.click('#ow-keyboard .kb-enter'); await page.waitForTimeout(400); continue; }
+      if (hasKb) { await page.click('#ow-keyboard .kb-enter'); await page.waitForTimeout(400); continue; }       // (a later year keeps the wagon's name: Next is the keyboard's own key)
+    }
+    if (tab === 'family') { const f = await ev(() => { const b = document.querySelector('.ow-fam:not(.on)'); if (b) { b.click(); return b.dataset.family; } const on = document.querySelector('.ow-fam.on'); return on ? on.dataset.family : null; }); V.v15.order.push({ j: curJ, family: f }); await snap(`v15-outfit-family-picked-${curJ}`, { force: true, wait: 300 }); }
+    if (tab === 'animal') { await ev(() => { const b = document.querySelector('.ow-animal[data-animal="oxen"]'); if (b && !b.classList.contains('on')) b.click(); }); }
+    if (tab === 'party') {
+      const comps = await ev(() => [...document.querySelectorAll('.ow-comp[data-companion]')].map((b) => ({ id: b.dataset.companion, on: b.classList.contains('on'), disabled: b.disabled })));
+      const want = pickCompanions || (comps.filter((c) => c.on).length === 3 ? null : ['scout', 'cook', 'fiddler']);
+      if (want) {
+        for (const c of comps.filter((x) => x.on && !want.includes(x.id))) await ev((id) => document.querySelector(`.ow-comp[data-companion="${id}"]`).click(), c.id);
+        for (const id of want) { const on = await ev((id) => { const b = document.querySelector(`.ow-comp[data-companion="${id}"]`); return b ? b.classList.contains('on') : null; }, id); if (on === false) await ev((id) => document.querySelector(`.ow-comp[data-companion="${id}"]`).click(), id); }
+        await snap(`v15-outfit-party-${curJ}`, { force: true, wait: 400 });
+      }
+    }
+    const next = await ev(() => { const b = document.querySelector('#ow-next'); return b && !b.disabled ? true : false; });
+    if (!next) { await page.waitForTimeout(300); continue; }
+    await ev(() => document.querySelector('#ow-next').click());
+    await page.waitForTimeout(500);
+  }
+}
+/** Watch a leg's days: record, per travel day, what opened and in which order (marker panel, event card, the dog's nose). Used on the short legs. */
+function orderWatcherScript() {
+  return () => {
+    if (window.__orderWatch) return;
+    const log = window.__orderLog = [];
+    let lastMiles = -1, day = [];
+    const flush = () => { if (day.length) log.push({ miles: lastMiles, seq: day.slice() }); day = []; };
+    const tick = () => {
+      const w = window.__wagonWest; if (!w) return;
+      if (window.__orderTaint) { day = []; return; }       // a scripted detour (the playtest's own injected event) is not the day loop's order
+      if (w.screen !== 'trail') { flush(); lastMiles = -2; return; }
+      const J = w.save && w.save.journey;
+      const miles = J ? Math.round(J.milesDone) : -1;
+      const sm0 = w.scene && w.scene.getState && w.scene.getState().mini;
+      const noseNow = !!(sm0 && /^(dogRun|dogWarn|chase)/.test(sm0.kind));
+      if (!noseNow) window.__orderSkipNose = false;
+      if (miles !== lastMiles) { flush(); lastMiles = miles; window.__orderAt = Date.now(); window.__orderSkipNose = noseNow; }     // (a find's dog keeps running into the next day: not that day's nose)
+      const mk = w.markerPanel && w.markerPanel.state !== 'closed' && !document.querySelector('#panel-marker').hidden;
+      const card = w.card && w.card.isOpen && w.card.title;
+      const sm = w.scene && w.scene.getState && w.scene.getState().mini;
+      const note = mk ? 'marker' : card ? 'card:' + String(card).slice(0, 24) : sm && /^(dogRun|dogWarn|chase)/.test(sm.kind) ? 'nose' : null;
+      if (note === 'nose' && window.__orderSkipNose) return;
+      if (note && day[day.length - 1] !== note) day.push(note);
+    };
+    window.__orderWatch = setInterval(tick, 40);
+    window.__orderFlush = flush;
+  };
+}
+
 // ---------- the special things the plan does on particular legs ----------
 async function onTrailIdle(s) {
-  const L = curLeg;
-  const once = (k) => { if (P.specials.has(k)) return false; P.specials.add(k); return true; };
+  const L = s.j.legId;
+  const once = (k) => { k = curJ + ':' + k; if (P.specials.has(k)) return false; P.specials.add(k); return true; };
+  const undo = (k) => P.specials.delete(curJ + ':' + k);
   const miles = s.j.milesDone;
   { const r = await v14Detours(s, once); if (r) return r; }
-  if (L === 0 && miles > 25 && once('hud-tour')) {
-    if (!idle(await W())) { P.specials.delete('hud-tour'); return null; }
+  if (curJ !== 1) return null;
+  if (L === 'kansas-river' && miles > 25 && once('hud-tour')) {
+    if (!idle(await W())) { undo('hud-tour'); return null; }
     await snap('trail-hud', { force: true, wait: 400 });
     // pace and rations: a kid pokes the dials
     await ev(() => { document.querySelector('#dial-pace [data-pace="brisk"]').click(); });
@@ -816,7 +1134,7 @@ async function onTrailIdle(s) {
     // the Wagon panel from the food box
     await ev(() => document.querySelector('#hud-food-box').click());
     const wopen = await page.waitForSelector('#panel-wagon:not([hidden])', { timeout: 2500 }).then(() => true, () => false);
-    if (!wopen) { await settle(); P.specials.delete('hud-tour'); P.tourTries = (P.tourTries || 0) + 1; if (P.tourTries >= 3) note('wrong', 'wagon panel', 'tapping the food box did not open the Wagon panel (3 tries)'); return 'tour-retry'; }
+    if (!wopen) { await settle(); undo('hud-tour'); P.tourTries = (P.tourTries || 0) + 1; if (P.tourTries >= 3) note('wrong', 'wagon panel', 'tapping the food box did not open the Wagon panel (3 tries)'); return 'tour-retry'; }
     await snap('wagon-panel', { force: true, wait: 600 });
     await ev(() => { const b = document.querySelector('#wg-body'); if (b) b.scrollTop = 9999; });
     await snap('wagon-panel-scrolled', { force: true, wait: 300 });
@@ -836,16 +1154,16 @@ async function onTrailIdle(s) {
     await ev(() => { document.querySelector('#dial-rations [data-rations="plenty"]').click(); document.querySelector('#dial-pace [data-pace="steady"]').click(); });
     return 'hud-tour';
   }
-  if (L === 1 && miles > 30 && once('stampede')) { await snap('before-stampede', { force: true }); await ev(() => window.__wagonWest.app && window.__wagonWest.playEvent('stampede')); await settle(90000); return 'stampede'; }
-  if (L === 1 && miles > 70 && once('hunt-event')) { await ev(() => window.__wagonWest.playEvent('hunt')); await settle(90000); return 'hunt'; }
-  if (L === 1 && miles > 110 && once('trade-event')) { await ev(() => window.__wagonWest.playEvent('trade')); await settle(60000); return 'trade'; }
-  if (L === 2 && miles > 30 && once('axle')) { await ev(() => window.__wagonWest.playEvent('axle')); await settle(40000); await snap('after-breakdown', { force: true }); return 'axle'; }
+  if (L === 'fort-kearny' && miles > 30 && once('stampede')) { await snap('before-stampede', { force: true }); await ev(() => window.__wagonWest.app && window.__wagonWest.playEvent('stampede')); await settle(90000); return 'stampede'; }
+  if (L === 'fort-kearny' && miles > 70 && once('hunt-event')) { await ev(() => window.__wagonWest.playEvent('hunt')); await settle(90000); return 'hunt'; }
+  if (L === 'fort-kearny' && miles > 100 && once('trade-event')) { await ev(() => window.__wagonWest.playEvent('trade')); await settle(60000); return 'trade'; }
+  if (L === 'ash-hollow' && miles > 30 && once('axle')) { await ev(() => window.__wagonWest.playEvent('axle')); await settle(40000); await snap('after-breakdown', { force: true }); return 'axle'; }
   if (false && L === 2 && miles > 70 && once('fish-event')) { await ev(() => window.__wagonWest.playEvent('fish')); await settle(170000); return 'fish'; }
-  if (L === 3 && miles > 25 && once('camp-tour')) { return await campTour(['fish', 'hunt', 'cards', 'tales', 'rest']); }
-  if (L === 4 && miles > 40 && once('storm-forecast')) { await ev(() => window.__wagonWest.playEvent('storm')); await settle(60000); return 'storm'; }
-  if (L === 5 && miles > 40 && once('snow')) { await ev(() => window.__wagonWest.playEvent('snow')); await settle(60000); return 'snow'; }
-  if (L === 7 && miles > 30 && once('pause-camp-stop')) { return await pauseCampStop(); }
-  if (L === 9 && miles > 30 && once('dog-berries')) { const r = await ev(() => window.__wagonWest.dogBerries()); if (r) await settle(40000); return 'dog-berries'; }
+  if (L === 'chimney-rock' && miles > 25 && once('camp-tour')) { return await campTour(['fish', 'hunt', 'cards', 'tales', 'rest']); }
+  if (L === 'north-platte' && miles > 40 && once('storm-forecast')) { await ev(() => window.__wagonWest.playEvent('storm')); await settle(60000); return 'storm'; }
+  if (L === 'blue-mountains' && miles > 40 && once('snow')) { await ev(() => window.__wagonWest.playEvent('snow')); await settle(60000); return 'snow'; }
+  if (L === 'independence-rock' && miles > 30 && once('pause-camp-stop')) { return await pauseCampStop(); }
+  if (L === 'green-river' && miles > 30 && once('dog-berries')) { const r = await ev(() => window.__wagonWest.dogBerries()); if (r) await settle(40000); return 'dog-berries'; }
   return null;
 }
 async function campTour(acts) {
@@ -941,15 +1259,115 @@ async function outfitUpgrades() {
 }
 
 // ---------- the main run ----------
+const BIOME_SHOT = new Set();
+/** Generic v1.5 things any leg may show on an idle trail: the new biomes, a dry stretch, the Sierra, Laurel Hill's road. */
+async function v15Idle(s, once) {
+  const miles = s.j.milesDone, id = s.j.legId;
+  const st = await ev(() => { const w = window.__wagonWest; let g = null; try { g = w.scene.getState(); } catch (_) { /* ignore */ } let i = null; try { i = w.scene.debugInfo(); } catch (_) { /* ignore */ } return g && { biome: g.biome, dry: g.dry, backdrop: g.backdrop, barrel: i && i.barrel, packMules: i && i.packMules }; });
+  if (st && st.biome && !BIOME_SHOT.has(st.biome) && miles > 18 && once('biome-' + st.biome)) { BIOME_SHOT.add(st.biome); await snap(`v15-trail-${st.biome}-${id}`, { force: true, wait: 500 }); return 'biome'; }
+  if (st && st.dry && once('dry-' + id)) {
+    const upg = await ev(() => { const J = window.__wagonWest.save.journey; return { barrel: !!(J.upgrades && J.upgrades.barrel), spirit: J.spirit }; });
+    V.v15.dry.push({ journey: curJ, leg: id, miles, sceneDry: st.dry, sceneBarrel: st.barrel, hasBarrel: upg.barrel });
+    log(`  dry stretch ${id}: scene dry=${JSON.stringify(st.dry)} barrel drawn=${st.barrel} wagon has barrel=${upg.barrel}`);
+    await snap(`v15-dry-stretch-${id}`, { force: true, wait: 600 });
+    return 'dry';
+  }
+  if (id === 'sierra-summit' && miles > 25 && once('sierra')) { await snap('v15-trail-sierra-summit', { force: true, wait: 500 }); return 'sierra'; }
+  if (st && st.packMules && once('mules')) { await snap(`v15-trail-pack-mules-${id}`, { force: true, wait: 500 }); return 'mules'; }
+  return null;
+}
+/** The days of the leg that just ended, in the order things opened (marker, event card, the dog's nose). */
+async function takeOrderLog(legId, miles) {
+  const log_ = await ev(() => { if (window.__orderFlush) window.__orderFlush(); const l = window.__orderLog || []; const out = l.splice(0); if (window.__orderFlush) window.__orderFlush(); return out.concat(l.splice(0)); }).catch(() => []);
+  const days = log_.filter((d) => d.seq.length > 1);
+  const bad = days.filter((d) => { const q = d.seq; const mi = q.indexOf('marker'), ci = q.findIndex((x) => x.startsWith('card:')), ni = q.indexOf('nose'); return (mi >= 0 && ci >= 0 && ci < mi) || (mi >= 0 && ni >= 0 && ni < mi) || (ci >= 0 && ni >= 0 && ni < ci); });
+  V.v15.order.push({ j: curJ, leg: legId, miles, daysWithSeveral: days.map((d) => `${d.miles}: ${d.seq.join(' > ')}`), outOfOrder: bad.map((d) => `${d.miles}: ${d.seq.join(' > ')}`) });
+  if (bad.length) note('wrong', `order on ${legId}`, `a day opened out of order (marker, then event, then nose): ${bad.map((d) => d.seq.join(' > ')).join(' | ')}`);
+  return days.length;
+}
+
+async function playJourney(n, { label, maxLegs = MAX_LEGS, startLeg = 0 }) {
+  curJ = n; curLeg = startLeg;
+  let legN = startLeg;
+  for (;;) {
+    curLeg = legN;
+    const jInfo = await ev(() => { const J = window.__wagonWest.save.journey; return J && { id: J.legId, miles: J.milesDone, route: J.route, tier: J.tier, year: J.year, plan: (J.plan || []).length }; });
+    log(`===== journey ${n} (${label}) leg ${legN + 1}: ${jInfo && jInfo.id} (plan ${jInfo && jInfo.plan} legs) =====`);
+    const plan = { onEach: async (s) => {
+      if (n === 1 && V.v15.placement && !V.v15.placement.after && s.screen !== 'players') {
+        const took = await ev(() => { const l = window.__wagonWest.lastPlacement; return !!(l && l.took); });
+        if (took) { V.v15.placement.after = await placementProbe(); log('  pit crew check taken: ' + JSON.stringify({ before: V.v15.placement.before.tier, after: V.v15.placement.after.tier })); }
+      }
+      if (idle(s) && s.j) {
+        try { const r2 = await v15Idle(s, (k) => { k = curJ + ':' + k; if (P.specials.has(k)) return false; P.specials.add(k); return true; }); if (r2) return r2; } catch (e) { note('script', 'v15Idle', String(e.message).slice(0, 200)); }
+        await ev(() => { window.__orderTaint = true; });
+        try { const r = await onTrailIdle(s); if (r) return r; } catch (e) { note('script', 'special', 'a scripted detour failed: ' + String(e.message).slice(0, 200), await snap('special-failed', { force: true }).catch(() => '')); }
+        finally { await ev(() => { window.__orderTaint = false; }).catch(() => {}); }
+      }
+      return null;
+    } };
+    const t0 = Date.now();
+    await playUntil((s) => s.screen === 'results', plan, 600000, `J${n} leg ${legN + 1}`);
+    await releaseMouse();
+    const secs = Math.round((Date.now() - t0) / 1000);
+    const rj = await ev(() => { const w = window.__wagonWest, J = w.save.journey; return { legId: J.legId, miles: ((window.__wagonWest.JA.currentLeg && window.__wagonWest.JA.currentLeg(J)) || {}).miles, done: !!J.done, cash: J.cash, food: Math.round(J.food), tokens: J.tokens, cards: (J.cards || []).length, deeds: (J.deeds || []).length, gold: J.gold, tier: J.tier, year: J.year, route: J.route, branches: J.branches, planLen: (J.plan || []).length, limp: J.limp }; });
+    rj.legId = jInfo && jInfo.id || rj.legId;
+    const nOrder = await takeOrderLog(rj.legId, rj.miles);
+    V.v15.journeys.push({ journey: n, leg: legN + 1, ...rj, secs, orderDays: nOrder });
+    const perf = await ev(() => { const sc = window.__wagonWest.scene; return sc && sc.debugPerf ? sc.debugPerf(true) : null; });
+    if (perf && (perf.avgDraw + perf.avgUpdate > 8)) note('ugly', `J${n} leg ${legN + 1} perf`, `scene averages ${(perf.avgDraw + perf.avgUpdate).toFixed(1)} ms/frame of game code (budget 8 ms) in headless Chromium`);
+    const newRes = rj.done || rj.gold > 0 || n > 1 && /sierra|desert|barlow|humboldt|clear|feather|coloma|sutter|home-by-sea/.test(rj.legId);
+    await snap(`${newRes ? 'v15-' : ''}results-${rj.legId}`, { force: true, wait: 900 });
+    const crate = await ev(() => !!document.querySelector('#res-crate-open'));
+    if (crate) { await ev(() => document.querySelector('#res-crate-open').click()); await snap('results-crate-open', { force: true, wait: 800 }); }
+    await ev(() => { const r = document.querySelector('.res-body, #screen-results .scroll'); if (r) r.scrollTop = 9999; });
+    await snap(`${newRes ? 'v15-' : ''}results-${rj.legId}-scrolled`, { force: true, wait: 300, audits: false });
+    log(`  leg ${legN + 1} (${rj.legId}) done in ${secs}s: cash $${rj.cash} food ${rj.food} tokens ${rj.tokens} cards ${rj.cards} deeds ${rj.deeds} gold ${rj.gold}${rj.done ? '  [JOURNEY DONE]' : ''}`);
+    try { writeFileSync(path.join(SHOTS, `state-after-J${n}-leg-${legN + 1}.json`), JSON.stringify(await ctxRef.storageState())); } catch (_) { /* ignore */ }
+    legN++;
+    if (rj.done || legN >= maxLegs) { return rj; }
+    // title visits at a few points (journal tour, Outfit upgrades): on journey 1 only
+    if (n === 1 && (legN === 2 || legN === 8 || legN === 15)) {
+      await journalTour();
+      const onTitle = await ev(() => !document.querySelector('#screen-title').hidden);
+      inTitleTour = true;
+      if (onTitle) { await titleExtras(); if (legN === 2) await outfitUpgrades(); }
+      inTitleTour = false;
+      const scr = await ev(() => window.__wagonWest.screen);
+      if (scr === 'title') await ev(() => document.querySelector('#btn-trail').click());
+      else if (scr === 'results') await ev(() => document.querySelector('#res-next').click());
+    } else await ev(() => document.querySelector('#res-next').click());
+    await page.waitForTimeout(400);
+  }
+}
+/** After a trail's end: results -> (the bank card) -> name the farm -> the farm screen: build -> back to the title. */
+async function endOfTrail(label, order, rj) {
+  await snap(`v15-bank-card-${label}`, { force: true, wait: 400 });
+  const bank = await ev(() => { const el = document.querySelector('#res-extra, .res-bank'); return { text: document.querySelector('#screen-results').innerText.replace(/\s+/g, ' ').slice(0, 600) }; });
+  V.v15.banks.push({ journey: curJ, label, ...bank });
+  await ev(() => document.querySelector('#res-next').click());
+  await playUntil((s) => s.screen === 'farm', {}, 120000, `to the farm ${label}`);
+  await farmRoutine(label, order);
+  await ev(() => document.querySelector('#screen-farm [data-back]').click());
+  await page.waitForSelector('#screen-title:not([hidden])', { timeout: 6000 }).catch(() => note('wrong', 'farm back', 'Back from the farm did not reach the title'));
+  await snap(`v15-title-after-${label}`, { force: true, wait: 900 });
+  const map = await ev(() => ({ farms: [...document.querySelectorAll('#title-map .map-farm')].map((g) => `${g.dataset.site}:${g.dataset.stage}`), line: (document.querySelector('#title-season') || {}).textContent, btn: document.querySelector('#btn-trail-label').textContent }));
+  V.v15.farms.push({ journey: curJ, label: label + ' (title map)', map });
+  log('  title after the farm: ' + JSON.stringify(map));
+  try { writeFileSync(path.join(SHOTS, `state-after-J${curJ}-farm.json`), JSON.stringify(await ctxRef.storageState())); } catch (_) { /* ignore */ }
+}
+let ctxRef = null;
+
 async function main() {
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch({ headless: !process.env.HEADED });
   const ctx = await browser.newContext({ viewport: PORTRAIT ? { width: 390, height: 844 } : { width: 844, height: 390 }, deviceScaleFactor: 1, isMobile: true, hasTouch: true, ...(RESUME ? { storageState: RESUME } : {}) });
+  ctxRef = ctx;
   await routeFonts(ctx);
   page = await ctx.newPage();
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) { errors.push(m.text()); note('console', `leg ${curLeg + 1}`, 'console error: ' + m.text().slice(0, 220)); } });
-  page.on('pageerror', (e) => { errors.push(e.message); note('console', `leg ${curLeg + 1}`, 'page error: ' + e.message.slice(0, 220)); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) { errors.push(m.text()); note('console', `J${curJ} leg ${curLeg + 1}`, 'console error: ' + m.text().slice(0, 220)); } });
+  page.on('pageerror', (e) => { errors.push(e.message); note('console', `J${curJ} leg ${curLeg + 1}`, 'page error: ' + e.message.slice(0, 220)); });
   page.on('requestfailed', (r) => { if (!/fonts\.(googleapis|gstatic)/.test(r.url())) note('console', 'network', 'request failed: ' + r.url().slice(0, 140)); });
   await page.addInitScript(({ insets, daySec, resume }) => {
     if (!sessionStorage.getItem('wwSeeded')) { if (!resume) localStorage.clear(); sessionStorage.setItem('wwSeeded', '1'); }
@@ -971,6 +1389,7 @@ async function main() {
   try {
     await page.goto(URL0, { waitUntil: 'networkidle' });
     await page.evaluate(() => document.fonts && document.fonts.ready);
+    await page.evaluate(orderWatcherScript());
     const sceneName = await ev(() => window.__wagonWest.app.sceneName);
     log('scene:', JSON.stringify(sceneName), '(empty = the real scene)');
     if (sceneName) note('script', 'boot', `the app fell back to "${sceneName}", not the real scene`);
@@ -979,158 +1398,101 @@ async function main() {
       await page.waitForSelector('#screen-players:not([hidden])');
       await page.click('[data-player]');
       await page.waitForSelector('#screen-title:not([hidden])');
-      await page.click('#btn-trail');
+      if (START_LEG > 0 && JOURNEYS.includes(RESUME_J)) {      // carry on a journey that was saved mid-way (RESUME_J, START_LEG = the legs already played)
+        const T = { 1: [{ 'fort-hall': 'oregon', 'the-dalles': 'barlow' }, 'willamette', FARM_ORDER_1], 2: [{}, 'gold-road-home', FARM_ORDER_2], 3: [{ 'south-pass': 'main', 'fort-hall': 'california', 'the-dalles': 'columbia' }, 'sacramento', ['cabin', 'name-plate', 'fence', 'garden']] }[RESUME_J];
+        P.forkWay = T[0]; curJ = RESUME_J;
+        await page.click('#btn-trail');
+        const rjR = await playJourney(RESUME_J, { label: `journey ${RESUME_J} (resumed)`, startLeg: START_LEG });
+        if (rjR.done) { await endOfTrail(T[1], T[2], rjR); await journalTour(); const scr = await ev(() => window.__wagonWest.screen); if (scr !== 'title') { await ev(() => { const b = document.querySelector('#res-next'); if (b) b.click(); }); await page.waitForTimeout(800); } }
+      }
     } else {
-    // ---- picker + new player ----
-    await page.waitForSelector('#screen-players:not([hidden])');
-    await snap('players');
-    await page.click('#pl-add');
-    await page.waitForSelector('#screen-newplayer:not([hidden])');
-    await snap('newplayer');
-    for (const k of 'ava') await page.click(`#np-keyboard .kb-key[data-key="${k}"]`);
-    await snap('newplayer-typed', { force: true });
-    await page.click('#np-keyboard .kb-enter');
-    await page.waitForSelector('#screen-title:not([hidden])');
-    await snap('title-first', { wait: 600 });
-
-    // ---- outfit ----
-    await page.click('#btn-trail');
-    await page.waitForSelector('#screen-outfit:not([hidden])');
-    await snap('outfit-name');
-    for (const k of 'sunny') await page.click(`#ow-keyboard .kb-key[data-key="${k}"]`);
-    await page.click('#ow-keyboard .kb-enter');
-    await page.waitForSelector('.ow-animal');
-    await snap('outfit-animal');
-    await page.click('.ow-animal[data-animal="oxen"]');
-    await snap('outfit-animal-picked', { force: true, wait: 300 });
-    await page.click('#ow-next');
-    await page.waitForSelector('.ow-comp');
-    const comps = await ev(() => [...document.querySelectorAll('.ow-comp')].map((b) => b.dataset.companion));
-    // a kid picks the ones that sound fun: scout, cook, fiddler if present
-    const pick = ['scout', 'cook', 'fiddler'].filter((c) => comps.includes(c));
-    for (const id of pick.length === 3 ? pick : comps.slice(0, 3)) await page.click(`.ow-comp[data-companion="${id}"]`);
-    await snap('outfit-party', { wait: 400 });
-    await page.click('#ow-next');
-    await page.waitForSelector('.ow-looks');
-    await snap('outfit-look', { wait: 400 });
-    await page.click('#ow-next');
-
+      // ---- picker + new player ----
+      await page.waitForSelector('#screen-players:not([hidden])');
+      await snap('players');
+      await page.click('#pl-add');
+      await page.waitForSelector('#screen-newplayer:not([hidden])');
+      await snap('newplayer');
+      for (const k of 'ava') await page.click(`#np-keyboard .kb-key[data-key="${k}"]`);
+      await page.click('#np-keyboard .kb-enter');
+      await page.waitForSelector('#screen-title:not([hidden])');
+      await snap('title-first', { wait: 600 });
+      await page.click('#btn-trail');
+      await page.waitForSelector('#screen-outfit:not([hidden])');
+      await outfitDrive();
     }
 
-    // ---- the 12 legs ----
-    for (let L = START_LEG; L < MAX_LEGS; L++) {
-      curLeg = L;
-      miniMeta.fordBad = miniMeta.fordBad;       // (kept across legs on purpose)
-      log(`===== leg ${L + 1} =====`);
-      if (L > 0) {
-        // between legs: the results screen is up; look at it, then go on (title visits at a few points)
-        // (handled at the end of the previous iteration)
+    // ================= JOURNEY 1: the 20-leg Oregon trail, the Barlow Road at The Dalles =================
+    if (JOURNEYS.includes(1) && !RESUME) {
+      P.forkWay = { 'fort-hall': 'oregon', 'the-dalles': 'barlow' };
+      curJ = 1;
+      if (PITCH_ONLY) {
+        const pre = await placementProbe();
+        log('PIT CREW (fresh profile): ' + JSON.stringify(pre));
+        V.v15.placement = { before: pre };
+        await playUntil(async (s) => { const l = await ev(() => { const x = window.__wagonWest.lastPlacement; return !!(x && x.took); }); return l; }, {}, 240000, 'pit crew check');
+        await page.waitForTimeout(800);
+        V.v15.placement.after = await placementProbe();
+        log('PIT CREW (after): ' + JSON.stringify(V.v15.placement.after));
+        writeFileSync(path.join(SHOTS, 'pit-check.json'), JSON.stringify(V.v15.placement, null, 1));
+        throw new Error('PITCH_ONLY done');
       }
-      const plan = { onEach: async (s) => { if (idle(s) && s.j) { try { const r = await onTrailIdle(s); if (r) return r; } catch (e) { note('script', 'special', 'a scripted detour failed: ' + String(e.message).slice(0, 200), await snap('special-failed', { force: true }).catch(() => '')); } } return null; } };
-      // the first leg starts in the Independence store; later legs start on the trail
-      const res = await playUntil((s) => s.screen === 'results', plan, 420000, `leg ${L + 1}`);
-      await releaseMouse();
-      const perf = await ev(() => { const sc = window.__wagonWest.scene; return sc && sc.debugPerf ? sc.debugPerf(true) : null; });
-      if (perf) log(`  scene perf: avg update ${perf.avgUpdate.toFixed(2)} ms, draw ${perf.avgDraw.toFixed(2)} ms, worst frame ${perf.max.toFixed ? perf.max.toFixed(1) : perf.max}`);
-      if (perf && (perf.avgDraw + perf.avgUpdate > 8)) note('ugly', `leg ${L + 1} perf`, `scene averages ${(perf.avgDraw + perf.avgUpdate).toFixed(1)} ms/frame of game code (budget 8 ms) in headless Chromium`);
-      await snap(`results-leg-${L + 1}`, { force: true, wait: 900 });
-      const crate = await ev(() => !!document.querySelector('#res-crate-open'));
-      if (crate) { await ev(() => document.querySelector('#res-crate-open').click()); await snap(`results-crate-open`, { force: true, wait: 800 }); }
-      await ev(() => { const r = document.querySelector('.res-body, #screen-results .scroll'); if (r) r.scrollTop = 9999; });
-      await snap(`results-leg-${L + 1}-scrolled`, { force: true, wait: 300, audits: false });
-      const rj = await jq();
-      log(`  leg ${L + 1} done: cash $${rj.cash} food ${Math.round(rj.food)} tokens ${rj.tokens} cards ${rj.cards} deeds ${rj.deeds} met ${rj.met}`);
-      try {
-        const jf = await J14();
-        const fs = { leg: L + 1, where: 'results', dog: jf.dog && { name: jf.dog.name, muddy: jf.dog.muddy, legs: jf.dog.legs }, finds: Object.keys(jf.finds || {}).length, fish: Object.fromEntries(Object.entries(jf.fishLog || {}).map(([k, v]) => [k, v.n])), junk: jf.fishJunk, quests: jf.quests, factsHeard: jf.factsHeard, tokens: jf.tokens };
-        V.legFun.push(fs);
-        log(`  v14: ${JSON.stringify(fs)}`);
-        if (L === 1 && jf.dog && jf.dog.muddy) note('wrong', 'the muddy dog', 'the dog is still muddy at the results of the leg after the late chase (arrival and camp should have washed him)', await snap('v14-dog-still-muddy-at-results', { force: true, wait: 50 }));
-      } catch (e) { log('  (v14 status failed: ' + e.message + ')'); }
-      try { writeFileSync(path.join(SHOTS, `state-after-leg-${L + 1}.json`), JSON.stringify(await ctx.storageState())); } catch (_) { /* ignore */ }
-      if (L === 11) break;
-      if (L === 1 || L === 4 || L === 8) {
-        // go to the journal from the results, then the title, then Outfit upgrades, then back on the trail
+      const rj1 = await playJourney(1, { label: 'Oregon, the Barlow Road' });
+      if (rj1.done) {
+        await endOfTrail('willamette', FARM_ORDER_1, rj1);
         await journalTour();
-        await ev(() => { const b = document.querySelector('#screen-journal [data-back]'); });
-        const onTitle = await ev(() => !document.querySelector('#screen-title').hidden);
-        inTitleTour = true;
-        if (onTitle) { await titleExtras(); if (L === 1) await outfitUpgrades(); }
-        inTitleTour = false;
         const scr = await ev(() => window.__wagonWest.screen);
-        if (scr === 'title') { await ev(() => document.querySelector('#btn-trail').click()); }
-        else if (scr === 'results') await ev(() => document.querySelector('#res-next').click());
-      } else {
-        await ev(() => document.querySelector('#res-next').click());
+        if (scr !== 'title') { await ev(() => { const b = document.querySelector('#res-next'); if (b) b.click(); }); await page.waitForTimeout(800); }
       }
-      await page.waitForTimeout(400);
     }
 
-    // ---- the end: the valley, the journal, the parent zone ----
-    curLeg = 11;
-    await snap('final-results', { force: true, wait: 600 });
-    await journalTour();
-    const scr = await ev(() => window.__wagonWest.screen);
-    log('screen after journal:', scr);
-    if (scr !== 'title') { await ev(() => { const b = document.querySelector('#res-next'); if (b) b.click(); }); await page.waitForTimeout(800); }
-    await snap('title-after-journey', { force: true, wait: 800 });
+    // ================= JOURNEY 2: the Gold Road =================
+    if (JOURNEYS.includes(2) && !(RESUME && START_LEG > 0 && RESUME_J >= 2)) {
+      P.forkWay = {};
+      curJ = 2; curLeg = 0;
+      await newYear({ route: 'gold-road', tier: 'rookie', pickCompanions: ['packer', 'prospector', 'cook'] });
+      const rj2 = await playJourney(2, { label: 'the Gold Road' });
+      if (rj2.done) await endOfTrail('gold-road-home', FARM_ORDER_2, rj2);
+      await journalTour();
+      const scr = await ev(() => window.__wagonWest.screen);
+      if (scr !== 'title') { await ev(() => { const b = document.querySelector('#res-next'); if (b) b.click(); }); await page.waitForTimeout(800); }
+    }
 
-    // ---- Parent Zone ----
+    // ================= JOURNEY 3: California at Veteran =================
+    if (JOURNEYS.includes(3) && !(RESUME && START_LEG > 0 && RESUME_J >= 3)) {
+      P.forkWay = { 'south-pass': 'main', 'fort-hall': 'california', 'the-dalles': 'columbia' };
+      curJ = 3; curLeg = 0;
+      await newYear({ route: 'emigrant', tier: 'veteran' });
+      const rj3 = await playJourney(3, { label: 'California, Veteran' });
+      if (rj3.done) await endOfTrail('sacramento', ['cabin', 'name-plate', 'fence', 'garden'], rj3);
+      await journalTour();
+      await snap('v15-title-after-three-journeys', { force: true, wait: 800 });
+    }
+
+    // ---- Parent Zone: the journeys table and the farm line ----
     const onTitle = await ev(() => !document.querySelector('#screen-title').hidden);
     if (onTitle) {
       await page.click('#btn-parents');
       await page.waitForSelector('#pz:not([hidden])');
-      await snap('pz-pin-set', { force: true });
       for (let k = 0; k < 2; k++) { for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`); await page.waitForTimeout(300); }
       await page.waitForSelector('.pz-tabs', { timeout: 5000 });
       const tabs = await ev(() => [...document.querySelectorAll('.pz-tabs .seg-btn')].map((b) => b.dataset.tab));
       for (const t of tabs) {
         await ev((t) => document.querySelector(`.pz-tabs [data-tab="${t}"]`).click(), t);
-        await snap(`pz-${t}`, { force: true, wait: 700, audits: false });
-        if (t === 'report') {
-          await ev(() => { const c = document.querySelector('#report-chart'); if (c) c.scrollIntoView({ block: 'center' }); });
-          await snap('pz-report-chart', { force: true, wait: 400, audits: false });
-          await ev(() => { const c = document.querySelector('#report-kinds'); if (c) c.scrollIntoView({ block: 'center' }); });
-          await snap('pz-report-kinds', { force: true, wait: 400, audits: false });
-          const rep = await ev(() => { const e = document.querySelector('#report-text'); return e ? e.textContent : ''; });
-          texts['PARENT REPORT TEXT'] = rep;
-          await ev(() => { const b = document.querySelector('#report-copy'); if (b) b.click(); });
-          await snap('pz-report-copied', { force: true, wait: 400, audits: false });
-          texts['PARENT REPORT TEXT (after copy)'] = await ev(() => { const e = document.querySelector('#report-text'); return e ? e.textContent : ''; });
-          texts['PARENT REPORT FULL PAGE'] = await ev(() => document.querySelector('#pz').innerText.replace(/\s+/g, ' '));
-        }
-        if (t === 'options') {
-          await ev(() => { const b = document.querySelector('#opt-far-sounds'); if (b) b.scrollIntoView({ block: 'center' }); });
-          const st0 = await ev(() => { const b = document.querySelector('#opt-far-sounds'); return b ? b.getAttribute('aria-checked') : null; });
-          await snap('v14-pz-far-off-sounds-on', { force: true, wait: 400, audits: false });
-          await ev(() => document.querySelector('#opt-far-sounds').click());
-          await page.waitForTimeout(300);
-          const st1 = await ev(() => document.querySelector('#opt-far-sounds').getAttribute('aria-checked'));
-          const jo = await ev(() => { const J = window.__wagonWest.save.journey; return { journey: J && J.opts, settings: window.__wagonWest.app.settings.farSounds }; });
-          await snap('v14-pz-far-off-sounds-off', { force: true, wait: 300, audits: false });
-          V.farSwitch = { before: st0, after: st1, state: jo };
-          if (!(st0 === 'true' && st1 === 'false')) note('wrong', 'Parent Zone', `the far-off sounds switch did not flip (${st0} -> ${st1})`);
-          if (jo.settings !== false && !(jo.journey && jo.journey.farSounds === false)) note('wrong', 'Parent Zone', `the far-off switch is off but neither the setting nor the journey says so: ${JSON.stringify(jo)}`);
-          await ev(() => document.querySelector('#opt-far-sounds').click());
-          await page.waitForTimeout(250);
-          V.farSwitch.restored = await ev(() => document.querySelector('#opt-far-sounds').getAttribute('aria-checked'));
-        }
+        await snap(`${t === 'journey' || t === 'options' ? 'v15-' : ''}pz-${t}`, { force: true, wait: 700, audits: false });
         if (t === 'journey') texts['PARENT JOURNEY TAB'] = await ev(() => document.querySelector('#pz').innerText.replace(/\s+/g, ' '));
+        if (t === 'report') texts['PARENT REPORT FULL PAGE'] = await ev(() => document.querySelector('#pz').innerText.replace(/\s+/g, ' '));
       }
       await ev(() => document.querySelector('#pz-close').click());
-    } else note('script', 'end', 'not on the title after the journey; skipped the Parent Zone');
-
-    // ---- final dump of the journey state for the report ----
-    const final = await ev(() => { const w = window.__wagonWest; const J = w.save.journey; return { journey: J && { dog: J.dog, finds: J.finds, fishLog: J.fishLog, fishJunk: J.fishJunk, quests: J.quests, questsDone: J.questsDone, factsHeard: J.factsHeard, wishes: J.wishes, skips: J.skips, legIndex: J.legIndex, done: J.done, cash: J.cash, tokens: J.tokens, food: J.food, deeds: J.deeds, cards: J.cards, met: J.met, totals: J.totals, season: J.season }, stickers: w.save.stickers, letters: (w.save.letters || []).length, legsLog: w.save.legsLog, play: w.save.play }; });
+    }
+    const final = await ev(() => { const w = window.__wagonWest; const J = w.save.journey; return { ledger: w.save.ledger, farm: w.save.farm, setsDone: w.save.setsDone, cosmetics: w.save.cosmetics, journey: J && { dog: J.dog, deeds: J.deeds, cards: (J.cards || []).length, tokens: J.tokens, route: J.route, tier: J.tier, year: J.year, branches: J.branches, gold: J.gold }, seen: w.save.seen, deedsAll: (w.save.deeds || null) }; });
     writeFileSync(path.join(SHOTS, 'final-state.json'), JSON.stringify(final, null, 1));
-    V.final = await J14();
+    V.final = final;
   } catch (e) {
-    note('script', 'run aborted', String(e && e.stack || e).slice(0, 500));
-    try { await snap('ABORT', { force: true }); } catch (_) { /* ignore */ }
+    if (!/PITCH_ONLY done/.test(String(e && e.message))) { note('script', 'run aborted', String(e && e.stack || e).slice(0, 500)); try { await snap('ABORT', { force: true }); } catch (_) { /* ignore */ } }
   } finally {
     try { writeFileSync(path.join(SHOTS, 'spoken.json'), JSON.stringify(await ev(() => window.__spoken || []), null, 1)); } catch (_) { /* ignore */ }
     writeFileSync(path.join(SHOTS, 'findings.json'), JSON.stringify(findings, null, 1));
-    try { writeFileSync(path.join(SHOTS, 'v14-summary.json'), JSON.stringify({ ...V, campSeen: [...V.campSeen] }, null, 1)); } catch (_) { /* ignore */ }
+    try { writeFileSync(path.join(SHOTS, 'v15-summary.json'), JSON.stringify({ ...V, campSeen: [...V.campSeen] }, null, 1)); } catch (_) { /* ignore */ }
     writeFileSync(path.join(SHOTS, 'texts.json'), JSON.stringify(texts, null, 1));
     writeFileSync(path.join(SHOTS, 'console-errors.json'), JSON.stringify(errors, null, 1));
     await browser.close();
