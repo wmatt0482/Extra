@@ -1393,3 +1393,806 @@ far sound, no shooter on screen; every suite green (`journey-tests`, `economy-si
    prairie fire glow too scary to keep?
 5. **Family records show first names** beside the biggest fish and the most skips (the family map shows no names). OK?
 6. **The shiny spoon is sold at the fort stores** ($3) rather than at the trading-post events. OK?
+## v1.5 — The Long Trail (owner, Nov 1: his son finished all twelve legs, Independence to the Willamette, in about two hours: "Need to scale this much better"; and, while this was written: "Maybe they can choose where to go also")
+> v1.4 ("Frodo and the river": the dog's finds, fishing 2.0, trail moments, the locket quest, trail facts) is written in its
+> own branch and sits above this section. v1.5 does not redesign any of it; where v1.5 needs v1.4's tables or save fields
+> (the dog, its finds, the fish log, the locket, the trail moments and trail facts), it uses them by the names v1.4 §2 gives.
+> The orchestrator fills those names into the two marked lists below (§3.6 `CARRY_V14`, §5.6 the merge) at integration.
+
+The fix is not slower legs. It is **more trail** (12 legs become 20 on the same 2,000 miles, with the real landmarks the game
+skipped), **a choice of where to go** (Oregon or California at Fort Hall, the Sublette Cutoff, the Lander Road, the Barlow
+Road), **a second story route** (the Gold Road south from the Willamette farm in the gold rush of 1848–49), **years that change
+the game** (Rookie, Veteran, Pioneer), **an endgame that grows** (the homestead, built from what each journey brings home) and
+**collections with long tails** (about 110 trail cards in sets that unlock wagon decorations, and 45 deeds). The kid rules of
+§1 stand everywhere, and the learning spine (4–6 mile markers a leg, three spelling words at every letter or ferry) does not
+change: more trail means more of it, at the same small size per session.
+
+### 1. Design, and what the child sees
+
+**A year is a journey.** The title says "A new year" once a journey is done. The child picks **where** (the emigrant trail
+from Independence, or, once a Willamette farm exists, the Gold Road south from it), **how hard** (Rookie, Veteran, Pioneer:
+§2.6, §3.2) and **who** (which relatives' wagon comes west this year, the animals, three companions). The calendar moves one
+year a journey: the first trip is 1847, the next 1848, and so on (`ledger.year`); a route or a fork exists only from the year
+it really opened (the Sublette Cutoff 1844, the Barlow Road 1846, the Gold Road 1848, the Lander Road 1858).
+
+**The story of the years.** The first wagon is the child's own family. Every later emigrant-trail journey is another branch
+of the family coming west to join the homestead ("Uncle Theo's wagon, 1849"), so the letters go home to the people at the
+farm, and what the wagon brings builds the farm. The Gold Road is the child setting out from the farm when the news of gold
+reaches the valley; its letters go back to the family in Oregon.
+
+**The emigrant trail, 20 legs.** Independence to the Willamette Valley is still 2,000 miles; it now also stops at Alcove
+Spring, Ash Hollow, Scotts Bluff, the North Platte ferry, Ice Slough, the Green River, Soda Springs (its own stop now) and
+Farewell Bend (§2.2). The five stores are where they were, at the same miles (Independence; Fort Kearny at mile 320, Fort
+Laramie at 620, Fort Bridger at 1,090, Fort Hall at 1,300), so the 1.3 food and money plan holds. Legs are 60 to 160 miles
+(100 on average, was 167): a leg has fewer travel days but the same marker count (4–6), its one or two events, its stop and
+its people, so a leg is still one session.
+
+**Choosing where to go.** Three forks. Each is a card at the stop with a person who explains both ways in one true line
+each, and two (or three) equal buttons, all read aloud; a choice is never hidden:
+- **Fort Hall: Oregon or California** (every journey, the first included). Agnes, the clerk at Fort Hall, explains: west
+  along the Snake River to the Willamette's farmland, or south at the Raft River along the Humboldt, across the Forty-Mile
+  Desert and over the Sierra Nevada to the Sacramento Valley. On the first trip the card leans toward Oregon ("Your family
+  planned on Oregon. You can still change your mind."; "On to Oregon" is first and has the focus) but both buttons are the
+  same size. From 1849 on Agnes adds that most wagons this year are bound for the California gold fields (true for 1849–50).
+- **The Dalles: the Columbia raft or the Barlow Road** (every journey). The raft is 1.2's raft run; the Barlow Road is a
+  mountain leg over the shoulder of Mount Hood with a toll gate ($5 a wagon in 1846, the real toll) and Laurel Hill, where
+  wagons were let down the steep slope on ropes (a new timing mini-game, §4.3). Note for the record: the 1.3 code has only
+  the raft; the Barlow Road is new here.
+- **South Pass: by Fort Bridger, the Sublette Cutoff, or the Lander Road** (from the second journey). The cutoff is about 40
+  miles shorter but crosses some 50 miles with no water and skips the Fort Bridger store; the Lander Road (from 1858,
+  one of the first roads the federal government built for emigrants) is about 60 miles shorter, with grass and water, and skips Fort
+  Bridger and Soda Springs.
+Both trail ends are a homestead, the **Willamette farm** or the **Sacramento Valley claim and cabin**, on the same homestead
+model.
+
+**The California Trail, 24 legs, about 2,150 miles.** The first fifteen legs are the Oregon Trail's; from Fort Hall: the
+Raft River (the Parting of the Ways), City of Rocks (names in axle grease), the head of the Humboldt, the Humboldt River,
+the Big Meadows (the last good grass), the Forty-Mile Desert (no water: fill every barrel first), the Truckee River (named
+for the Northern Paiute guide who showed the 1844 wagons the way), the Sierra summit, and the Sacramento Valley. The route
+over the Sierra is the Truckee route (the main route from 1844 and the only one before 1849; §8 asks about the Carson route).
+There is no store after Fort Hall, as on the Oregon side, but it is 850 miles instead of 700: California is the harder road,
+and the economy targets say so (§7.2).
+
+**The Gold Road, 12 legs.** Unlocked by arriving in the Willamette Valley. On January 24, 1848 James Marshall found gold
+flakes in the tailrace of John Sutter's sawmill at Coloma; the news reached Oregon by ship that summer, and thousands of
+Oregon settlers went south in 1848–49, by the old Siskiyou Trail and the Applegate road: up the Willamette, over the Calapooya
+Mountains, through the Umpqua and Rogue valleys, over the Siskiyou pass, past Mount Shasta and Castle Crags, down the
+Sacramento Valley to Sutter's Fort and the diggings at Coloma. A few wagons crossed the Siskiyous in those years; most
+travelers went with pack mules (the lookout says so; the game keeps the wagon, with two pack mules walking beside it). The road
+pans for gold at Clear Creek (Reading's Bar, 1848), the Feather River (Bidwell's Bar, July 1848) and Coloma, and comes home
+**by sea**: a schooner from San Francisco up the coast and over the Columbia River bar, which is how many Oregonians came back
+with their gold. At home the gold becomes **Beaver money**, the five- and ten-dollar coins an Oregon City company struck from
+California gold dust in 1849, and Beaver money buys the farm's big pieces. The gold rush is told as a journey and a craze
+("gold fever"); a true card says who got rich, in kid words: most miners found only a little gold, and many of the people who
+got rich were the storekeepers who sold them shovels, pans, flour and boots.
+
+**Gold panning** (pure fun, no fail). At a digging the child scoops gravel (a tap), swirls the pan (circles with a finger, or
+taps on the beat; the swirl meter fills), tips it to wash the light sand over the lip when the rim glows, and the last swirl
+shows the flakes; now and then a nugget. Every pan gives at least one flake; a good swirl gives more. At Coloma there is also
+the **rocker** (the cradle the forty-niners rocked): rock it on the beat while the water pours, three rounds. Gold is counted
+in flakes, and ten flakes make a nugget (shown both ways: place value, 4.NBT). Gold never buys store goods: it goes home.
+
+**The homestead is the endgame.** Arriving at a trail's end founds the homestead there (the child names it, as 1.0 already
+asks). Then it grows. Every journey banks what it brings: the dollars left in the purse become the farm's **savings**, the
+gold becomes **Beaver money**, the team joins the pasture. Pieces are bought with what fits them: small pieces with **trade
+tokens** (garden rows, a mailbox, a bench, flower beds, apple trees, a chicken coop: the token sink 1.3 asked for), middle
+pieces with **savings** (the cabin first, then the well, the fence, the corral, the name plate with the farm's name), the big
+pieces with **Beaver money** (the barn, the orchard, the frame house, the mill, the schoolhouse). The farm shows in the
+journal, on the title map as a small cabin that grows, and in its own scene, where the party, the dog and the animals are at
+home. **Nothing decays, nothing is lost, nothing has a timer**: a farm left alone for a month is exactly as it was. The
+Willamette farm feeds the Gold Road (its garden and orchard send food along at the start). The loop is "go again and bring
+back more", never "come back or lose it".
+
+**Collections.** Trail cards go from 40 to about 110 (every new landmark and nation, sixteen new plants and animals, two new
+companions, a gold-rush suit), grouped into sixteen **sets** that cut across the suits ("The Platte River road", "Over the
+Divide", "The California Trail", "Nations of the Gold Road", "Gold fever", …); a full set unlocks a **wagon decoration** (a
+pennant, a lantern, a brass bell, gold-leaf trim, a weathervane that also turns on the farm), worn in Outfit → Look. Deeds go
+from 20 to 45 (each route and fork, each tier, the first flake and the first nugget, raising the barn, homesteads at both
+ends, …). Everything collected carries from year to year: cards, deeds, decorations, tokens, the wagon upgrades, the dog and
+v1.4's finds, fish log and locket, the farm.
+
+**How long it takes now.** A leg is still one session, 8–10 minutes on the economy sim's clock (1.3 measured 8.3; the owner's
+son's real pace was about 10), never more than 14. A year on the Oregon side is 20 sessions (about 3 hours), on the
+California side 24 (about 3½), the Gold Road 12 (about 2). Seeing all of it at Rookie (Oregon, the Gold Road, California, the
+Barlow Road, the Sublette Cutoff) is five or six years of play, 15–17 hours; the tiers, the Lander Road (1858), the two farms
+and the sets take it past 30. **The shared streak** keeps its rule (a day counts once a leg is finished; building the farm or
+opening cards does not count, so the habit stays the learning one). At a leg a day, a year is three to four weeks of streak:
+the season is now as long as the habit it feeds.
+
+### 2. Content schema (`src/content/*`; the Content stream fills, everyone imports)
+
+#### 2.1 Legs become a pool; routes put them in order
+`LEGS` stays an export (the default emigrant plan: 20 legs by Fort Bridger, Oregon and the Columbia raft) so the 1.3 code
+paths keep working; every leg of every route is in `ALL_LEGS` / `LEG_BY_ID`. A leg keeps 1.3's fields and gains:
+```js
+{ id, name, from, to, miles, biome, stop: { kind, name }, river?, fort?, nation?, lookout, sticker,
+  painting: 'ash-hollow',          // NEW: the scene's set piece id (§4.2); the loose paintingFor(id) match stays the fallback
+  map: [x, y],                     // NEW: the stop on the title map, in a 1000 × 600 box (x east, y south), Independence ≈ [940, 330]
+  post: true,                      // NEW: a letter is written here (every fort; a few stops on the long stretches without one)
+  dry: { from: 0.1, to: 0.7 },     // NEW, optional: the share of the leg with no water (the Sublette Cutoff, the Forty-Mile Desert)
+  cold: true,                      // NEW, optional: replaces economy.COLD_LEGS (south-pass, blue-mountains, lander-road, siskiyou-pass, sierra-summit)
+  gold: { pans: 3, rich: 1, rocker: 0 },  // NEW, optional: a digging (Clear Creek, the Feather River, Coloma; the Sacramento claim from 1848)
+  toll: 5,                         // NEW, optional: a toll in 1846 dollars, paid at the start of the leg (the Barlow Road)
+  voyage: true,                    // NEW, optional: the leg runs as a sail (no trail days), like the Columbia raft
+  ferry: false,                    // NEW, optional: a river with no ferry (the Humboldt): ford or float only
+  fromYear: 1858 }                 // NEW, optional: the leg exists from this year on (the Lander Road)
+// stop.kind gains 'gold' (the diggings at Coloma: panning and the rocker, then the road goes on).
+// biome gains 'basin' | 'sierra' | 'siskiyou' | 'goldcountry' | 'sea' (§4.1).
+```
+Miles are the game's: the real distances rounded and evened out so each leg is 60–160 miles, within about 15 % of what the
+sources give where they agree. They are never read aloud ("Things we deliberately did not say" stands).
+
+#### 2.2 The emigrant trail: the 20-leg Oregon line (default branches) and its branches
+`*` = a store. Cumulative miles in brackets; the four forts keep 1.3's (320 / 620 / 1,090 / 1,300).
+
+| n | id | stop (kind) | biome | miles [cum] | nation | the lookout's true fact (one line here; full `text` and `say` by Content) |
+|---|---|---|---|---|---|---|
+| 1 | kansas-river | Kansas River (river, wide) | prairie | 110 [110] | kansa | 1.3's (families ran ferries for a fee) |
+| 2 | alcove-spring | Alcove Spring (landmark) | prairie | 90 [200] | — | a spring falls over a rock ledge into a pool near the Big Blue River; travelers camped here waiting to cross, carved their names in the rock, and some carvings from 1846 can still be seen |
+| 3 | fort-kearny | Fort Kearny* (fort 1.2) | prairie | 120 [320] | pawnee | 1.3's |
+| 4 | ash-hollow | Ash Hollow (landmark) | bluffs | 120 [440] | lakota | wagons came down steep Windlass Hill, some eased down on ropes, into a shady hollow named for its ash trees, with a sweet spring; the wagon swales can still be seen |
+| 5 | chimney-rock | Chimney Rock (landmark) | bluffs | 60 [500] | lakota | 1.3's |
+| 6 | scotts-bluff | Scotts Bluff (landmark) | bluffs | 60 [560] | lakota | the bluffs tower about 800 feet over the North Platte; wagons went through Mitchell Pass beside them, and a stretch of the old road is a walking trail today |
+| 7 | fort-laramie | Fort Laramie* (fort 1.6) | bluffs | 60 [620] | lakota | 1.3's |
+| 8 | north-platte | North Platte River (river, wide) | highdesert | 120 [740] | lakota | in June 1847 Mormon pioneers built a ferry near present-day Casper, Wyoming, and carried emigrant wagons over the high river for a fee |
+| 9 | independence-rock | Independence Rock (landmark) | highdesert | 60 [800] | shoshone | 1.3's |
+| 10 | ice-slough | Ice Slough (landmark) | highdesert | 80 [880] | shoshone | under the boggy grass, travelers dug down about a foot and found clear ice, even in July |
+| 11 | south-pass | South Pass (landmark, cold) | mountains | 70 [950] | shoshone | 1.3's |
+| 12 | green-river | Green River (river, wide) | mountains | 70 [1,020] | shoshone | fording the Green River was risky, so most travelers paid one of the ferries to carry the wagons over |
+| 13 | fort-bridger | Fort Bridger* (fort 1.9) | mountains | 70 [1,090] | shoshone | 1.3's |
+| 14 | soda-springs | Soda Springs (landmark) | highdesert | 140 [1,230] | bannock | the fizzy springs (1.3 folded this into Fort Hall's lookout; it gets its own stop and keeps the line) |
+| 15 | fort-hall | Fort Hall* (fort 2.2) | highdesert | 70 [1,300] | bannock | 1.3's second sentence; the first now: wagons bound for Oregon and for California shared the road as far as the Raft River |
+| 16 | snake-river | Snake River, Three Island Crossing (river, wide) | highdesert | 160 [1,460] | bannock | 1.3's |
+| 17 | farewell-bend | Farewell Bend (landmark) | highdesert | 110 [1,570] | — | the last camp on the Snake River after following it for more than 300 miles; then the trail turned overland |
+| 18 | blue-mountains | Blue Mountains (landmark, cold) | mountains | 130 [1,700] | nez-perce, cayuse | 1.3's |
+| 19 | the-dalles | The Dalles (river, narrow) | gorge | 140 [1,840] | chinook | 1.3's (the raft or the Barlow Road: now a real fork) |
+| 20 | willamette-valley | Willamette Valley (home) | valley | 160 [2,000] | chinook | 1.3's (runs as the Columbia raft) |
+
+Branches (fork → option → its legs; a leg named again with other miles is an override in the plan, §2.3):
+
+| fork | option | legs (miles) | to the rejoin | notes |
+|---|---|---|---|---|
+| south-pass (from journey 2) | **main** (default) | green-river 70, fort-bridger 70, soda-springs 140, fort-hall 70 | 350 to Fort Hall | the 1.3 stores |
+| | **sublette** (from 1844) | sublette-cutoff 100 (river: the Green River on the cutoff; `dry: { from: 0.1, to: 0.7 }`), bear-river 90 (landmark: the trails meet again in the Bear River valley), soda-springs 50 (override), fort-hall 70 | 310 (40 shorter) | no Fort Bridger store; the water barrel matters |
+| | **lander** (from 1858) | lander-road 150 (landmark, cold: the government's new road through the mountains, with grass and water), fort-hall 140 (override) | 290 (60 shorter) | no Fort Bridger store, no Soda Springs |
+| fort-hall (every journey) | **oregon** (default) | snake-river, farewell-bend, blue-mountains, the-dalles, then the fork at the-dalles | 700 to the valley | |
+| | **california** | the nine legs below | 850 to the claim | |
+| the-dalles (every journey) | **columbia** (default) | willamette-valley 160 (the raft) | | 1.2's raft |
+| | **barlow** (from 1846) | barlow-road 160 (home: Oregon City by the Barlow Road; `toll: 5`; biome mountains; Laurel Hill) | | when the purse is short the toll keeper takes an IOU (true: many could not pay) |
+
+The California Trail from Fort Hall (cumulative miles on the default south-pass branch):
+
+| n | id | stop (kind) | biome | miles [cum] | nation | the lookout's true fact |
+|---|---|---|---|---|---|---|
+| 16 | raft-river | the Raft River, the Parting of the Ways (landmark) | highdesert | 60 [1,360] | bannock | on a bluff above the Raft River the trails parted: Oregon wagons kept west, California wagons turned south |
+| 17 | city-of-rocks | City of Rocks (landmark) | highdesert | 70 [1,430] | bannock | a valley of giant granite spires where travelers camped and wrote their names in axle grease; some names from 1849 can still be read on Register Rock |
+| 18 | humboldt-wells | Humboldt Wells (landmark) | basin | 120 [1,550] | newe | springs at the head of the Humboldt River, the river the trail followed across what is now Nevada |
+| 19 | humboldt-river | the Humboldt River (river, narrow, `ferry: false`) | basin | 150 [1,700] | newe | the Humboldt gave the wagons water, grass and willow wood across the Great Basin, though many diaries grumbled about it |
+| 20 | big-meadows | the Big Meadows (landmark, `post`) | basin | 150 [1,850] | numu | travelers named this green valley the Big Meadows and stopped for water and grass before the desert |
+| 21 | forty-mile-desert | the Forty-Mile Desert (landmark, `dry: { from: 0, to: 1 }`) | basin | 60 [1,910] | numu | past the Humboldt Sink there was no water for about forty miles, so wagon parties filled every barrel before they set out |
+| 22 | truckee-river | the Truckee River (river, narrow) | basin | 60 [1,970] | numu | in 1844 a Northern Paiute guide the travelers called Truckee showed a wagon party the way to this river, and they named it for him |
+| 23 | sierra-summit | the Sierra summit (landmark, cold) | sierra | 80 [2,050] | washoe | in 1844 the first wagons crossed the Sierra Nevada, high in the granite, and reached the Sacramento Valley before winter |
+| 24 | sacramento-valley | the Sacramento Valley claim (home; `gold: { pans: 2, rich: 1 }` from 1848) | goldcountry | 100 [2,150] | nisenan | John Sutter's settlement, begun in 1839, drew wagon parties down out of the mountains; settlers came for the farmland before anyone found gold |
+
+#### 2.3 Routes, forks and plans (`src/content/routes.js`, new)
+```js
+export const ROUTES = {
+  emigrant: { id: 'emigrant', name: 'The emigrant trail', fromYear: 1843,
+    start: { id: 'independence', name: 'Independence, Missouri', store: { name: 'Independence', prices: 1.0 }, lookout: 'independence', map: [940, 330] },
+    steps: ['kansas-river', 'alcove-spring', 'fort-kearny', 'ash-hollow', 'chimney-rock', 'scotts-bluff', 'fort-laramie',
+            'north-platte', 'independence-rock', 'ice-slough', 'south-pass', { fork: 'south-pass' }, { fork: 'fort-hall' }] },
+  'gold-road': { id: 'gold-road', name: 'The Gold Road', fromYear: 1848, needs: { site: 'willamette' },
+    start: { id: 'farm-willamette', name: 'your farm in the Willamette Valley', store: { name: 'Oregon City', prices: 1.3 }, lookout: 'gold-news', map: [80, 120] },
+    steps: ['calapooya-mountains', 'umpqua-river', 'canyon-creek', 'rogue-river', 'siskiyou-pass', 'mount-shasta', 'castle-crags',
+            'clear-creek', 'feather-river', 'sutters-fort', 'coloma', 'home-by-sea'] },
+};
+export const FORKS = {
+  'south-pass': { id: 'south-pass', at: 'south-pass', fromJourney: 2, explainer: 'nell', options: [
+    { id: 'main', name: 'By Fort Bridger', steps: ['green-river', 'fort-bridger', 'soda-springs', 'fort-hall'], line: { text, say } },
+    { id: 'sublette', name: 'The Sublette Cutoff', fromYear: 1844, steps: ['sublette-cutoff', 'bear-river', { leg: 'soda-springs', miles: 50, from: 'the Bear River' }, 'fort-hall'], line },
+    { id: 'lander', name: 'The Lander Road', fromYear: 1858, steps: ['lander-road', { leg: 'fort-hall', miles: 140, from: 'the Lander Road' }], line } ] },
+  'fort-hall': { id: 'fort-hall', at: 'fort-hall', fromJourney: 1, explainer: 'agnes', lean: 'oregon', options: [
+    { id: 'oregon', name: 'On to Oregon', steps: ['snake-river', 'farewell-bend', 'blue-mountains', 'the-dalles', { fork: 'the-dalles' }], line },
+    { id: 'california', name: 'South to California', steps: ['raft-river', 'city-of-rocks', 'humboldt-wells', 'humboldt-river',
+      'big-meadows', 'forty-mile-desert', 'truckee-river', 'sierra-summit', 'sacramento-valley'], line, lineFrom1849: { text, say } } ] },
+  'the-dalles': { id: 'the-dalles', at: 'the-dalles', fromJourney: 1, explainer: 'barlow-kid', options: [
+    { id: 'columbia', name: 'Raft the Columbia', steps: ['willamette-valley'], line },
+    { id: 'barlow', name: 'The Barlow Road', fromYear: 1846, steps: ['barlow-road'], line } ] },
+};
+// A step is a leg id, { leg, miles?, from?, to? } (the same leg with this branch's miles), or { fork }. The first option is the
+// default (the plan uses it until the child chooses). Each option's `line` is the one true sentence its explainer says.
+export const LEGACY_PLAN_12 = [/* the 1.3 twelve legs with their 1.3 miles as overrides: an unfinished 1.3 journey ends as it began */];
+export const SITES = [
+  { id: 'willamette', name: 'Willamette Valley farm', ends: ['willamette-valley', 'barlow-road', 'home-by-sea'], map: [70, 110] },
+  { id: 'sacramento', name: 'Sacramento Valley claim', ends: ['sacramento-valley'], map: [150, 470] } ];
+```
+The explainers are `PEOPLE` at those stops (story characters with invented names: **Agnes**, a new clerk at Fort Hall; Nell
+already stands at South Pass; Ben, the toll keeper's son, already at The Dalles). Their lines say what is true of each way and
+nothing more. `lean: 'oregon'` decides only the first trip's order and focus, never the size of a button.
+
+#### 2.4 The Gold Road (12 legs: about 770 trail miles, then the voyage)
+
+| n | id | stop (kind) | biome | miles | nation | the lookout's true fact |
+|---|---|---|---|---|---|---|
+| start | (farm-willamette) | your farm; the Oregon City store (prices 1.3) | valley | | kalapuya | `gold-news`: in the summer of 1848 a ship brought word to Oregon that gold had been found in California, and thousands of settlers headed south |
+| 1 | calapooya-mountains | the Calapooya Mountains (landmark) | valley | 100 | kalapuya | the mountains between the Willamette and Umpqua valleys are named for the Kalapuya people |
+| 2 | umpqua-river | the Umpqua River (river, wide) | siskiyou | 60 | umpqua | the trail south, the Siskiyou Trail, grew out of Native footpaths through the river valleys, the Umpqua among them |
+| 3 | canyon-creek | Canyon Creek (landmark, `post`) | siskiyou | 60 | umpqua | the canyon is so narrow and steep that in 1846 wagons were often taken apart and let down on ropes |
+| 4 | rogue-river | the Rogue River (river, wide) | siskiyou | 70 | takelma | the Table Rocks stand above the Rogue River valley, the heart of the Takelma homeland |
+| 5 | siskiyou-pass | the Siskiyou pass (landmark, cold, `post`) | siskiyou | 60 | shasta | Hudson's Bay Company trappers crossed this pass in 1827; a few wagons crossed in 1848–51, but most travelers used mule trains |
+| 6 | mount-shasta | Mount Shasta (landmark) | siskiyou | 60 | shasta | Mount Shasta is a volcano more than 14,000 feet tall, and its snowy top can be seen for days of travel |
+| 7 | castle-crags | Castle Crags (landmark) | sierra | 60 | wintu | granite spires like a castle's towers rise beside the upper Sacramento River, on the old trail south |
+| 8 | clear-creek | Clear Creek, Reading's Bar (landmark, `gold: { pans: 3, rich: 1 }`, `post`) | goldcountry | 70 | wintu | in 1848 Pierson Reading and the Native workers with him washed the first gold out of Clear Creek, far north of Coloma |
+| 9 | feather-river | the Feather River, Bidwell's Bar (river, wide, `gold: { pans: 4, rich: 1 }`) | goldcountry | 100 | maidu | John Bidwell found gold on the Feather River on July 4, 1848 |
+| 10 | sutters-fort | Sutter's Fort* (fort 3.0, `painting: 'adobe-fort'`) | goldcountry | 80 | nisenan | thousands of miners came through Sutter's Fort to buy supplies from its stores; prices in the gold country were very high (no prices read aloud) |
+| 11 | coloma | Coloma, the diggings (gold, `gold: { pans: 5, rich: 2, rocker: 3 }`, `post`) | goldcountry | 50 | nisenan, miwok | on January 24, 1848 James Marshall saw gold flakes in the water channel of Sutter's sawmill here; the Nisenan call this valley Cullumah |
+| 12 | home-by-sea | home by sea (home, `voyage`) | sea | 600 sea miles | chinook | many Oregonians sailed home from San Francisco with their gold, and in 1849 a company in Oregon City made it into five- and ten-dollar coins with a beaver on them, called Beaver money |
+
+The voyage ticks no trail days (like the raft): `scene.startSail` runs it, with four "Up the coast" markers (the learning
+spine) and the Columbia bar at the end (§4.3). Stores: the Oregon City store at the start and Sutter's Fort; the farm's garden
+and orchard send food along (§3.5). Letters: at the four `post` stops and Sutter's Fort, to the family at the farm.
+
+#### 2.5 Nations of the new country (`nations.js`, 11 new; the same shape, with `trades` in the goods of the place)
+Named as they name themselves; trading partners and guides; a present-tense fact where true. A parent's read is asked for
+(§1, §8). Sources and verdicts: SOURCES.md, "The Long Trail (v1.5)".
+
+| id | name (`also`) | legs | fact (two sentences at most) | trade get |
+|---|---|---|---|---|
+| kalapuya | Kalapuya (Confederated Tribes of Grand Ronde; Confederated Tribes of Siletz Indians) | Gold Road start, calapooya-mountains | The Kalapuya people have lived in the Willamette Valley for thousands of years, and they cared for its prairies with fire so that camas and other foods grew well. Today Kalapuya people are part of the Confederated Tribes of Grand Ronde and the Confederated Tribes of Siletz Indians. | camas |
+| umpqua | Umpqua (Cow Creek Band of Umpqua Tribe of Indians) | umpqua-river, canyon-creek | The Cow Creek Band of Umpqua Tribe of Indians takes its name from Cow Creek, which runs into the South Umpqua River. Today the tribe is based in Roseburg, Oregon, in its homeland. | salmon |
+| takelma | Takelma (Siletz; Grand Ronde) | rogue-river | Takelma means those who live along the river, and the Rogue River valley and the Table Rocks are the heart of the Takelma homeland. Today Takelma people belong to the Confederated Tribes of Siletz Indians and the Confederated Tribes of Grand Ronde. | acorns |
+| shasta | Shasta | siskiyou-pass, mount-shasta | The Shasta homeland is along the Klamath River and in the valleys at the foot of Mount Shasta. Shasta people still live in this country today. | salmon |
+| wintu | Wintu | castle-crags, clear-creek | The Wintu homeland is along the upper Sacramento and McCloud rivers, and salmon are at the heart of Wintu life. Today Wintu people are helping bring salmon back to the McCloud River. | salmon |
+| maidu | Maidu (Mechoopda Indian Tribe of Chico Rancheria; Berry Creek Rancheria of Maidu Indians) | feather-river | The Maidu homeland includes the Feather River country. Today Maidu tribes include the Mechoopda Indian Tribe of Chico Rancheria and the Berry Creek Rancheria of Maidu Indians. | acorns |
+| nisenan | Nisenan (Shingle Springs Band of Miwok Indians; Nevada City Rancheria Nisenan Tribe) | sutters-fort, coloma, sacramento-valley | The Nisenan homeland is along the American, Yuba and Feather rivers, and the Nisenan call the valley at Coloma Cullumah. Today Nisenan people belong to the Shingle Springs Band of Miwok Indians and the Nevada City Rancheria Nisenan Tribe. | acorns |
+| miwok | Miwok (Shingle Springs Band of Miwok Indians) | coloma | Miwok homelands reach along the Sierra foothills south of the American River. Today the Shingle Springs Band of Miwok Indians, whose people are Miwok and Nisenan, is based in El Dorado County, the county where Coloma is. | acorns |
+| newe | Western Shoshone (Newe; Te-Moak Tribe of Western Shoshone) | humboldt-wells, humboldt-river | The Western Shoshone call themselves Newe. Today the Te-Moak Tribe of Western Shoshone has its headquarters in Elko, Nevada, and one of its bands lives at Wells, near the head of the Humboldt River. | pinenuts |
+| numu | Northern Paiute (Numu; Pyramid Lake Paiute Tribe) | big-meadows, forty-mile-desert, truckee-river | The Northern Paiute homeland includes Pyramid Lake and the Truckee River. Today the Pyramid Lake Paiute Tribe's reservation takes in the whole lake and the lower Truckee River. | trout |
+| washoe | Washoe (Wašiw; Washoe Tribe of Nevada and California) | sierra-summit | Lake Tahoe, high in the Sierra Nevada, is the heart of the Washoe homeland. Today the Washoe Tribe of Nevada and California is based in Gardnerville, Nevada. | pinenuts |
+
+The California side's first two legs reuse `bannock` (the Shoshone-Bannock Tribes); alcove-spring and farewell-bend have no
+trading post (`nation` omitted: the sources at hand do not settle whose homeland each was in the 1840s, so the game makes no
+claim). `TRADE_GOOD_NAMES` and economy `TRADE_LB` gain `acorns` (bags of acorn meal, 20 lb), `pinenuts` (bags of pine nuts,
+10 lb) and `trout` (strings of dried trout, 10 lb). "Cullumah" rests on a California State Parks brochure; its meaning
+("beautiful valley") is on a secondary page only, so it is not said. "Numu" is in `also` only (§8 asks a parent's read).
+
+#### 2.6 Tiers (`src/content/tiers.js`, new: the names and words; the numbers are the journey's, §3.2)
+```js
+export const TIERS = [
+  { id: 'rookie', name: 'Rookie', emoji: '🌱', legacy: 's1847', blurb: 'The trail as it is: fair prices, kind weather.', trophy: 'bronze' },
+  { id: 'veteran', name: 'Veteran', emoji: '🧭', legacy: 's1850', blurb: 'Less cash, more storms and broken wheels, and more cards and gold.', trophy: 'silver', opens: 'Finish any journey.' },
+  { id: 'pioneer', name: 'Pioneer', emoji: '⛰️', legacy: 's1853', blurb: 'A lean purse, snow on every mountain, and the biggest rewards.', trophy: 'gold', opens: 'Finish a Veteran journey.' } ];
+export const TIER_BY_ID = Object.fromEntries(TIERS.map((t) => [t.id, t]));
+// SEASONS / SEASON_BY_ID stay exported from legs.js; route.seasonOf maps both ids onto TIERS (an old J.season 's1850' is a Veteran journey).
+```
+`FAMILIES` (new, `src/content/families.js`): the relatives' wagons for the years after the first (the first is the child's
+own): `{ id: 'uncle-theo', name: "Uncle Theo's wagon", emoji: '🧔', from: 'Ohio' }` and Aunt June, Cousin Ruth, Grandpa and
+Grandma, the Okafor cousins, the Larsen cousins. Flavour only, no stats. `LETTER_OPEN` gains `'Dear everyone at {farm},'`
+once a farm exists; the Gold Road opens `'Dear family at {farm},'`.
+
+#### 2.7 The homestead (`src/content/homestead.js`, new: words and art slots; the costs are the journey's, §3.5)
+```js
+export const HOMESTEAD_PIECES = [
+  // id, name, emoji, pay: 'tokens' | 'savings' | 'gold' (which purse prices it), slot (where the scene draws it), needs (pieces
+  // first), sites (null = both), max (how many: rows, trees), say (the line when it is built), fact? (a true line, sourced)
+  { id: 'cabin', name: 'Log cabin', emoji: '🛖', pay: 'savings', slot: 'house', needs: [], sites: null, max: 1, say: 'A cabin of your own!' },
+  … ];
+export const HOMESTEAD_SLOTS = ['edge', 'orchard', 'barn', 'house', 'yard', 'garden', 'creek', 'pasture', 'gate'];   // left to right in the scene
+```
+| id | name | pay | slot | needs | sites | max | note |
+|---|---|---|---|---|---|---|---|
+| cabin | Log cabin | savings | house | — | both | 1 | the first piece; until it is built the farm is a tent and a campfire |
+| trophy-shelf | Trophy shelf | free | house | cabin | both | 1 | comes with the cabin; holds the tier trophies (bronze / silver / gold plates by route) |
+| name-plate | Name plate at the gate | savings | gate | cabin | both | 1 | shows the farm's name |
+| well | Well | savings | yard | cabin | both | 1 | |
+| fence | Split-rail fence | savings | pasture | cabin | both | 1 | |
+| corral | Corral | savings | pasture | fence | both | 1 | the banked team stands here (up to eight animals drawn) |
+| cow | A milk cow | savings | pasture | corral | both | 1 | |
+| garden | Garden row | tokens | garden | cabin | both | 4 | each row sends 20 lb along on a Gold Road start |
+| flowers | Flower bed | tokens | yard | cabin | both | 3 | |
+| mailbox | Mailbox | tokens | gate | name-plate | both | 1 | the journal's letters show beside it |
+| bench | Porch bench | tokens | house | cabin | both | 1 | the companions sit here at home |
+| coop | Chicken coop | tokens | yard | cabin | both | 1 | |
+| apple-tree | Apple tree | tokens | orchard | cabin | willamette | 6 | fact: grafted fruit trees came to the Willamette Valley by wagon in 1847 (secondary sources: SOURCES) |
+| barn | Barn | gold | barn | cabin, fence | both | 1 | the barn-raising scene |
+| orchard | Orchard | gold | orchard | apple-tree × 3 | willamette | 1 | sends 40 lb along on a Gold Road start |
+| frame-house | Frame house | gold | house | cabin, barn | both | 1 | replaces the cabin's art (the cabin stays built) |
+| mill | Grist mill | gold | creek | barn | willamette | 1 | |
+| vineyard | Vineyard | gold | orchard | barn | sacramento | 1 | |
+| windmill | Windmill | gold | yard | well, barn | sacramento | 1 | |
+| schoolhouse | Schoolhouse | gold | edge | frame-house | both | 1 | the last piece of a site |
+
+#### 2.8 Trail cards and sets (`cards.js`: about 110 cards in five suits; `CARD_SETS`, new)
+Suits: `landmark` (45: the 20 Oregon legs, the 4 branch legs sublette-cutoff, bear-river, lander-road and barlow-road, the 9
+California legs, the 12 Gold Road legs; id = the leg id, so a lookout drops its own card), `nation` (19: the 8 and the 11
+new), `wild` (28: the 12 and 16 new, each with `biomes`: beaver, sage-grouse, western-meadowlark, pinyon-pine,
+cutthroat-trout, tule-elk, valley-oak (its acorns), sugar-pine, california-poppy, manzanita, osprey, pika, oregon-grape,
+river-otter, mountain-quail, quaking-aspen), `companion` (10: the 8 and the two new, §2.9) and `gold` (10, a new suit: the
+gold pan, the rocker, a flake, a nugget, Sutter's mill, gold fever, "Who got rich?" (the storekeepers), the news reaches
+Oregon, the schooner home, Beaver money). Every card is one true, sourced line, or a plain description of a tool ("A gold pan
+works because gold is heavier than sand: swirl it, and the gold sinks to the bottom"). v1.4's cards, if its trail facts are
+cards, are counted by v1.4, not here. `SUITS` gains 'gold'; `SUIT_NAMES.gold = 'The gold rush'`.
+```js
+export const CARD_SETS = [
+  // id, name, cards: [ids] (any suits), decor: the decoration it unlocks (looks.js kind 'decor'), say: the line when it is complete
+  { id: 'platte-road', name: 'The Platte River road', cards: ['ash-hollow', 'chimney-rock', 'scotts-bluff', 'fort-laramie', 'north-platte', 'lakota'], decor: 'pennant-chimney', say },
+  … ];
+export const DECOR = [{ id: 'pennant-chimney', name: 'Chimney Rock pennant', emoji: '🚩', at: 'wagon' | 'farm' | 'both' }, …];
+```
+| set | cards | decoration |
+|---|---|---|
+| jumping-off "Jumping off" | kansas-river, alcove-spring, fort-kearny, kansa, pawnee, wild-plum | a sunflower on the wagon cover |
+| platte-road "The Platte River road" | ash-hollow, chimney-rock, scotts-bluff, fort-laramie, north-platte, lakota | Chimney Rock pennant |
+| divide "Over the Divide" | independence-rock, ice-slough, south-pass, green-river, fort-bridger, shoshone | Continental Divide flag |
+| snake-country "Snake River country" | soda-springs, fort-hall, snake-river, farewell-bend, bannock, salmon | salmon weathervane (wagon and farm) |
+| columbia "To the Columbia" | blue-mountains, the-dalles, willamette-valley, nez-perce, cayuse, chinook | a canoe paddle on the tailgate |
+| shortcuts "Shortcuts" | sublette-cutoff, bear-river, lander-road, barlow-road | trailblazer's compass |
+| california-trail "The California Trail" | the 9 California legs | Sierra lantern |
+| basin "Nations of the Great Basin" | newe, numu, washoe, bannock, pinyon-pine, cutthroat-trout | a guide's map painted on the cover |
+| gold-road "The Gold Road" | the 12 Gold Road legs | gold-leaf wheel trim |
+| gold-nations "Nations of the Gold Road" | kalapuya, umpqua, takelma, shasta, wintu, maidu, nisenan, miwok | a map of the valleys painted on the cover |
+| gold-fever "Gold fever" | the 10 gold cards | a brass bell |
+| plains-wild "Plains wildlife" | bison, pronghorn, prairie-dog, coyote, jackrabbit, western-meadowlark | a meadowlark on the seat back |
+| mountain-wild "Mountains and high desert" | mule-deer, bald-eagle, sage-grouse, pika, sagebrush, quaking-aspen | aspen leaves on the cover |
+| river-wild "Rivers" | salmon, beaver, river-otter, osprey, camas, oregon-grape | a beaver on the tailgate |
+| california-wild "California hills" | tule-elk, valley-oak, sugar-pine, california-poppy, manzanita, mountain-quail | poppies on the cover |
+| crew "The whole crew" | the 10 companions | a brass name plate on the wagon |
+
+Sixteen sets; a card may sit in more than one. A set pays its decoration once (`save.setsDone`, like `suitsDone`); two
+decorations are worn at a time (`cosmetics.equipped.decor: [id, id]`). No decoration copies a sacred or ceremonial object of
+any nation (the nation sets give painted maps, not regalia).
+
+#### 2.9 People, letters, companions, events
+- **People**: two or three at every new stop (33 stops, about 80 people) in the 1.2 shape and rules (invented names; the
+  nations' guides named for their nation and saying only the nation's facts; gifts are game rules), plus the explainer
+  Agnes at Fort Hall. Sourced at `SOURCES.md#people-<stop>`.
+- **Letters**: `LETTER_LINES['stop:<legId>']` (two or three a stop: "We camped by a spring that fell over a rock ledge like a
+  little waterfall."), and new keys `fork-oregon`, `fork-california`, `sublette`, `lander`, `barlow`, `toll`, `laurel-hill`,
+  `dry`, `pan`, `nugget`, `rocker`, `sail`, `bar`. A letter tells the legs since the last letter (§3.7). `LETTER_CLOSE` gains
+  'See you at {farm},' and, on the Gold Road, 'Home soon, with gold!'.
+- **Companions**: two new, offered from the second journey: **Mateo the mule packer** (hat 'wide', skill `packing`: food goes
+  a twentieth further, and he starts each journey with one more spare part) and **Hattie the prospector** (hat 'bonnet',
+  skill `prospecting`: a good swirl finds one more flake, and she reads the creek: one pan at each digging is rich). Lines
+  in the 1.0 style; the eight stay as they are.
+- **Events** (`events.js`): `spring` (bonus, `dry` legs only: a hidden spring; the safety net on a dry stretch instead of a
+  fishing hole), `laurel-hill` (kind `snub`, the Barlow Road only: the rope mini-game), `ice` (lookout, ice-slough's leg
+  only: the party digs ice; a card chance), `gold-fever` (lookout, Gold Road only: miners hurry past with gold fever; a laugh
+  and the gold-fever card), `swell` (rest, sea only: becalmed, the crew fishes off the side). The toll is not an event: the
+  gate is at the start of the Barlow leg. Breakdowns, storms and snow get tier weights (§3.2), not new text.
+- **v1.4's per-leg tables** (trail moments, trail facts, the dog's find spots, fishing waters) need entries for every new leg,
+  in v1.4's schema; the Content stream adds them. Register Cliff (12 miles past Fort Laramie) and Devil's Gate (5 miles past
+  Independence Rock) are too close to a stop to be legs; they are good trail moments.
+
+### 3. Journey contract (`src/journey/*`: pure, no DOM, no clock, no storage)
+
+#### 3.1 Plans and forks (`route.js`)
+A journey carries its own plan: `J.route` ('emigrant' | 'gold-road'), `J.branches` ({ [forkId]: optionId } chosen so far) and
+`J.plan` (the resolved steps, `[{ id, miles, from, to, n }]`, the defaults filled in past the next unchosen fork). Every
+module still reads legs through `legList()` / `legAt(i)`; the sim calls `usePlan(J)` at every entry point (inside
+`ensureJourney`), so the module table is the journey's plan. `useLegs(list)` stays for tools.
+```js
+planRoute(routeId, branches = {}, { year, journeyN }) → plan       // flattens ROUTES[routeId].steps; at each { fork } takes branches[fork]
+                                                                   // if open, else the first open option; applies { leg, miles, from } overrides;
+                                                                   // numbers n from 1; options not open in that year / journey are skipped
+usePlan(J) → legs                                                  // resolves J.plan against LEG_BY_ID (a missing plan = LEGACY_PLAN_12 for a 1.3
+                                                                   // journey with legIndex > 0, else the default emigrant plan) and installs it
+forkAt(J) → null | { id, at, explainer, lean, options: [{ id, name, line, open, why, legs: n, miles, stores: n }] }
+                                                                   // offered when the party has arrived at fork.at, the fork is open for
+                                                                   // ledger journeyN (J.journeyN) and not yet in J.branches; `why` says why an
+                                                                   // option is closed ("The Lander Road opens in 1858."); a fork with one open
+                                                                   // option is never offered (the default is taken silently)
+chooseBranch(J, forkId, optionId) → { ok, plan }                   // records J.branches[forkId], replans the rest after the current leg; refused
+                                                                   // (ok false) for a closed option or a fork already passed; idempotent
+routesOpen(ledger) → [{ id, open, why }]                           // 'emigrant' always; 'gold-road' once ledger has an arrival at 'willamette'
+siteOfLeg(legId) → 'willamette' | 'sacramento' | null              // SITES[].ends
+planMiles(plan) → n · planStores(plan) → [legId]                   // the trail miles (a voyage leg's sea miles are not trail miles); the forts
+```
+`legOf`, `nationFor`, `goodOf`, `animalOf` are unchanged; `seasonOf(x)` accepts a tier id, a legacy season id or an object,
+and returns the tier with its `priceMult` / `numberMult` (1 / 2 / 4), so `priceAt`, `payFor` and the problems keep working.
+`storeLeg(J)` returns, before the first mile, a stand-in for the route's start store (`{ id: start.id, n: 0, fort: { prices:
+start.store.prices }, stop: { kind: 'fort', name: start.store.name } }`) so the Oregon City store charges its level 1.3.
+
+#### 3.2 Tiers (`economy.js` numbers, `seasons.js` rules)
+```js
+export const TIER_FX = {   // Rookie keeps every 1.3 number; the sim tunes Veteran and Pioneer inside these first-pass values
+  rookie:  { priceMult: 1, numberMult: 1, startCash: 45,  payFactor: 1.0, startFood: 300, startParts: 1, secondEvent: 0.30,
+             breakdownW: 1.0, weatherW: 1.0, extraCold: 'none', animalTire: 1.0, bonusCards: 'none', firstTryTokens: 1, gold: 1.0 },
+  veteran: { priceMult: 2, numberMult: 2, startCash: 80,  payFactor: 0.9, startFood: 260, startParts: 1, secondEvent: 0.45,
+             breakdownW: 1.5, weatherW: 1.5, extraCold: 'one', animalTire: 1.15, bonusCards: 'perfect', firstTryTokens: 1, gold: 1.25 },
+  pioneer: { priceMult: 4, numberMult: 4, startCash: 145, payFactor: 0.8, startFood: 220, startParts: 0, secondEvent: 0.60,
+             breakdownW: 2.0, weatherW: 2.0, extraCold: 'all', animalTire: 1.3,  bonusCards: 'every', firstTryTokens: 2, gold: 1.5 } };
+```
+| | Rookie | Veteran | Pioneer |
+|---|---|---|---|
+| prices, pay and problem numbers | × 1 | × 2 | × 4 (as 1.3's seasons) |
+| start cash | $45 | $80 (× 2 less a tenth) | $145 (× 4 less a fifth) |
+| pay on top of the price level | × 1 | × 0.9 | × 0.8 |
+| start food / spare parts | 300 lb / 1 | 260 lb / 1 | 220 lb / 0 |
+| chance of a second event in a leg | 0.30 | 0.45 | 0.60 |
+| breakdown and weather (storm, frost, snow, rain) weights | × 1 | × 1.5 | × 2 |
+| cold legs | the `cold` legs | + one more mountain leg a journey (seeded) | every mountains and sierra leg |
+| animals tire | × 1 | × 1.15 | × 1.3 |
+| bonus cards | — | +1 card on a 3-star leg | +1 card every leg |
+| trade tokens for a first-try problem | 1 | 1 | 2 |
+| gold found | × 1 | × 1.25 | × 1.5 |
+| trophy (the farm's shelf) | bronze | silver | gold |
+| learning spine (markers 4–6, three words at a letter or ferry) | unchanged | unchanged | unchanged |
+The kid rules hold at every tier: no fail state, every leg arrives, the crawl is still the only penalty for an empty wagon.
+`tiersOpen(ledger)` → `{ rookie: true, veteran: ledger has ≥ 1 finished journey, pioneer: ledger has a finished Veteran
+journey }` (Trail Blazer's cups pattern: a trophy opens the next cup; Rookie never closes).
+
+#### 3.3 The sim, changed (`sim.js`)
+- `createJourney({ route = 'emigrant', tier = 'rookie', year = 1847, journeyN = 1, family = 'own', branches = {}, …1.3 })`:
+  `J.season = tier` (the id; legacy 's18xx' still read), `J.tier`, `J.year`, `J.journeyN`, `J.family`, `J.route`,
+  `J.branches`, `J.plan = planRoute(…)`, `J.gold = 0` (flakes this journey), `J.letterFrom = 0`; start cash, food and parts
+  from `TIER_FX`. `newSeason(J, overrides)` stays, as a thin wrapper over `seasons.startSeason`.
+- **Pay follows the miles** (so 20 legs pay what 12 did): `payFor(stars, season, leg)` multiplies 1.3's `PAY` by
+  `leg.miles / PAY.refMiles` (`refMiles: 167`, the 1.3 mean leg) and by the tier's `payFactor`; arrival pay is never under
+  $1. A voyage leg pays like the raft (`sailPay`). Because a 100-mile leg has 4 markers where 1.3's had 5–6, every-marker-right
+  is lit more often; the sim tunes `PAY.star[2]` (first pass 12, was 14) to hold the 1.3 TARGETS.
+- **Events**: `planEvents(leg, rand, { hunting, cook, tier, dry })`: the second event's chance is the tier's; breakdown and
+  weather kinds weigh `breakdownW` / `weatherW`; on a `dry` stretch no fish, hunt or berries are planned and the safety net is
+  the 1.0 "foraged" share (Eli's pemmican) instead of a fishing hole; `spring`, `ice`, `gold-fever`, `laurel-hill`, `swell`
+  fire only where §2.9 puts them.
+- `tickDay(J, { rand })` returns everything it returned in 1.2 / 1.3 and, new in 1.5: `dry` (true on a day inside the leg's
+  `dry` share), `thirsty` (a dry day without the water barrel: −4 spirit, the animals tire × 1.5; with the barrel neither
+  happens; never a lost day), `cold` now driven by `leg.cold` and the tier's `extraCold`, and `event.kind` may be `'snub'`
+  (the app runs `startSnub`, then `applySnub`) or `'spring'` (spirit +10, nothing else). A voyage leg does not tick: the app
+  runs the sail like the raft and sets the miles from the scene.
+- `startLeg(J, legId?)` also returns `toll: { dollars, due }` on a `toll` leg (`dollars` = toll × priceMult); the app calls
+  `payToll(J)` → `{ paid, iou }` (cash covers it: paid; else `iou: true`, nothing taken, a letter line; never stranded).
+- `arrive(J)` returns 1.3's result and, new: `fork` (= `forkAt(J)`, the app asks before anything else), `gold` (`{ pans,
+  rich: [indices], rocker }` at a digging, from `goldAt(J)`; the Sacramento claim only from 1848), `post` (a letter is
+  written here), `end` (the site id when this was the plan's last leg), `bonusCards` (the tier's), `tierTrophy` on the last leg.
+- `foodToNextFort(J)` walks the plan (a store is a `fort` stop; the start store counts at mile 0).
+- New: `payToll(J)`, `applySnub(J, { smooth })` (a card chance and a counter for the deed; nothing lost when not smooth),
+  `sailPay(J, { bumps })` (`SAIL = { base: 24, perBump: 6, min: 6 }` × priceMult), `isDryDay(J)`.
+
+#### 3.4 Gold (`gold.js`, new; numbers in `economy.js` `GOLD`)
+```js
+export const GOLD = { flakesPerNugget: 10, panBase: 1, panQuality: 3, richBonus: 2, prospectorBonus: 1, nuggetChance: { rich: 0.35, plain: 0.05 },
+                      rocker: { base: 2, perBeat: 4 }, gardenLb: 20, orchardLb: 40 };
+goldAt(J) → null | { pans, rich: [i…], rocker }    // the arrived leg's `gold` (Hattie makes one more pan rich); rich indices seeded per leg
+panOutcome({ quality, rich, tier, prospector, rand }) → { flakes, nugget }
+   // quality 0..1 from the scene's swirl; flakes = round((panBase + round(quality × panQuality) + (rich ? richBonus : 0)
+   //   + (prospector && quality ≥ 0.6 ? 1 : 0)) × TIER_FX[tier].gold), never under 1; nugget = rand() < nuggetChance[rich ? 'rich' : 'plain']
+rockerOutcome({ beats, tier }) → { flakes }        // beats 0..1 (the share of on-beat rocks); flakes = round((2 + round(beats × 4)) × gold), ≥ 2
+applyGold(J, { flakes = 0, nugget = false }) → { flakes: J.gold, nuggets: nuggetsOf(J.gold) }   // a nugget adds flakesPerNugget flakes
+nuggetsOf(flakes) → { nuggets, flakes }            // 57 flakes → 5 nuggets and 7 flakes (the pouch shows both)
+```
+Pure and seeded: the same journey, quality and seed give the same gold. A Rookie Gold Road finds about 50–80 flakes (5–8
+nuggets), the California claim about one nugget (§7.2).
+
+#### 3.5 The homestead (`homestead.js`, new; costs in `economy.js` `HOMESTEAD_COST`)
+```js
+export const HOMESTEAD_COST = {   // Rookie dollars (savings), trade tokens, nuggets (gold); first pass, the sim checks the pacing (§7.2)
+  cabin: { savings: 60 }, 'name-plate': { savings: 10 }, well: { savings: 25 }, fence: { savings: 30 }, corral: { savings: 35 }, cow: { savings: 20 },
+  garden: { tokens: 4 }, flowers: { tokens: 3 }, mailbox: { tokens: 2 }, bench: { tokens: 3 }, coop: { tokens: 6 }, 'apple-tree': { tokens: 5 },
+  barn: { nuggets: 5 }, orchard: { nuggets: 4 }, 'frame-house': { nuggets: 8 }, mill: { nuggets: 6 }, vineyard: { nuggets: 6 }, windmill: { nuggets: 5 },
+  schoolhouse: { nuggets: 10 }, 'trophy-shelf': {} };
+newFarm() → { sites: {}, savingsIn: 0, savingsOut: 0, goldIn: 0, goldOut: 0, animals: { oxen: 0, mules: 0 }, log: [] }
+foundSite(farm, siteId, { name, year }) → site     // { name, founded, pieces: { [id]: count } }; idempotent (the name only fills if empty)
+farmBalance(farm) → { savings, flakes, nuggets }    // savings = savingsIn − savingsOut; gold the same, in flakes
+canBuild(farm, siteId, pieceId, J) → { ok, why }    // why: 'needs the cabin first' | 'needs 3 more tokens' | 'only at the Willamette farm' | 'built'
+buildPiece(farm, siteId, pieceId, J) → { ok, paid: { tokens, savings, nuggets }, count, say }
+   // tokens come from J.tokens (the carried purse), savings and gold from the farm (savingsOut / goldOut grow); no decay, no undo needed
+bankJourney(farm, J, siteId) → { savings, flakes, animals }   // once per journey (J.banked): savingsIn += floor(J.cash / priceMult) (Rookie dollars,
+   // so a Pioneer purse does not inflate the farm), goldIn += J.gold, the team joins the pasture (animals.oxen / mules += J.animals.n)
+farmGifts(farm, siteId) → { foodLb }                // garden rows × 20 + orchard 40: added to J.foods.other when a Gold Road starts at that site
+homesteadView(farm, siteId) → { name, slots: { [slot]: [{ id, count, art }] }, animals, built: n, of: n, complete, next: [{ id, cost, ok }] }
+```
+No function reads the clock; nothing in the farm ever goes down except the `…Out` counters that pay for a piece. A farm with
+no cabin is a tent and a fire; the game never shows an empty field as a loss.
+
+#### 3.6 Years and carry-over (`seasons.js`, new)
+```js
+export const CARRY = ['cards', 'deeds', 'tokens', 'upgrades', 'challenges', 'dog'];
+export const CARRY_V14 = [/* v1.4's collection fields on J (the dog's finds, the fish log, the locket, the trail facts heard): filled at integration */];
+newLedger() → { year: 1847, journeys: [], routesDone: [], branchesDone: [], tiersDone: { rookie: 0, veteran: 0, pioneer: 0 },
+                trophies: [], lifetime: { legs: 0, miles: 0, flakes: 0, peopleMet: 0 } }
+startSeason(prevJ | null, { route, tier, family, animal, companions, seed, ledger, farm }) → J
+   // the year is ledger.year, journeyN = ledger.journeys.length + 1; CARRY and CARRY_V14 are copied from prevJ (cards and deeds as
+   // lists, the rest as they are); a Gold Road start adds farmGifts; refused (null) for a closed route or tier
+closeJourney(J, ledger, farm, { at }) → { site, banked, trophy, firstHere, newRoutes }   // once (J.closed): bankJourney; ledger.journeys.push({ id,
+   // at (the app passes the time: the module reads no clock), route, branches, tier, year, end, stars, legs }); routesDone, branchesDone,
+   // tiersDone, trophies, lifetime; ledger.year += 1; founds the site if new (the app then asks the name)
+unlocksFor(ledger) → { goldRoad, veteran, pioneer, forks: { 'south-pass': journeyN ≥ 2 }, companions: ['packer', 'prospector'] when journeyN ≥ 2 }
+```
+Carried: the trail cards, the deeds, the trade tokens, the wagon upgrades, the challenge claims, the dog, v1.4's collections,
+and (save-level, never on J) the farm, the ledger, the stickers, the letters, the cosmetics and decorations, the sets.
+Not carried: cash (banked into the farm's savings), food, goods, the animals' tiredness, the people met (their count goes to
+`ledger.lifetime.peopleMet`), the per-journey totals (summed into `ledger.lifetime`).
+
+#### 3.7 Letters, deeds, the rest
+- `composeLetter(J, legEvents, words)` tells the legs since the last letter (`J.letterFrom` → the current leg; it picks
+  the three liveliest lines across them: a fork, a digging, a river, a stop line `stop:<legId>`), then sets `J.letterFrom`.
+  The opening uses `{farm}` when the ledger has a site.
+- `DEEDS` grows to 45; `checkDeeds(J, ledger = null, farm = null)` (the old call with J alone still works; the new deeds read
+  the ledger and the farm). The 25 new ones:
+
+| id | how |
+|---|---|
+| long-trail | reach the Willamette Valley on the 20-leg trail |
+| california-bound | reach the Sacramento Valley claim |
+| barlow | take the Barlow Road (toll paid or owed) |
+| laurel-hill | let the wagon down Laurel Hill smoothly |
+| shortcut | take the Sublette Cutoff |
+| lander | take the Lander Road |
+| dry-drive | cross a dry stretch with the water barrel on board |
+| ice-in-july | dig ice at Ice Slough |
+| axle-grease | write the wagon's name at City of Rocks (the stop's people offer it) |
+| gold-road | reach Coloma |
+| first-flake | find your first gold |
+| nugget | find a nugget |
+| gold-fever | bring home 10 nuggets in all |
+| rocker | rock the cradle on the beat for a whole round |
+| home-by-sea | sail home over the Columbia bar |
+| beaver-money | bring gold home to be made into Beaver money |
+| every-way | reach both homesteads and Coloma |
+| veteran | finish a Veteran journey |
+| pioneer | finish a Pioneer journey |
+| cabin | build a cabin |
+| barn-raising | raise a barn |
+| name-plate | hang the name plate with the farm's name |
+| full-farm | build every piece at one homestead |
+| two-homes | have a homestead at both ends of the trail |
+| set-collector | complete three card sets |
+- `checkSets(J, setsDone)` → the newly complete set ids (the app pays the decoration and records `save.setsDone`).
+- `dailyChallenge` learns the new kinds ("Pan three flakes at Clear Creek", "Cross the Forty-Mile Desert with the barrel").
+
+#### 3.8 Save fields (`save.js`; app-owned, listed here because the journey's functions read them)
+The save stays `v: 1` (an older build must not read a newer save as corrupt), and gains, all normalized (normalize drops
+what it does not know, so each field below is added to `defaultSave` and `normalize`):
+- `ledger` (§3.6), `farm` (§3.5), `setsDone: [setId]`, `cosmetics.owned.decor: [id]` and `cosmetics.equipped.decor: [id, id]`,
+  `seen.forks: { [forkId]: true }` (the first-time explanation shown), `journeyResetAt` (§5.6).
+- `homestead` (the 1.0 name) migrates into `farm.sites.willamette.name` when a 1.3 save is done in the valley (and stays
+  readable for an older build).
+- `journey` gains `route`, `tier`, `year`, `journeyN`, `family`, `branches`, `plan`, `gold`, `letterFrom`, `banked`, `closed`.
+
+### 4. Scene contract (`src/scene/*`)
+
+#### 4.1 Five new biomes (`biomes.js`: `BIOME_IDS` gains them; palettes and the five layer painters, painted once per size)
+| id | where | far / mid / near / ground / props |
+|---|---|---|
+| basin | the Humboldt, the Big Meadows, the Forty-Mile Desert | pale blue ranges / alkali flats and low gray hills / greasewood and sage / white-crusted sand with ruts / willow clumps by the river (none on a dry day: `setTravel({ dry })` hides the water) |
+| sierra | the Sierra summit, Castle Crags | granite domes with snow / dark fir ridges / tall pines and boulders / granite slabs / a snowbank, a cold stream |
+| siskiyou | the Umpqua, Canyon Creek, the Rogue, the Siskiyou pass, Mount Shasta | blue ridges (Mount Shasta's cone on the Shasta legs) / oak and madrone hills / Douglas firs / river gravel and ferns / blackberry tangles |
+| goldcountry | the Sacramento Valley, the diggings | low foothills / golden grass and valley oaks / oak trees / red earth / miners' tents, sluice boxes, a rocker by the creek (friendly figures waving; no fights, no weapons) |
+| sea | the voyage home | the coast far off / long swells / the schooner's rail / the deck / gulls, a seal on a rock, the Columbia's mouth at the end |
+
+#### 4.2 Paintings and backdrops (`backdrops.js`)
+`PAINTINGS` gains a painting for every new landmark (`leg.painting` names it; the loose `paintingFor` match stays the
+fallback, so a leg with no painting gets the generic butte, never an error): alcove-spring (a ledge waterfall), ash-hollow
+(the hollow and Windlass Hill), scotts-bluff, ice-slough (a marsh with a spade and blocks of ice), farewell-bend (the river's
+bend), sublette-cutoff (empty sage flats), bear-river, lander-road (a new road through aspen), barlow-road (Mount Hood and a
+toll gate), raft-river (a signpost on a bluff), city-of-rocks (granite spires), humboldt-wells (springs in the grass),
+big-meadows, forty-mile-desert (a white flat, water barrels on the wagon), sierra-summit (a granite pass), calapooya-mountains,
+canyon-creek (a narrow creek canyon), table-rocks (the Rogue leg's approach), siskiyou-pass, mount-shasta, castle-crags,
+clear-creek (miners at a gravel bar), adobe-fort (Sutter's Fort: white adobe walls and a central building), coloma (the
+sawmill and its water channel), home-by-sea (a schooner), sacramento-claim (a cabin among valley oaks). New backdrops:
+`BACKDROPS` gains `'homestead'` (§4.4), `'diggings'` (a creek bank with the pan close-up layer for panning) and `'sea'` (the
+schooner's deck for the voyage). Sutter's Fort uses the fort backdrop with `fortStyle: 'adobe'` (set from the leg's painting).
+
+#### 4.3 New mini-games (each ends with `endMiniGame()`, each emits per-step and end events; cartoon-clean, nothing breaks)
+```js
+scene.startPan({ seed, pans, rich: [i…] })   // per pan: scoop (tap), swirl (circle drag fills the meter; or taps on the beat), tip (tap when the
+   // rim glows: the light sand washes over the lip), then 'panSwirled' { n, quality 0..1 }; the scene waits for scene.panReveal({ flakes,
+   // nugget }) (the app asks gold.panOutcome) and shows the flakes glinting in the pan, a nugget with a sparkle; 'pan' { n, flakes, nugget };
+   // after the last, 'panEnd' { pans }. Rich pans glint before the scoop (a hint, not a timer).
+scene.startRocker({ seed, rounds })          // rock left / right on the beat while water pours (taps or ← →); 'rockerRound' { n, beats 0..1 };
+   // waits for scene.rockerReveal({ flakes }); 'rockerEnd' { rounds }
+scene.startSnub({ seed, drops: 3 })          // Laurel Hill: the wagon on a rope round a stump; HOLD (press, or Space) to let it slide on the smooth
+   // stretches, let go at each ledge marker; 'snub' { good } per drop, 'snubEnd' { smooth }; not smooth = the wagon bumps down in a
+   // cloud of dust and everyone laughs: it never breaks or runs away
+scene.startSail({ seed, length })            // the voyage: steer the schooner through swells (drag or ← →); 'sailMarker' { n, of } at four points
+   // "Up the coast" (it waits for scene.sailGo()); 'sail' { bump }; the last stretch is the Columbia bar (bigger swells, then calm
+   // water and Oregon's green shore); 'sailEnd' { bumps }
+```
+Also: `setParty({ …, wagon: { …, decor: [id, id] }, packMules: true })` (decorations drawn on the wagon; two pack mules walk
+beside it on the Gold Road), `setTravel({ …, dry })` (a dry day: heat shimmer, no water in the props), `spotAnimal` learns the
+new wild cards' animals (beaver, sage grouse, meadowlark, tule elk, osprey, pika, river otter, mountain quail).
+
+#### 4.4 The homestead scene
+```js
+scene.setBackdrop('homestead')
+scene.setHomestead({ site: 'willamette' | 'sacramento', name, pieces: { [id]: count }, animals: { oxen, mules }, dog, decor: [ids],
+                     party: [{ id, hat, color }], trophies: ['bronze', …] })
+scene.buildPiece(id)        // the raising: for the barn and the houses a frame goes up in three beats while the companions hammer, then a cheer
+                            // and confetti; small pieces pop in with a puff; 'buildDone' { id }
+// events: 'homesteadTap' { slot, piece | null } (the app shows that piece, or what can go there)
+```
+Drawing: `HOMESTEAD_SLOTS` left to right (edge, orchard, barn, house, yard, garden, creek, pasture, gate) on the valley (or
+goldcountry) biome's layers; each piece has sprites for each count (up to six apple trees, four garden rows, eight animals in
+the corral, the dog on the porch). Before the cabin: a tent and the campfire. The frame house replaces the cabin's art. The name
+plate draws the farm's name (drawText). The trophy shelf shows the plates on the porch. Painted once per (site, pieces hash,
+size) like the set pieces; the animals, smoke, chickens and the weathervane animate. No piece ever looks worn or empty.
+
+#### 4.5 Tests and the dev page
+`dev.html`: `?biome=basin|sierra|siskiyou|goldcountry|sea`, `?backdrop=homestead&site=willamette&pieces=cabin,barn,apple-tree:3`,
+`?pan=1`, `?rocker=1`, `?snub=1`, `?sail=1`, `?decor=pennant-chimney,brass-bell`. `tools/scene-smoke.mjs`: every new biome and
+backdrop renders with no errors (screenshots); every leg id of every plan resolves to a painting other than 'generic'; the
+homestead at both sites with no pieces, some, and all (screenshots), and `buildPiece` for the barn emits `buildDone`; the pan,
+the rocker, the snub and the sail each run to their end with scripted input, good and poor (the poor run still ends, with at
+least one flake from the app's stub), perf under the 1.0 budget with the homestead and the sea.
+
+### 5. App contract (`src/main.js`, `src/ui/*`, `src/meta/*`)
+
+#### 5.1 The title and the map
+`drawMap` draws from the legs' `map` points: the emigrant trunk, the three forks (each option as its own line), the Gold Road
+south from the Willamette farm to Coloma, and the voyage as a dotted line up the coast. Lines travelled (`ledger.branchesDone`,
+`routesDone`, and the current journey so far) are inked in the wagon's paint colour; lines not yet travelled are drawn faint
+and dashed but always visible (the choice is never hidden; a closed option, like the Lander Road before 1858, has a small
+lock and "1858"). The farms show as small cabins at their `map` points that grow with `homesteadView().built` (tent, cabin,
+farm with barn, full farm); tapping one opens the homestead. The family's wagons stay as in 1.2. The buttons: **Hit the
+trail** / **Keep going** (in a journey), **A new year** (no journey, or done), **The farm** (once a site exists), Journal,
+Outfit, Parents; the line under the map names the year, the tier and the route ("1849 · Veteran · The emigrant trail").
+
+#### 5.2 A new year (`src/ui/yearPicker.js`, new screen `#year`)
+Three steps, each one tap and a Back: **Where**: two cards, "The emigrant trail" (from Independence: "Oregon or California:
+you choose at Fort Hall") and "The Gold Road" (from your farm; while locked: "Reach the Willamette Valley to hear the news");
+**How hard**: three tier cards (Trail Blazer's cup cards: the name, the blurb, the changes in plain words from §3.2, locked
+cards say how they open; Parent Zone can keep it to Rookie); **Who**: Outfit (the family wagon from the second journey on, the
+animals, three companions; Mateo and Hattie from the second journey). The first ever journey skips Where and How hard (it is
+the emigrant trail at Rookie), so a new child is on the trail as fast as 1.3.
+
+#### 5.3 On the trail
+- **Fork panel** (`src/ui/forkPanel.js`): opens on `arrive().fork`, before the stop's other scenes; the explainer's portrait
+  and name, the question ("Which way from Fort Hall?"), one card per option (name, its one line, "legs · stores" in words: "9
+  more stops · no store"), each with a button of the same size and a Hear it; the first journey reads the lean line and focuses
+  the lean option; a closed option shows why. Leaving keeps the fork pending (the title says "A choice at Fort Hall"). The
+  choice is a toast and a letter line.
+- **Toll** (Barlow): a card at the leg's start, "Pay the toll" (or, when short, "The toll keeper writes an IOU").
+- **Diggings** (`src/ui/diggings.js`): on `arrive().gold`, the `diggings` backdrop and the pan (and the rocker at Coloma),
+  with the gold pouch in the corner ("3 nuggets · 7 flakes"); each reveal is said ("Five flakes!"); the child can stop and come
+  back to the creek while still at the stop; when the Parent Zone turns panning off, the gold is given as a find with one card.
+- **The voyage** runs like the raft (`runSail`, the four markers on the marker panel titled "Up the coast").
+- **Arriving home**: results ("Home!"), then the bank card ("+$74 in savings · 6 nuggets of Beaver money · 2 oxen to the
+  pasture"), then naming the farm when it is new (1.0's homestead keyboard), then the homestead screen.
+
+#### 5.4 The homestead (`src/ui/homestead.js`, new screen `#farm`)
+The scene's homestead backdrop with a build tray: the three purses (trade tokens · savings · Beaver money), the pieces grouped
+by purse with their cost and what they need, **Build** (a tap; greyed when short, with the reason), and on savings pieces an
+optional **Work it out** ("The well costs $25 and the farm has $63. How much is left?": a 'buy' problem for a token, the 1.2
+store rule); a site switcher when there are two; a tapped piece says its line and its fact. Building plays `buildPiece` and
+may earn a deed. No timers, no "come back tomorrow", no notifications.
+
+#### 5.5 The journal, Outfit, results
+- **Journal** (six pages): Letters; Stickers (tabs by route: Oregon, California, Gold Road, Shortcuts); Map (every route, the
+  farms); Cards (suits, and a Sets tab with each set's progress and its decoration); Deeds (45, grouped: the trail, the
+  routes, gold, the farm, collections); **Farm** (new: each site's pieces, the farm log, "1848: raised the barn with gold
+  from Coloma", the trophy shelf, the gold pouch with Beaver coins).
+- **Outfit**: the family wagon (journey 2+), the two new companions, Look: the `decor` kind with two slots.
+- **Results**: the tier's badge, the bonus cards, the gold found on a digging leg, a set completed (its decoration).
+
+#### 5.6 Save and sync (`src/meta/save.js`, `src/meta/sync.js`)
+Save fields as §3.8. The `ww` merge (`mergeWw`) adds, and every rule is a union or a max so that a doc written by an older
+build (which drops the new fields) never erases them:
+- `ledger`: `journeys` union by id (the journey's season + seed), the newest 60 kept; `year` max; `routesDone`,
+  `branchesDone`, `trophies` union; `tiersDone` per tier max; `lifetime` per field max.
+- `farm`: `sites` union by id; per site the name is the later doc's, else the other's; `founded` min; `pieces` per id max
+  count (a piece built on either device stays built); `savingsIn`, `savingsOut`, `goldIn`, `goldOut` each max (so a balance
+  is never conjured from nothing, and a spend on one device and an earning on the other both survive); `animals` per kind max;
+  `log` union, the newest 30.
+- `setsDone` union; `cosmetics.owned.decor` union; `equipped.decor` the later doc's (owned only); `seen.forks` OR.
+- `journey`: 1.3's rules (the later doc's journey; cash and tokens max on the same journey; cards, deeds, met unions); on the
+  same journey `gold` max and `branches` union (a fork chosen on either device is kept; the plan is rebuilt by `usePlan`).
+- v1.4's fields: by v1.4's own rules (the orchestrator lists them here at integration).
+- `resetAt` still wins whole. Parent Zone's new "Reset this journey only" stamps `journeyResetAt` and keeps the farm, the
+  ledger, the cards and the sets (a merge drops the other side's journey when it is older than the stamp).
+
+#### 5.7 Parent Zone touch points
+Journey: the route, the tier, the year, the forks chosen, a table of journeys finished (year · route · tier · stars), the
+farm in one line ("Willamette farm: 9 of 18 pieces"), "Reset this journey only" and the full reset (which now says it
+clears the farm too). Options: "Let the child choose how hard" (on; off = Rookie only), "Gold panning" (on; off = the gold
+as a find). Report: legs by route; the learning tallies unchanged; Copy report adds the route and the tier.
+
+#### 5.8 Voice (the 1.3.2 `speech` rules: a clip or silence, never the device voice while the natural voice is in use)
+`collectVoiceTexts` adds every new lookout, nation fact, person line and gift, every fork line (every option, the lean line,
+`lineFrom1849`), the tier blurbs, the family names, the piece names, says and facts, the set names and says, the decoration
+names, the gold cards, and the fixed mini-game lines ("Scoop!", "Swirl, swirl!", "Tip it now!", "Look at that gold!", "A
+nugget!", "Rock it!", "Hold the rope!", "Let go!", "Up the coast!", "Over the bar!"). Prepared ahead in 1.3.2's order, with
+**the fork's lines in the leg before a fork** and the diggings' lines in the leg before a digging. Said just in time (never
+ahead): the flake counts ("Seven flakes!"), the bank line, the farm's name plate line, the toll with its amount. Mini-game cue
+lines are short `say` lines and must be in the prepared list (a cue that waits for a clip is worse than none);
+`tools/content-audit.mjs` checks them like every other spoken string.
+
+### 6. Streams and file ownership (four Sonnet agents, from the same commit after v1.4 is merged; the orchestrator integrates)
+Never touch another stream's files; never touch `car-jump/`, `trail-blazer/`, `fraction-fright/`, `spell-jump/`, `site/`,
+`build.sh`, `netlify.toml`. Each stream codes against the shapes in §2–§5; until Content lands, the journey and the tools run
+on `route.syntheticTrail()` grown to every route (the Journey stream extends it).
+
+| Stream | Owns | Delivers (exact exported names) |
+|---|---|---|
+| **Content** | `src/content/*` (legs.js, routes.js new, tiers.js new, families.js new, homestead.js new, lookouts.js, nations.js, people.js, letters.js, cards.js, companions.js, events.js), `docs/SOURCES.md`, `docs/LEARNING-DESIGN.md` | legs.js: `LEGS` (the 20-leg default plan), `ALL_LEGS`, `LEG_BY_ID`, `TOTAL_MILES` (of `LEGS`), `SEASONS`, `SEASON_BY_ID`, `ANIMALS`, `ANIMAL_BY_ID`, `GOODS`, `GOOD_BY_ID` · routes.js: `ROUTES`, `FORKS`, `LEGACY_PLAN_12`, `SITES`, `SITE_BY_ID` · tiers.js: `TIERS`, `TIER_BY_ID` · families.js: `FAMILIES`, `FAMILY_BY_ID` · homestead.js: `HOMESTEAD_PIECES`, `PIECE_BY_ID`, `HOMESTEAD_SLOTS` · lookouts.js: `LOOKOUTS` (+ the 33 new ids and `gold-news`) · nations.js: `NATIONS` (+11), `NATION_BY_ID`, `TRADE_GOOD_NAMES` (+acorns, pinenuts, trout), `FALLBACK_TRADES` · people.js: `PEOPLE` (+~80 and Agnes), `PERSON_BY_ID`, `PEOPLE_BY_STOP` · letters.js: `LETTER_LINES` (+`stop:<id>` and the §2.9 keys), `LETTER_OPEN`, `LETTER_CLOSE`, `LETTER_PS` · cards.js: `SUITS` (+'gold'), `SUIT_NAMES`, `CARDS` (~110), `CARD_BY_ID`, `cardsOf`, `CARD_SETS`, `SET_BY_ID`, `DECOR`, `DECOR_BY_ID` · companions.js: `COMPANIONS` (+packer, prospector with `fromJourney: 2`), `COMPANION_BY_ID`, `SKILL_BY_COMPANION` · events.js: `EVENTS` (+spring, laurel-hill, ice, gold-fever, swell), `EVENT_BY_ID` · v1.4's per-leg tables for every new leg · SOURCES for every new fact and person · LEARNING-DESIGN rows for the forks (agency), the farm (progress the child sees) and gold's place value |
+| **Journey** | `src/journey/*` (route.js, sim.js, economy.js, events.js, letters.js, deeds.js, stars.js, challenge.js, skills.js, supplies.js; new: seasons.js, homestead.js, gold.js), `tools/journey-tests.mjs`, `tools/economy-sim.mjs` | route.js: `planRoute`, `usePlan`, `forkAt`, `chooseBranch`, `routesOpen`, `siteOfLeg`, `planMiles`, `planStores`, and 1.3's `useLegs`, `legList`, `legAt`, `legIndexOf`, `legOf`, `seasonOf`, `tierOf`, `nextSeasonId`, `animalOf`, `goodOf`, `nationFor`, `syntheticTrail` · economy.js: `PAY` (+`refMiles`), `TIER_FX`, `GOLD`, `SAIL`, `HOMESTEAD_COST`, `payFor(stars, season, leg)` and every 1.3 export · sim.js: 1.3's exports (createJourney, tickDay, … newSeason) changed as §3.3, plus `payToll`, `applySnub`, `sailPay`, `isDryDay`, and re-exports of the new modules · seasons.js: `CARRY`, `CARRY_V14`, `newLedger`, `startSeason`, `closeJourney`, `tiersOpen`, `unlocksFor`, `yearOf` · homestead.js: `newFarm`, `foundSite`, `farmBalance`, `canBuild`, `buildPiece`, `bankJourney`, `farmGifts`, `homesteadView` · gold.js: `goldAt`, `panOutcome`, `rockerOutcome`, `applyGold`, `nuggetsOf` · deeds.js: `DEEDS` (45), `DEED_BY_ID`, `checkDeeds(J, ledger, farm)`, `deedMet`, `checkSets` · letters.js: `composeLetter` (since the last letter), `keepLetter` |
+| **Scene** | `src/scene/*` (biomes.js, backdrops.js, engine.js, render.js, sprites*.js, rafting.js; new: homestead.js, gold.js (pan and rocker), snub.js, sail.js), `dev.html`, `tools/scene-smoke.mjs` | `BIOME_IDS` (+5), `BACKDROPS` (+homestead, diggings, sea), `PAINTING_IDS` (+27), `paintingFor` (reads `leg.painting` first); scene methods `startPan`, `panReveal`, `startRocker`, `rockerReveal`, `startSnub`, `startSail`, `sailGo`, `setHomestead`, `buildPiece`, `endMiniGame` (ends any of them); `setParty({ wagon: { decor }, packMules })`, `setTravel({ dry })`; events `panSwirled`, `pan`, `panEnd`, `rockerRound`, `rockerEnd`, `snub`, `snubEnd`, `sailMarker`, `sail`, `sailEnd`, `homesteadTap`, `buildDone`; `getState().mini.kind` gains 'pan', 'rocker', 'snub', 'sail' |
+| **App** | `index.html`, `src/main.js`, `src/ui/*` (title.js, map.js, outfit.js, results.js, journal.js, cards.js, deeds.js, looks.js, parentZone.js, store.js, river.js; new: yearPicker.js, forkPanel.js, diggings.js, homestead.js), `src/meta/*` (save.js, sync.js, mockScene.js, voiceTexts.js; speech.js unchanged), `sw.js`, `manifest.webmanifest`, `tools/ui-smoke.mjs`, `tools/sync-smoke.mjs`, `tools/content-audit.mjs`, `tools/playtest-full.mjs`, `README.md` | `createYearPicker`, `createForkPanel`, `createDiggings`, `createHomestead` (each `{ show, hide }` like the other screens); save.js: `defaultSave` / `normalize` with §3.8's fields, `normalizeLedger`, `normalizeFarm`; sync.js: `mergeWw` with §5.6, `mergeLedger`, `mergeFarm`; looks.js: `LOOK_KINDS` (+'decor'); mockScene.js: the §4 methods scripted (`?mockPan=0.8`, `?mockSnub=1`, instant), `__mock.lastHomestead`; voiceTexts.js: `collectVoiceTexts` with §5.8; VERSION '1.5.0', sw `wagon-west-v1.5.0`, README "1.5" |
+
+Order: Content and Journey first (in parallel; Journey on the synthetic trail), then Scene and App (in parallel, App on the mock
+scene). The orchestrator merges, wires the real scene, fills `CARRY_V14` and the v1.4 merge line, runs every suite, plays
+the two-route playtest at iPhone size, commits "Wagon West 1.5: The Long Trail", and holds the push for the owner.
+
+### 7. Tests and acceptance
+
+#### 7.1 Journey tests (`tools/journey-tests.mjs`, node)
+- Plans: the default emigrant plan is 20 legs and 2,000 miles; the four forts sit at cumulative 320 / 620 / 1,090 / 1,300;
+  every option combination resolves (3 × 2 × 2 = 12 emigrant plans, the Gold Road), every leg 60–160 trail miles (the voyage
+  excepted), every leg id in `LEG_BY_ID`, every `nation` in `NATION_BY_ID`, every `lookout` in `LOOKOUTS`, every leg a card.
+  California is 24 legs and about 2,150 miles; the sublette plan is 40 shorter, the lander plan 60 shorter.
+- Forks: `forkAt` is null before the stop and after a choice; the first journey never offers south-pass; the Lander Road is
+  closed before 1858 and open from it; `chooseBranch` replans only after the current leg and refuses a closed option; a 1.3
+  journey in progress keeps its twelve legs (`LEGACY_PLAN_12`) to the end.
+- A full journey on every plan and tier with always-right and always-wrong answers arrives (no fail state); food never
+  negative; markers 4–6 every leg; events never repeat a kind in a leg; dry days only on `dry` shares; no fish, hunt or
+  berries planned on a dry stretch; the toll never takes cash below $0 (an IOU instead).
+- Tiers: the §3.2 numbers are applied (start cash, food, parts, pay factor, weights, cold legs, bonus cards, tokens, gold);
+  `tiersOpen` per the ledger; `seasonOf('s1850')` is Veteran.
+- Gold: `panOutcome` is ≥ 1 flake for every quality and tier, deterministic for a seed, never NaN; `rockerOutcome` ≥ 2;
+  `nuggetsOf(57)` is 5 and 7; the Sacramento claim digs only from 1848.
+- Homestead: costs and `needs`; a site-only piece refused at the other site; `buildPiece` pays from the right purse and never
+  below zero; `bankJourney` and `closeJourney` are idempotent; savings banked in Rookie dollars; `farmBalance` is in − out;
+  nothing in `farm` depends on time (the same calls a month apart give the same farm).
+- Carry-over: `startSeason` keeps `CARRY` and `CARRY_V14`, resets cash, food, goods, people met; the year moves by one; the
+  Gold Road start adds `farmGifts`.
+- Deeds and sets: all 45 deeds reachable on some plan (each test passes in the sim); `checkDeeds(J)` without a ledger still
+  works for the 20 old ones; `checkSets` once per set; the letter tells only legs since the last letter.
+
+#### 7.2 Economy sim (`tools/economy-sim.mjs`; `--route emigrant:oregon:main:columbia | …:california | …:sublette | …:lander |
+…:barlow | gold-road`, `--tier rookie|veteran|pioneer`, `--homestead`; `--check` runs the matrix)
+| cell | targets (--check) |
+|---|---|
+| Rookie, Oregon by Fort Bridger and the raft (the 1.3 trail grown to 20 legs) | **the 1.3 TARGETS unchanged** (end cash by eye strong $70–150 / average $40–100 / weak $25–80, the gaps, no kid over $220, fort cash at Kearny, Laramie, Bridger, Hall, choices of 5 stores, the yoke rules, the weak player lean and finishing); sessions 20 ± 2 (was 12 ± 2; a leg a session); leg minutes mean 8–10, max ≤ 14; soaked sacks < 1 a leg; limps < 1 a season; tokens 60–140 a journey (was 3–10 a leg) |
+| Rookie, Barlow Road | as above, end cash within $10 of the raft's minus the toll |
+| Rookie, Sublette Cutoff | fort cash at Kearny, Laramie and Hall as above (Bridger skipped), choices of 4 stores; no kid more than 3 days in a row with no food; the water barrel owned by ≥ half the strong kids by South Pass |
+| Rookie, California | end cash strong $50–140 / average $25–90 / weak $15–70; no kid more than 3 days in a row with no food, at most 3 such days a journey; sessions 24 ± 2 |
+| Rookie, Gold Road | weak finishes (crawl run ≤ 3); gold strong 7–12 nuggets / average 6–10 / weak 5–8; end cash ≥ $0 always; sessions 12 ± 1 |
+| Veteran, Pioneer (every route) | end cash ÷ priceMult within 0.6–1.2 × the Rookie range of the same route; limps a season < 1.5 (Veteran) / < 2 (Pioneer); soaked < 1 a leg; crawl run ≤ 3; gold × 1.25 / × 1.5 of Rookie ± 15 % |
+| `--homestead` (a kid's whole history: Rookie Oregon, Gold Road, then the route the profile prefers, tiers as they open) | the cabin after journey 1 for every profile; the barn by journey 3 for the average kid; every Willamette piece in 5–9 journeys for the average kid, never fewer than 4 for the strong; tokens spent on the farm ≥ half of those earned (the token sink works); the sim tunes `HOMESTEAD_COST`, not the pay, to hit these |
+
+#### 7.3 Scene smoke: §4.5.
+
+#### 7.4 UI smoke (`tools/ui-smoke.mjs`, both layouts, the mock scene) — new sections
+"a new year" (the picker: the first journey skips to Outfit; the second shows Where and How hard with Veteran open and
+Pioneer locked with its reason; the Gold Road card locked until a Willamette arrival); "the Fort Hall fork" (first journey:
+Agnes's card, both buttons the same size, Oregon focused and read first, both lines spoken; choosing California replans and
+the map inks the branch); "the Dalles fork and the toll" (Barlow: the toll card, an IOU when the purse is short, Laurel Hill on
+the mock); "the Gold Road" (starts at the farm with the garden's food, a digging with three scripted pans and the pouch count,
+Coloma's rocker, Sutter's Fort store at its level, the voyage's four markers, the bank card, Beaver money in the farm);
+"the homestead" (build the cabin with savings, a garden row with tokens, the barn with gold; a greyed piece shows its reason;
+Work it out on the well; the scene's `buildDone`; the farm on the title map grows); "sets and decorations" (complete a set on a
+seeded save, the decoration appears in Look, two worn, drawn by the mock); the Journal's six pages; Parent Zone (journeys
+table, "Reset this journey only" keeps the farm, Rookie-only option hides the tier step, panning off gives the gold as a find);
+the voice (the fork lines and a digging's cue lines come from the prepared list; zero device-voice utterances with the fake
+cloud backend, as 1.3.2); the screen audit (no off-origin links, no native inputs outside the Parent Zone, targets ≥ 44 px,
+no overflow). `tools/sync-smoke.mjs`: two devices build different pieces offline and both stay built; a spend on one and a
+bank on the other both survive; an older-build doc without `farm` / `ledger` merges without erasing them; "reset this
+journey" keeps the farm on both. `tools/content-audit.mjs`: every new spoken string is in `collectVoiceTexts`; no digits in
+any `say`; no word from the kid-rules list (§1) in any new text.
+
+#### 7.5 The full two-route playtest (`tools/playtest-full.mjs`, then a person at iPhone size)
+A scripted child, 70 % right, on the real sim and the mock scene: Rookie Oregon by the raft (20 legs) → names the farm,
+builds the cabin → the Gold Road (12 legs, the diggings, the voyage) → raises the barn with Beaver money → Veteran, the
+emigrant trail with the Sublette Cutoff and California at Fort Hall (24 legs) → founds the Sacramento claim → back to the
+Willamette by the Barlow Road at Rookie. Checked: no stuck state, no fail, every screen reached, the cards, deeds, decorations,
+tokens and the dog carried through all four years, the ledger and both farms right, total sessions and minutes per year
+printed (Oregon ≈ 20 / 3 h, Gold Road ≈ 12 / 2 h, California ≈ 24 / 3½ h). Then the orchestrator plays one Oregon year and one
+Gold Road year on the real scene at iPhone size and writes `docs/PLAYTEST-1.5.md` with screenshots.
+
+### 8. Open questions for the owner (short)
+1. **The California route over the Sierra**: the game uses the Truckee route (true for every year from 1844; the pass is
+   called Donner Pass today, and the game never tells that story, it calls the stop "the Sierra summit"). The Carson route is
+   only true from 1849. Truckee for all years, or Carson from 1849?
+2. **The calendar**: one year per journey (1847, 1848, …), so the Lander Road (1858) opens on the twelfth journey. Keep it true
+   to the year, or open it at the Pioneer tier whatever the year?
+3. **Each later year is a relative's wagon coming west to join the farm** (Uncle Theo, Cousin Ruth…). Is that the right story
+   for "a different family", or should it be the child's own family every time?
+4. **Whitman Mission is left out** (its story ends in the violence of 1847, which the kid rules keep out). Agree?
+5. **A line about what the gold rush did to California's nations.** The rush filled Nisenan, Miwok, Maidu and Wintu homelands
+   and brought very hard times to them. Proposed for the "Gold fever" card, after the merchants: "The miners rushed onto the
+   homelands of California's Native nations, and it was a very hard time for them. Those nations are still here today." In,
+   out, or reworded? (Your read on all eleven new nation facts is wanted, as in §1.)
+6. **Two homesteads** (the Willamette farm and the Sacramento claim), each built on its own, sharing the savings and the gold.
+   Fine, or one homestead that the second ending moves?
+7. **Gold only builds the farm**, never buys store goods (so the trail economy of 1.3 is untouched). Agree?
+8. **Both first-trip forks** (Fort Hall and The Dalles) are on the very first journey, leaning Oregon and the raft; the South
+   Pass fork waits for the second. Right amount of choice for a first trip?
