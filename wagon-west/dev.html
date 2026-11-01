@@ -24,7 +24,7 @@
 <div id="stage"><canvas id="c"></canvas></div>
 <pre id="state"></pre>
 <pre id="log"></pre>
-<div id="help">1-6 biome · w weather · p pace · m move · v backdrop · k landmark · a animal · c cheer · h hunt · i fish · d derby (1 quick · 2 slow · 0 wrong) · g dog · n motion · <b>f ford (Shift: wide) · l float (Shift: wide) · r raft (Enter: next bend) · s stampede</b> · Space tap / shoot · ← → steer · B brake / bark · Esc end</div>
+<div id="help">1-6 biome · w weather · p pace · m move · v backdrop · k landmark · a animal · c cheer · h hunt · i fish · d derby (1 quick · 2 slow · 0 wrong) · g dog · n motion · <b>t fishing (Shift: next water) · u fetch · j grasshoppers · o stones · y falling stars · x dust devil · z trail fact scenes · e dog dash · q rabbit chase (q again calls him) · Shift-Q snake</b> · <b>f ford (Shift: wide) · l float (Shift: wide) · r raft (Enter: next bend) · s stampede</b> · Space tap / shoot · ← → steer · B brake / bark · Esc end</div>
 <script type="module">
 // Scene playground (SPEC §11). URL params: biome (prairie | bluffs | highdesert | mountains | gorge | valley),
 // backdrop (trail | fort | river | landmark | camp | post | valley), weather (clear | rain | storm | dusk | snow),
@@ -43,6 +43,12 @@
 // scene.raftGo()), s the stampede; the games read Space (tap / push / brake), ← → (steer; ← also brakes) and B (brake)
 // themselves, and drag steers. To make room, the old keys moved: i fish (was f), k the next landmark (was l), n reduced
 // motion (was r). b barks only when no game is running (it brakes in the stampede).
+// v1.4 (Frodo and the river): fishing=<water: kansas | platte | sweetwater | creek | bear | snake | blue | columbia> with bait=worms | hoppers
+// | spoon, helper=1 (a companion for the sturgeon's second tap), cameo=splash | steal, fetch=1, hoppers=1, stones=1, meteors=1,
+// dust=1, ambient=crack | grizzly | wolves | fireglow | pronghorn, chase=1, dogrun=find | berries | quest, dogwarn=1. A dog is
+// added to the party for the dog scenes (dog=brown | spotted | black to choose, muddy=1 for the mud). Keys: t fishing (Shift+t
+// cycles the water), u fetch (hold Space to wind up, or drag back from the stick), j grasshoppers, o stones, y falling stars,
+// x dust devil, z the next trail-fact scene, e dog dash, q rabbit chase (q again calls the dog back), Shift+Q the snake.
 // window.__ww = { scene, events } for the smoke test.
 import { LEGS, LEG_BY_ID } from './src/content/legs.js';
 import { COMPANIONS } from './src/content/companions.js';
@@ -54,13 +60,17 @@ const BACKDROPS = ['trail', 'fort', 'river', 'landmark', 'camp', 'post', 'valley
 const WEATHERS = ['clear', 'rain', 'storm', 'dusk', 'snow'];
 const CRITTERS = ['bison', 'pronghorn', 'coyote', 'eagle'];
 const CHEERS = ['arrived', 'river', 'star'];
+const WATERS = ['kansas', 'platte', 'sweetwater', 'creek', 'bear', 'snake', 'blue', 'columbia'];
+const AMBIENTS = ['crack', 'grizzly', 'wolves', 'fireglow', 'pronghorn'];
 const LANDMARK_IDS = ['chimney-rock', 'independence-rock', 'south-pass', 'soda-springs', 'blue-mountains', 'the-dalles', 'fort-laramie', 'snake-river', 'willamette-valley', 'mystery-mesa'];
 
 const events = [];
 const logEl = document.getElementById('log'), stateEl = document.getElementById('state');
 function onEvent(evt) {
   events.push({ ...evt, at: Math.round(performance.now()) });
-  logEl.textContent = events.slice(-12).map((e) => JSON.stringify(e)).join('\n');
+  logEl.textContent = events.slice(-12).filter((e) => e.type !== 'sfx').map((e) => JSON.stringify(e)).join('\n');
+  // the playground answers fetchThrow by itself (the app does that in the game); auto=0 leaves it to the test
+  if (evt.type === 'fetchThrow' && q.get('auto') !== '0' && window.__ww) setTimeout(() => window.__ww.scene.fetchBring({ item: 'stick' }), 150);
 }
 
 let createScene;
@@ -86,7 +96,8 @@ const comps = COMPANIONS.slice(0, 3).map((c, i) => ({ id: c.id, color: c.color, 
 while (comps.length < 3) comps.push({ id: 'extra' + comps.length, color: '#7d5ba6', hat: hats[comps.length] || 'straw' });
 const COATS = ['brown', 'spotted', 'black'];
 const party = { animal: q.get('animal') || 'oxen', companions: comps, wagon: { paint: q.get('paint') || 'classic', flag: q.get('flag') || 'red', name: q.get('name') || 'Lucky Star' }, dog: null };
-if (COATS.includes(q.get('dog'))) party.dog = { name: q.get('dogname') || 'Biscuit', coat: q.get('dog') };
+const dogParam = q.get('dog') || (['fetch', 'chase', 'dogrun', 'dogwarn'].some((k) => q.get(k)) || q.get('ambient') === 'grizzly' || q.get('cameo') ? 'brown' : null);
+if (COATS.includes(dogParam)) party.dog = { name: q.get('dogname') || 'Frodo', coat: dogParam, muddy: q.get('muddy') === '1' };
 scene.setParty(party);
 let travel = { milesDone: +(q.get('miles') || 20), pace: q.get('pace') || 'steady', rations: 'full', weather: q.get('weather') || 'clear', mood: 'fine', foodLow: false, moving: q.get('moving') !== '0' };
 scene.setTravel(travel);
@@ -100,9 +111,20 @@ else if (q.get('ford') === '1') scene.startFord({ seed, width: q.get('width') ==
 else if (q.get('float') === '1') scene.startFloat({ seed, width: q.get('width') === 'wide' ? 'wide' : 'narrow' });
 else if (q.get('raft') === '1') scene.startRaft({ seed, length: +(q.get('length') || 4) });
 else if (q.get('stampede') === '1') scene.startStampede({ seed });
+else if (q.get('fishing')) scene.startFishing({ seed, water: q.get('fishing') === '1' ? 'kansas' : q.get('fishing'), bait: q.get('bait') || 'worms', casts: +(q.get('casts') || 4), junkAt: q.get('junk') != null ? +q.get('junk') : -1, forceSpecies: q.get('species') || null, helper: q.get('helper') === '1' ? { id: comps[0].id, hat: comps[0].hat, color: comps[0].color } : null, cameo: q.get('cameo') ? { at: +(q.get('cameoat') || 1), kind: q.get('cameo') } : null, dog: !!party.dog });
+else if (q.get('fetch') === '1') scene.startFetch({ seed, throws: 3 });
+else if (q.get('hoppers') === '1') scene.startHoppers({ seed, n: 6 });
+else if (q.get('stones') === '1') scene.startStones({ seed, throws: 3, bonus: +(q.get('bonus') || 0) });
+else if (q.get('meteors') === '1') scene.startMeteors({ seed, n: 8 });
+else if (q.get('dust') === '1') scene.startDustDevil({ seed, hats: comps.concat([{ id: 'me', hat: 'wide', color: '#d9534f' }]) });
+else if (q.get('ambient')) scene.ambient(q.get('ambient'));
+else if (q.get('chase') === '1') scene.startChase({ seed });
+else if (q.get('dogrun')) scene.dogRun(q.get('dogrun') === '1' ? 'find' : q.get('dogrun'), { emoji: q.get('dogrun') === 'quest' ? '📿' : q.get('dogrun') === 'berries' ? '🫐' : '🐴' });
+else if (q.get('dogwarn') === '1') scene.dogWarn();
 
 const cycle = (arr, v) => arr[(arr.indexOf(v) + 1) % arr.length];
-let ai = 0, ci = 0, li = 0;
+let ai = 0, ci = 0, li = 0, zi = 0, ri = 0, waterI = Math.max(0, WATERS.indexOf(q.get('fishing'))) || 0;
+function ensureDog() { if (!party.dog) { party.dog = { name: q.get('dogname') || 'Frodo', coat: 'brown' }; scene.setParty(party); } }
 const inDerby = () => { const s = scene.getState(); return !!(s.mini && s.mini.kind === 'derby'); };
 addEventListener('keydown', (e) => {
   if (inDerby() && (e.key === '1' || e.key === '2' || e.key === '0')) scene.derbyBurst(e.key === '1' ? 1 : e.key === '2' ? 0.6 : 0);
@@ -119,6 +141,19 @@ addEventListener('keydown', (e) => {
   else if (e.key === 'l' || e.key === 'L') scene.startFloat && scene.startFloat({ seed: Math.floor(Math.random() * 1e6), width: e.shiftKey || q.get('width') === 'wide' ? 'wide' : 'narrow' });
   else if (e.key === 'r' || e.key === 'R') scene.startRaft && scene.startRaft({ seed: Math.floor(Math.random() * 1e6), length: +(q.get('length') || 4) });
   else if (e.key === 's' || e.key === 'S') scene.startStampede && scene.startStampede({ seed: Math.floor(Math.random() * 1e6) });
+  else if (e.key === 't' || e.key === 'T') {
+    if (e.shiftKey) { waterI = (waterI + 1) % WATERS.length; onEvent({ type: '(water)', water: WATERS[waterI] }); }
+    else scene.startFishing && scene.startFishing({ seed: Math.floor(Math.random() * 1e6), water: WATERS[waterI], bait: q.get('bait') || 'worms', casts: 4, helper: { id: comps[0].id, hat: comps[0].hat, color: comps[0].color }, cameo: party.dog ? { at: 1, kind: 'splash' } : null, dog: !!party.dog });
+  }
+  else if (e.key === 'u') { ensureDog(); scene.startFetch && scene.startFetch({ seed: Math.floor(Math.random() * 1e6), throws: 3 }); }
+  else if (e.key === 'j') scene.startHoppers && scene.startHoppers({ seed: Math.floor(Math.random() * 1e6), n: 6 });
+  else if (e.key === 'o') scene.startStones && scene.startStones({ seed: Math.floor(Math.random() * 1e6), throws: 3 });
+  else if (e.key === 'y') scene.startMeteors && scene.startMeteors({ seed: Math.floor(Math.random() * 1e6), n: 8 });
+  else if (e.key === 'x') scene.startDustDevil && scene.startDustDevil({ seed: Math.floor(Math.random() * 1e6), hats: comps.concat([{ id: 'me', hat: 'wide', color: '#d9534f' }]) });
+  else if (e.key === 'z') scene.ambient && scene.ambient(AMBIENTS[zi++ % AMBIENTS.length]);
+  else if (e.key === 'e') { ensureDog(); scene.dogRun && scene.dogRun(['find', 'berries', 'quest'][ri++ % 3], { emoji: ['🐴', '🫐', '📿'][(ri - 1) % 3] }); }
+  else if (e.key === 'Q') { ensureDog(); scene.dogWarn && scene.dogWarn(); }
+  else if (e.key === 'q') { ensureDog(); const m = scene.getState().mini; if (m && m.kind === 'chase') onEvent({ type: '(chaseCall)', ok: scene.chaseCall() }); else scene.startChase && scene.startChase({ seed: Math.floor(Math.random() * 1e6) }); }
   else if (e.key === 'Enter') { if (scene.raftGo && scene.raftGo()) onEvent({ type: '(raftGo)' }); }
   else if (e.key === 'a') scene.spotAnimal(CRITTERS[ai++ % CRITTERS.length]);
   else if (e.key === 'c') scene.celebrate(CHEERS[ci++ % CHEERS.length]);

@@ -204,7 +204,8 @@ function drawParty(ctx, S, front) {
   for (let i = 0; i < looks.length && i < 3; i++) {
     const p = pos[i];
     if (!!p.front !== front) continue;
-    drawPerson(ctx, p.x, p.y, k * (p.s || 1), looks[i], ph + i * 1.9, amp * (i === 2 ? 0.9 : 1), cheer > 0 ? cheer + i * 0.12 : 0, p.dir || 1);
+    const look = S.mini && S.mini.hideHat && S.mini.hideHat(i) ? P.bare[i] : looks[i];
+    drawPerson(ctx, p.x, p.y, k * (p.s || 1), look, ph + i * 1.9, amp * (i === 2 ? 0.9 : 1), cheer > 0 ? cheer + i * 0.12 : 0, p.dir || 1);
   }
   void gy;
 }
@@ -218,7 +219,8 @@ function drawTrain(ctx, S) {
 // the party's dog (v1.1), placed by the engine (S.dogPos); the derby draws its own running dog
 function drawPartyDog(ctx, S) {
   const D = S.dogPos, k = S.L.k;
-  drawDog(ctx, D.x, D.y, k * 1.05, S.dog.coat, S.dogPh, D.amp * (S.rm ? 0.6 : 1), S.t, S.dogBarkT > 0 ? S.dogBarkT / 0.7 : 0, D.dir, D.sit);
+  if (D.hide || D.x < -90 * k || D.x > S.L.W + 90 * k) return;
+  drawDog(ctx, D.x, D.y, k * 1.05 * (D.sc || 1), S.dog.coat, D.ph != null ? D.ph : S.dogPh, D.amp * (S.rm ? 0.6 : 1), S.t, S.dogBarkT > 0 ? S.dogBarkT / 0.7 : 0, D.dir, D.sit, S.dog.muddy ? 1 : 0);
 }
 
 // ---------------------------------------------------------------- critters
@@ -367,10 +369,12 @@ export function drawFrame(ctx, S) {
     drawConfetti(ctx, S);
   } else {
     drawSky(ctx, S);
+    if (S.mini && S.mini.drawSky) S.mini.drawSky(ctx, L, S.t, S.rm);
     drawCritters(ctx, S, true);
     const shake = view === 'stampede' && S.mini ? S.mini.shake : 0; // the ground shakes a little under the herd
     if (shake) ctx.translate(0, shake);
     blitLayer(ctx, S, ly.far, SPEED.far);
+    if (S.mini && S.mini.drawFar) S.mini.drawFar(ctx, L, S.t, S.rm);
     // the stop ahead, rising over the horizon while the wagon approaches it
     if (view === 'trail' && S.approach > 0 && S.approachPiece) {
       const p = S.approachPiece, s = 0.5, e = ease(S.approach);
@@ -398,6 +402,7 @@ export function drawFrame(ctx, S) {
     } else {
       if (view === 'stop' && S.piece && S.piece.z === 'ground') blitPiece(ctx, S.piece, 0, 0, 1);
       if (view === 'stop') drawStopLife(ctx, S);
+      if (S.mini && S.mini.drawBehind) S.mini.drawBehind(ctx, L, S.t, S.rm);
       drawCritters(ctx, S, false);
       drawDust(ctx, S);
       drawParty(ctx, S, false);
@@ -406,6 +411,7 @@ export function drawFrame(ctx, S) {
       if (S.dog && (view === 'trail' || view === 'stop')) drawPartyDog(ctx, S);
       drawParty(ctx, S, true);
       blitLayer(ctx, S, ly.props, SPEED.props);
+      if (S.mini && S.mini.drawOver) S.mini.drawOver(ctx, L, S.t, S.rm);
     }
     if (shake) ctx.translate(0, -shake);
     if (view === 'stampede' && S.mini) S.mini.drawFront(ctx, L, S.t, S.rm); // dust, the BRAKE sign, the words
