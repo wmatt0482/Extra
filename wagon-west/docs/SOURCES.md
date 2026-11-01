@@ -276,3 +276,153 @@ Danny's lines at Independence and Fort Kearny are story advice and were not chan
 - **Old Dan Tucker** (Dan Emmett, 1843): the table was also wrong (5 5 5 3 | 5 5 5 2); rewritten from the fife setting in
   "American Veteran Fifer" no. 112 (github.com/syntithenai/abc2book, abcresources/jc/abc_tune_jc_201319413.abc). One source
   only; a second would be welcome.
+
+## Trail fun and trail facts (v1.4)
+
+The v1.4 additions (SPEC "v1.4 — Frodo and the river"): six trail facts with their cards (the "Trail tales" suit), six
+fish of the trail (the "Fish of the trail" suit), the snapping turtle, and the four finds that state a fact. Checked on
+November 1, 2026, the same way as the October 31 check above: from search results that quote or summarise the pages. The
+build machine could not open nps.gov, octa-trails.org or most agency pages directly (the network blocks them), so every
+verdict below rests on what the search results quoted from the named page; where the support is a secondary page (a
+museum blog, an encyclopedia, a news story) the verdict says so. A parent who wants to check a fact should start with the
+first address in its row.
+
+What the game says is in SPEC v1.4 §2.5 and §2.6, word for word. The far-off rifles fact is the one place the game names
+a weapon, at the owner's request, as a sound at a distance (SPEC v1.4 §1.7).
+
+### Trail facts
+
+- <a id="fact-far-off-crack"></a>**far-off-crack** ("Far-off rifles"): emigrants and traders on the Platte hunted bison for
+  food and for sport, and often took more than they needed: the National Park Service article on bison along the Platte
+  River corridor (emigrants regarded the hunt as an exciting sport; commercial hunters and sport hunting thinned the herds
+  through the emigration years; by 1884 only about 325 wild bison were left in the United States) and the
+  Oregon-California Trails Association's "Where the Buffalo Roam" (emigrants' kills often went beyond what the wagons
+  needed; a diarist tells of a party with plenty of meat that shot another bison anyway). The card's second sentence: the
+  hide-hunting years of the 1870s and 1880s nearly ended the great herds (several secondary histories; the game gives no
+  number). "Today bison herds are growing again in parks and on tribal lands": the World Wildlife Fund, NPR and Stanford's
+  Bill Lane Center report on tribal herds and the InterTribal Buffalo Council (secondary; itbc.org was not reachable).
+- <a id="fact-bison-thunder"></a>**bison-thunder**: herds in the thousands and "thicker than the stars in the sky": the
+  National Park Service Platte corridor article quotes a traveler who wrote that the bison were "thicker than … stars in the
+  firmament". "Rumble like thunder" is a description, not a quotation: modern eyewitness reports of running Yellowstone
+  herds use the same words (secondary). "Sometimes a wagon train had to stop and wait for a herd to go by": the owner's
+  line; general histories say herds took a long time to cross a river or a trail, but no reachable diary page said it in
+  those words, so it is flagged "could not verify on a primary page" and kept as the general picture.
+- <a id="fact-grizzly-ridge"></a>**grizzly-ridge**: the U.S. Fish and Wildlife Service grizzly bear pages and its
+  Mountain-Prairie region fact sheet: about 50,000 grizzlies once ranged from the Pacific to the Great Plains; south of
+  Canada today they live in a few mountain areas of Montana, Wyoming, Idaho and Washington. The game says "outside Alaska,
+  most grizzlies in the United States live in the mountains of Wyoming, Montana, Idaho and Washington".
+- <a id="fact-wolf-song"></a>**wolf-song**: gray wolves were brought back to Yellowstone National Park in January 1995 (14
+  wolves) and January 1996 (17): the National Park Service Yellowstone Wolf Project report for 1995–1996. That wolves
+  lived on the plains near the bison herds: general histories of the gray wolf (secondary). Travelers on the trail wrote
+  of wolves howling near camp: an emigrant diary in the Newberry Library's collection, and Francis Parkman's "The Oregon
+  Trail" (1849).
+- <a id="fact-prairie-glow"></a>**prairie-glow**: fire is part of the tallgrass prairie and the grasses grow back quickly
+  after a burn, from roots that reach deep underground: the National Park Service, "Wildland Fire in Tallgrass Prairie",
+  and Tallgrass Prairie National Preserve (Kansas), "Plants at the Preserve". Travelers did meet prairie fires: the 1847
+  pioneer company's account of a prairie fire on the way to Fort Laramie (Utah Education Network's Heritage Gateways,
+  secondary). The vignette's "many miles away" and "safe and snug" are the story.
+- <a id="fact-pronghorn-race"></a>**pronghorn-race**: the National Park Service pronghorn pages: Wind Cave National Park
+  (longer distances at 30 to 40 miles an hour) and the pronghorn article (about 55 miles an hour for half a mile, nearly 45
+  for much longer). The game says "about forty miles an hour for a long way". A pronghorn running beside a wagon is the
+  story; the existing pronghorn card keeps its sprint number.
+
+### Fish of the trail
+
+The game's rivers: the Kansas and the Platte give channel catfish, the Sweetwater hornyhead chubs, the creeks of the Green
+River country, the Bear River and the Snake cutthroat trout, the Snake also the white sturgeon, the Blue Mountains' creeks
+redband trout, the Columbia Chinook salmon. The sizes and pounds in the game are game numbers, not facts read aloud.
+
+- <a id="fish-channel-catfish"></a>**channel-catfish**: the official state fish of Kansas (Kansas Statutes 73-40,
+  designated in 2018); the Kansas Department of Wildlife and Parks channel catfish page; channel catfish recorded on the
+  lower Platte in Nebraska by the Lewis and Clark expedition (the Lewis and Clark Trust's wildlife research pages) and in a
+  modern lower Platte study. "Whiskers that help them find food in muddy water" (the barbels): general fish guides
+  (secondary; the KDWP page the search reached showed only stocking data).
+- <a id="fish-hornyhead-chub"></a>**hornyhead-chub**: Wyoming Game and Fish Department, Lander Region: hornyhead chubs once
+  lived in the Sweetwater River, were last recorded there in 1852, and were moved back from the Laramie River in 2020 and
+  2021 (nests found from 2022 on). Also County 10 (Riverton), the same project.
+- <a id="fish-cutthroat-trout"></a>**cutthroat-trout**: Wyoming Game and Fish, the Cutt-Slam page and the Bonneville
+  cutthroat trout page: Wyoming's native cutthroat are the Colorado River (Green River drainage), Bonneville (Bear River),
+  Snake River and Yellowstone; Robert Behnke's notes (Montana State University archive): no trout is native to the North
+  Platte drainage, which is why the game has no trout on the Platte. "Named for the red-orange mark under their jaw":
+  secondary (fly-fishing and natural-history pages agree; no agency page was reachable).
+- <a id="fish-white-sturgeon"></a>**white-sturgeon**: Idaho Department of Fish and Game, the sturgeon page: the largest
+  freshwater fish in North America, able to live more than 100 years; the healthiest Idaho populations are in the free-
+  flowing Snake River between Bliss Dam and C.J. Strike Reservoir, which is the reach of Three Island Crossing (Glenns
+  Ferry); catch and release only today.
+- <a id="fish-redband-trout"></a>**redband-trout**: the Western Native Trout Initiative and the Native Fish Society (secondary):
+  redband trout are the native rainbow trout of the interior Columbia River basin, with a rosy red stripe along the side.
+  No Oregon Department of Fish and Wildlife page naming the Blue Mountains' redband was reachable: flagged.
+- <a id="fish-chinook-salmon"></a>**chinook-salmon**: the Washington Department of Fish and Wildlife Chinook page and NOAA
+  Fisheries (archived species page): the largest of the Pacific salmon, also called king salmon; Oregon Sea Grant's native
+  fishes page agrees.
+- <a id="junk-snapping-turtle"></a>**junk-snapping-turtle**: the Kansas Herpetofaunal Atlas (the common snapping turtle is found
+  across Kansas) and Nebraskaland Magazine (native to Nebraska); the species is not native west of the Rockies, so the game
+  has it only on the Kansas and the Platte.
+
+### Finds that state a fact
+
+- <a id="find-buffalo-chip"></a>**find-buffalo-chip**: where there was no wood, travelers burned dried bison dung ("buffalo
+  chips") to cook: the National Park Service, "Traveling Emigrant Trails" and "The Platte Experience"; History Nebraska,
+  "Buffalo and Cow Chips"; the Oregon-California Trails Association, "Fueling the Journey".
+- <a id="find-ox-shoe"></a>**find-ox-shoe**: an ox has a cloven (split) hoof and was shod with two half-shoes on each foot:
+  the McClung Museum (University of Tennessee), "Ox shoes", and the Great Falls History Museum, "Ox shoes" (museum pages,
+  secondary for the trail itself).
+- <a id="find-magpie-feather"></a>**find-magpie-feather**: the black-billed magpie is a member of the crow family, first
+  described for science by the Lewis and Clark expedition in 1804: the Lewis and Clark Trust, "Black-billed magpie", and
+  the Flathead Audubon Society's bird of the month.
+- <a id="find-arrowhead"></a>**find-arrowhead**: arrowheads on public land are protected archaeological resources; the agencies
+  ask a finder to leave it where it lies and tell the land manager (the Archaeological Resources Protection Act, 16 U.S.C.
+  470ee; Bureau of Land Management, "Help Preserve Our Past"; U.S. Forest Service guidance). The game's arrowhead is
+  sketched in the journal and left where it lay.
+- The other finds (the horseshoe, the hawk feather, the flat stone, the pinecone, the shiny spoon), the wishes, the dog's
+  chases and fetch, the dust devil's hats, the skipping stones, the meteor shower and the fight on the fishing line are the
+  game's play and state nothing about the trail.
+
+### Side quests: story, not history
+
+Molly Rowe and her locket, Mrs. Platt, Josh, Sam and his bottle, Ruby and Mr. Pete are invented story people, like the
+people of the trail above; nobody is a real person or a copy of one. Their lines mention only places and things the
+sources above already cover (the forts, Chimney Rock, the Snake River, The Dalles).
+
+### Things we deliberately did not say (v1.4)
+
+- **No Pony Express.** It ran in 1860–1861, after the game's seasons (1847–1853).
+- **No trout on the Platte.** The owner suggested it; no trout is native to the Platte drainage (Wyoming Game and Fish;
+  Behnke), so the Platte gives channel catfish.
+- **No "a mile wide and an inch deep".** The saying about the Platte is in National Park Service guides as a pioneer joke,
+  but its age could not be traced (Bill Nye printed a version in 1889), so the game does not put it in an 1847 mouth.
+- **No numbers of bison.** Estimates of the herds and of the hide-hunting years vary widely between sources, so the facts say
+  "thousands", "nearly vanished" and "growing again" and give no figure.
+- **No shooters.** The far-off rifles are a sound; nobody is drawn with a weapon (SPEC v1.4 §1.7).
+
+### Fact check (November 1, 2026)
+
+| Fact | Verdict | Source |
+|---|---|---|
+| Far-off rifles: emigrants and traders hunted bison for meat and for sport, often more than they could use | confirmed (secondary for the wording: the pages say "sport" and "more than needed"; neither says "more than they could use" in those words) | https://www.nps.gov/articles/000/-thicker-than-stars-in-the-firmament-bison-along-the-platte-river-corridor.htm ; https://www.octa-trails.org/trail-stories/where-the-buffalo-roam ; https://www.nps.gov/articles/000/the-platte-experience.htm |
+| Far-off rifles card: 1870s hide hunters, the herds nearly vanished | confirmed on secondary pages (no agency page reached); the NPS article's "about 325 wild bison by 1884" agrees | https://www.encyclopedia.com/history/encyclopedias-almanacs-transcripts-and-maps/buffalo-extermination ; https://animals.howstuffworks.com/endangered-species/bison-extinction.htm |
+| Far-off rifles card: herds growing again in parks and on tribal lands | confirmed on secondary pages | https://www.worldwildlife.org/news/magazine/spring-2025/a-historic-partnership-restores-buffalo-to-native-lands/ ; https://www.npr.org/2021/12/11/1063337564/there-are-too-many-bison-in-yellowstone-some-will-be-relocated-to-tribal-nations ; https://andthewest.stanford.edu/2024/do-buffalo-still-roam-the-american-west-with-native-tribes-and-if-so-where/ |
+| Bison thunder: herds in the thousands, "thicker than the stars" | confirmed (the NPS article quotes "thicker than … stars in the firmament") | https://www.nps.gov/articles/000/-thicker-than-stars-in-the-firmament-bison-along-the-platte-river-corridor.htm |
+| Bison thunder: a running herd rumbles like thunder | description, supported by eyewitness accounts (secondary) | https://www.yahoo.com/news/bison-thunder-crowd-panicked-yellowstone-180329075.html |
+| Bison thunder: wagon trains sometimes stopped and waited for a herd | could not verify on a primary page (kept as the general picture, at the owner's request) | general histories; the NPS and OCTA bison pages above |
+| Grizzly: once roamed the Great Plains; today (outside Alaska) mainly in the mountains of Wyoming, Montana, Idaho and Washington | confirmed | https://www.fws.gov/species/grizzly-bear-ursus-arctos-horribilis ; https://webarchive.library.unt.edu/web/20120926014941/http://www.fws.gov/home/feature/2007/GBFactSheetr.pdf ; https://westernwildlife.org/history/ |
+| Wolves: brought back to Yellowstone in 1995 | confirmed | https://www.nps.gov/yell/learn/nature/upload/wolfreport_95-96_508.pdf |
+| Wolves: once followed / roamed near the bison herds on the plains | confirmed on secondary pages | https://en.wikipedia.org/wiki/History_of_wolves_in_Yellowstone |
+| Wolves howling near emigrant camps | confirmed (a diary in the Newberry collection; Parkman) | https://collections.newberry.org/archive/-2KXJ8Z89EM1WM.html ; https://www.gutenberg.org/files/1015/1015-h/1015-h.htm |
+| Prairie glow: fire is part of the prairie; deep-rooted grasses grow back fast | confirmed | https://www.nps.gov/articles/wildland-fire-in-tallgrass-prairie.htm ; https://www.nps.gov/tapr/learn/nature/plants-at-the-preserve.htm |
+| Prairie glow: travelers met prairie fires | confirmed on a secondary page (the 1847 company near the Platte) | https://heritage.uen.org/companies/Wc832329fb6c0.shtml |
+| Pronghorn: about 40 miles an hour for a long way | confirmed (Wind Cave: 30 to 40 mph over longer distances; the NPS article: nearly 45 mph much longer) | https://www.nps.gov/wica/learn/nature/pronghorn.htm ; https://www.nps.gov/articles/000/pronghorn.htm |
+| Channel catfish: the state fish of Kansas | confirmed | https://www.kslegislature.gov/li_2022/b2021_22/statute/073_000_0000_chapter/073_040_0000_article/073_040_0001_section/073_040_0001_k |
+| Channel catfish: in the Kansas River and the Platte | confirmed (the lower Platte; the Kansas River by the state's fish pages) | https://research.lewisandclarktrust.org/wildlife/channel-catfish ; https://core.ac.uk/download/188122505.pdf ; https://ksoutdoors.gov/Fishing/Fish-Species/CHANNEL-CATFISH |
+| Channel catfish: whiskers help find food in muddy water | could not verify on an agency page (general fish guides) | — |
+| Hornyhead chub: in the Sweetwater in wagon days, gone, brought back in 2020 | confirmed (last recorded 1852; moved back 2020–21) | https://wgfd.wyo.gov/Regional-Offices/Lander-Region/Lander-Region-News/Hornyhead-chub-transplanted-back-to-a-native-drain ; https://county10.com/fish-transplanted-back-to-their-native-drainage-near-atlantic-city/ |
+| Cutthroat trout: native to the mountain streams west of South Pass; none native on the Platte | confirmed | https://wgfd.wyo.gov/Cutt-Slam ; https://wgfd.wyo.gov/wildlive/bonneville-cutthroat-trout ; https://arc.lib.montana.edu/robert-behnke/objects/2491-25-10.pdf |
+| Cutthroat trout: named for the red-orange mark under the jaw | confirmed on secondary pages | https://flylordsmag.com/difference-rainbow-cutthroat-cut-bow-trout |
+| White sturgeon: the biggest freshwater fish in North America, lives more than 100 years; in the Snake at Three Island Crossing's reach | confirmed | https://idfg.idaho.gov/fish/sturgeon |
+| Redband trout: rainbow trout of the Columbia River country with a rosy red stripe | confirmed on secondary pages; the Blue Mountains' streams not confirmed on an ODFW page | https://westernnativetrout.org/?p=95 ; https://nativefishsociety.org/learn/native-species/redband-trout |
+| Chinook salmon: the biggest Pacific salmon, also called king salmon | confirmed | https://wdfw.wa.gov/species-habitats/species/oncorhynchus-tshawytscha ; https://webarchive.library.unt.edu/web/20090114085910/http://www.nmfs.noaa.gov/fishwatch/species/chinook_salmon.htm ; https://seagrant.oregonstate.edu/WRF/native-fishes/salmon-and-trout/chinook-salmon |
+| Snapping turtle: native to Kansas and Nebraska, not west of the Rockies | confirmed (the Pacific Northwest populations are introduced) | https://www.cnah.org/cnah/kansas/species/chelydra-serpentina ; https://digital.outdoornebraska.gov/nebraskaland-magazine/snappers |
+| Buffalo chips: burned for cooking where there was no wood | confirmed | https://www.nps.gov/articles/000/traveling-emigrant-trails.htm ; https://history.nebraska.gov/publications/buffalo-and-cow-chips ; https://www.octa-trails.org/trail-stories/fueling-the-journey/ |
+| Ox shoe: two shoes on each split hoof | confirmed on museum pages | https://mcclungmuseum.utk.edu/object-of-the-month/oxshoes ; https://www.greatfallshistorymuseum.org/blog/ox-shoes |
+| Magpie: a clever bird of the crow family | confirmed (crow family on the Audubon chapter and expedition pages; "clever" is the story) | https://research.lewisandclarktrust.org/wildlife/black-billed-magpie ; https://flatheadaudubon.org/bird-of-the-month/black-billed-magpie/ |
+| Arrowhead: leave it where it lies | confirmed (ARPA; BLM; USFS) | https://www.blm.gov/sites/blm.gov/files/uploads/Programs_CulturalHeritageandPaleontology_Archaeology_WhatWeManage_Colorado_HelpPreserveOurPastBrochure.pdf ; https://www.fs.usda.gov/media/70739 |
