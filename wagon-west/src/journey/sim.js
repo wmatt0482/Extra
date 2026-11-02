@@ -58,6 +58,7 @@ import { V14_COUNTERS, fill14, carry14, merge14 } from './collections.js';
 import * as DOG from './dog.js';
 import * as FISHING_API from './fishing.js';
 import * as QUESTS_API from './quests.js';
+import { choiceAt, applyChoice, defaultChoice, choicesAt, cutOf, guidedOf, creditOf, normalizeChoices } from './choices.js';
 import * as MOMENTS_API from './moments.js';
 import { goldAt } from './gold.js';
 import { happenedKeys } from './letters.js';
@@ -143,6 +144,7 @@ export function ensureJourney(J) {
   if (!J) return J;
   if (!J.totals) J.totals = emptyTotals();
   const replan15 = fill15(J);
+  J.choices = normalizeChoices(J.choices);                   // v1.6 (The Lab): the six choice moments taken so far (choices.js)
   usePlan(J);                                // the journey's plan is the module's leg table from here on
   if (!Array.isArray(J.cards)) J.cards = [];
   if (!J.upgrades || typeof J.upgrades !== 'object') J.upgrades = {};
@@ -264,6 +266,8 @@ export function startLeg(J, legId) {
     arrived: false, result: null, traded: 0, rng: hashSeed(J.seed, leg.id, J.legStarts, 'days'), ...tripV12(J, leg), ...tripV14(), ...tripV15(J, leg),
   };
   J.trip.skipBonus = keepSkips;
+  J.trip.guided = guidedOf(J, leg.id);                      // v1.6: a guide for this leg (a dry stretch with one is not a thirsty one)
+  J.trip.dayCredit = creditOf(J, leg.id);                   // v1.6: a day saved that the shorter leg does not save by itself: the arrival day's food stays in the wagon
   planV14(J, leg);
   refreshMood(J);
   // v1.5: a toll leg (the Barlow Road) returns its toll { dollars, due } (the app asks payToll); any other leg is returned as it is
@@ -389,7 +393,7 @@ export function tickDay(J, { rand } = {}) {
   const ate = eatFood(J, need, eatFactor(J));
   // v1.5: a day inside the leg's dry share (the Sublette Cutoff, the Forty-Mile Desert); without the water barrel it is a thirsty one (spirit down, the animals tire half again as much)
   const dryNow = !!leg.dry && !rest && inDry(leg, J.milesDone + miles / 2);
-  const thirsty = dryNow && !up.barrel;
+  const thirsty = dryNow && !up.barrel && !t.guided;
   if (dryNow) { J.totals.dryDays++; if (thirsty) J.totals.thirstyDays++; if (Array.isArray(t.keys) && !t.keys.includes('dry')) t.keys.push('dry'); }
   // the animals: a rest day restores them, a travel day tires them (brisk, mountains), the second yoke halves it; the tier tires them more, thirst more again
   if (rest) J.animals.tired = Math.max(0, J.animals.tired - ANIMAL_RULES.restRelief);
@@ -466,7 +470,10 @@ export function tickDay(J, { rand } = {}) {
   let restNext = coldNight ? 'cold' : event && event.kind === 'rest' && !event.waitedOut ? 'event' : null;
   if (J.mood === 'tired' && J.food > 0 && !rest) t.tiredDays++; else t.tiredDays = 0;
   if (!arrived && !restNext && t.tiredDays >= MOOD.tiredRestAfter && t.restDays === 0) { t.restDays = 1; t.tiredDays = 0; restNext = 'tired'; }
-  if (arrived) t.arrived = true;
+  if (arrived) {
+    t.arrived = true;
+    if (t.dayCredit > 0 && ate.eaten > 0) { addFoodKind(J, 'other', ate.eaten); t.dayCredit = 0; }      // v1.6: the day a choice saved: nothing is eaten on the arrival day
+  }
   const foodLow = J.food < need * 3;
   if (foodLow) t.foodLowSeen = true;
   return { arrived, event, marker, foodLow, miles, rest, crawl, slow, foraged, restNext, day: J.day, food: J.food, mood: J.mood,
@@ -736,10 +743,10 @@ export function arrive(J) {
   ensureJourney(J);
   const t = J.trip, leg = currentLeg(J);
   if (!t || !leg || !hasArrived(J)) return null;
-  if (t.result) { t.result.fork = forkAt(J); return t.result; }      // (the fork is asked again until it is chosen)
+  if (t.result) { t.result.fork = forkAt(J); t.result.choice = choiceAt(J); return t.result; }      // (the fork and the choice are asked again until they are taken)
   t.arrived = true;
   const stars = starsFor(J);
-  const cash = payFor(stars, J.season, leg);
+  const cash = payFor(stars, J.season, cutOf(J, leg.id) ? { ...leg, miles: leg.miles + cutOf(J, leg.id) } : leg);      // (v1.6: a leg a shortcut or a guide shortened pays as the full leg)
   J.cash += cash.total;
   const sticker = leg.sticker || { id: leg.id, name: leg.name, emoji: '⭐' };
   if (!J.stickers.includes(sticker.id)) J.stickers.push(sticker.id);
@@ -769,7 +776,7 @@ export function arrive(J) {
   const bonusCards = fx.bonusCards === 'every' ? 1 : fx.bonusCards === 'perfect' && stars.every(Boolean) ? 1 : 0;
   t.result = { legId: leg.id, stars, cash, sticker, crate: crateFor(stars), ...(mended ? { mended: true } : {}), ...(bath ? { bath: true } : {}), ...(quest ? { quest } : {}),
     post: !!(leg.post || (leg.stop && leg.stop.kind === 'fort')), end: last ? siteOfLeg(leg.id) : null, bonusCards,
-    tierTrophy: last ? (TIER_BY_ID[J.tier] || {}).trophy || null : null, gold: dig, fork: forkAt(J) };
+    tierTrophy: last ? (TIER_BY_ID[J.tier] || {}).trophy || null : null, gold: dig, fork: forkAt(J), choice: choiceAt(J) };
   return t.result;
 }
 
@@ -780,6 +787,7 @@ export function nextLeg(J) {
   arrive(J);
   const fork = forkAt(J);                                   // v1.5: moving on without choosing takes the default way (the first open option), and that is recorded
   if (fork) chooseBranch(J, fork.id, (fork.options.find((o) => o.open) || fork.options[0]).id);
+  defaultChoice(J);                                         // v1.6: so does a choice moment (the plain way, once)
   if (J.legIndex + 1 >= legList().length) { J.done = true; return null; }
   return startLeg(J);
 }
@@ -1205,6 +1213,8 @@ export function writeOnRock(J) {
   return { ok: true };
 }
 
+export { choiceAt, applyChoice, defaultChoice, choicesAt, cutOf, guidedOf, creditOf, normalizeChoices, mergeChoices, feeFor, dayMiles, SHORTCUT, GUIDE } from './choices.js';
+export { nextStopPreview, previewTexts, stopToday, phraseFor, firstSentence, STOP_LINE, LEGS_A_DAY } from './preview.js';
 export { forkAt, planRoute, usePlan, routesOpen, siteOfLeg, planMiles, planStores, tierOf } from './route.js';
 export { TIER_FX, GOLD, SAIL, HOMESTEAD_COST, DRY, PACK, tierFx } from './economy.js';
 export { goldAt, panOutcome, rockerOutcome, applyGold, nuggetsOf } from './gold.js';

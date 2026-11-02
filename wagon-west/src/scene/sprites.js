@@ -9,6 +9,7 @@
 // (rolls onto its back with dizzy stars, cartoon-stunned), then a puff and it is gone.
 
 import { TAU, OUT, shade, rrect, drawText, hashStr } from './util.js';
+import { bonnetPath, paintCoverLook, drawOutfit, outfitHat, outfitOf, plumeHat } from './looks16.js';      // v1.6 (The Lab): the wagon covers and the leader's outfits
 
 const LW = 2.4; // outline width in sprite units
 
@@ -45,7 +46,7 @@ function wheel(c, x, y, r, ang, col) {
   c.beginPath(); c.arc(x, y, r * 0.2, 0, TAU); outlineFill(c, shade(col, -0.1), r * 0.08);
 }
 
-// w: { box, wheel, cover, flag (colour | null), name } ; spin: wheel angle ; bob: body lift (units) ; t: seconds
+// w: { box, wheel, cover, coverLook (v1.6: a Lab cover id | undefined), flag (colour | null), name } ; spin: wheel angle ; bob: body lift (units) ; t: seconds
 export function drawWagon(c, x, y, s, w, spin, bob, t) {
   c.save();
   c.translate(x, y); c.scale(s, s);
@@ -63,13 +64,9 @@ export function drawWagon(c, x, y, s, w, spin, bob, t) {
     c.closePath(); outlineFill(c, w.flag, 2);
   }
   // cover: the arched bonnet of a prairie schooner, flared at the ends
-  c.beginPath();
-  c.moveTo(-56, by - 46);
-  c.bezierCurveTo(-68, by - 70, -64, by - 98, -40, by - 98);
-  c.lineTo(38, by - 98);
-  c.bezierCurveTo(62, by - 98, 66, by - 70, 54, by - 46);
-  c.closePath();
+  bonnetPath(c, by);
   outlineFill(c, w.cover, 2.8);
+  if (w.coverLook) { paintCoverLook(c, w.coverLook, by); bonnetPath(c, by); c.lineWidth = 2.8; c.strokeStyle = OUT; c.stroke(); }        // v1.6: a Lab cover's pattern on the canvas, the outline over it
   // hoops (ribs) and the shaded underside
   c.beginPath();
   for (const hx of [-30, -6, 18]) { c.moveTo(hx, by - 47); c.quadraticCurveTo(hx + 1, by - 75, hx, by - 97); }
@@ -77,7 +74,7 @@ export function drawWagon(c, x, y, s, w, spin, bob, t) {
   c.beginPath(); c.moveTo(-56, by - 46); c.lineTo(54, by - 46); c.lineTo(52, by - 52); c.lineTo(-56, by - 52); c.closePath();
   c.fillStyle = shade(w.cover, -0.12); c.fill();
   // the name painted on the cover
-  if (w.name) drawText(c, w.name, 15, -2, by - 72, '#6a3a1a', null, 84);
+  if (w.name) drawText(c, w.name, 15, -2, by - 72, w.coverLook === 'nightsky' ? '#f5e9b8' : '#6a3a1a', null, 84);       // (v1.6: light letters on the Lab's night-sky cover)
   // box
   c.beginPath(); rrect(c, -58, by - 48, 114, 28, 4); outlineFill(c, w.box, 2.8);
   c.beginPath(); c.moveTo(-56, by - 34); c.lineTo(54, by - 34);
@@ -199,10 +196,17 @@ export function drawTeam(c, x, y, s, kind, ph, amp, grazing) {
 // ---------------------------------------------------------------- companions
 const SKIN = ['#f2c9a0', '#d9a679', '#a8754d', '#7a5236', '#e8b98f', '#c48b5c'];
 const HAIR = ['#3b2a1e', '#6b4423', '#c98b3a', '#1f1a17', '#8a5a3a', '#a33b20'];
-export function personLook(id, color, hat) {
+export function personLook(id, color, hat, outfit) {
   const h = hashStr(id || 'x');
   const col = color || '#5b8c5a';
-  return { color: col, hat: hat || 'none', hatColor: shade(col, -0.1), skin: SKIN[h % SKIN.length], hair: HAIR[(h >>> 5) % HAIR.length], pants: ['#4a3b5c', '#3e4a5e', '#5a4632', '#3d3d3d'][(h >>> 9) % 4] };
+  const look = { color: col, hat: hat || 'none', hatColor: shade(col, -0.1), skin: SKIN[h % SKIN.length], hair: HAIR[(h >>> 5) % HAIR.length], pants: ['#4a3b5c', '#3e4a5e', '#5a4632', '#3d3d3d'][(h >>> 9) % 4] };
+  const oid = outfitOf(outfit);
+  if (oid) {                                               // v1.6 (The Lab): the leader's outfit: a hat outfit replaces the hat, the others are layers drawn over the body
+    look.outfit = oid;
+    const oh = outfitHat(oid);
+    if (oh) { look.hat = oh.hat; look.hatColor = oh.hatColor; }
+  }
+  return look;
 }
 function hatPath(c, hat, hx, hy, col) {
   switch (hat) {
@@ -237,6 +241,7 @@ function hatPath(c, hat, hx, hy, col) {
       c.beginPath(); c.rect(hx - 8, hy - 9, 16, 2); c.fillStyle = col; c.fill();
       return;
     }
+    case 'plume': { plumeHat(c, hx, hy, col); return; }      // v1.6: the Lab's plumed hat
     case 'hood': { // a hood around the head
       c.beginPath(); c.arc(hx - 1, hy, 13, Math.PI * 0.55, Math.PI * 2.25); c.quadraticCurveTo(hx + 6, hy + 6, hx + 1, hy + 11); c.closePath();
       outlineFill(c, col);
@@ -291,6 +296,7 @@ export function drawPerson(c, x, y, s, look, ph, amp, cheer = 0, dir = 1) {
   c.beginPath(); c.arc(0, -54, 8.5, 0, TAU); outlineFill(c, look.skin);
   c.beginPath(); c.arc(4, -55, 1.5, 0, TAU); c.fillStyle = OUT; c.fill();
   hatPath(c, look.hat, 0, -56, look.hatColor || shade(look.color, -0.1));
+  if (look.outfit) drawOutfit(c, look.outfit, look);        // v1.6 (The Lab): the leader's vest, scarf, spectacles or cloak
   // front arm
   {
     const a = armA(sw * 0.9);

@@ -317,6 +317,36 @@ for (const f of voiceFiles) {
     for (const p of PEOPLE.filter((x) => x.stop === leg.id)) if (!speechChunks([p.lines.join(' ')]).every((c) => own.has(norm(c)))) missingVoice.push(`leg ${leg.id}: its own list lacks ${p.id}`);
   }
 }
+// 5d. (v1.6, The Lab) the six choice moments and the cliffhanger: every line the choice panel and the results can say is reachable by prepareVoice, the choice at the stop it is asked at,
+// the preview in the leg before; no digit in what is said; the lines are free of the banned words (the walk above reads the content module, this reads the panel's own lines)
+{
+  const { CHOICES, CHOICE_LINES } = mods['src/content/choices.js'];
+  const cp = await import(pathToFileURL(path.join(root, 'src/ui/choicePanel.js')).href);
+  const pv = await import(pathToFileURL(path.join(root, 'src/journey/preview.js')).href);
+  const { dollarWords } = mods['src/journey/problems.js'];
+  const sayOfC = (x) => (x ? x.say || x.text || '' : '');
+  for (const c of CHOICES) {
+    need(`choice ${c.id} question`, c.question);
+    for (const o of c.options) { need(`choice ${c.id}/${o.id} name and line`, `${o.name}. ${sayOfC(o.line)}`); if (/\d/.test(sayOfC(o.line))) hits.push(`digit in a spoken line — choice ${c.id}/${o.id}`); }
+    for (const fee of cp.FEES) need(`choice ${c.id} fee ${fee}`, `The guide asks ${dollarWords(fee)}.`);
+    // the choice is prepared in the leg it is asked at (its own list), as a fork is
+    const own = new Set(speechChunks(collectVoiceTexts({ legId: c.at, playerName: 'Mia', dogName: 'Frodo', farmName: FARM }).leg).map(norm));
+    if (!speechChunks([c.question]).every((t) => own.has(norm(t)))) missingVoice.push(`choice ${c.id}: the list of ${c.at} lacks its question`);
+    if (c.kind === 'guide') for (const fee of cp.FEES) if (!speechChunks([`The guide asks ${dollarWords(fee)}.`]).every((t) => own.has(norm(t)))) missingVoice.push(`choice ${c.id}: the list of ${c.at} lacks the fee line for $${fee}`);
+  }
+  for (const k of ['a', 'shortcutDry', 'shortcutSoaked', 'guide', 'cash']) { need(`choice result ${k}`, sayOfC(CHOICE_LINES[k])); if (/\d/.test(sayOfC(CHOICE_LINES[k]))) hits.push(`digit in a spoken line — choice result ${k}`); }
+  need('the stop line', pv.STOP_LINE);
+  for (const leg of ALL_LEGS) {
+    for (const t of pv.previewTexts(leg.id)) { need(`preview of ${leg.id}`, t); if (/\d/.test(t)) hits.push(`digit in a spoken line — preview of ${leg.id}`); }
+  }
+  // the preview shown at the end of a leg is about the next one: prepared in this leg's list ("next")
+  const withPlan = (plan, id) => collectVoiceTexts({ legId: id, plan, playerName: 'Mia', dogName: 'Frodo', farmName: FARM });
+  {
+    const plan = ['kansas-river', 'alcove-spring', 'fort-kearny'];
+    const nx = new Set(speechChunks(withPlan(plan, 'alcove-spring').next).map(norm));
+    for (const t of pv.previewTexts('fort-kearny')) if (!speechChunks([t]).every((c) => nx.has(norm(c)))) missingVoice.push(`the list of alcove-spring ("next") lacks the preview of fort-kearny: "${t.slice(0, 60)}"`);
+  }
+}
 function PEOPLE_SAYS() { return PEOPLE.flatMap((p) => [p.lines.join(' '), p.gift && p.gift.text]).filter(Boolean); }
 // main.js must really prepare this list
 const mainSrc = readFileSync(path.join(root, 'src/main.js'), 'utf8');

@@ -18,7 +18,10 @@
 // v1.5 (The Long Trail) adds the year picker, the fork panel, the diggings and the homestead (src/ui/yearPicker.js, forkPanel.js, diggings.js,
 // homestead.js) to the shell; the content and journey modules that came with it (routes, tiers, families, homestead; seasons, homestead, gold,
 // adaptive) and Trail Blazer's placement staircase are OPTIONAL like v1.2's (the page also posts every module it loaded).
-const VERSION = 'wagon-west-v1.5.0';
+// v1.6 (The Lab, lab/SPEC.md §4.4) adds the Lab bridge (src/meta/labBridge.js: it loads /lab/src/index.js on its own, so a missing, blocked or old Lab never stops the game), the choice
+// panel and its words (src/ui/choicePanel.js, src/content/choices.js) to the shell; the choice and preview journey modules, the Lab looks (src/meta/labLooks.js, src/scene/looks16.js)
+// and the Lab's own entry (/lab/src/index.js, outside this scope) are OPTIONAL: cached when present, and the page posts every Lab module it loaded.
+const VERSION = 'wagon-west-v1.6.0';
 const PREFIX = 'wagon-west-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -71,6 +74,9 @@ const SHELL = [
   'src/ui/forkPanel.js',
   'src/ui/diggings.js',
   'src/ui/homestead.js',
+  'src/ui/choicePanel.js',
+  'src/meta/labBridge.js',
+  'src/content/choices.js',
   'src/content/routes.js',
   'src/content/tiers.js',
   'src/content/families.js',
@@ -104,6 +110,11 @@ const OPTIONAL = [
   'src/journey/homestead.js',
   'src/journey/gold.js',
   'src/journey/adaptive.js',
+  'src/journey/choices.js',
+  'src/journey/preview.js',
+  'src/meta/labLooks.js',
+  'src/scene/looks16.js',
+  '../lab/src/index.js',
   'src/journey/supplies.js',
   'src/journey/skills.js',
   'src/scene/dog14.js',

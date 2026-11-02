@@ -39,6 +39,10 @@
 // (smooth, bumpy, early, Space), the voyage (markers that wait for sailGo, steered 0 bumps, left alone bumps), endMiniGame on each; the homestead at both sites with no
 // pieces, half and all of them, the raising of a barn and a small piece (both orders of setHomestead and buildPiece), taps and drags; the three forks' signposts; the MOCK
 // scene's scripts; perf cases for each. Env: V15_ONLY=1 runs only section 13 and the perf cases.
+// v1.6 (The Lab), section 14: the seven wagon covers and seven leader outfits of src/scene/looks16.js (each accepted by setParty({ wagon: { cover } }) and a companion's `outfit`, drawn on the
+// wagon's canvas / the first companion only, clipped to the bonnet, different from the plain one and from each other; null and an unknown id draw the game's own look), Trail Cheer (scene.cheer():
+// the party cheers about 1.2 s, confetti, never louder than an arrival), the Lab's previews (labLooks.js LOOKS_READY lists the 14 ids; paintPreview draws each, nothing else), the results' stop card
+// (backdrops.js drawStopCard paints every leg of every plan), the MOCK scene's cover, outfit and cheer. Env: V16_ONLY=1 runs only section 14.
 // Env: V14_ONLY=1 runs only section 12 and the perf cases, PERF_ONLY=1 only the perf section, PERF_FILTER='stones|stars' picks perf cases.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
@@ -137,7 +141,7 @@ async function keySpace(page) {
 await ensureServer();
 const browser = await chromium.launch();
 try {
-  if (!process.env.V14_ONLY && !process.env.PERF_ONLY && !process.env.V15_ONLY) { // V14_ONLY=1 runs only section 12 (the v1.4 scenes), PERF_ONLY=1 only the perf section
+  if (!process.env.V14_ONLY && !process.env.PERF_ONLY && !process.env.V15_ONLY && !process.env.V16_ONLY) { // V14_ONLY=1 runs only section 12 (the v1.4 scenes), PERF_ONLY=1 only the perf section
   // ---- 1. API, ready, state shape ----
   {
     const { page, context, errors } = await open(browser);
@@ -1250,7 +1254,7 @@ try {
   }
 
   // ---- 12. v1.4 (Frodo and the river): the dog's vignettes, the trail facts, the camp and river games, fishing 2.0 ----
-  if (!process.env.PERF_ONLY && !process.env.V15_ONLY) {
+  if (!process.env.PERF_ONLY && !process.env.V15_ONLY && !process.env.V16_ONLY) {
     const API_14 = ['dogRun', 'dogWarn', 'startChase', 'chaseCall', 'ambient', 'startFetch', 'fetchBring', 'startHoppers', 'startStones', 'startMeteors', 'startDustDevil', 'startFishing', 'fishingRetry', 'fishingHelp'];
     const dbg = (page) => page.evaluate(() => window.__ww.scene.debugMini());
     const pointer = (page, x, y) => page.evaluate(([x, y]) => window.__ww.scene.debugInput('pointer', x, y), [x, y]);
@@ -1759,7 +1763,7 @@ try {
   }
 
   // ---- 13. v1.5 (The Long Trail): five biomes, 26 paintings, the dry stretch, decorations, gold, Laurel Hill, the voyage, the farm, the forks ----
-  if (!process.env.PERF_ONLY && !process.env.V14_ONLY) {
+  if (!process.env.PERF_ONLY && !process.env.V14_ONLY && !process.env.V16_ONLY) {
     const PORTRAIT = { width: 390, height: 844 }, LAND = { width: 844, height: 390 }, BIG = { width: 1280, height: 800 };
     const NEW_BIOMES = ['basin', 'sierra', 'siskiyou', 'goldcountry', 'sea'];
     const NEW_BACKDROPS = ['homestead', 'diggings', 'sea', 'fork'];
@@ -2334,8 +2338,106 @@ try {
     }
   }
 
+
+  // ---- 14. v1.6 (The Lab): wagon covers, the leader's outfits, Trail Cheer, the previews ----
+  if (!process.env.PERF_ONLY && !process.env.V14_ONLY && !process.env.V15_ONLY) {
+    console.log('\n--- v1.6 (The Lab): covers, outfits, Trail Cheer, previews ---');
+    const PORTRAIT = { width: 390, height: 844 }, LAND = { width: 844, height: 390 }, J = (a) => JSON.stringify(a);
+    const COVERS = ['stripes', 'patchwork', 'sunflower', 'riverblue', 'starquilt', 'nightsky', 'goldthread'];
+    const OUTFITS = ['bonnet', 'strawhat', 'vest', 'redscarf', 'spectacles', 'plumehat', 'cloak'];
+    const COMPS = (outfit) => [{ id: 'a', hat: 'wide', color: '#d9534f', ...(outfit ? { outfit } : {}) }, { id: 'b', hat: 'cap', color: '#5b8c5a' }, { id: 'c', hat: 'kerchief', color: '#f0a500' }];
+    const snapC = (p) => p.evaluate(() => { const c = document.getElementById('c'); const t = document.createElement('canvas'); t.width = 96; t.height = 48; const g = t.getContext('2d'); g.drawImage(c, 0, 0, 96, 48); return Array.from(g.getImageData(0, 0, 96, 48).data); });
+    const snapFull = (p, key) => p.evaluate((key) => { const c = document.getElementById('c'); const t = document.createElement('canvas'); t.width = c.width; t.height = c.height; const g = t.getContext('2d'); g.drawImage(c, 0, 0); (window.__snaps = window.__snaps || {})[key] = g.getImageData(0, 0, t.width, t.height).data; }, key);
+    const diffFull = (p, a, b) => p.evaluate(([a, b]) => { const x = window.__snaps[a], y = window.__snaps[b]; let n = 0; for (let i = 0; i < x.length; i += 4) if (Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2]) > 40) n++; return n; }, [a, b]);
+    const diffLeader = (p, a, b) => p.evaluate(([a, b]) => { const x = window.__snaps[a], y = window.__snaps[b], W = document.getElementById('c').width, k = W / 844; let n = 0; for (let yy = Math.floor(240 * k); yy < Math.floor(340 * k); yy++) for (let xx = Math.floor(210 * k); xx < Math.floor(280 * k); xx++) { const i = (yy * W + xx) * 4; if (Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2]) > 40) n++; } return n; }, [a, b]);
+    const diffC = (x, y) => { let n = 0; for (let i = 0; i < x.length; i += 4) if (Math.abs(x[i] - y[i]) + Math.abs(x[i + 1] - y[i + 1]) + Math.abs(x[i + 2] - y[i + 2]) > 30) n++; return n; };
+    for (const [tag, vp] of [['land', LAND], ['port', PORTRAIT]]) {
+      const { page, context, errors } = await open(browser, { biome: 'prairie', moving: '0' }, vp);
+      await page.evaluate(() => window.__ww.scene.pause());
+      const setLook = (cover, outfit) => page.evaluate(([cover, outfit, comps]) => { const sc = window.__ww.scene; sc.setParty({ animal: 'oxen', companions: comps, wagon: { paint: 'classic', flag: 'red', name: 'Lucky', ...(cover ? { cover } : {}) } }); }, [cover, outfit, COMPS(outfit)]);
+      await setLook(null, null); await step(page, 20);
+      const plain = await snapC(page);
+      check((await info(page)).coverLook === null && (await info(page)).outfit === null, `${tag}: no Lab look: the game's own canvas and clothes (coverLook ${J((await info(page)).coverLook)}, outfit ${J((await info(page)).outfit)})`);
+      const seen = [];
+      for (const id of COVERS) {
+        await setLook(`ww.cover.${id}`, null); await step(page, 20);
+        const a = await snapC(page), i = await info(page);
+        seen.push(a);
+        check(i.coverLook === id && diffC(plain, a) > 8, `${tag}: cover ${id}: the scene draws it (coverLook ${i.coverLook}, ${diffC(plain, a)} sample pixels differ from the plain canvas)`);
+        if (tag === 'land') await shot(page, `v16-cover-${id}`);
+      }
+      let distinct = 0; for (let i = 0; i < seen.length; i++) for (let k = i + 1; k < seen.length; k++) if (diffC(seen[i], seen[k]) > 8) distinct++;
+      check(distinct === 21, `${tag}: the seven covers all look different from one another (${distinct} of 21 pairs)`);
+      await setLook('stripes', null); await step(page, 20);
+      check((await info(page)).coverLook === 'stripes', `${tag}: a bare id works too ('stripes')`);
+      await setLook(null, null); await step(page, 1); const plain2 = await snapC(page);
+      await setLook('ww.cover.notacover', null); await step(page, 1);
+      check((await info(page)).coverLook === null && diffC(plain2, await snapC(page)) < 6, `${tag}: an unknown id draws the game's own canvas`);
+      for (const id of OUTFITS) {
+        await setLook(null, null); await step(page, 1); await snapFull(page, 'plain');
+        await setLook(null, `ww.outfit.${id}`); await step(page, 1); await snapFull(page, 'worn');
+        const i = await info(page), d = tag === 'land' ? await diffLeader(page, 'plain', 'worn') : await diffFull(page, 'plain', 'worn');
+        check(i.outfit === id && d >= (tag === 'land' ? 15 : 60), `${tag}: outfit ${id}: the leader wears it (outfit ${J(i.outfit)}, ${d} pixels differ from the plain clothes)`);
+        if (tag === 'land') await shot(page, `v16-outfit-${id}`);
+      }
+      await setLook(null, null); await step(page, 1); await snapFull(page, 'p1');
+      await step(page, 2); await snapFull(page, 'n1');
+      const noise = await diffFull(page, 'p1', 'n1');                       // (two idle frames apart, nothing changed: the scene's own motion)
+      await setLook(null, 'ww.outfit.cloak'); await step(page, 1);
+      await setLook(null, null); await step(page, 1); await snapFull(page, 'p2');
+      const back = await diffFull(page, 'n1', 'p2');
+      check((await info(page)).outfit === null && back <= noise + 60, `${tag}: no outfit: the leader's own clothes again (${back} pixels differ from before; the scene's own motion alone: ${noise})`);
+      // only the leader (the first companion) wears an outfit
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setParty({ animal: 'oxen', companions: [{ id: 'a', hat: 'wide', color: '#d9534f' }, { id: 'b', hat: 'cap', color: '#5b8c5a', outfit: 'ww.outfit.cloak' }, { id: 'c', hat: 'kerchief', color: '#f0a500', outfit: 'ww.outfit.vest' }], wagon: { paint: 'classic' } }); });
+      await step(page, 12);
+      check((await info(page)).outfit === null, `${tag}: only the first companion, the leader, takes an outfit (the others' are ignored)`);
+      // Trail Cheer: the party cheers about 1.2 s
+      await page.evaluate(() => { const sc = window.__ww.scene; sc.setParty({ animal: 'oxen', companions: [{ id: 'a', hat: 'wide', color: '#d9534f' }, { id: 'b', hat: 'cap', color: '#5b8c5a' }, { id: 'c', hat: 'kerchief', color: '#f0a500' }], wagon: { paint: 'classic' } }); });
+      await step(page, 10);
+      const c0 = await info(page), cheerFn = await page.evaluate(() => typeof window.__ww.scene.cheer);
+      await page.evaluate(() => window.__ww.scene.cheer());
+      const c1 = await info(page);
+      await step(page, 20); const during = await snapC(page);
+      check(cheerFn === 'function' && c1.cheers === (c0.cheers | 0) + 1 && c1.cheerT > 1.0 && c1.cheerT <= 1.21, `${tag}: scene.cheer() starts the cheer (cheerT ${c1.cheerT.toFixed(2)} s, cheers ${c1.cheers})`);
+      check(diffC(plain, during) > 4, `${tag}: the picture changes while they cheer (confetti, arms up)`);
+      await step(page, 100);
+      check((await info(page)).cheerT === 0, `${tag}: and it is over in about a second (cheerT ${(await info(page)).cheerT})`);
+      check(errors.real().length === 0, `${tag}: covers, outfits and Trail Cheer: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+    // the Lab's own previews and the results' stop card, drawn in the dev page
+    {
+      const { page, context, errors } = await open(browser, { biome: 'prairie', moving: '0' }, LAND);
+      const r = await page.evaluate(async () => {
+        const m = await import('/wagon-west/src/meta/labLooks.js');
+        const b = await import('/wagon-west/src/scene/backdrops.js');
+        const legs = await import('/wagon-west/src/content/legs.js');
+        const paintOne = (id) => { const c = document.createElement('canvas'); c.width = 120; c.height = 80; const g = c.getContext('2d'); g.fillStyle = '#cfe3ee'; g.fillRect(0, 0, 120, 80); const ok = m.paintPreview(g, { id }, 120, 80); const d = g.getImageData(0, 0, 120, 80).data; const seen = new Set(); for (let i = 0; i < d.length; i += 4 * 7) seen.add(`${d[i] >> 5},${d[i + 1] >> 5},${d[i + 2] >> 5}`); return { ok, colours: seen.size }; };
+        const ready = m.LOOKS_READY.slice();
+        const previews = ready.map((id) => ({ id, ...paintOne(id) }));
+        const other = paintOne('ww.paint.red'), none = paintOne('sj.skin.mint');
+        const cards = legs.ALL_LEGS.map((leg) => { const c = document.createElement('canvas'); c.width = 176; c.height = 108; const g = c.getContext('2d'); const id = b.drawStopCard(g, 176, 108, leg); const d = g.getImageData(0, 0, 176, 108).data; const seen = new Set(); for (let i = 0; i < d.length; i += 4 * 11) seen.add(`${d[i] >> 5},${d[i + 1] >> 5},${d[i + 2] >> 5}`); let blank = true; for (let i = 3; i < d.length; i += 4) if (d[i] < 255) { blank = true; break; } else blank = false; return { leg: leg.id, id, colours: seen.size, opaque: !blank }; });
+        return { ready, previews, other, none, cards, n: legs.ALL_LEGS.length };
+      });
+      check(r.ready.length === 14 && r.ready.every((id) => /^ww\.(cover|outfit)\./.test(id)) && r.ready.filter((id) => id.startsWith('ww.cover.')).length === 7, `labLooks.js lists the 14 Wagon West items the Lab may show (${r.ready.length})`);
+      check(r.previews.every((p) => p.ok && p.colours >= 6), `paintPreview draws every one of them (${r.previews.map((p) => p.id.split('.').pop() + ':' + p.colours).join(' ')})`);
+      check(!r.other.ok && !r.none.ok, 'and nothing else (an item the game does not own is left to the Lab\'s swatch)');
+      check(r.cards.length === r.n && r.cards.every((c) => c.colours >= 5 && c.opaque), `the stop card paints every one of the ${r.n} legs of every route (the fewest colours ${Math.min(...r.cards.map((c) => c.colours))})`);
+      check(errors.real().length === 0, `previews and stop cards: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+    // the MOCK scene keeps the cover and the outfit and cheers
+    {
+      const { page, context, errors } = await open(browser, { mock: '1' }, LAND);
+      const m = await page.evaluate(() => { const sc = window.__ww.scene; sc.setParty({ animal: 'oxen', companions: [{ id: 'a', hat: 'wide', color: '#d9534f', outfit: 'ww.outfit.vest' }], wagon: { cover: 'ww.cover.stripes' } }); const a = sc.getState(); sc.cheer(); return { cover: a.cover, outfit: a.outfit, cheers: sc.getState().cheers, hasCheer: typeof sc.cheer }; });
+      check(m.cover === 'ww.cover.stripes' && m.outfit === 'ww.outfit.vest' && m.cheers === 1 && m.hasCheer === 'function', `mock: the cover and the leader's outfit are kept and cheer() runs (${J(m)})`);
+      check(errors.real().length === 0, `mock scene (v1.6): no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+  }
+
   // ---- 8. perf: real frames at 4x CPU throttle on a phone-sized canvas ----
-  if (!process.env.SKIP_PERF) {
+  if (!process.env.SKIP_PERF && !process.env.V16_ONLY) {
     const PERF_MS = Number(process.env.PERF_MS || 8);
     for (const [name, params, setup] of [
       ['stormy trail, a bison herd and confetti', { biome: 'mountains', weather: 'storm', pace: 'brisk' }, () => { const sc = window.__ww.scene; sc.spotAnimal('bison'); sc.spotAnimal('eagle'); sc.celebrate('arrived'); }],

@@ -263,6 +263,23 @@ const PAINTINGS = {
 Object.assign(PAINTINGS, PAINTINGS15);
 export const PAINTING_IDS = Object.keys(PAINTINGS);
 
+/** A small painting of a stop for the results' cliffhanger (v1.6, "Next time: …"): the sky and ground of the leg's biome, far hills, and the stop's painting (paintingFor(leg)) at the
+ *  size of the card (w x h css px). Painted once into a canvas the app owns; no animation, nothing stored. */
+export function drawStopCard(c, w, h, leg) {
+  const biome = biomeOf(leg && leg.biome), pal = BIOMES[biome];
+  const g = c.createLinearGradient(0, 0, 0, h); g.addColorStop(0, pal.sky[0]); g.addColorStop(1, pal.sky[1]); c.fillStyle = g; c.fillRect(0, 0, w, h);
+  const base = h * 0.82;
+  c.beginPath(); c.moveTo(0, base);
+  for (let x = 0; x <= w; x += 6) c.lineTo(x, base - h * 0.16 * (0.55 + 0.3 * Math.sin(x * 0.045 + 1) + 0.15 * Math.sin(x * 0.13)));
+  c.lineTo(w, base); c.closePath(); c.fillStyle = pal.far; c.fill();
+  c.fillStyle = pal.ground; c.fillRect(0, base, w, h - base);
+  c.fillStyle = pal.trail; c.fillRect(0, base + (h - base) * 0.35, w, (h - base) * 0.3);
+  const id = paintingFor(leg), draw = PAINTINGS[id] || PAINTINGS.generic;
+  const s = Math.min(w / 500, (base * 0.97) / 225);
+  try { draw(c, w * 0.5, base + 2 * s, s, pal, { cabin }); } catch (_) { /* a painting that cannot be drawn leaves the sky and the hills */ }
+  return id;
+}
+
 // ---------------------------------------------------------------- the set pieces
 // a canvas for the bbox [x0, y0, x1, y1] (css px) painted in screen coordinates
 function canvasFor(L, x0, y0, x1, y1, fn) {

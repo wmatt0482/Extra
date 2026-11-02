@@ -185,6 +185,7 @@ const W = () => ev(() => {
     popCard: !$('#cardpop').hidden ? $('#cardpop').textContent : '', popDeed: !$('#deedpop').hidden ? $('#deedpop').textContent : '',
     bait: !!$('#bait-row') && !$('#bait-row').hidden, findPop: $('#findpop') && !$('#findpop').hidden ? $('#findpop').textContent : '', campCtx: w.camp ? w.camp.context : null, dogCall: !!$('#dog-call') && !$('#dog-call').hidden,
     toasts: [...document.querySelectorAll('#toasts .toast')].map((t) => t.textContent),
+    choice: w.choicePanel && w.choicePanel.isOpen ? w.choicePanel.choice : null,
     fork: w.forkPanel && w.forkPanel.isOpen ? w.forkPanel.fork : null, dig: !!(w.diggings && w.diggings.isOpen), digBusy: !!(w.diggings && w.diggings.busy),
     digBtns: [...document.querySelectorAll('#dg-btns [data-dig]')].filter((b) => !b.disabled).map((b) => b.dataset.dig),
     farmScreen: w.screen === 'farm',
@@ -807,6 +808,13 @@ async function step(plan = {}) {
   if (s.findPop && !popsSeen.has('find:' + s.findPop)) { popsSeen.add('find:' + s.findPop); await snap('v14-find-pop-' + s.findPop.slice(0, 22), { force: true, wait: 250 }); }
   if (plan.onEach) { const r = await plan.onEach(s); if (r) return r; }
   if (s.bait) return await pickBait(s);
+  // ---- v1.6 (The Lab): a choice moment (a shortcut, a guide): the journey takes the second way on the odd journeys, the plain way on the even ones; both arrive ----
+  if (s.choice) {
+    await snap(`v16-choice-${s.choice}-${curJ}`, { wait: 500 });
+    await ev((way) => { const b = document.querySelector(`#ch-cards .fk-go[data-way="${way}"]`); (b && !b.disabled ? b : document.querySelector('#ch-cards .fk-go[data-way="a"]')).click(); }, curJ % 2 ? 'b' : 'a');
+    await page.waitForTimeout(400);
+    return 'choice';
+  }
   // ---- v1.5: the fork panel (an equal button for every way, the explainer reads them) ----
   if (s.fork) {
     await snap(`v15-fork-${s.fork}-${curJ}`, { wait: 700 });
