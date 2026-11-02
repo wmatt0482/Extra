@@ -3,6 +3,9 @@
 // with a guarded dynamic import, and until it exists (or if it throws) drawRanger() below draws a simpler Ranger:
 // sage-green body, black roll cage, orange stripe + "150", knobby tires, cargo bed, mesh door.
 // look: { paint: paint id (src/data/paints.js) | color: '#hex' (a player's color), decal: decal id }.
+// v1.9 (The Lab): playerLook(save) runs the look through an overlay the app installs (setLookOverlay, from src/meta/labLooks.js
+// applyLabLook): the equipped Lab paint, decal and rim replace the garage's own, in the garage, on the title, in a race and on the podium.
+// With no overlay (the Lab is absent) nothing changes. A paint may be an object ({ id, name, body, stripe, rainbow? }) as well as an id.
 import { PAINT_BY_ID } from '../data/paints.js';
 
 let vehicleMod = null, vehicleTried = null;
@@ -37,9 +40,9 @@ function star(ctx, x, y, r) {
 
 /** Draws the fallback Ranger with its wheels' bottom at (0, 0), facing right, `width` px wide. */
 export function drawRanger(ctx, look = {}, { width = 160, t = 0, speed = 0 } = {}) {
-  const p = PAINT_BY_ID[look.paint] || null;
+  const p = (look.paint && typeof look.paint === 'object' ? look.paint : PAINT_BY_ID[look.paint]) || null;      // v1.9: a Lab paint is an object
   const body = look.color || (p ? p.body : '#6d8a5a');
-  const trim = look.color ? shade(look.color, 0.62) : p ? p.trim : '#4f6a40';
+  const trim = look.color ? shade(look.color, 0.62) : p ? (p.trim || p.stripe || shade(p.body, 0.62)) : '#4f6a40';
   const s = width / 200;
   ctx.save();
   ctx.scale(s, s);
@@ -130,15 +133,21 @@ function boundsOf(real, look) {
 }
 /** A paint for the engine: its own id when the engine draws it, else the app's colours as an object. */
 export function enginePaint(id) {
+  if (id && typeof id === 'object') return id;
   const m = vehicleMod;
   if (m && m.PAINT_BY_ID && m.PAINT_BY_ID[id]) return id;
   const p = PAINT_BY_ID[id];
   return p ? { id: p.id, name: p.name, body: p.body, stripe: p.trim } : id;
 }
 /** The player's whole look (vehicle, paint, decal and the rider gear) from the save. */
+let overlay = null;
+/** The app installs a function (look) => look that lays the equipped Lab looks over the player's (null = none). */
+export function setLookOverlay(fn) { overlay = typeof fn === 'function' ? fn : null; }
 export function playerLook(save) {
   const eq = (save.cosmetics && save.cosmetics.equipped) || {};
-  return { vehicle: save.vehicle, paint: save.paint, decal: save.decal, helmet: eq.helmet, suit: eq.suit, flag: eq.flag && eq.flag !== 'none' ? eq.flag : null, trail: eq.trail };
+  const look = { vehicle: save.vehicle, paint: save.paint, decal: save.decal, helmet: eq.helmet, suit: eq.suit, flag: eq.flag && eq.flag !== 'none' ? eq.flag : null, trail: eq.trail };
+  if (!overlay) return look;
+  try { return overlay(look) || look; } catch (_) { return look; }
 }
 
 /** Draw the Ranger into a canvas, centered, sized to fit. opts: { t, bob, floor (ground line + shadow), dx, alpha } */
@@ -165,7 +174,7 @@ export function drawPreview(canvas, look = {}, { t = 0, bob = 0, floor = true, d
     // the engine's art: vehicle-local meters, (0, 0) = the ground under its centre; sized to the vehicle's own box
     const V = boundsOf(real, look);
     const scale = Math.min((W * 0.9) / (V.maxX - V.minX + 0.1), (H * (floor ? 0.84 : 0.94)) / (V.maxY + 0.05));
-    const paint = look.color ? { id: 'player', body: look.color, stripe: '#ff8a1f' } : enginePaint(look.paint);
+    const paint = look.color ? { id: 'player', body: look.color, stripe: '#ff8a1f' } : enginePaint(look.paint);   // (v1.9: a Lab paint is already an object)
     try {
       real.drawVehiclePreview(ctx, { ...look, paint, decal: look.decal }, { x: -((V.maxX + V.minX) / 2) * scale, y: 0, scale, t, speed: 0 });
       drawn = true;

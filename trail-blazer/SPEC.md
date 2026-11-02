@@ -758,3 +758,11 @@ longer than 2 s), `hillAuto` → no banner (the rocket just goes). Keyboard: →
 first-climb coach line is in `save.seen.hillCoach`. The pause menu's "End ride" ends the climb (as 1.7). The mock
 engine mirrors the contract (charge, gas input, auto-fire). ui-smoke: the climb needs GAS (the test holds it via
 `setInput`), a released charge waits, auto-fire with `autoSec` small via the mock's `window.__mockScript.hillAutoSec`.
+
+## v1.9 — The Lab (lab/SPEC.md §4.2)
+
+Lab integration (v1): Trail Blazer reports its events to the Lab (`src/meta/labBridge.js`, lazy and inert without `/lab/`), draws the Lab's
+paint, decal, rim and ghost looks (`src/meta/labLooks.js`), shows the Lab's XP pill in the HUD and its strip on the results, has the
+"Perfect Landing" combo moment and **Ghost Chase**, a time attack against your best ghost or a family member's (the ghost is the clock:
+no race clock, facts counter, gap chip, position badge or countdown; the race starts on the first GAS; no place is banked).
+Nothing in the economy changed; Lab coins never enter Trail Blazer's cash. Details and tests: README.md "1.9.0".

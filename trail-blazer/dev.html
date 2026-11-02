@@ -57,6 +57,9 @@
 // questions, cupMult, autoSec }); keys 1 / 2 / 0 = a quick / slow / wrong answer (hillBoost: v1.7.1 a CHARGE; → or
 // Space = GAS burns it), h restarts the climb; with auto=1 every hillHold is answered quick after 400 ms AND GAS is
 // held from the charge to the next hold), flags (5), questions (10), cupMult (1), autoSec (6; 0 = no auto-fire).
+// v1.9 (The Lab): rim (neon | gold), chase=1 (Ghost Chase: no AI riders, no countdown, the race starts on the first GAS; needs a ghost:
+// ghost=1 replays the previous run of this page, or ghostveh / ghostpaint / ghostlabel / ghostlook=(ice | flame | gold | rainbow) dress a
+// ghost made from the previous run).
 import { createGame } from './src/game/engine.js';
 import { TRAILS, TRAIL_BY_ID } from './src/data/trails.js';
 import { VEHICLE_BY_ID } from './src/data/vehicles.js';
@@ -81,13 +84,17 @@ const vehicle = VEHICLE_BY_ID[q.get('vehicle')] ? q.get('vehicle') : 'ranger150'
 const mutator = MUTATOR_BY_ID[q.get('mutator')] ? q.get('mutator') : null;
 const ghostKey = 'tb-ghost:' + trail.id + ':' + vehicle;
 let ghost = null;
-if (q.get('ghost') === '1') { try { ghost = JSON.parse(sessionStorage.getItem(ghostKey) || 'null'); } catch (_) { ghost = null; } }
+if (q.get('ghost') === '1' || q.get('chase') === '1') { try { ghost = JSON.parse(sessionStorage.getItem(ghostKey) || 'null'); } catch (_) { ghost = null; } }
+if (ghost && (q.get('ghostveh') || q.get('ghostpaint') || q.get('ghostlabel') || q.get('ghostlook'))) {
+  ghost = { trace: ghost, vehicle: q.get('ghostveh') || undefined, paint: q.get('ghostpaint') || undefined, label: q.get('ghostlabel') || undefined, look: q.get('ghostlook') || undefined };
+}
+const chase = q.get('chase') === '1' && !!trail.mx;
 const rivals = (q.get('rivals') || '').split(',').filter((id) => VEHICLE_BY_ID[id]);
 const useTurbo = q.get('turbo') === '1';
 const hillOn = q.get('hill') === '1' && race;
 const hillCfg = { flags: num('flags', 5), questions: num('questions', 10), cupMult: num('cupMult', 1), ...(q.get('autoSec') != null ? { autoSec: num('autoSec', 6) } : {}) };
 
-const tb = (window.__tb = { game: null, events: [], finished: null, restart: null, stats, trail, race, vehicle, mutator, ghost, hill: null, hillEnd: null, hillCfg });
+const tb = (window.__tb = { game: null, events: [], finished: null, restart: null, stats, trail, race, chase, vehicle, mutator, ghost, hill: null, hillEnd: null, hillCfg });
 const logLines = [];
 let timers = [];
 function onEvent(evt) {
@@ -154,9 +161,9 @@ function restart() {
   $('gateBtn').hidden = true; $('winchBtn').hidden = true;
   const riderN = num('riders', 3);
   game.start({ trail, stats, seed: q.get('seed') != null ? num('seed', trail.seed) : trail.seed, paint: q.get('paint') || undefined, decal: q.get('decal') || 'none',
-    vehicle, mutator, ghost, helmet: q.get('helmet') || undefined, suit: q.get('suit') || undefined, flag: q.get('flag') || undefined, boostTrail: q.get('trailfx') || undefined,
+    vehicle, mutator, ghost, chase, rim: q.get('rim') || undefined, helmet: q.get('helmet') || undefined, suit: q.get('suit') || undefined, flag: q.get('flag') || undefined, boostTrail: q.get('trailfx') || undefined,
     bestDistance: num('best', 0), gates: q.get('gates') != null ? num('gates', undefined) : hillOn ? 0 : undefined,
-    race: race ? { riders: rivals.length ? rivals.slice(0, riderN).map((v, i) => ({ vehicle: v, name: ['Dusty', 'Blaze', 'Nitro'][i], helmet: ['flames', 'shark', 'lightning'][i], suit: ['racer', 'neon', 'gold'][i], flag: ['skull', 'star', 'lightning'][i] })) : riderN,
+    race: race ? { riders: chase ? 0 : rivals.length ? rivals.slice(0, riderN).map((v, i) => ({ vehicle: v, name: ['Dusty', 'Blaze', 'Nitro'][i], helmet: ['flames', 'shark', 'lightning'][i], suit: ['racer', 'neon', 'gold'][i], flag: ['skull', 'star', 'lightning'][i] })) : riderN,
       skill: q.get('skill') != null ? num('skill', undefined) : undefined, skillUp: num('skillUp', 0) } : undefined });
 }
 tb.restart = restart;

@@ -5,11 +5,12 @@
 // /spell-jump/src/... and /spell-jump/vendor/... (a worker sees every request of the pages it controls, also outside
 // its /trail-blazer/ scope). Bump VERSION on every deploy: the new worker installs, takes over at once (skipWaiting +
 // clients.claim) and the page reloads itself on the next safe screen (src/meta/selfUpdate.js).
+// v1.9: the Lab (/lab/src/...) is cached when present (OPTIONAL + the modules the page loaded), so the XP pill and looks work offline after a first visit.
 // /api/... (family sync, voice prepare / status) is network only. Natural-voice clips (/api/tts/clip/<id>) are
 // content-addressed: cache-first in Spell Jump's clip cache (TTS_CACHE, shared on this origin).
 // Caches are per origin, shared with Spell Jump's worker: this worker only ever deletes its own ('trail-blazer-…').
 // If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'trail-blazer-v1.8.1';
+const VERSION = 'trail-blazer-v1.9.0';
 const PREFIX = 'trail-blazer-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -32,6 +33,7 @@ const SHELL = [
   'src/data/cosmetics.js',
   'src/data/rivals.js',
   'src/data/runway.js',
+  'src/data/ghostLooks.js',
   'src/meta/save.js',
   'src/meta/economy.js',
   'src/meta/selfUpdate.js',
@@ -39,6 +41,9 @@ const SHELL = [
   'src/meta/crates.js',
   'src/meta/season.js',
   'src/meta/sync.js',
+  'src/meta/labBridge.js',
+  'src/meta/labLooks.js',
+  'src/meta/ghosts.js',
   'src/ui/tbIcons.js',
   'src/ui/keyboard.js',
   'src/ui/players.js',
@@ -66,10 +71,12 @@ const SHELL = [
   'src/ui/items.js',
   'src/ui/crate.js',
   'src/ui/wall.js',
+  'src/ui/chasePicker.js',
 ];
 // The engine (built separately, may be split differently) and the shared Spell Jump modules (+ their imports):
 // cached when present; the page also posts every module it actually loaded (see 'cache-urls' below).
 const OPTIONAL = [
+  '../lab/src/index.js',          // v1.9: The Lab (src/meta/labBridge.js loads it lazily; the page also posts every Lab module it loaded)
   'src/data/trails.js',
   'src/data/vehicles.js',
   'src/data/mutators.js',

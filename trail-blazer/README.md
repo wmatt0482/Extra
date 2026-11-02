@@ -134,12 +134,46 @@ Tests:
 node trail-blazer/tools/facts-tests.mjs    # facts, parser, hints, scheduler, store, placement, auto mode, scouts, governor, patterns (81 checks)
 node trail-blazer/tools/ui-smoke.mjs       # Playwright, both orientations, on the mock engine (serves the repo root itself;
                                            # ONLY=landscape|portrait runs one, SHOTS_DIR=… keeps the screenshots)
-node trail-blazer/tools/engine-smoke.mjs   # the engine (engine-owned)
+node trail-blazer/tools/engine-smoke.mjs   # the engine (engine-owned; ONLY=v19 runs the Ghost Chase part)
+node trail-blazer/tools/lab-tests.mjs      # the Lab integration, no browser: economy snapshot, looks, ghosts
+node trail-blazer/tools/lab-checks.mjs     # the Lab integration in the browser (ui-smoke runs it too)
 node trail-blazer/tools/make-icons.mjs     # regenerates icons/*.png
 ```
 
 `bash build.sh` at the repo root copies `trail-blazer/` to `dist/trail-blazer/` (without `tools/`, `docs/`,
 `dev.html`, `SPEC.md`), next to `dist/spell-jump/`.
+
+## 1.9.0 (The Lab)
+
+Trail Blazer joins **The Lab**, the meta-game across the five games (`lab/SPEC.md`; this game is §4.2). The Lab is optional and
+lazy: `src/meta/labBridge.js` imports `/lab/src/index.js` on demand, and with `/lab/` missing, blocked or offline the game boots and
+plays exactly as before (no Lab button, no pill, no strip; tested with every `/lab/` request blocked).
+
+- **Reports** (once each, never per frame): `fact` (gates and the Hill Climb; `firstTry` = the answer was right on the first try),
+  `race` (finished or ended), `win` (1st; never in a chase), `perfect` (the engine's perfect landing), `ghostBeat`, `summit`, `star`
+  (one per new star), `day` (the finished race that counts the streak day). Lab coins and XP never touch Trail Blazer's cash or
+  save; nothing in the economy changed (`tools/lab-tests.mjs` compares every exported constant and the economy functions' results
+  with a snapshot taken before this version).
+- **Showing it**: the XP pill in the HUD (`#hud-lab`, right of the speed readout), the Lab strip on the results (`#res-lab`), "The Lab"
+  on the title, a "The Lab" row in Parents → Options (the Grown-ups panel, already unlocked). The combo moment is **Perfect Landing**
+  (the fifth first-try fact of a round): a banner with rings, the cheer and the voice line.
+- **Lab looks** (`src/meta/labLooks.js`, 16 items): paint (6), decal (4), rim (2) and ghost look (4). They are laid over the child's
+  own look by `vehiclePreview.js playerLook` (the garage, the title, the race and the podium), so the garage's own paint and decal stay
+  what the child chose; the garage says "Lab looks on: Ocean paint, Neon rims". Engine additions: `RIMS` and the `rim` look field,
+  the `bolt` and `edge` (checker edge) decals, and ghost looks (`src/data/ghostLooks.js`).
+- **Ghost Chase** (`src/meta/ghosts.js`, `src/ui/chasePicker.js`, engine `chase`): an open trail with a ghost gets a "Chase a ghost"
+  button; the picker offers "My best" and each family member's ghost (read from their save, which the family sync already mirrors;
+  nothing new is synced and nothing is written). A solo time attack: the vehicle waits on the line and the race and the ghost start on
+  the first GAS; **no race clock, facts counter, gap chip, position badge or countdown** (the ghost is the clock). The Math Gates
+  freeze the ghost too. A chase banks the ride's cash, best time, ghost and the gate / stunt stars, but no place: no win, podium,
+  best place, unlock, rival move or place bonus. The results say "You beat Ben's ghost by 1.3 s!" / "Ben's ghost was 1.3 s ahead.
+  Nice chase!".
+- **Voice**: the moment, the chase intro and result lines, and the Lab's fixed lines are said through the existing voice and prepared
+  with the natural voice's clips (`labVoiceTexts`).
+- Tests: `tools/lab-tests.mjs` (node: economy snapshot, looks, ghosts), `tools/lab-checks.mjs` (browser, called by `ui-smoke.mjs`:
+  the bridge with `/lab/` blocked, reports reaching the Lab, the pill and strip, the moment, the looks, Ghost Chase with its picker),
+  Part 5 of `tools/engine-smoke.mjs` (the chase on the real engine), and a Ghost Chase section in `tools/sync-smoke.mjs` (a sibling's
+  ghost arrives with the family sync). VERSION 1.9.0; the service worker is `trail-blazer-v1.9.0`.
 
 ## 1.8.1 (a wrong-product report)
 
@@ -255,7 +289,12 @@ trail-blazer/
   src/ui/pitCheck.js      the Pit Crew Check card before a race, the check run in the gate panel, the Start line screen
   src/ui/parentZone.js    Parent Zone (PIN, Family code, Facts this week, Options, Report, Players)
   src/ui/vehiclePreview.js  vehicle previews with the rider's gear (the engine's art, with a built-in Ranger fallback)
-  src/ui/tbIcons.js       extra icons (tire, trail) on top of Spell Jump's set
+  src/ui/tbIcons.js       extra icons (tire, trail, flask, ghost) on top of Spell Jump's set
+  src/meta/labBridge.js   the one file that knows the Lab: lazy import, queued calls, inert when /lab/ is missing (v1.9)
+  src/meta/labLooks.js    the 16 Lab items Trail Blazer draws (paint, decal, rim, ghost look) and their shop previews (v1.9)
+  src/meta/ghosts.js      Ghost Chase's ghosts: your best and a family member's (read-only), the result lines (v1.9)
+  src/data/ghostLooks.js  how a ghost rider is dressed (outline, opacity, trail) (v1.9)
+  src/ui/chasePicker.js   the "Chase a ghost" picker (v1.9)
   tools/ui-smoke.mjs      UI smoke test; tools/facts-tests.mjs math-layer tests; tools/make-icons.mjs icon renderer
   tools/economy-sim.mjs   the economy simulator (the runway table above)
   tools/sync-smoke.mjs    family sync end to end (two devices, one server, Spell Jump on the same code)

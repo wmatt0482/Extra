@@ -536,6 +536,9 @@ export function createParentZone(app) {
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with Spell Jump')),
         h('button', { class: 'btn btn-sm', id: 'opt-pin', onclick: () => { pinMode = 'reset'; pinEntry = ''; view = 'pin'; render(); } }, 'Change PIN')),
+      // v1.9: The Lab's Grown-ups panel (crate odds, the quest / board / goal switches, reset): the PIN was just entered, so it opens unlocked
+      ...(app.lab && app.lab.ready ? [h('div', { class: 'row', id: 'pz-lab-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'The Lab'), h('div', { class: 'sub' }, 'Crate odds, quests, the family board and goal, reset a child\'s Lab')),
+        h('button', { class: 'btn btn-sm', id: 'opt-lab', 'data-sfx': '', onclick: () => app.openLabParent() }, 'Open'))] : []),
       h('div', { class: 'ver' }, `Trail Blazer ${app.version}${app.engineName ? ' · ' + app.engineName : ''}`),
     ];
   }
@@ -561,7 +564,7 @@ export function createParentZone(app) {
         h('div', { class: 'pz-rename' }, input, save),
         ...confirmRow('Reset facts data', `Every fact back to New for ${p.name} (this week's set, the options and the level stay).`, 'Reset',
           `Reset ${p.name}'s math facts progress?`, 'Reset facts', () => { app.resetFactsFor(p.id); app.toast('Facts data reset'); render(); }, `pz-reset-facts-${p.id}`),
-        ...confirmRow('Reset Trail Blazer progress', `Cash, vehicles, upgrades, medals, cups and gear back to the start for ${p.name} on this device. Spell Jump is not touched.`, 'Reset',
+        ...confirmRow('Reset Trail Blazer progress', `Cash, vehicles, upgrades, medals, cups and gear back to the start for ${p.name} on this device. Spell Jump and the Lab are not touched (the Lab has its own reset in its Grown-ups panel).`, 'Reset',
           `Reset ${p.name}'s Trail Blazer progress?`, 'Reset', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-${p.id}`),
         ...confirmRow('Remove player', `Removes ${p.name} from the family in every game, on every device, with all of ${p.name}'s data.`, 'Remove',
           `Remove ${p.name} for good, in Trail Blazer and Spell Jump?`, 'Remove', () => { app.removePlayer(p.id); render(); }, `pz-remove-${p.id}`));

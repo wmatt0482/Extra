@@ -1,0 +1,5721 @@
+{
+ "constants": {
+  "src/data/runway.js": {
+   "CUP_MULT": {
+    "rookie": 1,
+    "pro": 2,
+    "legend": 4,
+    "champion": 7,
+    "masters": 10
+   },
+   "DAILY_MULT": 2,
+   "STARS_TO_OPEN": {
+    "pro": 12,
+    "legend": 30,
+    "champion": 50,
+    "masters": 70
+   },
+   "TIER_MUL": [
+    1,
+    1.6,
+    2.5,
+    4,
+    7,
+    12,
+    20,
+    35
+   ],
+   "WEEKEND_BONUS": {
+    "gold": 2000,
+    "silver": 1000,
+    "bronze": 500
+   }
+  },
+  "src/data/upgrades.js": {
+   "COST_BASE": 300,
+   "COST_MUL": 1.45,
+   "MAX_LEVEL": 10,
+   "UPGRADES": [
+    {
+     "id": "engine",
+     "name": "Engine",
+     "icon": "engine",
+     "blurb": "More power up the hills, higher top speed."
+    },
+    {
+     "id": "tires",
+     "name": "Tires",
+     "icon": "tire",
+     "blurb": "More grip in mud, sand and snow."
+    },
+    {
+     "id": "suspension",
+     "name": "Suspension",
+     "icon": "spring",
+     "blurb": "Soaks up bumps and hard landings."
+    },
+    {
+     "id": "boost",
+     "name": "Boost",
+     "icon": "flame",
+     "blurb": "Bigger tank, stronger thrust, more cash."
+    }
+   ],
+   "UPGRADE_BY_ID": {
+    "engine": {
+     "id": "engine",
+     "name": "Engine",
+     "icon": "engine",
+     "blurb": "More power up the hills, higher top speed."
+    },
+    "tires": {
+     "id": "tires",
+     "name": "Tires",
+     "icon": "tire",
+     "blurb": "More grip in mud, sand and snow."
+    },
+    "suspension": {
+     "id": "suspension",
+     "name": "Suspension",
+     "icon": "spring",
+     "blurb": "Soaks up bumps and hard landings."
+    },
+    "boost": {
+     "id": "boost",
+     "name": "Boost",
+     "icon": "flame",
+     "blurb": "Bigger tank, stronger thrust, more cash."
+    }
+   }
+  },
+  "src/data/cups.js": {
+   "CUPS": [
+    {
+     "id": "rookie",
+     "name": "Rookie Cup",
+     "short": "Rookie",
+     "color": "#2fd36b",
+     "trophyName": "Rookie Cup",
+     "starsToOpen": 0
+    },
+    {
+     "id": "pro",
+     "name": "Pro Cup",
+     "short": "Pro",
+     "color": "#22d3ff",
+     "trophyName": "Pro Cup",
+     "starsToOpen": 12
+    },
+    {
+     "id": "legend",
+     "name": "Legend Cup",
+     "short": "Legend",
+     "color": "#ffd23a",
+     "trophyName": "Legend Cup",
+     "starsToOpen": 30
+    },
+    {
+     "id": "champion",
+     "name": "Champion Cup",
+     "short": "Champion",
+     "color": "#ff5d5d",
+     "trophyName": "Champion Cup",
+     "starsToOpen": 50
+    },
+    {
+     "id": "masters",
+     "name": "Masters Cup",
+     "short": "Masters",
+     "color": "#c77dff",
+     "trophyName": "Masters Cup",
+     "starsToOpen": 70
+    }
+   ],
+   "CUP_BY_ID": {
+    "rookie": {
+     "id": "rookie",
+     "name": "Rookie Cup",
+     "short": "Rookie",
+     "color": "#2fd36b",
+     "trophyName": "Rookie Cup",
+     "starsToOpen": 0
+    },
+    "pro": {
+     "id": "pro",
+     "name": "Pro Cup",
+     "short": "Pro",
+     "color": "#22d3ff",
+     "trophyName": "Pro Cup",
+     "starsToOpen": 12
+    },
+    "legend": {
+     "id": "legend",
+     "name": "Legend Cup",
+     "short": "Legend",
+     "color": "#ffd23a",
+     "trophyName": "Legend Cup",
+     "starsToOpen": 30
+    },
+    "champion": {
+     "id": "champion",
+     "name": "Champion Cup",
+     "short": "Champion",
+     "color": "#ff5d5d",
+     "trophyName": "Champion Cup",
+     "starsToOpen": 50
+    },
+    "masters": {
+     "id": "masters",
+     "name": "Masters Cup",
+     "short": "Masters",
+     "color": "#c77dff",
+     "trophyName": "Masters Cup",
+     "starsToOpen": 70
+    }
+   },
+   "POINTS": [
+    10,
+    6,
+    3,
+    1
+   ],
+   "TROPHIES": [
+    "gold",
+    "silver",
+    "bronze"
+   ],
+   "WEEKEND_RACES": 3
+  },
+  "src/data/vehicles.js": {
+   "DEFAULT_VEHICLE": "ranger150",
+   "SPECIALS": {
+    "none": {
+     "id": "none",
+     "name": "",
+     "blurb": ""
+    },
+    "flippy": {
+     "id": "flippy",
+     "name": "Flip Master",
+     "blurb": "Flips 25% faster and steadies itself in the air."
+    },
+    "bigair": {
+     "id": "bigair",
+     "name": "Big Air",
+     "blurb": "Floats the longest. Wheelies on gas. Tips over easier!"
+    },
+    "landsAll": {
+     "id": "landsAll",
+     "name": "Lands Anything",
+     "blurb": "Hard landings never crash."
+    },
+    "crush": {
+     "id": "crush",
+     "name": "Crusher",
+     "blurb": "Rolls over logs, rocks and cones without slowing."
+    },
+    "turbotank": {
+     "id": "turbotank",
+     "name": "Turbo Tank",
+     "blurb": "Math gates fill the boost tank twice as much."
+    },
+    "rocket": {
+     "id": "rocket",
+     "name": "Rocket",
+     "blurb": "Top speed x1.5. Whoops bounce it hard!"
+    },
+    "lunar": {
+     "id": "lunar",
+     "name": "Moon Gravity",
+     "blurb": "Low gravity everywhere and coins pay double."
+    }
+   },
+   "TIER_MUL": [
+    1,
+    1.6,
+    2.5,
+    4,
+    7,
+    12,
+    20,
+    35
+   ],
+   "VEHICLES": [
+    {
+     "id": "ranger150",
+     "name": "Ranger 150",
+     "tier": 1,
+     "price": 0,
+     "blurb": "The kid-size side-by-side that started it all.",
+     "feel": "the trusty one",
+     "hull": [
+      [
+       -1.36,
+       0.5
+      ],
+      [
+       1.3,
+       0.5
+      ],
+      [
+       1.46,
+       0.6
+      ],
+      [
+       1.44,
+       0.9
+      ],
+      [
+       1.3,
+       1.02
+      ],
+      [
+       0.6,
+       2.06
+      ],
+      [
+       -0.66,
+       2.06
+      ],
+      [
+       -1.36,
+       1.27
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -0.95,
+       "y": 0.42,
+       "r": 0.42
+      },
+      {
+       "x": 0.95,
+       "y": 0.42,
+       "r": 0.42
+      }
+     ],
+     "seat": [
+      -0.06,
+      1.1
+     ],
+     "exhaust": [
+      -1.4,
+      0.68
+     ],
+     "headlight": [
+      1.4,
+      0.84
+     ],
+     "flagPost": [
+      -0.58,
+      2
+     ],
+     "mass": 9,
+     "wheelMass": 2.6,
+     "base": {
+      "power": 1,
+      "topSpeed": 1,
+      "grip": 1,
+      "suspension": 1,
+      "boostPower": 1,
+      "boostCapacity": 1,
+      "weight": 1
+     },
+     "special": "none",
+     "specialBlurb": "",
+     "look": {
+      "paint": "sage",
+      "trim": "#ff8a1f"
+     },
+     "art": "utv"
+    },
+    {
+     "id": "quad",
+     "name": "Dune Quad",
+     "tier": 2,
+     "price": 170000,
+     "blurb": "A light four-wheeler that loves to spin.",
+     "feel": "light and flippy",
+     "hull": [
+      [
+       -1,
+       0.42
+      ],
+      [
+       1,
+       0.42
+      ],
+      [
+       1.15,
+       0.62
+      ],
+      [
+       1,
+       0.98
+      ],
+      [
+       0.35,
+       1.25
+      ],
+      [
+       -0.2,
+       1.3
+      ],
+      [
+       -0.95,
+       1.2
+      ],
+      [
+       -1.08,
+       0.9
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -0.74,
+       "y": 0.4,
+       "r": 0.4
+      },
+      {
+       "x": 0.74,
+       "y": 0.4,
+       "r": 0.4
+      }
+     ],
+     "seat": [
+      -0.2,
+      1.12
+     ],
+     "exhaust": [
+      -1.05,
+      0.62
+     ],
+     "headlight": [
+      1.08,
+      0.86
+     ],
+     "flagPost": [
+      -0.92,
+      1.18
+     ],
+     "mass": 6,
+     "wheelMass": 2,
+     "base": {
+      "power": 1.12,
+      "topSpeed": 1.06,
+      "grip": 1.12,
+      "suspension": 1.12,
+      "boostPower": 1.08,
+      "boostCapacity": 1.08,
+      "weight": 0.75
+     },
+     "special": "flippy",
+     "specialBlurb": "+25% flip rate, air control",
+     "look": {
+      "paint": "sunset",
+      "trim": "#ffd23f"
+     },
+     "art": "quad"
+    },
+    {
+     "id": "dirtbike",
+     "name": "Dirt Bike 85",
+     "tier": 3,
+     "price": 700000,
+     "blurb": "Two wheels, one rider, the biggest air in the game.",
+     "feel": "two wheels, huge air",
+     "hull": [
+      [
+       -0.78,
+       0.5
+      ],
+      [
+       0.78,
+       0.5
+      ],
+      [
+       1.02,
+       0.92
+      ],
+      [
+       0.7,
+       1.3
+      ],
+      [
+       0.1,
+       2.12
+      ],
+      [
+       -0.5,
+       2.05
+      ],
+      [
+       -0.95,
+       1.05
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -0.72,
+       "y": 0.46,
+       "r": 0.46
+      },
+      {
+       "x": 0.72,
+       "y": 0.46,
+       "r": 0.46
+      }
+     ],
+     "seat": [
+      -0.2,
+      1.2
+     ],
+     "exhaust": [
+      -0.75,
+      0.95
+     ],
+     "headlight": [
+      0.95,
+      1.2
+     ],
+     "flagPost": [
+      -0.7,
+      1.15
+     ],
+     "mass": 5,
+     "wheelMass": 1.6,
+     "base": {
+      "power": 1.254,
+      "topSpeed": 1.124,
+      "grip": 1.254,
+      "suspension": 1.254,
+      "boostPower": 1.166,
+      "boostCapacity": 1.166,
+      "weight": 0.55
+     },
+     "special": "bigair",
+     "specialBlurb": "longest air, wheelies on gas, falls easier",
+     "look": {
+      "paint": "lakeblue",
+      "trim": "#ffffff"
+     },
+     "art": "bike"
+    },
+    {
+     "id": "buggy",
+     "name": "Rock Bawler",
+     "tier": 4,
+     "price": 2400000,
+     "blurb": "A tube-frame rock buggy with suspension for days.",
+     "feel": "long-travel suspension",
+     "hull": [
+      [
+       -1.4,
+       0.55
+      ],
+      [
+       1.35,
+       0.55
+      ],
+      [
+       1.58,
+       0.8
+      ],
+      [
+       1.35,
+       1.15
+      ],
+      [
+       0.7,
+       2.15
+      ],
+      [
+       -0.7,
+       2.2
+      ],
+      [
+       -1.48,
+       1.35
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1.05,
+       "y": 0.5,
+       "r": 0.5
+      },
+      {
+       "x": 1.05,
+       "y": 0.5,
+       "r": 0.5
+      }
+     ],
+     "seat": [
+      -0.1,
+      1.15
+     ],
+     "exhaust": [
+      -1.45,
+      0.75
+     ],
+     "headlight": [
+      1.48,
+      0.98
+     ],
+     "flagPost": [
+      -0.6,
+      2.1
+     ],
+     "mass": 10,
+     "wheelMass": 3,
+     "base": {
+      "power": 1.405,
+      "topSpeed": 1.191,
+      "grip": 1.405,
+      "suspension": 1.756,
+      "boostPower": 1.26,
+      "boostCapacity": 1.26,
+      "weight": 1.15
+     },
+     "special": "landsAll",
+     "specialBlurb": "lands anything; hard landings never crash",
+     "look": {
+      "paint": "granite",
+      "trim": "#ff8a1f"
+     },
+     "art": "buggy"
+    },
+    {
+     "id": "mudtruck",
+     "name": "Mud Monster",
+     "tier": 5,
+     "price": 5500000,
+     "blurb": "Giant wheels. Everything in the way is a speed bump.",
+     "feel": "giant wheels",
+     "hull": [
+      [
+       -1.5,
+       0.95
+      ],
+      [
+       1.5,
+       0.95
+      ],
+      [
+       1.68,
+       1.2
+      ],
+      [
+       1.45,
+       1.65
+      ],
+      [
+       0.55,
+       1.8
+      ],
+      [
+       0.35,
+       2.5
+      ],
+      [
+       -0.9,
+       2.55
+      ],
+      [
+       -1.5,
+       1.75
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1.1,
+       "y": 0.72,
+       "r": 0.72
+      },
+      {
+       "x": 1.1,
+       "y": 0.72,
+       "r": 0.72
+      }
+     ],
+     "seat": [
+      -0.2,
+      1.75
+     ],
+     "exhaust": [
+      -1.5,
+      1.4
+     ],
+     "headlight": [
+      1.6,
+      1.42
+     ],
+     "flagPost": [
+      -0.85,
+      2.45
+     ],
+     "mass": 14,
+     "wheelMass": 3.6,
+     "base": {
+      "power": 1.574,
+      "topSpeed": 1.262,
+      "grip": 1.574,
+      "suspension": 1.574,
+      "boostPower": 1.36,
+      "boostCapacity": 1.36,
+      "weight": 1.6
+     },
+     "special": "crush",
+     "specialBlurb": "drives over logs, rocks and cones without slowing",
+     "look": {
+      "paint": "pine",
+      "trim": "#ffd23f"
+     },
+     "art": "truck"
+    },
+    {
+     "id": "turbo",
+     "name": "Turbo RZR-X",
+     "tier": 6,
+     "price": 15000000,
+     "blurb": "Sleek, loud, and always hungry for boost.",
+     "feel": "fast and loud",
+     "hull": [
+      [
+       -1.45,
+       0.45
+      ],
+      [
+       1.45,
+       0.45
+      ],
+      [
+       1.62,
+       0.62
+      ],
+      [
+       1.5,
+       0.98
+      ],
+      [
+       0.6,
+       2
+      ],
+      [
+       -0.72,
+       2.05
+      ],
+      [
+       -1.45,
+       1.22
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1.05,
+       "y": 0.45,
+       "r": 0.45
+      },
+      {
+       "x": 1.05,
+       "y": 0.45,
+       "r": 0.45
+      }
+     ],
+     "seat": [
+      -0.08,
+      1.05
+     ],
+     "exhaust": [
+      -1.5,
+      0.66
+     ],
+     "headlight": [
+      1.55,
+      0.82
+     ],
+     "flagPost": [
+      -0.66,
+      1.98
+     ],
+     "mass": 9,
+     "wheelMass": 2.6,
+     "base": {
+      "power": 1.762,
+      "topSpeed": 1.338,
+      "grip": 1.762,
+      "suspension": 1.762,
+      "boostPower": 1.69,
+      "boostCapacity": 1.469,
+      "weight": 1
+     },
+     "special": "turbotank",
+     "specialBlurb": "boost tank refills 2x faster from gates",
+     "look": {
+      "paint": "orange",
+      "trim": "#1f4d2e"
+     },
+     "art": "turbo"
+    },
+    {
+     "id": "rail",
+     "name": "Thunder Rail",
+     "tier": 7,
+     "price": 22000000,
+     "blurb": "A rocket on wheels. Hold on!",
+     "feel": "a rocket on wheels",
+     "hull": [
+      [
+       -1.6,
+       0.5
+      ],
+      [
+       1.85,
+       0.3
+      ],
+      [
+       2.05,
+       0.55
+      ],
+      [
+       1.35,
+       0.9
+      ],
+      [
+       0.45,
+       1.95
+      ],
+      [
+       -0.7,
+       2
+      ],
+      [
+       -1.65,
+       1.15
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1.2,
+       "y": 0.56,
+       "r": 0.56
+      },
+      {
+       "x": 1.55,
+       "y": 0.32,
+       "r": 0.32
+      }
+     ],
+     "seat": [
+      -0.15,
+      1.05
+     ],
+     "exhaust": [
+      -1.6,
+      0.9
+     ],
+     "headlight": [
+      1.95,
+      0.5
+     ],
+     "flagPost": [
+      -0.65,
+      1.95
+     ],
+     "mass": 9,
+     "wheelMass": 2.4,
+     "base": {
+      "power": 1.974,
+      "topSpeed": 2.128,
+      "grip": 1.974,
+      "suspension": 1.974,
+      "boostPower": 1.587,
+      "boostCapacity": 1.587,
+      "weight": 0.95
+     },
+     "special": "rocket",
+     "specialBlurb": "top speed x1.5; whoops bounce it hard",
+     "look": {
+      "paint": "purple",
+      "trim": "#ffd23f"
+     },
+     "art": "rail"
+    },
+    {
+     "id": "rover",
+     "name": "Moon Rover",
+     "tier": 8,
+     "price": 56000000,
+     "blurb": "Built for the Moon. Floats over everything, grips nothing.",
+     "feel": "ultra low grip, big bounce",
+     "hull": [
+      [
+       -1.4,
+       0.6
+      ],
+      [
+       1.4,
+       0.6
+      ],
+      [
+       1.55,
+       0.85
+      ],
+      [
+       1.4,
+       1.55
+      ],
+      [
+       0.95,
+       1.95
+      ],
+      [
+       -0.95,
+       2.35
+      ],
+      [
+       -1.45,
+       1.55
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1,
+       "y": 0.56,
+       "r": 0.56
+      },
+      {
+       "x": 1,
+       "y": 0.56,
+       "r": 0.56
+      }
+     ],
+     "seat": [
+      -0.1,
+      1.4
+     ],
+     "exhaust": [
+      -1.42,
+      0.95
+     ],
+     "headlight": [
+      1.5,
+      1.2
+     ],
+     "flagPost": [
+      -0.9,
+      2.3
+     ],
+     "mass": 8,
+     "wheelMass": 2.2,
+     "base": {
+      "power": 2.211,
+      "topSpeed": 1.504,
+      "grip": 1.326,
+      "suspension": 2.211,
+      "boostPower": 1.714,
+      "boostCapacity": 1.714,
+      "weight": 0.9
+     },
+     "special": "lunar",
+     "specialBlurb": "gravity 0.6 on every trail, coins x2",
+     "look": {
+      "paint": "snow",
+      "trim": "#4dd2ff"
+     },
+     "art": "rover"
+    }
+   ],
+   "VEHICLE_BY_ID": {
+    "ranger150": {
+     "id": "ranger150",
+     "name": "Ranger 150",
+     "tier": 1,
+     "price": 0,
+     "blurb": "The kid-size side-by-side that started it all.",
+     "feel": "the trusty one",
+     "hull": [
+      [
+       -1.36,
+       0.5
+      ],
+      [
+       1.3,
+       0.5
+      ],
+      [
+       1.46,
+       0.6
+      ],
+      [
+       1.44,
+       0.9
+      ],
+      [
+       1.3,
+       1.02
+      ],
+      [
+       0.6,
+       2.06
+      ],
+      [
+       -0.66,
+       2.06
+      ],
+      [
+       -1.36,
+       1.27
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -0.95,
+       "y": 0.42,
+       "r": 0.42
+      },
+      {
+       "x": 0.95,
+       "y": 0.42,
+       "r": 0.42
+      }
+     ],
+     "seat": [
+      -0.06,
+      1.1
+     ],
+     "exhaust": [
+      -1.4,
+      0.68
+     ],
+     "headlight": [
+      1.4,
+      0.84
+     ],
+     "flagPost": [
+      -0.58,
+      2
+     ],
+     "mass": 9,
+     "wheelMass": 2.6,
+     "base": {
+      "power": 1,
+      "topSpeed": 1,
+      "grip": 1,
+      "suspension": 1,
+      "boostPower": 1,
+      "boostCapacity": 1,
+      "weight": 1
+     },
+     "special": "none",
+     "specialBlurb": "",
+     "look": {
+      "paint": "sage",
+      "trim": "#ff8a1f"
+     },
+     "art": "utv"
+    },
+    "quad": {
+     "id": "quad",
+     "name": "Dune Quad",
+     "tier": 2,
+     "price": 170000,
+     "blurb": "A light four-wheeler that loves to spin.",
+     "feel": "light and flippy",
+     "hull": [
+      [
+       -1,
+       0.42
+      ],
+      [
+       1,
+       0.42
+      ],
+      [
+       1.15,
+       0.62
+      ],
+      [
+       1,
+       0.98
+      ],
+      [
+       0.35,
+       1.25
+      ],
+      [
+       -0.2,
+       1.3
+      ],
+      [
+       -0.95,
+       1.2
+      ],
+      [
+       -1.08,
+       0.9
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -0.74,
+       "y": 0.4,
+       "r": 0.4
+      },
+      {
+       "x": 0.74,
+       "y": 0.4,
+       "r": 0.4
+      }
+     ],
+     "seat": [
+      -0.2,
+      1.12
+     ],
+     "exhaust": [
+      -1.05,
+      0.62
+     ],
+     "headlight": [
+      1.08,
+      0.86
+     ],
+     "flagPost": [
+      -0.92,
+      1.18
+     ],
+     "mass": 6,
+     "wheelMass": 2,
+     "base": {
+      "power": 1.12,
+      "topSpeed": 1.06,
+      "grip": 1.12,
+      "suspension": 1.12,
+      "boostPower": 1.08,
+      "boostCapacity": 1.08,
+      "weight": 0.75
+     },
+     "special": "flippy",
+     "specialBlurb": "+25% flip rate, air control",
+     "look": {
+      "paint": "sunset",
+      "trim": "#ffd23f"
+     },
+     "art": "quad"
+    },
+    "dirtbike": {
+     "id": "dirtbike",
+     "name": "Dirt Bike 85",
+     "tier": 3,
+     "price": 700000,
+     "blurb": "Two wheels, one rider, the biggest air in the game.",
+     "feel": "two wheels, huge air",
+     "hull": [
+      [
+       -0.78,
+       0.5
+      ],
+      [
+       0.78,
+       0.5
+      ],
+      [
+       1.02,
+       0.92
+      ],
+      [
+       0.7,
+       1.3
+      ],
+      [
+       0.1,
+       2.12
+      ],
+      [
+       -0.5,
+       2.05
+      ],
+      [
+       -0.95,
+       1.05
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -0.72,
+       "y": 0.46,
+       "r": 0.46
+      },
+      {
+       "x": 0.72,
+       "y": 0.46,
+       "r": 0.46
+      }
+     ],
+     "seat": [
+      -0.2,
+      1.2
+     ],
+     "exhaust": [
+      -0.75,
+      0.95
+     ],
+     "headlight": [
+      0.95,
+      1.2
+     ],
+     "flagPost": [
+      -0.7,
+      1.15
+     ],
+     "mass": 5,
+     "wheelMass": 1.6,
+     "base": {
+      "power": 1.254,
+      "topSpeed": 1.124,
+      "grip": 1.254,
+      "suspension": 1.254,
+      "boostPower": 1.166,
+      "boostCapacity": 1.166,
+      "weight": 0.55
+     },
+     "special": "bigair",
+     "specialBlurb": "longest air, wheelies on gas, falls easier",
+     "look": {
+      "paint": "lakeblue",
+      "trim": "#ffffff"
+     },
+     "art": "bike"
+    },
+    "buggy": {
+     "id": "buggy",
+     "name": "Rock Bawler",
+     "tier": 4,
+     "price": 2400000,
+     "blurb": "A tube-frame rock buggy with suspension for days.",
+     "feel": "long-travel suspension",
+     "hull": [
+      [
+       -1.4,
+       0.55
+      ],
+      [
+       1.35,
+       0.55
+      ],
+      [
+       1.58,
+       0.8
+      ],
+      [
+       1.35,
+       1.15
+      ],
+      [
+       0.7,
+       2.15
+      ],
+      [
+       -0.7,
+       2.2
+      ],
+      [
+       -1.48,
+       1.35
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1.05,
+       "y": 0.5,
+       "r": 0.5
+      },
+      {
+       "x": 1.05,
+       "y": 0.5,
+       "r": 0.5
+      }
+     ],
+     "seat": [
+      -0.1,
+      1.15
+     ],
+     "exhaust": [
+      -1.45,
+      0.75
+     ],
+     "headlight": [
+      1.48,
+      0.98
+     ],
+     "flagPost": [
+      -0.6,
+      2.1
+     ],
+     "mass": 10,
+     "wheelMass": 3,
+     "base": {
+      "power": 1.405,
+      "topSpeed": 1.191,
+      "grip": 1.405,
+      "suspension": 1.756,
+      "boostPower": 1.26,
+      "boostCapacity": 1.26,
+      "weight": 1.15
+     },
+     "special": "landsAll",
+     "specialBlurb": "lands anything; hard landings never crash",
+     "look": {
+      "paint": "granite",
+      "trim": "#ff8a1f"
+     },
+     "art": "buggy"
+    },
+    "mudtruck": {
+     "id": "mudtruck",
+     "name": "Mud Monster",
+     "tier": 5,
+     "price": 5500000,
+     "blurb": "Giant wheels. Everything in the way is a speed bump.",
+     "feel": "giant wheels",
+     "hull": [
+      [
+       -1.5,
+       0.95
+      ],
+      [
+       1.5,
+       0.95
+      ],
+      [
+       1.68,
+       1.2
+      ],
+      [
+       1.45,
+       1.65
+      ],
+      [
+       0.55,
+       1.8
+      ],
+      [
+       0.35,
+       2.5
+      ],
+      [
+       -0.9,
+       2.55
+      ],
+      [
+       -1.5,
+       1.75
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1.1,
+       "y": 0.72,
+       "r": 0.72
+      },
+      {
+       "x": 1.1,
+       "y": 0.72,
+       "r": 0.72
+      }
+     ],
+     "seat": [
+      -0.2,
+      1.75
+     ],
+     "exhaust": [
+      -1.5,
+      1.4
+     ],
+     "headlight": [
+      1.6,
+      1.42
+     ],
+     "flagPost": [
+      -0.85,
+      2.45
+     ],
+     "mass": 14,
+     "wheelMass": 3.6,
+     "base": {
+      "power": 1.574,
+      "topSpeed": 1.262,
+      "grip": 1.574,
+      "suspension": 1.574,
+      "boostPower": 1.36,
+      "boostCapacity": 1.36,
+      "weight": 1.6
+     },
+     "special": "crush",
+     "specialBlurb": "drives over logs, rocks and cones without slowing",
+     "look": {
+      "paint": "pine",
+      "trim": "#ffd23f"
+     },
+     "art": "truck"
+    },
+    "turbo": {
+     "id": "turbo",
+     "name": "Turbo RZR-X",
+     "tier": 6,
+     "price": 15000000,
+     "blurb": "Sleek, loud, and always hungry for boost.",
+     "feel": "fast and loud",
+     "hull": [
+      [
+       -1.45,
+       0.45
+      ],
+      [
+       1.45,
+       0.45
+      ],
+      [
+       1.62,
+       0.62
+      ],
+      [
+       1.5,
+       0.98
+      ],
+      [
+       0.6,
+       2
+      ],
+      [
+       -0.72,
+       2.05
+      ],
+      [
+       -1.45,
+       1.22
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1.05,
+       "y": 0.45,
+       "r": 0.45
+      },
+      {
+       "x": 1.05,
+       "y": 0.45,
+       "r": 0.45
+      }
+     ],
+     "seat": [
+      -0.08,
+      1.05
+     ],
+     "exhaust": [
+      -1.5,
+      0.66
+     ],
+     "headlight": [
+      1.55,
+      0.82
+     ],
+     "flagPost": [
+      -0.66,
+      1.98
+     ],
+     "mass": 9,
+     "wheelMass": 2.6,
+     "base": {
+      "power": 1.762,
+      "topSpeed": 1.338,
+      "grip": 1.762,
+      "suspension": 1.762,
+      "boostPower": 1.69,
+      "boostCapacity": 1.469,
+      "weight": 1
+     },
+     "special": "turbotank",
+     "specialBlurb": "boost tank refills 2x faster from gates",
+     "look": {
+      "paint": "orange",
+      "trim": "#1f4d2e"
+     },
+     "art": "turbo"
+    },
+    "rail": {
+     "id": "rail",
+     "name": "Thunder Rail",
+     "tier": 7,
+     "price": 22000000,
+     "blurb": "A rocket on wheels. Hold on!",
+     "feel": "a rocket on wheels",
+     "hull": [
+      [
+       -1.6,
+       0.5
+      ],
+      [
+       1.85,
+       0.3
+      ],
+      [
+       2.05,
+       0.55
+      ],
+      [
+       1.35,
+       0.9
+      ],
+      [
+       0.45,
+       1.95
+      ],
+      [
+       -0.7,
+       2
+      ],
+      [
+       -1.65,
+       1.15
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1.2,
+       "y": 0.56,
+       "r": 0.56
+      },
+      {
+       "x": 1.55,
+       "y": 0.32,
+       "r": 0.32
+      }
+     ],
+     "seat": [
+      -0.15,
+      1.05
+     ],
+     "exhaust": [
+      -1.6,
+      0.9
+     ],
+     "headlight": [
+      1.95,
+      0.5
+     ],
+     "flagPost": [
+      -0.65,
+      1.95
+     ],
+     "mass": 9,
+     "wheelMass": 2.4,
+     "base": {
+      "power": 1.974,
+      "topSpeed": 2.128,
+      "grip": 1.974,
+      "suspension": 1.974,
+      "boostPower": 1.587,
+      "boostCapacity": 1.587,
+      "weight": 0.95
+     },
+     "special": "rocket",
+     "specialBlurb": "top speed x1.5; whoops bounce it hard",
+     "look": {
+      "paint": "purple",
+      "trim": "#ffd23f"
+     },
+     "art": "rail"
+    },
+    "rover": {
+     "id": "rover",
+     "name": "Moon Rover",
+     "tier": 8,
+     "price": 56000000,
+     "blurb": "Built for the Moon. Floats over everything, grips nothing.",
+     "feel": "ultra low grip, big bounce",
+     "hull": [
+      [
+       -1.4,
+       0.6
+      ],
+      [
+       1.4,
+       0.6
+      ],
+      [
+       1.55,
+       0.85
+      ],
+      [
+       1.4,
+       1.55
+      ],
+      [
+       0.95,
+       1.95
+      ],
+      [
+       -0.95,
+       2.35
+      ],
+      [
+       -1.45,
+       1.55
+      ]
+     ],
+     "wheels": [
+      {
+       "x": -1,
+       "y": 0.56,
+       "r": 0.56
+      },
+      {
+       "x": 1,
+       "y": 0.56,
+       "r": 0.56
+      }
+     ],
+     "seat": [
+      -0.1,
+      1.4
+     ],
+     "exhaust": [
+      -1.42,
+      0.95
+     ],
+     "headlight": [
+      1.5,
+      1.2
+     ],
+     "flagPost": [
+      -0.9,
+      2.3
+     ],
+     "mass": 8,
+     "wheelMass": 2.2,
+     "base": {
+      "power": 2.211,
+      "topSpeed": 1.504,
+      "grip": 1.326,
+      "suspension": 2.211,
+      "boostPower": 1.714,
+      "boostCapacity": 1.714,
+      "weight": 0.9
+     },
+     "special": "lunar",
+     "specialBlurb": "gravity 0.6 on every trail, coins x2",
+     "look": {
+      "paint": "snow",
+      "trim": "#4dd2ff"
+     },
+     "art": "rover"
+    }
+   }
+  },
+  "src/data/mutators.js": {
+   "MUTATORS": [
+    {
+     "id": "moonboots",
+     "name": "Moon Boots",
+     "blurb": "Half gravity: every jump floats for ages.",
+     "icon": "moon",
+     "params": {
+      "gravity": 0.5
+     }
+    },
+    {
+     "id": "megaboost",
+     "name": "Mega Boost",
+     "blurb": "A boost tank three times the size.",
+     "icon": "flame",
+     "params": {
+      "tankMul": 3
+     }
+    },
+    {
+     "id": "fog",
+     "name": "Fog",
+     "blurb": "Thick fog hides the trail ahead. Trust the jumps!",
+     "icon": "cloud",
+     "params": {
+      "fog": 1
+     }
+    },
+    {
+     "id": "giantwheels",
+     "name": "Giant Wheels",
+     "blurb": "Huge wheels that crush everything in the way.",
+     "icon": "tire",
+     "params": {
+      "wheelMul": 1.6,
+      "crush": true
+     }
+    },
+    {
+     "id": "tailwind",
+     "name": "Tailwind",
+     "blurb": "The wind is behind you: 20% more top speed.",
+     "icon": "wind",
+     "params": {
+      "topSpeedMul": 1.2
+     }
+    },
+    {
+     "id": "mirror",
+     "name": "Mirror",
+     "blurb": "The whole trail backwards: the finish comes first!",
+     "icon": "mirror",
+     "params": {
+      "mirror": true
+     }
+    },
+    {
+     "id": "rubber",
+     "name": "Rubber",
+     "blurb": "Bouncy tires: every landing springs you back up.",
+     "icon": "ball",
+     "params": {
+      "bounce": 2
+     }
+    }
+   ],
+   "MUTATOR_BY_ID": {
+    "moonboots": {
+     "id": "moonboots",
+     "name": "Moon Boots",
+     "blurb": "Half gravity: every jump floats for ages.",
+     "icon": "moon",
+     "params": {
+      "gravity": 0.5
+     }
+    },
+    "megaboost": {
+     "id": "megaboost",
+     "name": "Mega Boost",
+     "blurb": "A boost tank three times the size.",
+     "icon": "flame",
+     "params": {
+      "tankMul": 3
+     }
+    },
+    "fog": {
+     "id": "fog",
+     "name": "Fog",
+     "blurb": "Thick fog hides the trail ahead. Trust the jumps!",
+     "icon": "cloud",
+     "params": {
+      "fog": 1
+     }
+    },
+    "giantwheels": {
+     "id": "giantwheels",
+     "name": "Giant Wheels",
+     "blurb": "Huge wheels that crush everything in the way.",
+     "icon": "tire",
+     "params": {
+      "wheelMul": 1.6,
+      "crush": true
+     }
+    },
+    "tailwind": {
+     "id": "tailwind",
+     "name": "Tailwind",
+     "blurb": "The wind is behind you: 20% more top speed.",
+     "icon": "wind",
+     "params": {
+      "topSpeedMul": 1.2
+     }
+    },
+    "mirror": {
+     "id": "mirror",
+     "name": "Mirror",
+     "blurb": "The whole trail backwards: the finish comes first!",
+     "icon": "mirror",
+     "params": {
+      "mirror": true
+     }
+    },
+    "rubber": {
+     "id": "rubber",
+     "name": "Rubber",
+     "blurb": "Bouncy tires: every landing springs you back up.",
+     "icon": "ball",
+     "params": {
+      "bounce": 2
+     }
+    }
+   }
+  },
+  "src/data/medals.js": {
+   "MEDALS": [
+    "gold",
+    "silver",
+    "bronze"
+   ],
+   "MEDAL_COLOR": {
+    "gold": "#ffd23a",
+    "silver": "#d4dde4",
+    "bronze": "#d9822b"
+   },
+   "MEDAL_LABEL": {
+    "gold": "Gold",
+    "silver": "Silver",
+    "bronze": "Bronze"
+   },
+   "MEDAL_RANK": {
+    "gold": 3,
+    "silver": 2,
+    "bronze": 1
+   }
+  },
+  "src/data/rivals.js": {
+   "BEATS_TO_RETIRE": 3,
+   "RIVALS": [
+    {
+     "id": "dusty",
+     "name": "Dusty",
+     "paint": "granite",
+     "helmet": "classic",
+     "suit": "rookie",
+     "taunt": "Let's see what you've got!",
+     "cheer": "Whoa, nice driving!"
+    },
+    {
+     "id": "blaze",
+     "name": "Blaze",
+     "paint": "orange",
+     "helmet": "flames",
+     "suit": "racer",
+     "taunt": "Catch me if you can!",
+     "cheer": "Nice flips!"
+    },
+    {
+     "id": "nitro",
+     "name": "Nitro",
+     "paint": "lakeblue",
+     "helmet": "lightning",
+     "suit": "neon",
+     "taunt": "I'm all boost today!",
+     "cheer": "That boost was huge!"
+    },
+    {
+     "id": "zed",
+     "name": "Zed",
+     "paint": "black",
+     "helmet": "skull",
+     "suit": "camo",
+     "taunt": "Night rider, coming through!",
+     "cheer": "You're quick!"
+    },
+    {
+     "id": "ace",
+     "name": "Ace",
+     "paint": "gold",
+     "helmet": "stripe",
+     "suit": "checker",
+     "taunt": "Ace is in the race!",
+     "cheer": "Great race, champ!"
+    },
+    {
+     "id": "vex",
+     "name": "Vex",
+     "paint": "purple",
+     "helmet": "galaxy",
+     "suit": "galaxy",
+     "taunt": "Ready for a real race?",
+     "cheer": "Okay, that was awesome."
+    },
+    {
+     "id": "storm",
+     "name": "Storm",
+     "paint": "sky",
+     "helmet": "shark",
+     "suit": "stars",
+     "taunt": "Here comes the storm!",
+     "cheer": "You rode that like thunder!"
+    },
+    {
+     "id": "nova",
+     "name": "Nova",
+     "paint": "snow",
+     "helmet": "astronaut",
+     "suit": "gold",
+     "taunt": "To the stars and past you!",
+     "cheer": "Out of this world!"
+    }
+   ],
+   "RIVAL_BY_ID": {
+    "dusty": {
+     "id": "dusty",
+     "name": "Dusty",
+     "paint": "granite",
+     "helmet": "classic",
+     "suit": "rookie",
+     "taunt": "Let's see what you've got!",
+     "cheer": "Whoa, nice driving!"
+    },
+    "blaze": {
+     "id": "blaze",
+     "name": "Blaze",
+     "paint": "orange",
+     "helmet": "flames",
+     "suit": "racer",
+     "taunt": "Catch me if you can!",
+     "cheer": "Nice flips!"
+    },
+    "nitro": {
+     "id": "nitro",
+     "name": "Nitro",
+     "paint": "lakeblue",
+     "helmet": "lightning",
+     "suit": "neon",
+     "taunt": "I'm all boost today!",
+     "cheer": "That boost was huge!"
+    },
+    "zed": {
+     "id": "zed",
+     "name": "Zed",
+     "paint": "black",
+     "helmet": "skull",
+     "suit": "camo",
+     "taunt": "Night rider, coming through!",
+     "cheer": "You're quick!"
+    },
+    "ace": {
+     "id": "ace",
+     "name": "Ace",
+     "paint": "gold",
+     "helmet": "stripe",
+     "suit": "checker",
+     "taunt": "Ace is in the race!",
+     "cheer": "Great race, champ!"
+    },
+    "vex": {
+     "id": "vex",
+     "name": "Vex",
+     "paint": "purple",
+     "helmet": "galaxy",
+     "suit": "galaxy",
+     "taunt": "Ready for a real race?",
+     "cheer": "Okay, that was awesome."
+    },
+    "storm": {
+     "id": "storm",
+     "name": "Storm",
+     "paint": "sky",
+     "helmet": "shark",
+     "suit": "stars",
+     "taunt": "Here comes the storm!",
+     "cheer": "You rode that like thunder!"
+    },
+    "nova": {
+     "id": "nova",
+     "name": "Nova",
+     "paint": "snow",
+     "helmet": "astronaut",
+     "suit": "gold",
+     "taunt": "To the stars and past you!",
+     "cheer": "Out of this world!"
+    }
+   },
+   "TRIO": 3
+  },
+  "src/data/paints.js": {
+   "COLOR_BY_PAINT": {
+    "sage": "#7c9a63",
+    "orange": "#ff8a1f",
+    "granite": "#8f949c",
+    "lakeblue": "#2f8bd6",
+    "snow": "#f1f4f8",
+    "sunset": "#e2453a",
+    "black": "#2b2d33",
+    "pine": "#24583a",
+    "sky": "#66c9ff",
+    "gold": "#f2c230",
+    "purple": "#8a56d6",
+    "rainbow": "#ff5d5d",
+    "lime": "#9be03a",
+    "teal": "#1fb5a8",
+    "magenta": "#e0389b",
+    "copper": "#c8763c",
+    "streak": "#ff4d2e",
+    "chrome": "#c9d3dc",
+    "neon": "#1a1a2e",
+    "candy": "#ff7ad1",
+    "aurora": "#3ddc84",
+    "moon": "#c9ccd8",
+    "midnight": "#141a3a"
+   },
+   "DECALS": [
+    {
+     "id": "none",
+     "name": "No decal",
+     "unlock": null
+    },
+    {
+     "id": "mud",
+     "name": "Mud Splats",
+     "unlock": {
+      "distance": 250
+     }
+    },
+    {
+     "id": "flames",
+     "name": "Flames",
+     "unlock": {
+      "flips": 10
+     }
+    },
+    {
+     "id": "stars",
+     "name": "Stars",
+     "unlock": {
+      "flips": 50
+     }
+    },
+    {
+     "id": "checkers",
+     "name": "Checkers",
+     "unlock": {
+      "wins": 1
+     }
+    }
+   ],
+   "DECAL_BY_ID": {
+    "none": {
+     "id": "none",
+     "name": "No decal",
+     "unlock": null
+    },
+    "mud": {
+     "id": "mud",
+     "name": "Mud Splats",
+     "unlock": {
+      "distance": 250
+     }
+    },
+    "flames": {
+     "id": "flames",
+     "name": "Flames",
+     "unlock": {
+      "flips": 10
+     }
+    },
+    "stars": {
+     "id": "stars",
+     "name": "Stars",
+     "unlock": {
+      "flips": 50
+     }
+    },
+    "checkers": {
+     "id": "checkers",
+     "name": "Checkers",
+     "unlock": {
+      "wins": 1
+     }
+    }
+   },
+   "PAINTS": [
+    {
+     "id": "sage",
+     "name": "Sage Green",
+     "body": "#7c9a63",
+     "trim": "#4f6a40",
+     "unlock": null
+    },
+    {
+     "id": "orange",
+     "name": "Blaze Orange",
+     "body": "#ff8a1f",
+     "trim": "#b35400",
+     "unlock": {
+      "finish": "forest"
+     }
+    },
+    {
+     "id": "granite",
+     "name": "Granite Gray",
+     "body": "#8f949c",
+     "trim": "#5c6268",
+     "unlock": {
+      "finish": "granite"
+     }
+    },
+    {
+     "id": "lakeblue",
+     "name": "Lake Blue",
+     "body": "#2f8bd6",
+     "trim": "#1c4f86",
+     "unlock": {
+      "finish": "lake"
+     }
+    },
+    {
+     "id": "snow",
+     "name": "Snow White",
+     "body": "#f1f4f8",
+     "trim": "#b9c6cf",
+     "unlock": {
+      "finish": "snow"
+     }
+    },
+    {
+     "id": "sunset",
+     "name": "Sunset Red",
+     "body": "#e2453a",
+     "trim": "#9c2620",
+     "unlock": {
+      "finish": "desert"
+     }
+    },
+    {
+     "id": "black",
+     "name": "Black",
+     "body": "#2b2d33",
+     "trim": "#0d0f11",
+     "unlock": {
+      "finish": "night"
+     }
+    },
+    {
+     "id": "pine",
+     "name": "Pine",
+     "body": "#24583a",
+     "trim": "#123220",
+     "unlock": {
+      "medal": "bronze",
+      "count": 1
+     }
+    },
+    {
+     "id": "sky",
+     "name": "Sky",
+     "body": "#66c9ff",
+     "trim": "#2f8bd6",
+     "unlock": {
+      "medal": "silver",
+      "count": 1
+     }
+    },
+    {
+     "id": "gold",
+     "name": "Gold",
+     "body": "#f2c230",
+     "trim": "#a8820f",
+     "unlock": {
+      "medal": "gold",
+      "count": 1
+     }
+    },
+    {
+     "id": "purple",
+     "name": "Purple",
+     "body": "#8a56d6",
+     "trim": "#55309a",
+     "unlock": {
+      "medal": "gold",
+      "count": 3
+     }
+    },
+    {
+     "id": "rainbow",
+     "name": "Rainbow",
+     "body": "#ff5d5d",
+     "trim": "#8f6bff",
+     "unlock": {
+      "medal": "gold",
+      "count": "all"
+     },
+     "swatch": "linear-gradient(135deg, #ff5d5d, #ff9f1a, #ffe14a, #3ddc84, #22b8ff, #8f6bff)"
+    },
+    {
+     "id": "lime",
+     "name": "Lime",
+     "body": "#9be03a",
+     "trim": "#5d8f1c",
+     "unlock": {
+      "crate": true
+     }
+    },
+    {
+     "id": "teal",
+     "name": "Teal",
+     "body": "#1fb5a8",
+     "trim": "#0f6f67",
+     "unlock": {
+      "crate": true
+     }
+    },
+    {
+     "id": "magenta",
+     "name": "Magenta",
+     "body": "#e0389b",
+     "trim": "#8f1d61",
+     "unlock": {
+      "crate": true
+     }
+    },
+    {
+     "id": "copper",
+     "name": "Copper",
+     "body": "#c8763c",
+     "trim": "#7f4520",
+     "unlock": {
+      "crate": true
+     }
+    },
+    {
+     "id": "streak",
+     "name": "Streak",
+     "body": "#ff4d2e",
+     "trim": "#ffe14a",
+     "unlock": {
+      "streak": 14
+     },
+     "swatch": "linear-gradient(135deg, #ffd23a, #ff6a2a 55%, #c8261c)"
+    },
+    {
+     "id": "chrome",
+     "name": "Chrome",
+     "body": "#c9d3dc",
+     "trim": "#7d8b98",
+     "unlock": {
+      "set": "helmet"
+     },
+     "swatch": "linear-gradient(135deg, #f4f8fb, #9aa7b3 50%, #e6edf2)"
+    },
+    {
+     "id": "neon",
+     "name": "Neon",
+     "body": "#1a1a2e",
+     "trim": "#3cff9d",
+     "unlock": {
+      "set": "suit"
+     },
+     "swatch": "linear-gradient(135deg, #1a1a2e 0 62%, #3cff9d 62%)"
+    },
+    {
+     "id": "candy",
+     "name": "Candy",
+     "body": "#ff7ad1",
+     "trim": "#ffffff",
+     "unlock": {
+      "set": "horn"
+     },
+     "swatch": "repeating-linear-gradient(135deg, #ff7aa8 0 6px, #fff 6px 12px)"
+    },
+    {
+     "id": "aurora",
+     "name": "Aurora",
+     "body": "#3ddc84",
+     "trim": "#8f6bff",
+     "unlock": {
+      "set": "trail"
+     },
+     "swatch": "linear-gradient(135deg, #3ddc84, #22b8ff, #8f6bff)"
+    },
+    {
+     "id": "moon",
+     "name": "Moon Dust",
+     "body": "#c9ccd8",
+     "trim": "#4dd2ff",
+     "unlock": {
+      "set": "flag"
+     },
+     "swatch": "radial-gradient(circle at 70% 35%, #9da1b3 0 3px, transparent 4px), linear-gradient(135deg, #e3e5ee, #b6b9c8)"
+    },
+    {
+     "id": "midnight",
+     "name": "Midnight Stars",
+     "body": "#141a3a",
+     "trim": "#8f6bff",
+     "unlock": {
+      "set": "decal"
+     },
+     "swatch": "radial-gradient(circle at 30% 30%, #fff 0 1px, transparent 2px), #141a3a"
+    }
+   ],
+   "PAINT_BY_ID": {
+    "sage": {
+     "id": "sage",
+     "name": "Sage Green",
+     "body": "#7c9a63",
+     "trim": "#4f6a40",
+     "unlock": null
+    },
+    "orange": {
+     "id": "orange",
+     "name": "Blaze Orange",
+     "body": "#ff8a1f",
+     "trim": "#b35400",
+     "unlock": {
+      "finish": "forest"
+     }
+    },
+    "granite": {
+     "id": "granite",
+     "name": "Granite Gray",
+     "body": "#8f949c",
+     "trim": "#5c6268",
+     "unlock": {
+      "finish": "granite"
+     }
+    },
+    "lakeblue": {
+     "id": "lakeblue",
+     "name": "Lake Blue",
+     "body": "#2f8bd6",
+     "trim": "#1c4f86",
+     "unlock": {
+      "finish": "lake"
+     }
+    },
+    "snow": {
+     "id": "snow",
+     "name": "Snow White",
+     "body": "#f1f4f8",
+     "trim": "#b9c6cf",
+     "unlock": {
+      "finish": "snow"
+     }
+    },
+    "sunset": {
+     "id": "sunset",
+     "name": "Sunset Red",
+     "body": "#e2453a",
+     "trim": "#9c2620",
+     "unlock": {
+      "finish": "desert"
+     }
+    },
+    "black": {
+     "id": "black",
+     "name": "Black",
+     "body": "#2b2d33",
+     "trim": "#0d0f11",
+     "unlock": {
+      "finish": "night"
+     }
+    },
+    "pine": {
+     "id": "pine",
+     "name": "Pine",
+     "body": "#24583a",
+     "trim": "#123220",
+     "unlock": {
+      "medal": "bronze",
+      "count": 1
+     }
+    },
+    "sky": {
+     "id": "sky",
+     "name": "Sky",
+     "body": "#66c9ff",
+     "trim": "#2f8bd6",
+     "unlock": {
+      "medal": "silver",
+      "count": 1
+     }
+    },
+    "gold": {
+     "id": "gold",
+     "name": "Gold",
+     "body": "#f2c230",
+     "trim": "#a8820f",
+     "unlock": {
+      "medal": "gold",
+      "count": 1
+     }
+    },
+    "purple": {
+     "id": "purple",
+     "name": "Purple",
+     "body": "#8a56d6",
+     "trim": "#55309a",
+     "unlock": {
+      "medal": "gold",
+      "count": 3
+     }
+    },
+    "rainbow": {
+     "id": "rainbow",
+     "name": "Rainbow",
+     "body": "#ff5d5d",
+     "trim": "#8f6bff",
+     "unlock": {
+      "medal": "gold",
+      "count": "all"
+     },
+     "swatch": "linear-gradient(135deg, #ff5d5d, #ff9f1a, #ffe14a, #3ddc84, #22b8ff, #8f6bff)"
+    },
+    "lime": {
+     "id": "lime",
+     "name": "Lime",
+     "body": "#9be03a",
+     "trim": "#5d8f1c",
+     "unlock": {
+      "crate": true
+     }
+    },
+    "teal": {
+     "id": "teal",
+     "name": "Teal",
+     "body": "#1fb5a8",
+     "trim": "#0f6f67",
+     "unlock": {
+      "crate": true
+     }
+    },
+    "magenta": {
+     "id": "magenta",
+     "name": "Magenta",
+     "body": "#e0389b",
+     "trim": "#8f1d61",
+     "unlock": {
+      "crate": true
+     }
+    },
+    "copper": {
+     "id": "copper",
+     "name": "Copper",
+     "body": "#c8763c",
+     "trim": "#7f4520",
+     "unlock": {
+      "crate": true
+     }
+    },
+    "streak": {
+     "id": "streak",
+     "name": "Streak",
+     "body": "#ff4d2e",
+     "trim": "#ffe14a",
+     "unlock": {
+      "streak": 14
+     },
+     "swatch": "linear-gradient(135deg, #ffd23a, #ff6a2a 55%, #c8261c)"
+    },
+    "chrome": {
+     "id": "chrome",
+     "name": "Chrome",
+     "body": "#c9d3dc",
+     "trim": "#7d8b98",
+     "unlock": {
+      "set": "helmet"
+     },
+     "swatch": "linear-gradient(135deg, #f4f8fb, #9aa7b3 50%, #e6edf2)"
+    },
+    "neon": {
+     "id": "neon",
+     "name": "Neon",
+     "body": "#1a1a2e",
+     "trim": "#3cff9d",
+     "unlock": {
+      "set": "suit"
+     },
+     "swatch": "linear-gradient(135deg, #1a1a2e 0 62%, #3cff9d 62%)"
+    },
+    "candy": {
+     "id": "candy",
+     "name": "Candy",
+     "body": "#ff7ad1",
+     "trim": "#ffffff",
+     "unlock": {
+      "set": "horn"
+     },
+     "swatch": "repeating-linear-gradient(135deg, #ff7aa8 0 6px, #fff 6px 12px)"
+    },
+    "aurora": {
+     "id": "aurora",
+     "name": "Aurora",
+     "body": "#3ddc84",
+     "trim": "#8f6bff",
+     "unlock": {
+      "set": "trail"
+     },
+     "swatch": "linear-gradient(135deg, #3ddc84, #22b8ff, #8f6bff)"
+    },
+    "moon": {
+     "id": "moon",
+     "name": "Moon Dust",
+     "body": "#c9ccd8",
+     "trim": "#4dd2ff",
+     "unlock": {
+      "set": "flag"
+     },
+     "swatch": "radial-gradient(circle at 70% 35%, #9da1b3 0 3px, transparent 4px), linear-gradient(135deg, #e3e5ee, #b6b9c8)"
+    },
+    "midnight": {
+     "id": "midnight",
+     "name": "Midnight Stars",
+     "body": "#141a3a",
+     "trim": "#8f6bff",
+     "unlock": {
+      "set": "decal"
+     },
+     "swatch": "radial-gradient(circle at 30% 30%, #fff 0 1px, transparent 2px), #141a3a"
+    }
+   }
+  },
+  "src/data/cosmetics.js": {
+   "BY_KIND": {
+    "helmet": [
+     {
+      "kind": "helmet",
+      "id": "classic",
+      "name": "Classic",
+      "rarity": "common",
+      "source": "stock",
+      "colors": [
+       "#f4f6f8",
+       "#ff8a1f"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "stripe",
+      "name": "Stripe",
+      "rarity": "common",
+      "source": "crate",
+      "colors": [
+       "#2f8bd6",
+       "#ffffff"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "flames",
+      "name": "Flames",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#222",
+       "#ff8a1f",
+       "#ffd23a"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "skull",
+      "name": "Skull",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#e9ecef",
+       "#222"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "dino",
+      "name": "Dino",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#4caf50",
+       "#ffd23a"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "astronaut",
+      "name": "Astronaut",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#ffffff",
+       "#8fd3ff"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "shark",
+      "name": "Shark",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#6f8ea8",
+       "#ffffff"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "rainbow",
+      "name": "Rainbow",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#ff5d5d",
+       "#ffe14a",
+       "#22b8ff"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "chrome",
+      "name": "Chrome",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#dfe6ec",
+       "#7d8b98"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "galaxy",
+      "name": "Galaxy",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#1b1f4a",
+       "#8f6bff",
+       "#ffffff"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "lightning",
+      "name": "Lightning",
+      "rarity": "legendary",
+      "source": "streak",
+      "days": 30,
+      "colors": [
+       "#1c2a6b",
+       "#ffd23a"
+      ]
+     },
+     {
+      "kind": "helmet",
+      "id": "crown",
+      "name": "Crown",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#ffd23a",
+       "#c8261c"
+      ]
+     }
+    ],
+    "suit": [
+     {
+      "kind": "suit",
+      "id": "rookie",
+      "name": "Rookie Blue",
+      "rarity": "common",
+      "source": "stock",
+      "colors": [
+       "#3f5a8a",
+       "#ffffff"
+      ]
+     },
+     {
+      "kind": "suit",
+      "id": "racer",
+      "name": "Racer Red",
+      "rarity": "common",
+      "source": "crate",
+      "colors": [
+       "#d9382f",
+       "#ffffff"
+      ]
+     },
+     {
+      "kind": "suit",
+      "id": "camo",
+      "name": "Camo",
+      "rarity": "common",
+      "source": "crate",
+      "colors": [
+       "#5f7a45",
+       "#3a4a2a"
+      ]
+     },
+     {
+      "kind": "suit",
+      "id": "checker",
+      "name": "Checker Flag",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#f4f4f4",
+       "#1d1b26"
+      ]
+     },
+     {
+      "kind": "suit",
+      "id": "neon",
+      "name": "Neon Night",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#1d1d2a",
+       "#3cff9d"
+      ]
+     },
+     {
+      "kind": "suit",
+      "id": "stars",
+      "name": "Star Captain",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#243a6e",
+       "#ffe14a"
+      ]
+     },
+     {
+      "kind": "suit",
+      "id": "galaxy",
+      "name": "Galaxy",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#4a2a8a",
+       "#ff7ad1"
+      ]
+     },
+     {
+      "kind": "suit",
+      "id": "gold",
+      "name": "Gold Rush",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#e8b52e",
+       "#8a5a10"
+      ]
+     }
+    ],
+    "horn": [
+     {
+      "kind": "horn",
+      "id": "beep",
+      "name": "Beep Beep",
+      "rarity": "common",
+      "source": "stock",
+      "notes": [
+       [
+        660,
+        0.09
+       ],
+       [
+        660,
+        0.12
+       ]
+      ]
+     },
+     {
+      "kind": "horn",
+      "id": "honk",
+      "name": "Big Honk",
+      "rarity": "common",
+      "source": "crate",
+      "notes": [
+       [
+        220,
+        0.3
+       ]
+      ]
+     },
+     {
+      "kind": "horn",
+      "id": "duck",
+      "name": "Duck",
+      "rarity": "rare",
+      "source": "crate",
+      "notes": [
+       [
+        520,
+        0.08
+       ],
+       [
+        440,
+        0.12
+       ]
+      ]
+     },
+     {
+      "kind": "horn",
+      "id": "tuba",
+      "name": "Tuba",
+      "rarity": "rare",
+      "source": "crate",
+      "notes": [
+       [
+        110,
+        0.2
+       ],
+       [
+        147,
+        0.25
+       ]
+      ]
+     },
+     {
+      "kind": "horn",
+      "id": "cowbell",
+      "name": "Cowbell",
+      "rarity": "rare",
+      "source": "crate",
+      "notes": [
+       [
+        800,
+        0.06
+       ],
+       [
+        800,
+        0.06
+       ],
+       [
+        800,
+        0.1
+       ]
+      ]
+     },
+     {
+      "kind": "horn",
+      "id": "fanfare",
+      "name": "Fanfare",
+      "rarity": "legendary",
+      "source": "crate",
+      "notes": [
+       [
+        523,
+        0.1
+       ],
+       [
+        659,
+        0.1
+       ],
+       [
+        784,
+        0.1
+       ],
+       [
+        1047,
+        0.25
+       ]
+      ]
+     }
+    ],
+    "trail": [
+     {
+      "kind": "trail",
+      "id": "orange",
+      "name": "Ember",
+      "rarity": "common",
+      "source": "stock",
+      "colors": [
+       "#ff6a1a",
+       "#ffe14a"
+      ]
+     },
+     {
+      "kind": "trail",
+      "id": "blue",
+      "name": "Ice Blue",
+      "rarity": "common",
+      "source": "crate",
+      "colors": [
+       "#4dd2ff",
+       "#dff6ff"
+      ]
+     },
+     {
+      "kind": "trail",
+      "id": "green",
+      "name": "Slime",
+      "rarity": "common",
+      "source": "crate",
+      "colors": [
+       "#7dff6b",
+       "#d6ff8a"
+      ]
+     },
+     {
+      "kind": "trail",
+      "id": "pink",
+      "name": "Bubblegum",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#ff5ec4",
+       "#ffc2ea"
+      ]
+     },
+     {
+      "kind": "trail",
+      "id": "purple",
+      "name": "Plasma",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#8f6bff",
+       "#d9c8ff"
+      ]
+     },
+     {
+      "kind": "trail",
+      "id": "ice",
+      "name": "Frost",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#ffffff",
+       "#bfe8ff"
+      ]
+     },
+     {
+      "kind": "trail",
+      "id": "gold",
+      "name": "Gold Dust",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#f2c230",
+       "#fff3a0"
+      ]
+     },
+     {
+      "kind": "trail",
+      "id": "rainbow",
+      "name": "Rainbow",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#ff5d5d",
+       "#ffe14a",
+       "#3ddc84",
+       "#22b8ff",
+       "#8f6bff"
+      ]
+     }
+    ],
+    "flag": [
+     {
+      "kind": "flag",
+      "id": "none",
+      "name": "No Flag",
+      "rarity": "common",
+      "source": "stock",
+      "colors": []
+     },
+     {
+      "kind": "flag",
+      "id": "checker",
+      "name": "Checker",
+      "rarity": "common",
+      "source": "crate",
+      "colors": [
+       "#111111",
+       "#ffffff"
+      ]
+     },
+     {
+      "kind": "flag",
+      "id": "heart",
+      "name": "Heart",
+      "rarity": "common",
+      "source": "crate",
+      "colors": [
+       "#ff4d8d",
+       "#ffffff"
+      ]
+     },
+     {
+      "kind": "flag",
+      "id": "star",
+      "name": "Star",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#2f6bd6",
+       "#ffe14a"
+      ]
+     },
+     {
+      "kind": "flag",
+      "id": "skull",
+      "name": "Skull",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#23242b",
+       "#ffffff"
+      ]
+     },
+     {
+      "kind": "flag",
+      "id": "lightning",
+      "name": "Lightning",
+      "rarity": "rare",
+      "source": "crate",
+      "colors": [
+       "#ffd23f",
+       "#1d1b26"
+      ]
+     },
+     {
+      "kind": "flag",
+      "id": "rainbow",
+      "name": "Rainbow",
+      "rarity": "legendary",
+      "source": "crate",
+      "colors": [
+       "#ff5d5d",
+       "#ffe14a",
+       "#3ddc84",
+       "#22b8ff"
+      ]
+     }
+    ],
+    "paint": [
+     {
+      "kind": "paint",
+      "id": "sage",
+      "name": "Sage Green",
+      "rarity": "common",
+      "source": "stock",
+      "days": null,
+      "set": null,
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "orange",
+      "name": "Blaze Orange",
+      "rarity": "common",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "granite",
+      "name": "Granite Gray",
+      "rarity": "common",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "lakeblue",
+      "name": "Lake Blue",
+      "rarity": "common",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "snow",
+      "name": "Snow White",
+      "rarity": "common",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "sunset",
+      "name": "Sunset Red",
+      "rarity": "common",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "black",
+      "name": "Black",
+      "rarity": "common",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "pine",
+      "name": "Pine",
+      "rarity": "common",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "sky",
+      "name": "Sky",
+      "rarity": "rare",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "gold",
+      "name": "Gold",
+      "rarity": "rare",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "purple",
+      "name": "Purple",
+      "rarity": "rare",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "rainbow",
+      "name": "Rainbow",
+      "rarity": "legendary",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "paint",
+      "id": "lime",
+      "name": "Lime",
+      "rarity": "common",
+      "source": "crate",
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "teal",
+      "name": "Teal",
+      "rarity": "common",
+      "source": "crate",
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "magenta",
+      "name": "Magenta",
+      "rarity": "rare",
+      "source": "crate",
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "copper",
+      "name": "Copper",
+      "rarity": "rare",
+      "source": "crate",
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "streak",
+      "name": "Streak",
+      "rarity": "legendary",
+      "source": "streak",
+      "days": 14,
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "chrome",
+      "name": "Chrome",
+      "rarity": "legendary",
+      "source": "set",
+      "set": "helmet",
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "neon",
+      "name": "Neon",
+      "rarity": "legendary",
+      "source": "set",
+      "set": "suit",
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "candy",
+      "name": "Candy",
+      "rarity": "legendary",
+      "source": "set",
+      "set": "horn",
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "aurora",
+      "name": "Aurora",
+      "rarity": "legendary",
+      "source": "set",
+      "set": "trail",
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "moon",
+      "name": "Moon Dust",
+      "rarity": "legendary",
+      "source": "set",
+      "set": "flag",
+      "race": false
+     },
+     {
+      "kind": "paint",
+      "id": "midnight",
+      "name": "Midnight Stars",
+      "rarity": "legendary",
+      "source": "set",
+      "set": "decal",
+      "race": false
+     }
+    ],
+    "decal": [
+     {
+      "kind": "decal",
+      "id": "none",
+      "name": "No decal",
+      "rarity": "common",
+      "source": "stock",
+      "race": false
+     },
+     {
+      "kind": "decal",
+      "id": "mud",
+      "name": "Mud Splats",
+      "rarity": "common",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "decal",
+      "id": "flames",
+      "name": "Flames",
+      "rarity": "common",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "decal",
+      "id": "stars",
+      "name": "Stars",
+      "rarity": "rare",
+      "source": "crate",
+      "race": true
+     },
+     {
+      "kind": "decal",
+      "id": "checkers",
+      "name": "Checkers",
+      "rarity": "rare",
+      "source": "crate",
+      "race": true
+     }
+    ]
+   },
+   "CRATE_POOL": [
+    {
+     "kind": "helmet",
+     "id": "stripe",
+     "name": "Stripe",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#2f8bd6",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "flames",
+     "name": "Flames",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#222",
+      "#ff8a1f",
+      "#ffd23a"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "skull",
+     "name": "Skull",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#e9ecef",
+      "#222"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "dino",
+     "name": "Dino",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#4caf50",
+      "#ffd23a"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "astronaut",
+     "name": "Astronaut",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ffffff",
+      "#8fd3ff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "shark",
+     "name": "Shark",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#6f8ea8",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ff5d5d",
+      "#ffe14a",
+      "#22b8ff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "chrome",
+     "name": "Chrome",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#dfe6ec",
+      "#7d8b98"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "galaxy",
+     "name": "Galaxy",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#1b1f4a",
+      "#8f6bff",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "crown",
+     "name": "Crown",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ffd23a",
+      "#c8261c"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "racer",
+     "name": "Racer Red",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#d9382f",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "camo",
+     "name": "Camo",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#5f7a45",
+      "#3a4a2a"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "checker",
+     "name": "Checker Flag",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#f4f4f4",
+      "#1d1b26"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "neon",
+     "name": "Neon Night",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#1d1d2a",
+      "#3cff9d"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "stars",
+     "name": "Star Captain",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#243a6e",
+      "#ffe14a"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "galaxy",
+     "name": "Galaxy",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#4a2a8a",
+      "#ff7ad1"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "gold",
+     "name": "Gold Rush",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#e8b52e",
+      "#8a5a10"
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "honk",
+     "name": "Big Honk",
+     "rarity": "common",
+     "source": "crate",
+     "notes": [
+      [
+       220,
+       0.3
+      ]
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "duck",
+     "name": "Duck",
+     "rarity": "rare",
+     "source": "crate",
+     "notes": [
+      [
+       520,
+       0.08
+      ],
+      [
+       440,
+       0.12
+      ]
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "tuba",
+     "name": "Tuba",
+     "rarity": "rare",
+     "source": "crate",
+     "notes": [
+      [
+       110,
+       0.2
+      ],
+      [
+       147,
+       0.25
+      ]
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "cowbell",
+     "name": "Cowbell",
+     "rarity": "rare",
+     "source": "crate",
+     "notes": [
+      [
+       800,
+       0.06
+      ],
+      [
+       800,
+       0.06
+      ],
+      [
+       800,
+       0.1
+      ]
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "fanfare",
+     "name": "Fanfare",
+     "rarity": "legendary",
+     "source": "crate",
+     "notes": [
+      [
+       523,
+       0.1
+      ],
+      [
+       659,
+       0.1
+      ],
+      [
+       784,
+       0.1
+      ],
+      [
+       1047,
+       0.25
+      ]
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "blue",
+     "name": "Ice Blue",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#4dd2ff",
+      "#dff6ff"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "green",
+     "name": "Slime",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#7dff6b",
+      "#d6ff8a"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "pink",
+     "name": "Bubblegum",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#ff5ec4",
+      "#ffc2ea"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "purple",
+     "name": "Plasma",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#8f6bff",
+      "#d9c8ff"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "ice",
+     "name": "Frost",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#ffffff",
+      "#bfe8ff"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "gold",
+     "name": "Gold Dust",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#f2c230",
+      "#fff3a0"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ff5d5d",
+      "#ffe14a",
+      "#3ddc84",
+      "#22b8ff",
+      "#8f6bff"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "checker",
+     "name": "Checker",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#111111",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "heart",
+     "name": "Heart",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#ff4d8d",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "star",
+     "name": "Star",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#2f6bd6",
+      "#ffe14a"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "skull",
+     "name": "Skull",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#23242b",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "lightning",
+     "name": "Lightning",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#ffd23f",
+      "#1d1b26"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ff5d5d",
+      "#ffe14a",
+      "#3ddc84",
+      "#22b8ff"
+     ]
+    },
+    {
+     "kind": "paint",
+     "id": "orange",
+     "name": "Blaze Orange",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "granite",
+     "name": "Granite Gray",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "lakeblue",
+     "name": "Lake Blue",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "snow",
+     "name": "Snow White",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "sunset",
+     "name": "Sunset Red",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "black",
+     "name": "Black",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "pine",
+     "name": "Pine",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "sky",
+     "name": "Sky",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "gold",
+     "name": "Gold",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "purple",
+     "name": "Purple",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "lime",
+     "name": "Lime",
+     "rarity": "common",
+     "source": "crate",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "teal",
+     "name": "Teal",
+     "rarity": "common",
+     "source": "crate",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "magenta",
+     "name": "Magenta",
+     "rarity": "rare",
+     "source": "crate",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "copper",
+     "name": "Copper",
+     "rarity": "rare",
+     "source": "crate",
+     "race": false
+    },
+    {
+     "kind": "decal",
+     "id": "mud",
+     "name": "Mud Splats",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "decal",
+     "id": "flames",
+     "name": "Flames",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "decal",
+     "id": "stars",
+     "name": "Stars",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "decal",
+     "id": "checkers",
+     "name": "Checkers",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    }
+   ],
+   "CRATE_TIERS": {
+    "bronze": {
+     "name": "Bronze crate",
+     "weights": {
+      "common": 70,
+      "rare": 27,
+      "legendary": 3
+     },
+     "cashMul": 1
+    },
+    "silver": {
+     "name": "Silver crate",
+     "weights": {
+      "common": 45,
+      "rare": 43,
+      "legendary": 12
+     },
+     "cashMul": 2
+    },
+    "gold": {
+     "name": "Gold crate",
+     "weights": {
+      "common": 25,
+      "rare": 50,
+      "legendary": 25
+     },
+     "cashMul": 4
+    }
+   },
+   "DECAL_ITEMS": [
+    {
+     "kind": "decal",
+     "id": "none",
+     "name": "No decal",
+     "rarity": "common",
+     "source": "stock",
+     "race": false
+    },
+    {
+     "kind": "decal",
+     "id": "mud",
+     "name": "Mud Splats",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "decal",
+     "id": "flames",
+     "name": "Flames",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "decal",
+     "id": "stars",
+     "name": "Stars",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "decal",
+     "id": "checkers",
+     "name": "Checkers",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    }
+   ],
+   "FLAGS": [
+    {
+     "kind": "flag",
+     "id": "none",
+     "name": "No Flag",
+     "rarity": "common",
+     "source": "stock",
+     "colors": []
+    },
+    {
+     "kind": "flag",
+     "id": "checker",
+     "name": "Checker",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#111111",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "heart",
+     "name": "Heart",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#ff4d8d",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "star",
+     "name": "Star",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#2f6bd6",
+      "#ffe14a"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "skull",
+     "name": "Skull",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#23242b",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "lightning",
+     "name": "Lightning",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#ffd23f",
+      "#1d1b26"
+     ]
+    },
+    {
+     "kind": "flag",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ff5d5d",
+      "#ffe14a",
+      "#3ddc84",
+      "#22b8ff"
+     ]
+    }
+   ],
+   "HELMETS": [
+    {
+     "kind": "helmet",
+     "id": "classic",
+     "name": "Classic",
+     "rarity": "common",
+     "source": "stock",
+     "colors": [
+      "#f4f6f8",
+      "#ff8a1f"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "stripe",
+     "name": "Stripe",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#2f8bd6",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "flames",
+     "name": "Flames",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#222",
+      "#ff8a1f",
+      "#ffd23a"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "skull",
+     "name": "Skull",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#e9ecef",
+      "#222"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "dino",
+     "name": "Dino",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#4caf50",
+      "#ffd23a"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "astronaut",
+     "name": "Astronaut",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ffffff",
+      "#8fd3ff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "shark",
+     "name": "Shark",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#6f8ea8",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ff5d5d",
+      "#ffe14a",
+      "#22b8ff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "chrome",
+     "name": "Chrome",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#dfe6ec",
+      "#7d8b98"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "galaxy",
+     "name": "Galaxy",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#1b1f4a",
+      "#8f6bff",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "lightning",
+     "name": "Lightning",
+     "rarity": "legendary",
+     "source": "streak",
+     "days": 30,
+     "colors": [
+      "#1c2a6b",
+      "#ffd23a"
+     ]
+    },
+    {
+     "kind": "helmet",
+     "id": "crown",
+     "name": "Crown",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ffd23a",
+      "#c8261c"
+     ]
+    }
+   ],
+   "HORNS": [
+    {
+     "kind": "horn",
+     "id": "beep",
+     "name": "Beep Beep",
+     "rarity": "common",
+     "source": "stock",
+     "notes": [
+      [
+       660,
+       0.09
+      ],
+      [
+       660,
+       0.12
+      ]
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "honk",
+     "name": "Big Honk",
+     "rarity": "common",
+     "source": "crate",
+     "notes": [
+      [
+       220,
+       0.3
+      ]
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "duck",
+     "name": "Duck",
+     "rarity": "rare",
+     "source": "crate",
+     "notes": [
+      [
+       520,
+       0.08
+      ],
+      [
+       440,
+       0.12
+      ]
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "tuba",
+     "name": "Tuba",
+     "rarity": "rare",
+     "source": "crate",
+     "notes": [
+      [
+       110,
+       0.2
+      ],
+      [
+       147,
+       0.25
+      ]
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "cowbell",
+     "name": "Cowbell",
+     "rarity": "rare",
+     "source": "crate",
+     "notes": [
+      [
+       800,
+       0.06
+      ],
+      [
+       800,
+       0.06
+      ],
+      [
+       800,
+       0.1
+      ]
+     ]
+    },
+    {
+     "kind": "horn",
+     "id": "fanfare",
+     "name": "Fanfare",
+     "rarity": "legendary",
+     "source": "crate",
+     "notes": [
+      [
+       523,
+       0.1
+      ],
+      [
+       659,
+       0.1
+      ],
+      [
+       784,
+       0.1
+      ],
+      [
+       1047,
+       0.25
+      ]
+     ]
+    }
+   ],
+   "ITEM": {
+    "helmet:classic": {
+     "kind": "helmet",
+     "id": "classic",
+     "name": "Classic",
+     "rarity": "common",
+     "source": "stock",
+     "colors": [
+      "#f4f6f8",
+      "#ff8a1f"
+     ]
+    },
+    "helmet:stripe": {
+     "kind": "helmet",
+     "id": "stripe",
+     "name": "Stripe",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#2f8bd6",
+      "#ffffff"
+     ]
+    },
+    "helmet:flames": {
+     "kind": "helmet",
+     "id": "flames",
+     "name": "Flames",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#222",
+      "#ff8a1f",
+      "#ffd23a"
+     ]
+    },
+    "helmet:skull": {
+     "kind": "helmet",
+     "id": "skull",
+     "name": "Skull",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#e9ecef",
+      "#222"
+     ]
+    },
+    "helmet:dino": {
+     "kind": "helmet",
+     "id": "dino",
+     "name": "Dino",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#4caf50",
+      "#ffd23a"
+     ]
+    },
+    "helmet:astronaut": {
+     "kind": "helmet",
+     "id": "astronaut",
+     "name": "Astronaut",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ffffff",
+      "#8fd3ff"
+     ]
+    },
+    "helmet:shark": {
+     "kind": "helmet",
+     "id": "shark",
+     "name": "Shark",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#6f8ea8",
+      "#ffffff"
+     ]
+    },
+    "helmet:rainbow": {
+     "kind": "helmet",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ff5d5d",
+      "#ffe14a",
+      "#22b8ff"
+     ]
+    },
+    "helmet:chrome": {
+     "kind": "helmet",
+     "id": "chrome",
+     "name": "Chrome",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#dfe6ec",
+      "#7d8b98"
+     ]
+    },
+    "helmet:galaxy": {
+     "kind": "helmet",
+     "id": "galaxy",
+     "name": "Galaxy",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#1b1f4a",
+      "#8f6bff",
+      "#ffffff"
+     ]
+    },
+    "helmet:lightning": {
+     "kind": "helmet",
+     "id": "lightning",
+     "name": "Lightning",
+     "rarity": "legendary",
+     "source": "streak",
+     "days": 30,
+     "colors": [
+      "#1c2a6b",
+      "#ffd23a"
+     ]
+    },
+    "helmet:crown": {
+     "kind": "helmet",
+     "id": "crown",
+     "name": "Crown",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ffd23a",
+      "#c8261c"
+     ]
+    },
+    "suit:rookie": {
+     "kind": "suit",
+     "id": "rookie",
+     "name": "Rookie Blue",
+     "rarity": "common",
+     "source": "stock",
+     "colors": [
+      "#3f5a8a",
+      "#ffffff"
+     ]
+    },
+    "suit:racer": {
+     "kind": "suit",
+     "id": "racer",
+     "name": "Racer Red",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#d9382f",
+      "#ffffff"
+     ]
+    },
+    "suit:camo": {
+     "kind": "suit",
+     "id": "camo",
+     "name": "Camo",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#5f7a45",
+      "#3a4a2a"
+     ]
+    },
+    "suit:checker": {
+     "kind": "suit",
+     "id": "checker",
+     "name": "Checker Flag",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#f4f4f4",
+      "#1d1b26"
+     ]
+    },
+    "suit:neon": {
+     "kind": "suit",
+     "id": "neon",
+     "name": "Neon Night",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#1d1d2a",
+      "#3cff9d"
+     ]
+    },
+    "suit:stars": {
+     "kind": "suit",
+     "id": "stars",
+     "name": "Star Captain",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#243a6e",
+      "#ffe14a"
+     ]
+    },
+    "suit:galaxy": {
+     "kind": "suit",
+     "id": "galaxy",
+     "name": "Galaxy",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#4a2a8a",
+      "#ff7ad1"
+     ]
+    },
+    "suit:gold": {
+     "kind": "suit",
+     "id": "gold",
+     "name": "Gold Rush",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#e8b52e",
+      "#8a5a10"
+     ]
+    },
+    "horn:beep": {
+     "kind": "horn",
+     "id": "beep",
+     "name": "Beep Beep",
+     "rarity": "common",
+     "source": "stock",
+     "notes": [
+      [
+       660,
+       0.09
+      ],
+      [
+       660,
+       0.12
+      ]
+     ]
+    },
+    "horn:honk": {
+     "kind": "horn",
+     "id": "honk",
+     "name": "Big Honk",
+     "rarity": "common",
+     "source": "crate",
+     "notes": [
+      [
+       220,
+       0.3
+      ]
+     ]
+    },
+    "horn:duck": {
+     "kind": "horn",
+     "id": "duck",
+     "name": "Duck",
+     "rarity": "rare",
+     "source": "crate",
+     "notes": [
+      [
+       520,
+       0.08
+      ],
+      [
+       440,
+       0.12
+      ]
+     ]
+    },
+    "horn:tuba": {
+     "kind": "horn",
+     "id": "tuba",
+     "name": "Tuba",
+     "rarity": "rare",
+     "source": "crate",
+     "notes": [
+      [
+       110,
+       0.2
+      ],
+      [
+       147,
+       0.25
+      ]
+     ]
+    },
+    "horn:cowbell": {
+     "kind": "horn",
+     "id": "cowbell",
+     "name": "Cowbell",
+     "rarity": "rare",
+     "source": "crate",
+     "notes": [
+      [
+       800,
+       0.06
+      ],
+      [
+       800,
+       0.06
+      ],
+      [
+       800,
+       0.1
+      ]
+     ]
+    },
+    "horn:fanfare": {
+     "kind": "horn",
+     "id": "fanfare",
+     "name": "Fanfare",
+     "rarity": "legendary",
+     "source": "crate",
+     "notes": [
+      [
+       523,
+       0.1
+      ],
+      [
+       659,
+       0.1
+      ],
+      [
+       784,
+       0.1
+      ],
+      [
+       1047,
+       0.25
+      ]
+     ]
+    },
+    "trail:orange": {
+     "kind": "trail",
+     "id": "orange",
+     "name": "Ember",
+     "rarity": "common",
+     "source": "stock",
+     "colors": [
+      "#ff6a1a",
+      "#ffe14a"
+     ]
+    },
+    "trail:blue": {
+     "kind": "trail",
+     "id": "blue",
+     "name": "Ice Blue",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#4dd2ff",
+      "#dff6ff"
+     ]
+    },
+    "trail:green": {
+     "kind": "trail",
+     "id": "green",
+     "name": "Slime",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#7dff6b",
+      "#d6ff8a"
+     ]
+    },
+    "trail:pink": {
+     "kind": "trail",
+     "id": "pink",
+     "name": "Bubblegum",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#ff5ec4",
+      "#ffc2ea"
+     ]
+    },
+    "trail:purple": {
+     "kind": "trail",
+     "id": "purple",
+     "name": "Plasma",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#8f6bff",
+      "#d9c8ff"
+     ]
+    },
+    "trail:ice": {
+     "kind": "trail",
+     "id": "ice",
+     "name": "Frost",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#ffffff",
+      "#bfe8ff"
+     ]
+    },
+    "trail:gold": {
+     "kind": "trail",
+     "id": "gold",
+     "name": "Gold Dust",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#f2c230",
+      "#fff3a0"
+     ]
+    },
+    "trail:rainbow": {
+     "kind": "trail",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ff5d5d",
+      "#ffe14a",
+      "#3ddc84",
+      "#22b8ff",
+      "#8f6bff"
+     ]
+    },
+    "flag:none": {
+     "kind": "flag",
+     "id": "none",
+     "name": "No Flag",
+     "rarity": "common",
+     "source": "stock",
+     "colors": []
+    },
+    "flag:checker": {
+     "kind": "flag",
+     "id": "checker",
+     "name": "Checker",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#111111",
+      "#ffffff"
+     ]
+    },
+    "flag:heart": {
+     "kind": "flag",
+     "id": "heart",
+     "name": "Heart",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#ff4d8d",
+      "#ffffff"
+     ]
+    },
+    "flag:star": {
+     "kind": "flag",
+     "id": "star",
+     "name": "Star",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#2f6bd6",
+      "#ffe14a"
+     ]
+    },
+    "flag:skull": {
+     "kind": "flag",
+     "id": "skull",
+     "name": "Skull",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#23242b",
+      "#ffffff"
+     ]
+    },
+    "flag:lightning": {
+     "kind": "flag",
+     "id": "lightning",
+     "name": "Lightning",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#ffd23f",
+      "#1d1b26"
+     ]
+    },
+    "flag:rainbow": {
+     "kind": "flag",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ff5d5d",
+      "#ffe14a",
+      "#3ddc84",
+      "#22b8ff"
+     ]
+    },
+    "paint:sage": {
+     "kind": "paint",
+     "id": "sage",
+     "name": "Sage Green",
+     "rarity": "common",
+     "source": "stock",
+     "days": null,
+     "set": null,
+     "race": false
+    },
+    "paint:orange": {
+     "kind": "paint",
+     "id": "orange",
+     "name": "Blaze Orange",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    "paint:granite": {
+     "kind": "paint",
+     "id": "granite",
+     "name": "Granite Gray",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    "paint:lakeblue": {
+     "kind": "paint",
+     "id": "lakeblue",
+     "name": "Lake Blue",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    "paint:snow": {
+     "kind": "paint",
+     "id": "snow",
+     "name": "Snow White",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    "paint:sunset": {
+     "kind": "paint",
+     "id": "sunset",
+     "name": "Sunset Red",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    "paint:black": {
+     "kind": "paint",
+     "id": "black",
+     "name": "Black",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    "paint:pine": {
+     "kind": "paint",
+     "id": "pine",
+     "name": "Pine",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    "paint:sky": {
+     "kind": "paint",
+     "id": "sky",
+     "name": "Sky",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    "paint:gold": {
+     "kind": "paint",
+     "id": "gold",
+     "name": "Gold",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    "paint:purple": {
+     "kind": "paint",
+     "id": "purple",
+     "name": "Purple",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    "paint:rainbow": {
+     "kind": "paint",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "race": true
+    },
+    "paint:lime": {
+     "kind": "paint",
+     "id": "lime",
+     "name": "Lime",
+     "rarity": "common",
+     "source": "crate",
+     "race": false
+    },
+    "paint:teal": {
+     "kind": "paint",
+     "id": "teal",
+     "name": "Teal",
+     "rarity": "common",
+     "source": "crate",
+     "race": false
+    },
+    "paint:magenta": {
+     "kind": "paint",
+     "id": "magenta",
+     "name": "Magenta",
+     "rarity": "rare",
+     "source": "crate",
+     "race": false
+    },
+    "paint:copper": {
+     "kind": "paint",
+     "id": "copper",
+     "name": "Copper",
+     "rarity": "rare",
+     "source": "crate",
+     "race": false
+    },
+    "paint:streak": {
+     "kind": "paint",
+     "id": "streak",
+     "name": "Streak",
+     "rarity": "legendary",
+     "source": "streak",
+     "days": 14,
+     "race": false
+    },
+    "paint:chrome": {
+     "kind": "paint",
+     "id": "chrome",
+     "name": "Chrome",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "helmet",
+     "race": false
+    },
+    "paint:neon": {
+     "kind": "paint",
+     "id": "neon",
+     "name": "Neon",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "suit",
+     "race": false
+    },
+    "paint:candy": {
+     "kind": "paint",
+     "id": "candy",
+     "name": "Candy",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "horn",
+     "race": false
+    },
+    "paint:aurora": {
+     "kind": "paint",
+     "id": "aurora",
+     "name": "Aurora",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "trail",
+     "race": false
+    },
+    "paint:moon": {
+     "kind": "paint",
+     "id": "moon",
+     "name": "Moon Dust",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "flag",
+     "race": false
+    },
+    "paint:midnight": {
+     "kind": "paint",
+     "id": "midnight",
+     "name": "Midnight Stars",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "decal",
+     "race": false
+    },
+    "decal:none": {
+     "kind": "decal",
+     "id": "none",
+     "name": "No decal",
+     "rarity": "common",
+     "source": "stock",
+     "race": false
+    },
+    "decal:mud": {
+     "kind": "decal",
+     "id": "mud",
+     "name": "Mud Splats",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    "decal:flames": {
+     "kind": "decal",
+     "id": "flames",
+     "name": "Flames",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    "decal:stars": {
+     "kind": "decal",
+     "id": "stars",
+     "name": "Stars",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    "decal:checkers": {
+     "kind": "decal",
+     "id": "checkers",
+     "name": "Checkers",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    }
+   },
+   "KINDS": [
+    "helmet",
+    "suit",
+    "horn",
+    "trail",
+    "flag",
+    "paint",
+    "decal"
+   ],
+   "KIND_NAME": {
+    "helmet": "Helmets",
+    "suit": "Suits",
+    "horn": "Horns",
+    "trail": "Boost trails",
+    "flag": "Flags",
+    "paint": "Paints",
+    "decal": "Decals"
+   },
+   "PAINT_ITEMS": [
+    {
+     "kind": "paint",
+     "id": "sage",
+     "name": "Sage Green",
+     "rarity": "common",
+     "source": "stock",
+     "days": null,
+     "set": null,
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "orange",
+     "name": "Blaze Orange",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "granite",
+     "name": "Granite Gray",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "lakeblue",
+     "name": "Lake Blue",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "snow",
+     "name": "Snow White",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "sunset",
+     "name": "Sunset Red",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "black",
+     "name": "Black",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "pine",
+     "name": "Pine",
+     "rarity": "common",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "sky",
+     "name": "Sky",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "gold",
+     "name": "Gold",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "purple",
+     "name": "Purple",
+     "rarity": "rare",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "race": true
+    },
+    {
+     "kind": "paint",
+     "id": "lime",
+     "name": "Lime",
+     "rarity": "common",
+     "source": "crate",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "teal",
+     "name": "Teal",
+     "rarity": "common",
+     "source": "crate",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "magenta",
+     "name": "Magenta",
+     "rarity": "rare",
+     "source": "crate",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "copper",
+     "name": "Copper",
+     "rarity": "rare",
+     "source": "crate",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "streak",
+     "name": "Streak",
+     "rarity": "legendary",
+     "source": "streak",
+     "days": 14,
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "chrome",
+     "name": "Chrome",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "helmet",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "neon",
+     "name": "Neon",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "suit",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "candy",
+     "name": "Candy",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "horn",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "aurora",
+     "name": "Aurora",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "trail",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "moon",
+     "name": "Moon Dust",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "flag",
+     "race": false
+    },
+    {
+     "kind": "paint",
+     "id": "midnight",
+     "name": "Midnight Stars",
+     "rarity": "legendary",
+     "source": "set",
+     "set": "decal",
+     "race": false
+    }
+   ],
+   "PITY_EVERY": 3,
+   "SET_BONUS": {
+    "helmet": "chrome",
+    "suit": "neon",
+    "horn": "candy",
+    "trail": "aurora",
+    "flag": "moon",
+    "decal": "midnight"
+   },
+   "STOCK": {
+    "helmet": "classic",
+    "suit": "rookie",
+    "horn": "beep",
+    "trail": "orange",
+    "flag": "none",
+    "paint": "sage",
+    "decal": "none"
+   },
+   "STREAK_REWARDS": {
+    "3": {
+     "crate": "bronze"
+    },
+    "7": {
+     "crate": "silver"
+    },
+    "14": {
+     "crate": "gold",
+     "paint": "streak"
+    },
+    "30": {
+     "crate": "gold",
+     "helmet": "lightning"
+    },
+    "60": {
+     "crate": "gold"
+    },
+    "100": {
+     "crate": "gold"
+    }
+   },
+   "SUITS": [
+    {
+     "kind": "suit",
+     "id": "rookie",
+     "name": "Rookie Blue",
+     "rarity": "common",
+     "source": "stock",
+     "colors": [
+      "#3f5a8a",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "racer",
+     "name": "Racer Red",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#d9382f",
+      "#ffffff"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "camo",
+     "name": "Camo",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#5f7a45",
+      "#3a4a2a"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "checker",
+     "name": "Checker Flag",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#f4f4f4",
+      "#1d1b26"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "neon",
+     "name": "Neon Night",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#1d1d2a",
+      "#3cff9d"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "stars",
+     "name": "Star Captain",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#243a6e",
+      "#ffe14a"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "galaxy",
+     "name": "Galaxy",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#4a2a8a",
+      "#ff7ad1"
+     ]
+    },
+    {
+     "kind": "suit",
+     "id": "gold",
+     "name": "Gold Rush",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#e8b52e",
+      "#8a5a10"
+     ]
+    }
+   ],
+   "TRAILS": [
+    {
+     "kind": "trail",
+     "id": "orange",
+     "name": "Ember",
+     "rarity": "common",
+     "source": "stock",
+     "colors": [
+      "#ff6a1a",
+      "#ffe14a"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "blue",
+     "name": "Ice Blue",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#4dd2ff",
+      "#dff6ff"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "green",
+     "name": "Slime",
+     "rarity": "common",
+     "source": "crate",
+     "colors": [
+      "#7dff6b",
+      "#d6ff8a"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "pink",
+     "name": "Bubblegum",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#ff5ec4",
+      "#ffc2ea"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "purple",
+     "name": "Plasma",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#8f6bff",
+      "#d9c8ff"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "ice",
+     "name": "Frost",
+     "rarity": "rare",
+     "source": "crate",
+     "colors": [
+      "#ffffff",
+      "#bfe8ff"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "gold",
+     "name": "Gold Dust",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#f2c230",
+      "#fff3a0"
+     ]
+    },
+    {
+     "kind": "trail",
+     "id": "rainbow",
+     "name": "Rainbow",
+     "rarity": "legendary",
+     "source": "crate",
+     "colors": [
+      "#ff5d5d",
+      "#ffe14a",
+      "#3ddc84",
+      "#22b8ff",
+      "#8f6bff"
+     ]
+    }
+   ]
+  },
+  "src/meta/economy.js": {
+   "CASH_ORDER": [
+    "distance",
+    "air",
+    "flips",
+    "perfect",
+    "combo",
+    "smash",
+    "coins",
+    "place",
+    "finish",
+    "gates",
+    "quick"
+   ],
+   "PLACE_BONUS": {
+    "1": 500,
+    "2": 300,
+    "3": 150
+   },
+   "PODIUM": 3
+  },
+  "src/meta/save.js": {
+   "FIRST_VEHICLE": "ranger150",
+   "GHOST_MAX": 1500,
+   "SAVE_VERSION": 3,
+   "SETTINGS_KEY": "trailBlazer.settings"
+  },
+  "src/facts/store.js": {
+   "FACTS_VERSION": 4,
+   "GATES_OPTIONS": [
+    3,
+    4,
+    6
+   ],
+   "HILL_MIX": {
+    "frontier": 0.4,
+    "scout": 0.4,
+    "stretch": 0.2
+   },
+   "LEVEL_XP": [
+    0,
+    100,
+    250,
+    450,
+    700,
+    1000,
+    1400,
+    1900,
+    2500,
+    3200,
+    4000,
+    5000,
+    6200,
+    7600,
+    9200,
+    11000,
+    13000,
+    15500,
+    18500,
+    22000
+   ],
+   "MAX_CHECK_OFFERS": 3,
+   "MISSION_REWARD": 400,
+   "MISSION_SIZE": 12,
+   "NEW_PER_DAY_OPTIONS": [
+    3,
+    5,
+    8,
+    99
+   ],
+   "PROGRESS_FIELDS": [
+    "mastered",
+    "fluent",
+    "secure",
+    "ladder",
+    "asked",
+    "right",
+    "quick"
+   ],
+   "PROGRESS_KEPT": 90,
+   "XP": {
+    "firstTry": 15,
+    "quick": 5,
+    "fixed": 5,
+    "mastered": 50,
+    "mission": 100,
+    "check": 100
+   }
+  }
+ },
+ "calls": {
+  "upgradeCost": [
+   [
+    300,
+    750,
+    10500
+   ],
+   [
+    440,
+    1090,
+    15230
+   ],
+   [
+    1920,
+    4810,
+    67300
+   ],
+   [
+    8500,
+    21250,
+    297510
+   ]
+  ],
+  "totalCostToMax": 106880,
+  "resolveStats": [
+   {
+    "power": 1,
+    "topSpeed": 1,
+    "grip": 1,
+    "suspension": 1,
+    "boostPower": 1,
+    "boostCapacity": 1,
+    "coinMult": 1,
+    "levels": {
+     "engine": 0,
+     "tires": 0,
+     "suspension": 0,
+     "boost": 0
+    }
+   },
+   {
+    "power": 1.6,
+    "topSpeed": 1.4,
+    "grip": 1.3,
+    "suspension": 1.7,
+    "boostPower": 1.75,
+    "boostCapacity": 1.75,
+    "coinMult": 1.25,
+    "levels": {
+     "engine": 5,
+     "tires": 5,
+     "suspension": 5,
+     "boost": 5
+    }
+   },
+   {
+    "power": 2.2,
+    "topSpeed": 1.8,
+    "grip": 1.6,
+    "suspension": 2.4,
+    "boostPower": 2.5,
+    "boostCapacity": 2.5,
+    "coinMult": 1.5,
+    "levels": {
+     "engine": 10,
+     "tires": 10,
+     "suspension": 10,
+     "boost": 10
+    }
+   }
+  ],
+  "weekendBonus": [],
+  "vehiclePrices": [
+   [
+    "ranger150",
+    1,
+    0
+   ],
+   [
+    "quad",
+    2,
+    170000
+   ],
+   [
+    "dirtbike",
+    3,
+    700000
+   ],
+   [
+    "buggy",
+    4,
+    2400000
+   ],
+   [
+    "mudtruck",
+    5,
+    5500000
+   ],
+   [
+    "turbo",
+    6,
+    15000000
+   ],
+   [
+    "rail",
+    7,
+    22000000
+   ],
+   [
+    "rover",
+    8,
+    56000000
+   ]
+  ],
+  "bankRide": {
+   "bank": {
+    "earned": 3400,
+    "newBest": true,
+    "prevBest": 0,
+    "firstFinish": true,
+    "unlocked": "t1",
+    "paints": [
+     {
+      "id": "orange",
+      "name": "Blaze Orange",
+      "body": "#ff8a1f",
+      "trim": "#b35400",
+      "unlock": {
+       "finish": "forest"
+      }
+     },
+     {
+      "id": "pine",
+      "name": "Pine",
+      "body": "#24583a",
+      "trim": "#123220",
+      "unlock": {
+       "medal": "bronze",
+       "count": 1
+      }
+     },
+     {
+      "id": "sky",
+      "name": "Sky",
+      "body": "#66c9ff",
+      "trim": "#2f8bd6",
+      "unlock": {
+       "medal": "silver",
+       "count": 1
+      }
+     }
+    ],
+    "decals": [
+     {
+      "id": "mud",
+      "name": "Mud Splats",
+      "unlock": {
+       "distance": 250
+      }
+     }
+    ],
+    "place": 2,
+    "medal": "silver",
+    "newMedal": true,
+    "prevBestTime": 0,
+    "newBestTime": true
+   },
+   "cash": 3400,
+   "records": {
+    "rides": 1,
+    "lifetimeCash": 3400,
+    "longestRide": 612,
+    "totalSmashes": 2,
+    "totalFlips": 3,
+    "totalCoins": 5,
+    "maxSpeedKmh": 91,
+    "longestAir": 6.2,
+    "winches": 0,
+    "wins": 0,
+    "podiums": 1,
+    "crashes": 1,
+    "perfectLandings": 2
+   },
+   "bestPlace": {
+    "t0": 2
+   },
+   "bestTime": {
+    "t0": 41.5
+   },
+   "medals": {
+    "t0": "silver"
+   },
+   "finished": {
+    "t0": 1
+   }
+  },
+  "cashRows": {
+   "rows": [
+    {
+     "key": "distance",
+     "value": 1200
+    },
+    {
+     "key": "air",
+     "value": 180
+    },
+    {
+     "key": "flips",
+     "value": 450
+    },
+    {
+     "key": "perfect",
+     "value": 200
+    },
+    {
+     "key": "coins",
+     "value": 50
+    },
+    {
+     "key": "place",
+     "value": 300
+    },
+    {
+     "key": "finish",
+     "value": 300
+    },
+    {
+     "key": "gates",
+     "value": 480
+    },
+    {
+     "key": "quick",
+     "value": 240
+    }
+   ],
+   "total": 3400
+  },
+  "buy": {
+   "a": {
+    "ok": false,
+    "reason": "cash",
+    "need": 70000
+   },
+   "b": {
+    "ok": true,
+    "spent": 300,
+    "level": 1
+   },
+   "cash": 99700,
+   "levels": {
+    "ranger150": {
+     "owned": true,
+     "levels": {
+      "engine": 1,
+      "tires": 0,
+      "suspension": 0,
+      "boost": 0
+     }
+    }
+   }
+  }
+ }
+}

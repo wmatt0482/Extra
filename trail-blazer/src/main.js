@@ -21,6 +21,11 @@
 // v1.6 ("the sync engine"): the family code now syncs Trail Blazer's progress too: the save (<id>.tb) and the math
 // facts (<id>.facts) are kinds registered with Spell Jump's sync client (src/meta/sync.js: the merge rules); newer data
 // from another device is loaded into memory when it arrives, never during a race or the Pit Crew Check.
+// v1.9 ("The Lab", lab/SPEC.md §4.2): the game listens to the Lab (src/meta/labBridge.js, loaded lazily: a game without /lab/ plays as before)
+// and decorates with it (src/meta/labLooks.js: paint, decal, rim and ghost looks the child bought in the Lab). Events reported once each:
+// fact (gates and the Hill Climb), race, win, perfect, ghostBeat, summit, star, day. The Lab's XP pill sits in the HUD, its strip on the
+// results, "The Lab" on the title and in the Parent Zone. Combo moment: "Perfect Landing". Ghost Chase: a time attack against your best
+// ghost or a family member's, with no clock, gap chip, position badge or countdown (the ghost is the clock); see startRide's `chase`.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -70,11 +75,15 @@ import { createTrails } from './ui/trails.js';
 import { createHud } from './ui/hud.js';
 import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
-import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, vehicleModule } from './ui/vehiclePreview.js';
+import { labBridge } from './meta/labBridge.js';
+import { applyLabLook, describeLabLook } from './meta/labLooks.js';
+import { chaseChoices, ghostLabel, labVoiceTexts } from './meta/ghosts.js';
+import { createChasePicker } from './ui/chasePicker.js';
+import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, setLookOverlay, vehicleModule } from './ui/vehiclePreview.js';
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.8.1';
+const VERSION = '1.9.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -174,6 +183,7 @@ async function boot() {
   const canvas = $('#game');
   const engineMod = await loadEngine();
   let game = null, run = null, hudRaf = 0, screen = 'players', paused = false, coaching = false, stopFallback = 0, lastResult = null;
+  let labSlots = {}, labSlotsKey = '{}', labHud = null, hillRun = null;   // v1.9: the equipped Lab looks (paint, decal, rim, ghost) and the HUD's XP pill
   let hill = null;      // v1.7: the Hill Climb after a finished race { active, picks, asked, answers, result, show, trailId, cupMult, ... }
   let input = { gas: false, brake: false, boost: false };
   const toastsEl = $('#toasts');
@@ -226,6 +236,13 @@ async function boot() {
     openParents: (opts) => pz.open(opts),
     onLookChanged: () => drawHero(),
     saveOf(id) { return id === currentPlayerId ? save : loadSave(id); },
+    // ----- the Lab (v1.9): everything goes through src/meta/labBridge.js, which is inert when /lab/ is missing -----
+    lab: labBridge,
+    labLooksText: () => describeLabLook(labSlots),
+    openLab() { labBridge.openHome({ onClose: () => { if (refreshLabLooks()) onLabLooksChanged(); } }); },
+    openLabParent() { labBridge.openParent({ unlocked: true }); },
+    chaseChoices: (trailId) => chaseOptions(trailId),
+    openChase: (trail) => openChase(trail),
     trailsDoneFor(id) { return finishedCount(id === currentPlayerId ? save : loadSave(id), trails); },
     resetSaveFor(id) {
       // v1.6: a fresh save stamped resetAt (not a removed key), so the reset wins the sync merge on every device
@@ -271,6 +288,7 @@ async function boot() {
     if (game && (run || (hill && hill.active))) game.setInput(input);
   });
   const playersUI = createPlayers(app);
+  const chasePicker = createChasePicker(app);
   const crates = createCrateOpener(app);
   app.crates = crates;
   const screens = { players: playersUI.players, newplayer: playersUI.newplayer, garage: createGarage(app), trails: createTrails(app), results: createResults(app, crates), grid: createGrid(app),
@@ -299,6 +317,7 @@ async function boot() {
     if (!facts || !cloud.active) return;
     const texts = [];
     for (const f of activeFacts(facts)) texts.push(questionSentence(f, false), questionSentence(f, true));
+    texts.push(...labVoiceTexts(family.players.map((p) => p.name), labBridge.lines()));   // v1.9: the moment, the Ghost Chase lines, the Lab's fixed lines
     cloud.prepare([...new Set(texts)]).catch(() => {});
   }
   const pz = createParentZone(app);
@@ -327,6 +346,63 @@ async function boot() {
     Object.assign(save, fresh);
   }
 
+  // ---------- the Lab (v1.9): looks, the HUD pill, reports, the moment ----------
+  // The Lab's equipped looks are read at the start of every round (and when the Lab changes them), never once at boot. The overlay lays them
+  // over playerLook(save), so the garage's own paint / decal stay what the child chose and a missing Lab changes nothing.
+  setLookOverlay((look) => applyLabLook(look, labSlots));
+  function refreshLabLooks() {
+    let next = {};
+    try { next = labBridge.cosmetics().slots || {}; } catch (_) { next = {}; }
+    const key = JSON.stringify(next);
+    if (key === labSlotsKey) return false;
+    labSlotsKey = key; labSlots = next;
+    return true;
+  }
+  function onLabLooksChanged() {
+    if (screen === 'title') drawHero();
+    else if (screen === 'garage') screens.garage.render();
+  }
+  labBridge.onChange((e) => { if (e && e.type !== 'report' && refreshLabLooks()) onLabLooksChanged(); });
+  function mountLabHud() {
+    if (labHud) { labHud.destroy(); labHud = null; }
+    labHud = labBridge.hud({ mount: $('#hud-lab'), compact: true });
+  }
+  /** One game event for the Lab (once each, never per frame). Returns the Receipt (an empty one when the Lab is absent). */
+  const labReport = (event, ev = {}) => labBridge.report({ event, n: 1, ...ev });
+  const labLater = (fn) => setTimeout(() => { try { fn(); } catch (e) { console.warn('[lab]', e); } }, 0);   // out of the engine's tick
+  /** The combo moment's flourish: a banner with rings, the cheer and the voice (≤ 1.2 s). */
+  function showMoment(name) {
+    const text = name || 'Perfect Landing';
+    hud.banner('moment', `${text}!`, 1200);
+    Audio.cheer(0.7);
+    setTimeout(() => app.say(`${text}!`), 150);
+  }
+  /** The events a finished (or ended) race reports to the Lab, once each: race, win (1st, never in a chase), ghostBeat, a star each, day. */
+  function labAfterRace(r, summary, bank, season) {
+    const finished = !!summary.finishCrossed;
+    noteLabReceipt(r, labReport('race'));
+    if (finished && !r.chase && bank.place === 1) noteLabReceipt(r, labReport('win'));
+    if (season.ghost && season.ghost.beat) noteLabReceipt(r, labReport('ghostBeat'));
+    if (season.stars) for (let i = 0; i < season.stars.fresh.length; i++) noteLabReceipt(r, labReport('star'));
+    if (finished) noteLabReceipt(r, labReport('day'));
+  }
+  /** One spoken line when the results show (the natural voice when the family has it): the chase's result, else a level-up, else a Lab crate. */
+  function labResultsVoice(r, result) {
+    const LL = labBridge.lines();
+    let line = '';
+    if (r.chase && result.summary.finishCrossed) line = result.chase.beat ? (r.chase.own ? 'You beat your ghost!' : `You beat ${r.chase.name}'s ghost!`) : 'Nice chase!';
+    else if (r.lab.level && LL && typeof LL.levelUp === 'function') line = LL.levelUp(r.lab.level.after, r.lab.level.title);
+    else if (r.lab.crate && LL && LL.crate) line = LL.crate;
+    if (line) setTimeout(() => { if (screen === 'results') app.say(line); }, 700);
+  }
+  function labRevealButton() {
+    const on = labBridge.ready;
+    const b = $('#btn-lab');
+    if (b) b.hidden = !on;
+  }
+  labBridge.whenLoaded(() => { labRevealButton(); if (currentPlayerId && refreshLabLooks()) onLabLooksChanged(); });
+  $('#btn-lab').hidden = true;                 // shown when /lab/ has loaded: with it blocked there is no Lab button and the game is as it was
+
   // ---------- players ----------
   function selectPlayer(id) {
     if (!Profiles.playerById(family, id)) return;
@@ -341,6 +417,9 @@ async function boot() {
     app.persist();
     app.persistFacts();
     applyVoice();
+    { const p = Profiles.playerById(family, id); labBridge.attach({ playerId: id, name: p.name, color: p.color, reducedMotion: settings.reducedMotion, sound: settings.sound }); }
+    refreshLabLooks();
+    mountLabHud();
     go('title');
   }
   function refreshTitle() {
@@ -410,6 +489,7 @@ async function boot() {
     for (const el of $$('.screen')) el.hidden = el.dataset.screen !== name;
     for (const [k, s] of Object.entries(screens)) if (k !== name && s.hide) s.hide();
     screen = name;
+    if (name === 'players' && labHud) { labHud.destroy(); labHud = null; labBridge.detach(); }   // v1.9: the child left; the Lab forgets them
     const inRide = name === 'ride';
     document.documentElement.classList.toggle('in-run', inRide);
     if (!inRide) { hud.clearBanners(); hideCoach(); hideCountdown(); gatePanel.cancel(); document.documentElement.classList.remove('math', 'hill'); }
@@ -484,20 +564,24 @@ async function boot() {
   // a stock Ranger can win Pine Ridge with clean riding and later tracks want upgrades: SPEC v1.1 §2)
   const playerName = () => { const p = Profiles.playerById(family, currentPlayerId); return p ? p.name : 'You'; };
   /** opts.skipCheck: "Race first" (or straight from the Start line). v1.4: an unplaced player (or a stale placement)
-   *  gets the Pit Crew Check card first, before every race until the check is done. */
+   *  gets the Pit Crew Check card first, before every race until the check is done.
+   *  v1.9 opts.chase: a ghost row (src/meta/ghosts.js) = Ghost Chase: a time attack against that ghost, alone on the trail: the ghost is the clock
+   *  (no race clock, facts counter, gap chip, position badge or countdown), both start on the first GAS. It banks what a ride banks (cash, best
+   *  time, the ghost, the gate and stunt stars) but no place: no podium, no win, no unlock, no rival, no place bonus. */
   function startRide(trailId, opts = {}) {
     if (!game) { toast('The race could not load'); return; }
     closePanel();
     if (facts && !opts.skipCheck && facts.sets.mode === 'auto') {
       const due = checkDue(facts, Date.now());
-      if (due.due) { pit.showCard(trailId, due, { weekend: !!opts.weekend, daily: !!opts.daily }); return; }
+      if (due.due) { pit.showCard(trailId, due, { weekend: !!opts.weekend, daily: !!opts.daily, chase: opts.chase || null }); return; }
     }
     const trail = trails.find((t) => t.id === trailId && isUnlocked(save, trails, t.id)) || currentTrail(save, trails);
     clearTimeout(stopFallback);
     // v1.5: the weekend (only when started from the cup / the results and this is the weekend's next trail), the daily
     // Pit Challenge (from the title card, once a day), the cup × daily cash multiplier, the rival trio, the ghost
-    const weekend = !!opts.weekend && weekendNext(save) === trail.id;
-    const d = opts.daily && !weekend ? dailyInfo() : null;
+    const chase = opts.chase && Array.isArray(opts.chase.trace) && opts.chase.trace.length > 1 ? opts.chase : null;
+    const weekend = !chase && !!opts.weekend && weekendNext(save) === trail.id;
+    const d = !chase && opts.daily && !weekend ? dailyInfo() : null;
     const daily = !!(d && !d.done && d.trail.id === trail.id);
     const mutator = daily && d.mutator ? d.mutator : null;
     const cupId = cupOf(trail, trails);
@@ -514,13 +598,18 @@ async function boot() {
       const t = Math.max(1, Math.min(vehicles.length, myTier + [-1, 0, 1][i % 3]));
       return { name: x.name, rivalId: x.id, paint: x.paint, helmet: x.helmet, suit: x.suit, vehicle: (rv && rv[i]) || (vehicles[t - 1] || vehicles[0]).id };
     });
-    const ghostTrace = !mutator && Array.isArray(save.ghosts[trail.id]) && save.ghosts[trail.id].length > 1 ? save.ghosts[trail.id] : null;
+    const ownTrace = !mutator && Array.isArray(save.ghosts[trail.id]) && save.ghosts[trail.id].length > 1 ? save.ghosts[trail.id] : null;
+    const ghostTrace = chase ? chase.trace : ownTrace;
+    refreshLabLooks();                              // v1.9: the Lab's looks are read at the start of every round
+    labBridge.beginRound();
     run = { trail, ended: false, quitting: false, place: null, lastState: null, started: false, posBannerAt: 0, cdTimer: 0,
       gates: facts ? facts.opts.gates : 4, facts: [], xp: 0, mastered: [], fluent: [], missionPaid: 0, levelBefore: facts ? levelFor(facts.xp) : 1,
-      weekend, daily, mutator, cupId, mult, riders, ghost: ghostTrace, ghostTime: save.bestTime[trail.id] || 0, maxCombo: 0, turbo: false, taunted: false };
+      weekend, daily, mutator, cupId, mult, riders: chase ? [] : riders, ghost: ghostTrace, ghostTime: chase ? chase.time : save.bestTime[trail.id] || 0, maxCombo: 0, turbo: false, taunted: false,
+      chase, lab: { level: null, crate: false } };
     save.selectedTrail = trail.id;
     go('ride');
-    hud.reset(trail, paintColor(save.paint), { ghost: !!ghostTrace });
+    hud.reset(trail, paintColor(save.paint), { ghost: !!ghostTrace, chase: !!chase });
+    showChaseTag(chase);
     refreshFactsHud();
     hideCountdown();
     controls.reset();
@@ -529,14 +618,19 @@ async function boot() {
     try {
       const stats = statsFor(save);
       stats.coinMult = (stats.coinMult || 1) * mult;
-      const look = { ...playerLook(save), paint: enginePaint(save.paint) };
+      const look = playerLook(save);               // the garage's look with the Lab's paint, decal and rim over it (v1.9)
+      look.paint = enginePaint(look.paint);
+      // the ghost: a plain trace as ever; an object when it has its own rider (a family member's), a name tag or a Lab ghost look
+      const ownLook = labSlots.ghost || null;
+      const ghostCfg = chase ? { trace: chase.trace, vehicle: chase.vehicle, paint: enginePaint(chase.paint), helmet: chase.helmet, suit: chase.suit, label: ghostLabel(chase), look: chase.look || null }
+        : ghostTrace && ownLook ? { trace: ghostTrace, look: ownLook } : ghostTrace;
       game.start({
-        trail, stats, seed: hashString('trail:' + trail.id), paint: look.paint, decal: save.decal,
-        vehicle: save.vehicle, helmet: look.helmet, suit: look.suit, flag: look.flag, boostTrail: look.trail, look,
-        ghost: ghostTrace, mutator: mutator ? mutator.id : null,
+        trail, stats, seed: hashString('trail:' + trail.id), paint: look.paint, decal: look.decal,
+        vehicle: save.vehicle, helmet: look.helmet, suit: look.suit, flag: look.flag, boostTrail: look.trail, rim: look.rim || null, look,
+        ghost: ghostCfg, mutator: mutator ? mutator.id : null, chase: !!chase,
         bestDistance: save.best[trail.id] || null, bestTime: save.bestTime[trail.id] || null,
         gates: facts ? facts.opts.gates : 4,           // Math Gates (Parents → Options: 3 / 4 / 6)
-        race: { riders, name: playerName(), ...(save.rivals.tier > 0 ? { skillUp: Math.min(0.3, save.rivals.tier * 0.05) } : {}) },
+        race: chase ? { riders: 0, name: playerName() } : { riders, name: playerName(), ...(save.rivals.tier > 0 ? { skillUp: Math.min(0.3, save.rivals.tier * 0.05) } : {}) },
         shake: settings.reducedMotion ? 0 : settings.shake / 100,
       });
       game.setInput({ gas: false, brake: false, boost: false });
@@ -548,7 +642,33 @@ async function boot() {
     }
     cancelAnimationFrame(hudRaf);
     hudRaf = requestAnimationFrame(hudLoop);
+    if (chase) setTimeout(() => { if (run && run.chase === chase && !run.started) app.say(chase.own ? 'Chase your best. Press gas!' : `Chase ${chase.name}'s ghost. Press gas!`); }, 500);
     if (!save.seen.coach) showCoach();
+  }
+
+  // ---------- Ghost Chase (v1.9): who can be chased, the picker, the hint on the line ----------
+  const chaseTag = h('div', { class: 'chase-tag', id: 'chase-tag', role: 'status', hidden: true });
+  $('#hud').append(chaseTag);
+  function showChaseTag(chase) {
+    if (!chase) { chaseTag.hidden = true; return; }
+    chaseTag.replaceChildren(chase.own ? 'Chase your best: press ' : `Chase ${chase.name}'s ghost: press `, h('b', {}, 'GAS'), ' and you both go!');
+    chaseTag.hidden = false;
+  }
+  /** The ghosts this player can chase on a trail: "My best" (when there is one), then each family member who has a ghost there, with their Lab ghost look. */
+  function chaseOptions(trailId) {
+    if (!currentPlayerId) return [];
+    const me = Profiles.playerById(family, currentPlayerId);
+    const rows = chaseChoices(save, trailId, me, family.players);
+    for (const g of rows) {
+      const slot = g.own ? labSlots.ghost : (labBridge.cosmeticsOf(g.playerId).slots || {}).ghost;
+      g.look = slot || null;
+    }
+    return rows;
+  }
+  function openChase(trail) {
+    const rows = chaseOptions(trail.id);
+    if (!rows.length) { toast('No ghost on this trail yet'); return; }
+    chasePicker.open(trail, rows, (g) => { save.selectedTrail = trail.id; app.persist(); startRide(trail.id, { chase: g }); });
   }
 
   function hudLoop() {
@@ -614,7 +734,10 @@ async function boot() {
           if (lead) hud.banner('rival', `${lead.name}: ${lead.taunt}`, 1700);
         }
         break;
-      case 'go': run.started = true; showCount('GO!', true); Sfx.beep(true); Sfx.gateDrop(); Audio.whoosh(); if (evt.bogged) bogged(); break;
+      case 'go':
+        run.started = true;
+        if (run.chase) { chaseTag.hidden = true; Audio.whoosh(); break; }       // Ghost Chase: no countdown, no gate drop; the start is your GAS
+        showCount('GO!', true); Sfx.beep(true); Sfx.gateDrop(); Audio.whoosh(); if (evt.bogged) bogged(); break;
       case 'bogged': bogged(); break;
       case 'launch': if (!run.started) { run.started = true; Audio.whoosh(); } break;
       // the engine draws BACKFLIP! / BIG AIR! / PERFECT! / CRASH! in the world itself; the HUD only adds sound and
@@ -628,7 +751,7 @@ async function boot() {
       case 'bigAir': Audio.whoosh(); break;
       case 'land':
         Audio.land(evt.quality === 'hard' ? 'rough' : evt.quality);
-        if (evt.quality === 'perfect') setTimeout(() => Audio.cheer(0.6), 120);
+        if (evt.quality === 'perfect') { setTimeout(() => Audio.cheer(0.6), 120); labLater(() => labReport('perfect')); }
         break;
       case 'crash': Audio.smash(); Audio.oops(); break;
       case 'respawn': hud.banner('small', 'Back on track!', 1000); Audio.whoosh(); break;
@@ -676,6 +799,8 @@ async function boot() {
     const out = recordAnswer(facts, pick.fact, { ...res, scout: pick.reason === 'scout' ? pick.family : undefined }, Date.now(), session);
     r.facts.push({ fact: pick.fact, flip: pick.flip, correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, ms: res.ms, status: out.status, newlyMastered: out.newlyMastered,
       reason: pick.reason || '', bucket: pick.bucket || '', pattern: out.pattern || null });
+    const rc = labReport('fact', { firstTry: !!res.correct });       // v1.9: a gate fact (a miss fixed with the fix-it routine is not a first try)
+    noteLabReceipt(r, rc);
     r.xp += out.xp;
     if (out.newlyMastered) r.mastered.push(pick.fact);
     if (out.newlyFluent) r.fluent.push(pick.fact);
@@ -688,6 +813,13 @@ async function boot() {
     document.documentElement.classList.remove('math');
     controls.enable(!paused);
     try { game.openGate({ correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, turbo: turbo && !!res.quick }); } catch (e) { console.error('[TrailBlazer] openGate threw', e); }
+    if (rc.combo.moment) showMoment(rc.combo.name);                  // "Perfect Landing": after the gate is open, so the flourish is seen
+  }
+  /** What a receipt adds for the results: a level-up and a waiting crate (said once the race is over). */
+  function noteLabReceipt(r, rc) {
+    if (!rc || !rc.ok) return;
+    if (rc.level && rc.level.up) r.lab.level = rc.level;
+    if (rc.crate) r.lab.crate = true;
   }
 
   function bogged() { if (run && !run.boggedShown) { run.boggedShown = true; hud.banner('small', 'Too early! Bogged start', 1200); Audio.oops(true); } }
@@ -696,7 +828,9 @@ async function boot() {
   // summary.place and the AI riders around them by how far along the track they were at the end
   function standings(r, summary) {
     const p = Profiles.playerById(family, currentPlayerId);
-    const meRow = { name: p ? p.name : 'You', paint: save.paint, color: p ? p.color : null, me: true, look: { ...playerLook(save), flag: null, paint: enginePaint(save.paint) } };
+    const pl = playerLook(save);
+    const meRow = { name: p ? p.name : 'You', paint: save.paint, color: p ? p.color : null, me: true, look: { ...pl, flag: null, paint: enginePaint(pl.paint) } };
+    if (r.chase) return [{ ...meRow, place: 1 }];            // Ghost Chase: one ride, no podium
     // v1.5: the AI riders are the rival trio (names, paints, helmets, vehicles from run.riders)
     const ai = (x) => {
       const c = r.riders.find((q) => q.name === x.name) || {};
@@ -725,6 +859,7 @@ async function boot() {
     gatePanel.cancel(); document.documentElement.classList.remove('math');
     Audio.engine(-1); Audio.nitro(false);
     summary = summary && typeof summary === 'object' ? summary : {};
+    if (r.chase) summary = { ...summary, place: null };       // v1.9: a chase has no place (no win, podium, unlock or place bonus: the engine pays none)
     const { rows, total } = cashRows(summary.cash);
     const medalTimes = medalTimesFor(r.trail, medalTable);
     const bank = bankRide(save, trails, r.trail.id, summary, medalTimes);
@@ -754,14 +889,17 @@ async function boot() {
     const result = lastResult = {
       trail: r.trail, summary: { ...summary, maxCombo: Math.max(Number(summary.maxCombo) || 0, r.maxCombo) }, rows, total, bank, medalTimes, standings: rows4,
       place: bank.place, timeSec: summary.timeSec || 0, math, probeStarted, season,
+      chase: r.chase ? { name: r.chase.name, own: !!r.chase.own, label: ghostLabel(r.chase), beat: !!(season.ghost && season.ghost.beat), by: season.ghost ? season.ghost.by : 0, ghostTime: r.chase.time } : null,
       next: !season.weekend && nt && isUnlocked(save, trails, nt.id) && cupOf(nt, trails) === cupOf(r.trail, trails) ? nt : null,
       weekendNext: season.weekend && !season.weekendFinal ? weekendNext(save) : null,
       unlocked: bank.unlocked ? trails.find((t) => t.id === bank.unlocked) : null,
     };
     const wasPaused = paused;
     paused = false;
+    labLater(() => labAfterRace(r, summary, bank, season));    // v1.9: the race's events for the Lab (out of the engine's tick, before the results show)
     const show = () => {
       go('results', result);
+      labResultsVoice(r, result);
       if (bank.earned || (result.hill && result.hill.cash.total > 0)) Audio.cash();
       if (bank.place === 1 || bank.newMedal || bank.unlocked || bank.paints.length || bank.decals.length || season.crates.length) setTimeout(() => Audio.fanfare(), 400);
       if (math && math.mastered.length) setTimeout(() => Audio.trophy(), 900);
@@ -786,6 +924,7 @@ async function boot() {
     const cm = cupMult(r.cupId) * (r.daily ? DAILY_MULT : 1);
     const hl = { active: true, picks, asked: 0, right: 0, quick: 0, answers: [], result, show, trailId: r.trail.id, cupMult: cm, flags: 0, heightM: 0, summit: false, ended: false };
     let ok = false;
+    hillRun = r;                                 // v1.9: the race this climb belongs to (the Lab's receipts for its facts)
     hill = hl;                                   // before the call: an engine may hold in the same tick
     try { ok = game.startHill({ flags: HILL_FLAGS, questions: HILL_QUESTIONS, seed: hashString('hill:' + r.trail.id + ':' + (save.hill.climbs || 0)), cupMult: cm, autoSec: HILL_AUTO_SEC }) !== false; }
     catch (e) { console.error('[TrailBlazer] startHill threw', e); ok = false; }
@@ -871,8 +1010,11 @@ async function boot() {
     hl.answers.push({ fact: pick.fact, flip: !!pick.flip, kind: pick.kind || '', correct: !!res.correct, quick: !!res.quick, fixed: !!res.fixed, ms: res.ms });
     try { recordHillAnswer(facts, pick, res, now); } catch (e) { console.error('[TrailBlazer] recordHillAnswer threw', e); }
     app.persistFacts();
+    const rc = labReport('fact', { firstTry: !!res.correct });         // v1.9: a Hill Climb fact counts like a gate fact
+    noteLabReceipt(hillRun, rc);
     document.documentElement.classList.remove('math');
     try { game.hillBoost({ power: res.correct ? 1 : 0, quick: !!res.quick }); } catch (e) { console.error('[TrailBlazer] hillBoost threw', e); }
+    if (rc.combo.moment) showMoment(rc.combo.name);
     armHillWatchdog(hl, 30000);       // the charge fires by itself after HILL_AUTO_SEC, so a hold (or the end) follows within this; if never, the climb ends
   }
   /** The climb is over: bank the hill's cash, remember the best, a gold crate on the summit, then the results. */
@@ -896,6 +1038,7 @@ async function boot() {
     save.hill.flags = (save.hill.flags || 0) + flags;
     const result = hl.result;
     if (summit) {
+      labLater(() => labReport('summit'));
       save.hill.summits = (save.hill.summits || 0) + 1;
       save.summits[hl.trailId] = true;
       earnCrate(save, 'gold');
@@ -929,10 +1072,13 @@ async function boot() {
       if (r.ghost && r.ghostTime > 0 && summary.timeSec > 0) {
         const beat = typeof summary.beatGhost === 'boolean' ? summary.beatGhost : summary.timeSec < r.ghostTime;
         out.ghost = { beat, by: Math.round(Math.abs(r.ghostTime - summary.timeSec) * 10) / 10 };
+        if (r.chase) Object.assign(out.ghost, { chase: true, own: !!r.chase.own, name: r.chase.name || '' });
       }
-      const before = rivalTrio(save.rivals)[0];
-      const rv = noteRivalRace(save.rivals, rows4);
-      out.rival = { ...rv, beats: save.rivals.beats[before.id] || 0, next: rv.retired ? rivalTrio(save.rivals)[0] : null };
+      if (!r.chase) {                                // a chase has no rivals on the track: nothing to beat, nobody retires
+        const before = rivalTrio(save.rivals)[0];
+        const rv = noteRivalRace(save.rivals, rows4);
+        out.rival = { ...rv, beats: save.rivals.beats[before.id] || 0, next: rv.retired ? rivalTrio(save.rivals)[0] : null };
+      }
       if (r.weekend) {
         weekendRace(save, r.trail.id, rows4);
         const w = save.weekend;
@@ -1069,7 +1215,7 @@ async function boot() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { pause(); tts.cancel(); Audio.suspend(); Sfx.suspend(); app.persist(); app.persistFacts(); setHero(false); } else { Audio.resume(); Sfx.resume(); setHero(screen === 'title'); }
   });
-  window.addEventListener('pagehide', () => { pause(); tts.cancel(); app.persist(); app.persistFacts(); });
+  window.addEventListener('pagehide', () => { pause(); tts.cancel(); app.persist(); app.persistFacts(); labBridge.flush(); });
   window.addEventListener('keydown', (e) => {
     if (coaching && (e.code === 'Enter' || e.code === 'Space')) { dismissCoach(e); return; }
     if (e.code === 'Escape' || (e.code === 'KeyP' && run)) {
@@ -1084,6 +1230,7 @@ async function boot() {
   $('#btn-garage').addEventListener('click', () => go('garage'));
   $('#title-daily').addEventListener('click', () => { const d = dailyInfo(); if (d) startRide(d.trail.id, { daily: !d.done }); });
   $('#btn-grid').addEventListener('click', () => go('grid'));
+  $('#btn-lab').addEventListener('click', () => app.openLab());
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'sync' }));
   $('#btn-player').addEventListener('click', () => go('players'));
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));
@@ -1134,6 +1281,7 @@ async function boot() {
         reason: open && run && run.pick ? run.pick.reason || '' : '', bucket: open && run && run.pick ? run.pick.bucket || '' : '' };
     },
     pit, crates, get vehicles() { return vehicles; }, get mutators() { return mutators; },
+    lab: labBridge, chasePicker, get labSlots() { return labSlots; },       // v1.9: the Lab bridge, the Ghost Chase picker, the equipped Lab looks
     get hill() { return hill; },     // v1.7: the climb in progress (null between)
   }; // debugging / smoke tests
   registerSW();

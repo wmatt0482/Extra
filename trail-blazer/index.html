@@ -1113,6 +1113,54 @@ html.hill .boost-bar::after { content: ''; }
   #res-crate { grid-column: 1 / -1; justify-content: center; }
   #hud:has(#hud-ghost:not([hidden])) .race-bar { top: calc(var(--pad-t) + 160px); }
 }
+
+/* ===== v1.9: The Lab (the XP pill in the HUD, the results strip, the title button), Ghost Chase (the chase button, the picker, a HUD with no clock) ===== */
+.hud-lab { display: flex; align-items: flex-start; max-width: 120px; min-width: 0; pointer-events: none; }
+.hud-lab:empty { display: none; }
+.hud-lab > * { max-width: 120px; }
+.res-lab { flex: none; margin-bottom: 8px; }
+.res-lab:empty { display: none; }
+.banner.b-moment > span { color: #fff; background: linear-gradient(rgba(60,24,120,.92), rgba(30,14,70,.92)); text-shadow: 0 4px 0 var(--violet-edge), 0 7px 0 var(--ink); position: relative; }
+.banner.b-moment > span::before, .banner.b-moment > span::after { content: ''; position: absolute; top: 50%; width: 46px; height: 46px; margin-top: -23px; border-radius: 50%; border: 5px solid #ffd23a; opacity: 0; }
+.banner.b-moment > span::before { left: -30px; } .banner.b-moment > span::after { right: -30px; }
+.banner.b-moment.show > span::before, .banner.b-moment.show > span::after { animation: momentRing 1.1s ease-out .1s both; }
+@keyframes momentRing { 0% { transform: scale(.3); opacity: .95; } 100% { transform: scale(1.9); opacity: 0; } }
+.reduced-motion .banner.b-moment.show > span::before, .reduced-motion .banner.b-moment.show > span::after { animation: none; }
+/* Ghost Chase: the ghost is the clock. No race clock, facts counter, gap chip, position badge or countdown on screen. */
+#hud.chase .hud-pos, #hud.chase .hud-mid { display: none; }
+#hud.chase .hud-right { grid-column: -2 / -1; }
+#hud.chase .race-bar { top: calc(var(--pad-t) + 70px); }
+.chase-tag { position: absolute; left: 50%; bottom: calc(var(--pad-b) + 150px); transform: translateX(-50%); z-index: 4; pointer-events: none; max-width: calc(100vw - 40px);
+  padding: 6px 14px 7px; border-radius: 12px; background: rgba(13,26,22,.74); border: 2px solid rgba(255,255,255,.14); font: 800 14px/1.2 var(--font-body); color: #fff; text-align: center; }
+.chase-tag b { color: var(--accent); }
+.trail-slot { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.trail-slot > .trail-card { flex: 1 1 auto; min-width: 0; }
+.trail-grid:has(.trail-slot) { grid-auto-rows: minmax(176px, auto); }          /* a row with a "Chase a ghost" button is 50 px taller */
+.chase-btn { min-height: 44px; width: 100%; padding: 0 12px; border-radius: 12px; border: 0; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: #c9d1ff; color: #1b1f4a; font: 400 12px/1 var(--font-display); text-transform: uppercase; box-shadow: 0 3px 0 #6b74c4; }
+.chase-btn svg { width: 20px; height: 20px; flex: none; }
+.chase-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 #6b74c4; }
+.chase-sheet { width: min(480px, 100%); }
+.chase-sheet p { margin: 0 0 10px; font-weight: 700; color: var(--muted); font-size: 15px; line-height: 1.35; }
+.chase-list { display: grid; gap: 8px; }
+.chase-chip { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 12px; min-height: 56px; padding: 8px 14px; border-radius: var(--r-sm); border: 2px solid var(--line); background: var(--ink-2); color: #fff; text-align: left; cursor: pointer; font: inherit; }
+.chase-chip:active { transform: translateY(2px); }
+.chase-chip .cc-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--c, #c9d1ff); box-shadow: 0 0 0 3px rgba(255,255,255,.18); }
+.chase-chip b { font: 400 17px/1.1 var(--font-display); display: block; }
+.chase-chip small { display: block; margin-top: 3px; font: 700 12px/1.2 var(--font-body); color: var(--muted); }
+.chase-chip .cc-time { font: 400 15px/1 var(--font-display); color: #c9d1ff; font-variant-numeric: tabular-nums; }
+.chase-foot { display: flex; justify-content: flex-end; margin-top: 12px; }
+.res-line.l-chase { border-color: #c9d1ff; }
+.pod.chase .pod-step { visibility: hidden; }
+@media (orientation: portrait) {
+  .trail-grid:has(.trail-slot) { grid-auto-rows: auto; }
+}
+@media (orientation: portrait) and (max-width: 520px) {
+  .hud-right { position: relative; }
+  .hud-lab { position: absolute; right: 0; top: calc(100% + 6px); }       /* under the speed box, so the pause button stays on screen */
+  #hud.chase .hud-top { grid-template-columns: 1fr; }
+  #hud.chase .race-bar { top: calc(var(--pad-t) + 128px); }
+}
 </style>
 </head>
 <body>
@@ -1182,6 +1230,7 @@ html.hill .boost-bar::after { content: ''; }
       <div class="menu-row">
         <button class="btn" id="btn-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
         <button class="btn" id="btn-grid" data-sfx><span data-icon="grid"></span>Facts</button>
+        <button class="btn" id="btn-lab" data-sfx><span data-icon="flask"></span>The Lab</button>
         <button class="btn" id="btn-parents" data-sfx><span data-icon="lock"></span>Parents</button>
       </div>
     </div>
@@ -1264,6 +1313,7 @@ html.hill .boost-bar::after { content: ''; }
           <div class="hud-num"><span id="hud-speed">0</span><small>km/h</small></div>
           <div class="boost-bar" aria-label="Boost"><i id="hud-boost"></i></div>
         </div>
+        <div class="hud-lab" id="hud-lab"></div>
         <button class="btn icon-btn" id="btn-pause" aria-label="Pause"><span data-icon="pause"></span></button>
       </div>
     </div>
@@ -1323,6 +1373,7 @@ html.hill .boost-bar::after { content: ''; }
         <div class="res-weekend" id="res-weekend" hidden></div>
         <div class="res-stars" id="res-stars" hidden></div>
         <div class="res-lines" id="res-lines"></div>
+        <div class="res-lab" id="res-lab"></div>
         <table class="pay" id="res-pay"></table>
       </div>
     </div>
@@ -1372,6 +1423,18 @@ html.hill .boost-bar::after { content: ''; }
           <button class="btn btn-hot" id="pause-end" data-sfx><span data-icon="flag"></span>End race</button>
           <p class="pause-keys kb-only">Keys: ← brake · → gas · ↑ boost · Esc pause</p>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Ghost Chase picker (src/ui/chasePicker.js) ===== -->
+  <div class="modal" id="panel-chase" data-panel="chase" hidden>
+    <div class="card sheet chase-sheet" role="dialog" aria-labelledby="chase-h">
+      <div class="sheet-head"><h3 id="chase-h"><span data-icon="ghost"></span>Chase a ghost</h3></div>
+      <div class="sheet-body scroll">
+        <p id="chase-sub">Race a ghost on this trail. There is no clock: the ghost is the clock. Press GAS and you both go!</p>
+        <div class="chase-list" id="chase-list" role="group" aria-label="Ghosts"></div>
+        <div class="chase-foot"><button class="btn btn-sm" id="chase-cancel" data-sfx>Not now</button></div>
       </div>
     </div>
   </div>

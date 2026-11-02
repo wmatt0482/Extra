@@ -266,6 +266,52 @@ async function main() {
     const sjL = await J(L, async () => { await window.__trailBlazer.sync.pullNow(); return JSON.parse(localStorage.getItem(`spellJump.${window.__trailBlazer.app.currentPlayerId}.save`)); });
     check(sjL && sjL.cash === sjDoc.data.cash, "the laptop's Trail Blazer pulled Mia's Spell Jump save too (same family code)");
 
+    console.log('\n=== v1.9 Ghost Chase: a sibling\'s ghost arrives with the family sync, and the picker offers it ===');
+    // Ben joins the family on the laptop and races Pine Ridge; his save (with his ghost, packed) syncs; on the ipad Mia's trail card offers
+    // "Chase a ghost" and the picker lists "My best" and Ben's ghost. Nothing new is synced for it: the ghost rides inside <id>.tb.
+    const benId = await J(L, () => { const a = window.__trailBlazer.app; const p = a.createPlayer('Ben', '#22d3ff'); a.selectPlayer(p.id || p); a.save.seen.coach = true; a.persist(); return a.currentPlayerId; });
+    check(benId && benId !== miaId, 'the laptop added Ben to the family and is playing as him');
+    check(await race(L, 'pine-ridge'), 'Ben raced Pine Ridge on the laptop (a finished race records his ghost)');
+    const benGhost = await J(L, (id) => { const sv = JSON.parse(localStorage.getItem(`trailBlazer.${id}.save`)); return { type: typeof sv.ghosts['pine-ridge'], n: (sv.ghosts['pine-ridge'] || '').split(';').length }; }, benId);
+    check(benGhost.type === 'string' && benGhost.n > 20, `Ben's ghost is stored packed in his save (${benGhost.n} samples)`);
+    await J(L, (id) => window.__trailBlazer.app.selectPlayer(id), miaId);
+    await tbSync(L, 'syncNow');
+    await tbSync(I, 'pullNow');
+    const kinds = apiLog.filter((r) => r.method === 'PUT' && /\.(ghost|ghosts)\b/.test(r.path || '')).length;
+    const onLaptop = await J(I, (id) => { const raw = localStorage.getItem(`trailBlazer.${id}.save`); return raw ? { packed: typeof JSON.parse(raw).ghosts['pine-ridge'], raw } : null; }, benId);
+    check(onLaptop && onLaptop.packed === 'string', "Ben's save, ghost included, arrived on the ipad with the family sync (no new kind)");
+    const sibling = await J(I, async (ben) => {
+      const a = window.__trailBlazer.app;
+      a.selectPlayer(ben.mia);
+      const G = await import('/trail-blazer/src/meta/ghosts.js');
+      const S = await import('/trail-blazer/src/meta/save.js');
+      const raw = localStorage.getItem(`trailBlazer.${ben.ben}.save`);
+      const rows = a.chaseChoices('pine-ridge');
+      const decoded = S.decodeGhost(JSON.parse(raw).ghosts['pine-ridge']);
+      return { names: rows.map((r) => (r.own ? 'me' : r.name)), ben: rows.find((r) => r.name === 'Ben') && { n: rows.find((r) => r.name === 'Ben').trace.length, same: JSON.stringify(rows.find((r) => r.name === 'Ben').trace) === JSON.stringify(decoded), vehicle: rows.find((r) => r.name === 'Ben').vehicle, color: rows.find((r) => r.name === 'Ben').color === a.family.players.find((p) => p.name === 'Ben').color }, rawSame: raw === localStorage.getItem(`trailBlazer.${ben.ben}.save`), raw };
+    }, { mia: miaId, ben: benId });
+    check(sibling.names.join() === 'me,Ben' && sibling.ben && sibling.ben.same && sibling.ben.n === benGhost.n && sibling.ben.color === true, `the ipad's chase choices: ${sibling.names.join(', ')}; Ben's ghost is his synced trace (${sibling.ben && sibling.ben.n} samples, his colour)`);
+    await J(I, () => window.__trailBlazer.app.go('trails'));
+    await I.waitForSelector('[data-chase="pine-ridge"]');
+    await shot(I, '03-ipad-chase-button');
+    await I.click('[data-chase="pine-ridge"]');
+    await I.waitForSelector('#panel-chase:not([hidden])');
+    const chips = await J(I, () => [...document.querySelectorAll('#chase-list .chase-chip')].map((c) => c.textContent.replace(/\s+/g, ' ').trim()));
+    check(chips.length === 2 && /My best/.test(chips[0]) && /Ben/.test(chips[1]) && /Ranger|Quad/.test(chips[1]), `the picker shows "My best" and Ben's ghost (${chips.join(' | ')})`);
+    await shot(I, '04-ipad-chase-picker');
+    await J(I, () => { const g = window.__trailBlazer.game; window.__chaseStart = null; const s = g.start; g.start = (cfg) => { window.__chaseStart = { chase: cfg.chase, riders: cfg.race && cfg.race.riders, label: cfg.ghost && cfg.ghost.label, n: cfg.ghost && cfg.ghost.trace && cfg.ghost.trace.length, vehicle: cfg.ghost && cfg.ghost.vehicle }; return s(cfg); }; });
+    await I.click('#chase-list [data-ghost]:not([data-ghost="me"])');
+    await I.waitForFunction(() => window.__trailBlazer.screen === 'ride' || !document.querySelector('#pit-offer').hidden, null, { timeout: 5000 });
+    if (await J(I, () => !document.querySelector('#pit-offer').hidden)) { await I.click('#pit-later'); await I.waitForFunction(() => window.__trailBlazer.screen === 'ride'); }
+    const cs = await J(I, () => window.__chaseStart);
+    check(cs && cs.chase === true && cs.riders === 0 && cs.label === 'Ben' && cs.n === benGhost.n, `choosing Ben starts a chase against his synced ghost (${JSON.stringify(cs)})`);
+    check(await J(I, () => document.querySelector('#hud').classList.contains('chase') && document.querySelector('#hud-time-box').hidden && document.querySelector('#hud-pos').hidden && document.querySelector('#countdown').hidden), 'the chase HUD has no clock, no position badge and no countdown');
+    await shot(I, '05-ipad-chasing');
+    const benNow = await J(I, (id) => localStorage.getItem(`trailBlazer.${id}.save`), benId);
+    check(benNow === sibling.raw, "chasing Ben's ghost never wrote Ben's save (read-only: byte for byte the same)");
+    await J(I, () => window.__trailBlazer.app.go('title'));
+    check(kinds === 0, 'no new sync kind or request for ghosts (the ghost rides inside <id>.tb)');
+
     const errors = [...laptop.errors, ...ipad.errors];
     check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''}`);
   } finally {

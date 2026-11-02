@@ -5,7 +5,8 @@
 //     ctx is already in vehicle-local meters with +y up (the engine's world transform + the chassis pose).
 //     look = { vehicle?: id | def (default the Ranger), paint: id | PAINTS entry, decal: id,
 //              helmet?: helmet id (HELMETS) | css colour (a plain helmet in that colour), suit?: suit id (SUITS),
-//              flag?: flag id (FLAGS) | null, trail?: boost trail id (TRAIL_FX) | css colour }.
+//              flag?: flag id (FLAGS) | null, trail?: boost trail id (TRAIL_FX) | css colour,
+//              rim?: wheel rim id (RIMS) | { fill, ring, spokes, glow? } | null (v1.9, the Lab's rims: null = the steel rim) }.
 //     wheels (optional) = [{ x, y, a }] wheel centres in vehicle-local meters + spin angle (rad); default: at
 //     rest, spinning with t * speed.
 //   drawVehiclePreview(ctx, look, { x, y, scale, t, speed, lw? }) for a y-down canvas (garage, picker tiles):
@@ -140,8 +141,17 @@ export const DECALS = [
   { id: 'flames', name: 'Flames' },
   { id: 'stars', name: 'Stars' },
   { id: 'checkers', name: 'Checkers' },
+  { id: 'bolt', name: 'Bolt' },               // v1.9: only from the Lab (the garage's own list is src/data/paints.js)
+  { id: 'edge', name: 'Checker Edge' },       // v1.9: only from the Lab
 ];
 export const DECAL_BY_ID = Object.fromEntries(DECALS.map((d) => [d.id, d]));
+// v1.9 (The Lab, lab/SPEC.md §4.2): the wheel rim option (the Lab's rims). DECALS above also lists 'bolt' and 'edge' (checker edge), the two
+// decals the Lab's decal slot adds; the garage's own decal list (src/data/paints.js) is unchanged.
+export const RIMS = [
+  { id: 'neon', name: 'Neon Rims', fill: '#171a2e', ring: '#3cff9d', spokes: '#3cff9d', glow: '#3cff9d' },
+  { id: 'gold', name: 'Gold Rims', fill: '#f2c230', ring: '#a8820f', spokes: '#fff3a0', glow: null },
+];
+export const RIM_BY_ID = Object.fromEntries(RIMS.map((r) => [r.id, r]));
 
 // ---------- rider cosmetics (SPEC v1.5 §4): ids the engine draws ----------
 export const HELMETS = [
@@ -206,12 +216,13 @@ export function resolveLook(look = {}) {
   const suit = SUIT_BY_ID[look.suit] || SUITS[0];
   const flag = FLAG_BY_ID[look.flag] || null;
   const trailFx = TRAIL_FX_BY_ID[look.trail] || (isCss(look.trail) ? { id: 'custom', colors: [look.trail, look.trail] } : TRAIL_FX[0]);
-  const key = def.id + '|' + paint.id + '|' + paint.body + '|' + decal + '|' + helmetId + '|' + helmetColor + '|' + suit.id + '|' + (flag ? flag.id : '') + '|' + trailFx.id + (trailFx.id === 'custom' ? trailFx.colors[0] : '');
+  const rim = RIM_BY_ID[look.rim] || (look.rim && typeof look.rim === 'object' && isCss(look.rim.fill) && isCss(look.rim.ring) ? { id: 'custom', fill: look.rim.fill, ring: look.rim.ring, spokes: isCss(look.rim.spokes) ? look.rim.spokes : look.rim.ring, glow: isCss(look.rim.glow) ? look.rim.glow : null } : null);
+  const key = def.id + '|' + paint.id + '|' + paint.body + '|' + decal + '|' + helmetId + '|' + helmetColor + '|' + suit.id + '|' + (flag ? flag.id : '') + '|' + trailFx.id + (trailFx.id === 'custom' ? trailFx.colors[0] : '') + (rim ? '|rim:' + rim.id + (rim.id === 'custom' ? rim.fill + rim.ring : '') : '');
   let r = lookCache.get(key);
   if (r) return r;
   const dark = luminance(paint.body) < 0.2;
   r = {
-    key, vehicle: def, art: artFor(def), paint, decal, helmet: helmetColor, helmetId, suit, flag, trailFx, body: paint.body, stripe: paint.stripe,
+    key, vehicle: def, art: artFor(def), paint, decal, helmet: helmetColor, helmetId, suit, flag, trailFx, rim, body: paint.body, stripe: paint.stripe,
     bodyDark: shade(paint.body, -0.3), bodyLight: shade(paint.body, 0.22), dark,
     under: withAlpha('#000000', dark ? 0.3 : 0.22),
   };
@@ -262,6 +273,8 @@ function badgeSprite(text) {
 // fixed decal layouts in Ranger body space (x -1.36..1.46, y 0.5..1.27), mapped onto each vehicle's body box
 const MUD_BLOBS = [[-1.1, 0.62, 0.16], [-0.7, 0.56, 0.1], [-0.2, 0.66, 0.13], [0.25, 0.58, 0.09], [0.7, 0.64, 0.14], [1.15, 0.6, 0.11], [-1.25, 0.95, 0.08], [1.3, 0.82, 0.07], [0.0, 0.9, 0.06]];
 const STARS = [[-1.05, 1.0, 0.13], [-0.25, 0.88, 0.1], [0.42, 0.62, 0.12], [1.12, 0.66, 0.1], [-0.8, 0.6, 0.08]];
+const BOLT = [[0.1, 0.3], [-0.14, -0.02], [-0.01, -0.02], [-0.1, -0.3], [0.16, 0.04], [0.03, 0.04]];   // a lightning bolt around (0, 0)
+const BOLTS = [[-0.78, 0.9, 1.0], [0.82, 0.88, 1.0], [-0.1, 0.62, 0.6]];                               // centre x, y and size, in Ranger body space
 function starPath(ctx, cx, cy, ro) {
   const ri = ro * 0.45;
   ctx.moveTo(cx, cy + ro);
@@ -272,7 +285,7 @@ function starPath(ctx, cx, cy, ro) {
   ctx.closePath();
 }
 
-function drawWheel(ctx, w, a, lw, hub, big) {
+function drawWheel(ctx, w, a, lw, hub, big, rim = null) {
   const r = w.r;
   ctx.save();
   ctx.translate(w.x, w.y);
@@ -306,15 +319,22 @@ function drawWheel(ctx, w, a, lw, hub, big) {
   ctx.strokeStyle = '#3b3b46';
   ctx.lineWidth = r * 0.08;
   ctx.stroke();
-  // rim
+  // rim (v1.9: the Lab's rims change its colours; the shape is the same)
+  if (rim && rim.glow) {
+    ctx.beginPath();
+    ctx.arc(0, 0, r * 0.62, 0, TAU);
+    ctx.strokeStyle = withAlpha(rim.glow, 0.55);
+    ctx.lineWidth = r * 0.16;
+    ctx.stroke();
+  }
   ctx.beginPath();
   ctx.arc(0, 0, r * 0.5, 0, TAU);
-  ctx.fillStyle = '#c9ced6';
+  ctx.fillStyle = rim ? rim.fill : '#c9ced6';
   ctx.fill();
-  ctx.lineWidth = lw * 0.6;
-  ctx.strokeStyle = '#4a4f5a';
+  ctx.lineWidth = rim ? lw * 0.9 : lw * 0.6;
+  ctx.strokeStyle = rim ? rim.ring : '#4a4f5a';
   ctx.stroke();
-  ctx.fillStyle = '#7b818d';
+  ctx.fillStyle = rim ? rim.spokes : '#7b818d';
   ctx.beginPath();
   for (let i = 0; i < 5; i++) {
     const t = (i / 5) * TAU;
@@ -639,6 +659,24 @@ export function drawVehicle(ctx, look, state = {}) {
     ctx.lineWidth = lw * 0.5;
     ctx.strokeStyle = 'rgba(0,0,0,0.35)';
     ctx.stroke();
+  } else if (d === 'bolt') {                // v1.9 (the Lab): two lightning bolts, in Ranger body space
+    ctx.save();
+    ctx.translate(bx0, by0); ctx.scale(bw / 2.82, bh / 0.77); ctx.translate(1.36, -0.5);
+    ctx.fillStyle = '#ffe14a'; ctx.strokeStyle = 'rgba(29,27,38,0.75)'; ctx.lineWidth = lw * 0.7 / Math.max(0.4, ms);
+    for (const [cx, cy, k] of BOLTS) {
+      ctx.beginPath();
+      BOLT.forEach(([x, y], i) => { if (i) ctx.lineTo(cx + x * k, cy + y * k); else ctx.moveTo(cx + x * k, cy + y * k); });
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
+  } else if (d === 'edge') {                // v1.9 (the Lab): a two-row checker band along the bottom edge
+    const cs = 0.075;
+    for (let i = 0; i * cs < bw + 0.3; i++) {
+      for (let j = 0; j < 2; j++) {
+        ctx.fillStyle = (i + j) % 2 ? '#15161a' : '#ffffff';
+        ctx.fillRect(bx0 - 0.1 + i * cs, by0 + j * cs, cs + 0.005, cs + 0.005);
+      }
+    }
   }
   // stripe (checkers replace it)
   const [s0, s1] = A.stripe;
@@ -799,7 +837,7 @@ export function drawVehicle(ctx, look, state = {}) {
 
   // wheels + fenders
   const hub = L.stripe;
-  for (let i = 0; i < 2; i++) drawWheel(ctx, { x: wheels[i].x, y: wheels[i].y, r: V.wheels[i].r * wr }, wheels[i].a || 0, lw, hub, V.wheels[i].r * wr > 0.5);
+  for (let i = 0; i < 2; i++) drawWheel(ctx, { x: wheels[i].x, y: wheels[i].y, r: V.wheels[i].r * wr }, wheels[i].a || 0, lw, hub, V.wheels[i].r * wr > 0.5, L.rim);
   ctx.strokeStyle = '#1f2226';
   ctx.lineWidth = kind === 'truck' ? 0.2 : 0.15;
   ctx.lineCap = 'butt';

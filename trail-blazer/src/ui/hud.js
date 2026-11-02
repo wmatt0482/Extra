@@ -3,6 +3,8 @@
 // banner at a time in the band under the top bar (FLIP!, BIG AIR, PERFECT, CRASH, "You're 2nd!" ...). v1.5: "vs your
 // best" under the time when the ghost races along; TURBO!, COMBO ×3 and the rivals' lines come in as banners. Writes the DOM
 // only when a shown value changes, so update() can run every frame.
+// v1.9 (The Lab): reset(trail, color, { chase: true }) is Ghost Chase: the ghost is the clock, so the race time, the facts counter, the
+// "vs your best" gap chip and the position badge are hidden (and never written); the speed, the boost and the track bar stay.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { fmtTime, ordinal } from '../data/medals.js';
 import { COLOR_BY_PAINT } from '../data/paints.js';
@@ -14,9 +16,9 @@ export function createHud({ paintColor = (id) => COLOR_BY_PAINT[id] || '#c9d1d6'
   const el = {
     pos: $('#hud-pos'), place: $('#hud-place'), placeSfx: $('#hud-place-sfx'), of: $('#hud-of'), time: $('#hud-time'), speed: $('#hud-speed'),
     boost: $('#hud-boost'), boostFill: $('#ctl-boost-fill'), boostBtn: $('#ctl-boost'), dots: $('#race-dots'),
-    banner: $('#banner'), bannerText: $('#banner-text'), ghost: $('#hud-ghost'),
+    banner: $('#banner'), bannerText: $('#banner-text'), ghost: $('#hud-ghost'), root: $('#hud'), timeBox: $('#hud-time-box'),
   };
-  let last = {}, length = 600, dots = [], me = null, bannerQ = [], bannerTimer = 0, bannerOn = false;
+  let last = {}, length = 600, dots = [], me = null, bannerQ = [], bannerTimer = 0, bannerOn = false, chase = false;
   const set = (k, v, fn) => { if (last[k] !== v) { last[k] = v; fn(v); } };
   const restart = (node, cls) => { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); };
 
@@ -41,10 +43,13 @@ export function createHud({ paintColor = (id) => COLOR_BY_PAINT[id] || '#c9d1d6'
 
   return {
     /** trail: the track; playerColor: the player's paint color */
-    reset(trail, playerColor, { ghost = false } = {}) {
+    reset(trail, playerColor, { ghost = false, chase: chaseOn = false } = {}) {
       length = Math.max(1, (trail && trail.length) || 600);
       last = {};
-      el.ghost.hidden = !ghost;
+      chase = !!chaseOn;
+      el.root.classList.toggle('chase', chase);
+      el.pos.hidden = chase; el.timeBox.hidden = chase;
+      el.ghost.hidden = chase || !ghost;
       el.ghost.textContent = 'vs your best';
       el.ghost.className = 'hud-ghost';
       buildDots([], playerColor);
@@ -60,8 +65,8 @@ export function createHud({ paintColor = (id) => COLOR_BY_PAINT[id] || '#c9d1d6'
       const riders = all.filter((r) => !r.me);
       const offset = Number.isFinite(s.x) && Number.isFinite(s.distance) ? s.x - s.distance : 0;
       if (riders.length !== dots.length) buildDots(riders, me && me.style.getPropertyValue('--c'));
-      set('n', riders.length + 1, (v) => { el.of.textContent = `/ ${v}`; });
-      if (s.place >= 1) {
+      if (!chase) set('n', riders.length + 1, (v) => { el.of.textContent = `/ ${v}`; });
+      if (!chase && s.place >= 1) {
         set('p', s.place, (v) => {
           el.place.textContent = String(v); el.placeSfx.textContent = sfx(v);
           el.pos.classList.toggle('p1', v === 1);
@@ -69,13 +74,13 @@ export function createHud({ paintColor = (id) => COLOR_BY_PAINT[id] || '#c9d1d6'
           el.pos.setAttribute('aria-label', `${ordinal(v)} place`);
         });
       }
-      set('t', Math.floor((s.timeSec || 0) * 10), () => { el.time.textContent = fmtTime(s.timeSec || 0); });
+      if (!chase) set('t', Math.floor((s.timeSec || 0) * 10), () => { el.time.textContent = fmtTime(s.timeSec || 0); });
       set('v', Math.round(s.speedKmh || 0), (v) => { el.speed.textContent = String(v); });
       const b = Math.max(0, Math.min(1, s.boost == null ? 0 : s.boost));
       set('b', Math.round(b * 100), (v) => { el.boost.style.transform = `scaleX(${v / 100})`; el.boostFill.style.transform = `scaleY(${v / 100})`; el.boostBtn.classList.toggle('empty', v < 2); });
       set('me', pct(s.distance || 0), (v) => { me.style.left = v; });
       // v1.5: the ghost of the best run (the engine's ghostGap: seconds behind (+) or ahead (-) of it, when it says)
-      if (!el.ghost.hidden && Number.isFinite(s.ghostGap)) {
+      if (!chase && !el.ghost.hidden && Number.isFinite(s.ghostGap)) {
         set('g', Math.round(s.ghostGap * 10), (v) => {
           el.ghost.textContent = v === 0 ? 'vs your best: even' : `vs your best ${v < 0 ? '−' : '+'}${Math.abs(v / 10).toFixed(1)} s`;
           el.ghost.className = 'hud-ghost ' + (v <= 0 ? 'ahead' : 'behind');
