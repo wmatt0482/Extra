@@ -51,3 +51,5 @@ Voice (0.4): every spoken line is a fixed string (`VOICE_LINES` in `src/content.
 Bump both VERSION in `src/content.mjs` and the service-worker cache version on releases. Offline caches include all transitive shared imports and the embedded WASM; APIs stay network only and prepared voice clips use the shared voice cache.
 
 See `docs/v0.4-machines.md`, `docs/v0.4-voice.md` and `docs/v0.4-mobile.md` for the 0.4 machines, voice and phone work.
+
+Lab (0.5): Build Crew is the payoff of the Lab (`lab/SPEC.md` section 4.5). Lab coins, earned in every game, buy the DT-04 dump truck, the FL-05 forklift and four blueprint jobs (101 to 104, each with a "Grabs n · par p" or "Height h m · target t m" challenge and never a clock). The Lab loads lazily through `src/meta/labBridge.js`; with `/lab/` missing or blocked the game, the ten jobs and the sandbox play as before and every Lab item stays hidden (`tools/browser-smoke.mjs` runs that case). In tests (`localhost` only) `window.__lab.grantCoins(n)` and `window.__lab.store.buy('bc.veh.dump')` buy things. `offline.js` has a `SHELL` list and an `OPTIONAL` list for the Lab's modules. See `docs/v0.5-vehicles.md`.

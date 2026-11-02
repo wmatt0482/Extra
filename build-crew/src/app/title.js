@@ -5,11 +5,15 @@ import * as Profiles from '../../../spell-jump/src/spelling/profiles.js';
 import { createKeyboard } from '../../../spell-jump/src/spelling/keyboard.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { refreshStreak } from '../../../spell-jump/src/meta/engagement.js';
-import { ROUNDS } from '../content.mjs';
+import { icon } from '../../../spell-jump/src/ui/icons.js';
+import { ROUNDS, BLUEPRINTS, LAB_MACHINES, MACHINES, labVehicleId } from '../content.mjs';
+import { blueprintSvg } from '../blueprint.mjs';
+import { labBridge } from '../meta/labBridge.js';
+import { VEHICLE_PRICE } from './vehiclePrice.mjs';
 import { loadSave } from '../meta/save.mjs';
 import { Music } from '../meta/music.js';
 import { Sound } from '../meta/sound.js';
-import { app, persist, account } from './state.js';
+import { app, persist, account, applyLook } from './state.js';
 import { toast, modal, closeModal } from './hud.js';
 import { applyVoice, hush } from './voice.js';
 import { startRound } from './rounds.js';
@@ -60,6 +64,19 @@ export function newPlayer() {
   draw();
 }
 
+/** Tells the Lab who is building (it keeps one doc per builder; choosing another builder attaches again). */
+export function attachLab(id) {
+  const p = Profiles.playerById(app.family, id);
+  if (p)
+    labBridge.attach({
+      playerId: id,
+      name: p.name,
+      color: p.color,
+      reducedMotion: app.settings.reducedMotion,
+      sound: app.settings.sound,
+    });
+}
+
 /** Switches to builder `id`: saves the previous builder's time, loads this one's save and voice. */
 export function selectPlayer(id) {
   account();
@@ -70,6 +87,7 @@ export function selectPlayer(id) {
   Profiles.writeFamily(app.family);
   refreshStreak(app.save, Date.now());
   persist();
+  attachLab(id);
   hush();
   app.voiceKey = '';
   applyVoice();
@@ -106,9 +124,10 @@ export function renderTitle() {
   if (family.players.length < Profiles.MAX_PLAYERS) {
     row.append(h('button', { class: 'profile-button', id: 'add-player', onclick: newPlayer }, '+ Add builder'));
   }
-  $('#done-total').textContent = `${save.done.length} / 10`;
-  $('#play').firstChild.textContent =
-    save.done.length === 10 ? 'Build again ' : save.done.length ? 'Resume ' : 'Start building ';
+  // The ten jobs are the count; the Lab blueprints (ids 101 to 104) are extra and never change it.
+  const jobsDone = save.done.filter((id) => id <= 10).length;
+  $('#done-total').textContent = `${jobsDone} / 10`;
+  $('#play').firstChild.textContent = jobsDone === 10 ? 'Build again ' : jobsDone ? 'Resume ' : 'Start building ';
   $('#my-yard').hidden = !save.yard;
   $('#saved-thumb').replaceChildren();
   if (save.yard) {
@@ -118,6 +137,14 @@ export function renderTitle() {
     } catch {}
   }
   renderLooks(save);
+  renderLab();
+}
+
+/** The title's two Lab buttons ("The Lab" and "Gallery") exist only once the Lab has loaded: with /lab/ missing or
+ *  blocked they never appear and the title is exactly the game's own. */
+export function renderLab() {
+  const on = labBridge.ready && !!app.playerId;
+  for (const id of ['lab-open', 'lab-gallery']) $('#' + id).hidden = !on;
 }
 
 /** The looks row: earned paints (plus Original), the star and stripe decals, and the bell horn. The buttons change
@@ -136,7 +163,7 @@ function renderLooks(save) {
             onclick() {
               app.save.paint = k;
               persist();
-              app.scene.paint = k;
+              applyLook();
               renderTitle();
             },
           },
@@ -155,7 +182,7 @@ function renderLooks(save) {
             onclick() {
               app.save.decal = app.save.decal === decal ? 'none' : decal;
               persist();
-              app.scene.decal = app.save.decal;
+              applyLook();
               toast(decal === 'star' ? 'A star for your crew!' : 'Racing stripes!');
             },
           },
@@ -181,9 +208,13 @@ function renderLooks(save) {
   }
 }
 
-/** The job board: every job with its reward; a job opens once the one before it is done (all of them in tests). */
+/** The job board: every job with its reward; a job opens once the one before it is done (all of them in tests). Below it,
+ *  once the Lab has loaded, a Blueprints row and a Vehicles row show the Lab's extras with their lock and price: a tap on
+ *  a locked one opens the Lab shop at Build Crew, a tap on an owned blueprint starts it. */
 export function jobBoard() {
   const save = app.save;
+  const lab = labBridge.ready;
+  const own = (id) => labBridge.owns(id);
   modal('The job board', [
     h('p', {}, 'Complete jobs to unlock equipment and finishes. Replay any completed job.'),
     h(
@@ -203,7 +234,50 @@ export function jobBoard() {
         ),
       ),
     ),
-  ]);
+    lab ? h('h3', { class: 'board-row' }, 'Blueprints') : null,
+    lab
+      ? h(
+          'div',
+          { class: 'job-grid blueprints', id: 'blueprint-row' },
+          ...BLUEPRINTS.map((r) => {
+            const owned = own(r.lab);
+            return h(
+              'button',
+              {
+                class: 'job-tile blueprint' + (owned ? '' : ' locked'),
+                'data-job': r.id,
+                'data-owned': String(owned),
+                onclick: () => (owned ? startRound(r.id) : labBridge.openShop({})),
+              },
+              h('span', { class: 'bp-art', html: blueprintSvg(r) }),
+              h('b', {}, owned ? '' : h('span', { class: 'lock', html: icon('lock') }), `${save.done.includes(r.id) ? '✓ ' : ''}${r.title}`),
+              h('small', {}, owned ? 'Blueprint' : `${r.price.toLocaleString('en-US')} Lab coins`),
+            );
+          }),
+        )
+      : null,
+    lab ? h('h3', { class: 'board-row' }, 'Vehicles') : null,
+    lab
+      ? h(
+          'div',
+          { class: 'job-grid vehicles', id: 'vehicle-row' },
+          ...LAB_MACHINES.map((k) => {
+            const owned = own(labVehicleId(k));
+            return h(
+              'button',
+              {
+                class: 'job-tile vehicle' + (owned ? '' : ' locked'),
+                'data-vehicle': k,
+                'data-owned': String(owned),
+                onclick: () => (owned ? startRound(0) : labBridge.openShop({})),
+              },
+              h('b', {}, owned ? '' : h('span', { class: 'lock', html: icon('lock') }), MACHINES[k].label),
+              h('small', {}, owned ? 'In your sandbox' : `${VEHICLE_PRICE[k].toLocaleString('en-US')} Lab coins`),
+            );
+          }),
+        )
+      : null,
+  ].filter(Boolean));
 }
 
 /** Back to the title ("Back to base"): stops speech and input, saves, frames the whole yard and lets sync run. */

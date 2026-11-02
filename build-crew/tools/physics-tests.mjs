@@ -6,11 +6,12 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { resultsPath } from './runner.mjs';
 import { performance } from 'node:perf_hooks';
-import { initPhysics, Yard, DT, RAPIER } from '../src/physics.mjs';
-import { ROUNDS, SANDBOX } from '../src/content.mjs';
-import { Mission, evaluate } from '../src/missions.mjs';
+import { initPhysics, Yard, DT, RAPIER, MACHINE, DUMP, FORK, bedAngle, gateAngle } from '../src/physics.mjs';
+import { ROUNDS, SANDBOX, BLUEPRINTS, MACHINES, COLORS, TOYS, findJob, sandboxSpawns, LAB_MACHINES } from '../src/content.mjs';
+import { Mission, Challenge, evaluate, standingHeight } from '../src/missions.mjs';
 import { defaultSave, normalize, normalizeYard, mergeBc } from '../src/meta/save.mjs';
 import { solve } from './solution.mjs';
+import { createHash } from 'node:crypto';
 await initPhysics();
 const report = {};
 let yard, mission;
@@ -152,6 +153,234 @@ const [onRamp] = yard.poses();
 assert(onRamp.position.y > yard.groundAt(onRamp.position.x, onRamp.position.z) - 0.05, 'a cube rests on the ramp, not in it');
 yard.destroy();
 console.log('PASS terrain stamps: ramp wedge collider matches what is drawn');
+
+// ---- Lab (0.5): nothing that was playable changed -----------------------------------------------------------------
+// The ten jobs, the sandbox, the toys, the colours and the three original machines hash to the value taken from the
+// 0.4.0 source before the Lab work began (their numbers are the game's economy; the Lab adds beside them).
+{
+  const snap = JSON.stringify({
+    ROUNDS,
+    SANDBOX,
+    COLORS,
+    TOYS,
+    machines: { skid: MACHINES.skid, excavator: MACHINES.excavator, crane: MACHINES.crane },
+  });
+  assert.equal(
+    createHash('sha256').update(snap).digest('hex'),
+    '1621a802ceb59e9f0f9149cb2fc7120bf5ffc3941e8a92bbc2248069763cc6cf',
+    'jobs 1 to 10, the sandbox, the toys and the three original machines are unchanged',
+  );
+  assert.equal(ROUNDS.length, 10);
+  assert.deepEqual(Object.keys(MACHINES).slice(0, 3), ['skid', 'excavator', 'crane']);
+  console.log('PASS the original jobs, sandbox and machines match their 0.4.0 snapshot');
+}
+// The blueprint prices and ids mirror the Lab catalogue (data only, no imports).
+{
+  const { ITEM_BY_ID } = await import('../../lab/src/data/catalog.js');
+  for (const r of BLUEPRINTS) {
+    assert.equal(ITEM_BY_ID[r.lab].price, r.price, `${r.lab} costs what the job board says`);
+    assert(!ITEM_BY_ID[r.lab].soon);
+  }
+  const { VEHICLE_PRICE } = await import('../src/app/vehiclePrice.mjs');
+  for (const kind of LAB_MACHINES) {
+    assert(ITEM_BY_ID[`bc.veh.${kind}`] && !ITEM_BY_ID[`bc.veh.${kind}`].soon);
+    assert.equal(ITEM_BY_ID[`bc.veh.${kind}`].price, VEHICLE_PRICE[kind], `${kind} costs what the board says`);
+  }
+  console.log('PASS blueprint and vehicle ids and prices match the Lab catalogue');
+}
+// Each blueprint is solvable with the machines everyone has. A grabs challenge is met by a tidy build; a height
+// challenge is not met by the plain blueprint and is met by the spare block stacked on top afterwards.
+for (const round of BLUEPRINTS) {
+  for (const stretch of round.challenge.kind === 'height' ? [false, true] : [false]) {
+    yard = new Yard(round);
+    mission = new Mission(round);
+    const challenge = new Challenge(round);
+    const track = (axes, n) => {
+      for (let i = 0; i < n; i++) {
+        yard.step(axes);
+        const poses = yard.poses();
+        mission.step(poses, yard.held?.id, DT);
+        challenge.step(poses, yard.held?.id, yard.grabs);
+      }
+      return { ...state(), grabs: yard.grabs };
+    };
+    const start = performance.now();
+    await solve({ state, advance: track, action: () => yard.grab(), select: (i) => yard.select(i) }, round.id, { stretch });
+    challenge.finish(yard.grabs);
+    assert(mission.complete, `blueprint ${round.id} completes`);
+    if (round.challenge.kind === 'grabs') {
+      assert(challenge.met, `${round.title}: ${challenge.label()} is met by a tidy build`);
+      assert(yard.grabs >= round.ghosts.length && yard.grabs <= round.challenge.par);
+    } else assert.equal(challenge.met, stretch, `${round.title}: ${challenge.label()} (stretch ${stretch})`);
+    report[round.id + (stretch ? 's' : '')] = {
+      simulatedSeconds: Math.round(yard.time),
+      cpuMs: Math.round(performance.now() - start),
+      complete: mission.complete,
+      challenge: challenge.label(),
+      met: challenge.met,
+    };
+    yard.destroy();
+    console.log(`PASS blueprint ${round.id} ${round.title}${stretch ? ' with the stretch' : ''}: ${challenge.label()}`);
+  }
+}
+// The challenge numbers: a chain of grabs counts, the height follows real poses, a held or moving block never counts.
+{
+  const c = new Challenge(findJob(104));
+  const still = { velocity: { x: 0, y: 0, z: 0 }, angular: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0, w: 1 } };
+  const cube = (id, y) => ({ id, type: 'cube', position: { x: 0, y, z: 0 }, ...still });
+  c.step([cube(1, 0.6), cube(2, 1.8)], null, 0);
+  assert(Math.abs(c.height - 2.4) < 1e-9 && !c.met);
+  c.step([cube(1, 0.6), cube(2, 5.0)], 2, 0);
+  assert(Math.abs(c.height - 1.2) < 1e-9, 'a held block does not count');
+  c.step([cube(1, 0.6), cube(2, 5.2)], null, 0);
+  assert(c.met && c.label().includes('target 5.6'), 'a block top at 5.8 m meets a 5.6 m target');
+  c.step([cube(1, 0.6)], null, 0);
+  assert(c.met, 'once met it stays met');
+  const on = { ...still, rotation: { x: Math.SQRT1_2, y: 0, z: 0, w: Math.SQRT1_2 } };
+  assert(Math.abs(standingHeight([{ id: 1, type: 'beam', position: { x: 0, y: 2, z: 0 }, ...on }]) - 2.575) < 1e-9, "a beam rolled onto its side is 1.15 m tall");
+  console.log('PASS challenge counting');
+}
+// The dump truck. Six cubes and a spare on the bed ride through a drive without spilling; the lift tips the bed; the
+// tailgate opens before anything can slide; rolling forward while tipping lays the whole load out behind the truck.
+{
+  const toys = [];
+  for (const dz of [0.7, 1.9, 3.0]) for (const dx of [-0.65, 0.65]) toys.push({ type: 'cube', color: '#c33', x: dx, y: DUMP.hinge.y + 0.7, z: -6.5 + dz });
+  toys.push({ type: 'cube', color: '#c33', x: 0, y: DUMP.hinge.y + 1.9, z: -4.6 });
+  yard = new Yard({ ...SANDBOX, machines: ['dump'], toys, spawns: [[0, -4]] });
+  const truck = yard.machine;
+  for (let i = 0; i < 120; i++) yard.step();
+  assert.equal(yard.bedCargo().length, 7, 'seven cubes ride in the bed');
+  assert.equal(yard.grab(), false, 'a dump truck has no Grab');
+  for (let i = 0; i < 150; i++) yard.step({ drive: 1, steer: i > 60 ? 0.3 : 0 });
+  assert.equal(yard.bedCargo().length, 7, 'a drive with a turn does not spill the load');
+  // stopping takes real distance: the same release of the stick coasts further than a skid steer's
+  const speed0 = truck.speed,
+    z0 = truck.z,
+    x0 = truck.x;
+  for (let i = 0; i < 120; i++) yard.step({});
+  const coast = Math.hypot(truck.z - z0, truck.x - x0);
+  yard.destroy();
+  const skid = new Yard({ ...SANDBOX, machines: ['skid'], toys: [] });
+  for (let i = 0; i < 150; i++) skid.step({ drive: 1 });
+  const s0 = { x: skid.machine.x, z: skid.machine.z };
+  for (let i = 0; i < 120; i++) skid.step({});
+  const skidCoast = Math.hypot(skid.machine.z - s0.z, skid.machine.x - s0.x);
+  skid.destroy();
+  assert(speed0 > 3 && coast > 1.8 && coast > skidCoast * 3, `the truck coasts ${coast.toFixed(2)} m, the skid steer ${skidCoast.toFixed(2)} m`);
+  report.dumpCoastMetres = { truck: coast, skid: skidCoast };
+  // tipping: the angle follows the lift, the gate opens first, a stationary tip leaves a heap but never traps the truck
+  assert(Math.abs(bedAngle(MACHINES.dump.height[1]) - DUMP.max) < 1e-9 && bedAngle(MACHINES.dump.height[0]) === 0);
+  assert.equal(gateAngle(0), 0);
+  assert(Math.abs(gateAngle(DUMP.gate.from + DUMP.gate.span) - DUMP.gate.open) < 1e-9 && gateAngle(0.5) === DUMP.gate.open && DUMP.gate.from + DUMP.gate.span < 0.4, 'the gate is fully open (by 23 degrees of bed tilt) well before a load slides (about 36)');
+  yard = new Yard({ ...SANDBOX, machines: ['dump'], toys, spawns: [[0, -4]] });
+  for (let i = 0; i < 120; i++) yard.step();
+  let tipped = 0;
+  for (let i = 0; i < 60 * 14; i++) {
+    yard.step({ lift: 1, drive: i > 90 ? 0.25 : 0 });
+    if (yard.machine.lift >= MACHINES.dump.height[1] - 1e-6 && !tipped) tipped = i;
+  }
+  assert(tipped > 60, 'the bed takes seconds to tip, not a blink: ' + tipped / 60);
+  assert.equal(yard.bedCargo().length, 0, 'tipping while rolling forward empties the bed');
+  const out = yard.poses();
+  assert(out.every((p) => Math.abs(p.position.y - 0.6) < 0.2 && p.position.z < yard.machine.z - 2), 'the cubes lie on the ground behind the truck');
+  report.dumpTip = { seconds: tipped / 60, cargoLeft: 0 };
+  yard.destroy();
+  // a load that is tipped while standing still still comes out when the truck then rolls on
+  yard = new Yard({ ...SANDBOX, machines: ['dump'], toys, spawns: [[0, -4]] });
+  for (let i = 0; i < 120; i++) yard.step();
+  for (let i = 0; i < 60 * 6; i++) yard.step({ lift: 1 });
+  for (let i = 0; i < 60 * 6; i++) yard.step({ drive: 0.4 });
+  assert(yard.bedCargo().length <= 1, 'the last blocks leave when the truck rolls forward');
+  // lowering the bed puts it flat again and the gate shuts
+  for (let i = 0; i < 60 * 8; i++) yard.step({ lift: -1 });
+  assert.equal(yard.machine.lift, MACHINES.dump.height[0]);
+  yard.destroy();
+  console.log('PASS dump truck carries a load, stops slowly and tips it out');
+}
+// The forklift. Its tines are 0.14 m wide at +-0.4 m and 0.07 m thick; a pallet's openings are 1.3 m wide and 0.30 m
+// tall. Only forks that are low, square and centred go in and lift; anything else shoves the pallet or rides over it.
+{
+  const attempt = async ({ dx = 0, yaw = 0, raise = 0, tilt = 0 }) => {
+    const y = new Yard({
+      ...SANDBOX,
+      machines: ['fork'],
+      toys: [{ type: 'pallet', color: '#c33', x: 0, y: 0.3, z: 0 }, { type: 'cube', color: '#c33', x: 0, y: 1.0, z: 0 }],
+      spawns: [[dx, -8]],
+    });
+    const m = y.machine;
+    m.yaw = yaw;
+    y.updateTip(m, true);
+    for (let i = 0; i < 120; i++) y.step();
+    for (let i = 0; i < 400 && raise && m.lift < raise; i++) y.step({ lift: 1 });
+    // Creep forward the way a careful operator would: stop once the tines are under the deck, or as soon as the pallet
+    // is shoved, then try the lift.
+    for (let i = 0; i < 60 * 12; i++) {
+      y.step({ drive: 0.6 });
+      const p = y.poses()[0].position;
+      if (y.forkStatus().state === 'in' || Math.hypot(p.x, p.z) > 0.2 || m.z > 0.5) break;
+    }
+    const seen = y.forkStatus().state;
+    for (let i = 0; i < 90; i++) y.step({});
+    for (let i = 0; i < 60 * 3; i++) y.step({ lift: 1 });
+    const pallet = y.poses()[0],
+      cube = y.poses()[1];
+    const out = { seen, palletY: pallet.position.y, cubeY: cube.position.y, lift: m.lift, grab: y.grab() };
+    y.destroy();
+    return out;
+  };
+  const clean = await attempt({});
+  assert.equal(clean.seen, 'in', 'a clean approach puts the tines under the deck');
+  assert(clean.palletY > 2 && clean.cubeY > 2.8, `the pallet and its cube rise with the forks (${clean.palletY.toFixed(2)})`);
+  assert.equal(clean.grab, false, 'a forklift has no Grab');
+  for (const dx of [0.12, -0.15, 0.2]) assert((await attempt({ dx })).palletY > 2, `${dx} m off centre still goes in (the openings are 1.3 m wide)`);
+  for (const [label, opts] of [
+    ['offset 0.3 m', { dx: 0.3 }],
+    ['offset 0.45 m', { dx: 0.45 }],
+    ['yawed 0.15 rad', { yaw: 0.15 }],
+    ['yawed 0.08 rad', { yaw: 0.08 }],
+    ['forks held at 0.5 m', { raise: 0.5 }],
+    ['forks held high', { raise: 0.7 }],
+  ]) {
+    const bad = await attempt(opts);
+    assert(bad.palletY < 0.4, `${label}: the pallet is not lifted (${bad.palletY.toFixed(2)})`);
+    report['fork ' + label] = bad;
+  }
+  // rear steer: turning pivots about the front axle, so the tail swings out and the forks barely move
+  yard = new Yard({ ...SANDBOX, machines: ['fork'], toys: [], spawns: [[0, 0]] });
+  const f = yard.machine,
+    axle = () => ({ x: f.x + Math.sin(f.yaw) * FORK.pivot, z: f.z + Math.cos(f.yaw) * FORK.pivot }),
+    a0 = axle();
+  for (let i = 0; i < 90; i++) yard.step({ steer: 1 });
+  assert(Math.hypot(axle().x - a0.x, axle().z - a0.z) < 1e-6, 'a standing turn pivots about the front axle');
+  assert(Math.hypot(f.x - 0, f.z - 0) > 0.3, 'so the middle of the machine swings');
+  const heightRange = MACHINES.fork.height;
+  for (let i = 0; i < 60 * 6; i++) yard.step({ lift: 1 });
+  assert.equal(f.lift, heightRange[1]);
+  for (let i = 0; i < 60 * 6; i++) yard.step({ lift: -1, tilt: 1 });
+  assert.equal(f.lift, heightRange[0]);
+  assert(f.tilt <= FORK.tilt[1] + 1e-9 && f.tilt > 0.19, 'the mast tilts back to its stop');
+  yard.destroy();
+  console.log('PASS forklift lifts a pallet only on a clean approach');
+}
+// Both Lab machines are a row in every table, share a yard with the others, and survive a save and restore.
+{
+  for (const kind of LAB_MACHINES) {
+    assert(MACHINE[kind] && MACHINES[kind].lab, kind + ' has its physics row');
+    assert(MACHINE[kind].grabs === false);
+  }
+  yard = new Yard({ ...SANDBOX, machines: ['skid', 'excavator', 'crane', 'dump', 'fork'], spawns: sandboxSpawns(['skid', 'excavator', 'crane', 'dump', 'fork']) });
+  for (let i = 0; i < 120; i++) yard.step();
+  yard.select(3);
+  for (let i = 0; i < 60; i++) yard.step({ drive: 1, lift: 0.5 });
+  const saved = normalizeYard({ ...yard.snapshot(), daylight: 0.5 });
+  assert.equal(saved.machines.length, 5);
+  assert(saved.machines.find((m) => m.kind === 'dump').lift > 0.7);
+  yard.hop();
+  assert.notEqual(yard.active, 3);
+  yard.destroy();
+  console.log('PASS five machines share a yard and a saved site');
+}
+
 const a = defaultSave(),
   b = defaultSave();
 a.done = [1, 2];
@@ -167,7 +396,7 @@ assert.deepEqual(merged, mergeBc({ updatedAt: 2, data: b }, { updatedAt: 1, data
 b.resetAt = 20;
 assert.deepEqual(mergeBc({ updatedAt: 40, data: a }, { updatedAt: 1, data: b }).done, b.done);
 assert.equal(normalizeYard({ toys: Array(100).fill({ type: 'cube', x: Infinity }) }).toys.length, 64);
-assert.deepEqual(normalize({ done: [-2, 50, 1, 1] }).done, [1]);
+assert.deepEqual(normalize({ done: [-2, 50, 1, 1, 101, 104, 105, 11] }).done, [1, 101, 104]);
 console.log('PASS commutative merge, reset, bounds');
 writeFileSync(resultsPath('physics-results.json'), JSON.stringify(report, null, 2) + '\n');
 console.log('All physics and mission checks passed.');

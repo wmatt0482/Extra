@@ -30,7 +30,8 @@ function quaternion(q) {
   const l = Math.hypot(q.x, q.y, q.z, q.w);
   return l > 1e-6 ? { x: q.x / l, y: q.y / l, z: q.z / l, w: q.w / l } : { x: 0, y: 0, z: 0, w: 1 };
 }
-/** A bounded sandbox snapshot: at most 64 known toys, 3 machines and 12 terrain stamps, all inside the yard. */
+/** A bounded sandbox snapshot: at most 64 known toys, 5 machines (the three originals and the two Lab machines) and
+ *  12 terrain stamps, all inside the yard. */
 export function normalizeYard(raw) {
   if (!raw || !Array.isArray(raw.toys)) return null;
   return {
@@ -48,7 +49,7 @@ export function normalizeYard(raw) {
         rotation: quaternion(t.rotation),
       })),
     machines: (raw.machines || [])
-      .slice(0, 3)
+      .slice(0, 5)
       .filter((m) => MACHINES[m.kind])
       .map((m) => ({
         kind: m.kind,
@@ -71,8 +72,13 @@ export function normalizeYard(raw) {
 export function normalize(raw) {
   const out = defaultSave();
   if (!raw || typeof raw !== 'object') return out;
+  // Jobs 1 to 10, and the four Lab blueprints 101 to 104 (a blueprint can only be played with the Lab's coins).
   out.done = [
-    ...new Set((Array.isArray(raw.done) ? raw.done : []).filter((v) => Number.isInteger(v) && v >= 1 && v <= 10)),
+    ...new Set(
+      (Array.isArray(raw.done) ? raw.done : []).filter(
+        (v) => Number.isInteger(v) && ((v >= 1 && v <= 10) || (v >= 101 && v <= 104)),
+      ),
+    ),
   ].sort((a, b) => a - b);
   const rewards = ['cream', 'excavator', 'leaf', 'star', 'crane', 'sky', 'bell', 'stripe', 'sunset', 'wrecking'];
   out.rewards = [...new Set((Array.isArray(raw.rewards) ? raw.rewards : []).filter((r) => rewards.includes(r)))];

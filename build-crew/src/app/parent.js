@@ -12,6 +12,7 @@ import { VERSION } from '../content.mjs';
 import { defaultSave, loadSave } from '../meta/save.mjs';
 import { writeSave } from '../meta/sync.js';
 import { Music } from '../meta/music.js';
+import { labBridge } from '../meta/labBridge.js';
 import { app, account, flush, setSetting } from './state.js';
 import { toast } from './hud.js';
 import { applyVoice, cloudDefault, prepareVoice } from './voice.js';
@@ -147,7 +148,7 @@ function report(data) {
     h(
       'div',
       { class: 'pz-scores' },
-      h('div', { class: 'stat' }, h('b', {}, `${data.done.length} / 10`), h('span', {}, 'Jobs completed')),
+      h('div', { class: 'stat' }, h('b', {}, `${data.done.filter((j) => j <= 10).length} / 10`), h('span', {}, 'Jobs completed')),
     ),
     dayChart({
       days,
@@ -229,5 +230,25 @@ function options(id, data) {
       'Unlock all implemented machines and the wrecking ball for this builder. Story jobs stay in order.',
     ),
     toggle,
+    // The Lab row: shown only once the Lab has loaded. The PIN was just entered, so the Lab's grown-ups panel opens unlocked.
+    labBridge.ready
+      ? h(
+          'div',
+          { id: 'bc-lab' },
+          h('h3', {}, 'The Lab'),
+          h('p', { class: 'sub' }, 'Lab coins, quests, the family board and the Lab switches for the whole family.'),
+          h(
+            'button',
+            {
+              id: 'bc-lab-open',
+              onclick() {
+                $('#pz-close')?.click();
+                labBridge.openParent({ unlocked: true });
+              },
+            },
+            'Open the Lab grown-ups panel',
+          ),
+        )
+      : null,
   );
 }

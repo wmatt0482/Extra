@@ -38,6 +38,37 @@ export const MACHINE_UI = {
     releaseHint: null,
     carriesBall: true,
   },
+  // The Lab machines: `card` is the whole card picture (they are not the skid-steer-style chassis the others share),
+  // `noGrab` hides the Grab button (loads ride on the bed or the tines).
+  dump: {
+    toolLabel: 'TIP BED',
+    joints: [],
+    card: (c) =>
+      '<path d="M3 31h57v4H3z" fill="#0b121a"/><path d="M5 20L37 13v16H5z" fill="' +
+      c +
+      '" stroke="#0b121a" stroke-width="1.5"/><path d="M39 17h10l5 7v7H39z" fill="' +
+      c +
+      '" stroke="#0b121a" stroke-width="1.5"/><path d="M42 19h5l3 5h-8z" fill="#203e50"/>' +
+      '<circle cx="13" cy="36" r="5.2" fill="#161c21" stroke="#93b0be" stroke-width="1.5"/><circle cx="24" cy="36" r="5.2" fill="#161c21" stroke="#93b0be" stroke-width="1.5"/><circle cx="48" cy="36" r="5.2" fill="#161c21" stroke="#93b0be" stroke-width="1.5"/>' +
+      '<path d="M20 32L28 22" stroke="#93b0be" stroke-width="2.4"/>',
+    releaseHint: null,
+    carriesBall: false,
+    noGrab: true,
+  },
+  fork: {
+    toolLabel: 'MAST LIFT & TILT',
+    joints: ['tilt'],
+    card: (c) =>
+      '<path d="M8 28h26v7H8z" fill="#0b121a"/><path d="M9 21h25v9H9z" fill="' +
+      c +
+      '" stroke="#0b121a" stroke-width="1.5"/><path d="M17 9h13v12" fill="none" stroke="#93b0be" stroke-width="2"/>' +
+      '<path d="M19 12h9v7h-9z" fill="#203e50"/><path d="M40 5h3v31h-3z" fill="#93b0be"/><path d="M43 31h16v3H43z" fill="#c9d3da"/>' +
+      '<path d="M45 22v9h-3" fill="none" stroke="#93b0be" stroke-width="2"/>' +
+      '<circle cx="28" cy="35" r="5" fill="#161c21" stroke="#93b0be" stroke-width="1.5"/><circle cx="14" cy="37" r="3.6" fill="#161c21" stroke="#93b0be" stroke-width="1.5"/>',
+    releaseHint: null,
+    carriesBall: false,
+    noGrab: true,
+  },
 };
 
 /** True when the page uses the touch layout (a touch screen is the main pointer, or ?touch=1). */
@@ -127,6 +158,8 @@ export function showHint(text) {
 /** Opens the modal sheet with a title and content. Play time stops and the controls and music pause while it is up. */
 export function modal(title, children) {
   account();
+  app.labResults?.destroy();
+  app.labResults = null;
   app.controls?.setEnabled(false);
   $('#modal-body').replaceChildren(h('h2', { id: 'modal-title' }, title), ...children);
   $('#modal').hidden = false;
@@ -137,6 +170,8 @@ export function modal(title, children) {
 
 /** Closes the modal (and any on-screen keyboard in it) and resumes play, controls and music. */
 export function closeModal() {
+  app.labResults?.destroy();
+  app.labResults = null;
   app.keyboard?.destroy();
   app.keyboard = null;
   $('#modal').hidden = true;
@@ -150,6 +185,7 @@ export function closeModal() {
 /** The small SVG picture on a machine card: a chassis and cab in the machine's color plus its arm and tool. */
 export function machineArt(kind) {
   const c = MACHINES[kind].color;
+  if (MACHINE_UI[kind].card) return `<svg viewBox="0 0 64 46" aria-hidden="true">${MACHINE_UI[kind].card(c)}</svg>`;
   return (
     '<svg viewBox="0 0 64 46" aria-hidden="true"><path d="M6 31h47v10H6z" fill="#0b121a"/>' +
     '<path d="M10 35h38" stroke="#687888" stroke-width="3"/>' +
@@ -184,6 +220,7 @@ export function renderMachines() {
     ),
   );
   const ui = MACHINE_UI[yard.machine.kind];
+  $('#grab').hidden = !!ui.noGrab;
   $('#tool-label').innerHTML = `${ui.toolLabel} <small class="kb">I J K L</small><small class="drag">drag the stick</small>`;
   for (const b of document.querySelectorAll('[data-hold]')) {
     const axis = b.dataset.hold.split(':')[0];
@@ -238,14 +275,22 @@ export function updateUI() {
     grab.dataset.held = held;
     grab.innerHTML = `${icon(yard.held ? 'air' : 'land')} ${yard.held ? 'Release' : 'Grab'} <kbd>SPACE</kbd>`;
   }
-  // The counter's text is rebuilt only when its numbers change (no string is made on the frames in between).
+  // The counter's text is rebuilt only when its numbers change (no string is made on the frames in between). A blueprint
+  // adds its build challenge on a second line: "Grabs 4 · par 9" or "Height 3.6 m · target 6.4 m" (never a clock).
   const mission = app.mission,
     n = mission ? mission.status.count : yard.blocks.length,
-    of = mission ? mission.status.total : -1;
-  if (refs.n !== n || refs.of !== of || !progress.textContent) {
+    of = mission ? mission.status.total : -1,
+    challenge = app.challenge;
+  if (challenge?.active) challenge.grabs = yard.grabs;
+  const line = challenge?.active ? challenge.label() : '';
+  if (refs.n !== n || refs.of !== of || refs.line !== line || !progress.textContent) {
     refs.n = n;
     refs.of = of;
-    progress.textContent = mission ? `${n} / ${of} placed` : isTouch() ? `${n} materials` : `${n} materials on site`;
+    refs.line = line;
+    const main = mission ? `${n} / ${of} placed` : isTouch() ? `${n} materials` : `${n} materials on site`;
+    progress.textContent = main;
+    progress.classList.toggle('with-challenge', !!line);
+    if (line) progress.append(h('small', { id: 'challenge', class: challenge.met ? 'met' : '' }, line));
   }
   haptics(yard);
 }

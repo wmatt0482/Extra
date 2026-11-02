@@ -46,10 +46,14 @@ const SHELL = [
   "src/app/state.js",
   "src/app/title.js",
   "src/app/tray.js",
+  "src/app/vehiclePrice.mjs",
   "src/app/voice.js",
+  "src/blueprint.mjs",
   "src/content.mjs",
   "src/controls.js",
   "src/main.js",
+  "src/meta/labBridge.js",
+  "src/meta/labLooks.js",
   "src/meta/music.js",
   "src/meta/save.mjs",
   "src/meta/sound.js",
@@ -69,4 +73,28 @@ const SHELL = [
   "style.css",
   "vendor/rapier.mjs",
   "vendor/three.module.js"
+];
+// Optional: the Lab (/lab/). A missing, blocked or older Lab never stops the game from installing.
+const OPTIONAL = [
+  "../lab/src/core/combo.js",
+  "../lab/src/core/crate.js",
+  "../lab/src/core/engine.js",
+  "../lab/src/core/events.js",
+  "../lab/src/core/family.js",
+  "../lab/src/core/merge.js",
+  "../lab/src/core/model.js",
+  "../lab/src/core/quests.js",
+  "../lab/src/core/shop.js",
+  "../lab/src/core/streak.js",
+  "../lab/src/core/view.js",
+  "../lab/src/core/xp.js",
+  "../lab/src/data/catalog.js",
+  "../lab/src/data/crate.js",
+  "../lab/src/data/events.js",
+  "../lab/src/data/goals.js",
+  "../lab/src/data/quests.js",
+  "../lab/src/index.js",
+  "../lab/src/store.js",
+  "../lab/src/sync.js",
+  "../lab/src/ui/index.js"
 ];

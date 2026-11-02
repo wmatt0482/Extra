@@ -12,7 +12,7 @@ const BASE = process.env.BASE_URL || 'http://localhost:8080';
 const quantile = (a, n) => a.slice().sort((x, y) => x - y)[Math.floor((a.length - 1) * n)];
 
 /** Creates a builder, unlocks every machine through the Parent Zone and opens a sandbox holding 64 cubes. */
-async function fixture(page, tap) {
+async function fixture(page, tap, { lab = false } = {}) {
   await page.waitForFunction(() => window.__buildCrew);
   await page.locator('#add-player')[tap]();
   await page.keyboard.type('Perf');
@@ -24,13 +24,22 @@ async function fixture(page, tap) {
   await page.locator('.pz-tabs [data-tab="options"]')[tap]();
   await page.locator('#bc-unlock')[tap]();
   await page.locator('#pz-close')[tap]();
+  // With `lab`, the Lab's dump truck and forklift are bought through the Lab's own wallet (localhost test hook): five machines.
+  if (lab) {
+    await page.waitForFunction(() => window.__lab);
+    const ok = await page.evaluate(() => {
+      window.__lab.grantCoins(40000);
+      return ['bc.veh.dump', 'bc.veh.fork'].map((id) => window.__lab.store.buy(id).ok);
+    });
+    assert.deepEqual(ok, [true, true]);
+  }
   await page.locator('#sandbox')[tap]();
   await page.locator('#open-tray')[tap]();
   for (let i = 0; i < 61; i++) await page.locator('[data-spawn="cube"]')[tap]();
   await page.locator('#close-tray')[tap]();
   const state = await page.evaluate(() => window.__buildCrew.state);
   assert.equal(state.blocks.length, 64);
-  assert.equal(state.machines.length, 3);
+  assert.equal(state.machines.length, lab ? 5 : 3);
 }
 
 /** Resets the samples and waits for `n` frames, then returns the summary. */
@@ -57,41 +66,39 @@ async function measure(page, n, environment, fixtureText, extra = {}) {
   };
 }
 
+/** The desktop sample, with or without the Lab machines. */
+async function desktop(browser, lab) {
+  const page = await browser.newPage({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1 });
+  await page.goto(BASE + '/build-crew/?nosw=1&perf=1');
+  await fixture(page, 'click', { lab });
+  await page.waitForTimeout(1200);
+  await page.keyboard.down('w');
+  await page.waitForTimeout(1600);
+  await page.keyboard.up('w');
+  await page.waitForFunction(() => window.__buildCrew.performance.frame.length >= 160, { timeout: 90000 });
+  const result = await measure(
+    page,
+    120,
+    'Chromium headless / ANGLE SwiftShader / 1024x768 logical pixels with adaptive render resolution',
+    lab ? '64 dynamic toys and all five machines (the Lab dump truck and forklift bought)' : '64 dynamic toys and all three machines',
+    { limits: { p95FrameMs: 350, p95UpdateMs: 16.7, drawCalls: 150, triangles: 120000 } },
+  );
+  assert.equal(result.quality.tier, 'desktop');
+  console.log(result);
+  assert(result.p95FrameMs < 350);
+  assert(result.p95UpdateMs < 16.7);
+  assert(result.drawCalls <= 150);
+  assert(result.triangles <= 120000);
+  await page.close();
+  return result;
+}
+
 const browser = await chromium.launch({ headless: true, args: SWIFTSHADER_ARGS });
 const out = {};
 try {
-  // ---- Desktop ----
-  {
-    const page = await browser.newPage({ viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1 });
-    await page.goto(BASE + '/build-crew/?nosw=1&perf=1');
-    await fixture(page, 'click');
-    await page.waitForTimeout(1200);
-    await page.keyboard.down('w');
-    await page.waitForTimeout(1600);
-    await page.keyboard.up('w');
-    await page.waitForFunction(() => window.__buildCrew.performance.frame.length >= 160, { timeout: 90000 });
-    const result = await measure(
-      page,
-      120,
-      'Chromium headless / ANGLE SwiftShader / 1024x768 logical pixels with adaptive render resolution',
-      '64 dynamic toys and all three machines',
-      {
-        limits: { p95FrameMs: 350, p95UpdateMs: 16.7, drawCalls: 150, triangles: 120000 },
-        note:
-          'The 350 ms software-only wall-frame ceiling accounts for runner variance; it is not the physical 16.7 ms ' +
-          'target. CPU update, draw-call and triangle budgets remain independent guards. Physical iPad and ' +
-          'modest-laptop GPU checks remain manual.',
-      },
-    );
-    assert.equal(result.quality.tier, 'desktop');
-    out.desktop = result;
-    console.log(result);
-    assert(result.p95FrameMs < 350);
-    assert(result.p95UpdateMs < 16.7);
-    assert(result.drawCalls <= 150);
-    assert(result.triangles <= 120000);
-    await page.close();
-  }
+  // ---- Desktop: the three original machines, then all five ----
+  out.desktop = await desktop(browser, false);
+  out.desktopLab = await desktop(browser, true);
   // ---- Phone: touch, 390x844 at device scale 3, CPU slowed 4x, real touch events on the drive stick ----
   {
     const context = await browser.newContext({
@@ -102,7 +109,7 @@ try {
     });
     const page = await context.newPage();
     await page.goto(BASE + '/build-crew/?nosw=1&perf=1');
-    await fixture(page, 'tap');
+    await fixture(page, 'tap', { lab: true });
     const cdp = await context.newCDPSession(page);
     await cdp.send('Emulation.setCPUThrottlingRate', { rate: 4 });
     await page.waitForTimeout(1500);
@@ -121,7 +128,7 @@ try {
       page,
       60,
       'Chromium headless / ANGLE SwiftShader / 390x844 at device scale 3, touch, CPU throttled 4x',
-      '64 dynamic toys and all three machines',
+      '64 dynamic toys and all five machines (the Lab dump truck and forklift bought)',
       { limits: { p95FrameMs: 350, p95UpdateMs: 33.3, drawCalls: 150, triangles: 120000 } },
     );
     assert.equal(result.quality.tier, 'phone');
@@ -134,7 +141,7 @@ try {
     assert(result.triangles <= 120000);
     await context.close();
   }
-  writeFileSync(resultsPath('frame-results.json'), JSON.stringify({ ...out.desktop, phone: out.phone }, null, 2) + '\n');
+  writeFileSync(resultsPath('frame-results.json'), JSON.stringify({ ...out.desktop, desktopLab: out.desktopLab, phone: out.phone }, null, 2) + '\n');
 } finally {
   await browser.close();
 }

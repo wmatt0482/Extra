@@ -19,10 +19,11 @@ import { defaultSave, loadSave, normalize } from './meta/save.mjs';
 import { registerSync } from './meta/sync.js';
 import { Music } from './meta/music.js';
 import { Sound } from './meta/sound.js';
-import { app, initState, persist, account, flush, activePlay, setSetting } from './app/state.js';
+import { app, initState, persist, account, flush, activePlay, setSetting, applyLook } from './app/state.js';
 import { toast, closeModal, updateUI, measureInsets } from './app/hud.js';
 import { createVoice, applyVoice, voiceFor, say, hush } from './app/voice.js';
-import { ensurePlayer, renderTitle, jobBoard, showTitle } from './app/title.js';
+import { ensurePlayer, renderTitle, renderLab, attachLab, jobBoard, showTitle } from './app/title.js';
+import { labBridge } from './meta/labBridge.js';
 import { makeWorld, startRound, step, resetBlocks, action } from './app/rounds.js';
 import {
   toggleTray,
@@ -84,12 +85,14 @@ const BUTTONS = {
   'right-machine': () => action('reset'),
   'reset-machine': () => action('reset'),
   'reset-blocks': resetBlocks,
-  'save-yard': saveYard,
+  'save-yard': () => saveYard(),
   'modal-close': closeModal,
   'open-tray': toggleTray,
   'close-tray': closeTray,
   'clear-yard': clearSite,
   wreck: toggleWreckingBall,
+  'lab-open': () => labBridge.openHome({}),
+  'lab-gallery': () => labBridge.openHome({ view: 'gallery' }),
   'sound-title': () => {
     setSetting('sound', !app.settings.sound);
     toast(`Sound ${app.settings.sound ? 'on' : 'off'}`);
@@ -173,7 +176,7 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pagehide', () => {
   account();
   persist();
-  if (!app.yard?.round.id && app.screen === 'play') saveYard();
+  if (!app.yard?.round.id && app.screen === 'play') saveYard({ report: false });
 });
 setInterval(() => {
   if (activePlay()) {
@@ -210,6 +213,22 @@ const TITLE_YARD = {
   ],
 };
 
+/** The Lab (lab/SPEC.md section 4.5): who is building, the XP pill in the top bar, and the buttons and looks that need it.
+ *  Everything here waits for the Lab to load and does nothing when it cannot, so the yard plays the same either way. */
+function startLab() {
+  if (app.playerId) attachLab(app.playerId);
+  app.labHud = labBridge.hud({ mount: $('#lab-hud'), compact: isTouchLayout() });
+  labBridge.onReady(() => {
+    renderLab();
+    applyLook();
+  });
+  labBridge.onChange(() => {
+    applyLook();
+    renderLab();
+  });
+}
+const isTouchLayout = () => document.documentElement.classList.contains('touch');
+
 /** Loads physics and the renderer, settles the title yard for 1.5 simulated seconds and shows the title. */
 async function boot() {
   hydrateIcons();
@@ -218,6 +237,7 @@ async function boot() {
   app.scene = new Scene($('#world'), app.settings);
   makeWorld(TITLE_YARD);
   for (let i = 0; i < 90; i++) app.yard.step();
+  startLab();
   app.controls.setEnabled(false);
   renderTitle();
   $('#loading').hidden = true;
@@ -245,6 +265,10 @@ function exposeHooks() {
         round: yard.round.id,
         complete: !!mission?.complete,
         status: mission?.status,
+        grabs: yard.grabs,
+        challenge: app.challenge?.active
+          ? { ...app.challenge.spec, label: app.challenge.label(), met: app.challenge.met, neat: app.neat }
+          : null,
         held: yard.held?.id,
         blocks: yard.poses(),
         machines: yard.machines.map((m) => ({

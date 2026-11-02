@@ -10,6 +10,8 @@ import { Audio } from '../../../spell-jump/src/audio.js';
 import { COLORS } from '../content.mjs';
 import { defaultSave, loadSave } from '../meta/save.mjs';
 import { writeSave } from '../meta/sync.js';
+import { labBridge } from '../meta/labBridge.js';
+import { resolveLook } from '../meta/labLooks.js';
 import { Music } from '../meta/music.js';
 import { Sound } from '../meta/sound.js';
 import { toast } from './hud.js';
@@ -72,6 +74,15 @@ export function persist() {
     return false;
   }
   return true;
+}
+
+/** Puts the builder's look on every machine: the Lab's equipped paint and decal when there are any (re-read every time,
+ *  never cached), otherwise the paint and decal this builder earned in the jobs. */
+export function applyLook() {
+  if (!app.scene) return;
+  const look = resolveLook(labBridge.cosmetics(), app.save);
+  app.scene.paint = look.paint;
+  app.scene.decal = look.decal;
 }
 
 /** Changes one setting, stores it on this device and applies every setting to the audio, music and scene. */

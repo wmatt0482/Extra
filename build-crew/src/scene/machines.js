@@ -15,7 +15,8 @@
 // rewardArt() draws the large reward picture the job-complete sheet shows, in each machine's own profile.
 import * as T from '../../vendor/three.module.js';
 import { MACHINES } from '../content.mjs';
-import { SKID_BUCKET } from '../physics.mjs';
+import { SKID_BUCKET, DUMP, FORK, bedAngle, gateAngle, forkCarriage } from '../physics.mjs';
+import { LAB_PAINT } from '../meta/labLooks.js';
 import { Parts, canvasTexture } from './kit.js';
 
 /** Scene parts for each machine kind.
@@ -57,6 +58,28 @@ export const MACHINE = {
     build: buildCrane,
     pose: poseCrane,
   },
+  // The Lab machines. 'custom' gear means the model builds and poses its own wheels (poseGear); the half track and
+  // the steering come from the model (gearHalf, steerLimit).
+  dump: {
+    gear: 'custom',
+    tool: 'bed',
+    cabSwings: false,
+    scoops: false,
+    lattice: false,
+    settle: 0.5,
+    build: buildDump,
+    pose: poseDump,
+  },
+  fork: {
+    gear: 'custom',
+    tool: 'forks',
+    cabSwings: false,
+    scoops: false,
+    lattice: false,
+    settle: 0.8,
+    build: buildFork,
+    pose: poseFork,
+  },
 };
 
 /** Body colors when a paint reward is chosen (stock keeps the machine's own color). */
@@ -85,6 +108,7 @@ const C = {
   edge: '#3a444c',
   magnet: '#263d4e',
   shoe: '#3b444b',
+  steelHi: '#7b8892',
 };
 
 /** Seconds the horn on the roof swells when it sounds. */
@@ -142,6 +166,8 @@ const S = {
   e: new T.Vector3(),
   dir: new T.Vector3(),
   q: new T.Quaternion(),
+  q1: new T.Quaternion(),
+  e1: new T.Euler(),
 };
 const UP = new T.Vector3(0, 1, 0);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -161,8 +187,8 @@ export function buildMachine(kit, group, kind) {
     paint: 'stock',
     paintable: [],
     actuators: [],
-    decals: { star: [], stripe: [] },
-    state: { time: null, yaw: 0, speed: 0, pitch: 0, pitchRate: 0, travel: [0, 0] },
+    decals: { star: [], stripe: [], labmark: [], flame: [], rivets: [] },
+    state: { time: null, yaw: 0, speed: 0, pitch: 0, pitchRate: 0, travel: [0, 0], steer: 0 },
   };
   row.build(kit, model, d);
   return model;
@@ -243,29 +269,107 @@ function decalTextures() {
       c.fillStyle = '#edf2f6';
       c.fillRect(0, 14, 256, 4);
     }),
+    // The Lab decals (bc.decal.*): the Lab mark, a flame, and a band of rivets.
+    labmark: canvasTexture(128, 128, (c) => {
+      c.fillStyle = '#172531';
+      c.fillRect(4, 4, 120, 120);
+      c.strokeStyle = '#f2b538';
+      c.lineWidth = 6;
+      c.strokeRect(7, 7, 114, 114);
+      c.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        c.lineTo(64 + Math.cos(a) * 46, 64 + Math.sin(a) * 46);
+      }
+      c.closePath();
+      c.lineWidth = 5;
+      c.stroke();
+      c.fillStyle = '#f2b538';
+      c.beginPath();
+      c.moveTo(54, 34);
+      c.lineTo(74, 34);
+      c.lineTo(74, 56);
+      c.lineTo(92, 92);
+      c.lineTo(36, 92);
+      c.lineTo(54, 56);
+      c.closePath();
+      c.fill();
+    }),
+    flame: canvasTexture(128, 128, (c) => {
+      c.fillStyle = '#172531';
+      c.fillRect(4, 4, 120, 120);
+      c.strokeStyle = '#ee7d1a';
+      c.lineWidth = 6;
+      c.strokeRect(7, 7, 114, 114);
+      c.fillStyle = '#ee7d1a';
+      c.beginPath();
+      c.moveTo(64, 18);
+      c.bezierCurveTo(100, 46, 96, 100, 64, 106);
+      c.bezierCurveTo(30, 100, 30, 62, 50, 44);
+      c.bezierCurveTo(54, 62, 64, 56, 64, 18);
+      c.fill();
+      c.fillStyle = '#f6d65e';
+      c.beginPath();
+      c.ellipse(64, 84, 15, 21, 0, 0, Math.PI * 2);
+      c.fill();
+    }),
+    rivetsRoof: canvasTexture(128, 128, (c) => {
+      for (const x of [30, 98]) {
+        c.fillStyle = '#172531';
+        c.fillRect(x - 14, 0, 28, 128);
+        c.fillStyle = '#c9d3da';
+        for (let y = 8; y < 128; y += 16) {
+          c.beginPath();
+          c.arc(x, y, 4, 0, Math.PI * 2);
+          c.fill();
+        }
+      }
+    }),
+    rivetsSide: canvasTexture(256, 32, (c) => {
+      c.fillStyle = '#172531';
+      c.fillRect(0, 2, 256, 28);
+      c.fillStyle = '#c9d3da';
+      for (let x = 8; x < 256; x += 16) {
+        c.beginPath();
+        c.arc(x, 16, 4, 0, Math.PI * 2);
+        c.fill();
+      }
+    }),
   });
 }
+
+/** The Lab decals that stand in for each of the original two when a look is drawn, and the texture each one uses: the
+ *  Lab mark and the flame take the star's place; the rivets take the stripe's (the roof pair or a side band). */
+const LAB_DECALS = {
+  star: [
+    ['labmark', () => 'labmark'],
+    ['flame', () => 'flame'],
+  ],
+  stripe: [['rivets', (art) => (art === 'roofStripes' ? 'rivetsRoof' : 'rivetsSide')]],
+};
 
 /** Adds one decal plane: `which` is 'star' or 'stripe', `art` the texture key, (w, h) its size, placed at (x, y, z)
  *  with Euler rotation (rx, ry, rz) under `parent`. It is lit like the paint under it and pulled just clear of it. */
 function decal(model, parent, which, art, w, h, [x, y, z], [rx, ry, rz]) {
-  const mesh = new T.Mesh(
-    new T.PlaneGeometry(w, h),
-    new T.MeshStandardMaterial({
-      map: decalTextures()[art],
-      transparent: true,
-      roughness: 0.8,
-      polygonOffset: true,
-      polygonOffsetFactor: -3,
-      polygonOffsetUnits: -3,
-    }),
-  );
-  mesh.userData.ownGeometry = mesh.userData.ownMaterial = true;
-  mesh.position.set(x, y, z);
-  mesh.rotation.set(rx, ry, rz);
-  mesh.visible = false;
-  parent.add(mesh);
-  model.decals[which].push(mesh);
+  for (const [key, texture] of [[which, art], ...LAB_DECALS[which].map(([k, tex]) => [k, tex(art)])]) {
+    const mesh = new T.Mesh(
+      new T.PlaneGeometry(w, h),
+      new T.MeshStandardMaterial({
+        map: decalTextures()[texture],
+        transparent: true,
+        roughness: 0.8,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3,
+      }),
+    );
+    mesh.userData.ownGeometry = mesh.userData.ownMaterial = true;
+    mesh.position.set(x, y, z);
+    mesh.rotation.set(rx, ry, rz);
+    mesh.visible = false;
+    parent.add(mesh);
+    model.decals[key].push(mesh);
+  }
 }
 
 /** A roof decal pair (star and stripes) of size s x t centred at (x, y, z), facing up. */
@@ -1243,6 +1347,407 @@ function poseCrane(kit, model, m, tip) {
   rp.instanceMatrix.needsUpdate = true;
 }
 
+// ---- Wheels for the Lab machines ----
+
+/** A set of wheels that share one geometry, as one instanced mesh under the machine root. `list` gives each wheel's
+ *  { x, z, side, steer }: `side` is 0 (right) or 1 (left) for the travel it spins by, `steer` how much the steering
+ *  angle turns it (negative for rear steering). Wheels on the left (x < 0) are turned round so the rim faces out. */
+function wheelSet(kit, model, spec, list) {
+  const mesh = new T.InstancedMesh(wheelGeometry(kit, spec), kit.detailMat(), list.length);
+  mesh.castShadow = mesh.receiveShadow = true;
+  mesh.frustumCulled = false;
+  mesh.userData.ownGeometry = true;
+  model.root.add(mesh);
+  (model.wheelSets ||= []).push({ mesh, list: list.map((w) => ({ steer: 0, ...w, side: w.x > 0 ? 0 : 1 })), r: spec.r });
+}
+
+/** Spins each wheel by its side's travel and turns the steered ones by the steering angle. */
+function poseWheelSets(kit, model) {
+  const t = kit.tmp,
+    steer = model.state.steer;
+  for (const { mesh, list, r } of model.wheelSets) {
+    list.forEach((w, i) => {
+      t.position.set(w.x, r, w.z);
+      S.q.setFromEuler(S.e1.set(0, steer * w.steer, 0));
+      S.q1.setFromEuler(S.e1.set(model.state.travel[w.side] / r, 0, 0));
+      S.q.multiply(S.q1);
+      if (w.x < 0) S.q.multiply(S.q1.setFromEuler(S.e1.set(0, Math.PI, 0)));
+      t.quaternion.copy(S.q);
+      t.scale.setScalar(1);
+      t.updateMatrix();
+      mesh.setMatrixAt(i, t.matrix);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
+// ---- DT-04 dump truck ----
+
+/** The truck: a ladder frame on a front axle and a twin rear axle, a short-nosed cab with a raked windscreen, and a
+ *  steel-floored bed that hinges at the back, lifts on a hydraulic ram and opens its tailgate as it tips. Every size
+ *  that matters to the physics (the hinge, the bed's length, width and wall height, the tailgate) is read from DUMP. */
+function buildDump(kit, model, d) {
+  const { sprung } = model,
+    c = d.color,
+    B = DUMP.bed,
+    p = new Parts(kit);
+  const half = B.inner / 2 + B.wall;
+  // ---- frame, axles, springs, tank, rear underride bar, mud flaps
+  for (const x of [-0.7, 0.7]) p.box(x, 1.1, 0.05, 0.22, 0.34, 5.35, C.frame);
+  for (const z of [-2.45, -1.5, -0.55, 0.4, 1.3, 2.3, 2.7]) p.box(0, 1.08, z, 1.4, 0.2, 0.16, C.frameLight);
+  for (const z of [-1.95, -0.85]) {
+    p.cyl(0, 0.6, z, 0.09, 2.3, C.steel, { axis: 'x' });
+    p.cyl(0, 0.6, z, 0.24, 0.5, C.frame, { axis: 'x', seg: 10 });
+    for (const x of [-0.85, 0.85]) {
+      p.box(x, 0.8, z, 0.12, 0.07, 1.15, C.steel);
+      p.box(x, 0.9, z, 0.18, 0.1, 0.2, C.frameLight);
+    }
+  }
+  p.bar([0, 0.62, -1.95], [0, 1.0, -1.5], 0.07, C.steel);
+  p.cyl(0, 0.6, 1.75, 0.08, 2.3, C.steel, { axis: 'x' });
+  for (const x of [-0.85, 0.85]) p.box(x, 0.8, 1.75, 0.12, 0.07, 1.0, C.steel);
+  p.cyl(-0.98, 0.95, 0.35, 0.3, 1.2, C.steel, { axis: 'z', seg: 12 });
+  for (const z of [-0.1, 0.8]) p.box(-0.98, 0.93, z, 0.64, 0.05, 0.05, C.frame);
+  p.cyl(0.98, 0.9, 0.35, 0.14, 0.8, C.frameLight, { axis: 'z', seg: 8 });
+  p.box(0, 0.85, -2.64, 2.2, 0.2, 0.14, C.steel);
+  for (const x of [-1.15, 1.15]) p.box(x, 0.46, -2.58, 0.55, 0.5, 0.04, C.rubber);
+  for (const x of [-0.85, 0.85]) {
+    p.box(x, 1.2, -2.68, 0.3, 0.16, 0.05, C.tail);
+    p.box(x, 1.02, -2.68, 0.3, 0.1, 0.05, C.amber);
+    p.box(x * 0.45, 1.2, -2.68, 0.14, 0.14, 0.05, C.lens);
+  }
+  // ---- fenders over the twin axle and the front wheels, and the cab's two steps
+  for (const x of [-1.15, 1.15]) {
+    p.box(x, 1.3, -1.4, 0.68, 0.1, 2.35, c, { layer: 'body' });
+    p.box(x, 1.39, 1.78, 0.7, 0.1, 1.45, c, { layer: 'body' });
+    p.box(x, 1.2, 2.5, 0.7, 0.08, 0.3, c, { layer: 'body', rx: -0.5 });
+    p.box(x * 0.96, 0.75, 1.0, 0.5, 0.06, 0.3, C.steel);
+    p.box(x * 0.96, 1.0, 1.06, 0.5, 0.06, 0.28, C.steel);
+  }
+  // ---- sub-frame under the bed, hinge brackets and the hinge pin
+  for (const x of [-0.82, 0.82]) p.box(x, 1.4, -0.5, 0.2, 0.12, 3.8, C.frame);
+  p.cyl(0, DUMP.hinge.y - 0.05, DUMP.hinge.z, 0.09, 2.3, C.pin, { axis: 'x' });
+  for (const x of [-1.0, 1.0]) p.box(x, 1.5, DUMP.hinge.z + 0.08, 0.22, 0.26, 0.4, C.frameLight);
+  // ---- cab: painted shell with a raked windscreen, hood, grille, bumper, lights
+  const cab = [
+    [1.32, 1.3],
+    [2.3, 1.3],
+    [2.3, 2.05],
+    [2.0, 2.95],
+    [1.32, 2.95],
+  ];
+  p.prism(cab, -1.1, 1.1, c, { layer: 'body' });
+  p.prism(
+    [
+      [1.34, 1.3],
+      [2.28, 1.3],
+      [2.28, 2.03],
+      [1.99, 2.93],
+      [1.34, 2.93],
+    ],
+    -1.08,
+    1.08,
+    C.frame,
+  );
+  p.box(0, 1.68, 2.55, 1.9, 0.76, 0.52, c, { layer: 'body' });
+  p.box(0, 2.07, 2.55, 1.7, 0.05, 0.46, c, { layer: 'body' });
+  for (let y = 1.42; y < 1.95; y += 0.1) p.box(0, y, 2.82, 1.3, 0.05, 0.04, C.grille);
+  p.box(0, 1.2, 2.88, 2.1, 0.22, 0.16, C.steel);
+  p.box(0, 1.2, 2.96, 1.9, 0.05, 0.02, C.frame);
+  for (const x of [-0.78, 0.78]) {
+    p.box(x, 1.76, 2.82, 0.28, 0.2, 0.05, C.bar);
+    p.box(x, 1.76, 2.855, 0.22, 0.14, 0.02, C.lens);
+    p.box(x, 1.5, 2.82, 0.2, 0.08, 0.04, C.amber);
+  }
+  // windscreen, side and rear glass, door shut-lines, handles, mirrors
+  p.box(0, 2.52, 2.145, 1.86, 0.78, 0.03, '#000', { layer: 'glass', rx: -0.41 });
+  p.box(0, 2.58, 1.3, 1.5, 0.5, 0.03, '#000', { layer: 'glass' });
+  for (const k of [-1, 1]) {
+    p.box(k * 1.105, 2.55, 1.88, 0.03, 0.55, 0.78, '#000', { layer: 'glass' });
+    p.box(k * 1.105, 2.0, 1.88, 0.03, 0.04, 0.92, C.frame);
+    p.box(k * 1.108, 1.95, 1.55, 0.04, 0.08, 0.2, C.pin);
+    p.bar([k * 1.1, 2.55, 2.25], [k * 1.4, 2.5, 2.4], 0.04, C.bar);
+    p.box(k * 1.43, 2.45, 2.42, 0.07, 0.4, 0.24, C.bar);
+    p.box(k * 1.43, 2.45, 2.42, 0.075, 0.34, 0.2, C.steel);
+  }
+  // inside the cab: seat, steering wheel and column, dash
+  p.box(0.35, 1.7, 1.78, 0.5, 0.14, 0.5, C.seat);
+  p.box(0.35, 2.05, 1.52, 0.5, 0.7, 0.1, C.seat);
+  p.bar([0.35, 1.8, 2.1], [0.35, 2.05, 2.0], 0.05, C.bar);
+  p.cyl(0.35, 2.12, 1.97, 0.2, 0.04, C.bar, { axis: 'y', seg: 12 });
+  p.box(0, 2.0, 2.18, 1.9, 0.18, 0.3, C.frameLight);
+  // roof: visor, light bar, beacon, exhaust stack with a cap, air intake
+  p.box(0, 3.0, 2.0, 2.3, 0.06, 0.55, c, { layer: 'body' });
+  for (const x of [-0.7, -0.23, 0.23, 0.7]) {
+    p.box(x, 3.07, 2.15, 0.28, 0.12, 0.1, C.bar);
+    p.box(x, 3.07, 2.205, 0.22, 0.08, 0.02, C.lens);
+  }
+  p.cyl(0.8, 3.1, 1.55, 0.09, 0.09, C.bar);
+  p.cyl(0.8, 3.19, 1.55, 0.07, 0.14, C.amber);
+  p.cyl(1.2, 2.35, 1.5, 0.075, 2.1, C.pin, { seg: 8 });
+  p.cyl(1.2, 3.42, 1.5, 0.1, 0.05, C.bar, { seg: 8 });
+  p.bar([1.2, 1.5, 1.5], [1.1, 1.5, 1.55], 0.1, C.frameLight);
+  for (const y of [1.6, 2.2]) p.box(1.14, y, 1.5, 0.08, 0.06, 0.16, C.steel);
+  p.box(-1.0, 2.9, 1.6, 0.1, 0.3, 0.1, C.frameLight);
+  // sloped plate under the cab and a hand rail along each step
+  for (const k of [-1, 1]) p.box(k * 1.12, 2.28, 1.32, 0.04, 0.5, 0.03, C.rail);
+  finish(kit, model, p, sprung, c);
+  plate(sprung, d, 0, 1.06, -2.72, 0.9);
+  roofDecals(model, sprung, 0, 3.034, 1.7, 1.5, 0.7);
+  horns(kit, model, sprung, -0.55, 3.04, 1.45);
+  // ---- the wheels: a steered front pair and two rear axles (r 0.6 m, 0.5 m wide), 1.15 m either side
+  const list = [];
+  for (const x of [-1.15, 1.15]) {
+    list.push({ x, z: 1.75, steer: 1 });
+    for (const z of [-1.95, -0.85]) list.push({ x, z });
+  }
+  wheelSet(kit, model, { r: 0.6, width: 0.5 }, list);
+  model.gearHalf = 1.15;
+  model.steerLimit = 0.5;
+
+  // ---- the bed: floor, side walls with ribs, headboard with a cab shield (a group that tips about the hinge)
+  const bed = group(sprung, 0, DUMP.hinge.y, DUMP.hinge.z),
+    bp = new Parts(kit),
+    L = B.length;
+  bp.box(0, -B.floor / 2, L / 2, half * 2, B.floor, L, C.edge);
+  bp.box(0, -B.floor - 0.01, L / 2, half * 2 - 0.1, 0.02, L - 0.1, C.frame);
+  for (let z = 0.35; z < L; z += 0.7) bp.box(0, -0.24, z, 2.3, 0.14, 0.12, C.frame);
+  for (const x of [-0.75, 0.75]) bp.box(x, -0.25, L / 2, 0.14, 0.16, L - 0.1, C.frameLight);
+  for (const k of [-1, 1]) {
+    const x = k * (B.inner / 2 + B.wall / 2);
+    bp.box(x, B.wallH / 2, L / 2, B.wall, B.wallH, L, c, { layer: 'body' });
+    bp.box(x, B.wallH + 0.04, L / 2, B.wall + 0.1, 0.1, L + 0.1, C.steel);
+    bp.box(x, 0.02, L / 2, B.wall + 0.1, 0.1, L + 0.1, C.steel);
+    for (let z = 0.35; z < L; z += 0.95) bp.box(k * (half + 0.045), B.wallH / 2, z, 0.09, B.wallH - 0.12, 0.14, c, { layer: 'body' });
+    // wear plates on the inside of the wall
+    bp.box(k * (B.inner / 2 - 0.01), 0.5, L / 2, 0.02, 0.7, L - 0.2, C.frameLight);
+  }
+  bp.box(0, (B.headH - B.floor) / 2, L + 0.08, half * 2, B.headH + B.floor, 0.16, c, { layer: 'body' });
+  bp.box(0, B.headH + 0.04, L + 0.08, half * 2 + 0.1, 0.1, 0.24, C.steel);
+  bp.box(0, 0.7, L - 0.01, B.inner, 1.3, 0.02, C.frameLight);
+  for (const x of [-0.7, 0, 0.7]) bp.box(x, 0.9, L + 0.18, 0.12, 1.5, 0.08, c, { layer: 'body' });
+  // the cab shield that overhangs the cab roof, with a steel edge and two lamps
+  bp.box(0, B.headH - 0.05, L + 0.55, half * 2 + 0.1, 0.1, 1.0, c, { layer: 'body', rx: 0.08 });
+  bp.box(0, B.headH - 0.1, L + 1.02, half * 2 + 0.1, 0.2, 0.08, C.steel);
+  for (const x of [-0.9, 0.9]) {
+    bp.box(x, B.headH + 0.1, L + 0.18, 0.2, 0.12, 0.1, C.bar);
+    bp.box(x, B.headH + 0.1, L + 0.235, 0.16, 0.08, 0.02, C.tail);
+  }
+  // rear corner posts and the bed's hinge ears
+  for (const x of [-1.0, 1.0]) bp.box(x, -0.12, 0.1, 0.24, 0.3, 0.3, C.frameLight);
+  // ram mounts under the front of the bed
+  bp.box(0, -0.32, 2.4, 0.4, 0.1, 0.3, C.frameLight);
+  finish(kit, model, bp, bed, c);
+  // star and stripe (and the Lab decals) on both outer walls
+  for (const k of [-1, 1]) {
+    const x = k * (half + 0.1);
+    decal(model, bed, 'star', 'star', 0.8, 0.8, [x, 0.72, L * 0.5], [0, (k * Math.PI) / 2, 0]);
+    decal(model, bed, 'stripe', 'sideStripe', 2.6, 0.17, [x, 0.22, L * 0.5], [0, (k * Math.PI) / 2, 0]);
+  }
+  // ---- the tailgate: a painted plate hinged along the bottom of the bed's back edge
+  const gate = group(bed),
+    gp = new Parts(kit),
+    G = DUMP.gate;
+  gp.box(0, G.h / 2, -G.t / 2, B.inner, G.h, G.t, c, { layer: 'body' });
+  for (const y of [0.25, 0.65, 1.05]) gp.box(0, y, -G.t - 0.015, B.inner - 0.2, 0.1, 0.03, C.frame);
+  gp.box(0, G.h - 0.03, -G.t / 2, B.inner + 0.04, 0.08, G.t + 0.04, C.steel);
+  for (const x of [-1.18, 1.18]) {
+    gp.cyl(x, 0.02, -G.t / 2, 0.08, 0.2, C.pin, { axis: 'x' });
+    gp.box(x, G.h - 0.1, -G.t - 0.04, 0.14, 0.2, 0.06, C.steel);
+  }
+  finish(kit, model, gp, gate, c);
+  hydraulics(kit, model, c, 1);
+  actuator(model, sprung, [0, 1.0, -1.9], bed, [0, -0.3, 2.4], 1.2, 0.13);
+  Object.assign(model, { bed, gate });
+}
+
+/** Dump truck: the bed turns about the hinge by the lift joint's tip, the tailgate drops open as it rises, and the ram
+ *  extends between the frame and the bed's underside. */
+function poseDump(kit, model, m) {
+  const a = bedAngle(m.lift);
+  model.bed.rotation.x = -a;
+  model.gate.rotation.x = -gateAngle(a);
+}
+
+// ---- FL-05 forklift ----
+
+/** The forklift: a compact counterbalance truck with a rounded counterweight, an operator's seat under an overhead
+ *  guard, big front drive wheels and small rear steering wheels, and a two-stage mast with a carriage, load backrest and
+ *  two tapered tines. The mast, carriage and tines hang from the machine root, not the sprung body, so they sit exactly
+ *  where the physics tool is; the lift ram, tilt rams and chains follow the joints. */
+function buildFork(kit, model, d) {
+  const { root, sprung } = model,
+    c = d.color,
+    F = FORK,
+    p = new Parts(kit);
+  // ---- lower frame, floor, step, engine cover, counterweight with a rounded back
+  p.box(0, 0.72, -0.1, 1.5, 0.5, 2.3, C.frame);
+  p.box(0, 0.98, 0.55, 1.34, 0.07, 1.25, C.steel);
+  for (let z = 0.0; z < 1.1; z += 0.18) p.box(0, 1.02, z + 0.1, 1.2, 0.015, 0.05, C.frameLight);
+  p.box(0, 1.2, -0.12, 1.06, 0.46, 0.95, c, { layer: 'body' });
+  const cw = [
+    [-0.78, -0.55],
+    [0.78, -0.55],
+    [0.82, -1.25],
+    [0.6, -1.46],
+    [-0.6, -1.46],
+    [-0.82, -1.25],
+  ];
+  p.plan(cw, 0.55, 1.5, c, { layer: 'body' });
+  p.plan(
+    cw.map(([x, z]) => [x * 0.92, z * 0.97 + 0.03]),
+    1.5,
+    1.58,
+    c,
+    { layer: 'body' },
+  );
+  p.plan(
+    cw.map(([x, z]) => [x * 1.01, z * 1.01]),
+    0.5,
+    0.6,
+    C.frame,
+  );
+  for (let y = 0.8; y < 1.35; y += 0.1) p.box(0, y, -1.47, 0.9, 0.05, 0.03, C.grille);
+  for (const x of [-0.6, 0.6]) {
+    p.box(x, 1.3, -1.46, 0.2, 0.12, 0.05, C.tail);
+    p.box(x, 1.12, -1.46, 0.2, 0.08, 0.05, C.lens);
+  }
+  p.box(0, 0.5, -0.95, 0.8, 0.07, 0.08, C.steel);
+  // LPG cylinder on a bracket behind the seat
+  p.cyl(0, 1.74, -1.06, 0.22, 0.8, C.steel, { axis: 'x', seg: 12 });
+  p.cyl(0.42, 1.74, -1.06, 0.14, 0.06, C.frame, { axis: 'x' });
+  for (const x of [-0.25, 0.25]) p.box(x, 1.74, -1.06, 0.05, 0.46, 0.5, C.bar);
+  p.box(0, 1.6, -0.95, 0.5, 0.14, 0.4, C.frameLight);
+  // operator's seat, steering column and wheel, levers, dash
+  p.box(0, 1.5, -0.25, 0.54, 0.12, 0.5, C.seat);
+  p.box(0, 1.82, -0.52, 0.52, 0.62, 0.1, C.seat, { rx: -0.14 });
+  p.box(0, 1.22, -0.3, 0.3, 0.3, 0.1, C.frameLight);
+  p.bar([0, 1.1, 0.5], [0, 1.62, 0.34], 0.07, C.bar);
+  p.cyl(0, 1.66, 0.32, 0.22, 0.04, C.bar, { axis: 'y', seg: 12, rx: 0.4 });
+  p.box(0, 1.3, 0.78, 0.9, 0.5, 0.18, C.frameLight);
+  p.box(0, 1.58, 0.78, 0.9, 0.06, 0.2, c, { layer: 'body' });
+  for (const x of [-0.34, 0.34]) {
+    p.bar([x, 1.15, 0.45], [x, 1.7, 0.6], 0.035, C.steel);
+    p.box(x, 1.72, 0.61, 0.07, 0.07, 0.07, C.amber);
+  }
+  // front fenders over the drive wheels, headlights, and the cowl plate at the mast
+  for (const x of [-0.8, 0.8]) {
+    p.box(x, 1.0, 0.55, 0.5, 0.07, 1.05, c, { layer: 'body' });
+    p.box(x, 0.8, 1.13, 0.5, 0.06, 0.2, c, { layer: 'body', rx: 0.8 });
+  }
+  p.box(0, 0.85, 1.13, 1.2, 0.5, 0.16, C.frame);
+  // the overhead guard: four posts, a roof frame and its bar grating, lamps and beacon
+  const posts = [
+    [-0.7, 0.8],
+    [0.7, 0.8],
+    [-0.7, -0.62],
+    [0.7, -0.62],
+  ];
+  for (const [x, z] of posts) p.box(x, 1.72, z, 0.075, 1.35, 0.075, c, { layer: 'body' });
+  p.box(0, 2.4, 0.09, 1.52, 0.07, 1.54, c, { layer: 'body' });
+  for (let x = -0.62; x <= 0.63; x += 0.124) p.box(x, 2.43, 0.09, 0.03, 0.03, 1.5, C.bar);
+  for (const z of [-0.45, -0.05, 0.35, 0.72]) p.box(0, 2.43, z, 1.4, 0.03, 0.03, C.bar);
+  for (const x of [-0.5, 0.5]) {
+    p.box(x, 2.34, 0.82, 0.18, 0.1, 0.08, C.bar);
+    p.box(x, 2.34, 0.865, 0.14, 0.07, 0.02, C.lens);
+  }
+  p.cyl(0.55, 2.47, -0.5, 0.08, 0.06, C.bar);
+  p.cyl(0.55, 2.55, -0.5, 0.06, 0.14, C.amber);
+  // mirrors
+  for (const k of [-1, 1]) {
+    p.bar([k * 0.7, 2.3, 0.7], [k * 0.88, 2.2, 0.8], 0.03, C.bar);
+    p.box(k * 0.9, 2.2, 0.8, 0.04, 0.2, 0.14, C.steel);
+  }
+  finish(kit, model, p, sprung, c);
+  plate(sprung, d, 0, 0.9, -1.51, 0.74);
+  roofDecals(model, sprung, 0, 1.585, -1.0, 0.8, 0.7);
+  horns(kit, model, sprung, -0.45, 2.47, 0.4);
+  for (const k of [-1, 1]) {
+    decal(model, sprung, 'star', 'star', 0.42, 0.42, [k * 0.83, 1.0, -0.95], [0, (k * Math.PI) / 2, 0]);
+    decal(model, sprung, 'stripe', 'sideStripe', 0.7, 0.14, [k * 0.83, 0.68, -0.95], [0, (k * Math.PI) / 2, 0]);
+  }
+  // wheels: big drive wheels in front, small steering wheels behind (they turn against the turn)
+  wheelSet(kit, model, { r: 0.45, width: 0.4 }, [-1, 1].map((k) => ({ x: k * 0.78, z: 0.55 })));
+  wheelSet(kit, model, { r: 0.33, width: 0.3 }, [-1, 1].map((k) => ({ x: k * 0.55, z: -0.95, steer: -1 })));
+  model.gearHalf = 0.78;
+  model.steerLimit = 0.6;
+
+  // ---- the mast (tilts about its foot): outer uprights, cross bars, base plate; the inner stage slides up inside it
+  const mast = group(root, 0, F.mast.y, F.mast.z),
+    mp = new Parts(kit);
+  for (const x of [-0.5, 0.5]) {
+    mp.box(x, 1.0, 0, 0.2, 2.9, 0.2, C.steel);
+    mp.box(x, 1.0, 0.11, 0.2, 2.9, 0.03, C.frameLight);
+    mp.box(x + (x > 0 ? 0.11 : -0.11), 1.0, 0, 0.03, 2.9, 0.2, C.frameLight);
+  }
+  for (const y of [-0.3, 0.7, 1.7, 2.4]) mp.box(0, y, -0.02, 1.2, 0.12, 0.14, C.frame);
+  mp.cyl(0, -0.3, 0.02, 0.16, 0.6, C.frame, { axis: 'x' });
+  finish(kit, model, mp, mast, c);
+  const inner = group(mast),
+    ip = new Parts(kit);
+  for (const x of [-0.36, 0.36]) ip.box(x, 1.05, 0.09, 0.13, 2.7, 0.16, C.steelHi);
+  for (const y of [0.4, 2.35]) ip.box(0, y, 0.09, 0.84, 0.1, 0.12, C.frame);
+  ip.box(0, 2.43, 0.04, 0.2, 0.1, 0.12, C.pin);
+  finish(kit, model, ip, inner, c);
+  // ---- the carriage: plate and rollers, the load backrest (a grid), two L-shaped tapered tines
+  const carriage = group(root),
+    cp = new Parts(kit),
+    T0 = F.tine;
+  cp.box(0, -0.0, -0.1, 1.4, 0.32, 0.1, C.frame);
+  cp.box(0, 0.55, -0.1, 1.4, 0.2, 0.1, C.frame);
+  for (const x of [-0.36, 0.36]) {
+    cp.box(x, 0.2, -0.14, 0.18, 0.7, 0.16, C.steel);
+    cp.cyl(x * 1.7, 0.2, -0.05, 0.07, 0.1, C.pin, { axis: 'z', seg: 8 });
+  }
+  const back = F.back;
+  for (let x = -0.7; x <= 0.71; x += 0.2333) cp.box(x, back.h / 2 - T0.t, T0.heel - back.t / 2, 0.05, back.h, back.t, C.bar);
+  for (const y of [0.08, 0.42, 0.76, back.h - T0.t - 0.02]) cp.box(0, y, T0.heel - back.t / 2, back.w, 0.06, back.t, C.bar);
+  for (const k of [-1, 1]) {
+    const x = k * T0.x;
+    cp.prism(
+      [
+        [T0.heel, -T0.t],
+        [T0.heel + T0.len - 0.3, -T0.t],
+        [T0.heel + T0.len, -T0.t * 0.45],
+        [T0.heel + T0.len, -T0.t * 0.2],
+        [T0.heel + T0.len - 0.3, 0],
+        [T0.heel, 0],
+      ],
+      x - T0.w / 2,
+      x + T0.w / 2,
+      C.shoe,
+    );
+    cp.box(x, 0.46, T0.heel - back.t - 0.03, T0.w, 0.98, 0.08, C.steel);
+    cp.box(x, 0.0, T0.heel + 0.1, T0.w + 0.04, 0.02, 0.2, C.frameLight);
+  }
+  finish(kit, model, cp, carriage, c);
+  hydraulics(kit, model, c, 3);
+  actuator(model, mast, [0, -0.28, 0.1], inner, [0, 1.9, 0.12], 1.6, 0.075);
+  for (const k of [-1, 1]) actuator(model, sprung, [k * 0.5, 1.0, 0.85], mast, [k * 0.5, 0.78, -0.12], 0.55, 0.05);
+  ropes(kit, model, 2);
+  Object.assign(model, { mast, inner, carriage });
+}
+
+/** Forklift: the mast and carriage follow the physics' lift and tilt exactly, the inner stage slides up once the
+ *  carriage has risen past the free-lift height, and a chain runs from the inner mast's head to each side of the
+ *  carriage. */
+function poseFork(kit, model, m) {
+  const { mast, inner, carriage, ropes: rp } = model,
+    c = forkCarriage(m),
+    ext = Math.max(0, m.lift - 1.2);
+  mast.rotation.x = -m.tilt;
+  inner.position.y = ext;
+  carriage.position.set(0, c.y, c.z);
+  carriage.rotation.x = -m.tilt;
+  model.root.updateMatrixWorld(true);
+  const pts = (obj, x, y, z) => inRoot(model, obj, S.c.set(x, y, z), S.c).clone();
+  for (const [i, k] of [-1, 1].entries())
+    segment(kit, rp, i, pts(inner, k * 0.2, 2.43, 0.2), pts(carriage, k * 0.3, F_CHAIN, -0.17), 0.018);
+  rp.instanceMatrix.needsUpdate = true;
+}
+/** Height of the chain's lower fixing on the carriage (its frame: the tine top plane is y = 0). */
+const F_CHAIN = 0.66;
+
 // ---- Per frame ----
 
 /** Moves a machine model to its physics state: chassis and suspension settle, wheel spin or track scroll, the
@@ -1262,7 +1767,7 @@ export function syncMachine(kit, model, m, look) {
   let speed = dt > 0 ? ((m.x - state.x) * Math.sin(m.yaw) + (m.z - state.z) * Math.cos(m.yaw)) / dt : 0,
     turn = dt > 0 ? (m.yaw - state.yaw) / dt : 0;
   if (Math.abs(speed) > 8 || Math.abs(turn) > 4) speed = turn = 0;
-  const half = row.gear === 'wheels' ? SKID.wheel.x : model.tracks.tr.x;
+  const half = row.gear === 'wheels' ? SKID.wheel.x : row.gear === 'tracks' ? model.tracks.tr.x : model.gearHalf;
   // Each side moves at the chassis speed less the turn: turning on the spot rolls the two sides opposite ways.
   state.travel[0] += (speed - turn * half) * dt;
   state.travel[1] += (speed + turn * half) * dt;
@@ -1279,7 +1784,12 @@ export function syncMachine(kit, model, m, look) {
   sprung.rotation.x = state.pitch;
   sprung.position.y = -Math.abs(state.pitch) * 0.6;
   if (row.gear === 'wheels') poseWheels(kit, model);
-  else poseTracks(kit, model);
+  else if (row.gear === 'tracks') poseTracks(kit, model);
+  else {
+    // The steering angle follows the turn rate (a rear-steered wheel turns against it).
+    state.steer += (clamp(turn * 0.8, -model.steerLimit, model.steerLimit) - state.steer) * 0.25;
+    poseWheelSets(kit, model);
+  }
   // The tip in the chassis frame: the boom's swing and reach, at the lift height above the chassis base.
   const tip = S.tip.set(Math.sin(m.swing) * m.reach, m.lift - (m.y - 0.7), Math.cos(m.swing) * m.reach);
   row.pose(kit, model, m, tip);
@@ -1287,8 +1797,8 @@ export function syncMachine(kit, model, m, look) {
     root.updateMatrixWorld(true);
     poseHydraulics(kit, model);
   }
-  const which = look.decal === 'star' || look.decal === 'stripe' ? look.decal : null;
-  for (const k of ['star', 'stripe']) for (const mesh of model.decals[k]) mesh.visible = which === k;
+  const which = Object.hasOwn(model.decals, look.decal) ? look.decal : null;
+  for (const k in model.decals) for (const mesh of model.decals[k]) mesh.visible = which === k;
   const bell = look.horn === 'bell';
   model.horns.bell.visible = bell;
   model.horns.stock.visible = !bell;
@@ -1299,13 +1809,19 @@ export function syncMachine(kit, model, m, look) {
   paintMachine(kit, model, m.kind, look.paint);
 }
 
-/** Paints the whole machine in `paint` (a PAINTS key) or back to its stock color. Only the paint-layer meshes and the
- *  cylinder barrels change; the dark frames, glass, tires, tracks, decals and the number plate keep theirs. */
+/** Paints the whole machine in `paint` (a PAINTS key, a Lab paint id from labLooks.js, or stock). Only the paint-layer
+ *  meshes and the cylinder barrels change; the dark frames, glass, tires, tracks, decals and the number plate keep
+ *  theirs. A Lab paint with a second colour (the checker) wears a two-colour check. */
 function paintMachine(kit, model, kind, paint) {
-  const key = PAINTS[paint] ? paint : 'stock';
+  const key = PAINTS[paint] || LAB_PAINT[paint] ? paint : 'stock';
   if (model.paint === key) return;
   model.paint = key;
-  const body = kit.paintMat(PAINTS[key] || MACHINES[kind].color);
+  const lab = LAB_PAINT[key],
+    body = lab?.alt
+      ? kit.checkerMat(lab.color, lab.alt)
+      : lab?.metal
+        ? kit.mat(lab.color, { flatShading: true, roughness: 0.32, metalness: 0.65 })
+        : kit.paintMat(lab?.color || PAINTS[key] || MACHINES[kind].color);
   for (const part of model.paintable) part.material = body;
 }
 
@@ -1498,9 +2014,11 @@ function badgeArt() {
  *  job table, `kind` the machine just used and `paint` its current paint. A paint is shown on the machine, a machine
  *  in its own colors, a decal on the body, the horn alone and the yard badge with the wrecking ball. */
 export function rewardArt(unlock, kind = 'skid', paint = 'stock') {
+  // The reward pictures draw the three job machines; the Lab machines are never a job's active machine.
+  if (!['skid', 'excavator', 'crane'].includes(kind)) kind = 'skid';
   let inner;
   if (PAINTS[unlock]) inner = machineProfile(kind, PAINTS[unlock]);
-  else if (MACHINES[unlock]) inner = machineProfile(unlock, MACHINES[unlock].color);
+  else if (MACHINES[unlock] && !MACHINES[unlock].lab) inner = machineProfile(unlock, MACHINES[unlock].color);
   else if (unlock === 'star' || unlock === 'stripe')
     inner = machineProfile(kind, PAINTS[paint] || MACHINES[kind].color, decalOnBody(kind, unlock));
   else if (unlock === 'bell') inner = `<g transform="translate(-34 6)">${hornArt()}</g>`;

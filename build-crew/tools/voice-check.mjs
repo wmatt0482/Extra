@@ -37,7 +37,14 @@ const C = await import('../src/content.mjs');
   must(C.touchHint(C.HINT.grab).includes('tap Grab') && !C.touchHint(C.HINT.grab).includes('press'), 'touch grab hint still says press');
   for (const t of C.SPOKEN_TOASTS) must(src.includes(`'${t}'`), `toast "${t}" is not in the source any more`);
   for (const t of [...C.SPOKEN_TOASTS, C.TRAY_TIP, ...C.STAMPS.map((k) => C.STAMP_HINT(k)), ...Object.values(C.MACHINES).map((m) => C.speakable(m.hint))]) must(known.has(t), `"${t}" is not prepared`);
-  for (const r of C.ROUNDS) for (const t of C.SPOKEN.job(r)) must(known.has(t) && t.length <= 200 && !/undefined|SS-|EX-|CR-/.test(t), `bad line "${t}"`);
+  for (const r of C.ALL_JOBS) for (const t of C.SPOKEN.job(r)) must(known.has(t) && t.length <= 200 && !/undefined|SS-|EX-|CR-|DT-|FL-|\b10\d\b/.test(t), `bad line "${t}"`);
+  // the Lab (0.5): the machines' hints, the forklift and dump-truck coaching, the blueprint lines and the Neat build line are prepared,
+  // in their touch wording too, and the unit codes are never read as codes
+  for (const t of [C.HINT.forkLower, C.HINT.forkAlign, C.HINT.forkIn, C.HINT.bedLoaded, C.MACHINES.dump.hint, C.MACHINES.fork.hint, C.NEAT_LINE])
+    must(known.has(C.speakable(C.touchHint(t))) && known.has(C.speakable(t)), `Lab line "${t}" is not prepared`);
+  must(C.speakable('DT-04 and FL-05') === 'D T zero four and F L zero five', 'unit codes of the Lab machines are spelled out');
+  must(C.jobIntro(C.BLUEPRINTS[0]).startsWith('Blueprint. Lighthouse.'), 'blueprint intro');
+  for (const k of ['forkLower', 'forkAlign', 'forkIn', 'bedLoaded']) must(src.includes(`HINT.${k}`), `rounds.js no longer shows HINT.${k}`);
   console.log(`static: ${known.size} lines, ${C.VOICE_LINES.join('').length} characters, all prepared and sayable`);
 }
 
