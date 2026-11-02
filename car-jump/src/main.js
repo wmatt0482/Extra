@@ -41,8 +41,12 @@ import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdat
 import { createSyncClient } from './sync/client.js';
 import { applyImport, decodeTransfer, encodeTransfer } from './meta/transfer.js';
 import { createPinger } from './meta/pings.js';
+import { labBridge } from './meta/labBridge.js';
+import { labLook, trailFor } from './meta/labLooks.js';
+import { createTestBoss } from './ui/testBoss.js';
+import { CEREMONY_LINES, improvement, qualifierFor, tierFor } from './ui/ceremony.js';
 
-const VERSION = '3.8.0';
+const VERSION = '3.9.0';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
@@ -118,8 +122,17 @@ async function boot() {
 
   const opts = () => Profiles.playerOptions(family, currentPlayerId);
 
+  // The Lab (lab/SPEC.md §4.1): the bridge loads /lab/ lazily and every call is a no-op when it is missing. labCos is what the Lab says to
+  // draw right now (re-read when the Lab changes and at the start of every run); a null slot means the game's own look.
+  let labCos = labBridge.cosmetics();
+  let labHud = null, labRoundKind = '';
+  const refreshLabCos = () => { labCos = labBridge.cosmetics(); };
+
   const app = {
     save,
+    lab: labBridge,
+    /** The look to draw on a car: the garage's own equip, with the Lab's skin / sticker over it when one is worn. */
+    look: (carId) => labLook(lookFor(save, carId), labCos),
     audio: Audio,
     tts,
     sync,
@@ -174,6 +187,11 @@ async function boot() {
         if (swUsable) { const reg = await navigator.serviceWorker.getRegistration(); if (reg) await Promise.race([reg.update(), new Promise((r) => setTimeout(r, 2500))]); }
       } catch (_) { /* offline or no worker: a plain reload still works */ }
       location.reload();
+    },
+    /** v3.9: Parent Zone → Report → "Print certificate": the printable page for one Friday Test (same tab, local data only). */
+    openCertificate(playerId, testAt) {
+      app.persist(); app.persistWords();
+      location.href = `certificate.html?p=${encodeURIComponent(playerId)}&t=${Math.floor(Number(testAt)) || 0}`;
     },
     go,
     toast,
@@ -261,15 +279,18 @@ async function boot() {
   const playersUI = createPlayers(app);
   const screens = { garage: createGarage(app), tracks: createTracks(app), results: createResults(app), players: playersUI.players, newplayer: playersUI.newplayer };
   const panels = createPanels(app);
-  const hero = createTitleHero($('#hero'), () => CAR_BY_ID[save.selectedCar], () => (currentPlayerId ? lookFor(save, save.selectedCar) : null));
+  const hero = createTitleHero($('#hero'), () => CAR_BY_ID[save.selectedCar], () => (currentPlayerId ? app.look(save.selectedCar) : null));
   const crates = app.crates = createCrateOpener(app);
   const spellPanel = createSpellPanel($('#spell'), { tts, audio: Audio, onCancel: () => quitRun() });
   const testScreen = createTestScreen($('#screen-test'), { tts, audio: Audio });
+  // v3.9: the Friday Test as a boss event (src/ui/testBoss.js wraps the test from the outside; testMode.js is unchanged)
+  const testBoss = createTestBoss($('#screen-test'), { audio: Audio, say: (t) => (tts.available ? tts.say(t) : null), reduced: () => !!save.settings.reducedMotion });
   // natural voice (v3.4): clips from the server's Google voices, used when the player's options pick one and this
   // device is in a family; the device voice stays the fallback (src/spelling/cloudVoice.js, tts.setCloud)
   const cloud = app.cloud = createCloudVoice({
     getCode: () => sync.code,
     getWords: () => (words ? WS.activeList(words).words : []),
+    extra: () => CEREMONY_LINES,           // v3.9: the Friday Test ceremony's lines are prepared with the list
     audio: Audio,
     onChange: () => { if (pz) pz.onCloudStatus(); },
   });
@@ -328,7 +349,7 @@ async function boot() {
   app.cloudPrepareFor = (id) => {
     const o = Profiles.playerOptions(family, id);
     if (!o.cloudVoice || !sync.code) return Promise.resolve(null);
-    return cloud.prepare(listTexts(WS.activeList(app.wordsFor(id)).words), o.cloudVoice).catch(() => null);
+    return cloud.prepare([...listTexts(WS.activeList(app.wordsFor(id)).words), ...CEREMONY_LINES], o.cloudVoice).catch(() => null);
   };
   function selectPlayer(id) {
     if (!Profiles.playerById(family, id)) return;
@@ -348,6 +369,7 @@ async function boot() {
     Audio.setSound(save.settings.sound);
     if (Audio.unlocked) Audio.music(save.settings.music);
     document.documentElement.classList.toggle('reduced-motion', save.settings.reducedMotion);
+    labAttach();
     if (prevMotion !== save.settings.reducedMotion) { try { game && game.destroy(); } catch (_) {} makeGame(); }
     achievements.checkSave();
     refreshAchBadge();
@@ -371,6 +393,36 @@ async function boot() {
     if (screen === 'title') refreshTitle();
   }
 
+  // ---------- The Lab (lab/SPEC.md §4.1): attach when a player is chosen, detach when they leave; the XP pill sits in the run HUD ----------
+  let labAttached = false;
+  function labInfo() {
+    const p = Profiles.playerById(family, currentPlayerId);
+    return p ? { playerId: p.id, name: p.name, color: p.color, gentle: false, reducedMotion: !!save.settings.reducedMotion, sound: !!save.settings.sound } : null;
+  }
+  function labAttach() {
+    const info = labInfo();
+    if (!info) return;
+    labBridge.attach(info);
+    labAttached = true;
+    labRoundKind = '';
+    labBridge.beginRound();
+    if (labHud) labHud.destroy();
+    labHud = labBridge.hud({ mount: $('#hud-lab'), compact: true });
+    refreshLabCos();
+  }
+  function labDetach() {
+    if (labHud) { labHud.destroy(); labHud = null; }
+    if (labAttached) { labBridge.detach(); labAttached = false; labRoundKind = ''; }
+    refreshLabCos();
+  }
+  // a new Lab round per mission or Mega Run, never per 3-word race: the combo lives one round (the Lab core's note)
+  function labRound(kind) { if (kind !== labRoundKind) { labRoundKind = kind; labBridge.beginRound(); } }
+  labBridge.onChange((e) => {
+    refreshLabCos();
+    $('#btn-lab').hidden = !labBridge.ready || !currentPlayerId;
+    if (e && ['attach', 'ready', 'equip', 'sync', 'reset'].includes(e.type)) { try { hero.redraw(); } catch (_) { /* no hero yet */ } }
+  });
+
   function refreshTitle() {
     const p = Profiles.playerById(family, currentPlayerId);
     if (!p || !words) return;
@@ -391,6 +443,7 @@ async function boot() {
     const n = streakNow(save.streak, now);
     $('#title-streak').textContent = String(n);
     $('#btn-streak').classList.toggle('cold', n === 0);
+    $('#btn-lab').hidden = !labBridge.ready || !currentPlayerId;
     $('#btn-streak').setAttribute('aria-label', `Streak: ${n} day${n === 1 ? '' : 's'}. Opens the streak calendar.`);
     const lp = levelProgress(save.xp || 0);
     $('#title-lv').textContent = `Lv ${lp.level}`;
@@ -409,6 +462,7 @@ async function boot() {
     eng.xp += x.gained; eng.unlocks.push(...x.unlocks); eng.levelAfter = levelFor(save.xp);
   }
   function masteredWord(eng, word, listId) {
+    labBridge.report({ event: 'mastered', n: 1 });
     gainXp(eng, XP.mastered);
     addTrophy(save, listId, word);
     eng.mastered.push({ word, listId, shelf: (save.trophies[listId] || []).length });
@@ -417,6 +471,7 @@ async function boot() {
   }
   function dayDone(eng, now) {
     const d = completeDay(save, now);
+    labBridge.report({ event: 'day', n: 1 });           // the Lab pays its day once a local day across all five games
     if (!d.counted) return;
     eng.streak = d; eng.crates += d.crates; eng.unlocks.push(...d.unlocks);
   }
@@ -426,6 +481,7 @@ async function boot() {
     for (const el of $$('.screen')) el.hidden = el.dataset.screen !== name;
     for (const [k, s] of Object.entries(screens)) if (k !== name && s.hide) s.hide();
     screen = name;
+    if (name === 'players') labDetach();
     const inRun = name === 'run';
     document.documentElement.classList.toggle('in-run', inRun);
     if (!inRun) document.documentElement.classList.remove('spelling');
@@ -462,10 +518,11 @@ async function boot() {
   function setSetting(key, value) {
     save.settings[key] = !!value;
     app.persist();
-    if (key === 'sound') Audio.setSound(value);
+    if (key === 'sound') { Audio.setSound(value); if (labAttached && labInfo()) labBridge.attach(labInfo()); }
     if (key === 'music') Audio.music(value);
     if (key === 'reducedMotion') {
       document.documentElement.classList.toggle('reduced-motion', !!value);
+      if (labAttached && labInfo()) labBridge.attach(labInfo());
       if (!run) { try { game && game.destroy(); } catch (_) {} makeGame(); }
       hero.setMode(heroMode());
     }
@@ -549,6 +606,7 @@ async function boot() {
     go('test');
     const upper = opts().tileCase === 'upper';
     const q = kind === 'qualifier';
+    if (!q) testBoss.start(n);          // v3.9: the Test Titan towers over the Friday Test (the test itself is unchanged)
     testScreen.run({
       kind, title: q ? 'Qualifier' : 'Friday Test', upper,
       words: list.words.map((w) => ({ word: w.word, sentence: w.sentence, sayAs: w.sayAs || '' })),
@@ -560,6 +618,7 @@ async function boot() {
         const correct = results.filter((r) => r.correct).length;
         const total = results.length;
         const missed = total - correct;
+        for (const r of results) labBridge.report({ event: 'testWord', n: 1, firstTry: !!r.correct });   // one per word, in the order asked (no combo)
         if (q) {
           WS.recordQualifier(words, results, now);
           const paid = earn(save, correct * QUALIFIER_PAY);
@@ -581,17 +640,27 @@ async function boot() {
         gainXp(eng, correct * XP.testWord);
         for (const w of ft.mastered || []) masteredWord(eng, w, words.activeId);
         dayDone(eng, now);
+        // v3.9: the Lab hears about the finished test (its trophy shelf records the tier); the ceremony is the game's own and needs no Lab
+        const tier = tierFor(correct, total);
+        const rc = labBridge.report({ event: 'test', n: correct, meta: { of: total, tier } });
+        const pre = qualifierFor(words.tests, ft);
+        const gain = improvement(ft, pre);
         app.persist(); app.persistWords();
         lastTest = { correct, total, score, paid, eng };
         if (score >= 0.8) Audio.fanfare(); else Audio.cash();
+        const practice = results.filter((r) => !r.correct).map((r) => r.word);
         return {
           heading: score === 1 ? 'Perfect test!' : 'Test done!',
           lines: [h('div', { class: 'big-score', id: 'tm-score' }, `${correct} / ${total}`),
-            `+$${money(paid)} ($${MEGA_PAY} a word) · Mega Run power ${Math.round((0.6 + 0.4 * score) * 100)}%`],
+            `+$${money(paid)} ($${MEGA_PAY} a word) · Mega Run power ${Math.round((0.6 + 0.4 * score) * 100)}%`,
+            testBoss.ceremony({ tier, improved: gain != null && gain >= 20, points: gain, shelf: rc.ok ? 'Lab shelf' : 'Your shelf', sound: true }),
+            practice.length ? h('p', { class: 'cer-practice', id: 'tm-practice' }, `Words to practice this week: ${practice.slice(0, 6).join(', ')}${practice.length > 6 ? ` and ${practice.length - 6} more` : ''}`) : null].filter(Boolean),
           button: 'Mega Run!',
+          cls: `ceremony tier-${tier}`,
         };
       },
     }).then(({ cancelled }) => {
+      testBoss.stop();
       if (cancelled) { go('title'); return; }
       if (q) go('garage');
       else startRun({ trackId: save.selectedTrack, mega: lastTest });
@@ -631,6 +700,8 @@ async function boot() {
     const levels = daily || mega ? 1 : WS.LEVELS_PER_RACE.includes(levelsOpt) ? levelsOpt : 3;
     clearTimeout(stopFallback);
     runEarned = [];
+    if (!daily) labRound(mega ? 'mega' : 'mission');          // the Lab's combo lives a mission or a Mega Run, not one 3-word race
+    refreshLabCos();                                           // cosmetics are re-read at the start of every run
     run = {
       trackId, daily, def, carId: car.id, stats, ended: false, goalToasts: [], earned: runEarned, flight: false, bigAir: false, rampage: false, rings: 0,
       spelling: !!pick, pick, letters: letters || [], spell: null, mega, missionReward: 0, setSize, startCfg: null,
@@ -647,9 +718,9 @@ async function boot() {
     Audio.duck(true);
     try {
       // start first so the parked car is on screen behind the spell panel; the launch power is set after
-      const look = lookFor(save, car.id);  // v3.3: the equipped skin / sticker (cosmetics.js entries, null = stock)
+      const look = app.look(car.id);       // v3.3: the equipped skin / sticker (cosmetics.js entries, null = stock); v3.9: the Lab's over them
       run.startCfg = {
-        car, stats, track, seed, skin: look.skin, sticker: look.sticker,
+        car, stats, track, seed, skin: look.skin, sticker: look.sticker, trail: trailFor(labCos),
         shake: save.settings.reducedMotion ? 0 : save.settings.shake / 100,
         bestDistance: daily ? null : (save.best[trackId] || null),
         letters, powerScale, nitroScale: 1,
@@ -786,6 +857,9 @@ async function boot() {
   function recordWord(r, pick, res) {
     const now = Date.now();
     const rec = WS.recordSpell(words, pick.word, { firstTry: res.firstTry }, now, session);
+    const lr = labBridge.report({ event: 'word', n: 1, firstTry: !!res.firstTry });
+    if (lr.combo && lr.combo.moment) r.labMoment = lr.combo.name || 'Perfect Launch';      // drawn at the launch
+    if (rec.missionJustDone) labRoundKind = '';                                         // the next race starts a clean Lab round
     const bonus = res.firstTry ? earn(save, res.bonus) : 0;
     const missionReward = rec.missionJustDone ? earn(save, MISSION_REWARD) : 0;
     r.missionReward += missionReward;
@@ -905,17 +979,28 @@ async function boot() {
     }
   }
 
+  // the Lab's combo moment (five first-try words in a row): a gold flare on the launch, the name on the engine's banner, and the voice
+  function perfectLaunch(r) {
+    const name = r.labMoment;
+    r.labMoment = '';
+    let drawn = false;
+    try { drawn = typeof game.moment === 'function' && game.moment(name) === true; } catch (_) { drawn = false; }
+    if (!drawn) hud.banner('moment', `${name}!`);
+    setTimeout(() => { try { if (tts.available && save.settings.sound) tts.say(`${name}!`); } catch (_) { /* ignore */ } }, 500);
+  }
+
   function onEvent(evt) {
     if (!run || !evt) return;
     switch (evt.type) {
       case 'launch':
         Audio.whoosh(); hud.banner('launch', `Launch! ${Math.round(evt.speedKmh || 0)} km/h`);
+        if (run.labMoment) perfectLaunch(run);
         if (run.letters.length && !run.lettersShown) { run.lettersShown = true; hud.word(run.letters); }
         break;
       case 'flip': Audio.flip(); break;
       case 'land':
         Audio.land(evt.quality);
-        if (evt.quality === 'perfect') setTimeout(() => Audio.cheer(0.6), 120);
+        if (evt.quality === 'perfect') { setTimeout(() => Audio.cheer(0.6), 120); labBridge.report({ event: 'perfect', n: 1 }); }
         break;
       case 'smash': Audio.smash(); setTimeout(() => Audio.coin(), 60); break;
       case 'finishLine':
@@ -997,6 +1082,7 @@ async function boot() {
     }
     app.persist();
     pingNow('run');
+    labBridge.report({ event: 'run', n: 1 });
     const result = lastResult = {
       trackId: r.trackId, daily: r.daily, carId: r.carId, stats: r.stats, summary, bank, goals,
       dailyReward, dailyAlreadyDone, dailyGoalText: r.def && r.def.goal.text, dailyValue: r.def && r.def.value(summary),

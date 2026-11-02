@@ -40,6 +40,7 @@ export const ICONS = {
   crown: F('<path d="M3 8.5l4.5 3.8L12 5l4.5 7.3L21 8.5l-1.8 10H4.8z"/><rect x="4.8" y="19.5" width="14.4" height="2" rx="1"/>'),
   shield: F('<path d="M12 2.5l8 3v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10v-6z"/>'),
   crate: S('<rect x="3.5" y="8" width="17" height="12.5" rx="2"/><path d="M2.5 8h19V5.5H2.5zM12 5.5v15M12 5.5C10 2 6.5 2.5 7.5 5.5M12 5.5c2-3.5 5.5-3 4.5 0"/>'),
+  flask: S('<path d="M9.5 3h5M10.5 3v6.2L5 19a1.8 1.8 0 0 0 1.6 2.5h10.8A1.8 1.8 0 0 0 19 19l-5.5-9.8V3"/><path d="M7.6 15.5h8.8" stroke-width="2"/>'),
   style: S('<path d="M4 20l3.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11z"/><path d="M14 6.5l3 3"/>'),
 };
 

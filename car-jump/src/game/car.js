@@ -571,6 +571,41 @@ function buildDecal(ctx, g) {
         [0.78, shade(g.color, -0.12)], [1, shade(g.color, -0.45)]]) });
       break;
     }
+    // ----- Lab looks (src/meta/labLooks.js): tiger slashes, pixel blocks, holo bands -----
+    case 'tiger': {
+      const p = new Path2D(), n = 8, ytop = g.beltY + h * 0.02, ybot = g.minY - 0.05;
+      for (let i = 0; i < n; i++) {
+        const x = g.minX + L * (0.06 + (i / (n - 1)) * 0.88), w = 0.1 + (i % 2) * 0.06, lean = 0.22;
+        p.moveTo(x - w / 2 + lean, ytop); p.lineTo(x + w / 2 + lean, ytop);
+        p.lineTo(x + 0.03, ybot + (i % 3) * h * 0.06); p.closePath();
+      }
+      ops.push({ path: p, fill: g.accent });
+      break;
+    }
+    case 'pixel': {
+      const sq = Math.min(0.21, (f.y1 - f.y0) / 3), ya = f.y0 + h * 0.02;
+      const a = new Path2D(), b = new Path2D();
+      for (let r = 0; r < 3; r++) {
+        for (let c = 0, x = g.minX - 0.1; x < g.maxX + 0.2; c++, x += sq) {
+          const k = (c * 7 + r * 13 + (c >> 2)) % 5;
+          if (k === 0 || k === 3) a.rect(x, ya + r * sq, sq, sq); else if (k === 1) b.rect(x, ya + r * sq, sq, sq);
+        }
+      }
+      ops.push({ path: b, fill: mix(g.color, g.accent, 0.35) });
+      ops.push({ path: a, fill: g.accent });
+      break;
+    }
+    case 'holo': {
+      const cols = ['#ff9ad5', '#9ad8ff', '#b8ffb0', '#ffe79a', '#d2b0ff'];
+      const sk = h * 0.55, bandW = L / cols.length;
+      cols.forEach((c, i) => {
+        const p = new Path2D(), xc = g.minX + bandW * (i + 0.5) - L * 0.05;
+        p.moveTo(xc - bandW / 2 + sk, g.maxY + 0.1); p.lineTo(xc + bandW / 2 + sk, g.maxY + 0.1);
+        p.lineTo(xc + bandW / 2 - sk, g.minY - 0.1); p.lineTo(xc - bandW / 2 - sk, g.minY - 0.1); p.closePath();
+        ops.push({ path: p, fill: withAlphaAny(c, 0.6) });
+      });
+      break;
+    }
     default: break;
   }
   return ops;

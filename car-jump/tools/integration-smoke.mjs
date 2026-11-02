@@ -305,13 +305,14 @@ function newContext(browser, layout, init) {
     viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true,
   }).then(async (ctx) => {
     await routeFonts(ctx);
+    await ctx.addInitScript(() => { window.__noClassLists = true; });   // v3.7 class lists: this suite runs on the built-in sample list whatever today's date is
     await ctx.addInitScript(init.fn, init.arg);
     return ctx;
   });
 }
 function watchErrors(page) {
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   return errors;
 }

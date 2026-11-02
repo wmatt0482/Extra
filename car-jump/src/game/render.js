@@ -1866,6 +1866,19 @@ export function drawParticles(ctx, parts, vis) {
       ctx.beginPath();
       ctx.arc(p.x, p.y, rad, 0, TAU);
       ctx.stroke();
+    } else if (p.type === 'star') {
+      // a four-point sparkle (Lab trail and the combo moment)
+      ctx.globalAlpha = Math.min(1, k * 2.5);
+      ctx.fillStyle = p.color;
+      const r0 = p.size * (0.7 + 0.5 * k), r1 = r0 * 0.28;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.a);
+      ctx.beginPath();
+      for (let i = 0; i < 8; i++) { const a = (i * Math.PI) / 4, rr = i % 2 ? r1 : r0; if (i) ctx.lineTo(Math.cos(a) * rr, Math.sin(a) * rr); else ctx.moveTo(rr, 0); }
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
     } else if (p.type === 'confetti') {
       ctx.globalAlpha = Math.min(1, k * 3);
       ctx.fillStyle = p.color;

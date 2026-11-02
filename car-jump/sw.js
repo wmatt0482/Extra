@@ -7,12 +7,16 @@
 // answered from the cache. The natural voice's clips (/api/tts/clip/<id>, v3.4) are content-addressed (a clip never
 // changes), so they are cache-first in their own cache, TTS_CACHE, which survives version updates: a clip played once
 // plays offline afterwards.
-const VERSION = 'spell-jump-v3.8.0';
+// v3.9: certificate.html (the printable Friday Test certificate) is its own network-first page, never answered with index.html; the
+// Lab (/lab/src/index.js, one folder up) is OPTIONAL: the game starts and plays without it, and the modules the page loaded are cached
+// by the 'cache-urls' message like any other.
+const VERSION = 'spell-jump-v3.9.0';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
   './',
   'index.html',
+  'certificate.html',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -38,6 +42,11 @@ const SHELL = [
   'src/meta/engagement.js',
   'src/meta/transfer.js',
   'src/meta/pings.js',
+  'src/meta/labBridge.js',
+  'src/meta/labLooks.js',
+  'src/ui/testBoss.js',
+  'src/ui/ceremony.js',
+  'src/ui/certificate.js',
   'src/ui/dom.js',
   'src/ui/icons.js',
   'src/ui/controls.js',
@@ -72,7 +81,7 @@ const SHELL = [
 ];
 // The engine is built separately and may be split into several modules: cache the entry if present;
 // the page also posts every module it actually loaded (see 'cache-urls' below).
-const OPTIONAL = ['src/game/engine.js'];
+const OPTIONAL = ['src/game/engine.js', '../lab/src/index.js'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -125,9 +134,10 @@ const relPath = (url) => {
   const scope = new URL(self.registration.scope).pathname;
   return url.pathname.startsWith(scope) ? url.pathname.slice(scope.length) : url.pathname;
 };
-const isPage = (req, url) => req.mode === 'navigate' || (url.origin === self.location.origin && (relPath(url) === '' || relPath(url) === 'index.html'));
+const isCertificate = (url) => url.origin === self.location.origin && relPath(url) === 'certificate.html';
+const isPage = (req, url) => (req.mode === 'navigate' && !isCertificate(url)) || (url.origin === self.location.origin && (relPath(url) === '' || relPath(url) === 'index.html'));
 const NETWORK_FIRST = ['src/main.js', 'src/data/classLists.js'];   // v3.7.4: a new class-list week needs no version bump
-const isNetworkFirst = (req, url) => isPage(req, url) || (url.origin === self.location.origin && NETWORK_FIRST.includes(relPath(url)));
+const isNetworkFirst = (req, url) => isPage(req, url) || isCertificate(url) || (url.origin === self.location.origin && NETWORK_FIRST.includes(relPath(url)));
 const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms));
 
 self.addEventListener('fetch', (event) => {
@@ -141,7 +151,7 @@ self.addEventListener('fetch', (event) => {
 
   event.respondWith((async () => {
     const cache = await caches.open(VERSION);
-    const key = isPage(req, url) ? 'index.html' : req;   // every navigation is the one page
+    const key = isCertificate(url) ? 'certificate.html' : isPage(req, url) ? 'index.html' : req;   // every navigation is the one page, except the certificate
     // network-first requests skip the HTTP cache too (revalidate), so a new deploy shows up on the next launch
     // (a navigation is re-requested by URL: a 'navigate' Request cannot take options; a redirected answer is
     // re-wrapped, since a navigation may not be answered with one)

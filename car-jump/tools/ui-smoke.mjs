@@ -332,7 +332,7 @@ async function runLayout(browser, layout) {
   await routeFonts(ctx);
   const errors = [];
   const page = await ctx.newPage();
-  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   await page.addInitScript(({ save, insets }) => {
     if (!sessionStorage.getItem('smokeSeeded')) {
@@ -1055,7 +1055,7 @@ async function engagement(browser, layout) {
   await routeFonts(ctx);
   const errors = [];
   const page = await ctx.newPage();
-  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   await page.addInitScript(({ insets }) => {
     window.__spoken = [];
@@ -1301,7 +1301,7 @@ async function transferTest(browser, layout, page) {
   const errors = [];
   const b = await ctx.newPage();
   b.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  b.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  b.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   await b.addInitScript(({ insets }) => {
     window.__noClassLists = true;
     document.addEventListener('DOMContentLoaded', () => {
@@ -1557,7 +1557,7 @@ async function levelsTest(browser, layout) {
   await routeFonts(context);
   const page = await context.newPage();
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   await page.addInitScript(({ insets }) => {
     window.__spoken = [];
@@ -1666,7 +1666,7 @@ async function cloudVoiceTest(browser, layout) {
   const errors = [];
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   await page.addInitScript(({ insets }) => {
     if (!sessionStorage.getItem('seeded')) {
       localStorage.clear();
@@ -1827,7 +1827,7 @@ async function classListTest(browser, layout) {
   await routeFonts(context);
   const page = await context.newPage();
   const errors = [];
-  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   await page.addInitScript(({ insets }) => {
     window.__spoken = [];
