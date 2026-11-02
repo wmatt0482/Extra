@@ -541,7 +541,7 @@ test('independence: the Lab imports no game economy, save or engine module', asy
     for (const imp of imports) {
       if (/^\.\.?\/(?!\.\.\/\.\.\/)/.test(imp) && !imp.includes('../../')) continue;
       assert.ok(!/(trail-blazer|fraction-fright|wagon-west|build-crew)/.test(imp), `${f} imports ${imp}`);
-      if (/spell-jump|car-jump/.test(imp)) assert.ok(/\/src\/(meta\/(engagement|rng)|sync\/(client|merge|notify)|spelling\/(profiles|scheduler|keyboard))\.js$|\/ui\/dom\.js$/.test(imp), `${f} imports ${imp}`);
+      if (/spell-jump|car-jump/.test(imp)) assert.ok(/\/src\/(meta\/(engagement|rng)|sync\/(client|merge|notify)|spelling\/(profiles|scheduler|keyboard|tts|cloudVoice)|audio)\.js$|\/ui\/(dom|icons)\.js$/.test(imp), `${f} imports ${imp}`);   // + audio, tts, cloudVoice and ui/icons: the UI's shared sound, natural voice and icons (UI stream)
     }
   }
 });
