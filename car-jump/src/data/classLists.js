@@ -14,6 +14,32 @@ import { dayKey } from '../spelling/scheduler.js';
 
 const WEEKS = [
   {
+    id: 'class-2026-11-02',
+    name: 'Week of Nov 2 · three-letter blends',
+    weekOf: '2026-11-02',
+    pattern: 'shr scr str spr thr',
+    words: `
+shred | shred | Dad will shred the old papers before recycling them.
+shrimp | shrimp | We ate shrimp at the beach last summer.
+shrink | shrink | Wool sweaters can shrink in a hot wash.
+script | script | The actors read the script for the school play.
+screw | screw | Turn the screw until the shelf is tight.
+straps | straps | Pull the straps tight on your backpack.
+strand | strand | A strand of hair fell across her face.
+sprout | sprout | The bean seeds began to sprout in the garden.
+sprawl | sprawl | The cat likes to sprawl across the couch.
+thrill | thrill | The roller coaster ride was a thrill.
+throb | throb | My thumb began to throb after I bumped it.
+throat | throat | Warm tea helps a scratchy throat.
+thrift | thrift | We found a cool jacket at the thrift store.
+through | through | The train went through a long tunnel.
+screech | screech | The owl let out a loud screech at night.
+talk | talk | We can talk about it after lunch.
+start | start | The race will start when the whistle blows.
+stop | stop | Please stop at the corner and look both ways.
+`,
+  },
+  {
     id: 'class-2026-10-26',
     name: 'Week of Oct 26 · digraphs',
     weekOf: '2026-10-26',
