@@ -12,6 +12,9 @@
 // (src/meta/economy.js), so the rows always add up whatever the engine shows. 1.1 (SPEC §13): zombies rise out of the fog
 // at their fraction's spot; the HUD's card stack lets the kid call any live zombie (app.focus → game.setFocus); a throw
 // at a zombie already out of the fog is recorded as 'seen' (never counted toward secure).
+// 1.6 (Lab integration v1, lab/SPEC.md §4.3): src/meta/labBridge.js is the only file that knows The Lab. The app reports zaps (first try), bullseyes,
+// waves, bosses, streets and the day to it, mounts its XP pill and results strip OFF-WAVE only (title, streets, results, yard: SPEC §0 forbids meters
+// in a wave), draws its fence and tower looks, and shows its "Bullseye Burst" flourish between throws. Lab coins never touch `save.cash`.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -32,7 +35,7 @@ import { STREET_BY_ID } from './data/streets.js';
 import { itemOf } from './data/looks.js';
 import { buildWave, hashString, isHit, rngFrom, roadFor, sayTexts, tierOfDen, toleranceFor } from './skills/items.js';
 import { isUnlocked, moreDenominators, reviewTierOf, tierState } from './skills/ladder.js';
-import { finishLab, levelFor, notePace, noteWave, recordThrow, resetSkills } from './skills/store.js';
+import { dayKey, finishLab, levelFor, notePace, noteWave, recordThrow, resetSkills } from './skills/store.js';
 import { KNOWN_AFTER, medianOf, planPace } from './skills/pace.js';
 import { createPlayers, drawAvatar } from './ui/players.js';
 import { drawYard, tallySvg } from './ui/title.js';
@@ -42,8 +45,10 @@ import { createHud } from './ui/hud.js';
 import { createResults } from './ui/results.js';
 import { createYard } from './ui/yard.js';
 import { createParentZone } from './ui/parentZone.js';
+import { labBridge } from './meta/labBridge.js';
+import { labLooks } from './meta/labLooks.js';
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 const GAME = 'fraction-fright';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'fractionFright.resumePlayer';   // sessionStorage: the player to come back to after an update reload
@@ -162,6 +167,13 @@ async function boot() {
     verb() { const g = !!settings.gentle; return { past: g ? 'cured' : 'zapped', Past: g ? 'Cured' : 'Zapped', total: g ? 'Neighbours cured' : 'Zombies zapped', critter: g ? 'cured' : 'popped', boss: g ? 'cured' : 'blasted', more: g ? 'more and someone new moves in' : 'more and the street grows' }; },
     reducedMotion: () => !!settings.reducedMotion,
     go, toast, refreshCash, selectPlayer, setSetting, startWave, focus,
+    // ----- The Lab (src/meta/labBridge.js) -----
+    labLooks: () => labLooks(labBridge.cosmetics()),
+    labReady: () => labBridge.ready,
+    openLabShop: () => labBridge.openShop({ onClose: () => { if (screen === 'yard') screens.yard.show(); else if (screen === 'title') { refreshTitle(); drawBackdrop(); } } }),
+    openLabHome: () => labBridge.openHome({ onClose: () => { if (screen === 'title') { refreshTitle(); drawBackdrop(); } } }),
+    openLabParent: () => labBridge.openParent({ unlocked: true }),
+    yardBought(kind, it) { if (kind === 'tower' && it.stage === 1 && labBridge.ready) toast('Dress the tower up in the Lab shop!'); },
     // ----- the Zombie Lab -----
     labDone: () => !!(skills && skills.lab.done),
     recordLabThrow({ n, d, pae, result }) {
@@ -231,6 +243,71 @@ async function boot() {
   }
   const replaceInPlace = (obj, fresh) => { for (const k of Object.keys(obj)) delete obj[k]; Object.assign(obj, fresh); };
 
+  // ---------- The Lab: the player, the pill and strip (off-wave only), the burst between throws ----------
+  let labPlayer = null, labMounts = [], labSlotTimer = 0;
+  const labGentle = () => !!settings.gentle;
+  function labAttach() {
+    if (!currentPlayerId) return;
+    const p = Profiles.playerById(family, currentPlayerId);
+    if (!p) return;
+    labPlayer = currentPlayerId;
+    labBridge.attach({ playerId: p.id, name: p.name, color: p.color, gentle: labGentle(), reducedMotion: !!settings.reducedMotion, sound: !!settings.sound });
+  }
+  function labDetach() { if (labPlayer) { labPlayer = null; labBridge.detach(); } }
+  /** The Lab's XP pill and results strip belong on the title, the streets, the results and the yard, never in a wave or the bonus round. */
+  const LAB_SLOTS = { title: [['hud', '#lab-slot-title', false]], streets: [['hud', '#lab-slot-streets', true]], yard: [['hud', '#lab-slot-yard', true]], results: [['hud', '#lab-slot-results-pill', true], ['results', '#lab-slot-results', false]] };
+  function labMount(name) {
+    for (const m of labMounts.splice(0)) { try { m.destroy(); } catch (_) { /* ignore */ } }
+    for (const el of $$('.lab-slot')) el.replaceChildren();
+    if (!currentPlayerId || !LAB_SLOTS[name]) return;
+    for (const [kind, sel, compact] of LAB_SLOTS[name]) {
+      const mount = $(sel);
+      if (!mount) continue;
+      labMounts.push(kind === 'hud' ? labBridge.hud({ mount, compact }) : labBridge.results({ mount }));
+    }
+  }
+  const burstEl = $('#lab-burst');
+  let burstTimer = 0;
+  /** receipt.combo.moment ("Bullseye Burst"): a splat flourish of at most 1.2 s in the yard strip, shown between throws, never over the road. */
+  function placeBurst() {
+    let fe = null;
+    try { fe = game.getState().fence; } catch (_) { fe = null; }
+    for (const k of ['top', 'left', 'width', 'bottom', 'right']) burstEl.style[k] = '';
+    if (!fe) return;                              // the mock engine: the stylesheet's default spot (bottom right)
+    const cv = $('#game').getBoundingClientRect(), hud = $('#hud').getBoundingClientRect();
+    const free = cv.height - fe.roadBottom - 8;      // the yard strip under the road's lower edge
+    const hgt = Math.max(30, Math.min(70, fe.h * 2, free)), wid = Math.round(hgt * 2.2);
+    burstEl.style.width = `${wid}px`;
+    burstEl.style.top = `${Math.round(cv.top - hud.top + Math.max(fe.roadBottom + 4, Math.min(fe.y0 + fe.h / 2 - hgt / 2, cv.height - hgt - 4)))}px`;
+    burstEl.style.left = `${Math.round(cv.left - hud.left + cv.width * 0.74 - wid / 2)}px`;
+    burstEl.style.bottom = 'auto'; burstEl.style.right = 'auto';
+  }
+  function showBurst(name) {
+    if (!burstEl || screen !== 'wave') return;
+    burstEl.querySelector('b').textContent = `${name || 'Bullseye Burst'}!`;
+    placeBurst();
+    burstEl.hidden = false;
+    burstEl.classList.remove('go'); void burstEl.offsetWidth; burstEl.classList.add('go');
+    clearTimeout(burstTimer);
+    burstTimer = setTimeout(() => { burstEl.hidden = true; burstEl.classList.remove('go'); }, settings.reducedMotion ? 900 : 1200);
+  }
+  /** Reports leave the engine's frame: queued on the next tick, in order. A report that hits a combo moment shows the burst. */
+  function labReport(ev) {
+    setTimeout(() => {
+      try {
+        const rc = labBridge.report(ev);
+        if (rc && rc.combo && rc.combo.moment) showBurst(rc.combo.name);
+      } catch (e) { console.warn('[lab]', e); }
+    }, 0);
+  }
+  /** After the wave is over: the wave, the street, the day (the Lab pays the day once a local day across all five games). */
+  function labWaveDone(r, bank, stopped, firstWaveToday) {
+    if (stopped) return;
+    labReport({ event: 'wave' });
+    if (bank.cleared) labReport({ event: 'street' });
+    if (firstWaveToday) labReport({ event: 'day' });
+  }
+
   // ---------- players ----------
   function selectPlayer(id) {
     if (!Profiles.playerById(family, id)) return;
@@ -242,6 +319,7 @@ async function boot() {
     app.persist();
     app.persistSkills();
     applyVoice();
+    labAttach();
     go('title');
   }
   function refreshTitle() {
@@ -259,8 +337,20 @@ async function boot() {
     const b = $('#btn-streets');
     b.dataset.lab = String(!labDone);
     b.firstChild.textContent = labDone ? 'Defend the fence' : 'Zombie Lab';
+    showLabButton();
   }
-  function drawBackdrop() { drawYard($('#yard-scene'), currentPlayerId ? save : defaultSave()); }
+  /** "The Lab" button: only once the Lab has loaded (a blocked or missing /lab/ simply shows no button). */
+  function showLabButton() {
+    const btn = $('#btn-thelab');
+    if (!btn) return;
+    btn.hidden = !labBridge.ready;
+    clearInterval(labSlotTimer);
+    if (!labBridge.ready) {
+      let n = 0;
+      labSlotTimer = setInterval(() => { if (labBridge.ready) { btn.hidden = false; clearInterval(labSlotTimer); } else if (++n > 100) clearInterval(labSlotTimer); }, 120);
+    }
+  }
+  function drawBackdrop() { drawYard($('#yard-scene'), currentPlayerId ? save : defaultSave(), currentPlayerId ? app.labLooks() : {}); }
 
   // Ghost-click guard (same as the other games): swallow a click that lands just after a screen change when its
   // pointerdown came before the change
@@ -285,8 +375,11 @@ async function boot() {
     $('#backdrop').hidden = inWave || inBonus || name === 'results' || name === 'lab';
     if (!inWave) { hud.clearBanner(); hideCoach(); }
     if (!inWave && name !== 'results' && name !== 'lab') drawBackdrop();
+    if (name === 'players') labDetach();
     if (name === 'title') refreshTitle();
     if (screens[name]) screens[name].show(arg);
+    labMount(name);
+    if (burstEl && name !== 'wave') { burstEl.hidden = true; burstEl.classList.remove('go'); }
     refreshCash();
     setTimeout(() => updater.check(), 0);
   }
@@ -303,6 +396,7 @@ async function boot() {
   function setSetting(key, value) {
     settings[key] = key === 'pace' ? (['auto', 'calm', 'quick'].includes(value) ? value : 'auto') : !!value;
     writeSettings(settings);
+    if (labPlayer && (key === 'gentle' || key === 'reducedMotion' || key === 'sound')) labAttach();    // attach is idempotent: the Lab follows the device settings
     if (key === 'sound') { Audio.setSound(settings.sound); Sfx.setSound(settings.sound); }
     if (key === 'music') Audio.music(settings.music);
     if (key === 'gentle') { if (bonus && screen !== 'bonus') { try { bonus.destroy(); } catch (_) { /* ignore */ } bonus = null; } if (screen === 'title') refreshTitle(); }
@@ -360,7 +454,10 @@ async function boot() {
     hud.reset(street.name, number, { big: w.big, final: w.final });
     paused = false;
     run.look = { goo: goo.color, fence: fence.id, fenceColor: fence.color, pumpkins: Math.max(3, Math.min(12, 3 + save.pumpkins)), sky: street.sky, landmark: street.look.landmark, hats: street.look.hats,
-      grenade: grenade.id, dog: !!save.yard.dog, lantern: !!save.yard.lantern, gentle: !!settings.gentle };   // the bonus round plays in the same yard; gentle = cure, not blast (§15)
+      grenade: grenade.id, dog: !!save.yard.dog, lantern: !!save.yard.lantern, gentle: !!settings.gentle,   // the bonus round plays in the same yard; gentle = cure, not blast (§15)
+      tower: save.yard.tower || 'none', ...labFinishes() };   // the tower (cosmetic) and the Lab's fence and tower looks, re-read for every round
+    run.first = new Map();                       // item id -> was the first throw resolved at it a hit (the Lab's first-try zap)
+    labBridge.beginRound();
     try {
       game.start({
         road: roadFor(tier),
@@ -378,6 +475,8 @@ async function boot() {
     hudRaf = requestAnimationFrame(hudLoop);
     if (!save.seen.coach) showCoach();
   }
+  /** The Lab's equipped fence finish and tower topper as the engine's look keys (null = the game's own look). */
+  function labFinishes() { const l = app.labLooks(); return { labFence: l.fence, labTower: l.tower }; }
   // the called item changed (another zombie, or the boss's next form): the card and the voice follow
   function setTarget(item, live) {
     if (!run || !item) return;
@@ -389,8 +488,10 @@ async function boot() {
     const sameForm = run.targetKey.startsWith(`${item.id}:${item.show}:`);
     run.targetKey = key;
     if (!sameZombie || !sameForm) run.calledAt = performance.now();   // §16: the think time starts when a new call shows
-    hud.setTarget({ ...item, hitsLeft });
-    if (!sameZombie || !sameForm) app.say(`${item.say}.`);
+    const mine = run.byId.get(item.id) || {};
+    const same = mine.style === 'equivalent';        // Twin Alley's boss: three spellings of one spot
+    hud.setTarget({ ...item, hitsLeft, style: mine.style, note: mine.note });
+    if (!sameZombie || !sameForm) app.say(same && sameZombie ? `Same spot! ${item.say}.` : `${item.say}.`);
   }
   /** The kid taps a small card: call that zombie instead (the engine's 'target' event updates the card). */
   function focus(id) {
@@ -509,12 +610,24 @@ async function boot() {
     run.throws.push({ item: { id: item.id, show: item.show, say: item.say, kind: item.kind || 'locate' }, result, pae, seen, combo, cures });
     run.bestCombo = Math.max(run.bestCombo, combo);
     hud.setCombo(combo);
+    labThrow(item, result, cures);
     // the boss's forms are the same number: its throws are recorded as plain locate throws at that fraction
     const kind = item.kind === 'boss' ? 'locate' : item.kind || 'locate';
     const show = item.kind === 'boss' && item.n && item.d ? `${item.n}/${item.d}` : item.show;
     const out = recordThrow(skills, { tier: item.tier || run.tier, kind, show, pae, result, at: Date.now(), seen });
     run.opened.push(...out.opened);
     app.persistSkills();
+  }
+  /** The Lab events of one throw: a bullseye, and a zap for each zombie it cured (firstTry = the first throw at that zombie was a hit or a bull); a boss's third hit is a boss. */
+  function labThrow(item, result, cures) {
+    const first = run.first;
+    if (!first.has(item.id)) first.set(item.id, isHit(result));
+    if (result === 'bull') labReport({ event: 'bull' });
+    for (const id of cures || []) {
+      const it = run.byId.get(id) || {};
+      labReport({ event: 'zap', firstTry: first.has(id) ? first.get(id) : true });
+      if (it.kind === 'boss') labReport({ event: 'boss' });
+    }
   }
   function endWave(summary) {
     const r = run;
@@ -524,8 +637,10 @@ async function boot() {
     const stopped = !!(summary && summary.stopped);
     const cash = waveCash(r.throws, { final: r.final && !stopped, gentle: !!settings.gentle });
     const at = Date.now();
+    const firstWaveToday = !stopped && !(save.play[dayKey(at)] && save.play[dayKey(at)].waves > 0);
     const bank = bankWave(save, { street: r.street, number: r.number, cash: cash.total, cured: cash.cured, bulls: cash.bulls, reached: r.reached, throws: r.throws.length, final: r.final, stopped, at });
     if (!save.seen.coach) save.seen.coach = true;
+    labWaveDone(r, bank, stopped, firstWaveToday);
     noteWave(skills, { at, street: r.street, number: r.number, cured: cash.cured, reached: r.reached, throws: r.throws.length, hits: r.throws.filter((t) => isHit(t.result)).length,
       bulls: cash.bulls, pae: r.throws.length ? r.throws.reduce((a, t) => a + t.pae, 0) / r.throws.length : 0, stopped });
     app.persist(); app.persistSkills();
@@ -679,6 +794,7 @@ async function boot() {
   $('#btn-streets').addEventListener('click', () => go(app.labDone() ? 'streets' : 'lab'));
   $('#btn-lab').addEventListener('click', () => go('lab'));
   $('#btn-yard').addEventListener('click', () => go('yard'));
+  $('#btn-thelab').addEventListener('click', () => app.openLabHome());
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'sync' }));
   $('#btn-player').addEventListener('click', () => go('players'));
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));

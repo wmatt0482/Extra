@@ -77,8 +77,8 @@ open http://localhost:8080/fraction-fright/?mock=1     # the mock engine (src/me
   +$60, close-then-cured +$40, sharpshooter +$50 per cure in the fog, combo +$20 × (combo − 1) per hit from ×2 (capped at ×6), twins
   +$80 per extra cure, boss +$300, final wave ×2), the wave's fractions (twins and the boss marked), the tally board.
 - **Yard**: 4 grenade types (slime, lava, frost, disco), 3 goo colours, 3 fences, a yard dog and a gate lantern,
-  cosmetics only (never a "scope" that shows ticks); about $35k in all, a few hours of play. More yard items are the next
-  runway step.
+  cosmetics only (never a "scope" that shows ticks); the tower (lookout, watchtower, beacon, built in order), brick and castle walls
+  and four more goo colours are the long runway: about $442k in all, 9 to 12 hours of play (`tools/yard-sim.mjs`).
 
 ## How it is built
 
@@ -107,12 +107,23 @@ fraction the side with more throws; waves and moves union by time; the Lab and o
 the later. **Pings** (anonymous, `meta/pings.js`): 'day', 'wave' after each wave, 'lab' when the Lab ends; counted
 under `ff` by the stats function. Privacy: no names or ids leave the device in a ping.
 
+## Lab integration (v1)
+
+The Lab (`/lab/`, one coin purse, avatar, pet and quests across the five games) is wired in through `src/meta/labBridge.js`, the one file
+that knows it; a missing or blocked `/lab/` changes nothing. The Lab's XP pill and results strip show on the title, the streets, the results and
+the yard, never in a wave; zaps (first try), bullseyes, waves, bosses and streets are reported to it; its fence finishes and tower toppers are
+drawn here (`src/meta/labLooks.js`, `yardArt.js`); the Lab's coins are separate from the cash. New with it: the Yard's tower and walls (own cash),
+Twin Alley (equal fractions, "Same spot!") with the equivalence boss Mayor Mirror, and a "The Lab" row in the Parent Zone. See `lab/SPEC.md` §4.3
+and `SPEC.md` §17.
+
 ## Tests
 
 ```sh
 node fraction-fright/tools/skills-tests.mjs   # items, bands, zones, the ladder and unlocks, the store, the week, cash, the yard, merges
 node fraction-fright/tools/ui-smoke.mjs       # Playwright, 844×390 + 390×844 on the mock (ONLY=landscape|portrait|real),
                                               # the kid-rule text audit, then one playtest on the real engine
+node fraction-fright/tools/lab-tests.mjs      # Lab integration: the economy snapshot, the tower, Twin Alley, the equivalence boss, labLooks
+node fraction-fright/tools/yard-sim.mjs --check  # the yard's runway (9 to 12 hours of cash)
 node fraction-fright/tools/sync-smoke.mjs     # two devices on one in-memory family server (car-jump/src/sync/protocol.mjs)
 node fraction-fright/tools/engine-smoke.mjs   # the engine agent's
 node fraction-fright/tools/make-icons.mjs     # re-renders icons/*.png

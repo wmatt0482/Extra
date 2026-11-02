@@ -342,6 +342,28 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .yard-item .btn .coin { width: 18px; height: 18px; }
 .yard-note { font-size: 12px; font-weight: 700; color: var(--muted); }
 
+
+/* ---------- The Lab (Lab integration v1): the pill and strip live off-wave only; the burst is a flourish between throws ---------- */
+.lab-slot { display: flex; align-items: center; justify-content: center; min-width: 0; }
+.lab-slot:empty { display: none; }
+.topbar .lab-slot { flex: none; max-width: 42%; }
+#screen-title .lab-slot { margin-left: auto; }
+#screen-title .lab-slot ~ .cash-pill { margin-left: 0; }
+.lab-slot-strip { flex: none; justify-content: center; padding: 0 4px; }
+.results-head .lab-slot { flex: none; }
+.lab-burst { position: absolute; right: calc(var(--pad-r) + 16%); bottom: calc(var(--pad-b) + 22px); width: min(190px, 44vw); aspect-ratio: 200 / 90; display: grid; place-items: center; pointer-events: none; z-index: 5; transform-origin: center; }
+.lab-burst svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.lab-burst b { position: relative; font: 400 clamp(13px, 2.4vmin + .4vw, 18px)/1 var(--font-display); color: #14310a; text-transform: uppercase; letter-spacing: .03em; text-align: center; padding: 0 12%; transform: rotate(-4deg); }
+.lab-burst.go { animation: labBurst 1.15s ease-out forwards; }
+@keyframes labBurst { 0% { transform: scale(.3) rotate(-8deg); opacity: 0; } 14% { transform: scale(1.12) rotate(3deg); opacity: 1; } 28% { transform: scale(1) rotate(0); } 78% { opacity: 1; } 100% { transform: scale(1.04); opacity: 0; } }
+.reduced-motion .lab-burst.go { animation: labBurstCalm .9s ease forwards; }
+@keyframes labBurstCalm { 0% { opacity: 0; } 20% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
+.fc-note { font: 400 12px/1 var(--font-display); color: #1e5a12; text-transform: uppercase; letter-spacing: .05em; padding: 3px 6px 2px; border-radius: 2px; background: #c8f56a; border: 2px solid #3f7a14; }
+.menu-row:has(#btn-thelab:not([hidden])) .btn { min-width: 104px; }
+.yard-next { padding: 8px 10px; border-radius: 4px; background: rgba(14,13,16,.72); border: 2px dashed var(--accent); font: 400 13px/1.15 var(--font-display); text-transform: uppercase; color: var(--text); }
+.yard-lab { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; }
+.yi-tower { display: block; }
+
 /* ---------- modal panels (pause) ---------- */
 .modal { position: absolute; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(6,6,8,.66); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); }
 .sheet { width: min(600px, 100%); max-height: 100%; display: flex; flex-direction: column; padding: 12px 16px 16px; }
@@ -490,6 +512,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   .title-actions { width: min(100%, 360px); }
   #btn-streets { width: 100%; }
   .menu-row { display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; }
+  .menu-row:has(#btn-thelab:not([hidden])) { grid-template-columns: 1fr 1fr; }
+  .topbar { flex-wrap: wrap; }
+  .topbar .lab-slot { order: 5; flex: 1 1 100%; max-width: none; justify-content: flex-start; }
   .menu-row .btn { min-width: 0; padding: 0 8px; }
   .players-top { grid-template-columns: 1fr auto; row-gap: 14px; }
   .players-top h2 { grid-column: 1 / -1; grid-row: 2; }
@@ -521,6 +546,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   .pz-head h3 { font-size: 18px; }
 }
 @media (orientation: landscape) and (max-height: 500px) {
+  #lab-slot-results-pill { display: none; }   /* the strip below already carries the level and the bar; the results card needs the height */
   .logo { font-size: clamp(34px, 7vmin + 1.4vw, 64px); }
   .btn-big { min-height: 56px; font-size: 22px; }
   .menu-row .btn { min-height: 48px; }
@@ -630,6 +656,7 @@ body { font-weight: 600; letter-spacing: .01em; }
     <div class="topbar">
       <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span><b class="lv-pill" id="title-lv">Lv 1</b></button>
       <span class="tally-board" id="title-cures" aria-label="Neighbours cured"><span class="tb-label">Cured</span><b id="title-cures-n">0</b><span id="title-tally" aria-hidden="true"></span></span>
+      <div class="lab-slot" id="lab-slot-title"></div>
       <span class="cash-pill" data-cash></span>
     </div>
     <div class="title-main">
@@ -639,8 +666,9 @@ body { font-weight: 600; letter-spacing: .01em; }
       <div class="title-actions">
         <button class="btn btn-slime btn-big" id="btn-streets" data-sfx>Defend the fence<span data-icon="right"></span></button>
         <div class="menu-row">
-          <button class="btn" id="btn-lab" data-sfx><span data-icon="target"></span>Lab</button>
+          <button class="btn" id="btn-lab" data-sfx><span data-icon="target"></span>Zombie Lab</button>
           <button class="btn" id="btn-yard" data-sfx><span data-icon="style"></span>Yard</button>
+          <button class="btn btn-cyan" id="btn-thelab" data-sfx hidden><span data-icon="star"></span>The Lab</button>
           <button class="btn" id="btn-parents" data-sfx><span data-icon="lock"></span>Parents</button>
         </div>
       </div>
@@ -663,6 +691,7 @@ body { font-weight: 600; letter-spacing: .01em; }
     <div class="topbar">
       <button class="btn icon-btn" data-back="title" aria-label="Back" data-sfx><span data-icon="back"></span></button>
       <h2>Streets</h2>
+      <div class="lab-slot" id="lab-slot-streets"></div>
       <span class="cash-pill" data-cash></span>
     </div>
     <div class="streets-body"><div class="street-grid" id="street-grid"></div></div>
@@ -673,6 +702,7 @@ body { font-weight: 600; letter-spacing: .01em; }
     <div class="topbar">
       <button class="btn icon-btn" data-back="title" aria-label="Back" data-sfx><span data-icon="back"></span></button>
       <h2>Yard</h2>
+      <div class="lab-slot" id="lab-slot-yard"></div>
       <span class="cash-pill" data-cash></span>
     </div>
     <div class="yard-body">
@@ -690,7 +720,7 @@ body { font-weight: 600; letter-spacing: .01em; }
           <span class="fc-big" id="fc-big"><span class="fc-n" id="fc-n">3</span><span class="fc-d" id="fc-d">4</span></span>
           <span class="fc-say" id="fc-say">three quarters</span>
           <span class="fc-hear"><span data-icon="sound"></span>Hear it</span>
-          <span class="fc-boss" id="fc-boss" hidden><span class="fc-boss-name" id="fc-boss-name">Mayor Mumbles</span><span class="fc-boss-dots" id="fc-boss-dots" aria-hidden="true"></span></span>
+          <span class="fc-boss" id="fc-boss" hidden><span class="fc-boss-name" id="fc-boss-name">Mayor Mumbles</span><span class="fc-note" id="fc-note" hidden>Same spot!</span><span class="fc-boss-dots" id="fc-boss-dots" aria-hidden="true"></span></span>
         </button>
         <div class="hud-stack" id="hud-stack" aria-label="Other zombies on the road"></div>
         <div class="combo-chip" id="hud-combo" hidden aria-live="polite">COMBO <b id="hud-combo-n">×2</b></div>
@@ -698,6 +728,7 @@ body { font-weight: 600; letter-spacing: .01em; }
       <div class="hud-right"><button class="btn icon-btn" id="btn-pause" aria-label="Pause"><span data-icon="pause"></span></button></div>
     </div>
     <div class="banner" id="banner" hidden aria-live="polite"><span id="banner-text"></span></div>
+    <div class="lab-burst" id="lab-burst" hidden aria-hidden="true"><svg viewBox="0 0 200 90" aria-hidden="true"><path d="M20 46 C14 26 40 14 60 22 C70 4 112 4 124 20 C150 8 190 24 176 46 C196 62 164 82 140 72 C126 88 84 88 70 74 C46 86 6 70 20 46 Z" fill="#a6ff2e" stroke="#4f8a0b" stroke-width="4"/><circle cx="186" cy="14" r="6" fill="#a6ff2e"/><circle cx="12" cy="78" r="5" fill="#a6ff2e"/><circle cx="150" cy="86" r="4" fill="#a6ff2e"/></svg><b>Bullseye Burst!</b></div>
     <div class="aim-help" id="aim-help">Drag on the road · let go to lob</div>
   </div>
 
@@ -716,7 +747,7 @@ body { font-weight: 600; letter-spacing: .01em; }
 
   <!-- ===== Results (src/ui/results.js) ===== -->
   <section class="screen" id="screen-results" data-screen="results" hidden>
-    <div class="results-head"><h2 id="res-title">Wave cleared!</h2><div class="res-callouts" id="res-callouts"></div></div>
+    <div class="results-head"><h2 id="res-title">Wave cleared!</h2><div class="res-callouts" id="res-callouts"></div><div class="lab-slot" id="lab-slot-results-pill"></div></div>
     <div class="results-body">
       <div class="card res-main">
         <div class="stat-grid" id="res-stats"></div>
@@ -725,6 +756,7 @@ body { font-weight: 600; letter-spacing: .01em; }
       </div>
       <div class="card res-pay scroll"><table class="pay" id="res-pay"></table></div>
     </div>
+    <div class="lab-slot lab-slot-strip" id="lab-slot-results"></div>
     <div class="results-foot">
       <button class="btn" id="res-streets" data-sfx><span data-icon="back"></span>Streets</button>
       <button class="btn" id="res-yard" data-sfx><span data-icon="style"></span>Yard</button>

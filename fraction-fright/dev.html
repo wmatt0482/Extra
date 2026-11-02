@@ -39,7 +39,7 @@
 // Engine playground. URL params: road=1|3 (0–1 or 0–3 road + its item list), n (zombies, default 10), big=1, final=1,
 // wave (number 1..5), seed, rm=1 (reduced motion), ui=0 (no overlays), sim (speed), tol (tolerance share, default 0.10),
 // goo (css colour), fence=iron|picket|stone, weather=clear|fog|bats|stars|rain, auto=1 (throw exactly every 2.4 s),
-// sound=0 (mute the WebAudio feel sounds), live (max live at once), twins=1, boss=1, grenade=slime|lava|frost|disco,
+// sound=0 (mute the WebAudio feel sounds), live (max live at once), twins=1, boss=1 (or boss=equivalent: Twin Alley's 3/4 → 6/8 → 9/12), grenade=slime|lava|frost|disco,
 // dog=1, lantern=1. Keys: f = focus the next zombie.
 import { createGame } from './src/game/engine.js';
 
@@ -83,6 +83,8 @@ let items = (roadTo === 3 ? ITEMS_03 : ITEMS_01).slice(0, n).map((it) => ({ ...i
 if (q.get('twins') === '1') items = [
   { id: 'tw1', kind: 'locate', say: 'one half', show: '1/2', target: 0.5, twin: 'tw2', tolerance: tol },
   { id: 'tw2', kind: 'locate', say: 'two quarters', show: '2/4', target: 0.5, twin: 'tw1', tolerance: tol }, ...items.filter((it) => it.target !== 0.5)];
+if (q.get('boss') === 'equivalent') items = items.filter((it) => it.target !== 0.75).concat([{ id: 'boss', kind: 'boss', style: 'equivalent', name: 'Mayor Mirror', hits: 3, say: 'three quarters', show: '3/4', target: 0.75, tolerance: tol,
+  forms: [{ show: '3/4', say: 'three quarters' }, { show: '6/8', say: 'six eighths' }, { show: '9/12', say: 'nine twelfths' }] }]);
 if (q.get('boss') === '1') items.push({ id: 'boss', kind: 'boss', name: 'Mayor Mumbles', hits: 3, say: 'nine tenths', show: '9/10', target: 0.9, tolerance: tol,
   forms: [{ show: '9/10', say: 'nine tenths' }, { show: 'nine tenths', say: 'nine tenths' }, { show: '9 × ⅒', say: 'nine times one tenth' }] });
 const road = roadTo === 3

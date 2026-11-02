@@ -346,3 +346,38 @@ the literature, but our rule stands).
 - **App**: the plan at the wave start (`wave.live`, `wave.shuffleSec`) and after every throw (`setPace` when it
   changed); Parents → Options → **Pace**: Auto (default) · Calm (one slow zombie at a time) · Quick (the 1.1 horde);
   Parents → Fractions: "Pace: about N s a throw · L at once, M s each". No pace is ever shown to the kid.
+
+## 17. Lab integration (v1) — version 1.6.0 (Nov 2 2026)
+The Lab (`/lab/`, `lab/SPEC.md`; §4.3 is this game) is the layer across the five games: one profile, one coin purse, an avatar and a pet, daily quests.
+Fraction Fright keeps its own cash and rules; the Lab only hears about it.
+- **Bridge**: `src/meta/labBridge.js` is the one file that knows the Lab. It lazy-imports `/lab/src/index.js`, queues calls until it has loaded and
+  is a no-op if `/lab/` is missing, old in the cache or blocked (a test blocks every `/lab/` request: the game boots and plays normally). Lab coins
+  never enter `save.cash`; no cash constant and no old yard price changed (`tools/lab-tests.mjs` snapshots them).
+- **Reports** (never in the engine's frame: queued to the next tick, in order): `zap` for each zombie a throw cures (`firstTry` = the first throw at
+  it was a hit or a bull; a twin cured by its partner's throw counts as first try), `bull` per bullseye, `boss` on a boss's third hit, `wave` after
+  `bankWave` (not for a stopped wave), `street` when a street's final wave was played, `day` for the first banked wave of a local day (the Lab keeps
+  the streak: FF still has none of its own and shows none). There is no Lab event for a yard purchase (it is the game's own cash).
+- **Where the Lab shows**: the XP pill on the title, the streets, the results and the yard; the results strip on the results. **Never in a wave or in
+  the bonus round** (§0: no meters in a wave): `go()` destroys every handle on leaving and a smoke check asserts no `.lab-pill` / `.lab-strip` /
+  overlay exists at any point of a wave. The Lab's combo moment ("Bullseye Burst", `receipt.combo.moment`) is a splat flourish of at most 1.2 s in
+  the yard strip under the road (the engine reports `getState().fence`), between throws, never over the road.
+- **Looks**: `src/meta/labLooks.js` (`LOOKS_READY` = the 12 `ff.fence.*` and `ff.tower.*` items; `paintPreview`) and `src/meta/yardArt.js` (shape
+  primitives drawn by the wave scene and the bonus round on canvas, and by the title and the Yard preview as SVG). `cosmetics()` is re-read at the
+  start of every wave. A tower topper shows once a tower is built.
+- **Runway** (`tools/yard-sim.mjs`, `--check`): the yard no longer empties in an hour. New own-cash sinks: the **tower** (`lookout`, `watchtower`,
+  `beacon`, built in order; cosmetic), two fences (`brick`, `castle`) and four goo colours (`aqua`, `sunshine`, `bubblegum`, `galaxy`; never red).
+  Prices are in `data/looks.js` `PRICES`. The sim plays real `buildWave` + `waveCash` waves with scripted throws at 70 % hits and 16 waves an hour (the
+  Lab's own assumption), spends greedily, and checks: the whole yard takes 9 to 12 hours, a 90 % kid still needs 6+, no wait over 45 waves between
+  purchases. Finding: at today's cash (about $2,750 a wave) the old $35.5k yard lasts under an hour, not the 3 to 4 hours the Lab spec assumed, so the
+  prices were set against the 9 to 12 hour target, not against the spec's +$57k (which would be 2.1 hours). The Yard shows a "Next up" line.
+- **Twin Alley** (T3) is now a street (it was "coming soon"): seven spots (⅙ ¼ ⅓ ½ ⅔ ¾ ⅚), each spelled in every denominator that reaches it, plain
+  locate items (no hops), a twin pair from wave 2, Oak Lane for review. It opens when Oak Lane is working. Its final wave's boss is the **equivalence
+  boss** "Mayor Mirror": `makeBoss(frac, { style: 'equivalent' })`, three hits, its three forms are three spellings of one spot (3/4 → 6/8 → 9/12),
+  so every hit lands on the same x; the card says "Same spot!"; cash and the `boss` event are as for every boss. The voice says "Same spot! six
+  eighths." for the later forms (all in `sayTexts()`, so the natural voice prepares them as clips).
+- **Parent Zone**: Options has a "The Lab" row that opens the Lab's grown-ups panel (`openParent({ unlocked: true })`, the PIN was just entered);
+  Players → Reset says the Lab is not touched.
+- **Tests**: `tools/lab-tests.mjs` (economy snapshot, tower order, `mergeFf` over every yard kind, Twin Alley, the boss, the voice set, `LOOKS_READY`
+  vs the Lab catalogue), `tools/yard-sim.mjs --check`, ui-smoke (title bar, yard, the wave with no Lab UI, the burst, the boss on the real engine to its
+  end, the bridge with `/lab/` blocked, the Parent Zone row), sync-smoke (the tower rides the `ff` doc and survives the 409 merge).
+

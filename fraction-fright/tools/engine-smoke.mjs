@@ -431,6 +431,34 @@ try {
     check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
     await context.close();
   }
+  // ======== 8b. Lab integration v1 (lab/SPEC.md §4.3): the equivalence boss (style 'equivalent'): 3/4 → 6/8 → 9/12, every hit on the same x ========
+  {
+    const { page, context, errors } = await open(browser, { boss: 'equivalent', n: '3', final: '1' });
+    const s0 = await state(page);
+    const bz = s0.live.find((z) => z.boss);
+    check(!!bz && bz.hitsLeft === 3 && Math.abs(bz.x01 - 0.75) < 1e-9, `the equivalence boss stands at ¾ (x01 ${bz && bz.x01})`);
+    await stepUntil(page, 'i >= 60 * 9', 10);
+    check(await page.evaluate(() => window.__ff.game.setFocus('boss')), 'setFocus(boss) → true');
+    const t1 = (await events(page, 'target')).pop();
+    check(t1.item.boss === true && t1.item.style === 'equivalent' && t1.item.show === '3/4' && t1.item.name === 'Mayor Mirror', `the target event carries the style and the first spelling (${JSON.stringify({ show: t1.item.show, style: t1.item.style, name: t1.item.name })})`);
+    const e1 = await throwAndLand(page, 0.75);
+    await stepUntil(page, "ev.some((e) => e.type === 'bossHit')", 2);
+    const bh1 = (await events(page, 'bossHit'))[0];
+    check(e1 && e1.result === 'bull' && e1.cures.length === 0 && bh1 && bh1.left === 2 && bh1.item.show === '6/8' && bh1.item.style === 'equivalent', `hit 1 at ¾: the card shows 6/8, the same spot, 2 to go (${bh1 && bh1.item.show})`);
+    await stepUntil(page, 'i >= 40', 1);
+    await shot(page, '18b-equivalence-boss');
+    const e2 = await throwAndLand(page, 0.75);
+    await stepUntil(page, "ev.filter((e) => e.type === 'bossHit').length >= 2", 2);
+    const bh2 = (await events(page, 'bossHit'))[1];
+    check(e2 && e2.result === 'bull' && bh2 && bh2.left === 1 && bh2.item.show === '9/12', `hit 2 at the same x: 9/12, 1 to go (${bh2 && bh2.item.show})`);
+    const e3 = await throwAndLand(page, 0.75);
+    check(e3 && e3.cures.join() === 'boss', `hit 3 at the same x cures the boss (cures ${JSON.stringify(e3 && e3.cures)})`);
+    check(e1.aimed === e2.aimed && e2.aimed === e3.aimed, `all three hits landed on one spot (${e1.aimed}, ${e2.aimed}, ${e3.aimed})`);
+    await stepUntil(page, "ev.some((e) => e.type === 'cured' && e.item.id === 'boss')", 2);
+    check((await info(page)).items.find((it) => it.id === 'boss').cured, 'the equivalence boss is cured');
+    check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
   // ======== 9. combo, mega splat, finale, bestCombo ========
   {
     const { page, context, errors } = await open(browser, { n: '6', final: '1', live: '6' });
