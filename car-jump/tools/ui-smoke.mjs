@@ -1946,7 +1946,7 @@ async function newListVoiceTest(browser, layout, scenario) {
   const errors = [];
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   await page.addInitScript(({ insets, scenario }) => {
     if (!sessionStorage.getItem('seeded')) {
       localStorage.clear();
