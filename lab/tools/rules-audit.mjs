@@ -14,7 +14,7 @@ const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 export const EXTRA_PATHS = [              // every kid-visible file the five game streams added for the Lab
   // Spell Jump
   'car-jump/src/meta/labBridge.js', 'car-jump/src/meta/labLooks.js', 'car-jump/src/ui/testBoss.js', 'car-jump/src/ui/ceremony.js',
-  'car-jump/src/ui/certificate.js', 'car-jump/certificate.html',
+  'car-jump/src/ui/certificate.js', 'car-jump/certificate.html', 'car-jump/src/spelling/spellVoice.js',
   // Trail Blazer
   'trail-blazer/src/meta/labBridge.js', 'trail-blazer/src/meta/labLooks.js', 'trail-blazer/src/meta/ghosts.js', 'trail-blazer/src/data/ghostLooks.js',
   'trail-blazer/src/ui/chasePicker.js',
