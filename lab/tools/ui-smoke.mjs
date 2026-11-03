@@ -92,6 +92,8 @@ async function runLayout(browser, layout) {
   const size = LAYOUTS[layout];
   const phone = layout !== 'desktop';
   const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: 1, hasTouch: phone, serviceWorkers: 'block' });
+  // the games' own looks modules are real now (the Lab reads LOOKS_READY from each); Fraction Fright's is withheld here so the "looks not ready shows no items" rule is still tested
+  await ctx.route('**/fraction-fright/src/meta/labLooks.js', (route) => route.abort('failed'));
   const page = await ctx.newPage();
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' && !(/Failed to load resource/.test(m.text()) && /labLooks\.js/.test(m.location().url || ''))) errors.push(`${m.text()} ${m.location().url || ''}`); });
@@ -266,7 +268,9 @@ async function runLayout(browser, layout) {
     await pickPlayer(page, 'mia'); await clickTab(page, 'shop');
     // a game
     await page.click('.lab-seg-btn[data-tab="sj"]'); await page.waitForTimeout(350);
-    check('Spell Jump\'s tab lists only what its looks module says is ready', (await page.locator('[data-item]').count()) === 3 && (await page.locator('[data-item="sj.skin.mint"]').count()) === 1);
+    const sjReady = await L(page, async () => (await import('/spell-jump/src/meta/labLooks.js')).LOOKS_READY);
+    const sjShown = await L(page, () => [...document.querySelectorAll('[data-item]')].map((e) => e.dataset.item));
+    check('Spell Jump\'s tab lists only what its (real) looks module says is ready', sjShown.length > 0 && sjShown.every((id) => sjReady.includes(id)) && sjShown.includes('sj.skin.mint'), `${sjShown.length} shown of ${sjReady.length} ready`);
     await shot(page, layout, '13-shop-spell-jump');
     await page.click('.lab-seg-btn[data-tab="ff"]'); await page.waitForTimeout(350);
     check('a game whose looks are not ready shows no items', (await page.locator('[data-item]').count()) === 0 && (await page.locator('#shop-empty').count()) === 1);

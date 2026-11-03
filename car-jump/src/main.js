@@ -1199,6 +1199,7 @@ async function boot() {
   $('#btn-parents').addEventListener('click', () => pz.open(currentPlayerId));
   $('#btn-player').addEventListener('click', () => go('players'));
   $('#btn-streak').addEventListener('click', () => openPanel('streak'));
+  $('#btn-lab').addEventListener('click', () => labBridge.openHome({}));        // the title's "Lab" chip (shown once the Lab has loaded)
   $('#btn-crates').addEventListener('click', () => { if (!crates.busy) crates.open(() => { refreshEngagement(); refreshCash(); }); });
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));
   for (const b of $$('[data-open]')) b.addEventListener('click', () => openPanel(b.dataset.open));

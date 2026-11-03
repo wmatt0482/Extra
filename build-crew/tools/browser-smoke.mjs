@@ -274,7 +274,7 @@ async function labStages() {
     assert.equal(await bp.evaluate(() => !!window.__lab), false, 'the Lab never loaded');
     assert.equal(await bp.locator('#lab-open').isHidden(), true);
     assert.equal(await bp.locator('#lab-gallery').isHidden(), true);
-    assert.equal(await bp.locator('.lab-pill').count(), 0);
+    assert.equal(await bp.locator('#lab-hud > *').count(), 0);
     await bp.locator('#jobs').click();
     assert.equal(await bp.locator('.job-tile').count(), 10, 'only the ten jobs are on the board');
     assert.equal(await bp.locator('#blueprint-row, #vehicle-row').count(), 0);

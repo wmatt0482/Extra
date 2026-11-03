@@ -19,7 +19,7 @@
   }
 </script>
 <title>Learning Lab</title>
-<meta name="description" content="Free learning games built on learning science. Spell Jump: a 4th-grade spelling trainer that is a car-jumping game. Trail Blazer: a motocross-style race where Grade 4 math facts open the gates. Fraction Fright: lob slime at fractions on a number-line road. No ads, no accounts.">
+<meta name="description" content="Free learning games built on learning science. Spell Jump: a 4th-grade spelling trainer that is a car-jumping game. Trail Blazer: a motocross-style race where Grade 4 math facts open the gates. Fraction Fright: lob slime at fractions on a number-line road. The Lab: one home base for an avatar, a pet, daily quests and a surprise crate across the games. No ads, no accounts.">
 <meta name="theme-color" content="#0d1230">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Learning Lab">
@@ -120,6 +120,11 @@ h2 { font-size: clamp(24px, 6.4vw, 34px); line-height: 1.05; margin-bottom: 20px
 .btn-ww:active { box-shadow: 0 1px 0 #a8741f, inset 0 -3px 0 rgba(0,0,0,.12); }
 .chip.ww { background: rgba(242,196,107,.14); border-color: #f2c46b; color: #ffe2a8; }
 .chip.tb { color: #ff8a1f; }
+.btn-lab { background: #37e0c0; color: #04271f; box-shadow: 0 var(--edge) 0 #12806f, 0 calc(var(--edge) + 8px) 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45); }
+.btn-lab:active { box-shadow: 0 1px 0 #12806f, inset 0 -3px 0 rgba(0,0,0,.12); }
+.game-art.lab { background: linear-gradient(#1c2a78, #12606a 60%, #0d3a40); }
+.chip.lab { background: rgba(55,224,192,.14); border-color: #37e0c0; color: #aaf5e6; }
+.kicker.lab { color: #37e0c0; }
 
 /* science */
 .science { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
@@ -194,6 +199,10 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
         Play Wagon West
       </a>
       <a class="btn btn-ww" href="/build-crew/">Play Build Crew</a>
+      <a class="btn btn-lab" href="/lab/">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6v2h-1v5.2l4.6 8A2 2 0 0 1 16.9 21H7.1a2 2 0 0 1-1.7-2.8L10 10.2V5H9z" fill="currentColor"/><path d="M8.2 15h7.6" stroke="#37e0c0" stroke-width="1.6" opacity=".7"/></svg>
+        Open The Lab
+      </a>
     </div>
     <p class="free">Free · no ads · no accounts</p>
   </div>
@@ -205,7 +214,56 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
 
 <main>
   <div class="wrap">
-    <article class="card game" aria-labelledby="game-title">
+    <article class="card game" aria-labelledby="lab-title">
+      <div class="game-art lab">
+        <svg viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A round-headed avatar in a teal shirt and a small pet in a room with a window, a poster and a shelf">
+          <rect x="0" y="0" width="400" height="150" fill="#1e2f8a"/>
+          <rect x="0" y="150" width="400" height="70" fill="#0f4a52"/>
+          <rect x="0" y="146" width="400" height="6" fill="#0b2f36"/>
+          <!-- window -->
+          <rect x="28" y="26" width="86" height="70" rx="6" fill="#8fd3ff"/><path d="M28 80 L114 52 L114 96 L28 96 Z" fill="#f2c46b" opacity=".55"/>
+          <path d="M71 26 V96 M28 61 H114" stroke="#0d1230" stroke-width="4"/><rect x="28" y="26" width="86" height="70" rx="6" fill="none" stroke="#0d1230" stroke-width="4"/>
+          <!-- poster and shelf -->
+          <rect x="296" y="26" width="58" height="76" rx="4" fill="#fff3c2" stroke="#0d1230" stroke-width="3"/>
+          <g font-family="Bungee, 'Arial Black', sans-serif" font-size="11" text-anchor="middle" fill="#2a1a00"><text x="325" y="52">3 / 3</text></g>
+          <path d="M306 66 L325 88 L344 66" fill="none" stroke="#ff3b5c" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" transform="translate(0 -4)"/>
+          <rect x="150" y="48" width="118" height="8" rx="3" fill="#7a4a1e"/>
+          <path d="M168 48 v-14 h18 v14 M214 48 l8 -22 l8 22 M246 48 v-10 a8 8 0 0 1 16 0 v10" fill="#ffcf1a" stroke="#b98200" stroke-width="2" stroke-linejoin="round"/>
+          <!-- avatar -->
+          <g class="float" style="transform-origin:170px 120px"><g transform="translate(150 164)">
+            <rect x="-24" y="-60" width="48" height="52" rx="14" fill="#37e0c0"/>
+            <rect x="-17" y="-8" width="14" height="30" rx="5" fill="#24307a"/><rect x="3" y="-8" width="14" height="30" rx="5" fill="#24307a"/>
+            <circle cx="0" cy="-78" r="22" fill="#ffd2a3"/>
+            <path d="M-22 -82 Q-20 -104 0 -104 Q20 -104 22 -82 Q10 -92 -22 -82 Z" fill="#3a2a22"/>
+            <circle cx="-7" cy="-76" r="2.6" fill="#0d1230"/><circle cx="8" cy="-76" r="2.6" fill="#0d1230"/>
+            <path d="M-6 -68 Q0 -63 6 -68" stroke="#0d1230" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+            <path d="M-26 -20 l-14 26 M26 -20 l14 26" stroke="#37e0c0" stroke-width="9" stroke-linecap="round"/>
+          </g></g>
+          <!-- pet -->
+          <g transform="translate(262 186)">
+            <ellipse cx="0" cy="22" rx="30" ry="6" fill="#000" opacity=".25"/>
+            <ellipse cx="0" cy="0" rx="26" ry="22" fill="#ff8a1f"/>
+            <path d="M-20 -14 l-6 -18 l16 8 M20 -14 l6 -18 l-16 8" fill="#ff8a1f"/>
+            <circle cx="-9" cy="-3" r="3.4" fill="#0d1230"/><circle cx="9" cy="-3" r="3.4" fill="#0d1230"/>
+            <path d="M-5 6 Q0 11 5 6" stroke="#0d1230" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+            <path d="M24 6 Q44 -2 38 -18" stroke="#ff8a1f" stroke-width="8" fill="none" stroke-linecap="round"/>
+          </g>
+          <!-- coins -->
+          <g fill="#ffcf1a" stroke="#b98200" stroke-width="2"><circle cx="352" cy="170" r="9"/><circle cx="332" cy="182" r="9"/><circle cx="372" cy="184" r="9"/></g>
+        </svg>
+      </div>
+      <div class="game-body">
+        <span class="kicker lab">Your home base · all five games</span>
+        <h2 id="lab-title">The Lab</h2>
+        <p>Whatever you play fills one purse of Lab coins and one level bar. Grow your avatar and pet, finish three quests, open a surprise crate, and spend your coins on looks for your car, bike, wagon and fence, or on new machines in Build Crew. Your family fills a goal together every week.</p>
+        <span class="chip lab">Free · no ads</span>
+        <span class="chip lab">Cosmetics only</span>
+        <span class="chip lab">Works with your family code</span>
+        <a class="text-link" href="/lab/">Open The Lab</a>
+      </div>
+    </article>
+
+    <article class="card game second" aria-labelledby="game-title">
       <div class="game-art">
         <svg viewBox="0 0 400 220" preserveAspectRatio="xMidYMid slice" role="img" aria-label="A car flying off a ramp through letter rings">
           <defs>
@@ -396,17 +454,18 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
         <li class="card">Kids play about 8 words a day. Check the <b>Report</b> on Friday to see how far each word has come, and its progress chart to see the weeks add up (every game's Report has one).</li>
         <li class="card">For math, open <a href="/trail-blazer/">Trail Blazer</a> → <b>Parents → Facts this week</b> and pick the times tables (×2 to ×12, with ÷ if you like), or type your own problems one per line, like <code>7 x 8</code> or <code>56 / 7</code>. Each race asks 4 facts; 12 a day is the daily mission.</li>
         <li class="card">For fractions, open <a href="/fraction-fright/">Fraction Fright</a>: your child plays the short Zombie Lab once, then picks a street (the ★ is the suggested one). <b>Parents → Fractions</b> shows where they are on the ladder, and the <b>Report</b> shows the week's accuracy.</li>
+        <li class="card">Open <a href="/lab/">The Lab</a> to see your child's level, quests and family goal. In its <b>Grown-ups</b> panel you can see the crate odds, switch off quests, the board or the goal, and reset a child's Lab. It uses the same family code and PIN as the games.</li>
         <li class="card">For a journey that mixes both, open <a href="/wagon-west/">Wagon West</a>: a leg a session, the week's spelling words at rivers and in letters home, and the math your child already knows applied at the fort and on the trail. The <b>Journal</b> keeps every letter; <b>Parents → Report</b> keeps the score.</li>
       </ol>
       <p class="more">For building and exploring, open <a href="/build-crew/">Build Crew</a>: ten construction jobs and a saved free-play yard. Parents can see jobs completed and minutes played, and unlock the three machines for free play.</p>
-      <p class="more">All five games share the same players, family code and parent PIN: set them up once in any game.</p>
+      <p class="more">All five games and The Lab share the same players, family code and parent PIN: set them up once in any game.</p>
     </section>
   </div>
 </main>
 
 <footer>
   <div class="wrap">
-    <p>What's stored online: first names, word lists, spelling progress, Trail Blazer progress (math facts practiced, vehicles, medals and stars), Fraction Fright progress (fraction throws, streets, the yard) and a hashed parent PIN, under your family code. Nothing else. Word lists, sentences, the math facts and the fraction names being practiced are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is. A daily anonymous count of devices, runs and races (no names, no ids) tells us the site is being used.</p>
+    <p>What's stored online: first names, word lists, spelling progress, Trail Blazer progress (math facts practiced, vehicles, medals and stars), Fraction Fright progress (fraction throws, streets, the yard), The Lab (coins, level, quests, looks and the family goal) and a hashed parent PIN, under your family code. Nothing else. Word lists, sentences, the math facts and the fraction names being practiced are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is. A daily anonymous count of devices, runs and races (no names, no ids) tells us the site is being used.</p>
     <p class="meta">Learning Lab · learninglab.fun · Free to use</p>
   </div>
 </footer>

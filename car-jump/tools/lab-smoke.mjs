@@ -169,6 +169,10 @@ async function runLayout(browser, base, layout) {
     check(await J(page, () => !document.querySelector('#btn-lab').hidden), 'title: "The Lab" button is shown once the Lab has loaded');
     await shot(page, layout, 'lab-01-title');
     await layoutIssues(page, 'title');
+    await page.tap('#btn-lab');
+    check(await page.waitForSelector('.lab-overlay', { timeout: 8000 }).then(() => true, () => false), 'tapping the title\'s Lab chip opens the Lab (the real overlay)');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(500);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
   } else {
     await page.waitForFunction(() => window.__spellJump.app.lab.unavailable, null, { timeout: 8000 });
     check(true, 'every /lab/ request blocked: the bridge gave up quietly');

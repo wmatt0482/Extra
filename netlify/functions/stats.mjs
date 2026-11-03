@@ -1,5 +1,5 @@
 // The "lights-on counter" (anonymous daily usage counts for learninglab.fun): one Netlify Function (Functions v2 API)
-// over one Netlify Blobs store. All request handling lives in car-jump/src/stats/server.mjs (pure, unit-tested in
+// over one Netlify Blobs store (counts the five games: spell-jump, trail-blazer, fraction-fright, wagon-west, build-crew; the Lab sends no pings). All request handling lives in car-jump/src/stats/server.mjs (pure, unit-tested in
 // tools/spelling-tests.mjs); this file only adapts the Blobs stores, the STATS_KEY environment variable (set in the
 // Netlify UI, never in this file) and the Request/Response objects. It never reads cookies, the client's IP address
 // or its user agent.

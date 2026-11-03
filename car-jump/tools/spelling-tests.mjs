@@ -1685,7 +1685,7 @@ await atest('counters and the version spread: one doc per UTC day (day/<yyyy-mm-
   assert.deepEqual(d.sj, { devices: 3, runs: 2, tests: 1, lists: 1, versions: { '3.7.2': 2, '3.7.1': 1 } });
   assert.deepEqual(d.tb, { devices: 1, races: 1, checks: 1, versions: { '1.6.3': 1 } });
   assert.deepEqual(d.ff, { devices: 0, waves: 0, labs: 0, checks: 0, versions: {} });
-  assert.deepEqual(d.fams, { sj: [], tb: [], ff: [] });
+  assert.deepEqual(d.fams, { sj: [], tb: [], ff: [], ww: [], bc: [] });
   assert.deepEqual([...deps.store.map.keys()], ['day/2026-10-22']);
   // the next UTC day is a new doc
   const deps2 = { ...deps, now: () => ST_NOW + 86400000 };
@@ -1704,7 +1704,7 @@ await atest('families: hashes dedupe per game and cap at 500 a day; the stored d
   await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h, kind: 'run' }));
   await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h, game: 'trail-blazer', kind: 'race' }));
   let d = await dayDoc(deps);
-  assert.deepEqual(d.fams, { sj: [h], tb: [h], ff: [] });
+  assert.deepEqual(d.fams, { sj: [h], tb: [h], ff: [], ww: [], bc: [] });
   for (let i = 0; i < 520; i++) await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: i.toString(16).padStart(8, '0'), kind: 'run' }));
   d = await dayDoc(deps);
   assert.equal(d.fams.sj.length, 500, 'capped at 500'); assert.equal(new Set(d.fams.sj).size, 500);
@@ -1747,6 +1747,24 @@ await atest('Fraction Fright pings: day / wave / lab / check counted under ff (v
   assert.equal(r.json.totals.last7.ff.labs, 1); assert.equal(r.json.totals.last7.famsFf, 1); assert.equal(r.json.totals.last7.families, 1);
   assert.deepEqual(r.json.versions.ff, { '1.0.0': 1 });
 });
+await atest('Wagon West and Build Crew pings (The Lab integration): counted under ww / bc with their own kinds; the Lab is not a game', async () => {
+  const deps = stDeps();
+  const send = (game, kind, o) => scall(deps, 'POST', '/api/stats/ping', { game, v: '1.6.0', kind, fam: '', ...o });
+  assert.equal((await send('wagon-west', 'day')).status, 204);
+  await send('wagon-west', 'leg', { fam: '0badcafe' }); await send('wagon-west', 'leg'); await send('build-crew', 'day', { v: '0.5.0' }); await send('build-crew', 'round', { v: '0.5.0' });
+  assert.equal((await send('wagon-west', 'run')).status, 400, 'a Spell Jump kind from Wagon West');
+  assert.equal((await send('build-crew', 'leg')).status, 400, 'a Wagon West kind from Build Crew');
+  assert.equal((await send('lab', 'day')).status, 400, 'the Lab sends no pings');
+  const d = await dayDoc(deps);
+  assert.deepEqual(d.ww, { devices: 1, legs: 2, versions: { '1.6.0': 1 } });
+  assert.deepEqual(d.bc, { devices: 1, rounds: 1, versions: { '0.5.0': 1 } });
+  assert.deepEqual(d.fams.ww, ['0badcafe']);
+  assert.deepEqual(ST.normalizeDay({ sj: { devices: 2 }, fams: {} }).ww, { devices: 0, legs: 0, versions: {} });
+  const r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=7' });
+  assert.equal(r.json.days[0].ww.legs, 2); assert.equal(r.json.days[0].famsWw, 1); assert.equal(r.json.days[0].bc.rounds, 1);
+  assert.equal(r.json.totals.last7.bc.devices, 1); assert.equal(r.json.totals.last7.famsWw, 1);
+  assert.deepEqual(r.json.versions.bc, { '0.5.0': 1 });
+});
 await atest('GET /api/stats: no STATS_KEY → 503 no-key; a wrong key → 403; the right key → days, totals, families total, versions', async () => {
   let r = await scall(stDeps({ key: '' }), 'GET', '/api/stats', undefined, { search: '?key=x' });
   assert.equal(r.status, 503); assert.equal(r.json.error, 'no-key');
@@ -1769,7 +1787,7 @@ await atest('GET /api/stats: no STATS_KEY → 503 no-key; a wrong key → 403; t
   assert.equal(j.totals.last7.sj.devices, 1); assert.equal(j.totals.last30.sj.devices, 2); assert.equal(j.totals.last7.tb.devices, 1);
   assert.equal(j.totals.last7.families, 1, 'the same family in both games counts once'); assert.equal(j.totals.last30.families, 2);
   assert.deepEqual(j.families, { total: 3 });
-  assert.deepEqual(j.versions, { sj: { '3.7.2': 1, '3.7.1': 1 }, tb: { '1.6.3': 1 }, ff: {} });
+  assert.deepEqual(j.versions, { sj: { '3.7.2': 1, '3.7.1': 1 }, tb: { '1.6.3': 1 }, ff: {}, ww: {}, bc: {} });
   assert.equal(j.generatedAt, new Date(ST_NOW).toISOString());
   r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=7' });
   assert.equal(r.json.days.length, 7); assert.equal(r.json.totals.last30.sj.devices, 2, 'last30 is still 30 days');

@@ -2416,26 +2416,18 @@ html.touch.reduced-motion .tray {
   align-items: center;
 }
 /* The Lab's XP pill sits in the top bar between the job name and the count. */
-.lab-hud {
+/* (#lab-hud is Build Crew's own slot; the pill the Lab mounts inside it is a button.lab-hud with its own styles and stays tappable.) */
+#lab-hud {
   flex: none;
   display: flex;
   align-items: center;
   align-self: flex-start;
-  pointer-events: none;
 }
-.lab-hud:empty {
+#lab-hud:empty {
   display: none;
 }
-html.touch .lab-hud {
+html.touch #lab-hud {
   align-self: center;
-}
-html.touch .lab-hud .lab-pill {
-  padding: 3px 7px;
-  gap: 5px;
-  font-size: 11px;
-}
-html.touch .lab-hud .lab-bar {
-  width: 34px;
 }
 /* A blueprint's challenge: a second line in the count, in amber, with a tick once it is met. */
 .progress.with-challenge {
@@ -2554,33 +2546,33 @@ html.touch .machines:has(.machine-card:nth-child(4)) .machine-card svg {
   }
 }
 /* A narrow phone (portrait) with the Lab pill: the top bar takes a second row for the pill and the count, so the job
-   name keeps its room; the hint strip and the side columns move down by that row. Without the Lab nothing changes. */
+   name keeps its room; the hint strip and the side columns move down by that row (the Lab's pill is a 44 px target). Without the Lab nothing changes. */
 @media (max-width: 470px) {
-  html.touch .hud-top:has(.lab-pill) {
+  html.touch .hud-top:has(#lab-hud .lab-hud) {
     flex-wrap: wrap;
     row-gap: 3px;
   }
-  html.touch .hud-top:has(.lab-pill) .job-label {
+  html.touch .hud-top:has(#lab-hud .lab-hud) .job-label {
     flex: 1 1 0;
   }
-  html.touch .hud-top:has(.lab-pill)::after {
+  html.touch .hud-top:has(#lab-hud .lab-hud)::after {
     content: '';
     order: 7;
     flex: 0 0 100%;
     height: 0;
   }
-  html.touch .hud-top:has(.lab-pill) .lab-hud {
+  html.touch .hud-top:has(#lab-hud .lab-hud) #lab-hud {
     order: 8;
   }
-  html.touch .hud-top:has(.lab-pill) .progress {
+  html.touch .hud-top:has(#lab-hud .lab-hud) .progress {
     order: 9;
     margin-right: auto;
   }
-  html.touch #hud:has(.lab-pill) .hint {
-    top: calc(var(--sa-t) + 92px);
+  html.touch #hud:has(#lab-hud .lab-hud) .hint {
+    top: calc(var(--sa-t) + 106px);
   }
-  html.touch #hud:has(.lab-pill) .hud-tools,
-  html.touch #hud:has(.lab-pill) .machines {
-    top: calc(var(--sa-t) + 140px);
+  html.touch #hud:has(#lab-hud .lab-hud) .hud-tools,
+  html.touch #hud:has(#lab-hud .lab-hud) .machines {
+    top: calc(var(--sa-t) + 154px);
   }
 }

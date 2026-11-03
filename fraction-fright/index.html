@@ -184,7 +184,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .title-actions { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 .menu-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
 .menu-row .btn { min-width: 116px; font-size: 15px; }
-.lab-note { margin: 0; padding: 6px 12px; border-radius: 4px; background: rgba(14,13,16,.82); border: 2px solid var(--gold); font: 400 13px/1 var(--font-display); color: var(--gold); text-transform: uppercase; }
+.zl-note { margin: 0; padding: 6px 12px; border-radius: 4px; background: rgba(14,13,16,.82); border: 2px solid var(--gold); font: 400 13px/1 var(--font-display); color: var(--gold); text-transform: uppercase; }
 
 /* ---------- streets ---------- */
 .streets-body { flex: 1; min-height: 0; padding: 8px 4px 10px 0; overflow: auto; touch-action: pan-y; overscroll-behavior: contain; }
@@ -583,7 +583,7 @@ body { font-weight: 600; letter-spacing: .01em; }
 .logo { font-size: clamp(48px, 10vmin + 2vw, 112px); line-height: .82; color: var(--text); transform: rotate(-3deg); text-shadow: 0 4px 0 #000, 0 10px 22px rgba(0,0,0,.6); }
 .logo span { color: var(--accent); text-shadow: 0 4px 0 var(--accent-edge), 0 8px 0 #000, 0 0 26px rgba(166,255,46,.35); }
 .tagline { margin: 0; font: 700 clamp(15px, 2.2vmin + .6vw, 20px)/1.2 var(--font-body); color: var(--muted); text-shadow: 0 2px 0 #000; letter-spacing: .03em; }
-.lab-note { border-color: var(--pumpkin); color: #ffb37a; }
+.zl-note { border-color: var(--pumpkin); color: #ffb37a; }
 /* street names on rusted signs */
 .street-name, .hud-street { display: inline-block; justify-self: start; padding: 5px 12px 4px; color: #1d0e05; text-transform: uppercase; font-family: var(--font-display); letter-spacing: .05em;
   background: radial-gradient(circle at 7px 50%, #2a1407 2.5px, transparent 3px), radial-gradient(circle at calc(100% - 7px) 50%, #2a1407 2.5px, transparent 3px),
@@ -662,7 +662,7 @@ body { font-weight: 600; letter-spacing: .01em; }
     <div class="title-main">
       <h1 class="logo">Fraction<span>Fright</span></h1>
       <p class="tagline" id="title-tagline">Zombies incoming. They're mostly harmless.</p>
-      <p class="lab-note" id="title-lab-note" hidden>First stop: the Zombie Lab</p>
+      <p class="zl-note" id="title-lab-note" hidden>First stop: the Zombie Lab</p>
       <div class="title-actions">
         <button class="btn btn-slime btn-big" id="btn-streets" data-sfx>Defend the fence<span data-icon="right"></span></button>
         <div class="menu-row">

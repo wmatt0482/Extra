@@ -169,6 +169,16 @@ test('Build Crew: a replayed job pays 25 %; the weekly counters follow the event
   applyEvent(lab2, ctxAt(T0, { session: newSession('ff') }), ev('ff', 'zap', { firstTry: true })); applyEvent(lab2, ctxAt(T0, { session: newSession('tb') }), ev('tb', 'race'));
   const m = weekNumbers(lab2, wk); assert.deepEqual([m.word, m.ft, m.zap, m.race], [3, 3, 1, 1]); assert.deepEqual(m.g, ['sj', 'tb', 'ff', 'ww']);
 });
+test('this week\'s XP (the board) never exceeds the lifetime XP (the header level): both are credited by the same call', () => {
+  const lab = defaultLab(), r = rng(7);
+  for (let i = 0; i < 400; i++) {
+    const g = GAMES[Math.floor(r() * GAMES.length)], c = ctxAt(T0 + Math.floor(i / 14) * 86400000, { session: newSession(g) });
+    applyEvent(lab, c, ev(g, ['word', 'race', 'zap', 'day', 'leg', 'job'][Math.floor(r() * 6)], { firstTry: r() < 0.6 }));
+  }
+  let weekly = 0; for (const wk of Object.keys(lab.weeks)) weekly += weekNumbers(lab, wk).xp;
+  assert.ok(weekly > 500, 'the fixture earned XP'); assert.equal(weekly, totalXp(lab), 'every XP point is in exactly one week while the weeks fit the 6-week window');
+  assert.ok(levelFor(totalXp(lab)) > 1, 'a child with that much weekly XP is above level 1');
+});
 
 section('xp, levels, titles, avatar, pet');
 test('xpToReach matches the spec table; levelFor boundaries; the cap at level 100', () => {

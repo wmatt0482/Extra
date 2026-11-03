@@ -69,7 +69,7 @@ export function mountFamily(ctx) {
       requestAnimationFrame(() => drawPortrait(cv, { color: r.color, slots: wornSlots(pl.lab) }));
       return card;
     });
-    boardEl.replaceChildren(h('h3', { class: 'lab-h' }, 'The family'), h('div', { class: 'lab-board-grid' }, ...cards),
+    boardEl.replaceChildren(h('h3', { class: 'lab-h' }, 'The family: XP this week'), h('div', { class: 'lab-board-grid' }, ...cards),
       h('p', { class: 'lab-small' }, 'A crown for the most XP this week. A star for the biggest step up on your own usual.'));
   }
   function update() {

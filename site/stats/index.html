@@ -164,11 +164,13 @@ footer p { margin: 0; max-width: 70ch; }
 
   function tile(k, v, s, cls) { return el('div', { class: 'tile' }, [el('div', { class: 'k' }, k), el('div', { class: 'v' + (cls ? ' ' + cls : '') }, v), s ? el('div', { class: 's' }, s) : null].filter(Boolean)); }
   var ffOf = function (x) { return (x && x.ff) || { devices: 0, waves: 0, labs: 0, checks: 0 }; };
+  var wwOf = function (x) { return (x && x.ww) || { devices: 0, legs: 0 }; };
+  var bcOf = function (x) { return (x && x.bc) || { devices: 0, rounds: 0 }; };
   function period(title, t) {
-    var f = ffOf(t);
+    var f = ffOf(t), w = wwOf(t), b = bcOf(t);
     var rows = [
-      ['Spell Jump devices', t.sj.devices], ['Trail Blazer devices', t.tb.devices], ['Fraction Fright devices', f.devices], ['Runs', t.sj.runs], ['Friday tests', t.sj.tests],
-      ['Lists saved', t.sj.lists], ['Races', t.tb.races], ['Pit Crew Checks', t.tb.checks], ['Waves', f.waves], ['Zombie Labs', f.labs], ['Lab Checks', f.checks], ['Families active', t.families],
+      ['Spell Jump devices', t.sj.devices], ['Trail Blazer devices', t.tb.devices], ['Fraction Fright devices', f.devices], ['Wagon West devices', w.devices], ['Build Crew devices', b.devices], ['Runs', t.sj.runs], ['Friday tests', t.sj.tests],
+      ['Lists saved', t.sj.lists], ['Races', t.tb.races], ['Pit Crew Checks', t.tb.checks], ['Waves', f.waves], ['Zombie Labs', f.labs], ['Lab Checks', f.checks], ['Wagon West legs', w.legs], ['Build Crew rounds', b.rounds], ['Families active', t.families],
     ];
     var dl = el('dl');
     rows.forEach(function (r) { dl.append(el('dt', null, r[0]), el('dd', null, fmt(r[1]))); });
@@ -187,9 +189,9 @@ footer p { margin: 0; max-width: 70ch; }
   function cell(n) { return el('td', n ? null : { class: 'zero' }, fmt(n)); }
 
   function render(j) {
-    var t7 = j.totals.last7, t30 = j.totals.last30, today = j.days[0], f0 = ffOf(today);
+    var t7 = j.totals.last7, t30 = j.totals.last30, today = j.days[0], f0 = ffOf(today), w0 = wwOf(today), b0 = bcOf(today);
     $('tiles').replaceChildren(
-      tile('Devices today', fmt(today.sj.devices + today.tb.devices + f0.devices), 'SJ ' + fmt(today.sj.devices) + ' · TB ' + fmt(today.tb.devices) + ' · FF ' + fmt(f0.devices)),
+      tile('Devices today', fmt(today.sj.devices + today.tb.devices + f0.devices + w0.devices + b0.devices), 'SJ ' + fmt(today.sj.devices) + ' · TB ' + fmt(today.tb.devices) + ' · FF ' + fmt(f0.devices) + ' · WW ' + fmt(w0.devices) + ' · BC ' + fmt(b0.devices)),
       tile('Runs · 7 days', fmt(t7.sj.runs), 'Spell Jump', 'sj'),
       tile('Races · 7 days', fmt(t7.tb.races), 'Trail Blazer', 'tb'),
       tile('Waves · 7 days', fmt(ffOf(t7).waves), 'Fraction Fright', 'ff'),
@@ -207,8 +209,9 @@ footer p { margin: 0; max-width: 70ch; }
       return tr;
     }));
     $('versions').replaceChildren(versionList('Spell Jump', 'sj', 'var(--cyan)', j.versions && j.versions.sj), versionList('Trail Blazer', 'tb', 'var(--tb)', j.versions && j.versions.tb),
-      versionList('Fraction Fright', 'ff', 'var(--ff)', j.versions && j.versions.ff));
-    $('generated').textContent = 'Generated ' + new Date(j.generatedAt).toLocaleString() + '. Families active per day: Spell Jump / Trail Blazer / Fraction Fright. Checks = Pit Crew Checks + Lab Checks.';
+      versionList('Fraction Fright', 'ff', 'var(--ff)', j.versions && j.versions.ff),
+      versionList('Wagon West', 'ww', 'var(--cyan)', j.versions && j.versions.ww), versionList('Build Crew', 'bc', 'var(--ff)', j.versions && j.versions.bc));
+    $('generated').textContent = 'Generated ' + new Date(j.generatedAt).toLocaleString() + '. Families active per day: Spell Jump / Trail Blazer / Fraction Fright. Checks = Pit Crew Checks + Lab Checks. Wagon West and Build Crew are counted in the tiles and period lists, not in the daily table.';
     $('out').hidden = false;
   }
 

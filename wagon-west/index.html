@@ -1048,6 +1048,9 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 /* the cliffhanger: the next stop's painting, one true line, "Next time: …" (v1.6) */
 .res-preview { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 12px; }
 .results-body { grid-template-rows: minmax(0, 1fr) auto; }
+/* (portrait stacks the cards in one scrolling column: a plain flex column, so each card is as tall as its content and none can overlap the next; these rules come after
+   the cliffhanger's, which would otherwise win the cascade) */
+@media (orientation: portrait) { .results-body { display: flex; flex-direction: column; } .results-body > .card { flex: none; } .res-preview { grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; } }
 .rpv-art { display: block; width: 117px; height: 72px; border-radius: 8px; border: 2px solid var(--line); background: var(--ink-2); }
 .rpv-text { min-width: 0; display: grid; gap: 3px; }
 .rpv-next { font: 400 18px/1.1 var(--font-display); color: var(--accent); }
@@ -1472,9 +1475,9 @@ html[data-screen="camp"] #mini { bottom: auto; top: calc(var(--pad-t) + 62px); }
         <div class="res-extra" id="res-extra" hidden></div>
       </div>
       <div class="card res-pay">
+        <div class="res-lab" id="res-lab"></div>
         <table class="pay" id="res-pay"></table>
         <p class="res-tokens" id="res-tokens"></p>
-        <div class="res-lab" id="res-lab"></div>
         <div class="res-deeds" id="res-deeds" hidden></div>
         <div class="res-crate" id="res-crate" hidden></div>
       </div>

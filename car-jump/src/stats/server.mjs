@@ -2,18 +2,20 @@
 // no network of its own). netlify/functions/stats.mjs adapts Netlify Blobs to the `deps` below and forwards each
 // request here; tools/spelling-tests.mjs drives it with in-memory stores.
 //
-//   POST /api/stats/ping   body { game: 'spell-jump' | 'trail-blazer' | 'fraction-fright', v: '3.7.2', kind, fam: '' | 8 hex } (≤ 1 KB)
+//   POST /api/stats/ping   body { game: 'spell-jump' | 'trail-blazer' | 'fraction-fright' | 'wagon-west' | 'build-crew', v: '3.7.2', kind, fam: '' | 8 hex } (≤ 1 KB)
 //                          kind: 'day' (once per device per game per UTC day) · Spell Jump: 'run' | 'test' | 'list' ·
-//                          Trail Blazer: 'race' | 'check' · Fraction Fright: 'wave' | 'lab' | 'check'
+//                          Trail Blazer: 'race' | 'check' · Fraction Fright: 'wave' | 'lab' | 'check' · Wagon West: 'leg' ·
+//                          Build Crew: 'round' (The Lab sends no pings: it is not a game)
 //                          → 204 (also when the store is busy or down: counts are approximate by design) · 400 bad input
 //   GET  /api/stats?key=<STATS_KEY>&days=30
-//                          → 200 { days: [{ day, sj, tb, ff, famsSj, famsTb, famsFf }] (newest first), totals: { last7, last30 },
-//                                  families: { total }, versions: { sj: { v: n }, tb: { v: n }, ff: { v: n } }, generatedAt }
+//                          → 200 { days: [{ day, sj, tb, ff, ww, bc, famsSj, famsTb, famsFf, famsWw, famsBc }] (newest first), totals: { last7, last30 },
+//                                  families: { total }, versions: { sj: { v: n }, tb: { v: n }, ff: { v: n }, ww: { v: n }, bc: { v: n } }, generatedAt }
 //                            503 { error: 'no-key' } (STATS_KEY not set) · 403 wrong key (constant-time compare)
 // One JSON doc per UTC day at `day/<yyyy-mm-dd>`:
 //   { sj: { devices, runs, tests, lists, versions: { v: n } }, tb: { devices, races, checks, versions: { v: n } },
-//     ff: { devices, waves, labs, checks, versions: { v: n } }, fams: { sj: [hash], tb: [hash], ff: [hash] } }
-//   (at most FAMS_CAP hashes per game per day; a doc written before Fraction Fright reads with an empty ff block)
+//     ff: { devices, waves, labs, checks, versions: { v: n } }, ww: { devices, legs, versions: { v: n } },
+//     bc: { devices, rounds, versions: { v: n } }, fams: { sj: [hash], tb: [hash], ff: [hash], ww: [hash], bc: [hash] } }
+//   (at most FAMS_CAP hashes per game per day; a doc written before a game was counted reads with an empty block for it)
 // Never stored or accepted: names, player ids, cookies, IP addresses, user agents. The only pseudonymous value is
 // `fam`: the first 8 hex digits of SHA-256(family code), so "families active today" can be counted; '' without a code.
 //
@@ -26,13 +28,15 @@ export const FAMS_CAP = 500;
 export const VERSIONS_CAP = 40;
 export const RETRIES = 4;
 export const MAX_DAYS = 90;
-export const GAMES = { 'spell-jump': 'sj', 'trail-blazer': 'tb', 'fraction-fright': 'ff' };
-export const GAME_KEYS = Object.freeze(['sj', 'tb', 'ff']);
+export const GAMES = { 'spell-jump': 'sj', 'trail-blazer': 'tb', 'fraction-fright': 'ff', 'wagon-west': 'ww', 'build-crew': 'bc' };
+export const GAME_KEYS = Object.freeze(['sj', 'tb', 'ff', 'ww', 'bc']);
 // kind → the counter it bumps, per game ('day' bumps `devices` and the version spread)
 export const KINDS = {
   sj: { day: 'devices', run: 'runs', test: 'tests', list: 'lists' },
   tb: { day: 'devices', race: 'races', check: 'checks' },
   ff: { day: 'devices', wave: 'waves', lab: 'labs', check: 'checks' },
+  ww: { day: 'devices', leg: 'legs' },
+  bc: { day: 'devices', round: 'rounds' },
 };
 export const FAM_RE = /^[0-9a-f]{8}$/;
 export const VERSION_RE = /^\d{1,3}(\.\d{1,3}){0,3}$/;
@@ -49,7 +53,9 @@ export const emptyDay = () => ({
   sj: { devices: 0, runs: 0, tests: 0, lists: 0, versions: {} },
   tb: { devices: 0, races: 0, checks: 0, versions: {} },
   ff: { devices: 0, waves: 0, labs: 0, checks: 0, versions: {} },
-  fams: { sj: [], tb: [], ff: [] },
+  ww: { devices: 0, legs: 0, versions: {} },
+  bc: { devices: 0, rounds: 0, versions: {} },
+  fams: { sj: [], tb: [], ff: [], ww: [], bc: [] },
 });
 const num = (x) => (Number.isFinite(x) && x > 0 ? Math.floor(x) : 0);
 /** A stored day doc, cleaned up into the full shape (missing or odd fields → 0 / {} / []). */
@@ -68,7 +74,7 @@ export function normalizeDay(v) {
 }
 
 const byteLength = (s) => new TextEncoder().encode(s).length;
-/** Validates a ping body (a string). → { game: 'sj' | 'tb' | 'ff', kind, counter, v, fam } or { error }. */
+/** Validates a ping body (a string). → { game: 'sj' | 'tb' | 'ff' | 'ww' | 'bc', kind, counter, v, fam } or { error }. */
 export function readPing(body) {
   if (typeof body !== 'string' || !body) return { error: 'empty body' };
   if (byteLength(body) > MAX_BODY) return { error: `body over ${MAX_BODY} bytes` };
@@ -76,7 +82,7 @@ export function readPing(body) {
   try { b = JSON.parse(body); } catch (_) { return { error: 'body is not JSON' }; }
   if (!b || typeof b !== 'object' || Array.isArray(b)) return { error: 'body must be an object' };
   const g = GAMES[b.game];
-  if (!g) return { error: 'game must be spell-jump or trail-blazer' };
+  if (!g) return { error: 'game must be spell-jump, trail-blazer, fraction-fright, wagon-west or build-crew' };
   const counter = typeof b.kind === 'string' && Object.prototype.hasOwnProperty.call(KINDS[g], b.kind) ? KINDS[g][b.kind] : null;
   if (!counter) return { error: `kind must be one of ${Object.keys(KINDS[g]).join(', ')} for ${b.game}` };
   if (typeof b.v !== 'string' || !VERSION_RE.test(b.v)) return { error: 'v must be a version like 3.7.2' };
@@ -127,10 +133,11 @@ const sumInto = (acc, d) => {
 };
 function totalsOf(days) {
   const acc = days.reduce(sumInto, { sj: { devices: 0, runs: 0, tests: 0, lists: 0 }, tb: { devices: 0, races: 0, checks: 0 }, ff: { devices: 0, waves: 0, labs: 0, checks: 0 },
-    famSets: { sj: new Set(), tb: new Set(), ff: new Set() } });
-  const all = new Set([...acc.famSets.sj, ...acc.famSets.tb, ...acc.famSets.ff]);
+    ww: { devices: 0, legs: 0 }, bc: { devices: 0, rounds: 0 },
+    famSets: { sj: new Set(), tb: new Set(), ff: new Set(), ww: new Set(), bc: new Set() } });
+  const all = new Set([...acc.famSets.sj, ...acc.famSets.tb, ...acc.famSets.ff, ...acc.famSets.ww, ...acc.famSets.bc]);
   // devices are device-days (a device counts once per day per game); families are distinct over the window
-  return { sj: acc.sj, tb: acc.tb, ff: acc.ff, famsSj: acc.famSets.sj.size, famsTb: acc.famSets.tb.size, famsFf: acc.famSets.ff.size, families: all.size };
+  return { sj: acc.sj, tb: acc.tb, ff: acc.ff, ww: acc.ww, bc: acc.bc, famsSj: acc.famSets.sj.size, famsTb: acc.famSets.tb.size, famsFf: acc.famSets.ff.size, famsWw: acc.famSets.ww.size, famsBc: acc.famSets.bc.size, families: all.size };
 }
 
 async function read(req, deps) {
@@ -147,8 +154,8 @@ async function read(req, deps) {
     const r = await deps.store.getJSON(docKey(day));
     return { day, doc: normalizeDay(r && r.value) };
   }));
-  const days = docs.slice(0, n).map(({ day, doc }) => ({ day, sj: doc.sj, tb: doc.tb, ff: doc.ff, famsSj: doc.fams.sj.length, famsTb: doc.fams.tb.length, famsFf: doc.fams.ff.length }));
-  const versions = { sj: {}, tb: {}, ff: {} };
+  const days = docs.slice(0, n).map(({ day, doc }) => ({ day, sj: doc.sj, tb: doc.tb, ff: doc.ff, ww: doc.ww, bc: doc.bc, famsSj: doc.fams.sj.length, famsTb: doc.fams.tb.length, famsFf: doc.fams.ff.length, famsWw: doc.fams.ww.length, famsBc: doc.fams.bc.length }));
+  const versions = { sj: {}, tb: {}, ff: {}, ww: {}, bc: {} };
   for (const { doc } of docs.slice(0, n)) for (const g of GAME_KEYS) for (const [v, c] of Object.entries(doc[g].versions)) versions[g][v] = (versions[g][v] || 0) + c;
   let total = null;
   try { total = await deps.families.count(); } catch (_) { total = null; }

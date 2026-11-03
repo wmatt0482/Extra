@@ -165,3 +165,11 @@ export function createVoice({ enabled = () => true } = {}) {
 let shared = null;
 /** The one voice of the page (the Lab page and the overlay in a game share it). */
 export function sharedVoice() { return shared || (shared = createVoice()); }
+
+/** The shared voice, set to this store's player (their own device voice, rate and natural voice): a game page mounts only the pill and the strip, so
+ *  nothing else would tell the voice whose options to use, and a child with a natural voice would hear the device voice. */
+export function voiceFor(store) {
+  const v = sharedVoice();
+  try { const id = store && store.player ? store.player.id : ''; if (id && v.playerId !== id) v.setPlayer(id); } catch (_) { /* the defaults */ }
+  return v;
+}

@@ -659,9 +659,9 @@ async function labIntegration(browser) {
   const { ctx, page, errors } = await labPage(browser);
   await page.waitForFunction(() => window.__lab && window.__fractionFright.app.labReady(), null, { timeout: 8000 });
   // --- title: the bar, the button ---
-  await page.waitForSelector('#lab-slot-title .lab-pill', { timeout: 5000 }).catch(() => {});
+  await page.waitForSelector('#lab-slot-title .lab-hud', { timeout: 5000 }).catch(() => {});
   await page.waitForSelector('#btn-thelab:not([hidden])', { timeout: 5000 }).catch(() => {});
-  const t = await J(page, () => ({ btn: !!document.querySelector('#btn-thelab') && !document.querySelector('#btn-thelab').hidden, pill: !!document.querySelector('#lab-slot-title .lab-pill'), zl: document.querySelector('#btn-lab').textContent.trim() }));
+  const t = await J(page, () => ({ btn: !!document.querySelector('#btn-thelab') && !document.querySelector('#btn-thelab').hidden, pill: !!document.querySelector('#lab-slot-title .lab-hud'), zl: document.querySelector('#btn-lab').textContent.trim() }));
   check(t.btn && t.pill, `the title shows the Lab pill (XP bar) and a "The Lab" button once the Lab has loaded (${JSON.stringify(t)})`);
   check(/zombie lab/i.test(t.zl), 'the old "Lab" button is "Zombie Lab" now, so it is never mistaken for The Lab');
   await shot(page, L, '30-title-lab-bar');
@@ -674,7 +674,7 @@ async function labIntegration(browser) {
   // --- streets: the pill, Twin Alley ---
   await page.click('#btn-streets');
   await page.waitForSelector(visibleSel('#screen-streets'));
-  const st = await J(page, () => ({ pill: !!document.querySelector('#lab-slot-streets .lab-pill'), cards: [...document.querySelectorAll('.street-card[data-street]')].map((c) => `${c.dataset.street}:${c.dataset.open}`).join(' ') }));
+  const st = await J(page, () => ({ pill: !!document.querySelector('#lab-slot-streets .lab-hud'), cards: [...document.querySelectorAll('.street-card[data-street]')].map((c) => `${c.dataset.street}:${c.dataset.open}`).join(' ') }));
   check(st.pill && st.cards === 'maple:true oak:true twin:true', `the streets screen shows the pill and Twin Alley is open (${st.cards})`);
   await shot(page, L, '31-streets');
   await audit(page, L.insets, 'streets with the Lab');
@@ -682,7 +682,7 @@ async function labIntegration(browser) {
   await J(page, () => window.__fractionFright.app.go('yard'));
   await page.waitForSelector(visibleSel('#screen-yard'));
   await wait(page, 600);
-  const y0 = await J(page, () => ({ pill: !!document.querySelector('#lab-slot-yard .lab-pill'), next: document.querySelector('#yard-next').textContent, lock: document.querySelector('[data-buy="tower:watchtower"]').disabled, lockSub: document.querySelector('[data-item="tower:watchtower"] .yi-sub').textContent,
+  const y0 = await J(page, () => ({ pill: !!document.querySelector('#lab-slot-yard .lab-hud'), next: document.querySelector('#yard-next').textContent, lock: document.querySelector('[data-buy="tower:watchtower"]').disabled, lockSub: document.querySelector('[data-item="tower:watchtower"] .yi-sub').textContent,
     labCard: !!document.querySelector('#yard-lab-shop'), cash: window.__fractionFright.save.cash, wallet: window.__lab.store.view().coins }));
   check(y0.pill && y0.labCard && /^Next up: Grape/.test(y0.next.replace(/\s+/g, ' ')) === false && /Next up:/.test(y0.next), `the yard shows the pill, a Next up line ("${y0.next}") and the Lab shop button`);
   check(y0.lock && /Lookout post first/.test(y0.lockSub), 'the Watchtower is locked until the Lookout post is built');
@@ -716,7 +716,7 @@ async function labIntegration(browser) {
   const w0 = await J(page, () => { const r = window.__fractionFright.run; return { final: r.final, boss: r.items.filter((i) => i.kind === 'boss').map((b) => ({ style: b.style, name: b.name, forms: b.forms.map((f) => f.show), target: b.target })), look: r.look, items: r.items.length }; });
   check(w0.final && w0.boss.length === 1 && w0.boss[0].style === 'equivalent' && w0.boss[0].name === 'Mayor Mirror', `Twin Alley's final wave has the equivalence boss Mayor Mirror (${w0.boss[0].forms.join(' → ')})`);
   check(w0.look.tower === 'beacon' && w0.look.fence === 'brick' && w0.look.labFence === 'neon' && w0.look.labTower === 'crowntop', 'the wave is told the tower, the brick wall and the Lab looks (re-read at the start of the round)');
-  const noLab = () => J(page, () => ({ pills: document.querySelectorAll('.lab-pill, .lab-strip').length, slots: [...document.querySelectorAll('.lab-slot')].map((e) => e.childElementCount).reduce((a, b) => a + b, 0), overlay: document.querySelectorAll('.lab-overlay').length }));
+  const noLab = () => J(page, () => ({ pills: document.querySelectorAll('.lab-hud, .lab-strip').length, slots: [...document.querySelectorAll('.lab-slot')].map((e) => e.childElementCount).reduce((a, b) => a + b, 0), overlay: document.querySelectorAll('.lab-overlay').length }));
   const n0 = await noLab();
   check(n0.pills === 0 && n0.slots === 0 && n0.overlay === 0, 'during a wave there is NO Lab pill, strip or overlay anywhere in the page (SPEC §0: no meters in a wave)');
   await shot(page, L, '34-wave-tower');
@@ -748,7 +748,7 @@ async function labIntegration(browser) {
   // --- results: the strip and the pill are back; the Lab got the zaps; cash is the game's own ---
   await page.waitForSelector(visibleSel('#screen-results'), { timeout: 15000 });
   await wait(page, 300);
-  const r = await J(page, () => ({ strip: document.querySelector('#lab-slot-results .lab-strip') && document.querySelector('#lab-slot-results .lab-strip').textContent, pill: !!document.querySelector('#lab-slot-results-pill .lab-pill'), last: window.__fractionFright.lastResult, cash: window.__fractionFright.save.cash, boss: !!document.querySelector('#res-boss') }));
+  const r = await J(page, () => ({ strip: document.querySelector('#lab-slot-results .lab-strip') && document.querySelector('#lab-slot-results .lab-strip').textContent, pill: !!document.querySelector('#lab-slot-results-pill .lab-hud'), last: window.__fractionFright.lastResult, cash: window.__fractionFright.save.cash, boss: !!document.querySelector('#res-boss') }));
   check(!!r.strip && r.pill, `the results show the Lab strip ("${r.strip}") and pill`);
   const labAfter = await labState(page);
   check(labAfter.xp > 0 && labAfter.coins > 0, `the zaps reached the Lab (this round: ${labAfter.coins} Lab coins, ${labAfter.xp} XP)`);
@@ -822,7 +822,7 @@ async function labBlocked(browser) {
   const L = { name: 'blocked', ...LAYOUTS[0] };
   const { ctx, page, errors, warns } = await labPage(browser, { block: true });
   await wait(page, 800);
-  const t = await J(page, () => ({ btn: document.querySelector('#btn-thelab').hidden, pill: document.querySelectorAll('.lab-pill, .lab-strip').length, ready: window.__fractionFright.app.labReady() }));
+  const t = await J(page, () => ({ btn: document.querySelector('#btn-thelab').hidden, pill: document.querySelectorAll('.lab-hud, .lab-strip').length, ready: window.__fractionFright.app.labReady() }));
   check(t.btn && t.pill === 0 && !t.ready, 'with /lab/ blocked the game boots to the title: no "The Lab" button, no pill');
   await shot(page, L, '36-title-no-lab');
   await J(page, () => window.__fractionFright.app.go('yard'));

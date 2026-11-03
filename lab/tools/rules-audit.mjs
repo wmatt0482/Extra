@@ -11,7 +11,21 @@ import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
-export const EXTRA_PATHS = [];            // e.g. 'car-jump/src/meta/labBridge.js', 'car-jump/src/ui/testBoss.js'
+export const EXTRA_PATHS = [              // every kid-visible file the five game streams added for the Lab
+  // Spell Jump
+  'car-jump/src/meta/labBridge.js', 'car-jump/src/meta/labLooks.js', 'car-jump/src/ui/testBoss.js', 'car-jump/src/ui/ceremony.js',
+  'car-jump/src/ui/certificate.js', 'car-jump/certificate.html',
+  // Trail Blazer
+  'trail-blazer/src/meta/labBridge.js', 'trail-blazer/src/meta/labLooks.js', 'trail-blazer/src/meta/ghosts.js', 'trail-blazer/src/data/ghostLooks.js',
+  'trail-blazer/src/ui/chasePicker.js',
+  // Fraction Fright
+  'fraction-fright/src/meta/labBridge.js', 'fraction-fright/src/meta/labLooks.js', 'fraction-fright/src/meta/yardArt.js',
+  // Wagon West
+  'wagon-west/src/meta/labBridge.js', 'wagon-west/src/meta/labLooks.js', 'wagon-west/src/scene/looks16.js', 'wagon-west/src/ui/choicePanel.js',
+  'wagon-west/src/content/choices.js', 'wagon-west/src/journey/choices.js', 'wagon-west/src/journey/preview.js',
+  // Build Crew
+  'build-crew/src/meta/labBridge.js', 'build-crew/src/meta/labLooks.js', 'build-crew/src/blueprint.mjs', 'build-crew/src/app/vehiclePrice.mjs',
+];
 
 export const BANNED = [
   ['violence word', /\b(kill(s|ed|ing)?|die|dies|died|dead|death)\b/i],

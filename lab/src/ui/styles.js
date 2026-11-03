@@ -332,8 +332,14 @@ font:400 15px/1 var(--font-display);letter-spacing:.02em;color:#fff;background:v
 .lab-hud-lab svg{width:16px;height:16px;color:var(--lab)}
 .lab-hud-bar{width:58px;height:8px}
 .lab-hud.compact .lab-hud-bar{width:44px}
+/* a compact pill (Trail Blazer's 120 px slot) stays that wide while the combo flame shows: the Lab glyph steps aside and the bar shortens */
+.lab-hud.compact.flaming .lab-hud-lab{display:none}
+.lab-hud.compact.flaming .lab-hud-bar{width:16px}
+.lab-hud.compact .lab-hud-flame.on{max-width:46px}
 .lab-hud-flame{display:inline-flex;align-items:center;gap:2px;max-width:0;opacity:0;overflow:hidden;transition:opacity 1s ease,max-width .3s ease}
-.lab-hud-flame svg{width:18px;height:18px;color:#ff9a3c;filter:drop-shadow(0 0 4px rgba(255,150,50,.8))}
+.lab-hud-flame svg{width:18px;height:18px;color:#ff9a3c;filter:drop-shadow(0 0 4px rgba(255,150,50,.8));transition:width .3s ease}
+/* hidden, the flame takes no room at all (an 18 px glyph clipped by its own 0-width box still counts as overflow at the edge of a narrow screen) */
+.lab-hud-flame:not(.on) svg{width:0}
 .lab-hud-flame b{font:400 12px/1 var(--font-display);color:#ffd23c}
 .lab-hud-flame.on{max-width:60px;opacity:1;transition:opacity .15s ease,max-width .3s ease}
 .lab-hud-flame.on:not(.big) svg{transform:scale(.8)}
@@ -359,6 +365,15 @@ font:400 15px/1 var(--font-display);letter-spacing:.02em;color:#fff;background:v
 .lab-qmark svg{width:12px;height:12px}
 .lab-strip-crate{min-width:200px}
 .lab-strip-capped{font-size:13px;font-weight:600;color:var(--muted)}
+/* a short landscape screen (a phone on its side): the strip lays itself out in rows so the coins, the level bar and the quest chips fit in about 100 px */
+@media (orientation:landscape) and (max-height:500px){
+.lab-strip{flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:center;gap:4px 12px;margin:4px auto 0;padding:6px 10px;max-width:none}
+.lab-strip-line{flex:1 1 100%;font-size:14px;line-height:1.2}
+.lab-strip-welcome{flex:1 1 100%;justify-content:center;font-size:13px}
+.lab-strip-level{font-size:12px}
+.lab-strip-bar{flex:1 1 100%;max-width:none;height:8px}
+.lab-qchip{width:36px;height:36px}
+}
 
 /* ---------- wide screens and phones on their side ---------- */
 @media (min-width:760px) and (min-aspect-ratio:1/1){

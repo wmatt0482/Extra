@@ -5,7 +5,7 @@ import { lab } from '../index.js';
 import { xpToReach, levelFor } from '../core/xp.js';
 import { LAB_LINES } from '../core/view.js';
 import { gameBadge, glyph } from './glyph.js';
-import { sharedVoice } from './voice.js';
+import { voiceFor } from './voice.js';
 
 export function mountResults(host, store, { game = 'sj' } = {}) {
   if (typeof document === 'undefined') return { el: null, update() {}, destroy() {} };
@@ -18,7 +18,7 @@ export function mountResults(host, store, { game = 'sj' } = {}) {
     if (v.welcome && !welcomed) {
       welcomed = true;
       store.markWelcome();
-      sharedVoice().later(LAB_LINES.welcome);
+      voiceFor(store).later(LAB_LINES.welcome);
     }
     if (welcomed) kids.push(h('div', { class: 'lab-strip-welcome', id: 'lab-welcome' }, h('span', { html: glyph('sparkle') }), LAB_LINES.welcome));
     const bits = [`+${s.coins} Lab coins`];

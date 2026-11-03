@@ -25,8 +25,8 @@ const NO_COSMETICS = () => ({ slots: {}, owns: () => false, ready: [] });
 function loadLooks(g) {
   if (!GAME_MODULES[g]) return Promise.resolve([]);
   if (!loading[g]) {
-    loading[g] = import(GAME_MODULES[g]).then((m) => { looks[g] = { ids: Array.isArray(m.LOOKS_READY) ? m.LOOKS_READY.filter((x) => typeof x === 'string') : [], mod: m }; return looks[g].ids; })
-      .catch(() => { looks[g] = { ids: [], mod: null }; return []; })
+    loading[g] = import(GAME_MODULES[g]).then((m) => { if (looks[g] && looks[g].standin) return looks[g].ids; looks[g] = { ids: Array.isArray(m.LOOKS_READY) ? m.LOOKS_READY.filter((x) => typeof x === 'string') : [], mod: m }; return looks[g].ids; })
+      .catch(() => { if (looks[g] && looks[g].standin) return looks[g].ids; looks[g] = { ids: [], mod: null }; return []; })
       .then((ids) => { publishReady(); return ids; });
   }
   return loading[g];
@@ -101,14 +101,15 @@ export const lab = {
   /** The store, for the Lab page (lab/src/main.js) and tools. */
   get store() { return getStore(); },
 };
-// test helpers: grantCoins(n), setQuests(ids), advanceDay(), reset(), plus setLooks(game, ids) to stand in for a game's labLooks module
+// test helpers: grantCoins(n), setQuests(ids), advanceDay(), reset(), plus setLooks(game, ids) to stand in for a game's labLooks module (a stand-in wins
+// over the game's real module, whether that loads before or after)
 lab.__test = {
   get store() { return getStore(); },
   grantCoins: (n) => getStore().__test.grantCoins(n),
   setQuests: (ids) => getStore().__test.setQuests(ids),
   advanceDay: () => getStore().__test.advanceDay(),
   reset: () => getStore().__test.reset(),
-  setLooks: (g, ids) => { looks[g] = { ids: ids.slice(), mod: null }; loading[g] = Promise.resolve(ids); publishReady(); },
+  setLooks: (g, ids) => { looks[g] = { ids: ids.slice(), mod: null, standin: true }; loading[g] = Promise.resolve(ids); publishReady(); },
 };
 try {
   if (typeof window !== 'undefined' && typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {

@@ -7,6 +7,9 @@
 #   fraction-fright/ -> dist/fraction-fright/ (the Fraction Fright game, same excludes; same shared Spell Jump modules)
 #   wagon-west/    -> dist/wagon-west/    (the Wagon West game, same excludes; shares Spell Jump, Trail Blazer and
 #                                          Fraction Fright modules at runtime)
+#   build-crew/    -> dist/build-crew/    (the Build Crew game, same excludes; its own pinned Three.js and Rapier)
+#   lab/           -> dist/lab/           (The Lab, the meta-game across the games: one profile, wallet, quests, shop; same
+#                                          excludes; it imports the shared Spell Jump modules at runtime)
 # The repo-root `spell-jump -> car-jump` symlink is for local dev servers only: it is never followed or copied here.
 # Netlify runs this as the build command (netlify.toml); run it locally the same way: bash build.sh
 set -euo pipefail
@@ -38,6 +41,7 @@ copy_game "$root/trail-blazer" "$out/trail-blazer"
 copy_game "$root/fraction-fright" "$out/fraction-fright"
 copy_game "$root/wagon-west" "$out/wagon-west"
 copy_game "$root/build-crew" "$out/build-crew"
+copy_game "$root/lab" "$out/lab"
 
 for required in index.html why/index.html stats/index.html spell-jump/index.html spell-jump/sw.js spell-jump/manifest.webmanifest spell-jump/icons/favicon.png \
     trail-blazer/index.html trail-blazer/sw.js trail-blazer/manifest.webmanifest trail-blazer/icons/favicon.png \
@@ -45,7 +49,8 @@ for required in index.html why/index.html stats/index.html spell-jump/index.html
     fraction-fright/src/main.js fraction-fright/src/game/engine.js \
     wagon-west/index.html wagon-west/sw.js wagon-west/manifest.webmanifest wagon-west/icons/favicon.png wagon-west/src/main.js wagon-west/src/scene/engine.js \
     build-crew/index.html build-crew/sw.js build-crew/manifest.webmanifest build-crew/icons/icon-192.png \
-    build-crew/src/main.js build-crew/src/physics.mjs build-crew/vendor/rapier.mjs build-crew/vendor/three.module.js; do
+    build-crew/src/main.js build-crew/src/physics.mjs build-crew/vendor/rapier.mjs build-crew/vendor/three.module.js \
+    lab/index.html lab/sw.js lab/manifest.webmanifest lab/icons/favicon.png lab/src/index.js lab/src/core/engine.js lab/src/ui/index.js; do
   [[ -f "$out/$required" ]] || { echo "build.sh: missing dist/$required" >&2; exit 1; }
 done
 

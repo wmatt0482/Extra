@@ -3272,8 +3272,14 @@ async function ltBarlow(page, layout, grab) {
   await toStop(page, 'humboldt-river');
   await page.waitForFunction(() => window.__wagonWest.card.isOpen); await closeCards(page, 1);
   await page.waitForFunction(() => window.__wagonWest.peopleUI.isOpen, null, { timeout: 15000 }).catch(() => {});
-  if (await J(page, () => window.__wagonWest.peopleUI.isOpen)) await page.click('#stop-go');
-  await page.waitForSelector(visibleSel('#rv-choice'));
+  // v1.6: the Humboldt stop asks "The river bends back and forth. What now?" (a choice moment, Tad's) before the crossing: take the plain way, then go on to the river
+  for (let i = 0; i < 6 && !(await J(page, () => !!document.querySelector('#rv-choice') && !document.querySelector('#rv-choice').closest('[hidden]') && !!document.querySelector('#rv-choice').offsetParent)); i++) {
+    const st = await J(page, () => ({ choice: !!(window.__wagonWest.choicePanel && window.__wagonWest.choicePanel.isOpen), go: !!(document.querySelector('#stop-go') && document.querySelector('#stop-go').offsetParent) }));
+    if (st.choice) await page.click('#ch-cards .fk-go[data-way="a"]').catch(() => {});
+    else if (st.go) await page.click('#stop-go').catch(() => {});
+    await page.waitForTimeout(700);
+  }
+  await page.waitForSelector(visibleSel('#rv-choice')).catch(async (e) => { console.log('    DIAG', JSON.stringify(await W(page)).slice(0, 700)); await page.screenshot({ path: path.join(SHOTS, 'diag-humboldt.png') }); throw e; });
   const hum = await J(page, () => ({ hows: [...document.querySelectorAll('#rv-opts .rv-opt')].map((b) => b.dataset.how).join(), spoken: window.__spoken.slice(-3) }));
   check(hum.hows === 'ford,float', `the Humboldt River has no ferry: ${hum.hows} only`);
   await shot(page, layout, '40-humboldt-no-ferry');
@@ -3802,6 +3808,7 @@ async function labHud(page, layout, grab) {
       await typeDigits(page, '#panel-marker', st.mAns);
       for (let k = 0; k < 60 && !(got && got.coins > tally.coins); k++) { await page.waitForTimeout(100); got = await labNow(page); }     // (the panel shows its "Nice!" first, then the answer is recorded and reported)
     }
+    else if (st.marker === 'copy' || (st.marker === 'ask' && !st.mReal)) await typeDigits(page, '#panel-marker', st.mAns);      // a random trail event ("Stuck in the mud") uses this panel too
     else if (st.card) await page.click('#tc-go').catch(() => {});
     else if (st.problem === 'ask') await typeDigits(page, '#panel-problem', st.pAns);
     await page.waitForTimeout(60);
@@ -3855,6 +3862,9 @@ async function labPreview(page, layout, grab) {
   check(art.painted === 'painted' && art.filled > 0.99 && art.colours >= 6, `its painting is drawn (${art.painting}, ${art.colours} colours)`);
   check(p1.nextBtn && /Next leg/.test(p1.nextText), 'nothing is locked: "Next leg" is right there');
   await shot(page, layout, 'lab-03-preview');
+  await page.waitForTimeout(4500);                                 // the level banner, the card pop and the toasts are gone: the results as they rest
+  await shot(page, layout, 'lab-03b-preview-settled');
+  console.log('   RECTS', JSON.stringify(await J(page, () => ['.results-body', '.res-main', '.res-pay', '#res-lab', '#res-deeds', '#res-crate', '#res-preview', '.results-foot'].map((q) => { const e = document.querySelector(q); if (!e) return q; const b = e.getBoundingClientRect(); const cs = getComputedStyle(e); return [q, Math.round(b.top), Math.round(b.bottom), e.hidden, cs.position, cs.overflow, cs.display, cs.height, cs.gridRowStart, cs.gridColumnStart, cs.gridTemplateRows, cs.alignSelf, cs.minHeight].join(' '); }))));
   await audit(page, layout.insets, 'the results with the preview');
   await grab();
   await page.click('#res-pv-hear');
@@ -3994,10 +4004,12 @@ async function labBlocked(browser, layout) {
   const rep = await J(page, () => { const r = window.__wagonWest.labReport({ event: 'marker', n: 1, firstTry: true }); return r && { ok: r.ok, coins: r.coins }; });
   check(rep && rep.ok === false && rep.coins === 0, 'a report to a Lab that is not there is an empty receipt, never an error');
   let answered = 0;
-  for (let i = 0; i < 300 && answered < 2; i++) {
+  // a time budget (about 80 s), not 300 turns: a random trail event ("Stuck in the mud" is a problem on the same panel) takes turns of its own
+  const until0 = Date.now() + 80000;
+  for (let i = 0; Date.now() < until0 && answered < 2; i++) {
     const st = await W(page);
     if (st.marker === 'ask' && st.mReal) { await typeDigits(page, '#panel-marker', st.mAns); answered++; await page.waitForTimeout(150); }
-    else if (st.marker === 'copy') await typeDigits(page, '#panel-marker', st.mAns);
+    else if (st.marker === 'copy' || (st.marker === 'ask' && !st.mReal)) await typeDigits(page, '#panel-marker', st.mAns);
     else if (st.card) await page.click('#tc-go').catch(() => {});
     else if (st.problem === 'ask') await typeDigits(page, '#panel-problem', st.pAns);
     await page.waitForTimeout(60);

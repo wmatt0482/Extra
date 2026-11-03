@@ -1,17 +1,16 @@
-// The cross-game flow (lab/SPEC.md §7.4), a SKELETON: it drives /lab/ and stand-ins for the games, and says SKIP for every step that needs a game
-// stream's work (a game's labBridge.js, a game's labLooks.js, Build Crew's dump truck). The orchestrator finishes it once the games land: each
-// `needs(game)` step has a TODO(orchestrator) where the real game is driven instead of the stand-in. From the repo root, static server on the root:
-//   python3 -m http.server 8121 --directory .   then   BASE_URL=http://localhost:8121 node lab/tools/e2e-cross.mjs
+// The cross-game flow (lab/SPEC.md §7.4), the acceptance test of the whole feature: one browser, one origin (the repo root on a static server), the
+// REAL Lab at /lab/ and the REAL games (Trail Blazer on its mock engine, Build Crew, and all five booted with /lab/ blocked). From the repo root:
+//   python3 -m http.server 8130 --directory .   then   BASE_URL=http://localhost:8130 SHOTS=/some/dir node lab/tools/e2e-cross.mjs
 // Steps (the numbers are §7.4's):
 //   1. a fresh profile "Mia" (and "Ben") on a clean origin; /lab/?labtest&player=mia seeds the quests tb-races, tb-facts, tb-win through __lab.setQuests.
-//   2. earn in Trail Blazer: the Lab pill shows XP rising, the results strip shows coins and "XP to level 2", the three quest chips tick, the third
-//      completion shows "Lab crate!".                                   [stand-in: lab.report from a fake game page; real: /trail-blazer/ on its mock engine]
-//   3. the crate opens from the strip; the item is owned.              [real Lab UI]
-//   4. __lab.grantCoins(8000); /lab/ -> Build Crew tab -> buy the Dump truck (two taps); the wallet drops by 8,000.   [real Lab UI; looks stood in until bc/labLooks.js lands]
-//   5. /build-crew/ as Mia: the dump truck is selectable; Ben (no purchase) does not see it; the three original machines and all ten jobs are open for both.   [SKIP until Build Crew lands]
-//   6. back in /lab/: the quests panel shows 3/3; the family board lists Mia and Ben in the picker's order with no ranks.   [real Lab UI]
-//   7. two devices on one in-memory sync server: A earns while offline and B buys, then both sync: the wallet and owns converge (nothing lost, nothing charged twice).   [real sync]
-//   8. block /lab/ entirely: each of the five games boots, plays one round and shows no Lab UI and no errors beyond the bridge's one warning.   [boot + no Lab UI now; "plays one round" is TODO(orchestrator)]
+//   2. earn in Trail Blazer: /trail-blazer/ (mock engine), six gates answered and the race won: the Lab pill shows XP rising, the results strip shows
+//      coins and "XP to level 2", the three quest chips tick, the third completion shows "Lab crate!".
+//   3. the crate opens from the strip (inside the game); the item is owned.
+//   4. __lab.grantCoins(8000); /lab/ -> Build Crew tab -> buy the Dump truck (two taps); the wallet drops by 8,000.
+//   5. /build-crew/ as Mia: the dump truck is selectable; Ben (no purchase) does not see it; the original machines and all ten jobs are open for both.
+//   6. back in /lab/: the quests panel shows 3/3; the family board lists Mia and Ben in the picker's order with no ranks.
+//   7. two devices on one in-memory sync server: A earns while offline and B buys, then both sync: the wallet and owns converge (nothing lost, nothing charged twice).
+//   8. block /lab/ entirely: each of the five games boots and shows no Lab UI and no errors beyond the bridge's "[lab] unavailable" warning; Trail Blazer plays a whole race.
 import { createRequire } from 'node:module';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -60,6 +59,35 @@ const SERVER = memoryStore();
 const view = (page) => page.evaluate(() => __lab.store.view());
 const clickTab = async (page, v) => { await page.evaluate((v) => { const sh = document.querySelector('.lab-shell'); if (sh.dataset.view === v) return; if (v === 'home') document.querySelector('#lab-lead').click(); else document.querySelector(`.lab-tab[data-view="${v}"]`).click(); }, v); await page.waitForTimeout(400); };
 
+// ---- Trail Blazer, the real game on its mock engine (the same drivers its own suites use) ----
+const TB_URL = `${BASE}/trail-blazer/index.html?mock=1&nosw=1`;
+const J = (page, fn, arg) => page.evaluate(fn, arg);
+async function openTb(page, playerId = 'mia') {
+  await page.goto(TB_URL, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => window.__trailBlazer, null, { timeout: 15000 });
+  await J(page, (id) => { const a = window.__trailBlazer.app; a.selectPlayer(id); a.save.seen.coach = true; a.facts.opts.gates = 6; a.persistFacts(); a.persist(); }, playerId);
+  await page.waitForFunction(() => window.__trailBlazer.screen === 'title', null, { timeout: 8000 });
+}
+async function tbAnswer(page, value) {
+  for (const ch of String(value)) await page.click(`#gate .np-key[data-key="${ch}"]`);
+  await page.click('#gate .np-key[data-key="go"]');
+}
+// a race on the mock engine, every gate answered right, until the results show; `onGate` runs once on the first gate
+async function tbRaceToResults(page, { timeout = 60000, onFirstGate = null } = {}) {
+  const end = Date.now() + timeout; let first = false;
+  while (Date.now() < end) {
+    const st = await J(page, () => { const T = window.__trailBlazer, g = T.gate; return { results: T.screen === 'results', gate: g.open && g.state === 'ask', answer: g.answer, index: g.index, pit: !document.querySelector('#pit-offer').hidden }; });
+    if (st.results) { await sleep(500); return true; }
+    if (st.pit) { await page.click('#pit-later'); continue; }
+    if (st.gate) {
+      if (!first && onFirstGate) { first = true; await onFirstGate(); }
+      await tbAnswer(page, st.answer);
+      await page.waitForFunction((i) => !window.__trailBlazer.gatePanel.isOpen || window.__trailBlazer.gate.index > i, st.index, { timeout: 4000 }).catch(() => {});
+    } else await sleep(100);
+  }
+  return false;
+}
+
 const browser = await chromium.launch();
 try {
   // ================= 1. a fresh profile and the seeded quests =================
@@ -73,46 +101,48 @@ try {
   check('__lab.setQuests seeds tb-races, tb-facts and tb-win for today', seeded === true && (await view(page)).quests.map((q) => q.id).join() === 'tb-races,tb-facts,tb-win');
 
   // ================= 2. earn in Trail Blazer =================
-  section('2. Earn in Trail Blazer: the pill, the strip, the chips, "Lab crate!"');
-  if (landed('tb')) skip('drive /trail-blazer/ (its mock engine): answer gates, finish and win a race', 'TODO(orchestrator): drive the real game here instead of the stand-in below');
-  await page.evaluate(async () => {
-    const { lab } = await import('/lab/src/index.js');
-    window.__L = lab;
-    lab.attach({ game: 'tb', playerId: 'mia', name: 'Mia', color: '#ff3b5c' });
-    const host = document.createElement('div'); host.id = 'standin'; host.style.cssText = 'position:fixed;top:70px;right:12px;z-index:9;width:340px;background:#123;padding:8px';
-    host.innerHTML = '<div id="standin-hud"></div><div id="standin-results"></div>'; document.body.append(host);
-    window.__hud = lab.hud({ mount: document.querySelector('#standin-hud'), compact: true });
-    lab.beginRound('tb');
-  });
-  await sleep(500);
-  const xp0 = (await view(page)).level.into;
-  await page.evaluate(() => { for (let i = 0; i < 6; i++) __L.report({ game: 'tb', event: 'fact', firstTry: true }); });
-  await sleep(400);
-  const xp1 = (await view(page)).level.into;
-  check('the Lab pill shows XP rising (the bar moves)', xp1 > xp0 && /Lv 1/.test(await page.textContent('#standin-hud .lab-hud-lv')));
-  await page.evaluate(() => { __L.report({ game: 'tb', event: 'race' }); __L.report({ game: 'tb', event: 'win' }); window.__res = __L.results({ mount: document.querySelector('#standin-results') }); });
-  await sleep(700);
-  const line = (await page.textContent('#lab-strip-line')).trim();
-  check('the results strip shows coins and "XP to level 2"', /^\+\d+ Lab coins · \d+ XP to level \d+ · 3 of 3 quests$/.test(line) || /Lab coins · \d+ XP to level/.test(line), line);
-  check('the three quest chips tick', (await page.locator('#standin-results .lab-qchip.done').count()) === 3);
-  check('the third completion shows "Lab crate!"', await page.locator('#lab-strip-crate').count() === 1 && /Lab crate!/.test(await page.textContent('#lab-strip-crate')));
-  await page.screenshot({ path: join(SHOTS, 'e2e-2-strip.png') }).catch(() => {});
+  section('2. Earn in Trail Blazer (the real game, its mock engine): the pill, the strip, the chips, "Lab crate!"');
+  await openTb(page);
+  check('Trail Blazer loads the Lab and offers "The Lab" on its title', !!(await until(() => page.evaluate(() => window.__trailBlazer.lab.ready && !document.querySelector('#btn-lab').hidden), 8000)));
+  const q0 = await page.evaluate(() => window.__lab.store.view().quests.map((q) => q.id).join());
+  check('the seeded quests reach the game (same origin, same save)', q0 === 'tb-races,tb-facts,tb-win', q0);
+  let pillXp0 = null, pillTxt0 = '';
+  // the mock riders are slow, so the player wins (the quest tb-win needs a first place)
+  await page.evaluate(() => { window.__mockScript = { aiTimes: [40, 44, 48] }; window.__trailBlazer.app.startRide('pine-ridge', { skipCheck: true }); });
+  await page.waitForFunction(() => window.__trailBlazer.screen === 'ride', null, { timeout: 8000 });
+  const raced = await tbRaceToResults(page, { onFirstGate: async () => {
+    pillTxt0 = ((await page.textContent('#hud-lab')) || '').replace(/\s+/g, ' ').trim();
+    pillXp0 = await page.evaluate(() => { const v = window.__lab.store.view(); return v.level.into; });
+  } });
+  check('the race plays to the results (six gates answered, the race won)', raced === true);
+  check('the Lab pill is in the race HUD (level and bar)', /Lv\s*1/i.test(pillTxt0), pillTxt0);
+  const xp1 = await page.evaluate(() => window.__lab.store.view().level.into);
+  check('XP rose over the race (the pill\'s bar moved)', pillXp0 !== null && xp1 > pillXp0, `${pillXp0} -> ${xp1}`);
+  await page.screenshot({ path: join(SHOTS, 'e2e-2-tb-results.png') }).catch(() => {});
+  const lineEl = await until(() => page.$('#res-lab #lab-strip-line'), 6000);
+  const line = lineEl ? (await lineEl.textContent()).trim() : '';
+  check('the results strip shows coins and "XP to level 2"', /Lab coins/.test(line) && /XP to level \d+/.test(line), line);
+  check('the three quest chips tick', (await page.locator('#res-lab .lab-qchip.done').count()) === 3, `done chips: ${await page.locator('#res-lab .lab-qchip.done').count()}`);
+  check('the third completion shows "Lab crate!"', (await page.locator('#res-lab #lab-strip-crate').count()) === 1 && /Lab crate!/.test(await page.textContent('#res-lab #lab-strip-crate')));
 
   // ================= 3. the crate opens =================
-  section('3. The crate opens from the strip');
-  await page.click('#lab-strip-crate');
+  section('3. The crate opens from the results strip');
+  await page.click('#res-lab #lab-strip-crate');
   check('the overlay opens on the crate', !!(await until(() => page.$('.lab-overlay .lab-shell[data-view="crate"]'), 4000)));
   await page.click('.lab-overlay #crate-open');
   check('the reveal names the item', !!(await until(() => page.$('.lab-overlay #crate-name'), 4000)));
-  const got = await view(page);
-  check('the item is granted (lab.owns)', got.owned.length >= 1 && got.crates.waiting === 0);
+  const got = await page.evaluate(() => window.__lab.store.view());
+  check('the item is granted (lab.owns)', got.owned.length >= 1 && got.crates.waiting === 0, JSON.stringify({ owned: got.owned, waiting: got.crates.waiting }));
   await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
-  await page.evaluate(() => { window.__hud.destroy(); window.__res.destroy(); document.querySelector('#standin').remove(); });
+  await page.screenshot({ path: join(SHOTS, 'e2e-3-crate-opened.png') }).catch(() => {});
+  // the Lab page must see the same save
+  await page.goto(`${BASE}/lab/?labtest&nosw&player=mia`);
+  await page.waitForSelector('.lab-room-cv');
 
   // ================= 4. buy the dump truck =================
   section('4. Build Crew tab: the dump truck, two taps, 8,000 coins');
   if (!looksLanded('bc')) await page.evaluate(() => __lab.setLooks('bc', ['bc.veh.dump', 'bc.veh.fork', 'bc.bp.lighthouse', 'bc.bp.windmill', 'bc.bp.castlegate', 'bc.bp.arch']));
-  else skip('stand-in looks for Build Crew', 'build-crew/src/meta/labLooks.js exists: the real LOOKS_READY is used');
+  else console.log("  info  Build Crew's own labLooks.js is used (no stand-in)");
   await page.evaluate(() => __lab.grantCoins(8000));
   const before = (await view(page)).coins;
   await clickTab(page, 'shop');
@@ -128,11 +158,39 @@ try {
 
   // ================= 5. Build Crew sees it =================
   section('5. /build-crew/: the dump truck for Mia, not for Ben; the original machines and ten jobs open for both');
-  if (!landed('bc')) skip('open /build-crew/ as Mia and as Ben', 'build-crew/src/meta/labBridge.js has not landed');
-  else {
-    // TODO(orchestrator): open /build-crew/ in this context as Mia: availableMachines() includes 'dump' (selectable in the tray); switch to Ben:
-    // 'dump' is absent; for both, skid steer, excavator and crane are listed per their rewards and all ten jobs are open.
-    skip('drive Build Crew', 'TODO(orchestrator)');
+  {
+    // the same origin, so Build Crew reads the Lab save this very page just charged 8,000 coins for
+    const machinesOf = async (name) => {
+      await page.goto(`${BASE}/build-crew/?test=1&nosw=1`);
+      await page.waitForFunction(() => window.__buildCrew, null, { timeout: 60000 });
+      await page.locator('[data-profile]').filter({ hasText: name }).first().click();
+      await page.waitForFunction(() => window.__buildCrew.state.screen === 'title' && window.__buildCrew.state.playerId, null, { timeout: 15000 });
+      await page.waitForFunction(() => window.__lab && document.querySelector('#lab-open') && !document.querySelector('#lab-open').hidden, null, { timeout: 20000 });
+      await page.locator('#jobs').click();
+      const board = await page.evaluate(() => ({
+        jobs: [...document.querySelectorAll('.job-grid:not(.blueprints):not(.vehicles) .job-tile')].map((e) => ({ id: e.dataset.job, disabled: e.disabled })),
+        dump: (document.querySelector('[data-vehicle="dump"]') || {}).dataset?.owned,
+        fork: (document.querySelector('[data-vehicle="fork"]') || {}).dataset?.owned,
+      }));
+      await page.screenshot({ path: join(SHOTS, `e2e-5-bc-board-${name}.png`) }).catch(() => {});
+      await page.locator('#modal-close').click();
+      await page.locator('#sandbox').click();
+      await page.waitForFunction(() => window.__buildCrew.state.screen === 'play' || window.__buildCrew.state.machines.length > 0, null, { timeout: 15000 });
+      const kinds = await page.evaluate(() => window.__buildCrew.state.machines.map((m) => m.kind));
+      const buttons = await page.locator('[data-machine]').evaluateAll((els) => els.map((e) => e.dataset.machine));
+      await page.screenshot({ path: join(SHOTS, `e2e-5-bc-sandbox-${name}.png`) }).catch(() => {});
+      return { board, kinds, buttons };
+    };
+    const mia = await machinesOf('Mia');
+    check('Build Crew, as Mia: the Dump truck is in the sandbox and selectable', mia.kinds.includes('dump') && mia.buttons.includes('dump'), JSON.stringify(mia));
+    check('Build Crew, as Mia: the job board shows the Dump truck as owned and the Forklift (not bought) as locked', mia.board.dump === 'true' && mia.board.fork === 'false', JSON.stringify(mia.board));
+    const ben = await machinesOf('Ben');
+    check('Build Crew, as Ben (no purchase): no Dump truck in the sandbox, none to select', !ben.kinds.includes('dump') && !ben.buttons.includes('dump'), JSON.stringify(ben));
+    check('Build Crew, as Ben: the job board shows the Dump truck as locked', ben.board.dump === 'false', JSON.stringify(ben.board));
+    check('the original machines are the same for both (the Lab adds only the Dump truck)', ben.kinds.includes('skid') && mia.kinds.filter((k) => k !== 'dump').join() === ben.kinds.join(), `${mia.kinds} / ${ben.kinds}`);
+    check('all ten jobs are open for both', [mia, ben].every((x) => x.board.jobs.length === 10 && x.board.jobs.every((j) => !j.disabled)), JSON.stringify([mia.board.jobs.length, ben.board.jobs.length]));
+    await page.goto(`${BASE}/lab/?labtest&nosw&player=mia`);
+    await page.waitForSelector('.lab-room-cv');
   }
 
   // ================= 6. back in /lab/: quests 3/3 and the board =================
@@ -179,15 +237,23 @@ try {
     const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, serviceWorkers: 'block' });
     await ctx.route('**/lab/**', (route) => route.abort('blockedbyclient'));
     const p = await ctx.newPage();
-    const errs = [];
+    const errs = [], warns = [];
     p.on('pageerror', (e) => errs.push(e.message));
-    p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|ERR_BLOCKED_BY_CLIENT|fonts\./.test(m.text())) errs.push(m.text()); });
+    p.on('console', (m) => { if (m.type() === 'warning' && /\[lab\]/.test(m.text())) warns.push(m.text()); else if (m.type() === 'error' && !/Failed to load resource|ERR_BLOCKED_BY_CLIENT|fonts\./.test(m.text())) errs.push(m.text()); });
     await p.addInitScript((fam) => { if (!localStorage.getItem('spellJump.family')) localStorage.setItem('spellJump.family', JSON.stringify(fam)); }, FAMILY);
     await p.goto(`${BASE}/${url}/?nosw=1&mock=1`, { waitUntil: 'load' }).catch(() => {});
     await p.waitForTimeout(1500);
-    const lab = await p.evaluate(() => document.querySelectorAll('.lab-root').length);
+    const lab = await p.evaluate(() => document.querySelectorAll('.lab-root, .lab-overlay, .lab-hud:not(:empty), #lab-strip-line').length);
     check(`${folder}: boots with /lab/ blocked, no Lab UI, no page errors`, errs.length === 0 && lab === 0, errs.slice(0, 2).join(' | '));
-    if (landed(g)) skip(`${folder}: play one round with /lab/ blocked`, 'TODO(orchestrator): start a round on the mock engine and assert one bridge warning only');
+    if (g === 'tb') {
+      await openTb(p);
+      check('trail-blazer: with /lab/ blocked the title has no Lab button', await p.evaluate(() => !window.__trailBlazer.lab.ready && document.querySelector('#btn-lab').hidden));
+      await p.evaluate(() => window.__trailBlazer.app.startRide('pine-ridge', { skipCheck: true }));
+      await p.waitForFunction(() => window.__trailBlazer.screen === 'ride', null, { timeout: 8000 });
+      check('trail-blazer: a whole race plays to the results with /lab/ blocked', (await tbRaceToResults(p)) === true);
+      check('trail-blazer: no Lab strip on the results, the race still paid its own cash', await p.evaluate(() => document.querySelector('#res-lab').children.length === 0 && window.__trailBlazer.app.save.cash > 0));
+    }
+    check(`${folder}: the only console noise is the bridge's "[lab] unavailable" warning (${warns.length} warning, ${errs.length} errors)`, warns.every((w) => /\[lab\] unavailable/.test(w)) && errs.length === 0, [...warns, ...errs].slice(0, 2).join(' | '));
     await ctx.close();
   }
   check('no console errors on the main device', A.errors.length === 0, A.errors.slice(0, 3).join(' | '));
@@ -196,4 +262,4 @@ try {
 console.log(`\n${passed} passed, ${failed.length} failed, ${skipped.length} skipped`);
 if (skipped.length) console.log('SKIPPED (for the orchestrator):\n- ' + skipped.join('\n- '));
 if (failed.length) { console.log('FAILED:\n- ' + failed.join('\n- ')); process.exit(1); }
-console.log('LAB CROSS-GAME SKELETON PASSED (steps that need the games are SKIP)');
+console.log(skipped.length ? 'LAB CROSS-GAME FLOW PASSED (with SKIPs listed above)' : 'LAB CROSS-GAME FLOW PASSED');

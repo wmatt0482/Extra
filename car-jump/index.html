@@ -554,6 +554,8 @@ html.kbd .touch-only { display: none; }
   .track-info { flex: 1; padding: 12px; }
   .track-name { min-height: 0; }
   .results-body { grid-template-columns: 1fr; overflow: auto; touch-action: pan-y; align-content: start; }
+  .results-body { display: flex; flex-direction: column; }                  /* one scrolling column of cards, each as tall as its content (the Lab's results strip lives in the first card): none over another */
+  .results-body > .card { flex: none; min-height: 0; overflow: visible; }
   .results-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
   .results-foot .btn { min-width: 0; padding: 0 10px; }
   #res-retry { grid-column: 1 / -1; grid-row: 1; min-height: 60px; font-size: 22px; }
@@ -1227,11 +1229,11 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 .reduced-motion .record, .reduced-motion .toast, .reduced-motion .sheet { animation: none; }
 
 /* ================= v3.9: the Lab (lab/SPEC.md §4.1) and the Friday Test as a boss event ================= */
-.lab-chip { --edge: 4px; flex: none; min-height: 46px; padding: 0 12px 0 8px; gap: 4px; font-size: 16px; color: #06242d;
+.title-lab-chip { --edge: 4px; flex: none; min-height: 46px; padding: 0 12px 0 8px; gap: 4px; font-size: 16px; color: #06242d;
   background: linear-gradient(#8ff4ff, var(--cyan)); box-shadow: 0 var(--edge) 0 var(--cyan-edge), inset 0 2px 0 rgba(255,255,255,.5); }
-.lab-chip:active { box-shadow: 0 1px 0 var(--cyan-edge); }
-.lab-chip svg { width: 22px; height: 22px; }
-.res-lab { min-height: 0; display: flex; }
+.title-lab-chip:active { box-shadow: 0 1px 0 var(--cyan-edge); }
+.title-lab-chip svg { width: 22px; height: 22px; }
+.res-lab { flex: none; display: flex; }
 .res-lab:empty { display: none; }
 .banner.b-moment > span { color: var(--accent-ink); --sh: var(--accent-edge); background: linear-gradient(#fff3b0, var(--accent)); border-color: #fff; }
 
@@ -1359,7 +1361,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
         <div class="title-who-row">
           <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span></button>
           <button class="btn streak-chip cold" id="btn-streak" aria-label="Streak" data-sfx><span data-icon="flame"></span><span id="title-streak">0</span></button>
-          <button class="btn lab-chip" id="btn-lab" aria-label="The Lab" data-sfx hidden><span data-icon="flask"></span><span>Lab</span></button>
+          <button class="btn title-lab-chip" id="btn-lab" aria-label="The Lab" data-sfx hidden><span data-icon="flask"></span><span>Lab</span></button>
         </div>
         <div class="level-row" id="title-level" role="img"><span class="lv-text"><b id="title-lv">Lv 1</b><span id="title-lv-name">Rookie Speller</span></span><span class="lv-bar"><i id="title-lv-bar"></i></span></div>
       </div>
