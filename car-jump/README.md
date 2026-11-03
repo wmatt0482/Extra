@@ -586,10 +586,45 @@ node tools/tts-function-check.mjs   # the real natural-voice function the same w
 node tools/stats-function-check.mjs # the real usage-counter function the same way (pings, day doc, key checks)
 node tools/economy-sim.mjs --speller 0.75   # headless economy simulation (75 % first-try speller, 8 runs a day)
 node tools/make-icons.mjs       # re-renders icons/*.png (a car jumping over letter tiles)
+node tools/lab-tests.mjs        # the Lab integration, pure: economy snapshot, bridge, looks, ceremony, certificate, kid rules
+node tools/lab-smoke.mjs        # the Lab integration in the browser (serves the repo root itself; see "The Lab" above)
 ```
 
 `SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud|voice` runs one
 part of `ui-smoke.mjs`, `ONLY=landscape|portrait|speech|perf` one part of `integration-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it, and `cloudVoice.js` uses `window.__cloudVoiceBackend` (status / prepare / load / play) instead of the network and WebAudio.
+
+## The Lab (v3.9, lab/SPEC.md §4.1)
+
+Spell Jump reports to the Lab, the layer that sits across the five Learning Lab games (one Lab profile per child, Lab coins and XP, daily quests,
+the Lab crate, a shop of looks). Nothing here changes how Spell Jump plays: no word, test, price or score depends on the Lab, and the game starts
+and plays exactly as before when `/lab/` is missing, blocked or offline. The Lab is a separate currency that only buys looks.
+
+- **One bridge** (`src/meta/labBridge.js`): lazy `import('../../../lab/src/index.js')`; calls made before the load are queued and replayed, and if the
+  load fails every call is a no-op that returns the empty receipt (one console warning). `main.js` attaches when a player is chosen and detaches
+  when they leave.
+- **Events** (once each, never in the engine's frame loop): `word` (every spelled word, `firstTry` from the spell panel), `mastered`, `perfect` (the
+  engine's `land` with quality perfect), `run` (a run ended), `day` (beside `completeDay`), and for the Qualifier and the Friday Test one `testWord`
+  per word in order, then `test` (n right, `meta { of, tier }`; the Lab's trophy shelf records the tier). The Lab round (the combo) lives one mission
+  or one Mega Run, not one 3-word race.
+- **Mounts**: the XP pill in `#hud-lab` beside the run cash, the Lab strip in `#res-lab` on the results, a "Lab" button on the title (shown once the
+  Lab has loaded).
+- **"Perfect Launch"**: five first-try words in a row make the Lab's combo moment; the launch shows a gold ring burst and the name on the engine's own
+  banner lane (`game.moment(name)`), and the natural voice says it.
+- **Looks** (`src/meta/labLooks.js`, read by the Lab at `/spell-jump/src/meta/labLooks.js`): `LOOKS_READY` lists the 15 Spell Jump items (8 skins,
+  5 stickers, 2 trails). A Lab skin or sticker is an entry shaped like `data/cosmetics.js`, so `src/game/car.js` paints it through the garage's own
+  pipeline (`app.look(carId)`; a null Lab slot is the game's own look, the garage's equip is unchanged); a Lab trail is a particle recipe the engine
+  throws off the wheels (`start({ trail })`). Cosmetics are re-read at the start of every run.
+- **The Friday Test as a boss event** (`src/ui/testBoss.js`, `src/ui/ceremony.js`; `src/spelling/testMode.js` is untouched): a friendly "Test Titan"
+  of giant letter-less blocks sheds one block per right word and shrugs at a miss (never a sad face, never "lost"). Every score gets a ceremony:
+  Gold 90 %, Silver 75 %, Bronze 50 %, otherwise the **Brave Speller** ribbon, plus a **Most improved** ribbon when the score beats the Qualifier by 20
+  points; the Titan tumbles and a trophy lands on the shelf. Words to practice this week are listed. No hint, no combo, no timer, one attempt.
+- **Certificate**: Parent Zone → Report → Test history → **Print certificate** opens `certificate.html?p=<player>&t=<test time>` in the same tab: a
+  print-styled page from this device's data only (system fonts, no external link, the buttons hidden by the print CSS, `window.print()`). A low
+  result (under Bronze) shows the ribbon instead of the number by default; one button shows the score.
+- **Parent Zone**: Options → "The Lab" opens the Lab's grown-ups page (coins, quests, the crate odds, the switches) with the PIN just entered.
+- **Service worker**: `/lab/src/index.js` is OPTIONAL; `certificate.html` is its own network-first page (never answered with `index.html`).
+- **Tests**: `node tools/lab-tests.mjs` (economy snapshot, bridge, looks, ceremony, certificate, kid-rule audit) and `node tools/lab-smoke.mjs`
+  (Playwright against the repo root: the Lab present, and every `/lab/` request blocked).
 
 ## Add to the iPhone Home Screen
 
@@ -622,6 +657,7 @@ it shows *Update ready, restarting soon* and reloads on the next safe screen, ba
 ```
 car-jump/
   index.html              PWA document: meta tags, inline CSS (design tokens in :root), all screens as DOM
+  certificate.html        v3.9: the printable Friday Test certificate (print-styled, local data only)
   manifest.webmanifest    name, standalone, landscape, icons
   sw.js                   offline app shell: network-first page + main.js, cache-first rest, versioned (spell-jump-v3.x)
   icons/                  icon-192/512, apple-touch-icon (180), favicon (64), generated by tools/make-icons.mjs
@@ -651,11 +687,12 @@ car-jump/
       why.js              "Why this works" table (copy of docs/LEARNING-DESIGN.md)
     meta/                 save, economy, goals, achievements, daily, rng, mockEngine,
                           engagement (v3.3 streak / XP / crates / trophies / family board rules, pure),
-                          transfer (progress transfer code), pings (the anonymous usage counter, v3.7.2)
+                          transfer (progress transfer code), pings (the anonymous usage counter, v3.7.2),
+                          labBridge (v3.9: the one file that knows the Lab), labLooks (the Lab's skins, stickers, trails)
     stats/server.mjs      the usage counter API as a pure request handler (used by netlify/functions/stats.mjs)
     ui/                   players (picker + family board), parentZone, garage (+ Style row), tracks, results,
                           panels (badges, streak, trophies), crates (crate opening), HUD, controls, icons,
-                          car preview, title hero, fireworks
+                          car preview, title hero, fireworks, testBoss + ceremony + certificate (v3.9)
   dev.html                engine harness (keyboard + on-screen buttons, no meta)
   tools/                  spelling-tests, ui-smoke, engine-smoke, integration-smoke, sync-smoke,
                           sync-function-check, tts-function-check, stats-function-check, economy-sim, make-icons

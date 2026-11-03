@@ -55,6 +55,15 @@
 //   Specials (vehicles.js SPECIALS) and mutators (gravity, tank, fog, wheels, crush, top speed, mirror, bounce) are
 //   applied here; trail.gravity / wind / gaps / fog come from trails.js. The vehicle's top speed is capped at 64 m/s.
 //
+// v1.9 (The Lab, lab/SPEC.md §4.2) contract additions:
+//   start({ ..., rim: wheel rim id (vehicle.js RIMS) | null }  (or look.rim): the Lab's rims; null = the steel rim.
+//   start({ ..., ghost: { trace, vehicle?, paint?, label?, look? } }): a ghost with its own vehicle and paint (a sibling's), a name tag
+//     `label` ("Mia", "Your best"; default "GHOST") and a look (src/data/ghostLooks.js: an id such as 'tb.ghost.ice' or a style object: the
+//     outline, opacity and a short trail of dots). A plain trace array still draws the player's own vehicle, as before.
+//   start({ ..., chase: true, race: { riders: 0, ... } }): Ghost Chase, a time attack against the ghost, which is the clock. The vehicle waits
+//     on the line and the race (and the ghost) start on the first GAS input: no `countdown` event, no 'GO!' popup, no bogged start, no
+//     `position` event, no place cash (cash.place is 0, so the parts still add up). getState() adds chase (bool) and countdown stays 0.
+//     The Math Gates freeze the clock for the whole race, the ghost included, so a chase is fair. The summary adds chase (bool).
 // v1.7 Hill Climb (SPEC v1.7 §1): after a finished ride the wall past the finish becomes a mountain.
 //   startHill({ flags: 5, questions: 10, seed, cupMult }) → bool: the course's ground past the run-in is swapped for
 //     the mountain (course.js createHill / installHill), the physics chunks there are rebuilt, the other riders park,
@@ -96,6 +105,7 @@ import * as R from './render.js';
 import { OBSTACLE_KINDS, SURFACES, medalFor } from '../data/trails.js';
 import { VEHICLES, vehicleDef, effectiveStats, rivalVehicles } from '../data/vehicles.js';
 import { mutatorDef } from '../data/mutators.js';
+import { GHOST_DEFAULT, ghostStyle } from '../data/ghostLooks.js';
 import { TAU, clamp, wrapPi, smoothstep, shade, mulberry32, hash2 } from './util.js';
 
 const S = 30; // px per meter (physics space)
@@ -220,7 +230,9 @@ function parseGhost(src, course) {
   out.sort((p, q) => p[0] - q[0]);
   const f = new Float32Array(out.length * 4);
   for (let i = 0; i < out.length; i++) { f[i * 4] = out[i][0]; f[i * 4 + 1] = out[i][1]; f[i * 4 + 2] = out[i][2]; f[i * 4 + 3] = out[i][3]; }
-  return { data: f, n: out.length, time: out[out.length - 1][0], paint: src && !Array.isArray(src) ? src.paint : null, vehicle: src && !Array.isArray(src) ? src.vehicle : null };
+  const obj = src && !Array.isArray(src) ? src : null;
+  return { data: f, n: out.length, time: out[out.length - 1][0], paint: obj ? obj.paint : null, vehicle: obj ? obj.vehicle : null,
+    label: obj && typeof obj.label === 'string' ? obj.label.slice(0, 14) : '', style: obj && obj.look != null ? ghostStyle(obj.look) : null, art: null };
 }
 // the ghost's pose at race time t (interpolated); out = [x, y, a]
 function ghostPose(gh, t, out) {
@@ -427,7 +439,7 @@ export function createGame(canvas, opts = {}) {
     const wheelMul = r.mut.wheelMul || 1;
     return {
       i, me: !!cfg.me, name: cfg.name, paint: cfg.paint, rivalId: cfg.rivalId || null,
-      look: resolveLook({ vehicle: def, paint: cfg.paint, decal: cfg.decal || 'none', helmet: cfg.helmet, suit: cfg.suit, flag: cfg.flag, trail: cfg.trail }),
+      look: resolveLook({ vehicle: def, paint: cfg.paint, decal: cfg.decal || 'none', helmet: cfg.helmet, suit: cfg.suit, flag: cfg.flag, trail: cfg.trail, rim: cfg.rim }),
       def, special, hc: hullCentroid(def), wheelMul, lift: (wheelMul - 1) * def.wheels[0].r, travel: special === 'landsAll' ? 1.5 : 1,
       bounce: r.mut.bounce || (special === 'lunar' ? 1.35 : 1), turboT: 0,
       stats: cfg.stats, upg: cfg.upg || cfg.stats, vTop: 0, chassis: null, wheels: null, parts: null, cons: null, wheelRest: null,
@@ -565,16 +577,18 @@ export function createGame(canvas, opts = {}) {
       // race
       cdT: 0, cdStep: 0, goT: -1, bogged: false, gateDrop: 0, finishCount: 0, place: 1, placeEmitted: 0, timeSec: 0,
       aiRand: mulberry32(hash2(seed, 0xa1)), aiLevel: 0, countdownOn: !raceCfg || raceCfg.countdown !== false,
+      chase: race && !!cfg.chase,
       hill: null, // v1.7
     };
     for (let i = 0; i < MAX_PARTICLES; i++) r.particles.push({ type: 0, x: 0, y: 0, vx: 0, vy: 0, size: 0, color: '#fff', life: 0, max: 1, alpha: 1, a: 0, extra: 0 });
     const me = makeRider(r, 0, { me: true, name: (raceCfg && raceCfg.name) || 'You', def, paint: cfg.paint || look0.paint || def.look.paint, decal: cfg.decal || look0.decal,
-      helmet: cfg.helmet || look0.helmet, suit: cfg.suit || look0.suit, flag: cfg.flag !== undefined ? cfg.flag : look0.flag, trail: cfg.boostTrail || cfg.trailFx || look0.trail, stats, upg });
+      helmet: cfg.helmet || look0.helmet, suit: cfg.suit || look0.suit, flag: cfg.flag !== undefined ? cfg.flag : look0.flag, trail: cfg.boostTrail || cfg.trailFx || look0.trail,
+      rim: cfg.rim !== undefined ? cfg.rim : look0.rim, stats, upg });
     r.me = me;
     r.riders.push(me);
     if (race) {
       const list = Array.isArray(raceCfg.riders) ? raceCfg.riders.slice(0, 3) : null;
-      const n = list ? list.length : clamp(raceCfg.riders == null ? 3 : Number(raceCfg.riders) | 0, 0, 3);
+      const n = r.chase ? 0 : list ? list.length : clamp(raceCfg.riders == null ? 3 : Number(raceCfg.riders) | 0, 0, 3);
       const mx = trail.mx;
       // the AI's Ranger-equivalent level: halfway between yours and the track's design level, plus a per-track
       // edge; never more than a level under yours (v1.5: your level includes the vehicle's base stats), 9 at least
@@ -598,6 +612,14 @@ export function createGame(canvas, opts = {}) {
         ai.startDelay = 0.06 + r.aiRand() * 0.22;
         r.riders.push(ai);
       }
+    }
+    // v1.9: a ghost with its own vehicle / paint (a sibling's) is drawn as that vehicle, with that rider's gear
+    if (r.ghost && cfg.ghost && !Array.isArray(cfg.ghost) && (cfg.ghost.vehicle || cfg.ghost.paint)) {
+      const g0 = cfg.ghost, gdef = g0.vehicle ? vehicleDef(g0.vehicle) : def;
+      r.ghost.art = {
+        def: gdef, hc: hullCentroid(gdef), lift: ((r.mut.wheelMul || 1) - 1) * gdef.wheels[0].r,
+        look: resolveLook({ vehicle: gdef, paint: g0.paint || me.look.paint, decal: 'none', helmet: g0.helmet, suit: g0.suit, flag: null }),
+      };
     }
     for (const v of r.riders) {
       v.vTop = race ? (v.ai ? Math.min(TR.vTopCap, raceTop(v.stats) * Math.sqrt(v.ai.edge) * (def.base.topSpeed || 1) * r.topMul) : riderTop(v.upg, v.def, r.topMul)) : T.vTop * Math.pow(v.stats.power, T.vTopExp) * (v.def.base.topSpeed || 1);
@@ -804,6 +826,7 @@ export function createGame(canvas, opts = {}) {
 
   // ===================================== race mode =====================================
   function countdownStep(r) {
+    if (r.chase) { if (input.gas) goNow(r); return; }     // v1.9 Ghost Chase: no countdown, the race starts on the first GAS
     if (!r.countdownOn) { goNow(r); return; }
     r.cdT += STEP;
     const marks = [TR.goAt - 3, TR.goAt - 2, TR.goAt - 1];
@@ -822,7 +845,7 @@ export function createGame(canvas, opts = {}) {
     r.gateDrop = r.realT;
     emit({ type: 'go' });
     if (r.riders.length > 1) emit({ type: 'position', place: r.place });
-    popup(r, 'GO!', 0.5, 0.36, '#7dff6b', 2.2, false, 0.9, 'cd');
+    if (!r.chase) popup(r, 'GO!', 0.5, 0.36, '#7dff6b', 2.2, false, 0.9, 'cd');
     const me = r.me;
     me.hold = false;
     if (r.bogged) {
@@ -1250,7 +1273,8 @@ export function createGame(canvas, opts = {}) {
     const ahead = gt == null ? false : t < gt;
     if (r.ghostAhead !== null && ahead !== r.ghostAhead && t > 1.5 && !v.finished) {
       emit({ type: 'ghostPassed', ahead });
-      popup(r, ahead ? 'PASSED YOUR GHOST!' : 'GHOST AHEAD', 0.5, LANE_SUB, ahead ? '#7dff6b' : '#cfd6ff', 0.7, false, 1.2, 'sub');
+      const nm = gh.label ? gh.label.toUpperCase() : '';
+      popup(r, ahead ? (nm ? `PASSED ${nm}!` : 'PASSED YOUR GHOST!') : (nm ? `${nm} AHEAD` : 'GHOST AHEAD'), 0.5, LANE_SUB, ahead ? '#7dff6b' : '#cfd6ff', 0.7, false, 1.2, 'sub');
     }
     r.ghostAhead = ahead;
   }
@@ -2126,7 +2150,7 @@ export function createGame(canvas, opts = {}) {
     const finish = r.finishCrossed ? Math.round(T.cash.finish * m) : 0;
     const flips = Math.round(r.flipRaw * m);
     const perfect = Math.round(r.perfectRaw * m);
-    const place = r.race && r.finishCrossed ? Math.round((TR.placeCash[r.me.finishOrder - 1] || 0) * m) : 0;
+    const place = r.race && r.finishCrossed && !r.chase ? Math.round((TR.placeCash[r.me.finishOrder - 1] || 0) * m) : 0;
     const combo = Math.round(r.comboRaw * m);
     return { distance, air, smash, gates, quick, coins, finish, flips, perfect, place, combo,
       total: distance + air + smash + gates + quick + coins + finish + flips + perfect + place + combo };
@@ -2199,6 +2223,7 @@ export function createGame(canvas, opts = {}) {
       ghostTrace: r.ghostTrace,
       ghostTime: r.ghost ? Math.round(r.ghost.time * 100) / 100 : null,
       beatGhost: r.ghost ? (r.finishCrossed ? r.timeSec < r.ghost.time : false) : null,
+      chase: !!r.chase,
       comboMax: r.comboMax,
       turbo: r.turboUsed,
       fell: r.fell,
@@ -2336,8 +2361,8 @@ export function createGame(canvas, opts = {}) {
     }
     // v1.5 ghost: a translucent copy of your best run, behind the riders
     if (r.ghost && r.goT >= 0 && r.phase !== 'done' && !r.hill) {
-      const gp = ghostPose(r.ghost, r.t - r.goT, tmp3);
-      if (gp[0] > vis.x0 - 3 && gp[0] < vis.x1 + 3) drawGhost(r, gp, lw);
+      const gt = r.t - r.goT, gp = ghostPose(r.ghost, gt, tmp3);
+      if (gp[0] > vis.x0 - 3 && gp[0] < vis.x1 + 3) drawGhost(r, gp, lw, gt);
     }
     const ws = r.winchShow;
     if (ws && (r.winchAnim || r.realT - r.winchShowT < T.winchDur + 0.5)) {
@@ -2368,18 +2393,32 @@ export function createGame(canvas, opts = {}) {
 
   const drawState = { t: 0, nitroOn: false, speed: 0, lw: 0.05, wheels: null, lights: false, rim: null, noDriver: false, wheelMul: 1, turbo: false };
   const tmp3 = [0, 0, 0];
-  function drawGhost(r, gp, lw) {
-    const v = r.me;
+  const tmp4 = [0, 0, 0];
+  const RAINBOW = ['#ff5d5d', '#ff9f1a', '#ffe14a', '#3ddc84', '#22b8ff', '#8f6bff'];
+  function drawGhost(r, gp, lw, gt) {
+    const gh = r.ghost, art = gh.art, st = gh.style || GHOST_DEFAULT, v = r.me;
+    const hc = art ? art.hc : v.hc, lift = art ? art.lift : v.lift, look = art ? art.look : v.look;
+    const rim = st.rim === 'rainbow' ? RAINBOW[Math.floor(r.realT * 6) % RAINBOW.length] : st.rim;
+    // v1.9: a short trail of dots behind the copy (a ghost look's colours)
+    if (st.trail && st.trail.length && !reducedMotion) {
+      for (let k = 1; k <= 6; k++) {
+        const q = ghostPose(gh, gt - k * 0.09, tmp4);
+        ctx.globalAlpha = Math.max(0, 0.6 - k * 0.09);
+        ctx.fillStyle = st.trail[(k + Math.floor(r.realT * 8)) % st.trail.length];
+        ctx.beginPath(); ctx.arc(q[0] - 0.5, q[1] - 0.1, Math.max(0.05, 0.2 - k * 0.025), 0, TAU); ctx.fill();
+      }
+    }
     ctx.save();
-    ctx.globalAlpha = 0.34;
+    ctx.globalAlpha = st.alpha;
     ctx.translate(gp[0], gp[1]);
     ctx.rotate(gp[2]);
-    ctx.translate(-v.hc[0], -v.hc[1] - v.lift);
+    ctx.translate(-hc[0], -hc[1] - lift);
     drawState.t = r.realT; drawState.nitroOn = false; drawState.speed = 0; drawState.lw = lw; drawState.wheels = null;
-    drawState.lights = false; drawState.rim = 'rgba(200,230,255,0.9)'; drawState.noDriver = false; drawState.wheelMul = v.wheelMul; drawState.turbo = false;
-    drawVehicle(ctx, v.look, drawState);
+    drawState.lights = false; drawState.rim = rim; drawState.noDriver = false; drawState.wheelMul = v.wheelMul; drawState.turbo = false;
+    drawVehicle(ctx, look, drawState);
     ctx.restore();
-    R.drawNameTag(ctx, 'GHOST', gp[0], gp[1] + 1.6, '#dfe8ff');
+    ctx.globalAlpha = 1;
+    R.drawNameTag(ctx, gh.label || 'GHOST', gp[0], gp[1] + 1.6, st.tag);
   }
   function drawRanger(r, v, lw) {
     const ch = v.chassis;
@@ -2496,7 +2535,8 @@ export function createGame(canvas, opts = {}) {
       gateApproach: !!r.gateApproach,
       gateHold: r.race && v.hold && v.releaseT > 0 ? Math.max(0, Math.round((v.releaseT - r.t) * 100) / 100) : 0,
       frozen: !!r.frozen,
-      countdown: r.race && r.goT < 0 ? Math.max(0.01, Math.round((TR.goAt - r.cdT) * 100) / 100) : 0,
+      countdown: r.race && !r.chase && r.goT < 0 ? Math.max(0.01, Math.round((TR.goAt - r.cdT) * 100) / 100) : 0,
+      chase: !!r.chase,
       length: r.course.length,
       // v1.5
       vehicle: r.def.id,

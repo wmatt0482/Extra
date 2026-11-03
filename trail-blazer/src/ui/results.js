@@ -14,6 +14,9 @@
 // v1.7: the Hill Climb (r.hill = { heightM, flags, summit, cash: { flags, summit, total }, asked, right, newBest }): a row
 // under the total like the mission (its cash is banked on its own, not part of the race's cash), a "SUMMIT!" callout
 // and a line ("3 flags · 180 m up the hill").
+// v1.9 (The Lab): the Lab's results strip mounts under the lines (#res-lab, through app.lab.results: coins, XP to the next level, the quests,
+// the Lab crate); a Ghost Chase (r.chase = { name, own, beat, by }) shows "Ghost beaten!" / "Nice chase!", one ride on the podium (no place,
+// no step number) and the chase line ("You beat Mia's ghost by 1.3 s!" / "Mia's ghost was 1.3 s ahead. Nice chase!").
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { MEDAL_LABEL, fmtTime, ordinal } from '../data/medals.js';
 import { factAnswer, factText } from '../facts/facts.js';
@@ -21,6 +24,7 @@ import { icon } from './tbIcons.js';
 import { drawPreview } from './vehiclePreview.js';
 import { CRATE_TIERS } from '../data/cosmetics.js';
 import { PAINT_BY_ID } from '../data/paints.js';
+import { chaseLine } from '../meta/ghosts.js';
 
 const LABEL = { distance: 'Distance', air: 'Air time', flips: 'Flips', perfect: 'Perfect landings', smash: 'Smashes', coins: 'Trail coins',
   place: 'Position bonus', finish: 'Finish bonus', gates: 'Gates', quick: 'Quick answers', combo: 'Combos', turbo: 'Turbo', bonus: 'Bonus' };
@@ -31,9 +35,9 @@ export function createResults(app, crates) {
   const el = {
     stars: $('#res-stars'), lines: $('#res-lines'), weekend: $('#res-weekend'), crate: $('#res-crate'), final: $('#cup-final'), nextText: $('#res-next-text'),
     title: $('#res-title'), podium: $('#res-podium'), time: $('#res-time'), medal: $('#res-medal'), record: $('#res-record'), sub: $('#res-sub'),
-    facts: $('#res-facts'), moment: $('#res-moment'), pay: $('#res-pay'), callouts: $('#res-callouts'), again: $('#res-again'), garage: $('#res-garage'), next: $('#res-next'),
+    lab: $('#res-lab'), facts: $('#res-facts'), moment: $('#res-moment'), pay: $('#res-pay'), callouts: $('#res-callouts'), again: $('#res-again'), garage: $('#res-garage'), next: $('#res-next'),
   };
-  let last = null, countRaf = 0, medalTimer = 0, momentTimers = [], starTimers = [];
+  let last = null, countRaf = 0, medalTimer = 0, momentTimers = [], starTimers = [], labHandle = null;
   const clearMoment = () => { momentTimers.forEach(clearTimeout); momentTimers = []; el.moment.hidden = true; el.moment.replaceChildren(); };
   function levelUp(level) {
     el.moment.replaceChildren(h('div', { class: 'lvl-stamp', id: 'res-levelup', role: 'img', 'aria-label': `Level ${level}` }, h('div', {}, h('small', {}, 'Level'), h('b', {}, String(level)))));
@@ -78,7 +82,8 @@ export function createResults(app, crates) {
     const combo = Number(s.maxCombo || s.comboMax || 0);
     if (combo >= 2) out.push(line('combo', `Combo ×${combo}!`));
     else if ((s.cash && s.cash.combo) > 0) out.push(line('combo', 'Combo bonus!'));
-    if (ss.ghost && ss.ghost.beat && ss.ghost.by > 0) out.push(line('ghost', `Beat your ghost by ${ss.ghost.by.toFixed(1)} s!`));
+    if (ss.ghost && ss.ghost.chase && !ss.ghost.own && ss.ghost.by > 0) out.push(line('ghost', chaseLine({ name: ss.ghost.name, beat: !!ss.ghost.beat, by: ss.ghost.by })));
+    else if (ss.ghost && ss.ghost.beat && ss.ghost.by > 0) out.push(line('ghost', `Beat your ghost by ${ss.ghost.by.toFixed(1)} s!`));
     else if (ss.ghost && ss.ghost.beat === false && ss.ghost.by > 0) out.push(line('ghost', `Your ghost was ${ss.ghost.by.toFixed(1)} s ahead`));
     if (ss.turbo) out.push(line('turbo', 'TURBO gate!'));
     const hl = r.hill;
@@ -154,7 +159,15 @@ export function createResults(app, crates) {
   }
 
   // podium order on screen: 2nd, 1st, 3rd
-  function podium(rows) {
+  function podium(rows, chase) {
+    if (chase) {                       // Ghost Chase: one ride, no place
+      const x = rows.find((q) => q.me) || rows[0];
+      const cv = h('canvas', { 'aria-hidden': 'true' });
+      el.podium.replaceChildren(h('div', { class: 'pod p1 me chase', 'data-place': '1', 'data-name': x.name }, cv, h('span', { class: 'pod-name' }, `${x.name} (you)`), h('span', { class: 'pod-step' }, '')));
+      requestAnimationFrame(() => drawPreview(cv, x.look || { paint: x.paint }, { floor: false }));
+      el.podium.setAttribute('aria-label', `${x.name}'s ride`);
+      return;
+    }
     const top = [2, 1, 3].map((p) => rows.find((x) => x.place === p)).filter(Boolean);
     const cols = top.map((x) => {
       const cv = h('canvas', { 'aria-hidden': 'true' });
@@ -171,9 +184,11 @@ export function createResults(app, crates) {
     last = r;
     const s = r.summary;
     const place = r.place;
-    el.title.textContent = place === 1 ? '1st place!' : place && place <= 3 ? 'Podium!' : 'Race over';
-    el.title.dataset.place = String(place || 0);
-    podium(r.standings || []);
+    const ch = r.chase || null;
+    el.title.textContent = ch ? (s.finishCrossed ? (ch.beat ? 'Ghost beaten!' : 'Nice chase!') : 'Chase over') : place === 1 ? '1st place!' : place && place <= 3 ? 'Podium!' : 'Race over';
+    el.title.dataset.place = String(ch ? 0 : place || 0);
+    el.title.dataset.chase = ch ? (ch.beat ? 'beat' : 'chase') : '';
+    podium(r.standings || [], !!ch);
     el.time.textContent = s.finishCrossed ? fmtTime(r.timeSec) : 'DNF';
     clearTimeout(medalTimer);
     const m = r.bank.medal;
@@ -187,7 +202,8 @@ export function createResults(app, crates) {
     el.record.hidden = !(r.bank.newBestTime && r.bank.prevBestTime);
     const best = app.save.bestTime[r.trail.id];
     const t = r.medalTimes || {};
-    el.sub.textContent = `${r.trail.name} · ${place ? `${ordinal(place)} of ${(r.standings || []).length || 4}` : 'not finished'}${best ? ` · best ${fmtTime(best)}` : ''}${t.gold ? ` · 1st = gold · or beat ${fmtTime(t.gold)}` : ''}`;
+    el.sub.textContent = ch ? `${r.trail.name} · Ghost Chase${best ? ` · best ${fmtTime(best)}` : ''}${t.gold ? ` · gold time ${fmtTime(t.gold)}` : ''}`
+      : `${r.trail.name} · ${place ? `${ordinal(place)} of ${(r.standings || []).length || 4}` : 'not finished'}${best ? ` · best ${fmtTime(best)}` : ''}${t.gold ? ` · 1st = gold · or beat ${fmtTime(t.gold)}` : ''}`;
     el.sub.textContent += ` · ${s.flips || 0} flip${s.flips === 1 ? '' : 's'} · ${fmt1(s.airTime)} s air${s.crashes ? ` · ${s.crashes} crash${s.crashes === 1 ? '' : 'es'}` : ''}`;
     const math = r.math;
     factsRow(math && math.facts);
@@ -225,11 +241,13 @@ export function createResults(app, crates) {
     linesRow(r);
     weekendRow(r);
     crateBtn();
+    if (labHandle) { labHandle.destroy(); labHandle = null; }      // v1.9: the Lab's strip (a fresh one per results screen)
+    try { labHandle = app.lab ? app.lab.results({ mount: el.lab }) : null; } catch (_) { labHandle = null; }
     el.final.hidden = true;
     clearMoment();
     if (ss.weekendFinal) momentTimers.push(setTimeout(() => cupFinal(ss.weekendFinal), app.settings.reducedMotion ? 300 : 1800));
     const leveled = math && math.levelAfter > math.levelBefore;
     if (leveled) momentTimers.push(setTimeout(() => levelUp(math.levelAfter), app.settings.reducedMotion ? 200 : 1300));
   }
-  return { show, hide() { clearTimeout(medalTimer); cancelAnimationFrame(countRaf); clearMoment(); starTimers.forEach(clearTimeout); el.final.hidden = true; } };
+  return { show, hide() { if (labHandle) { labHandle.destroy(); labHandle = null; } clearTimeout(medalTimer); cancelAnimationFrame(countRaf); clearMoment(); starTimers.forEach(clearTimeout); el.final.hidden = true; } };
 }

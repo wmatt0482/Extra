@@ -35,7 +35,7 @@ const RIDE_HEIGHT = 0.7;
 /** A machine's starting tool height. */
 const HOME_LIFT = 0.8;
 
-/** The skid steer's bucket tilt limits in radians (the tilt joint's range for every machine). */
+/** The skid steer's bucket tilt limits in radians (the default tilt joint range; a MACHINE row may set `tiltRange`). */
 const TILT = [-0.7, 0.7];
 
 /** How fast the tool rises and falls (m/s at full stick). */
@@ -59,7 +59,7 @@ const yawAndTilt = (a, m) => ({
 const JOINT_LIMITS = {
   swing: () => null,
   reach: (d) => d.reach,
-  tilt: () => TILT,
+  tilt: (d) => d.tiltRange || TILT,
 };
 
 /** The skid steer's bucket in the tool's frame (origin at the grab point, +z ahead, metres), shared with its model
@@ -96,6 +96,131 @@ function skidBucketColliders(b = SKID_BUCKET) {
     ],
     ...sides,
   ];
+}
+
+
+// ---- Small quaternion helpers for the two Lab machines (a tool that is neither a plain yaw nor a bucket tilt) --------
+/** The quaternion of a turn by `yaw` about the vertical axis followed (in the machine's frame) by `pitch` about x. */
+const yawPitch = (yaw, pitch) => {
+  const sy = Math.sin(yaw / 2),
+    cy = Math.cos(yaw / 2),
+    sx = Math.sin(pitch / 2),
+    cx = Math.cos(pitch / 2);
+  return { x: cy * sx, y: sy * cx, z: -sy * sx, w: cy * cx };
+};
+/** A point given in the machine's frame (lx right, ly up from the ground, lz ahead) as a world point. */
+const toWorld = (m, lx, ly, lz) => ({
+  x: m.x + lx * Math.cos(m.yaw) + lz * Math.sin(m.yaw),
+  y: m.y - RIDE_HEIGHT + ly,
+  z: m.z - lx * Math.sin(m.yaw) + lz * Math.cos(m.yaw),
+});
+/** Rotates vector v by the unit quaternion q. */
+function rotate(q, v) {
+  const { x, y, z, w } = q,
+    tx = 2 * (y * v.z - z * v.y),
+    ty = 2 * (z * v.x - x * v.z),
+    tz = 2 * (x * v.y - y * v.x);
+  return { x: v.x + w * tx + (y * tz - z * ty), y: v.y + w * ty + (z * tx - x * tz), z: v.z + w * tz + (x * ty - y * tx) };
+}
+const conj = (q) => ({ x: -q.x, y: -q.y, z: -q.z, w: q.w });
+
+/** DT-04, the dump truck (Lab vehicle). Lengths in metres in the truck's frame (x across, z ahead, y up from the
+ *  ground); the chassis origin is the middle of the truck. The bed is the machine's tool body: it hinges at the back
+ *  (`hinge`), carries loose blocks between a floor, two side walls and a headboard, and the tailgate is a second
+ *  kinematic body hinged along the bottom of the rear edge that drops open into a chute as the bed tips (`gate`). The lift joint
+ *  is the tip: `lift` runs 0.7 (flat) to 2.5, which is 0 to `max` radians. The scene draws from these same numbers. */
+export const DUMP = {
+  pivot: -1.4,
+  hinge: { z: -2.5, y: 1.62 },
+  bed: { inner: 2.5, length: 3.6, wall: 0.14, wallH: 1.3, floor: 0.16, headH: 1.9 },
+  max: 0.92,
+  gate: { from: 0.1, span: 0.25, open: 1.62, h: 1.3, t: 0.1 },
+  rear: { z: -2.7 },
+  front: { z: 2.9 },
+};
+/** The bed's tip angle (radians) for a dump truck's lift joint. */
+export const bedAngle = (lift, d = MACHINES.dump) => ((lift - d.height[0]) / (d.height[1] - d.height[0])) * DUMP.max;
+/** How far the tailgate has swung open (radians) at bed angle `a`: shut until the bed starts to rise, then fully open
+ *  well before a load can slide. */
+export const gateAngle = (a) => clamp((a - DUMP.gate.from) / DUMP.gate.span, 0, 1) * DUMP.gate.open;
+
+/** The bed's colliders in its own frame (origin at the hinge, +z along the bed, floor top at y = 0). */
+function dumpBedColliders(b = DUMP.bed) {
+  const w = b.inner + 2 * b.wall;
+  return [
+    [[w, b.floor, b.length], [0, -b.floor / 2, b.length / 2]],
+    ...[-1, 1].map((k) => [[b.wall, b.wallH, b.length], [k * (b.inner + b.wall) / 2, b.wallH / 2, b.length / 2]]),
+    [[w, b.headH + b.floor, 0.16], [0, (b.headH - b.floor) / 2, b.length + 0.08]],
+  ];
+}
+/** The truck's chassis colliders in the machine frame, y measured from the ground (placed relative to the body). */
+const g = (y) => y - RIDE_HEIGHT;
+const DUMP_CHASSIS = [
+  [[2.1, 0.5, 5.4], [0, g(1.05), 0.1]],
+  [[2.3, 1.6, 1.4], [0, g(2.1), 2.1]],
+  ...[-1, 1].flatMap((k) => [
+    [[0.5, 1.2, 2.1], [k * 1.15, g(0.6), -1.5]],
+    [[0.5, 1.2, 1.2], [k * 1.15, g(0.6), 1.75]],
+  ]),
+];
+
+/** The dump truck's tool and gate poses for its current joints: the bed turns about the hinge (its back stays down, the
+ *  front rises), and the tailgate hangs from the top of the rear edge. */
+function placeDump(m) {
+  const a = bedAngle(m.lift),
+    h = DUMP.hinge,
+    pos = toWorld(m, 0, h.y, h.z),
+    q = yawPitch(m.yaw, -a),
+    // the bed's middle, for the camera and the effects
+    mid = rotate(q, { x: 0, y: 0.5, z: DUMP.bed.length / 2 }),
+    gv = { x: 0, y: 0, z: 0 };
+  return {
+    tip: { x: pos.x + mid.x, y: pos.y + mid.y, z: pos.z + mid.z },
+    pos,
+    q,
+    gate: { pos: { x: pos.x + gv.x, y: pos.y + gv.y, z: pos.z + gv.z }, q: yawPitch(m.yaw, -a - gateAngle(a)) },
+  };
+}
+
+/** FL-05, the forklift (Lab vehicle). The drive wheels are at the front and it steers with the rear wheels, so it
+ *  yaws about the front axle (`pivot`) and its tail swings. The tool body is the carriage with the two tines and the
+ *  load backrest; it rides up the mast, which tilts about the mast foot (`mast`). `lift` is the height of the tine tops
+ *  above the floor; the tines are `t` thick, so they slip into the 0.30 m opening under a pallet only when they are low,
+ *  level and lined up with the two runners' gap (tines at +-`x`, 0.14 wide, against a gap 1.3 m wide). */
+export const FORK = {
+  pivot: 0.55,
+  mast: { z: 1.4, y: 0.45 },
+  tine: { x: 0.4, w: 0.14, t: 0.07, len: 1.7, heel: 0.1 },
+  back: { w: 1.5, h: 1.15, t: 0.08 },
+  tilt: [-0.06, 0.2],
+};
+const FORK_CHASSIS = [
+  [[1.6, 0.95, 2.4], [0, g(0.925), -0.1]],
+  ...[-1, 1].flatMap((k) => [
+    [[0.42, 0.95, 0.95], [k * 0.78, g(0.475), 0.55]],
+    [[0.3, 0.7, 0.7], [k * 0.55, g(0.35), -0.95]],
+  ]),
+];
+const FORK_TOOL = (f = FORK) => [
+  ...[-1, 1].map((k) => [[f.tine.w, f.tine.t, f.tine.len], [k * f.tine.x, -f.tine.t / 2, f.tine.heel + f.tine.len / 2]]),
+  [[f.back.w, f.back.h, f.back.t], [0, f.back.h / 2 - f.tine.t, f.tine.heel - f.back.t / 2]],
+];
+/** The tine top's height for a lift joint, never so low that a tipped-forward tine would dig into the floor. */
+const forkHeight = (m) => Math.max(m.lift, 0.08 + (FORK.tine.heel + FORK.tine.len) * Math.sin(Math.max(0, -m.tilt)) + 0.01);
+/** Where the carriage sits in the forklift's own frame (y from the ground, z ahead of its centre): it slides along the
+ *  mast's axis, which leans back by the tilt about the mast foot. */
+export function forkCarriage(m) {
+  const up = forkHeight(m) - FORK.mast.y;
+  return { y: FORK.mast.y + up * Math.cos(m.tilt), z: FORK.mast.z - up * Math.sin(m.tilt) };
+}
+/** The carriage's pose and the tine tips for the forklift's lift and mast tilt. */
+function placeFork(m) {
+  const f = FORK,
+    q = yawPitch(m.yaw, -m.tilt),
+    c = forkCarriage(m),
+    pos = toWorld(m, 0, c.y, c.z),
+    tipV = rotate(q, { x: 0, y: 0, z: f.tine.heel + f.tine.len });
+  return { tip: { x: pos.x + tipV.x, y: pos.y + tipV.y, z: pos.z + tipV.z }, pos, q };
 }
 
 /** Physics for each machine kind.
@@ -138,6 +263,52 @@ export const MACHINE = {
     swings: true,
     wreckingBall: true,
   },
+  // The Lab machines. `place(m)` gives the tool's pose (and the tip the camera and effects follow) from the joints, in
+  // place of the boom rule; `chassis` lists the body's box colliders; `gate` is the dump truck's second kinematic body.
+  // `ease` is how quickly the drive speed follows the stick (small = long stopping distance), `pivot` the point on the
+  // machine's centre line that it turns about, `steerLow` the share of the turn rate available at a standstill.
+  // `grabs: false` machines have no Grab: loads ride on them (a bed, a pair of tines) instead of hanging from a spring.
+  dump: {
+    ...pick(MACHINES.dump),
+    tool: dumpBedColliders(),
+    // the gate plate sits behind its hinge line, so when it drops open its upper face is flush with the bed floor
+    gate: [[[DUMP.bed.inner, DUMP.gate.h, DUMP.gate.t], [0, DUMP.gate.h / 2, -DUMP.gate.t / 2]]],
+    chassis: DUMP_CHASSIS,
+    place: placeDump,
+    home: 0.7,
+    liftRate: 0.62,
+    ease: 0.022,
+    pivot: DUMP.pivot,
+    steerLow: 0.3,
+    margin: 1.7,
+    friction: 0.5,
+    orient: yawOnly,
+    stick: null,
+    extend: null,
+    swings: false,
+    wreckingBall: false,
+    grabs: false,
+  },
+  fork: {
+    ...pick(MACHINES.fork),
+    tool: FORK_TOOL(),
+    chassis: FORK_CHASSIS,
+    place: placeFork,
+    home: 0.1,
+    liftRate: 0.9,
+    ease: 0.09,
+    pivot: FORK.pivot,
+    steerLow: 0.5,
+    margin: 1.4,
+    tiltRange: FORK.tilt,
+    tiltRate: 0.35,
+    orient: yawOnly,
+    stick: { joint: 'tilt', rate: 0.35 },
+    extend: null,
+    swings: false,
+    wreckingBall: false,
+    grabs: false,
+  },
 };
 
 /** The driving numbers a MACHINE row takes from the shared machine metadata. */
@@ -178,6 +349,8 @@ export class Yard {
     this.active = 0;
     this.serial = 0;
     this.time = 0;
+    /** Successful grabs since the job began (the "grabs" build challenge counts these). */
+    this.grabs = 0;
     this.wrecking = false;
     this.ball = null;
     this.ballMachine = null;
@@ -214,12 +387,20 @@ export class Yard {
     this.tiles.set(key, this.fixed(x, h - 1, z, [4, 2, 4]));
   }
 
-  /** Adds a machine of `kind` at (x, z): a kinematic chassis and a separate kinematic tool body. */
+  /** Adds a machine of `kind` at (x, z): a kinematic chassis and a separate kinematic tool body (and, for the dump
+   *  truck, a kinematic tailgate). */
   addMachine(kind, x, z) {
     const def = MACHINE[kind];
     const chassis = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, RIDE_HEIGHT, z);
     const body = this.world.createRigidBody(chassis);
-    this.world.createCollider(RAPIER.ColliderDesc.cuboid(...CHASSIS).setFriction(0.8), body);
+    for (const [size, offset] of def.chassis || [[CHASSIS.map((v) => v * 2), [0, 0, 0]]]) {
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(...size.map((v) => v / 2))
+          .setTranslation(...offset)
+          .setFriction(0.8),
+        body,
+      );
+    }
     const m = {
       kind,
       body,
@@ -228,20 +409,33 @@ export class Yard {
       y: RIDE_HEIGHT,
       yaw: 0,
       swing: 0,
-      lift: HOME_LIFT,
+      lift: def.home ?? HOME_LIFT,
       reach: def.reach[0],
       tilt: 0,
       speed: 0,
       home: { x, z },
       tool: null,
+      gate: null,
       tip: null,
     };
     m.tool = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
+    const friction = def.friction ?? 0.95;
     for (const shape of def.tool) {
       const part = shape.hull
         ? RAPIER.ColliderDesc.convexHull(new Float32Array(shape.hull))
         : RAPIER.ColliderDesc.cuboid(...shape[0].map((v) => v / 2)).setTranslation(...shape[1]);
-      this.world.createCollider(part.setFriction(0.95), m.tool);
+      this.world.createCollider(part.setFriction(friction), m.tool);
+    }
+    if (def.gate) {
+      m.gate = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
+      for (const [size, offset] of def.gate) {
+        this.world.createCollider(
+          RAPIER.ColliderDesc.cuboid(...size.map((v) => v / 2))
+            .setTranslation(...offset)
+            .setFriction(friction),
+          m.gate,
+        );
+      }
     }
     this.machines.push(m);
     this.updateTip(m, true);
@@ -323,19 +517,82 @@ export class Yard {
     if (others.length) this.select(others[0].i);
   }
 
+  /** The blocks lying inside the dump truck's bed right now (the bed's own frame: between the walls, past the tailgate
+   *  and under the headboard's top). Empty for any other machine. */
+  bedCargo(m = this.machine) {
+    if (m.kind !== 'dump') return [];
+    const a = bedAngle(m.lift),
+      inv = conj(yawPitch(m.yaw, -a)),
+      h = toWorld(m, 0, DUMP.hinge.y, DUMP.hinge.z),
+      half = DUMP.bed.inner / 2;
+    return this.blocks.filter((b) => {
+      const t = b.body.translation(),
+        l = rotate(inv, { x: t.x - h.x, y: t.y - h.y, z: t.z - h.z });
+      return Math.abs(l.x) < half && l.z > 0 && l.z < DUMP.bed.length && l.y > -0.1 && l.y < DUMP.bed.wallH + 1;
+    });
+  }
+
+  /** How the active forklift stands with the nearest pallet ahead of its forks, in the carriage's frame:
+   *  `state` is 'none' (no pallet within reach), 'high' (the tines are above the pallet's openings), 'off' (not lined up
+   *  with the openings), 'ready' (low, level and lined up), 'in' (the tines are under the deck) or 'carrying' (the
+   *  pallet rides on the tines, clear of the floor). It only reads: the physics decides what actually happens. */
+  forkStatus(m = this.machine) {
+    if (m.kind !== 'fork') return { state: 'none' };
+    const { pos, q } = placeFork(m),
+      inv = conj(q);
+    let best = null;
+    for (const b of this.blocks) {
+      if (b.type !== 'pallet') continue;
+      const t = b.body.translation(),
+        l = rotate(inv, { x: t.x - pos.x, y: t.y - pos.y, z: t.z - pos.z });
+      if (l.z < 0.2 || l.z > 4 || Math.abs(l.x) > 2) continue;
+      if (!best || l.z < best.l.z) best = { b, l };
+    }
+    if (!best) return { state: 'none' };
+    const { b, l } = best,
+      // the pallet's long gap runs along its own z axis; its heading against the forks' is the angle between them
+      axis = rotate(conj(q), rotate(b.body.rotation(), { x: 0, y: 0, z: 1 })),
+      raw = Math.atan2(axis.x, axis.z),
+      heading = Math.abs(raw) > Math.PI / 2 ? raw - Math.sign(raw) * Math.PI : raw,
+      lateral = Math.abs(l.x),
+      inside = lateral < 0.3 && l.z > 0.45 && l.z < 1.75 && l.y > -0.03 && l.y < 0.4,
+      lifted = b.body.translation().y > 0.5 + 0.05 && inside;
+    let state;
+    if (lifted) state = 'carrying';
+    else if (inside) state = 'in';
+    else if (m.lift > 0.3) state = 'high';
+    else if (lateral > 0.2 || Math.abs(heading) > 0.12 || Math.abs(m.tilt) > 0.1) state = 'off';
+    else state = 'ready';
+    return { state, pallet: b.id, lateral: l.x, ahead: l.z, heading };
+  }
+
   /** Recomputes a machine's grab point (reach ahead along the boom, at lift height) and moves its tool body there:
-   *  instantly when placing or resetting, otherwise as the next kinematic target so contacts stay smooth. */
+   *  instantly when placing or resetting, otherwise as the next kinematic target so contacts stay smooth. The Lab
+   *  machines place their tool (the bed, the carriage) and the tailgate from their own joints instead (`place`). */
   updateTip(m, instant = false) {
-    const a = m.yaw + m.swing,
-      tip = { x: m.x + Math.sin(a) * m.reach, y: m.lift, z: m.z + Math.cos(a) * m.reach };
+    const def = MACHINE[m.kind];
+    let tip, pos, q, gate;
+    if (def.place) ({ tip, pos, q, gate } = def.place(m));
+    else {
+      const a = m.yaw + m.swing;
+      tip = pos = { x: m.x + Math.sin(a) * m.reach, y: m.lift, z: m.z + Math.cos(a) * m.reach };
+      q = def.orient(a, m);
+    }
     m.tip = tip;
-    const q = MACHINE[m.kind].orient(a, m);
     if (instant) {
-      m.tool.setTranslation(tip, true);
+      m.tool.setTranslation(pos, true);
       m.tool.setRotation(q, true);
+      if (gate && m.gate) {
+        m.gate.setTranslation(gate.pos, true);
+        m.gate.setRotation(gate.q, true);
+      }
     } else {
-      m.tool.setNextKinematicTranslation(tip);
+      m.tool.setNextKinematicTranslation(pos);
       m.tool.setNextKinematicRotation(q);
+      if (gate && m.gate) {
+        m.gate.setNextKinematicTranslation(gate.pos);
+        m.gate.setNextKinematicRotation(gate.q);
+      }
     }
   }
 
@@ -346,6 +603,7 @@ export class Yard {
       this.release();
       return true;
     }
+    if (MACHINE[this.machine.kind].grabs === false) return false;
     const tip = this.tool;
     const near = this.blocks
       .map((b) => {
@@ -358,6 +616,7 @@ export class Yard {
     if (!nearest) return false;
     this.held = nearest.b;
     this.held.body.wakeUp();
+    this.grabs++;
     this.onEvent({ type: 'grab' });
     return true;
   }
@@ -381,7 +640,7 @@ export class Yard {
       z: m.home.z,
       yaw: 0,
       swing: 0,
-      lift: HOME_LIFT,
+      lift: MACHINE[m.kind].home ?? HOME_LIFT,
       tilt: 0,
       speed: 0,
       reach: MACHINE[m.kind].reach[0],
@@ -419,10 +678,10 @@ export class Yard {
       d = MACHINE[m.kind];
     this.time += dt;
     this.drive(m, d, input, dt);
-    m.lift = clamp(m.lift + (input.lift || 0) * LIFT_RATE * dt, ...d.height);
-    moveJoint(m, d, d.stick.joint, (input.tool || 0) * d.stick.rate * dt);
+    m.lift = clamp(m.lift + (input.lift || 0) * (d.liftRate ?? LIFT_RATE) * dt, ...d.height);
+    if (d.stick) moveJoint(m, d, d.stick.joint, (input.tool || 0) * d.stick.rate * dt);
     if (d.swings) m.swing += (input.swing || 0) * dt;
-    m.tilt = clamp(m.tilt + (input.tilt || 0) * dt, ...TILT);
+    if (d.tiltRange || !d.place) m.tilt = clamp(m.tilt + (input.tilt || 0) * (d.tiltRate ?? 1) * dt, ...(d.tiltRange || TILT));
     if (d.extend) moveJoint(m, d, d.extend.joint, (input.extend || 0) * d.extend.rate * dt);
     m.body.setNextKinematicTranslation({ x: m.x, y: m.y, z: m.z });
     m.body.setNextKinematicRotation(qyaw(m.yaw));
@@ -438,14 +697,25 @@ export class Yard {
   }
 
   /** Eases the chassis speed toward the drive axis, turns, and moves it, sliding along props instead of through
-   *  them (each axis is checked separately) and staying inside the yard. */
+   *  them (each axis is checked separately) and staying inside the yard. A machine with a `pivot` turns about that
+   *  point on its centre line (the dump truck about its rear axle, the forklift about its front axle, so its tail
+   *  swings), and one with `steerLow` turns more slowly when it is not moving. */
   drive(m, d, input, dt) {
-    m.speed += (clamp(input.drive || 0, -1, 1) * d.speed - m.speed) * 0.12;
-    m.yaw += clamp(input.steer || 0, -1, 1) * d.turn * dt;
-    const nx = clamp(m.x + Math.sin(m.yaw) * m.speed * dt, -YARD.half, YARD.half),
-      nz = clamp(m.z + Math.cos(m.yaw) * m.speed * dt, -YARD.half, YARD.half);
-    if (!this.blocked(nx, m.z)) m.x = nx;
-    if (!this.blocked(m.x, nz)) m.z = nz;
+    m.speed += (clamp(input.drive || 0, -1, 1) * d.speed - m.speed) * (d.ease ?? 0.12);
+    const steer = clamp(input.steer || 0, -1, 1),
+      low = d.steerLow ?? 1,
+      rate = d.turn * (low + (1 - low) * Math.min(1, Math.abs(m.speed) / (0.5 * d.speed))),
+      pv = d.pivot || 0,
+      px = m.x + Math.sin(m.yaw) * pv,
+      pz = m.z + Math.cos(m.yaw) * pv;
+    m.yaw += steer * rate * dt;
+    const cx = px - Math.sin(m.yaw) * pv,
+      cz = pz - Math.cos(m.yaw) * pv,
+      lim = YARD.half - (d.margin || 0),
+      nx = clamp(cx + Math.sin(m.yaw) * m.speed * dt, -lim, lim),
+      nz = clamp(cz + Math.cos(m.yaw) * m.speed * dt, -lim, lim);
+    m.x = this.blocked(nx, cz) ? m.x + (cx - m.x) : nx;
+    m.z = this.blocked(m.x, nz) ? m.z + (cz - m.z) : nz;
     m.y = RIDE_HEIGHT + this.groundAt(m.x, m.z);
   }
 

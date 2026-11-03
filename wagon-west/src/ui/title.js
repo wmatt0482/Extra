@@ -36,6 +36,7 @@ export function createTitle(app) {
     const legs = app.legs;
     const inLeg = !!(save.trip && J && save.trip.legId === J.legId);
     const pending = app.pendingFork();
+    const pendingC = pending ? null : app.pendingChoice();            // v1.6 (The Lab): a choice moment left pending, like a fork
     const r = drawMap(map, { J, inLeg, paint: app.paintColor(), family: app.familyWagons(), onFamily: (f) => app.toast(`${f.name}'s wagon`),
       ledger: save.ledger, farm: save.farm, onFarm: (id) => app.openFarm(id), year: app.yearNow(), pending });
     const run = app.runLine();
@@ -45,7 +46,7 @@ export function createTitle(app) {
     else if (inLeg) {
       const leg = legs[J.legIndex] || {};
       label = 'Keep going';
-      text = save.trip.stage === 'stop' ? (pending ? `A choice at ${pending.name}` : `At ${leg.stop ? leg.stop.name : leg.name}`) : `On the way to ${leg.stop ? leg.stop.name : leg.name} · ${money(Math.max(0, (leg.miles || 0) - (J.milesDone || 0)))} mi to go`;
+      text = save.trip.stage === 'stop' ? (pending || pendingC ? `A choice at ${(pending || pendingC).name}` : `At ${leg.stop ? leg.stop.name : leg.name}`) : `On the way to ${leg.stop ? leg.stop.name : leg.name} · ${money(Math.max(0, (leg.miles || 0) - (J.milesDone || 0)))} mi to go`;
     } else {
       const leg = legs[J.legIndex] || {};
       text = `Next: ${leg.stop ? leg.stop.name : leg.name} · ${money(leg.miles || 0)} mi`;
@@ -57,7 +58,9 @@ export function createTitle(app) {
     $('#title-season').textContent = `${J && J.wagonName ? `${J.wagonName} · ` : ''}${run.year} · ${run.tier} · ${run.route}`;
     const farmBtn = $('#btn-farm');
     farmBtn.hidden = !app.hasFarm();
-    $('.menu-row').dataset.n = farmBtn.hidden ? '3' : '4';
+    const labBtn = $('#btn-lab');
+    labBtn.hidden = !app.labReady();                          // v1.6 (The Lab): the Lab's button shows once the Lab has loaded (never a dead button)
+    $('.menu-row').dataset.n = String(3 + (farmBtn.hidden ? 0 : 1) + (labBtn.hidden ? 0 : 1));
     const crew = J ? (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)) : [];
     const skills = app.partyLine(crew);
     const sk = $('#title-skills');

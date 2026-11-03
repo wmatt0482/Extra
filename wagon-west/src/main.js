@@ -45,6 +45,12 @@
 // dog and v1.4's collections) and closes at its trail's end into the homestead (closeJourney: savings, Beaver money, the team); the homestead has its
 // own screen (src/ui/homestead.js); card sets pay wagon decorations; the Pit Crew Check places the child on the first store or marker; word
 // problems take the shape of the child's ladder (problemFor's tier). The journey decides, the scene draws, this file drives and speaks.
+// v1.6 (The Lab, lab/SPEC.md §4.4; the "// ---- v1.6 (The Lab) ..." blocks): the game reports to the Lab through ./meta/labBridge.js ONLY (a marker, a trail problem, a river or
+// letter word, a leg, a star, a choice, a farm piece, the day), never inside a frame and never able to break the game when /lab/ is missing; the Lab's XP pill sits in the trail
+// HUD (#hud-lab) and its strip on the results (#res-lab); a combo moment is "Trail Cheer" (the party cheers); the Lab's wagon covers and the leader's outfits are drawn by the
+// scene (cosmetics() is read at the start of every leg); the results end on a preview of the next stop (journey/preview.js) and, after the third leg of a local day, "That's a good
+// place to stop for today."; and six choice moments (a shortcut that may soak a sack, a guide that saves a day: ./ui/choicePanel.js, journey/choices.js) are asked at their stops.
+// No Lab call reads or writes cash, tokens or gold: the Lab's coins are the Lab's.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
@@ -111,6 +117,9 @@ import { createCard } from './ui/card.js';
 import { createRiver } from './ui/river.js';
 import { createYearPicker } from './ui/yearPicker.js';
 import { createForkPanel } from './ui/forkPanel.js';
+import { createChoicePanel } from './ui/choicePanel.js';
+import { CHOICE_LINES } from './content/choices.js';
+import { labBridge } from './meta/labBridge.js';
 import { createDiggings, pouchText, DIG_TEXT } from './ui/diggings.js';
 import { createHomestead, workProblem, FARM_TEXT } from './ui/homestead.js';
 // ---- v1.2 (app two): people and deeds ----
@@ -129,7 +138,7 @@ import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
 import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts, V15 } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.5.0';
+const VERSION = '1.6.0';
 // the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
 // is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];
@@ -220,7 +229,7 @@ async function boot() {
   let vignetteOn = false;               // (v1.4 playtest: a trail fact's far-off scene plays with nothing on top of it: toasts wait, as they do for a mini-game)
   const readingOpen = () => { try { return !!(app.overlayOpen() || v2.play || v2.bar || mini || derby || dayFlow || vignetteOn); } catch (_) { return false; } };
   const toaster = createToaster(toastsEl, { blocked: readingOpen, say: (t) => speech.later(t), speaking: () => speech.ambientPending });
-  const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || forkPanel.isOpen || !!mini || !!derby;
+  const panelOpen = () => markerPanel.isOpen || problemPanel.isOpen || spellPanel.isOpen || card.isOpen || forkPanel.isOpen || choicePanel.isOpen || !!mini || !!derby;
   let derby = null;                       // Fort Derby in progress: { leg, markers, bursts, resolve }
   let campVisit = null;                   // this camp visit: { context, line (a companion spoke: their card) }
   let lastQuickDraw = null, lastDerby = null;   // (tests)
@@ -403,6 +412,11 @@ async function boot() {
     get ledger() { return save.ledger; },
     get farm() { return save.farm; },
     get cloud() { return cloud; },
+    // ---- v1.6 (The Lab) ----
+    labReady: () => labBridge.ready,
+    openLab: (o) => labBridge.openHome(o || {}),
+    openLabParent: () => labBridge.openParent({ unlocked: true }),
+    pendingChoice,
   };
 
   // ---------- scene ----------
@@ -446,6 +460,7 @@ async function boot() {
     year: createYearPicker(app), farm: createHomestead(app),
   };
   const forkPanel = createForkPanel(app);
+  const choicePanel = createChoicePanel(app);       // v1.6 (The Lab): the six choice moments
   const diggings = createDiggings(app);
   let findPop = null;                     // (v1.4: the dog's finds and the wishes pop in the same place as a card: one at a time, a card first)
   const cardPop = createCardPop($('#cardpop'), { sfx: Sfx, hold: (root) => popHeld(root, { blocked: readingOpen, hold: () => screen === 'results' }) || !!(findPop && findPop.visible) });
@@ -658,6 +673,7 @@ async function boot() {
     currentPlayerId = id;
     replaceInPlace(save, loadSave(id));
     ensureJ();
+    labAttach();                                       // v1.6 (The Lab): the Lab knows who is playing
     facts = loadFactsData(id);
     factSession = createFactSession();
     spellSession = createSpellSession();
@@ -693,6 +709,8 @@ async function boot() {
     if (!['stop', 'store', 'river', 'post', 'home', 'derby', 'dog', 'camp'].includes(name)) { if (store.isOpen) store.leave(); }
     if (name !== 'stop' && diggings.isOpen) diggings.hide();                  // (v1.5: leaving the creek)
     if (forkPanel.isOpen) forkPanel.hide();                                  // (v1.5: a fork left pending stays pending)
+    if (choicePanel.isOpen) choicePanel.hide();                              // (v1.6: so does a choice moment)
+    if (name === 'players' || name === 'newplayer') labDetach();             // (v1.6: back at the picker: the Lab forgets the player)
     const was = screen;
     if (name !== 'camp' && screens.camp && screens.camp.isOpen && !['dog'].includes(name)) screens.camp.leave();
     if (name !== 'derby' && derby) quitDerby();
@@ -767,6 +785,50 @@ async function boot() {
     pz.onSyncApplied();
   }
 
+  // ---- v1.6 (The Lab): the bridge, the reports, Trail Cheer and the looks (lab/SPEC.md §4.4). Everything here is a no-op while /lab/ is missing. ----
+  const labHud = labBridge.hud({ mount: $('#hud-lab'), compact: true });           // the XP pill in the trail HUD (a handle that mounts when the Lab has loaded)
+  const labResults = labBridge.results({ mount: $('#res-lab') });                  // the strip under the results' pay lines
+  let labAttached = null;
+  function labAttach() {
+    const p = app.player;
+    if (!p) return;
+    labAttached = p.id;
+    labBridge.attach({ playerId: p.id, name: p.name, color: p.color, gentle: false, reducedMotion: !!settings.reducedMotion, sound: settings.sound !== false });
+    try { labHud.update(); labResults.update(); } catch (_) { /* ignore */ }
+  }
+  function labDetach() { if (labAttached) { labAttached = null; labBridge.detach(); } }
+  /** One event to the Lab (never in a frame loop, once per event); a combo moment (every fifth answer in a row without a miss) is Trail Cheer. Returns the receipt (EMPTY when the Lab is off). */
+  function labReport(ev) {
+    if (!labAttached) return null;
+    let r = null;
+    try { r = labBridge.report(ev); } catch (_) { r = null; }
+    if (r && r.combo && r.combo.moment) labMoment(r.combo.name || 'Trail Cheer');
+    return r;
+  }
+  /** Trail Cheer: the party cheers (about a second) and a toast names it, once the panel the answer came from has closed (the scene is behind it). */
+  function labMoment(name) {
+    let tries = 0;
+    const go1 = () => {
+      if (!labAttached) return;
+      if ((app.overlayOpen() || !!mini || !!derby || !!v2.play) && tries++ < 50) { setTimeout(go1, 160); return; }       // (a panel, a card, a mini-game: wait; the day's own toasts do not hold the cheer)
+      S('cheer'); try { Sfx.cheer(); } catch (_) { /* ignore */ }
+      toast(`${name}!`);
+      lastCheer = { name, at: Date.now() };
+    };
+    setTimeout(go1, 120);
+  }
+  let lastCheer = null;
+  /** The Lab's looks for this round: { cover, outfit } as the slot values the Lab lists as ready ('ww.cover.stripes'), else null (the game's own look). Read at every leg start, not once. */
+  function labLooks() {
+    let c = null;
+    try { c = labBridge.cosmetics(); } catch (_) { c = null; }
+    const s = (c && c.slots) || {}, ready = (c && c.ready) || [];
+    const ok = (v) => (typeof v === 'string' && ready.includes(v) ? v : null);
+    return { cover: ok(s.cover), outfit: ok(s.outfit) };
+  }
+  labBridge.whenReady(() => { try { if (screen === 'title') screens.title.show(); } catch (_) { /* ignore */ } });   // (the title's Lab button and the Parent Zone's row show once the Lab is there)
+  labBridge.onChange(() => { try { if (screen === 'title' || screen === 'results') { labHud.update(); labResults.update(); } } catch (_) { /* ignore */ } });
+
   // ---------- the scene's look ----------
   function applySceneParty() {
     const J = save.journey;
@@ -774,7 +836,7 @@ async function boot() {
     S('setParty', {
       animal: J.animal,
       companions: partyLook(),
-      wagon: { paint: app.paintColor(), flag: save.cosmetics.equipped.flag, name: J.wagonName || '', decor: wornDecor(save.cosmetics), barrel: !!(J.upgrades && J.upgrades.barrel) },
+      wagon: { paint: app.paintColor(), flag: save.cosmetics.equipped.flag, name: J.wagonName || '', decor: wornDecor(save.cosmetics), barrel: !!(J.upgrades && J.upgrades.barrel), cover: labLooks().cover },       // (v1.6: the Lab's cover, null = the canvas)
       dog: J.dog ? { name: J.dog.name, coat: J.dog.coat, muddy: !!J.dog.muddy } : null,
       packMules: J.route === 'gold-road',                      // (v1.5: two pack mules walk beside the wagon on the Gold Road)
     });
@@ -785,7 +847,8 @@ async function boot() {
     if (!J) return [];
     const hat = save.cosmetics.equipped.hat;
     const ids = (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)).slice(0, 3);
-    return ids.map((id, i) => { const c = COMPANION_BY_ID[id] || { hat: 'wide', color: '#d9653b' }; return { id, hat: i === 0 && hat !== 'none' ? hat : c.hat, color: c.color }; });
+    const outfit = labLooks().outfit;                         // v1.6 (The Lab): the leader's plain clothes (null = their own)
+    return ids.map((id, i) => { const c = COMPANION_BY_ID[id] || { hat: 'wide', color: '#d9653b' }; return { id, hat: i === 0 && hat !== 'none' ? hat : c.hat, color: c.color, ...(i === 0 && outfit ? { outfit } : {}) }; });
   }
   const backdropFor = (leg) => ({ river: 'river', fort: 'fort', landmark: 'landmark', home: 'valley', gold: 'diggings' }[leg && leg.stop && leg.stop.kind] || 'landmark');
 
@@ -1048,6 +1111,7 @@ async function boot() {
     try { JA.applyProblem(J, { kind, correct: !!res.correct, firstTry: !!res.correct }); } catch (e) { console.warn('[WagonWest] applyProblem', e); }
     logKind(save, kind, !!res.correct);
     logPlay(save, { problems: 1, problemsRight: res.correct ? 1 : 0 });
+    labReport({ event: 'problem', n: 1, firstTry: !!res.correct });                // v1.6 (The Lab)
     const lf = ladderFactOf(p, pick);
     // (the typed wrong answer goes on the fact's record only when the question's answer IS the fact's answer: a two-step ration or
     // repair asks for pounds left / good spokes, and "98 good bolts" is not a wrong answer to 9 × 12)
@@ -1074,7 +1138,7 @@ async function boot() {
     if (res.cancelled) return res;
     recordFact(pick.fact, res, pick);
     // (camp's games pay their own token: their facts move the ladder and the log, not the leg's problem tally)
-    if (journey) { try { JA.applyProblem(J, { kind: 'fact', correct: !!res.correct, firstTry: !!res.correct }); } catch (_) { /* ignore */ } }
+    if (journey) { try { JA.applyProblem(J, { kind: 'fact', correct: !!res.correct, firstTry: !!res.correct }); } catch (_) { /* ignore */ } labReport({ event: 'problem', n: 1, firstTry: !!res.correct }); }      // (v1.6: the Lab hears the journey's quick facts, not camp's own games)
     logKind(save, 'fact', !!res.correct);
     logPlay(save, { problems: 1, problemsRight: res.correct ? 1 : 0 });
     app.persist();
@@ -1104,6 +1168,7 @@ async function boot() {
     recordFact(pick.fact, res, pick);
     try { const am = JA.applyMarker(J, { correct: !!res.correct, quick: !!res.quick }); if (am && am.skill) skillLine(am.skill); } catch (e) { console.warn('[WagonWest] applyMarker', e); }
     logPlay(save, { markers: 1, markersRight: res.correct ? 1 : 0 });
+    labReport({ event: 'marker', n: 1, firstTry: !!res.correct });                  // v1.6 (The Lab): a mile-marker fact, right the first time or fixed
     app.persist();
     if (res.quick) toast(opts.raft ? 'A fast current!' : opts.sail ? 'A fair wind!' : 'A tailwind! A few free miles');
     else if (!res.correct) toast('Fixed it. The wagon rolls on');
@@ -1152,6 +1217,7 @@ async function boot() {
       try { WS.recordSpell(d, list[i].word, { firstTry: !!res.firstTry }, Date.now(), spellSession); Profiles.writeWords(currentPlayerId, d); } catch (e) { console.warn('[WagonWest] recordSpell', e); }
       asked += 1; if (res.firstTry) right += 1;
       logPlay(save, { words: 1, wordsRight: res.firstTry ? 1 : 0 });
+      labReport({ event: 'word', n: 1, firstTry: !!res.firstTry });                // v1.6 (The Lab): a river word or a letter's word
       if (onWord) try { onWord(i, res); } catch (_) { /* ignore */ }
     }
     spellPanel.close();
@@ -1200,6 +1266,7 @@ async function boot() {
       save.trip = { legId: J.legId, stage: 'trail', events: [], asked: { ration: 0, distance: 0 }, markers: 0, at: Date.now(), tokens0: num(J.tokens), gold0: num(J.gold), dig: { pans: 0, rocker: 0 } };
       app.persist();
       prepareVoice();                      // every leg start: the clips for this week's facts, words and lines
+      labBridge.beginRound();              // v1.6 (The Lab): a leg is a round: the Lab's tally and combo start clean
     }
     applySceneParty();
     S('setLeg', { id: leg.id, biome: leg.biome, miles: leg.miles, stop: leg.stop, river: leg.river, painting: leg.painting, dry: leg.dry || null, voyage: !!leg.voyage });
@@ -1508,6 +1575,8 @@ async function boot() {
     }
     // ---- v1.5: a fork, before the stop's other scenes: the explainer, the question, an equal button for every way (it also settles the food plan for the store) ----
     if (!(await askFork(leg)) || stale()) return;
+    // ---- v1.6 (The Lab): a choice moment at this stop (a shortcut, a guide), asked like a fork; both ways arrive ----
+    if (!(await askChoice(leg)) || stale()) return;
     // ---- v1.2 (app two): the "Talk" row of the people at this stop (its big button goes on to the ferry / the fort / home) ----
     if (peopleUI.has(leg)) { const on = await peopleUI.visit(leg); if (!on || screen !== 'stop' || stale()) return; }
     let dig = null;
@@ -1573,8 +1642,44 @@ async function boot() {
     const opt = fork.options.find((o) => o.id === pick);
     if (res && res.ok && opt) toast(`${opt.name}!`);
     lastFork = { id: fork.id, pick, ok: !!(res && res.ok) };
+    if (res && res.ok) labReport({ event: 'choice', n: 1 });          // v1.6 (The Lab): a fork taken
     prepareVoice();                          // the plan changed: the next legs' clips, this leg first
     return true;
+  }
+  // ---- v1.6 (The Lab): the six choice moments (journey/choices.js, ui/choicePanel.js) ----
+  /** The choice waiting at this stop, if any: resolves false when the child left (it stays pending: the title says "A choice at Ash Hollow"; moving on takes the plain way). */
+  async function askChoice(leg) {
+    const J = save.journey;
+    let c = null;
+    try { c = JA.choiceAt(J); } catch (e) { console.warn('[WagonWest] choiceAt', e); }
+    if (!c) return true;
+    const pick = await choicePanel.run(c);
+    if (pick == null) { if (screen === 'stop') go('title'); return false; }
+    let r = null;
+    try { r = JA.applyChoice(J, c.id, pick); } catch (e) { console.warn('[WagonWest] applyChoice', e); }
+    if (r && !r.ok && r.why === 'cash') { try { r = JA.applyChoice(J, c.id, 'a'); } catch (_) { r = null; } }       // (the purse was spent while the card was open: the plain way)
+    app.persist(); refreshCash();
+    lastChoice = { id: c.id, pick, ok: !!(r && r.ok), result: r || null };
+    if (r && r.ok) {
+      labReport({ event: 'choice', n: 1 });
+      if (r.option === 'b') {
+        const line = r.kind === 'guide' ? CHOICE_LINES.guide : r.soaked ? CHOICE_LINES.shortcutSoaked : CHOICE_LINES.shortcutDry;
+        effectToast(r.soaked ? `${line.text} (${r.soakedLb} lb of flour)` : line.text, line.say);
+        if (r.fee) Audio.cash();
+      }
+    }
+    return true;
+  }
+  let lastChoice = null;
+  /** The choice waiting at the stop the party is at ({ id, at, name }), or null: the title says "A choice at Ash Hollow". */
+  function pendingChoice() {
+    const J = save.journey;
+    if (!J || J.done || !save.trip || save.trip.stage !== 'stop') return null;
+    let c = null;
+    try { c = JA.choiceAt(J); } catch (_) { c = null; }
+    if (!c) return null;
+    const l = LEG_BY_ID[c.at] || {};
+    return { id: c.id, at: c.at, name: (l.stop && l.stop.name) || l.name || 'the stop' };
   }
   let lastFork = null;
   /** The creek: panning (and the cradle at Coloma) with the gold pouch; when Parents turned panning off, the gold is given as a find with one card. */
@@ -1618,7 +1723,10 @@ async function boot() {
     // the streak (Spell Jump's rule): a day counts once a leg is finished; a milestone adds a crate
     const proxy = { streak: save.streak, crates: { earned: 0, opened: 0 }, cosmetics: sjCosmetics(), xp: 0 };
     try { const out = completeDay(proxy, now); save.streak = proxy.streak; if (out.crates) { save.crates.queue.push('silver'); save.crates.earned += 1; toast(`${out.count}-day streak! A crate`); } } catch (e) { console.warn('[WagonWest] streak', e); }
+    labReport({ event: 'day', n: 1 });                                               // v1.6 (The Lab): beside the day's streak
     logPlay(save, { legs: 1 }, now);
+    labReport({ event: 'leg', n: 1 });                                               // v1.6 (The Lab): the arrival, and each star earned on the leg
+    for (const lit of stars) if (lit) labReport({ event: 'star', n: 1 });
     save.legsLog = [...save.legsLog, { at: now, leg: leg.id, season: J.season, stars: stars.filter(Boolean).length, markers: num(stats.markers), markersRight: num(stats.markersRight), problems: num(stats.problems), problemsRight: num(stats.problemsRight), words: num(stats.words), wordsRight: num(stats.wordsRight) }].slice(-40);
     const tokens = Math.max(0, num(J.tokens) - num(save.trip && save.trip.tokens0));
     const goldGain = Math.max(0, num(J.gold) - num(save.trip && save.trip.gold0));
@@ -1645,6 +1753,10 @@ async function boot() {
       tokens, sticker, crate: a.crate || null, stats, food: num(J.food), home: home || done };
     if (result.cash.total !== result.cash.arrival + result.cash.stars) result.cash.total = result.cash.arrival + result.cash.stars;
     result.deeds = legDeeds;               // (v1.2 app two)
+    // v1.6 (The Lab): the cliffhanger: the stop the journey is on now (nextLeg moved it) with its painting, one true line and "Next time: …"; none at a trail's end. After the third leg
+    // finished on a local day the card adds the gentle stop line (nothing is locked: "Next leg" stays).
+    try { result.preview = done ? null : JA.nextStopPreview(J); } catch (e) { result.preview = null; console.warn('[WagonWest] nextStopPreview', e); }
+    result.stopToday = !!result.preview && JA.stopToday(save.play, dayKeyOf(now));
     // v1.5: the tier's badge, the bonus cards, the gold found on a digging leg, the sets completed, the bank card
     result.tier = TIER_BY_ID[J.tier] || null; result.year = J.year;
     result.bonus = bonus; result.sets = sets;
@@ -2870,6 +2982,7 @@ async function boot() {
     const p = PIECE_BY_ID[pieceId];
     app.persist(); refreshCash(); Audio.cash();
     lastBuild = { site: siteId, piece: pieceId, count: res.count, paid: res.paid };
+    labReport({ event: 'farm', n: 1 });                                              // v1.6 (The Lab): a homestead piece built
     toast(`${p ? p.name : 'The piece'}: built!`);
     if (res.say) app.sayLater(res.say);
     if (pieceId === 'name-plate' && save.farm.sites[siteId].name) { const t = `${save.farm.sites[siteId].name}!`; app.voiceFor([t], 1500); app.sayLater(t); }
@@ -2966,6 +3079,7 @@ async function boot() {
   $('#btn-farm').addEventListener('click', () => { const ids = SITES.map((s) => s.id).filter((id) => save.farm.sites[id]); if (ids.length) openFarm(screens.farm.site && save.farm.sites[screens.farm.site] ? screens.farm.site : ids[0]); });
   $('#btn-outfit').addEventListener('click', () => go('outfit', save.journey ? { tab: 'look' } : { fresh: true }));
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'sync' }));
+  $('#btn-lab').addEventListener('click', () => labBridge.openHome({}));       // v1.6 (The Lab): the shared page across the games
   $('#btn-player').addEventListener('click', () => go('players'));
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));
   for (const b of $$('[data-camp]')) b.addEventListener('click', () => { spellPanel.cancel(); go('title'); });
@@ -3018,6 +3132,8 @@ async function boot() {
     peopleUI, deedPop, get v2() { return { play: v2.play ? v2.play.fn : null, raft: v2.raft ? { ...v2.raft } : null, sail: v2.sail ? { ...v2.sail } : null }; },    // (v1.2 app two)
     // ---- v1.5 ----
     forkPanel, diggings, yearPicker: screens.year, farmUI: screens.farm,
+    // ---- v1.6 (The Lab) ----
+    choicePanel, labHud, labResults, labBridge, get lastChoice() { return lastChoice; }, get lastCheer() { return lastCheer; }, labLooks, labReport: (ev) => labReport(ev),
     get lastFork() { return lastFork; }, get lastBuild() { return lastBuild; }, get lastPlacement() { return lastPlacement; },
     /** Tests only: a new journey on a route / tier / branches at a year (the ledger's journey number), at mile 0 on its first leg. */
     newJourney({ route = 'emigrant', tier = 'rookie', branches = {}, year = null, journeyN: jn = null, companions = null, family = 'own' } = {}) {

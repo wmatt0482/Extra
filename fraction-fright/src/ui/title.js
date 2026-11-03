@@ -3,6 +3,9 @@
 // the chosen style, the pumpkins planted after final waves and a few drops of the chosen goo. Procedural, no images.
 import { itemOf } from '../data/looks.js';
 import { neighboursFor } from '../meta/economy.js';
+import { finishPrims, toSvg, topperPrims, towerPrims } from '../meta/yardArt.js';
+
+const TOWER_STAGE = { lookout: 1, watchtower: 2, beacon: 3 };
 
 export const MAX_SHOWN = 30;
 
@@ -36,6 +39,22 @@ function fence(style, y) {
     for (let row = 0; row < 3; row++) for (let x = row % 2 ? -30 : 0; x < 1600; x += 60) out += `<rect x="${x + 2}" y="${y - 28 + row * 30}" width="56" height="27" rx="4" fill="${row % 2 ? '#6f6a66' : '#7d7773'}" stroke="#3a3734" stroke-width="3"/>`;
     return out;
   }
+  if (style === 'brick') {
+    let out = `<rect x="0" y="${y - 30}" width="1600" height="92" fill="${f.color}" stroke="#3a1f18" stroke-width="3"/>`;
+    for (let row = 0; row < 5; row++) {
+      out += `<path d="M0 ${y - 30 + row * 18.4} H1600" stroke="#e9dcc6" stroke-width="2" opacity=".5"/>`;
+      for (let x = (row % 2 ? 22 : 0); x < 1600; x += 44) out += `<path d="M${x} ${y - 30 + row * 18.4} v18.4" stroke="#e9dcc6" stroke-width="2" opacity=".5"/>`;
+    }
+    return out + `<rect x="-4" y="${y - 38}" width="1608" height="12" rx="3" fill="#7d7773" stroke="#3a3734" stroke-width="3"/>`;
+  }
+  if (style === 'castle') {
+    let out = `<rect x="0" y="${y - 30}" width="1600" height="92" fill="${f.color}" stroke="#3a3734" stroke-width="3"/>`;
+    for (let x = 0; x < 1600; x += 60) out += `<rect x="${x + 2}" y="${y - 28}" width="56" height="40" fill="#fff" opacity=".07"/><rect x="${x + 2}" y="${y + 18}" width="56" height="40" fill="none" stroke="#3a3734" stroke-width="2" opacity=".6"/>`;
+    for (let x = 8; x < 1600; x += 60) out += `<rect x="${x}" y="${y - 52}" width="34" height="24" fill="${f.color}" stroke="#3a3734" stroke-width="3"/>`;
+    for (let x = 50; x < 1600; x += 180) out += `<rect x="${x}" y="${y - 6}" width="7" height="30" fill="#1b1a24"/>`;
+    for (let x = 120; x < 1600; x += 400) out += `<path d="M${x} ${y - 28} h34 v64 l-17 -16 l-17 16 Z" fill="#7b3fe4" stroke="#3a3734" stroke-width="3"/><rect x="${x}" y="${y - 28}" width="34" height="6" fill="#ffd23f"/>`;
+    return out;
+  }
   if (style === 'iron') {
     let out = `<rect x="0" y="${y - 22}" width="1600" height="7" fill="#26252b"/><rect x="0" y="${y + 22}" width="1600" height="7" fill="#26252b"/>`;
     for (let x = 6; x < 1600; x += 30) out += `<rect x="${x}" y="${y - 34}" width="6" height="96" fill="#26252b"/><path d="M${x - 4} ${y - 32} L${x + 3} ${y - 50} L${x + 10} ${y - 32} Z" fill="#26252b"/>`;
@@ -58,7 +77,7 @@ function pumpkin(x, y, s = 1) {
 }
 
 /** The scene's SVG markup for a save. */
-export function yardSvg(save) {
+export function yardSvg(save, looks = {}) {
   const goo = (itemOf('goo', save.yard.goo) || itemOf('goo', 'lime')).color;
   // a sickly moon, dead trees, a street of tired houses (one window boarded up per house), cracked asphalt
   let s = '<circle cx="1260" cy="190" r="78" fill="#d9d8b0" opacity=".85"/><circle cx="1236" cy="172" r="12" fill="#b9b78f" opacity=".7"/><circle cx="1284" cy="214" r="8" fill="#b9b78f" opacity=".6"/>';
@@ -81,6 +100,12 @@ export function yardSvg(save) {
     s += neighbour(i, x, y, 1.6);
   }
   s += `<g class="fence">${fence(save.yard.fence, 820)}</g>`;
+  if (looks.fence) s += toSvg(finishPrims(looks.fence, 1608, 92), -4, 790, 1, 'lab-fence');
+  const stage = TOWER_STAGE[save.yard.tower] || 0;       // the tower (Lab integration v1), right of the middle so the houses stay clear
+  if (stage) {
+    const tw = towerPrims(stage), k = [0, 1.15, 1.3, 1.45][stage];
+    s += `<g class="tower" data-stage="${stage}">${toSvg(tw.prims, 1340, 870, k)}${looks.tower ? toSvg(topperPrims(looks.tower, tw), 1340, 870, k, 'lab-tower') : ''}</g>`;
+  }
   const pk = Math.min(12, save.pumpkins);
   for (let i = 0; i < pk; i++) s += pumpkin(120 + i * 120, 880, 1);
   s += `<g opacity=".85"><ellipse cx="1460" cy="872" rx="38" ry="12" fill="${goo}"/><ellipse cx="1502" cy="886" rx="14" ry="6" fill="${goo}"/></g>`;
@@ -90,9 +115,9 @@ export function yardSvg(save) {
   return { svg: s, neighbours: n, shown };
 }
 
-export function drawYard(el, save) {
+export function drawYard(el, save, looks = {}) {
   if (!el || !save) return null;
-  const out = yardSvg(save);
+  const out = yardSvg(save, looks);
   el.innerHTML = out.svg;
   el.dataset.neighbours = String(out.neighbours);
   el.dataset.pumpkins = String(save.pumpkins);

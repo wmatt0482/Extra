@@ -10,6 +10,9 @@
 
 import { TAU, clamp, lerp, mulberry32, shade, withAlpha, popScale, hash2 } from './util.js';
 import { roundRect, paintRoadBand } from './road.js';
+import { finishPrims, paint2d, topperPrims, towerPrims } from '../meta/yardArt.js';
+
+const TOWER_STAGE = { lookout: 1, watchtower: 2, beacon: 3 };
 
 export const OUT = '#120f18';
 const FONT = '900 {S}px Impact, "Arial Narrow", "Helvetica Neue", Arial, sans-serif';
@@ -70,7 +73,7 @@ export function palette(look = {}) {
   return {
     sky, moon: '#efe3b4', moonDark: '#cdbf8c', hillFar: '#1a1228', hillNear: '#100b1b', grave: '#5d5a70', gate: '#1a1822',
     grass: look.grass || '#1f3326', grassDark: '#121f17', dirt: '#2a2420',
-    fence: look.fenceColor || (look.fence === 'stone' ? '#4a4858' : look.fence === 'picket' ? '#8c8578' : '#1b1a24'),
+    fence: look.fenceColor || (look.fence === 'stone' ? '#4a4858' : look.fence === 'picket' ? '#8c8578' : look.fence === 'brick' ? '#9a5a45' : look.fence === 'castle' ? '#8d8f99' : '#1b1a24'),
     goo: look.goo || '#8cff1a', fog: '#8d82b0', rust: '#b8562a',
   };
 }
@@ -296,6 +299,36 @@ export function drawFence(ctx, view, road, fl, pal, style, pumpkins, lw, t, glow
     }
     ctx.fillRect(0, y0 + h * 0.3, view.W, 5); ctx.strokeRect(-2, y0 + h * 0.3, view.W + 4, 5);
     ctx.fillRect(0, y0 + h * 0.7, view.W, 5); ctx.strokeRect(-2, y0 + h * 0.7, view.W + 4, 5);
+  } else if (style === 'brick') {
+    // brick (Lab integration v1): staggered courses of warm brick under a stone cap
+    ctx.fillStyle = pal.fence;
+    roundRect(ctx, -4, y0, view.W + 8, h, 3); ctx.fill(); ctx.stroke();
+    const rows = 4, rh = h / rows, bw = 26;
+    ctx.strokeStyle = withAlpha('#e9dcc6', 0.55); ctx.lineWidth = Math.max(1, lw * 0.8);
+    for (let r = 0; r < rows; r++) {
+      ctx.beginPath(); ctx.moveTo(0, y0 + r * rh); ctx.lineTo(view.W, y0 + r * rh); ctx.stroke();
+      for (let x = (r % 2 ? bw / 2 : 0); x < view.W; x += bw) { ctx.beginPath(); ctx.moveTo(x, y0 + r * rh); ctx.lineTo(x, y0 + (r + 1) * rh); ctx.stroke(); }
+    }
+    ctx.fillStyle = withAlpha('#000000', 0.12);
+    for (let r = 0; r < rows; r++) for (let x = (r % 2 ? bw / 2 : 0) + 3; x < view.W; x += bw * 2) ctx.fillRect(x, y0 + r * rh + 2, bw - 5, rh - 4);
+    ctx.strokeStyle = OUT; ctx.lineWidth = lw * 1.3; ctx.fillStyle = '#7d7773';
+    roundRect(ctx, -4, y0 - 5, view.W + 8, 8, 2); ctx.fill(); ctx.stroke();
+  } else if (style === 'castle') {
+    // castle: a grey curtain wall with battlements, arrow slits and purple banners
+    ctx.fillStyle = pal.fence;
+    roundRect(ctx, -4, y0, view.W + 8, h, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = withAlpha('#ffffff', 0.08);
+    for (let x = 0; x < view.W; x += 34) ctx.fillRect(x + 2, y0 + 3, 30, h * 0.45);
+    ctx.strokeStyle = withAlpha(OUT, 0.5); ctx.lineWidth = lw;
+    for (let x = 0; x < view.W; x += 34) { ctx.strokeRect(x + ((Math.floor(x / 34) % 2) ? 10 : 0), y0 + 4, 30, h * 0.4); ctx.strokeRect(x, y0 + h * 0.55, 30, h * 0.4); }
+    ctx.strokeStyle = OUT; ctx.lineWidth = lw * 1.3; ctx.fillStyle = pal.fence;
+    for (let x = 4; x < view.W; x += 34) { ctx.fillRect(x, y0 - 11, 20, 12); ctx.strokeRect(x, y0 - 11, 20, 12); }
+    ctx.fillStyle = '#1b1a24';
+    for (let x = 30; x < view.W; x += 102) ctx.fillRect(x, y0 + h * 0.2, 4, h * 0.5);
+    for (let x = 80; x < view.W; x += 230) {
+      ctx.fillStyle = '#7b3fe4'; ctx.beginPath(); ctx.moveTo(x, y0 + 2); ctx.lineTo(x + 18, y0 + 2); ctx.lineTo(x + 18, y0 + h * 0.8); ctx.lineTo(x + 9, y0 + h * 0.62); ctx.lineTo(x, y0 + h * 0.8); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#ffd23f'; ctx.fillRect(x, y0 + 2, 18, 3);
+    }
   } else {
     // wrought iron: a stone curb, two rails, spear-tipped bars, and a wooden repair patch
     ctx.fillStyle = '#2e2b3a'; roundRect(ctx, -4, y0 + h - 6, view.W + 8, 8, 2); ctx.fill(); ctx.stroke();
@@ -332,6 +365,30 @@ export function drawFence(ctx, view, road, fl, pal, style, pumpkins, lw, t, glow
   // jack-o'-lanterns on the ground in front of the fence
   const r = fl.pumpkinR;
   for (let i = 0; i < pumpkins; i++) drawPumpkin(ctx, px - 22 - i * (r * 2.9), y0 + h + r * 0.95, r, lw, 0.45 + 0.55 * glow, t + i);
+}
+/**
+ * The yard's Lab-integration art in the wave scene and the bonus round: the Lab's fence finish over whichever fence the yard has, then the
+ * tower (stages from look.tower) with its Lab topper, standing in front of the fence on the left, clear of the road's signs. Cosmetic only.
+ * look = { tower: 'none' | 'lookout' | 'watchtower' | 'beacon', labFence: name | null, labTower: name | null }.
+ */
+export function drawYardExtras(ctx, view, road, fl, kid, look, lw, t) {
+  if (look.labFence) paint2d(ctx, finishPrims(look.labFence, view.W + 8, fl.h), -4, fl.y0, 1, t, lw * 1.6);
+  const stage = TOWER_STAGE[look.tower] || 0;
+  if (!stage) return;
+  const tw = towerPrims(stage);
+  const baseY = kid ? kid.y : fl.bottom + 40;
+  // where it fits: in the left margin beside the road when there is one (landscape: up to the road band, clear of the "0" sign), else in
+  // the yard strip below the signs (portrait), never over a label or the number line
+  const margin = road.x0 - 22;
+  const wide = margin >= 34;
+  const avail = Math.max(60, baseY - (wide ? road.y - road.band : fl.y0 - 12));
+  const px = avail * [0, 0.62, 0.82, 1][stage];
+  const capW = wide ? margin : Math.max(30, (kid ? kid.x - 36 : 80) - 6);
+  const k = Math.min(px / tw.h, capW / tw.w);
+  const cx = wide ? margin / 2 + 2 : 6 + (tw.w * k) / 2;
+  const lwMax = lw * 1.6;
+  paint2d(ctx, tw.prims, cx, baseY, k, t, lwMax);
+  if (look.labTower) paint2d(ctx, topperPrims(look.labTower, tw), cx, baseY, k, t, lwMax);
 }
 export function drawPumpkin(ctx, x, y, r, lw, glow = 0.5, t = 0) {
   ctx.lineWidth = lw * 1.3; ctx.strokeStyle = OUT; ctx.lineJoin = 'round';

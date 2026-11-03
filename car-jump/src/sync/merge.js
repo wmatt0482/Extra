@@ -184,17 +184,24 @@ export function mergeSave(local, remote) {
 
 /**
  * The streak rule (v3.3, shared with Trail Blazer's save sync in v3.6.3): the streak with the later lastDay wins count /
- * lastDay (the same day: the higher count), best = max, shield days and counted days = union.
+ * lastDay (the same day: the higher count), best = max, shield days and counted days = union. The Lab's optional spare-freeze
+ * lists (bonusEarnedDays / bonusUsedDays) are unioned when either side has them.
  */
 export function mergeStreak(sa, sb) {
   const a = obj(sa), b = obj(sb);
   const da = typeof a.lastDay === 'string' ? a.lastDay : '', db = typeof b.lastDay === 'string' ? b.lastDay : '';
   const win = da !== db ? (da > db ? a : b) : (num(a.count) >= num(b.count) ? a : b);   // ISO days compare as strings
-  return {
+  const out = {
     count: num(win.count), lastDay: win.lastDay || '', best: Math.max(num(a.best), num(b.best), num(win.count)),
     shieldAvailableWeek: win.shieldAvailableWeek || '',
     shieldUsedDays: uniq(a.shieldUsedDays, b.shieldUsedDays).sort(), days: uniq(a.days, b.days).sort(),
   };
+  // The Lab (lab/SPEC.md §3.5): the optional spare-freeze lists are unioned when either side has them; without them the result is as before
+  if ([a, b].some((x) => Array.isArray(x.bonusEarnedDays) || Array.isArray(x.bonusUsedDays))) {
+    out.bonusEarnedDays = uniq(a.bonusEarnedDays, b.bonusEarnedDays).sort().slice(-60);
+    out.bonusUsedDays = uniq(a.bonusUsedDays, b.bonusUsedDays).sort().slice(-60);
+  }
+  return out;
 }
 
 // v3.3 fields; s = a clone of the later doc (modified in place), o = the other doc

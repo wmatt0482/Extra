@@ -7,6 +7,9 @@
 //               spent), shieldUsedDays: [day], days: [day counted]}. A day counts once the daily mission (8 words)
 //               or the Friday Test is complete. One shield per ISO week covers one missed day (the week of the
 //               missed day); it is applied when the player next opens the game. Two misses in a week break it.
+//               v1 of The Lab (lab/SPEC.md §3.5) adds two optional lists to the same object, for every instance of it: bonusEarnedDays
+//               (days a day's quests earned a spare freeze) and bonusUsedDays (missed days a spare freeze covered). A spare covers a
+//               missed day whose ISO week's shield is already spent. Streaks without the lists behave exactly as before.
 // save.xp       lifetime speller XP (XP in cosmetics.js); the level comes from LEVEL_XP.
 // save.crates   {earned, opened, sinceCosmetic} monotonic counters; unopened = earned − opened.
 // save.cosmetics {skins, stickers, equipped: {carId: {skin, sticker}}}
@@ -45,20 +48,53 @@ export const defaultCrates = () => ({ earned: 0, opened: 0, sinceCosmetic: 0 });
 
 // ---------- daily streak ----------
 const shieldFreeIn = (used, week) => !used.some((d) => weekOfDay(d) === week);
+const lenOf = (a) => (Array.isArray(a) ? a.length : 0);
+/** Spare freezes banked: earned days minus used days (0 for a streak without the two optional lists). */
+export const bonusBanked = (st) => Math.max(0, lenOf(st && st.bonusEarnedDays) - lenOf(st && st.bonusUsedDays));
+// keep both lists at 60 days; dropping the oldest earned days drops as many of the oldest used days, so the difference holds
+function trimBonus(st) {
+  let e = st.bonusEarnedDays, u = st.bonusUsedDays;
+  if (e.length > 60) { const k = e.length - 60; e = e.slice(k); u = u.slice(Math.min(k, u.length)); }
+  st.bonusEarnedDays = e;
+  st.bonusUsedDays = u.slice(-60);
+}
+/** A day's quests were all finished: bank a spare freeze. False when one is already banked or one was earned in this ISO week. */
+export function earnBonusFreeze(st, now) {
+  const today = dayKey(now), wk = weekOfDay(today);
+  const earned = Array.isArray(st.bonusEarnedDays) ? st.bonusEarnedDays : [];
+  if (bonusBanked(st) >= 1 || earned.some((d) => weekOfDay(d) === wk)) return false;
+  st.bonusEarnedDays = [...earned, today].sort();
+  if (!Array.isArray(st.bonusUsedDays)) st.bonusUsedDays = [];
+  trimBonus(st);
+  return true;
+}
+/** The freezes the player has right now: the week's shield (ready or spent) and the spare freezes banked. */
+export function streakFreezes(st, now) {
+  return { weeklyReady: shieldFreeIn((st && st.shieldUsedDays) || [], isoWeek(now)), bonus: bonusBanked(st) };
+}
 
-// The missed days strictly between `from` and `to`: each must be covered by a shield already used on it, or by the
-// unused shield of its own ISO week. Returns {ok, shields: [days that would use a new shield]}.
+// The missed days strictly between `from` and `to`: each must be covered by a shield already used on it, by a spare
+// freeze already used on it, by the unused shield of its own ISO week, or (the Lab's bonus freeze) by a banked spare.
+// Returns {ok, shields: [days that would use a new shield], bonus: [days that would use a banked spare]}.
 function coverGap(st, from, to) {
-  const used = st.shieldUsedDays.slice(), shields = [];
+  const used = st.shieldUsedDays.slice(), shields = [], bonus = [];
   const n = dayDiff(from, to);
-  if (n > 60) return { ok: false, shields: [] };
+  if (n > 60) return { ok: false, shields: [], bonus: [] };
+  const spent = Array.isArray(st.bonusUsedDays) ? st.bonusUsedDays : [];
+  let spare = bonusBanked(st);
   for (let i = 1; i < n; i++) {
     const k = addDays(from, i);
-    if (used.includes(k)) continue;
-    if (!shieldFreeIn(used, weekOfDay(k))) return { ok: false, shields: [] };
-    used.push(k); shields.push(k);
+    if (used.includes(k) || spent.includes(k)) continue;
+    if (shieldFreeIn(used, weekOfDay(k))) { used.push(k); shields.push(k); continue; }
+    if (spare > 0) { spare -= 1; bonus.push(k); continue; }
+    return { ok: false, shields: [], bonus: [] };
   }
-  return { ok: true, shields };
+  return { ok: true, shields, bonus };
+}
+function useBonus(st, days) {
+  st.bonusUsedDays = [...(Array.isArray(st.bonusUsedDays) ? st.bonusUsedDays : []), ...days].sort();
+  if (!Array.isArray(st.bonusEarnedDays)) st.bonusEarnedDays = [];
+  trimBonus(st);
 }
 function stampShieldWeek(st, now) {
   const wk = isoWeek(now);
@@ -81,6 +117,7 @@ export function refreshStreak(save, now) {
   if (isDayKey(st.lastDay) && st.count > 0) {
     const g = coverGap(st, st.lastDay, dayKey(now));
     if (g.ok && g.shields.length) { shields = g.shields; st.shieldUsedDays = [...st.shieldUsedDays, ...shields].sort().slice(-60); }
+    if (g.ok && g.bonus.length) { useBonus(st, g.bonus); shields = shields.concat(g.bonus); }
   }
   stampShieldWeek(st, now);
   return shields;
@@ -99,7 +136,10 @@ export function completeDay(save, now) {
   if (st.lastDay === today || (isDayKey(st.lastDay) && dayDiff(st.lastDay, today) < 0)) return out;
   if (isDayKey(st.lastDay) && st.count > 0) {
     const g = coverGap(st, st.lastDay, today);
-    if (g.ok) { st.count += 1; out.shields = g.shields; st.shieldUsedDays = [...st.shieldUsedDays, ...g.shields].sort().slice(-60); }
+    if (g.ok) {
+      st.count += 1; out.shields = g.shields; st.shieldUsedDays = [...st.shieldUsedDays, ...g.shields].sort().slice(-60);
+      if (g.bonus.length) { out.bonus = g.bonus; useBonus(st, g.bonus); }
+    }
     else st.count = 1;
   } else st.count = 1;
   st.lastDay = today;
@@ -337,6 +377,10 @@ export function normalizeStreak(raw) {
   s.shieldAvailableWeek = typeof raw.shieldAvailableWeek === 'string' && /^\d{4}-W\d{2}$/.test(raw.shieldAvailableWeek) ? raw.shieldAvailableWeek : '';
   s.shieldUsedDays = days(raw.shieldUsedDays, 60);
   s.days = days(raw.days, 120);
+  if (Array.isArray(raw.bonusEarnedDays) || Array.isArray(raw.bonusUsedDays)) {      // The Lab's spare freezes: kept only when present
+    s.bonusEarnedDays = days(raw.bonusEarnedDays, 60);
+    s.bonusUsedDays = days(raw.bonusUsedDays, 60);
+  }
   return s;
 }
 export function normalizeCosmetics(raw, carIds) {

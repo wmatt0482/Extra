@@ -2,7 +2,7 @@
 // may speak. It is plain data with no imports, so physics, missions, the scene, the app and the Node tests all read the
 // same numbers. The later sites and machines described in SPEC.md are deliberately absent until they are built.
 /** The game version reported by pings and the Parent Zone (the service worker has its own cache version). */
-export const VERSION = '0.4.0';
+export const VERSION = '0.5.0';
 /** The five paint colors for loads: red first, because the jobs say "red loads"; also the confetti colors. */
 export const COLORS = ['#c6412f', '#e9aa26', '#287da5', '#64816b', '#87909c'];
 /** Toy shapes. size is [width, height, depth] in metres (a cylinder uses width as its diameter), mass in kilograms.
@@ -50,7 +50,37 @@ export const MACHINES = {
     reach: [3.5, 9],
     hint: 'I and K lift the magnet. J and L swing the boom.',
   },
+  // The two Lab machines (0.5): bought with Lab coins, so availableMachines() (app/rounds.js) only lists them for a
+  // builder who owns bc.veh.<kind>. The jobs never use them; they work in the sandbox. Their physics, model and card
+  // rows are in physics.mjs, scene/machines.js and app/hud.js.
+  dump: {
+    name: 'DT-04',
+    label: 'Dump truck',
+    color: '#e1b21c',
+    speed: 3.3,
+    turn: 0.8,
+    // The lift joint is the bed's tip: 0.7 is flat, the top of the range is fully tipped (physics.mjs DUMP).
+    height: [0.7, 2.5],
+    reach: [0, 0],
+    lab: true,
+    hint: 'Raise the lift to tip the bed. Load it first, then roll forward as the blocks pour out.',
+  },
+  fork: {
+    name: 'FL-05',
+    label: 'Forklift',
+    color: '#ee7d1a',
+    speed: 2.6,
+    turn: 1.5,
+    // The lift joint is the height of the fork tops above the floor.
+    height: [0.1, 3.3],
+    reach: [0, 0],
+    lab: true,
+    hint: 'Lower the forks, line up with a pallet opening and drive in slowly. Then lift.',
+  },
 };
+/** The Lab machines, in card order, and the Lab item id that unlocks each. */
+export const LAB_MACHINES = ['dump', 'fork'];
+export const labVehicleId = (kind) => `bc.veh.${kind}`;
 // Small builders for the job table: a toy resting just above the ground, a ghost outline to fill, and a supply of
 // toys laid out in rows of three in the loading area, clear of the pad.
 const toy = (x, z, type = 'cube', color = COLORS[0]) => ({ type, color, x, y: TOYS[type].size[1] / 2 + 0.08, z });
@@ -181,6 +211,107 @@ export const ROUNDS = [
     unlock: 'wrecking',
   },
 ];
+// ---- The four Lab blueprints (0.5): jobs 101 to 104 ----------------------------------------------------------------
+// Ghost-outline builds like jobs 3 and 4, with new ids so jobs 1 to 10 are untouched. They are unlocked with Lab coins
+// (bc.bp.<key>, see app/title.js and labBridge.owns) and use only the three machines everyone has, so a builder who
+// has bought a blueprint can always finish it. Each carries a build challenge with a target, never a clock:
+//   { kind: 'grabs',  par: n }       grab-and-release moves from the start of the job; "Grabs 4 · par 9"
+//   { kind: 'height', metres: m }    the tallest settled block top reaches m at some point; "Height 3.6 m · target 6 m"
+// Meeting it adds a "Neat build!" badge to the finished sheet and a `challenge` event to the Lab; missing it changes
+// nothing and says nothing. A blueprint's `price` mirrors the Lab catalogue (a Node test compares them).
+const bp = (id, key, price, rest) => ({ ...base, id, blueprint: key, price, lab: `bc.bp.${key}`, ...rest });
+export const BLUEPRINTS = [
+  bp(101, 'lighthouse', 2400, {
+    title: 'Lighthouse',
+    goal: 'Build the lighthouse on its blueprint: a slab, three blocks and a barrel for the lamp.',
+    machines: ['crane'],
+    toys: [
+      toy(-5, 9.5, 'slab'),
+      toy(-6, 3),
+      toy(-3.3, 3),
+      toy(-0.6, 3),
+      toy(-0.6, 6, 'barrel', COLORS[2]),
+      toy(-6, 6),
+      toy(-3.3, 6),
+    ],
+    ghosts: [
+      ghost(4, 0.275, 5, 'slab'),
+      ghost(4, 1.15, 5),
+      ghost(4, 2.35, 5),
+      ghost(4, 3.55, 5),
+      ghost(4, 4.9, 5, 'barrel'),
+    ],
+    flag: { x: 6.6, z: 5, height: 6.4 },
+    challenge: { kind: 'height', metres: 6.4 },
+    reward: 'Blueprint complete',
+  }),
+  bp(102, 'windmill', 2400, {
+    title: 'Windmill',
+    goal: 'Build the windmill: a three-block tower, a beam across the top for the sails and a door.',
+    machines: ['excavator'],
+    toys: [toy(-6, 3), toy(-3.3, 3), toy(-0.6, 3), toy(-6, 6), toy(-5, 9, 'beam')],
+    ghosts: [
+      ghost(4, 0.6, 5),
+      ghost(4, 1.8, 5),
+      ghost(4, 3.0, 5),
+      ghost(4, 0.6, 3.75),
+      ghost(4, 3.925, 5, 'beam'),
+    ],
+    challenge: { kind: 'grabs', par: 8 },
+    reward: 'Blueprint complete',
+  }),
+  bp(103, 'castlegate', 3600, {
+    title: 'Castle gate',
+    goal: 'Build the gate: two towers, a beam across them and a block on each end.',
+    machines: ['excavator', 'crane'],
+    toys: [
+      ...supply(6),
+      toy(-5, 9, 'beam'),
+    ],
+    ghosts: [
+      ghost(2, 0.6, 5),
+      ghost(5, 0.6, 5),
+      ghost(2, 1.8, 5),
+      ghost(5, 1.8, 5),
+      ghost(3.5, 2.725, 5, 'beam'),
+      ghost(2, 3.65, 5),
+      ghost(5, 3.65, 5),
+    ],
+    challenge: { kind: 'grabs', par: 10 },
+    reward: 'Blueprint complete',
+  }),
+  bp(104, 'arch', 3600, {
+    title: 'Stone arch',
+    goal: 'Build the arch: two barrel-and-block columns, a beam and a keystone on top.',
+    machines: ['excavator'],
+    toys: [
+      toy(-6, 3, 'barrel', COLORS[2]),
+      toy(-3.3, 3, 'barrel', COLORS[2]),
+      toy(-0.6, 3),
+      toy(-6, 6),
+      toy(-3.3, 6),
+      toy(-0.6, 6),
+      toy(-5, 9, 'beam'),
+    ],
+    ghosts: [
+      ghost(2, 0.75, 5, 'barrel'),
+      ghost(5, 0.75, 5, 'barrel'),
+      ghost(2, 2.1, 5),
+      ghost(5, 2.1, 5),
+      ghost(3.5, 3.025, 5, 'beam'),
+      ghost(3.5, 3.95, 5),
+    ],
+    flag: { x: 7, z: 5, height: 5.6 },
+    challenge: { kind: 'height', metres: 5.6 },
+    reward: 'Blueprint complete',
+  }),
+];
+/** The ten jobs and the four blueprints, by id. */
+export const ALL_JOBS = [...ROUNDS, ...BLUEPRINTS];
+export const findJob = (id) => ALL_JOBS.find((r) => r.id === id) || null;
+/** True for the Lab blueprint jobs (ids 101 to 104). */
+export const isBlueprint = (r) => !!r?.blueprint;
+
 /** The free-play yard. The app replaces machines with the ones this builder has earned. */
 export const SANDBOX = {
   ...base,
@@ -197,6 +328,16 @@ export const SANDBOX = {
   ],
   toys: [toy(-7, 6.5), toy(-2, 6.5, 'beam'), toy(3.5, 6.5, 'barrel', COLORS[2])],
 };
+/** Where the Lab machines start in the sandbox (the three originals keep SANDBOX.spawns): in a row behind the others,
+ *  facing the striped bay. The truck is long, so it starts further back. */
+export const LAB_SPAWNS = { dump: [-9, -8], fork: [-2, -8] };
+/** The sandbox start positions for `machines` (kinds in card order): the originals by position in the list as always,
+ *  each Lab machine at its own place. */
+export const sandboxSpawns = (machines) => {
+  let base = 0;
+  return machines.map((k) => LAB_SPAWNS[k] || SANDBOX.spawns[base++]);
+};
+
 /** One-line hints, introduced one control at a time (the HUD shows them; the voice reads each the first time a builder
  *  sees it). Every hint the game shows is named here so the voice can have a clip ready for its exact text; release,
  *  look, hop and reset are the later hints of the introduction order and are not shown yet, so they are not prepared. */
@@ -212,6 +353,11 @@ export const HINT = {
   hop: 'Press E to hop into another machine.',
   reset: 'You can reset the blocks whenever you like.',
   resume: 'All set. Resume!',
+  // Coaching for the two Lab machines (app/rounds.js coach()): each is shown at most once a job or sandbox visit.
+  forkLower: 'Lower the forks to the floor before you drive in.',
+  forkAlign: 'Line the forks up with the openings in the pallet.',
+  forkIn: 'The forks are in. Lift gently, and tilt back to hold the load.',
+  bedLoaded: 'Raise the lift to tip the bed, and roll forward as the load pours out.',
 };
 export const HINTS = [HINT.drive, HINT.lift, HINT.grab, HINT.release, HINT.look, HINT.hop, HINT.reset];
 /** The sandbox's four terrain stamps and the hint shown after one is chosen (tray.js builds the same sentence). */
@@ -225,6 +371,9 @@ export const TOUCH_TEXT = {
   [MACHINES.skid.hint]: 'Drag the left stick to drive. This skid steer turns on the spot.',
   [MACHINES.excavator.hint]: 'Drag the right stick up to lift. Left and right reach out and in.',
   [MACHINES.crane.hint]: 'Drag the right stick up and down to lift the magnet. Left and right swings the boom.',
+  [MACHINES.dump.hint]: 'Drag the right stick up to tip the bed. Load it first, then roll forward as the blocks pour out.',
+  [MACHINES.fork.hint]: 'Lower the forks, line up with a pallet opening and drive in slowly. Then drag the right stick up.',
+  [HINT.bedLoaded]: 'Drag the right stick up to tip the bed, and roll forward as the load pours out.',
   [HINT.drive]: 'Try dragging the left stick to drive.',
   [HINT.lift]: 'Try dragging the right stick to lift your tool.',
   [HINT.hop]: 'Tap Hop to jump into another machine.',
@@ -241,6 +390,7 @@ export const SPOKEN_TOASTS = [
   'Racing stripes!',
   'Material limit reached. Save the site or clear room for more.',
   'Try a clear patch. There is room for twelve terrain pieces.',
+  'Neat build!',
 ];
 
 // ---- What the voice says -------------------------------------------------------------------------------------------
@@ -271,9 +421,15 @@ export function speakable(text) {
     .trim();
 }
 /** Said when a job (or the sandbox, id 0) starts: "Job three. Foundation grid. Place the three blocks on ..." */
-export const jobIntro = (r) => speakable(r.id ? `Job ${NUMBER_WORDS[r.id]}. ${r.title}. ${r.goal}` : `${r.title}. ${r.goal}`);
+export const jobIntro = (r) =>
+  speakable(
+    r.blueprint ? `Blueprint. ${r.title}. ${r.goal}` : r.id ? `Job ${NUMBER_WORDS[r.id]}. ${r.title}. ${r.goal}` : `${r.title}. ${r.goal}`,
+  );
 /** Said when the reward sheet opens. */
-export const jobDoneLine = (r) => `Job complete. You unlocked ${REWARD_SAY[r.unlock]}.`;
+export const jobDoneLine = (r) =>
+  r.blueprint ? 'Blueprint complete. Well built!' : `Job complete. You unlocked ${REWARD_SAY[r.unlock]}.`;
+/** Said instead when a blueprint's build challenge was met. */
+export const NEAT_LINE = 'Blueprint complete. Neat build!';
 /** Said by the "read the job aloud" button. */
 export const jobGoalLine = (r) => speakable(r.goal);
 
@@ -283,7 +439,7 @@ const machineHints = Object.values(MACHINES).map((m) => speakable(m.hint));
  *  voice.js prepares these at builder select. A runtime-built line must be assembled from these or prepared first. */
 export const SPOKEN = {
   /** Lines for job `r`: the intro, the plain goal (repeat button) and the reward line. */
-  job: (r) => [jobIntro(r), jobGoalLine(r), ...(r.unlock ? [jobDoneLine(r)] : [])],
+  job: (r) => [jobIntro(r), jobGoalLine(r), ...(r.unlock || r.blueprint ? [jobDoneLine(r)] : [])],
   fixed: [
     ...machineHints,
     ...[HINT.drive, HINT.lift, HINT.grab, HINT.carry, HINT.raise, HINT.tilt, HINT.resume].map(speakable),
@@ -295,7 +451,10 @@ export const SPOKEN = {
     ...SPOKEN_TOASTS,
     jobIntro(SANDBOX),
     jobGoalLine(SANDBOX),
+    // the Lab machines and blueprints
+    ...[HINT.forkLower, HINT.forkAlign, HINT.forkIn, HINT.bedLoaded].map(speakable),
+    NEAT_LINE,
   ],
 };
 /** Every spoken line (no duplicates). */
-export const VOICE_LINES = [...new Set([...ROUNDS.flatMap(SPOKEN.job), ...SPOKEN.fixed])];
+export const VOICE_LINES = [...new Set([...ALL_JOBS.flatMap(SPOKEN.job), ...SPOKEN.fixed])];

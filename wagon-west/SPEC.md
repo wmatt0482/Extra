@@ -2274,3 +2274,53 @@ Gold Road year on the real scene at iPhone size and writes `docs/PLAYTEST-1.5.md
 7. **Gold only builds the farm**, never buys store goods (so the trail economy of 1.3 is untouched). Agree?
 8. **Both first-trip forks** (Fort Hall and The Dalles) are on the very first journey, leaning Oregon and the raft; the South
    Pass fork waits for the second. Right amount of choice for a first trip?
+
+---
+
+## v1.6 — Lab integration (v1) (The Lab, `lab/SPEC.md` §4.4; the owner, Nov 2: "…a Wagon West cliffhanger… Wagon West's choice moments")
+> The contract is `lab/SPEC.md` §3.6 (the bridge) and §4.4 (this game). This section is the build record: what was made, where the build differs from the
+> spec, and the numbers the economy sim measured. The kid rules of §1 stand; `journey/economy.js` and the 1.3 TARGETS are untouched.
+
+### 1. What was built
+- **The bridge** (`src/meta/labBridge.js`): the template of §3.6 with `GAME = 'ww'` and one addition, `whenReady(fn)` (the title's Lab button and the Parent Zone's
+  row show once the Lab has loaded; never a dead button). Reports (`labReport` in `main.js`): `marker`, `problem` (both `applyProblem` sites; camp's own
+  Quick Draw facts are not the journey's), `word`, `leg` + one `star` each (in `finishLeg`, with `day` beside `completeDay`), `choice` (a fork taken, a choice
+  moment), `farm`; `beginRound` at every leg start. The Fort Derby's marker facts are not reported (§4.4 names the places; the derby is a mini-game, not a leg).
+- **Looks** (`src/meta/labLooks.js`, `src/scene/looks16.js`): 7 covers and 7 outfits (ids `ww.cover.*`, `ww.outfit.*`), drawn by `drawWagon` (the pattern clipped to the
+  bonnet, `wagon.coverLook`) and `drawPerson` (`look.outfit`, only on the first companion, the leader). `paintPreview` draws each for the shop. No look imitates any nation's dress.
+- **Trail Cheer**: `scene.cheer()` (about 1.2 s, a small confetti, the party's arms up; the mock scene counts it) and a toast, fired once the answer's panel has closed.
+- **HUD and results**: `#hud-lab` under the HUD's top row at the right (the row has no room for a fourth box on an iPhone), `#res-lab` under the pay lines.
+- **The cliffhanger**: `journey/preview.js` (`nextStopPreview`, `firstSentence`, `phraseFor`, `previewTexts`, `STOP_LINE`), `ui/results.js` (the card), `scene/backdrops.js`
+  `drawStopCard`. `finishLeg` computes it after `nextLeg` (the journey is already on the next leg: the preview is `currentLeg`), `result.stopToday` from `save.play[day].legs ≥ 3`.
+- **Six choices**: `content/choices.js`, `journey/choices.js` (`choicesAt`, `choiceAt`, `applyChoice`, `defaultChoice`, `cutOf`, `guidedOf`, `creditOf`, `mergeChoices`), `ui/choicePanel.js`,
+  hooked in `sim.js` (`ensureJourney`, `startLeg`, `tickDay`, `arrive`, `nextLeg`) and `meta/sync.js` (`mergeWw`).
+
+### 2. The six choices and their numbers
+| Route | Stop | Choice | The person | The second way |
+|---|---|---|---|---|
+| emigrant | `ash-hollow` | the creek-bottom shortcut | Wendell | the leg after (Chimney Rock) is 15 miles shorter; 1 in 4 a sack of flour is soaked (up to 50 lb, never over half the flour) |
+| emigrant | `ice-slough` | a guide | Mr. Pascal | $2 × the price level, a day's miles shorter (15 oxen / 18 mules), spirit +10 |
+| California | `humboldt-river` | cut the river's bends | Tad | as the shortcut |
+| California | `big-meadows` | a guide for the Forty-Mile Desert | Mr. Pascal | as the guide, and the desert is crossed without thirst (`trip.guided`: the barrel's effect) |
+| Gold Road | `rogue-river` | cross at the gravel bar | Ned | as the shortcut |
+| Gold Road | `siskiyou-pass` | a packer | Calvin | as the guide |
+The fee is the spec's first number ($2 × the price level, `GUIDE.fee`); the sim measured it and kept it.
+
+### 3. Where the build differs from §4.4
+- **A saved day is a day.** Legs of 60–70 miles carry 5 markers, one a day, so taking 15 miles off does not by itself save a day (the sim showed it: a guide then cost its fee and
+  bought nothing). The journey counts what the shorter leg really saves (`legDays`) and, when that is less than a day, the arrival day's food stays in the wagon (`J.trip.dayCredit`,
+  spent on the arrival tick). A 150-mile leg (the Humboldt to the Big Meadows) saves its day by its miles and needs no credit.
+- **A shortened leg pays as the full leg** (`arrive` pays on `leg.miles + cutOf`), and keeps its 5–6 markers (the learning spine); so the choice never costs a child pay or practice.
+- **The choice is resolved at the stop, before the leg that follows**, like a fork (the spec's "at leg X" is the stop of X). Moving on without choosing takes the plain way (recorded).
+- **Both ways always arrive**; a guide the cash box cannot pay stays closed and says why, and the plain way is open. Nothing is gated by a score.
+- `J.choices[id] = { opt, at, leg, cut, credit, soakedLb, fee, guided, spirit }`; the soak is seeded by (journey seed, choice, leg starts), so reloading cannot re-roll it.
+
+### 4. Economy sim (`node wagon-west/tools/economy-sim.mjs --check --homestead`)
+The 1.3 TARGETS and the v1.5 matrix pass unchanged. A **choice moments** cell (Rookie, 360 kids a route in strong / average / weak thirds, shopping by eye) runs always-a, shortcuts only, guides
+only and always-b. Mean end cash against always-a: Oregon +1.2 / 0.0 / 0.0, California +1.3 / −1.9 / −0.5, Gold Road −0.6 / −0.2 / −0.4 (shortcuts / guides / both; limit ±$3);
+sessions stay 20.0 / 24.0 / 12.0, nobody is without food more than a day running, a shortcut soaks a sack for 23–46 % of the kids who take it. Each choice card adds 25 s to a leg
+(`SEC.choice`, like a fork).
+
+### 5. Tests
+`journey-tests.mjs` (the six, `choicesAt` / `choiceAt` / `applyChoice`, the day credit, the merge, whole journeys taking every b, the preview and the stop line, a snapshot of `economy.js`),
+`content-audit.mjs` §5d (every spoken line reachable: the choice at its stop, the preview in the leg before), `ui-smoke.mjs` `LAB_ONLY=1`, `scene-smoke.mjs` `V16_ONLY=1`, `sync-smoke.mjs`.

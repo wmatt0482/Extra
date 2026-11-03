@@ -41,7 +41,9 @@ try {
   const doc = await getStore({ name: 'stats', consistency: 'strong' }).get(`day/${today}`, { type: 'json' });
   ok(doc && doc.sj.devices === 1 && doc.sj.runs === 1 && doc.sj.versions['3.7.2'] === 1 && doc.tb.devices === 1 && doc.tb.races === 1,
     `day/${today} counts devices, runs and races (${JSON.stringify({ sj: doc && doc.sj, tb: doc && doc.tb })})`);
-  ok(JSON.stringify(doc.fams) === JSON.stringify({ sj: [fam], tb: [], ff: [] }), 'the family hash is kept once, under Spell Jump');
+  ok(JSON.stringify(doc.fams) === JSON.stringify({ sj: [fam], tb: [], ff: [], ww: [], bc: [] }), 'the family hash is kept once, under Spell Jump');
+  r = await call('POST', '/api/stats/ping', { game: 'wagon-west', v: '1.6.0', kind: 'leg', fam: '' }); ok(r.status === 204, 'Wagon West pings are accepted');
+  r = await call('POST', '/api/stats/ping', { game: 'build-crew', v: '0.5.0', kind: 'round', fam: '' }); ok(r.status === 204, 'Build Crew pings are accepted');
   await call('POST', '/api/stats/ping', { game: 'fraction-fright', v: '1.0.0', kind: 'day', fam });
   await call('POST', '/api/stats/ping', { game: 'fraction-fright', v: '1.0.0', kind: 'wave', fam });
   const doc2 = await getStore({ name: 'stats', consistency: 'strong' }).get(`day/${today}`, { type: 'json' });

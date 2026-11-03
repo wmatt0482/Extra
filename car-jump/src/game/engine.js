@@ -472,6 +472,7 @@ export function createGame(canvas, opts = {}) {
     const r = {
       car, stats, track, seed, course, bd, engine, world: engine.world,
       look, // v3.3 cosmetics: {skin, sticker} (cosmetics.js entries or null = stock)
+      trail: cfg.trail && Array.isArray(cfg.trail.colors) && cfg.trail.colors.length ? cfg.trail : null, // Lab trail (src/meta/labLooks.js): the wheels throw these off
       geom: Object.assign(carGeometry(car, look), { rim: bd.night ? 'rgba(225,232,255,0.9)' : null }), gMul, trackGrip: track.grip || 1,
       phase: 'ramp', t: 0, runT: 0, realT: 0,
       com: { x: 0, y: 0, vx: 0, vy: 0 }, speed: 0, ang: 0, omega: 0, speedNow: 0,
@@ -1132,6 +1133,15 @@ export function createGame(canvas, opts = {}) {
       particle(r, 'dust', w.position.x / S - rr * 0.3, -w.position.y / S - rr * 0.8, -r.com.vx * 0.08 + (Math.random() - 0.5), 0.6 + Math.random() * 1.5,
         0.25 + Math.random() * 0.3 + Math.min(0.4, r.speed / 80), onDeck ? '#e9e6e0' : r.dustColor, 0.5 + Math.random() * 0.5, onDeck ? 0.4 : 0.65);
     }
+    // Lab trail (visual only): colourful bits off the wheels, on the ground and a little in the air
+    if (r.trail && !reducedMotion && r.speed >= 2) {
+      for (let i = 1; i < r.parts.length; i++) {
+        if (Math.random() > r.trail.chance * (r.contacts[i] ? 1 : 0.35)) continue;
+        const w = r.parts[i], rr = r.wheelR[i - 1], col = r.trail.colors[(Math.random() * r.trail.colors.length) | 0];
+        particle(r, r.trail.type === 'star' ? 'star' : 'confetti', w.position.x / S - rr * 0.4, -w.position.y / S - rr * 0.2,
+          -r.com.vx * 0.12 + (Math.random() - 0.5) * 2, 1 + Math.random() * 3.5, 0.16 + Math.random() * 0.14, col, 0.7 + Math.random() * 0.6, 1);
+      }
+    }
     if (r.nitroOn) {
       const [ex, ey] = localToWorld(r, r.geom.exhaust[0] - 0.8, r.geom.exhaust[1]);
       particle(r, 'dust', ex, ey, r.com.vx * 0.3 - Math.cos(r.ang) * 4, r.com.vy * 0.3 - Math.sin(r.ang) * 4 + 0.5,
@@ -1790,6 +1800,7 @@ export function createGame(canvas, opts = {}) {
         case 'smoke': p.vx *= 1 - 1.2 * sdt; p.vy = p.vy * (1 - 0.8 * sdt) + 1.2 * sdt; break;
         case 'fire': p.vx *= 1 - 3 * sdt; p.vy = p.vy * (1 - 3 * sdt) + 3 * sdt; break;
         case 'ring': break;
+        case 'star': p.vx *= 1 - 1.4 * sdt; p.vy = p.vy * (1 - 1.4 * sdt) - 1.5 * sdt; p.a += sdt * 3; break;
         case 'confetti': p.vx *= 1 - 2.2 * sdt; p.vy = p.vy * (1 - 2.2 * sdt) - 3 * sdt; p.a += sdt * 9; break;
         case 'fw': p.vx *= 1 - 1.6 * sdt; p.vy = p.vy * (1 - 1.6 * sdt) - 2.5 * sdt; break;
         case 'rocket':
@@ -2173,6 +2184,23 @@ export function createGame(canvas, opts = {}) {
       r.nitroScale = scaleArg(nitroScale, 1.5);
       r.nitroFuel = r.nitroTank * r.nitroScale;
       layoutLetters(r, null); // the preview arc follows the new power
+      return true;
+    },
+    // The Lab's combo moment ("Perfect Launch", lab/SPEC.md §4.1): a gold ring burst around the car and the name on the engine's own banner
+    // lane (about 1.2 s). Visual only; false when there is no run to draw it in.
+    moment(name) {
+      const r = run;
+      if (!r || r.phase === 'done') return false;
+      const gold = '#ffe14a';
+      particle(r, 'ring', r.com.x, r.com.y, 0, 0, 0.8, gold, 1.0, 0.95, 24);
+      particle(r, 'ring', r.com.x, r.com.y, 0, 0, 0.4, '#ffffff', 0.8, 0.85, 14);
+      if (!reducedMotion) {
+        for (let k = 0; k < 16; k++) {
+          const a = (k / 16) * TAU;
+          particle(r, 'star', r.com.x + Math.cos(a) * 1.4, r.com.y + Math.sin(a) * 1.4, Math.cos(a) * 9, Math.sin(a) * 9, 0.22, k % 2 ? gold : '#ffffff', 0.9, 1);
+        }
+      }
+      popup(r, String(name || 'Perfect Launch').toUpperCase() + '!', 0.5, LANE_BIG, gold, 1.15, false, 1.2, 'big');
       return true;
     },
     pause() { paused = true; },

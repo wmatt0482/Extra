@@ -47,7 +47,11 @@
       <!-- The title screen: brand header, the panel (builders, start, sandbox, job board, saved site, looks), footer. -->
       <header id="title-head" hidden>
         <span class="wordmark">▧ &nbsp; LEARNING LAB</span
-        ><button id="parents" class="quiet"><span data-icon="lock"></span> Parents</button>
+        ><span class="head-actions"
+          ><button id="lab-open" class="quiet" hidden>The Lab</button
+          ><button id="lab-gallery" class="quiet" hidden>Gallery</button
+          ><button id="parents" class="quiet"><span data-icon="lock"></span> Parents</button></span
+        >
       </header>
       <section id="title" class="title" hidden aria-labelledby="game-title">
         <div class="eyebrow"><i></i> BUILD CREW / CONSTRUCTION SANDBOX</div>
@@ -81,6 +85,7 @@
             <h2 id="job-title"></h2>
             <p id="goal"></p>
           </div>
+          <div id="lab-hud" class="lab-slot"></div>
           <div id="progress" class="progress" role="status"></div>
           <button id="repeat-goal" class="icon-button" aria-label="Read the job aloud">
             <span data-icon="sound"></span></button

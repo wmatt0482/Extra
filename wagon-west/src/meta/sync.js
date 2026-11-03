@@ -25,6 +25,7 @@
 //           these fields) never erases them · cosmetics.owned.decor union, equipped.decor the later doc's (owned only) · seen.forks OR, seen.placeOffers
 //           max · on the same journey gold max and branches union (the plan is rebuilt) · journeyResetAt max, and a journey last written before another
 //           device's "Reset this journey only" stamp is dropped from the merge (the farm, the ledger, the cards and the sets are not touched).
+// v1.6      the six choice moments (J.choices): on the same journey the union by id of both devices' (journey/choices.js mergeChoices); a record already on the later doc wins a clash.
 // v1.4      after the rules above, merge14(s.journey, o.journey) (src/journey/collections.js, the Journey stream's: finds per id max,
 //           fish log per species n max and the bigger fish, junk max, personal best the bigger, skips best / throws / per river max,
 //           wishes and finished quests union, the longest fetch max; and, on the same journey, the further state of each quest, the
@@ -70,6 +71,8 @@ export function mergeWw(local, remote) {
   else if (sameJourney(s.journey, o.journey)) {
     s.journey.cash = Math.max(num(s.journey.cash), num(o.journey.cash));
     s.journey.tokens = Math.max(num(s.journey.tokens), num(o.journey.tokens));
+    // v1.6 (The Lab): the choice moments taken on either device (a union by id: a choice is resolved once and never lost)
+    if (typeof Sim.mergeChoices === 'function') s.journey.choices = Sim.mergeChoices(s.journey.choices, o.journey.choices);
   }
   if (s.journey && o.journey) {
     s.journey.cards = unionCards(s.journey.cards, o.journey.cards);

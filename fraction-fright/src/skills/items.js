@@ -27,12 +27,21 @@ export const REVIEW_SHARE = 0.2;
 export const WAVE_LIVE = Object.freeze([2, 2, 4, 3, 3]);
 export const BOSS_HITS = 3;
 /** Twin pairs (equivalent fractions that rise at the same spot; one grenade cures both): per tier (SPEC §13.2). */
-export const TWINS = Object.freeze({ T1: [[[1, 2], [2, 4]]], T2: [[[1, 3], [2, 6]], [[2, 3], [4, 6]]] });
+export const TWINS = Object.freeze({
+  T1: [[[1, 2], [2, 4]]],
+  T2: [[[1, 3], [2, 6]], [[2, 3], [4, 6]]],
+  // Twin Alley (lab/SPEC.md §4.3): every spot has several spellings; each wave from wave 2 on puts a pair at one spot
+  T3: [[[1, 2], [3, 6]], [[1, 2], [4, 8]], [[1, 2], [6, 12]], [[1, 3], [4, 12]], [[2, 3], [8, 12]], [[1, 4], [3, 12]], [[1, 4], [2, 8]],
+    [[3, 4], [6, 8]], [[3, 4], [9, 12]], [[5, 6], [10, 12]], [[1, 6], [2, 12]], [[2, 3], [4, 6]], [[1, 3], [2, 6]]],
+});
+/** Twin Alley's pool: seven spots, each spelled in the denominators that can reach it (2, 3, 4, 6, 8, 12). */
+export const T3_SPOTS = Object.freeze([[1, 6], [1, 4], [1, 3], [1, 2], [2, 3], [3, 4], [5, 6]]);
+export const T3_DENS = Object.freeze([2, 3, 4, 6, 8, 12]);
 
 export const TIERS = Object.freeze([
   { id: 'T1', street: 'maple', name: 'Maple Street', what: 'halves and quarters', dens: [2, 4], playable: true },
   { id: 'T2', street: 'oak', name: 'Oak Lane', what: 'thirds, sixths, eighths, then fifths, tenths, twelfths', dens: [3, 6, 8], more: [5, 10, 12], playable: true },
-  { id: 'T3', street: 'twin', name: 'Twin Alley', what: 'which is bigger, and equal fractions', dens: [], playable: false },
+  { id: 'T3', street: 'twin', name: 'Twin Alley', what: 'the same spot with different names (equal fractions)', dens: T3_DENS, playable: true, noBounce: true },
   { id: 'T4', street: 'sum', name: 'Sum Street', what: 'adding and taking away like fractions', dens: [], playable: false },
   { id: 'T5', street: 'decimal', name: 'Decimal Drive', what: 'tenths, hundredths and decimals', dens: [], playable: false },
   { id: 'T6', street: 'pumpkin', name: 'Pumpkin Hill', what: 'fractions past 1 and mixed numbers', dens: [], playable: false },
@@ -79,12 +88,20 @@ export const tierOfDen = (d) => (d === 2 || d === 4 ? 'T1' : 'T2');
 export function fractionsOf(tierId, { more = false } = {}) {
   const t = TIER_BY_ID[tierId];
   if (!t || !t.playable) return [];
+  if (tierId === 'T3') return t3Pool();
   const dens = more && t.more ? [...t.dens, ...t.more] : t.dens;
   const out = [];
   for (const d of dens) for (let n = 1; n < d; n++) {
     if (n * 2 === d && d !== 4 && d !== 2) continue;
     out.push({ n, d });
   }
+  return out;
+}
+
+/** Twin Alley's fractions: every spelling of the seven spots in the allowed denominators, in spot order (1/2 is also 3/6, 4/8, 6/12 here). */
+function t3Pool() {
+  const out = [];
+  for (const [a, b] of T3_SPOTS) for (const d of T3_DENS) if ((a * d) % b === 0 && (a * d) / b < d) out.push({ n: (a * d) / b, d });
   return out;
 }
 
@@ -139,8 +156,9 @@ export function twinPairs(tierId, { more = false } = {}) {
   return (TWINS[tierId] || []).filter((pr) => pr.every(([n, d]) => pool.has(fracText(n, d)))).map((pr) => pr.map(([n, d]) => ({ n, d })));
 }
 /** The boss (SPEC §13.2): the same number three ways (symbol → words → unit sum), 3 hits, a name. */
-export function makeBoss(frac, { tier = tierOfDen(frac.d), name = 'The Mayor', tolerance = TOL_STEPS.start, id = '' } = {}) {
+export function makeBoss(frac, { tier = tierOfDen(frac.d), name = 'The Mayor', tolerance = TOL_STEPS.start, id = '', style = '' } = {}) {
   const { n, d } = frac;
+  if (style === 'equivalent') return makeEquivalentBoss(frac, { tier, name, tolerance, id });
   const words = fracName(n, d);
   const unitSay = Array(n).fill(fracName(1, d)).join(' plus ');
   const forms = [
@@ -150,8 +168,26 @@ export function makeBoss(frac, { tier = tierOfDen(frac.d), name = 'The Mayor', t
   ];
   return { id: id || `${tier}-boss-${n}-${d}`, kind: 'boss', name, hits: BOSS_HITS, forms, say: forms[0].say, show: forms[0].show, target: n / d, n, d, tier, tolerance, hints: [...HINTS] };
 }
+/** The first `count` spellings of a fraction's spot in Twin Alley's denominators, simplest first ([3,4] or [6,8] → 3/4, 6/8, 9/12), or null when it has fewer. */
+export function equivalentsOf(frac, count = 3) {
+  const g = gcd(frac.n, frac.d), bn = frac.n / g, bd = frac.d / g;
+  const list = [];
+  for (let k = 1; k <= 12; k++) { const d = bd * k; if (T3_DENS.includes(d)) list.push({ n: bn * k, d }); }
+  return list.length >= count ? list.slice(0, count) : null;
+}
+/**
+ * The equivalence boss (lab/SPEC.md §4.3, Twin Alley's final wave): three hits, and its three forms are three spellings of ONE spot
+ * (3/4 → 6/8 → 9/12), so every hit lands on the same x. `style: 'equivalent'` tells the card to say "Same spot!". Reuses the boss
+ * machinery as is: the engine cycles `forms`, the app records the throws at n/d.
+ */
+export function makeEquivalentBoss(frac, { tier = 'T3', name = 'Mayor Mirror', tolerance = TOL_STEPS.start, id = '' } = {}) {
+  const { n, d } = frac;
+  const eq = equivalentsOf(frac) || [{ n, d }, { n, d }, { n, d }];
+  const forms = eq.map((f) => ({ show: fracText(f.n, f.d), say: fracName(f.n, f.d) }));
+  return { id: id || `${tier}-boss-${n}-${d}`, kind: 'boss', style: 'equivalent', name, hits: BOSS_HITS, forms, say: forms[0].say, show: forms[0].show, target: n / d, n, d, tier, tolerance, hints: [...HINTS], note: 'Same spot!' };
+}
 /** Boss names per street tier. */
-export const BOSS_NAMES = Object.freeze({ T1: 'Mayor Mumbles', T2: 'Coach Groan' });
+export const BOSS_NAMES = Object.freeze({ T1: 'Mayor Mumbles', T2: 'Coach Groan', T3: 'Mayor Mirror' });
 
 /** Share of bounce items by tier state: the scaffold early, plain locate once the tier works, none when secure. */
 export const bounceShare = (state) => (state === 'secure' ? 0 : state === 'working' ? 0.3 : 0.7);
@@ -232,14 +268,18 @@ export function buildWave({ tier, number = 1, state = 'new', reviewTier = null, 
     const f = list[k];
     prev = fracText(f.n, f.d);
     recent.push(spotOf(f));
-    const kind = rng() < bounceShare(st) ? 'bounce' : 'locate';
+    const kind = rng() < bounceShare(st) && !(TIER_BY_ID[tier] && TIER_BY_ID[tier].noBounce) ? 'bounce' : 'locate';
     items.push(makeItem(f, { kind, tolerance: toleranceFor(st), id: `w${number}-${i + 1}`, tier: fromReview ? reviewTier : tier }));
   }
   const final = number === FINAL_WAVE;
   if (final && pool.length) {
     let k = Math.floor(rng() * pool.length) % pool.length;
     if (fracText(pool[k].n, pool[k].d) === prev) k = (k + 1) % pool.length;
-    items.push(makeBoss(pool[k], { tier, name: bossName || 'The Mayor', tolerance: toleranceFor(state), id: `w${number}-boss` }));
+    if (tier === 'T3') {      // the equivalence boss: a spot with at least three spellings (1/2 3/4 2/3 1/3 1/4), else any
+      const rich = pool.filter((f) => equivalentsOf(f));
+      const base = rich.length ? rich[Math.floor(rng() * rich.length) % rich.length] : pool[k];
+      items.push(makeEquivalentBoss(base, { tier, name: bossName || BOSS_NAMES.T3, tolerance: toleranceFor(state), id: `w${number}-boss` }));
+    } else items.push(makeBoss(pool[k], { tier, name: bossName || 'The Mayor', tolerance: toleranceFor(state), id: `w${number}-boss` }));
   }
   return { items, size, live: WAVE_LIVE[wi], big: number === BIG_WAVE, final };
 }
@@ -252,5 +292,10 @@ export function sayTexts() {
     for (const form of makeBoss(f, { tier: t }).forms) out.add(`${form.say}.`);
   }
   out.add('one half.');
+  // Twin Alley's equivalence boss (lab/SPEC.md §4.3): its three spellings of one spot, the later two with "Same spot!" in front
+  for (const f of fractionsOf('T3')) {
+    const b = makeEquivalentBoss(f);
+    b.forms.forEach((form, i) => { out.add(`${form.say}.`); if (i) out.add(`Same spot! ${form.say}.`); });
+  }
   return [...out];
 }

@@ -153,7 +153,8 @@ export function createGarage(app) {
     if (!v) return;
     const own = ownsVehicle(s, v.id);
     ui.name.textContent = v.name;
-    ui.tag.textContent = own ? `${v.feel} · Paint: ${(PAINT_BY_ID[s.paint] || PAINTS[0]).name}` : v.blurb || v.feel || '';
+    const lab = typeof app.labLooksText === 'function' ? app.labLooksText() : '';      // v1.9: "Lab looks on: Ocean paint, Neon rims"
+    ui.tag.textContent = own ? `${v.feel} · Paint: ${(PAINT_BY_ID[s.paint] || PAINTS[0]).name}${lab ? ` · Lab looks on: ${lab}` : ''}` : v.blurb || v.feel || '';
     ui.special.hidden = !v.specialName;
     ui.special.textContent = v.specialName ? `${v.specialName}: ${v.specialText || ''}` : '';
     const price = priceOf(v);

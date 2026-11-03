@@ -272,6 +272,16 @@ async function main() {
     await wwSync(L, 'syncNow'); await wwSync(I, 'syncNow'); await wwSync(L, 'pullNow'); await wwSync(I, 'pullNow');
     const pi = await farmOf(I);
     check(pl.forks && pl.forks['fort-hall'] === 'california' && pi.forks && pi.forks['fort-hall'] === 'california' && pi.plan > 20, `a fork chosen on the laptop is on the ipad too (Fort Hall: ${pi.forks && pi.forks['fort-hall']}, ${pi.plan} legs)`);
+    // v1.6 (The Lab): the choice moments taken offline on two devices are a union by id (a choice is resolved once and never lost); a record on the later doc wins a clash
+    online.laptop = false; online.ipad = false;
+    await edit(L, (s) => { s.journey.choices = { ...(s.journey.choices || {}), 'ash-creek': { opt: 'b', at: 'ash-hollow', leg: 'chimney-rock', cut: 15, credit: 1, soakedLb: 0, fee: 0, guided: false, spirit: 0 } }; });
+    await edit(I, (s) => { s.journey.choices = { ...(s.journey.choices || {}), 'ice-guide': { opt: 'a', at: 'ice-slough', leg: 'south-pass', cut: 0, credit: 0, soakedLb: 0, fee: 0, guided: false, spirit: 0 } }; });
+    online.laptop = true; online.ipad = true;
+    await wwSync(L, 'syncNow'); await wwSync(I, 'syncNow'); await wwSync(L, 'pullNow'); await wwSync(I, 'pullNow');
+    const chOf = (p) => J(p, () => { const c = window.__wagonWest.save.journey.choices || {}; return Object.keys(c).sort().map((k) => `${k}:${c[k].opt}`).join(); });
+    const chs = (await serverDoc(code, `${miaId}.ww`)).data.journey.choices || {};
+    check(Object.keys(chs).sort().join() === 'ash-creek,ice-guide' && chs['ash-creek'].opt === 'b' && chs['ice-guide'].opt === 'a', `the choices taken on both devices are on the server (${Object.keys(chs).sort().join(', ')})`);
+    check((await chOf(L)) === 'ash-creek:b,ice-guide:a' && (await chOf(I)) === 'ash-creek:b,ice-guide:a', 'laptop and ipad both have both choices in memory');
     // "Reset this journey only" keeps the farm, the ledger and the sets on both devices
     await J(L, (id) => window.__wagonWest.app.resetJourneyFor(id), miaId);
     await wwSync(L, 'syncNow'); await wwSync(I, 'pullNow');

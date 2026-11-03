@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>The Lab · Learning Lab</title>
+<meta name="description" content="The Lab: one place for everything you earn in Spell Jump, Trail Blazer, Fraction Fright, Wagon West and Build Crew. Lab coins, a level bar, an avatar and a pet, daily quests and a surprise crate. A Learning Lab page.">
+<meta name="theme-color" content="#0d1230">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="The Lab">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/favicon.png">
+<style>
+/* first paint only: the Lab's own stylesheet is installed by src/ui/index.js */
+html, body { margin: 0; height: 100%; overflow: hidden; background: #0d1230; overscroll-behavior: none; }
+body { position: fixed; inset: 0; touch-action: none; }
+#app { position: fixed; inset: 0; }
+.boot { position: fixed; inset: 0; display: grid; place-items: center; color: #37e0c0; font: 700 22px system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div id="app" class="lab-root"><div class="boot" id="boot">The Lab</div></div>
+<noscript>The Lab needs JavaScript to run.</noscript>
+<script>
+// If src/main.js never loaded, a new service worker taking over still reloads this page once.
+(function () {
+  if (!('serviceWorker' in navigator) || /[?&]nosw/.test(location.search)) return;
+  var had = !!navigator.serviceWorker.controller, done = false;
+  navigator.serviceWorker.addEventListener('controllerchange', function () {
+    if (!had) { had = true; return; }
+    if (done || window.__labUpdate) return;
+    done = true; location.reload();
+  });
+})();
+</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

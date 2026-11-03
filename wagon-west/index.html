@@ -327,8 +327,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .tc-go { min-width: 180px; }
 
 /* ---------- the mini-game (the scene owns the pointer and draws its own HUD): the trail HUD steps aside ---------- */
-.in-mini #screen-trail .hud-bottom, .in-mini #screen-trail .hud-right { visibility: hidden; }
-.in-mini15 #screen-trail .hud-top { visibility: hidden; }
+.in-mini #screen-trail .hud-bottom, .in-mini #screen-trail .hud-right, .in-mini #screen-trail .hud-lab { visibility: hidden; }
+.in-mini15 #screen-trail .hud-top, .in-mini15 #screen-trail .hud-lab { visibility: hidden; }
 .in-mini15-top #mini { top: calc(var(--pad-t) + 8px); bottom: auto; }      /* (the pan and the cradle write their hints along the bottom: their bar goes to the top, between their counters; Laurel Hill and the voyage write along the top and keep it at the foot) */
 #mini { position: absolute; left: 0; right: 0; bottom: calc(var(--pad-b) + 6px); z-index: 15; display: flex; justify-content: center; pointer-events: none; padding: 0 var(--pad-r) 0 var(--pad-l); }
 .mini-bar { display: flex; align-items: center; gap: 12px; padding: 6px 8px 6px 16px; border-radius: 999px; background: rgba(31,21,13,.85); border: 2px solid var(--accent); font: 700 15px/1.2 var(--font-body); }
@@ -961,8 +961,11 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   .sp-tiles { --th: 44px; --tmax: 40px; gap: 12px; }
   .sp-model { --th: 40px; }
   .sp-row { --gap: 3px; }
-  .results-body { grid-template-columns: 1fr; overflow: auto; touch-action: pan-y; align-content: start; }
-  .res-main, .res-pay { overflow: visible; }
+  .results-body { grid-template-columns: 1fr; grid-template-rows: none; grid-auto-rows: auto; overflow: auto; touch-action: pan-y; align-content: start; }
+  .res-main, .res-pay { overflow: visible; min-height: min-content; }
+  .res-preview { grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; }
+  .rpv-hear { grid-column: 1 / -1; }
+  .rpv-art { width: 96px; height: 59px; }
   .results-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
   .results-foot .btn { min-width: 0; padding: 0 10px; }
   #res-next { grid-column: 1 / -1; grid-row: 1; min-height: 60px; font-size: 21px; }
@@ -1012,6 +1015,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .map-fork-ring { animation: blink .8s steps(1) infinite alternate; }
 .reduced-motion .map-fork-ring { animation: none; }
 .menu-row[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.menu-row[data-n="5"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 /* the year picker */
 #screen-year { background: linear-gradient(rgba(31,21,13,.7), rgba(31,21,13,.92)); }
 #yr-chip b { font: 400 17px/1 var(--font-display); color: var(--accent); }
@@ -1031,7 +1035,27 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .yr-extra::before { content: '+ '; color: var(--go); }
 .yr-hear { justify-self: start; }
 /* the fork panel */
-#panel-fork { z-index: 21; }
+#panel-fork, #panel-choice { z-index: 21; }
+/* the choice moments (v1.6, The Lab): the fork panel's look; a guide's fee under the way's line */
+.ch-fee { color: var(--accent); }
+.ch-card .fk-line { flex: 1 1 auto; }
+/* the Lab's pill in the trail HUD and its strip on the results (the Lab draws them: lab/src/ui) */
+.hud-topwrap { display: flex; flex-direction: column; gap: 6px; flex: none; }
+.hud-lab { display: flex; justify-content: flex-end; min-width: 0; pointer-events: auto; }
+.hud-lab:empty { display: none; }
+.res-lab { min-width: 0; }
+.res-lab:empty { display: none; }
+/* the cliffhanger: the next stop's painting, one true line, "Next time: …" (v1.6) */
+.res-preview { grid-column: 1 / -1; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 12px; }
+.results-body { grid-template-rows: minmax(0, 1fr) auto; }
+/* (portrait stacks the cards in one scrolling column: a plain flex column, so each card is as tall as its content and none can overlap the next; these rules come after
+   the cliffhanger's, which would otherwise win the cascade) */
+@media (orientation: portrait) { .results-body { display: flex; flex-direction: column; } .results-body > .card { flex: none; } .res-preview { grid-template-columns: auto minmax(0, 1fr); gap: 8px 12px; } }
+.rpv-art { display: block; width: 117px; height: 72px; border-radius: 8px; border: 2px solid var(--line); background: var(--ink-2); }
+.rpv-text { min-width: 0; display: grid; gap: 3px; }
+.rpv-next { font: 400 18px/1.1 var(--font-display); color: var(--accent); }
+.rpv-line { margin: 0; font: 700 14px/1.3 var(--font-body); color: #fff; }
+.rpv-stop { margin: 0; font: 800 14px/1.25 var(--font-body); color: var(--go); }
 .fk-sheet { width: min(100%, 940px); max-height: 100%; overflow: auto; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px 14px; touch-action: pan-y; }
 .fk-head { display: flex; align-items: center; gap: 12px; }
 .fk-who { font-size: 44px; line-height: 1; flex: none; }
@@ -1241,6 +1265,7 @@ html[data-screen="camp"] #mini { bottom: auto; top: calc(var(--pad-t) + 62px); }
           <button class="btn" id="btn-journal" data-sfx><span data-icon="flag"></span>Journal</button>
           <button class="btn" id="btn-outfit" data-sfx><span data-icon="style"></span>Outfit</button>
           <button class="btn" id="btn-parents" data-sfx><span data-icon="lock"></span>Parents</button>
+          <button class="btn" id="btn-lab" data-sfx hidden><span aria-hidden="true">🧪</span>The Lab</button>
           <button class="btn btn-cyan" id="btn-farm" data-sfx hidden><span aria-hidden="true">🏡</span>The farm</button>
         </div>
       </div>
@@ -1304,6 +1329,7 @@ html[data-screen="camp"] #mini { bottom: auto; top: calc(var(--pad-t) + 62px); }
 
   <!-- ===== The trail: the HUD over the scene (src/ui/hud.js) ===== -->
   <section class="screen" id="screen-trail" data-screen="trail" hidden>
+    <div class="hud-topwrap">
     <div class="hud-top">
       <div class="hud-box"><div class="hud-label" id="hud-day">Day 1</div><div class="hud-where" id="hud-where">On the trail</div></div>
       <button class="hud-box hud-food" id="hud-food-box" type="button" data-sfx><span class="hud-label">Food</span><b id="hud-food">0 lb</b><span class="hud-note" id="hud-food-note" hidden></span></button>
@@ -1313,6 +1339,8 @@ html[data-screen="camp"] #mini { bottom: auto; top: calc(var(--pad-t) + 62px); }
         <button class="btn btn-sm hud-camp" id="btn-camp" data-sfx><span class="hud-camp-tent" aria-hidden="true">⛺</span>Camp</button>
         <button class="btn icon-btn" id="btn-pause" aria-label="Pause"><span data-icon="pause"></span></button>
       </div>
+    </div>
+    <div class="hud-lab" id="hud-lab"></div>
     </div>
     <button class="btn btn-gold btn-big dog-call" id="dog-call" type="button" data-sfx hidden><span aria-hidden="true">🐕</span><span id="dog-call-name">Dog</span>!</button>
     <div class="hud-bottom">
@@ -1447,11 +1475,21 @@ html[data-screen="camp"] #mini { bottom: auto; top: calc(var(--pad-t) + 62px); }
         <div class="res-extra" id="res-extra" hidden></div>
       </div>
       <div class="card res-pay">
+        <div class="res-lab" id="res-lab"></div>
         <table class="pay" id="res-pay"></table>
         <p class="res-tokens" id="res-tokens"></p>
         <div class="res-deeds" id="res-deeds" hidden></div>
         <div class="res-crate" id="res-crate" hidden></div>
       </div>
+      <div class="card res-preview" id="res-preview" hidden>
+        <canvas class="rpv-art" id="res-pv-art" width="176" height="108" aria-hidden="true"></canvas>
+        <div class="rpv-text">
+        <b class="rpv-next" id="res-pv-next"></b>
+        <p class="rpv-line" id="res-pv-line"></p>
+        <p class="rpv-stop" id="res-pv-stop" hidden></p>
+      </div>
+      <button class="btn btn-sm rpv-hear" id="res-pv-hear" data-sfx aria-label="Hear about the next stop"><span data-icon="sound"></span><span class="rpv-hear-text">Hear it</span></button>
+    </div>
     </div>
     <div class="results-foot">
       <button class="btn" id="res-camp" data-sfx><span data-icon="back"></span>Camp</button>
@@ -1463,6 +1501,7 @@ html[data-screen="camp"] #mini { bottom: auto; top: calc(var(--pad-t) + 62px); }
   <!-- ===== Panels over the stopped wagon ===== -->
   <div class="pn" id="panel-marker" hidden></div>
   <div class="pn" id="panel-fork" hidden></div>
+  <div class="pn" id="panel-choice" hidden></div>
   <div class="pn" id="panel-problem" hidden></div>
   <div id="card" hidden></div>
   <div id="mini" hidden><div class="bait-row" id="bait-row" hidden></div><div class="mini-bar"><span id="mini-text">Tap to loose an arrow</span><button class="btn btn-sm" id="mini-done" data-sfx>Done</button></div></div>

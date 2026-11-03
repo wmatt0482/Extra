@@ -404,6 +404,7 @@ export function createBonus(canvas, opts = {}) {
     for (const c of front) drawCritter(ctx, c, c.x, c.y, c.s, t, lw);
     if (r.parts.length) drawParts(r, lw);
     R.drawFence(ctx, view, road, r.fl, r.scene, r.look.fence, r.pumpkins, lw, t, 0.4);
+    R.drawYardExtras(ctx, view, road, r.fl, r.kid, r.look, lw, t);   // Lab integration v1: the same fence finish and tower as the wave
     R.drawKid(ctx, r.kid.x, r.kid.y, r.kid.h, lw, r.kidArm, t, r.look.kid || {}, r.look.goo, r.phase === 'outro');
     // the stream: pellets (+ a muzzle pulse while firing) and the aim mark
     drawPellets(r, lw);

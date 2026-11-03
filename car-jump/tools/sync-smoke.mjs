@@ -96,6 +96,7 @@ async function device(browser, name, opts) {
     if (m.type() !== 'error') return;
     const where = (m.location() && m.location().url) || '';
     if (/fonts\.(googleapis|gstatic)/.test(m.text() + where)) return;
+    if (/\/lab\/src\//.test(where)) return;   // v3.9: this server's root is car-jump/, so /lab/ is absent: the Lab bridge's own quiet failure (lab-smoke.mjs covers it)
     // the protocol's own answers (404 unknown code, 409 conflict) and offline aborts are expected, not bugs
     if (/\/api\/(family|tts)\//.test(where) && /status of (404|409)|ERR_INTERNET_DISCONNECTED|net::ERR_FAILED/.test(m.text())) return;
     errors.push(`${name}: ${m.text()}`);
@@ -204,7 +205,7 @@ async function main() {
     console.log('\n=== sync off: nothing goes to the network ===');
     await L.waitForSelector(visibleSel('#screen-players'));
     check(apiLog.length === 0, 'no /api/family requests before a family exists');
-    check(await J(L, () => window.__spellJump.app.version) === '3.8.1', 'app version 3.8.1');
+    check(await J(L, () => window.__spellJump.app.version) === '3.9.0', 'app version 3.9.0');
 
     console.log('\n=== laptop: Mia, PIN, Create family code ===');
     await typeName(L, 'Mia');

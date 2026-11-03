@@ -6,7 +6,7 @@ import { $, h } from '../../../spell-jump/src/ui/dom.js';
 
 export function createHud({ onFocus = () => {} } = {}) {
   const card = $('#btn-say'), n = $('#fc-n'), d = $('#fc-d'), say = $('#fc-say'), big = $('#fc-big');
-  const bossEl = $('#fc-boss'), bossName = $('#fc-boss-name'), bossDots = $('#fc-boss-dots');
+  const bossEl = $('#fc-boss'), bossName = $('#fc-boss-name'), bossDots = $('#fc-boss-dots'), bossNote = $('#fc-note');
   const stack = $('#hud-stack'), comboEl = $('#hud-combo'), comboN = $('#hud-combo-n');
   const bannerEl = $('#banner'), bannerText = $('#banner-text'), help = $('#aim-help');
   let bannerTimer = 0, comboTimer = 0, current = null, stackKey = '', combo = 0;
@@ -24,6 +24,7 @@ export function createHud({ onFocus = () => {} } = {}) {
     card.dataset.kind = item.kind || 'locate';
     const boss = item.kind === 'boss';
     bossEl.hidden = !boss;
+    if (bossNote) { bossNote.hidden = !(boss && item.style === 'equivalent'); if (item.note) bossNote.textContent = item.note; }
     if (boss) {
       bossName.textContent = item.name || 'The boss';
       const left = Math.max(0, Math.min(5, Number(item.hitsLeft ?? item.hits) || 0));

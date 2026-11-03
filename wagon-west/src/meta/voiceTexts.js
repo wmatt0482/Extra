@@ -18,6 +18,9 @@
 // and, in the rest, the tier blurbs, the year picker, the family names, the farm's pieces (names, lines, facts), the card sets and their decorations, the
 // gold cards, and the fixed lines of the new mini-games and screens (`V15`). `{farm}` letter openings and closings are made only once the farm is named
 // (`farmName`). Said just in time (never ahead): the flake counts ("Seven flakes!"), the bank line, the farm's name plate line, the toll with its amount.
+// v1.6 adds (The Lab, lab/SPEC.md §4.4): the six choice moments (the question, each way's name and line, the guide's fee in words at every price level: `choiceTexts`, with the stop's
+// own lines like a fork's), what is said when a way is taken (CHOICE_LINES), and the cliffhanger: "Next time: the ferry at the Kansas River." with the next stop's first lookout
+// sentence (`previewTexts`, prepared in the leg before, like the next leg's lookout) and "That's a good place to stop for today." (STOP_LINE, in the first list).
 import { LOOKOUTS } from '../content/lookouts.js';
 import { NATIONS, NATION_BY_ID, FALLBACK_TRADES, TRADE_GOOD_NAMES } from '../content/nations.js';
 import { EVENTS } from '../content/events.js';
@@ -37,6 +40,9 @@ import { sayOf } from '../ui/cards.js';
 import { PS_INTRO, READ_BACK } from '../ui/postOffice.js';
 import { yearTexts } from '../ui/yearPicker.js';
 import { FORK_FIRST, forkTexts } from '../ui/forkPanel.js';
+import { choiceTexts } from '../ui/choicePanel.js';
+import { previewTexts, allPreviewTexts, STOP_LINE } from '../journey/preview.js';
+import { CHOICES } from '../content/choices.js';
 import { diggingTexts } from '../ui/diggings.js';
 import { farmTexts } from '../ui/homestead.js';
 import { ROCK_ASK, ROCK_DONE } from '../ui/people.js';
@@ -79,7 +85,7 @@ export const FIXED_LINES = ['Now you: type the answer', 'Now you: type the answe
   'A cold night. There are not enough blankets, so the party rests a day.', 'The oxen need a rest, so we go steady today.', 'The mules need a rest, so we go steady today.',
   'The wagon limps along slowly to the next fort.', 'A spare part is used.', 'The new part mends the wagon. No more limping.',
   'The raft is across!', 'You held them!', 'Pfft, dust everywhere!', COACH_TEXT, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, 'Your turn!', 'Good game!',
-  ...Object.values(V15).filter((t) => t !== V15.TOLL_IOU_BUTTON), FORK_FIRST, ROCK_ASK, ROCK_DONE];
+  ...Object.values(V15).filter((t) => t !== V15.TOLL_IOU_BUTTON), FORK_FIRST, ROCK_ASK, ROCK_DONE, STOP_LINE];
 
 /** A line as the voice says it ("$56" → "56 dollars"; no doubled full stop after a comma or a full stop). */
 export const spoken = (text) => spokenLine(text).replace(/([.!?])\.$/, '$1').replace(/[,;:]\.$/, '.');
@@ -210,6 +216,7 @@ export function legTexts(legId, ctx = {}) {
   if (CARD_BY_ID[legId]) out.push(sayOf(CARD_BY_ID[legId]));
   out.push(...questTexts(legId), ...factTextsOf(legId), ...legFunTexts(legId));          // (v1.4)
   if (ctx.forks !== false) for (const f of Object.values(FORKS)) if (f.at === legId) out.push(...forkTexts(f.id));            // (v1.5: the fork at this stop)
+  if (ctx.forks !== false) for (const c of CHOICES) if (c.at === legId) out.push(...choiceTexts(c.id));                        // (v1.6: the choice moment at this stop)
   if (leg && leg.gold && ctx.forks !== false) out.push(...diggingTexts());                                                     // (v1.5: the creek's cue lines)
   if (leg && ctx.letters !== false) out.push(...letterTexts(legId, ctx));
   return out;
@@ -260,6 +267,7 @@ export function longTrailTexts() {
   const out = [...yearTexts(), ...farmTexts(), ...diggingTexts(), ...FAMILIES.map((f) => f.name), ...DECOR.map((d) => d.name)];
   for (const st of CARD_SETS) out.push(st.say, st.name);
   for (const f of Object.values(FORKS)) out.push(...forkTexts(f.id));
+  out.push(...choiceTexts());                                  // v1.6 (The Lab): the six choice moments and what is said when a way is taken
   return out;
 }
 /** The river's own lines: the choice, the ford and float words, every landing sentence of the fractions in play, the results. */
@@ -287,14 +295,14 @@ export function collectVoiceTexts({ legId = LEGS[0].id, plan = null, farmName = 
   const first = uniq([...FIXED_LINES, ...startTexts(), ...riverLineTexts(), ...momentTexts(), ...dogTexts(dogName)]);
   const leg = uniq(legTexts(legId, { names, animal, playerName, dogName, farmName }));
   const facts = uniq(markerFacts);
-  const nextT = next ? uniq(legTexts(next.id, { letters: false })) : [];
-  const rest = uniq([...trailTexts(), ...longTrailTexts(), ...ALL_LEGS.flatMap((l) => legTexts(l.id, { letters: false })), ...funTexts()]);
+  const nextT = next ? uniq([...legTexts(next.id, { letters: false }), ...previewTexts(next.id)]) : [];            // (v1.6: the cliffhanger at this leg's results is about the next leg)
+  const rest = uniq([...trailTexts(), ...longTrailTexts(), ...ALL_LEGS.flatMap((l) => legTexts(l.id, { letters: false })), ...allPreviewTexts(), ...funTexts()]);
   return { first, leg, facts, next: nextT, rest, ordered: uniq([...first, ...leg, ...facts, ...nextT, ...rest]) };
 }
 /** Everything that can be known ahead, across the whole trail (what the audit compares the UI's strings with). */
 export function allVoiceTexts({ names = null, playerName = 'Mia', dogName = '', farmName = 'Rose Hill' } = {}) {
   const out = [...FIXED_LINES, ...riverLineTexts(), ...trailTexts(), ...peopleTexts('independence'), ...(LOOKOUTS.independence ? [LOOKOUTS.independence.say || LOOKOUTS.independence.text] : []), ...momentTexts(), ...dogTexts(dogName), ...funTexts()];
   for (const l of ALL_LEGS) out.push(...legTexts(l.id, { names, playerName, dogName, farmName }));
-  out.push(...longTrailTexts());
+  out.push(...longTrailTexts(), ...allPreviewTexts());
   return uniq(out);
 }

@@ -177,3 +177,16 @@ Three streams, each with a findings note; the look stays the 0.2 tween direction
 - **Phone** (`docs/v0.4-mobile.md`): a device tier with a cheaper phone render path, interpolated drawing at 60 Hz physics, a damped follow camera, a touch layout under `html.touch` (sticks in the lower corners, one-line top bar, hint strip, side tools and cards, bottom-sheet tray), touch wording for every hint, haptics where available, and a Parent Zone "Picture quality on this device" panel. Phone physics is capped at 2 steps a picture (3 elsewhere, §6). `tools/mobile-tests.mjs`, the smoke's phone stages and `frame-check.mjs`'s phone profile check it. Real-phone frame rates are not measured.
 
 Version 0.4.0: `VERSION` in `src/content.mjs`, cache `build-crew-v0.4.0` in `sw.js`, offline list regenerated for the new `interp.js` module.
+
+## Lab integration (v1) and version 0.5.0
+
+Build Crew is the payoff of the Lab (`lab/SPEC.md` section 4.5; findings, numbers and deviations in `docs/v0.5-vehicles.md`).
+`src/meta/labBridge.js` loads `/lab/` lazily and never breaks the game when it is missing or blocked; `src/meta/labLooks.js`
+lists what the Lab shop may sell (`LOOKS_READY`) and draws the Lab's paints and decals through the whole-body paint and decal
+pipeline. The Lab's coins buy two machines and four blueprints, all new, all hidden without the Lab; nothing already playable
+(the ten jobs, the sandbox, SS-01, EX-02, CR-03) is behind it. Machine tables gain a row each: **DT-04 dump truck** (the bed is
+the tool: lift tips it, loose blocks ride and pour out, long stopping distance, rear-axle steering) and **FL-05 forklift** (rear
+steer about the front axle, mast lift and tilt, narrow tines that only a low, level, centred approach slips under a pallet).
+Jobs 101 to 104 (Lighthouse, Windmill, Castle gate, Stone arch) are ghost-outline blueprints with a target and never a clock:
+"Grabs n · par p" or "Height h m · target t m", and a "Neat build!" badge when met. Version 0.5.0: `VERSION` in
+`src/content.mjs`, cache `build-crew-v0.5.0` in `sw.js`, `offline.js` regenerated with its optional Lab list.

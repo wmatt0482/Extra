@@ -432,8 +432,12 @@ export function createParentZone(app) {
       h('tbody', {}, ...r.rows.map((w) => h('tr', { 'data-word': w.word },
         h('td', {}, w.word), h('td', {}, h('span', { class: 'st st-' + w.status.toLowerCase() }, w.status)), h('td', {}, String(w.attempts)),
         h('td', {}, w.firstTryPct == null ? '—' : w.firstTryPct + '%'), h('td', {}, fmtShort(w.lastPracticed)), h('td', {}, String(w.daysPracticed))))));
+    // v3.9: every Friday Test has a printable certificate (certificate.html, a print-styled page; local data only, no external link)
+    const certBtn = (t) => (t.kind === 'friday' ? h('button', { class: 'btn btn-sm', 'data-cert': String(t.at), 'data-sfx': '', 'aria-label': `Print certificate, Friday Test ${fmtShort(t.at)}`,
+      onclick: () => app.openCertificate(p.id, t.at) }, 'Print certificate') : null);
     const hist = h('div', { class: 'pz-hist' }, ...(r.history.length ? r.history.map((t) => h('div', { class: 'row' },
       h('div', { class: 'grow' }, h('div', { class: 'label' }, `${t.kind === 'qualifier' ? 'Qualifier' : 'Friday Test'} · ${fmtShort(t.at)}`), h('div', { class: 'sub' }, `${t.listName}${t.missed.length ? ` · missed: ${t.missed.join(', ')}` : ' · no misses'}`)),
+      certBtn(t),
       h('div', { class: 'val' }, `${t.correct}/${t.total}`))) : [h('div', { class: 'sub muted' }, 'No tests yet. The Qualifier runs on the first PLAY after you save a list; the Friday Test is on the title screen.')]));
     const out = h('pre', { class: 'pz-report-text', id: 'pz-report-text', hidden: true });
     const copyBtn = h('button', { class: 'btn btn-cyan', id: 'pz-copy-report', 'data-sfx': '' }, 'Copy report');
@@ -684,6 +688,20 @@ export function createParentZone(app) {
     ];
   }
 
+  // v3.9: The Lab touch point. The Lab's own grown-ups page (coins, quests, the family board, the crate odds, its switches) opens over the
+  // Parent Zone with the PIN just entered; it is for the player who is signed in on this screen.
+  function labRows(p) {
+    const here = p.id === app.currentPlayerId;
+    const open = h('button', { class: 'btn btn-sm btn-cyan', id: 'opt-lab', 'data-sfx': '', disabled: here ? null : true,
+      onclick: () => { if (app.lab.unavailable) { app.toast('The Lab is not available on this device right now'); return; } app.lab.openParent({ unlocked: true }); } }, 'Open');
+    return [
+      h('div', { class: 'hud-label pz-sec' }, 'THE LAB'),
+      h('div', { class: 'row', id: 'opt-lab-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'The Lab: grown-ups page'),
+        h('div', { class: 'sub' }, here ? `Lab coins, daily quests, the crate odds and the family board for ${p.name}. Cosmetic rewards only: nothing in the Lab changes the words or the test.`
+          : `Open Parents from ${p.name}'s own title screen to see the Lab page.`)), open),
+    ];
+  }
+
   function optionsTab(p) {
     const o = playerOptions(app.family, p.id);
     const set = (k, v) => { setPlayerOption(app.family, p.id, k, v); app.persistFamily(); app.onOptionsChanged(p.id); };
@@ -710,6 +728,7 @@ export function createParentZone(app) {
       toggle('Music', null, st.music, (v) => setGame('music', v), 'opt-music'),
       toggle('Reduced motion', 'No screen shake or slow-mo', st.reducedMotion, (v) => setGame('reducedMotion', v), 'opt-motion'),
       h('div', { class: 'row slider-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Screen shake')), h('div', { class: 'slider' }, shake, shakeOut)),
+      ...labRows(p),
       h('div', { class: 'hud-label pz-sec' }, 'RESET'),
       ...confirmRow('Reset spelling data', `Clears ${p.name}'s word progress and test history (lists stay)`, 'Reset', `Clear ${p.name}'s spelling progress? Lists stay.`, 'Reset spelling', () => {
         const d = app.wordsFor(p.id); resetSpelling(d, Date.now()); app.saveWordsFor(p.id, d); app.toast('Spelling data reset'); render();

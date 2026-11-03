@@ -35,7 +35,7 @@ const browser = await pw.chromium.launch(launch);
 const errors = [],
   logs = [],
   results = { solutions: [], checks: [] };
-// A host-side deadline (20 minutes: ten solved jobs plus the phone stages): a wedged browser still produces a failure
+// A host-side deadline (60 minutes: ten solved jobs, the phone stages, the Lab payoff and the blocked-Lab run): a wedged browser still produces a failure
 // report instead of a silent hang.
 const watchdog = setTimeout(() => {
   const failure = {
@@ -49,7 +49,7 @@ const watchdog = setTimeout(() => {
   console.error(failure);
   browser.close().catch(() => {});
   setTimeout(() => process.exit(1), 1500);
-}, 1200000);
+}, 3600000);
 const context = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 });
 const page = await context.newPage();
 context.on('page', (p) =>
@@ -122,6 +122,191 @@ async function hitTest(p, ids) {
       ),
     ids,
   );
+}
+/** The Lab (0.5) stages: kept in one function so `LAB_ONLY=1 node tools/browser-smoke.mjs` can run just them. */
+async function labStages() {
+  // ---- The Lab (0.5): vehicles and blueprints behind Lab coins, the report hooks, and the game without /lab/ ----
+  stage = 'lab payoff';
+  const solveIn = (p, id, mode) =>
+    p.evaluate(
+      async ([id, mode]) => {
+        const sol = await import('./tools/solution.mjs');
+        const api = window.__buildCrew;
+        const io = {
+          state: () => api.state,
+          advance: (axes, n) => api.test.advance(axes, n),
+          action: (a) => api.test.action(a),
+          select: (i) => document.querySelectorAll('[data-machine]')[i].click(),
+        };
+        return mode === 'stretch' ? sol.stretch(io, id) : sol.solve(io, id);
+      },
+      [id, mode],
+    );
+  {
+    const labContext = await bounded(
+      browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 }),
+      'lab context',
+      30000,
+    );
+    const lp = await labContext.newPage();
+    lp.on('pageerror', (e) => errors.push(e.stack || e.message));
+    await lp.goto(BASE + '/build-crew/?test=1&nosw=1');
+    await ready(lp);
+    await addBuilder(lp, 'Mia');
+    await lp.waitForFunction(() => window.__lab && document.querySelector('#lab-open') && !document.querySelector('#lab-open').hidden, undefined, { timeout: 20000 });
+    assert.equal(await lp.locator('#lab-gallery').isVisible(), true, 'the Gallery button shows once the Lab has loaded');
+    await lp.screenshot({ path: path.join(shots, 'lab-title.png') });
+    // Locked: the board shows the lock and the price, the sandbox has only what was earned, a locked blueprint will not start.
+    await lp.locator('#jobs').click();
+    assert.equal(await lp.locator('#blueprint-row .job-tile').count(), 4);
+    assert.deepEqual(
+      await lp.locator('#blueprint-row .job-tile').evaluateAll((els) => els.map((e) => e.dataset.owned)),
+      ['false', 'false', 'false', 'false'],
+    );
+    assert.match(await lp.locator('#blueprint-row .job-tile').first().textContent(), /2,400 Lab coins/);
+    assert.match(await lp.locator('#vehicle-row .job-tile').nth(1).textContent(), /12,000 Lab coins/);
+    await lp.screenshot({ path: path.join(shots, 'lab-board-locked.png') });
+    await lp.locator('#modal-close').click();
+    await lp.evaluate(() => window.__buildCrew.test.start(101));
+    assert.equal(await lp.evaluate(() => window.__buildCrew.state.screen), 'title', 'a locked blueprint does not start');
+    // ...and the Lab shop opens in its place (the shared overlay on the page)
+    await lp.waitForFunction(() => document.querySelector('.lab-overlay'), undefined, { timeout: 15000 });
+    await lp.screenshot({ path: path.join(shots, 'lab-shop-from-board.png') });
+    await lp.evaluate(() => document.querySelectorAll('.lab-overlay').forEach((e) => e.remove()));
+    await lp.locator('#sandbox').click();
+    assert.deepEqual(await lp.evaluate(() => window.__buildCrew.state.machines.map((m) => m.kind)), ['skid']);
+    await lp.locator('#home').click();
+    // Unlocked through the Lab's own wallet and shop: grant coins, buy the two vehicles and the four blueprints.
+    const bought = await lp.evaluate(() => {
+      window.__lab.grantCoins(40000);
+      const s = window.__lab.store;
+      return ['bc.veh.dump', 'bc.veh.fork', 'bc.bp.lighthouse', 'bc.bp.windmill', 'bc.bp.castlegate', 'bc.bp.arch'].map((id) => s.buy(id).ok);
+    });
+    assert.deepEqual(bought, [true, true, true, true, true, true]);
+    await lp.locator('#jobs').click();
+    assert.deepEqual(
+      await lp.locator('#blueprint-row .job-tile').evaluateAll((els) => els.map((e) => e.dataset.owned)),
+      ['true', 'true', 'true', 'true'],
+    );
+    await lp.screenshot({ path: path.join(shots, 'lab-board-owned.png') });
+    await lp.locator('#modal-close').click();
+    await lp.locator('#sandbox').click();
+    assert.deepEqual(await lp.evaluate(() => window.__buildCrew.state.machines.map((m) => m.kind)), ['skid', 'dump', 'fork']);
+    assert.equal(await lp.locator('[data-machine]').count(), 3);
+    // the Grab button is for the three original machines only
+    await lp.locator('[data-machine="dump"]').click();
+    assert.equal(await lp.locator('#grab').isHidden(), true, 'a dump truck has no Grab');
+    await lp.locator('[data-machine="fork"]').click();
+    assert.equal(await lp.locator('#grab').isHidden(), true);
+    await lp.locator('[data-machine="skid"]').click();
+    assert.equal(await lp.locator('#grab').isHidden(), false);
+    // Save site reports to the Lab: the gallery keeps the plan numbers of the newest site, never a picture.
+    await lp.locator('#save-yard').click();
+    const gallery = await lp.evaluate(() => window.__lab.store.view().gallery);
+    assert(gallery.some((g) => g.id.startsWith('bc.site.') && g.pieces.length === 3 && g.pieces.every((p) => p.length === 5)));
+    await lp.locator('#home').click();
+    // Each blueprint, solved through the production controls with the vehicles unlocked beside it.
+    for (const id of [101, 102, 103, 104]) {
+      stage = 'blueprint ' + id;
+      const before = await lp.evaluate(() => window.__lab.store.view().coins);
+      await lp.evaluate((id) => window.__buildCrew.test.start(id), id);
+      await lp.evaluate(() => window.__buildCrew.test.advance({}, 120));
+      await lp.waitForTimeout(150);
+      await audit(lp);
+      await lp.screenshot({ path: path.join(shots, `blueprint-${id}-start.png`) });
+      const start = await lp.evaluate(() => window.__buildCrew.state);
+      assert(start.challenge && /Grabs 0 · par|Height [0-9.]+ m · target/.test(start.challenge.label), start.challenge?.label);
+      assert.match(await lp.locator('#challenge').textContent(), /par|target/);
+      const s = await solveIn(lp, id);
+      assert(s.complete);
+      await lp.locator('#next-round').waitFor();
+      const spec = s.challenge;
+      if (spec.kind === 'grabs') {
+        assert.equal(await lp.locator('#neat').count(), 1, 'a tidy build earns the badge');
+        assert.equal(s.challenge.met, true);
+        assert(s.grabs <= spec.par);
+      } else {
+        assert.equal(await lp.locator('#neat').count(), 0, 'the plain height blueprint has no badge, and says nothing');
+        await lp.waitForTimeout(900);
+        await lp.screenshot({ path: path.join(shots, `blueprint-${id}-done.png`) });
+        await lp.locator('#keep-playing').click();
+        const t = await solveIn(lp, id, 'stretch');
+        assert.equal(t.challenge.met, true, 'the spare block on top reaches the target');
+        await lp.waitForFunction(() => document.querySelector('.toast')?.textContent === 'Neat build!', undefined, { timeout: 5000 });
+        await lp.screenshot({ path: path.join(shots, `blueprint-${id}-neat.png`) });
+        await lp.locator('#pause').click();
+        await lp.locator('#resume').click();
+      }
+      if (spec.kind === 'grabs') {
+        await lp.waitForTimeout(900);
+        await lp.screenshot({ path: path.join(shots, `blueprint-${id}-done.png`) });
+      }
+      const save = await lp.evaluate(() => window.__buildCrew.state.save);
+      assert(save.done.includes(id));
+      const after = await lp.evaluate(() => window.__lab.store.view());
+      assert(after.coins > before, 'the Lab paid for the build');
+      assert(after.gallery.some((g) => g.id.startsWith(`bc.job${id}.`) && g.kind === 'blueprint' && g.pieces.length >= 5));
+      console.log(`PASS browser blueprint ${id}`);
+      results.solutions.push({ id, complete: true, challenge: spec.kind });
+      await lp.evaluate(() => window.__buildCrew.test.action('pause'));
+      if (await lp.locator('#modal').isVisible()) await lp.locator('#modal-close').click();
+      await lp.locator('#home').click();
+    }
+    assert.equal(await lp.evaluate(() => window.__buildCrew.state.save.done.filter((j) => j <= 10).length), 0, 'blueprints never count as the ten jobs');
+    assert.match(await lp.locator('#done-total').textContent(), /^0 \/ 10$/);
+    await labContext.close();
+    console.log('PASS UI stage');
+    results.checks.push('Lab: vehicles and blueprints locked until bought, then four blueprints solved with challenges, gallery and Save site reports');
+  }
+  // With every /lab/ request blocked the game boots and plays as it always did: the ten jobs open, the sandbox is the
+  // earned machines only, and nothing from the Lab shows (no buttons, no pill, no Blueprints or Vehicles rows).
+  stage = 'lab blocked';
+  {
+    const blockedContext = await bounded(browser.newContext({ viewport: { width: 1280, height: 800 } }), 'blocked context', 30000);
+    await blockedContext.route('**/lab/**', (route) => route.abort());
+    const bp = await blockedContext.newPage();
+    const blockedErrors = [];
+    bp.on('pageerror', (e) => blockedErrors.push(e.stack || e.message));
+    await bp.goto(BASE + '/build-crew/?test=1&nosw=1');
+    await ready(bp);
+    await addBuilder(bp, 'Solo');
+    await bp.waitForTimeout(1500);
+    assert.equal(await bp.evaluate(() => !!window.__lab), false, 'the Lab never loaded');
+    assert.equal(await bp.locator('#lab-open').isHidden(), true);
+    assert.equal(await bp.locator('#lab-gallery').isHidden(), true);
+    assert.equal(await bp.locator('#lab-hud > *').count(), 0);
+    await bp.locator('#jobs').click();
+    assert.equal(await bp.locator('.job-tile').count(), 10, 'only the ten jobs are on the board');
+    assert.equal(await bp.locator('#blueprint-row, #vehicle-row').count(), 0);
+    await bp.locator('#modal-close').click();
+    await bp.evaluate(() => window.__buildCrew.test.start(101));
+    assert.equal(await bp.evaluate(() => window.__buildCrew.state.screen), 'title', 'a blueprint cannot start without the Lab');
+    await bp.evaluate(() => window.__buildCrew.test.start(1));
+    await bp.evaluate(() => window.__buildCrew.test.advance({}, 120));
+    const done = await solveIn(bp, 1);
+    assert(done.complete, 'job 1 is solved with /lab/ blocked');
+    await bp.locator('#next-round').waitFor();
+    assert.equal(await bp.locator('#lab-results .lab-strip, #lab-results .lab-results').count(), 0);
+    await bp.locator('#modal-close').click();
+    await bp.locator('#home').click();
+    await bp.locator('#sandbox').click();
+    assert.deepEqual(await bp.evaluate(() => window.__buildCrew.state.machines.map((m) => m.kind)), ['skid'], 'earned machines only (job 1 rewards a paint)');
+    assert.deepEqual(blockedErrors, [], 'no errors with the Lab blocked');
+    await blockedContext.close();
+    console.log('PASS UI stage');
+    results.checks.push('with /lab/ blocked the original jobs and sandbox play and every Lab item stays hidden');
+  }
+}
+if (process.env.LAB_ONLY) {
+  try {
+    await labStages();
+    assert.deepEqual(errors, []);
+    console.log('All Lab browser checks passed.');
+  } finally {
+    await browser.close();
+    clearTimeout(watchdog);
+  }
+  process.exit(0);
 }
 try {
   await page.goto(BASE + '/build-crew/?test=1&nosw=1');
@@ -810,6 +995,7 @@ try {
   await bounded(voiceContext.close(), 'natural voice context close');
   console.log('PASS UI stage');
   results.checks.push('natural voice: every spoken line prepared, none on the device voice, nothing before a builder');
+  await labStages();
   assert.deepEqual(errors, []);
   writeFileSync(resultsPath('browser-results.json'), JSON.stringify(results, null, 2) + '\n');
   console.log('All browser checks passed.');

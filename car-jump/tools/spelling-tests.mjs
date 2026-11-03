@@ -842,7 +842,7 @@ await atest('POST creates a family (201); GET returns it with its players; a sec
   assert.equal(r.status, 201); assert.equal(r.json.rev, 1);
   const g = await call(st, 'GET', `/api/family/${CODE}`);
   assert.equal(g.status, 200); assert.equal(g.json.family.rev, 1); assert.equal(g.json.family.data.players[0].name, 'Mia');
-  assert.deepEqual(g.json.players, { pmia: { save: null, words: null, tb: null, facts: null, ff: null, fracs: null, ww: null, bc: null } });
+  assert.deepEqual(g.json.players, { pmia: { save: null, words: null, tb: null, facts: null, ff: null, fracs: null, ww: null, bc: null, lab: null } });
   assert.equal((await call(st, 'POST', `/api/family/${CODE}`, doc(1, famData()))).status, 409);
   assert.equal((await call(memoryStore(), 'POST', `/api/family/${CODE}`, doc(2, famData()))).status, 400, 'a new family starts at rev 1');
 });
@@ -899,10 +899,10 @@ await atest('v3.6.3: Trail Blazer keys <id>.tb and <id>.facts store with the sam
   assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.tb`, doc(2, { cash: 950 }))).status, 200);
   assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(1, { cash: 5 }))).status, 200);
   const g = await call(st, 'GET', `/api/family/${CODE}`);
-  assert.deepEqual(Object.keys(g.json.players.pmia), ['save', 'words', 'tb', 'facts', 'ff', 'fracs', 'ww', 'bc']);
+  assert.deepEqual(Object.keys(g.json.players.pmia), ['save', 'words', 'tb', 'facts', 'ff', 'fracs', 'ww', 'bc', 'lab']);
   assert.equal(g.json.players.pmia.tb.data.cash, 950); assert.equal(g.json.players.pmia.tb.rev, 2); assert.equal(g.json.players.pmia.facts.data.v, 4);
   assert.equal(g.json.players.pmia.save.data.cash, 5, "Spell Jump's save is untouched by the Trail Blazer keys");
-  assert.deepEqual(g.json.players.pleo, { save: null, words: null, tb: null, facts: null, ff: null, fracs: null, ww: null, bc: null });
+  assert.deepEqual(g.json.players.pleo, { save: null, words: null, tb: null, facts: null, ff: null, fracs: null, ww: null, bc: null, lab: null });
 });
 await atest('Fraction Fright keys <id>.ff and <id>.fracs: PUT accepted with the same rev rules; GET carries them next to the others', async () => {
   const st = memoryStore();
@@ -1685,7 +1685,7 @@ await atest('counters and the version spread: one doc per UTC day (day/<yyyy-mm-
   assert.deepEqual(d.sj, { devices: 3, runs: 2, tests: 1, lists: 1, versions: { '3.7.2': 2, '3.7.1': 1 } });
   assert.deepEqual(d.tb, { devices: 1, races: 1, checks: 1, versions: { '1.6.3': 1 } });
   assert.deepEqual(d.ff, { devices: 0, waves: 0, labs: 0, checks: 0, versions: {} });
-  assert.deepEqual(d.fams, { sj: [], tb: [], ff: [] });
+  assert.deepEqual(d.fams, { sj: [], tb: [], ff: [], ww: [], bc: [] });
   assert.deepEqual([...deps.store.map.keys()], ['day/2026-10-22']);
   // the next UTC day is a new doc
   const deps2 = { ...deps, now: () => ST_NOW + 86400000 };
@@ -1704,7 +1704,7 @@ await atest('families: hashes dedupe per game and cap at 500 a day; the stored d
   await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h, kind: 'run' }));
   await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: h, game: 'trail-blazer', kind: 'race' }));
   let d = await dayDoc(deps);
-  assert.deepEqual(d.fams, { sj: [h], tb: [h], ff: [] });
+  assert.deepEqual(d.fams, { sj: [h], tb: [h], ff: [], ww: [], bc: [] });
   for (let i = 0; i < 520; i++) await scall(deps, 'POST', '/api/stats/ping', pingBody({ fam: i.toString(16).padStart(8, '0'), kind: 'run' }));
   d = await dayDoc(deps);
   assert.equal(d.fams.sj.length, 500, 'capped at 500'); assert.equal(new Set(d.fams.sj).size, 500);
@@ -1747,6 +1747,24 @@ await atest('Fraction Fright pings: day / wave / lab / check counted under ff (v
   assert.equal(r.json.totals.last7.ff.labs, 1); assert.equal(r.json.totals.last7.famsFf, 1); assert.equal(r.json.totals.last7.families, 1);
   assert.deepEqual(r.json.versions.ff, { '1.0.0': 1 });
 });
+await atest('Wagon West and Build Crew pings (The Lab integration): counted under ww / bc with their own kinds; the Lab is not a game', async () => {
+  const deps = stDeps();
+  const send = (game, kind, o) => scall(deps, 'POST', '/api/stats/ping', { game, v: '1.6.0', kind, fam: '', ...o });
+  assert.equal((await send('wagon-west', 'day')).status, 204);
+  await send('wagon-west', 'leg', { fam: '0badcafe' }); await send('wagon-west', 'leg'); await send('build-crew', 'day', { v: '0.5.0' }); await send('build-crew', 'round', { v: '0.5.0' });
+  assert.equal((await send('wagon-west', 'run')).status, 400, 'a Spell Jump kind from Wagon West');
+  assert.equal((await send('build-crew', 'leg')).status, 400, 'a Wagon West kind from Build Crew');
+  assert.equal((await send('lab', 'day')).status, 400, 'the Lab sends no pings');
+  const d = await dayDoc(deps);
+  assert.deepEqual(d.ww, { devices: 1, legs: 2, versions: { '1.6.0': 1 } });
+  assert.deepEqual(d.bc, { devices: 1, rounds: 1, versions: { '0.5.0': 1 } });
+  assert.deepEqual(d.fams.ww, ['0badcafe']);
+  assert.deepEqual(ST.normalizeDay({ sj: { devices: 2 }, fams: {} }).ww, { devices: 0, legs: 0, versions: {} });
+  const r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=7' });
+  assert.equal(r.json.days[0].ww.legs, 2); assert.equal(r.json.days[0].famsWw, 1); assert.equal(r.json.days[0].bc.rounds, 1);
+  assert.equal(r.json.totals.last7.bc.devices, 1); assert.equal(r.json.totals.last7.famsWw, 1);
+  assert.deepEqual(r.json.versions.bc, { '0.5.0': 1 });
+});
 await atest('GET /api/stats: no STATS_KEY → 503 no-key; a wrong key → 403; the right key → days, totals, families total, versions', async () => {
   let r = await scall(stDeps({ key: '' }), 'GET', '/api/stats', undefined, { search: '?key=x' });
   assert.equal(r.status, 503); assert.equal(r.json.error, 'no-key');
@@ -1769,7 +1787,7 @@ await atest('GET /api/stats: no STATS_KEY → 503 no-key; a wrong key → 403; t
   assert.equal(j.totals.last7.sj.devices, 1); assert.equal(j.totals.last30.sj.devices, 2); assert.equal(j.totals.last7.tb.devices, 1);
   assert.equal(j.totals.last7.families, 1, 'the same family in both games counts once'); assert.equal(j.totals.last30.families, 2);
   assert.deepEqual(j.families, { total: 3 });
-  assert.deepEqual(j.versions, { sj: { '3.7.2': 1, '3.7.1': 1 }, tb: { '1.6.3': 1 }, ff: {} });
+  assert.deepEqual(j.versions, { sj: { '3.7.2': 1, '3.7.1': 1 }, tb: { '1.6.3': 1 }, ff: {}, ww: {}, bc: {} });
   assert.equal(j.generatedAt, new Date(ST_NOW).toISOString());
   r = await scall(deps, 'GET', '/api/stats', undefined, { search: '?key=sekret-key&days=7' });
   assert.equal(r.json.days.length, 7); assert.equal(r.json.totals.last30.sj.devices, 2, 'last30 is still 30 days');
@@ -1818,6 +1836,164 @@ test('progressSeries: n days ending today, mastered back-filled from masteredAt 
   assert.equal(t.length, 1); assert.equal(t[0].pct, 50); assert.equal(t[0].day, dayKey(day(8))); assert.equal(t[0].kind, 'friday');
 });
 
+// ===================================================================================================================
+// THE LAB (lab/SPEC.md §3.5, §6.1; appended by the Lab core stream, nothing above is edited but the `lab` entries of the expected kind lists).
+// The `lab` kind transport, and the shared streak's compatibility rule: a streak without the two optional spare-freeze lists behaves
+// byte-identically to the implementation this file shipped with (a frozen copy is kept below and compared on thousands of random histories).
+// ===================================================================================================================
+console.log('The Lab: the `lab` sync kind and the shared streak (spare freeze)');
+{
+  const ENG = await import('../src/meta/engagement.js');
+  const MRG = await import('../src/sync/merge.js');
+  const PROTO = await import('../src/sync/protocol.mjs');
+  const COSM = await import('../src/data/cosmetics.js');
+  const { dayKey: dk } = await import('../src/spelling/scheduler.js');
+
+  await atest('Lab: kind `lab` is accepted by the transport (rev rules, 409 with the stored doc), GET lists it for every player, `x.labs` is refused', async () => {
+    assert.ok(PROTO.PLAYER_KINDS.includes('lab')); assert.deepEqual(PROTO.parseKey('pmia.lab'), { kind: 'lab', playerId: 'pmia' });
+    assert.equal(PROTO.parseKey('pmia.labs'), null); assert.equal(PROTO.parseKey('pmia.lab.lab'), null);
+    const st = PROTO.memoryStore();
+    const famDoc = doc(1, { v: 1, players: [{ id: 'pmia', name: 'Mia' }], removedPlayers: [] });
+    assert.equal((await call(st, 'POST', `/api/family/${CODE}`, famDoc)).status, 201);
+    assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.lab`, doc(1, { v: 1, dev: { abc123: { c: 5, x: 7 } } }))).status, 200);
+    const c = await call(st, 'PUT', `/api/family/${CODE}/pmia.lab`, doc(1, { v: 1 }));
+    assert.equal(c.status, 409); assert.equal(c.json.doc.data.dev.abc123.c, 5);
+    assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.labs`, doc(1, {}))).status, 400);
+    const g = await call(st, 'GET', `/api/family/${CODE}`);
+    assert.equal(g.json.players.pmia.lab.data.dev.abc123.x, 7); assert.equal(g.json.players.pmia.ww, null);
+  });
+
+  // ---- a frozen copy of the streak code as it was before the spare freeze (do not edit: it is the reference)
+  const OLD = (() => {
+    const { addDays: addD, dayDiff: dd, weekOfDay: wod, isoWeek: isoW, isDayKey: isDK, grantEarned: grant } = ENG;
+    const shieldFreeIn = (used, week) => !used.some((d) => wod(d) === week);
+    function coverGap(st, from, to) {
+      const used = st.shieldUsedDays.slice(), shields = [];
+      const n = dd(from, to);
+      if (n > 60) return { ok: false, shields: [] };
+      for (let i = 1; i < n; i++) {
+        const k = addD(from, i);
+        if (used.includes(k)) continue;
+        if (!shieldFreeIn(used, wod(k))) return { ok: false, shields: [] };
+        used.push(k); shields.push(k);
+      }
+      return { ok: true, shields };
+    }
+    function stamp(st, now) { const wk = isoW(now); st.shieldAvailableWeek = shieldFreeIn(st.shieldUsedDays, wk) ? wk : ''; }
+    function streakNow(st, now) {
+      if (!st || !isDK(st.lastDay) || !st.count) return 0;
+      const today = dk(now);
+      if (dd(st.lastDay, today) <= 0) return st.count;
+      return coverGap(st, st.lastDay, today).ok ? st.count : 0;
+    }
+    function refreshStreak(save, now) {
+      const st = save.streak; let shields = [];
+      if (isDK(st.lastDay) && st.count > 0) {
+        const g = coverGap(st, st.lastDay, dk(now));
+        if (g.ok && g.shields.length) { shields = g.shields; st.shieldUsedDays = [...st.shieldUsedDays, ...shields].sort().slice(-60); }
+      }
+      stamp(st, now);
+      return shields;
+    }
+    function completeDay(save, now) {
+      const st = save.streak, today = dk(now);
+      const out = { counted: false, count: st.count, best: st.best, milestone: null, shields: [], crates: 0, unlocks: [] };
+      if (st.lastDay === today || (isDK(st.lastDay) && dd(st.lastDay, today) < 0)) return out;
+      if (isDK(st.lastDay) && st.count > 0) {
+        const g = coverGap(st, st.lastDay, today);
+        if (g.ok) { st.count += 1; out.shields = g.shields; st.shieldUsedDays = [...st.shieldUsedDays, ...g.shields].sort().slice(-60); }
+        else st.count = 1;
+      } else st.count = 1;
+      st.lastDay = today;
+      if (!st.days.includes(today)) st.days = [...st.days, today].sort().slice(-120);
+      st.best = Math.max(st.best, st.count);
+      stamp(st, now);
+      Object.assign(out, { counted: true, count: st.count, best: st.best });
+      if (COSM.STREAK_MILESTONES.includes(st.count)) { out.milestone = st.count; out.crates = 1; save.crates.earned += 1; }
+      out.unlocks = grant(save);
+      return out;
+    }
+    const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+    const daysOf = (v, cap) => (Array.isArray(v) ? [...new Set(v.filter(isDK))].sort().slice(-cap) : []);
+    function normalizeStreak(raw) {
+      const s = ENG.defaultStreak();
+      if (!raw || typeof raw !== 'object') return s;
+      s.count = Math.max(0, Math.floor(num(raw.count)));
+      s.best = Math.max(s.count, Math.floor(num(raw.best)));
+      s.lastDay = isDK(raw.lastDay) ? raw.lastDay : '';
+      s.shieldAvailableWeek = typeof raw.shieldAvailableWeek === 'string' && /^\d{4}-W\d{2}$/.test(raw.shieldAvailableWeek) ? raw.shieldAvailableWeek : '';
+      s.shieldUsedDays = daysOf(raw.shieldUsedDays, 60);
+      s.days = daysOf(raw.days, 120);
+      return s;
+    }
+    const uniqO = (...arrs) => { const out = []; for (const a of arrs) for (const x of Array.isArray(a) ? a : []) if (!out.includes(x)) out.push(x); return out; };
+    const objO = (x) => (x && typeof x === 'object' && !Array.isArray(x) ? x : {});
+    function mergeStreak(sa, sb) {
+      const a = objO(sa), b = objO(sb);
+      const da = typeof a.lastDay === 'string' ? a.lastDay : '', db = typeof b.lastDay === 'string' ? b.lastDay : '';
+      const win = da !== db ? (da > db ? a : b) : (num(a.count) >= num(b.count) ? a : b);
+      return { count: num(win.count), lastDay: win.lastDay || '', best: Math.max(num(a.best), num(b.best), num(win.count)), shieldAvailableWeek: win.shieldAvailableWeek || '', shieldUsedDays: uniqO(a.shieldUsedDays, b.shieldUsedDays).sort(), days: uniqO(a.days, b.days).sort() };
+    }
+    return { streakNow, refreshStreak, completeDay, normalizeStreak, mergeStreak };
+  })();
+
+  const freshSave = () => ({ streak: ENG.defaultStreak(), crates: { earned: 0, opened: 0, sinceCosmetic: 0 }, cosmetics: ENG.defaultCosmetics(), xp: 0, champion: [] });
+  const J = (x) => JSON.stringify(x);
+  test('Lab: a streak without the spare-freeze lists is byte-identical to the shipped implementation (4,000 random histories)', () => {
+    let seed = 20261102; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const saves = [];
+    for (let h = 0; h < 4000; h++) {
+      const a = freshSave(), b = freshSave();
+      let t = new Date(2026, 8 + Math.floor(rnd() * 3), 1 + Math.floor(rnd() * 27), 9).getTime();
+      const steps = 4 + Math.floor(rnd() * 14);
+      for (let s = 0; s < steps; s++) {
+        t += Math.floor(rnd() * (rnd() < 0.2 ? 5 : 2) + (rnd() < 0.5 ? 1 : 0)) * DAY_MS + Math.floor(rnd() * 3) * 3600000;
+        const op = rnd();
+        if (op < 0.35 || s === 0) assert.equal(J(ENG.refreshStreak(b, t)), J(OLD.refreshStreak(a, t)), 'refresh return, history ' + h);
+        else if (op < 0.85) assert.equal(J(ENG.completeDay(b, t)), J(OLD.completeDay(a, t)), 'completeDay return, history ' + h);
+        assert.equal(J(b.streak), J(a.streak), `streak after step ${s} of history ${h}`);
+        assert.equal(b.crates.earned, a.crates.earned);
+        const probe = t + Math.floor(rnd() * 6) * DAY_MS;
+        assert.equal(ENG.streakNow(b.streak, probe), OLD.streakNow(a.streak, probe), 'streakNow');
+      }
+      assert.equal(J(ENG.normalizeStreak(JSON.parse(J(b.streak)))), J(OLD.normalizeStreak(JSON.parse(J(a.streak)))), 'normalizeStreak');
+      saves.push(a.streak);
+    }
+    for (let i = 0; i + 1 < saves.length; i += 2) assert.equal(J(MRG.mergeStreak(saves[i], saves[i + 1])), J(OLD.mergeStreak(saves[i], saves[i + 1])), 'mergeStreak ' + i);
+    for (const junk of [null, undefined, 5, 'x', [], { count: 'a' }, { bonusEarnedDays: 'no' }]) assert.equal(J(ENG.normalizeStreak(junk)), J(OLD.normalizeStreak(junk)), 'normalizeStreak ' + J(junk));
+    assert.deepEqual(ENG.defaultStreak(), { count: 0, best: 0, lastDay: '', shieldAvailableWeek: '', shieldUsedDays: [], days: [] }, 'defaultStreak is unchanged');
+  });
+  test('Lab: earnBonusFreeze banks one spare, once an ISO week, only with none banked; streakFreezes reports both freezes', () => {
+    const st = ENG.defaultStreak(); const mon = new Date(2026, 10, 2, 9).getTime();
+    assert.deepEqual(ENG.streakFreezes(st, mon), { weeklyReady: true, bonus: 0 });
+    assert.equal(ENG.earnBonusFreeze(st, mon), true); assert.equal(ENG.bonusBanked(st), 1); assert.equal(ENG.earnBonusFreeze(st, mon + DAY_MS), false, 'one banked');
+    st.bonusUsedDays.push('2026-11-03'); assert.equal(ENG.bonusBanked(st), 0);
+    assert.equal(ENG.earnBonusFreeze(st, mon + 2 * DAY_MS), false, 'already earned in this ISO week'); assert.equal(ENG.earnBonusFreeze(st, mon + 7 * DAY_MS), true, 'next week');
+    assert.deepEqual(ENG.streakFreezes(st, mon), { weeklyReady: true, bonus: 1 });
+  });
+  test('Lab: the spare freeze covers a second missed day in a week whose shield is spent; a third missed day breaks the streak', () => {
+    const mon = new Date(2026, 10, 2, 9).getTime(), at2 = (n) => mon + n * DAY_MS;
+    const mk = (spare) => { const s = freshSave(); ENG.completeDay(s, at2(0)); if (spare) ENG.earnBonusFreeze(s.streak, at2(0)); return s; };
+    const a = mk(true);                                                       // counted Monday; miss Tue + Wed; Thursday opens
+    assert.equal(ENG.streakNow(a.streak, at2(3)), 1, 'alive: the shield covers Tuesday, the spare covers Wednesday');
+    assert.deepEqual(ENG.refreshStreak(a, at2(3)), ['2026-11-03', '2026-11-04']); assert.deepEqual(a.streak.shieldUsedDays, ['2026-11-03']); assert.deepEqual(a.streak.bonusUsedDays, ['2026-11-04']); assert.equal(ENG.bonusBanked(a.streak), 0);
+    assert.equal(ENG.completeDay(a, at2(3)).count, 2);
+    assert.deepEqual(ENG.refreshStreak(a, at2(3)), [], 'applied once');
+    const b = mk(true); assert.equal(ENG.streakNow(b.streak, at2(4)), 0, 'three missed days (Tue, Wed, Thu) break it'); assert.equal(ENG.completeDay(b, at2(4)).count, 1);
+    const c = mk(false); assert.equal(ENG.streakNow(c.streak, at2(3)), 0, 'without a spare the second missed day breaks it, as before');
+    const d = mk(true); const out = ENG.completeDay(d, at2(3)); assert.equal(out.count, 2); assert.deepEqual(out.shields, ['2026-11-03']); assert.deepEqual(out.bonus, ['2026-11-04']);
+  });
+  test('Lab: mergeStreak unions the two spare-freeze lists when either side has them, and is unchanged otherwise', () => {
+    const base = { count: 3, best: 3, lastDay: '2026-11-02', shieldAvailableWeek: '', shieldUsedDays: [], days: ['2026-11-02'] };
+    const plain = MRG.mergeStreak(base, { ...base, count: 2, lastDay: '2026-11-01' });
+    assert.deepEqual(Object.keys(plain), ['count', 'lastDay', 'best', 'shieldAvailableWeek', 'shieldUsedDays', 'days'], 'no new keys without the lists');
+    const m = MRG.mergeStreak({ ...base, bonusEarnedDays: ['2026-10-26', '2026-11-02'], bonusUsedDays: ['2026-10-28'] }, { ...base, bonusEarnedDays: ['2026-10-26'], bonusUsedDays: ['2026-10-29'] });
+    assert.deepEqual(m.bonusEarnedDays, ['2026-10-26', '2026-11-02']); assert.deepEqual(m.bonusUsedDays, ['2026-10-28', '2026-10-29']);
+    assert.deepEqual(MRG.mergeStreak(base, { ...base, bonusEarnedDays: ['2026-11-02'] }).bonusUsedDays, []);
+    assert.deepEqual(ENG.normalizeStreak({ ...base, bonusEarnedDays: ['2026-11-02', 'bad'] }).bonusUsedDays, [], 'normalize keeps the lists when present');
+    assert.ok(!('bonusEarnedDays' in ENG.normalizeStreak(base)), 'and not when absent');
+  });
+}
 
 // ---------- v3.8.1: spellVoice.js (clips ready before a word is dictated; small batches, next-needed first) ----------
 console.log('\nspellVoice: the order of the clips, the waiting, the device voice only when it must be');

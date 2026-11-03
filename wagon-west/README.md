@@ -57,7 +57,7 @@ The journey (`src/journey/*`), the scene (`src/scene/*`) and the content (`src/c
 ## Tests
 
 ```sh
-BASE_URL=http://localhost:8095 node wagon-west/tools/ui-smoke.mjs     # both layouts on the mock scene (ONLY=landscape|portrait; VOICE_ONLY=1)
+BASE_URL=http://localhost:8095 node wagon-west/tools/ui-smoke.mjs     # both layouts on the mock scene (ONLY=landscape|portrait; VOICE_ONLY=1; LAB_ONLY=1 for v1.6)
 BASE_URL=http://localhost:8095 node wagon-west/tools/sync-smoke.mjs   # two devices, one in-memory family server
 node wagon-west/tools/make-icons.mjs                                  # redraw the icons
 ```
@@ -282,6 +282,45 @@ adaptive,sim,...}.js`), the content stream writes the legs, routes, people, card
   `lastFork`, `lastBuild`, `lastPlacement`; the mock scene: `?mockPan=0.8`, `?mockSnub=0|1`, `__mockScript.{pan,rocker,snub,bumps}`,
   `window.__mock.lastHomestead / builds`.
 - VERSION 1.5.0; the service worker is `wagon-west-v1.5.0`.
+
+## 1.6 · Lab integration (v1)
+
+The game's part of **The Lab** (`learninglab.fun/lab/`, the layer across the five games; `lab/SPEC.md` §4.4 is the contract, `SPEC.md` "v1.6" here the
+build notes). The Lab only listens and decorates: **no Lab call reads or writes the dollars, trade tokens or gold, and `journey/economy.js` is unchanged**
+(a journey test holds a snapshot of its exports).
+
+- **The bridge** (`src/meta/labBridge.js`, the one file that knows the Lab): loads `/lab/src/index.js` lazily, queues calls (at most 100) until it
+  has, and is a no-op returning an empty receipt when `/lab/` is missing, blocked or old. `attach` at the player pick, `detach` at the picker. A test
+  boots the game with every `/lab/` request blocked.
+- **Reports** (`labReport` in `main.js`, never in a frame): `marker` (after `applyMarker`, `firstTry` = the answer was right), `problem` (the two
+  `applyProblem` sites), `word` (each river or letter word), `leg` and one `star` per star (the arrival), `choice` (a fork or a choice moment), `farm`
+  (a piece built), `day` (beside the streak), and `beginRound` at every leg start. A combo moment is **Trail Cheer**: after the panel closes the
+  party cheers about 1.2 s (`scene.cheer()`) and a toast names it.
+- **Looks** (`src/meta/labLooks.js` lists 14 ids; the drawing is `src/scene/looks16.js` in `drawWagon` / `drawPerson`): seven wagon **covers**
+  (stripes, patchwork, sunflower, riverblue, starquilt, nightsky, goldthread) and seven **outfits** for the party leader, the first companion
+  (bonnet, strawhat, vest, redscarf, spectacles, plumehat, cloak). `cosmetics()` is read when a leg starts (`applySceneParty`); `null` is the game's own
+  canvas and clothes. No cover or outfit imitates any nation's dress or designs.
+- **On screen**: the Lab's XP pill (`#hud-lab`, under the trail HUD's top row, at the right), its strip under the results' pay lines (`#res-lab`),
+  a "The Lab" button on the title (shown once the Lab has loaded) and a "The Lab" row in Parents → Options (`openParent({ unlocked: true })`).
+- **The cliffhanger** (`journey/preview.js` `nextStopPreview(J)`, `ui/results.js`): every leg's results end on a card with the next stop's painting
+  (`scene/backdrops.js` `drawStopCard`), one true line (the first sentence of its lookout) and "Next time: the ferry at the Kansas River" (a river
+  with a ferry; "the crossing at …" for the others; a fort or landmark by name). Nothing is locked. After the third leg finished on a local day the
+  card adds "That's a good place to stop for today." No card at a trail's end.
+- **Six choice moments**, two on each route, asked at the stop like a fork (`content/choices.js`, `journey/choices.js`, `ui/choicePanel.js`; a person says
+  one true line per way, two equal buttons, read aloud, "Decide later" keeps it pending, moving on takes the plain way): a **shortcut** (the creek bottom
+  at Ash Hollow, the Humboldt's bends, the Rogue River's gravel bar: the leg after is 15 miles shorter, 1 time in 4 a sack of flour is soaked, up to
+  50 lb) or a **guide** (Ice Slough, the Big Meadows, Siskiyou Pass: $2 × the price level, a day saved, the party's spirit up, and the Forty-Mile
+  Desert crossed without thirst). A leg a choice shortens pays and keeps its markers as the full leg; the day the shorter leg does not save by
+  itself is saved on the arrival (the arrival day's food stays in the wagon). `J.choices` is merged as a union by id. `choice` pays Lab XP only.
+- **Economy**: `node wagon-west/tools/economy-sim.mjs --check --homestead` passes with the 1.5 targets unchanged; its new **choice moments** table
+  runs 360 Rookie kids a cell with always the plain way, only the shortcuts, only the guides and always the second way: the mean end cash is within $2
+  of always-the-plain-way on every route (limit $3), the sessions stay a leg a session.
+- Tests: `journey-tests.mjs` (the choices, the preview, the economy snapshot), `economy-sim.mjs`, `content-audit.mjs` (every new spoken line is in
+  `voiceTexts.js`), `ui-smoke.mjs` (`LAB_ONLY=1`: the bridge, the HUD pill, a marker reaching the Lab, Trail Cheer, the looks, the preview and the stop
+  line, each of the six choices, the game with `/lab/` blocked), `scene-smoke.mjs` (`V16_ONLY=1`: the covers, outfits, cheer and previews) and
+  `sync-smoke.mjs` (the choices across two devices).
+- VERSION 1.6.0; the service worker is `wagon-west-v1.6.0` (the bridge, the choice panel and its words are in the shell; the Lab's own modules are cached
+  as the page loads them).
 
 ## Data and sync
 

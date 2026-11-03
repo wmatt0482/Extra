@@ -55,6 +55,8 @@ const {
   // v1.5
   chooseBranch, payToll, applySnub, sailPay, applyGold, panOutcome, rockerOutcome, goldAt, nuggetsOf, closeJourney, newLedger, newFarm, tiersOpen, buildPiece, canBuild, homesteadView,
   farmBalance, writeOnRock, checkSets, TIER_FX, tierOf,
+  // v1.6 (The Lab): the six choice moments
+  applyChoice, SHORTCUT, GUIDE,
 } = await import('../src/journey/sim.js');
 const { CARD_BY_ID } = await import('../src/content/cards.js');
 const { RIVER_STOPS } = await import('../src/content/fish.js');
@@ -128,6 +130,8 @@ const SEC = { day: 6, marker: 15, markerFix: 12, problem: 25, problemFix: 20, wo
   ford: 25, float: 45, ferryTalk: 10, repair: 12, stampede: 40, raft: 90, person: 12, deed: 6, wait: 8,
   // v1.5: a two-step problem takes longer; the toll gate, Laurel Hill's ropes, a pan, a round of the rocker, the sail home, the fork card
   problemStep: 12, toll: 15, snub: 30, pan: 25, rocker: 30, sail: 90, fork: 30, nugget: 5,
+  // v1.6: a choice moment (the person's lines, the two ways read aloud, a tap) takes about what a fork does
+  choice: 25,
   // v1.4 (SPEC v1.4 §7.2): fishing 2.0 is 75 s a session (1.3: 45); the nose, the facts and the dust devil are the mandatory seconds; the rest is optional play
   nose: { find: 0, berries: 8, snake: 8, rabbit: 8, quest: 15 }, fact: 10, dustDevil: 15, fetch: 30, hoppers: 15, stones: 25, meteors: 25, questTalk: 12 };
 /** What the v1.4 kid does (SPEC v1.4 §7.2): the dog kept 80 % of the time at the Kansas River (a kid who said "Not now" takes it at Fort Kearny's store half the time),
@@ -326,6 +330,7 @@ function simulateKid(seed, spec, policy = 'natural') {
       hinted: 0, arrowsOut: 0, limpDays: 0, tier: J.tier, route: J.route, planLen: J.plan.length, thirsty: 0, dryDays: 0, snubs: 0, snubsSmooth: 0, tolls: 0, ious: 0, flakes: 0, nuggets: 0, barrelBy: null };
     rec.v14 = { noseLegs: 0, dogLegs: 0, mand: [], fishSessions: 0, fishLb: 0, fishFree: 0, fishLbFree: 0, fetches: 0, stones: 0, meteors: 0, wishes: 0, questsFound: 0, talks: 0, mailed: 0,
       returned: 0, dog: false, locket: null, funTokens: 0, newDeeds: 0, facts: 0, devils: 0, hatsAll: 0, noses: { find: 0, berries: 0, snake: 0, rabbit: 0, quest: 0 }, spoon: false, finds: 0, horseshoeCash: 0 };
+    rec.moment = { asked: 0, b: 0, cut: 0, soakedLb: 0, soaked: 0, fee: 0 };
     rec_ = rec; rec.stops = []; rec.cashAt = []; rec.flow = []; rec.upTokens = 0; rec.upCash = 0; rec.challenges = 0; rec.challengesDone = 0; rec.camps = 0; rec.derbyCash = 0;
     shop();                                        // the Independence store
     for (let guard = 0; guard < 40 && !J.done; guard++) {
@@ -416,6 +421,12 @@ function simulateKid(seed, spec, policy = 'natural') {
       const res = arrive(J);
       rec.cashAt.push(J.cash);                      // cash on hand on arriving, after the leg's pay (the table prints this)
       if (res.fork) { const pickOpt = ((journeys[s].choices) || {})[res.fork.id]; if (pickOpt) chooseBranch(J, res.fork.id, pickOpt); spend(SEC.fork); }      // v1.5: the fork card at the stop
+      if (res.choice) {                              // v1.6 (The Lab): a choice moment; the cell says which way the kid takes (default: the plain way, as nextLeg would)
+        const want = (spec.moments && spec.moments[res.choice.kind]) || 'a';
+        const ap = applyChoice(J, res.choice.id, want); spend(SEC.choice);
+        const M = rec.moment; M.asked++;
+        if (ap.ok && ap.option === 'b') { M.b++; M.cut += ap.cut; M.soakedLb += ap.soakedLb; M.fee += ap.fee; if (ap.soaked) M.soaked++; }
+      }
       if (res.gold) {                               // v1.5: a digging: the pans and, at Coloma, the rocker (SPEC §3.4)
         const prospector = !!skillOf(J, 'prospecting');
         for (let i = 0; i < res.gold.pans; i++) {
@@ -798,6 +809,44 @@ console.log('(unfed days: days that began with no food, mean of the three player
   console.log('sublette buys-all, choices of 4 stores (S / A / W): ' + PROFILE_KEYS.map((pl) => f1(sc(pl).choices)).join(' / ') + '    fort cash by eye at Kearny, Laramie, Hall (S / A / W): ' + PROFILE_KEYS.map((pl) => '$' + Math.round(cellStats('sublette', pl, 0).fortCash)).join(' / '));
 }
 
+// ---- v1.6 (The Lab): the six choice moments (lab/SPEC.md §4.4): a shortcut that risks a soaked sack, paying a guide to save a day ----
+// `choices` in the printouts above are the stores short of the wish list; THESE are the choice moments. Each route's Rookie journey is run by the same kids four ways: always the plain
+// way (a), only the shortcuts taken (sc), only the guides paid (gd), every way taken (b); the cash at the end (the money the choices touch) must differ by at most $3 from always-a,
+// the sessions stay a leg a session, and nobody is stuck. The shortcut is 15 miles shorter and 1 time in 4 a 50 lb sack of flour is soaked (a day of food for four at full rations is 12 lb;
+// 25 % of 50 lb is 12.5 lb); the guide's fee (GUIDE.fee, in 1847 dollars) is the number this section tunes. A leg a choice shortens pays as the full leg.
+const MOMENT_CELLS = [['oregon', 'Oregon (ash-hollow, ice-slough)'], ['california', 'California (+ humboldt-river, big-meadows)'], ['gold-road', 'the Gold Road (rogue-river, siskiyou-pass)']];
+const MOMENT_MODES = { a: { shortcut: 'a', guide: 'a' }, sc: { shortcut: 'b', guide: 'a' }, gd: { shortcut: 'a', guide: 'b' }, b: { shortcut: 'b', guide: 'b' } };
+const MOMENT_KIDS = Number(process.env.MOMENT_KIDS) || 360;      // (120 kids give ±1.5 dollars of noise on a cell's mean; 360 give ±0.9)
+const momentCache = {};
+function momentCell(key, mode) {
+  const ck = `${key}|${mode}`;
+  if (momentCache[ck]) return momentCache[ck];
+  const base = SPECS[key];
+  const spec = { ...base, journeys: [{ route: base.route, tier: 'rookie', choices: base.choices }], moments: MOMENT_MODES[mode], key: `moment-${key}-${mode}` };
+  const recs = [];
+  for (const pl of PROFILE_KEYS) {
+    Object.assign(KID, BASE_KID, PROFILES[pl]);
+    for (let i = 0; i < MOMENT_KIDS / PROFILE_KEYS.length; i++) recs.push(simulateKid(1000 + i * 7919 + 3, spec, 'natural')[0]);
+  }
+  Object.assign(KID, BASE_KID, PROFILES.average);
+  const legMin = recs.flatMap((r) => r.legSeconds.map((x) => x / 60));
+  return (momentCache[ck] = { recs, end: mean(recs.map((r) => r.cash)), sessions: mean(recs.map((r) => r.sessions)), sessMax: Math.max(...recs.map((r) => r.sessions)), legMean: mean(legMin), legMax: Math.max(...legMin),
+    maxRun: Math.max(...recs.map((r) => r.maxCrawl)), crawl: mean(recs.map((r) => r.crawl)), asked: mean(recs.map((r) => r.moment.asked)), b: mean(recs.map((r) => r.moment.b)), cut: mean(recs.map((r) => r.moment.cut)),
+    soaked: mean(recs.map((r) => r.moment.soaked)), soakedLb: mean(recs.map((r) => r.moment.soakedLb)), fee: mean(recs.map((r) => r.moment.fee)), food: mean(recs.flatMap((r) => r.arriveFoodDays)),
+    stars: mean(recs.map((r) => r.stars / r.legs)), allDone: recs.every((r) => r.done) });
+}
+const MOMENT_TARGETS = { endWithin: 3, sessions: { oregon: [18, 22], california: [22, 26], 'gold-road': [11, 13] }, crawlRunMax: 3, soakShare: [0.1, 0.45] };
+console.log(`\nCHOICE MOMENTS (v1.6, lab/SPEC.md §4.4): ${MOMENT_KIDS} Rookie kids a cell (strong / average / weak thirds), shopping by eye; GUIDE.fee $${GUIDE.fee} × the price level, SHORTCUT ${SHORTCUT.miles} miles and ${SHORTCUT.soakChance * 100} % of ${SHORTCUT.soakLb} lb soaked`);
+console.log('route / way taken                                end cash (Δ vs a)   sessions (max)   leg min (mean/max)   unfed (max run)   food at arrival, days   asked   b taken   miles saved   soaked sacks   fee paid');
+for (const [key, label] of MOMENT_CELLS) {
+  const A = momentCell(key, 'a');
+  for (const mode of Object.keys(MOMENT_MODES)) {
+    const c = momentCell(key, mode);
+    console.log(`${label.split(' (')[0].padEnd(11)} ${{ a: 'always a      ', sc: 'shortcuts only', gd: 'guides only   ', b: 'always b      ' }[mode]}  $${pad(f1(c.end), 5)} (${(c.end - A.end >= 0 ? '+' : '') + f1(c.end - A.end)})`.padEnd(48) +
+      `${pad(f1(c.sessions), 5)} (${c.sessMax})      ${pad(f1(c.legMean), 5)} / ${pad(f1(c.legMax), 5)}     ${pad(f1(c.crawl), 4)} (${c.maxRun})           ${pad(f1(c.food), 5)}               ${pad(f1(c.asked), 4)}    ${pad(f1(c.b), 5)}    ${pad(f1(c.cut), 8)}      ${pad(f2(c.soaked), 6)}      $${f2(c.fee)}`);
+  }
+}
+
 if (CHECK) {
   const problems = [];
   const stuck = runs.flat().filter((r) => r.maxCrawl > 3);
@@ -904,6 +953,24 @@ if (CHECK) {
     for (const key of ['gold-road', 'california']) for (const pl of PROFILE_KEYS) {
       const r0 = cellStats(key, pl, 0).flakes;
       for (let t = 1; t < 3; t++) { const g = cellStats(key, pl, t).flakes, want = r0 * T2.later.goldVs[TIER_IDS[t]]; if (r0 > 0 && Math.abs(g / want - 1) > T2.later.goldSlack) problems.push(`${TIER_IDS[t]} ${SPECS[key].label}, ${pl}: ${f1(g)} flakes, Rookie ${f1(r0)} x ${T2.later.goldVs[TIER_IDS[t]]} is ${f1(want)} (want within ${T2.later.goldSlack * 100} %)`); }
+    }
+  }
+
+  // v1.6: the choice moments: expected-value neutral on cash (always-b within $3 of always-a), a leg a session, nobody stuck, the soaked sacks about one time in four
+  {
+    const MT = MOMENT_TARGETS;
+    for (const [key, label] of MOMENT_CELLS) {
+      const A = momentCell(key, 'a');
+      for (const mode of Object.keys(MOMENT_MODES)) {
+        const c = momentCell(key, mode), tag = `choice moments, ${label}, ${{ a: 'always a', sc: 'shortcuts only', gd: 'guides only', b: 'always b' }[mode]}`;
+        if (!c.allDone) problems.push(`${tag}: a kid did not finish`);
+        if (c.maxRun > MT.crawlRunMax) problems.push(`${tag}: ${c.maxRun} days in a row with no food (> ${MT.crawlRunMax})`);
+        if (Math.abs(c.end - A.end) > MT.endWithin) problems.push(`${tag}: ends with $${f1(c.end)} against always-a's $${f1(A.end)} (want within $${MT.endWithin})`);
+        const [lo, hi] = MT.sessions[key]; if (c.sessions < lo || c.sessions > hi) problems.push(`${tag}: ${f1(c.sessions)} sessions (want ${lo}-${hi})`);
+        if (c.legMax > ROUTE_TARGETS.oregon.legMax + 3) problems.push(`${tag}: a leg took ${f1(c.legMax)} minutes (want at most about ${ROUTE_TARGETS.oregon.legMax + 3} with 360 kids)`);
+      }
+      const sc = momentCell(key, 'sc'), nSc = sc.b;
+      if (nSc > 0) { const share = sc.soaked / nSc; if (share < MT.soakShare[0] || share > MT.soakShare[1]) problems.push(`choice moments, ${label}: ${Math.round(share * 100)} % of the shortcuts soaked a sack (want about 25 %: ${MT.soakShare[0] * 100}-${MT.soakShare[1] * 100} %)`); }
     }
   }
   if (problems.length) { console.log('\nCHECK FAILED:\n  ' + problems.join('\n  ')); process.exit(1); }

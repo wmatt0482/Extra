@@ -24,7 +24,7 @@ export function defaultSave() {
     pumpkins: 0,              // planted in the calm beat after each final wave
     waves: 0,                 // waves played (stopped ones too)
     streets: {},              // streetId -> { wave: the next wave 1-5, cleared: times all 5 waves were played }
-    yard: { owned: { grenade: [], goo: [], fence: [], extra: [] }, grenade: STOCK.grenade, goo: STOCK.goo, fence: STOCK.fence, dog: false, lantern: false },
+    yard: { owned: { grenade: [], goo: [], fence: [], tower: [], extra: [] }, grenade: STOCK.grenade, goo: STOCK.goo, fence: STOCK.fence, tower: STOCK.tower, dog: false, lantern: false },
     records: { lifetimeCash: 0, throws: 0, reached: 0, bestWave: 0 },
     seen: { coach: false },
     play: {},                 // 'YYYY-MM-DD' -> { waves, cures } (the last 14 days)

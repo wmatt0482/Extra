@@ -1,8 +1,8 @@
 // Build Crew's service worker. It precaches the shell listed in offline.js (the game, the shared Spell Jump modules
 // it imports and the vendored Three.js and Rapier), so the yard reloads offline. Only this game's caches are retired on
 // upgrade. Family and voice APIs stay network-only; prepared natural-voice clips share Spell Jump's clip cache.
-// Bump VERSION whenever the shell's file list or contents change, so returning players get a fresh cache.
-const VERSION = 'build-crew-v0.4.0',
+// The shell is required; the Lab's files (OPTIONAL in offline.js) are best effort. Bump VERSION whenever the shell's file list or contents change, so returning players get a fresh cache.
+const VERSION = 'build-crew-v0.5.0',
   PREFIX = 'build-crew-',
   TTS_CACHE = 'spell-jump-tts-v1';
 importScripts('./offline.js');
@@ -12,6 +12,8 @@ self.addEventListener('install', (event) =>
     (async () => {
       const cache = await caches.open(VERSION);
       await cache.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })));
+      // The Lab's modules are optional: cached when they can be fetched, never a reason for the install to fail.
+      await Promise.allSettled(OPTIONAL.map((u) => cache.add(new Request(u, { cache: 'reload' }))));
       await self.skipWaiting();
     })(),
   ),

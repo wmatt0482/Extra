@@ -18,6 +18,7 @@ import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { FENCES, TOWERS } from '../src/data/looks.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const gameRoot = path.join(repoRoot, 'fraction-fright');
@@ -461,7 +462,7 @@ async function runLayout(browser, layout) {
   await page.waitForSelector(visibleSel('#screen-yard'));
   const cash0 = await J(page, () => window.__fractionFright.save.cash);
   const secs = await J(page, () => [...document.querySelectorAll('#yard-side .yard-sec')].map((e) => e.textContent));
-  check(secs.join('|') === 'Grenades|Goo colours|Fences|Yard extras' && await J(page, () => document.querySelectorAll('#yard-side .yard-item').length) === 12, `the yard: ${secs.join(' · ')} (12 items)`);
+  check(secs.join('|').startsWith('Grenades|Goo colours|Fences|Tower|Yard extras') && await J(page, () => document.querySelectorAll('#yard-side .yard-item').length) === 21, `the yard: ${secs.join(' · ')} (21 items; Lab integration v1 added the tower, two fences and four goo colours)`);
   await page.click('[data-buy="goo:grape"]');
   const y1 = await J(page, () => ({ cash: window.__fractionFright.save.cash, goo: window.__fractionFright.save.yard.goo, owned: window.__fractionFright.save.yard.owned.goo }));
   check(y1.goo === 'grape' && y1.owned.includes('grape') && y1.cash === cash0 - 1500, `the yard: Grape goo bought ($${cash0} → $${y1.cash}) and worn`);
@@ -504,16 +505,16 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Family code)');
   await page.click('.pz-tabs [data-tab="fracs"]');
   const fz = await J(page, () => ({ where: document.querySelector('#fracs-where-line').textContent, chips: [...document.querySelectorAll('#fracs-ladder .lad')].map((c) => `${c.dataset.tier}:${c.dataset.state}`).join(' '), rows: document.querySelectorAll('#fracs-table tbody tr').length }));
-  check(/★ recommended/.test(fz.where) && /T1:(working|secure)/.test(fz.chips) && /T3:later/.test(fz.chips) && fz.rows === 2, `Fractions: "Where Mia is" (${fz.where}); ladder ${fz.chips}`);
+  check(/★ recommended/.test(fz.where) && /T1:(working|secure)/.test(fz.chips) && /T3:(new|practice|working|secure)/.test(fz.chips) && /T4:later/.test(fz.chips) && fz.rows === 3, `Fractions: "Where Mia is" (${fz.where}); ladder ${fz.chips}`);
   await J(page, () => document.querySelector('#toasts').replaceChildren());
   await shot(page, layout, '16-pz-fractions');
   await audit(page, layout.insets, 'Parent Zone (Fractions)');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.5\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
+  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.6\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
   await page.click('.pz-tabs [data-tab="report"]');
   const rep = await J(page, () => ({ big: document.querySelector('#report-week .pw-big').textContent, small: document.querySelector('#report-week .pw-small').textContent, pct: document.querySelector('#report-week').dataset.pct,
     bar: document.querySelector('#report-week .pw-bar i').style.width, streets: document.querySelectorAll('#report-streets li').length }));
-  check(/^Fractions: \d+ % of the ladder$/.test(rep.big) && rep.bar === `${rep.pct}%` && /^This week: \d+ % accurate \(\d+ of \d+ throws on target\)/.test(rep.small) && rep.streets === 2, `Report: "${rep.big}" + bar + "${rep.small}"`);
+  check(/^Fractions: \d+ % of the ladder$/.test(rep.big) && rep.bar === `${rep.pct}%` && /^This week: \d+ % accurate \(\d+ of \d+ throws on target\)/.test(rep.small) && rep.streets === 3, `Report: "${rep.big}" + bar + "${rep.small}"`);
 
   // v1.5: the progress chart on the Report (inline SVG, a legend, range chips); it has data once the child played today
   const ch = await J(page, () => {
@@ -610,12 +611,284 @@ async function realEngine(browser) {
   await ctx.close();
 }
 
+
+// ---------- Lab integration v1 (lab/SPEC.md §4.3): the bridge, the pill and strip off-wave only, the burst, the tower and the equivalence boss ----------
+const SEED_MIA = () => {
+  if (sessionStorage.getItem('ffLabSeeded')) return;
+  sessionStorage.setItem('ffLabSeeded', '1'); localStorage.clear();
+  const now = Date.now();
+  localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: 1, updatedAt: 1 }], removedPlayers: [], options: {}, optionsUpdatedAt: {}, lastPlayer: null }));
+  localStorage.setItem('fractionFright.pmia.save', JSON.stringify({ v: 1, cash: 900000, cures: 40, bulls: 9, pumpkins: 4, waves: 12, streets: { maple: { wave: 1, cleared: 1 }, oak: { wave: 1, cleared: 1 }, twin: { wave: 5, cleared: 0 } },
+    yard: { owned: { grenade: [], goo: [], fence: [], tower: [], extra: [] } }, seen: { coach: true } }));
+  localStorage.setItem('fractionFright.pmia.skills', JSON.stringify({ v: 1, updatedAt: now, xp: 900, lab: { done: now - 1e6, runs: 1 }, opened: { T2: now - 5e5, T3: now - 4e5 }, records: {}, fracs: {}, days: {}, waves: [], moves: [], opts: { aloud: true, updatedAt: 1 }, pace: { think: 0, n: 0, updatedAt: 0 } }));
+};
+const labPage = async (browser, { block = false, layout = LAYOUTS[0], mock = true } = {}) => {
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await routeFonts(ctx);
+  if (block) await ctx.route('**/lab/**', (r) => r.abort());
+  const errors = [], warns = [];
+  const page = await ctx.newPage();
+  page.on('console', (m) => { const t = m.text(), u = m.location().url || ''; if (/fonts\.(googleapis|gstatic)/.test(t + u)) return; if (block && /\/lab\//.test(u) && /Failed to load resource/.test(t)) return; if (/Failed to load resource/.test(t) && /\/(spell-jump|trail-blazer|wagon-west|build-crew)\/src\/meta\/labLooks\.js/.test(u)) return;   // the other games' looks modules land with their own streams; the Lab tolerates a missing one
+     if (m.type() === 'error') errors.push(`${t} ${u}`); else if (m.type() === 'warning') warns.push(t); });
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.addInitScript(SEED_MIA);
+  await page.addInitScript(({ insets }) => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const s = document.createElement('style');
+      s.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(s);
+    });
+  }, { insets: layout.insets });
+  await page.addInitScript(() => {
+    window.__mockScript = { walkSec: 30, beatSec: 0.25, flightSec: 0.08, calmSec: 0.3 }; window.__spoken = [];
+    window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); }, cancel() {}, addEventListener() {} };
+  });
+  await page.goto(mock ? URL0 : URL_REAL, { waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  return { ctx, page, errors, warns };
+};
+const labState = (page) => J(page, () => { const l = window.__lab; const sum = l && l.store.roundSummary('ff'); const doc = l && l.store.doc(); return l ? { xp: sum && sum.xp, coins: sum && sum.coins, wallet: doc && l.store.view().coins } : null; });
+const wait = (page, ms) => page.waitForTimeout(ms);
+
+async function labIntegration(browser) {
+  console.log('\n=== the Lab (Lab integration v1: bridge, pill and strip, burst, tower, equivalence boss) ===');
+  const L = { name: 'lab', ...LAYOUTS[0] };
+  const { ctx, page, errors } = await labPage(browser);
+  await page.waitForFunction(() => window.__lab && window.__fractionFright.app.labReady(), null, { timeout: 8000 });
+  // --- title: the bar, the button ---
+  await page.waitForSelector('#lab-slot-title .lab-hud', { timeout: 5000 }).catch(() => {});
+  await page.waitForSelector('#btn-thelab:not([hidden])', { timeout: 5000 }).catch(() => {});
+  const t = await J(page, () => ({ btn: !!document.querySelector('#btn-thelab') && !document.querySelector('#btn-thelab').hidden, pill: !!document.querySelector('#lab-slot-title .lab-hud'), zl: document.querySelector('#btn-lab').textContent.trim() }));
+  check(t.btn && t.pill, `the title shows the Lab pill (XP bar) and a "The Lab" button once the Lab has loaded (${JSON.stringify(t)})`);
+  check(/zombie lab/i.test(t.zl), 'the old "Lab" button is "Zombie Lab" now, so it is never mistaken for The Lab');
+  await shot(page, L, '30-title-lab-bar');
+  await audit(page, L.insets, 'title with the Lab');
+  await page.click('#btn-thelab');
+  await page.waitForSelector('.lab-overlay', { timeout: 3000 });
+  check(true, '"The Lab" opens the Lab overlay');
+  await J(page, () => document.querySelector('.lab-overlay button').click());
+  await wait(page, 300);
+  // --- streets: the pill, Twin Alley ---
+  await page.click('#btn-streets');
+  await page.waitForSelector(visibleSel('#screen-streets'));
+  const st = await J(page, () => ({ pill: !!document.querySelector('#lab-slot-streets .lab-hud'), cards: [...document.querySelectorAll('.street-card[data-street]')].map((c) => `${c.dataset.street}:${c.dataset.open}`).join(' ') }));
+  check(st.pill && st.cards === 'maple:true oak:true twin:true', `the streets screen shows the pill and Twin Alley is open (${st.cards})`);
+  await shot(page, L, '31-streets');
+  await audit(page, L.insets, 'streets with the Lab');
+  // --- the yard: the tower in order, the fences, the goo; Lab coins never mix with the cash ---
+  await J(page, () => window.__fractionFright.app.go('yard'));
+  await page.waitForSelector(visibleSel('#screen-yard'));
+  await wait(page, 600);
+  const y0 = await J(page, () => ({ pill: !!document.querySelector('#lab-slot-yard .lab-hud'), next: document.querySelector('#yard-next').textContent, lock: document.querySelector('[data-buy="tower:watchtower"]').disabled, lockSub: document.querySelector('[data-item="tower:watchtower"] .yi-sub').textContent,
+    labCard: !!document.querySelector('#yard-lab-shop'), cash: window.__fractionFright.save.cash, wallet: window.__lab.store.view().coins }));
+  check(y0.pill && y0.labCard && /^Next up: Grape/.test(y0.next.replace(/\s+/g, ' ')) === false && /Next up:/.test(y0.next), `the yard shows the pill, a Next up line ("${y0.next}") and the Lab shop button`);
+  check(y0.lock && /Lookout post first/.test(y0.lockSub), 'the Watchtower is locked until the Lookout post is built');
+  const prices = Object.fromEntries(TOWERS.map((t) => [t.id, t.price]));
+  await page.click('[data-buy="tower:lookout"]');
+  await wait(page, 100);
+  await page.click('[data-buy="tower:watchtower"]');
+  await page.click('[data-buy="tower:beacon"]');
+  await page.click('[data-buy="fence:brick"]');
+  await wait(page, 200);
+  const y1 = await J(page, () => ({ cash: window.__fractionFright.save.cash, y: window.__fractionFright.save.yard, wallet: window.__lab.store.view().coins }));
+  check(y1.y.tower === 'beacon' && y1.y.fence === 'brick' && y1.y.owned.tower.join() === 'lookout,watchtower,beacon', `the tower is built in order (lookout, watchtower, beacon) and the brick wall bought (${y1.y.owned.tower.join(', ')})`);
+  check(y1.cash === y0.cash - prices.lookout - prices.watchtower - prices.beacon - FENCES.find((f) => f.id === 'brick').price, `the cost came out of the game's own cash ($${y0.cash} → $${y1.cash})`);
+  check(y1.wallet === y0.wallet, `Lab coins are untouched by yard purchases (${y0.wallet} → ${y1.wallet})`);
+  check(await J(page, () => !!document.querySelector('#yard-preview .tower[data-stage="3"]')), 'the yard preview draws the beacon tower');
+  await J(page, () => document.querySelector('#toasts').replaceChildren());
+  await shot(page, L, '32-yard-tower');
+  await audit(page, L.insets, 'yard with the tower');
+  // Lab looks: a fence finish and a tower topper bought with LAB coins show in the preview and in the wave
+  await J(page, () => { const l = window.__lab; l.grantCoins(20000); l.store.buy('ff.fence.neon'); l.store.buy('ff.tower.crowntop'); l.store.equip('ff.fence', 'ff.fence.neon'); l.store.equip('ff.tower', 'ff.tower.crowntop'); window.__fractionFright.app.go('yard'); });
+  await wait(page, 700);
+  check(await J(page, () => !!document.querySelector('#yard-preview .lab-fence') && !!document.querySelector('#yard-preview .lab-tower')), 'the Lab fence finish (Neon) and tower topper (Crown top) are drawn in the yard preview');
+  await shot(page, L, '33-yard-lab-looks');
+  // --- the wave: no Lab UI anywhere, the equivalence boss on Twin Alley's final wave ---
+  await J(page, () => { window.__fractionFright.app.go('streets'); });
+  await wait(page, 600);
+  const labBefore = await labState(page);
+  const cashBefore = await J(page, () => window.__fractionFright.save.cash);
+  await page.click('[data-street="twin"]');
+  await page.waitForFunction(() => { const g = window.__fractionFright; const s = g.game && g.game.getState(); return g.screen === 'wave' && s && s.phase === 'wave' && s.target; }, null, { timeout: 8000 });
+  const w0 = await J(page, () => { const r = window.__fractionFright.run; return { final: r.final, boss: r.items.filter((i) => i.kind === 'boss').map((b) => ({ style: b.style, name: b.name, forms: b.forms.map((f) => f.show), target: b.target })), look: r.look, items: r.items.length }; });
+  check(w0.final && w0.boss.length === 1 && w0.boss[0].style === 'equivalent' && w0.boss[0].name === 'Mayor Mirror', `Twin Alley's final wave has the equivalence boss Mayor Mirror (${w0.boss[0].forms.join(' → ')})`);
+  check(w0.look.tower === 'beacon' && w0.look.fence === 'brick' && w0.look.labFence === 'neon' && w0.look.labTower === 'crowntop', 'the wave is told the tower, the brick wall and the Lab looks (re-read at the start of the round)');
+  const noLab = () => J(page, () => ({ pills: document.querySelectorAll('.lab-hud, .lab-strip').length, slots: [...document.querySelectorAll('.lab-slot')].map((e) => e.childElementCount).reduce((a, b) => a + b, 0), overlay: document.querySelectorAll('.lab-overlay').length }));
+  const n0 = await noLab();
+  check(n0.pills === 0 && n0.slots === 0 && n0.overlay === 0, 'during a wave there is NO Lab pill, strip or overlay anywhere in the page (SPEC §0: no meters in a wave)');
+  await shot(page, L, '34-wave-tower');
+  // play: a dead-on throw at every zombie (first try), watching for the burst; the boss is thrown at three times
+  let burstSeen = null, forms = [], noteSeen = false, noLabDuring = true, spoke = false;
+  const end = Date.now() + 90000;
+  while (Date.now() < end) {
+    const s = await F(page);
+    if (s.screen === 'results') break;
+    if (s.screen === 'bonus') { await playBonus(page); continue; }
+    if (s.screen === 'wave') {
+      const b = await J(page, () => { const e = document.querySelector('#lab-burst'); if (!e || e.hidden) return null; const r = e.getBoundingClientRect(); const rp = window.__fractionFright.game.getState().roadPx; const cv = document.querySelector('#game').getBoundingClientRect(); const fe = window.__fractionFright.game.getState().fence; return { text: e.textContent.trim(), top: r.top, bottom: r.bottom, roadY: cv.top + rp.y, roadBottom: fe ? cv.top + fe.roadBottom : cv.top + rp.y + 44, right: r.right, W: innerWidth }; });
+      if (b && !burstSeen) { burstSeen = b; await shot(page, L, '34b-wave-burst', 10); }
+      const card = await J(page, () => ({ show: document.querySelector('#btn-say').dataset.show, kind: document.querySelector('#btn-say').dataset.kind, note: !document.querySelector('#fc-note').hidden, noteText: document.querySelector('#fc-note').textContent }));
+      if (card.kind === 'boss') { if (!forms.includes(card.show)) forms.push(card.show); if (card.note) noteSeen = card.noteText; }
+      if (s.phase === 'wave' && s.target) await J(page, (v) => window.__fractionFright.throwAt(v), s.target.target);
+      const n = await noLab(); if (n.pills || n.slots) noLabDuring = false;
+    }
+    await wait(page, 60);
+  }
+  check(!!burstSeen && /Bullseye Burst/i.test(burstSeen.text), `the 5th first-try zap in a row shows "${burstSeen && burstSeen.text}" (the Lab's combo moment) between throws`);
+  check(burstSeen && burstSeen.top >= burstSeen.roadBottom, `the burst sits in the yard strip below the road (its top ${Math.round(burstSeen && burstSeen.top)} ≥ the road's lower edge ${Math.round(burstSeen && burstSeen.roadBottom)}), never over it`);
+  await wait(page, 1500);
+  check(await J(page, () => document.querySelector('#lab-burst').hidden), 'the burst is gone within 1.2 s');
+  check(forms.length === 3 && forms.every((f) => { const m = /^(\d+)\/(\d+)$/.exec(f); return m && Math.abs(Number(m[1]) / Number(m[2]) - w0.boss[0].target) < 1e-9; }), `the boss showed three spellings of ONE spot as it was hit: ${forms.join(' → ')}`);
+  check(noteSeen === 'Same spot!', 'the boss card says "Same spot!"');
+  check(await J(page, () => window.__spoken.some((x) => /^Same spot! /.test(x))), `the voice says "Same spot! …" for the later forms (${await J(page, () => window.__spoken.filter((x) => /^Same spot/.test(x)).join(' | '))})`);
+  check(noLabDuring, 'no Lab element appeared at any point of the wave or the bonus round');
+  // --- results: the strip and the pill are back; the Lab got the zaps; cash is the game's own ---
+  await page.waitForSelector(visibleSel('#screen-results'), { timeout: 15000 });
+  await wait(page, 300);
+  const r = await J(page, () => ({ strip: document.querySelector('#lab-slot-results .lab-strip') && document.querySelector('#lab-slot-results .lab-strip').textContent, pill: !!document.querySelector('#lab-slot-results-pill .lab-hud'), last: window.__fractionFright.lastResult, cash: window.__fractionFright.save.cash, boss: !!document.querySelector('#res-boss') }));
+  check(!!r.strip && r.pill, `the results show the Lab strip ("${r.strip}") and pill`);
+  const labAfter = await labState(page);
+  check(labAfter.xp > 0 && labAfter.coins > 0, `the zaps reached the Lab (this round: ${labAfter.coins} Lab coins, ${labAfter.xp} XP)`);
+  check(r.cash === cashBefore + r.last.cash.total, `Fraction Fright's cash is only its own ($${cashBefore} + $${r.last.cash.total} = $${r.cash}); Lab coins never enter it`);
+  check(r.boss && r.last.boss, 'the boss callout shows on the results');
+  const rows = await payCheck(page, 'Twin Alley final wave');
+  check(rows.rows.some((x) => x.id === 'boss' && x.amount === 300) && rows.rows.some((x) => x.id === 'final'), 'the boss pays $300 and the final wave ×2, as for every boss');
+  await shot(page, L, '35-results-strip');
+  await audit(page, L.insets, 'results with the Lab');
+  // the Parent Zone row
+  await J(page, () => window.__fractionFright.app.go('title'));
+  await page.waitForSelector(visibleSel('#screen-title'));
+  check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 3).join(' | ') : ''}`);
+  await ctx.close();
+}
+
+
+// the same on the REAL engine (src/game/engine.js): the tower and the Lab looks drawn in the wave, Twin Alley's equivalence boss to its end (the sim is stepped)
+async function labReal(browser) {
+  console.log('\n=== real engine: the tower in the wave and the equivalence boss to its end ===');
+  const L = { name: 'real-lab', ...LAYOUTS[0] };
+  const { ctx, page, errors } = await labPage(browser, { mock: false });
+  await page.waitForFunction(() => window.__lab && window.__fractionFright.app.labReady(), null, { timeout: 8000 });
+  check(await J(page, () => window.__fractionFright.app.engineName) === '', 'the real engine is running');
+  await J(page, () => {
+    const A = window.__fractionFright.app, y = A.save.yard;
+    y.owned.tower = ['lookout', 'watchtower', 'beacon']; y.tower = 'beacon'; y.owned.fence = ['castle']; y.fence = 'castle'; A.persist();
+    const l = window.__lab; l.grantCoins(20000); for (const id of ['ff.fence.goldtrim', 'ff.tower.flaglab']) l.store.buy(id);
+    l.store.equip('ff.fence', 'ff.fence.goldtrim'); l.store.equip('ff.tower', 'ff.tower.flaglab');
+    A.go('streets');
+  });
+  await wait(page, 600);
+  await page.click('[data-street="twin"]');
+  await page.waitForFunction(() => { const s = window.__fractionFright.game.getState(); return s && s.phase === 'wave' && s.target; }, null, { timeout: 10000 });
+  await shot(page, L, '40-real-wave-tower', 900);
+  const look = await J(page, () => { const r = window.__fractionFright.run; return { tower: r.look.tower, fence: r.look.fence, lf: r.look.labFence, lt: r.look.labTower }; });
+  check(look.tower === 'beacon' && look.fence === 'castle' && look.lf === 'goldtrim' && look.lt === 'flaglab', `the real wave draws the beacon, the castle wall, Gold trim and the Lab flag (${JSON.stringify(look)})`);
+  check(await J(page, () => window.__fractionFright.game.getState().fence.roadBottom < window.__fractionFright.game.getState().fence.y0), 'the engine reports the yard strip under the road (for the burst)');
+  await J(page, () => { window.__bossForms = []; const c = document.querySelector('#btn-say'); new MutationObserver(() => { if (c.dataset.kind === 'boss' && !window.__bossForms.includes(c.dataset.show)) window.__bossForms.push(c.dataset.show); }).observe(c, { attributes: true, attributeFilter: ['data-show', 'data-kind'] }); window.__maxForm = 0; });
+  const t0 = Date.now();
+  let shotBoss = false;
+  while (Date.now() - t0 < 150000) {
+    const s = await J(page, () => { const g = window.__fractionFright, st = g.game && g.game.getState(); const di = g.game && g.game.debugInfo && g.game.debugInfo(); const b = di && di.zombies.find((z) => z.boss); if (b) window.__maxForm = Math.max(window.__maxForm, b.form || 0);
+      return { screen: g.screen, phase: st && st.phase, target: st && st.target, kind: document.querySelector('#btn-say').dataset.kind, note: !document.querySelector('#fc-note').hidden }; });
+    if (s.screen === 'results') break;
+    if (s.screen === 'bonus') { await playBonus(page); continue; }
+    if (!shotBoss && s.screen === 'wave' && s.phase === 'wave' && s.kind === 'boss' && s.note) {   // the boss is the called card: hold the engine still and look at it
+      shotBoss = true;
+      await J(page, () => window.__fractionFright.game.pause()); await shot(page, L, '41-real-equivalence-boss', 150); await J(page, () => window.__fractionFright.game.resume());
+    }
+    if (s.screen === 'wave' && s.phase === 'wave' && s.target) await J(page, () => {   // lob at the called spot (a kid taps the boss's small card once it is out of the fog)
+      const g = window.__fractionFright, st = g.game.getState(), b = st.live.find((z) => z.boss && !z.cured && z.seen);
+      if (b && !(st.target && st.target.id === b.item)) g.focus(b.item);
+      const tg = g.game.getState().target; g.throwAt(tg.target);
+    });
+    await wait(page, 120);
+    await J(page, () => { const g = window.__fractionFright.game; try { g.debugStep(30); } catch (_) {} });
+  }
+  check(await J(page, () => window.__fractionFright.screen) === 'results', 'the real wave played out to its results (the boss cured on its third hit)');
+  const forms = await J(page, () => window.__bossForms);
+  const w = await J(page, () => window.__fractionFright.lastResult);
+  check(w.boss && w.cash.rows.find((r) => r.id === 'boss').amount === 300 && w.items.some((x) => x.kind === 'boss' && x.outcome === 'cured'), 'the equivalence boss is cured and pays the boss cash ($300)');
+  check(await J(page, () => window.__maxForm) === 2 && shotBoss, `the engine took the boss through all three forms (form ${await J(page, () => window.__maxForm)}; the card showed ${forms.join(' → ')} with "Same spot!")`);
+  await shot(page, L, '42-real-results', 400);
+  check(errors.length === 0, `real engine, Lab on: no console errors${errors.length ? ' — ' + errors.slice(0, 3).join(' | ') : ''}`);
+  await ctx.close();
+}
+
+async function labBlocked(browser) {
+  console.log('\n=== the bridge with every /lab/ request blocked ===');
+  const L = { name: 'blocked', ...LAYOUTS[0] };
+  const { ctx, page, errors, warns } = await labPage(browser, { block: true });
+  await wait(page, 800);
+  const t = await J(page, () => ({ btn: document.querySelector('#btn-thelab').hidden, pill: document.querySelectorAll('.lab-hud, .lab-strip').length, ready: window.__fractionFright.app.labReady() }));
+  check(t.btn && t.pill === 0 && !t.ready, 'with /lab/ blocked the game boots to the title: no "The Lab" button, no pill');
+  await shot(page, L, '36-title-no-lab');
+  await J(page, () => window.__fractionFright.app.go('yard'));
+  await wait(page, 600);
+  check(await J(page, () => !document.querySelector('#yard-lab-shop') && !!document.querySelector('#yard-preview') && document.querySelectorAll('#yard-side .yard-item').length === 21), 'the yard works (its own items, no Lab shop card)');
+  await J(page, () => window.__fractionFright.app.go('streets'));
+  await wait(page, 600);
+  await page.click('[data-street="twin"]');
+  await page.waitForFunction(() => window.__fractionFright.screen === 'wave', null, { timeout: 8000 });
+  for (let i = 0; i < 3; i++) { await waitPhase(page); const s = await F(page); await J(page, (v) => window.__fractionFright.throwAt(v), s.target.target); await wait(page, 300); }
+  check((await J(page, () => window.__fractionFright.run.throws.length)) >= 3, 'a wave plays normally (3 throws landed) without the Lab');
+  await playOut(page, 90000);
+  check(await J(page, () => window.__fractionFright.screen === 'results' && !document.querySelector('.lab-strip') && !!window.__fractionFright.lastResult.cash.total), 'the results show the cash and no Lab strip');
+  await J(page, () => window.__fractionFright.app.go('title'));
+  await page.click('#btn-parents');
+  await page.waitForSelector('#pz:not([hidden])');
+  const pzLab = await J(page, () => !!document.querySelector('#opt-lab-row'));
+  check(!pzLab, 'the Parent Zone shows no Lab row when the Lab is missing');
+  check(errors.length === 0, `no console errors with the Lab blocked${errors.length ? ' — ' + errors.slice(0, 3).join(' | ') : ''}`);
+  check(warns.filter((w) => /\[lab\]/.test(w)).length <= 1, `the bridge logs one warning (${warns.filter((w) => /\[lab\]/.test(w)).length}: "${(warns.find((w) => /\[lab\]/.test(w)) || '').slice(0, 60)}")`);
+  await ctx.close();
+}
+
+async function labParent(browser) {
+  console.log('\n=== the Parent Zone row and the portrait pass ===');
+  const L = { name: 'labp', ...LAYOUTS[1] };
+  const { ctx, page, errors } = await labPage(browser, { layout: LAYOUTS[1] });
+  await page.waitForFunction(() => window.__lab && window.__fractionFright.app.labReady(), null, { timeout: 8000 });
+  await shot(page, L, '37-title-lab-portrait');
+  await audit(page, L.insets, 'portrait title with the Lab');
+  await J(page, () => { const A = window.__fractionFright.app; A.save.cash = 900000; A.go('yard'); });
+  await wait(page, 700);
+  for (const id of ['tower:lookout', 'tower:watchtower', 'tower:beacon']) await page.click(`[data-buy="${id}"]`);
+  await J(page, () => document.querySelector('#toasts').replaceChildren());
+  await shot(page, L, '38-yard-portrait');
+  await audit(page, L.insets, 'portrait yard with the tower');
+  await J(page, () => { window.__fractionFright.app.go('streets'); });
+  await wait(page, 600);
+  await shot(page, L, '39-streets-portrait');
+  await audit(page, L.insets, 'portrait streets with the Lab');
+  await J(page, () => window.__fractionFright.app.go('title'));
+  await page.click('#btn-parents');
+  await page.waitForSelector('#pz:not([hidden])');
+  // the PIN: the first use sets it; Options has the Lab row that opens the Lab's grown-ups panel
+  await page.waitForSelector('.pinpad');
+  for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`);
+  await page.waitForTimeout(250);
+  for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`);
+  await page.waitForSelector('.pz-tabs');
+  await page.click('.pz-tabs [data-tab="options"]');
+  check(await J(page, () => !!document.querySelector('#opt-lab-row') && /own coins/.test(document.querySelector('#opt-lab-row').textContent)), 'the Parent Zone Options has "The Lab" row (its own coins, never mixed with the cash)');
+  await audit(page, L.insets, 'portrait Parent Zone Options with the Lab row');
+  await page.click('#opt-lab');
+  await page.waitForSelector('.lab-overlay', { timeout: 3000 });
+  check(true, 'the row opens the Lab grown-ups overlay');
+  check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 3).join(' | ') : ''}`);
+  await ctx.close();
+}
+
 const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 try {
   for (const layout of LAYOUTS.filter((l) => !process.env.ONLY || l.name === process.env.ONLY)) await runLayout(browser, layout);
   if (!process.env.ONLY || process.env.ONLY === 'real') { staticAudit(); await realEngine(browser); }
+  if (!process.env.ONLY || process.env.ONLY === 'lab') { await labIntegration(browser); await labReal(browser); await labBlocked(browser); await labParent(browser); }
 } catch (e) {
   failures.push('crashed: ' + (e && e.stack || e));
   console.error(e);

@@ -11,14 +11,16 @@
 //     zombies: [item...], big: bool, final: bool, live? (max live at once: default 2, 4 on a big wave, 3 on a final
 //     wave; the boss is extra), shuffleSec? }, look: { goo (css colour), fence: 'picket'|'stone'|'iron', pumpkins
 //     (count, default 5), kid: { shirt, cap, skin, hair }?, sky?, grenade: 'slime'|'lava'|'frost'|'disco' (cosmetic,
-//     default slime), dog: bool (a dog by the ½ post), lantern: bool (a lantern on the graveyard gate) }, stats:
+//     default slime), dog: bool (a dog by the ½ post), lantern: bool (a lantern on the graveyard gate), tower: 'none'|'lookout'|
+//     'watchtower'|'beacon', labFence / labTower: a Lab finish name or null (cosmetic art in front of the fence; fence may also be 'brick'|'castle') }, stats:
 //     { radius (tolerance as a share of the road when an item has none; default 0.10), power (throw speed, 1) }, seed })
 //   item = { id, kind: 'locate'|'bounce'|'compare'|'equivalent'|'sum'|'decimal'|'boss', say, show, target (number on
 //     the road), jumps?: { unit, count } (the bounce scaffold; derived from `show` for kind 'bounce' when missing),
 //     options?, tolerance? (share of the road), hints?: the ladder after a miss on the same item, in order (default
 //     ['arrow', 'ticks']), ticks? (the item's own fine ticks), den?, twin? (the other twin's id; cosmetic: twins at the
 //     same spot are cured by one grenade through the resolution rule anyway), and for a boss: name, hits (3), forms:
-//     [{ show, say }, …] (the same number three ways; the first defaults to show/say) }. The app makes items.
+//     [{ show, say }, …] (the same number three ways; the first defaults to show/say), style? ('equivalent': the forms are
+//     equal fractions of one spot, e.g. 3/4 → 6/8 → 9/12; every hit lands on the same x, a "SAME SPOT!" popup; echoed on target events) }. The app makes items.
 //   Geometry (§13.1): a zombie spawns hidden in the fog at x = road.toPx(item.target) with p = 0 and walks to p = 1 (the
 //     lane in front of the road), drawn with depth (scale 0.5 → 1). Hidden entirely while p < EMERGE (0.6; the boss
 //     0.5): nothing is drawn (no eyes, no shadow). A zombie is `seen` once p ≥ EMERGE. At p = 1 it knocks, takes a
@@ -36,7 +38,7 @@
 //     (≤ 2 × tolerance) | 'miss'. Every live zombie within its own tolerance of the landing spot is cured by the same
 //     throw: every other live zombie standing on the resolved spot (within the bull band) is cured too (twins); a boss
 //     takes a hit instead (3 to cure).
-//   getState() → { phase: 'idle'|'wave'|'beat'|'finale'|'calm'|'done', street, number, big, final, total, resolved, cured,
+//   getState() → { fence: { y0, h, bottom, roadBottom } (the yard strip below the road, canvas px; extra), phase: 'idle'|'wave'|'beat'|'finale'|'calm'|'done', street, number, big, final, total, resolved, cured,
 //     reached, throws, bulls, hits, pae, accuracy, cash, pumpkins, aim, aimValue, target (the focused item or null),
 //     combo, roadPx: { left, right, y }, road: { from, to }, live: [{ id, item, p, state, look, hat, cured, x01, seen,
 //     target, focus, boss, hitsLeft }], lastThrow, inFlight, timeSec }.
@@ -133,6 +135,7 @@ function itemArg(src, i) {
     ticks: Array.isArray(src.ticks) ? src.ticks : null, den: num(src.den, 0) || null,
     twin: src.twin != null ? String(src.twin) : null,
     boss, name: boss ? (src.name != null ? String(src.name) : 'The Mayor') : null, hits: boss ? Math.max(1, Math.round(num(src.hits, 3))) : 1, forms,
+    style: boss && typeof src.style === 'string' ? src.style.slice(0, 16) : null,   // 'equivalent' (Twin Alley's boss): its forms are spellings of one spot
     // run state
     attempts: 0, results: [], paes: [], cured: false, reached: false, bull: false, misses: 0, lastLanded: null, cashCure: 0, cashBull: 0, cashEffort: 0,
     hitsLeft: boss ? Math.max(1, Math.round(num(src.hits, 3))) : 1, form: 0, seenThrows: 0,
@@ -317,7 +320,7 @@ export function createGame(canvas, opts = {}) {
   }
   function itemOut(it) {
     const o = { id: it.id, kind: it.kind, say: sayOf(it), show: showOf(it), target: it.target, jumps: it.jumps, options: it.options, tolerance: tolOf(run, it), hints: it.hints.slice(), attempt: it.attempts + 1, hint: hintFor(it), twin: it.twin };
-    if (it.boss) { o.boss = true; o.name = it.name; o.hitsLeft = it.hitsLeft; o.hits = it.hits; o.form = it.form; }
+    if (it.boss) { o.boss = true; o.name = it.name; o.hitsLeft = it.hitsLeft; o.hits = it.hits; o.form = it.form; if (it.style) o.style = it.style; }
     return o;
   }
   const tolOf = (r, it) => (it.tolerance != null ? it.tolerance : r.stats.radius);
@@ -474,6 +477,7 @@ export function createGame(canvas, opts = {}) {
         }
       }
       popup(r, `${it.hitsLeft} TO GO`, x, y - h - 26, '#ff8a1f', 1.1, 1.3, 26, 0.05);
+      if (it.style === 'equivalent') popup(r, 'SAME SPOT!', x, y - h - 54, '#c8f56a', 1.0, 1.3, 24, -0.04);   // Twin Alley's boss: the next spelling lands on the same x
       burst(r, x, y - h * 0.5, reducedMotion ? 8 : 18, gooOf(r), y + 2, 240);
       if (!reducedMotion) r.shake = Math.max(r.shake, 0.6);
       emit({ type: 'bossHit', item: itemOut(it), left: it.hitsLeft });
@@ -845,6 +849,7 @@ export function createGame(canvas, opts = {}) {
     drawRoadLabels(ctx, road, r.pal, lw);
     // fence, pumpkins, the dog, kid
     R.drawFence(ctx, view, road, r.fl, r.scene, r.look.fence, r.pumpkins, lw, t, r.pumpkinGlow);
+    R.drawYardExtras(ctx, view, road, r.fl, r.kid, r.look, lw, t);   // Lab integration v1: the fence finish and the tower (cosmetic)
     if (r.look.dog) {
       const dx = road.toPx(road.from + road.span * 0.25), dy = r.fl.y0 - 2; // by the fence at the ¼ mark (the kid stands at ½ in landscape)
       R.drawDog(ctx, dx, dy, clamp(r.zh * 0.34, 16, 30), t, lw, r.bark > 0);
@@ -990,6 +995,7 @@ export function createGame(canvas, opts = {}) {
       aim: r.aim, aimValue: r.aimValue, target: r.target ? itemOut(r.target) : null, combo: r.combo, gentle: !!r.look.gentle,
       pace: { live: r.liveTarget, walkSec: r.shuffleSec },
       roadPx: { left: Math.round(r.road.x0), right: Math.round(r.road.x1), y: Math.round(r.road.y) },
+      fence: r.fl ? { y0: Math.round(r.fl.y0), h: Math.round(r.fl.h), bottom: Math.round(r.fl.bottom), roadBottom: Math.round(r.road.y + r.road.band) } : null,   // the yard strip below the road (canvas px): where the Lab's burst may show
       road: { from: r.road.from, to: r.road.to },
       live: r.zombies.map((z) => ({ id: z.id, item: z.item.id, p: Math.round(z.p * 1000) / 1000, state: z.state, look: z.look.id, hat: z.hat, cured: z.cured, x01: Math.round(r.road.toX01(z.item.target) * 1000) / 1000, target: z.item.target, seen: isSeen(z), focus: z === cur, boss: !!z.boss, hitsLeft: z.item.hitsLeft })),
       lastThrow: r.lastThrow || null, inFlight: !!r.throwState, timeSec: Math.round(r.t * 100) / 100,

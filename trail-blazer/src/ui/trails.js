@@ -4,6 +4,8 @@
 // lock state (3rd or better on a trail opens the next; a cup opens with BOTH a trophy from the previous cup's weekend
 // and enough stars: "Pro Cup: a Rookie trophy + 12 ★").
 // A weekend in progress shows a "Next race" strip on top. A cup's weekend opens once all its trails are open.
+// v1.9 (Ghost Chase): an open trail with a ghost on it (the child's best, or a family member's) gets a "Chase a ghost" button on its card
+// (app.chaseChoices(trailId) lists the ghosts; app.openChase(trail) opens the picker). The card itself is unchanged.
 import { isCleared, isCupOpen, isUnlocked, starCount } from '../meta/economy.js';
 import { CUPS, CUP_BY_ID, cupMult, cupOf, trailsOfCup } from '../data/cups.js';
 import { starLabels, startWeekend, weekendNext } from '../meta/season.js';
@@ -92,7 +94,12 @@ export function createTrails(app) {
       app.persist();
       app.startRide(t.id);
     });
-    return { card, unlocked, done };
+    // v1.9: the chase button sits beside the card (a button inside a button is not valid), on top of its corner
+    const ghosts = unlocked && typeof app.chaseChoices === 'function' ? app.chaseChoices(t.id) : [];
+    if (!ghosts.length) return { card, unlocked, done };
+    const chase = h('button', { class: 'chase-btn', 'data-chase': t.id, 'data-sfx': '', 'aria-label': `Chase a ghost on ${t.name}`, html: `${icon('ghost')}<span>Chase a ghost</span>` });
+    chase.addEventListener('click', (e) => { e.stopPropagation(); app.openChase(t); });
+    return { card: h('div', { class: 'trail-slot' }, card, chase), unlocked, done, plain: card };
   }
   function cupStars(cupId, trails) {
     return trailsOfCup(cupId, trails).reduce((a, t) => a + (app.save.stars[t.id] || []).filter(Boolean).length, 0);

@@ -9,13 +9,26 @@ import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { Audio } from '../../../spell-jump/src/audio.js';
 import { dayKey } from '../../../spell-jump/src/ui/chart.js';
 import { completeDay } from '../../../spell-jump/src/meta/engagement.js';
-import { ROUNDS, SANDBOX, MACHINES, HINT, jobIntro, jobDoneLine } from '../content.mjs';
+import {
+  SANDBOX,
+  MACHINES,
+  HINT,
+  NEAT_LINE,
+  jobIntro,
+  jobDoneLine,
+  findJob,
+  labVehicleId,
+  sandboxSpawns,
+} from '../content.mjs';
 import { Yard, DT } from '../physics.mjs';
-import { Mission } from '../missions.mjs';
+import { Mission, Challenge } from '../missions.mjs';
+import { blueprintSvg } from '../blueprint.mjs';
+import { labBridge } from '../meta/labBridge.js';
+import { galleryPieces } from '../meta/labLooks.js';
 import { Music } from '../meta/music.js';
 import { Sound } from '../meta/sound.js';
 import { PAINTS, rewardArt } from '../scene/machines.js';
-import { app, persist, account, activePlay, setSetting } from './state.js';
+import { app, persist, account, activePlay, setSetting, applyLook } from './state.js';
 import { MACHINE_UI, toast, showHint, modal, closeModal, renderMachines, updateUI } from './hud.js';
 import { prepareVoice, say } from './voice.js';
 import { showTitle } from './title.js';
@@ -48,9 +61,15 @@ function cancelCelebration() {
   }
 }
 
-/** The machines this builder may drive in the sandbox: the skid steer, plus any earned (or parent-unlocked). */
+/** The machines this builder may drive in the sandbox: the skid steer, plus any earned (or parent-unlocked), plus the Lab's
+ *  dump truck and forklift when this builder has bought them with Lab coins (the parent unlock does not cover those, and
+ *  nothing that was already playable is ever behind the Lab). */
 export function availableMachines() {
-  return Object.keys(MACHINES).filter((k) => k === 'skid' || app.save.unlockAll || app.save.rewards.includes(k));
+  return Object.keys(MACHINES).filter((k) =>
+    MACHINES[k].lab
+      ? labBridge.owns(labVehicleId(k))
+      : k === 'skid' || app.save.unlockAll || app.save.rewards.includes(k),
+  );
 }
 
 /** Replaces the physics yard with a new one for `round` (optionally restoring a saved sandbox) and shows it with
@@ -68,10 +87,12 @@ export function makeWorld(round, snapshot) {
   });
   if (snapshot) app.yard.restore(snapshot);
   app.mission = round.id ? new Mission(round) : null;
+  // A blueprint's build challenge (grabs against a par, or a height to stand at) starts again with the world.
+  app.challenge = round.challenge ? new Challenge(round) : null;
+  app.neat = false;
   const scene = app.scene;
   scene.setRound(app.yard);
-  scene.paint = app.save.paint;
-  scene.decal = app.save.decal;
+  applyLook();
   // The roof horn follows the builder's save, wherever it changes.
   if (!Object.getOwnPropertyDescriptor(scene, 'horn')) {
     Object.defineProperty(scene, 'horn', { get: () => app.save.horn, configurable: true });
@@ -84,6 +105,13 @@ export function makeWorld(round, snapshot) {
  *  from behind, shows the job and its first hint, and reads the goal aloud. */
 export function startRound(id, { restore = false } = {}) {
   if (!app.playerId) return;
+  const round = id ? findJob(id) : null;
+  // A Lab blueprint opens only for a builder who has bought it; otherwise the shop opens at it.
+  if (round?.lab && !labBridge.owns(round.lab)) {
+    closeModal();
+    labBridge.openShop({});
+    return;
+  }
   account();
   persist();
   closeModal();
@@ -93,19 +121,24 @@ export function startRound(id, { restore = false } = {}) {
   $('#tray').hidden = true;
   $('#hud').hidden = false;
   $('#title').hidden = $('#title-head').hidden = $('#title-foot').hidden = true;
-  const round = id ? ROUNDS.find((r) => r.id === id) : { ...SANDBOX, machines: availableMachines() };
-  makeWorld(round, restore ? app.save.yard : null);
+  const job = round || { ...SANDBOX, machines: availableMachines(), spawns: sandboxSpawns(availableMachines()) };
+  labBridge.beginRound();
+  makeWorld(job, restore ? app.save.yard : null);
   const scene = app.scene;
   scene.overview = false;
   scene.yaw = -2.45;
   scene.pitch = 0.6;
-  scene.distance = round.machines.includes('crane') ? 32 : 28;
+  scene.distance = job.machines.includes('crane') ? 32 : 28;
   const focus = app.yard.machine;
-  scene.target.set(focus.x * 0.65 + round.pad.x * 0.15, 0.7, focus.z * 0.65 + round.pad.z * 0.15);
+  scene.target.set(focus.x * 0.65 + job.pad.x * 0.15, 0.7, focus.z * 0.65 + job.pad.z * 0.15);
   app.controls.setEnabled(true);
-  $('#job-number').textContent = id ? `THE YARD / JOB ${String(id).padStart(2, '0')}` : 'THE YARD / SANDBOX';
-  $('#job-title').textContent = round.title;
-  $('#goal').textContent = round.goal;
+  $('#job-number').textContent = round?.blueprint
+    ? `THE YARD / BLUEPRINT ${String(id - 100).padStart(2, '0')}`
+    : id
+      ? `THE YARD / JOB ${String(id).padStart(2, '0')}`
+      : 'THE YARD / SANDBOX';
+  $('#job-title').textContent = job.title;
+  $('#goal').textContent = job.goal;
   for (const el of ['open-tray', 'save-yard']) $('#' + el).hidden = !!id;
   $('#wreck').hidden = !(app.save.unlockAll || app.save.rewards.includes('wrecking'));
   $('#clear-yard').hidden = !!id;
@@ -117,7 +150,7 @@ export function startRound(id, { restore = false } = {}) {
   prepareVoice();
   // The job is read aloud once as it starts ("Job three. Foundation grid. Place ..."); the machine's first hint above
   // follows it the first time this builder meets that machine (the voice watches the hint line, see voice.js).
-  say(jobIntro(round));
+  say(jobIntro(job));
   account();
 }
 
@@ -129,7 +162,8 @@ export function step(input) {
   const yard = app.yard;
   yard.step(input);
   let poses = null;
-  const mission = app.mission;
+  const mission = app.mission,
+    challenge = app.challenge;
   if (mission && !mission.complete) {
     const was = mission.status.count;
     poses = yard.poses();
@@ -138,7 +172,12 @@ export function step(input) {
       app.lastChime = yard.time;
       Audio.coin();
     }
+    if (challenge) challenge.step(poses, yard.held?.id, yard.grabs);
     if (done) win();
+  } else if (challenge && !app.neat && challenge.spec.kind === 'height') {
+    // After the job is done ("Continue on site") a height target can still be reached with the spare blocks.
+    challenge.step((poses = yard.poses()), yard.held?.id, yard.grabs);
+    if (app.jobDone && challenge.met) neatBuild(true);
   }
   const arm = Math.abs(input.lift || 0) + Math.abs(input.tool || 0);
   if (arm > 0.1 && !app.said.has('tool')) {
@@ -149,7 +188,38 @@ export function step(input) {
     app.said.add('drive');
     hint(HINT.lift);
   }
+  if (MACHINES[yard.machine.kind].lab && Math.floor(yard.time * 4) !== app.coachTick) {
+    app.coachTick = Math.floor(yard.time * 4);
+    coach(yard);
+  }
   return poses;
+}
+
+/** One short coaching line for the Lab machines, each at most once a visit: the forklift is told to lower its forks or
+ *  line them up when a pallet is just ahead, and that it is in; the dump truck that a loaded bed tips with the lift. The
+ *  lines are all prepared for the voice in content.mjs. */
+function coach(yard) {
+  const m = yard.machine;
+  const say1 = (key, text) => {
+    if (app.said.has(key)) return;
+    app.said.add(key);
+    hint(text);
+  };
+  if (m.kind === 'fork') {
+    const { state } = yard.forkStatus();
+    if (state === 'high') say1('forkLower', HINT.forkLower);
+    else if (state === 'off') say1('forkAlign', HINT.forkAlign);
+    else if (state === 'in') say1('forkIn', HINT.forkIn);
+  } else if (m.kind === 'dump' && yard.bedCargo().length >= 2) say1('bedLoaded', HINT.bedLoaded);
+}
+
+/** "Neat build!": the blueprint's challenge was met. It shows on the finished sheet when it was met by then; a height
+ *  reached afterwards (on site, with the spare blocks) gets a toast. Reported to the Lab once per blueprint visit. */
+function neatBuild(late = false) {
+  if (app.neat) return;
+  app.neat = true;
+  labBridge.report({ event: 'challenge' });
+  if (late) toast('Neat build!');
 }
 
 /** Where the finished build stands: the middle of the blocks resting on the pad (or the pad's middle), the ground
@@ -187,19 +257,32 @@ function win() {
   const r = app.yard.round,
     save = app.save,
     scene = app.scene,
-    calm = app.settings.reducedMotion;
+    calm = app.settings.reducedMotion,
+    first = !save.done.includes(r.id);
   account();
-  if (!save.done.includes(r.id)) {
+  if (first) {
     save.done.push(r.id);
-    save.rewards.push(r.unlock);
+    if (r.unlock) save.rewards.push(r.unlock);
     const key = dayKey(Date.now());
     save.play[key] ||= { rounds: 0, seconds: 0 };
     save.play[key].rounds++;
     completeDay(save, Date.now());
-    equipReward(save, r.unlock);
+    if (r.unlock) equipReward(save, r.unlock);
+    labBridge.report({ event: 'day' });
   }
   persist();
   app.ping('round');
+  // The Lab: the job (a replay pays a quarter), the blocks it counted, the blueprint and its challenge, and the finished
+  // build for the family gallery. Each is one call, made once, here and never inside a frame.
+  const meta = {
+    id: `bc.job${r.id}.${dayKey(Date.now())}`,
+    title: r.title,
+    pieces: galleryPieces(app.yard.poses().filter((b) => buildSpotHas(app.yard, b))),
+  };
+  labBridge.report({ event: 'job', meta: { ...meta, first } });
+  labBridge.report({ event: 'piece', n: Math.max(1, app.mission?.status.total || 1) });
+  if (r.blueprint) labBridge.report({ event: 'blueprint', meta });
+  if (app.challenge?.finish(app.yard.grabs)) neatBuild();
   // The job is done: the hint line empties and stays empty until the next job starts. Controls rest during the show.
   setJobDone(true);
   showHint('');
@@ -217,25 +300,35 @@ function win() {
   show.timer = setTimeout(() => reveal(show), calm ? CALM_MS : SHOW_MS);
 }
 
+/** True when a toy belongs to the finished build: on or beside the delivery pad (the loose supply and the spare blocks
+ *  waiting in the loading area are not part of it). */
+function buildSpotHas(yard, b) {
+  const pad = yard.round.pad;
+  return Math.abs(b.position.x - pad.x) <= pad.w / 2 + 1 && Math.abs(b.position.z - pad.z) <= pad.d / 2 + 1;
+}
+
 /** The celebration is over: the reward sheet slides in with the reward drawn large and offers what comes next. */
 function reveal(show) {
   if (app.celebration !== show) return;
   app.celebration = null;
   if (app.screen !== 'play') return;
-  const r = app.yard.round;
+  const r = app.yard.round,
+    bp = !!r.blueprint;
   app.paused = false;
   Audio.coin();
-  modal('JOB COMPLETE', [
-    h('div', { class: 'reward-art', html: rewardArt(r.unlock, app.yard.machine.kind, app.save.paint) }),
-    h('p', {}, `Job complete. Unlocked: ${r.reward}.`),
+  const next = bp || r.id >= 10 ? () => startRound(0) : () => startRound(r.id + 1);
+  const sheet = [
+    h('div', {
+      class: 'reward-art',
+      html: bp ? blueprintSvg(r, { neat: app.neat }) : rewardArt(r.unlock, app.yard.machine.kind, app.save.paint),
+    }),
+    h('p', {}, bp ? 'Blueprint complete.' : `Job complete. Unlocked: ${r.reward}.`),
+    app.neat ? h('p', { class: 'neat', id: 'neat' }, 'Neat build!') : null,
+    h('div', { class: 'lab-results', id: 'lab-results' }),
     h(
       'div',
       { class: 'modal-actions' },
-      h(
-        'button',
-        { class: 'primary', id: 'next-round', onclick: () => (r.id < 10 ? startRound(r.id + 1) : startRound(0)) },
-        r.id < 10 ? 'Next job' : 'Open sandbox',
-      ),
+      h('button', { class: 'primary', id: 'next-round', onclick: next }, bp || r.id >= 10 ? 'Open sandbox' : 'Next job'),
       h(
         'button',
         {
@@ -249,8 +342,11 @@ function reveal(show) {
       ),
       h('button', { onclick: showTitle }, 'Back to base'),
     ),
-  ]);
-  say(jobDoneLine(r));
+  ];
+  modal(bp ? 'BLUEPRINT COMPLETE' : 'JOB COMPLETE', sheet.filter(Boolean));
+  app.labResults?.destroy();
+  app.labResults = labBridge.results({ mount: $('#lab-results') });
+  say(bp ? (app.neat ? NEAT_LINE : jobDoneLine(r)) : jobDoneLine(r));
 }
 
 /** Puts every block and machine back at the job's start, keeping earned progress. */
@@ -278,6 +374,8 @@ export function action(a) {
   if (!activePlay()) return;
   const yard = app.yard;
   if (a === 'grab') {
+    // The dump truck and the forklift carry loads on the bed and the tines; they have no Grab.
+    if (MACHINE_UI[yard.machine.kind].noGrab) return;
     if (!yard.grab()) hint(HINT.grab);
     else if (yard.held) hint(HINT.raise);
     else if (MACHINE_UI[yard.machine.kind].releaseHint) hint(MACHINE_UI[yard.machine.kind].releaseHint);

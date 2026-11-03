@@ -12,7 +12,7 @@
 // the final wave the street counts as cleared once, a pumpkin is planted in the yard (the calm beat), and it starts
 // again at wave 1. Every 10 cures, a new neighbour moves onto the title's street (the Cure Counter).
 import { isHit } from '../skills/items.js';
-import { extraOf, itemOf, STOCK } from '../data/looks.js';
+import { extraOf, itemOf, STOCK, towerBefore } from '../data/looks.js';
 import { dayKey } from '../skills/store.js';
 
 export const CURE_CASH = 120;
@@ -122,8 +122,8 @@ export const nextWaveOf = (save, street) => (save.streets[street] && save.street
 // ---------- the yard ----------
 export const owns = (save, kind, id) => id === STOCK[kind] || (save.yard.owned[kind] || []).includes(id);
 /**
- * Buy (and wear) a yard item: → 'bought' | 'owned' | 'poor' | 'unknown'. kind 'extra' (the dog, the lantern): bought
- * once and switched on; owned → toggled on / off ('owned').
+ * Buy (and wear) a yard item: → 'bought' | 'owned' | 'poor' | 'unknown' | 'locked'. kind 'extra' (the dog, the lantern): bought
+ * once and switched on; owned → toggled on / off ('owned'). kind 'tower' is built in order: 'locked' until the stage before is owned.
  */
 export function buyYard(save, kind, id) {
   if (kind === 'extra') {
@@ -139,9 +139,10 @@ export function buyYard(save, kind, id) {
   const it = itemOf(kind, id);
   if (!it) return 'unknown';
   if (owns(save, kind, id)) { save.yard[kind] = id; return 'owned'; }
+  if (kind === 'tower') { const prev = towerBefore(id); if (prev && !owns(save, 'tower', prev.id)) return 'locked'; }
   if (save.cash < it.price) return 'poor';
   save.cash -= it.price;
-  save.yard.owned[kind] = [...save.yard.owned[kind], id];
+  save.yard.owned[kind] = [...(save.yard.owned[kind] || []), id];
   save.yard[kind] = id;
   return 'bought';
 }

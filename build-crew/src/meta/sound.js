@@ -11,7 +11,7 @@ let ctx,
   allowed = true,
   lastImpact = 0;
 /** Each machine's idle engine pitch in Hz; heavier machines sit lower. */
-const freq = { skid: 68, excavator: 49, crane: 39 };
+const freq = { skid: 68, excavator: 49, crane: 39, dump: 44, fork: 76 };
 export const Sound = {
   unlock() {
     if (!ctx) {

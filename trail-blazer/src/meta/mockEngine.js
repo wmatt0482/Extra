@@ -26,6 +26,8 @@
 // ends; `questions` answers without the summit end it at the next hold; endHill() ends it; the end emits 'hillEnd'
 // {heightM, flags, summit, answers, cash: {flags, summit, total}, bestHeightM}. getState().hill mirrors it (charge,
 // thrusting, waiting).
+// v1.9 (The Lab): start({ chase: true }) is Ghost Chase: the race waits ('parked') until the first GAS (no 'countdown' events, nothing
+// counted down), then 'go'; no place cash; cfg.ghost may be { trace, vehicle, paint, label, look } (the trace is used).
 // Test hooks: window.__mockScript = { aiTimes: [s, s, s] (the AI riders' race times; default 7.0, 9.6, 10.4: the
 //   player, ~8.8 s, finishes 2nd), noCrash: true }.
 import { drawRanger } from '../ui/vehiclePreview.js';
@@ -75,8 +77,9 @@ export function createGame(canvas, opts = {}) {
     run = {
       cfg, trail, length, mult: (cfg.stats && cfg.stats.coinMult) || 1, crashPlanned: !script.noCrash,
       riders: (list || AI.slice(0, nRiders)).map((a, i) => ({ name: a.name || AI[i].name, paint: (list && typeof a.paint === 'string' && a.paint) || paints[i], finishT: times[i], x: 0 })),
-      ghost: Array.isArray(cfg.ghost) && cfg.ghost.length > 1 ? cfg.ghost : null, trace: [], nextSample: 0, comboCash: 0, maxCombo: 0,
-      phase: 'countdown', t: 0, cd: 3, goT: 3 * CD_STEP, bogged: false, rt: 0, distance: 0, checkpoint: 0, place: nRiders + 1,
+      chase: !!cfg.chase,
+      ghost: (() => { const g = Array.isArray(cfg.ghost) ? cfg.ghost : cfg.ghost && Array.isArray(cfg.ghost.trace) ? cfg.ghost.trace : null; return g && g.length > 1 ? g : null; })(), trace: [], nextSample: 0, comboCash: 0, maxCombo: 0,
+      phase: cfg.chase ? 'parked' : 'countdown', t: 0, cd: 3, goT: 3 * CD_STEP, bogged: false, rt: 0, distance: 0, checkpoint: 0, place: nRiders + 1,
       speedKmh: 0, maxSpeed: 0, boost: 0.4, boosting: false, inAir: false, flightT: 0, airTime: 0, airCash: 0, bigAir: false,
       flips: 0, flipCash: 0, perfect: 0, perfectCash: 0, crashes: 0, crashT: 0, coins: 0, coinCash: 0, nextCoin: 0,
       jump1: false, jump2: false, finishCrossed: false, timeSec: 0, finishAt: null, ended: false, popups: [],
@@ -85,13 +88,13 @@ export function createGame(canvas, opts = {}) {
       gateIndex: 0, frozen: 0, holdUntil: 0, pushUntil: 0,
     };
     hill = null;
-    emit({ type: 'countdown', n: 3 });
+    if (!cfg.chase) emit({ type: 'countdown', n: 3 });
     paused = false;
     last = performance.now();
     if (!raf) raf = requestAnimationFrame(frame);
   }
 
-  function placeCash(r) { return r.finishCrossed && PLACE_CASH[r.place] ? PLACE_CASH[r.place] : 0; }
+  function placeCash(r) { return r.finishCrossed && !r.chase && PLACE_CASH[r.place] ? PLACE_CASH[r.place] : 0; }
   function cashNow(r) {
     const m = r.mult, k = (v) => Math.round(v * m);
     const c = {
@@ -187,6 +190,10 @@ export function createGame(canvas, opts = {}) {
     const r = run;
     if (!r || r.ended) return;
     r.t += dt;
+    if (r.phase === 'parked') {              // Ghost Chase: wait for the first GAS, then go (the ghost starts with you)
+      if (input.gas) { r.phase = 'ride'; r.rt = 0; r.goT = r.t; emit({ type: 'go', bogged: false }); }
+      return;
+    }
     if (r.phase === 'countdown') {
       if (input.gas && !r.bogged) { r.bogged = true; emit({ type: 'bogged' }); }
       const n = 3 - Math.floor(r.t / CD_STEP);
@@ -407,7 +414,7 @@ export function createGame(canvas, opts = {}) {
       return {
         phase: r.phase, distance: r.distance, speedKmh: r.speedKmh, boost: r.boost, airTime: r.inAir ? r.flightT : 0, flips: r.flips, smashed: 0,
         cash: cashNow(r).total, finishCrossed: r.finishCrossed, gateIndex: r.gateIndex, gatesTotal: r.gateX.length, stuck: false, upsideDown: r.phase === 'crash',
-        place: r.place, timeSec: r.phase === 'countdown' ? 0 : r.finishCrossed ? r.timeSec : Math.max(0, r.rt),
+        place: r.place, timeSec: r.phase === 'countdown' || r.phase === 'parked' ? 0 : r.finishCrossed ? r.timeSec : Math.max(0, r.rt),
         riders: ridersOut(r), ghostGap: r.ghost ? ghostGap(r) : undefined,
         hill: hill ? { active: hill.active, heightM: Math.round(hill.heightM), flag: hill.flag, flags: hill.flags, progress: Math.min(1, hill.heightM / (HILL_SECTION_M * hill.flags)), holding: hill.holding, burst: hill.thrusting ? hill.charge * HILL_BURST_S : hill.burst, answers: hill.answers,
           charge: Math.round(hill.charge * 100) / 100, thrusting: hill.thrusting, waiting: hill.waiting } : null,

@@ -6,10 +6,16 @@
 // v1.5: the tier's badge ("🧭 Veteran · 1849"), the bonus cards the tier pays, the gold found on a digging leg ("3 nuggets · 7 flakes"), a card set
 // completed with the wagon decoration it unlocked, and, at a trail's end, the bank card ("+$74 in savings · 6 nuggets of Beaver money · 2 oxen to the
 // pasture") with a button to the farm (result.bank / result.tier / result.gold / result.sets / result.bonus).
+// v1.6 (The Lab): the Lab's strip sits under the pay lines (#res-lab, mounted by main.js through the bridge), and above the buttons is the cliffhanger: a card with
+// the NEXT stop's painting, one true line (the first sentence of its lookout) and "Next time: the ferry at the Kansas River" (result.preview, journey/preview.js
+// nextStopPreview). Nothing is locked ("Next leg" is always there); after the third leg finished on a local day (result.stopToday) the card adds "That's a good
+// place to stop for today." At a trail's end there is no card.
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { CRATES, KIND_NAME, itemOf } from './looks.js';
 import { deedChips } from './deeds.js';
 import { CARD_BY_ID } from '../content/cards.js';
+import { LEG_BY_ID } from '../content/legs.js';
+import { STOP_LINE } from '../journey/preview.js';
 
 /** The bank card's three parts: ["+$74 in savings", "6 nuggets of Beaver money", "2 oxen to the pasture"] (a part is left out when it is nothing). */
 export function bankParts(bank, animalName = 'oxen', nuggetsOf = (f) => ({ nuggets: Math.floor(f / 10), flakes: f % 10 })) {
@@ -65,9 +71,33 @@ export function createResults(app) {
     ex.hidden = !extra.length;
     ex.replaceChildren(...extra);
     paintCrate();
+    paintPreview(r);
     $('#res-next-text').textContent = r.home ? (r.bank ? 'To the farm' : 'A new year') : 'Next leg';
     $('#res-next').dataset.action = r.home ? (r.bank ? 'farm' : 'season') : 'next';
   }
+  /** The cliffhanger card (v1.6): the next stop's painting, its line, "Next time: …", and the day's gentle stop line. */
+  function paintPreview(r) {
+    const box = $('#res-preview'), p = r && r.preview;
+    box.hidden = !p;
+    if (!p) return;
+    $('#res-pv-next').textContent = `Next time: ${p.phrase}`;
+    $('#res-pv-line').textContent = p.line;
+    const stop = $('#res-pv-stop');
+    stop.hidden = !r.stopToday;
+    stop.textContent = r.stopToday ? STOP_LINE : '';
+    box.dataset.leg = p.legId;
+    const cv = $('#res-pv-art'), dpr = Math.min(2, window.devicePixelRatio || 1), W = 176, H = 108;
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    const leg = LEG_BY_ID[p.legId];
+    cv.dataset.state = 'pending';
+    import('../scene/backdrops.js').then((m) => {
+      if (!leg || box.hidden || box.dataset.leg !== p.legId) return;
+      const c = cv.getContext('2d'); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      cv.dataset.painting = m.drawStopCard(c, W, H, leg);
+      cv.dataset.state = 'painted';
+    }).catch(() => { cv.dataset.state = 'none'; });       // (no painting: the words are still there)
+  }
+  $('#res-pv-hear').addEventListener('click', () => { const p = R && R.preview; if (p) app.sayAll([p.sayPhrase, p.say, ...(R.stopToday ? [STOP_LINE] : [])]); });
   function stat(big, label, id) { return h('div', { class: 'stat', 'data-stat': id }, h('b', {}, big), h('span', {}, label)); }
   function paintCrate() {
     const box = $('#res-crate');

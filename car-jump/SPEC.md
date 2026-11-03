@@ -572,6 +572,16 @@ No lives, no energy, no timers that nag, no rewards for time spent. Data in `src
 ### Not doing (on purpose)
 No lives/energy, no countdown nags, no purchases, no rewards tied to minutes played, no notifications.
 
+## Lab integration (v1, v3.9)
+
+Spell Jump is the `sj` game of the Lab; the contract is `lab/SPEC.md` §4.1 and the notes are in README.md ("The Lab"). Summary: `src/meta/labBridge.js`
+loads the Lab lazily and degrades to no-ops; events `word`, `testWord`, `test`, `run`, `perfect`, `mastered`, `day` are reported once each from
+`main.js`; the XP pill (`#hud-lab`) and the results strip (`#res-lab`) are mounted from the bridge; `src/meta/labLooks.js` lists the 15 items Spell
+Jump draws (skins and stickers through the existing car renderer, trails through the engine's particles); the "Perfect Launch" moment is drawn by
+`game.moment(name)`; the Friday Test is wrapped by `src/ui/testBoss.js` / `ceremony.js` (a ceremony for every score; `testMode.js` unchanged) and
+printed from `certificate.html`. The Lab pays Lab coins only: no price, reward or number in Spell Jump changes (`tools/lab-tests.mjs` snapshots the
+economy modules).
+
 ## Levels, stretch cars and the Style row (v3.6)
 
 1. **Levels per race** (`levelsPerRace` player option, Parents → Options, 1 / 2 / 3, default 3). Crossing a level's

@@ -40,7 +40,7 @@ test('Maple Street asks halves and quarters; Oak Lane thirds, sixths, eighths, t
   assert.ok(!t2.some((x) => x.endsWith('/5') || x.endsWith('/10') || x.endsWith('/12')), 'fifths, tenths, twelfths wait');
   const more = I.fractionsOf('T2', { more: true }).map((f) => `${f.n}/${f.d}`);
   assert.ok(more.includes('3/5') && more.includes('7/10') && more.includes('5/12') && !more.includes('5/10') && !more.includes('6/12'));
-  assert.deepEqual(I.fractionsOf('T3'), [], 'later tiers are not playable in 1.0');
+  assert.deepEqual(I.fractionsOf('T4'), [], 'later tiers are not playable yet');   // Lab integration v1: Twin Alley (T3) plays now, see tools/lab-tests.mjs
 });
 test('spoken names: "three quarters", "one half", "five twelfths", "forty-two hundredths"', () => {
   assert.equal(I.fracName(3, 4), 'three quarters');
@@ -202,7 +202,9 @@ test('the ★: the lowest open street not secure, else the highest open one', ()
   throwN(d, 'T1', 'locate', Array(10).fill('bull'), T0, 1);
   assert.equal(L.recommended(d), 'T2');
   throwN(d, 'T2', 'locate', Array(10).fill('bull'), T0 + 50000, 1);
-  assert.equal(L.recommended(d), 'T2');
+  assert.equal(L.recommended(d), 'T3', 'Lab integration v1: Twin Alley is the next street once Oak Lane is secure');
+  throwN(d, 'T3', 'locate', Array(10).fill('bull'), T0 + 90000, 1);
+  assert.equal(L.recommended(d), 'T3');
 });
 test('Oak Lane adds fifths, tenths and twelfths once it works', () => {
   const d = labbed();
@@ -269,14 +271,14 @@ console.log('the week (Parent Zone)');
 test('a new player: 0 % of the ladder, no waves this week (null)', () => {
   const w = weekProgress(S.defaultSkills(), T0);
   assert.equal(w.ladderPct, 0); assert.equal(w.accuratePct, null); assert.equal(w.closePct, null);
-  assert.deepEqual(weekProgressLines(w), ['Ladder: 0 % (Maple Street not started, Oak Lane not started)', 'This week: no waves this week']);
+  assert.deepEqual(weekProgressLines(w), ['Ladder: 0 % (Maple Street not started, Oak Lane not started, Twin Alley not started)', 'This week: no waves this week']);
 });
 test('ladder steps (started / working / secure per street) and this week\'s accuracy, moved up', () => {
   const d = labbed();
   throwN(d, 'T1', 'bounce', ['hit', 'hit', 'hit', 'miss', 'hit', 'bull'], T0 - 2 * DAY);
   S.recordThrow(d, { tier: 'T2', kind: 'locate', show: '2/3', pae: 10, result: 'hit', at: T0 - 20 * DAY });
   const w = weekProgress(d, T0);
-  assert.equal(w.ladderPct, 50, '(2 + 1) of 6 steps');
+  assert.equal(w.ladderPct, 33, '(2 + 1) of 9 steps (three playable streets since the Lab integration v1)');
   assert.equal(w.throwsThisWeek, 6, 'the 20-day-old throw is not this week');
   assert.equal(w.accuratePct, 83); assert.deepEqual(w.movedUp, ['T1']);
   assert.match(weekProgressLines(w)[1], /^This week: 83 % accurate \(5 of 6 throws on target\) · \d+ % close on average · moved up: Maple Street$/);
@@ -335,7 +337,7 @@ test('the yard: buy (cash down, owned, worn), wear an owned one again free, too 
   assert.equal(E.buyYard(s, 'goo', 'grape'), 'bought'); assert.equal(s.cash, 100); assert.equal(s.yard.goo, 'grape');
   assert.equal(E.buyYard(s, 'goo', 'lime'), 'owned'); assert.equal(s.yard.goo, 'lime');
   assert.equal(E.buyYard(s, 'goo', 'grape'), 'owned'); assert.equal(s.cash, 100);
-  assert.equal(E.buyYard(s, 'fence', 'castle'), 'unknown');
+  assert.equal(E.buyYard(s, 'fence', 'moat'), 'unknown');   // (Lab integration v1: the castle wall is a real fence now)
   assert.equal(E.buyYard(s, 'grenade', 'slime'), 'owned'); assert.equal(s.yard.grenade, 'slime');
   s.cash = 2500;
   assert.equal(E.buyYard(s, 'grenade', 'lava'), 'bought'); assert.equal(s.yard.grenade, 'lava'); assert.equal(s.cash, 0);
@@ -380,10 +382,10 @@ test('save normalize: junk dropped, equipped only when owned, a wave number clam
   const s = normalizeSave({ cash: -4, cures: 12.7, streets: { maple: { wave: 9, cleared: 2 }, mars: { wave: 1 } }, yard: { owned: { goo: ['grape', 'nope', 'lime'] }, goo: 'tangerine', fence: 'iron' }, resetAt: 5 });
   assert.equal(s.cash, 0); assert.equal(s.cures, 12);
   assert.deepEqual(s.streets, { maple: { wave: 5, cleared: 2 } });
-  assert.deepEqual(s.yard, { owned: { grenade: [], goo: ['grape'], fence: [], extra: [] }, grenade: 'slime', goo: 'lime', fence: 'picket', dog: false, lantern: false });
+  assert.deepEqual(s.yard, { owned: { grenade: [], goo: ['grape'], fence: [], tower: [], extra: [] }, grenade: 'slime', goo: 'lime', fence: 'picket', tower: 'none', dog: false, lantern: false });
   assert.equal(s.resetAt, 5);
   const t = normalizeSave({ yard: { owned: { grenade: ['frost', 'x'], extra: ['lantern', 'cat'] }, grenade: 'frost', dog: true, lantern: true } });
-  assert.deepEqual(t.yard, { owned: { grenade: ['frost'], goo: [], fence: [], extra: ['lantern'] }, grenade: 'frost', goo: 'lime', fence: 'picket', dog: false, lantern: true }, 'an extra is on only when owned');
+  assert.deepEqual(t.yard, { owned: { grenade: ['frost'], goo: [], fence: [], tower: [], extra: ['lantern'] }, grenade: 'frost', goo: 'lime', fence: 'picket', tower: 'none', dog: false, lantern: true }, 'an extra is on only when owned');
   assert.deepEqual(normalizeSave(defaultSave()), defaultSave(), 'a 1.0 save without the new fields normalizes to the stock');
 });
 
@@ -394,7 +396,7 @@ test("ff: max counts, union of yard purchases, the later doc's goo, streets by w
   const b = defaultSave(); b.cash = 300; b.cures = 41; b.yard.owned.fence = ['iron']; b.yard.fence = 'iron'; b.streets.maple = { wave: 2, cleared: 1 }; b.streets.oak = { wave: 3, cleared: 0 }; b.play['2026-10-26'] = { waves: 3, cures: 4 };
   const m = mergeFf(doc(2, a), doc(1, b));
   assert.equal(m.cash, 500); assert.equal(m.cures, 41);
-  assert.deepEqual(m.yard.owned, { grenade: [], goo: ['grape'], fence: ['iron'], extra: [] });
+  assert.deepEqual(m.yard.owned, { grenade: [], goo: ['grape'], fence: ['iron'], tower: [], extra: [] });
   assert.equal(m.yard.goo, 'grape'); assert.equal(m.yard.fence, 'picket', 'the later doc wore the picket');
   assert.deepEqual(m.streets, { maple: { wave: 2, cleared: 1 }, oak: { wave: 3, cleared: 0 } });
   assert.deepEqual(m.play['2026-10-26'], { waves: 3, cures: 9 });

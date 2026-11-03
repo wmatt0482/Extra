@@ -30,6 +30,7 @@ const { composeLetter, happenedKeys, keepLetter, lineSource, FALLBACK_LINES } = 
 const { PEOPLE, PEOPLE_BY_STOP, PERSON_BY_ID } = await import('../src/content/people.js');
 const { DEED_BY_ID } = await import('../src/journey/deeds.js');
 const { starsFor, starCount } = await import('../src/journey/stars.js');
+const economyNs = await import('../src/journey/economy.js');
 const { START, PAY, RATION_LB, SPEED, RESCUE, MARKERS, MOOD, payFor, crateFor, lbOf, TRADE_LB, milesPerDay, ARROWS, ANIMAL_RULES, COLD_LEGS, SOAKED_LB, FOOD_KINDS, RAFT, DERBY, EXTRA_GOODS, TIER_FX } = await import('../src/journey/economy.js');
 const { planEvents, eligibleEvents, EVENTS, EVENT_BY_ID } = await import('../src/journey/events.js');
 const { useLegs, syntheticTrail, legList, legacyTrail, SEASONS, GOODS, nationFor } = await import('../src/journey/route.js');
@@ -3389,6 +3390,192 @@ test('the long trail keeps the dog busy: a nose moment on at least 95 % of the l
 });
 test('the module is pure: no clock, no Math.random, no DOM in the v1.5 journey files', () => {
   for (const f of ['route', 'seasons', 'homestead', 'gold', 'adaptive', 'events', 'deeds', 'letters', 'supplies', 'problems', 'economy']) {      // (sim.js keeps 1.1's `rand = Math.random` default on cardForLeg)
+    const src = readFileSync(new URL(`../src/journey/${f}.js`, import.meta.url), 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g, "''");
+    assert.ok(!/Date\.now|new Date\(|performance\.now|Math\.random|document\.|window\.|localStorage|setTimeout/.test(src), f);
+  }
+});
+
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+// v1.6 (The Lab, lab/SPEC.md §4.4): the six choice moments (src/content/choices.js, src/journey/choices.js) and the cliffhanger (src/journey/preview.js)
+// ---------------------------------------------------------------------------------------------------------------------------------------------------------------
+const CH = await import('../src/journey/choices.js');
+const PV = await import('../src/journey/preview.js');
+const { CHOICES, CHOICE_BY_ID, CHOICE_LINES } = await import('../src/content/choices.js');
+const SIX = [['ash-creek', 'ash-hollow', 'shortcut', {}], ['ice-guide', 'ice-slough', 'guide', {}], ['humboldt-bends', 'humboldt-river', 'shortcut', { 'fort-hall': 'california' }],
+  ['meadows-guide', 'big-meadows', 'guide', { 'fort-hall': 'california' }], ['rogue-bar', 'rogue-river', 'shortcut', { route: 'gold-road' }], ['siskiyou-packer', 'siskiyou-pass', 'guide', { route: 'gold-road' }]];
+/** A journey at the stop of a choice, the stop arrived at (as the app has it at runSteps), the earlier choices taken the plain way. */
+function atChoice(id, { seed = 61, tier = 'rookie', animal = 'oxen', cash = 60 } = {}) {
+  const [, at, , o] = SIX.find((x) => x[0] === id);
+  const gold = o.route === 'gold-road';
+  const J = createJourney({ seed, tier, animal, companions: PLAIN, route: gold ? 'gold-road' : 'emigrant', journeyN: gold ? 2 : 1, year: gold ? 1848 : 1847 });
+  atFork(J, at);
+  if (o['fort-hall'] === 'california') { /* atFork chose the first open option at each fork: Oregon; rebuild a California journey instead */ }
+  J.cash = cash;
+  return J;
+}
+function atCalifornia(at, opts = {}) {
+  const J = createJourney({ seed: opts.seed || 61, tier: opts.tier || 'rookie', companions: PLAIN, journeyN: 1, year: 1847, animal: opts.animal || 'oxen' });
+  const i = J.plan.findIndex((p) => p.id === 'fort-hall');
+  while (J.legIndex < i) { J.milesDone = J.trip.miles; J.trip.arrived = true; arrive(J); nextLeg(J); }
+  J.milesDone = J.trip.miles; J.trip.arrived = true; arrive(J); assert.equal(V.chooseBranch(J, 'fort-hall', 'california').ok, true);
+  nextLeg(J);
+  const j = J.plan.findIndex((p) => p.id === at); assert.ok(j > 0, at);
+  while (J.legIndex < j) { J.milesDone = J.trip.miles; J.trip.arrived = true; arrive(J); nextLeg(J); }
+  J.milesDone = J.trip.miles; J.trip.arrived = true; J.cash = opts.cash == null ? 60 : opts.cash;
+  return J;
+}
+const at6 = (id, o = {}) => (id === 'humboldt-bends' || id === 'meadows-guide' ? atCalifornia(CHOICE_BY_ID[id].at, o) : atChoice(id, o));
+const nextOf = (J) => J.plan[J.legIndex + 1];
+
+test('the six choice moments: two on each route, in the places the spec names, a person each, two equal ways with one true line each, no digit and no banned word in any line', () => {
+  assert.equal(CHOICES.length, 6);
+  assert.deepEqual(CHOICES.map((c) => `${c.route}:${c.at}:${c.kind}`), ['emigrant:ash-hollow:shortcut', 'emigrant:ice-slough:guide', 'california:humboldt-river:shortcut', 'california:big-meadows:guide', 'gold-road:rogue-river:shortcut', 'gold-road:siskiyou-pass:guide']);
+  for (const c of CHOICES) {
+    assert.ok(PERSON_BY_ID[c.who], `${c.id}: ${c.who} is a stock person of people.js`);
+    assert.deepEqual(c.options.map((o) => o.id), ['a', 'b']); assert.ok(c.question.endsWith('?'), c.id);
+    for (const o of c.options) { assert.ok(o.name && o.line.text && o.line.say, c.id); assert.ok(!/\d/.test(o.line.say) && !/\d/.test(o.line.text), `${c.id}: no digits (miles are never read aloud)`); }
+    const bad = /\b(kill(s|ed|ing)?|die[sd]?|dying|dead|death|grave|blood|gun|lives|life left|wrong|timer|countdown|hurry|time'?s up|seconds? left|game over|lose|lost|fail(ed)?|dysentery|snakebite|starv(e|ing|ed))\b/i;
+    for (const t of [c.question, ...c.options.flatMap((o) => [o.name, o.line.text])]) assert.ok(!bad.test(t), `${c.id}: ${t}`);
+    assert.ok(Math.abs(c.options[0].line.text.length - c.options[1].line.text.length) < 90, `${c.id}: the two ways are told at about the same length (neither is pushed)`);
+  }
+  for (const k of Object.values(CHOICE_LINES)) for (const t of (typeof k === 'string' ? [k] : [k.text, k.say])) assert.ok(!/\b(lost|wrong|lose|fail)/i.test(t), t);
+});
+test('choicesAt(plan, legId): the definitions for a stop that has a leg after it; none elsewhere, none at a plan\'s last leg; the California Trail has four (its first fifteen legs are the Oregon Trail\'s), the Gold Road two', () => {
+  const oregon = createJourney({ seed: 1, companions: PLAIN }), gold = createJourney({ seed: 1, route: 'gold-road', journeyN: 2, year: 1848, companions: PLAIN });
+  assert.deepEqual(CH.choicesAt(oregon.plan, 'ash-hollow').map((c) => c.id), ['ash-creek']); assert.deepEqual(CH.choicesAt(oregon.plan, 'ice-slough').map((c) => c.id), ['ice-guide']);
+  assert.deepEqual(CH.choicesAt(oregon.plan, 'chimney-rock'), []); assert.deepEqual(CH.choicesAt(oregon.plan, 'rogue-river'), [], 'a Gold Road stop is not on the Oregon plan');
+  assert.deepEqual(CH.choicesAt(oregon.plan, 'willamette-valley'), []); assert.deepEqual(CH.choicesAt(null, 'ash-hollow'), []); assert.deepEqual(CH.choicesAt(['ash-hollow'], 'ash-hollow'), [], 'no leg after the stop: nothing to shorten');
+  assert.deepEqual(CH.choicesAt(['ash-hollow', 'chimney-rock'], 'ash-hollow').map((c) => c.id), ['ash-creek'], 'a plain list of ids works too');
+  assert.deepEqual(['rogue-river', 'siskiyou-pass'].flatMap((id) => CH.choicesAt(gold.plan, id).map((c) => c.id)), ['rogue-bar', 'siskiyou-packer']);
+  const cal = atCalifornia('humboldt-river'); const stops = cal.plan.map((p) => p.id).filter((id) => CH.choicesAt(cal.plan, id).length);
+  assert.deepEqual(stops, ['ash-hollow', 'ice-slough', 'humboldt-river', 'big-meadows']);
+});
+test('choiceAt(J): null on the trail and before the stop, the question at the stop (the person, two ways, the guide\'s fee), null once taken; a journey that ends as it began never asks', () => {
+  for (const [id, at, kind] of SIX) {
+    const J = at6(id); const c = CH.choiceAt(J);
+    assert.equal(c.id, id); assert.equal(c.at, at); assert.equal(c.kind, kind); assert.equal(c.leg, nextOf(J).id, 'the leg it settles is the one after the stop');
+    assert.equal(c.who.id, CHOICE_BY_ID[id].who); assert.deepEqual(c.options.map((o) => o.id), ['a', 'b']); assert.ok(c.options.every((o) => o.open && o.name && o.line.text));
+    assert.equal(c.fee, kind === 'guide' ? 2 : 0); assert.equal(c.options[1].fee, kind === 'guide' ? 2 : undefined);
+    assert.equal(arrive(J).choice.id, id, 'arrive() carries the choice the app asks (as it carries the fork)');
+    J.trip.arrived = false; assert.equal(CH.choiceAt(J), null, 'not at the stop');
+    J.trip.arrived = true; assert.equal(CH.applyChoice(J, id, 'a').ok, true); assert.equal(CH.choiceAt(J), null, 'null once taken'); assert.equal(arrive(J).choice, null);
+  }
+  const L = createJourney({ seed: 3, companions: PLAIN }); L.planLocked = true; atFork(L, 'ash-hollow'); assert.equal(CH.choiceAt(L), null, 'planLocked (a 1.3 journey in progress, a tool\'s legs): never asks');
+  const P = createJourney({ seed: 4, tier: 'pioneer', companions: PLAIN }); atFork(P, 'ice-slough'); P.cash = 60; assert.equal(CH.choiceAt(P).fee, 8, 'the guide\'s fee is $2 × the price level (Pioneer 4)');
+  const Vt = createJourney({ seed: 4, tier: 'veteran', companions: PLAIN }); atFork(Vt, 'ice-slough'); assert.equal(CH.choiceAt(Vt).fee, 4);
+});
+test('the plain way (a) changes nothing: not the plan, the cash, the food, the spirit; it is resolved once (a second call returns the first) and recorded', () => {
+  for (const [id] of SIX) {
+    const J = at6(id); const before = clone({ plan: J.plan, cash: J.cash, foods: J.foods, spirit: J.spirit, totals: J.totals });
+    const r = CH.applyChoice(J, id, 'a'); assert.deepEqual([r.ok, r.option, r.cut, r.soakedLb, r.fee], [true, 'a', 0, 0, 0]);
+    assert.deepEqual(clone({ plan: J.plan, cash: J.cash, foods: J.foods, spirit: J.spirit }), { plan: before.plan, cash: before.cash, foods: before.foods, spirit: before.spirit });
+    assert.equal(J.choices[id].opt, 'a'); const again = CH.applyChoice(J, id, 'b'); assert.equal(again.repeated, true); assert.equal(again.option, 'a', 'resolved once'); assert.equal(CH.cutOf(J, nextOf(J).id), 0);
+  }
+  assert.deepEqual(CH.applyChoice(createJourney({ seed: 5, companions: PLAIN }), 'ash-creek', 'a'), { ok: false, why: 'notHere' }, 'not at its stop');
+  assert.equal(CH.applyChoice(at6('ash-creek'), 'nope', 'a').ok, false); assert.equal(CH.applyChoice(at6('ash-creek'), 'ash-creek', 'c').ok, false);
+});
+test('a shortcut (b): the leg that follows is 15 miles shorter in the plan and the leg table, its pay is the full leg\'s, and about one time in four a sack of flour is soaked (up to 50 lb, never more than half the flour); the draw is seeded, a reload changes nothing', () => {
+  for (const id of ['ash-creek', 'humboldt-bends', 'rogue-bar']) {
+    const J = at6(id); const next = nextOf(J); const full = next.miles; const flour0 = J.foods.flour;
+    const r = CH.applyChoice(J, id, 'b'); assert.equal(r.ok, true); assert.equal(r.cut, 15); assert.equal(r.fee, 0); assert.equal(r.guided, false); assert.equal(r.leg, next.id);
+    assert.equal(J.plan.find((p) => p.id === next.id).miles, full - 15, 'the plan'); assert.equal(legList().find((l) => l.id === next.id).miles, full - 15, 'the leg table');
+    assert.equal(CH.cutOf(J, next.id), 15); assert.ok(r.soakedLb === 0 || r.soakedLb === Math.min(50, Math.floor(flour0 / 2)), `${id}: ${r.soakedLb} lb`); assert.equal(J.foods.flour, flour0 - r.soakedLb); assert.equal(J.food, J.foods.flour + J.foods.bacon + J.foods.beans + J.foods.other);
+    const arr = arrive(J); const stars = arr.stars; assert.deepEqual(arr.cash, payFor(stars, J.season, { ...J.plan[J.legIndex], miles: J.plan[J.legIndex].miles }), 'this leg is the stop\'s own: not shortened');
+    nextLeg(J); assert.equal(J.legId, next.id); assert.equal(J.trip.miles, full - 15, 'the next leg starts shorter');
+    J.milesDone = J.trip.miles; J.trip.arrived = true; const pay = arrive(J).cash; assert.deepEqual(pay, payFor(arrive(J).stars, J.season, { ...legList()[J.legIndex], miles: full }), 'a shortened leg pays as the full leg');
+  }
+  let soaked = 0, n = 400;
+  for (let seed = 1; seed <= n; seed++) { const J = atChoice('ash-creek', { seed }); const r = CH.applyChoice(J, 'ash-creek', 'b'); if (r.soaked) { soaked++; assert.equal(r.soakedLb, 50); } }
+  assert.ok(soaked / n > 0.17 && soaked / n < 0.33, `${soaked} of ${n} soaked (one in four)`);
+  const A = atChoice('ash-creek', { seed: 9 }), B = JSON.parse(JSON.stringify(A));         // a reloaded save draws the same
+  assert.deepEqual(CH.applyChoice(A, 'ash-creek', 'b'), CH.applyChoice(B, 'ash-creek', 'b'));
+  const poor = atChoice('ash-creek', { seed: 2 }); poor.foods.flour = 30; poor.foods.bacon = 0; poor.foods.beans = 0; poor.foods.other = 0; V.syncFood(poor);
+  const rr = CH.applyChoice(poor, 'ash-creek', 'b', () => 0.0); assert.equal(rr.soakedLb, 15, 'never more than half the wagon\'s flour'); assert.equal(poor.foods.flour, 15);
+  const dry = atChoice('ash-creek', { seed: 2 }); assert.equal(CH.applyChoice(dry, 'ash-creek', 'b', () => 0.99).soakedLb, 0, 'a rand draw of 0.99 soaks nothing');
+});
+test('a guide (b): the fee × the price level is paid (never below $0: a short purse leaves the plain way open and the choice pending), the leg is a day\'s miles shorter, the spirit is lifted, a dry leg is crossed without thirst', () => {
+  for (const [id, tier, fee] of [['ice-guide', 'rookie', 2], ['ice-guide', 'veteran', 4], ['ice-guide', 'pioneer', 8], ['siskiyou-packer', 'rookie', 2], ['meadows-guide', 'rookie', 2]]) {
+    const J = at6(id, { tier }); J.spirit = 50; const cash0 = J.cash, next = nextOf(J), full = next.miles;
+    const r = CH.applyChoice(J, id, 'b'); assert.equal(r.ok, true, id); assert.equal(r.fee, fee); assert.equal(J.cash, cash0 - fee); assert.equal(r.spirit, 10); assert.equal(J.spirit, 60); assert.equal(r.guided, true); assert.equal(r.soakedLb, 0);
+    assert.equal(r.cut, CH.dayMiles(J), 'a day\'s miles'); assert.equal(r.cut, 15); assert.equal(J.plan.find((p) => p.id === next.id).miles, full - 15); assert.equal(CH.guidedOf(J, next.id), true);
+  }
+  const mules = at6('ice-guide', { animal: 'mules' }); assert.equal(CH.applyChoice(mules, 'ice-guide', 'b').cut, 18, 'a mule team walks a longer day');
+  const tires = at6('ice-guide'); tires.upgrades.tires = true; tires.animals.n = 4; assert.equal(CH.dayMiles(tires), 20, 'iron tires (+2) and the second yoke (+3) lengthen the day');
+  const P = at6('ice-guide'); P.cash = 1; const c = CH.choiceAt(P); assert.equal(c.options[1].open, false); assert.equal(c.options[1].why, 'cash'); assert.equal(c.options[0].open, true);
+  assert.deepEqual(CH.applyChoice(P, 'ice-guide', 'b'), { ok: false, why: 'cash', fee: 2 }); assert.equal(P.cash, 1); assert.equal(P.choices['ice-guide'], undefined, 'still pending'); assert.equal(CH.applyChoice(P, 'ice-guide', 'a').ok, true);
+  const dryWith = at6('meadows-guide'); CH.applyChoice(dryWith, 'meadows-guide', 'b'); nextLeg(dryWith); assert.equal(dryWith.legId, 'forty-mile-desert'); assert.equal(dryWith.trip.guided, true);
+  const dryWithout = at6('meadows-guide'); CH.applyChoice(dryWithout, 'meadows-guide', 'a'); nextLeg(dryWithout);
+  let tn = 0; for (let d = 0; d < 12 && !dryWith.trip.arrived; d++) { const r = tickDay(dryWith, { rand: mulberry32(d) }); if (r.dry) assert.equal(r.thirsty, false, 'a guide knows the water'); if (r.marker) applyMarker(dryWith, { correct: true }); }
+  for (let d = 0; d < 12 && !dryWithout.trip.arrived; d++) { const r = tickDay(dryWithout, { rand: mulberry32(d) }); if (r.dry && r.thirsty) tn++; if (r.marker) applyMarker(dryWithout, { correct: true }); }
+  assert.ok(tn > 0, 'without the guide or the barrel the desert is thirsty');
+});
+test('a saved day is a day: a short leg is held to its markers, so the day the miles do not save is saved on the arrival (the arrival day\'s food is not eaten); a long leg saves it by its miles and needs no credit', () => {
+  const short = at6('ash-creek'); CH.applyChoice(short, 'ash-creek', 'b', () => 0.99); assert.equal(short.choices['ash-creek'].credit, 1, 'a 60 mile leg of five markers takes the same days at 45 miles');
+  const longer = atCalifornia('humboldt-river'); const full = nextOf(longer).miles; assert.equal(full, 150); CH.applyChoice(longer, 'humboldt-bends', 'b', () => 0.99); assert.equal(longer.choices['humboldt-bends'].credit, 0, 'a 150 mile leg really takes a day less');
+  // the credit is spent on the arrival tick: the food of that day stays in the wagon
+  for (const credit of [true, false]) {
+    const J = at6('ash-creek'); CH.applyChoice(J, 'ash-creek', credit ? 'b' : 'a', () => 0.99); nextLeg(J); J.food = 400; J.foods = { flour: 200, bacon: 120, beans: 80, other: 0 }; J.foodOwed = { flour: 0, bacon: 0, beans: 0 }; J.rations = 'full';
+    assert.equal(J.trip.dayCredit, credit ? 1 : 0); const rand = mulberry32(5); let food = J.food, lastEaten = 0, arrivedDay = null;
+    for (let d = 0; d < 60; d++) { const before = J.food; const r = tickDay(J, { rand }); if (r.marker) applyMarker(J, { correct: true }); if (r.event) { const e = r.event; if (e.kind === 'hunt') applyHunt(J, { meatLb: 0 }); } if (r.arrived) { arrivedDay = { before, after: J.food }; break; } food = J.food; lastEaten = before - J.food; }
+    assert.ok(arrivedDay, 'arrived'); if (credit) assert.ok(arrivedDay.after >= arrivedDay.before, `the arrival day eats nothing (${arrivedDay.before} → ${arrivedDay.after})`); else assert.ok(arrivedDay.after < arrivedDay.before, 'a plain arrival day eats');
+    assert.equal(J.trip.dayCredit, 0, 'spent once');
+  }
+});
+test('moving on without choosing takes the plain way, once, like a fork (nextLeg); a choice is never lost or doubled; the old trail tests still walk (atFork passes six choice stops)', () => {
+  const J = at6('ash-creek'); arrive(J); assert.equal(J.choices['ash-creek'], undefined); nextLeg(J); assert.equal(J.choices['ash-creek'].opt, 'a'); assert.equal(CH.cutOf(J, 'chimney-rock'), 0);
+  const K = createJourney({ seed: 8, companions: PLAIN }); assert.deepEqual(K.choices, {}, 'a fresh journey has none'); const old = clone(K); delete old.choices; ensureJourney(old); assert.deepEqual(old.choices, {}, 'an older save is filled in');
+  assert.deepEqual(CH.normalizeChoices({ 'ash-creek': { opt: 'b', cut: 15, soakedLb: 50, junk: 1 }, nope: { opt: 'a' }, 'ice-guide': { opt: 'x' }, 'rogue-bar': 5 }), { 'ash-creek': { opt: 'b', at: 'ash-hollow', leg: null, cut: 15, credit: 0, soakedLb: 50, fee: 0, guided: false, spirit: 0 } });
+});
+test('merging two devices\' choices is a union by id (a choice is resolved once and never lost); the same journey keeps both; normalized and idempotent', () => {
+  const a = { 'ash-creek': { opt: 'b', at: 'ash-hollow', leg: 'chimney-rock', cut: 15, soakedLb: 0 } }, b = { 'ice-guide': { opt: 'a', at: 'ice-slough', leg: 'south-pass' }, 'ash-creek': { opt: 'a', at: 'ash-hollow', leg: 'chimney-rock' } };
+  const m = CH.mergeChoices(a, b); assert.deepEqual(Object.keys(m).sort(), ['ash-creek', 'ice-guide']); assert.equal(m['ash-creek'].opt, 'b', 'the later doc\'s record wins a clash'); assert.deepEqual(CH.mergeChoices(a, a), CH.normalizeChoices(a)); assert.deepEqual(CH.mergeChoices(m, m), m);
+  assert.deepEqual(CH.mergeChoices(undefined, b), CH.normalizeChoices(b)); assert.deepEqual(CH.mergeChoices(a, null), CH.normalizeChoices(a));
+});
+test('every choice walks: a full journey that takes every b (shortcuts and guides) on each of its routes arrives with no fail state; the cash never goes below $0', () => {
+  for (const [name, opts, choices] of [PLANS[0], PLANS[4], PLANS[5]]) for (const tier of ['rookie', 'veteran', 'pioneer']) {
+    const J = createJourney({ ...opts, tier, seed: 940, companions: PLAIN }); let taken = 0;
+    const log = walkJourney(J, { right: 0.7, seed: 4, choices, onLeg: (jj, leg, res) => { if (res.choice) { const r = CH.applyChoice(jj, res.choice.id, 'b'); if (r.ok && r.option === 'b') taken++; assert.ok(jj.cash >= 0); } } });
+    assert.ok(J.done, `${name} ${tier}`); assert.equal(log.legs.length, { 'Oregon by Fort Bridger and the raft': 20, California: 24, 'the Gold Road': 12 }[name]); assert.ok(taken >= 1, `${name} ${tier}: took ${taken}`); assert.deepEqual(clone(J), J, 'JSON-safe');
+  }
+});
+test('the cliffhanger: nextStopPreview(J) is the stop the party heads for next (its painting, one true line from its lookout, "Next time: …"), with the ferry / the crossing / the fort / the landmark phrases; none at a trail\'s end', () => {
+  const J = createJourney({ seed: 12, companions: PLAIN });
+  let p = PV.nextStopPreview(J); assert.equal(p.legId, 'kansas-river', 'at the very start: the first stop'); assert.equal(p.phrase, 'the ferry at the Kansas River'); assert.equal(p.sayPhrase, 'Next time: the ferry at the Kansas River.'); assert.equal(p.kind, 'river');
+  assert.ok(p.line.length > 10); assert.ok(LOOKOUTS['kansas-river'].text.startsWith(p.line), 'the first sentence of the stop\'s own lookout: nothing invented');
+  const seen = new Set();
+  for (let g = 0; g < 20 && !J.done; g++) {
+    const leg = legList()[J.legIndex]; J.milesDone = J.trip.miles; J.trip.arrived = true; arrive(J);
+    const before = PV.nextStopPreview(J), nx = legList()[J.legIndex + 1];
+    if (nx) { assert.equal(before.legId, nx.id, 'while still at the stop the preview is the next leg of the plan'); seen.add(before.sayPhrase); } else assert.equal(before, null, 'at the end of the trail: none');
+    nextLeg(J);
+    if (!J.done) { const after = PV.nextStopPreview(J); assert.equal(after.legId, J.legId, 'once the journey has moved on it is the leg it is on'); assert.equal(after.legId, before.legId); assert.ok(after.line.length > 10 && /[.!?]$/.test(after.line), leg.id + ': ' + after.line); assert.ok(after.sayPhrase.startsWith('Next time: ')); }
+    else assert.equal(PV.nextStopPreview(J), null, 'a finished journey has none');
+  }
+  assert.ok([...seen].some((t) => /the crossing at the (Humboldt|Snake|North Platte|Green)/.test(t) || /the ferry at the (North Platte|Green)/.test(t)) && [...seen].some((t) => /Fort Kearny/.test(t)) && [...seen].some((t) => /Chimney Rock/.test(t)), [...seen].join(' | '));
+  assert.equal(PV.phraseFor({ stop: { kind: 'river', name: 'Humboldt River' }, ferry: false }), 'the crossing at the Humboldt River'); assert.equal(PV.phraseFor({ stop: { kind: 'river', name: 'Snake River' } }), 'the ferry at the Snake River');
+  assert.equal(PV.phraseFor({ stop: { kind: 'fort', name: 'Fort Hall' } }), 'Fort Hall'); assert.equal(PV.phraseFor({ stop: { kind: 'landmark', name: 'Chimney Rock' } }), 'Chimney Rock');
+  assert.equal(PV.firstSentence('One. Two three. Four.'), 'One.'); assert.equal(PV.firstSentence('No stop'), 'No stop'); assert.equal(PV.firstSentence('Wow! Next.'), 'Wow!');
+  assert.equal(PV.phraseFor({ stop: { kind: 'gold', name: 'Coloma' } }), 'Coloma');
+});
+test('every leg of every route has a preview line that is the first sentence of its lookout, no digit in what is said, and the lines for the voice (previewTexts) include the phrase and the line', () => {
+  for (const leg of ALL_LEGS) {
+    const t = PV.previewTexts(leg.id); assert.equal(t.length, 2, leg.id); assert.equal(t[0], `Next time: ${PV.phraseFor(leg)}.`); const look = LOOKOUTS[leg.lookout]; assert.ok(look, leg.id); assert.equal(t[1], PV.firstSentence(look.say || look.text));
+    assert.ok(!/\d/.test(t[0]) && !/\d/.test(t[1]), `${leg.id}: ${t.join(' ')}`);
+  }
+  assert.ok(PV.allPreviewTexts().includes(PV.STOP_LINE)); assert.equal(PV.STOP_LINE, "That's a good place to stop for today.");
+});
+test('"a good place to stop for today": the third leg finished on a local day (save.play[day].legs ≥ 3) adds the line; before it, and on another day, it does not', () => {
+  assert.equal(PV.LEGS_A_DAY, 3); assert.equal(PV.stopToday({ '2026-11-02': { legs: 2 } }, '2026-11-02'), false); assert.equal(PV.stopToday({ '2026-11-02': { legs: 3 } }, '2026-11-02'), true); assert.equal(PV.stopToday({ '2026-11-02': { legs: 5 } }, '2026-11-02'), true);
+  assert.equal(PV.stopToday({ '2026-11-01': { legs: 4 } }, '2026-11-02'), false); assert.equal(PV.stopToday({}, '2026-11-02'), false); assert.equal(PV.stopToday(null, '2026-11-02'), false);
+});
+test('no economy constant moved (the Lab never touches a number the game computes): economy.js\'s exports equal their v1.5 snapshot', () => {
+  const E = { ...economyNs }; const o = {}; for (const k of Object.keys(E).sort()) if (typeof E[k] !== 'function') o[k] = E[k];
+  const str = JSON.stringify(o); let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  assert.equal(Object.keys(o).length, 48); assert.equal(str.length, 5154); assert.equal((h >>> 0).toString(16), 'fc43e499');
+  assert.deepEqual(PAY, { arrival: 4, star: [1, 3, 14], refMiles: 167 }); assert.equal(START.cash, 45); assert.equal(SOAKED_LB, 25);
+});
+test('the choice modules are pure: no clock, no Math.random, no DOM', () => {
+  for (const f of ['choices', 'preview']) {
     const src = readFileSync(new URL(`../src/journey/${f}.js`, import.meta.url), 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/'(?:[^'\\\n]|\\.)*'|`(?:[^`\\]|\\.)*`/g, "''");
     assert.ok(!/Date\.now|new Date\(|performance\.now|Math\.random|document\.|window\.|localStorage|setTimeout/.test(src), f);
   }

@@ -73,7 +73,7 @@ function writeStore(s) { try { localStorage.setItem(STORE_KEY, JSON.stringify(s)
 
 /**
  * deps: { getCode() → family code | null, getWords() → the current player's active list words, audio (src/audio.js),
- *         fetch?, onChange?(state) }
+ *         fetch?, onChange?(state), extra?() → more texts to prepare with every list (v3.9) }
  */
 export function createCloudVoice(deps = {}) {
   const g = typeof window !== 'undefined' ? window : globalThis;
@@ -82,6 +82,8 @@ export function createCloudVoice(deps = {}) {
   const getCode = () => { try { return deps.getCode ? deps.getCode() : null; } catch (_) { return null; } };
   const getWords = () => { try { return (deps.getWords && deps.getWords()) || []; } catch (_) { return []; } };
   const audio = deps.audio || null;
+  // v3.9: texts that are not part of a word list but are spoken by the game (the Friday Test ceremony's lines): prepared with the list
+  const getExtra = () => { try { return (deps.extra && deps.extra()) || []; } catch (_) { return []; } };
   let voice = '';
   let store = readStore();
   // server state: key null = unknown; error '' | 'offline' | 'daily-limit' | 'server' | 'forbidden'
@@ -253,7 +255,7 @@ export function createCloudVoice(deps = {}) {
     get server() { return { key: server.key, error: server.error, message: server.message, charsToday: server.charsToday, checkedAt: server.checkedAt }; },
     prepare,
     /** Everything the current player's list needs in voice v (+ the shared texts). */
-    prepareList(words = getWords(), v = voice) { return prepare(listTexts(words), v); },
+    prepareList(words = getWords(), v = voice) { return prepare([...listTexts(words), ...getExtra()], v); },
     /** Before a word: when some of its clips are missing (and were not asked for lately), ask for the whole list +
      *  this word. Resolves when done ({ ok } or null when nothing was needed). */
     needsPrepare(entry, v = voice) { return api.active && online() && api.wanted(entry, v).length > 0; },
@@ -265,7 +267,22 @@ export function createCloudVoice(deps = {}) {
     ensureWord(entry, v = voice) {
       if (!api.active || !online()) return Promise.resolve(null);
       if (!api.wanted(entry, v).length) return Promise.resolve(null);
-      return prepare([...wordTexts(entry), ...listTexts(getWords())], v);
+      return prepare([...wordTexts(entry), ...listTexts(getWords()), ...getExtra()], v);
+    },
+    /** Are the clips of all these texts fetched and decoded (a play starts at once)? Added for Spell Jump's spellVoice.js. */
+    loaded(texts, v = voice) {
+      return (texts || []).every((t) => { const k = api.resolve(t, v); const url = k && urlFor(k, v); return !!url && decoded.has(url); });
+    },
+    /** Fetch + decode these clips now; resolves true when all are loaded, false when a clip is missing or would not load
+     *  (a clip the server no longer has is forgotten, the next prepare makes it again). Added for spellVoice.js. */
+    async preload(texts, v = voice) {
+      const jobs = [];
+      for (const t of texts || []) {
+        const k = api.resolve(t, v); const url = k && urlFor(k, v);
+        if (!url) return false;
+        jobs.push(load(url, k));
+      }
+      try { await Promise.all(jobs); return true; } catch (_) { return false; }
     },
     /** Are the clips of all these texts fetched and decoded (a play starts at once)? Added for Spell Jump's spellVoice.js. */
     loaded(texts, v = voice) {

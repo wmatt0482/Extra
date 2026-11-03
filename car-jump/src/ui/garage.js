@@ -171,7 +171,7 @@ export function createGarage(app) {
     const rm = app.save.settings.reducedMotion;
     const k = rm ? 1 : Math.min(1, (now - t0) / 280);
     const ease = 1 - Math.pow(1 - k, 3);
-    const look = lookFor(app.save, CARS[index].id);
+    const look = app.look ? app.look(CARS[index].id) : lookFor(app.save, CARS[index].id);   // v3.9: the Lab's skin / sticker over the garage's
     drawCar(canvas, CARS[index], {
       skin: look.skin, sticker: look.sticker,
       spin: rm ? 0 : now / 300 + (1 - ease) * 6 * slide,

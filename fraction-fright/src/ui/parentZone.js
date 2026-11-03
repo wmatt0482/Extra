@@ -411,6 +411,10 @@ export function createParentZone(app) {
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Pace'), h('div', { class: 'sub' }, 'Auto follows how long each throw takes; Calm is one slow zombie at a time; Quick is the full horde')),
         h('div', { class: 'seg', id: 'opt-pace', role: 'radiogroup', 'aria-label': 'Pace' }, ...[['auto', 'Auto'], ['calm', 'Calm'], ['quick', 'Quick']].map(([id, text]) =>
           h('button', { class: `seg-btn${(st.pace || 'auto') === id ? ' on' : ''}`, 'data-pace': id, role: 'radio', 'aria-checked': String((st.pace || 'auto') === id), 'data-sfx': '', onclick: () => { app.setSetting('pace', id); render(); } }, text)))),
+      ...(app.labReady() ? [h('div', { class: 'hud-label pz-sec' }, 'The Lab'),
+        h('div', { class: 'row', id: 'opt-lab-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'The Lab: coins, quests and looks'),
+          h('div', { class: 'sub' }, 'The Lab is shared by all the games and has its own coins; they never mix with the cash here. Switches, crate odds and reset are in its grown-ups panel.')),
+        h('button', { class: 'btn btn-sm', id: 'opt-lab', 'data-sfx': '', onclick: () => app.openLabParent() }, 'Open'))] : []),
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with Spell Jump and Trail Blazer')),
         h('button', { class: 'btn btn-sm', id: 'opt-pin', onclick: () => { pinMode = 'reset'; pinEntry = ''; view = 'pin'; render(); } }, 'Change PIN')),
@@ -434,7 +438,7 @@ export function createParentZone(app) {
         h('div', { class: 'pz-rename' }, input, save),
         ...confirmRow('Reset fraction skills', `Every street back to the start for ${p.name}, the Zombie Lab too (the options stay).`, 'Reset',
           `Reset ${p.name}'s fraction skills?`, 'Reset skills', () => { app.resetSkillsFor(p.id); app.toast('Fraction skills reset'); render(); }, `pz-reset-skills-${p.id}`),
-        ...confirmRow('Reset Fraction Fright progress', `Cash, the yard, pumpkins and the Cure Counter back to the start for ${p.name}. Spell Jump and Trail Blazer are not touched.`, 'Reset',
+        ...confirmRow('Reset Fraction Fright progress', `Cash, the yard, pumpkins and the Cure Counter back to the start for ${p.name}. Spell Jump, Trail Blazer and the Lab are not touched.`, 'Reset',
           `Reset ${p.name}'s Fraction Fright progress?`, 'Reset', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-${p.id}`),
         ...confirmRow('Remove player', `Removes ${p.name} from the family in all four games, on every device, with all of ${p.name}'s data.`, 'Remove',
           `Remove ${p.name} for good, in every game?`, 'Remove', () => { app.removePlayer(p.id); render(); }, `pz-remove-${p.id}`));

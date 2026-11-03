@@ -198,7 +198,9 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .finish-bar i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; background: var(--accent); }
 .finish-bar b { position: absolute; right: -4px; top: -5px; width: 4px; height: 18px; background: repeating-linear-gradient(#fff 0 4px, #111 4px 8px); border-radius: 1px; }
 .hud-left { justify-self: start; }
-.hud-mid { justify-self: center; }
+.hud-midwrap { justify-self: center; display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.hud-lab { pointer-events: none; min-width: 0; }
+.hud-lab:empty { display: none; }
 .hud-mid .hud-num { color: var(--accent); }
 .hud-right { justify-self: end; display: flex; gap: 10px; align-items: flex-start; }
 .hud-right .hud-box { align-items: flex-end; min-width: 120px; }
@@ -552,12 +554,14 @@ html.kbd .touch-only { display: none; }
   .track-info { flex: 1; padding: 12px; }
   .track-name { min-height: 0; }
   .results-body { grid-template-columns: 1fr; overflow: auto; touch-action: pan-y; align-content: start; }
+  .results-body { display: flex; flex-direction: column; }                  /* one scrolling column of cards, each as tall as its content (the Lab's results strip lives in the first card): none over another */
+  .results-body > .card { flex: none; min-height: 0; overflow: visible; }
   .results-foot { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; }
   .results-foot .btn { min-width: 0; padding: 0 10px; }
   #res-retry { grid-column: 1 / -1; grid-row: 1; min-height: 60px; font-size: 22px; }
   .results-foot:has(#res-next[hidden]) #res-garage { grid-column: 1 / -1; }
   .hud-top { grid-template-columns: 1fr auto; }
-  .hud-mid { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
+  .hud-midwrap { grid-column: 1 / -1; grid-row: 2; justify-self: start; }
   .finish-bar { width: 120px; }
   .daily-hero { grid-template-columns: 1fr; }
   .daily-hero canvas { width: 100%; height: 110px; }
@@ -1223,6 +1227,79 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 .reduced-motion .record, .reduced-motion .toast, .reduced-motion .sheet { animation: none; }
+
+/* ================= v3.9: the Lab (lab/SPEC.md §4.1) and the Friday Test as a boss event ================= */
+.title-lab-chip { --edge: 4px; flex: none; min-height: 46px; padding: 0 12px 0 8px; gap: 4px; font-size: 16px; color: #06242d;
+  background: linear-gradient(#8ff4ff, var(--cyan)); box-shadow: 0 var(--edge) 0 var(--cyan-edge), inset 0 2px 0 rgba(255,255,255,.5); }
+.title-lab-chip:active { box-shadow: 0 1px 0 var(--cyan-edge); }
+.title-lab-chip svg { width: 22px; height: 22px; }
+.res-lab { flex: none; display: flex; }
+.res-lab:empty { display: none; }
+.banner.b-moment > span { color: var(--accent-ink); --sh: var(--accent-edge); background: linear-gradient(#fff3b0, var(--accent)); border-color: #fff; }
+
+/* the Test Titan: giant spelling blocks with a friendly face (no letters on the blocks, so nothing spells the word being tested) */
+.tm-fx { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 8; }
+.tm-titan { --tbh: 76px; --sc: 1; position: absolute; z-index: 1; right: max(14px, var(--sar)); top: 70px; width: 92px; height: 140px; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start; transform: scale(var(--sc)); transform-origin: 100% 0; transition: opacity .5s ease; }
+.tm-titan[hidden] { display: none; }
+.tm-titan.away { opacity: 0; }
+/* while a word is being asked the Titan shrinks into the free space beside the tiles, above the keyboard */
+.test-screen[data-mode="ask"] .tm-titan, .test-screen[data-mode="right"] .tm-titan, .test-screen[data-mode="compare"] .tm-titan, .test-screen[data-mode="look"] .tm-titan { --sc: .55; top: 74px; right: max(46px, var(--sar)); }
+.ttn-head { width: 66px; height: 58px; position: relative; z-index: 2; flex: none; filter: drop-shadow(0 3px 0 rgba(0,0,0,.35)); }
+.ttn-head svg { width: 100%; height: 100%; display: block; overflow: visible; }
+.ttn-stack { --n: 4; display: flex; flex-direction: column; align-items: center; margin-top: -5px; }
+.ttn-blk { width: 56px; height: calc(var(--tbh) / var(--n)); position: relative; transform: rotate(var(--tilt, 0deg)); transition: height .3s ease; }
+.ttn-blk i { position: absolute; inset: 1px 0; border-radius: 7px; border: 3px solid #2a1a00; box-shadow: inset 0 -5px 0 rgba(0,0,0,.22), inset 0 4px 0 rgba(255,255,255,.35); }
+.ttn-blk.gone { height: 0; }
+.ttn-blk.gone i { display: none; }
+.ttn-blk.shed i { animation: ttnShed .36s ease-in forwards; }
+@keyframes ttnShed { to { transform: translate(calc(var(--dir) * 64px), 36px) rotate(calc(var(--dir) * 70deg)); opacity: 0; } }
+.tm-titan.wobble { animation: ttnWobble .65s ease; }
+@keyframes ttnWobble { 0%, 100% { transform: scale(var(--sc)) rotate(0); } 20% { transform: scale(var(--sc)) rotate(-7deg); } 45% { transform: scale(var(--sc)) rotate(6deg); } 70% { transform: scale(var(--sc)) rotate(-3deg); } }
+.tm-titan.shrug .ttn-head { animation: ttnShrug .9s ease; }
+@keyframes ttnShrug { 0%, 100% { transform: translateY(0) rotate(0); } 25% { transform: translateY(-6px) rotate(-5deg); } 55% { transform: translateY(-6px) rotate(5deg); } }
+.tm-titan.shrug .ttn-brows { transform: translateY(-3px); }
+.tm-titan.shrug .ttn-pupil { transform: translateX(-2.5px); }
+.reduced-motion .tm-titan, .reduced-motion .tm-titan .ttn-head, .reduced-motion .ttn-blk.shed i { animation: none; }
+.reduced-motion .ttn-blk.shed i { opacity: 0; }
+@media (orientation: portrait) {
+  /* portrait: the intro and the end card sit at the top, so the Titan stands below them; while a word is asked it stands in the free band under the progress bar */
+  .tm-titan { --sc: 1; top: auto; bottom: calc(var(--pad-b, 12px) + 70px); right: auto; left: 50%; margin-left: -46px; transform-origin: 50% 100%; }
+  .test-screen[data-mode="ask"] .tm-titan, .test-screen[data-mode="right"] .tm-titan, .test-screen[data-mode="compare"] .tm-titan, .test-screen[data-mode="look"] .tm-titan {
+    --sc: .62; top: 176px; bottom: auto; right: auto; transform-origin: 50% 0; }
+}
+
+/* the ceremony on the Friday Test's end card: every score gets one (Gold, Silver, Bronze, Brave Speller) */
+.tm-card.ceremony { width: min(640px, 100%); }
+.cer { position: relative; display: flex; flex-direction: column; align-items: center; gap: 5px; width: 100%; --tc: var(--accent); }
+.cer-silver { --tc: #e4ebf8; } .cer-bronze { --tc: #f0a35c; } .cer-brave { --tc: var(--cyan); }
+.cer-stage { position: relative; width: 130px; height: 100px; flex: none; }
+.cer-trophy { position: absolute; left: 50%; bottom: 2px; width: 66px; margin-left: -33px; animation: cerDrop .8s 1s cubic-bezier(.3,1.5,.5,1) both; }
+.cer-trophy svg { width: 100%; display: block; filter: drop-shadow(0 3px 0 rgba(0,0,0,.35)); }
+.cer-blocks { position: absolute; left: 50%; bottom: 2px; width: 0; height: 0; }
+.cer-blocks i { position: absolute; width: 34px; height: 24px; border-radius: 6px; background: var(--c); border: 3px solid #2a1a00;
+  box-shadow: inset 0 -4px 0 rgba(0,0,0,.22), inset 0 3px 0 rgba(255,255,255,.35); animation: cerBlock .9s calc(var(--i) * .14s) ease-in both; }
+.cer-blocks i:nth-child(1) { left: -66px; bottom: 0; --r: -8deg; }
+.cer-blocks i:nth-child(2) { left: 32px; bottom: 0; --r: 9deg; }
+.cer-blocks i:nth-child(3) { left: -62px; bottom: 22px; --r: 6deg; width: 28px; }
+.cer-shelf { position: relative; width: 150px; height: 11px; border-radius: 6px; background: linear-gradient(#c58a46, #7a4a1c); box-shadow: 0 3px 0 rgba(0,0,0,.35); flex: none; }
+.cer-shelf span { position: absolute; left: 0; right: 0; top: 15px; text-align: center; font: 800 10px/1 var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+.cer-names { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin-top: 18px; animation: cerPop .45s 1.7s cubic-bezier(.3,1.6,.5,1) both; }
+.cer-tier { font: 400 21px/1 var(--font-display); text-transform: uppercase; color: var(--tc); text-shadow: 0 2px 0 rgba(0,0,0,.45); }
+.cer-improved { padding: 4px 11px; border-radius: 999px; background: linear-gradient(var(--violet), #3a2490); border: 2px solid #fff; font: 800 12px/1 var(--font-body); text-transform: uppercase; letter-spacing: .04em; }
+.cer-line { font: 700 14px/1.25 var(--font-body); color: #e6e9ff; text-align: center; }
+.cer-practice { font-size: 13px; color: var(--muted) !important; }
+@keyframes cerBlock { 0% { transform: translateY(-60px) rotate(0); opacity: 0; } 35% { opacity: 1; } 100% { transform: translateY(0) rotate(var(--r, 0deg)); opacity: 1; } }
+@keyframes cerDrop { 0% { transform: translateY(-120px) scale(.7); opacity: 0; } 100% { transform: none; opacity: 1; } }
+@keyframes cerPop { 0% { transform: scale(.4); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.reduced-motion .cer-trophy, .reduced-motion .cer-blocks i, .reduced-motion .cer-names { animation: none; }
+.reduced-motion .cer-blocks i { transform: rotate(var(--r, 0deg)); }
+@media (orientation: landscape) {
+  .tm-card.ceremony { display: grid; grid-template-columns: minmax(150px, 210px) minmax(0, 1fr); column-gap: 20px; row-gap: 6px; align-items: center; text-align: center; }
+  .tm-card.ceremony > .cer { grid-column: 1; grid-row: 1 / span 6; align-self: center; }
+  .tm-card.ceremony > :not(.cer) { grid-column: 2; }
+  .tm-card.ceremony > .btn-big { justify-self: center; }
+}
 </style>
 </head>
 <body>
@@ -1284,6 +1361,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
         <div class="title-who-row">
           <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span></button>
           <button class="btn streak-chip cold" id="btn-streak" aria-label="Streak" data-sfx><span data-icon="flame"></span><span id="title-streak">0</span></button>
+          <button class="btn title-lab-chip" id="btn-lab" aria-label="The Lab" data-sfx hidden><span data-icon="flask"></span><span>Lab</span></button>
         </div>
         <div class="level-row" id="title-level" role="img"><span class="lv-text"><b id="title-lv">Lv 1</b><span id="title-lv-name">Rookie Speller</span></span><span class="lv-bar"><i id="title-lv-bar"></i></span></div>
       </div>
@@ -1354,7 +1432,10 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
         <div class="hud-num"><span id="hud-distance">0</span><small>m</small></div>
         <div class="finish-bar" aria-hidden="true"><i id="hud-finish"></i><b></b></div>
       </div>
-      <div class="hud-mid hud-box" id="hud-cash-box"><div class="hud-label">RUN CASH</div><div class="hud-num">$<span id="hud-cash">0</span></div></div>
+      <div class="hud-midwrap">
+        <div class="hud-mid hud-box" id="hud-cash-box"><div class="hud-label">RUN CASH</div><div class="hud-num">$<span id="hud-cash">0</span></div></div>
+        <div class="hud-lab" id="hud-lab"></div>
+      </div>
       <div class="hud-right">
         <div class="hud-box">
           <div class="hud-num"><span id="hud-speed">0</span><small>km/h</small></div>
@@ -1407,6 +1488,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
         <div class="res-dist"><div class="big"><span id="res-distance">0</span><small>m</small></div><span class="record" id="res-record" hidden>New record!</span></div>
         <div class="res-sub" id="res-sub"></div>
         <div class="stat-grid" id="res-stats"></div>
+        <div class="res-lab" id="res-lab"></div>
       </div>
       <div class="card res-pay scroll">
         <table class="pay" id="res-pay"></table>

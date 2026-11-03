@@ -320,6 +320,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
       }, 0);
     },
     celebrate(kind) { S.confetti = reducedMotion ? 0 : 20; void kind; kick(); },
+    cheer() { S.confetti = reducedMotion ? 0 : 12; S.cheers = (S.cheers | 0) + 1; kick(); },       // v1.6 (The Lab): Trail Cheer
     startHunt({ seed = 0, shots = 5 } = {}) {
       stopMini();
       S.mini = { kind: 'hunt', seed: Math.abs(Number(seed) || 0), shots, left: shots, hits: 0, meat: 0 };
@@ -564,7 +565,8 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
               : S.mini && S.mini.kind === 'raft' ? { kind: 'raft', n: S.mini.n, of: S.mini.of, left: S.mini.left, waiting: S.mini.waiting, phase: S.mini.waiting ? 'wait' : 'play' }
                 : S.mini && S.mini.kind === 'stampede' ? { kind: 'stampede', left: S.mini.left, good: S.mini.good, phase: 'play' }
                   : S.mini ? { kind: S.mini.kind, left: S.mini.left, hits: S.mini.hits, [S.mini.kind === 'hunt' ? 'meatLb' : 'fishLb']: S.mini.meat, phase: 'play' } : null,
-        dog: S.party.dog ? { ...S.party.dog } : null, decor: (S.party.wagon.decor || []).slice(), packMules: !!S.party.packMules, dry: !!S.travel.dry, mock: true };
+        dog: S.party.dog ? { ...S.party.dog } : null, decor: (S.party.wagon.decor || []).slice(), packMules: !!S.party.packMules, dry: !!S.travel.dry, mock: true,
+        cover: (S.party.wagon && S.party.wagon.cover) || null, outfit: ((S.party.companions && S.party.companions[0]) || {}).outfit || null, cheers: S.cheers | 0 };      // (v1.6: the Lab's looks and Trail Cheer, for tests)
     },
   };
   // ---- v1.5 (The Long Trail; SPEC v1.5 §4.4): gold, the rope, the voyage and the farm, scripted like v1.4 (every step shotMs apart, in the real scene's order) ----

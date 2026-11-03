@@ -11,7 +11,10 @@
 // Part 4 (v1.7, Hill Climb): vehicle tiers 1, 4, 8 race to the finish and summit on 5 quick answers (flag cash x
 // cupMult adds up), a slow answer climbs less, a wrong answer slides back to the last flag line (never below the
 // base), 10 answers without the summit end the climb, endHill() ends it at once, perf on the hill.
-// Env ONLY=v15 runs part 3 alone (plus perf); ONLY=v17 runs part 4 alone (plus perf); ONLY=v1 skips both.
+// Part 5 (v1.9, The Lab): Ghost Chase on the real engine (a solo time attack against a ghost: the vehicle waits on the line with no countdown, the race and
+// the ghost start on the first GAS, no position / countdown / bogged events, no place cash, the Math Gates freeze the ghost too), a ghost with its own vehicle,
+// paint, name tag and look, the new rim option and the bolt / checker-edge decals.
+// Env ONLY=v15 runs part 3 alone (plus perf); ONLY=v17 runs part 4 alone (plus perf); ONLY=v19 runs part 5 alone (plus perf); ONLY=v1 skips them.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -96,7 +99,7 @@ const events = (page, type) => page.evaluate((t) => window.__tb.events.filter((e
 await ensureServer();
 const browser = await chromium.launch();
 try {
-  if (ONLY === 'v15' || ONLY === 'v17') throw { skipTo: 'v15' };
+  if (ONLY === 'v15' || ONLY === 'v17' || ONLY === 'v19') throw { skipTo: 'v15' };
   // ======== v1 trail mode (start() without `race`): gates, stuck + winch ========
   // ---- 1. stock hold-GAS on Pine Ridge with gates: reaches the first gate and parks; openGate pays $120 ----
   {
@@ -487,7 +490,7 @@ try {
   if (!e || e.skipTo !== 'v15') { failures.push('exception: ' + e.message); console.error(e); }
 }
 try {
-  if (ONLY === 'v1' || ONLY === 'v17') throw { skipTo: 'perf' };
+  if (ONLY === 'v1' || ONLY === 'v17' || ONLY === 'v19') throw { skipTo: 'perf' };
   // ======== v1.5 The Season ========
   const racePolicy = "({ gas: s.countdown === 0, boost: s.countdown === 0 && s.boost > 0.3 })";
   async function raceDrive(page, { until = 'false', maxSec = 300, policy = racePolicy, auto = false } = {}) {
@@ -675,7 +678,7 @@ try {
   if (!e || e.skipTo !== 'perf') { failures.push('exception: ' + e.message); console.error(e); }
 }
 try {
-  if (ONLY === 'v1' || ONLY === 'v15') throw { skipTo: 'perf' };
+  if (ONLY === 'v1' || ONLY === 'v15' || ONLY === 'v19') throw { skipTo: 'perf' };
   // ======== v1.7 Hill Climb ========
   const HILL_FLAG_CASH = 150, HILL_SUMMIT_CASH = 1000;
   const HILL_KEYS = 'active,answers,burst,cash,charge,ended,flag,flags,flagsTotal,heightM,holding,progress,questions,summit,thrusting,waiting';
@@ -964,6 +967,89 @@ try {
   }
 } catch (e) {
   if (!e || e.skipTo !== 'perf') { failures.push('exception: ' + e.message); console.error(e); }
+}
+
+try {
+  if (ONLY === 'v1' || ONLY === 'v15' || ONLY === 'v17') throw { skipTo: 'perf' };
+  // ======== v1.9 Ghost Chase, the Lab's looks ========
+  // ---- C1. a ghost to chase: a plain race, then the chase against its trace ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '6', gates: '0', riders: '0' });
+    const base = await page.evaluate(() => { const g = window.__tb.game; g.setInput({ gas: true }); let s; for (let i = 0; i < 60 * 150; i++) { s = g.debugStep(1); if (s.phase === 'done') break; } const f = window.__tb.finished; return { t: f.timeSec, ok: f.finishCrossed, n: f.ghostTrace.length, trace: f.ghostTrace }; });
+    check(base.ok && base.n > 50, `chase setup: a plain Pine Ridge ride finishes in ${base.t} s and records a ghost (${base.n} samples)`);
+    const start = (extra) => page.evaluate((c) => {
+      const tb = window.__tb, g = tb.game;
+      tb.events.length = 0; tb.finished = null; g.setInput({ gas: false, brake: false, boost: false });
+      g.start({ trail: tb.trail, stats: tb.stats, seed: tb.trail.seed, vehicle: 'ranger150', gates: 0, race: { riders: 0, name: 'Mia' }, chase: true, ...c, ghost: c.ghostObj });
+      g.pause();
+      return g.getState();
+    }, { ghostObj: { trace: base.trace, label: 'Mia', look: 'tb.ghost.ice' }, ...extra });
+    const s0 = await start({});
+    check(s0.chase === true && s0.phase === 'parked' && s0.countdown === 0 && s0.riders.length === 1 && s0.timeSec === 0 && s0.ghostGap === 0, `chase: start({ chase: true, race: { riders: 0 } }) parks on the line (phase ${s0.phase}, chase ${s0.chase}, countdown ${s0.countdown}, ${s0.riders.length} rider)`);
+    const wait = await page.evaluate(() => { const g = window.__tb.game; for (let i = 0; i < 60 * 8; i++) g.debugStep(1); const s = g.getState(); return { s, ev: window.__tb.events.map((e) => e.type) }; });
+    check(wait.s.phase === 'parked' && wait.s.timeSec === 0 && !wait.ev.includes('countdown') && !wait.ev.includes('go') && !wait.ev.includes('bogged'), `chase: 8 s of sim with no input: still parked, the clock at 0, no countdown / go / bogged event (${wait.ev.join(',') || 'no events'})`);
+    const nogas = await page.evaluate(() => { const g = window.__tb.game; g.setInput({ gas: false, brake: true, boost: true }); for (let i = 0; i < 60; i++) g.debugStep(1); return g.getState().phase; });
+    check(nogas === 'parked', 'chase: BRAKE and BOOST do not start it; only GAS does');
+    const go = await page.evaluate(() => { const g = window.__tb.game; g.setInput({ gas: true }); for (let i = 0; i < 90; i++) g.debugStep(1); const s = g.getState(); return { s, ev: window.__tb.events.map((e) => e.type) }; });
+    check(go.s.phase === 'ride' && go.ev.filter((e) => e === 'go').length === 1 && !go.ev.includes('countdown') && !go.ev.includes('bogged') && !go.ev.includes('position') && go.s.timeSec > 1 && go.s.timeSec < 1.6 && Number.isFinite(go.s.ghostGap),
+      `chase: the first GAS starts the race and the ghost together (go ×1, no countdown / bogged / position; clock ${go.s.timeSec} s after 1.5 s, gap ${go.s.ghostGap})`);
+    await shot(page, 'v19-chase-1-riding');
+    const fin = await page.evaluate(() => { const g = window.__tb.game; for (let i = 0; i < 60 * 150; i++) { const s = g.debugStep(1); if (s.phase === 'done') break; } return window.__tb.finished; });
+    check(fin && fin.finishCrossed && fin.chase === true && fin.race === true && fin.place === 1 && typeof fin.beatGhost === 'boolean', `chase: finishes (place ${fin && fin.place}, chase ${fin && fin.chase}, beatGhost ${fin && fin.beatGhost}, ${fin && fin.timeSec} s vs the ghost's ${base.t} s)`);
+    check(fin.cash.place === 0 && fin.cash.finish > 0 && sumOK(fin.cash), `chase: no place cash (cash.place ${fin.cash.place}), the finish bonus is paid ($${fin.cash.finish}), the parts add up to the total (${fin.cash.total})`);
+    // (the plain ride above held GAS through the 3-2-1 and was bogged, so it is slower; the engine's own runs also differ a little from one start() to the next)
+    await start({});
+    const fin2 = await page.evaluate(() => { const g = window.__tb.game; g.setInput({ gas: true }); for (let i = 0; i < 60 * 150; i++) { const s = g.debugStep(1); if (s.phase === 'done') break; } return window.__tb.finished; });
+    check(fin2 && fin2.finishCrossed && fin2.chase === true && fin2.cash.place === 0 && sumOK(fin2.cash) && fin2.timeSec > 10 && fin2.timeSec < 60, `chase: a second chase on the same page finishes too (${fin2 && fin2.timeSec} s, $${fin2 && fin2.cash.total}, no place cash)`);
+    check(errors.length === 0, `chase: no page errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- C2. a ghost that is somebody else: its own vehicle and paint, a name tag, a look; the Math Gates freeze it too ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '6', gates: '0', riders: '0' });
+    const base = await page.evaluate(() => { const g = window.__tb.game; g.setInput({ gas: true }); for (let i = 0; i < 60 * 150; i++) { if (g.debugStep(1).phase === 'done') break; } return window.__tb.finished.ghostTrace; });
+    for (const [look, veh, paint] of [['tb.ghost.ice', 'quad', { id: 'lab-sunset', name: 'Sunset', body: '#ff7a3a', stripe: '#ffe9a8', rainbow: ['#ffd23f', '#ff9f3a', '#ff5d3a', '#b3245a'] }], ['flame', 'ranger150', 'sunset'], ['tb.ghost.gold', 'buggy', 'gold'], ['rainbow', 'quad', 'lakeblue']]) {
+      await page.evaluate(({ trace, look, veh, paint }) => { const tb = window.__tb, g = tb.game; tb.events.length = 0;
+        g.start({ trail: tb.trail, stats: tb.stats, seed: tb.trail.seed, vehicle: 'ranger150', gates: 4, race: { riders: 0, name: 'Mia' }, chase: true, ghost: { trace, vehicle: veh, paint, label: 'Ben', look } }); g.pause(); g.setInput({ gas: true }); for (let i = 0; i < 60 * 3; i++) g.debugStep(1); }, { trace: base, look, veh, paint });
+      await shot(page, `v19-chase-2-ghost-${String(look).replace(/\W/g, '')}`);
+    }
+    check(true, 'chase: ghosts of other riders (ice / flame / gold / rainbow looks, a quad, a buggy, a paint object) draw without errors (screenshots v19-chase-2-ghost-*)');
+    // the Math Gates freeze the clock and the ghost
+    const gate = await page.evaluate((trace) => {
+      const tb = window.__tb, g = tb.game; tb.events.length = 0;
+      g.start({ trail: tb.trail, stats: tb.stats, seed: tb.trail.seed, vehicle: 'ranger150', gates: 4, race: { riders: 0, name: 'Mia' }, chase: true, ghost: { trace, label: 'Ben' } });
+      g.pause(); g.setInput({ gas: true });
+      let s = g.getState(), i = 0;
+      for (; i < 60 * 60 && s.phase !== 'gate'; i++) s = g.debugStep(1);
+      const a = g.getState();
+      for (let k = 0; k < 60 * 4; k++) g.debugStep(1);
+      const b = g.getState();
+      g.openGate({ correct: true, quick: true });
+      for (let k = 0; k < 30; k++) g.debugStep(1);
+      return { phase: a.phase, a: { t: a.timeSec, gap: a.ghostGap, frozen: a.frozen }, b: { t: b.timeSec, gap: b.ghostGap }, after: g.getState().phase, gates: g.getState().gatesTotal };
+    }, base);
+    check(gate.phase === 'gate' && gate.a.frozen && gate.a.t === gate.b.t && gate.a.gap === gate.b.gap && gate.after === 'ride', `chase: a Math Gate freezes the clock and the ghost (4 s at the gate: clock ${gate.a.t} = ${gate.b.t}, gap ${gate.a.gap} = ${gate.b.gap}); the chase goes on after the answer`);
+    check(errors.length === 0, `chase: no page errors with other riders' ghosts (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- C3. the Lab's rims and decals; a trail ride (no race) ignores `chase` ----
+  {
+    const { page, context, errors } = await open(browser, { trail: 'pine-ridge', lvl: '6', gates: '0', riders: '0' });
+    for (const [rim, decal, vehicle, paint] of [['neon', 'bolt', 'ranger150', { id: 'lab-ocean', name: 'Ocean', body: '#1f78c8', stripe: '#bdf0ff', rainbow: ['#8fe0ff', '#29a3d9', '#1565c0', '#0b3d91'] }], ['gold', 'edge', 'quad', 'sunset'], ['neon', 'flames', 'buggy', 'sage'], ['gold', 'stars', 'ranger150', { id: 'lab-goldleaf', name: 'Gold leaf', body: '#f2c230', stripe: '#5a3a00' }]]) {
+      await page.evaluate(({ rim, decal, vehicle, paint }) => { const tb = window.__tb, g = tb.game;
+        g.start({ trail: tb.trail, stats: tb.stats, seed: tb.trail.seed, vehicle, paint, decal, rim, gates: 0, race: { riders: 0, name: 'Mia' } }); g.pause(); g.setInput({ gas: true }); for (let i = 0; i < 60 * 2; i++) g.debugStep(1); }, { rim, decal, vehicle, paint });
+      await shot(page, `v19-looks-${rim}-${decal}-${vehicle}`);
+    }
+    check(true, 'looks: neon / gold rims with the bolt, checker edge, flames and stars decals and Lab paints draw on three vehicles (screenshots v19-looks-*)');
+    const vv = await page.evaluate(async () => { const V = await import('/trail-blazer/src/game/vehicle.js'); const L = V.resolveLook({ paint: 'sage', rim: 'neon', decal: 'bolt' }); const N = V.resolveLook({ paint: 'sage' }); return { rim: L.rim && L.rim.id, decal: L.decal, none: N.rim, key: L.key !== N.key }; });
+    check(vv.rim === 'neon' && vv.decal === 'bolt' && vv.none === null && vv.key, `looks: resolveLook knows the neon rim and the bolt decal; no rim is the default (${JSON.stringify(vv)})`);
+    const trail = await page.evaluate(() => { const tb = window.__tb, g = tb.game; g.start({ trail: tb.trail, stats: tb.stats, seed: tb.trail.seed, vehicle: 'ranger150', gates: 0, chase: true }); g.pause(); const s = g.getState(); g.setInput({ gas: true }); for (let i = 0; i < 90; i++) g.debugStep(1); return { chase: s.chase, phase: g.getState().phase }; });
+    check(trail.chase === false && trail.phase === 'ride', `chase without a race is ignored (a trail ride starts as before: chase ${trail.chase}, phase ${trail.phase})`);
+    check(errors.length === 0, `looks: no page errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+} catch (e) {
+  if (!e || e.skipTo !== 'perf') { failures.push('exception: ' + (e && e.message)); console.error(e); }
 }
 try {
   // ---- R7. perf: a Night Ride race with 4 riders, 4x CPU throttle, real-time frames; v1.5: Haunted Hollow in the fog ----

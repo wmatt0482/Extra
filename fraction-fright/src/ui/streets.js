@@ -10,7 +10,9 @@ import { nextWaveOf } from '../meta/economy.js';
 
 function art(street) {
   const [a, b, c] = street.sky || ['#0c0b14', '#3a2430', '#8a3a14'];
-  const tree = street.look && street.look.landmark === 'oak'
+  const tree = street.look && street.look.landmark === 'twin'
+    ? '<rect x="122" y="40" width="5" height="46" fill="#2a1a10"/><circle cx="124.5" cy="38" r="8" fill="#ffd25a" opacity=".85"/><rect x="164" y="40" width="5" height="46" fill="#2a1a10"/><circle cx="166.5" cy="38" r="8" fill="#ffd25a" opacity=".85"/>'
+    : street.look && street.look.landmark === 'oak'
     ? '<circle cx="150" cy="44" r="26" fill="#1d3a2a"/><rect x="146" y="60" width="8" height="26" fill="#2a1a10"/>'
     : '<path d="M150 22 l22 30 h-12 l14 20 h-48 l14 -20 h-12 z" fill="#8a2a1a"/><rect x="146" y="72" width="8" height="14" fill="#2a1a10"/>';
   return `<svg viewBox="0 0 200 100" preserveAspectRatio="xMidYMid slice"><defs><linearGradient id="g-${street.id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${a}"/><stop offset=".6" stop-color="${b}"/><stop offset="1" stop-color="${c}"/></linearGradient></defs>`

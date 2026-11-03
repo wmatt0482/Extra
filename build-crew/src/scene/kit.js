@@ -76,6 +76,28 @@ export class Kit {
     return this.mat(c, { flatShading: true, roughness: 0.62 });
   }
 
+  /** A flat-shaded paint with a two-colour check (the Lab's Checker paint): cubes of 0.4 m in the mesh's own frame, so a
+   *  merged body wears a check that follows it. Instanced barrels, whose positions are a unit shape, get a coarse check. */
+  checkerMat(a, b) {
+    const key = `checker${a}${b}`;
+    if (this.materials[key]) return this.materials[key];
+    const m = new T.MeshStandardMaterial({ color: a, flatShading: true, roughness: 0.62, metalness: 0 });
+    m.onBeforeCompile = (shader) => {
+      shader.uniforms.checkerB = { value: new T.Color(b) };
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vCheck;')
+        .replace('#include <begin_vertex>', '#include <begin_vertex>\nvCheck = position;');
+      shader.fragmentShader = shader.fragmentShader
+        .replace('#include <common>', '#include <common>\nvarying vec3 vCheck;\nuniform vec3 checkerB;')
+        .replace(
+          '#include <color_fragment>',
+          '#include <color_fragment>\nvec3 cp = floor(vCheck * 2.5);\nif (mod(cp.x + cp.y + cp.z, 2.0) > 0.5) diffuseColor.rgb = checkerB;',
+        );
+    };
+    m.customProgramCacheKey = () => key;
+    return (this.materials[key] = m);
+  }
+
   /** Merges static kit meshes under `group` into one InstancedMesh per geometry and material pair, keeping their
    *  current transforms. Meshes in `skip` stay separate because they move or change material later. A pair used only
    *  once is left alone. This keeps the yard and each machine within the draw-call budget. */

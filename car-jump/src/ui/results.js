@@ -40,7 +40,7 @@ export function createResults(app) {
   };
   const fx = createFireworks($('#res-fx'));
   const moment = $('#res-moment');
-  let last = null, countRaf = 0, stampTimer = 0, momentTimers = [];
+  let last = null, countRaf = 0, stampTimer = 0, momentTimers = [], labStrip = null;
   const later = (fn, ms) => momentTimers.push(setTimeout(fn, ms));
   function clearMoments() { momentTimers.forEach(clearTimeout); momentTimers = []; moment.hidden = true; moment.replaceChildren(); moment.className = 'res-moment'; }
 
@@ -268,6 +268,10 @@ export function createResults(app) {
       el.callouts.append(h('span', { class: 'callout streak', id: 'res-streak' }, h('span', { html: icon('flame') }), `${r.eng.streak.count}-day streak!`));
     }
 
+    // v3.9: the Lab's strip (coins, XP to the next level, quests, the crate) under the stats; empty and invisible when the Lab is not here
+    if (labStrip) labStrip.destroy();
+    labStrip = app.lab ? app.lab.results({ mount: $('#res-lab') }) : null;
+
     stamp(s.rating || ratingFor(s, track.finish), s.ratingScore);
     fx.stop();
     playMoments(r);
@@ -284,6 +288,6 @@ export function createResults(app) {
   }
   return {
     show,
-    hide() { fx.stop(); cancelAnimationFrame(countRaf); clearTimeout(stampTimer); clearMoments(); },
+    hide() { fx.stop(); cancelAnimationFrame(countRaf); clearTimeout(stampTimer); clearMoments(); if (labStrip) { labStrip.destroy(); labStrip = null; } },
   };
 }

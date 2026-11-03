@@ -9,7 +9,7 @@
 //   scene.setLeg({ id, biome, miles, stop, river? })   scene.setParty({ animal, companions: [{ id, hat, color }], wagon: { paint, flag, name } })
 //   scene.setTravel({ milesDone, pace, rations, weather, mood, foodLow, moving })   (partial updates merge)
 //   scene.setBackdrop('trail' | 'fort' | 'river' | 'landmark' | 'camp' | 'post' | 'valley')
-//   scene.spotAnimal('bison' | 'pronghorn' | 'coyote' | 'eagle')   scene.celebrate('arrived' | 'river' | 'star')
+//   scene.spotAnimal('bison' | 'pronghorn' | 'coyote' | 'eagle')   scene.celebrate('arrived' | 'river' | 'star')   scene.cheer() (v1.6: Trail Cheer, the Lab's combo moment: the party cheers ~1.2 s)
 //   scene.startHunt({ seed, shots: 5 })   scene.startFish({ seed, casts: 4 })   scene.endMiniGame() → summary | null
 //   scene.play() / pause() / destroy() / resize()
 //   scene.getState() → { backdrop, milesDone, weather, moving, mini: null | { kind, left, hits, ... }, ... }
@@ -97,6 +97,7 @@ import { createSail } from './sail.js';
 import { createHome } from './homestead.js';
 import { WILD, wildKind } from './sprites15.js';
 import { paintColor, flagColor, personLook, dogCoat } from './sprites.js';
+import { COVER_IDS, coverBase, lookId } from './looks16.js';
 import { createHunt } from './hunt.js';
 import { createFish } from './fish.js';
 import { createDerby } from './derby.js';
@@ -205,12 +206,13 @@ export function createScene(canvas, opts = {}) {
   function applyParty(p = {}) {
     const comps = Array.isArray(p.companions) && p.companions.length ? p.companions : DEFAULT_COMPANIONS;
     const w = p.wagon || {};
+    const coverLook = lookId(w.cover, COVER_IDS);        // v1.6 (The Lab): a cover id ('ww.cover.stripes' or 'stripes') or none
     S.party = {
       animal: p.animal === 'mules' ? 'mules' : 'oxen',
-      looks: comps.slice(0, 3).map((c) => personLook(c && c.id, c && c.color, c && c.hat)),
+      looks: comps.slice(0, 3).map((c, i) => personLook(c && c.id, c && c.color, c && c.hat, i === 0 ? c && c.outfit : null)),      // (v1.6: the leader, the first, may wear a Lab outfit)
       ids: comps.slice(0, 3).map((c) => String((c && c.id) || '')),
       bare: [],
-      wagon: { box: paintColor(w.paint), wheel: '#7a4a26', cover: '#f6efdc', flag: flagColor(w.flag), name: String(w.name || '').trim().toUpperCase().slice(0, 18),
+      wagon: { box: paintColor(w.paint), wheel: '#7a4a26', cover: coverBase(coverLook), coverLook, flag: flagColor(w.flag), name: String(w.name || '').trim().toUpperCase().slice(0, 18),
         decor: Array.isArray(w.decor) ? w.decor.slice(0, 2).map(String) : [], barrel: !!w.barrel },
       packMules: !!p.packMules,
     };
@@ -502,6 +504,14 @@ export function createScene(canvas, opts = {}) {
       burst(S, kd);
       S.cheerT = 1.8;
     },
+    // v1.6 (The Lab): the combo moment "Trail Cheer": the party cheers for a moment (about 1.2 s: arms up, a hop) and a little confetti goes up; never stronger than a leg's arrival
+    cheer() {
+      if (!S.L) return;
+      burst(S, 'star');
+      S.cheerT = Math.max(S.cheerT, 1.2);
+      S.cheers = (S.cheers | 0) + 1;
+      requestDraw();
+    },
     startHunt(o = {}) { openMini(createHunt(o, emit)); },
     startFish(o = {}) { openMini(createFish(o, emit, S.biome)); },
     endMiniGame() {
@@ -646,7 +656,7 @@ export function createScene(canvas, opts = {}) {
         piece: S.piece ? S.piece.kind : null, painting: S.piece && S.piece.painting ? S.piece.painting : null,
         paintingFor: paintingFor(S.leg), approach: S.approach, approachPainting: S.approachPiece ? S.approachPiece.painting : null,
         particles: { ...S.fx.drawn }, flashes: S.fx.flashes, layersBiome: S.layers ? S.layers.id : null, builds: perf.builds,
-        party: S.party.looks.map((l) => l.hat), animal: S.party.animal, wagonName: S.party.wagon.name, fade: S.fade,
+        party: S.party.looks.map((l) => l.hat), coverLook: S.party.wagon.coverLook || null, outfit: S.party.looks[0] ? S.party.looks[0].outfit || null : null, cheers: S.cheers | 0, cheerT: S.cheerT, animal: S.party.animal, wagonName: S.party.wagon.name, fade: S.fade,
         dog: S.dog ? {
           ...S.dog, visible: dogVisible(), barking: S.dogBarkT > 0, barks: S.barks,
           x: S.view === 'derby' && S.mini ? S.mini.dogX : S.dogPos.x, y: S.view === 'derby' && S.mini ? S.mini.dogY : S.dogPos.y,

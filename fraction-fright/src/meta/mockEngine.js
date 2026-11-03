@@ -401,6 +401,7 @@ export function createGame(canvas, opts = {}) {
         live, zombies: live.filter((x) => !x.cured), pace: { live: r.maxActive, walkSec: r.walkSec },
         last: r.throws.length ? { ...r.throws[r.throws.length - 1], item: undefined, show: r.throws[r.throws.length - 1].item.show } : null,
         roadPx: roadPx(), bull: BULL,
+        fence: { y0: Math.round(H * 0.9 - 26), h: 40, bottom: Math.round(H * 0.9 + 14), roadBottom: roadPx().y + 40 },
       };
     },
     pause() { paused = true; },

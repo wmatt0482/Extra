@@ -33,6 +33,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runGateAgreement } from './gate-agreement.mjs';
+import { runLabChecks } from './lab-checks.mjs';       // v1.9: The Lab (the bridge, reports, the pill, Ghost Chase)
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
@@ -1059,6 +1060,8 @@ async function runLayout(browser, layout) {
   await ctx.close();
   // ---------- v1.8.1: question / answer agreement across 60 gates (race, turbo, hill), in its own fresh context and player ----------
   await runGateAgreement(browser, layout, BASE, 60, { J, typeAnswer, check, visibleSel });
+  // ---------- v1.9: The Lab: the bridge (also with /lab/ blocked), reports, the HUD pill, the strip, Ghost Chase and its picker ----------
+  await runLabChecks(browser, layout, BASE, { J, typeAnswer, check, visibleSel, shots: SHOTS });
 }
 
 const srv = await ensureServer();

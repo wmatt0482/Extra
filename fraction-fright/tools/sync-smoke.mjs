@@ -4,7 +4,7 @@
 // /fraction-fright/index.html?mock=1&nosw=1. `route('**/api/family/**')` on both answers from ONE in-memory store in
 // this process through the real request handler (car-jump/src/sync/protocol.mjs), so both devices talk to the same
 // server; a device goes offline by having its route abort.
-// Flow: the laptop creates Mia, plays the Lab and a wave, buys Grape goo, creates a family code → the ipad joins and
+// Flow: the laptop creates Mia, plays the Lab and a wave, buys Grape goo, creates a family code (Lab integration v1: the ipad also builds the tower's Lookout post offline, and the merge keeps it) → the ipad joins and
 // gets the save (<id>.ff: cures, cash, the goo) and the skills (<id>.fracs: the Lab, the throws) → the ipad plays a
 // wave offline: it waits, then syncs, and the laptop gets it → both play offline → after the 409 merge no throw, no
 // wave and no purchase is lost, and laptop, ipad and server agree → Trail Blazer on the same server and device keeps
@@ -158,8 +158,9 @@ async function main() {
     online.laptop = false; online.ipad = false;
     check(await wave(L), 'the laptop played wave 3 offline');
     check(await wave(I), 'the ipad played wave 3 offline too');
-    await J(I, () => { const a = window.__fractionFright.app; a.save.cash += 3000; a.persist(); a.go('yard'); });
+    await J(I, () => { const a = window.__fractionFright.app; a.save.cash += 3000 + 40000; a.persist(); a.go('yard'); });
     await I.click('[data-buy="fence:iron"]');
+    await I.click('[data-buy="tower:lookout"]');          // Lab integration v1: the new yard kind rides the same 'ff' doc
     const lo = await mem(L), io = await mem(I);
     online.laptop = true; online.ipad = true;
     const n409 = apiLog.filter((r) => r.status === 409).length;
@@ -174,6 +175,8 @@ async function main() {
     const sThrows = Object.values(sF.records).flat().map((x) => x[0]);
     check(sThrows.includes(lastL) && sThrows.includes(lastI), "both devices' latest throws are in the merged records");
     check(sS.yard.owned.goo.includes('grape') && sS.yard.owned.fence.includes('iron'), 'no purchase lost: Grape goo (laptop) and the iron fence (ipad) both owned');
+    check(sS.yard.owned.tower.includes('lookout'), 'the Lookout post (the new tower kind) bought on the ipad is in the merged save');
+    check(await J(L, () => window.__fractionFright.save.yard.owned.tower.includes('lookout')), 'and the laptop has it in memory after the pull (mergeFf unions every yard kind)');
     const lm = await mem(L), im = await mem(I);
     check(JSON.stringify(lm.wavesLog) === JSON.stringify(im.wavesLog) && lm.cures === sS.cures && im.cures === sS.cures && lm.goo.join() === sS.yard.owned.goo.join(),
       `laptop, ipad and server agree (cures ${sS.cures}, ${lm.wavesLog.length} waves, in memory too)`);

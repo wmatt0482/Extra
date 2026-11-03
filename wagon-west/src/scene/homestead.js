@@ -15,6 +15,7 @@ import { TAU, OUT, mulberry32, hashStr, clamp, lerp, ease, shade, mkCanvas, rrec
 import { cabin, barn } from './backdrops.js';
 import { drawPerson, drawDog, drawWagon, drawAnimal, drawCampfire } from './sprites.js';
 import { drawDecor } from './sprites15.js';
+import { outfitHat, outfitOf } from './looks16.js';
 
 // the content's HOMESTEAD_PIECES slots, kept here so the scene needs no content import (the smoke test checks them against content)
 export const PIECE_SLOT = {
@@ -412,7 +413,12 @@ export function createHome(S, emit, hooks) {
       c.save(); c.translate(wx, wy); c.scale(u * 0.62, u * 0.62); for (const id of H.decor) drawDecor(c, id, 0, t, rm); c.restore();
     }
     // the people at home: the party by the well and the garden, the dog on the porch; the companions hammer while a piece goes up
-    const looks = H.party ? H.party.map((p) => ({ ...S.party.looks[0], color: p.color || '#5b8c5a', hat: p.hat || 'none' })) : S.party.looks;
+    const looks = H.party ? H.party.map((p) => {
+      const l = { ...S.party.looks[0], color: p.color || '#5b8c5a', hat: p.hat || 'none', outfit: undefined };
+      const oid = outfitOf(p.outfit);
+      if (oid) { l.outfit = oid; const oh = outfitHat(oid); if (oh) { l.hat = oh.hat; l.hatColor = oh.hatColor; } }      // (v1.6: the leader's Lab outfit)
+      return l;
+    }) : S.party.looks;
     const frame = H.anim && H.anim.big ? pieceXY(L, H.anim.id, H.anim.n - 1) : null;
     const spots = frame ? [[frame.x - 70 * u, frame.y + 26 * u], [frame.x + 62 * u, frame.y + 30 * u], [frame.x - 6 * u, frame.y + 44 * u]] : [[(DOOR_X - 20) * u + g.off, g.ym + 40 * u], [(DOOR_X + 40) * u + g.off, g.ym + 48 * u], [400 * u + g.off, g.ym + 48 * u]];
     for (let i = 0; i < Math.min(3, looks.length); i++) {
