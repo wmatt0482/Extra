@@ -1678,6 +1678,7 @@ async function cloudVoiceTest(browser, layout) {
     }
     const mode = JSON.parse(sessionStorage.getItem('cloudMode') || '{"key":true}');
     window.__cloudMode = mode;
+    if (mode.omit) window.__spellVoiceWaitMs = 3000;      // (v3.8.1: the spell panel waits ~12 s for a clip; shortened for the test)
     window.__cloudAsked = []; window.__cloudPlayed = []; window.__spoken = [];
     window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = {
@@ -1785,11 +1786,12 @@ async function cloudVoiceTest(browser, layout) {
   const noteSeen = await page.waitForFunction(() => { const nt = document.querySelector('#sp-note'); return !nt.hidden && nt.textContent === 'Getting the voice ready…'; }, null, { timeout: 2500 }).then(() => true, () => false);
   check(noteSeen, 'missing clips: "Getting the voice ready…" shows on the spell panel');
   await shot(page, layout, 'n03-getting-voice-ready');
-  await waitMode(page, 'write', 15000);
+  await waitMode(page, 'write', 25000);
   const B = await J(page, () => ({ played: window.__cloudPlayed.slice(), spoken: window.__spoken.filter((t) => t !== 'ready'), noteHidden: document.querySelector('#sp-note').hidden }));
   check(JSON.stringify(B.spoken.slice(0, 3)) === JSON.stringify([`The word is, ${w2}.`, info2.sentence, `${w2}.`]) && !B.played.includes(`${w2}.`),
     `no clip for "The word is, ${w2}." → the device voice says the whole presentation (${B.spoken.slice(0, 3).join(' | ')})`);
-  check(JSON.stringify(B.played) === JSON.stringify(cloudSpelled(w2)) && B.noteHidden, `the letters still play as clips (${B.played.join(' ')}); the note is gone`);
+  // v3.8.1: never interleaved: once the device voice has said the word, its spelling-out is the device voice too (no clip plays)
+  check(B.played.length === 0 && [...w2].every((ch) => B.spoken.includes(letterName(ch))) && B.noteHidden, `after the wait the same word stays with the device voice, its letters too (${B.spoken.slice(3, 8).join(' ')}…, no clip played); the note is gone`);
   await page.click('#spell .sp-exit');
   await page.waitForSelector(visibleSel('#screen-garage'));
 
@@ -1922,6 +1924,234 @@ async function classListTest(browser, layout) {
   await context.close();
 }
 
+
+// ---------- v3.8.1: a brand-new class list, the natural voice, instrumented engines (ONLY=voice runs just this) ----------
+// The owner applied a new week's class list and every line (the carrier "The word is, …", the sentence, "<word>." and the
+// letter-by-letter spelling) was a text the server had never made: the clips were asked for in one big background request
+// that the first word's own request queued behind, the spell panel waited 3 s, and the words were read by the device
+// ("robot") voice, which the children cannot understand. Both engines log every utterance to window.__ulog (the device
+// voice's unlock word at volume 0.01 is not logged); the stubbed /api/tts takes 300 ms + 120 ms per text, like the Wagon West
+// voice test. cloud: the natural voice is available → the first race (a new word perfect, one missed and fixed: Compare /
+// Copy / Cover) is read by clips only, the calm "Getting the voice ready…" note shows while the first clips come, the first
+// request after "Use for" asks for the next race's words first, in small batches. nokey: no key on the server → the device
+// voice at once (no waiting). slow: a clip never comes (the wait is shortened by window.__spellVoiceWaitMs) → the device voice
+// says that word, and the cloud voice never follows it for the same word.
+async function newListVoiceTest(browser, layout, scenario) {
+  console.log(`\n=== new class list, natural voice: ${scenario} (${layout.name}) ===`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+  await routeFonts(ctx);
+  await ctx.route('**/api/family/**', (r) => r.abort());
+  let ttsNetwork = false;
+  await ctx.route('**/api/tts/**', (r) => { ttsNetwork = true; return r.abort(); });
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  await page.addInitScript(({ insets, scenario }) => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.clear();
+      const now = Date.now(), DAY = 864e5;
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0,
+        options: { pmia: { cloudVoice: 'en-US-Neural2-F' } }, optionsUpdatedAt: { pmia: now }, removedPlayers: [], migrated: true, lastPlayer: 'pmia' }));
+      localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devV', keys: {} }));
+      localStorage.setItem('spellJump.pmia.save', JSON.stringify({ v: 2, cash: 100, owned: ['beater'], seen: { coach: true, ach: 0 } }));
+      localStorage.setItem('spellJump.pmia.words', JSON.stringify({ v: 1, lists: [{ id: 'L1', name: 'Our list', createdAt: now - 9 * DAY, archivedAt: 0, pattern: '', words: ['neighbor', 'because', 'enough'].map((word) => ({ word })) }], activeId: 'L1', records: {}, tests: [], qualifierPending: null }));
+      sessionStorage.setItem('seeded', '1');
+    }
+    if (scenario === 'slow') window.__spellVoiceWaitMs = 4000;
+    const t = () => Math.round(performance.now());
+    const ulog = (window.__ulog = []);
+    window.__cloudAsked = [];
+    const begin = (engine, text) => { const e = { engine, text, t0: t(), t1: 0, end: '' }; ulog.push(e); return e; };
+    const dev = { current: null };
+    window.__ttsBackend = {
+      get speaking() { return !!dev.current; }, get pending() { return false; },
+      getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) {
+        const text = String(u.text).trim();
+        if (u.volume != null && u.volume < 0.05) { setTimeout(() => { try { u.onstart && u.onstart(); u.onend && u.onend(); } catch (_) {} }, 5); return; }
+        const e = begin('device', text);
+        dev.current = e; e.u = u;
+        setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5);
+        e.timer = setTimeout(() => { if (dev.current === e) dev.current = null; e.end = 'ok'; e.t1 = t(); try { u.onend && u.onend(); } catch (_) {} }, Math.max(60, text.length * 5));
+      },
+      cancel() { const e = dev.current; if (e && !e.end) { clearTimeout(e.timer); dev.current = null; e.end = 'cancelled'; e.t1 = t(); try { e.u.onerror && e.u.onerror({ error: 'canceled' }); } catch (_) {} } },
+      addEventListener() {}, resume() {}, pause() {},
+    };
+    const hex = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h.toString(16).padStart(8, '0').repeat(4); };
+    let cur = null;
+    window.__cloudVoiceBackend = {
+      async status() { return { key: scenario !== 'nokey' }; },
+      async prepare({ code, voice, texts }) {
+        window.__cloudAsked.push({ at: t(), voice, texts: texts.slice() });
+        await new Promise((r) => setTimeout(r, 300 + 120 * texts.length));
+        if (scenario === 'nokey') return { status: 503, body: { error: 'no-key' } };
+        const omit = window.__omit ? new RegExp(window.__omit) : null;
+        const clips = {};
+        for (const x of texts) if (!omit || !omit.test(x)) clips[x] = '/api/tts/clip/' + hex(voice + '\n' + x);
+        return { status: 200, body: { clips, generated: Object.keys(clips).length, cached: 0, charsToday: 100 } };
+      },
+      async load(url, text) { return { url, text }; },
+      play(buf, text) {
+        const e = begin('cloud', text);
+        return new Promise((resolve) => {
+          const done = (ok, end) => { if (cur && cur.e === e) cur = null; e.end = end; e.t1 = t(); resolve(ok); };
+          cur = { e, stop: () => { clearTimeout(e.timer); done(false, 'cancelled'); } };
+          e.timer = setTimeout(() => done(true, 'ok'), Math.max(60, text.length * 5));
+        });
+      },
+      stop() { if (cur) cur.stop(); },
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const st = document.createElement('style');
+      st.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(st);
+    });
+  }, { insets: layout.insets, scenario });
+  await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.waitForTimeout(500);
+  // the owner: Parents → Words → "Use for Mia", then straight to PLAY (no waiting for anything to be prepared)
+  await page.click('#btn-parents');
+  for (let k = 0; k < 2 && await J(page, () => !!document.querySelector('.pinpad')); k++) { await pinIn(page, '1234'); await page.waitForTimeout(250); }
+  await page.waitForSelector('.pz-content');
+  await page.click('.pz-tabs [data-tab="words"]');
+  await page.waitForSelector('#pz-class-use');
+  await J(page, () => { window.__applyAt = Math.round(performance.now()); window.__cloudAsked.length = 0; window.__ulog.length = 0; });
+  await page.click('#pz-class-use');
+  await page.waitForSelector('#pz-class-following');
+  const CL = await J(page, async (scenario) => {
+    const C = await import('/src/data/classLists.js');
+    const S = window.__spellJump;
+    const c = C.newestClassList(Date.now());
+    if (scenario !== 'qualifier') S.words.qualifierPending = null;
+    S.words.today.count = 0; S.app.persistWords();
+    const Sch = await import('/src/spelling/scheduler.js');
+    const first = Sch.buildMission(S.words, Date.now(), { size: 8, newPerDay: 99, newToday: 0, includeReview: true });
+    return { id: c.id, n: c.words.length, first: first.slice(0, 6), sentences: Object.fromEntries(c.words.map((w) => [w.word, w.sentence])) };
+  }, scenario);
+  await page.click('#pz-close');
+  const applied = await J(page, () => window.__applyAt);
+  await page.waitForSelector(visibleSel('#screen-title'));
+  if (scenario === 'slow') {
+    // the clip for the second word's carrier phrase never comes (the first word is fine)
+    await J(page, (w) => { window.__omit = '^The word is, ' + w + '\\.$'; }, CL.first[1]);
+  }
+  const playAt = await J(page, () => Math.round(performance.now()));
+  if (scenario === 'qualifier') {
+    // the first thing after a new list is the Qualifier: every word of the list is dictated, in random order
+    await J(page, () => {
+      window.__noteSeen = 0;
+      new MutationObserver(() => { const n = document.querySelector('#tm-note'); if (n && !n.hidden && n.textContent === 'Getting the voice ready…') window.__noteSeen++; })
+        .observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+    });
+    await page.click('#btn-play');
+    await page.waitForSelector('#tm-go');
+    await page.click('#tm-go');
+    const heard = [];
+    for (let i = 0; i < 4; i++) {
+      await page.waitForFunction(() => document.querySelector('#screen-test').dataset.mode === 'ask' && !document.querySelector('#tm-keyboard').classList.contains('is-disabled'), null, { timeout: 30000 });
+      const w = await J(page, () => window.__spellJump.testScreen.word);
+      heard.push(w);
+      await page.waitForFunction((x) => window.__ulog.some((u) => u.text === `${x}.` && u.end), w, { timeout: 15000 });      // (a patient child: listens to the whole word)
+      await tapKeys(page, '#tm-keyboard', i === 3 ? 'x' : w);       // the fourth is missed: Compare spells it aloud
+      await page.tap('#tm-keyboard [data-key="enter"]');
+      await page.waitForFunction((prev) => window.__spellJump.testScreen.word !== prev, w, { timeout: 15000 });
+    }
+    await page.click('#tm-exit');
+    const Uq = await J(page, () => window.__ulog.map((u) => ({ engine: u.engine, text: u.text })));
+    const devq = Uq.filter((u) => u.engine === 'device');
+    const seen = await J(page, () => window.__noteSeen);
+    console.log(`  (Qualifier: ${Uq.length} utterances, ${devq.length} device; "Getting the voice ready…" shown ${seen} time(s))`);
+    check(devq.length === 0, `the Qualifier: zero device-voice utterances while the natural voice is available (${devq.length}${devq.length ? ': ' + devq.slice(0, 5).map((u) => JSON.stringify(u.text.slice(0, 30))).join(', ') : ''})`);
+    check(heard.every((w) => Uq.some((u) => u.text === `The word is, ${w}.`) && Uq.some((u) => u.text === CL.sentences[w])), `each of the ${heard.length} words was dictated with its carrier phrase and sentence by clips (${heard.join(', ')})`);
+    check(seen > 0, 'the calm "Getting the voice ready…" note showed on the test screen while the first clips came');
+    check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
+    return;
+  }
+  await page.click('#btn-play');
+  await page.waitForSelector(visibleSel('#screen-garage'));
+  await page.click('#btn-race');
+  await page.waitForSelector(visibleSel('#screen-tracks'));
+  const t0 = Date.now();
+  await page.click('[data-track="canyon"]');
+  await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+  const w1 = await J(page, () => window.__spellJump.spellPanel.word);
+  const noteSeen = scenario === 'cloud'
+    ? await page.waitForFunction(() => { const nt = document.querySelector('#sp-note'); return !nt.hidden && nt.textContent === 'Getting the voice ready…'; }, null, { timeout: 4000 }).then(() => true, () => false)
+    : null;
+  if (noteSeen) {
+    const calm = await J(page, () => ({ msg: document.querySelector('#sp-msg').textContent, mode: window.__spellJump.spellPanel.mode, text: document.querySelector('#spell').textContent }));
+    check(calm.mode === 'init' && !/\d\s*(s|sec)\b|countdown|timer|hurry/i.test(calm.text.replace('Getting the voice ready…', '')), `the calm state: "Getting the voice ready…" with no timer or countdown text (${JSON.stringify(calm.msg)})`);
+    await shot(page, layout, 'v01-getting-voice-ready', 0);
+  }
+  await page.waitForFunction(() => window.__spellJump.spellPanel.mode !== 'init', null, { timeout: 30000 });
+  const readyMs = Date.now() - t0;          // the panel left "Get ready…" (the word's clips were ready, or the device voice took over)
+  await waitMode(page, 'write', 30000);
+  check(CL.first[0] === w1, `the race starts with the first word of the mission, "${w1}" (expected ${CL.first[0]})`);
+  await tapKeys(page, '#sp-keyboard', w1);
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await page.waitForFunction((w) => window.__spellJump.spellPanel.word && window.__spellJump.spellPanel.word !== w, w1, { timeout: 20000 });
+  const w2 = await J(page, () => window.__spellJump.spellPanel.word);
+  await waitMode(page, 'write', 30000);
+  // word 2: a wrong try first (Compare spells it aloud) → Copy → Cover → fixed
+  await tapKeys(page, '#sp-keyboard', 'x');
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await waitMode(page, 'copy', 8000);
+  await tapKeys(page, '#sp-keyboard', w2);
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await waitMode(page, 'cover', 8000);
+  await page.waitForTimeout(400);
+  await tapKeys(page, '#sp-keyboard', w2);
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await page.waitForFunction(() => !window.__spellJump.spellPanel.isOpen, null, { timeout: 20000 });
+  await page.waitForTimeout(600);
+
+  const U = await J(page, () => window.__ulog.map((u) => ({ engine: u.engine, text: u.text, t0: u.t0, end: u.end })));
+  const device = U.filter((u) => u.engine === 'device');
+  const cloudU = U.filter((u) => u.engine === 'cloud');
+  const asked = await J(page, () => window.__cloudAsked.map((a) => ({ at: a.at, n: a.texts.length, texts: a.texts })));
+  const present = (w) => `The word is, ${w}.`;
+  console.log(`  (${U.length} utterances: ${cloudU.length} cloud, ${device.length} device; ${asked.length} /api/tts requests; the panel left "Get ready…" after ${readyMs} ms)`);
+  console.log('  device lines: ' + device.slice(0, 12).map((u) => JSON.stringify(u.text.slice(0, 40))).join(', '));
+  if (process.env.VOICE_DEBUG) console.log(`  applied @${applied}, play @${playAt}`);
+  if (process.env.VOICE_DEBUG) for (const a of asked.slice(0, 5)) console.log(`  request @${a.at} (${a.n}): ` + a.texts.map((x) => JSON.stringify(x.slice(0, 24))).join(' '));
+  if (scenario === 'cloud') {
+    check(device.length === 0, `zero device-voice utterances while the natural voice is available (${device.length}${device.length ? ': ' + device.slice(0, 6).map((u) => JSON.stringify(u.text.slice(0, 36))).join(', ') : ''})`);
+    for (const w of [w1, w2]) {
+      const texts = cloudU.map((u) => u.text);
+      check(texts.includes(present(w)) && texts.includes(CL.sentences[w]) && texts.includes(`${w}.`), `"${w}": the carrier phrase, its sentence and the word were all said by clips`);
+    }
+    const spelledBy = (w) => w.split('').every((ch) => cloudU.some((u) => u.text === ch.toUpperCase()));
+    check(spelledBy(w1) && spelledBy(w2), 'the letter-by-letter spelling was said by letter clips');
+    check(asked.length > 3 && asked[0].at >= applied, `the clips are asked for from "Use for" on, in small batches (${asked.length} requests, sizes ${asked.slice(0, 8).map((a) => a.n).join(',')}…)`);
+    // the order of the requests: the next race's two words and their sentences, then the later words of the mission
+    const at = (text) => asked.findIndex((a) => a.texts.includes(text));
+    const order = CL.first.slice(0, 4).flatMap((w) => [present(w), CL.sentences[w]]).map(at);
+    check(order.every((i) => i >= 0) && order.every((i, k) => k === 0 || i >= order[k - 1]) && order[3] <= 1,
+      `the next race's words and sentences are asked for first, then the rest of the mission, in order (request #${order.join(', #')})`);
+    check(asked.length > 0 && asked.every((a) => a.n <= 12), `no request is long enough to make a waiting line queue behind it (largest ${Math.max(0, ...asked.map((a) => a.n))} texts)`);
+    check(noteSeen, 'the calm "Getting the voice ready…" note showed on the spell panel while the first clips came');
+  } else if (scenario === 'nokey') {
+    check(cloudU.length === 0 && device.length > 0, `no key on the server: the device voice speaks (${device.length} utterances), no clip played`);
+    check(device.some((u) => u.text === present(w1)) && device.some((u) => u.text === CL.sentences[w1]), `the device voice said the carrier phrase and the sentence of "${w1}"`);
+    check(readyMs < 2000, `no waiting for a voice that cannot come (the panel left "Get ready…" after ${readyMs} ms)`);
+  } else {
+    // the second word's carrier clip never comes: after the wait the device voice says that word, and the cloud voice never follows it
+    const i = U.findIndex((u) => u.engine === 'device' && u.text === present(w2));
+    check(i >= 0, `the clip for "${present(w2)}" never came: after the wait the device voice said it`);
+    const after = i >= 0 ? U.slice(i) : [];
+    check(after.length > 3 && after.every((u) => u.engine === 'device'), `the same word is never spoken in the cloud voice after the device voice (${after.map((u) => u.engine[0]).join('')}: ${after.slice(0, 6).map((u) => u.text).join(' | ')})`);
+    check(i > 0 && U.slice(0, i).every((u) => u.engine === 'cloud') && U.slice(0, i).some((u) => u.text === present(w1)), `the first word, whose clips came, was all cloud (${U.slice(0, Math.max(i, 0)).length} utterances)`);
+  }
+  check(!ttsNetwork, 'no request reached /api/tts (the stub answered everything)');
+  check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
 const only = process.env.ONLY;
 try {
   for (const l of LAYOUTS) if (!only || only === l.name) await runLayout(browser, l);
@@ -1932,6 +2162,7 @@ try {
   for (const l of LAYOUTS) if (!only || only === 'cloud') await cloudVoiceTest(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'levels' || only === l.name) await levelsTest(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'class' || only === l.name) await classListTest(browser, l);
+  if (!only || only === 'voice') for (const sc of ['cloud', 'qualifier', 'nokey', 'slow']) await newListVoiceTest(browser, LAYOUTS[0], sc);
 } catch (e) {
   failures.push('exception: ' + e.message);
   console.error(e);

@@ -20,7 +20,8 @@
 // the parent gave them) says "neigh, bor." slowly. The parent's "say as" text replaces the word in all of these.
 // Natural voice (v3.4, src/spelling/cloudVoice.js): when the parent picked one and this word's clips are missing,
 // the panel shows "Getting the voice ready…" while the server makes them, for at most 3 s; then the word is presented
-// (by clips, or by the device voice for anything still missing).
+// (by clips, or by the device voice for anything still missing). Spell Jump (v3.8.1) passes `voiceWaitMs` (about 12 s) and
+// a tts facade (spellVoice.js) whose prepareWord resolves when the word's clips are ready; games that pass neither keep 3 s.
 // Word sets ("Words before each race"): the caller runs several words back to back with ctx.set = {index, count}
 // ("Word 1 of 2" on the chip) and ctx.keepOpen (the panel stays up after the word), beat('Next word!') between
 // words, and close() after the last one. The car stays parked behind the panel the whole time.
@@ -78,7 +79,7 @@ export function renderTiles(row, cells, { upper = false, ranges = [], breaks = n
   row.replaceChildren(frag);
 }
 
-export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {}) {
+export function createSpellPanel(root, { tts, audio, onCancel = () => {}, voiceWaitMs = VOICE_WAIT_MS } = {}) {
   root.classList.add('spell');
   root.setAttribute('role', 'dialog');
   root.setAttribute('aria-label', 'Spell the word');
@@ -376,7 +377,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {} } = {})
       note.hidden = false;
       note.dataset.kind = 'voice';
       note.replaceChildren(document.createTextNode(VOICE_READY_NOTE));
-      await Promise.race([prep, sleep(VOICE_WAIT_MS)]); guard(st);
+      await Promise.race([prep, sleep(voiceWaitMs)]); guard(st);
       if (note.dataset.kind === 'voice') note.hidden = true;
     }
     delete note.dataset.kind;

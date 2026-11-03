@@ -269,6 +269,21 @@ export function createCloudVoice(deps = {}) {
       if (!api.wanted(entry, v).length) return Promise.resolve(null);
       return prepare([...wordTexts(entry), ...listTexts(getWords()), ...getExtra()], v);
     },
+    /** Are the clips of all these texts fetched and decoded (a play starts at once)? Added for Spell Jump's spellVoice.js. */
+    loaded(texts, v = voice) {
+      return (texts || []).every((t) => { const k = api.resolve(t, v); const url = k && urlFor(k, v); return !!url && decoded.has(url); });
+    },
+    /** Fetch + decode these clips now; resolves true when all are loaded, false when a clip is missing or would not load
+     *  (a clip the server no longer has is forgotten, the next prepare makes it again). Added for spellVoice.js. */
+    async preload(texts, v = voice) {
+      const jobs = [];
+      for (const t of texts || []) {
+        const k = api.resolve(t, v); const url = k && urlFor(k, v);
+        if (!url) return false;
+        jobs.push(load(url, k));
+      }
+      try { await Promise.all(jobs); return true; } catch (_) { return false; }
+    },
     /** fetch + decode the clips of these texts in the background (first play starts at once) */
     warm(texts, v = voice) {
       for (const t of texts || []) { const k = api.resolve(t, v); const url = k && urlFor(k, v); if (url) load(url, k).catch(() => {}); }

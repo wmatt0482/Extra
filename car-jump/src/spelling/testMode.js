@@ -10,7 +10,7 @@
 // the parent's "say as" text when given; "Hear it" cancels any speech and presents it again.
 // run() resolves { results: [{word, correct}], cancelled } after the end card's button is pressed.
 import { createKeyboard } from './keyboard.js';
-import { renderTiles, COMPARE_MS, FALLBACK_LOOK_MS, NO_SPEECH_HINT, TAP_HINT } from './spellPanel.js';
+import { renderTiles, COMPARE_MS, FALLBACK_LOOK_MS, NO_SPEECH_HINT, TAP_HINT, VOICE_READY_NOTE, VOICE_WAIT_MS } from './spellPanel.js';
 import { diffAttempt, normalizeWord } from './words.js';
 
 const SPEAKER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11"/></svg>';
@@ -32,7 +32,7 @@ export function shuffle(arr, rand = Math.random) {
   return a;
 }
 
-export function createTestScreen(root, { tts, audio }) {
+export function createTestScreen(root, { tts, audio, voiceWaitMs = VOICE_WAIT_MS }) {
   const head = el('div', 'topbar tm-top');
   const exit = el('button', 'btn icon-btn', BACK); exit.id = 'tm-exit'; exit.setAttribute('aria-label', 'Leave the test'); exit.dataset.sfx = '';
   const title = el('h2', '', 'Test'); title.id = 'tm-title';
@@ -184,6 +184,15 @@ export function createTestScreen(root, { tts, audio }) {
         // no voices listed: still try to present the word while it is shown (some browsers speak anyway)
         if (tts.available && !tts.gaveUp) tts.present(speechInfo(st));
         await lookFirst(st, w);
+      }
+      // natural voice (v3.8.1): the word's clips are made and loaded first, with the calm note, before the child can type
+      const prep = speakIt && tts.prepareWord ? tts.prepareWord(speechInfo(st)) : null;
+      if (prep) {
+        setTyping(false);
+        msg.textContent = 'Get ready…'; msg.className = 'sp-msg tm-msg cyan';
+        note.textContent = VOICE_READY_NOTE; note.hidden = false;
+        await Promise.race([prep, sleep(voiceWaitMs)]); guard(st);
+        if (note.textContent === VOICE_READY_NOTE) note.hidden = true;
       }
       root.dataset.mode = 'ask';
       msg.textContent = speakIt ? 'Listen, then spell it' : 'Now spell it from memory!'; msg.className = 'sp-msg tm-msg cyan';

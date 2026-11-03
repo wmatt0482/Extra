@@ -73,6 +73,7 @@ const SHELL = [
   'src/spelling/testMode.js',
   'src/spelling/why.js',
   'src/spelling/cloudVoice.js',
+  'src/spelling/spellVoice.js',
   'src/tts/voices.js',
   'src/sync/client.js',
   'src/sync/merge.js',

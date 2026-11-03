@@ -17,7 +17,8 @@ import {
   XP, addTrophy, addXp, checkChampion, completeDay, earnCrate, levelFor, levelProgress, lookFor, noteJump, refreshStreak, streakNow, unopened,
 } from './meta/engagement.js';
 import { tts } from './spelling/tts.js';
-import { createCloudVoice, listTexts } from './spelling/cloudVoice.js';
+import { createCloudVoice } from './spelling/cloudVoice.js';
+import { createSpellVoice, nextMissionEntries, orderTexts } from './spelling/spellVoice.js';
 import { DEFAULT_CLOUD_VOICE } from './tts/voices.js';
 import { createSpellPanel } from './spelling/spellPanel.js';
 import { createTestScreen } from './spelling/testMode.js';
@@ -281,10 +282,6 @@ async function boot() {
   const panels = createPanels(app);
   const hero = createTitleHero($('#hero'), () => CAR_BY_ID[save.selectedCar], () => (currentPlayerId ? app.look(save.selectedCar) : null));
   const crates = app.crates = createCrateOpener(app);
-  const spellPanel = createSpellPanel($('#spell'), { tts, audio: Audio, onCancel: () => quitRun() });
-  const testScreen = createTestScreen($('#screen-test'), { tts, audio: Audio });
-  // v3.9: the Friday Test as a boss event (src/ui/testBoss.js wraps the test from the outside; testMode.js is unchanged)
-  const testBoss = createTestBoss($('#screen-test'), { audio: Audio, say: (t) => (tts.available ? tts.say(t) : null), reduced: () => !!save.settings.reducedMotion });
   // natural voice (v3.4): clips from the server's Google voices, used when the player's options pick one and this
   // device is in a family; the device voice stays the fallback (src/spelling/cloudVoice.js, tts.setCloud)
   const cloud = app.cloud = createCloudVoice({
@@ -295,6 +292,15 @@ async function boot() {
     onChange: () => { if (pz) pz.onCloudStatus(); },
   });
   tts.setCloud(cloud);
+  // v3.8.1: the clips of a list are made in small batches, next-needed first, and a word is not dictated before its clips are
+  // ready (the device voice only when the natural voice cannot be used at all or the clip has not come after ~12 s):
+  // src/spelling/spellVoice.js. The spell panel, the Qualifier / Friday Test and the letter rings speak through its facade.
+  const voice = app.voice = createSpellVoice({ tts, cloud });
+  const vtts = voice.tts;
+  const spellPanel = createSpellPanel($('#spell'), { tts: vtts, audio: Audio, onCancel: () => quitRun(), voiceWaitMs: voice.waitMs + 1500 });
+  const testScreen = createTestScreen($('#screen-test'), { tts: vtts, audio: Audio, voiceWaitMs: voice.waitMs + 1500 });
+  // v3.9: the Friday Test as a boss event (src/ui/testBoss.js wraps the test from the outside); its voice lines go through the same facade
+  const testBoss = createTestBoss($('#screen-test'), { audio: Audio, say: (t) => (tts.available ? vtts.say(t) : null), reduced: () => !!save.settings.reducedMotion });
   const pz = createParentZone(app);
   tts.setOnSpeaking((on) => Audio.voice(on));
 
@@ -325,7 +331,7 @@ async function boot() {
     tts.setRate(o.rate);
     tts.setVoice(o.voiceName ? { name: o.voiceName, lang: o.voiceLang } : null);
     cloud.setVoice(o.cloudVoice || '');
-    if (cloud.active) cloud.prepareList().catch(() => {});    // only texts without a clip yet are sent
+    if (cloud.active) prepareVoiceFor(currentPlayerId, true);    // only texts without a clip yet are sent
     else cloudDefault(currentPlayerId);
     document.documentElement.classList.toggle('tiles-upper', o.tileCase === 'upper');
   }
@@ -345,12 +351,21 @@ async function boot() {
     }).catch(() => {});
   }
   app.cloudDefault = cloudDefault;
-  // a list was saved (or the natural voice picked) in the Parent Zone: make that player's clips now
-  app.cloudPrepareFor = (id) => {
+  // This player's clips, in the order the child will hear them: the next mission's words and sentences first (every word
+  // of the list when a Qualifier is due), then the letters, the rest of the mission, the rest of the list. Small batches that
+  // step aside while a line waits for its own clip (spellVoice.js). The player who is playing goes first.
+  function prepareVoiceFor(id, front) {
     const o = Profiles.playerOptions(family, id);
     if (!o.cloudVoice || !sync.code) return Promise.resolve(null);
-    return cloud.prepare([...listTexts(WS.activeList(app.wordsFor(id)).words), ...CEREMONY_LINES], o.cloudVoice).catch(() => null);
-  };
+    const d = app.wordsFor(id);
+    const list = WS.activeList(d);
+    const mission = nextMissionEntries(d, Date.now(), o, (w) => WS.wordInfo(d, w));
+    const texts = [...orderTexts(list.words, { mission, perRace: o.wordsPerRace, qualifier: WS.qualifierDue(d) }), ...CEREMONY_LINES];   // v3.9: and the Friday ceremony's lines
+    return voice.prepare(texts, { key: id, voice: o.cloudVoice, front: !!front || id === currentPlayerId }).catch(() => null);
+  }
+  // a list was saved (or the natural voice picked) in the Parent Zone: make that player's clips now
+  app.cloudPrepareFor = (id) => prepareVoiceFor(id, false);
+  app.prepareNow = (texts, v) => voice.prepareNow(texts, v);
   function selectPlayer(id) {
     if (!Profiles.playerById(family, id)) return;
     const prevMotion = save.settings.reducedMotion;
@@ -389,6 +404,7 @@ async function boot() {
     session = createSession();
     app.persistWords();
     pingNow('list');
+    prepareVoiceFor(currentPlayerId, true);     // the new week's clips now
     toast(`New class list: ${l.name}`);
     if (screen === 'title') refreshTitle();
   }
@@ -918,7 +934,7 @@ async function boot() {
     run.ended = true;
     run = null;
     runEarned = null;
-    tts.cancel();
+    vtts.cancel();
     try { game.stop(); } catch (_) { /* ignore */ }
     controls.enable(false);
     Audio.engine(-1); Audio.nitro(false); Audio.duck(false);
@@ -1033,7 +1049,7 @@ async function boot() {
       // ----- v3: letter rings say their letter (SOS), the whole word in order is a WORD COMPLETE -----
       case 'letterRing':
         Audio.ring();
-        if (evt.letter) setTimeout(() => tts.sayLetter(evt.letter), 140);
+        if (evt.letter) setTimeout(() => vtts.sayLetter(evt.letter), 140);
         hud.letterHit(evt.index);
         break;
       case 'wordComplete':
@@ -1101,7 +1117,7 @@ async function boot() {
   // ---------- pause (settings live here; no reset in the kid-facing menus) ----------
   function pause() {
     if (!run || paused || coaching) return;   // the coach already holds the run
-    if (run.spelling) { tts.cancel(); return; } // the car is parked behind the spell panel anyway
+    if (run.spelling) { vtts.cancel(); return; } // the car is parked behind the spell panel anyway
     paused = true;
     try { game.pause(); } catch (_) {}
     controls.enable(false);
@@ -1179,10 +1195,10 @@ async function boot() {
     }, 600);
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { pause(); tts.cancel(); Audio.suspend(); app.persist(); app.persistWords(); hero.setMode('off'); } else { Audio.resume(); hero.setMode(heroMode()); }
+    if (document.hidden) { pause(); vtts.cancel(); Audio.suspend(); app.persist(); app.persistWords(); hero.setMode('off'); } else { Audio.resume(); hero.setMode(heroMode()); }
   });
   // iOS may kill a backgrounded Home Screen app without another event: pause and save on pagehide too
-  window.addEventListener('pagehide', () => { pause(); tts.cancel(); app.persist(); app.persistWords(); });
+  window.addEventListener('pagehide', () => { pause(); vtts.cancel(); app.persist(); app.persistWords(); });
   window.addEventListener('keydown', (e) => {
     if (coaching && (e.code === 'Enter' || e.code === 'Space')) { dismissCoach(e); return; }
     if (e.code === 'Escape' || (e.code === 'KeyP' && run && !run.spelling)) {
@@ -1245,7 +1261,7 @@ async function boot() {
   sync.start();                        // first pull after the picker is on screen (never blocks it)
   pingNow('day');                      // v3.7.2: once per device per UTC day (fire and forget)
   window.__spellJump = window.__rampRage = {
-    app, hud, hero, spellPanel, testScreen, pz, tts, sync,
+    app, hud, hero, spellPanel, testScreen, pz, tts, voice, sync,
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; },
     get words() { return words; }, get session() { return session; }, get screen() { return screen; },
   }; // debugging / smoke tests

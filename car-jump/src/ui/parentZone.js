@@ -663,7 +663,7 @@ export function createParentZone(app) {
       t.cancel();
       btn.disabled = true;
       note = 'Getting the voice ready…'; paint();
-      const r = await cloud.prepare(texts, id);
+      const r = await (app.prepareNow ? app.prepareNow(texts, id) : cloud.prepare(texts, id));    // (v3.8.1: the background batches step aside)
       note = '';
       btn.disabled = false;
       if (!texts.every((x) => cloud.has(x, id))) {

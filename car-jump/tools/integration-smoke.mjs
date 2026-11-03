@@ -322,6 +322,7 @@ function watchErrors(page) {
 function initScript({ mode }) {
   if (!sessionStorage.getItem('itSeeded')) { localStorage.clear(); sessionStorage.setItem('itSeeded', '1'); }
   window.__spoken = []; window.__ttsCalls = { cancel: 0, resume: 0, speak: 0 };
+  window.__noClassLists = true;   // v3.7: these paths run on the built-in sample list (as ui-smoke does); a class week would add a Qualifier
   if (mode === 'none') {
     try { delete window.speechSynthesis; } catch (_) {}
     try { Object.defineProperty(window, 'speechSynthesis', { value: undefined, configurable: true }); } catch (_) {}
