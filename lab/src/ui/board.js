@@ -63,7 +63,7 @@ export function mountFamily(ctx) {
           h('div', { class: 'lab-person-name' }, r.name,
             r.crown ? h('span', { class: 'lab-badge-crown', title: 'Most this week', 'aria-label': 'Most this week', html: glyph('crown') }) : null,
             r.improved ? h('span', { class: 'lab-badge-star', title: 'Most improved', 'aria-label': 'Most improved', html: glyph('star') }) : null),
-          h('div', { class: 'lab-person-bar' }, h('span', { class: 'lab-bar' }, h('i', { style: { width: `${Math.round((100 * r.xp) / top)}%` } })), h('span', { class: 'lab-person-xp' }, `${ctx.num(r.xp)} XP`)),
+          h('div', { class: 'lab-person-bar' }, h('span', { class: 'lab-bar' }, h('i', { style: { width: `${Math.round((100 * r.xp) / top)}%` } })), h('span', { class: 'lab-person-xp' }, `${ctx.num(r.xp)} XP this week`)),
           r.improved ? h('div', { class: 'lab-improved' }, `Most improved: +${Math.max(0, r.gainPct)} % on your usual`) : null,
           crowns.length ? h('div', { class: 'lab-stickers', 'aria-label': 'Last week' }, ...crowns.map((c) => h('span', { class: 'lab-sticker ' + (c.endsWith('improved') ? 'imp' : 'most'), title: c.endsWith('improved') ? 'Most improved' : 'Most', html: glyph(c.endsWith('improved') ? 'star' : 'crown') }))) : null));
       requestAnimationFrame(() => drawPortrait(cv, { color: r.color, slots: wornSlots(pl.lab) }));

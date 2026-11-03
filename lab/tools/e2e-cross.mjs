@@ -201,7 +201,7 @@ try {
   const order = await page.evaluate(() => [...document.querySelectorAll('.lab-person')].map((p) => p.dataset.player));
   check('the board lists Mia then Ben (the picker\'s order)', order.join() === 'mia,ben', order.join());
   const miaXp = (await page.textContent('.lab-person[data-player="mia"] .lab-person-xp')).trim();
-  check('the board shows Mia\'s XP and no ranks', /XP$/.test(miaXp) && !/\b(1st|2nd|3rd)\b|rank/i.test(await page.innerText('.lab-board')), miaXp);
+  check('the board shows Mia\'s XP and no ranks', /XP this week$/.test(miaXp) && !/\b(1st|2nd|3rd)\b|rank/i.test(await page.innerText('.lab-board')), miaXp);
 
   // ================= 7. two devices, one sync server =================
   section('7. Two devices on one in-memory sync server: offline earnings and a purchase converge');
