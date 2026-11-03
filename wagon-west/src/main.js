@@ -138,7 +138,7 @@ import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
 import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts, V15 } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.6.0';
+const VERSION = '1.6.1';
 // the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
 // is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];
@@ -498,7 +498,9 @@ async function boot() {
     const J = save.journey;
     const legId = (J && J.legId) || LEGS[0].id;
     const c = collectVoiceTexts({ legId, plan: J && Array.isArray(J.plan) ? J.plan.map((p) => p.id) : null, farmName: farmName(), factTexts, names: ((J && J.companions) || []).map((id) => (COMPANION_BY_ID[id] || {}).name).filter(Boolean), animal: J ? animalName() : '', playerName: (app.player && app.player.name) || '', dogName: (J && J.dog && J.dog.name) || '' });
-    speech.prepareBulk([...listTexts(words), ...c.ordered]);
+    // Nov 3: only what this leg and the next can say. Preparing the whole trail (c.rest, ~82k characters) spent the
+    // family's daily clip budget and pushed Spell Jump's new words into the device voice; the rest comes just in time.
+    speech.prepareBulk([...listTexts(words), ...c.first, ...c.leg, ...c.facts, ...c.next]);
   }
   /** Just in time: the sentences about to be said (a generated problem, a letter, a riddle) as clips. Waits for them at most
    *  `ms` (the screen opens meanwhile: the speech itself waits for its clip); resolves at once when the device voice reads. */

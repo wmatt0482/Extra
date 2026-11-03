@@ -28,6 +28,13 @@ function familiesStore() {
   return { exists: async (code) => (await blobs.getMetadata(`${code}/family`)) != null };
 }
 
+/** TTS_DAILY_CHARS (optional): a family's daily budget of new clip characters; unset or invalid = the server default. */
+function dailyCharsFromEnv() {
+  const raw = (typeof Netlify !== 'undefined' && Netlify.env && Netlify.env.get('TTS_DAILY_CHARS')) || process.env.TTS_DAILY_CHARS || '';
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
 export default async (req) => {
   const url = new URL(req.url);
   const contentLength = req.headers.get('content-length');
@@ -37,7 +44,7 @@ export default async (req) => {
   const key = apiKeyFrom((name) => (typeof Netlify !== 'undefined' && Netlify.env && Netlify.env.get(name)) || process.env[name] || '');
   const res = await handleTts({
     method: req.method, path: url.pathname, contentType: req.headers.get('content-type'), contentLength, body,
-  }, { store: ttsStore(), families: familiesStore(), synthesize: key ? googleSynthesizer(key) : null });
+  }, { store: ttsStore(), families: familiesStore(), synthesize: key ? googleSynthesizer(key) : null, dailyChars: dailyCharsFromEnv() });
   return new Response(res.body, { status: res.status, headers: res.headers });
 };
 

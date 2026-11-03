@@ -1494,8 +1494,8 @@ await atest('clip: 200 audio/mpeg with an immutable cache header; unknown or mal
   assert.equal((await tcall(d, 'GET', '/api/tts/clip/ABC')).status, 404);
 });
 await atest('daily cap: a request that would pass 20,000 chars/day → 429 (existing clips still returned, nothing made, counter unchanged)', async () => {
-  assert.equal(TS.DAILY_CHARS, 20000);
-  const d = ttsDeps();
+  assert.equal(TS.DAILY_CHARS, 250000);
+  const d = ttsDeps(); d.dailyChars = 20000;   // the cap's behaviour, at the old 20,000 so the test stays small
   const long = (i) => `${i}.${'x'.repeat(200)}`.slice(0, 200);
   for (let b = 0; b < 2; b++) assert.equal((await tcall(d, 'POST', '/api/tts/prepare', prep(Array.from({ length: 50 }, (_, i) => long(b * 50 + i))))).status, 200);
   const used = JSON.parse(d.store.map.get(`ttsUsage/${FAM}/${TS.dayKey(T0)}`).text).chars;

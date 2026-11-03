@@ -25,7 +25,7 @@ import { CLOUD_VOICE_IDS } from './voices.js';
 
 export const MAX_ITEMS = 80;
 export const MAX_TEXT = 200;
-export const DAILY_CHARS = 20000;
+export const DAILY_CHARS = 250000;   // per family per UTC day of NEW clips (cached clips are free); Netlify env TTS_DAILY_CHARS overrides. Was 20,000 until Nov 3: Wagon West's 1.5 trail alone asks ~118k chars once, which starved Spell Jump's new words into the device voice
 export const SPEAKING_RATE = 0.92;
 export const MAX_BODY = 64 * 1024;
 export const CONCURRENCY = 8;

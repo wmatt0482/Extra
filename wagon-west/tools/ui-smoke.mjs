@@ -3754,7 +3754,7 @@ async function stopToResults(page, legId, plan = {}) {
 async function labBoot(page, layout, grab) {
   console.log('  -- the bridge: the Lab loads by itself; the title\'s button and the Parent Zone\'s row; the Lab\'s numbers start --');
   const b = await J(page, () => ({ ready: window.__wagonWest.labBridge.ready, btn: !document.querySelector('#btn-lab').hidden, n: document.querySelector('.menu-row').dataset.n, attached: !!(window.__lab && window.__lab.store.doc()), v: window.__wagonWest.app.version }));
-  check(b.ready && b.btn && b.attached && b.v === '1.6.0', `the Lab loaded behind the game (version ${b.v}); the title shows "The Lab" (${b.n} buttons); the Lab knows the player`);
+  check(b.ready && b.btn && b.attached && b.v === '1.6.1', `the Lab loaded behind the game (version ${b.v}); the title shows "The Lab" (${b.n} buttons); the Lab knows the player`);
   await J(page, () => { const lb = window.__wagonWest.labBridge; window.__opened = []; lb.openHome = (o) => window.__opened.push(['home', o]); lb.openParent = (o) => window.__opened.push(['parent', o]); });
   await page.click('#btn-lab');
   check((await J(page, () => window.__opened.map((x) => x[0]).join())) === 'home', 'the button opens the Lab\'s home (labBridge.openHome)');
