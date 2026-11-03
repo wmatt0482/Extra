@@ -7,7 +7,7 @@
 // answered from the cache. The natural voice's clips (/api/tts/clip/<id>, v3.4) are content-addressed (a clip never
 // changes), so they are cache-first in their own cache, TTS_CACHE, which survives version updates: a clip played once
 // plays offline afterwards.
-const VERSION = 'spell-jump-v3.8.0';
+const VERSION = 'spell-jump-v3.8.1';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
@@ -64,6 +64,7 @@ const SHELL = [
   'src/spelling/testMode.js',
   'src/spelling/why.js',
   'src/spelling/cloudVoice.js',
+  'src/spelling/spellVoice.js',
   'src/tts/voices.js',
   'src/sync/client.js',
   'src/sync/merge.js',

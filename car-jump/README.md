@@ -352,14 +352,24 @@ device voice stores `''` (device voice, not picked again automatically).
 letter clip is the capital letter, "F", synthesized with SSML `<say-as interpret-as="characters">` so the voice says
 "eff": sent as the device-voice spelling "ef" it was read as a word, v3.4),
 the sample presentation and "Spell Jump is ready.". The parent's "say as" replaces the word as with the device
-voice. Clips are requested when a list is saved, when a natural voice is picked, when a player is selected (only
-texts this device has no clip for are sent), and lazily before a word whose clips are missing: the spell panel then
-shows "Getting the voice ready…" for at most 3 s. A clip plays at Google's speaking rate 0.92; the Speech rate
-setting lengthens the pauses between phrases instead (×1.5 slow, ×2 very slow).
+voice. Clips are requested when a list is saved or a class list is applied (Parents → "Use for", a new week on its own,
+a sync), when a natural voice is picked and when a player is selected (only texts this device has no clip for are sent),
+and before a word whose clips are missing. **v3.8.1 (a brand-new class list was read in the device voice):** the clips of a
+list are asked for in small batches of 8 (`src/spelling/spellVoice.js`), the next race's words and sentences first (every
+word of the list first when a Qualifier is due), then the letters, the rest of the mission and the rest of the list, and a
+batch never starts while a line waits for its own clip (`cloudVoice.prepare` runs one request per voice at a time, so the
+old single 80-text request used to hold up the first word's own request). Before a word is dictated (spell panel, Qualifier,
+Friday Test) its clips are made, fetched and decoded, asking again quietly, for up to 12 s while the panel shows "Getting
+the voice ready…" (no timer); only if the natural voice cannot be used at all (no family code, no key, refused, offline, the
+daily limit) or the clip still has not come after that does the device voice say it. Once the device voice has said a line
+of a word, the rest of that word (spelling it out, Say it again, Syllables) stays with the device voice: a word is never
+heard in both. A typed letter whose clip is not there yet is skipped, not read in the device voice. A clip plays at Google's
+speaking rate 0.92; the Speech rate setting lengthens the pauses between phrases instead (×1.5 slow, ×2 very slow).
 
 **Fallback.** The natural voice is used when a natural voice is picked AND the device has a family code AND the clip
-exists. Any missing clip sends that whole utterance to the device voice; a clip that does not load within 4 s or
-does not play (no WebAudio, the audio context not running) sends the rest of it there. The device voice's watchdog
+exists. In `tts.js` a missing clip still sends that whole utterance to the device voice, and a clip that does not load within
+4 s or does not play (no WebAudio, the audio context not running) sends the rest of it there; the other games rely on that.
+Spell Jump's spell panel and tests speak through `spellVoice.js`, which makes sure the clips exist and are loaded first. The device voice's watchdog
 and "off for the session" rules are unchanged and apply only to it. Clips play through the game's WebAudio context
 (`src/audio.js`, their own bus into the master), so the music ducks under them as under the device voice. On iPhone
 / iPad, WebAudio (the clips and the game sounds) follows the ring / silent switch. Offline: the service worker
@@ -578,7 +588,7 @@ node tools/economy-sim.mjs --speller 0.75   # headless economy simulation (75 % 
 node tools/make-icons.mjs       # re-renders icons/*.png (a car jumping over letter tiles)
 ```
 
-`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud` runs one
+`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud|voice` runs one
 part of `ui-smoke.mjs`, `ONLY=landscape|portrait|speech|perf` one part of `integration-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it, and `cloudVoice.js` uses `window.__cloudVoiceBackend` (status / prepare / load / play) instead of the network and WebAudio.
 
 ## Add to the iPhone Home Screen

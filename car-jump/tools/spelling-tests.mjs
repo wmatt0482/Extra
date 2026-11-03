@@ -1818,6 +1818,166 @@ test('progressSeries: n days ending today, mastered back-filled from masteredAt 
   assert.equal(t.length, 1); assert.equal(t[0].pct, 50); assert.equal(t[0].day, dayKey(day(8))); assert.equal(t[0].kind, 'friday');
 });
 
+
+// ---------- v3.8.1: spellVoice.js (clips ready before a word is dictated; small batches, next-needed first) ----------
+console.log('\nspellVoice: the order of the clips, the waiting, the device voice only when it must be');
+const SVm = await import('../src/spelling/spellVoice.js');
+const mkEntries = (n) => Array.from({ length: n }, (_, i) => ({ word: `word${'abcdefghijklmnopqrstuvwxyz'[i]}`, sentence: `Sentence number ${i}.`, syllables: i % 2 ? ['wo', 'rd'] : null }));
+test('orderTexts: the next race first (carrier, sentence, word), then the letters, then the rest of the mission, then the list', () => {
+  const entries = mkEntries(12);
+  const mission = entries.slice(0, 8);
+  const out = SVm.orderTexts(entries, { mission, perRace: 2 });
+  assert.deepEqual(out.slice(0, 6), ['The word is, worda.', 'Sentence number 0.', 'worda.', 'The word is, wordb.', 'Sentence number 1.', 'wordb.']);
+  assert.deepEqual(out.slice(6, 8), ['A', 'B'], 'the letters follow the first race');
+  assert.ok(out.indexOf('The word is, wordc.') > out.indexOf('Z') && out.indexOf('The word is, wordc.') < out.indexOf('worda. worda.') + 40, 'the rest of the mission after the letters');
+  assert.ok(out.indexOf('The word is, worde.') < out.indexOf('The word is, wordi.'), 'mission words before the others');
+  assert.equal(new Set(out).size, out.length, 'no duplicates');
+  for (const e of entries) for (const t of CV.wordTexts(e)) assert.ok(out.includes(t), `${t} is in`);
+  for (const t of CV.sharedTexts()) assert.ok(out.includes(t), `${t} is in`);
+});
+test('orderTexts: with a Qualifier due every word is dictated first', () => {
+  const entries = mkEntries(10);
+  const out = SVm.orderTexts(entries, { mission: entries.slice(0, 8), perRace: 2, qualifier: true });
+  assert.deepEqual(out.slice(0, 3), ['The word is, worda.', 'Sentence number 0.', 'worda.']);
+  assert.equal(out.indexOf('The word is, wordj.'), 27, 'the 10th word right after the 9th');
+  assert.ok(out.indexOf('A') > out.indexOf('wordj.'), 'then the letters');
+});
+test('nextMissionEntries: the scheduler\'s mission order, without touching the data', () => {
+  const d = dataWith(['aa', 'bb', 'cc', 'dd']);
+  const before = JSON.stringify(d);
+  const m = SVm.nextMissionEntries(d, T0, { newPerDay: 99, includeReview: true }, (w) => ({ word: w }));
+  assert.deepEqual(m.map((x) => x.word), ['aa', 'bb', 'cc', 'dd']);
+  assert.equal(JSON.stringify(d), before, 'nothing changed (no rollToday)');
+  const done = { ...d, today: { date: dayKey(T0), count: 8, newCount: 4 } };
+  assert.deepEqual(SVm.nextMissionEntries(done, T0, { newPerDay: 99 }), [], 'mission done: nothing is predicted');
+});
+
+// a fake natural voice (the server takes 30 ms + 5 ms a text) and a fake engine that records how it was asked to speak
+function svRig({ key = true, omit = null, omitFirst = Infinity, offlineFor = 0, waitMs = 400, withClips = [] } = {}) {
+  const clips = new Set(withClips); const loaded = new Set(); const asked = []; const calls = []; const server = { key: key ? true : false, error: '' };
+  const log = []; let cloudAttached = true; let busyUntil = 0;
+  const cloud = {
+    voice: 'v', code: 'CODE', get active() { return true; }, get server() { return server; },
+    has: (t) => clips.has(t), loaded: (ts) => ts.every((t) => loaded.has(t)),
+    stop() { log.push('cloud.stop'); },
+    warm(ts) { for (const t of ts) if (clips.has(t)) loaded.add(t); },
+    async preload(ts) { if (!ts.every((t) => clips.has(t))) return false; for (const t of ts) loaded.add(t); return true; },
+    async prepare(ts) {
+      asked.push(ts.slice());
+      const my = Math.max(Date.now(), busyUntil) + 30 + 5 * ts.length; busyUntil = my;      // one request at a time, like cloudVoice
+      await sleep(my - Date.now());
+      if (!key) { server.key = false; return { ok: false, error: 'no-key', missing: ts }; }
+      if (Date.now() < offlineFor) return { ok: false, error: 'offline', missing: ts };
+      for (const t of ts) if (!omit || asked.length > omitFirst || !omit.test(t)) clips.add(t);       // (omit: the server leaves these out of its first `omitFirst` answers)
+      return { ok: true, missing: ts.filter((t) => !clips.has(t)) };
+    },
+  };
+  const engine = {
+    engine: '',
+    setCloud(c) { cloudAttached = !!c; },
+    cancel() { calls.push('cancel'); },
+    async present(info) { calls.push({ m: 'present', word: info.word, cloud: cloudAttached }); this.engine = cloudAttached ? 'cloud' : 'device'; await sleep(2); return true; },
+    async sayAgain(info) { calls.push({ m: 'sayAgain', word: info.word, cloud: cloudAttached }); await sleep(1); return true; },
+    async saySyllables() { calls.push({ m: 'syllables', cloud: cloudAttached }); await sleep(1); return true; },
+    async sayWord(info) { calls.push({ m: 'sayWord', word: info.word, cloud: cloudAttached }); await sleep(1); return true; },
+    async say(t) { calls.push({ m: 'say', t, cloud: cloudAttached }); await sleep(1); return true; },
+    async spell(w) { calls.push({ m: 'spell', word: w, cloud: cloudAttached }); await sleep(1); return true; },
+    async sayLetter(ch) { calls.push({ m: 'letter', ch, cloud: cloudAttached }); await sleep(1); return true; },
+    hintShown: false,
+    ready: async () => true,
+  };
+  const voice = SVm.createSpellVoice({ tts: engine, cloud, waitMs });
+  return { voice, cloud, engine, clips, asked, calls, server };
+}
+const winfo = { word: 'worda', sentence: 'Sentence number 0.' };
+await atest('spellVoice: a line waits for its clips, asks again, then plays them (the device voice is not used)', async () => {
+  const r = svRig();
+  const t0 = Date.now();
+  assert.equal(await r.voice.tts.present(winfo), true);
+  assert.ok(Date.now() - t0 >= 30, 'it waited for the server');
+  assert.deepEqual(r.calls.filter((c) => c.m === 'present').map((c) => c.cloud), [true], 'asked of the engine once, cloud attached');
+  assert.equal(r.voice.stats.device, 0);
+});
+await atest('spellVoice: a clip that comes late is waited for (asked again); one that never comes → the device voice after the limit', async () => {
+  let r = svRig({ waitMs: 3000, omit: /^The word is/, omitFirst: 1 });      // the first answer leaves the carrier phrase out
+  assert.equal(await r.voice.tts.present(winfo), true);
+  assert.ok(r.asked.length >= 2, `asked again quietly (${r.asked.length} requests)`);
+  assert.equal(r.calls.at(-1).cloud, true, 'then the cloud voice');
+  r = svRig({ waitMs: 300, omit: /^The word is/ });
+  const t0 = Date.now();
+  assert.equal(await r.voice.tts.present(winfo), true);
+  assert.ok(Date.now() - t0 >= 280 && Date.now() - t0 < 1500, 'waited about the limit');
+  assert.deepEqual(r.calls.filter((c) => c.m === 'present').map((c) => c.cloud), [false], 'then the device voice (cloud detached for the call)');
+  assert.equal(r.voice.stats.device, 1);
+});
+await atest('spellVoice: never interleaved: after the device voice said a line of a word, the rest of that word stays with it; the next word starts afresh', async () => {
+  const r = svRig({ waitMs: 250, omit: /^The word is, worda/ });
+  await r.voice.tts.prepareWord(winfo);
+  await r.voice.tts.present(winfo);
+  await r.voice.tts.spell('worda');
+  await r.voice.tts.sayAgain(winfo);
+  await r.voice.tts.sayLetter('w');
+  const calls = r.calls.filter((c) => c.cloud !== undefined);
+  assert.ok(calls.length >= 4 && calls.every((c) => c.cloud === false), JSON.stringify(calls));
+  r.engine.setCloud(r.cloud);
+  // the next word: its clips are there, so it is a cloud word again
+  const w2 = { word: 'wordb', sentence: 'Sentence number 1.' };
+  r.clips.add('The word is, wordb.'); r.clips.add('Sentence number 1.'); r.clips.add('wordb.');
+  await r.voice.tts.prepareWord(w2);
+  await r.voice.tts.present(w2);
+  assert.equal(r.calls.at(-1).cloud, true);
+  assert.equal(r.calls.at(-1).word, 'wordb');
+});
+await atest('spellVoice: no key / refused / daily limit → the device voice at once; cancel() ends a wait without speaking', async () => {
+  const r = svRig({ key: false, waitMs: 5000 });
+  const t0 = Date.now();
+  await r.voice.tts.present(winfo);
+  assert.ok(Date.now() - t0 < 1000, 'no waiting for a voice that cannot come');
+  assert.equal(r.calls.find((c) => c.m === 'present').cloud, false);
+  // cancel during the wait
+  const r2 = svRig({ waitMs: 5000, omit: /./ });
+  const p = r2.voice.tts.present(winfo);
+  await sleep(100);
+  r2.voice.tts.cancel();
+  assert.equal(await p, null, 'a line that was waiting is cut by cancel()');
+  assert.equal(r2.calls.filter((c) => c.m === 'present').length, 0, 'and never spoken');
+  await sleep(150);
+  assert.equal(r2.voice.waiting, 0, 'the wait ended (the background preparation can go on)');
+});
+await atest('spellVoice: a typed letter whose clip is not there is asked for and skipped, not read by the device voice', async () => {
+  const r = svRig({ withClips: ['A'] });
+  await r.voice.tts.sayLetter('a');
+  assert.deepEqual(r.calls.map((c) => c.cloud), [true], 'the clip is there: the engine plays it');
+  const res = await r.voice.tts.sayLetter('q');
+  assert.equal(res, null); assert.equal(r.calls.length, 1, 'skipped');
+  await sleep(120);
+  assert.ok(r.asked.some((a) => a.includes('Q')), 'asked for it quietly');
+});
+await atest('spellVoice.prepare: small batches in the given order, one at a time; a waiting line goes first and the batches step aside', async () => {
+  const r = svRig({ waitMs: 3000 });
+  const texts = Array.from({ length: 30 }, (_, i) => `text ${i}.`);
+  const done = r.voice.prepare(texts, { key: 'mia' });
+  await sleep(40);
+  const jit = r.voice.ensure(['urgent.']);                 // a line waits for its own clip
+  assert.equal(await jit, true);
+  const jitIdx = r.asked.findIndex((a) => a.includes('urgent.'));
+  assert.ok(jitIdx >= 0 && jitIdx <= 2, `the waiting line was asked for at once, not after the 30 texts (request #${jitIdx + 1})`);
+  await done;
+  assert.ok(r.asked.every((a) => a.length <= SVm.BATCH || a.includes('urgent.')), 'no background request longer than the batch');
+  assert.deepEqual(r.asked.filter((a) => !a.includes('urgent.')).flat(), texts, 'in order, each once');
+  // a newer list for the same player replaces the one waiting
+  const a = r.voice.prepare(Array.from({ length: 40 }, (_, i) => `old ${i}.`), { key: 'leo' });
+  await sleep(40);
+  const b = r.voice.prepare(['new 1.', 'new 2.'], { key: 'leo' });
+  await Promise.all([a, b]);
+  assert.ok(r.clips.has('new 1.') && !r.clips.has('old 39.'), 'the older list for the same player stopped');
+});
+await atest('spellVoice.prepare: no key stops the background work for good (no hammering)', async () => {
+  const r = svRig({ key: false });
+  await r.voice.prepare(Array.from({ length: 40 }, (_, i) => `t${i}.`), { key: 'mia' });
+  assert.equal(r.asked.length, 1, 'one request, then it knows');
+});
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('FAILED:\n- ' + failures.join('\n- ')); process.exit(1); }
 console.log('ALL SPELLING TESTS PASSED');
