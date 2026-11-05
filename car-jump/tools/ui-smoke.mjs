@@ -25,7 +25,9 @@
 // Parents from the player picker with zero players (PIN set there, Family code tab first with Create / Join on
 // top, "Add a player first" on the per-player tabs, the sync status line under the title on every tab).
 // Natural voice (ONLY=cloud runs just this, at both sizes): see cloudVoiceTest below.
-// Class lists (v3.7; ONLY=class): see classListTest below. The other paths set window.__noClassLists (the built-in list).
+// Class lists (v3.7; ONLY=class): see classListTest below (v3.9.1: the card says "In use" / "Not in use yet", opens to each
+// word with its sentence) and openTitleNewWeekTest (v3.9.1: a page left open on the title picks up a new week on a
+// visibilitychange, never during a run, and on the hourly check). The other paths set window.__noClassLists (the built-in list).
 // Self-update (ONLY=update runs just this): a copy of the app served on another port with the REAL service worker;
 // changing sw.js VERSION reloads the page once on the picker (not on the first install), and with the spell panel
 // open it only shows "Update ready, restarting soon" and reloads when the run is left; index.html and src/main.js
@@ -1856,7 +1858,7 @@ async function classListTest(browser, layout) {
     localStorage.setItem('spellJump.pmia.words', pasted(['neighbor', 'because', 'enough']));
     localStorage.setItem('spellJump.pzoe.words', pasted(['friend', 'thought']));
     const c = C.newestClassList(now);
-    return { id: c.id, name: c.name, pattern: c.pattern, n: c.words.length, words: c.words.map((w) => w.word) };
+    return { id: c.id, name: c.name, pattern: c.pattern, n: c.words.length, words: c.words.map((w) => w.word), sentences: c.words.map((w) => w.sentence) };
   });
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForSelector(visibleSel('#screen-players'));
@@ -1889,13 +1891,32 @@ async function classListTest(browser, layout) {
     use: (document.querySelector('#pz-class-use') || {}).textContent || '', all: (document.querySelector('#pz-class-all') || {}).textContent || '', first: document.querySelector('.pz-content').firstElementChild.id }));
   check(card.head === `Class list${CL.name} · ${CL.n} words` && card.first === 'pz-class', `Words tab: the class-list card on top ("Class list · ${CL.name} · ${CL.n} words")`);
   check(CL.words.every((w) => card.words.includes(w)) && card.use === 'Use for Mia' && card.all === 'Use for everyone', 'the words shown small, "Use for Mia" and "Use for everyone"');
+  // v3.9.1: the card says plainly that this week is not in use for Mia yet, and which list she is on (the box below)
+  const st0 = await J(page, () => ({ status: document.querySelector('#pz-class-status').textContent, inUse: document.querySelector('#pz-class').dataset.inUse,
+    now: (document.querySelector('#pz-class-now') || {}).textContent || '', box: document.querySelector('#pz-active').textContent, listHidden: document.querySelector('#pz-class-list').hidden,
+    more: document.querySelector('#pz-class-more').getAttribute('aria-expanded') }));
+  check(st0.status === 'Not in use yet: tap Use for Mia' && st0.inUse === 'false', `not in use: "${st0.status}"`);
+  check(/"Our list"/.test(st0.now) && /^Mia's list now/.test(st0.box), `the card names the list Mia is on now ("${st0.now}"), the box below says "Mia's list now"`);
+  check(st0.listHidden && st0.more === 'false', 'the words and sentences are folded away at first');
   await shot(page, layout, 'cl-02-words-card');
   await layoutAudit(page, layout.insets, 'parent zone (class list card)');
+  // expand: each word with its sentence
+  await page.click('#pz-class-more');
+  const open = await J(page, () => ({ hidden: document.querySelector('#pz-class-list').hidden, more: document.querySelector('#pz-class-more').getAttribute('aria-expanded'),
+    rows: [...document.querySelectorAll('#pz-class-list li')].map((li) => ({ word: li.dataset.word, b: li.querySelector('b').textContent, sent: li.querySelector('.pc-sent').textContent })) }));
+  const sentOk = open.rows.length === CL.n && open.rows.every((r, i) => r.word === CL.words[i] && r.b === CL.words[i] && r.sent === CL.sentences[i]);
+  check(!open.hidden && open.more === 'true' && sentOk, `expanded: all ${CL.n} words, each with its sentence ("${open.rows[0] && open.rows[0].b}: ${open.rows[0] && open.rows[0].sent}")`);
+  await shot(page, layout, 'cl-02b-words-card-open');
+  await layoutAudit(page, layout.insets, 'parent zone (class list card, expanded)');
   await page.click('#pz-class-use');
   await page.waitForSelector('#pz-class-following');
   const mia1 = await activeOf('pmia');
   check(mia1.classId === CL.id && mia1.pattern === CL.pattern && mia1.words.join() === CL.words.join(), `Use for Mia: her active list is the class list with its pattern (${mia1.pattern})`);
   check(await J(page, () => /^Following the class lists ✓/.test(document.querySelector('#pz-class-following').textContent) && !!document.querySelector('#pz-class-stop')), '"Following the class lists ✓ · each new week applies on its own" with "Stop following"');
+  const st1 = await J(page, () => ({ status: document.querySelector('#pz-class-status').textContent, inUse: document.querySelector('#pz-class').dataset.inUse, now: !!document.querySelector('#pz-class-now'),
+    open: !document.querySelector('#pz-class-list').hidden, follows: document.querySelector('#pz-class').dataset.following }));
+  check(st1.status === 'In use for Mia ✓' && st1.inUse === 'true' && !st1.now && st1.follows === 'true', `in use: "${st1.status}", and Mia follows the class lists from now on`);
+  check(st1.open, 'the expanded list stays open after "Use for Mia"');
   await shot(page, layout, 'cl-03-following');
   // Use for everyone (from Zoe's tab)
   await page.click('.pz-ptab[data-player="pzoe"]');
@@ -1906,9 +1927,15 @@ async function classListTest(browser, layout) {
   check(all.every((a) => a.classId === CL.id), 'Use for everyone: Mia, Leo and Zoe all on the class list');
   // Stop following (Zoe): the words stay, the classId goes
   await page.click('#pz-class-stop');
-  await page.waitForSelector('#pz-class-use');
+  await page.waitForSelector('#pz-class-follow');
   const zoe = await activeOf('pzoe');
   check(!zoe.classId && zoe.words.length === CL.n, 'Stop following: the words stay, the list is no longer a class list');
+  check(await J(page, () => document.querySelector('#pz-class-status').textContent === 'In use for Zoe ✓' && /^Not following/.test(document.querySelector('#pz-class-notfollowing').textContent)),
+    'after Stop following: still "In use for Zoe", "Not following the class lists" with "Follow the class lists"');
+  await page.click('#pz-class-follow');
+  await page.waitForSelector('#pz-class-following');
+  const zoe2 = await activeOf('pzoe');
+  check(zoe2.classId === CL.id && zoe2.id === CL.id, 'Follow the class lists: Zoe follows again (same list)');
   await page.click('#pz-close');
 
   // the prefix is highlighted on the Look step (Mia: a new word on the class list; the Qualifier skipped here)
@@ -1924,6 +1951,140 @@ async function classListTest(browser, layout) {
   await context.close();
 }
 
+
+// ---------- v3.9.1: a page left open picks up a new week (ONLY=class runs it, with classListTest) ----------
+// The owner's iPad kept Spell Jump open since last week and never applied the new class list (the check ran only when a
+// player was chosen or on a sync). Leo follows the class lists and is on an older week; the page is opened while the class
+// lists are held back (the window.__noClassLists hook) and left on the title; then the new week "arrives" (the hook off):
+// nothing changes until an event; a visibilitychange (back to the front) applies it with the toast and asks the natural
+// voice for the new week's clips (3.8.1); during a run a visibilitychange applies nothing, the title afterwards does;
+// the hourly check (window.__classCheckEveryMs shortens the hour) applies a week on its own.
+async function openTitleNewWeekTest(browser, layout) {
+  console.log(`\n=== a page left open on the title picks up a new week (${layout.name}) ===`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  await routeFonts(ctx);
+  await ctx.route('**/api/family/**', (r) => r.abort());
+  await ctx.route('**/api/tts/**', (r) => r.abort());
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|api\/family|api\/tts|ERR_FAILED|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.addInitScript(({ insets }) => {
+    window.__noClassLists = true;               // last week: the new class list is not out yet
+    const every = Number(sessionStorage.getItem('classEvery'));
+    if (every) window.__classCheckEveryMs = every;  // the hourly check, the hour shortened (read when the page boots)
+    window.__spoken = [];
+    window.__ttsBackend = {
+      speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
+      cancel() {}, addEventListener() {},
+    };
+    window.__cloudAsked = [];
+    window.__cloudVoiceBackend = {
+      async status() { return { key: true }; },
+      async prepare({ voice, texts }) {
+        window.__cloudAsked.push(texts.slice());
+        const clips = {};
+        for (const x of texts) clips[x] = '/api/tts/clip/' + (x.length.toString(16).padStart(8, '0')).repeat(4);
+        return { status: 200, body: { clips, generated: texts.length, cached: 0, charsToday: 0 } };
+      },
+      async load(url, text) { return { url, text }; },
+      play() { return new Promise((r) => setTimeout(() => r(true), 30)); },
+      stop() {},
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const s = document.createElement('style');
+      s.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(s);
+    });
+  }, { insets: layout.insets });
+  await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  const CL = await J(page, async () => {
+    const C = await import('/src/data/classLists.js');
+    const now = Date.now(), DAY = 864e5;
+    const newest = C.newestClassList(now);
+    const older = C.CLASS_LISTS.find((l) => l.weekOf < newest.weekOf);
+    localStorage.clear();
+    localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, migrated: true, lastPlayer: null, options: { pleo: { cloudVoice: 'en-US-Neural2-F' } }, optionsUpdatedAt: { pleo: now },
+      players: [{ id: 'pleo', name: 'Leo', color: '#22d3ff', createdAt: 1, updatedAt: 1 }] }));
+    localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devO', keys: {} }));
+    localStorage.setItem('spellJump.pleo.save', JSON.stringify({ v: 2, cash: 100, owned: ['beater'], seen: { coach: true, ach: 0 } }));
+    localStorage.setItem('spellJump.pleo.words', JSON.stringify({ v: 1, lists: [{ id: older.id, classId: older.id, name: older.name, createdAt: now - 8 * DAY, archivedAt: 0, pattern: older.pattern, words: older.words }],
+      activeId: older.id, records: {}, tests: [], qualifierPending: null }));
+    return { id: newest.id, name: newest.name, n: newest.words.length, first: newest.words[0], older: older.id, olderName: older.name };
+  });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  const active = () => J(page, () => { const d = JSON.parse(localStorage.getItem('spellJump.pleo.words') || 'null'); const l = d && d.lists.find((x) => x.id === d.activeId); return l ? { id: l.id, classId: l.classId || null } : null; });
+  // every toast shown (they fade after a few seconds)
+  const watchToasts = () => J(page, () => { window.__toastLog = []; new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1) window.__toastLog.push(n.textContent); }).observe(document.querySelector('#toasts'), { childList: true }); });
+  const toasts = () => J(page, () => window.__toastLog.join(' | '));
+  await watchToasts();
+  const visible = () => J(page, () => document.dispatchEvent(new Event('visibilitychange')));
+  await page.click('[data-player="pleo"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.waitForTimeout(300);
+  const a0 = await active();
+  check(a0.id === CL.older && !(await toasts()).includes('New class list'), `opened last week: Leo is on ${CL.olderName}, no toast`);
+  // the new week is out (the page stayed open): nothing happens on its own before an event
+  await J(page, () => { window.__noClassLists = false; window.__cloudAsked.length = 0; });
+  await page.waitForTimeout(400);
+  check((await active()).id === CL.older, 'the new week is out, the page sits on the title: not applied without an event');
+  // back to the front
+  await visible();
+  await page.waitForFunction((n) => window.__toastLog.includes(`New class list: ${n}`), CL.name, { timeout: 3000 }).catch(() => {});
+  const a1 = await active();
+  check(a1.id === CL.id && a1.classId === CL.id, `visibilitychange on the title: Leo is on the new week (${a1.id})`);
+  check((await toasts()).includes(`New class list: ${CL.name}`), `the toast "New class list: ${CL.name}"`);
+  check(await J(page, () => document.querySelector('#btn-play').textContent === 'Play: new words!' && document.querySelector('#title-mission-text').textContent.includes('/')), 'the title is refreshed (PLAY: new words!, the Qualifier is next)');
+  await page.waitForFunction((w) => window.__cloudAsked.some((b) => b.includes(w.sentence)), CL.first, { timeout: 5000 }).catch(() => {});
+  const asked = await J(page, () => window.__cloudAsked.flat());
+  check(asked.includes(CL.first.sentence) && asked.includes(`The word is, ${CL.first.word}.`), `the natural voice is asked for the new week's clips at once (3.8.1: ${asked.length} texts, "${CL.first.sentence}")`);
+  await shot(page, layout, 'cl-05-open-title-new-week', 0);
+  check((await toasts()).split('New class list').length === 2, 'one toast, once');
+  await visible();
+  await page.waitForTimeout(200);
+  check((await toasts()).split('New class list').length === 2 && (await active()).id === CL.id, 'another visibilitychange: nothing more (already on it)');
+
+  // never during a run: put Leo back on last week, start a run, the page comes back to the front → nothing; the title afterwards → applied
+  await J(page, async (id) => {
+    window.__noClassLists = true;
+    const S = window.__spellJump;
+    const W = await import('/src/spelling/wordStore.js');
+    W.restoreList(S.words, id, Date.now());
+    S.words.qualifierPending = null; S.app.persistWords();
+  }, CL.older);
+  check((await active()).id === CL.older, 'Leo back on last week (for the run check)');
+  await startRunFromTitle(page);
+  await J(page, () => { window.__noClassLists = false; });
+  await visible();
+  await page.waitForTimeout(300);
+  check((await active()).id === CL.older && await J(page, () => !!window.__spellJump.run), 'during a run: a visibilitychange applies nothing');
+  await page.click('#spell .sp-exit').catch(() => {});
+  await page.waitForFunction(() => !window.__spellJump.run, null, { timeout: 3000 }).catch(() => {});
+  await J(page, () => window.__spellJump.app.go('title'));
+  await page.waitForTimeout(300);
+  check((await active()).id === CL.id, 'after the run, the title shown: the held-back week applies');
+
+  // once an hour while open (the hour shortened by the test hook): no event at all, the week applies on its own
+  await J(page, async (id) => {
+    const S = window.__spellJump;
+    const W = await import('/src/spelling/wordStore.js');
+    window.__noClassLists = true;
+    W.restoreList(S.words, id, Date.now()); S.words.qualifierPending = null; S.app.persistWords();
+    sessionStorage.setItem('classEvery', '800');
+  }, CL.older);
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pleo"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  check((await active()).id === CL.older, 'reloaded on last week (the class lists held back)');
+  await J(page, () => { window.__noClassLists = false; });
+  await page.waitForFunction((id) => { const d = JSON.parse(localStorage.getItem('spellJump.pleo.words')); return d.activeId === id; }, CL.id, { timeout: 5000 }).catch(() => {});
+  check((await active()).id === CL.id, 'the hourly check (hour shortened to 0.8 s) applies the new week with no event');
+  check(errors.length === 0, `open title: no console errors${errors.length ? ' — ' + errors.slice(0, 3).join(' | ') : ''}`);
+  await ctx.close();
+}
 
 // ---------- v3.8.1: a brand-new class list, the natural voice, instrumented engines (ONLY=voice runs just this) ----------
 // The owner applied a new week's class list and every line (the carrier "The word is, …", the sentence, "<word>." and the
@@ -2162,6 +2323,7 @@ try {
   for (const l of LAYOUTS) if (!only || only === 'cloud') await cloudVoiceTest(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'levels' || only === l.name) await levelsTest(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'class' || only === l.name) await classListTest(browser, l);
+  for (const l of LAYOUTS) if (!only || only === 'class' || only === l.name) await openTitleNewWeekTest(browser, l);
   if (!only || only === 'voice') for (const sc of ['cloud', 'qualifier', 'nokey', 'slow']) await newListVoiceTest(browser, LAYOUTS[0], sc);
 } catch (e) {
   failures.push('exception: ' + e.message);
