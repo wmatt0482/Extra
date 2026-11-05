@@ -14,12 +14,15 @@
 // Part 5 (v1.9, The Lab): Ghost Chase on the real engine (a solo time attack against a ghost: the vehicle waits on the line with no countdown, the race and
 // the ghost start on the first GAS, no position / countdown / bogged events, no place cash, the Math Gates freeze the ghost too), a ghost with its own vehicle,
 // paint, name tag and look, the new rim option and the bolt / checker-edge decals.
+// v1.9.1: the same real-time race at 1x and at 6x CPU throttle + frame jitter finishes in the same order (frame-rate-check.mjs).
 // Env ONLY=v15 runs part 3 alone (plus perf); ONLY=v17 runs part 4 alone (plus perf); ONLY=v19 runs part 5 alone (plus perf); ONLY=v1 skips them.
+// Any ONLY skips the 1x / 6x race.
 import { createRequire } from 'node:module';
 import { spawn, execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runEngineFrameRateCheck } from './frame-rate-check.mjs';   // v1.9.1: a race does not depend on the frame rate
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
@@ -1050,6 +1053,10 @@ try {
   }
 } catch (e) {
   if (!e || e.skipTo !== 'perf') { failures.push('exception: ' + (e && e.message)); console.error(e); }
+}
+// ---- v1.9.1: the same race (Pine Ridge, 3 AI riders, 4 gates) at 1x and at 6x CPU + frame jitter: the same finishing order ----
+if (!ONLY) {
+  try { await runEngineFrameRateCheck(browser, BASE, { check }); } catch (e) { failures.push('exception: ' + (e && e.message)); console.error(e); }
 }
 try {
   // ---- R7. perf: a Night Ride race with 4 riders, 4x CPU throttle, real-time frames; v1.5: Haunted Hollow in the fog ----

@@ -25,6 +25,8 @@
 //   the streak flame and the daily Pit Challenge card on the title (a daily race: the mutator, ×2 cash, a bronze
 //   crate); a championship weekend (3 races, standings between them) to the cup podium with the gold trophy, stars
 //   on the results and the trail card; the Parent Zone Report's play line; a v2 save migrates to v3.
+// v1.9.1: the same mock race (race 1's script) at 1x and at 6x CPU throttle, also with jittered frames, finishes in the
+//   same order with the same time (tools/frame-rate-check.mjs); ONLY=framerate runs that alone.
 // Every screen: no horizontal overflow, buttons ≥ 44 px and clear of the safe-area insets, no native inputs outside
 // the Parent Zone, no links to another origin; no console errors. Screenshots of every state go to SHOTS_DIR.
 import { execSync, spawn } from 'node:child_process';
@@ -34,6 +36,7 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { runGateAgreement } from './gate-agreement.mjs';
 import { runLabChecks } from './lab-checks.mjs';       // v1.9: The Lab (the bridge, reports, the pill, Ghost Chase)
+import { runMockFrameRateCheck } from './frame-rate-check.mjs';   // v1.9.1: a race does not depend on the frame rate
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const BASE = process.env.BASE_URL || 'http://localhost:8080';
@@ -1069,6 +1072,8 @@ const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 try {
   for (const layout of LAYOUTS.filter((l) => !process.env.ONLY || l.name === process.env.ONLY)) await runLayout(browser, layout);
+  // v1.9.1: the same mock race at 1x and 6x CPU (+ frame jitter): the same finishing order and time (ONLY=framerate: alone)
+  if (!process.env.ONLY || process.env.ONLY === 'framerate') await runMockFrameRateCheck(browser, BASE, { check });
 } catch (e) {
   failures.push('crashed: ' + (e && e.stack || e));
   console.error(e);
