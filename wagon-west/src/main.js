@@ -1657,7 +1657,8 @@ async function boot() {
     const J = save.journey;
     let d = null;
     try { d = typeof JA.dampAtStop === 'function' ? JA.dampAtStop(J) : null; } catch (e) { console.warn('[WagonWest] dampAtStop', e); }
-    if (!d || !(num(d.lb) > 0)) return;
+    if (!d || !(num(d.lb) > 0) || (save.trip && save.trip.dampSaid)) return;      // (said once a stop: a stop opened again after "Stop for today" does not say it twice)
+    if (save.trip) save.trip.dampSaid = true;
     app.persist(); refreshCash();
     const t = dampText(d);
     effectToast(t.text, t.say);

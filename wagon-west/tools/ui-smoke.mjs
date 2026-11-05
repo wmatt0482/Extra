@@ -678,7 +678,7 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.7\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.7\.1 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
   // v1.4: "Far-off sounds on the trail" (default on) turns the four far facts off: it is the journey's J.opts.farSounds too
   const far0 = await J(page, () => ({ on: document.querySelector('#opt-far-sounds').getAttribute('aria-checked'), label: document.querySelector('#opt-far-sounds').getAttribute('aria-label') }));
   check(far0.on === 'true' && /^Far-off sounds on the trail/.test(far0.label), `Options: "${far0.label}" is On by default`);
@@ -2039,7 +2039,8 @@ async function v12People(page, layout, grab) {
   await page.waitForFunction(() => !window.__wagonWest.peopleUI.busy, null, { timeout: 5000 });
   const g1 = await jn(page);
   check(g1.food === g0.food + 10 && g1.met.includes('tom') && g1.totals.peopleMet === 11, `meetPerson: a gift of food (+10 lb, ${g0.food} → ${g1.food}), Tom is met (${g1.met.join(', ')})`);
-  check(await toastWith(page, /^\+10 lb of bacon$/, 3000), 'the gift is a line the child sees: "+10 lb of bacon"');
+  // (v1.7.1: a line made at a stop goes when the stop's screen changes, so this waits for it on the stop instead of driving on to the fort, where the old check found it)
+  check(await toastSeen(page, /^\+10 lb of bacon$/, 3000), 'the gift is a line the child sees: "+10 lb of bacon"');
   check(await J(page, () => document.querySelector('.stop-person[data-person="tom"]').classList.contains('met') && document.querySelector('#stop-met').textContent === '1 of 3 met here'), 'a check mark on the portrait, "1 of 3 met here"');
   // ----- a tip: the optional 'parts' puzzle for a token -----
   await page.click('.stop-person[data-person="jed"]');
