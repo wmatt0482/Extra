@@ -6,7 +6,7 @@
 // (game, fish, plums, a trade's corn): it is eaten first. A day then eats 50 / 30 / 20 % from flour / bacon / beans, and
 // when one of those is gone the rest of the day comes from whatever is left. A small ledger (J.foodOwed) carries the
 // fractions of a pound from day to day so the long-run ratio is exact while every day eats a whole number of pounds.
-import { FOOD_KINDS, EAT_RATIO, ARROWS, COLD_LEGS, COLD, COOK, PACK, foodNeeded } from './economy.js';
+import { FOOD_KINDS, EAT_RATIO, ARROWS, COLD_LEGS, COLD, COOK, PACK, LOAD, DAMP, foodNeeded } from './economy.js';
 import { animalOf, legList, legOf, tierOf } from './route.js';
 import { TIER_FX } from './economy.js';
 import { hashSeed } from './rng.js';
@@ -58,13 +58,41 @@ export function syncFood(J) {
   return J.food;
 }
 
-/** Add pounds of one kind ('flour' | 'bacon' | 'beans' | 'other'; anything else is `other`) and keep J.food in step. */
+/** v1.7.1: the pounds of food the wagon still has room for (LOAD.foodLb less what it holds, never below 0). */
+export const foodRoom = (J) => Math.max(0, LOAD.foodLb - Math.max(0, Math.round(Number(J.food) || 0)));
+/** Add pounds of one kind ('flour' | 'bacon' | 'beans' | 'other'; anything else is `other`) and keep J.food in step. v1.7.1: never past the wagon's
+ *  carrying limit (LOAD.foodLb): what does not fit is left behind (J.totals.leftBehind, J.trip.leftBehind count it). Returns the pounds that went in. */
 export function addFoodKind(J, kind, lb) {
   const k = FOOD_KINDS.includes(kind) ? kind : 'other';
-  const n = Math.max(0, Math.round(Number(lb) || 0));
+  const want = Math.max(0, Math.round(Number(lb) || 0));
+  const n = Math.min(want, foodRoom(J));
   J.foods[k] += n;
   syncFood(J);
+  if (want > n) {
+    if (J.totals) J.totals.leftBehind = (J.totals.leftBehind | 0) + (want - n);
+    if (J.trip) J.trip.leftBehind = (J.trip.leftBehind | 0) + (want - n);
+  }
   return n;
+}
+/** v1.7.1: damp flour at a stop (DAMP): the pounds a heavy wagon sets aside, given the pounds the road ahead needs at full rations. Pure arithmetic. */
+export function dampLb(food, aheadLb) {
+  const keep = Math.max(DAMP.over, Math.ceil(Math.max(0, aheadLb) * DAMP.ahead));
+  const over = Math.max(0, Math.round(food) - keep);
+  const lb = Math.floor((over * DAMP.share) / DAMP.step) * DAMP.step;
+  return lb >= DAMP.min ? lb : 0;
+}
+/** Set aside pounds of food (the damp flour): flour first, then the other kinds (`other`, bacon, beans). Returns { lb, flour } (flour: the pounds of flour). */
+export function setAsideFood(J, lb) {
+  let left = Math.min(Math.max(0, Math.round(lb)), J.food);
+  const taken = { flour: 0 };
+  for (const k of ['flour', 'other', 'bacon', 'beans']) {
+    const n = Math.min(left, J.foods[k] | 0);
+    J.foods[k] -= n; left -= n; taken[k] = n;
+  }
+  syncFood(J);
+  const total = Object.values(taken).reduce((a, b) => a + b, 0);
+  if (J.totals) J.totals.setAside = (J.totals.setAside | 0) + total;
+  return { lb: total, flour: taken.flour };
 }
 
 /** Take away pounds of flour (soaked sacks), never below 0. Returns what was taken. */

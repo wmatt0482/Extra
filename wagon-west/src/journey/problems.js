@@ -365,6 +365,7 @@ function trade(f, rand, season, o, leg) {
   const haveIn = off && Number.isFinite(off.have) ? off.have : o.have;
   const have = Number.isFinite(haveIn) ? Math.max(0, Math.floor(haveIn)) : null;
   if (have != null && Math.floor(have / g) >= 1) k = Math.min(k, Math.floor(have / g));
+  if (off && Number.isFinite(off.fits) && off.fits >= 1) k = Math.min(k, Math.floor(off.fits));      // v1.7.1: only as many trades as the wagon has room for (LOAD.foodLb)
   const n = g * k, ans = t * k;
   const give = tr.giveName || tr.give, get = tr.getName || tr.get;
   const who = nation ? `The ${nation.name} people trade` : 'The trading post gives';

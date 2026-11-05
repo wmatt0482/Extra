@@ -240,3 +240,14 @@ export const HOMESTEAD_COST = {
 export const DRY = { spirit: -4, animalTire: 1.5, spring: 10 };
 /** Laurel Hill (the Barlow Road's rope slide, kind 'snub'): a smooth slide is a card chance. */
 export const SNUB = { cardChance: 0.5, smooth: 20, bumpy: 10 };
+
+// ---- v1.7.1: food is a consideration again (the 1.5 playtest: the bot's wagon ended with 2,200-2,700 lb, the store said "about 157 days") ----
+/** The wagon's carrying limit for food, in pounds: no store, hunt, catch, trade, gift or find puts more in (the rest is left: "leave the rest for the next party").
+ *  Why 600: the longest stretch with no store (Fort Hall to Sacramento, 850 miles) needs about 616 lb for four at full rations (685 without Rosa), so a family
+ *  that buys for it must think about the rations or the hunts on the way; every other stretch (Oregon from Fort Hall 508 lb, the Gold Road's first 720 miles
+ *  518 lb) fits at full rations. A party of four eats 8-12 lb a day, so 600 lb is 50-75 days of food. */
+export const LOAD = { foodLb: 600 };
+/** Damp flour (kid-safe: "the flour got damp under the heavy load, so some was set aside", never spoiled): on arriving at a stop (not the last), a wagon
+ *  holding more than `over` lb AND more than the road ahead needs at full rations × `ahead` sets aside `share` of the food above both (whole `step`s of
+ *  pounds, at least `min`), flour first. It never touches the food the road ahead needs, so it can never make the party hungry; it only trims a pile. */
+export const DAMP = { over: 400, ahead: 1.1, share: 0.25, min: 10, step: 5 };

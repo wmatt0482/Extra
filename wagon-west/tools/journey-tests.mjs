@@ -1132,6 +1132,7 @@ test('when a kind runs out the day comes from whatever is left, and food never g
 });
 test('buy adds to its own kind; hunts, fish, berries, trades and a person\'s gift add to "other"; J.food stays the sum', () => {
   const J = mk(); J.cash = 1000;
+  J.foods = { flour: 50, bacon: 30, beans: 20, other: 0 }; syncFood(J);      // (v1.7.1: 100 lb to start, so everything below fits under the wagon's 600 lb)
   const f0 = { ...J.foods };
   buy(J, { item: 'flour', qty: 2 }); buy(J, { item: 'bacon', qty: 3 }); buy(J, { item: 'beans', qty: 4 });
   assert.equal(J.foods.flour, f0.flour + 100); assert.equal(J.foods.bacon, f0.bacon + 60); assert.equal(J.foods.beans, f0.beans + 100);
@@ -1339,9 +1340,10 @@ test('trade offers (W8): every offer is something the wagon holds, for all eight
     assert.equal(o.nation, nation.id);
     seenNations.add(o.nation);
     assert.equal(o.have, spareGoods(J, o.give), 'have is what the wagon can spare');
+    if (o.kind === 'full') { assert.ok(canDo && o.trades === 0 && o.fits === 0, 'full: goods to trade, no room for the food (v1.7.1)'); continue; }
     if (o.kind !== 'none') {
       assert.ok(o.have >= o.rate[0], `${leg.id} offers ${o.rate[0]} ${o.give} but the wagon spares ${o.have} (${JSON.stringify({ g: J.goods, t: J.tokens, f: J.foods })})`);
-      assert.ok(o.trades >= 1 && o.trades === Math.floor(o.have / o.rate[0]));
+      assert.ok(o.trades >= 1 && o.trades === Math.min(Math.floor(o.have / o.rate[0]), o.fits), 'trades: what the wagon spares, and (v1.7.1) what its food room takes');
       kinds[o.kind]++; gives.add(o.give);
       assert.ok(['pelts', 'rope', 'blankets', 'tokens', 'flour', 'bacon', 'beans'].includes(o.give), o.give);
       assert.ok(isFoodLike(o.get), `${o.get} is a food`);
@@ -1675,8 +1677,9 @@ test('every deed is reachable in a scripted journey (and none is earned by doing
   for (let i = 0; i < 3; i++) derbyPay(J, { won: true });
   for (let i = 0; i < 3; i++) repair(J, { workedOut: true });
   for (let i = 0; i < 5; i++) camp(J, 'rest', { rand });
-  applyTrade(J, { giveN: 6, getN: 4, give: 'pelts', get: 'flour' }); applyTrade(J, { giveN: 6, getN: 6, give: 'pelts', get: 'corn' }); J.goods.pelts = 20; applyTrade(J, { giveN: 15, getN: 10, give: 'pelts', get: 'flour' });
-  for (let i = 0; i < 3; i++) applyFish(J, { fishLb: 20 }); for (let i = 0; i < 3; i++) { J.goods.arrows = 5; applyHunt(J, { meatLb: 40 }); }
+  const lighten = () => { J.foods = { flour: 50, bacon: 30, beans: 20, other: 0 }; syncFood(J); };      // (v1.7.1: the shopping filled the wagon to its 600 lb; the trades, the fish and the game need room)
+  lighten(); applyTrade(J, { giveN: 6, getN: 4, give: 'pelts', get: 'flour' }); applyTrade(J, { giveN: 6, getN: 6, give: 'pelts', get: 'corn' }); J.goods.pelts = 20; applyTrade(J, { giveN: 15, getN: 10, give: 'pelts', get: 'flour' });
+  lighten(); for (let i = 0; i < 3; i++) applyFish(J, { fishLb: 20 }); for (let i = 0; i < 3; i++) { J.goods.arrows = 5; applyHunt(J, { meatLb: 40 }); }
   raftPay(J, { bumps: 0 }); stampedePay(J, { held: true });
   quiet(J); J.trip.events = [{ id: 'storm', kind: 'rest', atMile: J.milesDone + 10, fired: false }]; waitOut(J, { rand });
   check();
@@ -3570,7 +3573,7 @@ test('"a good place to stop for today": the third leg finished on a local day (s
   assert.equal(PV.stopToday({ '2026-11-01': { legs: 4 } }, '2026-11-02'), false); assert.equal(PV.stopToday({}, '2026-11-02'), false); assert.equal(PV.stopToday(null, '2026-11-02'), false);
 });
 test('no economy constant moved (the Lab never touches a number the game computes): economy.js\'s exports equal their v1.5 snapshot', () => {
-  const E = { ...economyNs }; const o = {}; for (const k of Object.keys(E).sort()) if (typeof E[k] !== 'function') o[k] = E[k];
+  const E = { ...economyNs }; const o = {}; for (const k of Object.keys(E).sort()) if (typeof E[k] !== 'function' && !['LOAD', 'DAMP'].includes(k)) o[k] = E[k];      // (v1.7.1 added LOAD and DAMP, the food limit: tested on their own; the v1.5 numbers stay as they were)
   const str = JSON.stringify(o); let h = 0x811c9dc5; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
   assert.equal(Object.keys(o).length, 48); assert.equal(str.length, 5154); assert.equal((h >>> 0).toString(16), 'fc43e499');
   assert.deepEqual(PAY, { arrival: 4, star: [1, 3, 14], refMiles: 167 }); assert.equal(START.cash, 45); assert.equal(SOAKED_LB, 25);

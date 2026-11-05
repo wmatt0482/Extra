@@ -42,6 +42,9 @@
 //                                                    average a leg or more, a season averages a limp or more, or the
 //                                                    tokens earned a journey are outside 60-140, or any of the v1.3 money TARGETS is missed
 //                                                    (cushion, choices, the yoke, a lean weak player who finishes)
+// v1.7.1 (food is a consideration again): the wagon carries at most LOAD.foodLb of food and a heavy wagon's damp flour is set aside at a stop (economy.js LOAD, DAMP). The sim prints
+// the food on arrival in pounds on every route for the three players by eye and for "forager" kids (the 1.5 playtest bot's play: a camp at every stop to hunt or fish, every person
+// met, food bought to the store's hint), and --check adds TARGETS.food (the limit holds, the strong player arrives with 200-600 lb, the weak player is fed as 1.3 allows).
 // While src/content/legs.js is a skeleton the sim runs on route.syntheticTrail() (12 legs).
 const {
   createJourney, tickDay, applyMarker, applyProblem, applyWords, applyHunt, applyFish, applyTrade, buy, arrive, nextLeg,
@@ -65,6 +68,7 @@ const { COMPANIONS } = await import('../src/content/companions.js');
 const { problemFor } = await import('../src/journey/problems.js');
 const { composeLetter, keepLetter } = await import('../src/journey/letters.js');
 const { foodNeeded, lbOf, START, RESCUE } = await import('../src/journey/economy.js');
+const LOAD = (await import('../src/journey/economy.js')).LOAD || { foodLb: Infinity };      // v1.7.1: the wagon's carrying limit for food
 const { legList, animalOf } = await import('../src/journey/route.js');
 const { HOMESTEAD_COST } = await import('../src/journey/economy.js');
 const { PIECE_BY_ID, HOMESTEAD_PIECES } = await import('../src/content/homestead.js');
@@ -121,6 +125,11 @@ const TARGETS = {
   // with no food, and on average at most this many days of it a journey
   weak: { sessionsMax: 24, crawlRunMax: 3, crawlDaysMax: 2 },      // (v1.5: 24 sessions on the 20-leg trail; was 16 on 12)
   seasonSlack: [0.7, 1.3],                                      // the later seasons' end cash / price level, against the Rookie ranges
+  // v1.7.1 (food is a consideration again; the 1.5 playtest's bot carried 2,200-2,700 lb): on every route, the three tiers pooled, the food on arriving at a stop.
+  // No kid of any player or policy ever holds more than the wagon carries (LOAD.foodLb); the strong player (by eye, and as a forager who hunts or fishes at every
+  // stop) arrives with 200-600 lb on average and at most `strongP90` lb nine stops in ten; the weak player by eye still runs out on at most `weakCrawlDays` days a
+  // journey (California: ROUTE_TARGETS.california.crawlDaysMax) and never more than 3 in a row, as 1.3 allows.
+  food: { strongMean: [200, 600], strongP90: 560, weakCrawlDays: 2, crawlRunMax: 3 },
 };
 // seconds a thing takes on screen (SPEC §5: a day ≈ 6 s, a marker ≈ 15 s, the stop scene ≈ 3 min)
 const SEC = { day: 6, marker: 15, markerFix: 12, problem: 25, problemFix: 20, word: 20, wordFix: 15, event: 10, hunt: 60,
@@ -278,7 +287,7 @@ function simulateKid(seed, spec, policy = 'natural') {
         if (it.cost <= J.cash && buy(J, { item: it.id, qty: it.qty }).ok) { if (it.id === 'parts') rec_.partsBought += it.qty; if (it.id === 'yoke') { rec_.yoke = true; rec_.yokeLeg = rec_.yokeLeg ?? J.legIndex; } } }
     } else {
       const plan = foodToNextFort(J);
-      const want = Math.max(0, Math.round(plan.lb * (0.6 + 0.8 * rand())) - J.food);
+      const want = Math.max(0, Math.round(plan.lb * (policy === 'forager' ? 1.1 : 0.6 + 0.8 * rand())) - J.food);      // (v1.7.1: the forager buys to the store's hint and a tenth more, as the playtest bot did)
       const sacks = Math.ceil(want / lbOf('flour'));
       const flourPrice = priceAt('flour', L, J.season);
       const afford = Math.min(sacks, Math.floor(J.cash / Math.max(1, flourPrice)));      // a kid at the counter buys the sacks the purse covers
@@ -289,7 +298,7 @@ function simulateKid(seed, spec, policy = 'natural') {
       for (let k = J.parts; k < wantParts; k++) { if (buy(J, { item: 'parts', qty: 1 }).ok) rec_.partsBought++; else break; }
       const cold = coldLegsAhead(J);
       if (cold.length) { const need = needsBlankets(J, cold[0]).need; if ((J.goods.blankets | 0) < need && rand() < KID.remembersBlankets) buy(J, { item: 'blankets', qty: need - (J.goods.blankets | 0) }); }
-      if (J.opts.hunting && (J.goods.arrows | 0) < 10 && rand() < KID.remembersArrows) buy(J, { item: 'arrows', qty: 2 });
+      if (J.opts.hunting && (J.goods.arrows | 0) < 10 && (policy === 'forager' || rand() < KID.remembersArrows)) buy(J, { item: 'arrows', qty: 2 });
       if ((J.goods.rope | 0) < 1 && rand() < KID.remembersRope) buy(J, { item: 'rope', qty: 1 });
       if (J.animals.n < 4 && yokeOffered(L) && rand() < KID.buysYoke) {
         const p = priceAt('yoke', L, J.season);
@@ -309,7 +318,7 @@ function simulateKid(seed, spec, policy = 'natural') {
   // a person at a stop: the Talk row; a gift of food is applied, a card awarded, a tip is a parts problem, a trade runs like a post
   const talk = () => {
     const here = peopleAt(J, J.legId);
-    const n = Math.min(here.length, KID.talks[0] + Math.floor(rand() * (KID.talks[1] - KID.talks[0] + 1)));
+    const n = policy === 'forager' ? here.length : Math.min(here.length, KID.talks[0] + Math.floor(rand() * (KID.talks[1] - KID.talks[0] + 1)));
     const pool = here.filter((p) => !p.met);
     for (let i = 0; i < n && pool.length; i++) {
       const p = pool.splice(Math.floor(rand() * pool.length), 1)[0];
@@ -322,7 +331,7 @@ function simulateKid(seed, spec, policy = 'natural') {
     }
   };
   for (let s = 0; s < seasons; s++) {
-    const rec = { season: J.season, sessionsStart: sessions, legs: 0, tokens0: J.tokens, arriveFoodDays: [], stars: 0, crawl: 0,
+    const rec = { season: J.season, sessionsStart: sessions, legs: 0, tokens0: J.tokens, arriveFoodDays: [], arriveFoodLb: [], peakFood: J.food, stars: 0, crawl: 0,
       maxCrawl: 0, rescues: 0, legSeconds: [], leftovers: 0, happy: 0, allRight: 0,
       // v1.2 counters
       rivers: { ford: 0, float: 0, ferry: 0 }, soakedSacks: 0, soakedRivers: 0, breakdowns: 0, repairs: 0, limps: 0, freeFixes: 0, partsBought: 0, coldNights: 0,
@@ -347,6 +356,7 @@ function simulateKid(seed, spec, policy = 'natural') {
       // a kid who goes for today's camp / supper goal camps for it; a leg that already has its camp does not camp twice
       if (!camping && (ch.kind === 'camp' || ch.kind === 'supper') && rand() < KID.goal) { campOut('fish'); rec.camps++; }
       if (camping) { campOut(['fish', 'cards', 'hunt', 'tales', 'rest'][Math.floor(J.legIndex / KID.campEvery) % 5]); rec.camps++; }
+      else if (policy === 'forager' && J.legIndex > 0) { campOut(J.legIndex % 2 ? 'hunt' : 'fish'); rec.camps++; }      // (v1.7.1: the forager camps at every stop to hunt or fish, as the playtest bot did)
       dials();
       if (J.trip.toll && !J.trip.toll.paid && !J.trip.toll.iou) { const t = payToll(J); spend(SEC.toll); rec.tolls++; if (t.iou) rec.ious++; }      // the Barlow Road's gate
       if (leg.dry && rec.barrelBy == null) rec.barrelBy = !!J.upgrades.barrel;
@@ -369,6 +379,7 @@ function simulateKid(seed, spec, policy = 'natural') {
         if (f.next !== 'clear' && rand() < KID.waitStorm) { waitOut(J, { rand }); spend(SEC.day + SEC.wait); rec.waits++; }
         const r = tickDay(J, { rand });
         spend(SEC.day); rec.days++;
+        rec.peakFood = Math.max(rec.peakFood, J.food);
         if (r.crawl) { rec.crawl++; }
         if (r.animalsTired) rec.tiredDays++;
         if (r.coldNight) rec.coldNights++;
@@ -487,12 +498,15 @@ function simulateKid(seed, spec, policy = 'natural') {
       rec.legs++; rec.stars += res.stars.filter(Boolean).length; rec.happy += res.stars[1]; rec.allRight += res.stars[2];
       const daily = foodNeeded(partySize(J), 'full', 1, animalOf(J.animal).feedLb || 0);
       rec.arriveFoodDays.push(J.food / daily);
+      rec.arriveFoodLb.push(J.food);
+      rec.peakFood = Math.max(rec.peakFood, J.food);
       rec.maxCrawl = Math.max(rec.maxCrawl, J.totals.maxCrawlDays);
       if ((J.goods.arrows | 0) < 5) rec.arrowsOut++;
       nextLeg(J);
       sessions++; clock = 0;                      // a leg a session
     }
     rec.sessions = sessions - rec.sessionsStart;
+    rec.setAside = (J.totals.setAside | 0); rec.leftBehind = (J.totals.leftBehind | 0);      // v1.7.1: the damp flour set aside, the food the wagon could not carry
     rec.cash = J.cash;
     rec.earned = rec.flow.reduce((a, f) => a + f.problems + f.camp + f.challenge + f.dup + f.deed + f.fun, 0);
     rec.v14.locket = J.quests.locket ? J.quests.locket.state : 'none'; rec.v14.finds = Object.keys(J.finds).length; rec.v14.fishSpecies = Object.keys(J.fishLog).length; rec.v14.bestSkips = J.skips.best;
@@ -809,6 +823,22 @@ console.log('(unfed days: days that began with no food, mean of the three player
   console.log('sublette buys-all, choices of 4 stores (S / A / W): ' + PROFILE_KEYS.map((pl) => f1(sc(pl).choices)).join(' / ') + '    fort cash by eye at Kearny, Laramie, Hall (S / A / W): ' + PROFILE_KEYS.map((pl) => '$' + Math.round(cellStats('sublette', pl, 0).fortCash)).join(' / '));
 }
 
+// ---- v1.7.1: food on arrival, in pounds (the 1.5 playtest's bot ended a journey with 2,200-2,700 lb: it hunted, fished and traded at every chance) ----
+// Every route, the three players shopping by eye plus "forager" kids (the strong player playing as the bot did: camps at every stop to hunt or fish, talks to everyone,
+// buys food to the store's hint and a tenth more, keeps ten arrows). Pounds on arriving at each stop over the three tiers; peak = the most the wagon held at any time.
+const FOOD_COLS = [['strong', 'natural', 'S by eye'], ['average', 'natural', 'A by eye'], ['weak', 'natural', 'W by eye'], ['strong', 'forager', 'S forager'], ['average', 'forager', 'A forager']];
+const foodCell = (key, pl, pol) => {
+  const recs = runKids(pl, pol, SPECS[key]).flat(), lb = recs.flatMap((r) => r.arriveFoodLb);
+  return { mean: mean(lb), p90: pct(lb, 0.9), max: Math.max(...lb), peak: Math.max(...recs.map((r) => r.peakFood)), aside: mean(recs.map((r) => r.setAside)), behind: mean(recs.map((r) => r.leftBehind)),
+    crawl: mean(recs.map((r) => r.crawl)), maxRun: Math.max(...recs.map((r) => r.maxCrawl)), recs };
+};
+console.log(`\nFOOD ON ARRIVAL (v1.7.1), lb, the three tiers pooled: mean / p90 / max on arriving at a stop, [peak held]; set aside (damp flour) and left behind (no room) a journey, mean; carrying limit ${LOAD.foodLb} lb`);
+console.log('route                        ' + FOOD_COLS.map((c) => c[2].padEnd(36)).join(''));
+for (const key of CELLS) {
+  console.log(SPECS[key].label.padEnd(28).slice(0, 28) + ' ' + FOOD_COLS.map(([pl, pol]) => { const c = foodCell(key, pl, pol); return `${pad(Math.round(c.mean), 4)} / ${pad(c.p90, 4)} / ${pad(c.max, 4)} [${pad(c.peak, 4)}] ${pad(Math.round(c.aside), 3)}/${pad(Math.round(c.behind), 3)}`.padEnd(36); }).join(''));
+}
+console.log('weak by eye, days with no food a journey (max run): ' + CELLS.map((key) => { const w = foodCell(key, 'weak', 'natural'); return `${SPECS[key].label} ${f1(w.crawl)} (${w.maxRun})`; }).join(' · '));
+
 // ---- v1.6 (The Lab): the six choice moments (lab/SPEC.md §4.4): a shortcut that risks a soaked sack, paying a guide to save a day ----
 // `choices` in the printouts above are the stores short of the wish list; THESE are the choice moments. Each route's Rookie journey is run by the same kids four ways: always the plain
 // way (a), only the shortcuts taken (sc), only the guides paid (gd), every way taken (b); the cash at the end (the money the choices touch) must differ by at most $3 from always-a,
@@ -971,6 +1001,23 @@ if (CHECK) {
       }
       const sc = momentCell(key, 'sc'), nSc = sc.b;
       if (nSc > 0) { const share = sc.soaked / nSc; if (share < MT.soakShare[0] || share > MT.soakShare[1]) problems.push(`choice moments, ${label}: ${Math.round(share * 100)} % of the shortcuts soaked a sack (want about 25 %: ${MT.soakShare[0] * 100}-${MT.soakShare[1] * 100} %)`); }
+    }
+  }
+  // v1.7.1: food on arrival (TARGETS.food): the carrying limit holds, the strong player is comfortable without a pile, the weak player is fed as 1.3 allows
+  {
+    const F = T.food;
+    for (const key of CELLS) {
+      for (const [pl, pol, nm] of FOOD_COLS) {
+        const c = foodCell(key, pl, pol), tag = `food, ${SPECS[key].label}, ${nm}`;
+        if (c.peak > LOAD.foodLb) problems.push(`${tag}: a wagon held ${c.peak} lb (want at most the ${LOAD.foodLb} lb it carries)`);
+        if (c.maxRun > F.crawlRunMax) problems.push(`${tag}: ${c.maxRun} days in a row with no food (> ${F.crawlRunMax})`);
+        if (pl === 'strong') {
+          if (!within(c.mean, F.strongMean)) problems.push(`${tag}: arrives with ${Math.round(c.mean)} lb on average (want ${F.strongMean[0]}-${F.strongMean[1]})`);
+          if (c.p90 > F.strongP90) problems.push(`${tag}: arrives with ${c.p90} lb or more one stop in ten (want at most ${F.strongP90})`);
+        }
+      }
+      const w = foodCell(key, 'weak', 'natural'), most = key === 'california' ? ROUTE_TARGETS.california.crawlDaysMax : F.weakCrawlDays;
+      if (w.crawl > most) problems.push(`food, ${SPECS[key].label}, weak by eye: ${f1(w.crawl)} days with no food a journey (want at most ${most})`);
     }
   }
   if (problems.length) { console.log('\nCHECK FAILED:\n  ' + problems.join('\n  ')); process.exit(1); }

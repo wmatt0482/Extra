@@ -52,8 +52,8 @@ import { starsFor, hasArrived, starCount } from './stars.js';
 import { hashSeed, mulberry32, drawFrom, randInt } from './rng.js';
 import { nationFor } from './route.js';
 import { skillOf, skillInfo, partySkills } from './skills.js';
-import { ensureFoods, syncFood, addFoodKind, takeFlour, eatFood, eatFactor, foodDays, huntAllowed, needsBlankets, coldLegsAhead, dailyNeed, isColdLeg, ensureExtraCold } from './supplies.js';
-import { NOSE, MOMENTS as MOMENT_RULES, EXTRA_GOOD_BY_ID, offeredAt } from './economy.js';
+import { ensureFoods, syncFood, addFoodKind, foodRoom, dampLb, setAsideFood, takeFlour, eatFood, eatFactor, foodDays, huntAllowed, needsBlankets, coldLegsAhead, dailyNeed, isColdLeg, ensureExtraCold } from './supplies.js';
+import { NOSE, MOMENTS as MOMENT_RULES, EXTRA_GOOD_BY_ID, offeredAt, DAMP } from './economy.js';
 import { V14_COUNTERS, fill14, carry14, merge14 } from './collections.js';
 import * as DOG from './dog.js';
 import * as FISHING_API from './fishing.js';
@@ -324,7 +324,7 @@ function fireEvent(J, id, rescue, planned) {
     extra.snub = true;                                                                          // v1.5: Laurel Hill: the app runs startSnub, then applySnub
   } else if (kind === 'bonus') {
     const lb = Math.max(e.foodLb || 20, rescue ? RESCUE.minLb : 0);
-    addFoodKind(J, 'other', lb); extra.foodAdded = lb;
+    extra.foodAdded = addFoodKind(J, 'other', lb); if (extra.foodAdded < lb) extra.full = true;
   } else if (kind === 'rest') {
     if (planned && planned.waited) { extra.waitedOut = true; extra.covered = true; }            // the party waited it out at camp: nothing lost
     else { t.restDays = Math.max(t.restDays, 1); extra.covered = !!(J.upgrades && J.upgrades.cover); }
@@ -432,7 +432,7 @@ export function tickDay(J, { rand } = {}) {
     t.rescueCooldown = RESCUE.cooldown;
     const rescue = rescueEvent(leg, [...t.usedKinds, ...t.events.map((e) => e.kind)], { hunting: J.opts.hunting && huntAllowed(J), dry: !!leg.dry });   // never a kind the leg has or will have
     if (rescue) event = fireEvent(J, rescue.id, true);
-    else { foraged = RESCUE.minLb; addFoodKind(J, 'other', foraged); }
+    else { foraged = addFoodKind(J, 'other', RESCUE.minLb); }
   }
   // the mood: rations and pace (or a rest day) move it; no food caps it at tired
   let d = MOOD.ration[up.barrel && J.rations === 'lean' ? 'plenty' : J.rations] ?? 0;
@@ -594,12 +594,13 @@ function addFood(J, lb, statKey, logKey) {
   const t = J.trip;
   let got = Math.max(0, Math.round(Number(lb) || 0));
   if (t && t.rescuePending) { got = Math.max(got, RESCUE.minLb); t.rescuePending = false; }
-  addFoodKind(J, 'other', got);
+  const caught = got;
+  got = addFoodKind(J, 'other', got);                       // v1.7.1: never past the wagon's carrying limit; the rest is left for the next party
   J.legStats[statKey] += got; J.totals[statKey] += got;
   J.totals[statKey === 'hunted' ? 'meatLb' : 'fishLb'] += got;
-  if (t && got > 0 && !t.happened.includes(logKey)) t.happened.push(logKey);
+  if (t && caught > 0 && !t.happened.includes(logKey)) t.happened.push(logKey);
   refreshMood(J);
-  return { foodLb: got, food: J.food };
+  return { foodLb: got, food: J.food, leftLb: caught - got, full: caught > got };
 }
 /** The bow hunt's result (the scene's huntEnd.meatLb) goes into the food; a safety-net hunt is worth at least
  *  RESCUE.minLb, so a child who misses every arrow still eats ("Eli shares what he found"). A hunt that brought food
@@ -609,7 +610,8 @@ export function applyHunt(J, { meatLb = 0 } = {}) {
   const arrowsUsed = Math.min(ARROWS.perHunt, J.goods.arrows | 0);
   J.goods.arrows -= arrowsUsed;
   const r = addFood(J, meatLb, 'hunted', 'hunt');
-  const pelts = r.foodLb <= 0 ? 0 : r.foodLb >= PELTS.bigHuntLb ? PELTS.bigHunt : PELTS.perHunt;
+  const hunted = r.foodLb + r.leftLb;                       // (the pelts follow what the bow brought down, whether or not the wagon had room for all of it)
+  const pelts = hunted <= 0 ? 0 : hunted >= PELTS.bigHuntLb ? PELTS.bigHunt : PELTS.perHunt;
   J.goods.pelts = (J.goods.pelts | 0) + pelts;
   return { ...r, pelts, arrowsUsed, arrowsLeft: J.goods.arrows };
 }
@@ -620,7 +622,9 @@ export const applyFish = (J, { fishLb = 0 } = {}) => addFood(J, fishLb, 'fished'
 const FOOD_GIVES = ['flour', 'bacon', 'beans'];
 const GENERIC_TRADE = { give: 'pelts', giveName: 'beaver pelts', get: 'flour', getName: 'sacks of flour', rate: [3, 2] };
 const gcd = (a, b) => (b ? gcd(b, a % b) : a);
-const tradesIn = (J, t) => Math.floor(spareGoods(J, t.give) / Math.max(1, (t.rate && t.rate[0]) | 0 || 1));
+/** v1.7.1: how many trades' food the wagon has room for (LOAD.foodLb). */
+const fitsIn = (J, t) => Math.floor(foodRoom(J) / Math.max(1, ((t.rate && t.rate[1]) | 0 || 1) * lbOf(t.get)));
+const tradesIn = (J, t) => Math.min(Math.floor(spareGoods(J, t.give) / Math.max(1, (t.rate && t.rate[0]) | 0 || 1)), fitsIn(J, t));
 
 /** What the wagon can trade here, and it is always something the wagon holds (SPEC §1: nothing the child cannot have).
  *  Candidates are the nation's listed trades (`nation.trades`: its signature trade first, then the same food for the party's
@@ -638,7 +642,7 @@ export function tradeOffer(J, opts = {}) {
   const norm = (t) => ({ ...t, rate: Array.isArray(t.rate) && t.rate.length === 2 ? t.rate.map((n) => Math.max(1, n | 0)) : [3, 2] });
   const L = listed.map(norm), F = FALLBACK_TRADES.map(norm);
   const make = (t, kind) => ({ nation: nation ? nation.id : null, give: t.give, giveName: t.giveName || TRADE_GOOD_NAMES[t.give] || t.give,
-    get: t.get, getName: t.getName || TRADE_GOOD_NAMES[t.get] || t.get, rate: t.rate, have: spareGoods(J, t.give), trades: tradesIn(J, t), kind });
+    get: t.get, getName: t.getName || TRADE_GOOD_NAMES[t.get] || t.get, rate: t.rate, have: spareGoods(J, t.give), trades: tradesIn(J, t), fits: fitsIn(J, t), kind });
   // the nation's own goods first (twice or more, then once), then the fallbacks (twice or more, then once)
   const pickListed = (need) => {
     const ok = L.filter((t) => tradesIn(J, t) >= need);
@@ -649,6 +653,8 @@ export function tradeOffer(J, opts = {}) {
     const t = pick(need);
     if (t) return make(t, kind);
   }
+  // v1.7.1: the wagon holds goods to trade but has no room for the food: 'full' (the app says the wagon can't carry more)
+  if ([...L, ...F].some((t) => Math.floor(spareGoods(J, t.give) / t.rate[0]) >= 1 && fitsIn(J, t) < 1)) return make(L[0], 'full');
   return make(L[0], 'none');
 }
 /** The offer in one sentence (digits spelled out, so it can be read aloud): "Mr. Dell offers a fair trade: three coils of rope
@@ -693,13 +699,15 @@ export function applyTrade(J, { giveN = 0, getN = 0, give, get, rate } = {}) {
   const want = Math.max(0, giveN | 0), have = spareGoods(J, g);
   let n = Math.max(0, getN | 0), gave = want;
   if (have < want) { const trades = Math.floor(have / Math.max(1, per)); gave = trades * per; n = Math.min(n, trades * gets); }
+  // v1.7.1: only the trades whose food the wagon has room for (LOAD.foodLb); the goods for the rest stay in the wagon
+  const room = foodRoom(J), full = n * lbOf(w) > room;
+  if (full) { const trades = Math.min(Math.floor(gave / Math.max(1, per)), Math.floor(room / Math.max(1, gets * lbOf(w)))); gave = trades * per; n = Math.min(n, trades * gets); }
   takeGood(J, g, gave);
-  const foodLb = n * lbOf(w);
-  addFoodKind(J, 'other', foodLb);
+  const foodLb = addFoodKind(J, 'other', n * lbOf(w));
   J.totals.traded += n;
   if (J.trip) { J.trip.traded = (J.trip.traded | 0) + n; if (n > 0 && !J.trip.happened.includes('trade')) J.trip.happened.push('trade'); }
   refreshMood(J);
-  return { foodLb, got: n, gave, good: w, gaveGood: g, nation: nation ? nation.id : null };
+  return { foodLb, got: n, gave, good: w, gaveGood: g, nation: nation ? nation.id : null, full };
 }
 
 /** The stop whose store the party is at: the arrived leg's fort, or the route's start store (null for Independence) before the first mile. */
@@ -725,6 +733,13 @@ export function buy(J, { item, qty = 1, price } = {}) {
   const p = Number.isFinite(price) ? Math.max(0, Math.round(price)) : priceAt(id, storeLeg(J), J.season);
   const cost = q * p;
   if (!id || cost > J.cash || (id === 'yoke' && J.animals.n >= 4) || (id === 'spoon' && J.goods.spoon > 0) || (EXTRA_GOOD_BY_ID[id] && !offeredAt(id, storeLeg(J)))) return { ok: false, cost, cash: J.cash, foodLb: 0 };
+  // v1.7.1: food only as many units as the wagon has room for (LOAD.foodLb): a full wagon refuses (reason 'full'), a nearly full one sells fewer (qty, full)
+  if (isFood(id) && q > 0 && q * lbOf(id) > foodRoom(J)) {
+    const fit = Math.floor(foodRoom(J) / lbOf(id));
+    if (fit < 1) return { ok: false, cost, cash: J.cash, foodLb: 0, reason: 'full', room: foodRoom(J) };
+    const r = buy(J, { item: id, qty: fit, price: p });
+    return { ...r, full: true, asked: q };
+  }
   J.cash -= cost;
   let foodLb = 0;
   if (isFood(id)) { foodLb = q * lbOf(id); addFoodKind(J, id, foodLb); }
@@ -734,7 +749,7 @@ export function buy(J, { item, qty = 1, price } = {}) {
   else J.goods[id] = (J.goods[id] | 0) + q;
   J.totals.bought += cost;
   refreshMood(J);
-  return { ok: true, cost, cash: J.cash, foodLb };
+  return { ok: true, cost, cash: J.cash, foodLb, qty: q };
 }
 
 /** Arriving at the leg's stop: the three stars, the cash ($60 × season.priceMult + $20 a star), the sticker and the
@@ -775,9 +790,15 @@ export function arrive(J) {
   if (leg.dry && J.upgrades && J.upgrades.barrel) T.dryDrives++;
   const fx = TIER_FX[J.tier] || TIER_FX.rookie, last = J.legIndex >= legList().length - 1, dig = goldAt(J);
   const bonusCards = fx.bonusCards === 'every' ? 1 : fx.bonusCards === 'perfect' && stars.every(Boolean) ? 1 : 0;
+  // v1.7.1: damp flour (DAMP): a heavy wagon sets part of its pile aside at a stop, never the food the road ahead needs at full rations, never at the end of the trail
+  let damp = null;
+  if (!last && J.food > DAMP.over) {
+    const lb = dampLb(J.food, foodToNextFort({ ...J, rations: 'full' }).lb);
+    if (lb > 0) { const r = setAsideFood(J, lb); if (r.lb > 0) damp = { lb: r.lb, flour: r.flour }; }
+  }
   t.result = { legId: leg.id, stars, cash, sticker, crate: crateFor(stars), ...(mended ? { mended: true } : {}), ...(bath ? { bath: true } : {}), ...(quest ? { quest } : {}),
     post: !!(leg.post || (leg.stop && leg.stop.kind === 'fort')), end: last ? siteOfLeg(leg.id) : null, bonusCards,
-    tierTrophy: last ? (TIER_BY_ID[J.tier] || {}).trophy || null : null, gold: dig, fork: forkAt(J), choice: choiceAt(J) };
+    tierTrophy: last ? (TIER_BY_ID[J.tier] || {}).trophy || null : null, gold: dig, fork: forkAt(J), choice: choiceAt(J), ...(damp ? { damp } : {}) };
   return t.result;
 }
 
@@ -981,7 +1002,7 @@ export function meetPerson(J, id) {
   let gift = null;
   if (person.gift) {
     gift = { ...person.gift };
-    if (gift.kind === 'food') gift.foodLb = addFoodKind(J, 'other', gift.lb);
+    if (gift.kind === 'food') { gift.foodLb = addFoodKind(J, 'other', gift.lb); if (gift.foodLb < (gift.lb | 0)) gift.full = true; }      // (v1.7.1: a full wagon leaves the rest)
   }
   refreshMood(J);
   return { first: true, gift, person };
@@ -1121,7 +1142,7 @@ export { foodNeeded, etaDays, priceAt, storeList, milesPerDay, starsFor, yokeOff
 export { UPGRADES, CARDS, CARD_BY_ID, cardsOf };
 export { dailyChallenge, claimChallenge } from './challenge.js';
 export { ANIMALS };
-export { syncFood, foodDays, huntAllowed, needsBlankets, coldLegsAhead, skillOf, skillInfo, partySkills };
+export { syncFood, foodDays, huntAllowed, needsBlankets, coldLegsAhead, skillOf, skillInfo, partySkills, foodRoom };
 export { DEEDS, DEED_BY_ID, checkDeeds, deedMet } from './deeds.js';
 export { PEOPLE, PEOPLE_BY_STOP, PERSON_BY_ID } from '../content/people.js';
 
@@ -1150,9 +1171,10 @@ export function endFishing(J, session) {
   const base = FISHING_API.sessionLb(session);
   const lb = FISHING_API.rescueFloor(base, session.rescue);
   const topUp = lb - base;
-  applyFish(J, { fishLb: lb });
-  const part = FISHING_API.summarizeSession(J, session, lb);
-  session.result = { lb, topUp, ...part };
+  const got = applyFish(J, { fishLb: lb });                 // v1.7.1: a full wagon takes only what fits (LOAD.foodLb); the rest goes back in the river
+  const part = FISHING_API.summarizeSession(J, session, got.foodLb);
+  if (got.leftLb > 0) { const more = got.foodLb > 0 ? ' The wagon can\'t carry more, so the rest went back in the river.' : ' The wagon can\'t carry more, so the fish went back in the river.'; part.summary = { text: part.summary.text + more, say: part.summary.say + more }; }
+  session.result = { lb: got.foodLb, topUp, ...part, ...(got.leftLb > 0 ? { leftLb: got.leftLb, full: true } : {}) };
   return session.result;
 }
 // the quests (quests.js)
@@ -1219,7 +1241,7 @@ export function writeOnRock(J) {
 export { choiceAt, applyChoice, defaultChoice, choicesAt, cutOf, guidedOf, creditOf, normalizeChoices, mergeChoices, feeFor, dayMiles, SHORTCUT, GUIDE } from './choices.js';
 export { nextStopPreview, previewTexts, stopToday, phraseFor, firstSentence, STOP_LINE, LEGS_A_DAY } from './preview.js';
 export { forkAt, planRoute, usePlan, routesOpen, siteOfLeg, planMiles, planStores, tierOf } from './route.js';
-export { TIER_FX, GOLD, SAIL, HOMESTEAD_COST, DRY, PACK, tierFx } from './economy.js';
+export { TIER_FX, GOLD, SAIL, HOMESTEAD_COST, DRY, PACK, tierFx, LOAD, DAMP } from './economy.js';
 export { goldAt, panOutcome, rockerOutcome, applyGold, nuggetsOf } from './gold.js';
 export { CARRY, CARRY_V14, newLedger, startSeason, closeJourney, tiersOpen, unlocksFor, yearOf, normalizeLedger, mergeLedger, mergeWw15 } from './seasons.js';
 export { newFarm, foundSite, farmBalance, canBuild, buildPiece, bankJourney, farmGifts, homesteadView, normalizeFarm, mergeFarm } from './homestead.js';
