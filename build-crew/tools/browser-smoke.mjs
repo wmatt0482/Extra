@@ -26,6 +26,8 @@ async function bounded(p, label, ms = 15000) {
     clearTimeout(timer);
   }
 }
+/** The jobs on the board: ten in the yard, five at the harbor, five on the hillside (0.6). */
+const JOBS = 20;
 const BASE = process.env.BASE_URL || 'http://localhost:8080',
   shots = process.env.SHOTS_DIR || path.join(os.tmpdir(), 'build-crew-shots');
 mkdirSync(shots, { recursive: true });
@@ -252,8 +254,8 @@ async function labStages() {
       if (await lp.locator('#modal').isVisible()) await lp.locator('#modal-close').click();
       await lp.locator('#home').click();
     }
-    assert.equal(await lp.evaluate(() => window.__buildCrew.state.save.done.filter((j) => j <= 10).length), 0, 'blueprints never count as the ten jobs');
-    assert.match(await lp.locator('#done-total').textContent(), /^0 \/ 10$/);
+    assert.equal(await lp.evaluate((n) => window.__buildCrew.state.save.done.filter((j) => j <= n).length, JOBS), 0, 'blueprints never count as jobs');
+    assert.match(await lp.locator('#done-total').textContent(), /^0 \/ 20$/);
     await labContext.close();
     console.log('PASS UI stage');
     results.checks.push('Lab: vehicles and blueprints locked until bought, then four blueprints solved with challenges, gallery and Save site reports');
@@ -276,7 +278,8 @@ async function labStages() {
     assert.equal(await bp.locator('#lab-gallery').isHidden(), true);
     assert.equal(await bp.locator('#lab-hud > *').count(), 0);
     await bp.locator('#jobs').click();
-    assert.equal(await bp.locator('.job-tile').count(), 10, 'only the ten jobs are on the board');
+    assert.equal(await bp.locator('.job-tile').count(), JOBS, 'only the twenty jobs are on the board');
+    assert.equal(await bp.locator('.site-row').count(), 3, 'one row per site');
     assert.equal(await bp.locator('#blueprint-row, #vehicle-row').count(), 0);
     await bp.locator('#modal-close').click();
     await bp.evaluate(() => window.__buildCrew.test.start(101));
@@ -291,6 +294,22 @@ async function labStages() {
     await bp.locator('#home').click();
     await bp.locator('#sandbox').click();
     assert.deepEqual(await bp.evaluate(() => window.__buildCrew.state.machines.map((m) => m.kind)), ['skid'], 'earned machines only (job 1 rewards a paint)');
+    // the harbor and the hillside play free too: a job on each, with the machines everyone has (the dump truck, an
+    // optional extra on job 11 for an owner, is simply not there)
+    for (const [id, machines] of [
+      [11, ['skid']],
+      [13, ['crane', 'skid']],
+      [16, ['loader']],
+      [17, ['loader', 'skid']],
+    ]) {
+      await bp.evaluate((id) => window.__buildCrew.test.start(id), id);
+      assert.deepEqual(await bp.evaluate(() => window.__buildCrew.state.machines.map((m) => m.kind)), machines, `job ${id} needs no Lab machine`);
+      await bp.evaluate(() => window.__buildCrew.test.advance({}, 60));
+      const s = await solveIn(bp, id);
+      assert(s.complete, `job ${id} is solved with /lab/ blocked`);
+      await bp.locator('#next-round').waitFor();
+      await bp.locator('#modal-close').click();
+    }
     assert.deepEqual(blockedErrors, [], 'no errors with the Lab blocked');
     await blockedContext.close();
     console.log('PASS UI stage');
@@ -314,11 +333,24 @@ try {
   await addBuilder(page, 'Builder');
   await page.screenshot({ path: path.join(shots, 'title.png') });
   await audit(page);
-  for (let id = 1; id <= 10; id++) {
+  // All twenty jobs in order: the yard (1 to 10), the harbor (11 to 15) and the hillside (16 to 20). The scene moves to
+  // each new site between jobs without a reload: the site on show matches the job's, and it is rebuilt only when the
+  // site changes (twice in this run: into the harbor and into the hillside).
+  const builds0 = await page.evaluate(() => window.__buildCrew.state.siteBuilds);
+  for (let id = 1; id <= JOBS; id++) {
     stage = 'job ' + id;
     await page.evaluate((id) => window.__buildCrew.test.start(id), id);
     await page.evaluate(() => window.__buildCrew.test.advance({}, 120));
     await page.waitForTimeout(200);
+    const where = await page.evaluate(() => {
+      const s = window.__buildCrew.state;
+      return { site: s.site, scene: s.sceneSite, builds: s.siteBuilds, number: document.querySelector('#job-number').textContent };
+    });
+    const site = id <= 10 ? 'yard' : id <= 15 ? 'harbor' : 'hillside';
+    assert.equal(where.site, site, `job ${id} is on the ${site}`);
+    assert.equal(where.scene, site, `the scene shows the ${site} for job ${id}`);
+    assert.equal(where.builds - builds0, id <= 10 ? 0 : id <= 15 ? 1 : 2, `job ${id}: the site is rebuilt only when it changes`);
+    assert.match(where.number, new RegExp(`^THE ${site.toUpperCase()} / JOB ${String(id).padStart(2, '0')}$`));
     await audit(page);
     await page.screenshot({ path: path.join(shots, `round-${String(id).padStart(2, '0')}.png`) });
     const s = await page.evaluate(async (id) => {
@@ -341,10 +373,18 @@ try {
     console.log(`PASS browser solution ${id}`);
   }
   stage = 'sandbox save';
-  assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).done.length, 10);
+  assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).done.length, JOBS);
   await page.locator('#modal-close').click();
   await page.locator('#home').click();
   await page.locator('#sandbox').click();
+  // the sandbox is the yard again (the scene moves back from the hillside), with the four free machines earned
+  assert.deepEqual(
+    await page.evaluate(() => {
+      const s = window.__buildCrew.state;
+      return [s.site, s.sceneSite, s.machines.map((m) => m.kind)];
+    }),
+    ['yard', 'yard', ['skid', 'excavator', 'crane', 'loader']],
+  );
   await page.locator('#open-tray').click();
   await page.locator('[data-spawn="beam"]').click();
   await page.locator('[data-spawn="glass"]').click();
@@ -396,7 +436,7 @@ try {
   assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).yard, null);
   await page.locator('[data-profile]').filter({ hasText: 'Builder' }).click();
   stage = 'sandbox save';
-  assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).done.length, 10);
+  assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).done.length, JOBS);
   console.log('PASS UI stage');
   results.checks.push('separate sibling progress and yard slots');
   stage = 'parent report';
@@ -738,7 +778,7 @@ try {
     fp.on('pageerror', (e) => errors.push(e.message));
     await fp.goto(BASE + '/build-crew/?test=1&nosw=1');
     await ready(fp);
-    for (let id = 1; id <= 10; id++) {
+    for (let id = 1; id <= JOBS; id++) {
       await fp.evaluate((id) => window.__buildCrew.test.start(id), id);
       await fp.evaluate(() => window.__buildCrew.test.advance({}, 30));
       await fp.waitForTimeout(1000);

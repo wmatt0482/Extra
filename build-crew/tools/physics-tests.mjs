@@ -583,6 +583,7 @@ const HARBOR_SITE = { ...SANDBOX, site: 'harbor', id: 98, toys: [] };
 {
   for (const r of ROUNDS.slice(10)) {
     assert(r.machines.every((k) => !MACHINES[k].lab), `job ${r.id} needs no Lab machine`);
+    assert(r.pad && Number.isFinite(r.pad.x + r.pad.z + r.pad.w + r.pad.d), `job ${r.id} has a pad (the camera and the celebration frame it)`);
     assert((r.optional || []).every((k) => MACHINES[k].lab), `job ${r.id}'s optional machines are Lab extras`);
     assert(REWARDS.includes(r.unlock) && !LAB_MACHINES.includes(r.unlock), `job ${r.id} rewards a look, horn or free machine`);
     for (const t of r.toys) {

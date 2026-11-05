@@ -142,7 +142,9 @@ export const HILLSIDE_THEME = {
   daylight: daylight('#e69a6a', { top: '#26375a', bottom: '#a28f86' }),
   terrain: {
     grass: ['#8a9a6b', '#7f9163', '#93a273'],
+    grassSlope: ['#a29a62', '#998f5a'],
     gravel: ['#b8a487', '#ae9a7d', '#c2ae90'],
+    gravelSlope: ['#a38b6c', '#9b8365'],
     rock: '#a65e3b',
     rockDark: '#8c4c30',
     mud: ['#5d4532', '#56402f'],
@@ -560,9 +562,10 @@ const FEATURES = {
 
   /** A rust-orange ship-to-shore crane straddling the quay edge north of the berth, its boom out over the water. */
   stsCrane(group, kit, c) {
+    // its four legs stand on the quay (behind the fence's north line), the boom reaches out over the water
     const z0 = 24,
-      x0 = 6,
-      x1 = 15;
+      x0 = 1,
+      x1 = 9;
     for (const x of [x0, x1]) {
       for (const z of [z0 - 4, z0 + 4]) kit.box(group, x, 9, z, 0.9, 18, 0.9, c.steel);
       kit.box(group, x, 0.5, z0, 1.4, 1, 10, c.dark);
@@ -579,8 +582,8 @@ const FEATURES = {
     kit.box(group, 22, 17.3, z0, 3, 1.6, 3.4, c.cab);
     kit.box(group, 22, 17.1, z0 - 1.72, 2.6, 1, 0.05, c.glass);
     kit.box(group, 22, 13, z0, 2.6, 0.5, 2.6, c.dark);
-    // the rails it runs on
-    for (const x of [x0, x1]) kit.box(group, x, 0.05, z0, 0.3, 0.1, 30, c.rail);
+    // the rails it runs on, along the quay north of the fence
+    for (const x of [x0, x1]) kit.box(group, x, 0.05, 26, 0.3, 0.1, 17, c.rail);
   },
 
   /** A long corrugated transit shed behind the quay to the north-west. */
@@ -778,11 +781,14 @@ function terrainGeometry(site, c, from, to, cell, hole) {
   const hash = (a, b) => Math.abs((Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1);
   const pick = (x, z) => {
     const s = hillsideSurface(x, z),
-      k = Math.floor(hash(Math.floor(x / 3), Math.floor(z / 3)) * 3);
+      k = Math.floor(hash(Math.floor(x / 3), Math.floor(z / 3)) * 3),
+      // the haul slope reads as a slope: its grass is drier and its gravel darker than on the level ground
+      e = 0.3,
+      sloped = Math.hypot(site.height(x + e, z) - site.height(x - e, z), site.height(x, z + e) - site.height(x, z - e)) / (2 * e) > 0.1;
     if (s === 'mud') return c.mud[k % 2];
-    if (s === 'gravel') return c.gravel[k];
+    if (s === 'gravel') return sloped ? c.gravelSlope[k % 2] : c.gravel[k];
     if (s === 'rock') return Math.floor(site.height(x, z) * 2.2) % 2 ? c.rock : c.rockDark;
-    return c.grass[k];
+    return sloped ? c.grassSlope[k % 2] : c.grass[k];
   };
   for (let i = 0; i < n; i++) {
     for (let j = 0; j < n; j++) {

@@ -2605,3 +2605,15 @@ html.touch .machines:has(.machine-card:nth-child(4)) .machine-card svg {
 .job-tile[data-site='hillside'] {
   background: #2d3f3a;
 }
+/* With twenty jobs' paints, decals and horns the looks row scrolls sideways instead of wrapping into a tall block or
+   widening the title panel. */
+.looks {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  max-width: 100%;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+.looks button {
+  flex: 0 0 auto;
+}

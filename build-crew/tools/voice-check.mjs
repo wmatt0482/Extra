@@ -37,7 +37,7 @@ const C = await import('../src/content.mjs');
   must(C.touchHint(C.HINT.grab).includes('tap Grab') && !C.touchHint(C.HINT.grab).includes('press'), 'touch grab hint still says press');
   for (const t of C.SPOKEN_TOASTS) must(src.includes(`'${t}'`), `toast "${t}" is not in the source any more`);
   for (const t of [...C.SPOKEN_TOASTS, C.TRAY_TIP, ...C.STAMPS.map((k) => C.STAMP_HINT(k)), ...Object.values(C.MACHINES).map((m) => C.speakable(m.hint))]) must(known.has(t), `"${t}" is not prepared`);
-  for (const r of C.ALL_JOBS) for (const t of C.SPOKEN.job(r)) must(known.has(t) && t.length <= 200 && !/undefined|SS-|EX-|CR-|DT-|FL-|\b10\d\b/.test(t), `bad line "${t}"`);
+  for (const r of C.ALL_JOBS) for (const t of C.SPOKEN.job(r)) must(known.has(t) && t.length <= 200 && !/undefined|SS-|EX-|CR-|DT-|FL-|WL-|\b10\d\b/.test(t), `bad line "${t}"`);
   // the Lab (0.5): the machines' hints, the forklift and dump-truck coaching, the blueprint lines and the Neat build line are prepared,
   // in their touch wording too, and the unit codes are never read as codes
   for (const t of [C.HINT.forkLower, C.HINT.forkAlign, C.HINT.forkIn, C.HINT.bedLoaded, C.MACHINES.dump.hint, C.MACHINES.fork.hint, C.NEAT_LINE])
@@ -45,6 +45,17 @@ const C = await import('../src/content.mjs');
   must(C.speakable('DT-04 and FL-05') === 'D T zero four and F L zero five', 'unit codes of the Lab machines are spelled out');
   must(C.jobIntro(C.BLUEPRINTS[0]).startsWith('Blueprint. Lighthouse.'), 'blueprint intro');
   for (const k of ['forkLower', 'forkAlign', 'forkIn', 'bedLoaded']) must(src.includes(`HINT.${k}`), `rounds.js no longer shows HINT.${k}`);
+  // the harbor and the hillside (0.6): every new job's intro, goal and reward line, the wheel loader's hint in both
+  // wordings, the slope, mud, grass and Lab-extra hints and the new toasts are prepared, with no unit code or digit
+  for (const r of C.ROUNDS.slice(10)) {
+    for (const t of C.SPOKEN.job(r)) must(known.has(t) && !/\d|WL-/.test(t), `job ${r.id} line "${t}"`);
+    must(C.jobIntro(r).startsWith(`Job ${['eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'][r.id - 11]}.`), `job ${r.id} intro says its number`);
+    must(C.REWARD_SAY[r.unlock], `job ${r.id} reward is said`);
+  }
+  for (const t of [C.MACHINES.loader.hint, C.HINT.steep, C.HINT.mud, C.HINT.grass, C.HINT.optional])
+    must(known.has(C.speakable(t)) && known.has(C.speakable(C.touchHint(t))), `0.6 line "${t}" is not prepared`);
+  must(C.speakable('WL-06') === 'W L zero six', 'the loader code is spelled out');
+  for (const k of ['steep', 'mud', 'grass', 'optional']) must(src.includes(`HINT.${k}`), `rounds.js no longer shows HINT.${k}`);
   console.log(`static: ${known.size} lines, ${C.VOICE_LINES.join('').length} characters, all prepared and sayable`);
 }
 
@@ -163,6 +174,8 @@ const SCENARIOS = {
   'slow-network': { family: familyWith({ cloudVoice: 'en-US-Neural2-F' }), code: CODE, svc: { delay: 1800 } },
   warm: { family: familyWith({ cloudVoice: 'en-US-Neural2-F' }), code: CODE, svc: {}, reload: true },
   'no-builder': { family: null, code: CODE, svc: {}, noBuilder: true },
+  // the harbor and the hillside jobs (0.6) speak in the natural voice too
+  sites: { family: familyWith({ cloudVoice: 'en-US-Neural2-F' }), code: CODE, svc: {}, sites: true },
   // the shared Parent Zone picker: six Google voices, the default chosen for the builder, a pick synced to the family
   picker: { family: familyWith(null), code: CODE, svc: {}, picker: true },
   // the service has no Google key (503): the family's chosen voice cannot be made, so the device voice is the only voice
@@ -203,6 +216,13 @@ async function play(page, sc, name) {
   }, 4000);
   await mark('grab (hint after grabbing)', async () => { await page.evaluate(() => window.__buildCrew.test.action('grab')); }, 3000);
   await mark('repeat the goal button', async () => { await page.locator('#repeat-goal').click(); }, 3500);
+  if (sc.sites) {
+    // the harbor and the hillside (0.6): a job on each new site is read in the natural voice as it starts, and the
+    // wheel loader's first hint follows on the hillside
+    await mark('harbor job start', async () => { await page.evaluate(() => window.__buildCrew.test.start(11)); }, 9000);
+    await mark('hillside job start (wheel loader)', async () => { await page.evaluate(() => window.__buildCrew.test.start(16)); }, 11000);
+    return { moments, startedAt: t0 };
+  }
   await mark('job complete (celebration, reward sheet)', async () => {
     await page.evaluate(async () => {
       const { solve } = await import('./tools/solution.mjs');
@@ -303,10 +323,24 @@ for (const name of wanted) {
   if (early.length) problems.push(`${early.length} line(s) spoken before a builder was chosen`);
   if (errors.length) problems.push('page errors: ' + errors.join(' | '));
   const must = (label) => res.moments.find((m) => m.label.startsWith(label))?.lines.length;
-  const labels = sc.deviceOnly
-    ? ['round 1 start', 'job complete', 'sandbox start', 'save the site']
-    : ['round 1 start', 'first drive', 'job complete', 'sandbox start', 'open the materials tray', 'save the site'];
+  const labels = sc.sites
+    ? ['round 1 start', 'harbor job start', 'hillside job start']
+    : sc.deviceOnly
+      ? ['round 1 start', 'job complete', 'sandbox start', 'save the site']
+      : ['round 1 start', 'first drive', 'job complete', 'sandbox start', 'open the materials tray', 'save the site'];
   for (const label of labels) if (!must(label)) problems.push(`nothing was spoken at "${label}"`);
+  if (sc.sites) {
+    const said = (label) => res.moments.find((m) => m.label.startsWith(label))?.lines.map((l) => l.text) || [];
+    for (const [label, want] of [
+      ['harbor job start', C.jobIntro(C.findJob(11))],
+      ['hillside job start', C.jobIntro(C.findJob(16))],
+      ['hillside job start', [C.speakable(C.touchHint(C.MACHINES.loader.hint)), C.speakable(C.MACHINES.loader.hint)]],
+    ])
+      if (![want].flat().some((w) => said(label).includes(w)))
+        problems.push(`"${[want].flat()[0]}" was not said at "${label}" (said: ${said(label).join(' | ')})`);
+    const unknown = all.filter((l) => !C.VOICE_LINES.includes(l.text));
+    if (unknown.length) problems.push(`lines outside the prepared set: ${unknown.map((l) => l.text).join(' | ')}`);
+  }
   if (sc.deviceOnly) {
     // the robot voice keeps to the job, the reward and the save; the extra first-use lines are for the natural voice
     const extras = new Set([...C.SPOKEN.fixed].filter((t) => !t.startsWith('Open site') && t !== C.jobGoalLine(C.SANDBOX) && t !== 'Site saved.'));

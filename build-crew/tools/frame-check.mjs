@@ -1,4 +1,4 @@
-// The frame-time sample (SPEC §6): a sandbox with 64 toys and all three machines, driven for a moment, then 120 frames
+// The frame-time sample (SPEC §6): a sandbox with 64 toys and the four free machines, driven for a moment, then 120 frames
 // measured after the adaptive quality controller settles. It asserts the SwiftShader wall-frame ceiling, the CPU update
 // budget and the draw-call and triangle caps. Two profiles run: a desktop window (1024x768, the baseline) and a phone
 // (390x844 at device scale 3, touch input, the CPU slowed 4x through CDP, driven by real touch events), which also
@@ -39,7 +39,66 @@ async function fixture(page, tap, { lab = false } = {}) {
   await page.locator('#close-tray')[tap]();
   const state = await page.evaluate(() => window.__buildCrew.state);
   assert.equal(state.blocks.length, 64);
-  assert.equal(state.machines.length, lab ? 5 : 3);
+  // the four free machines (the wheel loader joined in 0.6), and the two Lab machines when bought
+  assert.equal(state.machines.length, lab ? 6 : 4);
+}
+
+/** A job on one of the newer sites, played through the real loop (no test hooks): a builder whose save has jobs 1 to
+ *  19 done opens job `id` from the job board, so the site, its scenery and the job's machines and toys are all there. */
+async function siteFixture(page, tap, id) {
+  await page.waitForFunction(() => window.__buildCrew);
+  await page.locator('#add-player')[tap]();
+  await page.keyboard.type('Site');
+  await page.keyboard.press('Enter');
+  await page.waitForFunction(() => window.__buildCrew.state.playerId);
+  await page.evaluate(() => {
+    const id = window.__buildCrew.state.playerId,
+      done = Array.from({ length: 19 }, (_, i) => i + 1);
+    localStorage.setItem(`buildCrew.${id}.save`, JSON.stringify({ v: 1, done, rewards: ['excavator', 'crane', 'loader'] }));
+  });
+  await page.reload();
+  await page.waitForFunction(() => window.__buildCrew);
+  await page.locator('#jobs')[tap]();
+  await page.locator(`[data-job="${id}"]`)[tap]();
+  await page.waitForFunction((id) => window.__buildCrew.state.round === id, id);
+}
+
+/** The desktop and phone samples on a harbor and a hillside job. */
+async function siteSample(browser, id, phone) {
+  const context = await browser.newContext(
+    phone
+      ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, hasTouch: true, isMobile: true }
+      : { viewport: { width: 1024, height: 768 }, deviceScaleFactor: 1 },
+  );
+  const page = await context.newPage();
+  await page.goto(BASE + '/build-crew/?nosw=1&perf=1');
+  await siteFixture(page, phone ? 'tap' : 'click', id);
+  const site = await page.evaluate(() => window.__buildCrew.state.site);
+  if (phone) await (await context.newCDPSession(page)).send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  await page.waitForTimeout(1500);
+  // drive for a moment (the keyboard on the desktop; the phone holds W the same way through the page's own keys)
+  await page.keyboard.down('w');
+  await page.waitForTimeout(1600);
+  await page.keyboard.up('w');
+  await page.waitForFunction(() => window.__buildCrew.performance.frame.length >= 120, { timeout: 120000 });
+  const limits = { p95FrameMs: 350, p95UpdateMs: phone ? 33.3 : 16.7, drawCalls: 150, triangles: 120000 };
+  const result = await measure(
+    page,
+    phone ? 60 : 120,
+    phone
+      ? 'Chromium headless / ANGLE SwiftShader / 390x844 at device scale 3, touch, CPU throttled 4x'
+      : 'Chromium headless / ANGLE SwiftShader / 1024x768 logical pixels with adaptive render resolution',
+    `job ${id} on the ${site} (its machines, toys and the site's scenery)`,
+    { site, limits },
+  );
+  console.log(result);
+  assert.equal(result.quality.tier, phone ? 'phone' : 'desktop');
+  assert(result.p95FrameMs < limits.p95FrameMs);
+  assert(result.p95UpdateMs < limits.p95UpdateMs);
+  assert(result.drawCalls <= limits.drawCalls);
+  assert(result.triangles <= limits.triangles);
+  await context.close();
+  return result;
 }
 
 /** Resets the samples and waits for `n` frames, then returns the summary. */
@@ -141,7 +200,17 @@ try {
     assert(result.triangles <= 120000);
     await context.close();
   }
-  writeFileSync(resultsPath('frame-results.json'), JSON.stringify({ ...out.desktop, desktopLab: out.desktopLab, phone: out.phone }, null, 2) + '\n');
+  // ---- The harbor (job 13: crane, skid steer, barge, quay crane) and the hillside (job 20: all four free machines on
+  // the slope), desktop and phone ----
+  out.sites = {};
+  for (const id of [13, 20]) {
+    out.sites[`job${id}Desktop`] = await siteSample(browser, id, false);
+    out.sites[`job${id}Phone`] = await siteSample(browser, id, true);
+  }
+  writeFileSync(
+    resultsPath('frame-results.json'),
+    JSON.stringify({ ...out.desktop, desktopLab: out.desktopLab, phone: out.phone, sites: out.sites }, null, 2) + '\n',
+  );
 } finally {
   await browser.close();
 }

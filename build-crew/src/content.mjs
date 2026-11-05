@@ -290,6 +290,7 @@ export const ROUNDS = [
     title: 'Warehouse shelf',
     goal: 'Build the shelf: four steel posts, the slab across them and a crate on top.',
     machines: ['crane', 'excavator'],
+    pad: { x: 5, z: 5, w: 8, d: 8 },
     toys: [
       ...[
         [-6, 3],

@@ -71,6 +71,28 @@ try {
   await page.locator('#my-yard').click();
   const state = await page.evaluate(() => window.__buildCrew.state);
   if (state.blocks.length !== 3) throw Error('saved yard was not restored');
+  // The newer sites play offline too: a builder with jobs 1 to 15 done opens the hillside's first job (its terrain,
+  // the wheel loader and the site switch all come from the cache), then the harbor's last one.
+  mark('hillside offline');
+  await page.locator('#home').click();
+  await page.evaluate(() => {
+    const id = window.__buildCrew.state.playerId;
+    localStorage.setItem(`buildCrew.${id}.save`, JSON.stringify({ v: 1, done: Array.from({ length: 15 }, (_, i) => i + 1), rewards: ['excavator', 'crane'] }));
+  });
+  await bounded(page.reload(), 'offline reload with progress');
+  await bounded(page.waitForFunction(() => window.__buildCrew), 'offline boot with progress');
+  for (const [id, site] of [
+    [16, 'hillside'],
+    [15, 'harbor'],
+  ]) {
+    await page.locator('#jobs').click();
+    await page.locator(`[data-job="${id}"]`).click();
+    await bounded(page.waitForFunction((id) => window.__buildCrew.state.round === id, id), `offline job ${id}`);
+    const s = await page.evaluate(() => window.__buildCrew.state);
+    if (s.site !== site || s.sceneSite !== site) throw Error(`job ${id} did not open on the ${site} offline`);
+    mark(`job ${id} on the ${site} offline`, { machines: s.machines.map((m) => m.kind) });
+    await page.locator('#home').click();
+  }
   mark('success');
   writeFileSync(output, JSON.stringify({ passed: true, trace }, null, 2) + '\n');
 } catch (e) {
