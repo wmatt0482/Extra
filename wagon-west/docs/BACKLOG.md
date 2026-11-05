@@ -3,19 +3,20 @@
 Ideas Matt parked for later. Nothing here is scheduled; each line notes what already exists so the next build starts
 from the right place.
 
-## Parked Nov 4, 2026 (fishing and finds)
+## Parked Nov 4, 2026 (fishing and finds): all five DONE in Wagon West 1.7 (SPEC v1.7)
 
-- **The fishing rod bends.** The rod should flex with the fight: a deeper bend when reeling, a wobble when the line
-  goes yellow or red. Today the rod is a straight line in `src/scene/fishing2.js`.
-- **Flip rocks to find bugs for bait.** A new way to get bait: tap rocks by the water to flip them and find worms,
-  beetles or crickets. Today bait comes from worms (always there), grasshoppers caught at camp, and the store spoon
-  (`src/content/fish.js` BAITS).
-- **More kinds of fish.** Six species today: channel catfish, hornyhead chub, cutthroat trout, white sturgeon,
-  redband trout, chinook salmon (`src/content/fish.js`). Candidates to source by river: northern pike-minnow, mountain
-  whitefish, burbot, bluegill (check which are native to each river, as v1.4 did for the Platte).
-- **A bear comes and scares the fish.** A bear wanders to the far bank while fishing; the fish scatter and the child
-  waits or moves spots. Kid rules (SPEC §1): at a distance, nothing scary up close, nobody hurt. A grizzly already
-  appears on a ridge as a trail fact (`src/content/trailFacts.js`, `src/scene/ambient.js`); this would bring a bear
-  into the fishing scene.
-- **Finding arrowheads when you…** (the note was cut off; ask Matt how the sentence ends). Today an arrowhead is one
-  of Frodo's finds, sketched in the journal and left where it lay (`src/content/finds.js`).
+- [x] **The fishing rod bends.** DONE (1.7): the rod is a curve with a spring in `src/scene/fishing2.js`: a gentle bend at
+  rest, deep while reeling (more for a bigger fish), a tremble on the yellow, a hard quiver on the red, a spring back
+  when the fish lands or wiggles off; the line runs from the bent tip.
+- [x] **Flip rocks to find bugs for bait.** DONE (1.7): "Flip rocks" at camp and at the river stops
+  (`src/journey/rocks.js`, `src/scene/rocks17.js`); worms, beetles, crickets and crawdads become four new baits in
+  `src/content/fish.js` BAITS, each with its own fish, and no bait is best everywhere.
+- [x] **More kinds of fish.** DONE (1.7): mountain whitefish, northern pikeminnow, largescale sucker, green sunfish and
+  Sacramento perch, each only where it is native (`docs/SOURCES.md`). Burbot was checked and left out (it is native to
+  none of the trail's rivers); bluegill was not added (its native range on the Platte was not checked; the green sunfish
+  stands in for the plains' sunfish).
+- [x] **A bear comes and scares the fish.** DONE (1.7): about one session in eight, never twice in a row; far bank
+  only; wait for it to leave or try another spot (`src/journey/fishing.js` `planBear`, `src/scene/fishing2.js`).
+- [x] **Finding arrowheads when you…** DONE (1.7), built as "now and then a flipped rock hides a stone arrowhead": the
+  existing find, sketched in the journal and left where it lay, counted on the Finds page. (The owner's note was cut
+  off; if it was meant to end differently, say how.)

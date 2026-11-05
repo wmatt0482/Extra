@@ -322,6 +322,18 @@ build notes). The Lab only listens and decorates: **no Lab call reads or writes 
 - VERSION 1.6.0; the service worker is `wagon-west-v1.6.0` (the bridge, the choice panel and its words are in the shell; the Lab's own modules are cached
   as the page loads them).
 
+## 1.7 · the water: a bending rod, rocks to flip, more fish, a bear
+
+- **The rod bends** (`src/scene/fishing2.js`): a curve with a spring: gentle at rest, deep while reeling (more for a bigger fish), a tremble on the yellow, a quiver on the red, a spring back when the fish lands or
+  wiggles off; the line runs from the bent tip.
+- **Flip rocks** (`src/journey/rocks.js`, `src/scene/rocks17.js`, `src/scene/sprites17.js`): five rocks by the water at camp and at the river stops; worms, beetles, crickets and crawdads fill four new bait tins
+  (`BAITS` in `src/content/fish.js`; no bait is best everywhere), or it is just mud, and now and then a stone arrowhead (the existing find: sketched in the journal and left where it lay).
+- **Five more fish**: mountain whitefish, northern pikeminnow, largescale sucker, green sunfish and Sacramento perch, each only where it is native (`docs/SOURCES.md`; no burbot on the trail), with sprites, cards
+  and fish-log tiles. The free fishing session still brings home about 1.3's food (the sim: −3.7 %).
+- **A bear at the fishing hole** about one session in eight (never twice in a row): far bank only, the fish scatter, the dog barks, wait for it to leave or try another spot, then a true fact about bears and salmon.
+- Tests: `journey-tests.mjs`, `economy-sim.mjs --check --homestead`, `content-audit.mjs`, `scene-smoke.mjs` (`V17_ONLY=1`), `ui-smoke.mjs` (`FUN_ONLY=1 FUN_SECTIONS=rocks`).
+- VERSION 1.7.0; the service worker is `wagon-west-v1.7.0` (the three new files are cached as the page loads them).
+
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail

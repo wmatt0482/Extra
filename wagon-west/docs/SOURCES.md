@@ -358,6 +358,10 @@ redband trout, the Columbia Chinook salmon. The sizes and pounds in the game are
 - *v1.7, five more fish.* Checked Nov 5, 2026 by web search (the agency pages below could be read in search results only; direct fetches of
   seagrant.oregonstate.edu were blocked in the build session, so those facts rest on the search-result text). Each fish is only on the waters
   where it is native; the game's sizes and pounds are game numbers.
+- <a id="fact-bear-salmon"></a>**bear-salmon** (the fishing-hole bear's fact line): National Park Service, Katmai National Park and Preserve: brown bears (the grizzly is a brown bear) feed on
+  salmon in the park's rivers as they fatten up before hibernating, and the park's advice is to give a bear space and back away quietly. The game says "Grizzly bears catch salmon in rivers to fatten up
+  for their long winter sleep. Give a bear plenty of room, and it goes on with its supper." Not verified: that black bears also fish for salmon on the trail's rivers (no page reached): the game's line is
+  about grizzlies only.
 - <a id="fish-mountain-whitefish"></a>**mountain-whitefish**: Wyoming Game and Fish Department, the Bear River Basin fish list (wgfd.wyo.gov/media/1282/download)
   names it a native game fish of the Bear River; Idaho's Snake River basin holds it in large numbers (Idaho Fish and Game, via Hatch Magazine's
   "The most Idaho fish of them all", secondary); Oregon Sea Grant, "Mountain Whitefish": native to the cold upper tributaries of the Willamette; the
@@ -448,6 +452,7 @@ sources above already cover (the forts, Chimney Rock, the Snake River, The Dalle
 | White sturgeon: the biggest freshwater fish in North America, lives more than 100 years; in the Snake at Three Island Crossing's reach | confirmed | https://idfg.idaho.gov/fish/sturgeon |
 | Redband trout: rainbow trout of the Columbia River country with a rosy red stripe | confirmed on secondary pages; the Blue Mountains' streams not confirmed on an ODFW page | https://westernnativetrout.org/?p=95 ; https://nativefishsociety.org/learn/native-species/redband-trout |
 | Chinook salmon: the biggest Pacific salmon, also called king salmon | confirmed | https://wdfw.wa.gov/species-habitats/species/oncorhynchus-tshawytscha ; https://webarchive.library.unt.edu/web/20090114085910/http://www.nmfs.noaa.gov/fishwatch/species/chinook_salmon.htm ; https://seagrant.oregonstate.edu/WRF/native-fishes/salmon-and-trout/chinook-salmon |
+| Bear at the fishing hole: grizzlies catch salmon in rivers to fatten up before hibernating; give a bear room | confirmed (NPS Katmai); black bears fishing: could not verify (not claimed) | https://www.nps.gov/katm/planyourvisit/bear-encounters-in-katmai.htm |
 | Mountain whitefish: native to the Bear River basin and the Snake basin | confirmed (WGFD Bear River fish list; Idaho via a secondary page) | https://wgfd.wyo.gov/media/1282/download ; https://www.hatchmag.com/articles/most-idaho-fish-them-all/7715664 |
 | Mountain whitefish: Willamette tributaries; Truckee drainage at the edge of the range | Willamette confirmed (Sea Grant); Truckee on a secondary page only | https://seagrant.oregonstate.edu/WRF/native-fishes/salmon-and-trout/mountain-whitefish ; https://en.wikipedia.org/wiki/Mountain_whitefish |
 | Mountain whitefish: in the Green River | could not verify (not used there) | — |

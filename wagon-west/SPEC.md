@@ -2324,3 +2324,64 @@ sessions stay 20.0 / 24.0 / 12.0, nobody is without food more than a day running
 ### 5. Tests
 `journey-tests.mjs` (the six, `choicesAt` / `choiceAt` / `applyChoice`, the day credit, the merge, whole journeys taking every b, the preview and the stop line, a snapshot of `economy.js`),
 `content-audit.mjs` §5d (every spoken line reachable: the choice at its stop, the preview in the leg before), `ui-smoke.mjs` `LAB_ONLY=1`, `scene-smoke.mjs` `V16_ONLY=1`, `sync-smoke.mjs`.
+
+## v1.7 — the rod bends, rocks to flip, more fish, a bear, an arrowhead (the owner's parked fishing and finds ideas, Nov 4, `docs/BACKLOG.md`; "pure fun, no lessons attached")
+
+Five additions around the water. Kid rules (§1) stand: nothing here is timed, nothing is lost, nothing is scary, and every spoken line is in `src/meta/voiceTexts.js` (the fixed lines are in `MOMENTS`, `DOG_LINES`
+and `BAITS`; the fish cards are in the river suit), so `tools/content-audit.mjs`'s voice coverage and word audits cover them.
+
+### 1. The rod bends (`src/scene/fishing2.js`)
+The rod is a curve from the hand (`rodShape`): an angle that grows along its length, so the bend is deepest at the tip, and the line runs from the bent tip. `rodTarget` says how far it bends (0 straight to 1
+deep) and a spring (`F.rod`, a little underdamped) follows it: a gentle bend at rest (0.22), a nibble 0.3, deep while a hooked fish is reeled (0.56 + 0.4 × size while the pointer is held, a little less
+when it is not, where size is the fish's pounds, so a sturgeon bends it further than a sunfish), a tremble on the yellow (about 0.02 of bend at 46 Hz), a hard quiver on the red (about 0.1 at 55 Hz) and, the
+moment the fish lands or wiggles off, a spring back through straight. Reduced motion keeps the bend and drops the spring and the shake. `debugMini()` carries `rod`, `rodTip` and `rodRest`.
+
+### 2. Flip rocks for bait (`src/journey/rocks.js`, `src/scene/rocks17.js`, `src/scene/sprites17.js`)
+- **The game.** `scene.startRocks({ seed, rocks: [{ i, kind }] })`: a gravel bank by the water with five rocks. A tap (or Space, for the next one) tips a rock over and shows what was under it: a fat worm, a
+  beetle, a cricket, a crawdad or "just mud"; a critter hops into the bait tin at the bottom left. `{ type: 'rock', i, kind }` per flip, `{ type: 'rocksEnd', flipped }` after the fifth. No timer.
+- **The odds** (`ROCKS`, journey/rocks.js): worm 0.30, beetle 0.20, cricket 0.20, crawdad 0.10, mud 0.20; the plan is made up front from the seed (`rocksPlan`), so a reload cannot re-roll it.
+  `flipRock` applies one rock (idempotent); `endRocks` marks the round used. One round a camp and one a river stop (the flags `J.trip.rocks` / `J.trip.rocksStop`, like the skipping stones); the card is
+  offered while some tin is short of full (`rocksFree`).
+- **The baits** (`BAITS` in `src/content/fish.js`): Fat worms (`fatworms`), Beetles, Crickets, Crawdads, each a tin of at most eight in `J.goods`, one used a cast (the same rule as grasshoppers; a tin that runs
+  out falls back to worms), each with its own `sizeBias` / `biteSooner` and a weight for every species (`FISH[].bait`): fat worms for catfish, suckers and sturgeon; beetles for trout, whitefish and sunfish;
+  crickets for the quick small fish (sooner bites); crawdads for the big hunters (pikeminnow, catfish). The bait row shows a critter bait only while its tin has some.
+  **No bait is the best everywhere** (journey-tests): scored as pounds per second of waiting, the best bait is crawdads on the Kansas and the Platte, crickets on the Sweetwater, beetles on the creeks and the
+  Humboldt, grasshoppers on the Bear, fat worms on the Snake and the shiny spoon on the salmon rivers; no session passes the 24 lb cap.
+- **Where.** Camp (any leg: every camp is by water) as a new card "Flip rocks", and a card "Flip some rocks?" after the crossing at the river stops (after the stones). Neither costs a day or food.
+
+### 3. More kinds of fish (`src/content/fish.js`, `cards.js`, `sprites14.js`; sources in `docs/SOURCES.md`)
+Five more species, each only on the waters where it is native (checked by search against state and federal fish and wildlife pages; the notes and what could not be verified are in SOURCES):
+
+| Fish | Waters in the game | Card (suit "Fish of the trail") |
+|---|---|---|
+| mountain whitefish | Bear River, Snake, Columbia, Willamette, Truckee | "native fish of cold western rivers, and they swim in the Snake River and the Bear River" |
+| northern pikeminnow | Columbia, Willamette | "big native hunters of the Columbia River country, and they eat smaller fish" |
+| largescale sucker | Columbia, Willamette | "the most common native fish of all" in the Willamette |
+| green sunfish | Kansas, Big Blue, Platte | "a common native fish of Kansas and Nebraska" |
+| Sacramento perch | Sacramento | "California's only native sunfish ... the only sunfish native west of the Rocky Mountains" |
+
+**No burbot**: it is native to the Wind and Bighorn drainages and, in Idaho, the Kootenai, and is an illegal introduction in the Green River, so no river on the trail has one. Each fish has its own sprite in
+the house style (a silver whitefish with big scales; an olive pikeminnow with a big mouth and a spot at the tail; a dusky sucker with a mouth underneath; a deep-bodied green sunfish with blue cheek
+streaks; a barred silver perch), a card, a fish-log tile (the log is data-driven: eleven now) and a sized place in the fight (`fight`, `sizeIn`, `lb`). The pounds are game numbers; a free session still
+brings home within 10 % of 1.3's mean (the sim: −3.7 %). The deed "River guide" stays the six first fish (so no token comes sooner than it did); the v1.5 waters that had no pool colours of their own
+(Big Blue, Green, Humboldt, Truckee, Sacramento, Willamette, Umpqua, Rogue) now have them.
+
+### 4. A bear at the fishing hole (`journey/fishing.js` `planBear`, `scene/fishing2.js`)
+- **When.** About one session in eight (`BEAR.oneIn`; one in seven after a session with none, so eight overall), never twice in a row (`J.moments.bearLast`), never on a safety-net session, on the 2nd or 3rd
+  cast, fishing or eating berries (`session.bear = { at, kind }`, drawn after every other draw so older seeds are unchanged).
+- **The scene.** Far bank only: a small bear (about 8 % of the height; the existing `drawBear`) walks in from the right edge, the fish dart away from the bobber, the bobber goes still and the dog
+  (if there is one) barks and sits close. Events `{ type: 'fishBear', i, stage }`: `arrive`, `ask` (the scene waits; after 25 s it waits it out by itself), then the app's `scene.fishingBear('wait' | 'spot')`:
+  `wait` then `leave` (the bear lingers, then wanders off to the right) and `gone`; `spot` then `move` (the pool changes) and `gone` with `moved: true`. The same cast then goes on with a fresh bite wait.
+- **The app.** Two big buttons ("Wait for it to leave", "Try another spot"; the bait row's look) and then the true fact: "Grizzly bears catch salmon in rivers to fatten up for their long winter sleep.
+  Give a bear plenty of room, and it goes on with its supper." (SOURCES `fact-bear-salmon`). Both answers are free and are counted (`J.totals.bearsSeen / bearWaits / bearMoves`).
+- **Kid rules.** A bear on the far bank only, never approaching; nobody hurt, nothing close or loud. The mock scene meets a bear only when a test sets `__mockScript.bear`.
+
+### 5. Arrowheads under rocks
+The owner's note was cut off ("Finding arrowheads when you ..."); built as: now and then (6 % a rock, at most one a round, only on legs whose biome has arrowheads) a flipped rock hides a stone
+arrowhead. It is the existing `arrowhead` find: sketched in the journal (a page slides in: "left where it lay"), never kept, with its sourced text (`SOURCES.md#find-arrowhead`), counted on the Finds page.
+
+### 6. Tests
+`journey-tests.mjs` (rock outcomes and odds, the tins and the bait row, bait odds, the new species by water and their cards, the bear's cadence and counters, the arrowhead find), `economy-sim.mjs --check --homestead`
+(passes), `content-audit.mjs`, `scene-smoke.mjs` (`V17_ONLY=1`: the rod's states and spring-back, the rocks and the journal sketch, eleven sprites each its own picture, the bear's geometry, both answers,
+the mock; two perf cases), `ui-smoke.mjs` (`FUN_ONLY=1 FUN_SECTIONS=rocks`: the camp card, five worms in the tin, the new bait row and its use, an arrowhead, the bear's two answers and the fact, never twice in a row; the Kansas stop's new card).
+VERSION 1.7.0, the service worker `wagon-west-v1.7.0`.
