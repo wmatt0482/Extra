@@ -249,7 +249,9 @@ export function deleteList(d, id) {
 /** The player follows the class lists: the active list is the built-in sample or a class list. */
 export const followsClass = (d) => { const l = activeList(d); return !!(l && (l.sample || l.classId)); };
 /** Make a class list (src/data/classLists.js) the active list. Its id is the class list's id on every device. A list
- *  already active with that classId: nothing (null). An archived copy comes back (restored). Returns the list. */
+ *  already active with that classId: nothing (null). An archived copy comes back (restored). Returns the list.
+ *  The list keeps classId, so the player follows the class lists from then on (followsClass): Parents → "Use for …"
+ *  on a pasted list also means "follow the class lists" (each new week applies on its own until "Stop following"). */
 export function applyClassList(d, cl, now) {
   if (!cl || !cl.id) return null;
   const cur = activeList(d);
@@ -258,6 +260,7 @@ export function applyClassList(d, cl, now) {
   const old = listById(d, cl.id);
   if (old) {
     old.classId = cl.id; old.name = cl.name; old.pattern = normalizePattern(cl.pattern);
+    old.editedAt = now;          // v3.9.1: following again (after "Stop following") wins a sync merge over the stopped copy
     restoreList(d, cl.id, now);
     return old;
   }
