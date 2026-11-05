@@ -3690,6 +3690,102 @@ console.log('\nv1.7 fishing: rocks, baits, species, the bear');
   });
 }
 
+console.log('\nv1.7.1 food: the carrying limit, the damp flour, the food cap');
+{
+  const S = await import('../src/journey/sim.js');
+  const SUP = await import('../src/journey/supplies.js');
+  const { LOAD, DAMP } = economyNs;
+  const kinds = (J) => FOOD_KINDS.reduce((a, k) => a + J.foods[k], 0);
+  const fill = (J, lb) => { J.foods = { flour: Math.round(lb * 0.5), bacon: Math.round(lb * 0.3), beans: lb - Math.round(lb * 0.5) - Math.round(lb * 0.3), other: 0 }; syncFood(J); };
+  test('the carrying limit: 600 lb; a store sells only the sacks that fit (and charges for those), refuses a full wagon; a hunt, a catch, a gift, a find or a bonus never pushes past it and what is left is counted', () => {
+    assert.deepEqual(LOAD, { foodLb: 600 });
+    const J = mk(); J.cash = 500; fill(J, 520);
+    const c0 = J.cash, r = buy(J, { item: 'flour', qty: 4 });
+    assert.ok(r.ok && r.full); assert.equal(r.qty, 1, 'one 50 lb sack fits in 80 lb of room'); assert.equal(J.cash, c0 - r.cost); assert.equal(r.cost, priceAt('flour', storeLeg(J), J.season));
+    assert.equal(J.food, 570);
+    const no = buy(J, { item: 'flour', qty: 1 }); assert.equal(no.ok, false); assert.equal(no.reason, 'full'); assert.equal(J.cash, c0 - r.cost, 'a refused sack costs nothing');
+    assert.ok(buy(J, { item: 'parts', qty: 1 }).ok, 'goods that are not food still sell');
+    J.goods.arrows = 5; const pelts = J.goods.pelts;
+    const h = applyHunt(J, { meatLb: 40 }); assert.deepEqual([h.foodLb, h.leftLb, h.full], [30, 10, true]); assert.equal(J.food, LOAD.foodLb);
+    assert.equal(J.goods.pelts, pelts + 2, 'the bow brought down 40 lb: a big hunt\'s two pelts, though only 30 lb fit');
+    const f = applyFish(J, { fishLb: 12 }); assert.deepEqual([f.foodLb, f.leftLb], [0, 12]);
+    assert.equal(J.totals.leftBehind, 22); assert.equal(J.trip.leftBehind, 22);
+    assert.equal(J.food, LOAD.foodLb); assert.equal(J.food, kinds(J));
+    const g = meetPerson(J, 'hale'); if (g.gift && g.gift.kind === 'food') { assert.equal(g.gift.foodLb, 0); assert.ok(g.gift.full); }
+    assert.equal(J.food, LOAD.foodLb);
+    // a bonus (wild plums) on a full wagon
+    J.trip.events = [{ id: 'berries', kind: 'bonus', atMile: J.milesDone + 1, fired: false }]; J.trip.markers = [];
+    const d = tickDay(J, { rand: mulberry32(5) }); assert.ok(J.food <= LOAD.foodLb, `${J.food} lb after the plums`);
+    if (d.event && d.event.kind === 'bonus') assert.ok(d.event.foodAdded <= LOAD.foodLb - (J.food - d.event.foodAdded));
+  });
+  test('a full fishing session: only what fits goes in, the rest goes back in the river (said in the summary, kid-safe words)', () => {
+    const J = mk(PLAIN, 41); fill(J, 595);
+    const Sx = S.fishingSession(J, { rand: mulberry32(9) }); Sx.casts.forEach((c, k) => S.landCast(J, Sx, k));
+    const r = S.endFishing(J, Sx);
+    assert.ok(J.food <= LOAD.foodLb && r.lb <= 5, `lb ${r.lb}`);
+    if (r.full) { assert.ok(/can't carry more/.test(r.summary.text) && r.summary.say === r.summary.text); assert.ok(!/rot|spoil|wast/i.test(r.summary.text)); }
+  });
+  test('trades: the offer and the problem ask only the trades whose food fits ("fits"); a trade on a nearly full wagon keeps the goods it cannot use; a full wagon is the "full" offer', () => {
+    const J = mk(PLAIN, 42); fill(J, 450); J.goods.pelts = 30; J.tokens = 0;
+    const o = tradeOffer(J); assert.ok(o.fits >= 1);
+    assert.equal(o.trades, Math.min(Math.floor(o.have / o.rate[0]), o.fits));
+    for (const fact of ['7x8', '9x12', '12x12', null]) {
+      const p = problemFor({ kind: 'trade', fact, leg: J.legId, season: J.season, rand: mulberry32(3), offer: o });
+      assert.ok(p.meta.getN * lbOf(o.get) <= LOAD.foodLb - J.food, `${fact}: the story asks ${p.meta.getN} ${o.get} into ${LOAD.foodLb - J.food} lb of room`);
+    }
+    const before = J.goods.pelts, r = applyTrade(J, { giveN: 30, getN: 20, give: 'pelts', get: 'flour', rate: [3, 2] });
+    assert.ok(r.full); assert.equal(r.got, 2); assert.equal(r.gave, 3); assert.equal(J.goods.pelts, before - 3); assert.ok(J.food <= LOAD.foodLb);
+    fill(J, 598); J.tokens = 40;
+    const full = tradeOffer(J); assert.equal(full.kind, 'full'); assert.equal(full.trades, 0);
+    const none = applyTrade(J, { giveN: 6, getN: 4, give: 'pelts', get: 'flour', rate: [3, 2] }); assert.deepEqual([none.got, none.gave], [0, 0], 'nothing changes hands');
+  });
+  test('damp flour: the arithmetic (a quarter of the pile above 400 lb and above what the road ahead needs at full rations × 1.1, in 5 lb steps, at least 10)', () => {
+    assert.deepEqual(DAMP, { over: 400, ahead: 1.1, share: 0.25, min: 10, step: 5 });
+    assert.equal(SUP.dampLb(600, 200), 50); assert.equal(SUP.dampLb(600, 500), 10); assert.equal(SUP.dampLb(430, 100), 0, '7.5 lb is under the 10 lb least');
+    assert.equal(SUP.dampLb(440, 100), 10); assert.equal(SUP.dampLb(400, 0), 0); assert.equal(SUP.dampLb(600, 560), 0, 'the road ahead needs it all');
+    const J = mk(); fill(J, 300); J.foods.other = 40; syncFood(J);
+    const r = SUP.setAsideFood(J, 200); assert.deepEqual(r, { lb: 200, flour: 150 }, 'flour first'); assert.equal(J.foods.flour, 0); assert.equal(J.foods.other, 0); assert.equal(J.totals.setAside, 200);
+  });
+  test('damp flour on arrival: a heavy wagon sets some aside at a stop (flour first), never below what the road ahead needs; not a light wagon, not at the end of the trail; idempotent', () => {
+    const J = mk(PLAIN, 43); fill(J, 590);
+    J.milesDone = (S.currentLeg ? S.currentLeg(J) : legList()[J.legIndex]).miles;
+    const flour = J.foods.flour, need = foodToNextFort({ ...J, rations: 'full', trip: { ...J.trip, arrived: true } }).lb;
+    const res = arrive(J); assert.ok(res.damp, 'set aside'); assert.equal(res.damp.lb, SUP.dampLb(590, need)); assert.equal(res.damp.flour, res.damp.lb); assert.equal(J.foods.flour, flour - res.damp.lb);
+    assert.ok(J.food >= Math.max(DAMP.over, Math.ceil(need * DAMP.ahead)), 'the road ahead keeps its food');
+    const again = arrive(J); assert.equal(J.food, 590 - res.damp.lb, 'once'); assert.equal(again.damp.lb, res.damp.lb);
+    const L = mk(PLAIN, 44); fill(L, 380); L.milesDone = legList()[L.legIndex].miles; assert.ok(!arrive(L).damp, 'a light wagon keeps it all');
+    // the end of the trail: nothing is set aside
+    const E = mk(PLAIN, 45); let guard = 0; while (!E.done && E.legIndex < legList().length - 1 && guard++ < 40) { E.milesDone = legList()[E.legIndex].miles; arrive(E); nextLeg(E); }
+    fill(E, 600); E.milesDone = legList()[E.legIndex].miles; const last = arrive(E); assert.ok(last && !last.damp && E.food === 600, 'not at the end');
+  });
+  test('the food cap over whole journeys: a kid who hunts, fishes and trades at every chance and buys twenty sacks at every store never carries more than 600 lb, never goes below 0, and arrives', () => {
+    for (const route of ['emigrant', 'gold-road']) for (let seed = 1; seed <= 12; seed++) {
+      const J = createJourney({ route, seed: 900 + seed, companions: PLAIN, journeyN: 2, year: 1848 }); J.cash = 5000;
+      const rand = mulberry32(seed), check = (where) => { assert.ok(J.food <= LOAD.foodLb && J.food >= 0 && J.food === kinds(J), `${route} ${seed} ${where}: ${J.food} lb`); };
+      buy(J, { item: 'flour', qty: 20 }); check('Independence');
+      for (let g = 0; g < 60 && !J.done; g++) {
+        if (legList()[J.legIndex].voyage) J.milesDone = legList()[J.legIndex].miles;      // (the voyage home has no trail days)
+        for (let d = 0; d < 400 && !legList()[J.legIndex].voyage; d++) {
+          const r = tickDay(J, { rand }); check('day');
+          if (r.marker) applyMarker(J, { correct: true });
+          if (r.event && r.event.kind === 'hunt') { J.goods.arrows = 10; applyHunt(J, { meatLb: 120 }); }
+          if (r.event && r.event.kind === 'fish') applyFish(J, { fishLb: 24 });
+          if (r.event && r.event.kind === 'trade') { const o = tradeOffer(J); const p = problemFor({ kind: 'trade', fact: '12x12', leg: J.legId, season: J.season, rand, offer: o }); applyTrade(J, p.meta); }
+          check('event');
+          if (r.arrived) break;
+        }
+        arrive(J); check('arrive');
+        for (const p of peopleAt(J, J.legId)) meetPerson(J, p.id);
+        J.goods.arrows = 10; applyHunt(J, { meatLb: 200 }); applyFish(J, { fishLb: 24 }); check('stop');
+        if (legList()[J.legIndex].stop.kind === 'fort') { buy(J, { item: 'flour', qty: 20 }); buy(J, { item: 'beans', qty: 20 }); check('store'); }
+        nextLeg(J);
+      }
+      assert.ok(J.done, `${route} ${seed} arrives`);
+      assert.ok((J.totals.leftBehind | 0) > 0, 'some food was left for the next party');
+    }
+  });
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('FAILED:\n  ' + failures.join('\n  ')); process.exit(1); }
 console.log('ALL JOURNEY TESTS PASSED');
