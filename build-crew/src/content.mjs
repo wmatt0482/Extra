@@ -379,6 +379,11 @@ export const ROUNDS = [
     title: 'Ravine bridge',
     goal: 'Bridge the ravine for the toy car: stand a barrel on each side, then lay the beam across.',
     machines: ['loader', 'crane'],
+    // the machines start up on the terrace, near the ravine (the camera frames them and the bridge together)
+    spawns: [
+      [-8, 7.5],
+      [-2, 7.5],
+    ],
     pad: { x: 6, z: 13, w: 7, d: 3, mark: false },
     toys: [
       on('hillside', -9, 13, 'barrel', COLORS[2]),
