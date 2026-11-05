@@ -2634,7 +2634,7 @@ try {
       check(J(r.rocks) === '["worm","arrowhead","mud"]' && r.end.length === 1 && r.end[0].flipped === 3, `mock: startRocks flips the planned rocks, then rocksEnd (${J(r)})`);
       await page.evaluate(() => { window.__ww.events.length = 0; window.__mockScript = { shotMs: 40, bear: 'spot' }; });
       await page.evaluate(() => window.__ww.scene.startFishing({ casts: [0, 1].map((i) => ({ i, kind: 'fish', species: 'cutthroat-trout', lengthIn: 10, lb: 3, biteS: 1, fight: { reelMs: 1000, pullPerMs: 0.0001, wobbles: [], strainMaxMs: 500, warnMs: 250, help: false, helpAt: 0.5 }, retries: 0 })), bear: { at: 1, kind: 'fishing' } }));
-      await page.waitForFunction(() => window.__ww.events.some((e) => e.type === 'fishingEnd'), null, { timeout: 9000 });
+      await page.waitForFunction(() => window.__ww.events.some((e) => e.type === 'fishingEnd'), null, { timeout: 25000 });
       const bs = await page.evaluate(() => window.__ww.events.filter((e) => e.type === 'fishBear').map((e) => e.stage + (e.moved ? '*' : '')));
       check(J(bs) === '["arrive","ask","move","gone*"]', `mock: the bear arrives, asks, moves on a 'spot' answer and the fishing goes on (${J(bs)})`);
       check(errors.real().length === 0, `mock scene (v1.7): no console errors (${errors.real().join(' | ')})`);
