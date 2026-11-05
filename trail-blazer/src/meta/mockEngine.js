@@ -28,8 +28,14 @@
 // thrusting, waiting).
 // v1.9 (The Lab): start({ chase: true }) is Ghost Chase: the race waits ('parked') until the first GAS (no 'countdown' events, nothing
 // counted down), then 'go'; no place cash; cfg.ghost may be { trace, vehicle, paint, label, look } (the trace is used).
+// v1.9.1: the race runs on a FIXED simulation step (STEP, 1/60 s, like the real engine), not on the frame's dt. With
+//   a variable dt every one of the player's discrete changes (the launch, a gate stop, the hold, the jumps, the crash
+//   and its respawn) landed on a frame boundary and cost up to a frame, while the AI riders' x is a closed-form function
+//   of the race clock: on a slow or jittery frame rate the player fell behind, and the jump-1 landing (~301 m at 60 fps)
+//   fell short of the 300 m checkpoint (~296 m), so the crash respawned at 200 m: +1.1 s, 2nd became 3rd. Now the same
+//   answers give the same race at any frame rate; a frame longer than MAX_STEPS steps slows the whole race (everyone).
 // Test hooks: window.__mockScript = { aiTimes: [s, s, s] (the AI riders' race times; default 7.0, 9.6, 10.4: the
-//   player, ~8.8 s, finishes 2nd), noCrash: true }.
+//   player, ~8.9 s with every gate quick, finishes 2nd), noCrash: true }.
 import { drawRanger } from '../ui/vehiclePreview.js';
 
 const CD_STEP = 0.7;          // seconds between 3, 2, 1, GO
@@ -47,11 +53,13 @@ const HILL_SECTION_M = 60;    // one flag section (a full quick charge)
 const HILL_BURST_S = 0.8;     // seconds per section while thrusting (and the slide back)
 const HILL_AUTO_S = 6;
 const HILL_FLAG_CASH = 150, HILL_SUMMIT_CASH = 1000;
+const STEP = 1 / 60;          // v1.9.1: the fixed simulation step (seconds)
+const MAX_STEPS = 8;          // catch-up steps per frame; a longer stall is dropped (the whole race slows, every rider alike)
 
 export function createGame(canvas, opts = {}) {
   const onEvent = typeof opts.onEvent === 'function' ? opts.onEvent : () => {};
   const ctx = canvas.getContext('2d');
-  let dpr = 1, W = 1, H = 1, raf = 0, last = 0, paused = false, run = null, hill = null;
+  let dpr = 1, W = 1, H = 1, raf = 0, last = 0, acc = 0, paused = false, run = null, hill = null;
   const input = { gas: false, brake: false, boost: false };
 
   function resize() {
@@ -90,7 +98,7 @@ export function createGame(canvas, opts = {}) {
     hill = null;
     if (!cfg.chase) emit({ type: 'countdown', n: 3 });
     paused = false;
-    last = performance.now();
+    last = performance.now(); acc = 0;
     if (!raf) raf = requestAnimationFrame(frame);
   }
 
@@ -353,10 +361,16 @@ export function createGame(canvas, opts = {}) {
 
   function frame(now) {
     raf = requestAnimationFrame(frame);
-    const dt = Math.min(0.05, (now - last) / 1000);
+    let dt = (now - last) / 1000;
     last = now;
+    if (!(dt > 0)) dt = 0;
+    dt = Math.min(dt, MAX_STEPS * STEP);
     if (!paused && run) {
-      step(dt);
+      // v1.9.1: fixed steps (the frame's dt only says how many): the race is the same at 20 fps as at 120 fps
+      acc += dt;
+      for (let n = 0; acc >= STEP - 1e-9 && n < MAX_STEPS && run; n++) { step(STEP); acc -= STEP; }
+      if (acc >= STEP) acc = 0;
+      if (!run) { draw(); return; }
       for (const p of run.popups) p.t -= dt;
       run.popups = run.popups.filter((p) => p.t > 0);
     }
@@ -405,7 +419,7 @@ export function createGame(canvas, opts = {}) {
     endHill() { hillEndNow(); },
     winch() { return false; },                 // no winch in race mode: a crash respawns at the last checkpoint
     pause() { paused = true; },
-    resume() { paused = false; last = performance.now(); },
+    resume() { paused = false; last = performance.now(); acc = 0; },
     stop() { if (run && !run.ended) end(); },
     destroy() { cancelAnimationFrame(raf); raf = 0; if (ro) ro.disconnect(); run = null; hill = null; },
     getState() {

@@ -83,7 +83,7 @@ import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, setLookO
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.9.0';
+const VERSION = '1.9.1';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
