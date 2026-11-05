@@ -521,7 +521,7 @@ async function boot() {
   const reducedNow = () => !!save.settings.reducedMotion || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
   // Play once when due: never over a panel, a crate, the Parent Zone, the Lab, a toast (e.g. a new class list) or the coach,
   // never during a run or a test; it waits until the title is clear. Marked seen when it STARTS (a closed tab does not loop it).
-  let skyTimer = 0;
+  let skyTimer = 0, skyWaitFrom = 0;
   function skyBlocked() {
     return screen !== 'title' || !currentPlayerId || !!run || spellPanel.isOpen || pz.isOpen || coaching || sky.isOpen || document.hidden
       || !$('#crate-fx').hidden || !$$('.modal').every((m) => m.hidden) || document.documentElement.classList.contains('lab-open')
@@ -533,6 +533,12 @@ async function boot() {
     const due = teaserDue(save);
     if (!due) return;
     if (skyBlocked()) { skyTimer = setTimeout(maybeSky, 900); return; }
+    // the voice: wait (up to 6 s on the title) for the teaser's clips so the one full play is heard, then play either way
+    if (save.settings.sound && cloud.active && cloud.missing(teaserTexts()).length) {
+      if (!skyWaitFrom) skyWaitFrom = Date.now();
+      if (Date.now() - skyWaitFrom < 6000) { prepareSkyVoice(true); skyTimer = setTimeout(maybeSky, 500); return; }
+    }
+    skyWaitFrom = 0;
     playSky(due);
   }
   function scheduleSky(ms = 700) { clearTimeout(skyTimer); skyTimer = setTimeout(maybeSky, ms); }
