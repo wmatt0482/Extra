@@ -95,6 +95,19 @@ week starts, so it can ship over the weekend. Since v3.7.4 the class-list file i
 it. **Parents → Options → Reload now** forces it on the spot (it saves, asks the worker for a newer version and
 reloads); the Options tab also shows the version.
 
+**v3.9.1: a device that stays open.** An iPad that kept Spell Jump open since last week never picked up the new week
+(the check ran only when a player was chosen or on a sync). The check now also runs when the page becomes visible again
+(`visibilitychange`), every time the title screen is shown and once an hour while the page is open; never during a run,
+a Qualifier / Friday Test, the spell panel or with the Parent Zone open (it is held back and runs on the next menu
+screen: the title after the run, or the Parent Zone closing). The toast and the new week's natural-voice clips (3.8.1)
+follow as before. The rules are pure (`src/spelling/classCheck.js`, unit-tested); `window.__classCheckEveryMs` shortens
+the hour for the smoke test. **The class-list card** (Parents → Words) now says plainly whether this week is in use for
+the child: "**In use** for Mia ✓", or "**Not in use yet:** tap Use for Mia" with the list she is on now (the box below
+is labelled "Mia's list now"), and **Show words and sentences** opens each word with its syllables and sentence (a
+parent had seen the new week's bare words on the card and last week's words with sentences below, and thought the new
+week had none). "Use for …" also means the child follows the class lists from then on (the list keeps `classId`); after
+**Stop following**, the card offers **Follow the class lists**.
+
 ## The spell panel ("Spell to Launch")
 
 The run starts with the car parked at the top of the ramp (`game.start` with the word's `letters` and power 1),
@@ -590,7 +603,15 @@ node tools/lab-tests.mjs        # the Lab integration, pure: economy snapshot, b
 node tools/lab-smoke.mjs        # the Lab integration in the browser (serves the repo root itself; see "The Lab" above)
 ```
 
-`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud|voice` runs one
+**Servers (v3.9.1, `tools/serve.mjs`).** The browser tools that need a server start `python3 -m http.server 8080` in
+`car-jump/` (ui-smoke also serves a copy on 8093 for the self-update test) and stop exactly that process, by its own pid,
+on success, on failure, on an uncaught error, on SIGINT / SIGTERM / SIGHUP (an outer timeout) and on their own watchdog
+(`SMOKE_TIMEOUT_MS`, default 30 min; exit code 124). A server already on 8080 is used only if it serves Spell Jump, and
+is never stopped (it is someone else's); one serving something else is an error. Only a `kill -9` of node itself can
+leave a child behind. lab-smoke serves the repo root in-process on a free port (never 8080) and closes it on every way
+out. Run the browser suites one at a time: they share port 8080.
+
+`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud|voice|class` runs one
 part of `ui-smoke.mjs`, `ONLY=landscape|portrait|speech|perf` one part of `integration-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it, and `cloudVoice.js` uses `window.__cloudVoiceBackend` (status / prepare / load / play) instead of the network and WebAudio.
 
 ## The Lab (v3.9, lab/SPEC.md §4.1)
