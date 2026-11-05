@@ -3424,6 +3424,9 @@ async function ltCalifornia(page, layout, grab) {
   const r1 = await J(page, () => ({ title: document.querySelector('#res-title').textContent, tier: document.querySelector('#res-tier').textContent, parts: [...document.querySelectorAll('#res-bank .rb-part')].map((x) => x.textContent), next: document.querySelector('#res-next-text').textContent, deeds: [...document.querySelectorAll('#res-deeds .res-deed')].map((x) => x.textContent) }));
   check(r1.title === 'Your claim in California!' && /Rookie · 1849/.test(r1.tier) && r1.parts.some((p) => /^\+\$6\d in savings$/.test(p)) && r1.parts.some((p) => /oxen to the pasture/.test(p)) && r1.next === 'To the farm', `home at the claim: "${r1.title}", ${r1.tier}, the bank card (${r1.parts.join(' · ')})`);
   check(r1.deeds.some((d) => /California bound/.test(d)), 'the "California bound" deed is on the results');
+  // v1.7.1 (the 1.5 playtest's "ugly" 8): the bank card leads the left card and is seen without a scroll
+  const bk = await J(page, () => { const b = document.querySelector('#res-bank').getBoundingClientRect(), main = document.querySelector('.res-main'), c = main.getBoundingClientRect(); return { first: main.firstElementChild.id === 'res-bankbox', inCard: b.top >= c.top - 1 && b.bottom <= c.bottom + 1, inView: b.top >= 0 && b.bottom <= innerHeight, top: Math.round(b.top), bottom: Math.round(b.bottom), vh: innerHeight }; });
+  check(bk.first && bk.inCard && bk.inView, `the bank card is the first thing in the left card and in view without a scroll (${bk.top}-${bk.bottom} of ${bk.vh} px)`);
   await shot(page, layout, '41-results-claim');
   await audit(page, layout.insets, 'results (the bank card)');
   await grab();
@@ -3711,6 +3714,33 @@ async function ltJournal(page, layout, grab) {
 }
 
 // ----- panning off, the four playtest fixes -----
+// ----- v1.7.1: the wagon carries 600 lb of food (the store greys the food it has no room for); a stop's effect line goes with the stop -----
+async function ltPolish(page, layout, grab) {
+  console.log('  -- 1.7.1: a full wagon at the store; a stop\'s line clears when the stop\'s screen changes --');
+  await ltJourney(page, { route: 'emigrant', year: 1847, journeyN: 1 });
+  await J(page, () => { const w = window.__wagonWest, Jn = w.save.journey; Jn.foods = { flour: 300, bacon: 150, beans: 145, other: 0 }; w.JA.syncFood(Jn); Jn.cash = 200; w.app.persist(); w.store.open({ leg: null, place: 'Independence', nextText: 'Done shopping' }); });
+  await page.waitForSelector(visibleSel('#screen-store'));
+  const st = await J(page, () => { const g = (id) => document.querySelector(`.st-good[data-good="${id}"]`); return { food: ['flour', 'bacon', 'beans'].map((id) => g(id).disabled && /The wagon is full/.test(g(id).textContent)), work: document.querySelector('.st-work[data-good="flour"]').disabled, parts: g('parts').disabled, room: (document.querySelector('#store-room') || {}).textContent || '', cash: window.__wagonWest.save.journey.cash }; });
+  check(st.food.every(Boolean) && st.work && !st.parts && /the wagon is full \(600 lb\)/.test(st.room), `a full wagon (595 lb): flour, bacon and beans say "The wagon is full" and Work it out waits; spare parts still sell; "${st.room}"`);
+  await shot(page, layout, '45-store-wagon-full');
+  await audit(page, layout.insets, 'the store with a full wagon');
+  await grab();
+  await J(page, () => { const w = window.__wagonWest, Jn = w.save.journey; Jn.foods = { flour: 300, bacon: 150, beans: 100, other: 0 }; w.JA.syncFood(Jn); w.store.refresh(); });
+  await page.click('.st-good[data-good="flour"]');
+  await page.waitForTimeout(150);
+  const one = await J(page, () => ({ food: window.__wagonWest.save.journey.food, flourFull: document.querySelector('.st-good[data-good="flour"]').disabled, beans: document.querySelector('.st-good[data-good="beans"]').disabled }));
+  check(one.food === 600 && one.flourFull && one.beans, `50 lb of room: one sack fits (600 lb), then the food rows say the wagon is full (${one.food} lb)`);
+  await J(page, () => { const w = window.__wagonWest; w.store.leave(); w.app.go('title'); });
+  // a line made on a stop's screen goes when the stop's screens change (the 1.5 playtest: "Traded 12 trade tokens ..." was still up on the post office 7 s later)
+  await J(page, () => { const w = window.__wagonWest; w.toaster.clear(true); w.app.go('stop'); w.app.effectToast('Traded 12 trade tokens for 18 bags of dried berries.'); });
+  await page.waitForTimeout(300);
+  const up = await hasToast(page, /Traded 12 trade tokens/);
+  await J(page, () => window.__wagonWest.app.go('post'));
+  await page.waitForTimeout(1200);
+  const left = await J(page, () => [...window.__wagonWest.toaster.shown, ...window.__wagonWest.toaster.waiting].some((t) => /Traded 12 trade tokens/.test(t)));
+  check(up && !left, `a stop's line ("Traded 12 trade tokens …") is up on the stop and gone from the post office (shown or waiting: ${left})`);
+  await J(page, () => { const w = window.__wagonWest; w.toaster.clear(true); w.app.go('title'); });
+}
 async function ltFixes(page, layout, grab) {
   console.log('  -- panning off; the 1.4 playtest fixes: camp toasts, pops, the bar, the stones --');
   await ltFarm(page, {});
@@ -3849,6 +3879,7 @@ async function ltTest(browser, layout) {
   await sec('sets', ltSets);
   await sec('journal', ltJournal);
   await sec('fixes', ltFixes);
+  await sec('polish', ltPolish);                  // v1.7.1
   await sec('legacy', ltLegacy);
   await sec('voice', ltVoice);
   const bad = texts.map((t) => (t.match(BANNED) || [])[0]).filter(Boolean);
@@ -3874,7 +3905,7 @@ async function stopToResults(page, legId, plan = {}) {
 async function labBoot(page, layout, grab) {
   console.log('  -- the bridge: the Lab loads by itself; the title\'s button and the Parent Zone\'s row; the Lab\'s numbers start --');
   const b = await J(page, () => ({ ready: window.__wagonWest.labBridge.ready, btn: !document.querySelector('#btn-lab').hidden, n: document.querySelector('.menu-row').dataset.n, attached: !!(window.__lab && window.__lab.store.doc()), v: window.__wagonWest.app.version }));
-  check(b.ready && b.btn && b.attached && b.v === '1.7.0', `the Lab loaded behind the game (version ${b.v}); the title shows "The Lab" (${b.n} buttons); the Lab knows the player`);
+  check(b.ready && b.btn && b.attached && b.v === '1.7.1', `the Lab loaded behind the game (version ${b.v}); the title shows "The Lab" (${b.n} buttons); the Lab knows the player`);
   await J(page, () => { const lb = window.__wagonWest.labBridge; window.__opened = []; lb.openHome = (o) => window.__opened.push(['home', o]); lb.openParent = (o) => window.__opened.push(['parent', o]); });
   await page.click('#btn-lab');
   check((await J(page, () => window.__opened.map((x) => x[0]).join())) === 'home', 'the button opens the Lab\'s home (labBridge.openHome)');
@@ -3906,6 +3937,12 @@ async function labHud(page, layout, grab) {
   await hold(page, true);
   const hud = await J(page, () => { const h = document.querySelector('#hud-lab'); const r = h.getBoundingClientRect(); return { kids: h.children.length, w: Math.round(r.width), h: Math.round(r.height), text: h.textContent.trim().slice(0, 30), right: Math.round(r.right), vw: innerWidth, bar: !!h.querySelector('[class*="bar"], [role="progressbar"], progress, i') }; });
   check(hud.kids >= 1 && hud.w > 20 && hud.h > 10 && hud.bar, `the Lab's pill is mounted in the trail HUD ("${hud.text}", ${hud.w}×${hud.h}, an XP bar inside)`);
+  // v1.7.1: only the pill takes taps (its row spans the HUD: a tap beside the pill goes to what is under it), and nothing in the HUD sits on the pill
+  const pass = await J(page, () => { const row = document.querySelector('#hud-lab'), pill = row.firstElementChild, r = row.getBoundingClientRect(), p = pill.getBoundingClientRect(); const at = document.elementFromPoint(r.left + 6, (r.top + r.bottom) / 2);
+    const meet = (a, b) => a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    const on = [...document.querySelectorAll('#screen-trail .hud-box, #screen-trail button')].filter((el) => !pill.contains(el) && el.offsetParent && meet(p, el.getBoundingClientRect())).map((el) => el.id || el.className);
+    return { beside: p.left - r.left > 12 ? (at && !row.contains(at)) : true, on }; });
+  check(pass.beside && pass.on.length === 0, `the Lab pill's row lets taps beside the pill through; nothing in the HUD sits on the pill${pass.on.length ? ' — ' + pass.on.join(', ') : ''}`);
   await closeCards(page, 3);
   await shot(page, layout, 'lab-02-hud');
   await audit(page, layout.insets, 'the trail HUD with the Lab pill');

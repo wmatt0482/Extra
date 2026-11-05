@@ -1041,7 +1041,8 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .ch-card .fk-line { flex: 1 1 auto; }
 /* the Lab's pill in the trail HUD and its strip on the results (the Lab draws them: lab/src/ui) */
 .hud-topwrap { display: flex; flex-direction: column; gap: 6px; flex: none; }
-.hud-lab { display: flex; justify-content: flex-end; min-width: 0; pointer-events: auto; }
+.hud-lab { display: flex; justify-content: flex-end; min-width: 0; pointer-events: none; }
+.hud-lab > * { pointer-events: auto; }      /* (v1.7.1: only the pill takes taps; the row it sits in spans the HUD's width and used to swallow taps on the scene under it) */
 .hud-lab:empty { display: none; }
 .res-lab { min-width: 0; }
 .res-lab:empty { display: none; }
@@ -1131,6 +1132,19 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .res-bank b, .res-bonus b { font: 800 11px/1 var(--font-body); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .rb-parts { display: flex; flex-wrap: wrap; gap: 6px; }
 .rb-part { padding: 4px 10px; border-radius: 999px; background: var(--ink); border: 2px solid var(--go); font: 800 13px/1.1 var(--font-body); }
+/* v1.7.1 (the 1.5 playtest's "ugly" 8): at a trail's end the bank card is the first thing in the left card, and on a landscape phone the stats go in one row, so the bank card is seen without a scroll */
+.res-bankbox { display: grid; }
+@media (orientation: landscape) and (max-height: 500px) {
+  #screen-results[data-bank] .res-bank { gap: 4px 8px; padding: 5px 8px; }
+  #screen-results[data-bank] .rb-parts { gap: 4px; }
+  #screen-results[data-bank] .rb-part { padding: 2px 8px; font-size: 12px; }
+  #screen-results[data-bank] .stat-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  #screen-results[data-bank] .stat { padding: 4px 6px; }
+  #screen-results[data-bank] .stat b { font-size: 15px; }
+  #screen-results[data-bank] .stat span { font-size: 10px; letter-spacing: .03em; white-space: normal; line-height: 1.1; }
+  #screen-results[data-bank] .rs-star { padding: 3px 4px; gap: 2px; }
+  #screen-results[data-bank] .rs-star svg { width: 22px; height: 22px; }
+}
 /* the journal's new pages */
 .jr-h { margin: 0; font: 400 20px/1.1 var(--font-display); color: var(--accent); }
 .jr-sub { align-self: start; flex-wrap: wrap; }
@@ -1470,6 +1484,7 @@ html[data-screen="camp"] #mini { bottom: auto; top: calc(var(--pad-t) + 62px); }
     <div class="results-head"><h2 id="res-title">Arrived!</h2><span class="res-tier" id="res-tier" hidden></span><span class="res-sticker" id="res-sticker" hidden></span></div>
     <div class="results-body">
       <div class="card res-main">
+        <div class="res-bankbox" id="res-bankbox" hidden></div>
         <div class="res-stars" id="res-stars"></div>
         <div class="stat-grid" id="res-stats"></div>
         <div class="res-extra" id="res-extra" hidden></div>

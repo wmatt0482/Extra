@@ -138,7 +138,7 @@ import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
 import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts, V15, dampLine as dampText } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.7.0';
+const VERSION = '1.7.1';
 // the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
 // is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];

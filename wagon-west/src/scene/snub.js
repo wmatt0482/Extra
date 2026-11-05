@@ -55,6 +55,8 @@ export function createSnub(opts, emit, S, hooks) {
   };
   const li = () => D.drop - 1 + (3 - drops); // the ledge this drop ends on (fewer drops skip the upper ledges; the last drop always ends on the bottom one)
   const text = (L, s, x, y, col, size = 30) => D.texts.push({ s, x, y, col, size: size * L.k, t: 0 });
+  // v1.7.1 (the 1.5 playtest's "ugly" 10): the floating words keep below the top band, where the LEDGE counter (12k..40k) and the hint line (H × 0.14) sit
+  const topBand = (L) => Math.max(40 * L.k, L.H * 0.14 + 10 * L.k);
 
   // ---- input: hold to slide, let go to stop
   const hold = (on) => {
@@ -98,7 +100,11 @@ export function createSnub(opts, emit, S, hooks) {
       if (D.phase === 'skid' && D.v <= 0.0005) {
         D.v = 0;
         if (D.s >= L1.s0) finishDrop(L, true);
-        else { D.phase = 'wait'; D.pt = 0; D.hint = 0; text(L, 'HOLD AGAIN', at(G, D.s).x, at(G, D.s).y - 80 * G.sw, '#ffffff', 22); } // let go early: it waits, no penalty
+        else {   // let go early: it waits, no penalty. "HOLD AGAIN" floats above the wagon when there is room under the top band, else on the slope below it (v1.7.1: it sat on the LEDGE counter)
+          D.phase = 'wait'; D.pt = 0; D.hint = 0;
+          const p = at(G, D.s), size = 22 * L.k, above = p.y - 80 * G.sw;
+          text(L, 'HOLD AGAIN', p.x, above - size * 0.6 - 18 * L.k >= topBand(L) ? above : p.y + 34 * G.sw + size * 0.6, '#ffffff', 22);
+        }
       }
     } else if (D.phase === 'settle') {
       if (D.pt >= SNUB_RUN.settle) {
@@ -169,7 +175,8 @@ export function createSnub(opts, emit, S, hooks) {
     else if (D.phase === 'slide') drawText(c, 'LET GO AT THE LEDGE!', 15 * k, W / 2, H * 0.14, '#ffd23f', OUT, W * 0.92);
     c.beginPath(); rrect(c, 12 * k, 12 * k, 96 * k, 28 * k, 10 * k); c.fillStyle = 'rgba(30,22,14,0.65)'; c.fill();
     drawText(c, `LEDGE ${Math.min(D.drop, drops)} OF ${drops}`, 12 * k, 60 * k, 26 * k, '#fff6d8', null, 90 * k);
-    for (const x of D.texts) { const u = clamp(x.t / 1.3, 0, 1); c.globalAlpha = clamp(2.4 - u * 2.4, 0, 1); drawText(c, x.s, x.size, clamp(x.x, 80 * k, W - 80 * k), x.y - u * 18 * k, x.col, OUT, W * 0.9); } c.globalAlpha = 1;
+    const band = topBand(L);
+    for (const x of D.texts) { const u = clamp(x.t / 1.3, 0, 1); c.globalAlpha = clamp(2.4 - u * 2.4, 0, 1); drawText(c, x.s, x.size, clamp(x.x, 80 * k, W - 80 * k), Math.max(x.y - u * 18 * k, band + x.size * 0.6), x.col, OUT, W * 0.9); } c.globalAlpha = 1;
   };
   D.state = () => ({ kind: 'snub', phase: D.phase, drop: Math.min(D.drop, drops), drops, good: D.good, bumps: D.bumps, s: Math.round(D.s * 1000) / 1000, held: D.held });
   D.summary = () => ({ smooth: D.ended && D.bumps === 0, good: D.good, drops, finished: D.ended });

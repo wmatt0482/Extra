@@ -67,7 +67,11 @@ export function createResults(app) {
     if (r.goldFound) extra.push(h('div', { class: 'res-gold', id: 'res-gold', 'data-flakes': String(r.goldFound.total) }, h('span', { 'aria-hidden': 'true' }, '✨'), h('span', {}, `Gold in the pouch: ${r.goldFound.text}`)));
     if (Array.isArray(r.bonus) && r.bonus.length) extra.push(h('div', { class: 'res-bonus', id: 'res-bonus' }, h('b', {}, `Bonus card${r.bonus.length > 1 ? 's' : ''}`), ...r.bonus.map((id) => { const c = CARD_BY_ID[id]; return c ? h('span', { class: 'res-deed', 'data-card': id }, h('span', { 'aria-hidden': 'true' }, c.emoji), h('span', {}, c.name)) : null; })));
     for (const st of Array.isArray(r.sets) ? r.sets : []) extra.push(h('div', { class: 'res-set', 'data-set': st.id }, h('span', { 'aria-hidden': 'true' }, st.emoji || '🎖️'), h('span', {}, `A full set: ${st.name}! ${st.decorName ? `You earned the ${st.decorName}.` : ''}`)));
-    if (r.bank) extra.push(h('div', { class: 'res-bank', id: 'res-bank' }, h('b', {}, 'Home! The wagon brings to the farm'), h('div', { class: 'rb-parts' }, ...bankParts(r.bank, r.animalName, r.nuggetsOf).map((t) => h('span', { class: 'rb-part' }, t)))));
+    // (v1.7.1: the bank card leads the left card, so a landscape phone shows it without a scroll; the 1.5 playtest found it below the fold)
+    const bankBox = $('#res-bankbox');
+    bankBox.hidden = !r.bank;
+    bankBox.replaceChildren(...(r.bank ? [h('div', { class: 'res-bank', id: 'res-bank' }, h('b', {}, 'Home! The wagon brings to the farm'), h('div', { class: 'rb-parts' }, ...bankParts(r.bank, r.animalName, r.nuggetsOf).map((t) => h('span', { class: 'rb-part' }, t))))] : []));
+    if (r.bank) $('#screen-results').dataset.bank = ''; else delete $('#screen-results').dataset.bank;
     ex.hidden = !extra.length;
     ex.replaceChildren(...extra);
     paintCrate();
