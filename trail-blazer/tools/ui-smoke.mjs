@@ -287,6 +287,14 @@ async function runLayout(browser, layout) {
 
   // ---------- race 1: Pine Ridge, countdown → GO → backflip → crash + respawn → 2nd ----------
   await J(page, () => {
+    // v1.9.1: the rivals' times are pinned so that 2nd is what the game guarantees for this script at ANY machine speed.
+    // The mock race is frame-rate independent (fixed steps; runMockFrameRateCheck below), but the player's time still
+    // depends on how fast this script answers, by design: a right answer within 3 s of WALL-CLOCK time (QUICK_MS) is
+    // quick (a 1.2 s push; on gate 4, the Turbo gate, a 3 s one). Unloaded the taps take ~0.2 s: every gate quick, 8.93 s.
+    // In a queue on a loaded machine they took 2.2-2.4 s, and past 3 s gates 3-4 are not quick: 9.53 s, 0.07 s from the
+    // default Blaze (9.6 s); gate 1 slow as well: 10.62 s. Dusty (7.0 s) beats the fastest run, Blaze and Nitro lose to
+    // the slowest, so the place no longer depends on the answer speed (gate 1's ⚡ is checked on its own below).
+    window.__mockScript = { aiTimes: [7.0, 11.5, 12.5] };
     const g = window.__trailBlazer.game;
     window.__starts = [];
     const s = g.start; g.start = (cfg) => { window.__starts.push({ trail: cfg.trail.id, gates: cfg.gates, paint: cfg.paint, decal: cfg.decal, stats: cfg.stats, race: cfg.race, vehicle: cfg.vehicle, look: cfg.look, mutator: cfg.mutator, ghost: cfg.ghost ? cfg.ghost.length : 0 }); return s(cfg); };

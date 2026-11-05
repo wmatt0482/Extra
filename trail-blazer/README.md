@@ -143,6 +143,28 @@ node trail-blazer/tools/make-icons.mjs     # regenerates icons/*.png
 `bash build.sh` at the repo root copies `trail-blazer/` to `dist/trail-blazer/` (without `tools/`, `docs/`,
 `dev.html`, `SPEC.md`), next to `dist/spell-jump/`.
 
+## 1.9.1 (a race does not depend on the device's speed)
+
+`tools/ui-smoke.mjs` failed now and then in a queue on a loaded machine: race 1, scripted to finish 2nd, finished 3rd.
+Two causes, both measured (CDP CPU throttling at 4x / 6x and requestAnimationFrame jitter, the riders' positions logged per frame):
+
+- **The mock engine stepped on the frame's dt** (clamped to 50 ms). Each of the player's discrete changes (the slow launch, a gate
+  stop, the fixed gate's hold, the jumps, the crash and its respawn) landed on a frame boundary and cost up to a frame, while the AI
+  riders' x is a closed-form function of the race clock. The race-1 script lands jump 1 and stops at gate 2 right at the 300 m
+  checkpoint: anywhere from 296 to 303 m with the frame rate (301 m at a steady 60 fps). Short of 300 m the crash respawned at the
+  200 m checkpoint: +1.1 s, 10.0 s instead of 8.9 s, 3rd behind Blaze (9.6 s). The same script gave 8.90 s at 120 fps, 9.10 s at
+  20 fps and 10.0 s with 400 ms stalls. **Fix**: `src/meta/mockEngine.js` runs fixed 1/60 s steps (at most 8 per frame; a longer
+  stall slows the whole race, every rider alike), as the real engine does: 8.93 s at every frame rate tested.
+- **The answers are timed in wall-clock time, by design**: a right answer within 3 s (`QUICK_MS`) is quick (a 1.2 s push, on the
+  Turbo gate a 3 s one). The test's taps take ~0.2 s unloaded, 2.2-2.4 s with a second ui-smoke running; past 3 s gates 3-4 are
+  not quick and the race takes 9.53 s, 0.07 s from 3rd. That is the game working, so the test now pins the rivals' times for race 1
+  (`aiTimes: [7.0, 11.5, 12.5]`): 2nd for any answer speed (8.93 / 9.53 / 10.62 s).
+- **The real engine** (`src/game/engine.js`) was already right: a fixed 1/60 s step with every rider (player and AI) in the same
+  step, a seeded AI and the clock in sim time; the same race gives the same order and times to the hundredth at 1x and at 6x + jitter.
+- Regression check (`tools/frame-rate-check.mjs`): the same race at 1x CPU and at 6x CPU throttle (also with 0-90 ms frame jitter)
+  must give the same finishing order, time and place: the mock race in `ui-smoke.mjs` (race 1's script; `ONLY=framerate` runs it
+  alone), the real engine in `engine-smoke.mjs`. VERSION 1.9.1; the service worker is `trail-blazer-v1.9.1`.
+
 ## 1.9.0 (The Lab)
 
 Trail Blazer joins **The Lab**, the meta-game across the five games (`lab/SPEC.md`; this game is §4.2). The Lab is optional and
