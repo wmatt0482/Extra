@@ -75,10 +75,11 @@ try {
   // the wheel loader and the site switch all come from the cache), then the harbor's last one.
   mark('hillside offline');
   await page.locator('#home').click();
-  await page.evaluate(() => {
-    const id = window.__buildCrew.state.playerId;
+  // (written by an init script on the next page, after this page has saved its own copy on the way out)
+  const playerId = await page.evaluate(() => window.__buildCrew.state.playerId);
+  await context.addInitScript((id) => {
     localStorage.setItem(`buildCrew.${id}.save`, JSON.stringify({ v: 1, done: Array.from({ length: 15 }, (_, i) => i + 1), rewards: ['excavator', 'crane'] }));
-  });
+  }, playerId);
   await bounded(page.reload(), 'offline reload with progress');
   await bounded(page.waitForFunction(() => window.__buildCrew), 'offline boot with progress');
   for (const [id, site] of [

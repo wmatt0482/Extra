@@ -51,11 +51,12 @@ async function siteFixture(page, tap, id) {
   await page.keyboard.type('Site');
   await page.keyboard.press('Enter');
   await page.waitForFunction(() => window.__buildCrew.state.playerId);
-  await page.evaluate(() => {
-    const id = window.__buildCrew.state.playerId,
-      done = Array.from({ length: 19 }, (_, i) => i + 1);
+  // the progress is written by an init script on the next page (this page saves its own copy on the way out)
+  const playerId = await page.evaluate(() => window.__buildCrew.state.playerId);
+  await page.context().addInitScript((id) => {
+    const done = Array.from({ length: 19 }, (_, i) => i + 1);
     localStorage.setItem(`buildCrew.${id}.save`, JSON.stringify({ v: 1, done, rewards: ['excavator', 'crane', 'loader'] }));
-  });
+  }, playerId);
   await page.reload();
   await page.waitForFunction(() => window.__buildCrew);
   await page.locator('#jobs')[tap]();

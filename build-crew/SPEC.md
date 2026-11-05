@@ -133,6 +133,7 @@ Single implementation owner: Codex. Existing game folders remain untouched excep
 | src/app/loop.js | Fixed-step game loop (max 3 steps a frame), one pose read per frame, frame samples |
 | src/content.mjs | Ten jobs, toy types, machine metadata, rewards and known spoken phrases |
 | src/terrain.mjs | Terrain stamp shapes shared by physics and scene (the hill mound's profile and height, the ramp wedge's corners and faces, recess depths) |
+| src/sites.mjs | The work sites (0.6): each site's bounds, fence and ground (the yard's tiles, the harbor's quay, water, barge and piles, the hillside's height function, mud, gravel and grass), shared by physics, scene, missions and the solution |
 | src/physics.mjs | Rapier world, bodies, fixed step, machines and joints (`MACHINE` table), physical grab/release, terrain, snapshot |
 | src/missions.mjs | Pure pose/velocity/ghost matching and settled completion |
 | src/scene/scene.js | Scene façade the app uses: renderer, round set-up, per-frame draw, thumbnail, disposal |
@@ -158,7 +159,7 @@ Single implementation owner: Codex. Existing game folders remain untouched excep
 
 **Machine tables.** Each layer keeps one table keyed by machine kind instead of branching on kinds: `MACHINES` in content.mjs (unit ID, label, paint, speed, turn, height and reach ranges, first hint); `MACHINE` in physics.mjs (tool colliders, tool orientation, the joint the right stick's J/L axis drives and its rate, the U/O extend joint, whether it can carry the wrecking ball; the grab point is always `reach` ahead along the boom at the lift height); `MACHINE` in scene/machines.js (wheels or tracks, arm count, bucket or magnet, whether the cab swings, scoop dust, boom lattice, and the pose function for its arms); and `MACHINE_UI` in app/hud.js (tool-stick label, extra joint buttons, card art, release hint). A fourth machine is a row in each of these, its engine pitch in meta/sound.js, and its reward id in the ROUNDS unlocks and save.mjs's reward list.
 
-**Sites.** The scenery is built from a theme object; `YARD_THEME` lists the palette, fog, lights, sky, daylight colors, sign and the ordered scenery features. A second site is a new theme. The environment is built once per page, so switching site between jobs still needs the scene to rebuild its environment when `round.site` changes.
+**Sites.** The scenery is built from a theme object; `YARD_THEME` lists the palette, fog, lights, sky, daylight colors, sign and the ordered scenery features. A second site is a new theme (`HARBOR_THEME`, `HILLSIDE_THEME` in 0.6) with its ground in `src/sites.mjs`. `Scene.setSite` rebuilds the environment when `round.site` changes and frees the old site's lights, shadow map, sky, scenery, materials and textures (0.6).
 
 **Offline updates.** sw.js fetches main.js network-first and every other module cache-first. The first load after a deploy can therefore pair a new main.js (and any new module) with older cached modules. Keep the existing modules' exports backward compatible for a release, run tools/prepare-offline.mjs after changing imports, and bump VERSION in sw.js.
 
@@ -190,3 +191,22 @@ steer about the front axle, mast lift and tilt, narrow tines that only a low, le
 Jobs 101 to 104 (Lighthouse, Windmill, Castle gate, Stone arch) are ghost-outline blueprints with a target and never a clock:
 "Grabs n · par p" or "Height h m · target t m", and a "Neat build!" badge when met. Version 0.5.0: `VERSION` in
 `src/content.mjs`, cache `build-crew-v0.5.0` in `sw.js`, `offline.js` regenerated with its optional Lab list.
+
+## Flight two (0.6): the harbor and the hillside
+
+Jobs 11 to 20 of §3 on two new sites (findings, numbers and deviations in `docs/v0.6-sites.md`), in the locked 0.2 look.
+The scene swaps sites between jobs without a reload and disposes the old site's GPU resources; the yard is unchanged.
+**Harbor** (11 to 15): a concrete quay, harbor water, a moored barge to load, old dock piles, a ship-to-shore crane and
+container stacks; a load that falls in the water returns to its start. **Hillside** (16 to 20): a Rapier heightfield
+with a 12.5 degree haul slope to a terrace, a 31 degree rock shoulder and a ravine; machines pitch and roll on it, hold
+still on any slope they may climb, slow as they climb and refuse anything steeper than their own limit; mud slows wheels
+more than tracks; grass that loads must stay off in the mud pass (a block on the grass returns, never a fail). The
+**WL-06 wheel loader** is a fourth free machine (articulated steering, arc lift, wide bucket), earned at job 16.
+
+Every new job is finished with free machines; the Lab's dump truck and forklift join the harbor and pit jobs as an
+optional extra for an owner and are never needed. Deviations from the §3 table: jobs 11 and 12 reward the Chevron decal
+and Graphite paint (the dump truck and forklift are Lab items since 0.5), job 17 is the loader's mud pass (no bulldozer
+yet) and rewards Sage paint, and the "no block may touch the grass" twist is on the hillside (job 17). Rewards: Chevron
+decal, Graphite paint, Harbor blue paint, Anchor decal, Ferry horn, the wheel loader, Sage paint, Rust paint, Mountain
+decal, Steam horn. Version 0.6.0: `VERSION` in `src/content.mjs`, cache `build-crew-v0.6.0` in `sw.js`, `offline.js`
+regenerated for `src/sites.mjs`.

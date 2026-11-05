@@ -369,6 +369,14 @@ try {
     assert(s.complete);
     await page.locator('#next-round').waitFor();
     await page.screenshot({ path: path.join(shots, `finished-${String(id).padStart(2, '0')}.png`) });
+    // A harbor or hillside build goes to the Lab's family gallery like a yard job: its plan numbers, never a picture.
+    if (id > 10) {
+      const row = await page.evaluate(
+        (id) => window.__lab?.store.view().gallery.find((g) => g.id.startsWith(`bc.job${id}.`)) || null,
+        id,
+      );
+      assert(row && row.kind === 'job' && row.pieces.length >= 3 && row.pieces.every((p) => p.length === 5), `job ${id} is in the Lab gallery`);
+    }
     results.solutions.push({ id, complete: true, placed: s.status.count });
     console.log(`PASS browser solution ${id}`);
   }
