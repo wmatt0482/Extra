@@ -6,9 +6,23 @@ import assert from 'node:assert/strict';
 import { writeFileSync } from 'node:fs';
 import { resultsPath } from './runner.mjs';
 import { performance } from 'node:perf_hooks';
-import { initPhysics, Yard, DT, RAPIER, MACHINE, DUMP, FORK, bedAngle, gateAngle } from '../src/physics.mjs';
-import { ROUNDS, SANDBOX, BLUEPRINTS, MACHINES, COLORS, TOYS, findJob, sandboxSpawns, LAB_MACHINES } from '../src/content.mjs';
-import { Mission, Challenge, evaluate, standingHeight } from '../src/missions.mjs';
+import {
+  initPhysics,
+  Yard,
+  DT,
+  RAPIER,
+  MACHINE,
+  DUMP,
+  FORK,
+  bedAngle,
+  gateAngle,
+  TRACTION,
+  LOADER,
+  loaderReach,
+} from '../src/physics.mjs';
+import { ROUNDS, SANDBOX, BLUEPRINTS, MACHINES, COLORS, TOYS, findJob, sandboxSpawns, LAB_MACHINES, REWARDS } from '../src/content.mjs';
+import { Mission, Challenge, evaluate, standingHeight, grassTouches, ruleLine } from '../src/missions.mjs';
+import { SITES, HARBOR, isGrass } from '../src/sites.mjs';
 import { defaultSave, normalize, normalizeYard, mergeBc } from '../src/meta/save.mjs';
 import { solve } from './solution.mjs';
 import { createHash } from 'node:crypto';
@@ -22,11 +36,14 @@ const state = () => ({
   machines: yard.machines.map((m) => ({
     kind: m.kind,
     x: m.x,
+    y: m.y,
     z: m.z,
     yaw: m.yaw,
     swing: m.swing,
     lift: m.lift,
     reach: m.reach,
+    tilt: m.tilt,
+    pitch: m.pitch,
     tip: { ...m.tip },
   })),
   status: mission.status,
@@ -40,7 +57,7 @@ const advance = (axes, n) => {
   }
   return state();
 };
-for (const round of ROUNDS) {
+for (const round of process.env.SKIP_JOBS ? [] : ROUNDS) {
   yard = new Yard(round);
   mission = new Mission(round);
   const start = performance.now();
@@ -159,7 +176,8 @@ console.log('PASS terrain stamps: ramp wedge collider matches what is drawn');
 // 0.4.0 source before the Lab work began (their numbers are the game's economy; the Lab adds beside them).
 {
   const snap = JSON.stringify({
-    ROUNDS,
+    // the yard's ten jobs (0.6 adds jobs 11 to 20 after them; the first ten must not move)
+    ROUNDS: ROUNDS.slice(0, 10),
     SANDBOX,
     COLORS,
     TOYS,
@@ -170,7 +188,8 @@ console.log('PASS terrain stamps: ramp wedge collider matches what is drawn');
     '1621a802ceb59e9f0f9149cb2fc7120bf5ffc3941e8a92bbc2248069763cc6cf',
     'jobs 1 to 10, the sandbox, the toys and the three original machines are unchanged',
   );
-  assert.equal(ROUNDS.length, 10);
+  assert.equal(ROUNDS.length, 20);
+  assert(ROUNDS.slice(0, 10).every((r) => r.site === 'yard'), 'jobs 1 to 10 stay in the yard');
   assert.deepEqual(Object.keys(MACHINES).slice(0, 3), ['skid', 'excavator', 'crane']);
   console.log('PASS the original jobs, sandbox and machines match their 0.4.0 snapshot');
 }
@@ -381,6 +400,199 @@ for (const round of BLUEPRINTS) {
   console.log('PASS five machines share a yard and a saved site');
 }
 
+// ---- 0.6: the harbor, the hillside and the wheel loader -----------------------------------------------------------
+const HILLSIDE = { ...SANDBOX, site: 'hillside', id: 99, toys: [] };
+const HARBOR_SITE = { ...SANDBOX, site: 'harbor', id: 98, toys: [] };
+// The hillside's heightfield is what the machines ride on: a ray from above lands on groundAt() everywhere, across the
+// lower yard, the slope, the terrace, the shoulder and into the ravine.
+{
+  // (no machine in the way of the rays; the samples sit between the heightfield's grid lines)
+  yard = new Yard({ ...HILLSIDE, machines: [] });
+  yard.world.step();
+  let worst = 0;
+  for (let x = -15.07; x <= 15; x += 1.7) {
+    for (let z = -15.11; z <= 15; z += 1.3) {
+      const hit = yard.world.castRay(new RAPIER.Ray({ x, y: 20, z }, { x: 0, y: -1, z: 0 }), 40, true),
+        err = Math.abs(20 - hit.timeOfImpact - yard.groundAt(x, z));
+      // the ground anything can stand on; the rock faces (the ravine walls) are sampled every half metre
+      if (yard.steepness(x, z) < 0.47) worst = Math.max(worst, err);
+      else report.hillsideRockError = Math.max(report.hillsideRockError || 0, err);
+    }
+  }
+  assert(worst < 0.06, `the hillside collider follows the ride height (worst ${worst.toFixed(3)} m)`);
+  assert.equal(yard.groundAt(0, -10), 0);
+  assert(Math.abs(yard.groundAt(0, 1.5) - 1) < 1e-9 && Math.abs(yard.groundAt(-8, 10) - 2) < 1e-9, 'the slope climbs 2 m to the terrace');
+  assert(yard.groundAt(6, 13) < 0, 'the ravine cuts below the lower yard');
+  report.hillsideColliderError = worst;
+  yard.destroy();
+  console.log('PASS hillside heightfield matches the ground the machines ride');
+}
+// Slopes: every machine stands still on the 12.5 degree haul slope (nothing slides), drives up it slower than on the
+// flat, and stops at the foot of the 31 degree rock shoulder. A steeper limit is a property of the machine, so the
+// crane (17 degrees) and the skid steer (20) both manage the haul slope but the forklift (9) cannot.
+{
+  const slopeDeg = (Math.atan(2 / 9) * 180) / Math.PI;
+  report.slopes = { haul: slopeDeg, shoulder: (Math.atan(2.2 / 3.6) * 180) / Math.PI };
+  for (const kind of ['skid', 'excavator', 'crane', 'loader', 'dump', 'fork']) {
+    const climbs = TRACTION[kind].climb > slopeDeg;
+    // parked on the middle of the slope, facing up it: ten seconds with no input
+    yard = new Yard({ ...HILLSIDE, machines: [kind], spawns: [[-8, 1.5]] });
+    const m = yard.machine,
+      start = { x: m.x, z: m.z, y: m.y };
+    for (let i = 0; i < 600; i++) yard.step({});
+    assert(Math.hypot(m.x - start.x, m.z - start.z) < 1e-9 && Math.abs(m.y - start.y) < 1e-9, `${kind} does not slide on the slope`);
+    assert(Math.abs(m.pitch - Math.atan(2 / 9)) < 0.02, `${kind} pitches with the slope (${m.pitch.toFixed(3)})`);
+    // up the slope from the lower yard
+    yard.destroy();
+    yard = new Yard({ ...HILLSIDE, machines: [kind], spawns: [[-8, -6]] });
+    for (let i = 0; i < 60 * 14; i++) yard.step({ drive: 1 });
+    const up = yard.machine;
+    if (climbs) assert(up.y - 0.7 > 1.9, `${kind} climbs the haul slope to the terrace (${(up.y - 0.7).toFixed(2)})`);
+    else assert(up.y - 0.7 < 0.3 && up.stalled, `${kind} stays at the foot of the slope it cannot climb`);
+    yard.destroy();
+    // across the lower yard toward the rock shoulder (x > 10.5): it stops at the foot
+    yard = new Yard({ ...HILLSIDE, machines: [kind], spawns: [[4, -8]] });
+    yard.machine.yaw = Math.PI / 2;
+    for (let i = 0; i < 60 * 10; i++) yard.step({ drive: 1 });
+    const bank = yard.machine;
+    assert(bank.x < 11.2 && bank.y - 0.7 < 0.6 && bank.stalled, `${kind} cannot climb the 31 degree shoulder (x ${bank.x.toFixed(2)})`);
+    report.slopes[kind] = { climb: TRACTION[kind].climb, parked: 'still', haul: climbs, stopsAtShoulder: +bank.x.toFixed(2) };
+    yard.destroy();
+  }
+  // climbing costs speed: the same drive covers less ground up the slope than on the flat
+  const run = (spawn, yaw) => {
+    const y = new Yard({ ...HILLSIDE, machines: ['excavator'], spawns: [spawn] });
+    y.machine.yaw = yaw;
+    for (let i = 0; i < 90; i++) y.step({ drive: 1 });
+    const d = Math.hypot(y.machine.x - spawn[0], y.machine.z - spawn[1]);
+    y.destroy();
+    return d;
+  };
+  const flat = run([-8, -12], Math.PI / 2),
+    climb = run([-8, -1.5], 0);
+  assert(climb < flat * 0.85, `a climb is slower (${climb.toFixed(2)} m against ${flat.toFixed(2)} m on the flat)`);
+  report.slopes.climbVsFlat = climb / flat;
+  // a machine never drives into the ravine: it waits at the lip
+  yard = new Yard({ ...HILLSIDE, machines: ['skid'], spawns: [[2, 12]] });
+  yard.machine.yaw = Math.PI / 2;
+  for (let i = 0; i < 60 * 6; i++) yard.step({ drive: 1 });
+  assert(yard.machine.x < 4.7 && yard.machine.y - 0.7 > 1.9, 'the skid steer stops at the ravine lip');
+  yard.destroy();
+  console.log('PASS slopes: machines hold on gentle ground, climb slower, refuse steep banks and the ravine');
+}
+// Mud: wheels lose more than half their speed in it, tracks about a quarter.
+{
+  const dist = (kind, z) => {
+    const y = new Yard({ ...HILLSIDE, machines: [kind], spawns: [[-14 + TRACTION[kind].length, z]] });
+    y.machine.yaw = Math.PI / 2;
+    const x0 = y.machine.x;
+    for (let i = 0; i < 60; i++) y.step({ drive: 1 });
+    // now cross the patch (or the same distance of gravel beside it)
+    const x1 = y.machine.x;
+    y.machine.x = 1.5;
+    y.seat(y.machine, true);
+    for (let i = 0; i < 90; i++) y.step({ drive: 1 });
+    const d = y.machine.x - 1.5;
+    y.destroy();
+    return { d, warm: x1 - x0 };
+  };
+  report.mud = {};
+  for (const kind of ['skid', 'loader', 'excavator']) {
+    const inMud = dist(kind, -8).d,
+      dry = dist(kind, -13).d;
+    const share = inMud / dry;
+    report.mud[kind] = share;
+    if (TRACTION[kind].gear === 'wheels') assert(share < 0.55, `${kind} wheels are slowed in mud (${share.toFixed(2)})`);
+    else assert(share > 0.6 && share < 0.85, `${kind} tracks keep most of their speed in mud (${share.toFixed(2)})`);
+  }
+  console.log('PASS mud slows wheels, tracks keep moving');
+}
+// The wheel loader: its bucket rises on the arms' arc (furthest out at the arm pivot's height), the machine bends to
+// steer (the bucket swings to the side of the turn and straightens again), it turns slowly on the spot, and its wide
+// bucket scoops a block up from the ground and carries it.
+{
+  assert(MACHINE.loader && MACHINES.loader && !MACHINES.loader.lab, 'the wheel loader is a free machine with a physics row');
+  assert(Math.abs(loaderReach(LOADER.arm.y) - (LOADER.arm.z + LOADER.length)) < 1e-9);
+  assert(loaderReach(0.7) < loaderReach(2.1) && loaderReach(4.4) < loaderReach(0.7), 'the bucket travels on an arc');
+  for (const lift of MACHINES.loader.height) {
+    const r = loaderReach(lift);
+    assert(r >= MACHINES.loader.reach[0] - 1e-9 && r <= MACHINES.loader.reach[1] + 1e-9, 'the arc stays in the reach range');
+  }
+  yard = new Yard({ ...SANDBOX, machines: ['loader'], toys: [{ type: 'cube', color: '#a5643e', x: 0, y: 0.68, z: 5.3 }], spawns: [[0, 0]] });
+  const m = yard.machine;
+  for (let i = 0; i < 60; i++) yard.step({});
+  assert(Math.abs(m.tip.z - loaderReach(m.lift)) < 1e-6 && Math.abs(m.tip.x) < 1e-6, 'the grab point is on the arc, straight ahead');
+  for (let i = 0; i < 40; i++) yard.step({ steer: 1 });
+  assert(m.artic > 0.45 && m.tip.x > 0.6, `steering bends it and swings the bucket (artic ${m.artic.toFixed(2)}, tip x ${m.tip.x.toFixed(2)})`);
+  const turned = m.yaw;
+  assert(turned > 0.2 && turned < MACHINE.loader.turn * 0.45 * (40 / 60) + 1e-6, 'it turns slowly on the spot');
+  for (let i = 0; i < 60; i++) yard.step({});
+  assert(Math.abs(m.artic) < 0.01, 'it straightens when the stick is let go');
+  yard.destroy();
+  // scoop: bucket down short of the block, tipped forward, drawn in, curled back, lifted and carried 6 m
+  yard = new Yard({ ...SANDBOX, machines: ['loader'], toys: [{ type: 'cube', color: '#a5643e', x: 0, y: 0.68, z: 5.3 }], spawns: [[0, 0]] });
+  const l = yard.machine;
+  for (let i = 0; i < 60; i++) yard.step({ lift: -1 });
+  for (let i = 0; i < 18; i++) yard.step({ tool: 1 });
+  for (let i = 0; i < 200 && Math.hypot(l.tip.z - 5.3, l.tip.y - 0.6) > 1.45; i++) yard.step({ drive: 0.15 });
+  assert(yard.grab(), 'the loader grabs a block in front of its bucket');
+  for (let i = 0; i < 60; i++) yard.step({});
+  for (let i = 0; i < 30; i++) yard.step({ tool: -1 });
+  for (let i = 0; i < 90; i++) yard.step({ lift: 1 });
+  const cube = yard.poses()[0];
+  assert(Math.hypot(cube.position.x - l.tip.x, cube.position.z - l.tip.z) < 0.3 && cube.position.y > 2, 'the block rides in the raised bucket');
+  for (let i = 0; i < 120; i++) yard.step({ drive: 1 });
+  assert(yard.held && yard.poses()[0].position.z > 9, 'and is carried');
+  yard.destroy();
+  console.log('PASS wheel loader: arc lift, bending steer, slow turn on the spot, scoop and carry');
+}
+// The harbor: a load pushed off the quay splashes and comes back to its start; the barge deck holds a load.
+{
+  const events = [];
+  yard = new Yard(
+    { ...HARBOR_SITE, machines: ['skid'], toys: [{ type: 'cube', color: '#c33', x: 9.4, y: 0.68, z: -10 }, { type: 'cube', color: '#c33', x: 13, y: 1.5, z: 3 }] },
+    { onEvent: (e) => events.push(e.type) },
+  );
+  yard.blocks[0].body.setLinvel({ x: 3, y: 0, z: 0 }, true);
+  for (let i = 0; i < 240; i++) yard.step();
+  const [back, onBarge] = yard.poses();
+  assert(events.includes('splash') && Math.abs(back.position.x - 9.4) < 0.3, 'a load in the water comes back to the quay');
+  assert(Math.abs(onBarge.position.y - (HARBOR.barge.deck + 0.6)) < 0.05, 'the barge deck holds a load');
+  assert.equal(yard.stamp('hill', 0, 0), false, 'terrain stamps are the yard sandbox only');
+  yard.destroy();
+  console.log('PASS harbor water returns loads and the barge holds them');
+}
+// The hillside's grass rule: a block resting on the grass goes back to its start (never a fail); gravel and mud are fine.
+{
+  const events = [];
+  const round = { ...findJob(17) };
+  yard = new Yard(round, { onEvent: (e) => events.push(e.type) });
+  const b = yard.blocks[0];
+  assert(isGrass(SITES.hillside, -3, -8) && !isGrass(SITES.hillside, -9, -8) && !isGrass(SITES.hillside, 4, -8));
+  b.body.setTranslation({ x: -3, y: 1.5, z: -8 }, true);
+  for (let i = 0; i < 120; i++) yard.step();
+  assert(events.includes('rule') && yard.returned === 1, 'the block on the grass was sent back');
+  assert(Math.abs(yard.poses()[0].position.x - round.toys[0].x) < 0.2, 'to its start');
+  assert.deepEqual(grassTouches(round, yard.poses()), []);
+  yard.destroy();
+  assert.equal(ruleLine(findJob(17)), 'Keep blocks off the grass');
+  console.log('PASS grass rule returns a block, never fails the job');
+}
+// Every new job uses only free machines; a Lab machine is at most an optional extra; rewards are looks, horns or the
+// loader (never a Lab item); the ghosts and pads sit on the site's own ground.
+{
+  for (const r of ROUNDS.slice(10)) {
+    assert(r.machines.every((k) => !MACHINES[k].lab), `job ${r.id} needs no Lab machine`);
+    assert((r.optional || []).every((k) => MACHINES[k].lab), `job ${r.id}'s optional machines are Lab extras`);
+    assert(REWARDS.includes(r.unlock) && !LAB_MACHINES.includes(r.unlock), `job ${r.id} rewards a look, horn or free machine`);
+    for (const t of r.toys) {
+      const g = SITES[r.site].height(t.x, t.z);
+      assert(t.y - TOYS[t.type].size[1] / 2 > g - 0.01 && t.y - TOYS[t.type].size[1] / 2 < g + 0.7, `job ${r.id}: a toy starts on the ground`);
+    }
+  }
+  console.log('PASS jobs 11 to 20 need only free machines');
+}
+
 const a = defaultSave(),
   b = defaultSave();
 a.done = [1, 2];
@@ -396,7 +608,10 @@ assert.deepEqual(merged, mergeBc({ updatedAt: 2, data: b }, { updatedAt: 1, data
 b.resetAt = 20;
 assert.deepEqual(mergeBc({ updatedAt: 40, data: a }, { updatedAt: 1, data: b }).done, b.done);
 assert.equal(normalizeYard({ toys: Array(100).fill({ type: 'cube', x: Infinity }) }).toys.length, 64);
-assert.deepEqual(normalize({ done: [-2, 50, 1, 1, 101, 104, 105, 11] }).done, [1, 101, 104]);
+assert.deepEqual(normalize({ done: [-2, 50, 1, 1, 101, 104, 105, 11, 20, 21] }).done, [1, 11, 20, 101, 104]);
+assert.deepEqual(normalize({ rewards: ['chevron', 'loader', 'steam', 'dump', 'gold'] }).rewards, ['chevron', 'loader', 'steam']);
+assert.equal(normalize({ horn: 'ferry', decal: 'mountain' }).horn, 'ferry');
+assert.equal(normalize({ horn: 'ferry', decal: 'mountain' }).decal, 'mountain');
 console.log('PASS commutative merge, reset, bounds');
 writeFileSync(resultsPath('physics-results.json'), JSON.stringify(report, null, 2) + '\n');
 console.log('All physics and mission checks passed.');

@@ -6,6 +6,8 @@
 import RAPIER from '../vendor/rapier.mjs';
 import { TOYS, MACHINES } from './content.mjs';
 import { RECESS, hillHeight, hillPoints, rampHeight, rampPoints } from './terrain.mjs';
+import { SITES, HARBOR, siteOf, mudAt, inWater, terrainGrid } from './sites.mjs';
+import { grassTouches } from './missions.mjs';
 export { RAPIER };
 
 let ready;
@@ -80,7 +82,7 @@ export const SKID_BUCKET = {
 };
 
 /** The bucket's colliders: the floor and back as boxes ([size, offset]) and each side plate as { hull } points. */
-function skidBucketColliders(b = SKID_BUCKET) {
+function bucketColliders(b = SKID_BUCKET) {
   const { floor, back } = b;
   const sides = [-1, 1].map((k) => ({
     hull: b.sideX.flatMap((x) => b.side.flatMap(([z, y]) => [k * x, y, z])),
@@ -108,12 +110,36 @@ const yawPitch = (yaw, pitch) => {
     cx = Math.cos(pitch / 2);
   return { x: cy * sx, y: sy * cx, z: -sy * sx, w: cy * cx };
 };
-/** A point given in the machine's frame (lx right, ly up from the ground, lz ahead) as a world point. */
-const toWorld = (m, lx, ly, lz) => ({
-  x: m.x + lx * Math.cos(m.yaw) + lz * Math.sin(m.yaw),
-  y: m.y - RIDE_HEIGHT + ly,
-  z: m.z - lx * Math.sin(m.yaw) + lz * Math.cos(m.yaw),
+/** The product of two quaternions (a then b, in a's frame). */
+const qmul = (a, b) => ({
+  x: a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+  y: a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+  z: a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+  w: a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
 });
+const qx = (a) => ({ x: Math.sin(a / 2), y: 0, z: 0, w: Math.cos(a / 2) });
+const qz = (a) => ({ x: 0, y: 0, z: Math.sin(a / 2), w: Math.cos(a / 2) });
+/** The chassis's rotation: its heading, then its pitch (nose up is positive) and roll (the +x side up is positive) where
+ *  it stands on a slope. On flat ground (and always in the yard) it is the plain heading. The scene turns the model by
+ *  the same angles (Euler order YXZ: yaw, -pitch, roll). */
+export const chassisQ = (m) =>
+  m.pitch || m.roll ? qmul(qmul(qyaw(m.yaw), qx(-m.pitch)), qz(m.roll)) : qyaw(m.yaw);
+/** A point given in the machine's frame (lx right, ly up from the ground, lz ahead) as a world point. On a slope the
+ *  frame pitches and rolls with the chassis. */
+const toWorld = (m, lx, ly, lz) => {
+  if (!m.pitch && !m.roll)
+    return {
+      x: m.x + lx * Math.cos(m.yaw) + lz * Math.sin(m.yaw),
+      y: m.y - RIDE_HEIGHT + ly,
+      z: m.z - lx * Math.sin(m.yaw) + lz * Math.cos(m.yaw),
+    };
+  const v = rotate(chassisQ(m), { x: lx, y: ly, z: lz });
+  return { x: m.x + v.x, y: m.y - RIDE_HEIGHT + v.y, z: m.z + v.z };
+};
+/** A tool rotation given in the machine's frame (turned `yaw` about its vertical, then pitched by `pitch` about its x)
+ *  as a world rotation: the plain yawPitch on level ground. */
+const toolQ = (m, yaw, pitch) =>
+  m.pitch || m.roll ? qmul(qmul(chassisQ(m), qyaw(yaw)), qx(pitch)) : yawPitch(m.yaw + yaw, pitch);
 /** Rotates vector v by the unit quaternion q. */
 function rotate(q, v) {
   const { x, y, z, w } = q,
@@ -170,7 +196,7 @@ function placeDump(m) {
   const a = bedAngle(m.lift),
     h = DUMP.hinge,
     pos = toWorld(m, 0, h.y, h.z),
-    q = yawPitch(m.yaw, -a),
+    q = toolQ(m, 0, -a),
     // the bed's middle, for the camera and the effects
     mid = rotate(q, { x: 0, y: 0.5, z: DUMP.bed.length / 2 }),
     gv = { x: 0, y: 0, z: 0 };
@@ -178,7 +204,7 @@ function placeDump(m) {
     tip: { x: pos.x + mid.x, y: pos.y + mid.y, z: pos.z + mid.z },
     pos,
     q,
-    gate: { pos: { x: pos.x + gv.x, y: pos.y + gv.y, z: pos.z + gv.z }, q: yawPitch(m.yaw, -a - gateAngle(a)) },
+    gate: { pos: { x: pos.x + gv.x, y: pos.y + gv.y, z: pos.z + gv.z }, q: toolQ(m, 0, -a - gateAngle(a)) },
   };
 }
 
@@ -216,12 +242,58 @@ export function forkCarriage(m) {
 /** The carriage's pose and the tine tips for the forklift's lift and mast tilt. */
 function placeFork(m) {
   const f = FORK,
-    q = yawPitch(m.yaw, -m.tilt),
+    q = toolQ(m, 0, -m.tilt),
     c = forkCarriage(m),
     pos = toWorld(m, 0, c.y, c.z),
     tipV = rotate(q, { x: 0, y: 0, z: f.tine.heel + f.tine.len });
   return { tip: { x: pos.x + tipV.x, y: pos.y + tipV.y, z: pos.z + tipV.z }, pos, q };
 }
+
+/** WL-06, the wheel loader (a free machine, earned at job 16). It steers by bending in the middle: the front frame,
+ *  which carries the lift arms and the bucket, turns about the hinge at the machine's centre by half the articulation
+ *  angle `artic` and the rear frame by the other half, so the bucket swings out to the side of a turn. The arms pivot at
+ *  `arm` on the front frame and pin to the bucket `length` metres away, so the bucket rises on a real arc: `lift` is the
+ *  grab point's height above the ground and the reach follows from it (furthest out at the arm pivot's height). The
+ *  bucket is a wider, deeper box than the skid steer's (floor, back and two sloped side plates) that tilts on `tilt`. */
+export const LOADER = {
+  arm: { z: 0.6, y: 2.1 },
+  length: 3.2,
+  /** The largest articulation (radians) and the share of the gap it closes each step as it follows the steering. */
+  artic: 0.55,
+  articEase: 0.15,
+  bucket: {
+    width: 2.9,
+    floor: { y: -0.62, thick: 0.12, z: [-0.78, 0.78] },
+    back: { z: -0.74, thick: 0.12, y: [-0.66, 0.34] },
+    sideX: [1.33, 1.45],
+    side: [
+      [-0.8, -0.68],
+      [0.78, -0.68],
+      [0.78, -0.36],
+      [-0.8, 0.34],
+    ],
+  },
+  rearAxle: -1.55,
+  frontAxle: 1.35,
+};
+/** How far ahead of the hinge the loader's grab point is at lift height `lift` (the arc of the lift arms). */
+export const loaderReach = (lift) => {
+  const { arm, length } = LOADER,
+    s = clamp((lift - arm.y) / length, -0.999, 0.999);
+  return arm.z + length * Math.sqrt(1 - s * s);
+};
+/** The loader's bucket pose: on the arc for its lift, turned by half the articulation, tilted by its tilt joint. */
+function placeLoader(m) {
+  const reach = loaderReach(m.lift),
+    half = (m.artic || 0) / 2;
+  m.reach = reach;
+  const pos = toWorld(m, Math.sin(half) * reach, m.lift, Math.cos(half) * reach);
+  return { tip: pos, pos, q: toolQ(m, half, m.tilt) };
+}
+const LOADER_CHASSIS = [
+  [[2.3, 1.3, 2.9], [0, g(1.35), -1.25]],
+  [[2.0, 0.9, 1.6], [0, g(1.2), 1.0]],
+];
 
 /** Physics for each machine kind.
  *  - speed, turn, height, reach: drive speed, turn rate, tool height range and reach range (from content.mjs).
@@ -238,7 +310,7 @@ function placeFork(m) {
 export const MACHINE = {
   skid: {
     ...pick(MACHINES.skid),
-    tool: skidBucketColliders(),
+    tool: bucketColliders(),
     orient: yawAndTilt,
     stick: { joint: 'tilt', rate: 1 },
     extend: null,
@@ -262,6 +334,28 @@ export const MACHINE = {
     extend: { joint: 'reach', rate: 1.8 },
     swings: true,
     wreckingBall: true,
+  },
+  // WL-06 wheel loader (0.6), a free machine like the first three: `place` puts its bucket on the arms' arc, and
+  // `artic` makes it steer by bending in the middle (it turns slowly on the spot; the bucket swings out on a turn).
+  loader: {
+    ...pick(MACHINES.loader),
+    tool: bucketColliders(LOADER.bucket),
+    chassis: LOADER_CHASSIS,
+    place: placeLoader,
+    home: 0.8,
+    liftRate: 1.8,
+    ease: 0.07,
+    pivot: 0,
+    steerLow: 0.4,
+    margin: 1.6,
+    tiltRange: [-0.8, 0.7],
+    tiltRate: 1,
+    artic: true,
+    orient: yawAndTilt,
+    stick: { joint: 'tilt', rate: 1 },
+    extend: null,
+    swings: false,
+    wreckingBall: false,
   },
   // The Lab machines. `place(m)` gives the tool's pose (and the tip the camera and effects follow) from the joints, in
   // place of the boom rule; `chassis` lists the body's box colliders; `gate` is the dump truck's second kinematic body.
@@ -316,6 +410,24 @@ function pick({ speed, turn, height, reach }) {
   return { speed, turn, height, reach };
 }
 
+/** How each machine copes with real slopes and mud (the hillside, 0.6): `climb` is the steepest slope in degrees it can
+ *  drive onto (tracks grip better than wheels; the tall crane and the forklift are kept to gentle ground), `gear` picks
+ *  its mud factor, and `length` and `width` are the spread of its wheels or tracks, which set how it pitches and rolls.
+ *  A machine stands still on any slope it could climb (nothing slides), slows as it climbs, and stops at the foot of
+ *  anything steeper, in both directions, so it never drives over a cliff edge. */
+export const TRACTION = {
+  skid: { climb: 20, gear: 'wheels', length: 1.2, width: 1.84 },
+  excavator: { climb: 24, gear: 'tracks', length: 2.6, width: 2.1 },
+  crane: { climb: 17, gear: 'tracks', length: 3.5, width: 2.5 },
+  loader: { climb: 22, gear: 'wheels', length: 2.9, width: 2.2 },
+  dump: { climb: 16, gear: 'wheels', length: 3.7, width: 2.3 },
+  fork: { climb: 9, gear: 'wheels', length: 1.5, width: 1.56 },
+};
+/** The share of its speed a machine keeps in mud. */
+export const MUD_FACTOR = { wheels: 0.45, tracks: 0.72 };
+/** How much of its speed a machine loses climbing a slope at its limit (it keeps the rest; a gentler slope costs less). */
+const CLIMB_LOSS = 0.55;
+
 /** Moves one joint by `amount`, within its limits. */
 function moveJoint(m, d, joint, amount) {
   const limits = JOINT_LIMITS[joint](d);
@@ -354,22 +466,66 @@ export class Yard {
     this.wrecking = false;
     this.ball = null;
     this.ballMachine = null;
+    /** The work site (sites.mjs): the yard's tiles, the harbor's quay and water, or the hillside's slopes. */
+    this.site = siteOf(round);
+    /** Rule breaks this job has sent back (the "off the grass" rule), and the steps until the rule is next checked. */
+    this.returned = 0;
+    this.ruleTick = 0;
     this.tiles = new Map();
-    for (let x = -YARD.half; x <= YARD.half; x += YARD.tile) {
-      for (let z = -YARD.half; z <= YARD.half; z += YARD.tile) this.tile(x, z, 0);
-    }
+    if (this.site.floor === 'tiles') {
+      for (let x = -YARD.half; x <= YARD.half; x += YARD.tile) {
+        for (let z = -YARD.half; z <= YARD.half; z += YARD.tile) this.tile(x, z, 0);
+      }
+    } else if (this.site.floor === 'quay') this.buildHarbor();
+    else this.buildTerrain();
     for (const p of round.props || []) this.fixed(p.x, p.y, p.z, p.size);
-    // The fence: four 3 m walls just outside the yard, so nothing drives or rolls away.
-    const fence = [
-      [-YARD.fence, 0, [1, 3, 35]],
-      [YARD.fence, 0, [1, 3, 35]],
-      [0, -YARD.fence, [35, 3, 1]],
-      [0, YARD.fence, [35, 3, 1]],
-    ];
-    for (const [x, z, s] of fence) this.fixed(x, 1.5, z, s);
+    if (this.site.fence) {
+      // A tall wall where the ground climbs, so nothing drives or rolls away over the hillside's fence.
+      for (const [x, z, s] of this.site.fence) this.fixed(x, s[1] > 3 ? s[1] / 2 - 3 : 1.5, z, s);
+    } else {
+      // The fence: four 3 m walls just outside the yard, so nothing drives or rolls away.
+      const fence = [
+        [-YARD.fence, 0, [1, 3, 35]],
+        [YARD.fence, 0, [1, 3, 35]],
+        [0, -YARD.fence, [35, 3, 1]],
+        [0, YARD.fence, [35, 3, 1]],
+      ];
+      for (const [x, z, s] of fence) this.fixed(x, 1.5, z, s);
+    }
     // Jobs line the machines up from (-6, -4); a round's `spawns` ([x, z] per machine) overrides that.
     round.machines.forEach((kind, i) => this.addMachine(kind, ...(round.spawns?.[i] || [-6 + i * 5, -4])));
     round.toys.forEach((t) => this.spawn(t));
+  }
+
+  /** The harbor: one quay slab (top at y = 0) up to the edge, the edge kerb, the harbor bed under the water, the moored
+   *  barge (a fixed hull whose deck sits just below the quay, with a low gunwale round it) and the two old piles. */
+  buildHarbor() {
+    const H = HARBOR,
+      b = H.barge;
+    this.fixed((H.edge - 22) / 2, -1, 0, [H.edge + 22, 2, 44]);
+    const k = H.kerb;
+    this.fixed(k.x, k.h / 2, (k.z[0] + k.z[1]) / 2, [k.w, k.h, k.z[1] - k.z[0]]);
+    this.fixed(H.edge + 15, H.water.bed - 1, 0, [30, 2, 44]);
+    const bx = (b.x[0] + b.x[1]) / 2,
+      bz = (b.z[0] + b.z[1]) / 2,
+      bw = b.x[1] - b.x[0],
+      bd = b.z[1] - b.z[0],
+      hull = b.deck - H.water.bed;
+    this.fixed(bx, b.deck - hull / 2, bz, [bw, hull, bd]);
+    for (const k of [-1, 1]) {
+      this.fixed(bx + (k * (bw - b.rimW)) / 2, b.deck + b.rim / 2, bz, [b.rimW, b.rim, bd]);
+      this.fixed(bx, b.deck + b.rim / 2, bz + (k * (bd - b.rimW)) / 2, [bw, b.rim, b.rimW]);
+    }
+    for (const p of H.piles) this.fixed(p.x, -2, p.z, [p.size, 4, p.size]);
+  }
+
+  /** The hillside's ground: one Rapier heightfield sampled from the same height function the machines ride on and the
+   *  scene draws (sites.mjs). */
+  buildTerrain() {
+    const { n, size, heights } = terrainGrid(this.site);
+    this.world.createCollider(
+      RAPIER.ColliderDesc.heightfield(n, n, heights, { x: size, y: 1, z: size }).setFriction(0.95),
+    );
   }
 
   /** A fixed box collider centred at (x, y, z) with full size `size`. */
@@ -390,8 +546,9 @@ export class Yard {
   /** Adds a machine of `kind` at (x, z): a kinematic chassis and a separate kinematic tool body (and, for the dump
    *  truck, a kinematic tailgate). */
   addMachine(kind, x, z) {
-    const def = MACHINE[kind];
-    const chassis = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, RIDE_HEIGHT, z);
+    const def = MACHINE[kind],
+      ground = this.groundAt(x, z);
+    const chassis = RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(x, RIDE_HEIGHT + ground, z);
     const body = this.world.createRigidBody(chassis);
     for (const [size, offset] of def.chassis || [[CHASSIS.map((v) => v * 2), [0, 0, 0]]]) {
       this.world.createCollider(
@@ -406,13 +563,17 @@ export class Yard {
       body,
       x,
       z,
-      y: RIDE_HEIGHT,
+      y: RIDE_HEIGHT + ground,
       yaw: 0,
       swing: 0,
       lift: def.home ?? HOME_LIFT,
       reach: def.reach[0],
       tilt: 0,
       speed: 0,
+      // where it stands on a slope (radians; always 0 in the yard), and the loader's bend
+      pitch: 0,
+      roll: 0,
+      artic: 0,
       home: { x, z },
       tool: null,
       gate: null,
@@ -438,8 +599,46 @@ export class Yard {
       }
     }
     this.machines.push(m);
+    this.seat(m, true);
     this.updateTip(m, true);
     return m;
+  }
+
+  /** Sets a machine on the ground under it: its ride height and, on a terrain site, the pitch and roll that put its
+   *  wheels or tracks on the slope (eased, or at once when `instant`), then moves its kinematic chassis there. */
+  seat(m, instant = false) {
+    const base = this.groundAt(m.x, m.z);
+    m.y = RIDE_HEIGHT + base;
+    if (this.site.terrain) {
+      const t = TRACTION[m.kind],
+        s = Math.sin(m.yaw),
+        c = Math.cos(m.yaw),
+        hl = t.length / 2,
+        hw = t.width / 2,
+        pitch = Math.atan2(this.groundAt(m.x + s * hl, m.z + c * hl) - this.groundAt(m.x - s * hl, m.z - c * hl), t.length),
+        roll = Math.atan2(this.groundAt(m.x + c * hw, m.z - s * hw) - this.groundAt(m.x - c * hw, m.z + s * hw), t.width),
+        k = instant ? 1 : 0.3;
+      m.pitch += (pitch - m.pitch) * k;
+      m.roll += (roll - m.roll) * k;
+    }
+    const q = chassisQ(m),
+      up = m.pitch || m.roll ? rotate(q, { x: 0, y: RIDE_HEIGHT, z: 0 }) : { x: 0, y: RIDE_HEIGHT, z: 0 },
+      at = { x: m.x + up.x, y: base + up.y, z: m.z + up.z };
+    if (instant) {
+      m.body.setTranslation(at, true);
+      m.body.setRotation(q, true);
+    } else {
+      m.body.setNextKinematicTranslation(at);
+      m.body.setNextKinematicRotation(q);
+    }
+  }
+
+  /** How steep the ground is at (x, z): the slope's rise per metre, measured over a metre around the point. */
+  steepness(x, z) {
+    const e = 0.5,
+      gx = (this.groundAt(x + e, z) - this.groundAt(x - e, z)) / (2 * e),
+      gz = (this.groundAt(x, z + e) - this.groundAt(x, z - e)) / (2 * e);
+    return Math.hypot(gx, gz);
   }
 
   /** Adds a toy from a job or tray entry ({ type, color, x, y?, z, rotation? }); returns null when the yard is full.
@@ -522,7 +721,7 @@ export class Yard {
   bedCargo(m = this.machine) {
     if (m.kind !== 'dump') return [];
     const a = bedAngle(m.lift),
-      inv = conj(yawPitch(m.yaw, -a)),
+      inv = conj(toolQ(m, 0, -a)),
       h = toWorld(m, 0, DUMP.hinge.y, DUMP.hinge.z),
       half = DUMP.bed.inner / 2;
     return this.blocks.filter((b) => {
@@ -573,7 +772,13 @@ export class Yard {
     const def = MACHINE[m.kind];
     let tip, pos, q, gate;
     if (def.place) ({ tip, pos, q, gate } = def.place(m));
-    else {
+    else if (this.site.terrain) {
+      // On a slope the lift is measured from the ground under the machine (the boom and its operator keep the grab
+      // point `reach` metres out and level, so a slope never throws the load); the model's arms solve back to it.
+      const a = m.yaw + m.swing;
+      tip = pos = { x: m.x + Math.sin(a) * m.reach, y: m.y - RIDE_HEIGHT + m.lift, z: m.z + Math.cos(a) * m.reach };
+      q = def.orient(a, m);
+    } else {
       const a = m.yaw + m.swing;
       tip = pos = { x: m.x + Math.sin(a) * m.reach, y: m.lift, z: m.z + Math.cos(a) * m.reach };
       q = def.orient(a, m);
@@ -644,9 +849,11 @@ export class Yard {
       tilt: 0,
       speed: 0,
       reach: MACHINE[m.kind].reach[0],
+      pitch: 0,
+      roll: 0,
+      artic: 0,
     });
-    m.body.setTranslation({ x: m.x, y: RIDE_HEIGHT, z: m.z }, true);
-    m.body.setRotation(qyaw(0), true);
+    this.seat(m, true);
     this.updateTip(m, true);
   }
 
@@ -683,16 +890,33 @@ export class Yard {
     if (d.swings) m.swing += (input.swing || 0) * dt;
     if (d.tiltRange || !d.place) m.tilt = clamp(m.tilt + (input.tilt || 0) * (d.tiltRate ?? 1) * dt, ...(d.tiltRange || TILT));
     if (d.extend) moveJoint(m, d, d.extend.joint, (input.extend || 0) * d.extend.rate * dt);
-    m.body.setNextKinematicTranslation({ x: m.x, y: m.y, z: m.z });
-    m.body.setNextKinematicRotation(qyaw(m.yaw));
+    // The loader bends toward the steering and straightens when the stick is let go.
+    if (d.artic) m.artic += (clamp(input.steer || 0, -1, 1) * LOADER.artic - m.artic) * LOADER.articEase;
+    this.seat(m);
     for (const machine of this.machines) this.updateTip(machine);
     if (this.held) this.carry(this.held.body, m.tip);
     if (this.ball) this.swingBall();
     this.world.step(this.queue);
     this.queue.drainContactForceEvents((e) => this.contact(e));
+    const harbor = this.site.id === 'harbor';
     for (const b of this.blocks) {
       const p = b.body.translation();
       if (p.y < -6 || Math.abs(p.x) > YARD.lost || Math.abs(p.z) > YARD.lost) this.recover(b);
+      else if (harbor && p.y < HARBOR.water.level - 0.5 && inWater(p.x, p.z)) {
+        // A load that falls in the harbor comes back to its start, with a splash where it went in.
+        this.onEvent({ type: 'splash', position: { x: p.x, y: HARBOR.water.level, z: p.z } });
+        this.recover(b);
+      }
+    }
+    // A job's "keep the blocks off the grass" rule: a block resting on the grass goes back to its start (never a fail).
+    if (this.round.rules?.includes('noGrass') && ++this.ruleTick >= 6) {
+      this.ruleTick = 0;
+      for (const id of grassTouches(this.round, this.poses(), this.held?.id)) {
+        const b = this.blocks.find((x) => x.id === id);
+        this.returned++;
+        this.onEvent({ type: 'rule', rule: 'noGrass', position: { ...b.body.translation() } });
+        this.recover(b);
+      }
     }
   }
 
@@ -711,9 +935,35 @@ export class Yard {
     m.yaw += steer * rate * dt;
     const cx = px - Math.sin(m.yaw) * pv,
       cz = pz - Math.cos(m.yaw) * pv,
-      lim = YARD.half - (d.margin || 0),
-      nx = clamp(cx + Math.sin(m.yaw) * m.speed * dt, -lim, lim),
-      nz = clamp(cz + Math.cos(m.yaw) * m.speed * dt, -lim, lim);
+      b = this.site.bounds,
+      mg = d.margin || 0;
+    let step = m.speed * dt;
+    // Mud slows wheels (tracks less); a climb slows every machine by how close the slope is to its limit.
+    const t = TRACTION[m.kind];
+    if (mudAt(this.site, cx, cz)) step *= MUD_FACTOR[t.gear];
+    let nx = clamp(cx + Math.sin(m.yaw) * step, b.x[0] + mg, b.x[1] - mg),
+      nz = clamp(cz + Math.cos(m.yaw) * step, b.z[0] + mg, b.z[1] - mg);
+    if (this.site.terrain && (nx !== cx || nz !== cz)) {
+      const limit = Math.tan((t.climb * Math.PI) / 180),
+        here = this.groundAt(cx, cz),
+        run = Math.hypot(nx - cx, nz - cz),
+        grade = (this.groundAt(nx, nz) - here) / Math.max(1e-6, run),
+        steep = this.steepness(nx, nz);
+      // Too steep to drive onto (up or down) unless the move leads to gentler ground: the machine waits at the foot of a
+      // steep bank or at the lip of the ravine, and never slides on a slope it may stand on.
+      if (steep > limit && steep >= this.steepness(cx, cz) - 1e-4) {
+        nx = cx;
+        nz = cz;
+        m.stalled = true;
+      } else {
+        m.stalled = false;
+        if (grade > 0) {
+          const k = Math.max(0.3, 1 - (CLIMB_LOSS * grade) / limit);
+          nx = cx + (nx - cx) * k;
+          nz = cz + (nz - cz) * k;
+        }
+      }
+    }
     m.x = this.blocked(nx, cz) ? m.x + (cx - m.x) : nx;
     m.z = this.blocked(m.x, nz) ? m.z + (cz - m.z) : nz;
     m.y = RIDE_HEIGHT + this.groundAt(m.x, m.z);
@@ -793,6 +1043,7 @@ export class Yard {
 
   /** The ground height at (x, z): 0, or the shape of the terrain stamp covering that point. */
   groundAt(x, z) {
+    if (this.site.floor !== 'tiles') return this.site.height(x, z);
     const s = this.stamps.find((s) => Math.abs(s.x - x) < 2 && Math.abs(s.z - z) < 2);
     if (!s) return 0;
     return Object.hasOwn(STAMP_HEIGHT, s.kind) ? STAMP_HEIGHT[s.kind](x - s.x, z - s.z) : 0;
@@ -801,7 +1052,8 @@ export class Yard {
   /** Places a terrain stamp on the tile nearest (x, z). Pits and water lower the tile; a hill adds a low mound and a
    *  ramp a wedge. Returns false when the yard already has 12 stamps or the tile is taken. */
   stamp(kind, x, z) {
-    if (this.stamps.length >= 12) return false;
+    // Terrain stamps belong to the yard's tiled floor (the sandbox); the other sites have ground of their own.
+    if (this.stamps.length >= 12 || this.site.floor !== 'tiles') return false;
     x = clamp(Math.round((x - 2) / 4) * 4 + 2, -YARD.half, YARD.half);
     z = clamp(Math.round((z - 2) / 4) * 4 + 2, -YARD.half, YARD.half);
     if (this.stamps.some((s) => s.x === x && s.z === z)) return false;

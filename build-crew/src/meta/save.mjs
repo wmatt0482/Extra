@@ -3,7 +3,7 @@
 // document cannot break the game. Yard snapshots stay small; thumbnails stay on this device and never sync.
 import { defaultStreak, defaultCosmetics, defaultCrates } from '../../../spell-jump/src/meta/engagement.js';
 import { mergeStreak } from '../../../spell-jump/src/sync/merge.js';
-import { TOYS, MACHINES } from '../content.mjs';
+import { TOYS, MACHINES, JOB_COUNT, REWARDS, DECALS, HORNS } from '../content.mjs';
 export const saveKey = (id) => `buildCrew.${id}.save`;
 /** A fresh builder: no jobs done, stock look, no saved yard, and the shared streak/cosmetics/crates defaults. */
 export const defaultSave = () => ({
@@ -72,15 +72,16 @@ export function normalizeYard(raw) {
 export function normalize(raw) {
   const out = defaultSave();
   if (!raw || typeof raw !== 'object') return out;
-  // Jobs 1 to 10, and the four Lab blueprints 101 to 104 (a blueprint can only be played with the Lab's coins).
+  // Jobs 1 to 20 (the yard, the harbor and the hillside), and the four Lab blueprints 101 to 104 (a blueprint can only
+  // be played with the Lab's coins).
   out.done = [
     ...new Set(
       (Array.isArray(raw.done) ? raw.done : []).filter(
-        (v) => Number.isInteger(v) && ((v >= 1 && v <= 10) || (v >= 101 && v <= 104)),
+        (v) => Number.isInteger(v) && ((v >= 1 && v <= JOB_COUNT) || (v >= 101 && v <= 104)),
       ),
     ),
   ].sort((a, b) => a - b);
-  const rewards = ['cream', 'excavator', 'leaf', 'star', 'crane', 'sky', 'bell', 'stripe', 'sunset', 'wrecking'];
+  const rewards = REWARDS;
   out.rewards = [...new Set((Array.isArray(raw.rewards) ? raw.rewards : []).filter((r) => rewards.includes(r)))];
   out.resetAt = Math.max(0, n(raw.resetAt));
   out.unlockAll = !!raw.unlockAll;
@@ -93,8 +94,8 @@ export function normalize(raw) {
       out.play[day] = { rounds: clamp(p?.rounds, 0, 10000), seconds: clamp(p?.seconds, 0, 86400) };
     }
   out.paint = ['stock', ...rewards].includes(raw.paint) ? raw.paint : 'stock';
-  out.decal = ['none', 'star', 'stripe'].includes(raw.decal) ? raw.decal : 'none';
-  out.horn = raw.horn === 'bell' ? 'bell' : 'stock';
+  out.decal = ['none', ...DECALS].includes(raw.decal) ? raw.decal : 'none';
+  out.horn = HORNS.includes(raw.horn) ? raw.horn : 'stock';
   // Reuse shared streak merging to normalize its persisted schema and preserve earned cosmetics.
   if (raw.streak && Array.isArray(raw.streak.days)) {
     out.streak = {

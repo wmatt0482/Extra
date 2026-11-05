@@ -2,6 +2,7 @@
 // tests feed the same pose list (from Yard.poses()) into the same functions, so a job can only be finished by moving
 // real toys with real physics.
 import { TOYS } from './content.mjs';
+import { siteOf, isGrass } from './sites.mjs';
 // The length of a velocity vector; a missing vector counts as still.
 const speed = (v) => Math.hypot(v?.x || 0, v?.y || 0, v?.z || 0);
 /** Matches toys to the job. A held toy or a moving one never counts. Blueprint jobs need a distinct toy of the right
@@ -120,3 +121,38 @@ export class Challenge {
     return `Height ${(this.met ? this.best : this.height).toFixed(1)} m · target ${c.metres.toFixed(1)} m`;
   }
 }
+
+/** The vertical half-extent of a toy in its real orientation (half its height when it stands upright). */
+function halfHeight(b) {
+  const d = TOYS[b.type]?.size;
+  if (!d) return 0.6;
+  const { x, y, z, w } = b.rotation;
+  return (
+    (Math.abs(2 * (x * y + z * w)) * d[0] + Math.abs(1 - 2 * (x * x + z * z)) * d[1] + Math.abs(2 * (y * z - x * w)) * d[2]) / 2
+  );
+}
+
+/** A job's site rules. 'noGrass' (the hillside's mud pass): no block may rest on the grass. It is never a fail: the
+ *  physics yard sends a block that touches the grass back to its start, the HUD keeps the rule on its second line and
+ *  the job carries on. Returns the ids of the blocks touching the grass now (a held block never counts, and one that is
+ *  only passing over the grass in a bucket or above it does not touch it). */
+export function grassTouches(round, blocks, held = null) {
+  if (!round.rules?.includes('noGrass')) return [];
+  const site = siteOf(round),
+    out = [];
+  for (const b of blocks) {
+    if (b.id === held || b.broken) continue;
+    const { x, y, z } = b.position;
+    if (!isGrass(site, x, z)) continue;
+    if (y - halfHeight(b) < site.height(x, z) + 0.12) out.push(b.id);
+  }
+  return out;
+}
+
+/** The second line of the HUD's counter for a job's rule ('' without one). */
+export const RULE_LINE = { noGrass: 'Keep blocks off the grass' };
+export const ruleLine = (round) =>
+  (round.rules || [])
+    .map((r) => RULE_LINE[r])
+    .filter(Boolean)
+    .join(' · ');
