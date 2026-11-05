@@ -2400,7 +2400,7 @@ async function skyTeaserTest(browser, layout, { reduced = false } = {}) {
     const tapC = () => page.mouse.click(layout.width / 2, layout.height * 0.4);
     await tapC(); await page.waitForTimeout(250);
     st = await sky();
-    check(st && st.frame === 1 && /The Sky Era\. New tracks\. New rides\. And a second jump you earn by spelling\./.test(st.caption), `a tap: the second still (${st && st.caption})`);
+    check(st && st.frame === 1 && /The Sky Era\. And a second jump you earn by spelling\. New tracks\. New rides\./.test(st.caption), `a tap: the second still (${st && st.caption})`);
     await shot(page, layout, 'sky-r2-still', 200);
     await tapC(); await page.waitForTimeout(250);
     st = await sky();
@@ -2430,7 +2430,7 @@ async function skyTeaserTest(browser, layout, { reduced = false } = {}) {
   await shot(page, layout, 'sky-01-hook', 0);
   await layoutAudit(page, layout.insets, 'Sky teaser');
   // a few frames from the middle (seek pauses and draws that moment)
-  for (const [t, name, re] of [[3.2, '02-climb', /clouds/], [13.4, '03-name-rings', /second jump/], [16.0, '04-rides', /second jump/], [21.5, '05-road', /road to the sky/]]) {
+  for (const [t, name, re] of [[3.2, '02-climb', /clouds/], [13.4, '03-name-rings', /second jump/], [16.0, '04-rides', /New rides/], [21.5, '05-road', /road to the sky/]]) {
     await J(page, (x) => window.__spellJump.sky.seek(x), t);
     await page.waitForTimeout(150);
     st = await sky();

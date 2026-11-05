@@ -968,8 +968,8 @@ export function createSkyTeaser(root, deps = {}) {
       cues.push({ t: 1.22, fx: 'whoosh' }, { t: 1.7, fx: 'rise' }, { t: 4.3, fx: 'burst' }, { t: 6.05, fx: 'reveal' }, { t: B2 + 2.62, fx: 'whoosh' }, { t: B2 + 3.4, fx: 'orbit' },
         { t: B2 + 9.2, fx: 'pass' }, { t: B2 + 9.75, fx: 'pass' }, { t: 17.3, fx: 'whoosh' }, { t: B3 + 0.3, fx: 'reveal' });
       line(B2 + 0.35, SKY_LINES.era);
-      line(B2 + 3.0, SKY_LINES.rides);
-      line(B2 + 5.95, SKY_LINES.jump);
+      line(B2 + 4.4, SKY_LINES.jump);         // over the gravity well and the second jump through the name rings
+      line(B2 + 8.9, SKY_LINES.rides);        // as the ride silhouettes glide past the sun
       caps.push({ t: 17.25, text: '' });
       line(B3 + 0.55, SKY_LINES.road);
       if (P.steps >= SKY_ROAD_STEPS) line(B3 + 4.0, SKY_LINES.gate);
@@ -1034,7 +1034,7 @@ export function createSkyTeaser(root, deps = {}) {
   function stillLines(i) {
     const s = stillScene(i);
     if (s === 'b1') return [SKY_LINES.hook];
-    if (s === 'b2') return [SKY_LINES.era, SKY_LINES.rides, SKY_LINES.jump];
+    if (s === 'b2') return [SKY_LINES.era, SKY_LINES.jump, SKY_LINES.rides];
     if (P.kind === 'clip') return [P.step >= SKY_ROAD_STEPS ? SKY_LINES.gate : stepLine(P.steps)];
     return P.steps >= SKY_ROAD_STEPS ? [SKY_LINES.road, SKY_LINES.gate] : [SKY_LINES.road];
   }

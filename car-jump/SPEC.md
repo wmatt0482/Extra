@@ -628,7 +628,7 @@ built; the Sky Era's tracks, rides and mechanics are not. Era 1 is unchanged and
   stones glow; the car on its step; "Sky Road: N / 15" as text). Milestone clip 5.4 s (the car hops to its new step), gate
   clip 7 s. Reduced motion (`settings.reducedMotion` or the OS): 3 stills (1 for a clip), a tap for the next.
 - **Lines** (captions always; voice = natural clips only, never the device voice, silent without a clip or with sound off):
-  "What's up above the clouds?" · "The Sky Era." · "New tracks. New rides." · "And a second jump you earn by spelling." ·
+  "What's up above the clouds?" · "The Sky Era." · "And a second jump you earn by spelling." · "New tracks. New rides." (with the silhouettes) ·
   "Every mission you finish builds your road to the sky." · "Your Sky Road grew! Step N of 15." (4 / 8 / 12 pre-made) ·
   "You made it to the Sky Gate! The Sky Era is on its way."
 - **Skip**: a tap anywhere after 0.5 s, the Skip button (top right, safe-area aware), Esc / Enter / Space; closing stops
