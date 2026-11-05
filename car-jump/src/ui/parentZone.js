@@ -80,6 +80,7 @@ export function createParentZone(app) {
   let pinMode = 'enter', pinFirst = '', pinEntry = '', mathQ = null, mathEntry = '';
   let holdTimer = 0, holdRaf = 0;
   let voiceShowAll = false;            // Options → Voice: "Show all N voices" stays open across re-renders
+  let classOpen = false;               // v3.9.1: Words → the class-list card's "Show words and sentences" stays open across re-renders
   // the finger that finished the 3 s hold is still down when the math pad appears under it: the click its release
   // synthesizes must not type a digit, so a pad key only acts on a click whose press started on that key
   // (keyboard activation, detail 0, still works)
@@ -284,31 +285,62 @@ export function createParentZone(app) {
         return b;
       })) : null;
 
-    // v3.7: this week's class list (src/data/classLists.js): one tap for this player or the whole family
+    // v3.7: this week's class list (src/data/classLists.js): one tap for this player or the whole family.
+    // v3.9.1: the card says plainly whether this week is in use for this child (a parent saw the new week's bare words
+    // here and last week's list with sentences in the box below, and thought the new week had no sentences), and opens
+    // to show each word with its syllables and sentence.
     const cl = newestClassList(Date.now());
     let classCard = null;
     if (cl) {
       const following = !!list.classId;
+      const inUse = list.id === cl.id || list.classId === cl.id;
       const useFor = (ids) => {
         const now = Date.now();
         for (const id of ids) {
           const wd = app.wordsFor(id);
-          applyClassList(wd, cl, now);
+          applyClassList(wd, cl, now);       // keeps classId: the child follows the class lists from now on
           app.saveWordsFor(id, wd);
           if (app.cloudPrepareFor) app.cloudPrepareFor(id);
         }
         if (app.ping) app.ping('list');
       };
-      const actions = following
-        ? [h('div', { class: 'pc-follow', id: 'pz-class-following' }, 'Following the class lists ✓ · each new week applies on its own'),
-          h('button', { class: 'pc-stop', id: 'pz-class-stop', 'data-sfx': '', onclick: () => { stopFollowing(d, Date.now()); app.saveWordsFor(p.id, d); app.toast('Stopped following the class lists'); render(); } }, 'Stop following')]
-        : [h('button', { class: 'btn btn-sm btn-cyan', id: 'pz-class-use', 'data-sfx': '', onclick: () => { useFor([p.id]); app.toast(`Class list for ${p.name}`); render(); } }, `Use for ${p.name}`),
-          app.family.players.length > 1 ? h('button', { class: 'btn btn-sm', id: 'pz-class-all', 'data-sfx': '', onclick: () => { useFor(app.family.players.map((x) => x.id)); app.toast('Class list for everyone'); render(); } }, 'Use for everyone') : null];
-      classCard = h('div', { class: 'pz-class', id: 'pz-class', 'data-class': cl.id, 'data-following': String(following) },
+      const status = inUse
+        ? h('div', { class: 'pc-status on', id: 'pz-class-status', 'data-in-use': 'true' }, h('b', {}, 'In use'), ` for ${p.name} ✓`)
+        : h('div', { class: 'pc-status off', id: 'pz-class-status', 'data-in-use': 'false' }, h('b', {}, 'Not in use yet:'), ` tap Use for ${p.name}`);
+      const now = inUse ? null
+        : h('div', { class: 'sub', id: 'pz-class-now' }, list.sample ? `${p.name} is on the built-in list for now.` : `${p.name} is on "${list.name}" for now (below).`);
+      let actions;
+      if (inUse && following) {
+        actions = [h('div', { class: 'pc-follow', id: 'pz-class-following' }, 'Following the class lists ✓ · each new week applies on its own'),
+          h('button', { class: 'pc-stop', id: 'pz-class-stop', 'data-sfx': '', onclick: () => { stopFollowing(d, Date.now()); app.saveWordsFor(p.id, d); app.toast('Stopped following the class lists'); render(); } }, 'Stop following')];
+      } else if (inUse) {
+        actions = [h('div', { class: 'sub', id: 'pz-class-notfollowing' }, 'Not following the class lists: next week will not apply on its own.'),
+          h('button', { class: 'btn btn-sm btn-cyan', id: 'pz-class-follow', 'data-sfx': '', onclick: () => { useFor([p.id]); app.toast('Following the class lists'); render(); } }, 'Follow the class lists')];
+      } else {
+        actions = [h('button', { class: 'btn btn-sm btn-cyan', id: 'pz-class-use', 'data-sfx': '', onclick: () => { useFor([p.id]); app.toast(`Class list for ${p.name}`); render(); } }, `Use for ${p.name}`),
+          app.family.players.length > 1 ? h('button', { class: 'btn btn-sm', id: 'pz-class-all', 'data-sfx': '', onclick: () => { useFor(app.family.players.map((x) => x.id)); app.toast('Class list for everyone'); render(); } }, 'Use for everyone') : null,
+          h('div', { class: 'sub pc-then' }, 'Then each new week applies on its own.')];
+      }
+      const withSentences = cl.words.filter((w) => w.sentence).length;
+      const rows = h('ol', { class: 'pc-list', id: 'pz-class-list', hidden: !classOpen },
+        ...cl.words.map((w) => h('li', { 'data-word': w.word },
+          h('b', {}, w.word),
+          w.syllables && w.syllables.length > 1 ? h('span', { class: 'pc-syl' }, w.syllables.join(' · ')) : null,
+          h('span', { class: 'pc-sent' + (w.sentence ? '' : ' none') }, w.sentence || 'No sentence: the word is said on its own.'))));
+      const wordsLine = h('div', { class: 'pc-words' }, cl.words.map((w) => w.word).join(' · '));   // folded: the words in a line
+      const more = h('button', { class: 'pc-more', id: 'pz-class-more', 'data-sfx': '', 'aria-expanded': String(classOpen), 'aria-controls': 'pz-class-list' });
+      const paintMore = () => { more.textContent = classOpen ? 'Hide words and sentences ▴' : `Show words and sentences (${withSentences} of ${cl.words.length}) ▾`; more.setAttribute('aria-expanded', String(classOpen)); rows.hidden = !classOpen; wordsLine.hidden = classOpen; };
+      more.addEventListener('click', () => { classOpen = !classOpen; paintMore(); });
+      paintMore();
+      classCard = h('div', { class: 'pz-class' + (inUse ? ' in-use' : ''), id: 'pz-class', 'data-class': cl.id, 'data-following': String(following), 'data-in-use': String(inUse) },
         h('div', { class: 'pc-head' }, h('span', { class: 'tag' }, 'Class list'), h('b', {}, `${cl.name} · ${cl.words.length} words`)),
-        h('div', { class: 'pc-words' }, cl.words.map((w) => w.word).join(' · ')),
+        status,
+        now,
+        wordsLine,
         cl.pattern ? h('div', { class: 'sub' }, `Pattern of the week: ${cl.pattern}`) : null,
-        h('div', { class: 'pc-actions' }, ...actions));
+        h('div', { class: 'pc-actions' }, ...actions),
+        more,
+        rows);
     }
 
     const arch = archivedLists(d);
@@ -329,7 +361,8 @@ export function createParentZone(app) {
 
     return [
       classCard,
-      h('div', { class: 'pz-active' },
+      h('div', { class: 'pz-active', id: 'pz-active' },
+        h('div', { class: 'pa-now' }, `${p.name}'s list now`),
         h('div', { class: 'label' }, list.name, list.sample ? h('span', { class: 'tag' }, 'built in') : list.classId ? h('span', { class: 'tag' }, 'class list') : null),
         h('div', { class: 'sub' }, list.sample ? `${list.words.length} long-o words, ready to play. Paste next week's words below when they arrive; this list moves to the archive.` : `${list.words.length} words${list.pattern ? ` · pattern of the week: ${list.pattern}` : ''} · saved ${fmtDate(list.createdAt)}`)),
       h('label', { class: 'pz-label', for: 'pz-words' }, 'Words of the week, one per line', count),
