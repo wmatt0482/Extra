@@ -334,6 +334,18 @@ build notes). The Lab only listens and decorates: **no Lab call reads or writes 
 - Tests: `journey-tests.mjs`, `economy-sim.mjs --check --homestead`, `content-audit.mjs`, `scene-smoke.mjs` (`V17_ONLY=1`), `ui-smoke.mjs` (`FUN_ONLY=1 FUN_SECTIONS=rocks`).
 - VERSION 1.7.0; the service worker is `wagon-west-v1.7.0` (the three new files are cached as the page loads them).
 
+## 1.7.1 · polish: food matters again, and four layout fixes from the 1.5 playtest
+
+- **The wagon carries 600 lb of food** (`LOAD` in `src/journey/economy.js`, `foodRoom` / `addFoodKind` in `src/journey/supplies.js`): no store, hunt, catch, trade, gift or find puts more in. The store greys
+  the food it has no room for ("The wagon is full") and says the room left, a hunt or a catch that does not fit says "The wagon can't carry more; leave the rest for the next party", a trade asks only
+  the trades whose food fits. Fort Hall to Sacramento needs a little more than 600 lb at full rations: the store's hint says so (plenty rations or a hunt on the way).
+- **Damp flour** (`DAMP`, `dampAtStop`): as a stop opens (before its store), a wagon over 400 lb sets aside a quarter of what it holds beyond the road ahead's needs ("The flour got damp under the heavy
+  load, so 30 lb was set aside"); never the food the road ahead needs, never at a trail's end. The sim's food targets (`TARGETS.food`): the limit holds, the strong player arrives with 200-600 lb, the weak
+  player is fed as 1.3 allows; a "forager" kid (the playtest bot's play) is in the table.
+- The results' **bank card** leads the left card (on a landscape phone the stats go in one row: seen without a scroll); Laurel Hill's **HOLD AGAIN** keeps clear of the LEDGE counter and the hint line; a
+  **stop's line** (a person's "Traded …") goes when the stop's screen changes; the Lab pill's HUD row lets taps beside the pill through.
+- VERSION 1.7.1; the service worker is `wagon-west-v1.7.1`.
+
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail
