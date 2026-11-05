@@ -41,6 +41,8 @@
 //   v1.2 scripts: __mockScript.ford = 'soaked' (default dry), .bumps = n rocks hit by the float / the raft (default 1),
 //   .stampede = [bool, bool, bool] (the waves braked on the beat; default all true).
 //   v1.4 (Frodo and the river; SPEC v1.4 §4.4): the same API as the real scene, scripted, every step shotMs apart, driven by
+//   v1.7: startRocks({ rocks }): __mockScript.rocks = n flipped (default all) → 'rock' { i, kind } per flip, 'rocksEnd' { flipped }; startFishing({ bear: { at, kind } }) meets the
+//   bear only when __mockScript.bear is set: 'ask' (the app answers with fishingBear) | 'wait' | 'spot' (answered by the mock): 'fishBear' { i, stage: arrive | ask | wait | move | leave | gone, moved? }.
 //   window.__mockScript: dogRun(kind) / dogWarn() end after shotMs ('dogBack' { kind } / 'dogWarnEnd'), ambient(kind) after
 //   2 x shotMs ('ambientEnd' { kind }); startChase: chase 'call' (default: chaseCall() → true, 'chase' { dist: 0.4 }, then
 //   'chaseEnd' { called: true, dist: 0.4 }; no call by 6 x shotMs → 'chaseEnd' { called: false, dist: 1 }) or 'late' (the
@@ -521,7 +523,7 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
         if (S.mini !== m) return;
         const c = casts[m.i], pl = plan[m.i % Math.max(1, plan.length)] || {};
         // v1.7: the bear at the fishing hole: it arrives, the app is asked (stage 'ask') and answers with fishingBear('wait' | 'spot'); then 'gone' and the cast goes on
-        if (o.bear && (o.bear.at | 0) === m.i && !m.bearDone) {
+        if (o.bear && script().bear && (o.bear.at | 0) === m.i && !m.bearDone) {       // (only when a test asks: __mockScript.bear = 'ask' | 'wait' | 'spot'; older scripts never meet a bear)
           m.bearDone = true; m.phase = 'bear';
           emit('fishBear', { i: m.i, stage: 'arrive', kind: o.bear.kind === 'berries' ? 'berries' : 'fishing' });
           miniTimer = setTimeout(() => { if (S.mini !== m) return; m.waitBear = true; emit('fishBear', { i: m.i, stage: 'ask', kind: o.bear.kind }); if (script().bear === 'wait' || script().bear === 'spot') m.bearChoice(script().bear); }, shotMs());

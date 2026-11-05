@@ -2884,6 +2884,7 @@ async function boot() {
   function bearEvent(e) {
     const J = save.journey, b = MOMENTS.bear;
     if (e.stage === 'arrive') { barText(b.arrive.text); effectToast(b.arrive.text, b.arrive.say || b.arrive.text); }
+    else if (e.stage === 'wait' || e.stage === 'move') { const row = $('#bait-row'); if (row && !row.hidden) { row.hidden = true; if (bearAsk) { bearAsk(null); bearAsk = null; } } }      // (answered from outside the panel)
     else if (e.stage === 'ask') {
       barText(b.ask.text);
       if (J && J.dog) effectToast(dogLine(DOG_LINES.bear), dogLine(DOG_LINES.bear));
@@ -2902,13 +2903,15 @@ async function boot() {
       effectToast(b.fact.text, b.fact.say || b.fact.text);
     }
   }
+  let bearAsk = null;
   function chooseBear() {
     return new Promise((resolve) => {
+      bearAsk = resolve;
       const row = $('#bait-row'), b = MOMENTS.bear;
       const mk = (id, emoji, label, note) => {
         const btn = h('button', { class: 'bait-btn', 'data-bear': id, 'data-sfx': '', 'aria-label': `${label}: ${note}` },
           h('span', { class: 'bait-emoji', 'aria-hidden': 'true' }, emoji), h('span', {}, label), h('small', {}, note));
-        btn.addEventListener('click', () => { row.hidden = true; resolve(id); });
+        btn.addEventListener('click', () => { row.hidden = true; bearAsk = null; resolve(id); });
         return btn;
       };
       row.replaceChildren(mk('wait', '⏳', b.wait.text, 'it will wander off'), mk('spot', '🎣', b.spot.text, 'a new pool'));

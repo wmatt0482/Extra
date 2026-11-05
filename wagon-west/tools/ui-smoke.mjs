@@ -2274,7 +2274,7 @@ async function funKansas(page, layout, grab) {
       if (s.card) {
         const c = await cardInfo(page);
         if (c.open && !seen.has(c.title)) seen.set(c.title, c);
-        if (c.open && /^(A new friend|Skip stones\?)$/.test(c.title) && !audited.has(c.title)) { audited.add(c.title); await audit(page, layout.insets, `the card "${c.title}"`); }
+        if (c.open && /^(A new friend|Skip stones\?|Flip some rocks\?)$/.test(c.title) && !audited.has(c.title)) { audited.add(c.title); await audit(page, layout.insets, `the card "${c.title}"`); }
       }
       if (s.screen === 'dog' && !audited.has('dog')) { audited.add('dog'); await audit(page, layout.insets, 'the dog namer'); }
     },
@@ -2288,8 +2288,10 @@ async function funKansas(page, layout, grab) {
   check(locket && locket.kicker === 'Frodo found something!' && locket.go === 'Keep it safe' && /silver locket/.test(locket.text), `the dog trots back with the locket: "${locket && locket.kicker}" → "${locket && locket.title}"`);
   check(st.quests.locket && st.quests.locket.state === 'carried', `the locket quest is carried (${JSON.stringify(st.quests.locket)})`);
   check(stones && stones.go === 'Skip stones' && stones.alt === 'On we go', `the river bank offers "${stones && stones.title}" (${stones && stones.go} / ${stones && stones.alt})`);
+  const rocksCard = seen.get('Flip some rocks?');
+  check(rocksCard && rocksCard.go === 'Flip rocks' && rocksCard.alt === 'On we go', `then the river bank offers "${rocksCard && rocksCard.title}" (${rocksCard && rocksCard.go} / ${rocksCard && rocksCard.alt})`);
   const order = [...seen.keys()];
-  check(order.indexOf('A new friend') < order.indexOf('A silver locket') && order.indexOf('A silver locket') < order.indexOf('Skip stones?'), `in that order: ${order.join(' → ')}`);
+  check(order.indexOf('A new friend') < order.indexOf('A silver locket') && order.indexOf('A silver locket') < order.indexOf('Skip stones?') && order.indexOf('Skip stones?') < order.indexOf('Flip some rocks?'), `in that order: ${order.join(' → ')}`);
   check(st.skips.best >= 3 && st.skips.byRiver && st.skips.byRiver['kansas-river'] >= 3, `the stones were skipped: best ${st.skips.best} (the river's own: ${JSON.stringify(st.skips.byRiver)})`);
   check(await spokenHas(page, /Smooth water and flat stones/), 'the stones card is read aloud');
   await grab();
@@ -2664,7 +2666,7 @@ async function funFishing(page, layout, grab) {
   await J(page, () => window.__wagonWest.app.go('journal'));
   await page.click('#jr-tabs [data-page="fish"]');
   const fl2 = await J(page, () => ({ tiles: document.querySelectorAll('.fish-tile').length, got: [...document.querySelectorAll('.fish-tile.got')].map((t) => t.dataset.fish), crown: !!document.querySelector('.fish-tile.best .fish-crown'), best: (document.querySelector('#fish-best') || {}).textContent || '', odd: [...document.querySelectorAll('.fish-odd-chip')].map((c) => c.textContent) }));
-  check(fl2.tiles === 6 && fl2.got.includes('channel-catfish') && fl2.got.includes('white-sturgeon') && fl2.crown && /Personal best/.test(fl2.best), `the Fish log: ${fl2.got.length} of 6 kinds, the crown on the personal best ("${fl2.best}")`);
+  check(fl2.tiles === 11 && fl2.got.includes('channel-catfish') && fl2.got.includes('white-sturgeon') && fl2.crown && /Personal best/.test(fl2.best), `the Fish log: ${fl2.got.length} of 11 kinds, the crown on the personal best ("${fl2.best}")`);
   check(fl2.odd.length === 3 && /boot/.test(fl2.odd[0]), `River oddities: ${fl2.odd.join(' · ')}`);
   await shot(page, layout, '47-fun-fish-log');
   await audit(page, layout.insets, 'the journal: Fish log');
@@ -2859,6 +2861,7 @@ async function funTest14(browser, layout) {
   await sec('nose', funNose);
   await sec('camp', funCampGames);
   await sec('fishing', funFishing);
+  await sec('rocks', funRocks);                    // v1.7: flip rocks, an arrowhead, the bear at the fishing hole
   await sec('moments', funMoments);
   await sec('family', funFamily);
   const bad = texts.map((t) => (t.match(BANNED) || [])[0]).filter(Boolean);
@@ -2866,6 +2869,123 @@ async function funTest14(browser, layout) {
   check(bad.length === 0 && guns.length === 0, `kid-rule text audit of the v1.4 screens (banned words and weapon words, but the two allowed phrases)${bad.length || guns.length ? ' — found: ' + [...bad, ...guns].join(', ') : ''}`);
   check(errors.length === 0, `no console errors${errors.length ? ' — ' + errors.slice(0, 4).join(' | ') : ''}`);
   await ctx.close();
+}
+
+// ---------- v1.7: flip rocks for bait, an arrowhead, and the bear at the fishing hole (FUN_SECTIONS=rocks) ----------
+async function funRocks(page, layout, grab) {
+  console.log('  -- v1.7: flip rocks (bait, an arrowhead), the bear at the fishing hole --');
+  await withDog(page);
+  await setJ(page, `J.goods.fatworms = 0; J.goods.beetles = 0; J.goods.crickets = 0; J.goods.crawdads = 0;`);
+  await toTrail(page, 'fort-laramie');
+  await hold(page, true);
+  await page.waitForTimeout(150);
+  await closeCards(page);
+  await toCamp(page);
+  const acts = await campActs(page);
+  check(acts.includes('rocks') && acts.includes('fish'), `camp offers "Flip rocks" beside Fishing (${acts.join(', ')})`);
+  const label = await J(page, () => { const b = document.querySelector('.camp-act[data-act="rocks"]'); return b && { name: b.querySelector('.camp-name').textContent, line: b.querySelector('.camp-line').textContent, h: b.getBoundingClientRect().height }; });
+  check(label && label.name === 'Flip rocks' && label.h >= 44, `the card: "${label && label.name}" / "${label && label.line}"`);
+  await shot(page, layout, '47-fun-rocks-camp');
+  // a round of worms: every rock hides one; it costs no day and no food; the tin fills (five worms, a full tin holds eight)
+  await jsEval(page, `Object.assign(w.JA.ROCKS.odds, { worm: 1, beetle: 0, cricket: 0, crawdad: 0, mud: 0 }); w.JA.ROCKS.arrowhead = 0;`);
+  const d0 = await funState(page);
+  await freshToasts(page);
+  await page.click('.camp-act[data-act="rocks"]');
+  await waitFn(page, () => !document.querySelector('#mini').hidden);
+  const bar = await J(page, () => document.querySelector('#mini-text').textContent);
+  check(/Tap one to flip it/.test(bar) || /fat worm|bait tin/i.test(bar), `the bar tells how ("${bar}")`);
+  await miniGone(page);
+  await page.waitForTimeout(300);
+  const d1 = await funState(page);
+  check(d1.goods.fatworms === 5 && d1.day === d0.day && Math.abs(d1.food - d0.food) < 0.01, `five worms in the bait tin (${d1.goods.fatworms}); no day and no food spent (day ${d1.day}, food ${d1.food})`);
+  check(d1.totals.rocksFlipped === (d0.totals.rocksFlipped | 0) + 5, `five rocks counted (${d1.totals.rocksFlipped})`);
+  check(await toastSeen(page, /Every rock is flipped\. Good hunting!/, 12000), '"Every rock is flipped. Good hunting!"');
+  check(!(await campActs(page)).includes('rocks'), 'the rocks card is gone for the rest of the camp (one round a camp)');
+  // the new bait is in the bait row with its count; using it takes one a cast
+  await page.click('.camp-act[data-act="fish"]');
+  await page.waitForSelector(visibleSel('#bait-row'));
+  const baits = await J(page, () => [...document.querySelectorAll('.bait-btn')].map((b) => ({ id: b.dataset.bait, sub: b.querySelector('small') && b.querySelector('small').textContent, h: b.getBoundingClientRect().height })));
+  check(baits.some((b) => b.id === 'fatworms' && /5 in the tin/.test(b.sub)) && baits.every((b) => b.h >= 44), `the bait row has Fat worms, "${(baits.find((b) => b.id === 'fatworms') || {}).sub}" (${baits.map((b) => b.id).join(', ')})`);
+  await shot(page, layout, '48-fun-bait-critters');
+  await audit(page, layout.insets, 'the bait row with the new baits');
+  await page.click('.bait-btn[data-bait="fatworms"]');
+  await waitFn(page, () => window.__wagonWest.card.isOpen && window.__wagonWest.card.title !== '', null, 30000);
+  await page.click('#tc-go');
+  await page.waitForTimeout(300);
+  const d2 = await funState(page);
+  check(d2.goods.fatworms === 1, `fat worms are used one a cast (5 → ${d2.goods.fatworms})`);
+  await closeCards(page);
+  // an arrowhead under a rock: the existing find, sketched and left where it lay (never kept); the Finds page counts it
+  await setJ(page, `J.trip.rocks = false;`);
+  await jsEval(page, `w.camp.refresh();`);
+  await jsEval(page, `w.JA.ROCKS.arrowhead = 1; Object.assign(w.JA.ROCKS.odds, { worm: 0, beetle: 0, cricket: 0, crawdad: 0, mud: 1 });`);
+  const acts2 = await campActs(page);
+  check(acts2.includes('rocks'), 'a new camp offers the rocks again');
+  await freshToasts(page);
+  await page.click('.camp-act[data-act="rocks"]');
+  await waitFn(page, () => !document.querySelector('#mini').hidden);
+  await waitFn(page, () => window.__wagonWest.fun && window.__wagonWest.fun.finds.arrowhead >= 1, null, 15000).catch(async () => console.log('    (arrowhead: ' + JSON.stringify(await funState(page)).slice(0, 200) + ')'));
+  await waitFn(page, () => window.__wagonWest.findPop.log.length >= 1, null, 8000).catch(() => {});
+  const fp = await J(page, () => { const w = window.__wagonWest; return { log: w.findPop.log.slice(), visible: w.findPop.visible, finds: { ...w.save.journey.finds }, goods: { ...w.save.journey.goods } }; });
+  check(fp.finds.arrowhead >= 1 && !fp.goods.arrowhead, `an arrowhead under a rock is a find (${fp.finds.arrowhead}) and is never kept in the wagon`);
+  check(JSON.stringify(fp.log).includes('arrowhead') || fp.visible, `the find pop shows it (${JSON.stringify(fp.log).slice(0, 120)})`);
+  await shot(page, layout, '49-fun-rocks-arrowhead');
+  await miniGone(page);
+  await page.waitForTimeout(300);
+  const txt = await J(page, () => { const w = window.__wagonWest; return [...document.querySelectorAll('.toast')].map((t) => t.textContent).join(' | '); });
+  check(!/kept|take it home|pocket/i.test(txt), 'nothing says the arrowhead is kept');
+  await closeCards(page);
+  await jsEval(page, `Object.assign(w.JA.ROCKS.odds, { worm: 0.3, beetle: 0.2, cricket: 0.2, crawdad: 0.1, mud: 0.2 }); w.JA.ROCKS.arrowhead = 0.06;`);
+  // the bear at the fishing hole: about one session in eight; here it comes every other session (never twice in a row)
+  await jsEval(page, `w.JA.BEAR.oneIn = 2; window.__mockScript.bear = 'ask'; window.__mockScript.fishing = [{ hook: true, fight: 'land' }];`);
+  await setJ(page, `J.moments.bearLast = false;`);
+  await freshToasts(page);
+  const t0 = await funState(page);
+  await page.click('.camp-act[data-act="fish"]');
+  await page.waitForSelector(visibleSel('#bait-row'));
+  await page.click('.bait-btn[data-bait="worms"]');
+  await page.waitForSelector('.bait-btn[data-bear]', { state: 'visible', timeout: 30000 });
+  const choice = await J(page, () => [...document.querySelectorAll('.bait-btn[data-bear]')].map((b) => ({ id: b.dataset.bear, name: b.querySelector('span:nth-child(2)').textContent, h: b.getBoundingClientRect().height })));
+  check(choice.length === 2 && choice[0].name === 'Wait for it to leave' && choice[1].name === 'Try another spot' && choice.every((b) => b.h >= 44), `the bear: two big choices (${choice.map((b) => b.name).join(' / ')})`);
+  check(await toastSeen(page, /A bear ambles out on the far bank/, 8000), '"A bear ambles out on the far bank!"');
+  check((await J(page, () => document.querySelector('#mini-text').textContent)).length > 0, 'the bar says what to do');
+  await shot(page, layout, '50-fun-bear-ask');
+  await audit(page, layout.insets, 'the bear choice');
+  await page.click('.bait-btn[data-bear="wait"]');
+  await waitFn(page, () => window.__wagonWest.card.isOpen && window.__wagonWest.card.title !== '', null, 40000);
+  check(await toastSeen(page, /Grizzly bears catch salmon in rivers to fatten up/, 15000), 'the true fact about bears and salmon is told after the bear has gone');
+  await page.click('#tc-go');
+  await page.waitForTimeout(300);
+  const t1 = await funState(page);
+  check(t1.totals.bearsSeen === (t0.totals.bearsSeen | 0) + 1 && t1.totals.bearWaits === (t0.totals.bearWaits | 0) + 1, `waiting it out is counted (${t1.totals.bearWaits})`);
+  check(t1.day === t0.day + 1 && t1.cash === t0.cash && t1.goods.fatworms === t0.goods.fatworms, `the fishing was a day and the bear cost nothing (day ${t0.day} → ${t1.day}, cash ${t0.cash} → ${t1.cash})`);
+  await closeCards(page);
+  // never twice in a row: the very next session has no bear (the mock would have waited for an answer)
+  await page.click('.camp-act[data-act="fish"]');
+  await page.waitForSelector(visibleSel('#bait-row'));
+  await page.click('.bait-btn[data-bait="worms"]');
+  await waitFn(page, () => window.__wagonWest.card.isOpen && window.__wagonWest.card.title !== '', null, 40000);
+  check((await funState(page)).totals.bearsSeen === t1.totals.bearsSeen, 'never twice in a row: the next session has no bear');
+  await page.click('#tc-go');
+  await page.waitForTimeout(300);
+  await closeCards(page);
+  // the other answer: try another spot
+  await page.click('.camp-act[data-act="fish"]');
+  await page.waitForSelector(visibleSel('#bait-row'));
+  await page.click('.bait-btn[data-bait="worms"]');
+  await page.waitForSelector('.bait-btn[data-bear]', { state: 'visible', timeout: 30000 });
+  await page.click('.bait-btn[data-bear="spot"]');
+  await waitFn(page, () => window.__wagonWest.card.isOpen && window.__wagonWest.card.title !== '', null, 40000);
+  check(await toastSeen(page, /You walk along the bank to a new pool/, 15000), '"You walk along the bank to a new pool, well away from the bear."');
+  await page.click('#tc-go');
+  await page.waitForTimeout(300);
+  const t2 = await funState(page);
+  check(t2.totals.bearMoves === (t1.totals.bearMoves | 0) + 1, `moving on is counted (${t2.totals.bearMoves})`);
+  await jsEval(page, `w.JA.BEAR.oneIn = 8; delete window.__mockScript.bear;`);
+  await closeCards(page);
+  await freshToasts(page);
+  await grab();
+  await leaveCamp(page);
 }
 
 /** The natural voice for the new things: a find pop, a trail fact card, the quest people's lines and the fishing summary, all by clips. */
