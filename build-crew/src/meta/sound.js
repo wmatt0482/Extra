@@ -11,7 +11,7 @@ let ctx,
   allowed = true,
   lastImpact = 0;
 /** Each machine's idle engine pitch in Hz; heavier machines sit lower. */
-const freq = { skid: 68, excavator: 49, crane: 39, dump: 44, fork: 76 };
+const freq = { skid: 68, excavator: 49, crane: 39, loader: 55, dump: 44, fork: 76 };
 export const Sound = {
   unlock() {
     if (!ctx) {
@@ -114,17 +114,49 @@ export const Sound = {
   },
   // The roof horn. Stock is a deep two-tone air horn (a minor third apart); the bell horn earned at job 7 is a higher
   // brass chord with a bell ring on top.
-  horn(bell) {
-    if (bell) {
+  // The ferry horn (job 15) is a long, very low two-note ship's blast; the steam horn (job 20) a breathy whistle
+  // chord that slides up into its note. `kind` is the save's horn ('stock', 'bell', 'ferry', 'steam'; true is 'bell').
+  horn(kind) {
+    if (kind === true || kind === 'bell') {
       for (const f of [392, 494, 587]) this.brass(f, 0, 0.7, 0.07, 1.4);
       this.ring(1175, 0.02, 1.1, 0.05);
+    } else if (kind === 'ferry') {
+      for (const f of [98, 123]) this.brass(f, 0, 1.3, 0.12, 0.4);
+      this.brass(73, 0.05, 1.25, 0.08, 0.3);
+    } else if (kind === 'steam') {
+      this.whistle([523, 659, 784], 0, 1.1);
     } else {
       for (const f of [147, 175]) this.brass(f, 0, 0.7, 0.11, 0.6);
     }
   },
+  // A steam whistle: soft square-ish chord tones that slide up a little as they start, with a breath of noise.
+  whistle(freqs, start, dur, vol = 0.05) {
+    if (!ctx || ctx.state !== 'running') return;
+    const t = ctx.currentTime + start;
+    for (const f of freqs) {
+      const o = ctx.createOscillator(),
+        g = ctx.createGain(),
+        filter = ctx.createBiquadFilter();
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(f * 0.94, t);
+      o.frequency.exponentialRampToValueAtTime(f, t + 0.12);
+      filter.type = 'lowpass';
+      filter.frequency.value = f * 3;
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(vol, t + 0.06);
+      g.gain.setValueAtTime(vol, t + dur - 0.2);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(filter).connect(g).connect(bus);
+      o.start(t);
+      o.stop(t + dur + 0.03);
+    }
+  },
   // The job-complete fanfare, in the key of the music (C): two short calls, then a long open chord. The bell horn
-  // plays it an octave higher with bell rings.
-  fanfare(bell) {
+  // plays it an octave higher with bell rings; the ferry and steam horns end it with their own call.
+  fanfare(kind) {
+    const bell = kind === true || kind === 'bell';
+    if (kind === 'ferry') this.horn('ferry');
+    if (kind === 'steam') this.whistle([523, 659, 784], 1.4, 0.8, 0.04);
     const o = bell ? 2 : 1,
       calls = [
         [196, 0, 0.17],

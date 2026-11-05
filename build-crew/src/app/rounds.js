@@ -19,7 +19,11 @@ import {
   findJob,
   labVehicleId,
   sandboxSpawns,
+  JOB_COUNT,
+  DECALS,
+  HORNS,
 } from '../content.mjs';
+import { SITES, mudAt } from '../sites.mjs';
 import { Yard, DT } from '../physics.mjs';
 import { Mission, Challenge } from '../missions.mjs';
 import { blueprintSvg } from '../blueprint.mjs';
@@ -83,6 +87,21 @@ export function makeWorld(round, snapshot) {
       if (event.type === 'impact') Sound.impact(event.force);
       if (event.type === 'glitter') app.scene?.emit(event.position, '#def8e7', 25);
       if (event.type === 'stamp') app.scene?.syncStamps();
+      // the harbor and the hillside: a load in the water or on the grass goes back to its start (never a fail)
+      if (event.type === 'splash') {
+        app.scene?.emit(event.position, '#d3ebe5', 22);
+        if (app.screen === 'play') toast('Splash. That load is back on the quay.');
+      }
+      if (event.type === 'rule') {
+        app.scene?.emit(event.position, '#93a273', 14);
+        if (app.screen === 'play') {
+          toast('That block touched the grass. It is back at the start.');
+          if (!app.said.has('grass')) {
+            app.said.add('grass');
+            hint(HINT.grass);
+          }
+        }
+      }
     },
   });
   if (snapshot) app.yard.restore(snapshot);
@@ -121,7 +140,14 @@ export function startRound(id, { restore = false } = {}) {
   $('#tray').hidden = true;
   $('#hud').hidden = false;
   $('#title').hidden = $('#title-head').hidden = $('#title-foot').hidden = true;
-  const job = round || { ...SANDBOX, machines: availableMachines(), spawns: sandboxSpawns(availableMachines()) };
+  // A harbor or hillside job also brings the Lab machines this builder owns that suit it (`optional`): a quicker way,
+  // never a needed one. Every job is finished with the free machines it lists.
+  const extras = (round?.optional || []).filter((k) => labBridge.owns(labVehicleId(k)));
+  const job = round
+    ? extras.length
+      ? { ...round, machines: [...round.machines, ...extras] }
+      : round
+    : { ...SANDBOX, machines: availableMachines(), spawns: sandboxSpawns(availableMachines()) };
   labBridge.beginRound();
   makeWorld(job, restore ? app.save.yard : null);
   const scene = app.scene;
@@ -130,12 +156,13 @@ export function startRound(id, { restore = false } = {}) {
   scene.pitch = 0.6;
   scene.distance = job.machines.includes('crane') ? 32 : 28;
   const focus = app.yard.machine;
-  scene.target.set(focus.x * 0.65 + job.pad.x * 0.15, 0.7, focus.z * 0.65 + job.pad.z * 0.15);
+  scene.target.set(focus.x * 0.65 + job.pad.x * 0.15, Math.max(0.7, focus.y), focus.z * 0.65 + job.pad.z * 0.15);
   app.controls.setEnabled(true);
+  const code = SITES[job.site]?.code || 'THE YARD';
   $('#job-number').textContent = round?.blueprint
     ? `THE YARD / BLUEPRINT ${String(id - 100).padStart(2, '0')}`
     : id
-      ? `THE YARD / JOB ${String(id).padStart(2, '0')}`
+      ? `${code} / JOB ${String(id).padStart(2, '0')}`
       : 'THE YARD / SANDBOX';
   $('#job-title').textContent = job.title;
   $('#goal').textContent = job.goal;
@@ -147,6 +174,7 @@ export function startRound(id, { restore = false } = {}) {
   app.hintIndex = 0;
   app.said = new Set();
   hint(MACHINES[app.yard.machine.kind].hint);
+  app.optionalHint = extras.length > 0;
   prepareVoice();
   // The job is read aloud once as it starts ("Job three. Foundation grid. Place ..."); the machine's first hint above
   // follows it the first time this builder meets that machine (the voice watches the hint line, see voice.js).
@@ -191,6 +219,23 @@ export function step(input) {
   if (MACHINES[yard.machine.kind].lab && Math.floor(yard.time * 4) !== app.coachTick) {
     app.coachTick = Math.floor(yard.time * 4);
     coach(yard);
+  }
+  // The hillside's ground, each said once a job: a slope too steep for this machine, and mud slowing the wheels.
+  const m = yard.machine;
+  if (yard.site.terrain && Math.floor(yard.time * 4) !== app.siteTick) {
+    app.siteTick = Math.floor(yard.time * 4);
+    const say1 = (key, text) => {
+      if (app.said.has(key)) return;
+      app.said.add(key);
+      hint(text);
+    };
+    if (m.stalled && Math.abs(input.drive || 0) > 0.1) say1('steep', HINT.steep);
+    else if (mudAt(yard.site, m.x, m.z) && Math.abs(m.speed) > 0.5) say1('mud', HINT.mud);
+  }
+  // A Lab machine that joined the job is mentioned once, after the first tool move.
+  if (app.optionalHint && app.said.has('tool') && !app.said.has('optional')) {
+    app.said.add('optional');
+    hint(HINT.optional);
   }
   return poses;
 }
@@ -241,11 +286,11 @@ function buildSpot(yard) {
   return { x, y: base, z, mid: (base + high) / 2 + 0.4, radius: Math.max(2.5, spread + 1.5, (high - base) * 0.8) };
 }
 
-/** Puts the reward just earned on the machine: a paint, a decal or the bell horn becomes the builder's current look. */
+/** Puts the reward just earned on the machine: a paint, a decal or a horn becomes the builder's current look. */
 function equipReward(save, unlock) {
   if (PAINTS[unlock]) save.paint = unlock;
-  else if (unlock === 'star' || unlock === 'stripe') save.decal = unlock;
-  else if (unlock === 'bell') save.horn = 'bell';
+  else if (DECALS.includes(unlock)) save.decal = unlock;
+  else if (HORNS.includes(unlock)) save.horn = unlock;
   app.scene.paint = save.paint;
   app.scene.decal = save.decal;
 }
@@ -294,7 +339,12 @@ function win() {
   const spot = buildSpot(app.yard);
   scene.rig.celebrate({ x: spot.x, y: spot.mid ?? 1, z: spot.z }, spot.radius, SHOW_MS, calm);
   scene.effects.celebrate({ x: spot.x, y: spot.y, z: spot.z }, spot.radius);
-  Sound.fanfare(save.horn === 'bell');
+  // the ravine bridge's toy car drives across the finished bridge
+  if (r.decor?.some((d) => d.kind === 'car')) {
+    const beam = r.ghosts.find((g) => g.type === 'beam');
+    scene.crossBridge(beam.x - 1.7, beam.x + 1.7, beam.y + 0.325);
+  }
+  Sound.fanfare(save.horn);
   Music.celebrate();
   const show = (app.celebration = {});
   show.timer = setTimeout(() => reveal(show), calm ? CALM_MS : SHOW_MS);
@@ -316,7 +366,8 @@ function reveal(show) {
     bp = !!r.blueprint;
   app.paused = false;
   Audio.coin();
-  const next = bp || r.id >= 10 ? () => startRound(0) : () => startRound(r.id + 1);
+  const last = bp || r.id >= JOB_COUNT,
+    next = last ? () => startRound(0) : () => startRound(r.id + 1);
   const sheet = [
     h('div', {
       class: 'reward-art',
@@ -328,7 +379,7 @@ function reveal(show) {
     h(
       'div',
       { class: 'modal-actions' },
-      h('button', { class: 'primary', id: 'next-round', onclick: next }, bp || r.id >= 10 ? 'Open sandbox' : 'Next job'),
+      h('button', { class: 'primary', id: 'next-round', onclick: next }, last ? 'Open sandbox' : 'Next job'),
       h(
         'button',
         {
@@ -391,7 +442,7 @@ export function action(a) {
   }
   if (a === 'horn') {
     const m = yard.machine;
-    Sound.horn(app.save.horn === 'bell');
+    Sound.horn(app.save.horn);
     // The roof horn swells and a little dust-pale puff leaves its mouth.
     app.scene.honkAt = performance.now();
     app.scene.emit({ x: m.x + Math.sin(m.yaw) * 0.6, y: m.y + 2.8, z: m.z + Math.cos(m.yaw) * 0.6 }, '#f1e6c2', 6);

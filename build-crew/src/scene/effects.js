@@ -8,6 +8,7 @@ import * as T from '../../vendor/three.module.js';
 import { TOYS } from '../content.mjs';
 import { BUDGET } from './quality.js';
 import { MACHINE } from './machines.js';
+import { mudAt } from '../sites.mjs';
 
 /** Particle motion: a gentle upward spray that falls back under this much gravity (m/s²). */
 const PARTICLE_GRAVITY = 1.4;
@@ -237,14 +238,24 @@ export class Effects {
     this.lastMark = yard.time;
     if (this.marks.length % 3 === 0) this.emit({ x: m.x + 0.45, y: m.y + 2.3, z: m.z - 0.8 }, '#c4c9b3', 1);
     // Once the ground is full of marks the oldest record is reused for the newest.
-    const mark = this.marks.length >= BUDGET.tireMarks ? this.marks.shift() : { x: 0, z: 0, yaw: 0 };
+    const mark = this.marks.length >= BUDGET.tireMarks ? this.marks.shift() : { x: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
     mark.x = m.x;
     mark.z = m.z;
     mark.yaw = m.yaw;
+    // on a slope the prints lie along it
+    mark.pitch = m.pitch || 0;
+    mark.roll = m.roll || 0;
     this.marks.push(mark);
     if (Math.abs(m.speed) > 1) {
-      const scooping = MACHINE[m.kind].scoops && m.lift < 1;
-      this.emit(scooping ? { x: m.tip.x, y: 0.2, z: m.tip.z } : { x: m.x, y: 0.25, z: m.z - 1 }, '#d7ba85', 1);
+      const scooping = MACHINE[m.kind].scoops && m.lift < 1,
+        ground = m.y - 0.7,
+        // wet mud flicks up dark from the wheels on the hillside
+        mud = !!yard.site && !!mudAt(yard.site, m.x, m.z);
+      this.emit(
+        scooping ? { x: m.tip.x, y: ground + 0.2, z: m.tip.z } : { x: m.x, y: ground + 0.25, z: m.z - 1 },
+        mud ? '#5d4532' : '#d7ba85',
+        mud ? 2 : 1,
+      );
     }
   }
 
@@ -255,12 +266,14 @@ export class Effects {
       const p = this.marks[i];
       for (let k = 0; k < 2; k++) {
         tmp.position.set(p.x + (k ? 0.85 : -0.85) * Math.cos(p.yaw), 0.035 + yard.groundAt(p.x, p.z), p.z);
-        tmp.rotation.set(0, p.yaw, 0);
+        tmp.rotation.set(-(p.pitch || 0), p.yaw, p.roll || 0, 'YXZ');
         tmp.scale.set(0.3, 0.012, 0.6);
         tmp.updateMatrix();
         this.trackPool.setMatrixAt(i * 2 + k, tmp.matrix);
       }
     }
+    // the shared scratch object goes back to the default rotation order for everyone else
+    tmp.rotation.order = 'XYZ';
     this.trackPool.count = this.marks.length * 2;
     this.trackPool.instanceMatrix.needsUpdate = true;
   }

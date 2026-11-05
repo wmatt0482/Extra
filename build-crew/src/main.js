@@ -274,14 +274,22 @@ function exposeHooks() {
         machines: yard.machines.map((m) => ({
           kind: m.kind,
           x: m.x,
+          y: m.y,
           z: m.z,
           yaw: m.yaw,
           swing: m.swing,
           lift: m.lift,
           reach: m.reach,
+          tilt: m.tilt,
+          pitch: m.pitch,
           tip: { ...m.tip },
         })),
         active: yard.active,
+        // the work site on show and how many times the scene has rebuilt a site since the page opened
+        site: yard.site.id,
+        sceneSite: scene.site,
+        siteBuilds: scene.siteBuilds,
+        returned: yard.returned,
         daylight: scene.daylight,
         camera: { yaw: scene.yaw, pitch: scene.pitch, distance: scene.distance },
         stamps: yard.stamps.map((s) => ({ ...s })),
@@ -312,17 +320,19 @@ function exposeHooks() {
         v.set(x, y, z).project(cam);
         return { x: ((v.x + 1) / 2) * innerWidth, y: ((1 - v.y) / 2) * innerHeight };
       };
-      const p = r.pad;
+      const p = r.pad,
+        // the pad lies on the site's ground (the barge deck, the hillside terrace)
+        y = yard.groundAt(p.x, p.z);
       return {
         pad: [
-          at(p.x - p.w / 2, 0, p.z - p.d / 2),
-          at(p.x + p.w / 2, 0, p.z - p.d / 2),
-          at(p.x + p.w / 2, 0, p.z + p.d / 2),
-          at(p.x - p.w / 2, 0, p.z + p.d / 2),
+          at(p.x - p.w / 2, y, p.z - p.d / 2),
+          at(p.x + p.w / 2, y, p.z - p.d / 2),
+          at(p.x + p.w / 2, y, p.z + p.d / 2),
+          at(p.x - p.w / 2, y, p.z + p.d / 2),
         ],
-        padCentre: at(p.x, 0, p.z),
+        padCentre: at(p.x, y, p.z),
         ghosts: (r.ghosts || []).map((g) => at(g.x, g.y, g.z)),
-        machine: at(yard.machine.x, 1, yard.machine.z),
+        machine: at(yard.machine.x, yard.machine.y + 0.3, yard.machine.z),
       };
     },
     /** The stick and button axes as they stand right now (read-only; for tools). */

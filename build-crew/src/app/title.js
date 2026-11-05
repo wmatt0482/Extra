@@ -6,7 +6,7 @@ import { createKeyboard } from '../../../spell-jump/src/spelling/keyboard.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { refreshStreak } from '../../../spell-jump/src/meta/engagement.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
-import { ROUNDS, BLUEPRINTS, LAB_MACHINES, MACHINES, labVehicleId } from '../content.mjs';
+import { BLUEPRINTS, LAB_MACHINES, MACHINES, labVehicleId, JOB_COUNT, SITE_JOBS } from '../content.mjs';
 import { blueprintSvg } from '../blueprint.mjs';
 import { labBridge } from '../meta/labBridge.js';
 import { VEHICLE_PRICE } from './vehiclePrice.mjs';
@@ -25,7 +25,21 @@ const PAINT_LOOKS = [
   ['leaf', 'Forest'],
   ['sky', 'Steel blue'],
   ['sunset', 'Sunset'],
+  ['graphite', 'Graphite'],
+  ['harbor', 'Harbor blue'],
+  ['sage', 'Sage'],
+  ['rust', 'Rust'],
 ];
+/** The decals in the looks row: their button label and the toast that names them. */
+const DECAL_LOOKS = {
+  star: ['★ Decal', 'A star for your crew!'],
+  stripe: ['▧ Stripes', 'Racing stripes!'],
+  chevron: ['» Chevrons', 'Chevron decal on.'],
+  anchor: ['⚓ Anchor', 'Anchor decal on.'],
+  mountain: ['▲ Mountain', 'Mountain decal on.'],
+};
+/** The horns in the order the horn button cycles through them (the stock air horn is always there). */
+const HORN_ORDER = ['stock', 'bell', 'ferry', 'steam'];
 
 /** The "Who is building?" sheet: a name typed on the shared on-screen keyboard creates a builder and selects it. */
 export function newPlayer() {
@@ -124,10 +138,10 @@ export function renderTitle() {
   if (family.players.length < Profiles.MAX_PLAYERS) {
     row.append(h('button', { class: 'profile-button', id: 'add-player', onclick: newPlayer }, '+ Add builder'));
   }
-  // The ten jobs are the count; the Lab blueprints (ids 101 to 104) are extra and never change it.
-  const jobsDone = save.done.filter((id) => id <= 10).length;
-  $('#done-total').textContent = `${jobsDone} / 10`;
-  $('#play').firstChild.textContent = jobsDone === 10 ? 'Build again ' : jobsDone ? 'Resume ' : 'Start building ';
+  // The twenty jobs are the count; the Lab blueprints (ids 101 to 104) are extra and never change it.
+  const jobsDone = save.done.filter((id) => id <= JOB_COUNT).length;
+  $('#done-total').textContent = `${jobsDone} / ${JOB_COUNT}`;
+  $('#play').firstChild.textContent = jobsDone === JOB_COUNT ? 'Build again ' : jobsDone ? 'Resume ' : 'Start building ';
   $('#my-yard').hidden = !save.yard;
   $('#saved-thumb').replaceChildren();
   if (save.yard) {
@@ -152,7 +166,7 @@ export function renderLab() {
 function renderLooks(save) {
   const looks = $('#looks');
   looks.replaceChildren();
-  const anyPaint = ['cream', 'leaf', 'sky', 'sunset'].some((r) => save.rewards.includes(r));
+  const anyPaint = PAINT_LOOKS.some(([r]) => r !== 'stock' && save.rewards.includes(r));
   for (const [k, label] of PAINT_LOOKS) {
     if ((k === 'stock' && anyPaint) || save.rewards.includes(k)) {
       looks.append(
@@ -172,7 +186,7 @@ function renderLooks(save) {
       );
     }
   }
-  for (const decal of ['star', 'stripe']) {
+  for (const [decal, [label, said]] of Object.entries(DECAL_LOOKS)) {
     if (save.rewards.includes(decal)) {
       looks.append(
         h(
@@ -183,23 +197,27 @@ function renderLooks(save) {
               app.save.decal = app.save.decal === decal ? 'none' : decal;
               persist();
               applyLook();
-              toast(decal === 'star' ? 'A star for your crew!' : 'Racing stripes!');
+              toast(said);
+              renderTitle();
             },
           },
-          decal === 'star' ? '★ Decal' : '▧ Stripes',
+          label,
         ),
       );
     }
   }
-  if (save.rewards.includes('bell')) {
+  // One horn button cycles through the horns this builder has earned and sounds the one now fitted.
+  const horns = HORN_ORDER.filter((k) => k === 'stock' || save.rewards.includes(k));
+  if (horns.length > 1) {
     looks.append(
       h(
         'button',
         {
+          id: 'horn-look',
           onclick() {
-            app.save.horn = app.save.horn === 'bell' ? 'stock' : 'bell';
+            app.save.horn = horns[(horns.indexOf(app.save.horn) + 1) % horns.length];
             persist();
-            Sound.horn(app.save.horn === 'bell');
+            Sound.horn(app.save.horn);
           },
         },
         '♫ Horn',
@@ -215,17 +233,25 @@ export function jobBoard() {
   const save = app.save;
   const lab = labBridge.ready;
   const own = (id) => labBridge.owns(id);
-  modal('The job board', [
-    h('p', {}, 'Complete jobs to unlock equipment and finishes. Replay any completed job.'),
+  // The jobs, site by site (the yard, the harbor, the hillside): each site is a row with its code and how many of its
+  // jobs are done. A site whose first job is not open yet still shows its jobs, locked, so the road ahead is visible.
+  const sites = SITE_JOBS.flatMap(({ site, code, jobs }) => [
+    h(
+      'h3',
+      { class: 'board-row site-row', 'data-site': site },
+      code,
+      h('small', {}, `${jobs.filter((r) => save.done.includes(r.id)).length} / ${jobs.length}`),
+    ),
     h(
       'div',
-      { class: 'job-grid' },
-      ...ROUNDS.map((r) =>
+      { class: 'job-grid', 'data-site-jobs': site },
+      ...jobs.map((r) =>
         h(
           'button',
           {
             class: 'job-tile',
             'data-job': r.id,
+            'data-site': site,
             disabled: !app.testing && r.id > 1 && !save.done.includes(r.id - 1),
             onclick: () => startRound(r.id),
           },
@@ -234,6 +260,10 @@ export function jobBoard() {
         ),
       ),
     ),
+  ]);
+  modal('The job board', [
+    h('p', {}, 'Complete jobs to unlock equipment and finishes. Replay any completed job.'),
+    ...sites,
     lab ? h('h3', { class: 'board-row' }, 'Blueprints') : null,
     lab
       ? h(

@@ -6,11 +6,13 @@
 import * as T from '../../vendor/three.module.js';
 import { canvasTexture } from './kit.js';
 import { BUDGET, TIER } from './quality.js';
-import { HILL, RAMP_FACES, RECESS, hillProfile, rampPoints } from '../terrain.mjs';
+import { HILL as MOUND, RAMP_FACES, RECESS, hillProfile, rampPoints } from '../terrain.mjs';
+import { SITES, HARBOR, HILL, hillsideSurface } from '../sites.mjs';
 
 /** The first-flight yard (SPEC §5): gravel, weathered steel and muted greens under a pale industrial sky. */
 export const YARD_THEME = {
   id: 'yard',
+  floor: 'tiles',
   fog: { color: '#8b9fae', near: 75, far: 160 },
   hemi: { sky: '#b4d0ed', ground: '#685d4d', intensity: 1.85 },
   sun: { color: '#fff0d8', intensity: 3.3, position: [-15, 30, 12] },
@@ -71,48 +73,273 @@ export const YARD_THEME = {
   sign: { text: 'BUILD CREW', post: '#2d3d49', board: '#172531', ink: '#f1b539' },
 };
 
+/** The daylight slider's lights, shared by the two newer sites with their own dusk colour and night sky. */
+const daylight = (dusk, nightSky) => ({
+  sun: { base: 0.3, range: 3.5, day: '#fff1dc', dusk },
+  hemi: { base: 0.65, range: 1.65 },
+  dusk: 0.4,
+  night: 0.35,
+  nightSky,
+});
+
+/** The harbor (SPEC §5 future palette, in the 0.2 industrial direction): a concrete quay under a pale coastal sky, seafoam
+ *  water, a slate barge with a rust-orange gunwale, stacked containers in muted rust, teal, olive and slate, and a
+ *  rust-orange ship-to-shore crane over the berth. */
+export const HARBOR_THEME = {
+  id: 'harbor',
+  floor: 'quay',
+  fog: { color: '#a7bcc2', near: 70, far: 165 },
+  hemi: { sky: '#cfe2ea', ground: '#5a6763', intensity: 1.8 },
+  sun: { color: '#fff4e3', intensity: 3.2, position: [-17, 30, 11] },
+  sky: { top: '#6e9dbb', bottom: '#d4e1e3' },
+  daylight: daylight('#e4a99a', { top: '#1f3a5c', bottom: '#8e9aa6' }),
+  quay: {
+    texture: { base: '#8d928f', dark: '#7d8380', light: '#a1a5a2' },
+    joint: '#7d8481',
+    line: '#e1b23b',
+    kerb: '#c6c9c3',
+    wall: '#77807e',
+    cap: '#5c6462',
+    fender: '#1d2327',
+    chain: '#59636a',
+    bollard: '#26323b',
+    weed: '#3d5a4f',
+  },
+  water: { color: '#4d8a88', foam: '#d3ebe5', bed: '#2c4646' },
+  barge: {
+    hull: '#33434e',
+    band: '#c5652c',
+    deck: '#68665e',
+    plate: '#5b5953',
+    rim: '#c96a2f',
+    bollard: '#1f2930',
+    rope: '#b9a37a',
+    mark: '#e4e0d2',
+  },
+  stacks: {
+    colors: ['#3e6a77', '#9a4c2d', '#6c785d', '#bf8a32', '#4b5661', '#7d3f37'],
+    rib: '#2a3138',
+  },
+  stsCrane: { steel: '#c5652c', dark: '#26323b', cab: '#d7dcdf', glass: '#2b5168', rail: '#5c6462' },
+  warehouse: { wall: '#5f707c', roof: '#2b3e4e', door: '#3a4b55', slat: '#87979f', rib: '#71848f' },
+  harborFence: { post: '#64727a', rail: '#4d5a62' },
+  lamps: { pole: '#3a4650', head: '#d9dfe1', glow: '#f6efc9' },
+  ships: { hull: '#2e3d48', band: '#9a4c2d', house: '#d9ddd8', stack: '#c5652c' },
+  breakwater: { rock: '#7b8380', light: '#c94a3a', tower: '#e6e2d8' },
+  sign: { text: 'BUILD CREW', sub: 'HARBOR / BERTH 4', post: '#2d3d49', board: '#172531', ink: '#f1b539' },
+  features: ['harborFence', 'stacks', 'stsCrane', 'warehouse', 'lamps', 'ships', 'breakwater'],
+};
+
+/** The hillside: sage grass, terracotta soil and rock, warm gravel haul roads and amber evening light, with pines on
+ *  the hills round the site. */
+export const HILLSIDE_THEME = {
+  id: 'hillside',
+  floor: 'terrain',
+  fog: { color: '#c0b598', near: 70, far: 158 },
+  hemi: { sky: '#eadbb6', ground: '#6a583c', intensity: 1.7 },
+  sun: { color: '#ffd9a2', intensity: 3.4, position: [-21, 25, 9] },
+  sky: { top: '#6b8fb0', bottom: '#e8d0a2' },
+  daylight: daylight('#e69a6a', { top: '#26375a', bottom: '#a28f86' }),
+  terrain: {
+    grass: ['#8a9a6b', '#7f9163', '#93a273'],
+    gravel: ['#b8a487', '#ae9a7d', '#c2ae90'],
+    rock: '#a65e3b',
+    rockDark: '#8c4c30',
+    mud: ['#5d4532', '#56402f'],
+    puddle: '#3b3a33',
+  },
+  hillFence: { post: '#64727a', rail: '#4d5a62' },
+  pines: { count: 34, trunk: '#6d5038', leaves: ['#46644a', '#3e5a43', '#566f4f'] },
+  farHills: { colors: ['#93a072', '#a7865a', '#8a9a6b'] },
+  boulders: { color: '#9a6a4c', dark: '#7e5640' },
+  vergePosts: { post: '#e1a531', band: '#1d252b' },
+  roadMarkers: { post: '#e8e2cf', band: '#d9612b' },
+  cabin: { wall: '#c27a43', roof: '#2b3e4e', window: '#264959', skid: '#3a444c' },
+  sign: { text: 'BUILD CREW', sub: 'HILLSIDE / CUT 7', post: '#2d3d49', board: '#172531', ink: '#f1b539' },
+  features: ['hillFence', 'pines', 'farHills', 'boulders', 'vergePosts', 'roadMarkers', 'cabin'],
+};
+
+/** The theme for each site id (sites.mjs). */
+export const THEMES = { yard: YARD_THEME, harbor: HARBOR_THEME, hillside: HILLSIDE_THEME };
+
 /** The floor tile grid: 4 m tiles with centres from -14 to 14, matching physics.mjs. */
 const TILE = { half: 14, size: 4 };
 
 /** Builds the lights, sky and scenery into `scene` and returns the parts that change later: the lights and sky (for
  *  daylight), the floor tiles (for stamps) and the textures to dispose. */
 export function buildEnvironment(scene, kit, theme = YARD_THEME) {
-  const env = { theme };
+  // The site builds through its own material cache (the shared geometries stay the kit's), so switching site can free
+  // every material, texture and buffer that belonged only to the old one (disposeEnvironment).
+  kit = Object.assign(Object.create(kit), { materials: {} });
+  const env = { theme, kit, textures: [] };
+  env.root = new T.Group();
+  env.root.name = `site:${theme.id}`;
+  scene.add(env.root);
   env.hemi = new T.HemisphereLight(theme.hemi.sky, theme.hemi.ground, theme.hemi.intensity);
-  scene.add(env.hemi);
+  env.root.add(env.hemi);
   env.sun = makeSun(theme);
-  scene.add(env.sun);
+  env.root.add(env.sun);
   env.sky = makeSky(theme);
-  scene.add(env.sky);
-  env.gravelTexture = makeGravel(theme);
-  // The shared white material carries the gravel: the floor tiles and the painted toys both use it.
-  kit.mat('#ffffff').map = env.gravelTexture;
+  env.root.add(env.sky);
   env.static = new T.Group();
-  scene.add(env.static);
+  env.root.add(env.static);
   env.yardGroup = new T.Group();
-  scene.add(env.yardGroup);
-  // The ground around the yard is four slabs rather than one big one, so nothing sits above the floor tiles' footprint
-  // and a pit's dark floor (0.9 m down) is not hidden by the lawn.
-  for (const [x, z, w, d] of [
-    [0, -70.5, 250, 109],
-    [0, 70.5, 250, 109],
-    [-70.5, 0, 109, 32],
-    [70.5, 0, 109, 32],
-  ]) {
-    kit.box(env.static, x, -1.3, z, w, 1, d, theme.ground);
-  }
-  for (let x = -TILE.half; x <= TILE.half; x += TILE.size) {
-    for (let z = -TILE.half; z <= TILE.half; z += TILE.size) {
-      const tile = kit.box(env.yardGroup, x, -0.5, z, 4, 1, 4, (x + z) % 8 === 0 ? theme.tiles[0] : theme.tiles[1]);
-      tile.name = `tile:${x}:${z}`;
-    }
-  }
-  for (const feature of theme.features) FEATURES[feature](env.static, kit, theme[feature]);
+  env.root.add(env.yardGroup);
+  FLOORS[theme.floor || 'tiles'](env, kit, theme);
+  for (const feature of theme.features) FEATURES[feature](env.static, kit, theme[feature], env);
   makeSign(env, kit, theme.sign);
   kit.batch(env.static);
-  batchFloor(env, kit);
+  if ((theme.floor || 'tiles') === 'tiles') batchFloor(env, kit);
   return env;
 }
+
+/** The ground each kind of site stands on. */
+const FLOORS = {
+  /** The yard: the lawn round the outside and the 4 m gravel floor tiles that the sandbox's stamps can lower. */
+  tiles(env, kit, theme) {
+    env.gravelTexture = makeGravel(theme);
+    env.textures.push(env.gravelTexture);
+    // The site's white material carries the gravel on the floor tiles.
+    kit.mat('#ffffff').map = env.gravelTexture;
+    // The ground around the yard is four slabs rather than one big one, so nothing sits above the floor tiles' footprint
+    // and a pit's dark floor (0.9 m down) is not hidden by the lawn.
+    for (const [x, z, w, d] of [
+      [0, -70.5, 250, 109],
+      [0, 70.5, 250, 109],
+      [-70.5, 0, 109, 32],
+      [70.5, 0, 109, 32],
+    ]) {
+      kit.box(env.static, x, -1.3, z, w, 1, d, theme.ground);
+    }
+    for (let x = -TILE.half; x <= TILE.half; x += TILE.size) {
+      for (let z = -TILE.half; z <= TILE.half; z += TILE.size) {
+        const tile = kit.box(env.yardGroup, x, -0.5, z, 4, 1, 4, (x + z) % 8 === 0 ? theme.tiles[0] : theme.tiles[1]);
+        tile.name = `tile:${x}:${z}`;
+      }
+    }
+  },
+
+  /** The harbor: a concrete quay (cast in 4 m bays with joints, a yellow safety line and a kerb along the edge), the
+   *  quay wall down into the water with rubber fenders, the water out to the horizon, the moored barge and the piles. */
+  quay(env, kit, theme) {
+    const c = theme.quay,
+      H = HARBOR,
+      g = env.static;
+    env.concreteTexture = makeGravel({ gravel: c.texture });
+    // the same grain as the yard's floor: one 128 px tile every 1.4 m across the whole slab
+    env.concreteTexture.repeat.set((120 + H.edge) / 1.4, 240 / 1.4);
+    env.textures.push(env.concreteTexture);
+    const slab = kit.mat('#ffffff', { roughness: 0.92 });
+    slab.map = env.concreteTexture;
+    // the quay apron and the land behind it, as one slab with its top at y = 0
+    const quay = new T.Mesh(kit.boxGeo, slab);
+    quay.position.set((H.edge - 120) / 2, -1.8, 0);
+    quay.scale.set(120 + H.edge, 3.6, 240);
+    quay.receiveShadow = true;
+    g.add(quay);
+    // the cast bays' joints and the yellow line along the edge
+    for (let x = -14; x < H.edge; x += 4) kit.box(g, x, 0.004, 0, 0.06, 0.012, 34, c.joint);
+    for (let z = -16; z <= 16; z += 4) kit.box(g, (H.edge - 18) / 2, 0.004, z, H.edge + 18, 0.012, 0.06, c.joint);
+    kit.box(g, H.edge - 1.1, 0.006, 5.25, 0.18, 0.014, 23.5, c.line);
+    kit.box(g, H.edge - 1.1, 0.006, -14, 0.18, 0.014, 6, c.line);
+    const k = H.kerb;
+    kit.box(g, k.x, k.h / 2, (k.z[0] + k.z[1]) / 2, k.w, k.h, k.z[1] - k.z[0], c.kerb);
+    // the quay wall's face, its capping beam and the fenders hanging on it
+    kit.box(g, H.edge - 0.25, (H.water.bed - 0.4) / 2, 0, 0.5, -H.water.bed + 0.4, 240, c.wall);
+    kit.box(g, H.edge + 0.02, -0.15, 0, 0.12, 0.3, 240, c.cap);
+    for (let z = -15; z <= 16; z += 3.4) {
+      kit.box(g, H.edge + 0.18, -0.75, z, 0.3, 0.9, 0.7, c.fender);
+      kit.cylinder(g, H.edge + 0.22, -0.32, z, 0.06, 0.25, c.chain);
+    }
+    // bollards along the edge (outside the barge's mooring lines they are just street furniture)
+    for (const z of [-15.5, -4.5, 1.5, 8.5, 14.5]) {
+      kit.cylinder(g, 9.55, 0.3, z, 0.22, 0.6, c.bollard);
+      kit.cylinder(g, 9.55, 0.62, z, 0.3, 0.08, c.bollard);
+    }
+    // the water: one sheet out to the horizon, with foam along the quay wall and the barge's hull
+    const water = new T.Mesh(kit.boxGeo, kit.mat(theme.water.color, { roughness: 0.18, metalness: 0.15 }));
+    water.position.set(H.edge + 110, H.water.level - 0.05, 0);
+    water.scale.set(220, 0.1, 400);
+    water.receiveShadow = true;
+    g.add(water);
+    env.water = water;
+    const foam = kit.mat(theme.water.foam, { transparent: true, opacity: 0.45, roughness: 0.6 });
+    for (const [x, z, w, d] of [
+      [H.edge + 0.45, 0, 0.5, 60],
+      [H.barge.x[0] - 0.15, 3, 0.35, 16.6],
+      [H.barge.x[1] + 0.15, 3, 0.35, 16.6],
+      [13.7, H.barge.z[0] - 0.15, 5.7, 0.35],
+      [13.7, H.barge.z[1] + 0.15, 5.7, 0.35],
+    ]) {
+      const f = new T.Mesh(kit.boxGeo, foam);
+      f.position.set(x, H.water.level + 0.005, z);
+      f.scale.set(w, 0.02, d);
+      g.add(f);
+    }
+    // the dark harbor bed seen through the shallows by the quay
+    kit.box(g, H.edge + 15, H.water.bed - 0.5, 0, 30, 1, 60, theme.water.bed);
+    buildBarge(g, kit, theme.barge);
+    for (const p of H.piles) {
+      kit.box(g, p.x, (H.water.bed - 0.4) / 2 + 0.0, p.z, p.size, -H.water.bed + 0.4, p.size, c.wall);
+      kit.box(g, p.x, -0.06, p.z, p.size + 0.12, 0.12, p.size + 0.12, c.cap);
+      kit.box(g, p.x, H.water.level + 0.25, p.z, p.size + 0.06, 0.5, p.size + 0.06, c.weed);
+    }
+  },
+
+  /** The hillside: the same height function the physics heightfield samples (sites.mjs), drawn as one flat-shaded mesh
+   *  at the same half-metre cells inside the fence and coarser cells out to the hills. The surface colour comes from the
+   *  site's own map: sage grass, warm gravel on the work areas and the haul road, terracotta rock where it is steep, and
+   *  dark mud with glossy puddles. */
+  terrain(env, kit, theme) {
+    const site = SITES.hillside,
+      c = theme.terrain,
+      inner = HILL.grid.size / 2;
+    const geo = terrainGeometry(site, c, -inner, inner, HILL.grid.cell, null);
+    const outer = terrainGeometry(site, c, -64, 64, 2, inner);
+    for (const g of [geo, outer]) {
+      const mesh = new T.Mesh(g, kit.mat('#ffffff', { vertexColors: true, flatShading: true, roughness: 0.95 }));
+      mesh.receiveShadow = true;
+      mesh.userData.ownGeometry = true;
+      env.yardGroup.add(mesh);
+    }
+    // a skirt down from the fine mesh's rim, so the two grids never show a gap where they meet
+    const rim = [];
+    for (let i = 0; i < 4; i++) {
+      for (let t = -inner; t < inner; t += 1) {
+        const p = (u) => (i === 0 ? [u, -inner] : i === 1 ? [inner, u] : i === 2 ? [-u, inner] : [-inner, -u]);
+        const [x0, z0] = p(t),
+          [x1, z1] = p(t + 1);
+        const y0 = site.height(x0, z0),
+          y1 = site.height(x1, z1);
+        rim.push(x0, y0, z0, x1, y1, z1, x1, y1 - 1.5, z1, x0, y0, z0, x1, y1 - 1.5, z1, x0, y0 - 1.5, z0);
+      }
+    }
+    const skirt = new T.BufferGeometry();
+    skirt.setAttribute('position', new T.Float32BufferAttribute(rim, 3));
+    skirt.computeVertexNormals();
+    const skirtMesh = new T.Mesh(skirt, kit.mat(c.rock, { side: T.DoubleSide }));
+    skirtMesh.userData.ownGeometry = true;
+    env.yardGroup.add(skirtMesh);
+    // puddles: glossy dark water lying in the mud where the ground is flat
+    const puddle = kit.mat(c.puddle, { roughness: 0.12, metalness: 0.2 });
+    for (const r of HILL.mud) {
+      for (let i = 0; i < 7; i++) {
+        const x = r.x[0] + 0.8 + (((i * 0.618) % 1) * (r.x[1] - r.x[0] - 1.6)),
+          z = r.z[0] + 0.8 + (((i * 0.382 + 0.2) % 1) * (r.z[1] - r.z[0] - 1.6));
+        const tilt =
+          Math.abs(site.height(x + 0.8, z) - site.height(x - 0.8, z)) +
+          Math.abs(site.height(x, z + 0.8) - site.height(x, z - 0.8));
+        if (tilt > 0.02) continue;
+        const p = new T.Mesh(kit.circleGeo, puddle);
+        p.rotation.x = -Math.PI / 2;
+        p.position.set(x, site.height(x, z) + 0.012, z);
+        p.scale.set(0.5 + (i % 3) * 0.3, 0.35 + (i % 2) * 0.25, 1);
+        p.receiveShadow = true;
+        env.static.add(p);
+      }
+    }
+  },
+};
 
 /** The single shadow-casting light. Its shadow box covers the whole working area (the tier sets its size and the map). */
 function makeSun(theme) {
@@ -145,6 +372,9 @@ function makeSky(theme) {
     }),
   );
 }
+
+/** The speckle the painted toys wear (the yard's gravel grain, made once per page; every site's toys share it). */
+export const toyTexture = () => makeGravel(YARD_THEME);
 
 /** A small tiling gravel texture, speckled with a fixed pattern so every visit looks the same. */
 function makeGravel(theme) {
@@ -283,7 +513,336 @@ const FEATURES = {
       }
     }
   },
+
+  // ---- The harbor ----
+
+  /** The quay's security fence on the three land sides (the water side is open), with a gate gap to the south. */
+  harborFence(group, kit, c) {
+    for (let i = -16; i <= 9.6; i += 2.8) {
+      for (const side of [-1, 1]) kit.box(group, i, 0.95, side * 17, 0.19, 1.9, 0.19, c.post);
+      for (const y of [0.55, 1.25]) {
+        kit.box(group, i + 1.4 > 10 ? i + 0.2 : i + 1.4, y, -17, i + 1.4 > 10 ? 0.4 : 2.8, 0.18, 0.12, c.rail);
+        if (i > 0 || i < -6) kit.box(group, Math.min(i + 1.4, 9.4), y, 17, 2.8, 0.18, 0.12, c.rail);
+      }
+    }
+    for (let i = -16; i <= 16; i += 2.8) {
+      kit.box(group, -17, 0.95, i, 0.19, 1.9, 0.19, c.post);
+      for (const y of [0.55, 1.25]) kit.box(group, -17, y, i + 1.4, 0.12, 0.18, 2.8, c.rail);
+    }
+  },
+
+  /** Stacks of ribbed shipping containers outside the fence to the west and north, two and three high. */
+  stacks(group, kit, c) {
+    const box = (x, y, z, rot, i) => {
+      const color = c.colors[i % c.colors.length];
+      const g = new T.Group();
+      g.position.set(x, y, z);
+      g.rotation.y = rot;
+      group.add(g);
+      kit.box(g, 0, 1.3, 0, 6.1, 2.6, 2.45, color);
+      for (let k = -2.8; k <= 2.8; k += 0.4) kit.box(g, k, 1.3, 1.24, 0.06, 2.45, 0.04, c.rib);
+      kit.box(g, 3.06, 1.3, 0, 0.04, 2.5, 2.3, c.rib);
+    };
+    let i = 0;
+    for (const [x0, z0, rows, rot] of [
+      [-26, -10, 4, Math.PI / 2],
+      [-31, 4, 3, Math.PI / 2],
+      [-12, 23, 3, 0],
+    ]) {
+      // a row of stacks side by side (each container lies along its own length), one to three high
+      for (let r = 0; r < rows; r++) {
+        const high = 1 + ((i * 7) % 3);
+        for (let h = 0; h < high; h++) box(rot ? x0 + r * 2.7 : x0, h * 2.62, rot ? z0 : z0 + r * 2.7, rot, i + h);
+        i++;
+      }
+    }
+  },
+
+  /** A rust-orange ship-to-shore crane straddling the quay edge north of the berth, its boom out over the water. */
+  stsCrane(group, kit, c) {
+    const z0 = 24,
+      x0 = 6,
+      x1 = 15;
+    for (const x of [x0, x1]) {
+      for (const z of [z0 - 4, z0 + 4]) kit.box(group, x, 9, z, 0.9, 18, 0.9, c.steel);
+      kit.box(group, x, 0.5, z0, 1.4, 1, 10, c.dark);
+      // the sill beam between each pair of legs
+      kit.box(group, x, 10, z0, 0.7, 0.7, 8.8, c.steel);
+    }
+    // the portal beam and the boom out over the water, the backreach over the land
+    for (const z of [z0 - 4, z0 + 4]) kit.box(group, (x0 + x1) / 2 + 6, 18.4, z, 46, 1.1, 0.8, c.steel);
+    for (let x = -11; x <= 32; x += 3.4) kit.box(group, x + (x0 + x1) / 2 - 5, 18.4, z0, 0.3, 0.9, 8, c.steel);
+    kit.box(group, (x0 + x1) / 2 + 6, 19, z0, 46, 0.2, 8.8, c.dark);
+    // the apex frame, the trolley and its cab
+    kit.box(group, x0 + 1, 24, z0, 0.8, 11, 0.8, c.steel);
+    kit.box(group, x0 + 1, 29.6, z0, 2.4, 0.6, 2.4, c.dark);
+    kit.box(group, 22, 17.3, z0, 3, 1.6, 3.4, c.cab);
+    kit.box(group, 22, 17.1, z0 - 1.72, 2.6, 1, 0.05, c.glass);
+    kit.box(group, 22, 13, z0, 2.6, 0.5, 2.6, c.dark);
+    // the rails it runs on
+    for (const x of [x0, x1]) kit.box(group, x, 0.05, z0, 0.3, 0.1, 30, c.rail);
+  },
+
+  /** A long corrugated transit shed behind the quay to the north-west. */
+  warehouse(group, kit, c) {
+    kit.box(group, -12, 3, -26, 22, 6, 9, c.wall);
+    kit.box(group, -12, 6.3, -26, 23, 0.6, 10, c.roof);
+    for (const x of [-18, -12, -6]) {
+      kit.box(group, x, 2.2, -21.45, 4.2, 4.4, 0.1, c.door);
+      for (let y = 0.45; y < 4.4; y += 0.45) kit.box(group, x, y, -21.36, 3.9, 0.04, 0.04, c.slat);
+    }
+    for (let x = -22.6; x < -1.5; x += 0.6) kit.box(group, x, 3, -21.42, 0.06, 5.9, 0.08, c.rib);
+  },
+
+  /** Quay lamp masts along the back of the quay. */
+  lamps(group, kit, c) {
+    for (const z of [-19, 19]) {
+      for (const x of [-10, 2]) {
+        kit.cylinder(group, x, 4.5, z, 0.14, 9, c.pole);
+        kit.box(group, x + 0.6, 9, z, 1.4, 0.18, 0.5, c.head);
+        kit.box(group, x + 0.9, 8.88, z, 0.7, 0.06, 0.36, c.glow);
+      }
+    }
+  },
+
+  /** Two cargo ships at anchor out in the roads, low on the horizon. */
+  ships(group, kit, c) {
+    for (const [x, z, s] of [
+      [70, -40, 1],
+      [92, 30, 0.8],
+    ]) {
+      kit.box(group, x, -0.4, z, 9 * s, 3 * s, 46 * s, c.hull);
+      kit.box(group, x, 0.6 * s, z, 9.1 * s, 0.6 * s, 46.2 * s, c.band);
+      kit.box(group, x, 3.5 * s, z - 18 * s, 8 * s, 6 * s, 6 * s, c.house);
+      kit.box(group, x, 7.5 * s, z - 19 * s, 1.6 * s, 3 * s, 1.6 * s, c.stack);
+      for (let k = -12; k <= 12; k += 6) kit.box(group, x, 2.4 * s, z + k * s, 7.6 * s, 2.6 * s, 5 * s, '#4b5661');
+    }
+  },
+
+  /** The breakwater across the harbor mouth with its light tower. */
+  breakwater(group, kit, c) {
+    for (let z = -60; z <= -20; z += 4) kit.ball(group, 46 + (z % 8 === 0 ? 1 : 0), -0.6, z, 2.8, c.rock);
+    kit.cylinder(group, 46, 3.5, -20, 1.2, 7, c.tower);
+    kit.cylinder(group, 46, 6.2, -20, 1.25, 1, c.light);
+    kit.cylinder(group, 46, 7.4, -20, 0.8, 1.2, '#2b3e4e');
+  },
+
+  // ---- The hillside ----
+
+  /** The site fence, its posts and rails following the ground. */
+  hillFence(group, kit, c) {
+    const h = SITES.hillside.height;
+    for (let i = -16; i <= 16; i += 2.8) {
+      for (const side of [-1, 1]) {
+        kit.box(group, i, h(i, side * 17) + 0.95, side * 17, 0.19, 1.9, 0.19, c.post);
+        kit.box(group, side * 17, h(side * 17, i) + 0.95, i, 0.19, 1.9, 0.19, c.post);
+      }
+      for (const y of [0.55, 1.25]) {
+        for (const side of [-1, 1]) {
+          const a = h(i, side * 17),
+            b = h(i + 2.8, side * 17);
+          if (!(side === -1 && i > -6 && i < 0)) kit.box(group, i + 1.4, (a + b) / 2 + y, side * 17, 2.8, 0.18, 0.12, c.rail);
+          const p = h(side * 17, i),
+            q = h(side * 17, i + 2.8),
+            bar = kit.box(group, side * 17, (p + q) / 2 + y, i + 1.4, 0.12, 0.18, Math.hypot(2.8, q - p), c.rail);
+          bar.rotation.x = -Math.atan2(q - p, 2.8);
+        }
+      }
+    }
+  },
+
+  /** Pines on the hills round the site: stacked cones in dark sage greens. */
+  pines(group, kit, c) {
+    const h = SITES.hillside.height;
+    for (let i = 0; i < c.count; i++) {
+      const a = i * 2.399,
+        r = 23 + (i % 6) * 4.5,
+        x = Math.sin(a) * r,
+        z = Math.cos(a) * r,
+        s = 0.9 + (i % 4) * 0.22,
+        y = h(x, z);
+      kit.cylinder(group, x, y + 0.8 * s, z, 0.2 * s, 1.6 * s, c.trunk);
+      for (const [k, [r0, hh]] of [
+        [1.6, 2.2],
+        [1.2, 1.9],
+        [0.75, 1.6],
+      ].entries()) {
+        const cone = new T.Mesh(kit.coneGeo || (kit.coneGeo = new T.ConeGeometry(1, 1, 7)), kit.mat(c.leaves[(i + k) % 3], { flatShading: true }));
+        cone.position.set(x, y + (1.6 + k * 1.15 + hh / 2) * s, z);
+        cone.scale.set(r0 * s, hh * s, r0 * s);
+        cone.castShadow = true;
+        group.add(cone);
+      }
+    }
+  },
+
+  /** Flattened hills on the horizon in sage and terracotta. */
+  farHills(group, kit, c) {
+    for (let i = 0; i < 12; i++) {
+      const a = -1.3 + i * 0.32,
+        r = 78 + (i % 3) * 6,
+        m = kit.ball(group, Math.sin(a) * r, 2, -Math.cos(a) * r, 18 + (i % 3) * 6, c.colors[i % 3]);
+      m.scale.y = 0.55;
+    }
+    for (let i = 0; i < 6; i++) {
+      const m = kit.ball(group, -60 + i * 24, 1, 82, 20, c.colors[(i + 1) % 3]);
+      m.scale.y = 0.5;
+    }
+  },
+
+  /** Terracotta boulders on the rock shoulder and along the ravine. */
+  boulders(group, kit, c) {
+    const h = SITES.hillside.height;
+    for (const [x, z, r] of [
+      [14.5, -10, 0.9],
+      [15.2, -2, 1.2],
+      [14.1, 6, 0.8],
+      [15.6, 12, 1.1],
+      [3.6, 15.6, 0.7],
+      [8.6, 16, 0.9],
+      [-15.6, 15.2, 0.8],
+      [12.8, -14.8, 0.6],
+    ]) {
+      const b = kit.ball(group, x, h(x, z) + r * 0.45, z, r, (x + z) % 2 > 0.5 ? c.color : c.dark);
+      b.scale.y = 0.7;
+    }
+  },
+
+  /** Amber marker posts along both sides of the grass verge on the lower yard. */
+  vergePosts(group, kit, c) {
+    const h = SITES.hillside.height;
+    for (const x of [-4.5, -1.5]) {
+      for (let z = -15; z <= -4; z += 2.2) {
+        kit.box(group, x, h(x, z) + 0.45, z, 0.14, 0.9, 0.14, c.post);
+        kit.box(group, x, h(x, z) + 0.7, z, 0.15, 0.12, 0.15, c.band);
+      }
+    }
+  },
+
+  /** White delineator posts with orange bands along both edges of the haul road up the slope. */
+  roadMarkers(group, kit, c) {
+    const h = SITES.hillside.height;
+    for (const x of [-12.3, -3.7]) {
+      for (let z = -2.5; z <= 6.5; z += 1.8) {
+        kit.box(group, x, h(x, z) + 0.55, z, 0.12, 1.1, 0.12, c.post);
+        kit.box(group, x, h(x, z) + 0.92, z, 0.13, 0.14, 0.13, c.band);
+      }
+    }
+  },
+
+  /** A portable site cabin on skids on the terrace beyond the north fence. */
+  cabin(group, kit, c) {
+    const y = SITES.hillside.height(-6, 21);
+    kit.box(group, -6, y + 0.15, 21, 6.4, 0.3, 2.6, c.skid);
+    kit.box(group, -6, y + 1.6, 21, 6, 2.6, 2.5, c.wall);
+    kit.box(group, -6, y + 3, 21, 6.3, 0.2, 2.8, c.roof);
+    for (const x of [-7.8, -4.2]) kit.box(group, x, y + 1.9, 19.74, 1.2, 0.8, 0.05, c.window);
+  },
 };
+
+/** The moored barge: a slate hull with a rust-orange band riding in the water, a plated steel deck, the low gunwale round
+ *  it, bollards at its corners with mooring lines to the quay, and white draught marks. Its sizes are the physics
+ *  barge's (sites.mjs HARBOR.barge). */
+function buildBarge(group, kit, c) {
+  const b = HARBOR.barge,
+    W = HARBOR.water,
+    cx = (b.x[0] + b.x[1]) / 2,
+    cz = (b.z[0] + b.z[1]) / 2,
+    w = b.x[1] - b.x[0],
+    d = b.z[1] - b.z[0];
+  kit.box(group, cx, (b.deck + W.level - 1.6) / 2, cz, w, b.deck - W.level + 1.6, d, c.hull);
+  kit.box(group, cx, W.level + 0.45, cz, w + 0.04, 0.22, d + 0.04, c.band);
+  kit.box(group, cx, b.deck - 0.02, cz, w - 0.1, 0.04, d - 0.1, c.deck);
+  for (let z = b.z[0] + 1; z < b.z[1]; z += 2) kit.box(group, cx, b.deck + 0.004, z, w - 0.8, 0.012, 0.04, c.plate);
+  for (const k of [-1, 1]) {
+    kit.box(group, cx + (k * (w - b.rimW)) / 2, b.deck + b.rim / 2, cz, b.rimW, b.rim, d, c.rim);
+    kit.box(group, cx, b.deck + b.rim / 2, cz + (k * (d - b.rimW)) / 2, w, b.rim, b.rimW, c.rim);
+  }
+  for (const z of [b.z[0] + 0.8, b.z[1] - 0.8]) {
+    kit.cylinder(group, b.x[0] + 0.55, b.deck + b.rim + 0.15, z, 0.16, 0.3, c.bollard);
+    // the mooring line from the barge's bollard to the quay's
+    const line = kit.box(group, (b.x[0] + 0.55 + 9.55) / 2, 0.15, z, 0.06, 0.06, Math.hypot(b.x[0] + 0.55 - 9.55, 0.5), c.rope);
+    line.rotation.y = Math.PI / 2;
+  }
+  for (let z = b.z[0] + 2; z < b.z[1]; z += 4) kit.box(group, b.x[0] - 0.02, W.level + 0.05, z, 0.02, 0.5, 0.08, c.mark);
+}
+
+/** The hillside's ground as a flat-shaded triangle mesh from `from` to `to` (both axes) in `cell` metre squares, leaving
+ *  out the inner square of half-width `hole` when given. Each triangle is coloured by the surface at its middle. */
+function terrainGeometry(site, c, from, to, cell, hole) {
+  const pos = [],
+    col = [],
+    color = new T.Color(),
+    n = Math.round((to - from) / cell);
+  // The shade varies in soft 3 m patches (never triangle by triangle), and rock is banded by height like strata.
+  const hash = (a, b) => Math.abs((Math.sin(a * 12.9898 + b * 78.233) * 43758.5453) % 1);
+  const pick = (x, z) => {
+    const s = hillsideSurface(x, z),
+      k = Math.floor(hash(Math.floor(x / 3), Math.floor(z / 3)) * 3);
+    if (s === 'mud') return c.mud[k % 2];
+    if (s === 'gravel') return c.gravel[k];
+    if (s === 'rock') return Math.floor(site.height(x, z) * 2.2) % 2 ? c.rock : c.rockDark;
+    return c.grass[k];
+  };
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      const x0 = from + i * cell,
+        z0 = from + j * cell,
+        x1 = x0 + cell,
+        z1 = z0 + cell;
+      if (hole && x0 >= -hole && x1 <= hole && z0 >= -hole && z1 <= hole) continue;
+      const h = site.height;
+      // Two triangles per cell, wound so their faces point up.
+      for (const tri of [
+        [
+          [x0, z0],
+          [x0, z1],
+          [x1, z0],
+        ],
+        [
+          [x1, z0],
+          [x0, z1],
+          [x1, z1],
+        ],
+      ]) {
+        const mx = (tri[0][0] + tri[1][0] + tri[2][0]) / 3,
+          mz = (tri[0][1] + tri[1][1] + tri[2][1]) / 3;
+        // a slight shade per triangle keeps the faceted look without speckle
+        color.set(pick(mx, mz)).multiplyScalar(0.97 + hash(mx, mz) * 0.06);
+        for (const [x, z] of tri) {
+          pos.push(x, h(x, z), z);
+          col.push(color.r, color.g, color.b);
+        }
+      }
+    }
+  }
+  const geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new T.Float32BufferAttribute(col, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+/** Frees everything a site built: its lights (and the shadow map), the sky, the static scenery's merged and instanced
+ *  meshes and their own geometries, the materials made through the site's own cache, and its textures. The geometries
+ *  shared through the kit stay. */
+export function disposeEnvironment(scene, env, kit) {
+  scene.remove(env.root);
+  const shared = new Set([kit.boxGeo, kit.cylGeo, kit.sphereGeo, kit.circleGeo, ...Object.values(kit.cylinders || {})]);
+  env.root.traverse((o) => {
+    if (o.isInstancedMesh) o.dispose();
+    if (o.geometry && !shared.has(o.geometry)) o.geometry.dispose();
+    if (o.isLight) o.dispose?.();
+  });
+  env.sky.material.dispose();
+  for (const m of Object.values(env.kit.materials)) m.dispose();
+  if (Object.hasOwn(env.kit, 'cylinders')) for (const g of Object.values(env.kit.cylinders)) g.dispose();
+  if (Object.hasOwn(env.kit, 'coneGeo')) env.kit.coneGeo.dispose();
+  for (const t of env.textures) t.dispose();
+  env.labelTexture?.dispose();
+  env.label?.material.dispose();
+  env.label?.geometry.dispose();
+}
 
 /** One tree: a trunk and three leaf balls, its green picked from the palette by position. */
 function tree(group, kit, c, x, z, s = 1) {
@@ -312,14 +871,25 @@ function makeSign(env, kit, c) {
     ctx.fillStyle = c.board;
     ctx.fillRect(0, 0, 512, 128);
     ctx.fillStyle = c.ink;
-    ctx.font = '900 52px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(c.text, 256, 83);
+    if (c.sub) {
+      // a newer site's sign: the crew's name and, under a rule, the site and its code
+      ctx.font = '900 44px sans-serif';
+      ctx.fillText(c.text, 256, 56);
+      ctx.fillRect(56, 70, 400, 4);
+      ctx.fillStyle = '#c6d5df';
+      ctx.font = '700 30px monospace';
+      ctx.fillText(c.sub, 256, 108);
+    } else {
+      ctx.font = '900 52px sans-serif';
+      ctx.fillText(c.text, 256, 83);
+    }
   });
   const label = new T.Mesh(new T.PlaneGeometry(4.6, 1.15), new T.MeshBasicMaterial({ map: texture }));
   label.position.set(-10, 2.7, -14.88);
   env.static.add(label);
   env.labelTexture = texture;
+  env.label = label;
 }
 
 /** Replaces the individual floor tiles with one instanced mesh, remembering each tile's position and color so
@@ -361,7 +931,7 @@ function updateFloor(env, kit, stamps) {
 function hillGeometry(env) {
   if (!env.hillGeo) {
     const profile = hillProfile().map(({ r, y }) => new T.Vector2(r, y));
-    env.hillGeo = new T.LatheGeometry(profile, HILL.sides);
+    env.hillGeo = new T.LatheGeometry(profile, MOUND.sides);
   }
   return env.hillGeo;
 }
@@ -385,6 +955,8 @@ function rampGeometry(env) {
 export function syncStamps(env, kit, stampGroup, stamps) {
   const c = env.theme.stamps;
   stampGroup.clear();
+  // only the yard's tiled floor takes stamps (the sandbox)
+  if (!env.floorMesh) return;
   updateFloor(env, kit, stamps);
   for (const s of stamps) {
     if (s.kind === 'pit' || s.kind === 'water') {

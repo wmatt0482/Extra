@@ -5,7 +5,7 @@
 // site, a lost block returning) is drawn at its new place at once instead of sliding across the yard.
 
 /** The machine fields that move the drawn model, in the order they are stored. `angle` ones take the short way round. */
-const FIELDS = ['x', 'y', 'z', 'yaw', 'swing', 'lift', 'reach', 'tilt'];
+const FIELDS = ['x', 'y', 'z', 'yaw', 'swing', 'lift', 'reach', 'tilt', 'pitch', 'roll', 'artic'];
 const ANGLE = new Set([3, 4]);
 const TAU = Math.PI * 2;
 

@@ -5,7 +5,15 @@
 // postprocessing; repeated parts are instanced so the yard stays within SPEC §6's draw-call and triangle budgets.
 import * as T from '../../vendor/three.module.js';
 import { Kit } from './kit.js';
-import { YARD_THEME, buildEnvironment, syncStamps, applyDaylight } from './environment.js';
+import {
+  YARD_THEME,
+  THEMES,
+  buildEnvironment,
+  disposeEnvironment,
+  syncStamps,
+  applyDaylight,
+  toyTexture,
+} from './environment.js';
 import { ToyLayer } from './toys.js';
 import { buildMachine, syncMachine, buildWreckingBall, syncWreckingBall } from './machines.js';
 import { Effects } from './effects.js';
@@ -46,7 +54,12 @@ export class Scene {
     this.ndc = new T.Vector2();
     this.tapPoint = new T.Vector3();
     this.machineModels = [];
+    // The painted toys wear the yard's gravel grain on every site (it belongs to the scene, not to a site).
+    this.toyTexture = toyTexture();
+    this.kit.mat('#ffffff').map = this.toyTexture;
     this.env = buildEnvironment(this.scene, this.kit, theme);
+    /** How many times the site has been rebuilt since the page opened (the switch is checked by the browser smoke). */
+    this.siteBuilds = 1;
     this.effects = new Effects(this.scene, this.kit, () => this.reducedMotion);
     this.toys = new ToyLayer(this.kit);
     this.resize = () => {
@@ -120,18 +133,47 @@ export class Scene {
     this.env.hillGeo = null;
     this.machineModels = [];
     this.effects.clear();
+    this.roundGroup = null;
+  }
+
+  /** Moves the scene to another work site (the yard, the harbor or the hillside): the old site's lights, sky, scenery,
+   *  ground, materials and textures are freed and the new site's are built, keeping the daylight and the picture-quality
+   *  decisions (the shadow map size and whether the sun casts shadows at all). Nothing happens when the site is current. */
+  setSite(id) {
+    const theme = THEMES[id] || YARD_THEME;
+    if (this.env.theme === theme) return;
+    const old = this.env.sun;
+    this.clearRound();
+    disposeEnvironment(this.scene, this.env, this.kit);
+    this.scene.fog.color.set(theme.fog.color);
+    this.scene.fog.near = theme.fog.near;
+    this.scene.fog.far = theme.fog.far;
+    this.env = buildEnvironment(this.scene, this.kit, theme);
+    const sun = this.env.sun;
+    sun.castShadow = old.castShadow;
+    sun.shadow.mapSize.copy(old.shadow.mapSize);
+    this.quality.sun = sun;
+    applyDaylight(this.env, this.daylight);
+    this.siteBuilds++;
+  }
+
+  /** The site on show ('yard', 'harbor' or 'hillside'). */
+  get site() {
+    return this.env.theme.id;
   }
 
   /** Shows a new physics yard: toys, the pad and ghosts, props, machines, the wrecking ball and stamps. The camera
-   *  returns to the overview until the app moves it. */
+   *  returns to the overview until the app moves it. A yard on another site moves the scene to that site first. */
   setRound(yard) {
+    this.setSite(yard.site?.id || 'yard');
     this.clearRound();
     this.yard = yard;
     this.roundGroup = new T.Group();
     this.scene.add(this.roundGroup);
     this.toys.buildMeshes(this.roundGroup);
     this.effects.attachRound(this.roundGroup);
-    this.toys.buildFixtures(this.roundGroup, yard.round);
+    this.toys.buildFixtures(this.roundGroup, yard.round, (x, z) => yard.groundAt(x, z));
+    this.carDrive = null;
     yard.machines.forEach((m) => this.machineModels.push(buildMachine(this.kit, this.roundGroup, m.kind)));
     this.wreckMesh = buildWreckingBall(this.kit, this.roundGroup);
     this.stampGroup = new T.Group();
@@ -151,6 +193,21 @@ export class Scene {
   daylightTo(n) {
     this.daylight = n;
     applyDaylight(this.env, n);
+  }
+
+  /** The finished bridge's toy car crosses it: from the near end of the beam (`from`, x) to the far end (`to`), at the
+   *  beam's top, over `ms` (straight to the far end in calm motion). */
+  crossBridge(from, to, top, ms = 2600) {
+    if (!this.toys.car) return;
+    this.carDrive = { from, to, top, t0: performance.now(), ms: this.reducedMotion ? 1 : ms };
+  }
+
+  driveCar() {
+    const d = this.carDrive,
+      car = this.toys.car;
+    if (!d || !car) return;
+    const p = Math.min(1, (performance.now() - d.t0) / d.ms);
+    car.position.set(d.from + (d.to - d.from) * p, d.top, car.position.z);
   }
 
   /** Sprays a few particles (dust, glitter, a spawn puff). */
@@ -197,6 +254,7 @@ export class Scene {
     this.effects.drawMarks(yard);
     this.effects.updateParticles(dt);
     syncWreckingBall(this.wreckMesh, yard);
+    this.driveCar();
     this.rig.update(dt, yard.machine, yard.round.pad, this.reducedMotion);
     if (blend) blend.restore(yard);
     this.quality.beforeRender();
@@ -231,7 +289,8 @@ export class Scene {
     geometries.forEach((g) => g.dispose());
     materials.forEach((m) => m.dispose());
     this.env.labelTexture.dispose();
-    this.env.gravelTexture.dispose();
+    for (const t of this.env.textures) t.dispose();
+    this.toyTexture.dispose();
     this.renderer.dispose();
   }
 }

@@ -4,6 +4,7 @@
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { MACHINES, touchHint } from '../content.mjs';
+import { ruleLine } from '../missions.mjs';
 import { Music } from '../meta/music.js';
 import { app, account } from './state.js';
 
@@ -37,6 +38,27 @@ export const MACHINE_UI = {
       '" stroke-width="6" fill="none"/><path d="M59 10v20h-6" stroke="#bcc8d2" stroke-width="2"/>',
     releaseHint: null,
     carriesBall: true,
+  },
+  // WL-06 wheel loader (0.6): its own card (an articulated loader with a big bucket), lift and tilt like the skid steer.
+  loader: {
+    toolLabel: 'LIFT & TILT',
+    joints: ['tilt'],
+    card: (c) =>
+      '<path d="M4 30h52v5H4z" fill="#0b121a"/><path d="M4 30V21l3-3h15v12z" fill="' +
+      c +
+      '" stroke="#0b121a" stroke-width="1.5"/><path d="M22 30V9h12l2 21z" fill="' +
+      c +
+      '" stroke="#0b121a" stroke-width="1.5"/><path d="M25 12h8l1 9h-9z" fill="#203e50"/>' +
+      '<path d="M36 26V20h9l2 6z" fill="' +
+      c +
+      '" stroke="#0b121a" stroke-width="1.5"/><path d="M40 16L54 28" stroke="' +
+      c +
+      '" stroke-width="4"/><path d="M50 22l11 2 1 13-10 1-3-6z" fill="' +
+      c +
+      '" stroke="#0b121a" stroke-width="1.5"/>' +
+      '<circle cx="13" cy="36" r="6" fill="#161c21" stroke="#93b0be" stroke-width="1.5"/><circle cx="41" cy="36" r="6" fill="#161c21" stroke="#93b0be" stroke-width="1.5"/>',
+    releaseHint: 'Tilt the bucket forward to pour your block out.',
+    carriesBall: false,
   },
   // The Lab machines: `card` is the whole card picture (they are not the skid-steer-style chassis the others share),
   // `noGrab` hides the Grab button (loads ride on the bed or the tines).
@@ -282,7 +304,8 @@ export function updateUI() {
     of = mission ? mission.status.total : -1,
     challenge = app.challenge;
   if (challenge?.active) challenge.grabs = yard.grabs;
-  const line = challenge?.active ? challenge.label() : '';
+  // a job's site rule (the hillside's "Keep blocks off the grass") takes the same second line
+  const line = challenge?.active ? challenge.label() : mission ? ruleLine(yard.round) : '';
   if (refs.n !== n || refs.of !== of || refs.line !== line || !progress.textContent) {
     refs.n = n;
     refs.of = of;
@@ -290,7 +313,7 @@ export function updateUI() {
     const main = mission ? `${n} / ${of} placed` : isTouch() ? `${n} materials` : `${n} materials on site`;
     progress.textContent = main;
     progress.classList.toggle('with-challenge', !!line);
-    if (line) progress.append(h('small', { id: 'challenge', class: challenge.met ? 'met' : '' }, line));
+    if (line) progress.append(h('small', { id: 'challenge', class: challenge?.met ? 'met' : '' }, line));
   }
   haptics(yard);
 }

@@ -149,7 +149,8 @@ export class CameraRig {
   update(dt, machine, pad, reducedMotion) {
     const desired = this.overview
       ? this.desired.set(0, 0, 1)
-      : this.desired.set(machine.x * 0.65 + pad.x * 0.15, 0.7, machine.z * 0.65 + pad.z * 0.15);
+      : // on the hillside the follow point rises with the machine (in the flat yard and on the quay it stays at 0.7 m)
+        this.desired.set(machine.x * 0.65 + pad.x * 0.15, Math.max(0.7, machine.y ?? 0.7), machine.z * 0.65 + pad.z * 0.15);
     if (this.sweep > 0) {
       this.sweep -= dt;
       this.yaw += dt * 0.15;

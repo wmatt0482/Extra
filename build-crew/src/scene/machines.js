@@ -15,7 +15,7 @@
 // rewardArt() draws the large reward picture the job-complete sheet shows, in each machine's own profile.
 import * as T from '../../vendor/three.module.js';
 import { MACHINES } from '../content.mjs';
-import { SKID_BUCKET, DUMP, FORK, bedAngle, gateAngle, forkCarriage } from '../physics.mjs';
+import { SKID_BUCKET, DUMP, FORK, LOADER, bedAngle, gateAngle, forkCarriage } from '../physics.mjs';
 import { LAB_PAINT } from '../meta/labLooks.js';
 import { Parts, canvasTexture } from './kit.js';
 
@@ -58,6 +58,17 @@ export const MACHINE = {
     build: buildCrane,
     pose: poseCrane,
   },
+  // WL-06 wheel loader (0.6): big tyres on two frames that bend at the hinge ('custom' gear, posed by the model).
+  loader: {
+    gear: 'custom',
+    tool: 'bucket',
+    cabSwings: false,
+    scoops: true,
+    lattice: false,
+    settle: 0.6,
+    build: buildLoader,
+    pose: poseLoader,
+  },
   // The Lab machines. 'custom' gear means the model builds and poses its own wheels (poseGear); the half track and
   // the steering come from the model (gearHalf, steerLimit).
   dump: {
@@ -83,7 +94,17 @@ export const MACHINE = {
 };
 
 /** Body colors when a paint reward is chosen (stock keeps the machine's own color). */
-export const PAINTS = { cream: '#c6c3b4', leaf: '#486c53', sky: '#3c7d9c', sunset: '#d86c38' };
+export const PAINTS = {
+  cream: '#c6c3b4',
+  leaf: '#486c53',
+  sky: '#3c7d9c',
+  sunset: '#d86c38',
+  // the harbor and the hillside (0.6)
+  graphite: '#4a5157',
+  harbor: '#2c6f8c',
+  sage: '#7e8f69',
+  rust: '#9b4b2c',
+};
 
 /** Detail colors shared by every model. */
 const C = {
@@ -168,6 +189,7 @@ const S = {
   q: new T.Quaternion(),
   q1: new T.Quaternion(),
   e1: new T.Euler(),
+  e2: new T.Euler(),
 };
 const UP = new T.Vector3(0, 1, 0);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -187,7 +209,7 @@ export function buildMachine(kit, group, kind) {
     paint: 'stock',
     paintable: [],
     actuators: [],
-    decals: { star: [], stripe: [], labmark: [], flame: [], rivets: [] },
+    decals: { star: [], stripe: [], labmark: [], flame: [], rivets: [], anchor: [], mountain: [], chevron: [] },
     state: { time: null, yaw: 0, speed: 0, pitch: 0, pitchRate: 0, travel: [0, 0], steer: 0 },
   };
   row.build(kit, model, d);
@@ -335,6 +357,101 @@ function decalTextures() {
         c.fill();
       }
     }),
+    // The harbor and hillside decals (0.6): an anchor and a mountain badge take the star's place, hazard chevrons the
+    // stripe's.
+    anchor: badge((c) => {
+      c.strokeStyle = '#f2b538';
+      c.fillStyle = '#f2b538';
+      c.lineWidth = 9;
+      c.beginPath();
+      c.arc(64, 34, 10, 0, Math.PI * 2);
+      c.stroke();
+      c.fillRect(59, 44, 10, 52);
+      c.fillRect(42, 52, 44, 9);
+      c.beginPath();
+      c.arc(64, 72, 30, 0.15 * Math.PI, 0.85 * Math.PI);
+      c.stroke();
+      for (const [x, d] of [
+        [37, -1],
+        [91, 1],
+      ]) {
+        c.beginPath();
+        c.moveTo(x - 9 * d, 80);
+        c.lineTo(x + 5 * d, 74);
+        c.lineTo(x + 2 * d, 92);
+        c.fill();
+      }
+    }),
+    mountain: badge((c) => {
+      c.fillStyle = '#f2b538';
+      c.beginPath();
+      c.moveTo(16, 100);
+      c.lineTo(52, 36);
+      c.lineTo(70, 66);
+      c.lineTo(82, 50);
+      c.lineTo(112, 100);
+      c.closePath();
+      c.fill();
+      c.fillStyle = '#edf2f6';
+      c.beginPath();
+      c.moveTo(52, 36);
+      c.lineTo(62, 54);
+      c.lineTo(54, 50);
+      c.lineTo(46, 56);
+      c.closePath();
+      c.fill();
+    }),
+    chevronRoof: canvasTexture(128, 128, (c) => {
+      for (const x of [30, 98]) {
+        c.save();
+        c.beginPath();
+        c.rect(x - 14, 0, 28, 128);
+        c.clip();
+        c.fillStyle = '#1d252b';
+        c.fillRect(x - 14, 0, 28, 128);
+        c.fillStyle = '#f2b538';
+        for (let y = -28; y < 140; y += 28) {
+          c.beginPath();
+          c.moveTo(x - 14, y);
+          c.lineTo(x, y + 12);
+          c.lineTo(x + 14, y);
+          c.lineTo(x + 14, y + 12);
+          c.lineTo(x, y + 24);
+          c.lineTo(x - 14, y + 12);
+          c.closePath();
+          c.fill();
+        }
+        c.restore();
+      }
+    }),
+    chevronSide: canvasTexture(256, 32, (c) => {
+      c.fillStyle = '#1d252b';
+      c.fillRect(0, 2, 256, 28);
+      c.fillStyle = '#f2b538';
+      for (let x = -16; x < 272; x += 24) {
+        c.beginPath();
+        c.moveTo(x, 2);
+        c.lineTo(x + 12, 2);
+        c.lineTo(x + 24, 16);
+        c.lineTo(x + 12, 30);
+        c.lineTo(x, 30);
+        c.lineTo(x + 12, 16);
+        c.closePath();
+        c.fill();
+      }
+    }),
+  });
+}
+
+/** A square slate badge with the amber frame the star wears, its emblem drawn by `draw`. */
+function badge(draw) {
+  return canvasTexture(128, 128, (c) => {
+    c.fillStyle = '#172531';
+    c.fillRect(4, 4, 120, 120);
+    c.strokeStyle = '#f2b538';
+    c.lineWidth = 6;
+    c.strokeRect(7, 7, 114, 114);
+    draw(c);
   });
 }
 
@@ -344,8 +461,14 @@ const LAB_DECALS = {
   star: [
     ['labmark', () => 'labmark'],
     ['flame', () => 'flame'],
+    // the job decals of the harbor and the hillside (0.6) wear the star's and the stripe's places the same way
+    ['anchor', () => 'anchor'],
+    ['mountain', () => 'mountain'],
   ],
-  stripe: [['rivets', (art) => (art === 'roofStripes' ? 'rivetsRoof' : 'rivetsSide')]],
+  stripe: [
+    ['rivets', (art) => (art === 'roofStripes' ? 'rivetsRoof' : 'rivetsSide')],
+    ['chevron', (art) => (art === 'roofStripes' ? 'chevronRoof' : 'chevronSide')],
+  ],
 };
 
 /** Adds one decal plane: `which` is 'star' or 'stripe', `art` the texture key, (w, h) its size, placed at (x, y, z)
@@ -412,7 +535,30 @@ function horns(kit, model, parent, x, y, z) {
   const stock = make('#3a4752', { roughness: 0.5, metalness: 0.5 }, 0.36, 0.11, 0.04);
   const bell = make('#d4a537', { roughness: 0.3, metalness: 0.75 }, 0.6, 0.26, 0.06);
   bell.visible = false;
-  model.horns = { stock, bell };
+  // The ferry horn (job 15): a pair of chrome trumpets side by side, a long and a short one.
+  const ferry = make('#c9d3da', { roughness: 0.25, metalness: 0.8 }, 0.62, 0.16, 0.05);
+  const twin = make('#c9d3da', { roughness: 0.25, metalness: 0.8 }, 0.44, 0.13, 0.045);
+  parent.remove(twin);
+  twin.position.set(-0.25, 0, -0.05);
+  ferry.add(twin);
+  ferry.visible = false;
+  // The steam horn (job 20): an upright brass whistle with a bell mouth and a pull lever.
+  const steam = new T.Group();
+  const brass = kit.mat('#c8a040', { roughness: 0.3, metalness: 0.75 });
+  for (const [geo, y] of [
+    [new T.CylinderGeometry(0.07, 0.07, 0.36, 10), 0.08],
+    [new T.CylinderGeometry(0.11, 0.08, 0.1, 10), 0.3],
+    [new T.CylinderGeometry(0.05, 0.09, 0.12, 8), -0.16],
+  ]) {
+    const m = new T.Mesh(geo, brass);
+    m.position.y = y;
+    m.userData.ownGeometry = true;
+    steam.add(m);
+  }
+  steam.position.set(x, y + 0.08, z);
+  parent.add(steam);
+  steam.visible = false;
+  model.horns = { stock, bell, ferry, steam };
 }
 
 /** Instanced cylinder barrels (in the paint, so a paint reward recolors them) and chrome rods for `count` hydraulic
@@ -1381,6 +1527,252 @@ function poseWheelSets(kit, model) {
   }
 }
 
+// ---- WL-06 wheel loader ----
+
+/** The wheel loader: an articulated loader. The rear frame (on the sprung body) carries the engine hood with its side
+ *  louvres and rear grille, the counterweight with the unit plate, the cab with glass all round on its ROPS posts, the
+ *  fenders, steps, hand rails, stack and beacon. The front frame turns about the hinge by half the articulation (the
+ *  physics turns the bucket the same way) and carries the two lift arms, which pivot on its towers and pin to the
+ *  bucket's side plates, the cross tube, the tilt and lift cylinders and the big bucket built from the physics outline
+ *  (LOADER.bucket). Four big lugged tyres: the rear pair on the rear frame, the front pair turning with the front frame.
+ *  Two steering cylinders cross the hinge. */
+function buildLoader(kit, model, d) {
+  const { root, sprung } = model,
+    c = d.color,
+    L = LOADER,
+    B = L.bucket,
+    p = new Parts(kit),
+    armX = B.sideX[1] + 0.08;
+  // ---- rear frame: rails, axle, hood, counterweight, fenders, tanks, steps
+  p.box(0, 0.95, -1.45, 1.24, 0.5, 2.9, C.frame);
+  p.cyl(0, 0.78, L.rearAxle, 0.12, 2.0, C.steel, { axis: 'x' });
+  p.cyl(0, 0.78, L.rearAxle, 0.3, 0.7, C.frame, { axis: 'x', seg: 10 });
+  p.prism(
+    [
+      [-3.0, 1.2],
+      [-1.15, 1.2],
+      [-1.15, 2.15],
+      [-1.35, 2.3],
+      [-2.75, 2.3],
+      [-3.05, 2.05],
+    ],
+    -0.8,
+    0.8,
+    c,
+    { layer: 'body' },
+  );
+  for (const x of [-0.81, 0.81]) for (let z = -2.7; z < -1.5; z += 0.11) p.box(x, 1.75, z, 0.02, 0.6, 0.05, C.grille);
+  for (let x = -0.55; x <= 0.56; x += 0.11) p.box(x, 2.31, -2.1, 0.05, 0.02, 1.0, C.grille);
+  // counterweight with its rear grille, lights and the plate (facing back)
+  p.prism(
+    [
+      [-3.35, 0.7],
+      [-2.95, 0.7],
+      [-2.95, 2.05],
+      [-3.25, 1.95],
+      [-3.4, 1.4],
+    ],
+    -1.05,
+    1.05,
+    c,
+    { layer: 'body' },
+  );
+  for (let y = 1.5; y < 1.95; y += 0.08) p.box(0, y, -3.26, 1.2, 0.035, 0.03, C.grille);
+  for (const x of [-0.82, 0.82]) {
+    p.box(x, 1.72, -3.3, 0.2, 0.12, 0.05, C.tail);
+    p.box(x, 1.56, -3.3, 0.2, 0.08, 0.05, C.amber);
+  }
+  for (const x of [-1, 1]) {
+    p.box(x * 1.06, 1.68, L.rearAxle, 0.6, 0.08, 1.7, c, { layer: 'body' });
+    p.box(x * 1.06, 1.55, L.rearAxle - 0.9, 0.6, 0.3, 0.08, c, { layer: 'body', rx: 0.5 });
+    // the fuel tank (left) and the hydraulic tank (right) between the hood and the cab
+    p.box(x * 0.72, 1.35, -0.75, 0.4, 0.55, 0.7, x < 0 ? C.frameLight : c, x < 0 ? {} : { layer: 'body' });
+  }
+  // the left-hand steps and the hand rails up to the cab door
+  for (const [y, z] of [
+    [0.55, -0.55],
+    [0.95, -0.6],
+    [1.35, -0.65],
+  ])
+    p.box(-0.95, y, z, 0.42, 0.05, 0.36, C.steel);
+  p.bar([-1.16, 0.6, -0.4], [-1.16, 2.4, -0.55], 0.04, C.rail);
+  p.bar([-1.16, 0.6, -0.9], [-1.16, 2.4, -1.05], 0.04, C.rail);
+  // exhaust stack, air cleaner, beacon
+  p.cyl(0.42, 2.7, -2.4, 0.07, 0.9, C.steel, { seg: 8 });
+  p.cyl(0.42, 3.17, -2.4, 0.09, 0.05, C.bar);
+  p.cyl(-0.42, 2.5, -2.2, 0.15, 0.4, C.frameLight, { seg: 10 });
+  // ---- the cab on the rear frame, just behind the hinge: floor, ROPS posts, glass, roof, lights
+  const cz0 = -1.15,
+    cz1 = 0.35;
+  p.box(0, 1.55, (cz0 + cz1) / 2, 1.5, 0.12, cz1 - cz0 + 0.1, C.frame);
+  for (const x of [-0.7, 0.7]) for (const z of [cz0, cz1]) p.box(x, 2.45, z, 0.09, 1.7, 0.09, C.bar);
+  p.box(0, 2.45, cz1 + 0.01, 1.32, 1.4, 0.03, '#000', { layer: 'glass', rx: -0.05 });
+  p.box(0, 2.45, cz0 - 0.01, 1.32, 1.4, 0.03, '#000', { layer: 'glass' });
+  for (const x of [-0.71, 0.71]) {
+    p.box(x, 2.45, (cz0 + cz1) / 2, 0.03, 1.4, cz1 - cz0 - 0.1, '#000', { layer: 'glass' });
+    p.box(x, 1.95, (cz0 + cz1) / 2, 0.035, 0.05, cz1 - cz0, C.bar);
+  }
+  p.box(0, 3.35, (cz0 + cz1) / 2, 1.62, 0.12, cz1 - cz0 + 0.3, c, { layer: 'body' });
+  p.box(0, 3.27, (cz0 + cz1) / 2, 1.5, 0.05, cz1 - cz0 + 0.2, C.bar);
+  for (const x of [-0.55, 0.55]) {
+    p.box(x, 3.47, cz1 + 0.12, 0.2, 0.12, 0.1, C.bar);
+    p.box(x, 3.47, cz1 + 0.175, 0.15, 0.08, 0.02, C.lens);
+    p.box(x, 3.47, cz0 - 0.12, 0.2, 0.12, 0.1, C.bar);
+    p.box(x, 3.47, cz0 - 0.175, 0.15, 0.08, 0.02, C.lens);
+    // mirrors on arms out from the cab's front posts
+    p.bar([x * 1.27, 2.9, cz1], [x * 1.8, 2.9, cz1 + 0.1], 0.04, C.bar);
+    p.box(x * 1.85, 2.8, cz1 + 0.1, 0.08, 0.36, 0.22, C.steel);
+  }
+  p.cyl(0.5, 3.48, -0.6, 0.08, 0.1, C.bar);
+  p.cyl(0.5, 3.6, -0.6, 0.07, 0.16, C.amber);
+  // inside: seat, steering column and wheel, joystick pod
+  p.box(0, 1.85, -0.6, 0.55, 0.14, 0.5, C.seat);
+  p.box(0, 2.2, -0.85, 0.55, 0.65, 0.1, C.seat);
+  p.bar([0, 1.7, 0.1], [0, 2.15, -0.05], 0.06, C.bar);
+  p.cyl(0, 2.2, -0.08, 0.18, 0.04, C.bar, { axis: 'y', seg: 12, rx: -0.6 });
+  p.box(0.4, 1.95, -0.45, 0.16, 0.3, 0.3, C.bar);
+  // the hinge's rear knuckles
+  for (const y of [0.8, 1.5]) p.box(0, y, -0.12, 0.5, 0.16, 0.3, C.frameLight);
+  finish(kit, model, p, sprung, c);
+  plate(sprung, d, 0, 1.25, -3.42, 0.9);
+  roofDecals(model, sprung, 0, 3.415, (cz0 + cz1) / 2, 1.4, 1.5);
+  // the hood sides carry a decal too
+  for (const k of [-1, 1]) {
+    decal(model, sprung, 'star', 'star', 0.55, 0.55, [k * 0.815, 1.8, -2.1], [0, (k * Math.PI) / 2, 0]);
+    decal(model, sprung, 'stripe', 'sideStripe', 1.7, 0.14, [k * 0.815, 1.32, -2.05], [0, (k * Math.PI) / 2, 0]);
+  }
+  horns(kit, model, sprung, -0.4, 3.49, -0.2);
+
+  // ---- the front frame: turns about the hinge by half the articulation
+  const front = group(root),
+    fp = new Parts(kit);
+  fp.box(0, 1.0, 1.05, 1.15, 0.55, 2.1, C.frame);
+  fp.cyl(0, 0.78, L.frontAxle, 0.12, 2.0, C.steel, { axis: 'x' });
+  fp.cyl(0, 0.78, L.frontAxle, 0.32, 0.7, C.frame, { axis: 'x', seg: 10 });
+  for (const y of [0.85, 1.45]) fp.box(0, y, 0.12, 0.42, 0.14, 0.3, C.steel);
+  fp.cyl(0, 1.15, 0, 0.06, 0.9, C.pin);
+  for (const k of [-1, 1]) {
+    // the tower plates on the front frame, the pivot shaft out to the arm and its brace
+    fp.prism(
+      [
+        [0.15, 1.15],
+        [1.3, 1.15],
+        [L.arm.z + 0.3, L.arm.y + 0.1],
+        [L.arm.z - 0.35, L.arm.y + 0.2],
+      ],
+      k * 0.58 - 0.07,
+      k * 0.58 + 0.07,
+      c,
+      { layer: 'body' },
+    );
+    fp.cyl(k * (armX + 0.5) / 2, L.arm.y, L.arm.z, 0.1, armX - 0.5, C.steel, { axis: 'x' });
+    fp.bar([k * 0.6, 1.25, 1.35], [k * (armX - 0.12), L.arm.y - 0.08, L.arm.z + 0.1], 0.13, c, { layer: 'body' });
+    fp.cyl(k * (armX - 0.02), L.arm.y, L.arm.z, 0.11, 0.16, C.pin, { axis: 'x' });
+    // fenders over the front tyres, and the work lights on the towers
+    fp.box(k * 1.05, 1.72, L.frontAxle + 0.05, 0.6, 0.08, 1.4, c, { layer: 'body' });
+    fp.box(k * 1.05, 1.55, L.frontAxle + 0.78, 0.6, 0.3, 0.08, c, { layer: 'body', rx: -0.5 });
+    fp.box(k * 0.62, 1.95, 0.95, 0.22, 0.16, 0.12, C.bar);
+    fp.box(k * 0.62, 1.95, 1.015, 0.17, 0.11, 0.02, C.lens);
+  }
+  // the lift cylinders' and the tilt cylinder's base lugs
+  for (const k of [-1, 1]) fp.box(k * 0.75, 0.9, 1.75, 0.14, 0.24, 0.24, C.steel);
+  fp.box(0, 1.6, 1.2, 0.3, 0.3, 0.3, C.steel);
+  finish(kit, model, fp, front, c);
+  const arms = group(front, 0, L.arm.y, L.arm.z),
+    ap = new Parts(kit);
+  for (const k of [-1, 1]) {
+    ap.prism(
+      [
+        [-0.22, 0.17],
+        [-0.22, -0.15],
+        [L.length * 0.55, -0.23],
+        [L.length + 0.1, -0.12],
+        [L.length + 0.1, 0.12],
+        [L.length * 0.45, 0.21],
+      ],
+      k * armX - 0.07,
+      k * armX + 0.07,
+      c,
+      { layer: 'body' },
+    );
+    ap.cyl(k * armX, 0, L.length, 0.1, 0.24, C.pin, { axis: 'x' });
+    ap.bar([k * (armX - 0.08), 0.2, 0.1], [k * (armX - 0.08), 0.26, L.length * 0.8], 0.04, C.hose);
+    ap.box(k * armX, -0.28, L.length * 0.42, 0.18, 0.12, 0.24, C.steel);
+  }
+  ap.cyl(0, 0.08, L.length * 0.62, 0.1, armX * 2, c, { axis: 'x', layer: 'body' });
+  ap.box(0, 0.2, L.length * 0.62, 0.32, 0.22, 0.3, C.steel);
+  finish(kit, model, ap, arms, c);
+  for (const k of [-1, 1]) decal(model, arms, 'stripe', 'sideStripe', 1.9, 0.13, [k * (armX + 0.072), 0.02, L.length * 0.5], [0, (k * Math.PI) / 2, 0]);
+
+  // ---- the bucket, from the physics outline: floor, back, sloped side plates, spill guard, cutting edge, wear strips
+  const bucket = group(front),
+    bp = new Parts(kit);
+  bucket.rotation.order = 'YXZ';
+  bp.box(0, B.floor.y, (B.floor.z[0] + B.floor.z[1]) / 2, B.width, B.floor.thick, B.floor.z[1] - B.floor.z[0], c, { layer: 'body' });
+  bp.box(0, (B.back.y[0] + B.back.y[1]) / 2, B.back.z, B.width, B.back.y[1] - B.back.y[0], B.back.thick, c, { layer: 'body' });
+  for (const k of [-1, 1])
+    bp.prism(B.side, k > 0 ? B.sideX[0] : -B.sideX[1], k > 0 ? B.sideX[1] : -B.sideX[0], c, { layer: 'body' });
+  bp.box(0, B.back.y[1] + 0.03, B.back.z + 0.1, B.width, 0.06, 0.26, c, { layer: 'body', rx: -0.4 });
+  bp.box(0, B.floor.y - 0.03, B.floor.z[1] + 0.08, B.width + 0.05, 0.09, 0.22, C.edge);
+  for (let x = -1.2; x <= 1.21; x += 0.6) bp.box(x, B.floor.y - 0.08, -0.1, 0.12, 0.05, 1.4, C.edge);
+  for (const k of [-1, 1]) bp.box(k * (B.sideX[1] - 0.02), -0.52, B.floor.z[1] - 0.02, 0.16, 0.24, 0.05, C.edge);
+  // the back plate's ribs and the tilt link's ears
+  for (const x of [-0.75, 0.75]) bp.box(x, -0.15, B.back.z - 0.1, 0.12, 0.85, 0.08, C.frame);
+  bp.box(0, 0.25, B.back.z - 0.12, 0.3, 0.22, 0.18, C.steel);
+  finish(kit, model, bp, bucket, c);
+
+  // the four tyres: the rear pair on the rear frame, the front pair re-posed with the front frame each frame
+  const r = 0.78,
+    list = [];
+  for (const x of [-1.02, 1.02]) {
+    list.push({ x, z: L.rearAxle });
+    list.push({ x, z: L.frontAxle, front: true });
+  }
+  wheelSet(kit, model, { r, width: 0.56 }, list);
+  model.gearHalf = 1.02;
+  model.steerLimit = 0;
+
+  // cylinders: two lift, one tilt, two steering across the hinge
+  hydraulics(kit, model, c, 5);
+  for (const k of [-1, 1]) {
+    actuator(model, front, [k * 0.75, 0.9, 1.75], arms, [k * (armX - 0.1), -0.3, L.length * 0.42], 1.1, 0.1);
+    actuator(model, sprung, [k * 0.55, 1.0, -0.75], front, [k * 0.55, 1.0, 0.75], 0.7, 0.07);
+  }
+  actuator(model, front, [0, 1.6, 1.2], bucket, [0, 0.25, B.back.z - 0.15], 1.0, 0.11);
+  Object.assign(model, { front, arms, bucket });
+}
+
+/** Wheel loader: the front frame turns by half the articulation; the arms pivot so their end meets the bucket on its
+ *  arc; the bucket sits on the grab point with its tilt; the front tyres follow the front frame. */
+function poseLoader(kit, model, m) {
+  const { front, arms, bucket } = model,
+    L = LOADER,
+    half = (m.artic || 0) / 2,
+    phi = Math.asin(clamp((m.lift - L.arm.y) / L.length, -0.999, 0.999)),
+    reach = L.arm.z + L.length * Math.cos(phi);
+  front.rotation.y = half;
+  arms.rotation.x = -phi;
+  bucket.position.set(0, m.lift, reach);
+  bucket.rotation.set(m.tilt, 0, 0);
+  // the front tyres: on the front frame's axle, turned with it
+  const t = kit.tmp;
+  for (const set of model.wheelSets) {
+    set.list.forEach((w, i) => {
+      if (!w.front) return;
+      t.position.set(Math.cos(half) * w.x + Math.sin(half) * w.z, set.r, -Math.sin(half) * w.x + Math.cos(half) * w.z);
+      S.q.setFromEuler(S.e1.set(0, half, 0));
+      S.q1.setFromEuler(S.e1.set(model.state.travel[w.side] / set.r, 0, 0));
+      S.q.multiply(S.q1);
+      if (w.x < 0) S.q.multiply(S.q1.setFromEuler(S.e1.set(0, Math.PI, 0)));
+      t.quaternion.copy(S.q);
+      t.scale.setScalar(1);
+      t.updateMatrix();
+      set.mesh.setMatrixAt(i, t.matrix);
+    });
+    set.mesh.instanceMatrix.needsUpdate = true;
+  }
+}
+
 // ---- DT-04 dump truck ----
 
 /** The truck: a ladder frame on a front axle and a twin rear axle, a short-nosed cab with a raked windscreen, and a
@@ -1757,7 +2149,8 @@ export function syncMachine(kit, model, m, look) {
   const row = MACHINE[m.kind],
     { root, sprung, state } = model;
   root.position.set(m.x, m.y - 0.7, m.z);
-  root.rotation.y = m.yaw;
+  // the heading, and on a slope the pitch (nose up) and roll the physics chassis has (physics.mjs chassisQ)
+  root.rotation.set(-(m.pitch || 0), m.yaw, m.roll || 0, 'YXZ');
   // Time since the last frame in simulated seconds (0 while paused), for travel and the suspension spring.
   const now = look.yard?.time ?? 0,
     dt = state.time === null ? 0 : clamp(now - state.time, 0, 0.25);
@@ -1790,8 +2183,16 @@ export function syncMachine(kit, model, m, look) {
     state.steer += (clamp(turn * 0.8, -model.steerLimit, model.steerLimit) - state.steer) * 0.25;
     poseWheelSets(kit, model);
   }
-  // The tip in the chassis frame: the boom's swing and reach, at the lift height above the chassis base.
-  const tip = S.tip.set(Math.sin(m.swing) * m.reach, m.lift - (m.y - 0.7), Math.cos(m.swing) * m.reach);
+  // The tip in the chassis frame: the boom's swing and reach, at the lift height above the chassis base (on a terrain
+  // site the lift is already measured from the ground there). The physics keeps that point level on a slope, so it is
+  // turned back into the pitched and rolled chassis's frame for the arms to solve to.
+  const terrain = !!look.yard?.site?.terrain;
+  const tip = S.tip.set(
+    Math.sin(m.swing) * m.reach,
+    terrain ? m.lift : m.lift - (m.y - 0.7),
+    Math.cos(m.swing) * m.reach,
+  );
+  if (m.pitch || m.roll) tip.applyQuaternion(S.q.setFromEuler(S.e2.set(-m.pitch, 0, m.roll, 'YXZ')).invert());
   row.pose(kit, model, m, tip);
   if (model.hyd) {
     root.updateMatrixWorld(true);
@@ -1799,10 +2200,9 @@ export function syncMachine(kit, model, m, look) {
   }
   const which = Object.hasOwn(model.decals, look.decal) ? look.decal : null;
   for (const k in model.decals) for (const mesh of model.decals[k]) mesh.visible = which === k;
-  const bell = look.horn === 'bell';
-  model.horns.bell.visible = bell;
-  model.horns.stock.visible = !bell;
-  const horn = bell ? model.horns.bell : model.horns.stock;
+  const fitted = Object.hasOwn(model.horns, look.horn) ? look.horn : 'stock';
+  for (const k in model.horns) model.horns[k].visible = k === fitted;
+  const horn = model.horns[fitted];
   // The horn on the roof swells for a moment when it sounds (only on the machine being driven).
   const age = look.yard?.machine === m && look.honkAt ? (performance.now() - look.honkAt) / HONK_MS : 1;
   horn.scale.setScalar(age >= 0 && age < 1 ? 1 + 0.4 * Math.sin(age * Math.PI) : 1);
@@ -1901,6 +2301,26 @@ function machineProfile(kind, paint, extra = '') {
       extra +
       wheel(122, 150, 23) +
       wheel(180, 150, 23);
+  } else if (kind === 'loader') {
+    body =
+      `<rect x="50" y="118" width="196" height="16" fill="#26313b" ${edge}/>` +
+      `<path d="M26 134V102L34 94H112V134Z" fill="${paint}" ${edge}/>` +
+      `<path d="M40 104V124M48 104V124M56 104V124M64 104V124" stroke="${INK}" stroke-width="2.5"/>` +
+      `<rect x="94" y="66" width="7" height="28" fill="#55626c" ${thin}/>` +
+      `<path d="M112 120V50Q112 42 120 42H164L172 120Z" fill="${paint}" ${edge}/>` +
+      `<path d="M120 52H160L166 112H120Z" fill="${GLASS}" ${thin}/><path d="M142 52V112" stroke="${INK}" stroke-width="2.5"/>` +
+      `<rect x="128" y="34" width="10" height="8" fill="${AMBER}" ${thin}/>` +
+      `<path d="M170 132V106H222L230 132Z" fill="${paint}" ${edge}/>` +
+      `<path d="M176 106V78L198 74L206 106Z" fill="${paint}" ${edge}/>` +
+      ram(206, 124, 234, 102, 0.5) +
+      arm('M190 80L266 128', 13) +
+      ram(196, 96, 252, 110, 0.5) +
+      `<path d="M248 98L298 106L308 156L260 162L248 140Z" fill="${paint}" ${edge}/>` +
+      `<path d="M258 163H312" stroke="#34434d" stroke-width="7" stroke-linecap="round"/>` +
+      plate(32, 106, 46, 16) +
+      extra +
+      wheel(78, 146, 30) +
+      wheel(212, 146, 30);
   } else if (kind === 'excavator') {
     body =
       track(40, 196) +
@@ -1969,20 +2389,67 @@ function machineProfile(kind, paint, extra = '') {
  *  (its decals sit on the arms' outer faces), along the house sides of the excavator and the crane. It clears the
  *  number plate and the running gear. */
 function decalOnBody(kind, which) {
-  if (which === 'stripe') {
+  if (which === 'stripe' || which === 'chevron') {
+    // a band: white on slate (the stripe) or amber hazard chevrons on black
+    const band = (x, y, w) =>
+      which === 'stripe'
+        ? `<rect x="${x}" y="${y}" width="${w}" height="9" fill="#172531" stroke="${INK}" stroke-width="2"/><rect x="${x}" y="${y + 3}" width="${w}" height="3" fill="#edf2f6"/>`
+        : `<rect x="${x}" y="${y - 2}" width="${w}" height="13" fill="#1d252b" stroke="${INK}" stroke-width="2"/>` +
+          Array.from({ length: Math.floor(w / 10) }, (_, i) => `<path d="M${x + i * 10 + 1} ${y - 1}h4l5 5.5l-5 5.5h-4l5-5.5z" fill="${AMBER}"/>`).join('');
     if (kind === 'skid')
-      return `<path d="M108 73L218 89" stroke="#172531" stroke-width="9" stroke-linecap="round"/><path d="M108 73L218 89" stroke="#edf2f6" stroke-width="3" stroke-linecap="round"/>`;
-    const [x, y, w] = kind === 'excavator' ? [40, 116, 136] : [58, 116, 122];
-    return `<rect x="${x}" y="${y}" width="${w}" height="9" fill="#172531" stroke="${INK}" stroke-width="2"/><rect x="${x}" y="${y + 3}" width="${w}" height="3" fill="#edf2f6"/>`;
+      return which === 'stripe'
+        ? `<path d="M108 73L218 89" stroke="#172531" stroke-width="9" stroke-linecap="round"/><path d="M108 73L218 89" stroke="#edf2f6" stroke-width="3" stroke-linecap="round"/>`
+        : `<g transform="rotate(8.3 108 73)">${band(108, 69, 110)}</g>`;
+    const [x, y, w] = kind === 'excavator' ? [40, 116, 136] : kind === 'loader' ? [34, 112, 74] : [58, 116, 122];
+    return band(x, y, w);
   }
-  const [cx, cy, r] = kind === 'skid' ? [150, 80, 10] : kind === 'excavator' ? [112, 106, 9] : [152, 104, 10],
-    pts = Array.from({ length: 10 }, (_, i) => {
-      const rad = i % 2 ? r * 0.42 : r,
-        a = (i / 10) * Math.PI * 2 - Math.PI / 2;
-      return `${(cx + Math.cos(a) * rad).toFixed(1)},${(cy + 1 + Math.sin(a) * rad).toFixed(1)}`;
-    }).join(' ');
-  const box = r * 1.45;
-  return `<rect x="${cx - box}" y="${cy - box}" width="${box * 2}" height="${box * 2}" fill="#172531" stroke="${AMBER}" stroke-width="3"/><polygon points="${pts}" fill="${AMBER}"/>`;
+  const [cx, cy, r] =
+    kind === 'skid' ? [150, 80, 10] : kind === 'excavator' ? [112, 106, 9] : kind === 'loader' ? [72, 102, 9] : [152, 104, 10];
+  const box = r * 1.45,
+    frame = `<rect x="${cx - box}" y="${cy - box}" width="${box * 2}" height="${box * 2}" fill="#172531" stroke="${AMBER}" stroke-width="3"/>`;
+  if (which === 'anchor')
+    return (
+      frame +
+      `<g fill="none" stroke="${AMBER}" stroke-width="2.4" stroke-linecap="round"><circle cx="${cx}" cy="${cy - r * 0.62}" r="${r * 0.2}"/>` +
+      `<path d="M${cx} ${cy - r * 0.42}V${cy + r * 0.8}M${cx - r * 0.45} ${cy - r * 0.2}H${cx + r * 0.45}M${cx - r * 0.8} ${cy + r * 0.2}Q${cx - r * 0.7} ${cy + r * 0.85} ${cx} ${cy + r * 0.85}Q${cx + r * 0.7} ${cy + r * 0.85} ${cx + r * 0.8} ${cy + r * 0.2}"/></g>`
+    );
+  if (which === 'mountain')
+    return (
+      frame +
+      `<path d="M${cx - r * 1.1} ${cy + r * 0.8}L${cx - r * 0.3} ${cy - r * 0.75}L${cx + r * 0.15} ${cy}L${cx + r * 0.45} ${cy - r * 0.4}L${cx + r * 1.1} ${cy + r * 0.8}Z" fill="${AMBER}"/>` +
+      `<path d="M${cx - r * 0.3} ${cy - r * 0.75}L${cx - r * 0.08} ${cy - r * 0.3}L${cx - r * 0.5} ${cy - r * 0.32}Z" fill="#edf2f6"/>`
+    );
+  const pts = Array.from({ length: 10 }, (_, i) => {
+    const rad = i % 2 ? r * 0.42 : r,
+      a = (i / 10) * Math.PI * 2 - Math.PI / 2;
+    return `${(cx + Math.cos(a) * rad).toFixed(1)},${(cy + 1 + Math.sin(a) * rad).toFixed(1)}`;
+  }).join(' ');
+  return frame + `<polygon points="${pts}" fill="${AMBER}"/>`;
+}
+/** The ferry horn: two chrome trumpets side by side on one mount. */
+function ferryArt() {
+  const trumpet = (y, len, mouth, shade) =>
+    `<path d="M70 ${y - 6}L${70 + len} ${y - mouth}V${y + mouth}L70 ${y + 6}Z" fill="${shade}" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>` +
+    `<ellipse cx="${70 + len}" cy="${y}" rx="${mouth * 0.32}" ry="${mouth}" fill="#5d6b74" stroke="${INK}" stroke-width="4"/>`;
+  return (
+    `<rect x="36" y="128" width="104" height="26" fill="#172531" stroke="${INK}" stroke-width="3"/>` +
+    `<rect x="54" y="66" width="22" height="64" fill="#26333e" stroke="${INK}" stroke-width="3"/>` +
+    trumpet(78, 196, 30, '#c9d3da') +
+    trumpet(112, 140, 22, '#aab6bf') +
+    `<path d="M292 50Q308 80 292 110M302 40Q326 80 302 120" fill="none" stroke="${AMBER}" stroke-width="4" stroke-linecap="round"/>`
+  );
+}
+/** The steam horn: an upright brass whistle with its bell, valve and pull cord. */
+function steamArt() {
+  return (
+    `<rect x="110" y="150" width="100" height="16" fill="#172531" stroke="${INK}" stroke-width="3"/>` +
+    `<rect x="148" y="126" width="24" height="26" fill="#26333e" stroke="${INK}" stroke-width="3"/>` +
+    `<rect x="138" y="40" width="44" height="88" rx="6" fill="#c8a040" stroke="${INK}" stroke-width="4"/>` +
+    `<path d="M140 64H180M140 100H180" stroke="#8a6418" stroke-width="3"/><rect x="150" y="108" width="20" height="10" fill="#3b2a0b"/>` +
+    `<path d="M128 40Q160 18 192 40Z" fill="#d4b056" stroke="${INK}" stroke-width="4" stroke-linejoin="round"/>` +
+    `<path d="M182 116H214V150" fill="none" stroke="#8b979f" stroke-width="3"/><circle cx="214" cy="152" r="5" fill="${AMBER}"/>` +
+    `<path d="M150 30Q140 14 152 2M170 30Q182 12 168 0" fill="none" stroke="#edf2f6" stroke-width="5" stroke-linecap="round" opacity="0.8"/>`
+  );
 }
 /** The large brass bell horn on its mount, as in the 3D roof fitting. */
 function hornArt() {
@@ -2014,14 +2481,16 @@ function badgeArt() {
  *  job table, `kind` the machine just used and `paint` its current paint. A paint is shown on the machine, a machine
  *  in its own colors, a decal on the body, the horn alone and the yard badge with the wrecking ball. */
 export function rewardArt(unlock, kind = 'skid', paint = 'stock') {
-  // The reward pictures draw the three job machines; the Lab machines are never a job's active machine.
-  if (!['skid', 'excavator', 'crane'].includes(kind)) kind = 'skid';
+  // The reward pictures draw the four job machines; the Lab machines are never a job's working machine.
+  if (!['skid', 'excavator', 'crane', 'loader'].includes(kind)) kind = 'skid';
   let inner;
   if (PAINTS[unlock]) inner = machineProfile(kind, PAINTS[unlock]);
   else if (MACHINES[unlock] && !MACHINES[unlock].lab) inner = machineProfile(unlock, MACHINES[unlock].color);
-  else if (unlock === 'star' || unlock === 'stripe')
+  else if (['star', 'stripe', 'chevron', 'anchor', 'mountain'].includes(unlock))
     inner = machineProfile(kind, PAINTS[paint] || MACHINES[kind].color, decalOnBody(kind, unlock));
   else if (unlock === 'bell') inner = `<g transform="translate(-34 6)">${hornArt()}</g>`;
+  else if (unlock === 'ferry') inner = ferryArt();
+  else if (unlock === 'steam') inner = steamArt();
   else inner = badgeArt();
   return `<svg viewBox="0 0 320 190" role="img" aria-hidden="true" focusable="false">${inner}</svg>`;
 }

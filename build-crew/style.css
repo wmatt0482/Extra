@@ -2576,3 +2576,32 @@ html.touch .machines:has(.machine-card:nth-child(4)) .machine-card svg {
     top: calc(var(--sa-t) + 154px);
   }
 }
+/* The job board's site rows (0.6): the site code with a coloured rule (yard amber, harbor seafoam, hillside sage)
+   and the site's done count at the right. */
+.board-row.site-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding-left: 10px;
+  border-left: 4px solid #e9aa26;
+}
+.board-row.site-row:first-of-type {
+  margin-top: 12px;
+}
+.board-row.site-row[data-site='harbor'] {
+  border-left-color: #6fb3ad;
+}
+.board-row.site-row[data-site='hillside'] {
+  border-left-color: #93a273;
+}
+.board-row.site-row small {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: #8ea2b0;
+}
+.job-tile[data-site='harbor'] {
+  background: #24414a;
+}
+.job-tile[data-site='hillside'] {
+  background: #2d3f3a;
+}

@@ -105,7 +105,8 @@ export class Kit {
     group.updateMatrixWorld(true);
     const inverse = new T.Matrix4().copy(group.matrixWorld).invert(),
       buckets = new Map();
-    const shared = [this.boxGeo, this.cylGeo, this.sphereGeo];
+    const shared = [this.boxGeo, this.cylGeo, this.sphereGeo, this.circleGeo];
+    if (this.coneGeo) shared.push(this.coneGeo);
     group.traverse((o) => {
       if (o.isMesh && !o.isInstancedMesh && !skip.has(o) && shared.includes(o.geometry)) {
         const key = o.geometry.uuid + o.material.uuid;

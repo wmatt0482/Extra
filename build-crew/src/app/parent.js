@@ -8,7 +8,7 @@ import { createParentZone } from '../../../spell-jump/src/ui/parentZone.js';
 import { dayChart, lastDays } from '../../../spell-jump/src/ui/chart.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { Audio } from '../../../spell-jump/src/audio.js';
-import { VERSION } from '../content.mjs';
+import { VERSION, JOB_COUNT } from '../content.mjs';
 import { defaultSave, loadSave } from '../meta/save.mjs';
 import { writeSave } from '../meta/sync.js';
 import { Music } from '../meta/music.js';
@@ -148,7 +148,7 @@ function report(data) {
     h(
       'div',
       { class: 'pz-scores' },
-      h('div', { class: 'stat' }, h('b', {}, `${data.done.filter((j) => j <= 10).length} / 10`), h('span', {}, 'Jobs completed')),
+      h('div', { class: 'stat' }, h('b', {}, `${data.done.filter((j) => j <= JOB_COUNT).length} / ${JOB_COUNT}`), h('span', {}, 'Jobs completed')),
     ),
     dayChart({
       days,
@@ -215,10 +215,10 @@ function options(id, data) {
         data.unlockAll = !data.unlockAll;
         writeSave(id, data);
         this.setAttribute('aria-checked', String(data.unlockAll));
-        this.textContent = data.unlockAll ? 'All three machines available' : 'Use job rewards';
+        this.textContent = data.unlockAll ? 'All four machines available' : 'Use job rewards';
       },
     },
-    data.unlockAll ? 'All three machines available' : 'Use job rewards',
+    data.unlockAll ? 'All four machines available' : 'Use job rewards',
   );
   return h(
     'div',
