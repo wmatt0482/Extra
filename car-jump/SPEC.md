@@ -603,3 +603,34 @@ economy modules).
    chips first, the tabs count the owned items. A crate that reveals a skin / sticker puts it on the selected car at
    once when that slot is still stock ("Now on Rusty"), else says where to put it on.
 
+## Sky Era teaser and the Sky Road (v3.10)
+
+A short animation that shows the child the next era (the **Sky Era**) and the way there. Only the teaser and the road are
+built; the Sky Era's tracks, rides and mechanics are not. Era 1 is unchanged and fully playable.
+
+- **Sky Road** (`src/meta/skyRoad.js`, pure, tests in `tools/spelling-tests.mjs`): `SKY_ROAD_STEPS = 15`,
+  `SKY_ROAD_START = '2026-11-06'`, `MILESTONES = [4, 8, 12, 15]`. `skyRoadSteps(save)` = min(15, the days in
+  `save.streak.days` (mission or Friday Test done; already unioned across devices) on or after the start). An effort gate:
+  no coins, tracks or mastery; one step a day at most; nothing is ever taken away; no dates or countdowns shown.
+- **When it plays** (`teaserDue(save)`): `{ kind: 'full' }` until `save.seen.teaser`; then `{ kind: 'clip', step: m }` for
+  the highest milestone m ≤ steps with m > `save.seen.skyClip` (several crossed at once: only the highest); else null.
+  `markTeaserSeen` runs when it STARTS (the full teaser also marks the milestones the road already shows). Save: `seen.teaser`
+  (bool, default false) and `seen.skyClip` (0..15, default 0); merge: teaser = OR, skyClip = max.
+- **Title** (`src/main.js`): on the title, ~0.7 s after it shows, never over a `.modal`, `#crate-fx`, the Parent Zone, the
+  Lab overlay, a toast, the coach, a run or a test (it re-checks every 0.9 s). The Sky card (`#btn-sky`: a mini road + "Sky
+  Road N / 15") replays the full teaser. The teaser's lines are prepared as natural-voice clips when the title shows.
+- **Teaser** (`src/ui/skyTeaser.js`, `#sky-teaser`, a canvas at DPR ≤ 1.5; every scene a pure function of time, `seek(t)`
+  for tests): beat 1 (0-6 s) the title's own scene redrawn from its SVG paths with the player's car (`paintCar` + the
+  equipped look) rising through a dusk sky until the cloud layer tears open in light; beat 2 (6-18 s) the sky world:
+  floating islands and track, a boost ring, a gravity-well slingshot, a second mid-air jump through rings that light the
+  first name (A-Z, ≤ 8, "SKY" fallback), three nameless dark silhouettes (hover bike, rocket car, mech walker); beat 3
+  (18-25 s) a cloud curtain, then the camera pulls back to the road (a switchback of 15 cloud stones to a gate; walked
+  stones glow; the car on its step; "Sky Road: N / 15" as text). Milestone clip 5.4 s (the car hops to its new step), gate
+  clip 7 s. Reduced motion (`settings.reducedMotion` or the OS): 3 stills (1 for a clip), a tap for the next.
+- **Lines** (captions always; voice = natural clips only, never the device voice, silent without a clip or with sound off):
+  "What's up above the clouds?" · "The Sky Era." · "New tracks. New rides." · "And a second jump you earn by spelling." ·
+  "Every mission you finish builds your road to the sky." · "Your Sky Road grew! Step N of 15." (4 / 8 / 12 pre-made) ·
+  "You made it to the Sky Gate! The Sky Era is on its way."
+- **Skip**: a tap anywhere after 0.5 s, the Skip button (top right, safe-area aware), Esc / Enter / Space; closing stops
+  the rAF loop and the voice and returns to the title as it was. Parents → Report: "Sky Road: N / 15 mission days (the
+  Sky Era teaser)".

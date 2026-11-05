@@ -493,6 +493,36 @@ Everything is per player, works offline and follows the player through family sy
    "Level 8", "Week Champion"). The look is chosen per car and shows in the garage, on the title and in the race.
    Cosmetics are earned, never bought with cash.
 
+### The Sky Road and the Sky Era teaser (v3.10)
+
+**v3.10: a peek at the next era.** A short in-game animation (about 25 s, skippable anywhere) shows the child what is
+coming next, the **Sky Era**, and how to get there. Only the teaser and the road are built; the Sky Era itself (new tracks,
+rides, mechanics) is not, and Era 1 stays fully playable.
+
+- **The teaser** plays once by itself on the title, the first time a player opens it (never over a panel, a crate, the
+  Parent Zone, the Lab, a toast or a run; it waits until the title is clear). Their own car, in its own paint, rolls down
+  the title's ramp and keeps rising through the clouds; above them, a bright sky world: floating islands with track pieces,
+  boost rings, a gravity well that slingshots the car, a second mid-air jump whose rings light up the child's first name
+  letter by letter, and three dark silhouettes of new rides (no names). Then the **Sky Road**: 15 cloud stepping-stones up
+  to a glowing gate, the walked steps lit, the car on its real step, "Sky Road: 3 / 15". Tap anywhere (after half a
+  second), **Skip** or Esc / Enter / Space ends it and the title is back exactly as it was.
+- **The Sky Road**: one step for each day the daily mission (8 words) or the Friday Test was finished, counted from
+  release day (2026-11-06, everyone starts at 0), at most one a day, 15 steps. A missed day simply adds nothing: no
+  timers, no dates, nothing taken away. A short clip plays once when the road reaches 4, 8 and 12 ("Your Sky Road grew!
+  Step 8 of 15."); at 15 the gate glows: "You made it to the Sky Gate! The Sky Era is on its way." Nothing locks.
+- **The Sky card** on the title (above the logo on a phone held upright, next to PLAY on its side) shows a mini road and
+  "Sky Road 3 / 15"; tapping it replays the teaser any time. **Parents → Report** shows "Sky Road: 3 / 15 mission days
+  (the Sky Era teaser)".
+- **Voice**: the lines are spoken only with the natural voice's clips (made when the title shows; name-free, the "Step 4
+  / 8 / 12" lines pre-made), never the device voice; without a clip the big caption shows and the teaser stays silent.
+  Captions are always on screen. Sound effects (a rising whoosh, chimes, the gate chord) follow the sound setting; with
+  sound off the teaser is silent.
+- **Reduced motion** (the pause menu's Calm motion or the device setting): three still frames with their captions, a tap
+  for the next one.
+- Seen state per player (`seen.teaser`, `seen.skyClip`) syncs across the family's devices, so it never replays on every
+  device. The rules are pure (`src/meta/skyRoad.js`, unit-tested); `window.__noSkyTeaser` keeps it off the title in the
+  older smoke tests.
+
 ### Transfer progress (v3.3)
 
 For a copy of the game that cannot use family sync (for example one opened from a link where the sync service is
@@ -576,7 +606,9 @@ node tools/spelling-tests.mjs   # Node unit tests: intervals, mastery (2 distinc
                                 # caching by id, 20k/day cap 429, no key 503, the TexttoVoice alias, clip 404 / 200),
                                 # the client's texts / batches / status lines, the engine choice + fallback in tts.js;
                                 # usage counter: /api/stats validation, counters, family hashes, ETag retry, key checks
-node tools/ui-smoke.mjs         # Playwright, 844×390 + 390×844, mock engine + fake speechSynthesis: players, PIN,
+node tools/ui-smoke.mjs         # (v3.10: ONLY=sky runs the Sky Era teaser part: plays once, Skip / Esc / tap, no replay,
+                                # the Sky card, the milestone clip, reduced-motion stills, the Parent Zone line)
+                                # Playwright, 844×390 + 390×844, mock engine + fake speechSynthesis: players, PIN,
                                 # word list, Qualifier, every spell-panel path, mission, Friday Test + Mega Run,
                                 # report, voices (incl. system default), Run speech check log + Copy log,
                                 # persistence; natural voice (fake window.__cloudVoiceBackend): picked on its own,
@@ -611,7 +643,7 @@ is never stopped (it is someone else's); one serving something else is an error.
 leave a child behind. lab-smoke serves the repo root in-process on a free port (never 8080) and closes it on every way
 out. Run the browser suites one at a time: they share port 8080.
 
-`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud|voice|class` runs one
+`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud|voice|class|sky` runs one
 part of `ui-smoke.mjs`, `ONLY=landscape|portrait|speech|perf` one part of `integration-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it, and `cloudVoice.js` uses `window.__cloudVoiceBackend` (status / prepare / load / play) instead of the network and WebAudio.
 
 ## The Lab (v3.9, lab/SPEC.md §4.1)
@@ -709,11 +741,13 @@ car-jump/
     meta/                 save, economy, goals, achievements, daily, rng, mockEngine,
                           engagement (v3.3 streak / XP / crates / trophies / family board rules, pure),
                           transfer (progress transfer code), pings (the anonymous usage counter, v3.7.2),
-                          labBridge (v3.9: the one file that knows the Lab), labLooks (the Lab's skins, stickers, trails)
+                          labBridge (v3.9: the one file that knows the Lab), labLooks (the Lab's skins, stickers, trails),
+                          skyRoad (v3.10: the Sky Road steps and when the teaser plays, pure)
     stats/server.mjs      the usage counter API as a pure request handler (used by netlify/functions/stats.mjs)
     ui/                   players (picker + family board), parentZone, garage (+ Style row), tracks, results,
                           panels (badges, streak, trophies), crates (crate opening), HUD, controls, icons,
-                          car preview, title hero, fireworks, testBoss + ceremony + certificate (v3.9)
+                          car preview, title hero, fireworks, testBoss + ceremony + certificate (v3.9),
+                          skyTeaser (v3.10: the Sky Era teaser, a canvas overlay)
   dev.html                engine harness (keyboard + on-screen buttons, no meta)
   tools/                  spelling-tests, ui-smoke, engine-smoke, integration-smoke, sync-smoke,
                           sync-function-check, tts-function-check, stats-function-check, economy-sim, make-icons
