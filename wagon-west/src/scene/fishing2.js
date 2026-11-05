@@ -38,7 +38,8 @@ const WATER_LOOK = {
   blue: { base: '#5db0bc', mid: '#4a9eab', deep: '#3a8b98', ink: '#dcf3f6', clear: true },
   columbia: { base: '#2f8aa0', mid: '#257890', deep: '#1c667c', ink: '#d0eaf0', clear: false },
 };
-const BASE_S = { 'channel-catfish': 1.25, 'hornyhead-chub': 1.4, 'cutthroat-trout': 1.3, 'white-sturgeon': 1.2, 'redband-trout': 1.3, 'chinook-salmon': 1.32 };
+const BASE_S = { 'channel-catfish': 1.25, 'hornyhead-chub': 1.4, 'cutthroat-trout': 1.3, 'white-sturgeon': 1.2, 'redband-trout': 1.3, 'chinook-salmon': 1.32,
+  'mountain-whitefish': 1.3, 'northern-pikeminnow': 1.25, 'largescale-sucker': 1.25, 'green-sunfish': 1.7, 'sacramento-perch': 1.6 };
 
 export function createFishing(opts, emit, S, hooks, biomeId) {
   const o = opts || {};

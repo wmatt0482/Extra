@@ -2748,7 +2748,7 @@ async function boot() {
       const row = $('#bait-row');
       row.replaceChildren(...baits.map((b) => {
         const def = BAIT_BY_ID[b.id] || { name: b.id, emoji: '🎣', text: '' };
-        const sub = b.id === 'hoppers' ? (b.n > 0 ? `${b.n} in the tin` : 'none yet') : b.id === 'spoon' ? (b.ok ? 'never used up' : 'at a fort store') : 'always there';
+        const sub = b.id === 'hoppers' || b.n !== undefined ? (b.n > 0 ? `${b.n} in the tin` : 'none yet') : b.id === 'spoon' ? (b.ok ? 'never used up' : 'at a fort store') : 'always there';
         const btn = h('button', { class: 'bait-btn', 'data-bait': b.id, 'data-sfx': '', disabled: b.ok === false, 'aria-label': `${def.name}: ${def.text || sub}` },
           h('span', { class: 'bait-emoji', 'aria-hidden': 'true' }, def.emoji), h('span', {}, def.name), h('small', {}, sub));
         btn.addEventListener('click', () => { row.hidden = true; resolve(b.id); });

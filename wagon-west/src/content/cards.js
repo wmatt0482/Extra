@@ -204,6 +204,12 @@ export const CARDS = [
     'The white sturgeon is the biggest freshwater fish in North America, and it can live for more than one hundred years.'),
   R('redband-trout', 'Redband trout', '🐟', 'Redband trout are rainbow trout of the Columbia River country, with a rosy red stripe along each side.'),
   R('chinook-salmon', 'Chinook salmon', '🐟', 'Chinook salmon are the biggest of the Pacific salmon, and people also call them king salmon.'),
+  // v1.7: five more fish of the trail's rivers (no number in any of them)
+  R('mountain-whitefish', 'Mountain whitefish', '🐟', 'Mountain whitefish are native fish of cold western rivers, and they swim in the Snake River and the Bear River.'),
+  R('northern-pikeminnow', 'Northern pikeminnow', '🐟', 'Northern pikeminnow are big native hunters of the Columbia River country, and they eat smaller fish.'),
+  R('largescale-sucker', 'Largescale sucker', '🐟', 'The largescale sucker is a native fish of the Pacific Northwest, and in the Willamette River it is the most common native fish of all.'),
+  R('green-sunfish', 'Green sunfish', '🐟', 'Green sunfish are a common native fish of Kansas and Nebraska, and in a small pond there can be so many that each one stays small.'),
+  R('sacramento-perch', 'Sacramento perch', '🐟', 'The Sacramento perch is California’s only native sunfish, and it is the only sunfish that is native west of the Rocky Mountains.'),
 
   // ---- trail tales (8, v1.4): the six trail facts (id = the fact id) and the two quest cards ----
   T('far-off-crack', 'Far-off rifles', '🌄', 'In the 1870s, hide hunters took so many bison that the great herds nearly vanished. Today bison herds are growing again in parks and on tribal lands.',

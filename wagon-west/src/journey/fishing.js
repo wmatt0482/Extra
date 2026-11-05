@@ -6,7 +6,7 @@
 //   createFight(fight) → state · fightStep(state, dtMs, down) → state · fightHelp(state) → state
 // Hold (down) to reel; the line wobbles red now and then (a yellow shiver `warnMs` before); held through `strainMaxMs` of one wobble the fish
 // wiggles off ('off': cast again once). There is no other way to lose anything: nothing snaps and nothing is ever lost.
-import { FISH, FISH_BY_ID, BAIT_BY_ID, JUNK, JUNK_BY_ID, WATERS, WATER_NAMES } from '../content/fish.js';
+import { FISH, FISH_BY_ID, BAITS, BAIT_BY_ID, JUNK, JUNK_BY_ID, WATERS, WATER_NAMES } from '../content/fish.js';
 import { FISHING, RESCUE } from './economy.js';
 import { hashSeed, mulberry32 } from './rng.js';
 
@@ -24,12 +24,19 @@ export function waterOf(x) {
   return WATERS[id] || 'kansas';
 }
 
-const fillGoods = (J) => { if (!J.goods || typeof J.goods !== 'object') J.goods = {}; for (const k of ['hoppers', 'spoon']) if (!Number.isFinite(J.goods[k])) J.goods[k] = 0; return J.goods; };
+/** The rock-flip baits (v1.7): the tins that are kept in J.goods under the bait's own id, at most `max` each. */
+export const ROCK_BAITS = BAITS.filter((b) => b.rock).map((b) => b.id);
+const fillGoods = (J) => { if (!J.goods || typeof J.goods !== 'object') J.goods = {}; for (const k of ['hoppers', 'spoon', ...ROCK_BAITS]) if (!Number.isFinite(J.goods[k])) J.goods[k] = 0; return J.goods; };
+/** Is this bait used up one a cast (grasshoppers and the critters from the rocks)? */
+const consumable = (id) => id === 'hoppers' || ROCK_BAITS.includes(id);
 
-/** The bait buttons: [{ id: 'worms' | 'hoppers' | 'spoon', n?, ok }] — worms always, grasshoppers with the tin's count, the spoon when owned. */
+/** The bait buttons: [{ id, n?, ok }] — worms always, grasshoppers with the tin's count, the spoon when owned, and each rock critter only while its
+ *  tin has some (v1.7). */
 export function baitsAvailable(J) {
   const g = fillGoods(J);
-  return [{ id: 'worms', ok: true }, { id: 'hoppers', n: g.hoppers | 0, ok: (g.hoppers | 0) > 0 }, { id: 'spoon', ok: (g.spoon | 0) > 0 }];
+  const out = [{ id: 'worms', ok: true }, { id: 'hoppers', n: g.hoppers | 0, ok: (g.hoppers | 0) > 0 }, { id: 'spoon', ok: (g.spoon | 0) > 0 }];
+  for (const id of ROCK_BAITS) if ((g[id] | 0) > 0) out.push({ id, n: g[id] | 0, ok: true });
+  return out;
 }
 /** The grasshopper game's catch: `n` more in the tin, at most FISHING.hopperMax. { added, have }. */
 export function catchHoppers(J, n) {
@@ -39,6 +46,18 @@ export function catchHoppers(J, n) {
   g.hoppers = have;
   return { added: have - before, have };
 }
+/** A critter from under a rock goes into its tin (the bait with that `critter`), at most the bait's `max`. → { bait, added, have, full } or null. */
+export function catchBait(J, critter, n = 1) {
+  const def = BAITS.find((b) => b.critter === critter);
+  if (!def) return null;
+  const g = fillGoods(J);
+  const before = Math.max(0, Math.min(def.max, g[def.id] | 0));
+  const have = Math.min(def.max, before + Math.max(0, Math.floor(Number(n) || 0)));
+  g[def.id] = have;
+  return { bait: def.id, added: have - before, have, full: have >= def.max };
+}
+/** Is some rock-critter tin short of full (so a round of rock-flipping can still fill one)? */
+export const rockTinsOpen = (J) => { const g = fillGoods(J); return BAITS.some((b) => b.rock && (g[b.id] | 0) < b.max); };
 
 // ---- the fight ----
 /** A fresh fight for a species (the cast's `fight`): reel time, the fish's pull, and the wobble windows [[startMs, endMs] …] laid out over
@@ -153,13 +172,13 @@ export function fishingSession(J, { bait = 'worms', rescue = false, rand } = {})
   const r = typeof rand === 'function' ? rand : mulberry32(hashSeed(J.seed, J.legId, J.day | 0, counter, 'fish'));
   const water = waterOf(J);
   let chosen = BAIT_BY_ID[bait] ? bait : 'worms';
-  if (chosen === 'hoppers' && !(g.hoppers > 0)) chosen = 'worms';
+  if (consumable(chosen) && !(g[chosen] > 0)) chosen = 'worms';
   if (chosen === 'spoon' && !(g.spoon > 0)) chosen = 'worms';
   const casts = [];
   let sturgeon = false, bottle = false;
   for (let i = 0; i < FISHING.casts; i++) {
     let castBait = chosen;
-    if (chosen === 'hoppers') { if (g.hoppers > 0) g.hoppers--; else castBait = 'worms'; }
+    if (consumable(chosen)) { if (g[chosen] > 0) g[chosen]--; else castBait = 'worms'; }
     const baitDef = BAIT_BY_ID[castBait] || {};
     let cast = null;
     if (r() < FISHING.junkChance) {

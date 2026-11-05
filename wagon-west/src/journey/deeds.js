@@ -11,6 +11,8 @@ import { CARD_SETS } from '../content/cards.js';
 import { PIECE_BY_ID } from '../content/homestead.js';
 import { homesteadView } from './homestead.js';
 
+// v1.7: the deed stays the six fish of 1.4 (the five newer ones are extra, so no token comes sooner than it did)
+const FIRST_SIX = ['channel-catfish', 'hornyhead-chub', 'cutthroat-trout', 'white-sturgeon', 'redband-trout', 'chinook-salmon'];
 export const DEEDS = [
   { id: 'dry-feet', name: 'Dry feet', emoji: '👣', how: 'Cross every river of a year without soaking a sack of flour.', say: 'Dry feet! Every river crossed, and not one sack of flour got wet.' },
   { id: 'mail-beater', name: 'Mail beater', emoji: '🏁', how: 'Win three races against the mail wagon at the forts.', say: 'Mail beater! Three wins against the mail wagon.' },
@@ -36,7 +38,7 @@ export const DEEDS = [
   { id: 'good-nose', name: 'Good nose', emoji: '🐕', how: 'The dog brings back six different finds.', say: 'Good nose! Six different finds from the dog.' },
   { id: 'fetch-champ', name: 'Fetch champ', emoji: '🥎', how: 'Earn twenty-five treats at fetch.', say: 'Fetch champ! Twenty-five treats earned at fetch.' },
   { id: 'big-one', name: 'The big one', emoji: '🐋', how: 'Land a white sturgeon.', say: 'The big one! A white sturgeon, landed at last.' },
-  { id: 'river-guide', name: 'River guide', emoji: '🎣', how: 'Catch all six kinds of fish.', say: 'River guide! All six kinds of fish are in the log.' },
+  { id: 'river-guide', name: 'River guide', emoji: '🎣', how: 'Catch the six first fish of the trail.', say: 'River guide! The six first fish of the trail are all in the log.' },
   { id: 'skipper', name: 'Skipper', emoji: '🪨', how: 'Skip a stone seven times in one throw.', say: 'Skipper! Seven skips in a single throw.' },
   { id: 'keeper', name: 'Keeper', emoji: '📿', how: 'Give a treasure back to the person it belongs to.', say: 'Keeper! You gave it back to its owner.' },
   { id: 'wish-maker', name: 'Wish maker', emoji: '🌠', how: 'Make six wishes on falling stars.', say: 'Wish maker! Six wishes on falling stars.' },
@@ -117,7 +119,7 @@ const TESTS = {
   'good-nose': (J) => J.finds && Object.values(J.finds).filter((x) => n(x) > 0).length >= 6,
   'fetch-champ': (J, T) => Math.max(n(T.treats), J.dog ? n(J.dog.treats) : 0) >= 25,
   'big-one': (J, T) => n(T.sturgeon) >= 1 || !!(J.fishLog && J.fishLog['white-sturgeon'] && n(J.fishLog['white-sturgeon'].n) > 0),
-  'river-guide': (J) => !!J.fishLog && FISH.length > 0 && FISH.every((f) => J.fishLog[f.id] && n(J.fishLog[f.id].n) > 0),
+  'river-guide': (J) => !!J.fishLog && FIRST_SIX.every((id) => J.fishLog[id] && n(J.fishLog[id].n) > 0),
   skipper: (J) => !!J.skips && n(J.skips.best) >= 7,
   keeper: (J, T) => n(T.questsDone) >= 1,
   'wish-maker': (J) => Array.isArray(J.wishes) && J.wishes.length >= 6,

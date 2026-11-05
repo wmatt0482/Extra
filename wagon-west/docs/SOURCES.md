@@ -355,6 +355,33 @@ redband trout, the Columbia Chinook salmon. The sizes and pounds in the game are
 - <a id="fish-chinook-salmon"></a>**chinook-salmon**: the Washington Department of Fish and Wildlife Chinook page and NOAA
   Fisheries (archived species page): the largest of the Pacific salmon, also called king salmon; Oregon Sea Grant's native
   fishes page agrees.
+- *v1.7, five more fish.* Checked Nov 5, 2026 by web search (the agency pages below could be read in search results only; direct fetches of
+  seagrant.oregonstate.edu were blocked in the build session, so those facts rest on the search-result text). Each fish is only on the waters
+  where it is native; the game's sizes and pounds are game numbers.
+- <a id="fish-mountain-whitefish"></a>**mountain-whitefish**: Wyoming Game and Fish Department, the Bear River Basin fish list (wgfd.wyo.gov/media/1282/download)
+  names it a native game fish of the Bear River; Idaho's Snake River basin holds it in large numbers (Idaho Fish and Game, via Hatch Magazine's
+  "The most Idaho fish of them all", secondary); Oregon Sea Grant, "Mountain Whitefish": native to the cold upper tributaries of the Willamette; the
+  species' native range reaches the Truckee River drainage in Nevada (Wikipedia, secondary; flagged: no Nevada agency page was reachable). The game
+  puts it on the Bear, the Snake, the Columbia, the Willamette and the Truckee. It is NOT used on the Green River: no source reachable confirmed it there.
+  Card: "native fish of cold western rivers, and they swim in the Snake River and the Bear River".
+- <a id="fish-northern-pikeminnow"></a>**northern-pikeminnow**: Oregon Sea Grant, "Northern Pikeminnow": found throughout the Columbia River basin and
+  its tributaries including the Willamette, and the most common native predatory fish in the Willamette; Oregon Department of Fish and Wildlife and
+  the Pacific States Marine Fisheries Commission's Northern Pikeminnow Sport Reward Program (the fish eats young salmon and steelhead; removed from
+  the Columbia and Snake). The game puts it on the Columbia and the Willamette (it is native to the Snake too, but the game keeps the Snake's pool as it was). The Umpqua has its own, different species (the Umpqua
+  pikeminnow), so the Umpqua and the Rogue are left out. Card: "big native hunters of the Columbia River country, and they eat smaller fish".
+- <a id="fish-largescale-sucker"></a>**largescale-sucker**: Oregon Sea Grant, "Largescale Sucker": native to the Pacific Northwest, widespread in the
+  Columbia River system, and the most common native fish in the main stem of the Willamette River. The Snake, Rogue and Umpqua were NOT confirmed
+  on any page reachable, so the game has it only on the Columbia and the Willamette. Card: "the most common native fish of all" in the Willamette.
+- <a id="fish-green-sunfish"></a>**green-sunfish**: Kansas Department of Wildlife and Parks, the green sunfish page (abundant statewide; can overpopulate
+  and stay small in small waters) and "Kansas Fishes" (1979); Nebraska Game and Parks / Nebraskaland Magazine: one of the most widely distributed
+  native fish in Nebraska. The game puts it on the Kansas, the Big Blue and the Platte. Flagged: no page reachable named the Platte itself, and the
+  Kansas page does not say "native" in the words reached (the 1979 survey lists it as very abundant).
+- <a id="fish-sacramento-perch"></a>**sacramento-perch**: California Department of Fish and Wildlife (news release on returning the fish to Sacramento
+  County, and the Lindo Lake release): "California's only native sunfish" and "the only native sunfish west of the Rocky Mountains"; once common in the
+  Sacramento-San Joaquin delta and Clear Lake, a Species of Special Concern today. The game puts it on the Sacramento River only.
+- **No burbot.** Candidate from the backlog; not used. Burbot are native to the Wind and Bighorn drainages of Wyoming and, in Idaho, the Kootenai
+  River only (Idaho Fish and Game, Idaho native fishes poster); in the Green River they are an illegal introduction (Wyoming Game and Fish). None of the
+  game's rivers has a native burbot, so there is none in the game. Not verified: whether burbot are native to the upper Snake in Wyoming (no page reached).
 - <a id="junk-snapping-turtle"></a>**junk-snapping-turtle**: the Kansas Herpetofaunal Atlas (the common snapping turtle is found
   across Kansas) and Nebraskaland Magazine (native to Nebraska); the species is not native west of the Rockies, so the game
   has it only on the Kansas and the Platte.
@@ -421,6 +448,14 @@ sources above already cover (the forts, Chimney Rock, the Snake River, The Dalle
 | White sturgeon: the biggest freshwater fish in North America, lives more than 100 years; in the Snake at Three Island Crossing's reach | confirmed | https://idfg.idaho.gov/fish/sturgeon |
 | Redband trout: rainbow trout of the Columbia River country with a rosy red stripe | confirmed on secondary pages; the Blue Mountains' streams not confirmed on an ODFW page | https://westernnativetrout.org/?p=95 ; https://nativefishsociety.org/learn/native-species/redband-trout |
 | Chinook salmon: the biggest Pacific salmon, also called king salmon | confirmed | https://wdfw.wa.gov/species-habitats/species/oncorhynchus-tshawytscha ; https://webarchive.library.unt.edu/web/20090114085910/http://www.nmfs.noaa.gov/fishwatch/species/chinook_salmon.htm ; https://seagrant.oregonstate.edu/WRF/native-fishes/salmon-and-trout/chinook-salmon |
+| Mountain whitefish: native to the Bear River basin and the Snake basin | confirmed (WGFD Bear River fish list; Idaho via a secondary page) | https://wgfd.wyo.gov/media/1282/download ; https://www.hatchmag.com/articles/most-idaho-fish-them-all/7715664 |
+| Mountain whitefish: Willamette tributaries; Truckee drainage at the edge of the range | Willamette confirmed (Sea Grant); Truckee on a secondary page only | https://seagrant.oregonstate.edu/WRF/native-fishes/salmon-and-trout/mountain-whitefish ; https://en.wikipedia.org/wiki/Mountain_whitefish |
+| Mountain whitefish: in the Green River | could not verify (not used there) | — |
+| Northern pikeminnow: native to the Columbia, Snake and Willamette (the game uses the Columbia and the Willamette); eats young salmon | confirmed | https://seagrant.oregonstate.edu/WRF/native-fishes/carp/northern-pikeminnow ; https://dfw.state.or.us/news/2021/04_Apr/041521d.asp |
+| Largescale sucker: native to the Pacific Northwest; most common native fish in the Willamette | confirmed (Sea Grant); Snake, Rogue and Umpqua not confirmed (not used) | https://seagrant.oregonstate.edu/WRF/native-fishes/suckers/largescale-sucker |
+| Green sunfish: common native fish of Kansas and Nebraska; stays small in small waters | confirmed for the states; the Platte itself not confirmed | https://ksoutdoors.gov/Fishing/Fish-Species/GREEN-SUNFISH ; https://magazine.outdoornebraska.gov/?p=9183 |
+| Sacramento perch: California's only native sunfish, the only native sunfish west of the Rockies | confirmed | https://wildlife.ca.gov/News/Archive/cdfw-returns-sacramento-perch-to-namesake-city-county-for-urban-fishing-opportunity |
+| Burbot: not native to any river of the trail | confirmed for Idaho (Kootenai only) and the Green River (introduced); upper Snake in Wyoming not checked | https://westernnativetrout.org/wp-content/uploads/2023/04/ID-AFS-Native-Fishes-of-Idaho-poster-2023.pdf ; https://wgfd.wyo.gov/Fishing-Update/Looking-for-adventure-Reel-a-burbot-for-big-rewar |
 | Snapping turtle: native to Kansas and Nebraska, not west of the Rockies | confirmed (the Pacific Northwest populations are introduced) | https://www.cnah.org/cnah/kansas/species/chelydra-serpentina ; https://digital.outdoornebraska.gov/nebraskaland-magazine/snappers |
 | Buffalo chips: burned for cooking where there was no wood | confirmed | https://www.nps.gov/articles/000/traveling-emigrant-trails.htm ; https://history.nebraska.gov/publications/buffalo-and-cow-chips ; https://www.octa-trails.org/trail-stories/fueling-the-journey/ |
 | Ox shoe: two shoes on each split hoof | confirmed on museum pages | https://mcclungmuseum.utk.edu/object-of-the-month/oxshoes ; https://www.greatfallshistorymuseum.org/blog/ox-shoes |

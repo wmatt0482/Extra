@@ -19,6 +19,12 @@ export const SPECIES = {
   'white-sturgeon': { name: 'WHITE STURGEON', len: 122, lo: 48, hi: 84 },
   'redband-trout': { name: 'REDBAND TROUT', len: 66, lo: 8, hi: 16 },
   'chinook-salmon': { name: 'CHINOOK SALMON', len: 86, lo: 24, hi: 40 },
+  // v1.7: five more fish of the trail's rivers
+  'mountain-whitefish': { name: 'MOUNTAIN WHITEFISH', len: 66, lo: 10, hi: 20 },
+  'northern-pikeminnow': { name: 'NORTHERN PIKEMINNOW', len: 72, lo: 10, hi: 24 },
+  'largescale-sucker': { name: 'LARGESCALE SUCKER', len: 70, lo: 12, hi: 24 },
+  'green-sunfish': { name: 'GREEN SUNFISH', len: 44, lo: 3, hi: 8 },
+  'sacramento-perch': { name: 'SACRAMENTO PERCH', len: 50, lo: 6, hi: 12 },
 };
 export const speciesOf = (id) => SPECIES[id] || SPECIES['channel-catfish'];
 
@@ -32,6 +38,11 @@ export function drawSpecies(c, id, x, y, s, ang = 0, wag = 0, flip = 1) {
   else if (id === 'redband-trout') trout(c, w, true);
   else if (id === 'chinook-salmon') salmon(c, w);
   else if (id === 'white-sturgeon') sturgeon(c, w);
+  else if (id === 'mountain-whitefish') whitefish(c, w);
+  else if (id === 'northern-pikeminnow') pikeminnow(c, w);
+  else if (id === 'largescale-sucker') sucker(c, w);
+  else if (id === 'green-sunfish') sunfish(c, w, false);
+  else if (id === 'sacramento-perch') sunfish(c, w, true);
   else catfish(c, w);
   c.lineCap = 'butt'; c.lineJoin = 'miter';
   c.restore();
@@ -124,6 +135,72 @@ function sturgeon(c, w) {
   c.beginPath(); c.moveTo(44, 6.4); c.quadraticCurveTo(50, 8, 56, 7); c.lineWidth = 1.6; c.strokeStyle = OUT; c.stroke();   // the mouth, underneath
   c.lineWidth = 2; for (const [x1, y1, x2, y2] of [[48, 7, 49, 14], [52, 7.4, 54, 14.5], [44, 7.6, 43, 14]]) { c.beginPath(); c.moveTo(x1, y1); c.quadraticCurveTo(x1 + 1, (y1 + y2) / 2, x2, y2); c.stroke(); }
   eye(c, 40, -2.2, 1.5);
+}
+
+// ---------------------------------------------------------------- v1.7: five more fish
+// the mountain whitefish: a slim silver fish, big scales, a small mouth under a blunt snout, a small fat fin behind the back fin
+function whitefish(c, w) {
+  const back = '#7d8c80', side = '#d3d8d0', belly = '#f7f6ee';
+  c.beginPath(); c.moveTo(-27, 0); c.lineTo(-40, -10 + w * 3); c.lineTo(-35, 0); c.lineTo(-40, 10 + w * 3); c.closePath(); fillOut(c, shade(back, -0.08), 2);
+  c.beginPath(); c.moveTo(5, -8.5); c.lineTo(-2, -16); c.lineTo(-10, -8); c.closePath(); fillOut(c, shade(back, -0.1), 1.8);
+  c.beginPath(); c.moveTo(-19, -6.5); c.quadraticCurveTo(-22, -11, -26, -5.5); c.closePath(); fillOut(c, shade(back, -0.1), 1.4);
+  c.beginPath(); c.moveTo(30, 2); c.bezierCurveTo(30, -4, 22, -8.5, 10, -9); c.bezierCurveTo(-4, -9.5, -17, -6, -27, -2); c.lineTo(-27, 2);
+  c.bezierCurveTo(-17, 6, -4, 9, 10, 8.5); c.bezierCurveTo(22, 8, 30, 6, 30, 2); c.closePath(); fillOut(c, grad(c, -9, 9, back, side, belly), 2.4);
+  c.lineWidth = 0.9; c.strokeStyle = 'rgba(70,84,76,0.45)';
+  for (let row = 0; row < 3; row++) for (let i = 0; i < 9; i++) { c.beginPath(); c.arc(18 - i * 5.2 + (row % 2) * 2.4, -5 + row * 4.4, 2.4, -0.6, 1.9); c.stroke(); }
+  c.beginPath(); c.moveTo(18, -8); c.quadraticCurveTo(14, 0, 18, 8); c.lineWidth = 1.6; c.strokeStyle = shade(back, -0.4); c.stroke();
+  c.beginPath(); c.moveTo(30, 3); c.quadraticCurveTo(28, 5, 25, 4.6); c.lineWidth = 1.5; c.strokeStyle = OUT; c.stroke();
+  c.beginPath(); c.moveTo(8, 7); c.lineTo(2, 13); c.lineTo(0, 6.5); c.closePath(); fillOut(c, shade(side, -0.08), 1.4);
+  eye(c, 22, -2.6, 1.8);
+}
+// the northern pikeminnow: a long olive torpedo with a big wide mouth, a pale belly, a dark spot at the base of the tail
+function pikeminnow(c, w) {
+  const back = '#6f7f4c', side = '#aeb785', belly = '#eee9cc';
+  c.beginPath(); c.moveTo(-31, 0); c.lineTo(-44, -11 + w * 3); c.lineTo(-39, 0); c.lineTo(-44, 11 + w * 3); c.closePath(); fillOut(c, shade(back, -0.1), 2);
+  c.beginPath(); c.moveTo(-6, -7.5); c.lineTo(-12, -15); c.lineTo(-20, -7); c.closePath(); fillOut(c, shade(back, -0.1), 1.8);
+  c.beginPath(); c.moveTo(34, 2); c.bezierCurveTo(34, -3, 26, -7.5, 12, -8); c.bezierCurveTo(-4, -8.5, -20, -5.5, -31, -1.8); c.lineTo(-31, 1.8);
+  c.bezierCurveTo(-20, 5, -4, 8, 12, 7.5); c.bezierCurveTo(26, 7, 34, 6, 34, 2); c.closePath(); fillOut(c, grad(c, -8, 8, back, side, belly), 2.4);
+  dot(c, -28, 0, 2.2, '#35401f');
+  c.beginPath(); c.moveTo(34, 2.5); c.lineTo(22, 4.6); c.lineWidth = 1.6; c.strokeStyle = OUT; c.stroke();            // a big mouth reaching back under the eye
+  c.beginPath(); c.moveTo(18, -7.5); c.quadraticCurveTo(14, 0, 18, 7.5); c.lineWidth = 1.6; c.strokeStyle = shade(back, -0.4); c.stroke();
+  c.beginPath(); c.moveTo(6, 6.5); c.lineTo(0, 13); c.lineTo(-3, 6); c.closePath(); fillOut(c, shade(side, -0.1), 1.4);
+  eye(c, 25, -2.8, 1.8);
+}
+// the largescale sucker: a chunky dusky-olive fish, a rounded snout and thick lips on the underside, a dark stripe on the side
+function sucker(c, w) {
+  const back = '#6b6a48', side = '#a7a37a', belly = '#e7e1c4';
+  c.beginPath(); c.moveTo(-27, 0); c.lineTo(-40, -11 + w * 3); c.lineTo(-35, 0); c.lineTo(-40, 11 + w * 3); c.closePath(); fillOut(c, shade(back, -0.1), 2);
+  c.beginPath(); c.moveTo(6, -9.5); c.lineTo(-2, -18); c.lineTo(-12, -9); c.closePath(); fillOut(c, shade(back, -0.1), 1.8);
+  c.beginPath(); c.moveTo(32, 3); c.bezierCurveTo(32, -4, 24, -10, 10, -10.5); c.bezierCurveTo(-5, -11, -18, -7, -27, -2.4); c.lineTo(-27, 2.4);
+  c.bezierCurveTo(-18, 7, -5, 10, 10, 10); c.bezierCurveTo(24, 9.5, 32, 8, 32, 3); c.closePath(); fillOut(c, grad(c, -11, 10, back, side, belly), 2.4);
+  c.beginPath(); c.moveTo(24, -0.5); c.bezierCurveTo(10, -1, -10, 0, -25, 0.5); c.lineWidth = 2.4; c.strokeStyle = '#4a4a30'; c.stroke();
+  c.lineWidth = 0.9; c.strokeStyle = 'rgba(60,60,36,0.4)';
+  for (let i = 0; i < 8; i++) { c.beginPath(); c.arc(16 - i * 5.4, -5.6, 2.4, -0.6, 1.9); c.stroke(); c.beginPath(); c.arc(14 - i * 5.4, 4.2, 2.4, -0.6, 1.9); c.stroke(); }
+  c.beginPath(); c.ellipse(29, 7.4, 4.6, 2.6, 0.3, 0, TAU); fillOut(c, '#d4a590', 1.6);                               // the sucker mouth, underneath
+  c.beginPath(); c.moveTo(17, -9.5); c.quadraticCurveTo(13, 0, 17, 9.5); c.lineWidth = 1.6; c.strokeStyle = shade(back, -0.4); c.stroke();
+  c.beginPath(); c.moveTo(8, 8.5); c.lineTo(2, 15); c.lineTo(-1, 8); c.closePath(); fillOut(c, '#c79a78', 1.4);
+  eye(c, 23, -3.4, 1.8);
+}
+// the green sunfish and the Sacramento perch: round and deep with a spiny back fin. The sunfish is olive-green with blue-green
+// streaks on its cheek and a pale-edged tail; the Sacramento perch is silver with dark bars down its sides
+function sunfish(c, w, perch) {
+  const back = perch ? '#6f7a62' : '#6f8f4a', side = perch ? '#b9c0a8' : '#a6b862', belly = perch ? '#eeeedd' : '#f0e6a8';
+  c.beginPath(); c.moveTo(-17, 0); c.lineTo(-29, -9 + w * 3); c.lineTo(-25, 0); c.lineTo(-29, 9 + w * 3); c.closePath(); fillOut(c, perch ? '#8a9078' : '#d9a840', 1.8);
+  c.beginPath(); c.moveTo(10, -13); for (let i = 0; i < 5; i++) c.lineTo(8 - i * 4.4, -17 + (i % 2) * 1.4); c.lineTo(-13, -12); c.closePath(); fillOut(c, shade(back, -0.1), 1.6);
+  c.beginPath(); c.moveTo(24, 1); c.bezierCurveTo(24, -8, 14, -15, 2, -15); c.bezierCurveTo(-8, -15, -17, -8, -20, -1.4); c.lineTo(-20, 1.4);
+  c.bezierCurveTo(-17, 8, -8, 14, 2, 14); c.bezierCurveTo(14, 14, 24, 9, 24, 1); c.closePath(); fillOut(c, grad(c, -15, 14, back, side, belly), 2.4);
+  if (perch) {
+    c.lineWidth = 2.6; c.strokeStyle = 'rgba(52,60,44,0.65)';
+    for (let i = 0; i < 5; i++) { const x = 12 - i * 7; c.beginPath(); c.moveTo(x, -12 + Math.abs(i - 2) * 1.2); c.quadraticCurveTo(x - 2, 0, x, 11 - Math.abs(i - 2) * 1.2); c.stroke(); }
+  } else {
+    dot(c, -8, -10, 2, '#2f3d22');
+    c.lineWidth = 1.5; c.strokeStyle = '#3fa8b0';
+    for (const [x1, y1, x2, y2] of [[22, 3, 12, 5], [21, 5.4, 11, 8.4], [20, 0.6, 12, 1.6]]) { c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.stroke(); }
+  }
+  c.beginPath(); c.moveTo(18, -11); c.quadraticCurveTo(14, 0, 18, 11); c.lineWidth = 1.6; c.strokeStyle = shade(back, -0.4); c.stroke();
+  c.beginPath(); c.moveTo(24, 2); c.quadraticCurveTo(26, 3.5, 23, 4.8); c.lineWidth = 1.5; c.strokeStyle = OUT; c.stroke();
+  c.beginPath(); c.moveTo(5, 11); c.lineTo(-1, 18); c.lineTo(-4, 10); c.closePath(); fillOut(c, perch ? '#b9bfa2' : '#d9a840', 1.4);
+  eye(c, 17, -4, 2.3);
 }
 
 // ---------------------------------------------------------------- the river's junk (a hook's other catches)
