@@ -57,6 +57,7 @@ import { NOSE, MOMENTS as MOMENT_RULES, EXTRA_GOOD_BY_ID, offeredAt } from './ec
 import { V14_COUNTERS, fill14, carry14, merge14 } from './collections.js';
 import * as DOG from './dog.js';
 import * as FISHING_API from './fishing.js';
+import * as ROCKS_API from './rocks.js';
 import * as QUESTS_API from './quests.js';
 import { choiceAt, applyChoice, defaultChoice, choicesAt, cutOf, guidedOf, creditOf, normalizeChoices } from './choices.js';
 import * as MOMENTS_API from './moments.js';
@@ -1137,7 +1138,9 @@ export function recordFind(J, findId) { ensureJourney(J); const r = DOG.recordFi
 /** The rabbit chase's outcome (see dog.js): { muddy, line, card }. */
 export function chaseResult(J, opts) { ensureJourney(J); const r = DOG.chaseResult(J, opts); refreshMood(J); return r; }
 // fishing 2.0 (fishing.js); the scene imports createFight / fightStep / fightHelp from fishing.js itself
-export const { waterOf, baitsAvailable, catchHoppers, fishingSession, createFight, fightStep, fightHelp, fightOutcome, castOff, landCast, familyRecords, skipsBoard } = FISHING_API;
+export const { waterOf, baitsAvailable, catchHoppers, fishingSession, createFight, fightStep, fightHelp, fightOutcome, castOff, landCast, familyRecords, skipsBoard, catchBait, rockTinsOpen, ROCK_BAITS, bearChoice, BEAR } = FISHING_API;
+// v1.7: flip rocks for bait (rocks.js) and the bear at the fishing hole (fishing.js)
+export const { ROCKS, arrowheadHere, rocksFree, rocksPlan, flipRock, endRocks } = ROCKS_API;
 /** The session is over: the food goes into the wagon once (the landed pounds, at most FISHING.lbCap; a safety-net session is worth at least RESCUE.minLb),
  *  and the spoken summary is built from fixed parts. Idempotent. → { lb, topUp, caught: [{ species, lengthIn }], junk: [id], newSpecies: [id], best, summary: { text, say } }. */
 export function endFishing(J, session) {

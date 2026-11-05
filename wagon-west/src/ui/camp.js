@@ -27,6 +27,7 @@ export const FUN_ACTS = Object.freeze([
   { id: 'hoppers', emoji: '🦗', name: 'Catch grasshoppers', line: 'Bait for fishing: trout and chubs love it.' },
   { id: 'stones', emoji: '🪨', name: 'Skip stones', line: 'Flat stones on smooth water. How many skips?' },
   { id: 'stars', emoji: '🌠', name: 'Falling stars', line: 'Tap a falling star and make a wish.' },
+  { id: 'rocks', emoji: '🪨', name: 'Flip rocks', line: 'Worms, beetles, crickets and crawdads for bait. Maybe more!' },
 ]);
 export const WAIT_ACT = Object.freeze({ id: 'wait', emoji: '⛈️', name: 'Wait out the storm', line: 'Rest a day under the canvas. The weather then costs nothing.' });
 const WEATHER = ['rain', 'storm', 'snow'];

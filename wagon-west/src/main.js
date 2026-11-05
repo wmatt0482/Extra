@@ -138,7 +138,7 @@ import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
 import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts, V15 } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.6.1';
+const VERSION = '1.7.0';
 // the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
 // is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];
@@ -1591,7 +1591,7 @@ async function boot() {
       go('stop');
       await offerDog(leg, { river: true, back: 'stop' });
       if (screen !== 'stop') return;
-      if (RIVER_STOPS.includes(leg.id)) { await offerStones(leg); if (screen !== 'stop') return; }
+      if (RIVER_STOPS.includes(leg.id)) { await offerStones(leg); if (screen !== 'stop') return; await offerRocks(leg); if (screen !== 'stop') return; }
       if (dig) { if (!(await digHere(leg, dig))) return; }
     } else if (kind === 'fort') {
       let sl = leg;
@@ -1905,7 +1905,7 @@ async function boot() {
   async function campActivity(kind) {
     const J = save.journey;
     if (!J) return;
-    if (['fetch', 'hoppers', 'stones', 'stars'].includes(kind)) { await funActivity(kind); try { screens.camp.refresh(); } catch (_) { /* ignore */ } return; }      // ---- v1.4: no day, no food ----
+    if (['fetch', 'hoppers', 'stones', 'stars', 'rocks'].includes(kind)) { await funActivity(kind); try { screens.camp.refresh(); } catch (_) { /* ignore */ } return; }      // ---- v1.4: no day, no food ----
     const who = campCompanion();
     try {
       if (typeof JA.camp === 'function') {
@@ -2667,6 +2667,7 @@ async function boot() {
     let cw = null;
     try { cw = typeof JA.campWater === 'function' ? JA.campWater(J) : null; } catch (_) { cw = null; }
     if (cw && cw.river && stonesFree(J)) out.push('stones');
+    try { if (typeof JA.rocksFree === 'function' && JA.rocksFree(J)) out.push('rocks'); } catch (_) { /* ignore */ }      // ---- v1.7: flip rocks for bait ----
     if (context === 'arrival' && campVisit && !campVisit.stars) {
       let tonight = false;
       try { tonight = typeof JA.meteorsTonight === 'function' && !!JA.meteorsTonight(J); } catch (_) { tonight = false; }
@@ -2679,6 +2680,7 @@ async function boot() {
     else if (kind === 'hoppers') await funHoppers();
     else if (kind === 'stones') await runStones();
     else if (kind === 'stars') await funMeteors();
+    else if (kind === 'rocks') await runRocks();
     if (screen === 'camp') S('setBackdrop', 'camp');
     app.persist(); refreshCash();
   }
@@ -2719,6 +2721,42 @@ async function boot() {
     const have = r ? num(r.have) : 0, max = (JA.FISHING && JA.FISHING.hopperMax) || 12;
     if (have >= max) effectToast(MOMENTS.hoppers.full.text, MOMENTS.hoppers.full.say || MOMENTS.hoppers.full.text);
     else toast(`${have} grasshopper${have === 1 ? '' : 's'} in the bait tin`);
+  }
+  // ----- v1.7: flip rocks for bait (offered at the river stops after the crossing, and at camp): worms, beetles, crickets, crawdads, mud, and now and then an arrowhead -----
+  async function offerRocks(leg) {
+    const J = save.journey;
+    if (!J || typeof JA.rocksFree !== 'function' || !JA.rocksFree(J) || !sceneHas('startRocks')) return;
+    const m = MOMENTS.rocks;
+    const c = await showCard({ kicker: 'The river bank', title: 'Flip some rocks?', text: m.intro.text, say: m.intro.say || m.intro.text, tone: 'camp', button: 'Flip rocks', alt: 'On we go' });
+    if (c !== true || screen !== 'stop') return;
+    await runRocks();
+  }
+  async function runRocks() {
+    const J = save.journey;
+    if (!J || typeof JA.rocksPlan !== 'function') return;
+    let plan = null;
+    try { plan = JA.rocksPlan(J); } catch (e) { console.warn('[WagonWest] rocksPlan', e); }
+    if (!plan) return;
+    const m = MOMENTS.rocks;
+    introOnce('rocks', m.intro);
+    showBar(m.intro.text, 'Done', () => endPlay(true));
+    if (screen === 'camp') S('setBackdrop', 'camp'); else if (screen === 'stop') S('setBackdrop', 'river');
+    const end = await playMini('startRocks', { seed: seedFor('rocks'), rocks: plan.rocks }, { end: 'rocksEnd', types: ['rock'],
+      onEvent: (e) => {
+        let r = null;
+        try { r = JA.flipRock(J, plan, num(e.i)); } catch (x) { console.warn('[WagonWest] flipRock', x); }
+        if (!r) return;
+        if (r.kind === 'arrowhead') { barText(FIND_BY_ID.arrowhead.text); if (r.find) setTimeout(() => popFind({ id: 'arrowhead', first: !!r.find.first }), beat(700)); }
+        else if (r.kind === 'mud') barText(m.mud.text);
+        else if (r.full) { barText(m.full.text); effectToast(m.full.text, m.full.say || m.full.text); }
+        else { barText((m[r.kind] || m.mud).text); Sfx.plop(); }
+        app.persist();
+      } });
+    hideBar();
+    let res = null;
+    try { res = JA.endRocks(J, plan); } catch (e) { console.warn('[WagonWest] endRocks', e); }
+    app.persist(); refreshCash();
+    if (end && !end.early && res && res.flipped) effectToast(m.end.text, m.end.say || m.end.text);
   }
   async function funMeteors() {
     const J = save.journey;
@@ -2783,8 +2821,8 @@ async function boot() {
     const m = MOMENTS.fishing;
     const got = { caught: [], cards: [], questId: null, newSpecies: [] };
     showBar(m.hint.text, 'Done fishing', () => endPlay(true));
-    const end = await playMini('startFishing', { seed: seedFor('fishing'), water: session.water, bait, casts: session.casts, cameo: session.cameo || null, helper: helperLook, dog: !!J.dog },
-      { end: 'fishingEnd', types: ['fishHook', 'fishMiss', 'fishPhase', 'fishWobble', 'fishHelp', 'fishHelped', 'fishOff', 'fishLand', 'fishCameo'], onEvent: (e) => fishEvent(e, session, got, helperC, m) });
+    const end = await playMini('startFishing', { seed: seedFor('fishing'), water: session.water, bait, casts: session.casts, cameo: session.cameo || null, bear: session.bear || null, helper: helperLook, dog: !!J.dog },
+      { end: 'fishingEnd', types: ['fishHook', 'fishMiss', 'fishPhase', 'fishWobble', 'fishHelp', 'fishHelped', 'fishOff', 'fishLand', 'fishCameo', 'fishBear'], onEvent: (e) => fishEvent(e, session, got, helperC, m) });
     hideBar();
     Sfx.reel(false);
     let r = null;
@@ -2840,6 +2878,42 @@ async function boot() {
         if (card && !got.cards.includes(card)) { got.cards.push(card); dropCard(card); }
       }
     } else if (e.type === 'fishCameo') barText(dogLine(e.kind === 'steal' ? DOG_LINES.steal : DOG_LINES.splash));
+    else if (e.type === 'fishBear') bearEvent(e);
+  }
+  // ----- v1.7: a bear on the far bank of the fishing hole: the fish scatter; wait for it to leave, or try another spot (nobody is ever near it) -----
+  function bearEvent(e) {
+    const J = save.journey, b = MOMENTS.bear;
+    if (e.stage === 'arrive') { barText(b.arrive.text); effectToast(b.arrive.text, b.arrive.say || b.arrive.text); }
+    else if (e.stage === 'ask') {
+      barText(b.ask.text);
+      if (J && J.dog) effectToast(dogLine(DOG_LINES.bear), dogLine(DOG_LINES.bear));
+      chooseBear().then((choice) => {
+        if (!choice) return;
+        try { JA.bearChoice(J, choice); } catch (x) { console.warn('[WagonWest] bearChoice', x); }
+        S('fishingBear', choice);
+        const w = e.kind === 'berries' ? b.waitingBerries : b.waitingFish;
+        barText(choice === 'spot' ? b.moved.text : w.text);
+        if (choice === 'wait') effectToast(w.text, w.say || w.text);
+        app.persist();
+      });
+    } else if (e.stage === 'gone') {
+      barText(e.moved ? b.moved.text : b.gone.text);
+      effectToast(e.moved ? b.moved.text : b.gone.text, e.moved ? (b.moved.say || b.moved.text) : (b.gone.say || b.gone.text));
+      effectToast(b.fact.text, b.fact.say || b.fact.text);
+    }
+  }
+  function chooseBear() {
+    return new Promise((resolve) => {
+      const row = $('#bait-row'), b = MOMENTS.bear;
+      const mk = (id, emoji, label, note) => {
+        const btn = h('button', { class: 'bait-btn', 'data-bear': id, 'data-sfx': '', 'aria-label': `${label}: ${note}` },
+          h('span', { class: 'bait-emoji', 'aria-hidden': 'true' }, emoji), h('span', {}, label), h('small', {}, note));
+        btn.addEventListener('click', () => { row.hidden = true; resolve(id); });
+        return btn;
+      };
+      row.replaceChildren(mk('wait', '⏳', b.wait.text, 'it will wander off'), mk('spot', '🎣', b.spot.text, 'a new pool'));
+      row.hidden = false;
+    });
   }
 
   // ----- the old iron the dog brings (§1.1) and the store -----

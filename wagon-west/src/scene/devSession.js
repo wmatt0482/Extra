@@ -12,8 +12,14 @@ const FISH = {
   'white-sturgeon': { waters: { snake: 0.25, columbia: 0.05 }, in: [48, 84], lb: [12, 16], fight: { reelS: 6.0, pull: 0.06, every: [1.6, 2.4], wob: 0.8 }, help: true },
   'redband-trout': { waters: { blue: 1 }, in: [8, 16], lb: [3, 5], fight: { reelS: 2.0, pull: 0.12, every: [1.0, 1.6], wob: 0.6 }, help: false },
   'chinook-salmon': { waters: { columbia: 1 }, in: [24, 40], lb: [5, 8], fight: { reelS: 3.2, pull: 0.12, every: [1.2, 1.8], wob: 0.7 }, help: false },
+  // v1.7
+  'mountain-whitefish': { waters: { bear: 0.7, snake: 0.7, columbia: 0.5 }, in: [10, 20], lb: [4, 5], fight: { reelS: 1.8, pull: 0.10, every: [1.2, 1.9], wob: 0.6 }, help: false },
+  'northern-pikeminnow': { waters: { columbia: 0.6 }, in: [10, 24], lb: [5, 6], fight: { reelS: 2.4, pull: 0.11, every: [1.3, 2.0], wob: 0.7 }, help: false },
+  'largescale-sucker': { waters: { columbia: 0.5 }, in: [12, 24], lb: [4, 5], fight: { reelS: 2.2, pull: 0.10, every: [1.5, 2.2], wob: 0.7 }, help: false },
+  'green-sunfish': { waters: { kansas: 0.3, platte: 0.25 }, in: [3, 8], lb: [3, 4], fight: { reelS: 1.2, pull: 0.08, every: [1.6, 2.4], wob: 0.6 }, help: false },
+  'sacramento-perch': { waters: { sacramento: 0.8 }, in: [6, 12], lb: [4, 5], fight: { reelS: 1.6, pull: 0.09, every: [1.4, 2.1], wob: 0.6 }, help: false },
 };
-export const WATER_IDS = ['kansas', 'platte', 'sweetwater', 'creek', 'bear', 'snake', 'blue', 'columbia'];
+export const WATER_IDS = ['kansas', 'platte', 'sweetwater', 'creek', 'bear', 'snake', 'blue', 'columbia', 'sacramento'];
 
 export function devFight(species, rand, junk = false) {
   const F = FISH[species] || FISH['channel-catfish'];

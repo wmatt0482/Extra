@@ -8,7 +8,7 @@
 
 /** The plain-number counters v1.4 adds to J.totals (ensureJourney defaults each on an older save). */
 export const V14_COUNTERS = ['noseFinds', 'chases', 'chasesCalled', 'snakes', 'berries', 'fetchThrows', 'treats', 'fishCaught', 'fishOff',
-  'fishJunk', 'sturgeon', 'skipThrows', 'dustDevils', 'hatsCaught', 'hatsAll', 'meteorsTapped', 'questsDone', 'factsHeard'];
+  'fishJunk', 'sturgeon', 'skipThrows', 'dustDevils', 'hatsCaught', 'hatsAll', 'meteorsTapped', 'questsDone', 'factsHeard', 'rocksFlipped', 'bearsSeen', 'bearWaits', 'bearMoves'];
 
 const clone = (x) => (x == null ? x : JSON.parse(JSON.stringify(x)));
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);

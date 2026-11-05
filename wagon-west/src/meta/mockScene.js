@@ -520,6 +520,13 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
       const runCast = () => {
         if (S.mini !== m) return;
         const c = casts[m.i], pl = plan[m.i % Math.max(1, plan.length)] || {};
+        // v1.7: the bear at the fishing hole: it arrives, the app is asked (stage 'ask') and answers with fishingBear('wait' | 'spot'); then 'gone' and the cast goes on
+        if (o.bear && (o.bear.at | 0) === m.i && !m.bearDone) {
+          m.bearDone = true; m.phase = 'bear';
+          emit('fishBear', { i: m.i, stage: 'arrive', kind: o.bear.kind === 'berries' ? 'berries' : 'fishing' });
+          miniTimer = setTimeout(() => { if (S.mini !== m) return; m.waitBear = true; emit('fishBear', { i: m.i, stage: 'ask', kind: o.bear.kind }); if (script().bear === 'wait' || script().bear === 'spot') m.bearChoice(script().bear); }, shotMs());
+          return;
+        }
         if (pl.hook === false) { m.phase = 'away'; emit('fishMiss', { i: m.i }); miniTimer = setTimeout(next, shotMs()); return; }
         m.phase = 'fight'; emit('fishHook', { i: m.i }); emit('fishPhase', { i: m.i, phase: 'reel' });
         const style = pl.fight || 'land';
@@ -533,6 +540,13 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
         miniTimer = setTimeout(() => finish(fs), shotMs());
         return true;
       };
+      m.bearChoice = (choice) => {
+        if (!m.waitBear) return false;
+        m.waitBear = false; const moved = choice === 'spot';
+        emit('fishBear', { i: m.i, stage: moved ? 'move' : 'wait', kind: o.bear.kind });
+        miniTimer = setTimeout(() => { if (S.mini !== m) return; emit('fishBear', { i: m.i, stage: 'gone', moved, kind: o.bear.kind }); m.phase = 'cast'; runCast(); }, shotMs());
+        return true;
+      };
       m.retry = (i, fight) => { if (!m.waitRetry || i !== m.i || m.retried[i] || !fight) return false; m.retried[i] = true; m.retryFight = fight; return true; };
       m.resume = runCast;
       kick(); miniTimer = setTimeout(runCast, shotMs());
@@ -540,6 +554,13 @@ export function createScene(canvas, { onEvent = () => {}, reducedMotion = false 
     },
     fishingRetry(i, fight) { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.retry(i, fight)); },
     fishingHelp() { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.help()); },
+    fishingBear(choice) { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.bearChoice && S.mini.bearChoice(choice)); },
+    // v1.7: flip the rocks: 'rock' { i, kind } per flip (__mockScript.rocks = n flipped, default all), then 'rocksEnd' { flipped }
+    startRocks(o = {}) {
+      const list = (Array.isArray(o.rocks) && o.rocks.length ? o.rocks : [{ kind: 'worm' }, { kind: 'beetle' }, { kind: 'mud' }, { kind: 'cricket' }, { kind: 'crawdad' }]).slice(0, 5);
+      const want = Number.isFinite(Number(script().rocks)) ? Math.max(0, Math.min(list.length, Number(script().rocks))) : list.length;
+      return sequence('rocks', want + 1, (i, m) => (i < want ? (m.flipped = i + 1, emit('rock', { i, kind: list[i].kind })) : (stopMini(), emit('rocksEnd', { flipped: want }))), { flipped: 0 });
+    },
     dogBark() { if (!S.party.dog) return false; S.barkT = 30; kick(); setTimeout(() => emit('bark', {}), 0); return true; },
     setReducedMotion(on) { reducedMotion = !!on; draw(); },
     play() {

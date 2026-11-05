@@ -24,9 +24,11 @@ import { devSession } from './devSession.js';
 import { TAU, OUT, mulberry32, clamp, lerp, ease, shade, mkCanvas, drawText, rrect } from './util.js';
 import { BIOMES, biomeOf, paint } from './biomes.js';
 import { drawPerson, personLook, drawDog } from './sprites.js';
-import { drawSpecies, drawJunk, speciesOf, SPECIES, JUNK_NAMES } from './sprites14.js';
+import { drawSpecies, drawJunk, speciesOf, SPECIES, JUNK_NAMES, drawBear } from './sprites14.js';
 import { drawSplash } from './sprites12.js';
 
+// v1.7 the bear at the fishing hole: it walks in (T_BEAR_IN), the app asks, then it stays a while (T_BEAR_WAIT) and wanders off (T_BEAR_OUT); a new spot takes T_BEAR_MOVE
+const T_BEAR_IN = 2.6, T_BEAR_WAIT = 3.4, T_BEAR_OUT = 2.4, T_BEAR_MOVE = 1.8, T_BEAR_AUTO = 25;
 const T_CAST = 0.75, T_BITE = 1.15, T_LAND = 1.7, T_OFF = 1.5, T_AWAY = 1.0, T_SPLASH = 2.3, T_STEAL = 3.2, T_END = 1.0, T_HELP_AUTO = 9;
 const WATER_LOOK = {
   kansas: { base: '#b79a68', mid: '#a98b5c', deep: '#97794d', ink: '#e8d6b0', clear: false },
@@ -37,6 +39,15 @@ const WATER_LOOK = {
   snake: { base: '#3797a2', mid: '#2c868f', deep: '#217480', ink: '#d2f0ee', clear: false },
   blue: { base: '#5db0bc', mid: '#4a9eab', deep: '#3a8b98', ink: '#dcf3f6', clear: true },
   columbia: { base: '#2f8aa0', mid: '#257890', deep: '#1c667c', ink: '#d0eaf0', clear: false },
+  // v1.7: the v1.5 waters that had no look of their own (they fell back to the Kansas brown)
+  bigblue: { base: '#b09a6c', mid: '#a28b5e', deep: '#907a4e', ink: '#e8d6b0', clear: false },
+  green: { base: '#6bb4a2', mid: '#58a290', deep: '#47907e', ink: '#d9f1e8', clear: true },
+  humboldt: { base: '#a9a070', mid: '#9a9264', deep: '#88804f', ink: '#e6e0b8', clear: false },
+  truckee: { base: '#5fb2cc', mid: '#4ba2bc', deep: '#3a8ea8', ink: '#dff4fb', clear: true },
+  sacramento: { base: '#6f9a78', mid: '#5f8a68', deep: '#4f7a58', ink: '#dbeedd', clear: false },
+  willamette: { base: '#5a9c8c', mid: '#4a8c7c', deep: '#3a7a6a', ink: '#d6efe6', clear: false },
+  umpqua: { base: '#58b0a4', mid: '#469e92', deep: '#388c80', ink: '#d8f3ee', clear: true },
+  rogue: { base: '#4fb2b8', mid: '#3ea2a8', deep: '#2f9096', ink: '#d6f4f4', clear: true },
 };
 const BASE_S = { 'channel-catfish': 1.25, 'hornyhead-chub': 1.4, 'cutthroat-trout': 1.3, 'white-sturgeon': 1.2, 'redband-trout': 1.3, 'chinook-salmon': 1.32,
   'mountain-whitefish': 1.3, 'northern-pikeminnow': 1.25, 'largescale-sucker': 1.25, 'green-sunfish': 1.7, 'sacramento-perch': 1.6 };
@@ -51,6 +62,7 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
   const N = casts.length;
   const cameo = o.cameo && typeof o.cameo === 'object' ? { at: o.cameo.at | 0, kind: o.cameo.kind === 'steal' ? 'steal' : 'splash', done: false } : null;
   const helper = o.helper && typeof o.helper === 'object' ? o.helper : null;
+  const bear = o.bear && typeof o.bear === 'object' ? { at: o.bear.at | 0, kind: o.bear.kind === 'berries' ? 'berries' : 'fishing', done: false } : null;
   const wantDog = !!o.dog && !!(hooks && hooks.hasDog && hooks.hasDog());
   const rand = mulberry32((seed ^ 0xf15c) >>> 0 || 1);
   const pal = BIOMES[biomeOf(biomeId)];
@@ -63,6 +75,7 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
     landed: 0, lb: 0, retried: {}, retryFight: null, helpT: 0, spin: 0, wobFlash: 0,
     texts: [], rings: [], splashes: [], hintCool: 0, firstFight: true, offPos: null, landPos: null,
     ended: false, done: false, bg: null, bgKey: '', cameoT: 0, cameoPhase: '',
+    rod: { b: 0.22, v: 0 }, bearStage: null, bt: 0, barked: false, spot: 0, scatter: [],
   };
   const lenOf = (c) => { const sp = speciesOf(c.species); return sp; };
 
@@ -70,6 +83,7 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
     const c = casts[F.ci];
     const r = mulberry32((seed * 31 + F.ci * 977 + 5) >>> 0 || 1);
     F.cur = { c, u: 0.5 + r() * 0.28, v: 0.66 + r() * 0.14, fight: keepFight || c.fight };
+    if (F.spot > 0) { F.cur.u = 0.34 + ((F.spot * 0.37 + r() * 0.1) % 0.4); F.cur.v = 0.68 + ((F.spot * 0.11) % 0.1); }      // a new pool (after the bear)
     F.waitT = Math.max(0.4, +c.biteS || 2);
     F.nibbleAt = r() < 0.6 ? F.waitT * (0.3 + r() * 0.35) : -1;
     F.nibbled = false; F.fs = null; F.phase = 'cast'; F.pt = 0; F.lastFish = null;
@@ -134,6 +148,50 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
     return true;
   };
 
+  // ---- the bear (v1.7): the app answers fishBear 'ask' with 'wait' or 'spot'
+  F.bearChoice = (choice) => {
+    if (F.phase !== 'bear' || F.bearStage !== 'ask') return false;
+    F.bearStage = choice === 'spot' ? 'move' : 'wait'; F.bt = 0;
+    emit({ type: 'fishBear', i: F.ci, stage: F.bearStage, kind: bear.kind });
+    return true;
+  };
+  function bearResume(moved) {
+    const kind = bear.kind;
+    F.bearStage = null; F.bt = 0; F.scatter = [];
+    if (moved) F.spot++;
+    F.phase = 'cast'; newCast(F.cur.fight);
+    emit({ type: 'fishBear', i: F.ci, stage: 'gone', moved: !!moved, kind });
+  }
+  // ---- the rod: how far it bends (0 straight … 1 deeply bent) for this moment
+  function rodTarget() {
+    const fs = F.fs, ph = F.phase;
+    if (ph === 'fight' && fs) {
+      const c = F.cur.c, frac = c.kind === 'fish' ? clamp(0.25 + (+c.lb || 3) / 16, 0.3, 1) : 0.3;      // a bigger fish bends it more
+      const down = F.ptr || F.keyDown;
+      return (down ? 0.56 + 0.4 * frac : 0.42 + 0.34 * frac) + (fs.wobble ? 0.07 : 0);
+    }
+    if (ph === 'bite') return 0.3;
+    if (ph === 'land' || ph === 'off') return 0;                 // it springs back straight
+    return 0.22;                                                  // a gentle bend at rest
+  }
+  const MAXA = 1.55;
+  // the rod as a curve from the hand: an angle that grows along it (more bend toward the tip); a tremble (yellow) and a hard quiver (red) ride on top
+  function rodShape(L, t, rm) {
+    const k = L.k, hx = L.W * 0.06, hy = L.H + 6 * k, tp0 = tip(L);
+    const len = Math.hypot(tp0.x - hx, tp0.y - hy), a0 = Math.atan2(tp0.y - hy, tp0.x - hx) - 0.22 * MAXA * 0.5;
+    const fs = F.fs, hook = F.phase === 'fight' && fs;
+    let shake = 0;
+    if (!rm && hook) { if (fs.wobble) shake = Math.sin(t * 55) * 0.075 + Math.sin(t * 37) * 0.04; else if (fs.warn) shake = Math.sin(t * 46) * 0.022; }
+    const bend = F.rod.b + shake, N = 20, pts = [{ x: hx, y: hy, s: 0 }];
+    let x = hx, y = hy;
+    for (let i = 1; i <= N; i++) {
+      const s = i / N, a = a0 + bend * MAXA * Math.pow(s, 1.6) * 0.62;
+      x += Math.cos(a) * (len / N); y += Math.sin(a) * (len / N); pts.push({ x, y, s });
+    }
+    return { pts, tip: { x, y }, hx, hy };
+  }
+  F.rodState = (L) => { const r = rodShape(L, F.t, S.rm); return { bend: F.rod.b, target: rodTarget(), tip: r.tip, rest: tip(L) }; };
+
   // ---- update
   function stepFight(L, dt) {
     const down = F.ptr || F.keyDown;
@@ -181,10 +239,28 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
       if (F.pt >= T_CAST) { F.phase = 'wait'; F.pt = 0; ring(b.x, b.y); }
     } else if (ph === 'wait') {
       if (F.nibbleAt > 0 && F.pt >= F.nibbleAt && !F.nibbled) { F.nibbled = true; ring(b.x, b.y); }
-      if (cameo && !cameo.done && cameo.kind === 'splash' && wantDog && F.ci === cameo.at && F.pt >= F.waitT * 0.45) {
+      if (bear && !bear.done && F.ci === bear.at && F.pt >= F.waitT * 0.4) {
+        bear.done = true; F.phase = 'bear'; F.bt = 0; F.bearStage = 'arrive'; F.barked = false;
+        const sp = speciesOf(F.cur.c.species), tp0 = bobPos(L); void sp;
+        for (let i = 0; i < 5; i++) F.scatter.push({ x: tp0.x + (i - 2) * 14 * L.k, y: tp0.y + 6 * L.k, a: (i - 2) * 0.5 + (i % 2 ? 0.2 : -0.2), t: 0 });
+        for (let i = 0; i < 3; i++) ring(tp0.x + (i - 1) * 10 * L.k, tp0.y, i * 0.1);
+        text(L, 'A BEAR!', 'FAR ACROSS THE WATER', L.W * 0.5, L.H * 0.3, '#ffd23f');
+        sfx('splash');
+        emit({ type: 'fishBear', i: F.ci, stage: 'arrive', kind: bear.kind });
+      } else if (cameo && !cameo.done && cameo.kind === 'splash' && wantDog && F.ci === cameo.at && F.pt >= F.waitT * 0.45) {
         cameo.done = true; F.phase = 'splash'; F.pt = 0;
         emit({ type: 'fishCameo', i: F.ci, kind: 'splash' });
       } else if (F.pt >= F.waitT) { F.phase = 'bite'; F.pt = 0; F.nibbled = false; ring(b.x, b.y); ring(b.x, b.y, 0.15); }
+    } else if (ph === 'bear') {
+      F.bt += dt;
+      const st = F.bearStage;
+      if (st === 'arrive') {
+        if (F.bt >= 1.0 && !F.barked) { F.barked = true; if (wantDog) { if (hooks && hooks.bark) hooks.bark(); const dh = dogHome(L); text(L, 'WOOF!', '', dh.x + 30 * L.k, dh.y - 70 * L.k, '#ffffff'); } }
+        if (F.bt >= T_BEAR_IN) { F.bearStage = 'ask'; F.bt = 0; emit({ type: 'fishBear', i: F.ci, stage: 'ask', kind: bear.kind }); }
+      } else if (st === 'ask') { if (F.bt >= T_BEAR_AUTO) F.bearChoice('wait'); }
+      else if (st === 'wait') { if (F.bt >= T_BEAR_WAIT) { F.bearStage = 'leave'; F.bt = 0; emit({ type: 'fishBear', i: F.ci, stage: 'leave', kind: bear.kind }); } }
+      else if (st === 'leave') { if (F.bt >= T_BEAR_OUT) bearResume(false); }
+      else if (st === 'move') { if (F.bt >= T_BEAR_MOVE) bearResume(true); }
     } else if (ph === 'splash') {
       if (F.pt >= 0.78 && !F.splashed) { F.splashed = true; splash(b.x, b.y, 34 * L.k); ring(b.x, b.y); ring(b.x, b.y, 0.2); sfx('splash'); text(L, 'SPLASH!', 'THE DOG JUMPED IN!', b.x, b.y - 70 * L.k, '#ffffff'); }
       if (F.pt >= T_SPLASH) { F.splashed = false; F.phase = 'cast'; F.pt = 0; }   // the cast is reset, free
@@ -217,6 +293,12 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
       F.ended = true; F.done = true;
       emit({ type: 'fishingEnd', landed: F.landed, casts: N });
     }
+    // the rod: a spring toward the bend the moment asks for; it overshoots a little when the fish lets go (a spring-back), none under reduced motion
+    const rt = rodTarget();
+    if (S.rm) { F.rod.b = rt; F.rod.v = 0; }
+    else { const h2 = Math.min(dt, 0.03); F.rod.v += ((rt - F.rod.b) * 150 - F.rod.v * 8.5) * h2; F.rod.b += F.rod.v * h2; }
+    for (const q of F.scatter) q.t += dt;
+    F.scatter = F.scatter.filter((q) => q.t < 1.5);
     for (const r of F.rings) r.t += dt;
     F.rings = F.rings.filter((r) => r.t < 1);
     for (const s of F.splashes) s.t += dt;
@@ -261,7 +343,7 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
     c.beginPath(); c.moveTo(0, y0 + 6 * k); for (let x = 0; x <= W; x += 10) c.lineTo(x, y0 + 4 * k + Math.sin(x * 0.03) * 3 * k); c.lineTo(W, y0 - 2); c.lineTo(0, y0 - 2); c.closePath();
     c.fillStyle = pal.near; c.fill(); c.lineWidth = 2; c.strokeStyle = shade(pal.near, -0.35); c.stroke();
     for (let i = 0; i < 12; i++) paint.grass(c, r() * W, y0 + 8 * k, (12 + r() * 10) * k, '#4f7a3a', 2.2 * k);
-    if (water === 'columbia' || water === 'blue' || water === 'creek' || water === 'bear') for (let i = 0; i < 7; i++) paint.pine(c, (i + 0.5) * (W / 7) + (r() - 0.5) * 30 * k, y0 + 6 * k, (22 + r() * 8) * k, (34 + r() * 24) * k, '#2f6a3a', OUT, 2 * k);
+    if (['columbia', 'blue', 'creek', 'bear', 'green', 'truckee', 'willamette', 'umpqua', 'rogue'].includes(water)) for (let i = 0; i < 7; i++) paint.pine(c, (i + 0.5) * (W / 7) + (r() - 0.5) * 30 * k, y0 + 6 * k, (22 + r() * 8) * k, (34 + r() * 24) * k, '#2f6a3a', OUT, 2 * k);
     // the near bank (bottom left) and cattails
     c.beginPath(); c.moveTo(0, H + 2); c.lineTo(0, H * 0.8); c.quadraticCurveTo(W * 0.2, H * 0.78, W * 0.34, H + 2); c.closePath();
     c.fillStyle = pal.ground; c.fill(); c.lineWidth = 2.4; c.strokeStyle = shade(pal.ground, -0.4); c.stroke();
@@ -327,7 +409,8 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
   }
 
   F.draw = (c, L, t, rm) => {
-    const k = L.k, tp = tip(L), b = bobPos(L), ph = F.phase;
+    const k = L.k, b = bobPos(L), ph = F.phase;
+    const rod = rodShape(L, t, rm), tp = rod.tip;                 // the line starts at the bent tip
     const fs = F.fs, hook = ph === 'fight' && fs;
     const cur = F.cur.c;
     // ripples and splashes
@@ -339,27 +422,38 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
     }
     for (const s of F.splashes) { c.globalAlpha = clamp(1 - s.t / 0.9, 0, 1); drawSplash(c, s.x, s.y, s.r, s.t / 0.9); }
     c.globalAlpha = 1;
+    if (F.phase === 'bear') drawBearScene(c, L, t, rm);
     // where the bobber is this frame (the 1.0 look)
     let bx = b.x, by = b.y, under = 0;
     if (ph === 'cast') { const p = ease(F.pt / T_CAST); bx = tp.x + (b.x - tp.x) * p; by = tp.y + (b.y - tp.y) * p - Math.sin(Math.PI * p) * 70 * k; }
     else if (ph === 'wait' || ph === 'splash') { by += Math.sin(t * 3) * (rm ? 0.6 : 1.6) * k; if (F.nibbled && F.pt - F.nibbleAt < 0.3) by += 3 * k; }
     else if (ph === 'bite') { under = Math.min(1, F.pt / 0.12); by += under * 7 * k + Math.sin(t * 30) * (rm ? 0.5 : 1.5) * k; }
     else if (ph === 'away') by += Math.max(0, 1 - F.pt * 3) * 6 * k;
-    const showBob = ph === 'cast' || ph === 'wait' || ph === 'bite' || ph === 'away' || ph === 'splash';
+    const showBob = ph === 'cast' || ph === 'wait' || ph === 'bite' || ph === 'away' || ph === 'splash' || ph === 'bear';
     // the fish on the line (during the fight) and its state
     let fp = null, state = 'calm';
     if (hook) { fp = fishPos(L); state = fs.wobble ? 'wobble' : fs.warn ? 'warn' : 'calm'; }
-    const down = F.ptr || F.keyDown;
-    // the rod bends with the pull
-    const bend = hook ? (state === 'wobble' ? 22 : down ? 15 : 8) * k * (rm ? 0.6 : 1) + (state === 'wobble' && !rm ? Math.sin(t * 40) * 3 * k : 0) : ph === 'bite' ? 6 * k : 0;
-    const hx = L.W * 0.06, hy = L.H + 6 * k;
-    c.lineCap = 'round';
-    c.beginPath(); c.moveTo(hx, hy); c.quadraticCurveTo((hx + tp.x) / 2 + bend * 0.6, (hy + tp.y) / 2 - bend * 0.2, tp.x, tp.y + bend);
-    c.lineWidth = 8 * k; c.strokeStyle = OUT; c.stroke(); c.lineWidth = 4.6 * k; c.strokeStyle = '#a0612b'; c.stroke();
+    // the rod: a curve from the hand that bends with the fight (rodShape / rodTarget): a gentle bend at rest, deep while reeling a hooked fish (more for a
+    // bigger one), a tremble on the yellow, a hard quiver on the red, and it springs back straight when the fish lands or wiggles off
+    const bend = 0, down = F.ptr || F.keyDown;
+    c.lineCap = 'round'; c.lineJoin = 'round';
+    const wAt = (sv) => (9.4 - 6.2 * sv) * k;
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 1; i < rod.pts.length; i++) {
+        const a = rod.pts[i - 1], q = rod.pts[i];
+        c.beginPath(); c.moveTo(a.x, a.y); c.lineTo(q.x, q.y);
+        c.lineWidth = pass ? wAt(q.s) : wAt(q.s) + 3.4 * k; c.strokeStyle = pass ? (i % 5 === 0 ? '#c98a4a' : '#a0612b') : OUT; c.stroke();
+      }
+    }
+    for (const sv of [0.4, 0.62, 0.84]) {                                  // the line guides
+      const q = rod.pts[Math.round(sv * (rod.pts.length - 1))];
+      c.beginPath(); c.arc(q.x, q.y - 3.4 * k, 2 * k, 0, TAU); c.lineWidth = 1.4 * k; c.strokeStyle = OUT; c.stroke();
+    }
     // the reel (it turns while you hold)
-    const rx = hx + (tp.x - hx) * 0.18, ry = hy + (tp.y - hy) * 0.18;
+    const rq = rod.pts[3], rx = rq.x, ry = rq.y;
     c.beginPath(); c.arc(rx, ry, 8 * k, 0, TAU); c.fillStyle = '#8f9aa6'; c.fill(); c.lineWidth = 1.8 * k; c.strokeStyle = OUT; c.stroke();
     c.beginPath(); for (let i = 0; i < 3; i++) { const a = F.spin + i * TAU / 3; c.moveTo(rx, ry); c.lineTo(rx + Math.cos(a) * 7 * k, ry + Math.sin(a) * 7 * k); } c.lineWidth = 1.6 * k; c.strokeStyle = OUT; c.stroke();
+    c.lineJoin = 'miter';
     // the line
     let ex = bx, ey = by;
     const lineCol = state === 'wobble' ? '#ff3b30' : state === 'warn' ? '#ffd23f' : 'rgba(255,255,255,0.92)';
@@ -442,6 +536,38 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
     }
     c.globalAlpha = 1;
   };
+  // ---- the bear at the fishing hole (v1.7): far bank only, small, fishing or eating berries; the fish dart away; it never comes near
+  function bearPose(L) {
+    const k = L.k, st = F.bearStage, bt = F.bt, W = L.W;
+    const xs = bear && bear.kind === 'berries' ? W * 0.8 : W * 0.84, off = W + 70 * k;
+    let x = xs, dir = -1, walk = false, vis = 1;
+    if (st === 'arrive') { x = lerp(off, xs, ease(clamp(bt / T_BEAR_IN, 0, 1))); walk = bt < T_BEAR_IN - 0.3; }
+    else if (st === 'leave') { x = lerp(xs, off, ease(clamp(bt / T_BEAR_OUT, 0, 1))); dir = 1; walk = true; }
+    else if (st === 'move') { x = lerp(xs, off, ease(clamp(bt / T_BEAR_MOVE, 0, 1))); dir = 1; walk = true; }
+    return { x, y: L.H * 0.52 + 9 * k, s: (L.H * 0.085) / 36, dir, walk, vis };
+  }
+  function drawBearScene(c, L, t, rm) {
+    const k = L.k, b = bobPos(L), bp = bearPose(L), kind = bear ? bear.kind : 'fishing';
+    // the fish dart away from the bobber
+    for (const q of F.scatter) {
+      const u = clamp(q.t / 1.3, 0, 1), dist = (30 + ease(u) * 120) * k;
+      c.globalAlpha = clamp(1 - u, 0, 1) * 0.9;
+      drawSpecies(c, F.cur.c.kind === 'fish' ? F.cur.c.species : 'channel-catfish', q.x + Math.cos(q.a) * dist * 1.4, q.y + Math.sin(q.a) * dist * 0.35, k * 0.42, q.a * 0.6, t * 22, Math.cos(q.a) < 0 ? -1 : 1);
+    }
+    c.globalAlpha = 1;
+    if (kind === 'berries') {                                              // the berry bush the bear is eating from
+      const bx = L.W * 0.8 - 46 * k * 1.2, by = bp.y + 2 * k;
+      c.beginPath(); c.ellipse(bx, by - 14 * k, 30 * k, 18 * k, 0, 0, TAU); c.fillStyle = '#4f8a3e'; c.fill(); c.lineWidth = 2.2 * k; c.strokeStyle = OUT; c.stroke();
+      for (let i = 0; i < 9; i++) { c.beginPath(); c.arc(bx + Math.cos(i * 2.4) * 20 * k, by - 14 * k + Math.sin(i * 2.4) * 10 * k, 2.6 * k, 0, TAU); c.fillStyle = '#c0314a'; c.fill(); }
+    }
+    // ripples around its paws while it wades and fishes
+    if (kind === 'fishing' && !bp.walk) for (let i = 0; i < 2; i++) { const q = ((t * 0.9 + i * 0.5) % 1); c.globalAlpha = (1 - q) * 0.7; c.beginPath(); c.ellipse(bp.x + 6 * k * bp.dir, bp.y + 7 * k, (10 + q * 26) * k, (2.4 + q * 6) * k, 0, 0, TAU); c.lineWidth = 1.8 * k; c.strokeStyle = '#ffffff'; c.stroke(); }
+    c.globalAlpha = 1;
+    // head: lowered to the water or the bush, with a slow dip every few seconds
+    const dip = rm ? 0.5 : (Math.sin(t * 1.9) + 1) / 2;
+    const head = bp.walk ? 0.1 : kind === 'berries' ? -0.55 : -0.2 - dip * 0.55;
+    drawBear(c, bp.x, bp.y, bp.s, rm ? 0 : t * (bp.walk ? 5 : 0), head, bp.dir);
+  }
   function ring2(c, x, y, k, t) {
     const q = (t * 3) % 1;
     c.beginPath(); c.ellipse(x, y + 10 * k, (20 + q * 40) * k, (6 + q * 12) * k, 0, 0, TAU); c.lineWidth = 2.4 * k; c.strokeStyle = '#ffffff'; c.stroke();
@@ -510,7 +636,7 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
   F.state = () => ({
     kind: 'fishing', cast: Math.min(N, F.ci + 1), casts: N, left: Math.max(0, N - F.ci - (F.phase === 'end' ? 0 : 0)), landed: F.landed,
     phase: F.phase, fight: fightPhase(), progress: F.fs ? F.fs.progress : 0, wobble: !!(F.fs && F.fs.wobble), warn: !!(F.fs && F.fs.warn),
-    species: F.cur && F.cur.c.species || null, junk: F.cur && F.cur.c.junk || null,
+    species: F.cur && F.cur.c.species || null, junk: F.cur && F.cur.c.junk || null, bear: F.phase === 'bear' ? F.bearStage : null, spot: F.spot, rod: Math.round(F.rod.b * 1000) / 1000,
   });
   F.summary = () => ({ landed: F.landed, casts: Math.min(N, F.ci + (F.phase === 'end' ? 0 : 0)), lb: F.lb });
   F.debug = (L) => ({

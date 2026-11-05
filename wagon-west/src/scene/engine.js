@@ -56,6 +56,8 @@
 //   scene.ambient('crack' | 'grizzly' | 'wolves' | 'fireglow' | 'pronghorn') → { type: 'ambientEnd', kind }
 //   scene.startFetch({ seed, throws }) · scene.fetchBring({ item, emoji }) → bool → fetchThrow { n, dist } · fetchBack { n } · fetchEnd { throws, best }
 //   scene.startHoppers({ seed, n }) → hopper { caught } · hoppersEnd { caught }
+//   scene.startRocks({ seed, rocks: [{ i, kind }] }) → rock { i, kind } · rocksEnd { flipped } (v1.7: flip rocks for bait; kind = worm | beetle | cricket | crawdad | mud | arrowhead)
+//   scene.fishingBear('wait' | 'spot') → true: the bear at the fishing hole (v1.7; startFishing({ …, bear: { at, kind } }) → fishBear { i, stage })
 //   scene.startStones({ seed, throws, bonus }) → skip { n } · stone { throw, skips } · stonesEnd { throws, best }
 //   scene.startMeteors({ seed, n }) → meteor { n } · meteorsEnd { tapped, of }
 //   scene.startDustDevil({ seed, hats: [{ id, hat, color }] }) → hat { id, caught } · dustDevilEnd { caught, of }
@@ -109,6 +111,7 @@ import { createDogRun, createDogWarn, createChase } from './dog14.js';
 import { createAmbient } from './ambient.js';
 import { createFetch, createHoppers } from './camp14.js';
 import { createStones, createMeteors, createDustDevil } from './play14.js';
+import { createRocks } from './rocks17.js';
 import { drawFrame, updateFx, createFx, burst, wxOf, WEATHERS } from './render.js';
 
 const CRITTERS = {
@@ -565,6 +568,8 @@ export function createScene(canvas, opts = {}) {
     fetchBring(o = {}) { return !!(S.mini && S.mini.kind === 'fetch' && S.mini.bring(o || {})); },
     startHoppers(o = {}) { return start14(createHoppers(o || {}, emit, S, hooks14)); },
     startStones(o = {}) { return start14(createStones(o || {}, emit, S, hooks14)); },
+    startRocks(o = {}) { return start14(createRocks(o || {}, emit, S, hooks14)); },        // v1.7: flip rocks by the water for bait
+    fishingBear(choice) { return !!(S.mini && S.mini.kind === 'fishing' && S.mini.bearChoice(choice)); },     // v1.7: 'wait' | 'spot'
     startMeteors(o = {}) { return start14(createMeteors(o || {}, emit, S, hooks14)); },
     startDustDevil(o = {}) { return start14(createDustDevil(o || {}, emit, S, hooks14)); },
     startFishing(o = {}) { return start14(createFishing(o || {}, emit, S, hooks14, S.biome)); },

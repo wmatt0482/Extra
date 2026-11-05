@@ -141,6 +141,9 @@ export function fightOutcome(fight, presses = [], { maxMs = 180000, stepMs = 10 
   return { phase: s.phase, progress: s.progress, ms: t, state: s };
 }
 
+/** The bear at the fishing hole: one session in BEAR.oneIn (about), never two in a row, on the 2nd or 3rd cast, fishing or eating berries. */
+export const BEAR = { oneIn: 8, atCast: [1, 2], kinds: ['fishing', 'berries'] };
+
 // ---- the session ----
 function weightedPick(r, items, weightOf) {
   let total = 0;
@@ -208,7 +211,27 @@ export function fishingSession(J, { bait = 'worms', rescue = false, rand } = {})
   }
   let cameo = null;
   if (J.dog && r() < FISHING.cameoChance) cameo = { at: Math.floor(r() * FISHING.casts), kind: r() < 0.5 ? 'splash' : 'steal' };
-  return { id, water, waterName: WATER_NAMES[water] || 'the river', bait: chosen, rescue: !!rescue, casts, cameo, results: {}, lb: 0 };
+  const bear = planBear(J, r, { rescue });                 // (drawn last, so every older draw of a seeded session is unchanged)
+  return { id, water, waterName: WATER_NAMES[water] || 'the river', bait: chosen, rescue: !!rescue, casts, cameo, bear, results: {}, lb: 0 };
+}
+
+/** Decide a session's bear (called by fishingSession after its other draws; `rand` is the session's stream): null, or { at: cast index, kind }.
+ *  About one session in BEAR.oneIn, never right after a session that had one (J.moments.bearLast); a safety-net session never has one. */
+export function planBear(J, r, { rescue = false } = {}) {
+  if (!J.moments || typeof J.moments !== 'object') J.moments = {};
+  if (rescue) return null;
+  const was = !!J.moments.bearLast;
+  const roll = r(), at = BEAR.atCast[Math.floor(r() * BEAR.atCast.length)], kind = BEAR.kinds[Math.floor(r() * BEAR.kinds.length)];
+  const bear = !was && roll < 1 / (BEAR.oneIn - 1) ? { at, kind } : null;     // (1 in 7 after a session without one, so about 1 in 8 overall)
+  J.moments.bearLast = !!bear;
+  return bear;
+}
+/** The child chose ('wait' | 'spot'): counted (J.totals.bearsSeen, bearWaits, bearMoves). Nothing is lost either way. */
+export function bearChoice(J, choice) {
+  const T = J.totals || (J.totals = {});
+  T.bearsSeen = (T.bearsSeen | 0) + 1;
+  if (choice === 'spot') T.bearMoves = (T.bearMoves | 0) + 1; else T.bearWaits = (T.bearWaits | 0) + 1;
+  return { choice: choice === 'spot' ? 'spot' : 'wait' };
 }
 
 /** A fish wiggled off the hook: the cast is cast again once (retries < FISHING.retriesPerCast) with a fresh fight, so a session always has its
