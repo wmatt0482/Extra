@@ -13,7 +13,8 @@
 // drops him) → both devices change Mia's words while offline → after sync no word record is lost (merge on 409).
 // Asserts no console errors (expected 404 / 409 / offline answers from /api/family are allowed). Screenshots the
 // Family sync tab states.
-import { execSync, spawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
+import { startStaticServer, watchdog } from './serve.mjs';
 import { mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -33,12 +34,11 @@ async function loadPlaywright() {
     return import(pathToFileURL(path.join(g, 'playwright', 'index.mjs')).href);
   }
 }
+// v3.9.1 (tools/serve.mjs): a server this tool starts is stopped by its own pid on every way out (success, failure, a
+// crash, a signal, the SMOKE_TIMEOUT_MS watchdog); one already on 8080 is used only if it serves Spell Jump, never stopped.
 async function ensureServer() {
-  const up = async () => { try { return (await fetch(BASE + '/index.html')).ok; } catch (_) { return false; } };
-  if (await up()) return null;
-  const srv = spawn('python3', ['-m', 'http.server', '8080'], { cwd: root, stdio: 'ignore' });
-  for (let i = 0; i < 50 && !(await up()); i++) await new Promise((r) => setTimeout(r, 100));
-  return srv;
+  if (process.env.BASE_URL) return null;
+  return startStaticServer({ cwd: root, port: 8080 });
 }
 
 const failures = [];
@@ -193,6 +193,7 @@ async function mockRun(page) {
 }
 
 async function main() {
+  watchdog('sync-smoke');
   const srv = await ensureServer();
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch();
@@ -414,8 +415,8 @@ async function main() {
     check(ttsLog.length > 0 && ttsLog.every((r) => r.path === '/api/tts/status' && r.status === 200), `natural voice: devices in a family asked /api/tts/status only (${ttsLog.length}×, no key on this server: the device voice stays)`);
     check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.slice(0, 5).join(' | ') : ''}`);
   } finally {
-    await browser.close();
-    if (srv) srv.kill();
+    await browser.close().catch((e) => console.error('browser.close', e));
+    if (srv) await srv.stop();
   }
   console.log(`\nscreenshots: ${SHOTS}`);
   console.log(`requests: ${apiLog.length} (${['GET', 'PUT', 'POST'].map((m) => `${m} ${apiLog.filter((r) => r.method === m).length}`).join(', ')}; 409s ${apiLog.filter((r) => r.status === 409).length}; offline ${apiLog.filter((r) => r.status === 'offline').length})`);

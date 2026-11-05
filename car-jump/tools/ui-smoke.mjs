@@ -30,7 +30,8 @@
 // changing sw.js VERSION reloads the page once on the picker (not on the first install), and with the spell panel
 // open it only shows "Update ready, restarting soon" and reloads when the run is left; index.html and src/main.js
 // are network-first (an edit shows up on the next load while the worker controls the page).
-import { execSync, spawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
+import { startStaticServer, watchdog } from './serve.mjs';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -53,12 +54,11 @@ async function loadPlaywright() {
   }
 }
 
+// v3.9.1 (tools/serve.mjs): a server this tool starts is stopped by its own pid on every way out (success, failure, a
+// crash, a signal, the SMOKE_TIMEOUT_MS watchdog); one already on 8080 is used only if it serves Spell Jump, never stopped.
 async function ensureServer() {
-  const up = async () => { try { return (await fetch(BASE + '/index.html')).ok; } catch (_) { return false; } };
-  if (await up()) return null;
-  const srv = spawn('python3', ['-m', 'http.server', '8080'], { cwd: root, stdio: 'ignore' });
-  for (let i = 0; i < 50 && !(await up()); i++) await new Promise((r) => setTimeout(r, 100));
-  return srv;
+  if (process.env.BASE_URL) return null;
+  return startStaticServer({ cwd: root, port: 8080 });
 }
 
 const failures = [];
@@ -1426,9 +1426,8 @@ async function selfUpdate(browser) {
   const PORT = 8093, B = `http://localhost:${PORT}`;
   const dir = mkdtempSync(path.join(os.tmpdir(), 'spell-jump-sw-'));
   cpSync(root, dir, { recursive: true, filter: (src) => !/[\\/](\.git|node_modules)([\\/]|$)/.test(src) });
-  const srv = spawn('python3', ['-m', 'http.server', String(PORT)], { cwd: dir, stdio: 'ignore' });
-  const up = async () => { try { return (await fetch(B + '/index.html')).ok; } catch (_) { return false; } };
-  for (let i = 0; i < 50 && !(await up()); i++) await new Promise((r) => setTimeout(r, 100));
+  // its own copy on its own port: a server already there is someone else's (an error, not reused)
+  const srv = await startStaticServer({ cwd: dir, port: PORT, check: async () => false });
   const swFile = path.join(dir, 'sw.js');
   const bump = (v) => writeFileSync(swFile, readFileSync(swFile, 'utf8').replace(/const VERSION = '[^']+';/, `const VERSION = '${v}';`));
   const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, hasTouch: true });
@@ -1498,8 +1497,8 @@ async function selfUpdate(browser) {
     check(await page.evaluate(() => !!navigator.serviceWorker.controller && !!document.querySelector('meta[name="nf-marker"]') && window.__nfMain === 1), 'network-first: edited index.html and src/main.js served fresh under the worker');
     check(errors.length === 0, `no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
   } finally {
-    await ctx.close();
-    srv.kill();
+    await ctx.close().catch(() => {});
+    await srv.stop();
     rmSync(dir, { recursive: true, force: true });
   }
 }
@@ -1816,6 +1815,7 @@ async function cloudVoiceTest(browser, layout) {
   await ctx.close();
 }
 
+watchdog('ui-smoke');
 const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
@@ -2167,8 +2167,8 @@ try {
   failures.push('exception: ' + e.message);
   console.error(e);
 } finally {
-  await browser.close();
-  if (srv) srv.kill();
+  await browser.close().catch((e) => console.error('browser.close', e));
+  if (srv) await srv.stop();
 }
 console.log(`\nScreenshots: ${SHOTS}`);
 if (failures.length) { console.log(`\nFAILED (${failures.length}):\n- ` + failures.join('\n- ')); process.exit(1); }

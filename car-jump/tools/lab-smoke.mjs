@@ -13,6 +13,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { onCleanup, watchdog } from './serve.mjs';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const SHOTS = process.env.SHOTS_DIR || path.join(os.tmpdir(), 'spell-jump-lab-shots');
@@ -405,7 +406,13 @@ async function realEngine(browser, base) {
   await page.context().close();
 }
 
+// v3.9.1: the server is this process's own (an in-process node http server on a free port, never 8080, never python):
+// it is closed with its open connections on every way out (tools/serve.mjs: success, failure, a crash, a signal, the
+// SMOKE_TIMEOUT_MS watchdog), so nothing is left listening after the run.
+watchdog('lab-smoke');
 const { srv, base } = await serve();
+const closeServer = () => { try { srv.closeAllConnections(); } catch (_) { /* older node */ } srv.close(); };
+const offCleanup = onCleanup(closeServer);
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 try {
@@ -415,8 +422,9 @@ try {
   failures.push('exception: ' + (e && e.stack ? e.stack : e));
   console.log('  ✗ exception', e);
 } finally {
-  await browser.close();
-  srv.close();
+  await browser.close().catch((e) => console.error('browser.close', e));
+  offCleanup();
+  closeServer();
 }
 console.log(`\n${failures.length ? failures.length + ' FAILED' : 'ALL LAB SMOKE CHECKS PASSED'}  (screenshots: ${SHOTS})`);
 if (failures.length) { console.log(failures.map((f) => '  - ' + f).join('\n')); process.exit(1); }

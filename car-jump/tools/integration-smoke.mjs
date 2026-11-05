@@ -18,7 +18,8 @@
 // first utterance, 3 s afterwards), per word: the next word tries again until 3 failures in a row. "perf" part: city run with a 9-letter word at 4x CPU throttle; game code per frame avg and p95.
 // "Words before each race" (default 2) is set to 1 for these players: the paths above are single-word paths
 // (the 2-word set is covered by ui-smoke). No console errors, no horizontal overflow, a screenshot of every state.
-import { execSync, spawn } from 'node:child_process';
+import { execSync } from 'node:child_process';
+import { startStaticServer, watchdog } from './serve.mjs';
 import { mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -40,12 +41,11 @@ async function loadPlaywright() {
     return import(pathToFileURL(path.join(g, 'playwright', 'index.mjs')).href);
   }
 }
+// v3.9.1 (tools/serve.mjs): a server this tool starts is stopped by its own pid on every way out (success, failure, a
+// crash, a signal, the SMOKE_TIMEOUT_MS watchdog); one already on 8080 is used only if it serves Spell Jump, never stopped.
 async function ensureServer() {
-  const up = async () => { try { return (await fetch(BASE + '/index.html')).ok; } catch (_) { return false; } };
-  if (await up()) return null;
-  const srv = spawn('python3', ['-m', 'http.server', '8080'], { cwd: root, stdio: 'ignore' });
-  for (let i = 0; i < 50 && !(await up()); i++) await sleep(100);
-  return srv;
+  if (process.env.BASE_URL) return null;
+  return startStaticServer({ cwd: root, port: 8080 });
 }
 
 const failures = [];
@@ -831,6 +831,7 @@ async function runPerf(browser) {
   await ctx.close();
 }
 
+watchdog('integration-smoke');
 const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
@@ -843,8 +844,8 @@ try {
   failures.push('exception: ' + e.message);
   console.error(e);
 } finally {
-  await browser.close();
-  if (srv) srv.kill();
+  await browser.close().catch((e) => console.error('browser.close', e));
+  if (srv) await srv.stop();
 }
 console.log(`\nScreenshots: ${SHOTS}`);
 if (failures.length) { console.log(`\nFAILED (${failures.length}):\n- ` + failures.join('\n- ')); process.exit(1); }

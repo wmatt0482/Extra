@@ -2,7 +2,8 @@
 // Usage: node tools/engine-smoke.mjs   (serves the repo on :8080 itself if nothing is listening)
 // Env: SHOTS_DIR (screenshot folder), BASE_URL (default http://localhost:8080)
 import { createRequire } from 'node:module';
-import { spawn, execSync } from 'node:child_process';
+import { execSync } from 'node:child_process';
+import { startStaticServer, watchdog } from './serve.mjs';
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -25,15 +26,12 @@ async function loadPlaywright() {
 }
 const { chromium } = await loadPlaywright();
 
+// v3.9.1 (tools/serve.mjs): the server this tool starts is stopped by its own pid on every way out; one already on 8080
+// is used only if it serves Spell Jump, never stopped.
 let server = null;
 async function ensureServer() {
-  try { const res = await fetch(BASE + '/dev.html'); if (res.ok) return; } catch {}
-  server = spawn('python3', ['-m', 'http.server', '8080'], { cwd: ROOT, stdio: 'ignore' });
-  for (let i = 0; i < 50; i++) {
-    await new Promise((r) => setTimeout(r, 100));
-    try { const res = await fetch(BASE + '/dev.html'); if (res.ok) return; } catch {}
-  }
-  throw new Error('could not start http server');
+  if (process.env.BASE_URL) return;
+  server = await startStaticServer({ cwd: ROOT, port: 8080 });
 }
 
 const failures = [];
@@ -102,6 +100,7 @@ const sumOK = (s) => {
 };
 const RATINGS = ['S', 'A', 'B', 'C', 'D'];
 
+watchdog('engine-smoke');
 await ensureServer();
 const browser = await chromium.launch();
 try {
@@ -549,8 +548,8 @@ try {
     await context.close();
   }
 } finally {
-  await browser.close();
-  if (server) server.kill();
+  await browser.close().catch((e) => console.error('browser.close', e));
+  if (server) await server.stop();
 }
 console.log(failures.length ? `\n${failures.length} FAILURE(S)` : '\nALL PASSED');
 console.log('screenshots in', SHOTS);
