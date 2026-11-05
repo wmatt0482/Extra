@@ -678,7 +678,7 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.6\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.7\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
   // v1.4: "Far-off sounds on the trail" (default on) turns the four far facts off: it is the journey's J.opts.farSounds too
   const far0 = await J(page, () => ({ on: document.querySelector('#opt-far-sounds').getAttribute('aria-checked'), label: document.querySelector('#opt-far-sounds').getAttribute('aria-label') }));
   check(far0.on === 'true' && /^Far-off sounds on the trail/.test(far0.label), `Options: "${far0.label}" is On by default`);
@@ -796,7 +796,7 @@ async function sideGames(page, layout, grab) {
   mid = (await W(page)).journey.milesDone;
   const camp0 = await J(page, () => ({ acts: [...document.querySelectorAll('.camp-act')].map((b) => b.dataset.act).filter((a) => !['wait', 'fetch', 'hoppers', 'stones', 'stars'].includes(a)),   // (v1.4's games come and go with the dog and the water)
     back: document.querySelector('#camp-back').textContent.trim(), stop: !document.querySelector('#camp-stop').hidden, backdrop: window.__wagonWest.scene.getState().backdrop, day: window.__wagonWest.save.journey.day, tokens: window.__wagonWest.save.journey.tokens }));
-  check(camp0.acts.join() === 'fish,hunt,cards,tales,rest' && camp0.back === 'Back to the trail' && camp0.stop && camp0.backdrop === 'camp', `"Camp" on the trail opens Camp on the camp backdrop: ${camp0.acts.join(', ')} · "${camp0.back}" · "Stop for today"`);
+  check(camp0.acts.join() === 'fish,hunt,cards,tales,rest,rocks' && camp0.back === 'Back to the trail' && camp0.stop && camp0.backdrop === 'camp', `"Camp" on the trail opens Camp on the camp backdrop: ${camp0.acts.join(', ')} · "${camp0.back}" · "Stop for today"`);
   check((await musicNow(page)).mood === 'camp', 'music: the camp mood at camp');
   await audit(page, layout.insets, 'camp');
   await shot(page, layout, '21-camp');
@@ -2571,7 +2571,7 @@ async function funFishing(page, layout, grab) {
   await freshToasts(page);
   let before = await runBait('worms');
   const baits = await J(page, () => [...document.querySelectorAll('.bait-btn')].map((b) => ({ id: b.dataset.bait, off: b.disabled, h: b.getBoundingClientRect().height, w: b.getBoundingClientRect().width })));
-  check(baits.length === 3 && baits.every((b) => b.h >= 44 && b.w >= 44) && !baits.find((b) => b.id === 'worms').off && !baits.find((b) => b.id === 'hoppers').off && !baits.find((b) => b.id === 'spoon').off, `a row of three big bait buttons (${baits.map((b) => b.id + (b.off ? ' off' : '')).join(', ')})`);
+  check(baits.length >= 3 && ['worms', 'hoppers', 'spoon'].every((id) => baits.some((b) => b.id === id)) && baits.every((b) => b.h >= 44 && b.w >= 44) && !baits.find((b) => b.id === 'worms').off && !baits.find((b) => b.id === 'hoppers').off && !baits.find((b) => b.id === 'spoon').off, `a row of big bait buttons (the three, and a tin of each critter caught under the rocks) (${baits.map((b) => b.id + (b.off ? ' off' : '')).join(', ')})`);
   await shot(page, layout, '46-fun-bait');
   await audit(page, layout.insets, 'the bait row');
   await page.click('.bait-btn[data-bait="worms"]');
