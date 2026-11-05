@@ -135,7 +135,7 @@ import { createResults } from './ui/results.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
 import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
-import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts, V15 } from './meta/voiceTexts.js';
+import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts, V15, dampLine as dampText } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
 const VERSION = '1.7.0';
@@ -371,8 +371,20 @@ async function boot() {
     foodHint() {
       const J = save.journey;
       if (!J || !JA.foodToNextFort) return '';
-      try { const f = JA.foodToNextFort(J); return f && f.lb ? `You'll need about ${money(f.lb)} lb to reach ${f.stop}${f.enough ? ': you have enough' : ''}.` : ''; } catch (_) { return ''; }
+      try {
+        const f = JA.foodToNextFort(J);
+        if (!f || !f.lb) return '';
+        // v1.7.1: the wagon carries LOAD.foodLb; a stretch that needs more than that is a rations (or a hunt) decision, and the hint says so
+        const cap = foodCap();
+        return f.lb > cap ? `You'll need about ${money(f.lb)} lb to reach ${f.stop}, but the wagon carries only ${money(cap)} lb: plenty rations or a hunt on the way will stretch it.`
+          : `You'll need about ${money(f.lb)} lb to reach ${f.stop}${f.enough ? ': you have enough' : ''}.`;
+      } catch (_) { return ''; }
     },
+    /** v1.7.1: the wagon's food limit (LOAD.foodLb) and the room left under it, in pounds. */
+    foodCap: () => foodCap(),
+    foodRoom() { const J = save.journey; return J ? foodRoomOf(J) : 0; },
+    /** v1.7.1: this stop's damp flour line ({ text, say }) for the store's side, or null. */
+    dampNote() { const J = save.journey, d = J && J.trip && J.trip.damp; return d && num(d.lb) > 0 ? dampText(d) : null; },
     /** How many units of a store good the wagon holds: { n, lb } (food in sacks / sides / bags by their pounds). */
     have: haveOf,
     // ----- v1.2: supplies, skills, the forecast, the family map (SPEC "v1.2" §1, §2, §4, §5) -----
@@ -534,6 +546,9 @@ async function boot() {
     const t = Math.max(0, num(J.food)), a = Math.round(t * 0.5), b = Math.round(t * 0.3);
     return { flour: a, bacon: b, beans: t - a - b, other: 0 };
   }
+  /** v1.7.1: the most food the wagon carries (the journey's LOAD.foodLb; an older journey module: no limit) and the room left under it. */
+  const foodCap = () => (JA.LOAD && Number.isFinite(JA.LOAD.foodLb) ? JA.LOAD.foodLb : Infinity);
+  const foodRoomOf = (J) => (typeof JA.foodRoom === 'function' ? JA.foodRoom(J) : Math.max(0, foodCap() - num(J.food)));
   /** Days of food at the current rations (the journey's foodDays(J), else worked out from foodNeeded). */
   function foodDaysOf(J) {
     try { if (typeof JA.foodDays === 'function') { const d = JA.foodDays(J); if (Number.isFinite(d)) return Math.max(0, Math.floor(d)); } } catch (e) { console.warn('[WagonWest] foodDays', e); }
@@ -593,7 +608,7 @@ async function boot() {
     const party = Array.isArray(J.party) && J.party.length ? J.party : (J.companions || []).map((id) => ({ id, mood: J.mood }));
     return {
       wagonName: J.wagonName || '',
-      food: { kinds: foodKindsOf(J), days: foodDaysOf(J), stop, stopDays },
+      food: { kinds: foodKindsOf(J), days: foodDaysOf(J), stop, stopDays, lb: num(J.food), cap: foodCap() },      // (v1.7.1: lb and the wagon's limit, cap)
       goods: goodsOf(J), blankets: blanketsOf(J), limp: !!J.limp,
       animals: { name: animalName(), n: A.n, tired: A.tired, isTired: A.tired > 70 },
       companions: party.map((p) => ({ id: p.id, mood: p.mood || J.mood || 'happy' })),
@@ -621,6 +636,7 @@ async function boot() {
     if (!text) return null;
     const t = h('div', { class: 'toast fx', role: 'status' }, text);
     if (screen === 'camp') t.dataset.scope = 'camp';          // (v1.5 playtest U1: a line made at camp goes with camp)
+    else if (screen === 'stop') t.dataset.scope = 'stop';     // (v1.7.1, the 1.5 playtest's "ugly" 11: a stop's line, like a person's "Traded 12 trade tokens ...", goes when the stop's screens change)
     toaster.add(t, 4800, { say });          // (the line is said when the toast is shown, behind whatever is playing)
     return t;
   }
@@ -1058,9 +1074,11 @@ async function boot() {
     const price = Math.max(1, Math.round(num(good.price) || 1));
     if (item === 'yoke' && animalsOf(J).n >= 4) return { ok: false, reason: 'have' };
     if (num(J.cash) < price) return { ok: false, reason: 'poor', need: price - Math.floor(num(J.cash)) };
+    if (num(good.lb) > 0 && foodRoomOf(J) < num(good.lb)) return { ok: false, reason: 'full' };      // v1.7.1: the wagon carries LOAD.foodLb of food
     const wasLimp = !!J.limp;
     let r = { ok: false };
     try { r = JA.buy(J, { item, qty: 1, price }); } catch (e) { console.warn('[WagonWest] buy', e); }
+    if (r && !r.ok && r.reason === 'full') return { ok: false, reason: 'full' };
     if (r && r.ok) {
       Audio.cash();
       if (wasLimp && !J.limp) effectToast('The new part mends the wagon: no more limping.', 'The new part mends the wagon. No more limping.');
@@ -1097,9 +1115,13 @@ async function boot() {
     let r = { ok: false };
     // (the purse is checked again here: the child may have spent it while the panel was open, and the goods never cost more than the cash box holds)
     const canPay = price > 0 ? Math.floor(num(J.cash) / price) : qty;
-    const qtyPaid = Math.min(qty, canPay);
+    const unitLb = num(good.lb) > 0 && (meta.item || item) === (good.item || good.id) ? num(good.lb) : 0;
+    const canCarry = unitLb > 0 ? Math.floor(foodRoomOf(J) / unitLb) : qty;      // v1.7.1: and never more food than the wagon carries
+    const qtyPaid = Math.min(qty, canPay, canCarry);
     try { r = qtyPaid >= 1 ? JA.buy(J, { item: meta.item || item, qty: qtyPaid, price }) : { ok: false }; } catch (e) { console.warn('[WagonWest] buy', e); }
-    if (r && r.ok) { Audio.cash(); toast(`${qtyPaid} × ${good.name} in the wagon`); } else toast('Not enough cash for that many: try another good');
+    const got = r && r.ok ? num(r.qty) || qtyPaid : 0;
+    if (r && r.ok) { Audio.cash(); toast(got < qty && canCarry < canPay ? `The wagon can't carry more: ${got} × ${good.name} in the wagon` : `${got} × ${good.name} in the wagon`); }
+    else toast(canCarry < 1 || (r && r.reason === 'full') ? "The wagon can't carry more food" : 'Not enough cash for that many: try another good');
     app.persist(); refreshCash();
   }
 
@@ -1478,6 +1500,7 @@ async function boot() {
     let offer = null;
     try { offer = JA.tradeOffer(J, { nation: ev.nation || (nation && nation.id) }); } catch (e) { console.warn('[WagonWest] tradeOffer', e); }
     // the guard only fires when the wagon holds nothing tradable at all (a fallback offer is always affordable)
+    if (offer && offer.kind === 'full') { toast("The wagon can't carry more food: a friendly visit"); return; }      // (v1.7.1: goods to trade, no room for the food)
     if (!offer || offer.kind === 'none') { toast('Nothing to trade this time: a friendly visit'); return; }
     const pick = ladderPick('x');
     let p = null;
@@ -1515,9 +1538,13 @@ async function boot() {
     document.documentElement.classList.remove('in-mini', 'in-hunt');
     const J = save.journey;
     const lb = Math.max(0, Math.round(total != null ? num(total) : m.lb));
-    try { if (m.kind === 'hunt') JA.applyHunt(J, { meatLb: lb }); else JA.applyFish(J, { fishLb: lb }); } catch (e) { console.warn('[WagonWest] apply mini', e); }
+    let r = null;
+    try { r = m.kind === 'hunt' ? JA.applyHunt(J, { meatLb: lb }) : JA.applyFish(J, { fishLb: lb }); } catch (e) { console.warn('[WagonWest] apply mini', e); }
     app.persist();
-    toast(lb ? `+${lb} lb of food for the wagon${m.leads ? ` (${m.leads === 1 ? 'a good lead' : m.leads + ' good leads'}!)` : ''}` : 'Nothing this time. The trail has more');
+    // v1.7.1: the wagon carries LOAD.foodLb of food; what does not fit is left on the trail ("leave the rest for the next party")
+    const kept = r && Number.isFinite(r.foodLb) ? r.foodLb : lb;
+    if (r && r.full) toast(kept ? `+${kept} lb of food for the wagon. The wagon can't carry more; leave the rest for the next party` : "The wagon can't carry more; leave the rest for the next party");
+    else toast(lb ? `+${lb} lb of food for the wagon${m.leads ? ` (${m.leads === 1 ? 'a good lead' : m.leads + ' good leads'}!)` : ''}` : 'Nothing this time. The trail has more');
     m.resolve(lb);
   }
   $('#mini-done').addEventListener('click', () => {
@@ -1575,6 +1602,8 @@ async function boot() {
       if (STOP_CARDS[leg.id]) dropCard(STOP_CARDS[leg.id]);
       if (save.trip) { save.trip.look = true; app.persist(); }
     }
+    // ---- v1.7.1: damp flour: a heavy wagon sets part of its pile aside as the stop opens (before the store, so the flour bought here stays dry) ----
+    dampLine();
     // ---- v1.5: a fork, before the stop's other scenes: the explainer, the question, an equal button for every way (it also settles the food plan for the store) ----
     if (!(await askFork(leg)) || stale()) return;
     // ---- v1.6 (The Lab): a choice moment at this stop (a shortcut, a guide), asked like a fork; both ways arrive ----
@@ -1622,6 +1651,16 @@ async function boot() {
       }
     }
     return finishLeg(leg);
+  }
+  /** v1.7.1: the damp flour of this stop (journey dampAtStop, once a stop), as an effect line on the stop; the store repeats it beside the food. */
+  function dampLine() {
+    const J = save.journey;
+    let d = null;
+    try { d = typeof JA.dampAtStop === 'function' ? JA.dampAtStop(J) : null; } catch (e) { console.warn('[WagonWest] dampAtStop', e); }
+    if (!d || !(num(d.lb) > 0)) return;
+    app.persist(); refreshCash();
+    const t = dampText(d);
+    effectToast(t.text, t.say);
   }
   // ---- v1.5: the fork panel and the diggings, as the stop runs them ----
   /** The fork at this stop, if any: resolves false when the child left (the choice stays pending: the title says "A choice at Fort Hall"). */
@@ -2507,10 +2546,10 @@ async function boot() {
     S('dogRun', 'berries', { emoji: '🍑' });
     if (sceneHas('dogRun')) await waitScene('dogBack', 9000);
     S('dogBark');
-    const lb = num(nose.foodLb) || 20;
+    const lb = Number.isFinite(Number(nose.foodLb)) ? num(nose.foodLb) : 20;      // (v1.7.1: a full wagon took none of them)
     const text = `${d.name} runs off barking and comes back by a patch of wild plums. Everyone picks!`;
     await showCard({ kicker: 'On the trail', title: `${d.name} found berries!`, text, say: text, tone: 'bonus', button: 'Yum!' });
-    toast(`+${lb} lb of plums for the wagon`);
+    toast(lb > 0 ? `+${lb} lb of plums for the wagon` : "The wagon can't carry more; leave the rest for the next party");
     dropCard(nose.card ? cardOf(nose.card) : plumCard());
     app.persist();
   }

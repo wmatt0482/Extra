@@ -3758,6 +3758,15 @@ console.log('\nv1.7.1 food: the carrying limit, the damp flour, the food cap');
     const E = mk(PLAIN, 45); let guard = 0; while (!E.done && E.legIndex < legList().length - 1 && guard++ < 40) { E.milesDone = legList()[E.legIndex].miles; arrive(E); nextLeg(E); }
     fill(E, 600); E.milesDone = legList()[E.legIndex].miles; const last = arrive(E); assert.ok(last && !last.damp && E.food === 600, 'not at the end');
   });
+  test('damp flour is taken as the stop opens (dampAtStop, once), so the flour bought at that stop\'s store is never what got damp; arrive() reports the same', () => {
+    const J = mk(PLAIN, 46); fill(J, 560); J.cash = 500;
+    J.milesDone = legList()[J.legIndex].miles; J.trip.arrived = true;
+    const d = S.dampAtStop(J); assert.ok(d && d.lb > 0);
+    const after = J.food; assert.deepEqual(S.dampAtStop(J), d, 'once a stop'); assert.equal(J.food, after);
+    buy(J, { item: 'flour', qty: 1 }); const bought = J.food;
+    const res = arrive(J); assert.deepEqual(res.damp, d); assert.equal(J.food, bought, 'the new sack stays dry');
+    const N = mk(PLAIN, 47); fill(N, 300); assert.equal(S.dampAtStop(N), null, 'not before the stop');
+  });
   test('the food cap over whole journeys: a kid who hunts, fishes and trades at every chance and buys twenty sacks at every store never carries more than 600 lb, never goes below 0, and arrives', () => {
     for (const route of ['emigrant', 'gold-road']) for (let seed = 1; seed <= 12; seed++) {
       const J = createJourney({ route, seed: 900 + seed, companions: PLAIN, journeyN: 2, year: 1848 }); J.cash = 5000;

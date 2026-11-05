@@ -52,6 +52,8 @@ import { FISH, JUNK, BAITS, WATERS } from '../content/fish.js';
 import { MOMENTS, DOG_LINES } from '../content/moments.js';
 import { QUESTS } from '../content/quests.js';
 import { TRAIL_FACTS } from '../content/trailFacts.js';
+import { numberWords } from '../journey/problems.js';
+import { DAMP, LOAD } from '../journey/economy.js';
 
 export const TEST_LINE = 'Wagon West is ready to roll.';
 export const COACH_TEXT = 'The wagon rolls on its own. Pace and rations are your two dials. At each mile marker, type one fact. Tap the food box to look in the wagon. Stop any time: the journey waits right here.';
@@ -87,6 +89,19 @@ export const FIXED_LINES = ['Now you: type the answer', 'Now you: type the answe
   'The raft is across!', 'You held them!', 'Pfft, dust everywhere!', COACH_TEXT, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, 'Your turn!', 'Good game!',
   ...Object.values(V15).filter((t) => t !== V15.TOLL_IOU_BUTTON), FORK_FIRST, ROCK_ASK, ROCK_DONE, STOP_LINE];
 
+/** v1.7.1: the damp flour line for { lb, flour } (journey dampAtStop): kid-safe (set aside, never spoiled), the pounds in words for the voice. */
+export function dampLine({ lb = 0, flour = 0 } = {}) {
+  const n = Math.round(Number(lb) || 0), w = numberWords(n);
+  return Number(flour) > 0
+    ? { text: `The flour got damp under the heavy load, so ${n} lb was set aside.`, say: `The flour got damp under the heavy load, so ${w} pounds was set aside.` }
+    : { text: `The wagon was piled high, so ${n} lb of the extra food was set aside.`, say: `The wagon was piled high, so ${w} pounds of the extra food was set aside.` };
+}
+/** Every damp flour line the journey can make (DAMP.min to a quarter of the most above DAMP.over, in DAMP.step pounds), for the rest of the list. */
+export function dampTexts() {
+  const out = [];
+  for (let lb = DAMP.min; lb <= Math.ceil((LOAD.foodLb - DAMP.over) * DAMP.share); lb += DAMP.step) out.push(dampLine({ lb, flour: 1 }).say, dampLine({ lb, flour: 0 }).say);
+  return out;
+}
 /** A line as the voice says it ("$56" → "56 dollars"; no doubled full stop after a comma or a full stop). */
 export const spoken = (text) => spokenLine(text).replace(/([.!?])\.$/, '$1').replace(/[,;:]\.$/, '.');
 
@@ -296,7 +311,7 @@ export function collectVoiceTexts({ legId = LEGS[0].id, plan = null, farmName = 
   const leg = uniq(legTexts(legId, { names, animal, playerName, dogName, farmName }));
   const facts = uniq(markerFacts);
   const nextT = next ? uniq([...legTexts(next.id, { letters: false }), ...previewTexts(next.id)]) : [];            // (v1.6: the cliffhanger at this leg's results is about the next leg)
-  const rest = uniq([...trailTexts(), ...longTrailTexts(), ...ALL_LEGS.flatMap((l) => legTexts(l.id, { letters: false })), ...allPreviewTexts(), ...funTexts()]);
+  const rest = uniq([...trailTexts(), ...longTrailTexts(), ...ALL_LEGS.flatMap((l) => legTexts(l.id, { letters: false })), ...allPreviewTexts(), ...funTexts(), ...dampTexts()]);
   return { first, leg, facts, next: nextT, rest, ordered: uniq([...first, ...leg, ...facts, ...nextT, ...rest]) };
 }
 /** Everything that can be known ahead, across the whole trail (what the audit compares the UI's strings with). */

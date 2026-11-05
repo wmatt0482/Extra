@@ -88,6 +88,7 @@ export function createWagonPanel(app) {
       h('div', { class: 'wg-sec-h' }, 'Food'),
       h('p', { class: 'wg-days', id: 'wg-days' }, words),
       f.stop && days != null && !enough ? h('p', { class: 'wg-note', id: 'wg-short' }, 'Not quite enough yet. Fishing, hunting, trading or the next fort will help.') : null,
+      Number.isFinite(f.cap) && f.lb >= f.cap - 20 ? h('p', { class: 'wg-note', id: 'wg-full' }, `The wagon is full: it carries ${f.cap} lb of food.`) : null,      // (v1.7.1)
       h('div', { class: 'wg-stacks' }, ...foodStacks(f.kinds).map(stack)));
     // ----- the other goods -----
     const G = I.goods, B = I.blankets;

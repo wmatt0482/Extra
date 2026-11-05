@@ -790,16 +790,28 @@ export function arrive(J) {
   if (leg.dry && J.upgrades && J.upgrades.barrel) T.dryDrives++;
   const fx = TIER_FX[J.tier] || TIER_FX.rookie, last = J.legIndex >= legList().length - 1, dig = goldAt(J);
   const bonusCards = fx.bonusCards === 'every' ? 1 : fx.bonusCards === 'perfect' && stars.every(Boolean) ? 1 : 0;
-  // v1.7.1: damp flour (DAMP): a heavy wagon sets part of its pile aside at a stop, never the food the road ahead needs at full rations, never at the end of the trail
-  let damp = null;
-  if (!last && J.food > DAMP.over) {
-    const lb = dampLb(J.food, foodToNextFort({ ...J, rations: 'full' }).lb);
-    if (lb > 0) { const r = setAsideFood(J, lb); if (r.lb > 0) damp = { lb: r.lb, flour: r.flour }; }
-  }
+  const damp = dampAtStop(J);                               // v1.7.1 (the app asks for it as the stop opens, before the store; this is the same, once)
   t.result = { legId: leg.id, stars, cash, sticker, crate: crateFor(stars), ...(mended ? { mended: true } : {}), ...(bath ? { bath: true } : {}), ...(quest ? { quest } : {}),
     post: !!(leg.post || (leg.stop && leg.stop.kind === 'fort')), end: last ? siteOfLeg(leg.id) : null, bonusCards,
     tierTrophy: last ? (TIER_BY_ID[J.tier] || {}).trophy || null : null, gold: dig, fork: forkAt(J), choice: choiceAt(J), ...(damp ? { damp } : {}) };
   return t.result;
+}
+
+/** v1.7.1: damp flour (DAMP) at the stop the party has reached: a heavy wagon sets part of its pile aside, flour first, never the food the road ahead needs
+ *  at full rations (× DAMP.ahead) and never below DAMP.over, never at the end of the trail. Once a stop (J.trip.damp): the app calls it as the stop opens (before
+ *  the store, so flour just bought is never what got damp) and arrive() calls it too. → { lb, flour } (pounds set aside, of them flour) or null. */
+export function dampAtStop(J) {
+  ensureJourney(J);
+  const t = J.trip;
+  if (!t || !hasArrived(J)) return null;
+  if (t.damped) return t.damp || null;
+  t.damped = true; t.damp = null;
+  const last = J.legIndex >= legList().length - 1;
+  if (!last && J.food > DAMP.over) {
+    const lb = dampLb(J.food, foodToNextFort({ ...J, trip: { ...t, arrived: true }, rations: 'full' }).lb);
+    if (lb > 0) { const r = setAsideFood(J, lb); if (r.lb > 0) t.damp = { lb: r.lb, flour: r.flour }; }
+  }
+  return t.damp;
 }
 
 /** On to the next leg after an arrival (pays the arrival first if the app has not): returns the new leg, or null at

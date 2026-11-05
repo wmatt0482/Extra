@@ -9,6 +9,8 @@
 // v1.1: at a fort, "Race the mail wagon" (Fort Derby, once per fort visit: main.js app.runDerby) sits under the stats.
 // v1.4: the shiny fishing spoon is a row from Fort Kearny on (bought once: the row then says "on the wagon"), and while the dog's old
 // horseshoes are in the wagon, "Sell old horseshoes to the blacksmith: $N" sits under the stats (app.horseshoes() / sellHorseshoes()).
+// v1.7.1: the wagon carries 600 lb of food (journey LOAD.foodLb): the Food stat says the room left, a food the wagon has no room for is greyed
+// ("The wagon is full"), and "Work it out" never buys more than fits (main.js storeBuy).
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 
 /** One line on what each good is for (the foods say what a unit holds). */
@@ -39,16 +41,18 @@ export function createStore(app) {
     $('#store-title').textContent = `General Store · ${ctx.place}`;
     const goods = app.storeGoods(ctx.leg);
     const cash = Math.floor(Number(J.cash) || 0);
+    const room = typeof app.foodRoom === 'function' ? app.foodRoom() : Infinity;      // v1.7.1: the wagon carries app.foodCap() lb of food
     grid.replaceChildren(...goods.map((g) => {
       const id = g.item || g.id;
       const price = Math.max(1, Math.round(Number(g.price) || 1));
       const have = app.have(id);
       const once = id === 'yoke' || id === 'spoon';                    // (bought once)
       const owned = once && have.n >= 1;
-      const poor = !owned && cash < price;
+      const full = !owned && Number(g.lb) > 0 && room < Number(g.lb);           // (a food the wagon has no room for)
+      const poor = !owned && !full && cash < price;
       const haveText = once ? (owned ? 'on the wagon' : 'not yet') : have.n > 0 ? `${have.n}${id === 'arrows' ? ' arrows' : ''} in the wagon` : 'none in the wagon';
-      const cta = owned ? 'On the wagon' : poor ? `Earn $${money(price - cash)} more` : 'Tap to buy one';
-      const buy = h('button', { class: 'st-good' + (poor ? ' poor' : ''), 'data-good': id, 'data-sfx': '', disabled: busy || owned || poor, 'aria-label': `${g.name}, $${money(price)} a ${g.unit || 'one'}. ${haveText}. ${cta}.` },
+      const cta = owned ? 'On the wagon' : full ? 'The wagon is full' : poor ? `Earn $${money(price - cash)} more` : 'Tap to buy one';
+      const buy = h('button', { class: 'st-good' + (poor ? ' poor' : '') + (full ? ' full' : ''), 'data-good': id, 'data-sfx': '', disabled: busy || owned || poor || full, 'aria-label': `${g.name}, $${money(price)} a ${g.unit || 'one'}. ${haveText}. ${cta}.` },
         h('span', { class: 'st-emoji', 'aria-hidden': 'true' }, g.emoji || EMOJI[id] || '📦'),
         h('span', { class: 'st-name' }, g.name),
         h('span', { class: 'st-price' }, `$${money(price)} a ${g.unit || 'one'}`),
@@ -58,12 +62,13 @@ export function createStore(app) {
         if (busy) return;
         const r = app.storeTap(g);
         if (!r.ok && r.reason === 'poor') app.toast(`Earn $${money(r.need)} more first`);
+        else if (!r.ok && r.reason === 'full') app.toast("The wagon can't carry more food");
         paint();
       });
       const foot = h('div', { class: 'st-foot' }, h('p', { class: 'st-what' }, WHAT[id] || (g.lb ? `${g.lb} lb of food a ${g.unit}.` : '')));
       const row = h('div', { class: 'card st-row', 'data-row': id }, buy, foot);
       if (!once) {
-        const work = h('button', { class: 'btn btn-sm st-work', 'data-good': id, 'data-sfx': '', disabled: busy }, 'Work it out');
+        const work = h('button', { class: 'btn btn-sm st-work', 'data-good': id, 'data-sfx': '', disabled: busy || full }, 'Work it out');
         work.setAttribute('aria-label', `Work it out: the shopkeeper's question about ${(UNIT_PLURAL[g.unit] || g.name).toLowerCase()}, for a trade token`);
         work.addEventListener('click', async () => {
           if (busy) return;
@@ -77,9 +82,11 @@ export function createStore(app) {
     const days = app.foodDays();
     side.replaceChildren(...[
       h('div', { class: 'st-stat' }, h('span', {}, 'Cash'), h('b', { id: 'store-cash' }, `$${money(J.cash)}`)),
-      h('div', { class: 'st-stat' }, h('span', {}, 'Food'), h('b', { id: 'store-food' }, `${money(J.food)} lb`), h('small', {}, days != null ? `about ${days} days at ${J.rations || 'plenty'} rations` : '')),
+      h('div', { class: 'st-stat' }, h('span', {}, 'Food'), h('b', { id: 'store-food' }, `${money(J.food)} lb`), h('small', {}, days != null ? `about ${days} days at ${J.rations || 'plenty'} rations` : ''),
+        Number.isFinite(room) ? h('small', { id: 'store-room' }, room < 20 ? `the wagon is full (${money(app.foodCap())} lb)` : `room for ${money(room)} lb more (the wagon carries ${money(app.foodCap())})`) : null),
       h('div', { class: 'st-stat' }, h('span', {}, 'Trade tokens'), h('b', { id: 'store-tokens' }, String(J.tokens || 0)), h('small', {}, '"Work it out" earns one')),
       app.foodHint() ? h('p', { class: 'st-note', id: 'store-hint' }, app.foodHint()) : null,
+      typeof app.dampNote === 'function' && app.dampNote() ? h('p', { class: 'st-note', id: 'store-damp' }, app.dampNote().text) : null,
       h('p', { class: 'st-note' }, 'Tap a good to buy one. "Work it out" is the shopkeeper\'s question, for a token.'),
       ctx.derby && app.derbyReady() ? derbyButton() : null,
       horseshoeButton(),

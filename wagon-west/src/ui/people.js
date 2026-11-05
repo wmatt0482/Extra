@@ -91,6 +91,7 @@ export function createPeople(app) {
   /** A person's trade: the trade problem at the offer's rate (the multiplication asked is the offer's rate x count), then applyTrade. */
   async function personTrade(person, g, offer = offerFor(person, g)) {
     const J = app.save.journey;
+    if (offer && offer.kind === 'full') { app.effectToast("The wagon can't carry more food: a friendly visit."); return; }      // (v1.7.1: the wagon carries 600 lb of food)
     if (!offer || offer.kind === 'none') { app.effectToast('Nothing to trade this time: a friendly visit.'); return; }
     const pick = app.v2.ladderPick('x');
     const nation = { id: person.id, name: person.name, trade: { give: offer.give, giveName: offer.giveName, get: offer.get, getName: offer.getName, rate: offer.rate } };
@@ -104,13 +105,15 @@ export function createPeople(app) {
     let t = null;
     try { t = JA().applyTrade(J, p.meta || { giveN: p.giveN, getN: p.answer }); } catch (e) { console.warn('[WagonWest] applyTrade', e); }
     app.persist();
-    if (t && t.got) app.effectToast(`Traded ${t.gave} ${offer.giveName} for ${t.got} ${offer.getName}.`);
+    if (t && t.got) app.effectToast(`Traded ${t.gave} ${offer.giveName} for ${t.got} ${offer.getName}.${t.full ? " The wagon can't carry more." : ''}`);
+    else if (t && t.full) app.effectToast("The wagon can't carry more food: a friendly visit.");
   }
 
   async function gift(person, g) {
     if (g.kind === 'food') {
-      const lb = Math.round(Number(g.foodLb) || Number(g.lb) || 0);
-      app.effectToast(`+${lb} lb of ${g.what || 'food'}`, g.text);
+      const lb = Math.round(Number.isFinite(Number(g.foodLb)) ? Number(g.foodLb) : Number(g.lb) || 0);      // (v1.7.1: what fit in the wagon)
+      if (lb > 0 || !g.full) app.effectToast(`+${lb} lb of ${g.what || 'food'}${g.full ? ". The wagon can't carry more" : ''}`, g.text);
+      else app.effectToast("The wagon can't carry more; leave the rest for the next party", g.text);
     } else if (g.kind === 'card') {
       if (g.text) app.effectToast(g.text, g.text);
       app.v2.dropCard(g.card);
@@ -119,6 +122,7 @@ export function createPeople(app) {
       if (c === true && V) await app.v2.runProblem('parts', { title: person.name });
     } else if (g.kind === 'trade') {
       const offer = offerFor(person, g);
+      if (offer && offer.kind === 'full') { app.effectToast("The wagon can't carry more food: a friendly visit."); return; }      // (v1.7.1: the wagon carries 600 lb of food)
       if (!offer || offer.kind === 'none') { app.effectToast('Nothing to trade this time: a friendly visit.'); return; }
       const text = offerText(person, g, offer);          // the shown text and the spoken line are the same words
       const c = await app.v2.showCard({ kicker: person.name, title: 'A fair trade', text, say: text, sticker: { emoji: person.emoji, name: '' }, tone: 'trade', button: 'Trade', alt: 'No thanks' });
