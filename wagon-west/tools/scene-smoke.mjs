@@ -141,7 +141,7 @@ async function keySpace(page) {
 await ensureServer();
 const browser = await chromium.launch();
 try {
-  if (!process.env.V14_ONLY && !process.env.PERF_ONLY && !process.env.V15_ONLY && !process.env.V16_ONLY) { // V14_ONLY=1 runs only section 12 (the v1.4 scenes), PERF_ONLY=1 only the perf section
+  if (!process.env.V14_ONLY && !process.env.PERF_ONLY && !process.env.V15_ONLY && !process.env.V16_ONLY && !process.env.V17_ONLY) { // V14_ONLY=1 runs only section 12 (the v1.4 scenes), PERF_ONLY=1 only the perf section
   // ---- 1. API, ready, state shape ----
   {
     const { page, context, errors } = await open(browser);
@@ -1254,7 +1254,7 @@ try {
   }
 
   // ---- 12. v1.4 (Frodo and the river): the dog's vignettes, the trail facts, the camp and river games, fishing 2.0 ----
-  if (!process.env.PERF_ONLY && !process.env.V15_ONLY && !process.env.V16_ONLY) {
+  if (!process.env.PERF_ONLY && !process.env.V15_ONLY && !process.env.V16_ONLY && !process.env.V17_ONLY) {
     const API_14 = ['dogRun', 'dogWarn', 'startChase', 'chaseCall', 'ambient', 'startFetch', 'fetchBring', 'startHoppers', 'startStones', 'startMeteors', 'startDustDevil', 'startFishing', 'fishingRetry', 'fishingHelp'];
     const dbg = (page) => page.evaluate(() => window.__ww.scene.debugMini());
     const pointer = (page, x, y) => page.evaluate(([x, y]) => window.__ww.scene.debugInput('pointer', x, y), [x, y]);
@@ -1763,7 +1763,7 @@ try {
   }
 
   // ---- 13. v1.5 (The Long Trail): five biomes, 26 paintings, the dry stretch, decorations, gold, Laurel Hill, the voyage, the farm, the forks ----
-  if (!process.env.PERF_ONLY && !process.env.V14_ONLY && !process.env.V16_ONLY) {
+  if (!process.env.PERF_ONLY && !process.env.V14_ONLY && !process.env.V16_ONLY && !process.env.V17_ONLY) {
     const PORTRAIT = { width: 390, height: 844 }, LAND = { width: 844, height: 390 }, BIG = { width: 1280, height: 800 };
     const NEW_BIOMES = ['basin', 'sierra', 'siskiyou', 'goldcountry', 'sea'];
     const NEW_BACKDROPS = ['homestead', 'diggings', 'sea', 'fork'];
@@ -2340,7 +2340,7 @@ try {
 
 
   // ---- 14. v1.6 (The Lab): wagon covers, the leader's outfits, Trail Cheer, the previews ----
-  if (!process.env.PERF_ONLY && !process.env.V14_ONLY && !process.env.V15_ONLY) {
+  if (!process.env.PERF_ONLY && !process.env.V14_ONLY && !process.env.V15_ONLY && !process.env.V17_ONLY) {
     console.log('\n--- v1.6 (The Lab): covers, outfits, Trail Cheer, previews ---');
     const PORTRAIT = { width: 390, height: 844 }, LAND = { width: 844, height: 390 }, J = (a) => JSON.stringify(a);
     const COVERS = ['stripes', 'patchwork', 'sunflower', 'riverblue', 'starquilt', 'nightsky', 'goldthread'];
@@ -2436,8 +2436,214 @@ try {
     }
   }
 
+  // ---- 15. v1.7: the bending rod, flip rocks for bait, five more fish, the bear at the fishing hole ----
+  if (!process.env.PERF_ONLY && !process.env.V14_ONLY && !process.env.V15_ONLY && !process.env.V16_ONLY) {
+    console.log('\n--- v1.7: the rod bends, flip rocks, five more fish, the bear ---');
+    const PORTRAIT = { width: 390, height: 844 }, LAND = { width: 844, height: 390 }, J = (a) => JSON.stringify(a);
+    const dbg = (page) => page.evaluate(() => window.__ww.scene.debugMini());
+    const evs = (page, type) => page.evaluate((t) => window.__ww.events.filter((e) => e.type === t), type);
+    const clear = (page) => page.evaluate(() => { window.__ww.events.length = 0; });
+    const session = (page, o) => page.evaluate(async (o) => { const m = await import('/wagon-west/src/scene/devSession.js'); return m.devSession(o); }, o);
+    const API_17 = ['startRocks', 'fishingBear'];
+    // the rod: rest, mid-fight (more for a bigger fish), the yellow tremble, the red quiver, and the spring back
+    for (const [label, vp] of [['landscape', LAND], ['portrait', PORTRAIT]]) {
+      const { page, context, errors } = await open(browser, { biome: 'mountains', dog: 'brown' }, vp);
+      const miss = await page.evaluate((names) => names.filter((n) => typeof window.__ww.scene[n] !== 'function'), API_17);
+      check(miss.length === 0, `the scene has the v1.7 API: ${API_17.join(', ')} (missing: ${miss.join(',') || 'none'})`);
+      await page.evaluate(() => window.__ww.scene.pause());
+      const bends = {};
+      for (const sp of ['green-sunfish', 'white-sturgeon']) {
+        const s = await session(page, { seed: 4, water: sp === 'green-sunfish' ? 'kansas' : 'snake', casts: 2, forceSpecies: sp });
+        await page.evaluate(([s, sp]) => window.__ww.scene.startFishing({ seed: 4, water: sp === 'green-sunfish' ? 'kansas' : 'snake', casts: s.casts }), [s, sp]);
+        await step(page, 30);
+        const rest = await dbg(page);
+        if (sp === 'green-sunfish') await shot(page, `v17-rod-rest-${label}`);
+        const out = await page.evaluate(() => {
+          const sc = window.__ww.scene; const r = { calm: [], warn: [], wob: [], held: 0, restTipY: sc.debugMini().rodRest.y };
+          for (let i = 0; i < 3000; i++) { const m = sc.debugMini(); if (m.phase === 'bite') break; sc.debugStep(1, false); }
+          sc.debugInput('pointer', 300, 300); sc.debugStep(1, false);
+          for (let i = 0; i < 4000; i++) {
+            const m = sc.debugMini(); if (!m || m.phase !== 'fight') break;
+            if (m.fight === 'help') { sc.debugInput('release'); break; }
+            const bucket = m.wobble ? r.wob : m.warn ? r.warn : r.calm;
+            bucket.push({ bend: m.rod, y: m.rodTip.y, x: m.rodTip.x, prog: m.progress });
+            if (m.wobble || m.warn) sc.debugInput('release'); else sc.debugInput('pointer', 300, 300);
+            sc.debugStep(1, false);
+          }
+          return r;
+        });
+        const mid = out.calm.filter((q) => q.prog > 0.3 && q.prog < 0.6);
+        const midBend = mid.length ? mid.reduce((a, q) => a + q.bend, 0) / mid.length : 0;
+        bends[sp] = midBend;
+        const spread = (a) => { if (a.length < 3) return 0; const ys = a.map((q) => q.y); return Math.max(...ys) - Math.min(...ys); };
+        if (sp === 'green-sunfish') {
+          check(rest.rod > 0.1 && rest.rod < 0.35, `${label}: a gentle bend at rest (rod bend ${rest.rod})`);
+          check(midBend > rest.rod + 0.3, `${label}: a deep bend while reeling a hooked fish (${midBend.toFixed(2)} vs ${rest.rod} at rest)`);
+          check(out.warn.length > 3 && out.wob.length > 3, `${label}: the line went yellow then red (${out.warn.length} / ${out.wob.length} frames)`);
+          check(spread(out.wob) > spread(out.warn) && spread(out.warn) > 0.3 && spread(out.wob) > 3, `${label}: a tremble on the yellow and a harder quiver on the red (tip travel ${spread(out.warn).toFixed(1)} px yellow, ${spread(out.wob).toFixed(1)} px red)`);
+          check(out.calm.every((q) => q.y > out.restTipY - 0.04 * (vp.height)), `${label}: the tip bends down toward the water, never up past its rest height`);
+        }
+        const after = await page.evaluate(() => { const sc = window.__ww.scene; let min = 9, max = -9; for (let i = 0; i < 70; i++) { sc.debugStep(1, false); const m = sc.debugMini(); if (!m) break; min = Math.min(min, m.rod); max = Math.max(max, m.rod); } const m = sc.debugMini(); return { min, max, rod: m ? m.rod : null, phase: m ? m.phase : null }; });
+        if (sp === 'green-sunfish') check(after.min < 0.08 && after.max < midBend + 0.05, `${label}: it springs back straight when the fish lands (bend ${after.min.toFixed(2)} at the lowest, phase ${after.phase})`);
+        await page.evaluate(() => window.__ww.scene.endMiniGame());
+      }
+      check(bends['white-sturgeon'] > bends['green-sunfish'] + 0.05, `${label}: a bigger fish bends the rod more (sturgeon ${bends['white-sturgeon'].toFixed(2)} vs sunfish ${bends['green-sunfish'].toFixed(2)})`);
+      // a fish that wiggles off springs the rod back too
+      const s2 = await session(page, { seed: 6, water: 'creek', casts: 2, forceSpecies: 'cutthroat-trout' });
+      await page.evaluate((s) => window.__ww.scene.startFishing({ seed: 6, water: 'creek', casts: s.casts }), s2);
+      const off = await page.evaluate(() => { const sc = window.__ww.scene; for (let i = 0; i < 3000; i++) { const m = sc.debugMini(); if (m.phase === 'bite') break; sc.debugStep(1, false); } sc.debugInput('pointer', 300, 300); let peak = 0; for (let i = 0; i < 4000; i++) { const m = sc.debugMini(); if (!m) return null; peak = Math.max(peak, m.rod); if (m.phase === 'off') break; sc.debugStep(1, false); } let low = 9; for (let i = 0; i < 70; i++) { sc.debugStep(1, false); low = Math.min(low, sc.debugMini().rod); } sc.debugInput('release'); return { peak, low }; });
+      check(off && off.peak > 0.5 && off.low < 0.08, `${label}: a fish that wiggles off springs the rod back (peak ${off && off.peak.toFixed(2)}, then ${off && off.low.toFixed(2)})`);
+      // reduced motion: the bend is still there, with no quiver
+      await page.evaluate(() => { window.__ww.scene.endMiniGame(); window.__ww.scene.setReducedMotion(true); });
+      const s3 = await session(page, { seed: 4, water: 'kansas', casts: 1, forceSpecies: 'channel-catfish' });
+      await page.evaluate((s) => window.__ww.scene.startFishing({ seed: 4, water: 'kansas', casts: s.casts }), s3);
+      const rmq = await page.evaluate(() => { const sc = window.__ww.scene; for (let i = 0; i < 3000; i++) { if (sc.debugMini().phase === 'bite') break; sc.debugStep(1, false); } sc.debugInput('pointer', 300, 300); const ys = []; for (let i = 0; i < 3000; i++) { const m = sc.debugMini(); if (!m || m.phase !== 'fight') break; if (m.wobble) ys.push(m.rodTip.y); sc.debugStep(1, false); } sc.debugInput('release'); return { n: ys.length, spread: ys.length ? Math.max(...ys) - Math.min(...ys) : 0 }; });
+      check(rmq.n === 0 || rmq.spread < 1.5, `${label}: reduced motion: no quiver on the red (${rmq.n} frames, ${rmq.spread.toFixed(2)} px)`);
+      check(errors.real().length === 0, `${label} rod: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+    // flip rocks: a tap flips the rock under it and says what lay there; Space flips the next; the round ends after the fifth
+    for (const [label, vp] of [['landscape', LAND], ['portrait', PORTRAIT]]) {
+      const { page, context, errors } = await open(browser, { biome: 'prairie' }, vp);
+      await page.evaluate(() => window.__ww.scene.pause());
+      const kinds = ['worm', 'mud', 'arrowhead', 'crawdad', 'cricket'];
+      await page.evaluate((kinds) => window.__ww.scene.startRocks({ seed: 3, rocks: kinds.map((kind, i) => ({ i, kind })) }), kinds);
+      await step(page, 30);
+      const m0 = await dbg(page);
+      check(m0 && m0.kind === 'rocks' && m0.rocks.length === 5 && m0.flipped === 0 && m0.phase === 'play', `${label} rocks: five rocks and nothing flipped yet (${J(m0 && { kind: m0.kind, n: m0.rocks && m0.rocks.length, f: m0.flipped })})`);
+      await shot(page, `v17-rocks-start-${label}`);
+      await tapAt(page, 5, 5);    // a tap on bare ground flips nothing
+      await step(page, 5);
+      check((await dbg(page)).flipped === 0, `${label} rocks: a tap that misses every rock flips nothing`);
+      for (const i of [0, 1]) { const p = m0.rocks[i]; await tapAt(page, p.x, p.y); await step(page, 20); }
+      const e1 = await evs(page, 'rock');
+      check(e1.length === 2 && e1[0].kind === 'worm' && e1[0].i === 0 && e1[1].kind === 'mud', `${label} rocks: a tap flips that rock and says what was under it (${J(e1)})`);
+      await tapAt(page, m0.rocks[0].x, m0.rocks[0].y); await step(page, 5);
+      check((await evs(page, 'rock')).length === 2, `${label} rocks: a rock already flipped stays flipped`);
+      await step(page, 90);
+      await shot(page, `v17-rocks-critter-${label}`);
+      check((await dbg(page)).caught === 1, `${label} rocks: the worm hops into the bait tin (tin ${(await dbg(page)).caught}); mud is mud`);
+      await keySpace(page); await step(page, 130);              // Space flips the next one: the arrowhead
+      const mm = await dbg(page);
+      check(mm.sketch === true && (await evs(page, 'rock')).map((e) => e.kind).join() === 'worm,mud,arrowhead', `${label} rocks: Space flips the next rock; the arrowhead is sketched in the journal (${J(await evs(page, 'rock'))})`);
+      await shot(page, `v17-rocks-arrowhead-${label}`);
+      await keySpace(page); await keySpace(page);
+      await step(page, 400);
+      const end = await evs(page, 'rocksEnd');
+      check(end.length === 1 && end[0].flipped === 5 && (await dbg(page)) === null || (end.length === 1 && end[0].flipped === 5), `${label} rocks: rocksEnd after the fifth (${J(end)})`);
+      await step(page, 200);
+      check((await state(page)).mini === null, `${label} rocks: the scene goes back to its backdrop`);
+      // leaving early: no end event, a summary of what was flipped
+      await clear(page);
+      await page.evaluate(() => window.__ww.scene.startRocks({ seed: 4 }));
+      await step(page, 10); await keySpace(page); await step(page, 10);
+      const sum = await page.evaluate(() => window.__ww.scene.endMiniGame());
+      check(sum && sum.flipped === 1 && (await evs(page, 'rocksEnd')).length === 0, `${label} rocks: endMiniGame() early gives the summary and no end event (${J(sum)})`);
+      check(errors.real().length === 0, `${label} rocks: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+    // the five new fish: each drawn, each its own picture, none blank
+    {
+      const { page, context, errors } = await open(browser, { biome: 'prairie' }, LAND);
+      const r = await page.evaluate(async () => {
+        const m = await import('/wagon-west/src/scene/sprites14.js'), u = await import('/wagon-west/src/scene/util.js');
+        const ids = Object.keys(m.SPECIES), out = {};
+        for (const id of ids) {
+          const cv = u.mkCanvas(240, 120), c = cv.getContext('2d'); c.fillStyle = '#4aa0b6'; c.fillRect(0, 0, 240, 120);
+          m.drawSpecies(c, id, 120, 60, 1.4, 0, 0.5, 1);
+          const d = c.getImageData(0, 0, 240, 120).data; let hash = 0, odd = 0;
+          for (let i = 0; i < d.length; i += 4) { if (Math.abs(d[i] - 0x4a) + Math.abs(d[i + 1] - 0xa0) + Math.abs(d[i + 2] - 0xb6) > 30) { odd++; hash = (hash * 31 + d[i] + d[i + 1] * 3 + d[i + 2] * 7) >>> 0; } }
+          out[id] = { odd, hash, name: m.speciesOf(id).name };
+        }
+        return out;
+      });
+      const ids = Object.keys(r);
+      check(ids.length === 11 && ['mountain-whitefish', 'northern-pikeminnow', 'largescale-sucker', 'green-sunfish', 'sacramento-perch'].every((id) => r[id] && r[id].odd > 600), `eleven fish sprites, each drawn (${ids.map((id) => `${id}:${r[id].odd}`).join(' ')})`);
+      check(new Set(ids.map((id) => r[id].hash)).size === 11, 'every fish has its own picture');
+      check(errors.real().length === 0, `fish sprites: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+    // the bear at the fishing hole: far bank only, the fish scatter, the dog barks, the app answers 'wait' or 'spot', the fishing goes on
+    for (const [label, vp] of [['landscape', LAND], ['portrait', PORTRAIT]]) {
+      for (const choice of ['wait', 'spot']) {
+        const { page, context, errors } = await open(browser, { biome: 'mountains', dog: 'brown' }, vp);
+        await page.evaluate(() => window.__ww.scene.pause());
+        const s = await session(page, { seed: 7, water: 'snake', casts: 3, forceSpecies: 'cutthroat-trout' });
+        await page.evaluate(([s, choice]) => window.__ww.scene.startFishing({ seed: 7, water: 'snake', casts: s.casts, dog: true, bear: { at: 1, kind: choice === 'wait' ? 'fishing' : 'berries' } }), [s, choice]);
+        // cast 0: hook and land it, so the bear arrives on the second cast
+        await page.evaluate(() => {
+          const sc = window.__ww.scene;
+          for (let i = 0; i < 4000; i++) { const m = sc.debugMini(); if (!m || m.cast > 1) break; if (m.phase === 'bite') sc.debugInput('pointer', 300, 300); if (m.phase === 'fight') { if (m.wobble || m.warn) sc.debugInput('release'); else sc.debugInput('pointer', 300, 300); } sc.debugStep(1, false); }
+          sc.debugInput('release');
+        });
+        const geo = await page.evaluate(() => {
+          const sc = window.__ww.scene; const out = { frames: 0, maxH: 0, minX: 1e9, maxFeet: 0, still: true, bob: null, asked: false, minXAsk: 1e9 };
+          for (let i = 0; i < 6000; i++) {
+            const m = sc.debugMini(); if (!m) break;
+            if (m.phase === 'bear') {
+              out.frames++; const b = m.bearAt; out.maxH = Math.max(out.maxH, b.h / b.H); out.maxFeet = Math.max(out.maxFeet, b.feetY / b.H); out.minX = Math.min(out.minX, b.x / b.W);
+              if (m.bear === 'ask') { out.asked = true; out.minXAsk = Math.min(out.minXAsk, b.x / b.W); if (!out.bob) out.bob = m.bobber; else if (Math.abs(m.bobber.y - out.bob.y) > 0.5) out.still = false; if (out.frames > 400 && i % 1 === 0) break; }
+            } else if (out.frames > 0) break;
+            sc.debugStep(1, i % 120 === 0);
+          }
+          return out;
+        });
+        check(geo.asked && geo.frames > 150, `${label} bear (${choice}): the bear arrives and the app is asked (${geo.frames} frames)`);
+        check(geo.maxFeet < 0.6 && geo.maxH < 0.12 && geo.minXAsk > 0.7, `${label} bear (${choice}): far bank only, small, nowhere near the near bank (feet ${geo.maxFeet.toFixed(2)} of the height, ${(geo.maxH * 100).toFixed(1)} % tall, at x ${geo.minXAsk.toFixed(2)} of the width)`);
+        check(geo.still, `${label} bear (${choice}): the bobber goes still`);
+        const mid = await dbg(page);
+        await shot(page, `v17-bear-${choice}-${label}`);
+        check(mid.phase === 'bear' && mid.bear === 'ask', `${label} bear (${choice}): the scene waits for the answer (${mid.phase}/${mid.bear})`);
+        const pos0 = mid.bobber;
+        check(await page.evaluate((c) => window.__ww.scene.fishingBear(c), choice), `${label} bear (${choice}): fishingBear('${choice}') is taken`);
+        await page.evaluate(() => { const sc = window.__ww.scene; for (let i = 0; i < 2000; i++) { const m = sc.debugMini(); if (!m || m.phase !== 'bear') break; sc.debugStep(1, false); } });
+        const bev = (await evs(page, 'fishBear')).map((e) => e.stage);
+        check(bev.join() === (choice === 'wait' ? 'arrive,ask,wait,leave,gone' : 'arrive,ask,move,gone'), `${label} bear (${choice}): arrive, ask, ${choice === 'wait' ? 'wait, leave' : 'move'}, gone (${bev.join()})`);
+        const after = await dbg(page);
+        check(after && after.phase === 'cast' && after.cast === 2 && after.bear === null, `${label} bear (${choice}): the same cast goes on (${after && after.phase}, cast ${after && after.cast})`);
+        if (choice === 'spot') check(Math.hypot(after.bobber.x - pos0.x, after.bobber.y - pos0.y) > 30, `${label} bear (spot): a new pool (the bobber moved from ${Math.round(pos0.x)},${Math.round(pos0.y)} to ${Math.round(after.bobber.x)},${Math.round(after.bobber.y)})`);
+        else check(Math.hypot(after.bobber.x - pos0.x, after.bobber.y - pos0.y) < 2, 'bear (wait): the same pool');
+        check((await evs(page, 'bark')).length >= 1, `${label} bear (${choice}): the dog barks (${(await evs(page, 'bark')).length})`);
+        // the fishing carries on to its end
+        await page.evaluate(() => { const sc = window.__ww.scene; for (let i = 0; i < 16000; i++) { const m = sc.debugMini(); if (!m) break; if (m.phase === 'bite') sc.debugInput('pointer', 300, 300); if (m.phase === 'fight') { if (m.wobble || m.warn) sc.debugInput('release'); else sc.debugInput('pointer', 300, 300); } sc.debugStep(1, false); } sc.debugInput('release'); });
+        const fe = await evs(page, 'fishingEnd');
+        check(fe.length === 1 && fe[0].casts === 3, `${label} bear (${choice}): the session still ends with its three casts (${J(fe)})`);
+        check(errors.real().length === 0, `${label} bear (${choice}): no console errors (${errors.real().join(' | ')})`);
+        await context.close();
+      }
+    }
+    // the bear's art stays small and on the far bank in every frame even under reduced motion; the scene waits at most 25 s for an answer, then waits it out
+    {
+      const { page, context, errors } = await open(browser, { biome: 'mountains', rm: '1' }, LAND);
+      await page.evaluate(() => window.__ww.scene.pause());
+      const s = await session(page, { seed: 8, water: 'bear', casts: 2, forceSpecies: 'mountain-whitefish' });
+      await page.evaluate((s) => window.__ww.scene.startFishing({ seed: 8, water: 'bear', casts: s.casts, bear: { at: 0, kind: 'berries' } }), s);
+      const auto = await page.evaluate(() => { const sc = window.__ww.scene; let ask = -1; for (let i = 0; i < 9000; i++) { const m = sc.debugMini(); if (!m) break; if (m.phase === 'bear' && m.bear === 'ask' && ask < 0) ask = i; if (ask >= 0 && m.phase !== 'bear') return { ask, back: i, phase: m.phase }; sc.debugStep(1, false); } return { ask, back: -1 }; });
+      await shot(page, 'v17-bear-berries-rm');
+      check(auto.ask > 0 && auto.back > auto.ask + 25 * 60 - 5, `an unanswered bear is waited out after about 25 s (asked at ${auto.ask}, back at ${auto.back})`);
+      check(errors.real().length === 0, `bear, reduced motion: no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+    // the MOCK scene: rocks and the bear
+    {
+      const { page, context, errors } = await open(browser, { mock: '1' }, LAND);
+      await page.evaluate(() => { window.__mockScript = { shotMs: 40, rocks: 3 }; });
+      await page.evaluate(() => window.__ww.scene.startRocks({ rocks: [{ kind: 'worm' }, { kind: 'arrowhead' }, { kind: 'mud' }, { kind: 'cricket' }, { kind: 'crawdad' }] }));
+      await page.waitForFunction(() => window.__ww.events.some((e) => e.type === 'rocksEnd'), null, { timeout: 5000 });
+      const r = await page.evaluate(() => ({ rocks: window.__ww.events.filter((e) => e.type === 'rock').map((e) => e.kind), end: window.__ww.events.filter((e) => e.type === 'rocksEnd') }));
+      check(J(r.rocks) === '["worm","arrowhead","mud"]' && r.end.length === 1 && r.end[0].flipped === 3, `mock: startRocks flips the planned rocks, then rocksEnd (${J(r)})`);
+      await page.evaluate(() => { window.__ww.events.length = 0; window.__mockScript = { shotMs: 40, bear: 'spot' }; });
+      await page.evaluate(() => window.__ww.scene.startFishing({ casts: [0, 1].map((i) => ({ i, kind: 'fish', species: 'cutthroat-trout', lengthIn: 10, lb: 3, biteS: 1, fight: { reelMs: 1000, pullPerMs: 0.0001, wobbles: [], strainMaxMs: 500, warnMs: 250, help: false, helpAt: 0.5 }, retries: 0 })), bear: { at: 1, kind: 'fishing' } }));
+      await page.waitForFunction(() => window.__ww.events.some((e) => e.type === 'fishingEnd'), null, { timeout: 9000 });
+      const bs = await page.evaluate(() => window.__ww.events.filter((e) => e.type === 'fishBear').map((e) => e.stage + (e.moved ? '*' : '')));
+      check(J(bs) === '["arrive","ask","move","gone*"]', `mock: the bear arrives, asks, moves on a 'spot' answer and the fishing goes on (${J(bs)})`);
+      check(errors.real().length === 0, `mock scene (v1.7): no console errors (${errors.real().join(' | ')})`);
+      await context.close();
+    }
+  }
+
   // ---- 8. perf: real frames at 4x CPU throttle on a phone-sized canvas ----
-  if (!process.env.SKIP_PERF && !process.env.V16_ONLY) {
+  if (!process.env.SKIP_PERF && !process.env.V16_ONLY && !process.env.V17_ONLY) {
     const PERF_MS = Number(process.env.PERF_MS || 8);
     for (const [name, params, setup] of [
       ['stormy trail, a bison herd and confetti', { biome: 'mountains', weather: 'storm', pace: 'brisk' }, () => { const sc = window.__ww.scene; sc.spotAnimal('bison'); sc.spotAnimal('eagle'); sc.celebrate('arrived'); }],
@@ -2463,6 +2669,8 @@ try {
       ['v1.5 Laurel Hill (the slope, the rope, the dust)', { biome: 'mountains', leg: 'barlow-road', moving: '0' }, () => { const sc = window.__ww.scene; sc.startSnub({ seed: 2, drops: 3 }); setInterval(() => { const m = sc.getState().mini; if (!m) { sc.startSnub({ seed: 3, drops: 3 }); return; } const d = sc.debugMini(); if (m.phase === 'wait') sc.debugInput('pointer', 10, 10); else if (m.phase === 'slide' && d.s > d.ledge.s0 - 0.02 + (m.drop === 2 ? 0.1 : 0)) sc.debugInput('release'); }, 40); }],
       ['v1.5 the farm at full build with a raising and the weather', { backdrop: 'homestead', weather: 'rain', dog: 'brown' }, () => { const sc = window.__ww.scene; const all = { cabin: 1, 'frame-house': 1, barn: 1, schoolhouse: 1, well: 1, fence: 1, corral: 1, cow: 1, garden: 4, flowers: 3, mailbox: 1, bench: 1, coop: 1, 'apple-tree': 6, orchard: 1, mill: 1, 'name-plate': 1, 'trophy-shelf': 1 }; sc.setHomestead({ site: 'willamette', name: 'Sunny Acres', pieces: { ...all, barn: 0 }, animals: { oxen: 4, mules: 4 }, dog: { name: 'Frodo', coat: 'brown' }, decor: ['weathervane-salmon'], party: null, trophies: ['bronze', 'silver', 'gold'] }); sc.setBackdrop('homestead'); setInterval(() => { const f = { site: 'willamette', name: 'Sunny Acres', animals: { oxen: 4, mules: 4 }, dog: { name: 'Frodo', coat: 'brown' }, decor: ['weathervane-salmon'], party: null, trophies: ['bronze'] }; sc.setHomestead({ ...f, pieces: { ...all, barn: 0 } }); sc.setHomestead({ ...f, pieces: all }); sc.buildPiece('barn'); }, 4000); }],
       ['v1.5 the Sacramento claim (windmill, vineyard) in a portrait-sized farm', { backdrop: 'homestead', dog: 'spotted' }, () => { const sc = window.__ww.scene; sc.setHomestead({ site: 'sacramento', name: 'Gold Claim', pieces: { cabin: 1, well: 1, barn: 1, vineyard: 1, windmill: 1, fence: 1, corral: 1, garden: 3 }, animals: { oxen: 3, mules: 2 }, dog: { name: 'Frodo', coat: 'spotted' }, decor: [], party: null, trophies: [] }); sc.setBackdrop('homestead'); }],
+      ['v1.7 flipping rocks (rocks, critters, the tin, the journal sketch)', { biome: 'prairie' }, () => { const sc = window.__ww.scene; sc.startRocks({ seed: 3, rocks: ['worm', 'arrowhead', 'crawdad', 'mud', 'beetle'].map((kind, i) => ({ i, kind })) }); setInterval(() => { const m = sc.debugMini(); if (!m) return; const r = m.rocks.find((q) => q.st === 'idle'); if (r) sc.debugInput('pointer', r.x, r.y); else sc.startRocks({ seed: 4 }); }, 700); }],
+      ['v1.7 the bear at the fishing hole (the bear, scattering fish, the bent rod, the dog)', { biome: 'mountains', dog: 'brown' }, () => { const sc = window.__ww.scene; const go = () => sc.startFishing({ seed: 5, water: 'snake', casts: 6, dog: true, bear: { at: 0, kind: 'fishing' } }); go(); setInterval(() => { const m = sc.debugMini(); if (!m) { go(); return; } if (m.phase === 'bear' && m.bear === 'ask') sc.fishingBear('wait'); if (m.phase === 'bite') sc.debugInput('pointer', 300, 300); if (m.phase === 'fight') { if (m.wobble || m.warn) sc.debugInput('release'); else sc.debugInput('pointer', 300, 300); } }, 60); }],
     ]) {
       if (process.env.PERF_FILTER && !new RegExp(process.env.PERF_FILTER, 'i').test(name)) continue; // PERF_FILTER='stones|stars' runs some cases
       const { page, context, errors } = await open(browser, params);
