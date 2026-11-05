@@ -55,7 +55,7 @@ export function defaultSave() {
     daily: { date: '', done: false, attempts: 0 },
     goals: { list: [], rolled: 0 },
     settings: { sound: true, music: true, reducedMotion: false, shake: 100 },
-    seen: { coach: false, ach: 0 },  // one-time UI hints already shown
+    seen: { coach: false, ach: 0, teaser: false, skyClip: 0 },  // one-time UI hints already shown (v3.10: the Sky Era teaser, src/meta/skyRoad.js)
     achievements: {},        // achievement id -> earned timestamp (ms)
     // ----- v3.3 engagement (src/meta/engagement.js) -----
     xp: 0,
@@ -135,6 +135,8 @@ export function normalize(raw) {
   const seen = raw.seen && typeof raw.seen === 'object' ? raw.seen : {};
   s.seen.coach = bool(seen.coach, s.records.runs > 0);
   s.seen.ach = Math.max(0, Math.floor(num(seen.ach)));   // achievements already seen in the panel (title badge)
+  s.seen.teaser = bool(seen.teaser, false);               // v3.10: the full Sky Era teaser has started once
+  s.seen.skyClip = Math.max(0, Math.min(15, Math.floor(num(seen.skyClip))));   // v3.10: the highest Sky Road milestone clipped
   if (num(raw.resetAt) > 0) s.resetAt = num(raw.resetAt);  // family sync: when a parent last reset this save
   // v3.3 engagement
   s.xp = Math.max(0, Math.floor(num(raw.xp)));

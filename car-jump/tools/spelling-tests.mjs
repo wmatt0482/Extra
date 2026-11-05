@@ -2213,6 +2213,96 @@ await atest('spellVoice.prepare: no key stops the background work for good (no h
   assert.equal(r.asked.length, 1, 'one request, then it knows');
 });
 
+// ---------- v3.10: the Sky Road (src/meta/skyRoad.js) and the Sky Era teaser's seen state ----------
+console.log('the Sky Road (v3.10)');
+{
+  const SR = await import('../src/meta/skyRoad.js');
+  const { normalize: normSave } = await import('../src/meta/save.js');
+  const withDays = (days, seen = {}) => { const s = defaultSave(); s.streak.days = days; Object.assign(s.seen, seen); return s; };
+  const daysFrom = (start, n) => Array.from({ length: n }, (_, i) => { const d = new Date(start + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + i); return d.toISOString().slice(0, 10); });
+  test('skyRoadSteps: days before SKY_ROAD_START do not count; the start day does; one step per day', () => {
+    assert.equal(SR.SKY_ROAD_START, '2026-11-06'); assert.equal(SR.SKY_ROAD_STEPS, 15); assert.deepEqual(SR.MILESTONES, [4, 8, 12, 15]);
+    assert.equal(SR.skyRoadSteps(defaultSave()), 0, 'a fresh save is at 0');
+    assert.equal(SR.skyRoadSteps(withDays(['2026-10-01', '2026-11-04', '2026-11-05'])), 0, 'every day before the start: 0');
+    assert.equal(SR.skyRoadSteps(withDays(['2026-11-05', '2026-11-06', '2026-11-09'])), 2, 'the start day and later count');
+    assert.equal(SR.skyRoadSteps(withDays(['2026-11-06', '2026-11-06', 'nonsense', 7, null])), 1, 'a day counts once; junk is ignored');
+    assert.equal(SR.skyRoadSteps({}), 0); assert.equal(SR.skyRoadSteps(null), 0);
+  });
+  test('skyRoadSteps: capped at 15', () => {
+    assert.equal(SR.skyRoadSteps(withDays(daysFrom('2026-11-06', 14))), 14);
+    assert.equal(SR.skyRoadSteps(withDays(daysFrom('2026-11-06', 15))), 15);
+    assert.equal(SR.skyRoadSteps(withDays(daysFrom('2026-11-06', 40))), 15);
+  });
+  test('teaserDue: the full teaser first (even at 0 steps), then nothing until a milestone', () => {
+    assert.deepEqual(SR.teaserDue(defaultSave()), { kind: 'full', step: 0 });
+    assert.deepEqual(SR.teaserDue(withDays(daysFrom('2026-11-06', 3))), { kind: 'full', step: 3 });
+    assert.equal(SR.teaserDue(withDays(daysFrom('2026-11-06', 3), { teaser: true })), null);
+  });
+  test('teaserDue: the clip at 4, 8, 12 and the gate at 15, each once', () => {
+    for (const m of [4, 8, 12, 15]) {
+      const s = withDays(daysFrom('2026-11-06', m), { teaser: true, skyClip: [0, 4, 8, 12][[4, 8, 12, 15].indexOf(m)] });
+      assert.deepEqual(SR.teaserDue(s), { kind: 'clip', step: m }, `milestone ${m}`);
+      SR.markTeaserSeen(s, SR.teaserDue(s));
+      assert.equal(s.seen.skyClip, m); assert.equal(SR.teaserDue(s), null, `milestone ${m} plays once`);
+    }
+    assert.equal(SR.teaserDue(withDays(daysFrom('2026-11-06', 7), { teaser: true, skyClip: 4 })), null, 'between milestones: nothing');
+  });
+  test('teaserDue: several milestones crossed at once (a sync): only the highest plays, all are marked', () => {
+    const s = withDays(daysFrom('2026-11-06', 13), { teaser: true, skyClip: 0 });
+    assert.deepEqual(SR.teaserDue(s), { kind: 'clip', step: 12 });
+    SR.markTeaserSeen(s, SR.teaserDue(s));
+    assert.equal(s.seen.skyClip, 12); assert.equal(SR.teaserDue(s), null);
+  });
+  test('markTeaserSeen: the full teaser marks itself and the milestones the road already shows', () => {
+    const s = withDays(daysFrom('2026-11-06', 9));
+    SR.markTeaserSeen(s, SR.teaserDue(s));
+    assert.equal(s.seen.teaser, true); assert.equal(s.seen.skyClip, 8, 'no clip for 4 or 8 right after the full teaser');
+    assert.equal(SR.teaserDue(s), null);
+    s.streak.days = daysFrom('2026-11-06', 12);
+    assert.deepEqual(SR.teaserDue(s), { kind: 'clip', step: 12 });
+    const fresh = defaultSave(); SR.markTeaserSeen(fresh, { kind: 'full', step: 0 });
+    assert.equal(fresh.seen.teaser, true); assert.equal(fresh.seen.skyClip, 0);
+    const none = withDays([]); SR.markTeaserSeen(none, null); assert.equal(none.seen.teaser, false, 'null changes nothing');
+  });
+  test('skyName: A-Z only, uppercase, at most 8 letters, "SKY" when empty', () => {
+    assert.equal(SR.skyName('Mia'), 'MIA'); assert.equal(SR.skyName("Zoë-Ann O'Neil"), 'ZOEANNON');
+    assert.equal(SR.skyName('Maximilian'), 'MAXIMILI'); assert.equal(SR.skyName('  '), 'SKY'); assert.equal(SR.skyName('123'), 'SKY');
+    assert.equal(SR.skyName(null), 'SKY'); assert.equal(SR.skyName('李'), 'SKY');
+  });
+  test('the spoken lines are name-free and the step variants are pre-made for 4 / 8 / 12; the meter text is not a countdown', () => {
+    const t = SR.teaserTexts();
+    assert.equal(t.length, 9); assert.equal(new Set(t).size, 9);
+    assert.ok(t.includes('Your Sky Road grew! Step 4 of 15.') && t.includes('Your Sky Road grew! Step 8 of 15.') && t.includes('Your Sky Road grew! Step 12 of 15.'));
+    assert.ok(t.includes("What's up above the clouds?") && t.includes('You made it to the Sky Gate! The Sky Era is on its way.'));
+    assert.equal(SR.roadText(3), 'Sky Road: 3 / 15');
+    const bad = /\b(hurry|only|left|lose|lost|kill|die|dead|lives|days? left|countdown|don't miss)\b/i;
+    for (const line of [...t, SR.roadText(3)]) assert.ok(!bad.test(line), `kid rules: "${line}"`);
+    assert.ok(t.every((x) => x.length <= 200), 'each fits a clip');
+  });
+  test('save: seen.teaser / seen.skyClip default to false / 0; an old save loads fine; junk is cleaned', () => {
+    const d = defaultSave(); assert.equal(d.seen.teaser, false); assert.equal(d.seen.skyClip, 0);
+    const old = normSave({ v: 2, cash: 10, seen: { coach: true, ach: 2 } });
+    assert.equal(old.seen.teaser, false); assert.equal(old.seen.skyClip, 0); assert.equal(old.seen.coach, true); assert.equal(old.seen.ach, 2);
+    const kept = normSave({ seen: { teaser: true, skyClip: 8 } }); assert.equal(kept.seen.teaser, true); assert.equal(kept.seen.skyClip, 8);
+    const junk = normSave({ seen: { teaser: 'yes', skyClip: 99 } }); assert.equal(junk.seen.teaser, false); assert.equal(junk.seen.skyClip, 15);
+    assert.equal(normSave({ seen: { skyClip: -3 } }).seen.skyClip, 0);
+  });
+  test('merge: teaser = OR, skyClip = max (whichever doc is newer), so nothing replays on another device', () => {
+    const a = S(day(1), (s) => { s.seen.teaser = true; s.seen.skyClip = 8; });
+    const b = S(day(2), (s) => { s.seen.teaser = false; s.seen.skyClip = 4; s.seen.coach = true; });
+    const m = mergeSave(a, b);
+    assert.equal(m.seen.teaser, true); assert.equal(m.seen.skyClip, 8); assert.equal(m.seen.coach, true, 'other seen flags still from the later doc');
+    assert.deepEqual(mergeSave(b, a), m, 'symmetric');
+    const c = S(day(3), (s) => { s.seen.teaser = false; s.seen.skyClip = 0; });
+    const n = mergeSave(S(day(1), () => {}), c);
+    assert.equal(n.seen.teaser, false); assert.equal(n.seen.skyClip, 0);
+    // the mission days union across devices, so the road counts both devices' days
+    const d1 = S(day(1), (s) => { s.streak.days = ['2026-11-06', '2026-11-07']; s.streak.lastDay = '2026-11-07'; s.streak.count = 2; });
+    const d2 = S(day(2), (s) => { s.streak.days = ['2026-11-08']; s.streak.lastDay = '2026-11-08'; s.streak.count = 1; });
+    assert.equal(SR.skyRoadSteps(mergeSave(d1, d2)), 3);
+  });
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('FAILED:\n- ' + failures.join('\n- ')); process.exit(1); }
 console.log('ALL SPELLING TESTS PASSED');

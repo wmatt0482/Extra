@@ -15,6 +15,8 @@
 //         best = max, shield days and counted days = union; cosmetics owned = union, equipped from the later doc;
 //         crates earned / opened / sinceCosmetic = max each; trophies (per list) and champion = union; weekBest:
 //         the later week, the farther jump within the same week.
+//         v3.10: seen.teaser = OR, seen.skyClip = max (the Sky Era teaser and its milestone clips play once per child, not
+//         once per device).
 // words   v3.7: a class list has the class list's id on every device, so the same week applied on two devices is one
 //         list (the later copy's fields win; "Stop following" stamps editedAt so that edit wins).
 // words   v3.3: a record's masteredAt comes with the winning record; when that one is Mastered without a date, the
@@ -179,6 +181,8 @@ export function mergeSave(local, remote) {
   s.achievements = s.achievements && typeof s.achievements === 'object' ? s.achievements : {};
   for (const [id, t] of Object.entries(o.achievements || {})) if (num(t) > 0) s.achievements[id] = s.achievements[id] ? Math.min(num(s.achievements[id]), num(t)) : num(t);
   mergeEngagement(s, o);
+  const sa = obj(s.seen), sb = obj(o.seen);
+  s.seen = { ...sa, teaser: !!(sa.teaser || sb.teaser), skyClip: Math.max(num(sa.skyClip), num(sb.skyClip)) };
   return normalizeSave(s);
 }
 
