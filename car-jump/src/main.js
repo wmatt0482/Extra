@@ -384,7 +384,7 @@ async function boot() {
     const d = app.wordsFor(id);
     const list = WS.activeList(d);
     const mission = nextMissionEntries(d, Date.now(), o, (w) => WS.wordInfo(d, w));
-    const texts = [...orderTexts(list.words, { mission, perRace: o.wordsPerRace, qualifier: WS.qualifierDue(d) }), ...CEREMONY_LINES];   // v3.9: and the Friday ceremony's lines
+    const texts = [...orderTexts(list.words, { mission, perRace: o.wordsPerRace, qualifier: WS.qualifierDue(d) }), ...CEREMONY_LINES, ...teaserTexts()];   // v3.9: and the Friday ceremony's lines; v3.10: then the Sky Era teaser's
     return voice.prepare(texts, { key: id, voice: o.cloudVoice, front: !!front || id === currentPlayerId }).catch(() => null);
   }
   // a list was saved (or the natural voice picked) in the Parent Zone: make that player's clips now
@@ -543,18 +543,20 @@ async function boot() {
     const p = Profiles.playerById(family, currentPlayerId);
     hero.setMode('off');
     Audio.duck(true);
-    prepareSkyVoice();
+    prepareSkyVoice(true);
     return sky.play({ kind: due.kind, step: due.step, steps: skyRoadSteps(save), car: CAR_BY_ID[save.selectedCar], look: app.look(save.selectedCar),
       name: skyName(p && p.name), reduced: reducedNow(), sound: !!save.settings.sound });
   }
   app.playSky = playSky;
   app.maybeSky = maybeSky;
-  // the teaser's few lines as natural-voice clips (name-free; "Step 4 / 8 / 12 of 15" pre-made), asked for when the title shows
+  // the teaser's few lines as natural-voice clips (name-free; "Step 4 / 8 / 12 of 15" pre-made): they ride at the end of the
+  // player's own clip queue (prepareVoiceFor, after the words: the next race comes first); on the title the ready ones are
+  // decoded, and a teaser that starts with lines still missing asks for them itself
   const skyAsked = new Map();          // voice -> when its missing lines were last asked for
-  function prepareSkyVoice() {
+  function prepareSkyVoice(urgent = false) {
     if (!cloud.active) return;
     const texts = teaserTexts(), v = cloud.voice;
-    if (!cloud.missing(texts).length) { cloud.warm(texts); return; }
+    if (!cloud.missing(texts).length || !urgent) { cloud.warm(texts); return; }
     if (Date.now() - (skyAsked.get(v) || 0) < 10 * 60000) return;
     skyAsked.set(v, Date.now());
     cloud.prepare(texts).then(() => cloud.warm(texts)).catch(() => {});
