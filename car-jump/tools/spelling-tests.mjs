@@ -799,6 +799,65 @@ console.log('class lists (v3.7)');
     const m3 = mergeW({ updatedAt: T0 + 9000, data: c }, { updatedAt: T0 + 4000, data: b }, T0 + 9500);
     assert.ok(!m3.lists[0].classId);
   });
+  test('v3.9.1 "Use for …" on a pasted list: the child follows the class lists from then on (classId), and the next week applies on its own', () => {
+    const d = W.defaultWords(T0); W.saveNewList(d, parseList('neighbor\nbecause').words, '', T0);
+    assert.ok(!W.followsClass(d), 'a pasted list does not follow');
+    W.applyClassList(d, oct19, T0 + 1000);
+    assert.equal(W.activeList(d).classId, oct19.id, 'Use for: classId is set');
+    assert.ok(W.followsClass(d), 'Use for: the child now follows the class lists');
+    const next = { ...oct19, id: 'class-2026-10-26', name: 'Week of Oct 26', weekOf: '2026-10-26' };
+    assert.equal(W.autoClassList(d, day(2026, 10, 26), next).id, 'class-2026-10-26', 'the next week applies on its own');
+    assert.ok(W.followsClass(d)); assert.equal(W.activeList(d).classId, 'class-2026-10-26');
+    // after "Stop following", "Use for" (Follow the class lists) follows again, stamped so it wins a sync merge over the stopped copy
+    const e = W.defaultWords(T0); W.applyClassList(e, oct19, T0);
+    const stopped = JSON.parse(JSON.stringify(e)); W.stopFollowing(stopped, T0 + 5000);
+    W.stopFollowing(e, T0 + 5000);
+    assert.ok(W.applyClassList(e, oct19, T0 + 9000), 'the same week, active but not followed: applies (follows) again');
+    assert.ok(W.followsClass(e)); assert.equal(W.activeList(e).classId, oct19.id); assert.equal(W.activeList(e).editedAt, T0 + 9000);
+    assert.equal(e.lists.length, 1, 'still one list');
+    const m = mergeW({ updatedAt: T0 + 5000, data: stopped }, { updatedAt: T0 + 9000, data: e }, T0 + 9500);
+    assert.equal(m.lists[0].classId, oct19.id, 'following again wins the merge');
+  });
+}
+console.log('class-list checks on a device that stays open (v3.9.1)');
+{
+  const C = await import('../src/spelling/classCheck.js');
+  const HOUR = 3600000;
+  const CLm = await import('../src/data/classLists.js');
+  const W_MOD = await import('../src/spelling/wordStore.js');
+  test('classCheckAllowed: the title, garage and track select with a player; never the picker, a run, the spell panel, a test, the Parent Zone or a hidden page', () => {
+    for (const screen of ['title', 'garage', 'tracks']) assert.ok(C.classCheckAllowed({ screen }), screen);
+    for (const screen of ['players', 'newplayer', 'run', 'test', 'results', undefined]) assert.ok(!C.classCheckAllowed({ screen }), String(screen));
+    assert.ok(!C.classCheckAllowed({ screen: 'title', hasPlayer: false }), 'no player chosen');
+    assert.ok(!C.classCheckAllowed({ screen: 'title', running: true }), 'a run in progress (even if the screen says title)');
+    assert.ok(!C.classCheckAllowed({ screen: 'garage', spelling: true }), 'the spell panel');
+    assert.ok(!C.classCheckAllowed({ screen: 'title', testing: true }), 'a Qualifier / Friday Test');
+    assert.ok(!C.classCheckAllowed({ screen: 'title', parentZone: true }), 'the Parent Zone open');
+    assert.ok(!C.classCheckAllowed({ screen: 'title', hidden: true }), 'the page hidden');
+    assert.ok(!C.classCheckAllowed(), 'nothing known: no');
+  });
+  test('classCheckWanted: visible, title, hourly and sync always check; another screen only runs a pending check', () => {
+    for (const r of ['visible', 'title', 'hourly', 'sync']) assert.ok(C.classCheckWanted(r), r);
+    assert.ok(!C.classCheckWanted('screen')); assert.ok(C.classCheckWanted('screen', true), 'a check held back by a run runs on the next menu screen');
+    assert.ok(!C.classCheckWanted('whatever', false));
+  });
+  test('hourlyCheckDue: never checked → due; once an hour after the last check (any reason), not before', () => {
+    assert.equal(C.CLASS_CHECK_EVERY_MS, HOUR);
+    assert.ok(C.hourlyCheckDue(0, T0));
+    assert.ok(!C.hourlyCheckDue(T0, T0 + 59 * 60000));
+    assert.ok(C.hourlyCheckDue(T0, T0 + HOUR));
+    assert.ok(C.hourlyCheckDue(T0, T0 + 7 * 24 * HOUR), 'a week later (an iPad left open)');
+    assert.ok(!C.hourlyCheckDue(T0, T0 + 500, 1000) && C.hourlyCheckDue(T0, T0 + 1000, 1000), 'the period can be shortened (test hook)');
+  });
+  test('an iPad left open on the title since last week: the hourly / visible check applies the new week once, then nothing', () => {
+    const d = W_MOD.defaultWords(T0);
+    const oct26 = CLm.CLASS_LIST_BY_ID['class-2026-10-26'], nov2 = CLm.CLASS_LIST_BY_ID['class-2026-11-02'];
+    W_MOD.applyClassList(d, oct26, new Date(2026, 9, 26, 9).getTime());
+    const now = new Date(2026, 10, 2, 8).getTime();          // Monday morning, the page never closed
+    assert.ok(C.classCheckAllowed({ screen: 'title' }) && C.hourlyCheckDue(now - 2 * HOUR, now));
+    assert.equal(W_MOD.autoClassList(d, now).id, nov2.id);
+    assert.equal(W_MOD.autoClassList(d, now + HOUR), null, 'the next hour: already on it');
+  });
 }
 console.log('week progress (v3.7.1)');
 {

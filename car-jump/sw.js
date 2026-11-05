@@ -10,7 +10,7 @@
 // v3.9: certificate.html (the printable Friday Test certificate) is its own network-first page, never answered with index.html; the
 // Lab (/lab/src/index.js, one folder up) is OPTIONAL: the game starts and plays without it, and the modules the page loaded are cached
 // by the 'cache-urls' message like any other.
-const VERSION = 'spell-jump-v3.9.0';
+const VERSION = 'spell-jump-v3.9.1';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
@@ -74,6 +74,7 @@ const SHELL = [
   'src/spelling/why.js',
   'src/spelling/cloudVoice.js',
   'src/spelling/spellVoice.js',
+  'src/spelling/classCheck.js',
   'src/tts/voices.js',
   'src/sync/client.js',
   'src/sync/merge.js',

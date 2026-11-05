@@ -25,6 +25,7 @@ import { createTestScreen } from './spelling/testMode.js';
 import { createSession } from './spelling/scheduler.js';
 import { ringLetters } from './spelling/words.js';
 import * as WS from './spelling/wordStore.js';
+import { CLASS_CHECK_EVERY_MS, classCheckAllowed, classCheckWanted, hourlyCheckDue } from './spelling/classCheck.js';
 import * as Profiles from './spelling/profiles.js';
 import { $, $$, h, money } from './ui/dom.js';
 import { COIN, hydrateIcons } from './ui/icons.js';
@@ -47,7 +48,7 @@ import { labLook, trailFor } from './meta/labLooks.js';
 import { createTestBoss } from './ui/testBoss.js';
 import { CEREMONY_LINES, improvement, qualifierFor, tierFor } from './ui/ceremony.js';
 
-const VERSION = '3.9.0';
+const VERSION = '3.9.1';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
@@ -239,6 +240,7 @@ async function boot() {
       wordsCache.clear();
       if (!currentPlayerId || screen === 'players') go('players');   // players may have been added, joined or removed
       else if (screen === 'title') refreshTitle();
+      classListCheck('screen');      // v3.9.1: a check held back while the Parent Zone was open
       setTimeout(() => updater.check(), 0);
     },
   };
@@ -396,9 +398,18 @@ async function boot() {
   }
   // test hook (like window.__ttsBackend): window.__noClassLists = true keeps the built-in list (the pre-3.7 UI paths)
   const classOverride = () => (window.__noClassLists ? null : undefined);
-  /** v3.7: the current player's words changed under us (sync): a new class-list week applies when they follow them. */
-  function classListCheck() {
-    if (!words || run) return;
+  /** v3.7: a new class-list week applies when the current player follows them. v3.9.1: not only on a sync: also when the
+   *  page comes back to the front ('visible'), whenever the title is shown ('title') and once an hour while the page stays
+   *  open ('hourly'); never during a run, a test, the spell panel or the Parent Zone (it stays pending until a menu screen,
+   *  src/spelling/classCheck.js). The toast and the new week's natural-voice clips (3.8.1) follow, as on a sync. */
+  let classCheckPending = false, classCheckAt = 0;
+  function classListCheck(reason = 'sync') {
+    if (!classCheckWanted(reason, classCheckPending)) return;
+    const ok = classCheckAllowed({ screen, hasPlayer: !!(words && currentPlayerId), running: !!run, spelling: spellPanel.isOpen, testing: screen === 'test',
+      parentZone: pz.isOpen, hidden: document.visibilityState === 'hidden' });
+    if (!ok) { if (words && currentPlayerId) classCheckPending = true; return; }
+    classCheckPending = false;
+    classCheckAt = Date.now();
     const l = WS.autoClassList(words, Date.now(), classOverride());
     if (!l) return;
     session = createSession();
@@ -408,6 +419,12 @@ async function boot() {
     toast(`New class list: ${l.name}`);
     if (screen === 'title') refreshTitle();
   }
+  app.classListCheck = classListCheck;          // smoke tests: run a check by hand (reason as above)
+  // once an hour while open: a cheap tick each minute (a sleeping tablet pauses timers; 'visible' covers waking up).
+  // Test hook: window.__classCheckEveryMs shortens the hour.
+  setInterval(() => {
+    if (hourlyCheckDue(classCheckAt, Date.now(), window.__classCheckEveryMs || CLASS_CHECK_EVERY_MS)) classListCheck('hourly');
+  }, Math.min(60000, window.__classCheckEveryMs || 60000));
 
   // ---------- The Lab (lab/SPEC.md §4.1): attach when a player is chosen, detach when they leave; the XP pill sits in the run HUD ----------
   let labAttached = false;
@@ -511,6 +528,7 @@ async function boot() {
     if (screens[name]) screens[name].show(arg);
     hero.setMode(heroMode());
     refreshCash();
+    classListCheck(name === 'title' ? 'title' : 'screen');   // v3.9.1: a new week on a device that stayed open (or one held back by a run)
     setTimeout(() => updater.check(), 0);   // a waiting update reloads once the app is on a safe screen
   }
 
@@ -606,7 +624,7 @@ async function boot() {
         WS.rollToday(words, Date.now());
         session = createSession();
         if (screen === 'title') refreshTitle();
-        classListCheck();
+        classListCheck('sync');
       }
       if (wordsCache.has(id) && wordsCache.get(id) !== words) replaceInPlace(wordsCache.get(id), fresh);
       if (screen === 'players') screens.players.show();
@@ -1195,7 +1213,8 @@ async function boot() {
     }, 600);
   });
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { pause(); vtts.cancel(); Audio.suspend(); app.persist(); app.persistWords(); hero.setMode('off'); } else { Audio.resume(); hero.setMode(heroMode()); }
+    if (document.hidden) { pause(); vtts.cancel(); Audio.suspend(); app.persist(); app.persistWords(); hero.setMode('off'); }
+    else { Audio.resume(); hero.setMode(heroMode()); classListCheck('visible'); }   // v3.9.1: back to the front: maybe a new week
   });
   // iOS may kill a backgrounded Home Screen app without another event: pause and save on pagehide too
   window.addEventListener('pagehide', () => { pause(); vtts.cancel(); app.persist(); app.persistWords(); });
