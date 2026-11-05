@@ -642,6 +642,7 @@ export function createFishing(opts, emit, S, hooks, biomeId) {
   F.debug = (L) => ({
     ...F.state(), bobber: bobPos(L), pt: F.pt, waitT: F.waitT, biteOpensIn: F.phase === 'wait' ? F.waitT - F.pt : F.phase === 'cast' ? F.waitT + T_CAST - F.pt : 0,
     biteLeft: F.phase === 'bite' ? T_BITE - F.pt : 0, down: !!(F.ptr || F.keyDown), strain: F.fs ? F.fs.strain : 0, t: F.fs ? F.fs.t : 0,
+    rodTip: rodShape(L, F.t, S.rm).tip, rodRest: tip(L), bearAt: F.phase === 'bear' ? (() => { const q = bearPose(L); return { x: q.x, feetY: q.y, h: q.s * 36, W: L.W, H: L.H }; })() : null,
     wobbles: F.cur ? F.cur.fight.wobbles.slice(0, 40) : [], helpSpot: helpSpot(L), cameo: cameo ? { ...cameo } : null, canvasTexts: F.texts.map((x) => x.text),
   });
   void lenOf; void SPECIES; void T_END;

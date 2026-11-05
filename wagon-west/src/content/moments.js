@@ -22,7 +22,7 @@ export const MOMENTS = {
   },
   // v1.7: flip the rocks by the water for bait, and the bear at the fishing hole (a bear far across the water, busy with its own supper)
   rocks: {
-    intro: L('Rocks along the bank! Tap one to flip it and see what lives underneath.'),
+    intro: L('Rocks along the bank! Tap one to flip it and see what is hiding underneath.'),
     worm: L('A fat worm! Into the bait tin.'),
     beetle: L('A shiny beetle! Into the bait tin.'),
     cricket: L('A cricket! Into the bait tin before it hops away.'),

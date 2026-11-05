@@ -3582,6 +3582,111 @@ test('the choice modules are pure: no clock, no Math.random, no DOM', () => {
   }
 });
 
+// ================================================================= v1.7: the rod, rocks for bait, more fish, the bear, arrowheads
+console.log('\nv1.7 fishing: rocks, baits, species, the bear');
+{
+  const R17 = await import('../src/journey/sim.js');
+  const FISHC = await import('../src/content/fish.js');
+  const FINDSC = await import('../src/content/finds.js');
+  const mk17 = (legId, seed = 1) => { const J = createJourney({ seed, companions: PLAIN }); if (legId !== J.legId) { try { startLeg(J, legId); } catch (_) { /* another plan's leg */ } if (J.legId !== legId) J.legId = legId; } return J; };
+
+  test('rocks: five a round; mud, worm, beetle, cricket and crawdad by the odds; each critter fills its own tin, a full tin lets it go; once a camp and once a stop', () => {
+    const J = mk17('kansas-river', 11);
+    assert.equal(R17.ROCKS.count, 5); assert.ok(Math.abs(Object.values(R17.ROCKS.odds).reduce((a, b) => a + b, 0) - 1) < 1e-9, 'the odds add to one');
+    assert.ok(R17.rocksFree(J));
+    const tally = {}; let rocksN = 0;
+    for (let i = 0; i < 400; i++) { const K = mk17('kansas-river', 100 + i); const plan = R17.rocksPlan(K); assert.equal(plan.rocks.length, 5); for (const r of plan.rocks) { tally[r.kind] = (tally[r.kind] || 0) + 1; rocksN++; } }
+    for (const k of ['worm', 'beetle', 'cricket', 'crawdad', 'mud']) { const p = (tally[k] || 0) / rocksN, want = R17.ROCKS.odds[k] * (1 - 0.06); assert.ok(Math.abs(p - want) < 0.04, `${k}: ${p.toFixed(3)} vs ${want.toFixed(3)}`); }
+    const plan = R17.rocksPlan(J, { rand: () => 0.45 });          // 0.45 falls on a beetle
+    assert.equal(plan.rocks[0].kind, 'beetle');
+    const a = R17.flipRock(J, plan, 0); assert.deepEqual([a.kind, a.bait, a.added, a.have, a.full], ['beetle', 'beetles', 1, 1, false]); assert.equal(J.goods.beetles, 1);
+    assert.equal(R17.flipRock(J, plan, 0), a, 'a second flip changes nothing'); assert.equal(J.goods.beetles, 1);
+    J.goods.beetles = 8; const b = R17.flipRock(J, plan, 1); assert.equal(b.full, true); assert.equal(b.added, 0); assert.equal(J.goods.beetles, 8, 'a full tin holds eight');
+    const e = R17.endRocks(J, plan); assert.equal(e.flipped, 2); assert.ok(!R17.rocksFree(J), 'one round at the camp');
+    J.trip.arrived = true; assert.ok(R17.rocksFree(J), 'and one at the stop'); R17.endRocks(J, R17.rocksPlan(J)); assert.ok(!R17.rocksFree(J));
+    const K2 = mk17('kansas-river', 12), mud = R17.rocksPlan(K2, { rand: () => 0.97 }); assert.equal(mud.rocks[0].kind, 'mud'); assert.deepEqual(R17.flipRock(K2, mud, 0), { kind: 'mud' });
+  });
+  test('rocks: a critter shows up as a bait button only while its tin has some, and each is used one a cast', () => {
+    const J = mk17('kansas-river', 13);
+    assert.deepEqual(R17.baitsAvailable(J).map((b) => b.id), ['worms', 'hoppers', 'spoon']);
+    for (const c of ['worm', 'beetle', 'cricket', 'crawdad']) R17.catchBait(J, c, 2);
+    assert.deepEqual(R17.baitsAvailable(J).map((b) => b.id), ['worms', 'hoppers', 'spoon', 'fatworms', 'beetles', 'crickets', 'crawdads']);
+    const S1 = R17.fishingSession(J, { bait: 'crawdads', rand: mulberry32(1) });
+    assert.equal(S1.bait, 'crawdads'); assert.equal(J.goods.crawdads, 0, 'two in the tin, four casts: two used, the rest fall back to worms');
+    assert.deepEqual(S1.casts.map((c) => c.bait), ['crawdads', 'crawdads', 'worms', 'worms']);
+    assert.equal(R17.fishingSession(J, { bait: 'crawdads', rand: mulberry32(2) }).bait, 'worms', 'an empty tin is worms');
+  });
+  test('bait odds: no bait is the best everywhere (food and bite speed together), each critter bait is the best in some water, and none lifts a session past the cap', () => {
+    const waters = [...new Set(Object.values(FISHC.WATERS))], ids = ['worms', 'hoppers', 'spoon', 'fatworms', 'beetles', 'crickets', 'crawdads'];
+    const top = {}, byBait = Object.fromEntries(ids.map((i) => [i, 0]));
+    for (const w of waters) {
+      const legId = Object.keys(FISHC.WATERS).find((k) => FISHC.WATERS[k] === w), score = {};
+      for (const b of ids) {
+        let lb = 0, t = 0;
+        for (let i = 0; i < 300; i++) { const J = mk17(legId, 5); J.day = i; J.goods = { hoppers: 9, spoon: 1, fatworms: 9, beetles: 9, crickets: 9, crawdads: 9 }; const S = R17.fishingSession(J, { bait: b, rand: mulberry32(i + 7) }); for (const c of S.casts) if (c.kind === 'fish') { lb += c.lb; t += c.biteS + 4; } }
+        score[b] = lb / t;
+      }
+      const best = ids.reduce((a, b) => (score[b] > score[a] ? b : a)); top[w] = best; byBait[best]++;
+    }
+    assert.ok(Object.values(byBait).every((n) => n < waters.length), 'no bait wins everywhere: ' + JSON.stringify(byBait));
+    for (const b of ['fatworms', 'beetles', 'crickets', 'crawdads']) assert.ok(byBait[b] >= 1, `${b} is the best in at least one water: ${JSON.stringify(top)}`);
+    for (const b of ['fatworms', 'beetles', 'crickets', 'crawdads']) for (let i = 0; i < 100; i++) { const J = mk17('the-dalles', 900 + i); J.goods.crawdads = J.goods.fatworms = J.goods.beetles = J.goods.crickets = 8; const S = R17.fishingSession(J, { bait: b, rand: mulberry32(i) }); S.casts.forEach((c, k) => R17.landCast(J, S, k)); assert.ok(R17.endFishing(J, S).lb <= 24); }
+  });
+  test('more fish: eleven species, each only in waters where it is native (no trout on the Platte, the Sacramento perch only on the Sacramento), each with a river card', () => {
+    assert.equal(FISHC.FISH.length, 11);
+    const where = (id) => Object.keys(FISHC.FISH_BY_ID[id].waters).sort();
+    assert.deepEqual(where('sacramento-perch'), ['sacramento']);
+    assert.deepEqual(where('green-sunfish'), ['bigblue', 'kansas', 'platte']);
+    assert.deepEqual(where('largescale-sucker'), ['columbia', 'willamette']);
+    assert.deepEqual(where('northern-pikeminnow'), ['columbia', 'willamette']);
+    assert.deepEqual(where('mountain-whitefish'), ['bear', 'columbia', 'snake', 'truckee', 'willamette']);
+    for (const f of FISHC.FISH) { assert.ok(CARD_BY_ID[f.card] && CARD_BY_ID[f.card].suit === 'river', f.id + ' has a river card'); assert.ok(/^SOURCES\.md#fish-/.test(CARD_BY_ID[f.card].source)); assert.ok(!/\d/.test(CARD_BY_ID[f.card].say), 'no digit in what is said: ' + f.id); }
+    assert.ok(!FISHC.FISH.some((f) => /trout/.test(f.id) && f.waters.platte), 'no trout on the Platte');
+    const seen = {};
+    for (const [leg, water] of [['fort-kearny', 'platte'], ['kansas-river', 'kansas'], ['sacramento-valley', 'sacramento'], ['the-dalles', 'columbia'], ['soda-springs', 'bear'], ['independence-rock', 'sweetwater']]) {
+      for (let i = 0; i < 300; i++) { const J = mk17(leg, 40 + i); const S = R17.fishingSession(J, { rand: mulberry32(i) }); for (const c of S.casts) if (c.kind === 'fish') { (seen[c.species] ||= new Set()).add(water); assert.ok(FISHC.FISH_BY_ID[c.species].waters[water] > 0, `${c.species} drawn in ${water}`); } }
+    }
+    for (const id of ['green-sunfish', 'sacramento-perch', 'mountain-whitefish']) assert.ok(seen[id], id + ' is caught');
+    assert.ok(!seen['sacramento-perch'].has('kansas') && !(seen['green-sunfish'] || new Set()).has('sweetwater'));
+    const J = mk17('sacramento-valley', 3); const S = R17.fishingSession(J, { rand: mulberry32(1) }); S.casts[0] = { ...S.casts[0], kind: 'fish', species: 'sacramento-perch', lengthIn: 9, lb: 4 };
+    const r = R17.landCast(J, S, 0); assert.equal(r.card, 'sacramento-perch'); assert.equal(J.fishLog['sacramento-perch'].n, 1);
+  });
+  test('the bear at the fishing hole: about one session in eight, never two in a row, never on a safety-net session, on the 2nd or 3rd cast, fishing or berries', () => {
+    const J = mk17('fort-kearny', 21); let n = 0, last = false; const sess = 4000, ats = new Set(), kinds = new Set();
+    for (let i = 0; i < sess; i++) { const S = R17.fishingSession(J, {}); if (S.bear) { n++; assert.ok(!last, 'never twice in a row'); ats.add(S.bear.at); kinds.add(S.bear.kind); } last = !!S.bear; }
+    assert.ok(n / sess > 0.10 && n / sess < 0.15, `${n} of ${sess}`);
+    assert.deepEqual([...ats].sort(), [1, 2]); assert.deepEqual([...kinds].sort(), ['berries', 'fishing']);
+    for (let i = 0; i < 300; i++) assert.equal(R17.fishingSession(mk17('fort-kearny', 500 + i), { rescue: true }).bear, null);
+    const A = R17.fishingSession(mk17('fort-kearny', 22), { rand: mulberry32(9) }), B = R17.fishingSession(mk17('fort-kearny', 22), { rand: mulberry32(9) });
+    assert.deepEqual(A.casts, B.casts);
+  });
+  test('the bear: both choices cost nothing and are counted; the fishing goes on with the same casts', () => {
+    const J = mk17('fort-kearny', 23);
+    const w = R17.bearChoice(J, 'wait'), s = R17.bearChoice(J, 'spot');
+    assert.deepEqual([w.choice, s.choice], ['wait', 'spot']); assert.deepEqual([J.totals.bearsSeen, J.totals.bearWaits, J.totals.bearMoves], [2, 1, 1]);
+    const food = J.food; const S = R17.fishingSession(J, { rand: mulberry32(3) }); S.casts.forEach((c, k) => R17.landCast(J, S, k)); assert.ok(R17.endFishing(J, S).lb >= 0 && J.food >= food, 'nothing lost');
+  });
+  test('arrowheads under rocks: only on legs whose biome has them, at most one a round, recorded as the existing find (the Finds page counts it) and never kept in the wagon', () => {
+    assert.equal(FINDSC.FIND_BY_ID.arrowhead.keep, 'sketch');
+    const prairie = mk17('kansas-river', 31), gorge = mk17('the-dalles', 31);
+    assert.ok(R17.arrowheadHere(prairie)); assert.ok(!R17.arrowheadHere(gorge), 'not in the Columbia gorge');
+    let withArrow = 0; const rounds = 600;
+    for (let i = 0; i < rounds; i++) { const plan = R17.rocksPlan(mk17('kansas-river', 700 + i)); const a = plan.rocks.filter((r) => r.kind === 'arrowhead').length; assert.ok(a <= 1); withArrow += a; }
+    assert.ok(withArrow / rounds > 0.15 && withArrow / rounds < 0.40, `a round has an arrowhead ${(withArrow / rounds * 100).toFixed(0)} % of the time`);
+    for (let i = 0; i < 200; i++) assert.ok(!R17.rocksPlan(mk17('the-dalles', 800 + i)).rocks.some((r) => r.kind === 'arrowhead'));
+    const J = mk17('kansas-river', 32), plan = R17.rocksPlan(J, { rand: () => 0.01 });
+    assert.equal(plan.rocks[0].kind, 'arrowhead');
+    const r = R17.flipRock(J, plan, 0); assert.deepEqual([r.kind, r.find.id, r.find.first, r.find.n], ['arrowhead', 'arrowhead', true, 1]);
+    assert.equal(J.finds.arrowhead, 1, 'the Finds page counts it'); assert.ok(!J.goods.arrowhead, 'never kept in the wagon');
+    const J2 = mk17('kansas-river', 33), p2 = R17.rocksPlan(J2, { rand: () => 0.01 }); R17.flipRock(J2, p2, 0); R17.endRocks(J2, p2); J2.trip.arrived = true;
+    const p3 = R17.rocksPlan(J2, { rand: () => 0.01 }), again = R17.flipRock(J2, p3, 0); assert.deepEqual([again.find.first, again.find.n], [false, 2]);
+  });
+  test('the rocks module is pure: no clock, no Math.random, no DOM', () => {
+    const src = readFileSync(new URL('../src/journey/rocks.js', import.meta.url), 'utf8').replace(/\/\/.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+    assert.ok(!/Date\.now|new Date\(|performance\.now|Math\.random|document\.|window\.|localStorage|setTimeout/.test(src));
+  });
+}
+
 console.log(`\n${passed} passed, ${failures.length} failed`);
 if (failures.length) { console.log('FAILED:\n  ' + failures.join('\n  ')); process.exit(1); }
 console.log('ALL JOURNEY TESTS PASSED');
