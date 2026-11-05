@@ -613,6 +613,40 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
   .player-chip { max-width: 58%; }
 }
 
+/* ================= v3.10: the Sky Era teaser (src/ui/skyTeaser.js) + the title's Sky card ================= */
+.sky-teaser { position: absolute; inset: 0; z-index: 38; background: #0d1230; opacity: 0; transition: opacity .35s ease; touch-action: none; user-select: none; -webkit-user-select: none; overflow: hidden; }
+.sky-teaser.on { opacity: 1; }
+.sky-teaser .st-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.st-skip { position: absolute; z-index: 3; top: var(--pad-t); right: var(--pad-r); min-width: 84px; background: rgba(13,18,48,.72); color: #fff; border: 2px solid rgba(255,255,255,.45);
+  box-shadow: 0 3px 0 rgba(0,0,0,.35); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
+.st-road { position: absolute; z-index: 2; top: var(--pad-t); left: var(--pad-l); max-width: calc(100% - var(--pad-l) - var(--pad-r) - 100px); padding: 11px 16px 10px; border-radius: 999px;
+  background: rgba(13,18,48,.82); border: 2px solid rgba(255,207,26,.85); color: var(--accent); font: 400 clamp(17px, 1.4vw + 1.4vh, 26px)/1 var(--font-display);
+  white-space: nowrap; box-shadow: 0 0 22px rgba(255,207,26,.35), 0 4px 0 rgba(0,0,0,.35); pointer-events: none; }
+.st-road.pop { animation: stPop .5s cubic-bezier(.3,1.6,.5,1) both; }
+.st-bottom { position: absolute; z-index: 2; left: var(--pad-l); right: var(--pad-r); bottom: calc(var(--pad-b) + 10px); display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.st-caption { max-width: min(100%, 780px); padding: 12px 20px 13px; border-radius: 18px; background: rgba(8,10,35,.78); border: 2px solid rgba(255,255,255,.18);
+  color: #fff; text-align: center; font: 800 clamp(19px, 1.6vw + 1.5vh, 32px)/1.22 var(--font-body); text-shadow: 0 2px 0 rgba(0,0,0,.5); text-wrap: balance; }
+.st-caption.in { animation: stIn .45s ease both; }
+.st-tap { padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,.9); color: var(--ink); font: 800 14px/1 var(--font-body); letter-spacing: .02em; }
+@keyframes stIn { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes stPop { 0% { transform: scale(.7); opacity: 0; } 100% { transform: none; opacity: 1; } }
+.reduced-motion .st-caption.in, .reduced-motion .st-road.pop, .sky-teaser.reduced .st-caption.in, .sky-teaser.reduced .st-road.pop { animation: none; }
+.reduced-motion .sky-teaser, .sky-teaser.reduced { transition: none; }
+@media (prefers-reduced-motion: reduce) { .st-caption.in, .st-road.pop { animation: none; } .sky-teaser { transition: none; } }
+
+.sky-card { gap: 10px; min-height: 52px; margin: 0 0 12px; padding: 4px 16px 4px 8px; border-radius: 16px; --edge: 4px;
+  background: linear-gradient(120deg, #1f47b8 0%, #4b2fa6 55%, #8a2f95 100%); border: 2px solid rgba(127,232,255,.6); color: #fff;
+  box-shadow: 0 var(--edge) 0 #0b1035, 0 0 20px rgba(127,232,255,.28), inset 0 2px 0 rgba(255,255,255,.25); }
+.sky-card:active { box-shadow: 0 1px 0 #0b1035; }
+.sky-mini { display: block; width: 66px; height: 40px; flex: none; }
+.sky-mini svg { display: block; width: 100%; height: 100%; }
+.sky-text { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; line-height: 1; }
+.sky-text b { font: 400 16px/1 var(--font-display); letter-spacing: .03em; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.35); }
+.sky-text span { font: 800 13px/1 var(--font-body); color: #ffe9b0; text-transform: none; letter-spacing: .01em; }
+@media (orientation: landscape) {
+  .sky-card { position: absolute; z-index: 2; right: var(--pad-r); bottom: calc(var(--pad-b) + 84px); margin: 0; }
+}
+
 /* player picker: the title centered, the Parents button in the top-right corner (always there, PIN-gated) */
 .players-top { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; }
 .players-top h2 { grid-column: 2; flex: none; text-align: center; color: var(--accent); }
@@ -1383,6 +1417,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
       <span class="mission-chip" id="title-mission"><span data-icon="star"></span><span id="title-mission-text">Today: 0 / 8 words</span></span>
       <span class="cash-pill" data-cash></span>
     </div>
+    <button class="btn sky-card" id="btn-sky" data-sfx hidden aria-label="Sky Era: watch the teaser"><span class="sky-mini" id="sky-mini" aria-hidden="true"></span><span class="sky-text"><b>Sky Era</b><span id="sky-steps">Sky Road 0 / 15</span></span></button>
     <h1 class="logo">Spell<span>Jump</span></h1>
     <p class="tagline" id="title-tagline">Spell it right. Launch it high.</p>
     <p class="sample-note" id="title-sample" hidden>This week's words are loaded · a grown-up can add next week's words in Parents</p>
@@ -1567,6 +1602,8 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
       <p class="reveal-tap">Tap to continue</p>
     </div>
   </div>
+  <!-- ===== v3.10: the Sky Era teaser (built by src/ui/skyTeaser.js) ===== -->
+  <div class="sky-teaser" id="sky-teaser" hidden></div>
   <!-- ===== Parent Zone (built by src/ui/parentZone.js) ===== -->
   <div class="pz" id="pz" hidden></div>
 </div>

@@ -419,6 +419,45 @@ function createAudio() {
       if (!ready()) return;
       for (const [f, at] of [[1047, 0], [1568, 0.14]]) { tone('sine', f, f, 0.8, 0.11, sfxBus, at); tone('sine', f * 2.76, f * 2.76, 0.35, 0.025, sfxBus, at); }
     },
+    // ---- v3.10: the Sky Era teaser (src/ui/skyTeaser.js); effects only, so the sound setting mutes them ----
+    // a rising whoosh: filtered air opening upward over a long sine glide and a shimmer on top
+    skyRise() {
+      if (!ready()) return;
+      noise('bandpass', 260, 3400, 1.1, 2.4, 0.32, 0, 1.2);
+      tone('sine', 140, 620, 2.3, 0.07);
+      tone('triangle', 520, 2080, 2.2, 0.018, sfxBus, 0.3);
+    },
+    // the clouds tear open: a soft airy burst and a bright open chord swelling in
+    skyBurst() {
+      if (!ready()) return;
+      noise('highpass', 1200, 5200, 0.7, 1.4, 0.16, 0, 0.5);
+      [523, 784, 1047, 1319].forEach((f, i) => tone('triangle', f, f, 1.6, 0.045, sfxBus, 0.45 + i * 0.06));
+    },
+    // the sky world appears (and the road): a wide shimmering chord
+    skyReveal() {
+      if (!ready()) return;
+      [392, 587, 784, 988, 1175].forEach((f, i) => { tone('sine', f, f, 2.2, 0.05, sfxBus, i * 0.05); tone('triangle', f * 2, f * 2, 0.9, 0.012, sfxBus, 0.1 + i * 0.08); });
+    },
+    // one bell per name ring, climbing a pentatonic scale
+    skyChime(i = 0) {
+      if (!ready()) return;
+      const steps = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21];
+      const f = 784 * Math.pow(2, steps[Math.max(0, Math.min(steps.length - 1, i))] / 12);
+      tone('sine', f, f, 0.6, 0.1); tone('sine', f * 2.76, f * 2.76, 0.25, 0.02); tone('triangle', f * 2, f * 2, 0.12, 0.03);
+    },
+    // a ride gliding past: a low, airy pass-by
+    skyPass() {
+      if (!ready()) return;
+      noise('bandpass', 400, 1600, 1.6, 1.1, 0.14, 0, 0.5);
+      tone('sine', 110, 70, 1.0, 0.06);
+    },
+    // the Sky Gate glows: a slow major chord with a sparkle on top
+    skyGate() {
+      if (!ready()) return;
+      [262, 392, 523, 659, 784].forEach((f) => tone('triangle', f, f, 2.4, 0.05, sfxBus, 0.05));
+      [1568, 2093, 2637].forEach((f, i) => tone('sine', f, f, 0.5, 0.03, sfxBus, 0.2 + i * 0.12));
+      noise('highpass', 3000, 6000, 0.7, 1.4, 0.05, 0.1, 0.4);
+    },
     /** What the Speech check prints about the audio output (null before the first tap). */
     diagnostics() {
       if (!ctx) return null;

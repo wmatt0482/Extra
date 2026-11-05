@@ -47,8 +47,10 @@ import { labBridge } from './meta/labBridge.js';
 import { labLook, trailFor } from './meta/labLooks.js';
 import { createTestBoss } from './ui/testBoss.js';
 import { CEREMONY_LINES, improvement, qualifierFor, tierFor } from './ui/ceremony.js';
+import { createSkyTeaser } from './ui/skyTeaser.js';
+import { SKY_ROAD_STEPS, markTeaserSeen, skyName, skyRoadSteps, teaserDue, teaserTexts } from './meta/skyRoad.js';
 
-const VERSION = '3.9.1';
+const VERSION = '3.10.0';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
@@ -305,6 +307,26 @@ async function boot() {
   const testBoss = createTestBoss($('#screen-test'), { audio: Audio, say: (t) => (tts.available ? vtts.say(t) : null), reduced: () => !!save.settings.reducedMotion });
   const pz = createParentZone(app);
   tts.setOnSpeaking((on) => Audio.voice(on));
+  // v3.10: the Sky Era teaser (src/ui/skyTeaser.js, src/meta/skyRoad.js). Its lines are spoken ONLY with the natural voice's
+  // clips: no clip (no family code, offline, not made yet) means the caption alone, never the device voice.
+  let skyVoiceN = 0;
+  function skySpeak(text) {
+    if (!save.settings.sound || !cloud.active || !cloud.has(text)) return null;
+    const n = ++skyVoiceN;
+    Audio.voice(true);
+    const off = (r) => { if (n === skyVoiceN) Audio.voice(false); return r; };
+    return cloud.play(text).then(off, off);
+  }
+  const sky = app.sky = createSkyTeaser($('#sky-teaser'), {
+    audio: Audio,
+    speak: skySpeak,
+    stopSpeech: () => { skyVoiceN++; try { cloud.stop(); } catch (_) { /* ignore */ } Audio.voice(false); },
+    onClose: () => {
+      Audio.duck(false);
+      hero.setMode(heroMode());
+      if (screen === 'title') { refreshSkyCard(); setTimeout(() => updater.check(), 0); }
+    },
+  });
 
   function refreshAchBadge() {
     const n = ACHIEVEMENTS.filter((a) => save.achievements[a.id]).length;
@@ -468,6 +490,74 @@ async function boot() {
     $('#title-sample').hidden = !WS.isSampleActive(words);
     $('#btn-play').textContent = WS.qualifierDue(words) ? 'Play: new words!' : 'Play';
     refreshEngagement();
+    refreshSkyCard();
+  }
+
+  // ---------- v3.10: the Sky Road card on the title + the Sky Era teaser ----------
+  // The card shows the road (one step per mission day since release, src/meta/skyRoad.js) and replays the full teaser.
+  function miniRoadSvg(n) {
+    const done = n >= SKY_ROAD_STEPS;
+    let out = '<svg viewBox="0 0 66 40" xmlns="http://www.w3.org/2000/svg">';
+    out += '<path d="M53 15 a5 6 0 0 1 10 0 v9 h-10 z" fill="' + (done ? '#ffe08a' : 'rgba(255,255,255,.3)') + '" stroke="' + (done ? '#fff6cf' : 'rgba(255,255,255,.75)') + '" stroke-width="1.4"/>';
+    for (let i = 1; i <= SKY_ROAD_STEPS; i++) {
+      const u = (i - 0.5) / SKY_ROAD_STEPS;
+      const x = 4 + 44 * u + 3 * Math.sin(u * 7), y = 35 - 19 * u - 3 * Math.sin(u * Math.PI);
+      const on = i <= n;
+      out += '<ellipse cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" rx="' + (3.4 - 1.1 * u).toFixed(2) + '" ry="' + (2 - 0.6 * u).toFixed(2) + '" fill="' + (on ? '#ffcf1a' : 'rgba(255,255,255,.42)') + '"' + (on ? ' stroke="#fff3c0" stroke-width=".6"' : '') + '/>';
+    }
+    return out + '</svg>';
+  }
+  function refreshSkyCard() {
+    const btn = $('#btn-sky');
+    if (!btn) return;
+    btn.hidden = !currentPlayerId;
+    if (!currentPlayerId) return;
+    const n = skyRoadSteps(save);
+    $('#sky-steps').textContent = 'Sky Road ' + n + ' / ' + SKY_ROAD_STEPS;
+    $('#sky-mini').innerHTML = miniRoadSvg(n);
+    btn.dataset.steps = String(n);
+    btn.setAttribute('aria-label', 'Sky Era: watch the teaser. Sky Road ' + n + ' of ' + SKY_ROAD_STEPS + '.');
+  }
+  const reducedNow = () => !!save.settings.reducedMotion || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  // Play once when due: never over a panel, a crate, the Parent Zone, the Lab, a toast (e.g. a new class list) or the coach,
+  // never during a run or a test; it waits until the title is clear. Marked seen when it STARTS (a closed tab does not loop it).
+  let skyTimer = 0;
+  function skyBlocked() {
+    return screen !== 'title' || !currentPlayerId || !!run || spellPanel.isOpen || pz.isOpen || coaching || sky.isOpen || document.hidden
+      || !$('#crate-fx').hidden || !$$('.modal').every((m) => m.hidden) || document.documentElement.classList.contains('lab-open')
+      || !!$('#toasts .toast') || !!$('#update-note');
+  }
+  function maybeSky() {
+    clearTimeout(skyTimer);
+    if (window.__noSkyTeaser || screen !== 'title' || !currentPlayerId) return;
+    const due = teaserDue(save);
+    if (!due) return;
+    if (skyBlocked()) { skyTimer = setTimeout(maybeSky, 900); return; }
+    playSky(due);
+  }
+  function scheduleSky(ms = 700) { clearTimeout(skyTimer); skyTimer = setTimeout(maybeSky, ms); }
+  function playSky(due) {
+    clearTimeout(skyTimer);
+    markTeaserSeen(save, due);
+    app.persist();
+    const p = Profiles.playerById(family, currentPlayerId);
+    hero.setMode('off');
+    Audio.duck(true);
+    prepareSkyVoice();
+    return sky.play({ kind: due.kind, step: due.step, steps: skyRoadSteps(save), car: CAR_BY_ID[save.selectedCar], look: app.look(save.selectedCar),
+      name: skyName(p && p.name), reduced: reducedNow(), sound: !!save.settings.sound });
+  }
+  app.playSky = playSky;
+  app.maybeSky = maybeSky;
+  // the teaser's few lines as natural-voice clips (name-free; "Step 4 / 8 / 12 of 15" pre-made), asked for when the title shows
+  const skyAsked = new Map();          // voice -> when its missing lines were last asked for
+  function prepareSkyVoice() {
+    if (!cloud.active) return;
+    const texts = teaserTexts(), v = cloud.voice;
+    if (!cloud.missing(texts).length) { cloud.warm(texts); return; }
+    if (Date.now() - (skyAsked.get(v) || 0) < 10 * 60000) return;
+    skyAsked.set(v, Date.now());
+    cloud.prepare(texts).then(() => cloud.warm(texts)).catch(() => {});
   }
 
   // ---------- v3.3 engagement: title chips (streak flame, level + progress, crates waiting) ----------
@@ -526,6 +616,7 @@ async function boot() {
     if (!inRun) hideCoach();
     if (name === 'title') refreshTitle();
     if (screens[name]) screens[name].show(arg);
+    if (name === 'title') { prepareSkyVoice(); scheduleSky(); } else { clearTimeout(skyTimer); if (sky.isOpen) sky.close('screen'); }
     hero.setMode(heroMode());
     refreshCash();
     classListCheck(name === 'title' ? 'title' : 'screen');   // v3.9.1: a new week on a device that stayed open (or one held back by a run)
@@ -616,7 +707,7 @@ async function boot() {
       refreshCash();
       refreshAchBadge();
       hero.redraw();
-      if (screen === 'title') refreshTitle();
+      if (screen === 'title') { refreshTitle(); if (!sky.isOpen) scheduleSky(); }
     } else {
       const fresh = Profiles.loadWords(id);
       if (id === currentPlayerId && words) {
@@ -1232,6 +1323,7 @@ async function boot() {
   $('#btn-play').addEventListener('click', () => { if (words && WS.qualifierDue(words)) startTest('qualifier'); else go('garage'); });
   $('#btn-friday').addEventListener('click', () => startTest('friday'));
   $('#btn-parents').addEventListener('click', () => pz.open(currentPlayerId));
+  $('#btn-sky').addEventListener('click', () => { if (currentPlayerId && screen === 'title' && !sky.isOpen) playSky({ kind: 'full', step: skyRoadSteps(save) }); });
   $('#btn-player').addEventListener('click', () => go('players'));
   $('#btn-streak').addEventListener('click', () => openPanel('streak'));
   $('#btn-lab').addEventListener('click', () => labBridge.openHome({}));        // the title's "Lab" chip (shown once the Lab has loaded)
@@ -1264,7 +1356,7 @@ async function boot() {
 
   go('players');
   // self-update: reload only on a menu screen with nothing in progress; afterwards come back to the same player
-  updateHooks.isSafe = () => safeToReload({ screen, running: !!run, spelling: spellPanel.isOpen, testing: screen === 'test', parentZone: pz.isOpen }) && !coaching;
+  updateHooks.isSafe = () => safeToReload({ screen, running: !!run, spelling: spellPanel.isOpen, testing: screen === 'test', parentZone: pz.isOpen }) && !coaching && !sky.isOpen;
   updateHooks.notify = () => {        // above the spell panel and the Parent Zone too (plain toasts sit under them)
     const t = h('div', { class: 'toast update-note', id: 'update-note', role: 'status' }, UPDATE_NOTICE);
     $('#app').append(t);
@@ -1280,7 +1372,7 @@ async function boot() {
   sync.start();                        // first pull after the picker is on screen (never blocks it)
   pingNow('day');                      // v3.7.2: once per device per UTC day (fire and forget)
   window.__spellJump = window.__rampRage = {
-    app, hud, hero, spellPanel, testScreen, pz, tts, voice, sync,
+    app, hud, hero, spellPanel, testScreen, pz, tts, voice, sync, sky,
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; },
     get words() { return words; }, get session() { return session; }, get screen() { return screen; },
   }; // debugging / smoke tests
