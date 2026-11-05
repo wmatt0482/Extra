@@ -97,7 +97,7 @@ async function openPage(browser, base, layout, errors, requests) {
   });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('request', (r) => requests.push(r.url()));
-  await page.addInitScript(({ insets }) => {
+  await page.addInitScript(({ insets }) => { window.__noSkyTeaser = true;
     window.__spoken = [];
     window.__noClassLists = true;
     window.__ttsBackend = {

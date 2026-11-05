@@ -28,6 +28,7 @@ import { $, h } from './dom.js';
 import { dayChart, rangeChips } from './chart.js';
 import { icon } from './icons.js';
 import { drawAvatar } from './players.js';
+import { SKY_ROAD_STEPS, skyRoadSteps } from '../meta/skyRoad.js';
 
 const HOLD_MS = 3000;
 const fmtDate = (ms) => (ms ? new Date(ms).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '—');
@@ -480,9 +481,14 @@ export function createParentZone(app) {
     });
     const why = h('button', { class: 'btn btn-sm', 'data-sfx': '', id: 'pz-why-2' }, 'Why this works');
     why.addEventListener('click', () => { view = 'why'; render(); });
+    // v3.10: the Sky Road (one step per mission day since the release; the Sky Era teaser shows it to the child)
+    let sky = 0;
+    try { sky = skyRoadSteps(app.playerData(p.id).save); } catch (_) { /* no save yet */ }
+    const skyLine = h('div', { class: 'sub pz-sky', id: 'pz-sky', 'data-steps': String(sky) }, `Sky Road: ${sky} / ${SKY_ROAD_STEPS} mission days (the Sky Era teaser)`);
     return [
       chips,
       weekBlock(d, r.list.id),
+      ...(reportList ? [] : [skyLine]),
       ...(reportList ? [] : chartBlock(d)),
       h('div', { class: 'pz-scores' },
         h('div', { class: 'stat', 'data-score': 'pretest' }, score(r.pretest), h('span', {}, 'Pretest (Qualifier)')),

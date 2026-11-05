@@ -710,7 +710,7 @@ export function createSkyTeaser(root, deps = {}) {
     seaLayer(b2.sea[2], 1.12, seaTop);
     if (rides > 0) {
       screen();
-      const rocket = opt.rides != null ? 0.55 : rk(0.05, 1.25), bike = opt.rides != null ? 0.3 : rk(0.9, 2.7);
+      const rocket = opt.rides != null ? 0.8 : rk(0.05, 1.25), bike = opt.rides != null ? 0.28 : rk(0.9, 2.7);
       if (rocket > 0 && rocket < 1) drawRide('rocket', lerp(-0.35 * su, W + 0.35 * su, rocket), sy + su * 0.03, su * 0.55, tau);
       if (bike > 0 && bike < 1) drawRide('bike', lerp(-0.25 * su, W + 0.25 * su, bike), H * (portrait() ? 0.42 : 0.17) + Math.sin(rides * 2.4) * su * 0.015, su * 0.48, tau);
     }
@@ -1043,7 +1043,7 @@ export function createSkyTeaser(root, deps = {}) {
     const s = stillScene(i);
     parts = []; partScene = '';
     if (s === 'b1') drawBeat1(4.7);
-    else if (s === 'b2') drawBeat2(8.3, { allLit: true, rides: 1.2 });
+    else if (s === 'b2') drawBeat2(8.3, { allLit: true, rides: 1.2, noCar: true });
     else drawRoad(5, { from: P.steps, to: P.steps, hop: null, gateAt: P.steps >= SKY_ROAD_STEPS ? 0 : null, zoomIn: 1, endZoom: 1, pull: [0, 0.001] });
     syncDom(0);
   }

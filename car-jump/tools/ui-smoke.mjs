@@ -28,6 +28,9 @@
 // Class lists (v3.7; ONLY=class): see classListTest below (v3.9.1: the card says "In use" / "Not in use yet", opens to each
 // word with its sentence) and openTitleNewWeekTest (v3.9.1: a page left open on the title picks up a new week on a
 // visibilitychange, never during a run, and on the hourly check). The other paths set window.__noClassLists (the built-in list).
+// Sky Era teaser (v3.10; ONLY=sky): see skyTeaserTest below (plays once by itself, Skip / Escape / tap, no replay after a reload,
+// the title's Sky card replays it, waits for a panel, the milestone clip at 4, the Parent Zone line, reduced-motion stills; the
+// other paths set window.__noSkyTeaser so the teaser does not cover their title).
 // Self-update (ONLY=update runs just this): a copy of the app served on another port with the REAL service worker;
 // changing sw.js VERSION reloads the page once on the picker (not on the first install), and with the spell panel
 // open it only shows "Update ready, restarting soon" and reloads when the run is left; index.html and src/main.js
@@ -336,7 +339,7 @@ async function runLayout(browser, layout) {
   const page = await ctx.newPage();
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  await page.addInitScript(({ save, insets }) => {
+  await page.addInitScript(({ save, insets }) => { window.__noSkyTeaser = true;
     if (!sessionStorage.getItem('smokeSeeded')) {
       localStorage.clear();
       localStorage.setItem('rampRage.save.v1', JSON.stringify(save));
@@ -1059,7 +1062,7 @@ async function engagement(browser, layout) {
   const page = await ctx.newPage();
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  await page.addInitScript(({ insets }) => {
+  await page.addInitScript(({ insets }) => { window.__noSkyTeaser = true;
     window.__spoken = [];
     window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = {
@@ -1304,7 +1307,7 @@ async function transferTest(browser, layout, page) {
   const b = await ctx.newPage();
   b.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   b.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
-  await b.addInitScript(({ insets }) => {
+  await b.addInitScript(({ insets }) => { window.__noSkyTeaser = true;
     window.__noClassLists = true;
     document.addEventListener('DOMContentLoaded', () => {
       const st = document.createElement('style');
@@ -1312,7 +1315,7 @@ async function transferTest(browser, layout, page) {
       document.head.append(st);
     });
   }, { insets: layout.insets });
-  await b.addInitScript(() => { if (!sessionStorage.getItem('seeded')) { localStorage.clear(); localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devB', keys: {} })); sessionStorage.setItem('seeded', '1'); } });
+  await b.addInitScript(() => { window.__noSkyTeaser = true; if (!sessionStorage.getItem('seeded')) { localStorage.clear(); localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devB', keys: {} })); sessionStorage.setItem('seeded', '1'); } });
   await b.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
   await b.waitForSelector(visibleSel('#screen-players'));
   await b.click('#btn-parents-picker');
@@ -1369,7 +1372,7 @@ async function coachKeys(browser) {
     const errors = [];
     const page = await ctx.newPage();
     page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-    await page.addInitScript(() => {
+    await page.addInitScript(() => { window.__noSkyTeaser = true;
       window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
         speak(u) { setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); }, cancel() {}, addEventListener() {} };
@@ -1437,7 +1440,7 @@ async function selfUpdate(browser) {
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(() => {
+  await page.addInitScript(() => { window.__noSkyTeaser = true;
     sessionStorage.setItem('loads', String((Number(sessionStorage.getItem('loads')) || 0) + 1));
     window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = { speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
@@ -1511,7 +1514,7 @@ async function corruptBoot(browser) {
   const page = await ctx.newPage();
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.addInitScript(() => {
+  await page.addInitScript(() => { window.__noSkyTeaser = true;
     window.__noClassLists = true;
     if (sessionStorage.getItem('seeded')) return;
     sessionStorage.setItem('seeded', '1');
@@ -1560,7 +1563,7 @@ async function levelsTest(browser, layout) {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  await page.addInitScript(({ insets }) => {
+  await page.addInitScript(({ insets }) => { window.__noSkyTeaser = true;
     window.__spoken = [];
     window.__noClassLists = true;   // v3.7: these paths run on the built-in list (class lists: classListTest)
     window.__ttsBackend = {
@@ -1668,7 +1671,7 @@ async function cloudVoiceTest(browser, layout) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
-  await page.addInitScript(({ insets }) => {
+  await page.addInitScript(({ insets }) => { window.__noSkyTeaser = true;
     if (!sessionStorage.getItem('seeded')) {
       localStorage.clear();
       const now = Date.now();
@@ -1833,7 +1836,7 @@ async function classListTest(browser, layout) {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  await page.addInitScript(({ insets }) => {
+  await page.addInitScript(({ insets }) => { window.__noSkyTeaser = true;
     window.__spoken = [];
     window.__ttsBackend = {
       speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
@@ -1969,7 +1972,7 @@ async function openTitleNewWeekTest(browser, layout) {
   const errors = [];
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|api\/family|api\/tts|ERR_FAILED|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
-  await page.addInitScript(({ insets }) => {
+  await page.addInitScript(({ insets }) => { window.__noSkyTeaser = true;
     window.__noClassLists = true;               // last week: the new class list is not out yet
     const every = Number(sessionStorage.getItem('classEvery'));
     if (every) window.__classCheckEveryMs = every;  // the hourly check, the hour shortened (read when the page boots)
@@ -2108,7 +2111,7 @@ async function newListVoiceTest(browser, layout, scenario) {
   const page = await ctx.newPage();
   page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
   page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
-  await page.addInitScript(({ insets, scenario }) => {
+  await page.addInitScript(({ insets, scenario }) => { window.__noSkyTeaser = true;
     if (!sessionStorage.getItem('seeded')) {
       localStorage.clear();
       const now = Date.now(), DAY = 864e5;
@@ -2313,6 +2316,217 @@ async function newListVoiceTest(browser, layout, scenario) {
   await ctx.close();
 }
 
+// ---------- v3.10: the Sky Era teaser + the Sky Road (ONLY=sky runs just this, at both sizes) ----------
+// A player with 3 mission days on the Sky Road (window.__noSkyTeaser NOT set): the full teaser plays by itself on the title
+// (seen is saved when it starts), speaks only natural-voice clips (stubbed, never the device voice), Skip / Escape / a tap
+// return to the title as it was; it does not replay after a reload; the title's Sky card shows "Sky Road 3 / 15" and replays
+// it; it waits while a panel is open; a 4th mission day plays the milestone clip once; the Parent Zone shows the road; with
+// prefers-reduced-motion the teaser is 3 still frames, a tap for each.
+const SKY_DAYS = (n) => Array.from({ length: n }, (_, i) => { const d = new Date('2026-11-06T12:00:00Z'); d.setUTCDate(d.getUTCDate() + i); return d.toISOString().slice(0, 10); });
+async function skyTeaserTest(browser, layout, { reduced = false } = {}) {
+  console.log(`\n--- Sky Era teaser (${layout.name}${reduced ? ', reduced motion' : ''}) ---`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: reduced ? 'reduce' : 'no-preference' });
+  await routeFonts(ctx);
+  await ctx.route('**/api/family/**', (r) => r.abort());
+  let ttsNetwork = false;
+  await ctx.route('**/api/tts/**', (r) => { ttsNetwork = true; return r.abort(); });
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  await page.addInitScript(({ insets, days }) => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.clear();
+      const now = Date.now();
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0,
+        options: { pmia: { wordsPerRace: 1, cloudVoice: 'en-US-Neural2-F' } }, optionsUpdatedAt: { pmia: now }, removedPlayers: [], migrated: true, lastPlayer: 'pmia' }));
+      localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devS', keys: {} }));
+      localStorage.setItem('spellJump.pmia.save', JSON.stringify({ v: 2, cash: 100, seen: { coach: true }, streak: { count: 1, best: 3, lastDay: days[days.length - 1], days: ['2026-10-30', ...days] } }));
+      sessionStorage.setItem('seeded', '1');
+    }
+    window.__noClassLists = true;
+    window.__cloudAsked = []; window.__cloudPlayed = []; window.__spoken = [];
+    window.__ttsBackend = {
+      speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
+      cancel() {}, addEventListener() {},
+    };
+    const hex = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h.toString(16).padStart(8, '0').repeat(4); };
+    window.__cloudVoiceBackend = {
+      async status() { return { key: true }; },
+      async prepare({ code, voice, texts }) {
+        window.__cloudAsked.push({ code, voice, texts });
+        const clips = {};
+        for (const t of texts) clips[t] = '/api/tts/clip/' + hex(voice + '\n' + t);
+        return { status: 200, body: { clips, generated: texts.length, cached: 0, charsToday: 100 } };
+      },
+      async load(url, text) { return { url, text, duration: 0.03 }; },
+      play(buf, text) { window.__cloudPlayed.push(text); return new Promise((r) => setTimeout(() => r(true), 25)); },
+      stop() {},
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const st = document.createElement('style');
+      st.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(st);
+    });
+  }, { insets: layout.insets, days: SKY_DAYS(3) });
+  const sky = () => J(page, () => window.__spellJump.sky.state);
+  const isOpen = () => J(page, () => window.__spellJump.sky.isOpen);
+  const waitOpen = (timeout = 6000) => page.waitForFunction(() => window.__spellJump && window.__spellJump.sky.isOpen, null, { timeout }).then(() => true, () => false);
+  const waitClosed = (timeout = 9000) => page.waitForFunction(() => !window.__spellJump.sky.isOpen, null, { timeout }).then(() => true, () => false);
+  const titleAsBefore = () => J(page, () => ({ screen: window.__spellJump.screen, play: !document.querySelector('#btn-play').closest('[hidden]') && document.querySelector('#btn-play').getBoundingClientRect().height > 40,
+    overlay: document.querySelector('#sky-teaser').hidden, hero: window.__spellJump.hero.mode }));
+  const SKY = await import(pathToFileURL(path.join(root, 'src/meta/skyRoad.js')).href);
+  const pick = async () => {
+    await page.waitForSelector(visibleSel('#screen-players'));
+    await page.click('[data-player="pmia"]');
+    await page.waitForSelector(visibleSel('#screen-title'));
+  };
+
+  await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  await pick();
+  check(await waitOpen(), 'a player who has not seen it: the Sky Era teaser opens by itself on the title');
+  let st = await sky();
+  check(st && st.kind === 'full' && st.steps === 3 && st.name === 'MIA' && st.reduced === reduced, `the full teaser, Sky Road 3 (2 days before the start not counted), the rings spell MIA (${JSON.stringify(st && { kind: st.kind, steps: st.steps, name: st.name, reduced: st.reduced })})`);
+  check((await readSave(page)).seen.teaser === true, 'seen.teaser is saved as it starts (a closed tab does not loop it)');
+  const skipBox = await J(page, () => { const r = document.querySelector('#st-skip').getBoundingClientRect(); return { w: r.width, h: r.height, top: r.top, right: r.right, W: innerWidth }; });
+  check(skipBox.w >= 44 && skipBox.h >= 44 && skipBox.top >= layout.insets.t - 1 && skipBox.right <= skipBox.W - layout.insets.r + 1, `Skip is a big button inside the safe area (${Math.round(skipBox.w)}×${Math.round(skipBox.h)})`);
+
+  if (reduced) {
+    check(st.frames === 3 && st.frame === 0 && /above the clouds/.test(st.caption), `reduced motion: 3 still frames, the first one captioned (${st.caption})`);
+    check(await J(page, () => !document.querySelector('#st-tap').hidden), 'reduced motion: "Tap for more" shows');
+    await shot(page, layout, 'sky-r1-still', 300);
+    await page.waitForTimeout(400);
+    const tapC = () => page.mouse.click(layout.width / 2, layout.height * 0.4);
+    await tapC(); await page.waitForTimeout(250);
+    st = await sky();
+    check(st && st.frame === 1 && /The Sky Era\. New tracks\. New rides\. And a second jump you earn by spelling\./.test(st.caption), `a tap: the second still (${st && st.caption})`);
+    await shot(page, layout, 'sky-r2-still', 200);
+    await tapC(); await page.waitForTimeout(250);
+    st = await sky();
+    check(st && st.frame === 2 && st.badge === 'Sky Road: 3 / 15' && /road to the sky/.test(st.caption), `a tap: the road still, "${st && st.badge}"`);
+    await shot(page, layout, 'sky-r3-still', 200);
+    await page.waitForFunction(() => window.__cloudPlayed.includes('Every mission you finish builds your road to the sky.'), null, { timeout: 4000 }).catch(() => {});
+    await tapC();
+    check(await waitClosed(3000), 'a tap on the last still closes it');
+    const tb = await titleAsBefore();
+    check(tb.screen === 'title' && tb.play && tb.overlay && tb.hero !== 'off', `back on the title as it was (${JSON.stringify(tb)})`);
+    const played = await J(page, () => window.__cloudPlayed.slice());
+    check(played.includes("What's up above the clouds?") && played.includes('The Sky Era.'), `the stills speak their lines with the natural voice (${played.length} clips)`);
+    check(!(await J(page, () => window.__spoken.some((t) => /clouds|Sky|mission you finish/.test(t)))), 'never the device voice');
+    check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
+    return;
+  }
+
+  // the voice: natural clips only
+  await page.waitForFunction(() => window.__cloudPlayed.includes("What's up above the clouds?"), null, { timeout: 4000 }).catch(() => {});
+  const asked = (await J(page, () => window.__cloudAsked)).flatMap((a) => a.texts);
+  check(SKY.teaserTexts().every((t) => asked.includes(t)), 'the title asked for the teaser lines as clips (incl. "Step 4 / 8 / 12 of 15")');
+  check(await J(page, () => window.__cloudPlayed.includes("What's up above the clouds?")), 'the hook line is spoken with the natural voice');
+  st = await sky();
+  check(st.caption === "What's up above the clouds?", `its caption is on screen ("${st.caption}")`);
+  await page.waitForTimeout(500);
+  await shot(page, layout, 'sky-01-hook', 0);
+  await layoutAudit(page, layout.insets, 'Sky teaser');
+  // a few frames from the middle (seek pauses and draws that moment)
+  for (const [t, name, re] of [[3.2, '02-climb', /clouds/], [13.4, '03-name-rings', /second jump/], [16.0, '04-rides', /second jump/], [21.5, '05-road', /road to the sky/]]) {
+    await J(page, (x) => window.__spellJump.sky.seek(x), t);
+    await page.waitForTimeout(150);
+    st = await sky();
+    check(re.test(st.caption), `at ${t} s the caption reads "${st.caption}"`);
+    await shot(page, layout, 'sky-' + name, 0);
+  }
+  check(st.badge === 'Sky Road: 3 / 15', `the road shows "${st.badge}" as text`);
+  const dark = await J(page, () => [...document.querySelectorAll('#sky-teaser *')].map((e) => e.textContent).join(' '));
+  check(!/hurry|only \d+ left|don't lose|lost|lives|days left|countdown/i.test(dark), 'no pressure words anywhere in the teaser');
+  await page.click('#st-skip');
+  check(await waitClosed(2000), 'Skip closes it');
+  let tb = await titleAsBefore();
+  check(tb.screen === 'title' && tb.play && tb.overlay && tb.hero === 'anim', `Skip: back on the title exactly as it was (${JSON.stringify(tb)})`);
+  check(!(await J(page, () => window.__spoken.some((t) => /clouds|Sky Era|mission you finish|second jump/.test(t)))), 'the device voice never said a teaser line');
+
+  // the Sky card
+  const card = await J(page, () => { const b = document.querySelector('#btn-sky'); const r = b.getBoundingClientRect(); const p = document.querySelector('#btn-play').getBoundingClientRect(); const f = document.querySelector('#btn-friday').getBoundingClientRect();
+    return { hidden: b.hidden, text: document.querySelector('#sky-steps').textContent, steps: b.dataset.steps, h: r.height, overlapsPlay: !(r.right < p.left || r.left > p.right || r.bottom < p.top || r.top > p.bottom), menuBottom: f.bottom, H: innerHeight }; });
+  check(!card.hidden && card.text === 'Sky Road 3 / 15' && card.steps === '3' && card.h >= 44 && !card.overlapsPlay, `the title's Sky card: "${card.text}", clear of PLAY`);
+  check(card.menuBottom <= card.H - layout.insets.b, 'the menu buttons are still on screen under it');
+  await shot(page, layout, 'sky-06-title-card');
+  await layoutAudit(page, layout.insets, 'title with the Sky card');
+
+  // no replay after a reload
+  await page.reload({ waitUntil: 'networkidle' });
+  await pick();
+  await page.waitForTimeout(2200);
+  check(!(await isOpen()), 'after a reload it does not play again');
+
+  // the card replays it; Escape and a tap end it
+  await page.click('#btn-sky');
+  check(await waitOpen(2000) && (await sky()).kind === 'full', 'tapping the Sky card replays the full teaser');
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Escape');
+  check(await waitClosed(2000), 'Escape ends it');
+  check((await J(page, () => window.__spellJump.screen)) === 'title' && (await J(page, () => document.querySelectorAll('.modal:not([hidden])').length)) === 0, 'Escape did not open or close anything else');
+  await page.click('#btn-sky');
+  await waitOpen(2000);
+  await page.mouse.click(layout.width * 0.3, layout.height * 0.5);
+  check(await isOpen(), 'a tap in the first half second does not skip (the tap that opened it)');
+  await page.waitForTimeout(700);
+  await page.mouse.click(layout.width * 0.3, layout.height * 0.5);
+  check(await waitClosed(2000), 'a tap anywhere after that ends it');
+  tb = await titleAsBefore();
+  check(tb.screen === 'title' && tb.overlay, 'back on the title');
+
+  // it waits while a panel is open (never on top of one)
+  await J(page, () => { const S = window.__spellJump; S.app.save.seen.teaser = false; S.app.persist(); });
+  await page.click('#btn-streak');
+  await J(page, () => window.__spellJump.app.maybeSky());
+  await page.waitForTimeout(1200);
+  check(!(await isOpen()), 'with the streak panel open the teaser waits');
+  await page.keyboard.press('Escape');
+  check(await waitOpen(3000), 'the panel closed: then it plays');
+  await page.click('#st-skip');
+  await waitClosed(2000);
+
+  // a 4th mission day: the milestone clip, once
+  await J(page, () => { const S = window.__spellJump; S.app.save.streak.days = [...S.app.save.streak.days, '2026-11-09']; S.app.persist(); S.app.go('garage'); });
+  await page.waitForTimeout(200);
+  await J(page, () => window.__spellJump.app.go('title'));
+  check(await waitOpen(4000), 'Sky Road reached 4: the title plays the milestone clip');
+  st = await sky();
+  check(st.kind === 'clip' && st.step === 4 && st.steps === 4 && st.len < 6, `a short clip (${st.len} s) for step 4`);
+  check((await readSave(page)).seen.skyClip === 4, 'seen.skyClip = 4 as it starts');
+  await page.waitForFunction(() => /Step 4 of 15/.test((window.__spellJump.sky.state || {}).caption || ''), null, { timeout: 4000 }).catch(() => {});
+  await page.waitForTimeout(400);
+  st = await sky();
+  check(st && st.caption === 'Your Sky Road grew! Step 4 of 15.' && st.badge === 'Sky Road: 4 / 15', `the caption "${st && st.caption}", the meter "${st && st.badge}"`);
+  await shot(page, layout, 'sky-07-milestone', 0);
+  await page.waitForFunction(() => window.__cloudPlayed.includes('Your Sky Road grew! Step 4 of 15.'), null, { timeout: 3000 }).catch(() => {});
+  check(await J(page, () => window.__cloudPlayed.includes('Your Sky Road grew! Step 4 of 15.')), 'the pre-made "Step 4 of 15" clip is spoken');
+  check(await waitClosed(6000), 'the clip ends by itself');
+  check((await J(page, () => window.__spellJump.screen)) === 'title' && (await J(page, () => document.querySelector('#sky-steps').textContent)) === 'Sky Road 4 / 15', 'back on the title, the card says 4 / 15');
+  await J(page, () => window.__spellJump.app.go('garage'));
+  await J(page, () => window.__spellJump.app.go('title'));
+  await page.waitForTimeout(2000);
+  check(!(await isOpen()), 'the milestone clip plays once');
+
+  // the Parent Zone shows the road
+  await page.click('#btn-parents');
+  await page.waitForSelector(visibleSel('#pz'));
+  await pinIn(page, '1234'); await page.waitForFunction(() => /again/i.test((document.querySelector('#pin-title') || {}).textContent || ''));
+  await pinIn(page, '1234');
+  await page.waitForSelector('.pz-content[data-tab]');
+  await page.click('.pz-tabs [data-tab="report"]');
+  await page.waitForSelector('#pz-sky');
+  const pzLine = await J(page, () => document.querySelector('#pz-sky').textContent);
+  check(pzLine === 'Sky Road: 4 / 15 mission days (the Sky Era teaser)', `Parent Zone → Report: "${pzLine}"`);
+  await page.keyboard.press('Escape');
+
+  check(!ttsNetwork, 'no request reached /api/tts (the stub answered everything)');
+  check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
 const only = process.env.ONLY;
 try {
   for (const l of LAYOUTS) if (!only || only === l.name) await runLayout(browser, l);
@@ -2325,6 +2539,8 @@ try {
   for (const l of LAYOUTS) if (!only || only === 'class' || only === l.name) await classListTest(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'class' || only === l.name) await openTitleNewWeekTest(browser, l);
   if (!only || only === 'voice') for (const sc of ['cloud', 'qualifier', 'nokey', 'slow']) await newListVoiceTest(browser, LAYOUTS[0], sc);
+  for (const l of LAYOUTS) if (!only || only === 'sky' || only === l.name) await skyTeaserTest(browser, l);
+  if (!only || only === 'sky') await skyTeaserTest(browser, LAYOUTS[1], { reduced: true });
 } catch (e) {
   failures.push('exception: ' + e.message);
   console.error(e);

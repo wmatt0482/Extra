@@ -102,7 +102,7 @@ async function device(browser, name, opts) {
     errors.push(`${name}: ${m.text()}`);
   });
   page.on('pageerror', (e) => errors.push(`${name} pageerror: ${e.message}`));
-  await page.addInitScript(() => {
+  await page.addInitScript(() => { window.__noSkyTeaser = true;
     if (!sessionStorage.getItem('syncSeeded')) { localStorage.clear(); sessionStorage.setItem('syncSeeded', '1'); }
     window.__spoken = [];
     window.__ttsBackend = {
@@ -206,7 +206,7 @@ async function main() {
     console.log('\n=== sync off: nothing goes to the network ===');
     await L.waitForSelector(visibleSel('#screen-players'));
     check(apiLog.length === 0, 'no /api/family requests before a family exists');
-    check(await J(L, () => window.__spellJump.app.version) === '3.9.1', 'app version 3.9.1');
+    check(await J(L, () => window.__spellJump.app.version) === '3.10.0', 'app version 3.10.0');
 
     console.log('\n=== laptop: Mia, PIN, Create family code ===');
     await typeName(L, 'Mia');
