@@ -139,7 +139,8 @@ export function startRound(id, { restore = false } = {}) {
   app.stamp = null;
   $('#tray').hidden = true;
   $('#hud').hidden = false;
-  $('#title').hidden = $('#title-head').hidden = $('#title-foot').hidden = true;
+  for (const id of ['title', 'screen-players', 'screen-newplayer']) $('#' + id).hidden = true;
+  document.documentElement.dataset.screen = 'play';
   // A harbor or hillside job also brings the Lab machines this builder owns that suit it (`optional`): a quicker way,
   // never a needed one. Every job is finished with the free machines it lists.
   const extras = (round?.optional || []).filter((k) => labBridge.owns(labVehicleId(k)));
@@ -368,21 +369,29 @@ function reveal(show) {
   Audio.coin();
   const last = bp || r.id >= JOB_COUNT,
     next = last ? () => startRound(0) : () => startRound(r.id + 1);
+  // The family's results card: the reward drawn large on a plate, the line that names it, the Lab strip, then the
+  // footer with the next step biggest (Next job) over Continue on site and Back to base.
   const sheet = [
     h('div', {
       class: 'reward-art',
       html: bp ? blueprintSvg(r, { neat: app.neat }) : rewardArt(r.unlock, app.yard.machine.kind, app.save.paint),
     }),
-    h('p', {}, bp ? 'Blueprint complete.' : `Job complete. Unlocked: ${r.reward}.`),
+    h('p', { class: 'reward-line' }, bp ? 'Blueprint complete.' : `Job complete. Unlocked: ${r.reward}.`),
     app.neat ? h('p', { class: 'neat', id: 'neat' }, 'Neat build!') : null,
     h('div', { class: 'lab-results', id: 'lab-results' }),
     h(
       'div',
-      { class: 'modal-actions' },
-      h('button', { class: 'primary', id: 'next-round', onclick: next }, last ? 'Open sandbox' : 'Next job'),
+      { class: 'modal-actions results-foot' },
+      h(
+        'button',
+        { class: 'btn btn-gold btn-big', id: 'next-round', onclick: next },
+        last ? 'Open sandbox' : 'Next job',
+        h('span', { html: icon('right') }),
+      ),
       h(
         'button',
         {
+          class: 'btn',
           id: 'keep-playing',
           onclick() {
             app.mission = null;
@@ -391,10 +400,10 @@ function reveal(show) {
         },
         'Continue on site',
       ),
-      h('button', { onclick: showTitle }, 'Back to base'),
+      h('button', { class: 'btn', id: 'to-base', onclick: showTitle }, 'Back to base'),
     ),
   ];
-  modal(bp ? 'BLUEPRINT COMPLETE' : 'JOB COMPLETE', sheet.filter(Boolean));
+  modal(bp ? 'Blueprint complete' : 'Job complete', sheet.filter(Boolean), { kind: 'results' });
   app.labResults?.destroy();
   app.labResults = labBridge.results({ mount: $('#lab-results') });
   say(bp ? (app.neat ? NEAT_LINE : jobDoneLine(r)) : jobDoneLine(r));
@@ -459,6 +468,7 @@ function pause() {
       'button',
       {
         id,
+        class: 'btn btn-sm',
         onclick() {
           flip();
           this.textContent = label();
@@ -466,28 +476,42 @@ function pause() {
       },
       label(),
     );
-  modal('PAUSED', [
-    h('p', {}, 'Take a break. Your site is ready when you are.'),
-    h(
-      'div',
-      { class: 'modal-actions' },
-      h('button', { class: 'primary', id: 'resume', onclick: closeModal }, 'Resume'),
-      h('button', { onclick: showTitle }, 'Back to base'),
-      toggle(
-        'pause-sound',
-        () => `Sound ${settings.sound ? 'on' : 'off'}`,
-        () => setSetting('sound', !settings.sound),
+  // The family's pause sheet: a big Resume, Back to base, then Sound, Music and Motion side by side.
+  modal(
+    'Paused',
+    [
+      h('p', {}, 'Take a break. Your site is ready when you are.'),
+      h(
+        'div',
+        { class: 'modal-actions pause-actions' },
+        h(
+          'button',
+          { class: 'btn btn-gold btn-big', id: 'resume', onclick: closeModal },
+          h('span', { html: icon('play') }),
+          'Resume',
+        ),
+        h('button', { class: 'btn', id: 'to-base', onclick: showTitle }, 'Back to base'),
+        h(
+          'div',
+          { class: 'pause-toggles' },
+          toggle(
+            'pause-sound',
+            () => `Sound ${settings.sound ? 'on' : 'off'}`,
+            () => setSetting('sound', !settings.sound),
+          ),
+          toggle(
+            'pause-music',
+            () => `Music ${settings.music ? 'on' : 'off'}`,
+            () => setSetting('music', !settings.music),
+          ),
+          toggle(
+            'pause-motion',
+            () => (settings.reducedMotion ? 'Calm motion' : 'Full motion'),
+            () => setSetting('reducedMotion', !settings.reducedMotion),
+          ),
+        ),
       ),
-      toggle(
-        'pause-music',
-        () => `Music ${settings.music ? 'on' : 'off'}`,
-        () => setSetting('music', !settings.music),
-      ),
-      toggle(
-        'pause-motion',
-        () => (settings.reducedMotion ? 'Calm motion' : 'Full motion'),
-        () => setSetting('reducedMotion', !settings.reducedMotion),
-      ),
-    ),
-  ]);
+    ],
+    { kind: 'pause' },
+  );
 }

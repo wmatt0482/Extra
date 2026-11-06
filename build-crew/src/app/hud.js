@@ -177,13 +177,16 @@ export function showHint(text) {
   if (toastOn) placeToasts();
 }
 
-/** Opens the modal sheet with a title and content. Play time stops and the controls and music pause while it is up. */
-export function modal(title, children) {
+/** Opens the modal sheet with a title and content. Play time stops and the controls and music pause while it is up.
+ *  `kind` ('pause', 'results', 'board') lets the stylesheet size the sheet like the family's matching panel. */
+export function modal(title, children, { kind = '' } = {}) {
   account();
   app.labResults?.destroy();
   app.labResults = null;
   app.controls?.setEnabled(false);
-  $('#modal-body').replaceChildren(h('h2', { id: 'modal-title' }, title), ...children);
+  $('#modal-title').textContent = title;
+  $('#modal .modal-card').dataset.kind = kind;
+  $('#modal-body').replaceChildren(...children);
   $('#modal').hidden = false;
   app.playStart = null;
   Music.play(false);
@@ -243,7 +246,8 @@ export function renderMachines() {
   );
   const ui = MACHINE_UI[yard.machine.kind];
   $('#grab').hidden = !!ui.noGrab;
-  $('#tool-label').innerHTML = `${ui.toolLabel} <small class="kb">I J K L</small><small class="drag">drag the stick</small>`;
+  $('#tool-label').innerHTML =
+    `${ui.toolLabel} <small class="kb">I J K L</small><small class="drag">drag the stick</small>`;
   for (const b of document.querySelectorAll('[data-hold]')) {
     const axis = b.dataset.hold.split(':')[0];
     b.hidden = !ui.joints.includes(axis);
