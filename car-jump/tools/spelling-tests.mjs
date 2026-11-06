@@ -958,7 +958,7 @@ await atest('v3.6.3: Trail Blazer keys <id>.tb and <id>.facts store with the sam
   assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.tb`, doc(2, { cash: 950 }))).status, 200);
   assert.equal((await call(st, 'PUT', `/api/family/${CODE}/pmia.save`, doc(1, { cash: 5 }))).status, 200);
   const g = await call(st, 'GET', `/api/family/${CODE}`);
-  assert.deepEqual(Object.keys(g.json.players.pmia), ['save', 'words', 'tb', 'facts', 'ff', 'fracs', 'ww', 'bc', 'lab']);
+  assert.deepEqual(Object.keys(g.json.players.pmia), ['save', 'words', 'tb', 'facts', 'ff', 'fracs', 'ww', 'bc', 'cf', 'lab']);
   assert.equal(g.json.players.pmia.tb.data.cash, 950); assert.equal(g.json.players.pmia.tb.rev, 2); assert.equal(g.json.players.pmia.facts.data.v, 4);
   assert.equal(g.json.players.pmia.save.data.cash, 5, "Spell Jump's save is untouched by the Trail Blazer keys");
   assert.deepEqual(g.json.players.pleo, { save: null, words: null, tb: null, facts: null, ff: null, fracs: null, ww: null, bc: null, lab: null });

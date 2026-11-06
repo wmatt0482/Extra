@@ -20,6 +20,8 @@ export const QUESTS = [
   { id: 'bc-job', game: 'bc', events: ['job'], text: 'Finish {n} jobs', one: 'Finish a job', easy: 1, mid: 1, hard: 2, nudge: true },
   { id: 'bc-pieces', game: 'bc', events: ['piece'], text: 'Deliver {n} blocks', easy: 3, mid: 5, hard: 8 },
   { id: 'bc-challenge', game: 'bc', events: ['challenge'], text: 'Meet {n} build challenges', one: 'Meet a build challenge', easy: 1, mid: 1, hard: 1 },
+  // (not a nudge: a case opens once a day, so a child is never nudged toward a game that makes them wait)
+  { id: 'cf-case', game: 'cf', events: ['case'], text: 'Close {n} case', one: 'Close a case', easy: 1, mid: 1, hard: 1 },
   // counts the distinct games with any event today; the nudge for a child who has played one game or none lately
   { id: 'any-explore', game: 'any', events: [], explore: true, text: 'Play {n} different games', easy: 2, mid: 2, hard: 3, nudge: true, nudgeOnly: true },
 ];
