@@ -160,6 +160,9 @@ try {
   section('5. /build-crew/: the dump truck for Mia, not for Ben; the original machines and ten jobs open for both');
   {
     // the same origin, so Build Crew reads the Lab save this very page just charged 8,000 coins for
+    // Build Crew 0.7 resumes the same builder after a reload in the same tab (sessionStorage 'buildCrew.resume', set on pagehide), so a second
+    // goto would skip "Who's building?" and open Mia again. Clear the key at the start of every document so each visit shows the picker.
+    await page.addInitScript(() => { try { sessionStorage.removeItem('buildCrew.resume'); } catch (_) {} });
     const machinesOf = async (name) => {
       await page.goto(`${BASE}/build-crew/?test=1&nosw=1`);
       await page.waitForFunction(() => window.__buildCrew, null, { timeout: 60000 });
@@ -188,7 +191,10 @@ try {
     check('Build Crew, as Ben (no purchase): no Dump truck in the sandbox, none to select', !ben.kinds.includes('dump') && !ben.buttons.includes('dump'), JSON.stringify(ben));
     check('Build Crew, as Ben: the job board shows the Dump truck as locked', ben.board.dump === 'false', JSON.stringify(ben.board));
     check('the original machines are the same for both (the Lab adds only the Dump truck)', ben.kinds.includes('skid') && mia.kinds.filter((k) => k !== 'dump').join() === ben.kinds.join(), `${mia.kinds} / ${ben.kinds}`);
-    check('all ten jobs are open for both', [mia, ben].every((x) => x.board.jobs.length === 10 && x.board.jobs.every((j) => !j.disabled)), JSON.stringify([mia.board.jobs.length, ben.board.jobs.length]));
+    // Build Crew grew from ten jobs to twenty (the harbor and hillside sites, 0.6); the page runs in ?test=1 on localhost, which opens every job.
+    // The Lab's promise (D14) is that the original ten stay open, so check those by id, and that the board lists every job Build Crew has.
+    const { JOB_COUNT } = await import('../../build-crew/src/content.mjs');
+    check(`all the jobs are open for both (the original ten included; Build Crew now has ${JOB_COUNT})`, [mia, ben].every((x) => x.board.jobs.length === JOB_COUNT && x.board.jobs.every((j) => !j.disabled) && [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].every((id) => x.board.jobs.some((j) => String(j.id) === String(id)))), JSON.stringify([mia.board.jobs.length, ben.board.jobs.length]));
     await page.goto(`${BASE}/lab/?labtest&nosw&player=mia`);
     await page.waitForSelector('.lab-room-cv');
   }
