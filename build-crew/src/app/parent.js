@@ -16,10 +16,10 @@ import { labBridge } from '../meta/labBridge.js';
 import { app, account, flush, setSetting } from './state.js';
 import { toast } from './hud.js';
 import { applyVoice, cloudDefault, prepareVoice } from './voice.js';
-import { newPlayer, renderTitle } from './title.js';
+import { showNewPlayer, refreshMenus } from './title.js';
 
 /** Creates the shared Parent Zone with Build Crew's adapter, adds the report and options panels whenever the zone
- *  shows its unlocked views, and wires the title's Parents button. */
+ *  shows its unlocked views, and wires the home screen's Parents button (the picker's opens it through app.openParents). */
 export function initParentZone() {
   app.pz = createParentZone(parentAdapter());
   new MutationObserver(parentExtras).observe($('#pz'), {
@@ -28,12 +28,13 @@ export function initParentZone() {
     attributes: true,
     attributeFilter: ['data-view'],
   });
-  $('#parents').onclick = () => {
+  app.openParents = () => {
     flush();
     app.controls.setEnabled(false);
     Music.play(false);
     app.pz.open(app.playerId);
   };
+  $('#parents').onclick = app.openParents;
 }
 
 /** What the shared zone needs from the game. */
@@ -79,16 +80,17 @@ function parentAdapter() {
     removePlayer(id) {
       Profiles.removePlayer(app.family, id);
       if (id === app.playerId) {
-        app.playerId = app.family.players[0]?.id || null;
-        app.save = app.playerId ? loadSave(app.playerId) : defaultSave();
+        app.playerId = null;
+        app.save = defaultSave();
       }
     },
     /** Picks up anything the parent changed, then resumes the screen underneath. */
     onParentZoneClosed() {
       app.family = Profiles.loadFamily();
+      if (app.playerId && !Profiles.playerById(app.family, app.playerId)) app.playerId = null;
       app.save = app.playerId ? loadSave(app.playerId) : defaultSave();
       applyVoice();
-      renderTitle();
+      refreshMenus();
       app.controls.setEnabled(app.screen === 'play' && $('#modal').hidden);
       account();
       Music.play(true);
@@ -97,7 +99,7 @@ function parentAdapter() {
       flush();
       location.reload();
     },
-    go: () => newPlayer(),
+    go: () => showNewPlayer(),
     async exportProgress(id) {
       return JSON.stringify({
         game: 'build-crew',

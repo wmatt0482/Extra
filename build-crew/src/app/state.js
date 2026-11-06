@@ -8,7 +8,7 @@ import { dayKey } from '../../../spell-jump/src/ui/chart.js';
 import { $ } from '../../../spell-jump/src/ui/dom.js';
 import { Audio } from '../../../spell-jump/src/audio.js';
 import { COLORS } from '../content.mjs';
-import { defaultSave, loadSave } from '../meta/save.mjs';
+import { defaultSave } from '../meta/save.mjs';
 import { writeSave } from '../meta/sync.js';
 import { labBridge } from '../meta/labBridge.js';
 import { resolveLook } from '../meta/labLooks.js';
@@ -23,7 +23,7 @@ export const app = {};
 export const isLocalHost = (host = location.hostname) =>
   host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1' || host.endsWith('.local');
 
-/** Reads the URL flags, device settings and the last builder's save. ?test=1 adds test hooks and opens every job;
+/** Reads the URL flags, device settings and the family. ?test=1 adds test hooks and opens every job;
  *  the game loop then stops stepping on its own so tests advance the simulation explicitly. The flag is honored only
  *  on a local host, so a child who adds ?test=1 on the live site gets the normal game and no unlocked jobs. */
 export function initState() {
@@ -31,13 +31,14 @@ export function initState() {
   app.testing = isLocalHost() && app.params.get('test') === '1';
   app.settings = readSettings();
   app.family = Profiles.loadFamily();
-  app.playerId = app.family.lastPlayer || app.family.players[0]?.id || null;
-  app.save = app.playerId ? loadSave(app.playerId) : defaultSave();
+  // Nobody is building until a player is picked on "Who's building?" (main.js resumes a reload in the same tab).
+  app.playerId = null;
+  app.save = defaultSave();
   Object.assign(app, {
     yard: null,
     scene: null,
     mission: null,
-    screen: 'title',
+    screen: 'players',
     paused: false,
     keyboard: null,
     stamp: null,

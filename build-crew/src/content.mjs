@@ -4,7 +4,7 @@
 // and moon base sites and the machines SPEC.md lists for them are deliberately absent until they are built.
 import { SITES } from './sites.mjs';
 /** The game version reported by pings and the Parent Zone (the service worker has its own cache version). */
-export const VERSION = '0.6.0';
+export const VERSION = '0.7.0';
 /** The five paint colors for loads: red first, because the jobs say "red loads"; also the confetti colors. */
 export const COLORS = ['#c6412f', '#e9aa26', '#287da5', '#64816b', '#87909c'];
 /** Toy shapes. size is [width, height, depth] in metres (a cylinder uses width as its diameter), mass in kilograms.

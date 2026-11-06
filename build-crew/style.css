@@ -103,40 +103,6 @@ p {
   display: block;
   touch-action: none;
 }
-#title-head {
-  position: absolute;
-  top: max(22px, env(safe-area-inset-top));
-  left: 4%;
-  right: 4%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.wordmark {
-  letter-spacing: 0.18em;
-  font-size: 11px;
-  font-weight: 850;
-}
-.quiet {
-  background: #172531e8;
-  font-size: 12px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  backdrop-filter: blur(12px);
-}
-.title {
-  position: absolute;
-  left: 6%;
-  top: 20%;
-  width: 480px;
-  max-width: 80%;
-  padding: 24px 28px 28px;
-  margin-left: -28px;
-  border-radius: 8px;
-  background: linear-gradient(90deg, #14222aef, #14222ad9 80%, #14222a70);
-  text-shadow: 0 1px 20px #00000000;
-}
 .eyebrow {
   font-size: 10px;
   font-weight: 850;
@@ -162,128 +128,9 @@ h1 em {
   font-style: normal;
   color: #f2b538;
 }
-.intro {
-  font-size: 15px;
-  line-height: 1.7;
-  color: #bdcbd6;
-}
-#profile-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 22px 0 16px;
-}
-.profile-button {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  font-size: 13px;
-  padding: 7px 12px;
-  background: #1c2d3de8;
-  border: 1px solid #536575;
-}
-.profile-button.on {
-  border: 2px solid #f2b538;
-}
-.avatar-dot {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  font-size: 12px;
-  color: #fff;
-}
-.title-actions {
-  display: flex;
-  gap: 9px;
-}
-.primary,
-.secondary {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-  min-height: 53px;
-}
-.primary {
-  background: var(--ink);
-  color: var(--cream);
-  box-shadow: 0 5px 0 #00000030;
-  padding: 14px 23px;
-}
-.primary:hover {
-  background: #ffc853;
-}
-.secondary {
-  background: #1d2d3ee8;
-  border: 1px solid #667684;
-}
-.title-links {
-  display: flex;
-  gap: 10px;
-  margin-top: 15px;
-}
-.title-links button {
-  background: transparent;
-  padding: 8px 0;
-  border-radius: 0;
-  font-size: 12px;
-  border-bottom: 1px solid #6e8190;
-}
 #done-total {
   margin-left: 7px;
   color: #afc0cc;
-}
-#title-foot {
-  position: absolute;
-  left: 4%;
-  right: 4%;
-  bottom: max(25px, env(safe-area-inset-bottom));
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-}
-.brand-title {
-  font-size: 27px;
-  font-weight: 950;
-  letter-spacing: -0.06em;
-  line-height: 0.85;
-}
-.brand-title > span {
-  display: block;
-  font-size: 9px;
-  letter-spacing: 0.18em;
-  margin-top: 10px;
-}
-.foot-note {
-  font-size: 11px;
-  line-height: 1.6;
-  text-align: center;
-}
-.looks {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-top: 12px;
-}
-.looks:empty {
-  display: none;
-}
-.looks button {
-  font-size: 10px;
-  padding: 6px 10px;
-  min-height: 44px;
-}
-#saved-thumb img {
-  width: 130px;
-  height: 73px;
-  object-fit: cover;
-  border: 3px solid #4b606f;
-  border-radius: 10px;
-  margin-top: 10px;
-  box-shadow: 0 2px 9px #00000030;
 }
 #hud {
   position: absolute;
@@ -579,194 +426,22 @@ h1 em {
   border: 2px solid #e0bf7a;
   transform: translateX(-50%);
 }
-.veil {
-  position: fixed;
-  inset: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #08101bc0;
-  backdrop-filter: blur(9px);
-  z-index: 20;
-  padding: 18px;
-}
-.modal-card,
-.loading-card {
-  position: relative;
-  background: var(--paper);
-  border-radius: 8px;
-  padding: 34px;
-  box-shadow: 0 20px 100px #00000060;
-  width: 600px;
-  max-width: 100%;
-  max-height: 90dvh;
-  overflow: auto;
-}
-.modal-card h2 {
-  font-size: 36px;
-  margin: 10px 0 15px;
-}
-.modal-card p {
-  font-size: 14px;
-  color: #b9c9d2;
-  margin: 10px 0 20px;
-}
-.modal-close {
-  position: absolute;
-  top: 13px;
-  right: 13px;
-}
 .modal-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 20px;
 }
-.job-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-}
-.job-tile {
-  padding: 12px;
-  background: #273b4b;
-  text-align: left;
-}
-.job-tile b {
-  font-size: 13px;
-  display: block;
-}
-.job-tile small {
-  font-size: 10px;
-  color: #a4b6c3;
-}
-.name-display {
-  font-size: 30px;
-  min-height: 60px;
-  margin: 18px 0;
-  border-bottom: 2px solid #829aaa;
-}
-.kb {
-  margin-top: 18px;
-  touch-action: none;
-}
-.kb-row {
-  display: grid;
-  grid-template-columns: repeat(10, 1fr);
-  gap: 4px;
-  margin: 4px 0;
-}
-.kb-key {
-  padding: 0;
-  font-size: 15px;
-  min-width: 0;
-  height: 44px;
-  border-radius: 6px;
-  background: #2b3e4d;
-}
-.kb-key svg {
-  width: 22px;
-}
-.kb-enter {
-  background: #916619;
-  color: white;
-}
-.kb-char {
-  text-transform: uppercase;
-}
-#toasts {
-  position: fixed;
-  top: 18%;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 55;
-  pointer-events: none;
-}
-.toast {
-  padding: 12px 20px;
-  border-radius: 6px;
-  background: #e6edf2;
-  color: #eef3f6;
-  max-width: 90vw;
-  font-size: 13px;
-  margin-bottom: 7px;
-  box-shadow: 0 3px 18px #00000040;
-}
 .reduced-motion * {
   transition: none !important;
   scroll-behavior: auto !important;
 }
 /* Styles for the shared Parent Zone, imported as a live module rather than a fork. */
-.pz {
-  z-index: 40;
-  color: #e6edf2;
-}
-.pz-sheet {
-  width: 800px;
-  max-width: 100%;
-  height: calc(var(--vvh, 100dvh) - 36px);
-  max-height: 900px;
-  background: #fff9e9;
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  box-shadow: 0 15px 80px #17342f44;
-}
-.pz-head {
-  padding: 16px 22px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  border-bottom: 1px solid #dedfc9;
-}
-.pz-head h2,
-.pz-head h1 {
-  flex: 1;
-  font-size: 22px;
-  margin: 0;
-}
-.pz-body {
-  padding: 20px 24px;
-  overflow: auto;
-  flex: 1;
-}
-.pz-body button {
-  border: 1px solid #d8dcc4;
-  background: #ecebd5;
-}
-.pz-body .btn-green,
-.pz-body .btn-cyan {
-  background: #4e7b65;
-  color: white;
-}
-.pz-body .row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 14px 0;
-  border-bottom: 1px solid #e5e5d0;
-}
-.grow {
-  flex: 1;
-}
-.label {
-  font-size: 14px;
-}
 .sub,
 .pz-help {
   font-size: 12px;
   line-height: 1.6;
   color: #758273;
-}
-.pz-body h3 {
-  font-size: 20px;
-  margin: 18px 0 12px;
-}
-.pz-body .hud-label {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  margin-top: 22px;
 }
 .seg,
 .pz-players,
@@ -786,207 +461,9 @@ h1 em {
   background: #547c67;
   color: white;
 }
-.pz-ptab {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
-.pz-av {
-  width: 25px;
-  height: 25px;
-}
-.pz-sync-line {
-  margin: 4px 20px;
-  min-height: 44px;
-  font-size: 12px;
-}
-.pz-tabs {
-  flex-wrap: wrap;
-}
-.pin-wrap {
-  text-align: center;
-  padding-top: 20px;
-}
-.pin-title {
-  font-size: 23px;
-  margin: 15px;
-}
-.pin-sub {
-  font-size: 13px;
-}
-.pin-dots {
-  display: flex;
-  justify-content: center;
-  gap: 14px;
-  margin: 25px;
-}
-.pin-dots i {
-  border: 2px solid #879c80;
-  border-radius: 50%;
-  width: 14px;
-  height: 14px;
-}
-.pin-dots i.on {
-  background: #456c59;
-}
-.pin-pad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  width: 280px;
-  max-width: 100%;
-  margin: 22px auto;
-}
-.pin-key {
-  height: 53px;
-  font-size: 21px;
-}
-.pin-err {
-  color: #a35d43;
-}
-.pz-body textarea,
-.pz-body input {
-  font: inherit;
-  border: 1px solid #b7c7ad;
-  border-radius: 7px;
-  padding: 10px;
-  max-width: 100%;
-  background: #fffdf5;
-}
-.pz-body textarea {
-  width: 100%;
-  min-height: 90px;
-}
-.pz-table {
-  border-collapse: collapse;
-  width: 100%;
-  font-size: 12px;
-}
-.pz-table td,
-.pz-table th {
-  text-align: left;
-  padding: 8px;
-  border-bottom: 1px solid #dddcca;
-}
-.pz-scores {
-  display: flex;
-  gap: 15px;
-  padding: 15px 0;
-}
-.stat b,
-.stat span {
-  display: block;
-}
-.stat span {
-  font-size: 11px;
-}
-.pz-chart {
-  margin: 16px 0;
-  background: #efefda;
-  padding: 13px;
-  border-radius: 13px;
-}
-.pz-chart figcaption {
-  font-size: 13px;
-  margin-bottom: 10px;
-}
-.pz-chart-svg {
-  width: 100%;
-  height: 190px;
-}
-.pz-chart .tick {
-  font-size: 10px;
-  fill: #697d6e;
-}
-.pz-chart .axis,
-.pz-chart .gridline {
-  stroke: #becbb4;
-  stroke-width: 1;
-}
-.pz-legend {
-  display: flex;
-  gap: 12px;
-  font-size: 11px;
-}
-.pz-chart .sw {
-  width: 14px;
-  height: 9px;
-  display: inline-block;
-  background: var(--c);
-  margin-right: 5px;
-}
-.pz-chart-empty {
-  font-size: 12px;
-}
-.toggle {
-  width: 56px;
-  border-radius: 28px !important;
-  position: relative;
-}
-.toggle:after {
-  content: '';
-  display: block;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: #fff;
-  border: 1px solid #aaa;
-}
-.toggle[aria-checked='true'] {
-  background: #628970 !important;
-}
-.toggle[aria-checked='true']:after {
-  margin-left: auto;
-}
-.pz-code {
-  font-size: 24px;
-  letter-spacing: 0.12em;
-}
-.pz-label {
-  display: block;
-  font-size: 12px;
-  margin-top: 14px;
-}
-.pz-voices {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.pz-content pre {
-  white-space: pre-wrap;
-  font-size: 12px;
-}
-.pz-body .grow,
-.pz-content {
-  min-width: 0;
-}
-.bc-report {
-  padding-bottom: 18px;
-}
-.bc-report .stat {
-  padding: 16px;
-  background: #ecebd5;
-  border-radius: 5px;
-}
-.pz-chart .dots {
-  opacity: 0.8;
-}
-
 /* Responsive layouts for the first look: tablets (850 px and narrower), short landscape screens, phones and
    short phones. Each block only adjusts sizes and positions set above. */
 @media (max-width: 850px) {
-  .title {
-    top: 16%;
-    left: 5%;
-    max-width: 65%;
-    padding: 20px;
-  }
-  .title h1 {
-    font-size: 44px;
-  }
-  .intro {
-    font-size: 13px;
-  }
   .stick {
     width: 96px;
     height: 96px;
@@ -1043,49 +520,8 @@ h1 em {
     top: 115px;
     max-height: calc(100dvh - 320px);
   }
-  .title-links {
-    margin-top: 6px;
-  }
-  .looks {
-    margin-top: 4px;
-  }
 }
 @media (max-height: 600px) and (min-width: 650px) {
-  #title-head {
-    top: 12px;
-  }
-  .title {
-    top: 12%;
-    padding: 14px 25px;
-  }
-  .title h1 {
-    font-size: 35px;
-    margin: 12px 0;
-  }
-  .intro {
-    font-size: 12px;
-    line-height: 1.4;
-  }
-  #profile-row {
-    margin: 12px 0 8px;
-  }
-  .primary,
-  .secondary {
-    min-height: 45px;
-    padding: 9px 16px;
-  }
-  .title-links {
-    margin-top: 2px;
-  }
-  #title-foot {
-    bottom: 14px;
-  }
-  .foot-note {
-    display: none;
-  }
-  .brand-title {
-    font-size: 20px;
-  }
   .stick {
     width: 84px;
     height: 84px;
@@ -1129,12 +565,6 @@ h1 em {
     max-height: calc(100dvh - 145px);
     width: 300px;
   }
-  #saved-thumb {
-    display: none;
-  }
-  .looks {
-    display: none;
-  }
   .job-label p {
     max-width: 550px;
   }
@@ -1146,31 +576,6 @@ h1 em {
   }
 }
 @media (max-width: 600px) {
-  .title {
-    max-width: 93%;
-    width: 430px;
-    top: 14%;
-    left: 7%;
-  }
-  .title h1 {
-    font-size: 43px;
-  }
-  .title-actions {
-    flex-wrap: wrap;
-  }
-  .intro {
-    font-size: 14px;
-  }
-  .title-links {
-    gap: 18px;
-  }
-  #title-foot {
-    left: 6%;
-    right: 6%;
-  }
-  .foot-note {
-    display: none;
-  }
   .hud-top {
     flex-wrap: wrap;
     gap: 6px;
@@ -1287,131 +692,12 @@ h1 em {
     max-height: calc(100dvh - 490px);
     min-height: 160px;
   }
-  .modal-card {
-    padding: 27px 18px;
-  }
-  .modal-card h2 {
-    font-size: 29px;
-  }
-  .job-grid {
-    grid-template-columns: 1fr;
-  }
-  .kb-key {
-    font-size: 12px;
-  }
-  .pz-body {
-    padding: 14px;
-  }
-  .pz-head {
-    padding: 12px;
-  }
-  .pz-head h2 {
-    font-size: 20px;
-  }
-  .pz-tabs button {
-    font-size: 11px;
-    padding: 7px;
-  }
-  .pz-body .row {
-    flex-wrap: wrap;
-  }
-  .pz-code {
-    font-size: 20px;
-  }
-  .looks button {
-    font-size: 9px;
-    padding: 5px 7px;
-  }
-  .looks {
-    gap: 4px;
-  }
-}
-@media (max-width: 600px) and (max-height: 650px) {
-  .title {
-    top: 63px;
-    bottom: 72px;
-    overflow-y: auto;
-    max-width: 96%;
-    padding: 8px 18px 15px;
-  }
-  .title h1 {
-    font-size: 28px;
-    margin: 10px 0;
-  }
-  .title .intro {
-    font-size: 11px;
-    line-height: 1.4;
-  }
-  .title #profile-row {
-    margin: 10px 0 7px;
-  }
-  .title .primary,
-  .title .secondary {
-    font-size: 12px;
-    padding: 9px 14px;
-    min-height: 44px;
-  }
-  .title-links {
-    margin-top: 4px;
-  }
-  .title .looks {
-    display: none;
-  }
-  .title-head {
-    top: 10px;
-  }
-  .brand-title {
-    font-size: 19px;
-  }
-  #title-foot {
-    bottom: 12px;
-  }
-}
-
-/* Small follow-up fixes: look buttons stay square, wide screens size the title, Parent Zone headings. */
-.looks button {
-  min-width: 44px;
-}
-@media (min-width: 851px) {
-  .title {
-    width: 520px;
-  }
-  .title h1 {
-    font-size: clamp(38px, 4vw, 56px);
-  }
-}
-.pz-head h3 {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: 1;
-  font-size: 22px;
-  margin: 0;
-}
-.pz-head h3 span {
-  display: inline-flex;
-  width: 24px;
-  height: 24px;
-}
-.pz-head h3 svg {
-  width: 24px;
-  height: 24px;
-}
-.pinpad {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  width: 280px;
-  max-width: 100%;
-  margin: 22px auto;
 }
 @media (max-width: 600px) {
   .hint {
     top: 218px;
   }
 }
-
-
 /* ---- The tween restyle (0.2): everything below overrides the first look. ---- */
 /* Equipment console: crisp panels, amber actions and compact operator controls. */
 button {
@@ -1433,22 +719,6 @@ h3 {
   font-weight: 800;
   letter-spacing: -0.025em;
 }
-.title {
-  border: 1px solid #6f82945c;
-  border-left: 4px solid #f2b538;
-  border-radius: 4px;
-  padding: 28px 30px;
-  background: linear-gradient(110deg, #10212df5, #142632e8);
-  box-shadow: 0 20px 70px #0005;
-}
-.title h1 {
-  font-weight: 900;
-  letter-spacing: -0.045em;
-  line-height: 0.97;
-}
-.title h1 em {
-  color: #f2b538;
-}
 .eyebrow,
 .wordmark {
   font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
@@ -1467,18 +737,6 @@ h3 {
 .primary:hover,
 .grab:hover {
   background: #ffcb60;
-}
-.secondary {
-  color: #eef3f6;
-}
-.profile-button {
-  border-radius: 4px;
-}
-.avatar-dot {
-  border-radius: 3px;
-}
-.quiet {
-  color: #e7eff5;
 }
 .job-label h2 {
   font-size: 25px;
@@ -1576,70 +834,10 @@ h3 {
 .daylight i {
   border-radius: 3px;
 }
-.modal-card,
-.loading-card {
-  border: 1px solid #6a7c89;
-  border-top: 4px solid #f2b538;
-  border-radius: 6px;
-}
-.toast {
-  border-radius: 4px;
-  background: #192e3c;
-  color: #edf5fb;
-  border-left: 3px solid #f2b538;
-}
-.title-links button {
-  color: #bdceda;
-}
-.foot-note {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-  letter-spacing: 0.08em;
-  background: #142330d9;
-  padding: 10px 14px;
-  text-align: left;
-}
-.brand-title {
-  color: #edf3f7;
-  text-shadow: 0 2px 8px #10202d;
-  font-size: 30px;
-  letter-spacing: -0.04em;
-}
-#saved-thumb img {
-  border-radius: 3px;
-}
 .tiny {
   color: #adbfcb;
 }
-.pz {
-  color: #273e43;
-}
-.pz h2,
-.pz h3 {
-  color: #263e43;
-}
-.pz button {
-  color: #304d4a;
-}
-.pz-head {
-  background: #edf0e8;
-}
-.pz-sheet {
-  background: #f4f4e9;
-}
-.pz .sub {
-  color: #617466;
-}
-.pz .bc-report {
-  color: #304d4a;
-}
 @media (min-width: 851px) {
-  .title {
-    top: 19%;
-    width: 520px;
-  }
-  .title h1 {
-    font-size: 62px;
-  }
   .center-controls {
     gap: 7px;
   }
@@ -1652,9 +850,6 @@ h3 {
   }
 }
 @media (max-width: 850px) {
-  .title h1 {
-    font-size: 46px;
-  }
   .stick {
     width: 88px;
     height: 88px;
@@ -1671,16 +866,6 @@ h3 {
   }
 }
 @media (max-width: 600px) {
-  .title {
-    padding: 20px;
-    max-width: 92%;
-  }
-  .title h1 {
-    font-size: 46px;
-  }
-  .intro {
-    font-size: 13px;
-  }
   .center-controls {
     padding: 6px;
   }
@@ -1712,18 +897,8 @@ h3 {
   .progress {
     font-size: 10px;
   }
-  .brand-title {
-    font-size: 25px;
-  }
 }
 @media (max-height: 600px) and (min-width: 650px) {
-  .title {
-    top: 12%;
-    padding: 16px 22px;
-  }
-  .title h1 {
-    font-size: 38px;
-  }
   .stick {
     width: 72px;
     height: 72px;
@@ -1755,66 +930,18 @@ h3 {
   .hud-top {
     min-height: 100px;
   }
-  .brand-title {
-    font-size: 20px;
-  }
-  .foot-note {
-    display: none;
-  }
   .hint {
     top: 103px;
   }
-  .intro {
-    font-size: 12px;
-  }
 }
-@media (max-width: 600px) and (max-height: 650px) {
-  .title {
-    top: 63px;
-    padding: 10px 18px;
-  }
-  .title h1 {
-    font-size: 30px;
-  }
-  .title .intro {
-    font-size: 11px;
-  }
-}
-
-
 /* Contrast and compact-landscape fixes that must come after the restyle. */
 .hint {
   background: #14232ff2;
   color: #edf4f8;
 }
-.modal-card p {
-  color: #bdcbd6;
-}
 .job-label p {
   color: #cad8e1;
 }
-.intro {
-  color: #c4d1dc;
-}
-.pz-head button,
-.pz-sync-line {
-  color: #eef4f8;
-}
-@media (max-height: 600px) and (min-width: 650px) {
-  .title {
-    bottom: 12px;
-    overflow-y: auto;
-  }
-  #title-foot .brand-title {
-    display: none;
-  }
-}
-@media (max-height: 600px) and (min-width: 650px) {
-  #title-foot {
-    justify-content: flex-end;
-  }
-}
-
 /* Sandbox tray actions: Wrecking ball and Clear site sit at the top of the tray, above the drive deck's reach. Clear
    site asks first: the button turns into "Yes, clear" beside a "Clear site?" prompt. */
 .tray-actions {
@@ -1842,61 +969,8 @@ h3 {
 .clear-ask:empty {
   display: none;
 }
-
-/* Title panel with a finished profile and a saved site: the thumbnail sits beside the job links instead of under them,
-   and the panel is held clear of the BUILD CREW wordmark in the footer (it scrolls inside itself if a very short
-   window cannot fit it). Phones and the compact landscape layout have their own rules above. */
-.title-extra {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 4px 16px;
-}
-.title-extra .title-links {
-  margin-top: 0;
-}
-.title-extra #saved-thumb {
-  order: -1;
-}
-.title-extra #saved-thumb:empty {
-  display: none;
-}
-.title-extra:has(#saved-thumb img) .title-links {
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-}
-@media (max-width: 600px) {
-  .looks {
-    flex-wrap: wrap;
-  }
-}
-.title-extra #saved-thumb img {
-  width: 96px;
-  height: 54px;
-  margin-top: 0;
-  display: block;
-  border-width: 2px;
-}
-@media (min-width: 601px) and (min-height: 601px) {
-  .title {
-    top: clamp(84px, 13dvh, 150px);
-    max-height: calc(100dvh - clamp(84px, 13dvh, 150px) - 118px);
-    overflow-y: auto;
-  }
-}
-
 /* Toasts: one at a time, in a slot placed under the hint line by hud.js (top and left are set there). The stylesheet
    position is only the title screen's. */
-#toasts {
-  width: max-content;
-  max-width: 90vw;
-}
-.toast {
-  margin-bottom: 0;
-  max-width: min(90vw, 420px);
-}
-
 /* ---- Phones and tablets (0.4): the touch layout ----
    The page gets `html.touch` when a touch screen is the main pointer (index.html; ?touch=1 forces it). Everything
    below is scoped to it, so a laptop's layout is untouched. The yard fills the screen: a one-line top bar, a slim hint
@@ -1964,10 +1038,6 @@ html.touch #modal:has(.reward-art),
 html.touch .quiet {
   backdrop-filter: none;
 }
-html.touch .veil {
-  background: #08101bb8;
-}
-
 /* The top bar: back, the job name, the count, read aloud, pause, on one line. */
 html.touch .hud-top {
   position: absolute;
@@ -2047,7 +1117,6 @@ html.touch .hint.goal {
   color: #cad8e1;
   border-left-color: #8aa0b0;
 }
-
 /* Site tools down the left edge: icon over a short label. */
 html.touch .hud-tools {
   top: calc(var(--sa-t) + 104px);
@@ -2076,7 +1145,6 @@ html.touch .hud-tools .tool-button svg {
   width: 18px;
   height: 18px;
 }
-
 /* The drive deck stops being a band: its parts float over the scene where they are placed below. */
 html.touch .drive-deck,
 html.touch .center-controls {
@@ -2146,7 +1214,6 @@ html.touch .stick-arrows {
   inset: 8px;
   color: #d8e3ea40;
 }
-
 /* The cluster between the sticks: Grab on top, Hop, Recover and Horn below. */
 html.touch .work-buttons {
   position: absolute;
@@ -2181,7 +1248,6 @@ html.touch .joint-buttons button:active {
   background: #ffcb60;
   color: #172531;
 }
-
 /* The extra joints, a vertical strip above the right stick (beside it in landscape). */
 html.touch .joint-buttons {
   position: absolute;
@@ -2201,7 +1267,6 @@ html.touch .joint-buttons button {
   background: #172735c4;
   border-color: #6d8190;
 }
-
 /* The machine cards: a strip down the right edge, art over the unit ID; a lone machine needs no card. */
 html.touch .machines {
   position: absolute;
@@ -2237,7 +1302,6 @@ html.touch .machine-card b {
 html.touch .machine-card small {
   display: none;
 }
-
 /* The materials tray as a bottom sheet above the sticks: it scrolls inside itself, its rows scroll sideways, and it
    leaves the sticks, the cluster and the joint strip uncovered. */
 html.touch .tray .tool-button {
@@ -2297,7 +1361,6 @@ html.touch .day-row {
 html.touch.reduced-motion .tray {
   animation: none;
 }
-
 /* Wide, short screens (a phone on its side): the bar is thinner, the cluster is one row, the sticks keep the lower
    corners and the tray moves to the left, clear of the right stick and its joints. */
 @media (orientation: landscape) and (max-height: 520px) {
@@ -2373,17 +1436,6 @@ html.touch.reduced-motion .tray {
     margin-bottom: 0;
   }
   /* Sheets: a short card that fits the screen. */
-  html.touch .modal-card {
-    padding: 14px 18px;
-    max-height: calc(100dvh - 16px);
-  }
-  html.touch .modal-card h2 {
-    font-size: 24px;
-    margin: 0 44px 8px 0;
-  }
-  html.touch .modal-card p {
-    margin: 6px 0 8px;
-  }
   html.touch .modal-actions {
     margin-top: 8px;
   }
@@ -2394,27 +1446,14 @@ html.touch.reduced-motion .tray {
   html.touch .reward-art svg {
     max-height: 84px;
   }
-  html.touch .veil {
-    padding: 8px;
-  }
-  html.touch .modal-close {
-    top: 8px;
-    right: 8px;
-  }
 }
 @media (prefers-reduced-motion: reduce) {
   html.touch .tray {
     animation: none;
   }
 }
-
 /* ---- The Lab (0.5): the XP pill, the build challenge line, the finished-sheet strip, the board's Lab rows ---- */
 /* The title's Lab buttons sit beside Parents in the header, so the panel never grows. */
-.head-actions {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
 /* The Lab's XP pill sits in the top bar between the job name and the count. */
 /* (#lab-hud is Build Crew's own slot; the pill the Lab mounts inside it is a button.lab-hud with its own styles and stays tappable.) */
 #lab-hud {
@@ -2452,70 +1491,16 @@ html.touch .progress small {
   font-size: 9.5px;
 }
 /* The finished sheet: the "Neat build!" badge and the Lab's strip. */
-.modal-card .neat {
-  display: inline-block;
-  margin: 6px 0 0;
-  padding: 6px 14px;
-  border: 2px solid #f2b538;
-  color: #f2b538;
-  font-weight: 800;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-size: 13px;
-}
 .lab-results {
   margin-top: 8px;
 }
 .lab-results:empty {
   display: none;
 }
-html.touch .modal-card .neat {
-  margin: 2px 0 0;
-  padding: 3px 10px;
-  font-size: 11px;
-}
 html.touch .lab-results {
   margin-top: 4px;
 }
 /* The board's Lab rows. */
-.board-row {
-  margin: 18px 0 8px;
-  font-size: 12px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: #afc0cc;
-}
-.job-tile.blueprint {
-  display: grid;
-  gap: 4px;
-}
-.job-tile .bp-art svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  max-height: 84px;
-}
-.job-tile.locked {
-  border: 1px dashed #6e8190;
-}
-.job-tile .lock {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  margin-right: 6px;
-  vertical-align: -2px;
-  color: #f2b538;
-}
-.job-tile .lock svg {
-  width: 14px;
-  height: 14px;
-}
-html.touch .board-row {
-  margin: 10px 0 4px;
-}
-html.touch .job-tile .bp-art svg {
-  max-height: 56px;
-}
 /* Five machine cards on a phone: two short columns so the strip never reaches the right stick. */
 html.touch .machines:has(.machine-card:nth-child(4)) {
   display: grid;
@@ -2530,20 +1515,6 @@ html.touch .machines:has(.machine-card:nth-child(4)) .machine-card {
 html.touch .machines:has(.machine-card:nth-child(4)) .machine-card svg {
   width: 32px;
   height: 22px;
-}
-@media (max-width: 600px) {
-  #title-head .wordmark {
-    white-space: nowrap;
-    letter-spacing: 0.1em;
-    font-size: 10px;
-  }
-  .head-actions {
-    gap: 6px;
-  }
-  .head-actions .quiet {
-    padding-left: 10px;
-    padding-right: 10px;
-  }
 }
 /* A narrow phone (portrait) with the Lab pill: the top bar takes a second row for the pill and the count, so the job
    name keeps its room; the hint strip and the side columns move down by that row (the Lab's pill is a 44 px target). Without the Lab nothing changes. */
@@ -2578,42 +1549,5 @@ html.touch .machines:has(.machine-card:nth-child(4)) .machine-card svg {
 }
 /* The job board's site rows (0.6): the site code with a coloured rule (yard amber, harbor seafoam, hillside sage)
    and the site's done count at the right. */
-.board-row.site-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding-left: 10px;
-  border-left: 4px solid #e9aa26;
-}
-.board-row.site-row:first-of-type {
-  margin-top: 12px;
-}
-.board-row.site-row[data-site='harbor'] {
-  border-left-color: #6fb3ad;
-}
-.board-row.site-row[data-site='hillside'] {
-  border-left-color: #93a273;
-}
-.board-row.site-row small {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  color: #8ea2b0;
-}
-.job-tile[data-site='harbor'] {
-  background: #24414a;
-}
-.job-tile[data-site='hillside'] {
-  background: #2d3f3a;
-}
 /* With twenty jobs' paints, decals and horns the looks row scrolls sideways instead of wrapping into a tall block or
    widening the title panel. */
-.looks {
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  max-width: 100%;
-  overscroll-behavior-x: contain;
-  scrollbar-width: thin;
-}
-.looks button {
-  flex: 0 0 auto;
-}

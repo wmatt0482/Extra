@@ -2,7 +2,7 @@
 // it imports and the vendored Three.js and Rapier), so the yard reloads offline. Only this game's caches are retired on
 // upgrade. Family and voice APIs stay network-only; prepared natural-voice clips share Spell Jump's clip cache.
 // The shell is required; the Lab's files (OPTIONAL in offline.js) are best effort. Bump VERSION whenever the shell's file list or contents change, so returning players get a fresh cache.
-const VERSION = 'build-crew-v0.6.0',
+const VERSION = 'build-crew-v0.7.0',
   PREFIX = 'build-crew-',
   TTS_CACHE = 'spell-jump-tts-v1';
 importScripts('./offline.js');

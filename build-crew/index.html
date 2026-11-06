@@ -1,15 +1,16 @@
 <!doctype html>
 <!--
   Build Crew's single page. Every screen is here from the start and src/app/* shows, hides and fills it: the loading
-  veil, the title (header, panel, footer), the job HUD with its materials tray and drive deck, one modal for sheets
-  (pause, job board, job complete, new builder), toasts and the shared Parent Zone. Buttons are the only controls;
-  native inputs appear only inside the PIN-locked Parent Zone. Icons are filled in by the shared hydrateIcons().
+  veil, the family's player picker and New builder screen, the home screen (top bar, logo, menu), the job HUD with its
+  materials tray and drive deck, one modal for sheets (pause, job board, job complete), toasts and the shared Parent
+  Zone. Buttons are the only controls; native inputs appear only inside the PIN-locked Parent Zone. Icons are filled in
+  by the shared hydrateIcons(). The shell's look is the family's (shell.css); the HUD keeps its 0.4 touch geometry.
 -->
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-    <meta name="theme-color" content="#15212d" />
+    <meta name="theme-color" content="#121417" />
     <meta
       name="description"
       content="Take the controls. Lift heavy loads, follow blueprints and build your own construction site."
@@ -20,6 +21,10 @@
     <link rel="apple-touch-icon" href="icons/icon-192.png" />
     <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="celebrate.css" />
+    <!-- The family shell (0.7): the house buttons, top bar, picker, home, sheets, toasts and Parent Zone in Build Crew's
+         construction yellow, steel and asphalt, with its own vendored display face. Loaded last: it wins over style.css. -->
+    <link rel="preload" href="vendor/fonts/russo-one-400.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="shell.css" />
     <!-- A touch device gets the touch layout (no keyboard chips, overlay sticks) before the first paint. ?touch=1 or
          ?touch=0 forces it on or off. -->
     <script>
@@ -36,46 +41,78 @@
         id="world"
         aria-label="Three dimensional construction yard. Drive with the left stick or W A S D, and lift with the right stick or I K."
       ></canvas>
+      <!-- A soft dark wash over the live yard while a menu is up, so the cards read (the 2D games' painted backdrop). -->
+      <div id="menu-shade" aria-hidden="true"></div>
       <!-- Shown until the physics engine and the renderer are ready; replaced by a retry card if WebGL 2 is missing. -->
       <div id="loading" class="veil">
         <div class="loading-card">
-          <span class="wordmark">LEARNING LAB / BUILD CREW</span>
-          <h1>PREPARING THE SITE</h1>
-          <p>Equipment ready. Your next build starts here.</p>
+          <h1 class="logo">Build <span>Crew</span></h1>
+          <p>Getting the site ready</p>
         </div>
       </div>
-      <!-- The title screen: brand header, the panel (builders, start, sandbox, job board, saved site, looks), footer. -->
-      <header id="title-head" hidden>
-        <span class="wordmark">▧ &nbsp; LEARNING LAB</span
-        ><span class="head-actions"
-          ><button id="lab-open" class="quiet" hidden>The Lab</button
-          ><button id="lab-gallery" class="quiet" hidden>Gallery</button
-          ><button id="parents" class="quiet"><span data-icon="lock"></span> Parents</button></span
-        >
-      </header>
-      <section id="title" class="title" hidden aria-labelledby="game-title">
-        <div class="eyebrow"><i></i> BUILD CREW / CONSTRUCTION SANDBOX</div>
-        <h1 id="game-title">TAKE THE<br /><em>CONTROLS.</em></h1>
-        <p class="intro">Move heavy loads. Build to a blueprint.<br />Then take the site in your own direction.</p>
-        <div id="profile-row"></div>
-        <div class="title-actions">
-          <button class="primary" id="play">Start building <span data-icon="right"></span></button
-          ><button id="sandbox" class="secondary">Sandbox <span data-icon="style"></span></button>
+      <!-- ===== Player picker (the family's first screen; src/app/players.js) ===== -->
+      <section class="screen" id="screen-players" hidden>
+        <div class="topbar players-top">
+          <div class="pl-links"><a class="btn btn-sm pl-link" id="btn-home" href="../">&#9664; Learning Lab</a></div>
+          <h2>Who's building?</h2>
+          <button class="btn btn-sm pl-parents" id="btn-parents-picker"><span data-icon="lock"></span>Parents</button>
         </div>
-        <div class="title-extra">
-          <div class="title-links">
-            <button id="jobs">Job board <span id="done-total"></span></button
-            ><button id="my-yard" hidden>Load saved site <span data-icon="back"></span></button>
+        <div class="players-body scroll">
+          <div class="player-grid" id="player-grid"></div>
+          <div class="pl-foot">
+            <button class="sync-chip" id="sync-chip" hidden></button>
+            <a class="btn btn-sm pl-link pl-other" id="btn-spelljump" href="../spell-jump/">Also play: Spell Jump<span data-icon="right"></span></a>
+            <a class="btn btn-sm pl-link pl-other" id="btn-wagonwest" href="../wagon-west/">Wagon West<span data-icon="right"></span></a>
           </div>
-          <div id="saved-thumb"></div>
         </div>
-        <div id="looks" class="looks"></div>
       </section>
-      <footer id="title-foot" hidden>
-        <span class="brand-title">BUILD<br />CREW<span>01 / THE YARD</span></span
-        ><span class="foot-note">DRIVE / LIFT / BUILD<br />Your site. Your pace.</span
-        ><button id="sound-title" class="quiet" aria-label="Toggle sound"><span data-icon="sound"></span></button>
-      </footer>
+      <!-- ===== New player: a name on the shared on-screen keyboard and a colour ===== -->
+      <section class="screen" id="screen-newplayer" hidden>
+        <div class="topbar">
+          <button class="btn icon-btn" id="np-back" aria-label="Back"><span data-icon="back"></span></button>
+          <h2>New builder</h2>
+        </div>
+        <div class="np-body">
+          <div class="np-row">
+            <span class="np-avatar" id="np-avatar" aria-hidden="true"></span>
+            <div class="np-name" id="np-name" aria-live="polite"></div>
+            <div class="np-colors" id="np-colors" role="group" aria-label="Colour"></div>
+          </div>
+          <div class="np-kb" id="np-kb"></div>
+        </div>
+      </section>
+      <!-- ===== Home: the builder's top bar, the logo, Start building and the menu; the live yard behind ===== -->
+      <section class="screen" id="title" hidden aria-labelledby="game-title">
+        <div class="topbar">
+          <button class="btn player-chip" id="btn-player" aria-label="Switch builder"
+            ><span class="pl-badge" id="title-avatar" aria-hidden="true"></span><span id="title-player">Builder</span
+            ><b class="lv-pill" id="title-jobs">0 / 20</b></button
+          ><span class="chip streak-chip" id="title-streak" data-count="0" hidden
+            ><span data-icon="flame"></span><b id="title-streak-n">0</b></span
+          ><div class="lab-slot" id="lab-slot-title"></div
+          ><button class="btn icon-btn" id="sound-title" aria-label="Sound on"><span data-icon="sound"></span></button>
+        </div>
+        <div class="title-main">
+          <div class="title-left">
+            <h1 class="logo" id="game-title">Build <span>Crew</span></h1>
+            <div class="season-line" id="title-sites">The yard · The harbor · The hillside</div>
+          </div>
+          <div class="title-actions">
+            <button class="btn btn-gold btn-big" id="play"><span id="play-label">Start building</span><span data-icon="right"></span></button>
+            <div class="menu-row">
+              <button class="btn" id="sandbox"><span data-icon="style"></span>Sandbox</button>
+              <button class="btn" id="jobs"><span data-icon="flag"></span>Jobs <b class="count" id="done-total"></b></button>
+              <button class="btn" id="my-yard" hidden
+                ><span id="saved-thumb" aria-hidden="true"></span><span data-icon="crate"></span>Saved site</button
+              >
+              <button class="btn" id="parents"><span data-icon="lock"></span>Parents</button>
+              <button class="btn" id="lab-open" hidden><span data-icon="flask"></span>The Lab</button>
+              <button class="btn" id="lab-gallery" hidden><span data-icon="star"></span>Gallery</button>
+            </div>
+            <div id="looks" class="looks"></div>
+          </div>
+        </div>
+      </section>
       <!-- The job HUD: job label and progress, the hint line, site tools, the sandbox tray and the drive deck. -->
       <section id="hud" hidden>
         <div class="hud-top">
@@ -171,13 +208,16 @@
           </div>
         </div>
       </section>
-      <!-- One modal for every sheet; src/app/hud.js fills #modal-body. -->
+      <!-- One modal for every sheet, the family's .card.sheet (heading row with a close button); src/app/hud.js fills it. -->
       <section id="modal" class="veil" hidden role="dialog" aria-modal="true" aria-labelledby="modal-title">
-        <div class="modal-card">
-          <button id="modal-close" class="icon-button modal-close" aria-label="Close">
-            <span data-icon="close"></span>
-          </button>
-          <div id="modal-body"></div>
+        <div class="modal-card card sheet">
+          <div class="sheet-head">
+            <h3 id="modal-title"></h3>
+            <button id="modal-close" class="btn icon-btn modal-close" aria-label="Close">
+              <span data-icon="close"></span>
+            </button>
+          </div>
+          <div id="modal-body" class="sheet-body"></div>
         </div>
       </section>
       <div id="toasts" aria-live="polite"></div>

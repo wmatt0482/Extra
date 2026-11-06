@@ -5,7 +5,13 @@
     "three.module.js": "08fd7545d13d2c7fb65ab691530a802dafefd638596501854f267d0fb13c39e7",
     "THREE-LICENSE.txt": "4c40a1ef62450b857c3b2aaf294936304cd552d965fbcd9d32d4c5bcf4ba4454",
     "RAPIER-LICENSE.txt": "30e8ce6a8eac7adb39cca50cf71849abdd1f584c86a17c6c26804d4d369c7bc3",
-    "rapier.mjs": "e0f7783dae9d3d175ec62c0cafdad84261d8c64c5f7da6ae5b24e858cf9ab759"
+    "rapier.mjs": "e0f7783dae9d3d175ec62c0cafdad84261d8c64c5f7da6ae5b24e858cf9ab759",
+    "fonts/russo-one-400.woff2": "8a6b754cd3bc5ad2bf0d0308bbd9c1b7f6b4ecdd915982ffedf50ed18fed4a46",
+    "fonts/barlow-semi-condensed-600.woff2": "f158417e9207b5362f9b71a2fe779ce5bb836ad972f38445c3163af39d2c998d",
+    "fonts/barlow-semi-condensed-700.woff2": "fb958c8c20a05552ac8a85d925d96028d52565792650e941a5fe96b6997aa5cb",
+    "fonts/barlow-semi-condensed-800.woff2": "a4f4f353506e6c61f9070de26d34a872ab32aeb1b9b318303732c22941755666",
+    "fonts/RUSSO-ONE-OFL.txt": "3ac1301549523d9861fedca12871f24e575fbd26d520632fc00ba849b471d275",
+    "fonts/BARLOW-OFL.txt": "186d750eb496a4c17a76385f82be6aea2ac1cf2de074a811d63786cf374ea73f"
   },
   "licenses": {
     "three": {
@@ -19,6 +25,24 @@
         "https://raw.githubusercontent.com/dimforge/rapier.js/master/LICENSE",
         "https://raw.githubusercontent.com/dimforge/rapier/master/LICENSE"
       ]
+    },
+    "russo-one": {
+      "spdx": "OFL-1.1",
+      "file": "fonts/RUSSO-ONE-OFL.txt",
+      "sources": [
+        "https://github.com/google/fonts/tree/main/ofl/russoone"
+      ]
+    },
+    "barlow-semi-condensed": {
+      "spdx": "OFL-1.1",
+      "file": "fonts/BARLOW-OFL.txt",
+      "sources": [
+        "https://github.com/google/fonts/tree/main/ofl/barlowsemicondensed"
+      ]
     }
+  },
+  "fonts": {
+    "russo-one": "Google Fonts v18 (latin)",
+    "barlow-semi-condensed": "Google Fonts v16 (latin, 600/700/800)"
   }
 }

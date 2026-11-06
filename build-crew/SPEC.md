@@ -121,10 +121,10 @@ Single implementation owner: Codex. Existing game folders remain untouched excep
 | Files | Responsibility |
 |---|---|
 | SPEC.md | Design and contract; committed separately before code |
-| index.html, style.css, icons/*, manifest.webmanifest | Accessible shell, title, HUD, touch UI, install metadata |
+| index.html, style.css, shell.css, icons/*, manifest.webmanifest | Accessible shell, picker and home (shell.css: the family look), HUD, touch UI, install metadata |
 | src/main.js | Composer: creates the shared services in order (sync, pings, voice, controls, Parent Zone), wires buttons and page lifecycle, boots physics, scene, title yard, loop and service worker; test hooks |
 | src/app/state.js | The shared `app` state, device settings, persist, active-play accounting |
-| src/app/title.js | Title, builder profiles and new-builder keyboard, looks, job board, back to title |
+| src/app/title.js, players.js | The menu screens: the "Who's building?" picker and New builder (players.js), the home screen, looks, job board, back to base |
 | src/app/hud.js | Toasts, hint line, modal sheet, progress and Grab button, machine cards; `MACHINE_UI` table |
 | src/app/rounds.js | Yard creation, job start, one physics step with mission check and hints, actions, pause, completion, rewards, celebration |
 | src/app/tray.js | Sandbox tray, terrain stamps, daylight slider, wrecking ball, clear site, save site |
@@ -210,3 +210,22 @@ yet) and rewards Sage paint, and the "no block may touch the grass" twist is on 
 decal, Graphite paint, Harbor blue paint, Anchor decal, Ferry horn, the wheel loader, Sage paint, Rust paint, Mountain
 decal, Steam horn. Version 0.6.0: `VERSION` in `src/content.mjs`, cache `build-crew-v0.6.0` in `sw.js`, `offline.js`
 regenerated for `src/sites.mjs`.
+
+## The family shell (0.7)
+
+Matt: "the interface doesn't match the rest of the games." Build Crew now uses the house structure of Spell Jump, Trail
+Blazer, Fraction Fright and Wagon West (audit and mismatch list in `docs/UI-MATCH.md`) in its own theme: construction
+yellow on asphalt and steel, Russo One over Barlow Semi Condensed (vendored in `vendor/fonts/`, OFL, so play still
+fetches no CDN), tight corners and no cartoon outlines for the older-kid look. The game opens on **"Who's building?"**:
+the family's top bar ("◀ Learning Lab" top-left, "Parents" top-right), one card per family player (the shared
+`profiles.js` record, so a player made in any game is listed, with a hard-hat badge in the player's colour and their
+jobs done) and the dashed New player card, which opens the family's New builder screen (shared on-screen keyboard, six
+family colours). A pick opens the **home screen** over the live yard: the player chip (back to the picker), the streak,
+the Lab pill and a sound button in the top bar; the BUILD CREW logo; the big yellow Start building (Next job / Build
+again); and the menu (Sandbox, Jobs with the count, Saved site, Parents, The Lab, Gallery). A reload in the same tab
+comes back to that builder's home screen (`sessionStorage`), as in Spell Jump. The pause sheet, the job board and the
+job-complete card are the family's `.card.sheet`; the Parent Zone, toasts and the Lab pill use the family's look and
+places. The job HUD keeps its 0.4 sizes and places (the touch layout is unchanged) and takes the family's chips,
+beveled buttons and display face. `shell.css` holds all of it and loads last; style.css lost the 0.6 title, cream Parent
+Zone and modal-keyboard rules. Version 0.7.0: `VERSION` in `src/content.mjs`, cache `build-crew-v0.7.0` in `sw.js`,
+`offline.js` regenerated for `shell.css`, `src/app/players.js` and the fonts.

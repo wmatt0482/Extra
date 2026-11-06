@@ -1,5 +1,6 @@
 // The full browser check with real WebGL (SwiftShader) and real Rapier: it solves all ten jobs through the production
-// axes and Grab button (tools/solution.mjs, run inside the page), then checks the sandbox save and reload, sibling
+// axes and Grab button (tools/solution.mjs, run inside the page), after the family shell (0.7: the "Who's building?"
+// picker, the home screen and New builder in portrait and on a phone's side), then checks the sandbox save and reload, sibling
 // profile isolation, the Parent Zone PIN, report and unlock, real-time keyboard and touch-stick input, responsive
 // layouts, the phone touch layout (real touch events, 60% playfield, instant sticks, pinch, tray sheet, camera
 // framing), a full offline reload and natural-voice preparation through a fake transport. No mocks of the game and no
@@ -64,12 +65,23 @@ page.on('pageerror', (e) => errors.push(e.stack || e.message));
 async function ready(p = page) {
   await p.waitForFunction(() => window.__buildCrew, undefined, { timeout: 90000 });
 }
-/** Adds a builder through the real on-screen flow. */
+/** Adds a builder through the real on-screen flow (0.7: the picker's New player card, the New builder screen, then the
+ *  new builder's home screen). From the home screen it goes back to the picker through the player chip first. */
 async function addBuilder(p, name) {
+  if (await p.locator('#title').isVisible()) await p.locator('#btn-player').click();
   await p.locator('#add-player').click();
   await p.keyboard.type(name);
   await p.keyboard.press('Enter');
-  await p.locator(`[data-profile]`).filter({ hasText: name }).waitFor();
+  await p.locator('#title').waitFor();
+  assert.equal(await p.locator('#title-player').textContent(), name);
+}
+/** Chooses builder `name` on "Who's building?" (going back to it from the home screen when another builder is in), and
+ *  waits for that builder's home screen. A page opened fresh starts on the picker; a reload in the same tab resumes. */
+async function pickBuilder(p, name, how = 'click') {
+  if ((await p.locator('#title').isVisible()) && (await p.locator('#title-player').textContent()) === name) return;
+  if (await p.locator('#title').isVisible()) await p.locator('#btn-player')[how]();
+  await p.locator('#player-grid [data-profile]').filter({ hasText: name })[how]();
+  await p.locator('#title').waitFor();
 }
 /** The kid-rules audit: no native inputs or external links outside the Parent Zone, no horizontal overflow, and
  *  every visible button at least 43 px square. */
@@ -327,7 +339,83 @@ if (process.env.LAB_ONLY) {
   }
   process.exit(0);
 }
+/** The family shell (0.7, docs/UI-MATCH.md): the first screen is "Who's building?" with the family's top bar (Learning
+ *  Lab top-left, Parents top-right), one card per family player (a player made in another game is listed) and the
+ *  dashed New player card; a pick opens the home screen with the big Start building button and the family menu, the
+ *  player chip goes back to the picker, and the shell's display face is the vendored one. Portrait and a phone on its
+ *  side. */
+async function shellStage() {
+  stage = 'family shell';
+  for (const [width, height] of [
+    [390, 844],
+    [844, 390],
+  ]) {
+    const sc = await bounded(browser.newContext({ viewport: { width, height }, hasTouch: true }), 'shell context', 30000);
+    await sc.addInitScript(() => {
+      if (!localStorage.getItem('spellJump.family'))
+        localStorage.setItem(
+          'spellJump.family',
+          JSON.stringify({ v: 1, players: [{ id: 'kai01', name: 'Kai', color: '#2fd36b', createdAt: 1 }] }),
+        );
+    });
+    const sp = await sc.newPage();
+    sp.on('pageerror', (e) => errors.push(e.stack || e.message));
+    await sp.goto(BASE + '/build-crew/?nosw=1');
+    await ready(sp);
+    await sp.locator('#screen-players').waitFor();
+    const shell = await sp.evaluate(async () => {
+      await document.fonts.ready;
+      const r = (s) => document.querySelector(s).getBoundingClientRect();
+      const face = [...document.fonts].find((f) => f.family.replace(/"/g, '') === 'Russo One');
+      return {
+        screen: window.__buildCrew.state.screen,
+        heading: document.querySelector('#screen-players h2').textContent,
+        home: { left: r('#btn-home').left < innerWidth / 3, top: r('#btn-home').top < 70, text: document.querySelector('#btn-home').textContent },
+        parents: { right: r('#btn-parents-picker').right > (innerWidth * 2) / 3, top: r('#btn-parents-picker').top < 70 },
+        cards: [...document.querySelectorAll('#player-grid [data-profile]')].map((e) => e.textContent),
+        add: getComputedStyle(document.querySelector('#add-player')).borderStyle,
+        font: face?.status,
+        bevel: getComputedStyle(document.querySelector('#btn-parents-picker')).boxShadow.includes('0px 4px 0px'),
+      };
+    });
+    assert.equal(shell.screen, 'players');
+    assert.equal(shell.heading, "Who's building?");
+    assert.deepEqual(shell.home, { left: true, top: true, text: '◀ Learning Lab' }, 'Learning Lab chip top-left');
+    assert.deepEqual(shell.parents, { right: true, top: true }, 'Parents chip top-right');
+    assert.deepEqual(shell.cards, ['Kai0 / 20 jobs'], "the family's player from another game is on the picker");
+    assert.equal(shell.add, 'dashed', 'the New player card is dashed');
+    assert.equal(shell.font, 'loaded', "the shell's display face loaded");
+    assert(shell.bevel, 'family buttons have a solid bottom edge');
+    await audit(sp);
+    await sp.screenshot({ path: path.join(shots, `picker-${width}x${height}.png`) });
+    await sp.locator('#player-grid [data-profile="kai01"]').tap();
+    await sp.locator('#title').waitFor();
+    for (const id of ['play', 'sandbox', 'jobs', 'parents', 'btn-player', 'sound-title'])
+      assert(await sp.locator('#' + id).isVisible(), `#${id} on the home screen`);
+    assert.match(await sp.locator('#play').textContent(), /Start building/);
+    assert.equal(await sp.locator('#title-player').textContent(), 'Kai');
+    assert.deepEqual(await clears(sp, '.title-actions', ['.title-left', '#title .topbar']), [], 'home menu clear');
+    assert(
+      await sp.evaluate(() => [...document.querySelectorAll('#title .btn')].filter((b) => b.offsetParent).every((b) => b.getBoundingClientRect().bottom <= innerHeight)),
+      'every home button is on the screen',
+    );
+    await audit(sp);
+    await sp.screenshot({ path: path.join(shots, `home-${width}x${height}.png`) });
+    await sp.locator('#btn-player').tap();
+    await sp.locator('#screen-players').waitFor();
+    await sp.locator('#add-player').tap();
+    await sp.locator('#screen-newplayer').waitFor();
+    assert.equal(await sp.locator('#np-colors .swatch').count(), 6, 'six family colours');
+    // (no audit here: the shared on-screen keyboard's keys are narrower than 43 px in portrait, as in every family game)
+    await sp.locator('#np-back').tap();
+    await sp.locator('#screen-players').waitFor();
+    await sc.close();
+  }
+  console.log('PASS UI stage');
+  results.checks.push("family shell: Who's building? picker with the family's players, top bar chips, home menu, New builder");
+}
 try {
+  await shellStage();
   await page.goto(BASE + '/build-crew/?test=1&nosw=1');
   await ready();
   await addBuilder(page, 'Builder');
@@ -414,8 +502,8 @@ try {
   await page.screenshot({ path: path.join(shots, 'sandbox.png') });
   stage = 'profile isolation';
   await page.locator('#home').click();
-  // The title with a finished profile and a saved site (thumbnail and every look) must keep its panel clear of the
-  // BUILD CREW wordmark, the footer note and the sound button at the desktop, tablet and phone sizes.
+  // The home screen with a finished profile and a saved site (thumbnail and every look) must keep its menu clear of the
+  // logo and the top bar, with every button on the screen, at the desktop, tablet and phone sizes.
   stage = 'title layout';
   for (const [width, height] of [
     [1280, 800],
@@ -427,22 +515,28 @@ try {
     assert(await page.locator('#saved-thumb img').count(), 'the saved-site thumbnail is on the title');
     assert((await page.locator('#looks button').count()) >= 5, 'the finished profile shows its looks');
     assert.deepEqual(
-      await clears(page, '#title', ['.brand-title', '.foot-note', '#sound-title', '#title-head']),
+      await clears(page, '.title-actions', ['.title-left', '#title .topbar']),
       [],
-      `title panel clear of the footer at ${width}x${height}`,
+      `home menu clear of the logo and the top bar at ${width}x${height}`,
     );
-    assert.deepEqual(await clears(page, '#looks', ['.brand-title', '.foot-note', '#sound-title']), []);
+    assert.deepEqual(await clears(page, '#looks', ['.logo', '#title .topbar']), []);
+    assert(
+      await page.evaluate(() =>
+        [...document.querySelectorAll('#title button')].filter((b) => b.offsetParent).every((b) => b.getBoundingClientRect().bottom <= innerHeight),
+      ),
+      `every home button on the screen at ${width}x${height}`,
+    );
     await audit(page);
     if (width === 1280) await page.screenshot({ path: path.join(shots, 'title-finished.png') });
   }
   await page.setViewportSize({ width: 1280, height: 800 });
   console.log('PASS UI stage');
-  results.checks.push('title panel clears the footer with a finished profile at 1280x800, 1024x768 and 390x844');
+  results.checks.push('home menu clears the logo and top bar with a finished profile at 1280x800, 1024x768 and 390x844');
   stage = 'profile isolation';
   await addBuilder(page, 'Sibling');
   assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).done.length, 0);
   assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).yard, null);
-  await page.locator('[data-profile]').filter({ hasText: 'Builder' }).click();
+  await pickBuilder(page, 'Builder');
   stage = 'sandbox save';
   assert.equal((await page.evaluate(() => window.__buildCrew.state.save)).done.length, JOBS);
   console.log('PASS UI stage');
@@ -476,6 +570,7 @@ try {
   live.on('pageerror', (e) => errors.push(e.message));
   await live.goto(BASE + '/build-crew/?nosw=1');
   await ready(live);
+  await pickBuilder(live, 'Builder');
   await live.locator('#sandbox').click();
   const before = await live.evaluate(() => window.__buildCrew.state.machines[0].z);
   await live.keyboard.down('w');
@@ -578,6 +673,7 @@ try {
   await ready(phone);
   assert.equal(await phone.evaluate(() => document.documentElement.classList.contains('touch')), true, 'touch class');
   assert.equal(await phone.evaluate(() => window.__buildCrew.performance.quality.tier), 'phone', 'phone tier');
+  await pickBuilder(phone, 'Builder', 'tap');
   await phone.locator('#play').tap();
   await phone.waitForFunction(() => window.__buildCrew.state.screen === 'play');
   await phone.waitForTimeout(1200);
@@ -786,6 +882,7 @@ try {
     fp.on('pageerror', (e) => errors.push(e.message));
     await fp.goto(BASE + '/build-crew/?test=1&nosw=1');
     await ready(fp);
+    await pickBuilder(fp, 'Builder');
     for (let id = 1; id <= JOBS; id++) {
       await fp.evaluate((id) => window.__buildCrew.test.start(id), id);
       await fp.evaluate(() => window.__buildCrew.test.advance({}, 30));
@@ -824,6 +921,7 @@ try {
   side.on('pageerror', (e) => errors.push(e.message));
   await side.goto(BASE + '/build-crew/?test=1&nosw=1');
   await ready(side);
+  await pickBuilder(side, 'Builder');
   await side.evaluate(() => window.__buildCrew.test.start(1));
   const solved = await side.evaluate(async () => {
     const { solve } = await import('./tools/solution.mjs');
@@ -870,6 +968,7 @@ try {
   offline.on('pageerror', (e) => errors.push(e.message));
   await bounded(offline.goto(BASE + '/build-crew/'), 'offline context navigation');
   await ready(offline);
+  await pickBuilder(offline, 'Builder');
   await bounded(
     offline.evaluate(async () => {
       await navigator.serviceWorker.ready;
@@ -1005,7 +1104,11 @@ try {
   await voicePage.goto(BASE + '/build-crew/?test=1&nosw=1');
   await ready(voicePage);
   await voicePage.waitForTimeout(800);
-  assert.deepEqual(await voicePage.evaluate(() => window.__voiceSpoken), [], 'nothing is spoken on the title');
+  assert.deepEqual(await voicePage.evaluate(() => window.__voiceSpoken), [], 'nothing is spoken on the picker');
+  assert.equal(await voicePage.evaluate(() => window.__voiceTexts.length), 0, 'no lines are made before a builder is picked');
+  await pickBuilder(voicePage, 'Voice');
+  await voicePage.waitForTimeout(800);
+  assert.deepEqual(await voicePage.evaluate(() => window.__voiceSpoken), [], 'nothing is spoken on the home screen');
   // every line the game can say is prepared, from the static set in content.mjs
   await bounded(
     voicePage.waitForFunction(

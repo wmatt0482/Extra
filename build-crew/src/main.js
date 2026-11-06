@@ -22,7 +22,18 @@ import { Sound } from './meta/sound.js';
 import { app, initState, persist, account, flush, activePlay, setSetting, applyLook } from './app/state.js';
 import { toast, closeModal, updateUI, measureInsets } from './app/hud.js';
 import { createVoice, applyVoice, voiceFor, say, hush } from './app/voice.js';
-import { ensurePlayer, renderTitle, renderLab, attachLab, jobBoard, showTitle } from './app/title.js';
+import {
+  ensurePlayer,
+  renderLab,
+  renderSound,
+  attachLab,
+  jobBoard,
+  showTitle,
+  showPlayers,
+  selectPlayer,
+  refreshMenus,
+  initMenus,
+} from './app/title.js';
 import { labBridge } from './meta/labBridge.js';
 import { makeWorld, startRound, step, resetBlocks, action } from './app/rounds.js';
 import {
@@ -40,18 +51,21 @@ import { samples, loopStats, startLoop, forgetLastFrame } from './app/loop.js';
 
 initState();
 registerSync();
+/** The picker and the home screen are the menus: the safe places for sync and updates (never mid-job, never while a
+ *  name is being typed). */
+const onMenu = () => app.screen === 'players' || app.screen === 'title';
 app.sync = createSyncClient({
-  // Synced changes apply only on the title, never mid-job or under the Parent Zone.
-  canApply: () => app.screen === 'title' && !app.pz?.isOpen,
+  // Synced changes apply only on the picker or the home screen, never mid-job or under the Parent Zone.
+  canApply: () => onMenu() && !app.pz?.isOpen,
   onApply(k) {
     if (k === 'family') {
       app.family = Profiles.loadFamily();
-      if (!Profiles.playerById(app.family, app.playerId)) app.playerId = app.family.players[0]?.id || null;
+      if (!Profiles.playerById(app.family, app.playerId)) app.playerId = null;
     }
     if (k === 'family' || k === `${app.playerId}.bc`) {
       app.save = app.playerId ? loadSave(app.playerId) : defaultSave();
       applyVoice();
-      renderTitle();
+      refreshMenus();
     }
     app.pz?.onSyncApplied();
   },
@@ -69,6 +83,7 @@ app.controls = createControls($('#world'), {
   tap: placeStamp,
 });
 initParentZone();
+initMenus();
 
 /** Every static button on the page and what it does. */
 const BUTTONS = {
@@ -77,6 +92,7 @@ const BUTTONS = {
   jobs: () => ensurePlayer(jobBoard),
   'my-yard': () => startRound(0, { restore: true }),
   home: showTitle,
+  'btn-player': showPlayers,
   pause: () => action('pause'),
   grab: () => action('grab'),
   hop: () => action('hop'),
@@ -95,6 +111,7 @@ const BUTTONS = {
   'lab-gallery': () => labBridge.openHome({ view: 'gallery' }),
   'sound-title': () => {
     setSetting('sound', !app.settings.sound);
+    renderSound();
     toast(`Sound ${app.settings.sound ? 'on' : 'off'}`);
   },
 };
@@ -115,12 +132,12 @@ try {
 } catch {}
 new ResizeObserver(fitTray).observe(document.querySelector('.drive-deck'));
 
-// A new version waits for a safe moment (the title, nothing open) before reloading.
+// A new version waits for a safe moment (a menu, nothing open) before reloading.
 app.updater = createUpdateGuard({
   hadController: !!navigator.serviceWorker?.controller,
   isSafe: () =>
     safeToReload({
-      screen: app.screen === 'title' ? 'title' : 'running',
+      screen: onMenu() ? 'title' : 'running',
       running: app.screen === 'play',
       parentZone: app.pz.isOpen || !$('#modal').hidden,
     }),
@@ -172,11 +189,18 @@ document.addEventListener('visibilitychange', () => {
     account();
   }
 });
-// Leaving the page keeps the time played, and an open sandbox is saved so nothing built is lost.
+// Leaving the page keeps the time played, and an open sandbox is saved so nothing built is lost. A reload in the same
+// tab (an update, or a parent's reload) comes back to the same builder's home screen, as in the family's other games.
+const RESUME_KEY = 'buildCrew.resume';
 window.addEventListener('pagehide', () => {
   account();
   persist();
   if (!app.yard?.round.id && app.screen === 'play') saveYard({ report: false });
+  try {
+    if (app.playerId && app.screen !== 'players' && app.screen !== 'newplayer')
+      sessionStorage.setItem(RESUME_KEY, app.playerId);
+    else sessionStorage.removeItem(RESUME_KEY);
+  } catch {}
 });
 setInterval(() => {
   if (activePlay()) {
@@ -213,11 +237,13 @@ const TITLE_YARD = {
   ],
 };
 
-/** The Lab (lab/SPEC.md section 4.5): who is building, the XP pill in the top bar, and the buttons and looks that need it.
- *  Everything here waits for the Lab to load and does nothing when it cannot, so the yard plays the same either way. */
+/** The Lab (lab/SPEC.md section 4.5): who is building, the XP pill (in the home screen's top bar, as in the family's
+ *  other games, and in the job HUD), and the buttons and looks that need it. Everything here waits for the Lab to load
+ *  and does nothing when it cannot, so the yard plays the same either way. */
 function startLab() {
   if (app.playerId) attachLab(app.playerId);
   app.labHud = labBridge.hud({ mount: $('#lab-hud'), compact: isTouchLayout() });
+  app.labTitleHud = labBridge.hud({ mount: $('#lab-slot-title'), compact: true });
   labBridge.onReady(() => {
     renderLab();
     applyLook();
@@ -229,7 +255,8 @@ function startLab() {
 }
 const isTouchLayout = () => document.documentElement.classList.contains('touch');
 
-/** Loads physics and the renderer, settles the title yard for 1.5 simulated seconds and shows the title. */
+/** Loads physics and the renderer, settles the title yard for 1.5 simulated seconds and shows "Who's building?" (or,
+ *  after a reload in the same tab, that builder's home screen). */
 async function boot() {
   hydrateIcons();
   setSetting('sound', app.settings.sound);
@@ -239,9 +266,14 @@ async function boot() {
   for (let i = 0; i < 90; i++) app.yard.step();
   startLab();
   app.controls.setEnabled(false);
-  renderTitle();
   $('#loading').hidden = true;
-  $('#title').hidden = $('#title-head').hidden = $('#title-foot').hidden = false;
+  let resume = null;
+  try {
+    resume = sessionStorage.getItem(RESUME_KEY);
+    sessionStorage.removeItem(RESUME_KEY);
+  } catch {}
+  if (resume && Profiles.playerById(app.family, resume)) selectPlayer(resume);
+  else showPlayers();
   applyVoice();
   app.sync.start();
   app.ping('day');
@@ -376,7 +408,7 @@ boot().catch((e) => {
       { class: 'loading-card' },
       h('h1', {}, 'The yard needs another try.'),
       h('p', {}, 'This game needs a browser with WebGL 2. Try reloading the yard.'),
-      h('button', { class: 'primary', onclick: () => location.reload() }, 'Try again'),
+      h('button', { class: 'btn btn-gold', onclick: () => location.reload() }, 'Try again'),
     ),
   );
 });

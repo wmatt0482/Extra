@@ -1,8 +1,9 @@
-// The title screen: the builder profiles (shared with the family's other games), adding a builder with the shared
-// on-screen keyboard, the start buttons, the job board, the saved-site card and the "looks" earned as job rewards
-// (paints, decals and the bell horn). Returning here from a job stops speech, saves and lets sync apply.
+// The menu screens, laid out like the family's other games: the "Who's building?" picker and the New builder screen
+// (src/app/players.js draws them; the players are the family's, shared with every game), then the home screen: the
+// builder's top bar, the logo, Start building and the menu (Sandbox, the job board, the saved site, Parents, the Lab),
+// and the "looks" earned as job rewards (paints, decals and the horns). Going home from a job stops speech, saves and
+// lets sync apply. app.screen is 'players', 'newplayer', 'title' (home) or 'play'.
 import * as Profiles from '../../../spell-jump/src/spelling/profiles.js';
-import { createKeyboard } from '../../../spell-jump/src/spelling/keyboard.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { refreshStreak } from '../../../spell-jump/src/meta/engagement.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
@@ -17,6 +18,7 @@ import { app, persist, account, applyLook } from './state.js';
 import { toast, modal, closeModal } from './hud.js';
 import { applyVoice, hush } from './voice.js';
 import { startRound } from './rounds.js';
+import { createPlayers, hardHat } from './players.js';
 
 /** Paint rewards in the order the looks row shows them; Original appears once any paint is earned. */
 const PAINT_LOOKS = [
@@ -41,43 +43,6 @@ const DECAL_LOOKS = {
 /** The horns in the order the horn button cycles through them (the stock air horn is always there). */
 const HORN_ORDER = ['stock', 'bell', 'ferry', 'steam'];
 
-/** The "Who is building?" sheet: a name typed on the shared on-screen keyboard creates a builder and selects it. */
-export function newPlayer() {
-  let name = '';
-  const out = h('div', { class: 'name-display', role: 'status' }, 'Your name');
-  app.keyboard?.destroy();
-  const keyboard = createKeyboard({
-    enterLabel: 'Ready',
-    onKey(c) {
-      name = (name + c).slice(0, Profiles.MAX_NAME);
-      draw();
-    },
-    onBackspace() {
-      name = name.slice(0, -1);
-      draw();
-    },
-    onEnter() {
-      const family = app.family;
-      const p = Profiles.createPlayer(family, name, Profiles.PLAYER_COLORS[family.players.length % 6]);
-      if (!p) return;
-      closeModal();
-      selectPlayer(p.id);
-    },
-  });
-  app.keyboard = keyboard;
-  function draw() {
-    out.textContent = name || 'Your name';
-    keyboard.setEnterEnabled(!!Profiles.cleanName(name));
-  }
-  modal('Who is building?', [
-    h('p', {}, 'Your jobs, equipment and saved site stay with this profile.'),
-    out,
-    keyboard.el,
-  ]);
-  keyboard.setActive(true);
-  draw();
-}
-
 /** Tells the Lab who is building (it keeps one doc per builder; choosing another builder attaches again). */
 export function attachLab(id) {
   const p = Profiles.playerById(app.family, id);
@@ -91,7 +56,43 @@ export function attachLab(id) {
     });
 }
 
-/** Switches to builder `id`: saves the previous builder's time, loads this one's save and voice. */
+let menus = null;
+
+/** Creates the picker and the New builder screen (main.js calls it once, after the Parent Zone exists). */
+export function initMenus() {
+  menus = createPlayers({
+    onPick: selectPlayer,
+    onNew: showNewPlayer,
+    onBack: showPlayers,
+    onParents: () => app.openParents(),
+  });
+}
+
+/** Shows one menu screen ('players', 'newplayer' or 'title') over the live yard; the HUD and the other menus hide. */
+function showMenu(name) {
+  if (app.screen === 'newplayer' && name !== 'newplayer') menus.hideNew();
+  app.screen = name;
+  $('#screen-players').hidden = name !== 'players';
+  $('#screen-newplayer').hidden = name !== 'newplayer';
+  $('#title').hidden = name !== 'title';
+  $('#hud').hidden = true;
+  document.documentElement.dataset.screen = name;
+}
+
+/** "Who's building?": the family's players and New player. Leaving a builder saves their time first. */
+export function showPlayers() {
+  leavePlay();
+  showMenu('players');
+  menus.showPicker();
+}
+
+/** The New builder screen (a name on the on-screen keyboard and a colour). */
+export function showNewPlayer() {
+  showMenu('newplayer');
+  menus.showNew();
+}
+
+/** Switches to builder `id`: saves the previous builder's time, loads this one's save and voice, then goes home. */
 export function selectPlayer(id) {
   account();
   persist();
@@ -105,43 +106,47 @@ export function selectPlayer(id) {
   hush();
   app.voiceKey = '';
   applyVoice();
-  renderTitle();
+  showTitle();
 }
 
 /** Runs `then` for the current builder, or asks who is building first. */
 export function ensurePlayer(then) {
-  if (app.playerId) {
+  if (app.playerId && Profiles.playerById(app.family, app.playerId)) {
     then();
     return;
   }
-  newPlayer();
+  showPlayers();
 }
 
-/** Redraws the title panel for the current builder: profiles, progress, start label, saved site and looks. */
+/** Redraws whichever menu is up (after sync or the Parent Zone changed the family); a builder who is gone sends the
+ *  home screen back to the picker. */
+export function refreshMenus() {
+  if (app.screen === 'players') menus.showPicker();
+  else if (app.screen === 'title') {
+    if (!app.playerId || !Profiles.playerById(app.family, app.playerId)) showPlayers();
+    else renderTitle();
+  }
+}
+
+/** Redraws the home screen for the current builder: the top bar, progress, the start label, saved site and looks. */
 export function renderTitle() {
   const { family, playerId, save } = app;
-  const row = $('#profile-row');
-  row.replaceChildren(
-    ...family.players.map((p) =>
-      h(
-        'button',
-        {
-          class: 'profile-button' + (p.id === playerId ? ' on' : ''),
-          'data-profile': p.id,
-          onclick: () => selectPlayer(p.id),
-        },
-        h('span', { class: 'avatar-dot', style: { background: p.color } }, p.name[0].toUpperCase()),
-        p.name,
-      ),
-    ),
-  );
-  if (family.players.length < Profiles.MAX_PLAYERS) {
-    row.append(h('button', { class: 'profile-button', id: 'add-player', onclick: newPlayer }, '+ Add builder'));
+  const p = Profiles.playerById(family, playerId);
+  if (p) {
+    $('#title-avatar').innerHTML = hardHat(p.color);
+    $('#title-player').textContent = p.name;
+    $('#btn-player').dataset.profile = p.id;
+    $('#btn-player').style.setProperty('--c', p.color);
   }
   // The twenty jobs are the count; the Lab blueprints (ids 101 to 104) are extra and never change it.
   const jobsDone = save.done.filter((id) => id <= JOB_COUNT).length;
   $('#done-total').textContent = `${jobsDone} / ${JOB_COUNT}`;
-  $('#play').firstChild.textContent = jobsDone === JOB_COUNT ? 'Build again ' : jobsDone ? 'Resume ' : 'Start building ';
+  $('#title-jobs').textContent = `${jobsDone} / ${JOB_COUNT}`;
+  const streak = save.streak?.count || 0;
+  $('#title-streak').hidden = !streak;
+  $('#title-streak').dataset.count = String(streak);
+  $('#title-streak-n').textContent = String(streak);
+  $('#play-label').textContent = jobsDone === JOB_COUNT ? 'Build again' : jobsDone ? 'Next job' : 'Start building';
   $('#my-yard').hidden = !save.yard;
   $('#saved-thumb').replaceChildren();
   if (save.yard) {
@@ -150,15 +155,29 @@ export function renderTitle() {
       if (src) $('#saved-thumb').append(h('img', { src, alt: 'Your saved construction yard' }));
     } catch {}
   }
+  renderSound();
   renderLooks(save);
   renderLab();
 }
 
-/** The title's two Lab buttons ("The Lab" and "Gallery") exist only once the Lab has loaded: with /lab/ missing or
- *  blocked they never appear and the title is exactly the game's own. */
+/** The home screen's sound button shows whether sound is on. */
+export function renderSound() {
+  const b = $('#sound-title');
+  b.setAttribute('aria-label', app.settings.sound ? 'Sound on' : 'Sound off');
+  b.setAttribute('aria-pressed', String(!!app.settings.sound));
+  b.classList.toggle('off', !app.settings.sound);
+}
+
+/** The home menu's two Lab buttons ("The Lab" and "Gallery") exist only once the Lab has loaded: with /lab/ missing or
+ *  blocked they never appear and the menu is exactly the game's own. The menu grid is told how many buttons show, and
+ *  an odd last one spans the row. */
 export function renderLab() {
   const on = labBridge.ready && !!app.playerId;
   for (const id of ['lab-open', 'lab-gallery']) $('#' + id).hidden = !on;
+  const row = $('#title .menu-row'),
+    shown = [...row.children].filter((b) => !b.hidden);
+  row.dataset.count = String(shown.length);
+  for (const b of shown) b.classList.toggle('wide', shown.length % 2 === 1 && b === shown.at(-1));
 }
 
 /** The looks row: earned paints (plus Original), the star and stripe decals, and the bell horn. The buttons change
@@ -245,92 +264,118 @@ export function jobBoard() {
     h(
       'div',
       { class: 'job-grid', 'data-site-jobs': site },
-      ...jobs.map((r) =>
-        h(
+      ...jobs.map((r) => {
+        const done = save.done.includes(r.id),
+          shut = !app.testing && r.id > 1 && !save.done.includes(r.id - 1);
+        // a card like Trail Blazer's trail list: the job number in a square (filled yellow once done, a lock until it
+        // opens), the job's name, and what it unlocks
+        return h(
           'button',
           {
-            class: 'job-tile',
+            class: 'card job-tile' + (done ? ' done' : ''),
             'data-job': r.id,
             'data-site': site,
-            disabled: !app.testing && r.id > 1 && !save.done.includes(r.id - 1),
+            disabled: shut,
             onclick: () => startRound(r.id),
           },
-          h('b', {}, `${save.done.includes(r.id) ? '✓ ' : ''}${String(r.id).padStart(2, '0')} / ${r.title}`),
+          h(
+            'span',
+            { class: 'jt-num', 'aria-hidden': 'true' },
+            shut ? h('span', { class: 'lock', html: icon('lock') }) : String(r.id).padStart(2, '0'),
+          ),
+          h('b', {}, h('span', { class: 'sr-only' }, `Job ${r.id}${done ? ', done' : ''}: `), r.title),
           h('small', {}, r.reward),
-        ),
-      ),
+        );
+      }),
     ),
   ]);
-  modal('The job board', [
-    h('p', {}, 'Complete jobs to unlock equipment and finishes. Replay any completed job.'),
-    ...sites,
-    lab ? h('h3', { class: 'board-row' }, 'Blueprints') : null,
-    lab
-      ? h(
-          'div',
-          { class: 'job-grid blueprints', id: 'blueprint-row' },
-          ...BLUEPRINTS.map((r) => {
-            const owned = own(r.lab);
-            return h(
-              'button',
-              {
-                class: 'job-tile blueprint' + (owned ? '' : ' locked'),
-                'data-job': r.id,
-                'data-owned': String(owned),
-                onclick: () => (owned ? startRound(r.id) : labBridge.openShop({})),
-              },
-              h('span', { class: 'bp-art', html: blueprintSvg(r) }),
-              h('b', {}, owned ? '' : h('span', { class: 'lock', html: icon('lock') }), `${save.done.includes(r.id) ? '✓ ' : ''}${r.title}`),
-              h('small', {}, owned ? 'Blueprint' : `${r.price.toLocaleString('en-US')} Lab coins`),
-            );
-          }),
-        )
-      : null,
-    lab ? h('h3', { class: 'board-row' }, 'Vehicles') : null,
-    lab
-      ? h(
-          'div',
-          { class: 'job-grid vehicles', id: 'vehicle-row' },
-          ...LAB_MACHINES.map((k) => {
-            const owned = own(labVehicleId(k));
-            return h(
-              'button',
-              {
-                class: 'job-tile vehicle' + (owned ? '' : ' locked'),
-                'data-vehicle': k,
-                'data-owned': String(owned),
-                onclick: () => (owned ? startRound(0) : labBridge.openShop({})),
-              },
-              h('b', {}, owned ? '' : h('span', { class: 'lock', html: icon('lock') }), MACHINES[k].label),
-              h('small', {}, owned ? 'In your sandbox' : `${VEHICLE_PRICE[k].toLocaleString('en-US')} Lab coins`),
-            );
-          }),
-        )
-      : null,
-  ].filter(Boolean));
+  modal(
+    'Job board',
+    [
+      h('p', { class: 'board-intro' }, 'Complete jobs to unlock equipment and finishes. Replay any completed job.'),
+      ...sites,
+      lab ? h('h3', { class: 'board-row' }, 'Blueprints') : null,
+      lab
+        ? h(
+            'div',
+            { class: 'job-grid blueprints', id: 'blueprint-row' },
+            ...BLUEPRINTS.map((r) => {
+              const owned = own(r.lab);
+              return h(
+                'button',
+                {
+                  class: 'card job-tile blueprint' + (owned ? '' : ' locked'),
+                  'data-job': r.id,
+                  'data-owned': String(owned),
+                  onclick: () => (owned ? startRound(r.id) : labBridge.openShop({})),
+                },
+                h('span', { class: 'bp-art', html: blueprintSvg(r) }),
+                h(
+                  'b',
+                  {},
+                  owned ? '' : h('span', { class: 'lock', html: icon('lock') }),
+                  `${save.done.includes(r.id) ? '✓ ' : ''}${r.title}`,
+                ),
+                h('small', {}, owned ? 'Blueprint' : `${r.price.toLocaleString('en-US')} Lab coins`),
+              );
+            }),
+          )
+        : null,
+      lab ? h('h3', { class: 'board-row' }, 'Vehicles') : null,
+      lab
+        ? h(
+            'div',
+            { class: 'job-grid vehicles', id: 'vehicle-row' },
+            ...LAB_MACHINES.map((k) => {
+              const owned = own(labVehicleId(k));
+              return h(
+                'button',
+                {
+                  class: 'card job-tile vehicle' + (owned ? '' : ' locked'),
+                  'data-vehicle': k,
+                  'data-owned': String(owned),
+                  onclick: () => (owned ? startRound(0) : labBridge.openShop({})),
+                },
+                h('b', {}, owned ? '' : h('span', { class: 'lock', html: icon('lock') }), MACHINES[k].label),
+                h('small', {}, owned ? 'In your sandbox' : `${VEHICLE_PRICE[k].toLocaleString('en-US')} Lab coins`),
+              );
+            }),
+          )
+        : null,
+    ].filter(Boolean),
+    { kind: 'board' },
+  );
 }
 
-/** Back to the title ("Back to base"): stops speech and input, saves, frames the whole yard and lets sync run. */
-export function showTitle() {
+/** Stops a job or the sandbox, if one is open: speech, input and play time stop, the save is written, the camera frames
+ *  the whole yard and sync may apply again. */
+function leavePlay() {
   hush();
   account();
   persist();
   app.controls.clear();
   app.controls.setEnabled(false);
-  app.screen = 'title';
   app.paused = false;
-  closeModal();
-  app.screen = 'title';
+  if (!$('#modal').hidden) closeModal();
   app.controls.setEnabled(false);
-  $('#hud').hidden = true;
-  $('#title').hidden = $('#title-head').hidden = $('#title-foot').hidden = false;
   const scene = app.scene;
-  scene.overview = true;
-  scene.yaw = -0.68;
-  scene.pitch = 0.68;
-  scene.distance = 35;
+  if (scene && app.screen === 'play') {
+    scene.overview = true;
+    scene.yaw = -0.68;
+    scene.pitch = 0.68;
+    scene.distance = 35;
+  }
+}
+
+/** Home ("Back to base"): the builder's home screen over the whole yard; music plays, updates and sync may run. */
+export function showTitle() {
+  const fromPlay = app.screen === 'play';
+  leavePlay();
+  showMenu('title');
   renderTitle();
   Music.play(true);
-  app.updater.check();
-  app.sync.syncNow();
+  if (fromPlay) {
+    app.updater.check();
+    app.sync.syncNow();
+  }
 }
