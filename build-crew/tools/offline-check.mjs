@@ -67,6 +67,15 @@ try {
     page.waitForFunction(() => window.__buildCrew),
     'offline boot',
   );
+  // 0.7: the reload came back to the builder's home screen, in the family shell's own (vendored) display face
+  const shell = await page.evaluate(async () => {
+    await document.fonts.ready;
+    const face = [...document.fonts].find((f) => f.family.replace(/"/g, '') === 'Russo One');
+    return { home: !document.querySelector('#title').hidden, font: face?.status === 'loaded' };
+  });
+  mark('offline shell', shell);
+  if (!shell.home) throw Error('the reload did not come back to the home screen');
+  if (!shell.font) throw Error('the display face did not load offline');
   mark('restore saved yard');
   await page.locator('#my-yard').click();
   const state = await page.evaluate(() => window.__buildCrew.state);

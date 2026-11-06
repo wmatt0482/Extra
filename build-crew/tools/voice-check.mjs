@@ -169,7 +169,7 @@ const familyWith = (options) => ({ v: 1, players: [PLAYER], options: options ? {
 const SCENARIOS = {
   'first-visit': { family: familyWith({ cloudVoice: 'en-US-Neural2-F' }), code: CODE, svc: {} },
   'no-default': { family: familyWith(null), code: CODE, svc: {} },
-  // the child taps Start 300 ms after the title appears, while the first clips are still being made
+  // the child taps Start 300 ms after the home screen appears, while the first clips are still being made
   'quick-start': { family: familyWith({ cloudVoice: 'en-US-Neural2-F' }), code: CODE, svc: {}, titleMs: 300 },
   'slow-network': { family: familyWith({ cloudVoice: 'en-US-Neural2-F' }), code: CODE, svc: { delay: 1800 } },
   warm: { family: familyWith({ cloudVoice: 'en-US-Neural2-F' }), code: CODE, svc: {}, reload: true },
@@ -186,6 +186,12 @@ const SCENARIOS = {
 async function ready(page) {
   await page.waitForFunction(() => window.__buildCrew, undefined, { timeout: 90000 });
 }
+/** 0.7: the game opens on "Who's building?" (a reload in the same tab comes back to the builder's home screen): taps the
+ *  test builder's card when the picker is up. */
+async function pick(page) {
+  if (await page.locator('#screen-players').isVisible()) await page.locator(`[data-profile="${PLAYER.id}"]`).click();
+  await page.locator('#title').waitFor();
+}
 const logOf = (page) => page.evaluate(() => window.__voiceLog.slice());
 const sinceOf = async (page, n) => (await logOf(page)).slice(n);
 
@@ -199,13 +205,13 @@ async function play(page, sc, name) {
     moments.push({ label, lines: await sinceOf(page, before) });
   };
   await ready(page);
-  await mark('title (no builder chosen / just loaded)', async () => {}, sc.titleMs ?? 2500);
+  await mark('"Who\'s building?" (no builder chosen / just loaded)', async () => {}, 1500);
   if (sc.noBuilder) {
-    await mark('Start with no builder: the "Who is building?" sheet', async () => { await page.locator('#play').click(); }, 1500);
+    await mark('New player: the New builder screen', async () => { await page.locator('#add-player').click(); }, 1500);
     await page.keyboard.type('Sam');
     await mark('typing a name', async () => {}, 500);
-    await mark('Ready: builder chosen', async () => { await page.keyboard.press('Enter'); await page.locator('[data-profile]').first().waitFor(); }, 3000);
-  }
+    await mark('Done: builder chosen, the home screen', async () => { await page.keyboard.press('Enter'); await page.locator('#title').waitFor(); }, 3000);
+  } else await mark('builder chosen: the home screen', async () => { await pick(page); }, sc.titleMs ?? 2500);
   // the child taps Start at once: how long the goal takes is what the child feels
   const t0 = Date.now();
   await mark('round 1 start', async () => { await page.locator('#play').click(); }, sc.svc?.delay ? 14000 : 9000);
@@ -246,6 +252,7 @@ async function pickerCheck(page, stats) {
   const family = () => page.evaluate(() => JSON.parse(localStorage.getItem('spellJump.family')));
   await ready(page);
   await page.waitForTimeout(1500);
+  await pick(page);
   await page.locator('#parents').click();
   for (const pass of [0, 1]) {
     for (const digit of '1234') await page.locator(`[data-digit="${digit}"]`).click();
@@ -293,6 +300,7 @@ for (const name of wanted) {
   if (sc.reload) {
     // visit once so the clips are cached on this device (localStorage clip map), then reload as a returning child
     await ready(page);
+    await pick(page);
     await page.waitForTimeout(9000);
     await page.reload();
     await page.waitForFunction(() => window.__buildCrew, undefined, { timeout: 90000 });
