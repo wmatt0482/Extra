@@ -764,17 +764,18 @@ a.btn:focus-visible {
   color: var(--muted);
   text-shadow: 0 2px 0 #000;
 }
-#saved-thumb:empty {
+/* the saved site's picture sits on its own button, in place of the icon */
+#saved-thumb:empty,
+#my-yard:has(#saved-thumb img) [data-icon] {
   display: none;
 }
 #saved-thumb img {
   display: block;
-  width: min(220px, 48vw);
-  aspect-ratio: 16 / 10;
+  width: 46px;
+  height: 30px;
   object-fit: cover;
-  border-radius: var(--r-sm);
-  border: 2px solid var(--line);
-  box-shadow: 0 5px 0 rgba(0, 0, 0, 0.55);
+  border-radius: 3px;
+  border: 2px solid var(--accent);
 }
 .title-actions {
   display: flex;
@@ -829,11 +830,29 @@ a.btn:focus-visible {
   color: var(--accent);
 }
 /* the earned looks: small steel buttons, the one in use edged in yellow */
+/* one row that scrolls sideways when a builder has earned many looks, so the menu never grows past the screen */
 .looks {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-wrap: nowrap;
   gap: 8px;
+  overflow-x: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-x;
+  scrollbar-width: none;
+  padding: 0 2px 6px;
+}
+.looks::-webkit-scrollbar {
+  display: none;
+}
+.looks button {
+  flex: none;
+}
+/* centred while they fit, scrolled from the first one when they do not */
+.looks button:first-child {
+  margin-left: auto;
+}
+.looks button:last-child {
+  margin-right: auto;
 }
 .looks:empty {
   display: none;
@@ -2234,6 +2253,12 @@ html.touch #hud .center-controls {
     justify-content: flex-start;
     margin-left: 0;
   }
+  #title .topbar #sound-title {
+    margin-left: auto;
+  }
+  .player-chip {
+    max-width: 62%;
+  }
   .title-main {
     grid-template-columns: 1fr;
     align-content: center;
@@ -2334,9 +2359,6 @@ html.touch #hud .center-controls {
   }
   .title-actions {
     gap: 12px;
-  }
-  #saved-thumb img {
-    width: min(150px, 30vw);
   }
   .pl-tile {
     width: 146px;
