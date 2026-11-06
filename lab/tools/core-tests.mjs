@@ -80,7 +80,7 @@ test('week helpers', () => {
 
 section('events');
 test('every exchange row is whole numbers >= 0; answers fix = ceil(first-try / 2) in coins and XP', () => {
-  assert.equal(EVENTS.length, 31);
+  assert.equal(EVENTS.length, 32);
   for (const r of EVENTS) {
     for (const f of ['coins', 'xp']) assert.ok(Number.isInteger(r[f]) && r[f] >= 0, `${r.game}.${r.event}.${f}`);
     if (r.kind === 'answer') {
@@ -288,7 +288,7 @@ test('property: with >= 2 played games, >= 2 of the 3 are in played games and ex
     const games3 = ids.map((id) => QUEST_BY_ID[id].game);
     if (played.length >= 2) {
       assert.ok(games3[0] !== games3[1] && played.includes(games3[0]) && played.includes(games3[1]), 'two home quests in different played games ' + ids.join());
-      const others = GAMES.filter((g) => g !== games3[0] && g !== games3[1]);
+      const others = GAMES.filter((g) => g !== games3[0] && g !== games3[1] && QUESTS.some((q) => q.game === g && q.nudge));   // (Case Files has no nudge quest: it makes a child wait a day)
       assert.ok(QUEST_BY_ID[ids[2]].nudge && others.includes(games3[2]), 'nudge is in a game outside the pair');
       assert.equal(days[games3[2]], Math.min(...others.map((g) => days[g])), 'from the least-played game');
     } else assert.equal(ids[2], 'any-explore', 'a child who played <= 1 game gets Play N different games');
@@ -297,7 +297,7 @@ test('property: with >= 2 played games, >= 2 of the 3 are in played games and ex
 test('a brand-new child: the game they opened is a home quest; tiers by level; the nudge is always easy', () => {
   const ids = drawQuests(defaultLab(), ctxAt(T0, { game: 'tb' })); assert.equal(QUEST_BY_ID[ids[0]].game === 'tb' || QUEST_BY_ID[ids[1]].game === 'tb', true); assert.equal(ids[2], 'any-explore');
   assert.deepEqual([1, 4, 5, 19, 20, 99].map(tierFor), ['easy', 'easy', 'mid', 'mid', 'hard', 'hard']);
-  assert.equal(targetFor('sj-words', 'hard', 0), 12); assert.equal(targetFor('sj-words', 'hard', 2), 4, 'the nudge slot is easy'); assert.equal(QUESTS.length, 18);
+  assert.equal(targetFor('sj-words', 'hard', 0), 12); assert.equal(targetFor('sj-words', 'hard', 2), 4, 'the nudge slot is easy'); assert.equal(QUESTS.length, 19);
   for (const q of QUESTS) assert.ok(q.easy <= q.mid && q.mid <= q.hard);
 });
 test('text: {n} filled, single wording, the gentle wording for Fraction Fright', () => {

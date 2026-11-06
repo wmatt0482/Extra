@@ -9,7 +9,7 @@ import { earnLabBonusFreeze } from './streak.js';
 
 export { QUESTS };
 export const QUEST_BY_ID = Object.freeze(Object.fromEntries(QUESTS.map((q) => [q.id, q])));
-const FIXED_ORDER = ['sj', 'tb', 'ww', 'ff', 'bc'];
+const FIXED_ORDER = ['sj', 'tb', 'ww', 'ff', 'bc', 'cf'];
 const NUDGE_SLOT = 2;
 const SESSION_HOLD_MS = 3 * 3600000;       // a session that rolls past midnight keeps the day's quests this long after its last event
 

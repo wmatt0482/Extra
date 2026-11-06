@@ -35,6 +35,8 @@ const RATES = {
   ff: { rph: 16, answers: [['zap', 150 / 16]], units: [['wave', 1], ['bull', 20 / 16], ['boss', 3 / 16]] },
   ww: { rph: 6.5, answers: [['marker', 13.08 * 0.45], ['problem', 13.08 * 0.35], ['word', 13.08 * 0.2]], units: [['leg', 1], ['star', 2], ['farm', 0.1]] },
   bc: { rph: 6, answers: [], units: [['job', 1], ['piece', 1, 5], ['challenge', 0.5], ['blueprint', 1 / 6], ['site', 1 / 6]] },
+  // Case Files: one case is about 25 minutes of reading (the game opens one new case a day), one flat payment per closed case
+  cf: { rph: 2.4, answers: [], units: [['case', 1]] },
 };
 // A week's swing is the share of the usual minutes a kid plays that week (school weeks, sports, a cold): the younger the kid, the bigger the swing.
 const KIDS = [
@@ -73,6 +75,8 @@ function playGame(lab, base, game, minutes, acc, r, t0, sessions) {
 }
 
 // ================= A: coins and XP an hour =================
+// the five games played by the hour; Case Files opens one case a day (a flat payment per closed case), so it has no hourly spec
+const HOURLY = GAMES.filter((g) => g !== 'cf');
 const SPEC_TABLE = { 0.45: { sj: 451, tb: 453, ff: 463, ww: 490, bc: 540 }, 0.7: { sj: 563, tb: 558, ff: 606, ww: 609, bc: 540 }, 0.9: { sj: 724, tb: 709, ff: 814, ww: 779, bc: 540 } };
 function perHour(game, acc, hours, seed) {
   const r = rng(seed), lab = defaultLab(); lab.opts.quests = false;
@@ -141,7 +145,7 @@ function simulateFamily({ seed, weeks, full = false, kids = KIDS, shop = true, n
         q.ids.forEach((id, i) => {
           if (done(id) || left < 2) return;
           let g = QUEST_BY_ID[id].game;
-          if (g === 'any') { if (visited.size >= 2) return; g = GAMES.filter((x) => !visited.has(x))[Math.floor(r() * (GAMES.length - visited.size))]; }
+          if (g === 'any') { if (visited.size >= 2) return; g = HOURLY.filter((x) => !visited.has(x))[Math.floor(r() * (HOURLY.length - visited.size))]; }
           let guard = 0;
           while (left > 0 && !done(id) && guard++ < 60) { const m = round(g, () => done(id)); left -= m; if (QUEST_BY_ID[id].explore && visited.size >= 2) break; }
         });
@@ -215,14 +219,14 @@ console.log('The Lab economy simulation (lab/SPEC.md §7.2)\n');
 
 console.log('A. Lab coins an hour by game and first-try rate (the exchange table, combos, moments and daily limits all live)');
 const rate = {};
-console.log('   acc   ' + GAMES.map((g) => g.padStart(12)).join(''));
+console.log('   acc   ' + HOURLY.map((g) => g.padStart(12)).join(''));
 for (const acc of [0.45, 0.7, 0.9]) {
   rate[acc] = {};
-  for (const g of GAMES) rate[acc][g] = perHour(g, acc, 70, 7 + g.charCodeAt(0));
-  console.log(`   ${pct(acc).padEnd(5)} ` + GAMES.map((g) => `${rate[acc][g].coins.toFixed(0)} (${SPEC_TABLE[acc][g]})`.padStart(12)).join(''));
+  for (const g of HOURLY) rate[acc][g] = perHour(g, acc, 70, 7 + g.charCodeAt(0));
+  console.log(`   ${pct(acc).padEnd(5)} ` + HOURLY.map((g) => `${rate[acc][g].coins.toFixed(0)} (${SPEC_TABLE[acc][g]})`.padStart(12)).join(''));
 }
-console.log('   XP/h  ' + GAMES.map((g) => `${rate[0.7][g].xp.toFixed(0)}`.padStart(12)).join('') + '   (at 70 %)');
-for (const g of GAMES) {
+console.log('   XP/h  ' + HOURLY.map((g) => `${rate[0.7][g].xp.toFixed(0)}`.padStart(12)).join('') + '   (at 70 %)');
+for (const g of HOURLY) {
   const c70 = rate[0.7][g].coins;
   check(`coins/hour at 70 % in ${g}: ${c70.toFixed(0)} within 570 +-15 % (485 to 655)`, c70 >= 570 * 0.85 && c70 <= 570 * 1.15);
   for (const acc of [0.45, 0.9]) { const v = rate[acc][g].coins, s = SPEC_TABLE[acc][g]; check(`coins/hour at ${pct(acc)} in ${g}: ${v.toFixed(0)} within the spec table ${s} +-10 %`, Math.abs(v - s) <= s * 0.1); }

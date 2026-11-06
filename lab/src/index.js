@@ -13,7 +13,7 @@ export { NOOP_RECEIPT, LAB_VERSION };
 /** Each game's looks module: `export const LOOKS_READY = [item ids it can draw or enforce]` and an optional paintPreview(ctx, item, w, h). */
 export const GAME_MODULES = Object.freeze({
   sj: '/spell-jump/src/meta/labLooks.js', tb: '/trail-blazer/src/meta/labLooks.js', ff: '/fraction-fright/src/meta/labLooks.js',
-  ww: '/wagon-west/src/meta/labLooks.js', bc: '/build-crew/src/meta/labLooks.js',
+  ww: '/wagon-west/src/meta/labLooks.js', bc: '/build-crew/src/meta/labLooks.js', cf: '/case-files/src/meta/labLooks.js',
 });
 
 let store = null, game = 'sj';

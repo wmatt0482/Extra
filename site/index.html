@@ -120,6 +120,10 @@ h2 { font-size: clamp(24px, 6.4vw, 34px); line-height: 1.05; margin-bottom: 20px
 .btn-ww:active { box-shadow: 0 1px 0 #a8741f, inset 0 -3px 0 rgba(0,0,0,.12); }
 .chip.ww { background: rgba(242,196,107,.14); border-color: #f2c46b; color: #ffe2a8; }
 .chip.tb { color: #ff8a1f; }
+.game-art.cf { background: linear-gradient(#060e22, #12306a 60%, #1f4476); display: grid; place-items: center; }
+.btn-cf { background: #dcab4a; color: #2a1c02; box-shadow: 0 var(--edge) 0 #8a6418, 0 calc(var(--edge) + 8px) 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45); }
+.btn-cf:active { box-shadow: 0 1px 0 #8a6418, inset 0 -3px 0 rgba(0,0,0,.12); }
+.chip.cf { background: rgba(220,171,74,.14); border-color: #dcab4a; color: #f5dca0; }
 .btn-lab { background: #37e0c0; color: #04271f; box-shadow: 0 var(--edge) 0 #12806f, 0 calc(var(--edge) + 8px) 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45); }
 .btn-lab:active { box-shadow: 0 1px 0 #12806f, inset 0 -3px 0 rgba(0,0,0,.12); }
 .game-art.lab { background: linear-gradient(#1c2a78, #12606a 60%, #0d3a40); }
@@ -199,6 +203,10 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
         Play Wagon West
       </a>
       <a class="btn btn-ww" href="/build-crew/">Play Build Crew</a>
+      <a class="btn btn-cf" href="/case-files/">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+        Play Case Files
+      </a>
       <a class="btn btn-lab" href="/lab/">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6v2h-1v5.2l4.6 8A2 2 0 0 1 16.9 21H7.1a2 2 0 0 1-1.7-2.8L10 10.2V5H9z" fill="currentColor"/><path d="M8.2 15h7.6" stroke="#37e0c0" stroke-width="1.6" opacity=".7"/></svg>
         Open The Lab
@@ -253,7 +261,7 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
         </svg>
       </div>
       <div class="game-body">
-        <span class="kicker lab">Your home base · all five games</span>
+        <span class="kicker lab">Your home base · all six games</span>
         <h2 id="lab-title">The Lab</h2>
         <p>Whatever you play fills one purse of Lab coins and one level bar. Grow your avatar and pet, finish three quests, open a surprise crate, and spend your coins on looks for your car, bike, wagon and fence, or on new machines in Build Crew. Your family fills a goal together every week.</p>
         <span class="chip lab">Free · no ads</span>
@@ -419,6 +427,14 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       </div>
     </article>
 
+    <article class="card game second" aria-labelledby="game6-title">
+      <div class="game-art cf"><img src="/case-files/icons/icon-512.png" width="200" height="200" alt="A brass magnifying glass over a manila case folder with a red pin and string" loading="lazy"></div>
+      <div class="game-body"><span class="kicker">Game six · reading</span><h2 id="game6-title">Case Files</h2>
+        <p>A detective reading game for strong readers. A new case opens each day: read the witness statement, the logbook and the museum placard, tap the sentence that proves each clue, pin it to the cork board, rebuild the timeline from memory and type your case report. The reading is the detective work: nothing can be guessed from the title, and a wrong tap only brings a hint ("Good detectives check again"). The first season, the Erie Canal, runs through Rochester, New York, in the 1820s. Parents can set a starting Detective Rank, read every case report and see which skills are growing.</p>
+        <a class="chip cf" href="/case-files/">Play Case Files</a><span class="chip cf">One case a day</span><span class="chip cf">No timers, no scores</span>
+      </div>
+    </article>
+
     <section aria-labelledby="science-title">
       <span class="kicker">Why it works</span>
       <h2 id="science-title">The science we build on</h2>
@@ -449,7 +465,7 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       <span class="kicker">Five minutes, once a week</span>
       <h2 id="parents-title">Get started as a parent</h2>
       <ol class="steps">
-        <li class="card">Open <a href="/spell-jump/">Spell Jump</a>, tap <b>Parents</b>, set a PIN, and create a family code. Join with that code on your kids' devices so their progress follows them: one code syncs all five games.</li>
+        <li class="card">Open <a href="/spell-jump/">Spell Jump</a>, tap <b>Parents</b>, set a PIN, and create a family code. Join with that code on your kids' devices so their progress follows them: one code syncs all six games.</li>
         <li class="card">Paste this week's spelling words in <b>Parents → Words of the week</b>, one per line. To add a sentence, put it after two bars, like <code>neighbor | | My neighbor has a dog.</code></li>
         <li class="card">Kids play about 8 words a day. Check the <b>Report</b> on Friday to see how far each word has come, and its progress chart to see the weeks add up (every game's Report has one).</li>
         <li class="card">For math, open <a href="/trail-blazer/">Trail Blazer</a> → <b>Parents → Facts this week</b> and pick the times tables (×2 to ×12, with ÷ if you like), or type your own problems one per line, like <code>7 x 8</code> or <code>56 / 7</code>. Each race asks 4 facts; 12 a day is the daily mission.</li>
@@ -457,15 +473,16 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
         <li class="card">Open <a href="/lab/">The Lab</a> to see your child's level, quests and family goal. In its <b>Grown-ups</b> panel you can see the crate odds, switch off quests, the board or the goal, and reset a child's Lab. It uses the same family code and PIN as the games.</li>
         <li class="card">For a journey that mixes both, open <a href="/wagon-west/">Wagon West</a>: a leg a session, the week's spelling words at rivers and in letters home, and the math your child already knows applied at the fort and on the trail. The <b>Journal</b> keeps every letter; <b>Parents → Report</b> keeps the score.</li>
       </ol>
+      <p class="more">For reading, open <a href="/case-files/">Case Files</a>: one new case a day. <b>Parents</b> sets the starting Detective Rank and shows each case report your child wrote, first-tap accuracy by skill, hints and word help used. A "Talking with school" card explains reading levels.</p>
       <p class="more">For building and exploring, open <a href="/build-crew/">Build Crew</a>: ten construction jobs and a saved free-play yard. Parents can see jobs completed and minutes played, and unlock the three machines for free play.</p>
-      <p class="more">All five games and The Lab share the same players, family code and parent PIN: set them up once in any game.</p>
+      <p class="more">All six games and The Lab share the same players, family code and parent PIN: set them up once in any game.</p>
     </section>
   </div>
 </main>
 
 <footer>
   <div class="wrap">
-    <p>What's stored online: first names, word lists, spelling progress, Trail Blazer progress (math facts practiced, vehicles, medals and stars), Fraction Fright progress (fraction throws, streets, the yard), The Lab (coins, level, quests, looks and the family goal) and a hashed parent PIN, under your family code. Nothing else. Word lists, sentences, the math facts and the fraction names being practiced are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is. A daily anonymous count of devices, runs and races (no names, no ids) tells us the site is being used.</p>
+    <p>What's stored online: first names, word lists, spelling progress, Trail Blazer progress (math facts practiced, vehicles, medals and stars), Fraction Fright progress (fraction throws, streets, the yard), Case Files progress (cases opened and closed, the case reports a child types, hints used), The Lab (coins, level, quests, looks and the family goal) and a hashed parent PIN, under your family code. Nothing else. Word lists, sentences, the math facts and the fraction names being practiced are sent to Google's text-to-speech service to make the voice clips; nothing about the kids is. A daily anonymous count of devices, runs and races (no names, no ids) tells us the site is being used.</p>
     <p class="meta">Learning Lab · learninglab.fun · Free to use</p>
   </div>
 </footer>
