@@ -17,7 +17,7 @@ export function caseVoiceTexts(kase, rank = 4) {
   out.push(LINES.tier2, LINES.tier3Tap, LINES.tier3Again, LINES.oneMore, LINES.checkAgain, LINES.allSet, LINES.timelineDone);
   out.push(kase.timeline.prompt);
   for (const k of new Set(kase.docs.map((d) => d.kind))) out.push(checkDoc(k));
-  out.push(kase.solution.prompt, LINES.solveTier1, LINES.solveTier2, LINES.solveTier3, LINES.notThatClue, LINES.addMore, LINES.moreWords, LINES.pickClue);
+  out.push(kase.solution.prompt, LINES.solveTier1, LINES.solveTier2, LINES.solveTier3, LINES.notThatClue, LINES.addMore, LINES.moreWords, LINES.pickClue, LINES.attach, LINES.writeReport);
   if (kase.closing) out.push(kase.closing.text);
   out.push(kase.knowledge, LINES.seeYou);
   if (kase.teaser) out.push(kase.teaser);
