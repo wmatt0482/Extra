@@ -37,7 +37,7 @@ export function refreshOpened(save, today = dayKey(), seq = SEQUENCE) {
 export function waitingState(save, seq = SEQUENCE) {
   const next = seq.find((id) => !save.opened[id]);
   const openUnclosed = seq.filter((id) => save.opened[id] && !(save.closed && save.closed[id]));
-  if (openUnclosed.length) return next ? 'open' : 'open';
+  if (openUnclosed.length) return 'open';       // something is waiting to be played: no "tomorrow" note
   if (!next) return 'done';
   return 'tomorrow';
 }

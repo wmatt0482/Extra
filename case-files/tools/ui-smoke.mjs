@@ -226,6 +226,7 @@ async function runLayout(browser, layout) {
       localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devC', keys: {} }));
       sessionStorage.setItem('cfSeeded', '1');
     }
+    { const st = window.setTimeout.bind(window); window.setTimeout = (f, ms, ...a) => st(f, ms === 20000 ? 400 : ms, ...a); }   // the ranks 1-3 idle hint (20 s) takes 0.4 s in this test
     window.__fakeNow = 0;
     window.__caseFilesNow = () => Date.now() + window.__fakeNow;
     window.__cloudAsked = []; window.__cloudPlayed = []; window.__playMs = 12; window.__spoken = [];
@@ -343,6 +344,8 @@ async function runLayout(browser, layout) {
   const q1 = TRAINING.questions[0];
   check((await textOf(page, '#nb-q')) === q1.prompt, 'the partner\'s notebook asks one question at a time');
   await page.waitForFunction((t) => window.__cloudPlayed.includes(t), q1.prompt, { timeout: 4000 });
+  await sleep(900);
+  check(!(await exists(page, '#nb-hint')), 'rank 4: the partner does not offer a hint by herself');
   check(await J(page, () => document.querySelector('#nb-pin').disabled), 'Pin it waits for a tapped sentence');
   const wrongId = 'd1s6';
   await pickSentence(page, TRAINING, wrongId);
@@ -527,6 +530,28 @@ async function runLayout(browser, layout) {
   await waitBeat(page, 'investigate');
   check(true, 'and it resumes at the desk where the child stopped');
   await page.click('#case-back'); await waitScreen(page, 'home');
+
+  // ---------- rank 1: read-aloud in every document, the idle hint offered by the partner (Mia, erie-02) ----------
+  const E2 = CASE_BY_ID['erie-02'], e2q1 = E2.questions[0];
+  await page.click('#btn-player'); await waitScreen(page, 'players');
+  await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
+  await J(page, () => { localStorage.setItem('caseFiles.pmia.wip', 'null'); window.__caseFiles.app.setRankFor('pmia', 1); });
+  await page.click('.case-card[data-case="erie-02"]'); await waitBeat(page, 'brief');
+  check((await J(page, () => window.__caseFiles.run.rank)) === 1, 'rank 1 starts the case at rank 1');
+  await doBrief(page, E2);
+  check((await page.$$('.docfolder .tag.read')).length === E2.docs.length, 'rank 1: "Read to me" is on for every document');
+  const beforeR1 = (await played(page)).length;
+  await page.click(`.docfolder[data-doc="${E2.docs[0].id}"]`);
+  await page.waitForFunction((t) => window.__cloudPlayed.includes(t), E2.docs[0].paragraphs[0][0].text, { timeout: 5000 });
+  check((await page.getAttribute('.toggle-btn', 'aria-pressed')) === 'true' && (await played(page)).length > beforeR1, 'rank 1: a core document opens already reading');
+  await page.click('#doc-back');
+  await doDesk(page, E2);
+  await page.waitForSelector('#nb-hint[data-tier="1"]', { timeout: 4000 });
+  check((await textOf(page, '#nb-hint')).includes(e2q1.hint) && !(await J(page, () => window.__caseFiles.run.firstTap.q1 !== undefined)), 'rank 1: after a pause the partner offers hint tier 1 by herself (no tap, no timer on screen)');
+  await kidAudit(page, 'notebook (rank 1)');
+  await page.click('#case-back'); await waitScreen(page, 'home');
+  await J(page, () => { localStorage.setItem('caseFiles.pmia.wip', 'null'); window.__caseFiles.app.setRankFor('pmia', 4); });
+
 
   // ---------- the Parent Zone ----------
   await page.click('#btn-parents');
