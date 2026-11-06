@@ -55,9 +55,12 @@ node case-files/tools/logic-tests.mjs                 # pure logic: answers, pac
 bash build.sh && (cd dist && python3 -m http.server 8741 &)     # remember the PID; kill it by PID when done
 BASE_URL=http://localhost:8741 node case-files/tools/ui-smoke.mjs      # Playwright: training + Erie 1, 390x844 and 844x390, offline
 BASE_URL=http://localhost:8741 node case-files/tools/sync-smoke.mjs    # two devices on one in-memory sync server
+BASE_URL=http://localhost:8741 node case-files/tools/content-play.mjs  # the REAL content: every case played end to end with its own answer key
 node case-files/tools/make-icons.mjs                  # regenerates icons/*.png
 node case-files/tools/content-tests.mjs               # (content agent) schema, ids, banned words, readability, word counts
 ```
+
+`content-play.mjs` plays Training and Erie 1-5 on the real content (all six at 390x844, Training + Erie 1 at 844x390; `ALL_LANDSCAPE=1` for all six; `CASE_IDS=erie-03` to pick cases; `SHOTS_DIR=` keeps screenshots): wrong pin and wrong accusation, the proof clue, the report, Case Closed, no horizontal scroll, the kid-rule word audit, the device voice never used.
 
 `ui-smoke.mjs` serves `tools/fixtures/` in place of `src/content/` (a Playwright route), so it does not depend on the final cases.
 It mocks the voice backend (`window.__cloudVoiceBackend`, as Spell Jump's test does) and puts a spy on the device voice
