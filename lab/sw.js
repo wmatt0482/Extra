@@ -6,7 +6,7 @@
 // /api/... (family sync, voice prepare / status) is network only; natural-voice clips (/api/tts/clip/<id>) are content-addressed and cache-first in
 // Spell Jump's clip cache (TTS_CACHE, shared on this origin). Caches are per origin, shared with the games' workers: this worker only ever deletes its
 // own ('lab-...'). If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'lab-v1.0.0';
+const VERSION = 'lab-v1.0.1';
 const PREFIX = 'lab-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -90,6 +90,7 @@ const OPTIONAL = [
   '../fraction-fright/src/meta/labLooks.js',
   '../wagon-west/src/meta/labLooks.js',
   '../build-crew/src/meta/labLooks.js',
+  '../case-files/src/meta/labLooks.js',
 ];
 
 // straight from the server, not the HTTP cache (Netlify sends max-age=300): a new version caches new files
