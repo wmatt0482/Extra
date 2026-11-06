@@ -52,6 +52,7 @@ if (swUsable) {
 
 async function boot() {
   hydrateIcons();
+  $('.ico-archive').innerHTML = EXTRA_ICONS.archive;
   drawBackdrop($('#backdrop-svg'));
   const settings = loadSettings();
   document.documentElement.classList.toggle('reduced-motion', settings.reducedMotion);

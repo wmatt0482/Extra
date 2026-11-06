@@ -8,6 +8,7 @@ export function createClosed(app) {
   const body = $('#closed-body');
   function show({ kase, receipt } = {}) {
     if (!kase) return;
+    $('#closed-title').textContent = kase.title;
     const stamp = h('div', { class: 'big-stamp' + (app.settings.reducedMotion ? '' : ' slam'), id: 'big-stamp', role: 'img', 'aria-label': 'Case closed' }, 'Case closed');
     const say1 = h('button', { class: 'say-btn', type: 'button', 'aria-label': 'Hear it again', html: icon('sound') });
     const closing = kase.closing || { who: 'chief', text: 'Case closed.' };

@@ -184,17 +184,20 @@ async function doRebuild(page, k, { misplace = false, drag = false } = {}) {
     const i = open[n];
     const card = items[i].id;
     if (drag && n === 0) {
+      await page.locator(`[data-card="${card}"]`).scrollIntoViewIfNeeded(); await page.locator(`.slot[data-slot="${i}"]`).scrollIntoViewIfNeeded();
       const a = await page.locator(`[data-card="${card}"]`).boundingBox(), b = await page.locator(`.slot[data-slot="${i}"]`).boundingBox();
-      await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2); await page.mouse.down();
+      await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+      await page.mouse.down();
       await page.mouse.move(a.x + a.width / 2 + 14, a.y + a.height / 2 + 14, { steps: 3 });
-      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 }); await page.mouse.up();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 8 });
+      await page.mouse.up();
     } else {
       await page.click(`[data-card="${card}"]`);
       await page.click(`.slot[data-slot="${i}"]`);
     }
     await sleep(40);
   }
-  await page.waitForSelector('#tl-go:not([hidden])');
+  await page.waitForSelector('#tl-go:not([hidden])', { timeout: 6000 });
 }
 
 // ================================ one layout ================================

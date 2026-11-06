@@ -4,7 +4,6 @@
 // (the screen decides what "Pin it" means). Passage text >= 18px, line-height >= 1.5, about 65 characters a line.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
-import { KIND_LABEL } from '../logic/lines.js';
 
 /**
  * app: { speech, voiceReady(), toast, noteListen(docId) } ; opts: { mode: 'read' | 'pick', onSelect(id), readAloud: bool, autoRead: bool, onReadAloud(on) }
@@ -14,7 +13,7 @@ export function createReader(app, kase, doc, opts = {}) {
   const el = h('div', { class: 'doc' + (mode === 'pick' ? ' pick' : ''), 'data-doc': doc.id });
   const text = h('div', { class: 'doc-text scroll' });
   const toggle = h('button', { class: 'toggle-btn', type: 'button', 'aria-pressed': String(!!opts.readAloud), 'data-act': 'read-all' }, h('span', { class: 'knob' }), 'Read it to me');
-  el.append(h('div', { class: 'doc-head' }, h('h4', {}, `${KIND_LABEL[doc.kind] ? KIND_LABEL[doc.kind] + ': ' : ''}${doc.title}`), toggle, h('div', { class: 'from' }, doc.from)), text);
+  el.append(h('div', { class: 'doc-head' }, h('h4', {}, doc.title), toggle, h('div', { class: 'from' }, doc.from)), text);
   const paras = [];
   doc.paragraphs.forEach((p, pi) => {
     const sp = p.map((s) => h('span', { class: 's', 'data-id': s.id, role: mode === 'pick' ? 'button' : null, tabindex: mode === 'pick' ? '0' : null }, s.text));

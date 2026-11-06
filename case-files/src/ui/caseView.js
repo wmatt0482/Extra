@@ -49,7 +49,7 @@ export function createCaseView(app) {
     onBackspace: () => { if (!kbMode || !typed) return; typed = typed.slice(0, -1); app.audio.letter(true); kbMode.draw(); },
     onEnter: () => { if (kbMode && typed.trim()) kbMode.enter(); },
   });
-  function useKeyboard(mode) { kbMode = mode; kb.setEnterLabel(mode.label); kb.setEnabled(true); kb.setEnterEnabled(!!typed.trim()); kb.setActive(true); }
+  function useKeyboard(mode) { for (const k of kb.el.querySelectorAll('.is-down')) k.classList.remove('is-down'); kbMode = mode; kb.setEnterLabel(mode.label); kb.setEnabled(true); kb.setEnterEnabled(!!typed.trim()); kb.setActive(true); }
   const syncEnter = () => kb.setEnterEnabled(!!typed.trim());
   function releaseKeyboard() { kbMode = null; kb.setActive(false); }
 
@@ -68,10 +68,10 @@ export function createCaseView(app) {
   }
   boardBtn.addEventListener('click', () => openBoardSheet());
 
-  function openSheet(title, content, onClose) {
+  function openSheet(title, content, onClose, tall = false) {
     closeSheet();
     const close = h('button', { class: 'btn icon-btn', 'aria-label': 'Close', 'data-act': 'close-sheet', 'data-sfx': '', html: icon('close') });
-    const wrap = h('div', { class: 'sheet-wrap', role: 'dialog', 'aria-label': title }, h('div', { class: 'sheet' }, h('div', { class: 'sheet-head' }, h('h3', {}, title), close), content));
+    const wrap = h('div', { class: 'sheet-wrap', role: 'dialog', 'aria-label': title }, h('div', { class: 'sheet' + (tall ? ' tall' : '') }, h('div', { class: 'sheet-head' }, h('h3', {}, title), close), content));
     close.addEventListener('click', () => { closeSheet(); if (onClose) onClose(); });
     wrap.addEventListener('click', (e) => { if (e.target === wrap) { closeSheet(); if (onClose) onClose(); } });
     body.append(wrap); sheet = wrap;
@@ -97,9 +97,9 @@ export function createCaseView(app) {
       cur = createReader(ctx, kase, d, { mode: 'read', readAloud: false }); rs.push(cur);
       holder.append(cur.el);
     };
-    for (const d of kase.docs) { const t = h('button', { class: 'doc-tab', type: 'button', 'data-doc': d.id }, `${KIND_LABEL[d.kind] || 'Doc'}: ${d.title}`); t.addEventListener('click', () => show(d)); tabs.append(t); }
+    for (const d of kase.docs) { const t = h('button', { class: 'doc-tab', type: 'button', 'data-doc': d.id }, d.title); t.addEventListener('click', () => show(d)); tabs.append(t); }
     scroll.append(tabs, holder);
-    const wrap = openSheet('The documents', scroll);
+    const wrap = openSheet('The documents', scroll, null, true);
     wrap._readers = rs;
     show(kase.docs[0]);
   }
@@ -249,7 +249,7 @@ export function createCaseView(app) {
       }
       tabs = h('div', { class: 'doc-tabs' });
       for (const d of kase.docs) {
-        const t = h('button', { class: 'doc-tab', type: 'button', 'data-doc': d.id, 'data-sfx': '' }, `${KIND_LABEL[d.kind] || 'Doc'}: ${d.title}`);
+        const t = h('button', { class: 'doc-tab', type: 'button', 'data-doc': d.id, 'data-sfx': '' }, d.title);
         t.addEventListener('click', () => showDoc(d));
         tabs.append(t);
       }
@@ -269,15 +269,15 @@ export function createCaseView(app) {
     const dots = h('span', { class: 'pindots', 'aria-label': `Question ${run.q + 1} of ${kase.questions.length}` }, ...kase.questions.map((x, i) => h('i', { class: pinnedIn(run, x.id).length >= (x.answer || []).length ? 'on' : '' })));
     const hearQ = h('button', { class: 'say-btn', type: 'button', 'aria-label': 'Hear the question', html: icon('sound'), style: { background: 'rgba(0,0,0,.1)', color: '#26200f' } });
     hearQ.addEventListener('click', () => say(q.prompt));
-    const parts = [h('div', { class: 'nb-top' }, h('span', { class: 'label-type' }, `Notebook · question ${run.q + 1} of ${kase.questions.length}`), h('span', { style: { flex: 1 } }), dots),
-      h('div', { style: { display: 'flex', gap: '8px', alignItems: 'flex-start' } }, h('p', { class: 'nb-q', id: 'nb-q' }, q.prompt), hearQ)];
+    const head = h('div', { class: 'nb-top' }, h('span', { class: 'label-type' }, `Question ${run.q + 1} of ${kase.questions.length}`), h('span', { style: { flex: 1 } }), dots);
+    const parts = [h('div', { style: { display: 'flex', gap: '8px', alignItems: 'flex-start' } }, h('p', { class: 'nb-q', id: 'nb-q' }, q.prompt), hearQ)];
     if (need > 1 && !complete) parts.push(h('p', { class: 'label-type', style: { color: '#8a5a2a' } }, `Pinned ${pinned.length} of ${need}`));
     if (complete) {
       parts.push(h('p', { class: 'nb-why', id: 'nb-why' }, h('b', {}, 'Why it proves it'), q.why));
-    } else {
-      if (qState.note) parts.push(h('p', { class: 'nb-hint', id: 'nb-note' }, h('b', {}, 'Your partner'), qState.note));
-      if (tier > 0) { const [label, txt] = hintTexts(q, tier, run.misses[q.id] > 3)[0]; parts.push(h('p', { class: 'nb-hint', id: 'nb-hint', 'data-tier': String(tier) }, h('b', {}, label), txt)); }
-    }
+    } else if (tier > 0) {
+      const [label, txt] = hintTexts(q, tier, run.misses[q.id] > 3)[0];
+      parts.push(h('p', { class: 'nb-hint', id: 'nb-hint', 'data-tier': String(tier) }, h('b', {}, label), qState.note ? h('span', { id: 'nb-note', style: { display: 'block', fontWeight: '700' } }, qState.note) : null, txt));
+    } else if (qState.note) parts.push(h('p', { class: 'nb-hint', id: 'nb-note' }, h('b', {}, 'Your partner'), qState.note));
     const act = h('div', { class: 'nb-actions' });
     if (complete) {
       const last = run.q + 1 >= kase.questions.length;
@@ -296,8 +296,7 @@ export function createCaseView(app) {
       pin.addEventListener('click', () => pinIt(q));
       act.append(hint, h('span', { class: 'grow' }), pin);
     }
-    parts.push(act);
-    nb.replaceChildren(...parts);
+    nb.replaceChildren(head, h('div', { class: 'nb-scroll' }, ...parts), act);
   }
   function selectSentence(id) {
     const q = questionOf(run, kase); if (!q || qState.done) return;
@@ -443,8 +442,9 @@ export function createCaseView(app) {
       c.addEventListener('pointerup', end); c.addEventListener('pointercancel', end);
       c.addEventListener('click', () => { if (c._dragged) return; selCard = selCard === id ? '' : id; app.audio.click(); draw(); });
     }
-    const tlWrap = h('div', { class: 'tl-wrap' }, slotsEl, h('div', { style: { display: 'grid', gap: '10px', alignContent: 'start' } }, h('span', { class: 'label-type' }, 'Cards'), trayEl, msgEl));
-    body.replaceChildren(h('div', { class: 'pane' }, h('div', { class: 'pane-scroll scroll' }, h('div', { class: 'col', style: { width: 'min(100%, 980px)' } }, prompt, tlWrap)), h('div', { class: 'foot' }, docs, goEl)));
+    const right = h('div', { class: 'tl-right' }, h('span', { class: 'label-type' }, 'Cards'), trayEl, msgEl);
+    const tlWrap = h('div', { class: 'tl-wrap scroll' }, slotsEl, right);
+    body.replaceChildren(h('div', { class: 'pane' }, prompt, tlWrap, h('div', { class: 'foot' }, docs, goEl)));
     msg = run.tl.slots.every(Boolean) ? LINES.timelineDone : '';
     draw();
     if (!run.tlSpoken) { run.tlSpoken = true; later(() => say(tl.prompt), 200); }
@@ -470,11 +470,8 @@ export function createCaseView(app) {
       if (tier >= 2) openBoardSheet((sol.proof || []).filter((id) => run.board.includes(id)));
     }
     if (stage === 'type') {
-      const grid = h('div', { class: 'solve-grid' });
-      const left = h('div', { class: 'col', style: { width: '100%' } }, prompt, answer, hintBox);
-      const kw = h('div', { class: 'kbwrap' }, kb.el);
-      grid.append(left, kw);
-      body.replaceChildren(h('div', { class: 'pane' }, h('div', { class: 'pane-scroll scroll solve-scroll' }, grid)));
+      const grid = h('div', { class: 'solve-grid' }, h('div', { class: 's-prompt' }, prompt, hintBox), h('div', { class: 's-answer' }, answer));
+      body.replaceChildren(h('div', { class: 'pane' }, h('div', { class: 'pane-scroll scroll solve-scroll' }, grid), h('div', { class: 'kbwrap' }, kb.el)));
       typed = run.sol.text || '';
       useKeyboard({ max: 40, label: 'Check', draw: drawAnswer, enter: () => {
         const r = submitSolution(run, kase, typed.trim()); persist();
@@ -528,9 +525,8 @@ export function createCaseView(app) {
     clueBtn.addEventListener('click', pickClue);
     const frame = h('p', { class: 'frame', id: 'frame' }, h('span', { class: 'blank fixed', id: 'blank-who' }, who), ' did it because ', because, '. The clue that proves it is ', clueBtn, '.');
     const prompt = h('div', { class: 'bubble partner' }, h('span', { class: 'who' }, 'PT'), h('p', {}, h('span', { class: 'who-name' }, 'Case report'), 'Finish the sentence. Then tap the clue that proves it.'), h('button', { class: 'say-btn', type: 'button', 'aria-label': 'Hear it', html: icon('sound'), onclick: () => say(LINES.writeReport) }));
-    const grid = h('div', { class: 'solve-grid' });
-    grid.append(h('div', { class: 'col', style: { width: '100%' } }, prompt, frame, msg), h('div', { class: 'kbwrap' }, kb.el));
-    body.replaceChildren(h('div', { class: 'pane' }, h('div', { class: 'pane-scroll scroll solve-scroll' }, grid)));
+    const grid = h('div', { class: 'solve-grid report' }, h('div', { class: 's-prompt' }, prompt), h('div', { class: 's-answer' }, frame, msg));
+    body.replaceChildren(h('div', { class: 'pane' }, h('div', { class: 'pane-scroll scroll solve-scroll' }, grid), h('div', { class: 'kbwrap' }, kb.el)));
     useKeyboard({ max: 110, label: 'File it', draw: drawBecause, enter: () => {
       const r = submitReport(run, kase, typed.trim(), run.rep.clueId); persist();
       if (r === 'ok') { app.audio.cash(); finish(who); return; }

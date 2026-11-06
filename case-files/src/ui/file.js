@@ -2,7 +2,6 @@
 // line and the fact learned. Always allowed; reading it changes nothing in the save.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
-import { KIND_LABEL } from '../logic/lines.js';
 import { sentenceIndex } from '../logic/run.js';
 import { createReader } from './reader.js';
 import { EXTRA_ICONS } from './art.js';
@@ -33,7 +32,7 @@ export function createFile(app) {
         const dt = h('div', { class: 'doc-tabs' });
         const holder = h('div', { style: { flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' } });
         const open = (d) => { cur = d; for (const t of dt.children) t.classList.toggle('on', t.dataset.doc === d.id); if (reader) reader.stop(); reader = createReader(ctx, kase, d, { mode: 'read', readAloud: false }); holder.replaceChildren(reader.el); };
-        for (const d of kase.docs) { const t = h('button', { class: 'doc-tab', type: 'button', 'data-doc': d.id }, `${KIND_LABEL[d.kind] || 'Doc'}: ${d.title}`); t.addEventListener('click', () => open(d)); dt.append(t); }
+        for (const d of kase.docs) { const t = h('button', { class: 'doc-tab', type: 'button', 'data-doc': d.id }, d.title); t.addEventListener('click', () => open(d)); dt.append(t); }
         area.append(dt, holder); open(cur);
       } else {
         const col = h('div', { class: 'col' });
