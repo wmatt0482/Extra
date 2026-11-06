@@ -15,7 +15,7 @@ const d1 = doc('d1', { kind: 'logbook', title: "Lock Tender's Log, Lockport", fr
     'Every captain wants to tell me about the celebration, but I have a flight of locks to run.',
     'The Kingfisher is a packet with a bright red door.',
     'The Heron is a packet with a blue one, and the Swallow carries cargo for the merchants of Buffalo.',
-    'A packet in a hurry must still wait its turn in my locks, and I tell every captain that the hill does not care who is in a hurry.',
+    'A fast packet must still wait its turn in my locks, and I tell every captain that the hill does not care how fast a boat wants to go.',
   ],
 ]);
 
