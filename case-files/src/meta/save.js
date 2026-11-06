@@ -14,7 +14,8 @@ export const defaultSave = () => ({ v: SAVE_VERSION, rank: 4, opened: {}, closed
 export const defaultSettings = () => ({ sound: true, reducedMotion: false });
 
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-const int0 = (v) => Math.max(0, Math.min(1e9, Math.floor(num(v))));
+const int0 = (v, max = 1e9) => Math.max(0, Math.min(max, Math.floor(num(v))));
+const stamp = (v) => int0(v, 1e14);                 // a millisecond timestamp
 const ID = /^[A-Za-z0-9_-]{1,48}$/;
 const DAY = /^\d{4}-\d\d-\d\d$/;
 const own = (o) => (o && typeof o === 'object' && !Array.isArray(o) ? Object.entries(o).filter(([k]) => k !== '__proto__' && k !== 'constructor' && k !== 'prototype') : []);
@@ -22,7 +23,7 @@ const str = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '
 
 export function normalizeClosed(r) {
   const o = r && typeof r === 'object' ? r : {};
-  const c = { day: DAY.test(o.day) ? o.day : '', at: int0(o.at), firstTap: {}, hints: {}, timelineTries: int0(o.timelineTries), report: { who: '', because: '', clueId: '' }, listens: {} };
+  const c = { day: DAY.test(o.day) ? o.day : '', at: stamp(o.at), firstTap: {}, hints: {}, timelineTries: int0(o.timelineTries), report: { who: '', because: '', clueId: '' }, listens: {} };
   for (const [k, v] of own(o.firstTap)) if (ID.test(k) && typeof v === 'boolean') c.firstTap[k] = v;
   for (const [k, v] of own(o.hints)) if (ID.test(k)) c.hints[k] = Math.min(3, int0(v));
   if (o.report && typeof o.report === 'object') c.report = { who: str(o.report.who, 80), because: str(o.report.because, 400), clueId: ID.test(o.report.clueId) ? o.report.clueId : '' };
@@ -39,7 +40,7 @@ export function normalize(raw) {
   for (const [id, rec] of own(raw.closed)) if (ID.test(id)) { s.closed[id] = normalizeClosed(rec); if (!s.opened[id] && DAY.test(s.closed[id].day)) s.opened[id] = s.closed[id].day; }
   s.nextEarly = raw.nextEarly === true;
   for (const [w, n] of own(raw.wordsMet)) if (/^[a-z'-]{1,24}$/.test(w)) s.wordsMet[w] = int0(n);
-  s.updatedAt = int0(raw.updatedAt);
+  s.updatedAt = stamp(raw.updatedAt);
   return s;
 }
 
@@ -63,6 +64,11 @@ export function loadSave(playerId) {
 }
 export function writeSave(playerId, save) {
   if (!playerId || !save) return false;
+  // nothing changed since the last write: do not write (and so do not bump updatedAt or wake the family sync)
+  try {
+    const prev = readText(saveKey(playerId));
+    if (prev && JSON.stringify({ ...normalize(JSON.parse(prev)), updatedAt: 0 }) === JSON.stringify({ ...normalize(save), updatedAt: 0 })) return true;
+  } catch (_) { /* write it */ }
   save.updatedAt = Date.now();
   try { localStorage.setItem(saveKey(playerId), JSON.stringify(save)); } catch (e) { console.warn('[save] could not write', e); return false; }
   localWrite(saveKey(playerId));

@@ -125,6 +125,10 @@ test('normalize is idempotent and drops hostile or malformed input', () => {
   assert.equal(Object.keys(n.closed).length, 1); assert.equal(({}).x, undefined);
   assert.deepEqual(normalize(JSON.parse(JSON.stringify(n))), n); assert.deepEqual(normalize(null), defaultSave()); assert.deepEqual(normalize('x'), defaultSave());
 });
+test('normalize keeps real millisecond timestamps (at, updatedAt) and caps absurd ones', () => {
+  const t = 1793990311152, n = normalize({ updatedAt: t, closed: { 'erie-01': { day: '2026-11-02', at: t } } });
+  assert.equal(n.updatedAt, t); assert.equal(n.closed['erie-01'].at, t); assert.equal(normalize({ updatedAt: 1e30 }).updatedAt, 1e14);
+});
 test('normalize: a closed case is also an opened case', () => {
   assert.deepEqual(normalize({ closed: { 'erie-01': { day: '2026-11-02', at: 1 } } }).opened, { 'erie-01': '2026-11-02' });
 });

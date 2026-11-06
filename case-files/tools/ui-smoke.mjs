@@ -593,10 +593,43 @@ async function runLayout(browser, layout) {
   await ctx.close();
 }
 
+// ---------- offline: the service worker keeps the game working (a real worker, a real offline reload) ----------
+async function runOffline(browser) {
+  console.log('\n=== offline (service worker) ===');
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
+  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, body: '', contentType: 'text/css' }));
+  await ctx.route('**/api/**', (r) => r.abort());
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('cfOffSeeded')) {
+      localStorage.clear(); const now = Date.now();
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0, options: {}, optionsUpdatedAt: {}, removedPlayers: [], migrated: true, lastPlayer: null }));
+      sessionStorage.setItem('cfOffSeeded', '1');
+    }
+  });
+  await page.goto(BASE + '/case-files/index.html', { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 15000 });
+  await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
+  await page.waitForFunction(async () => { const c = await caches.open('case-files-v0.1.0'); return (await c.keys()).length > 25; }, null, { timeout: 15000 });
+  const names = await J(page, async () => (await caches.keys()).filter((k) => k.startsWith('case-files-')));
+  check(names.length === 1 && names[0] === 'case-files-v0.1.0', `the service worker cache is named case-files-v0.1.0 (${names.join(',')})`);
+  await ctx.setOffline(true);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector(visibleSel('#screen-players'), { timeout: 15000 });
+  await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
+  check(await exists(page, '.case-card[data-case="training"]'), 'offline: the page reloads from the cache and the agency home opens');
+  await page.click('.case-card[data-case="training"]'); await waitBeat(page, 'brief');
+  check((await textOf(page, '.objective p')).length > 5, 'offline: a case opens and plays');
+  check(errors.length === 0, `offline: no page errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
 async function main() {
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch();
-  try { for (const l of LAYOUTS) await runLayout(browser, l); } finally { await browser.close(); }
+  try { for (const l of LAYOUTS) await runLayout(browser, l); if (!ONLY || ONLY === 'offline') await runOffline(browser); } finally { await browser.close(); }
   console.log(`\nscreenshots: ${SHOTS}`);
   if (failures.length) { console.log(`\n${failures.length} FAILED:\n- ` + failures.join('\n- ')); process.exit(1); }
   console.log('\nALL CASE FILES UI CHECKS PASSED');
