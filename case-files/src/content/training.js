@@ -6,14 +6,22 @@ const d1 = doc('d1', { kind: 'note', title: "Maya's Note", from: 'Maya Chen, Roo
     'My name is Maya Chen, and I am in Ms. Park\'s fourth-grade class in Room 12.',
     'My lunchbox is missing!',
     'It is purple, with a green dinosaur sticker on the lid.',
+    'My grandpa packed it for me, and he drew a tiny star on the bottom so I would always know it was mine.',
     '@put I put it in my cubby at 8:15, right before the morning bell.',
     '@empty At lunchtime, my cubby was empty.',
   ],
   [
     'I looked under my desk, in the coat closet, and behind the bookshelf.',
     'I asked Dev, who sits next to me, but he was drawing a dragon all morning.',
+    'He showed me the dragon, and it has seven heads, so I believe him.',
+    'Mr. Ortiz, the gym teacher, only visited our room to borrow a jump rope.',
     'My lunch has yogurt in it, and yogurt does not like warm days.',
     'Please help me find it before the yogurt turns into soup.',
+  ],
+  [
+    'I know that a detective needs the facts, so here is one more.',
+    'I did not take my lunchbox anywhere, and I did not move it myself.',
+    'Somebody else moved it, and I would like to know who and why.',
   ],
 ]);
 
@@ -23,12 +31,19 @@ const d2 = doc('d2', { kind: 'note', title: "Ms. Park's Class Notes", from: 'Ms.
     '@rule Any lunch with yogurt, cheese, or meat must go into the cafeteria cooler until noon.',
     '@theojob Our helper of the week checks the cubbies at morning recess and carries the cold lunches to the cooler.',
     'This week, the helper is Theo.',
+    'Theo is very careful, and he always reads his job card twice.',
   ],
   [
     'Theo left a note on my desk, but the breeze from the window blew it under the bookshelf.',
     'I found it at 12:10, when I was looking for my stapler.',
+    'My stapler, by the way, was in my coffee mug.',
     '@notetext The note was signed by Theo, and it said that one purple lunchbox with a dinosaur sticker was safe in the cooler.',
     'So the lunchbox was never taken; it was only moved to a cooler place.',
+  ],
+  [
+    'Maya, I am sorry for the worry.',
+    'The cooler rule is meant to keep your yogurt safe, and I should have reminded everyone at lunch.',
+    'Next time, I will tell the class to look for a note when something moves.',
   ],
 ]);
 

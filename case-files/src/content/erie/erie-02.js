@@ -1,0 +1,141 @@
+import { doc, handles } from '../helpers.js';
+
+const d1 = doc('d1', { kind: 'logbook', title: "Lock Tender's Logbook", from: 'Lock tender Hannah Doyle', stretch: false }, [
+  [
+    'I am Hannah Doyle, the lock tender here, and I keep this log every day.',
+    'My lock sits a short walk east of the aqueduct, so every boat that crosses the Genesee River passes through my gates.',
+    '@lockdef A lock is a stone room with a gate at each end, and it lifts or lowers a boat when water is let in or out through small sliding doors called paddles.',
+    '@ev Evening, nine o\'clock: The channel above my lock is four feet deep, just as it should be.',
+    '@checked The gates are shut and the paddles are closed, and I checked them myself because my new helper, Jonas, is still learning.',
+  ],
+  [
+    '@mid Midnight: The channel above my lock is still four feet deep.',
+    '@dawn Morning, five o\'clock: The channel above my lock is only two feet deep!',
+    '@stuck Three boats are stuck in the mud, and their captains are shouting.',
+    'One is a packet boat full of passengers, and the other two are heavy with cargo for the merchants of Rochester.',
+    'The young hoggee from the packet sat down on the towpath and wiggled his toes, while the mules looked bored.',
+    '@blame Captain Moss says Jonas must have left a paddle open.',
+    '@below But the channel below my lock is exactly as deep as it was last night, so no water came down through my gates.',
+    '@sent I sent Jonas running along the towpath to ask the canal superintendent for help.',
+    'Jonas is a hard worker, but last week he mixed up the red flag and the white flag, so the captains do not trust him.',
+    'I do not know what to think, so I will write down only what I can measure.',
+  ],
+]);
+
+const d2 = doc('d2', { kind: 'witness', title: 'Statement of a Farmer', from: 'Tobias Freeman, farmer', stretch: false }, [
+  [
+    'I grow cabbages in a field beside the towpath, not far from the old willow stump.',
+    'My cabbages are sold to the merchants in town, so I rise early to tend them.',
+    'Yesterday my field was dry and dusty.',
+    '@puddles This morning my cabbage rows are standing in puddles.',
+    'The canal channel is only a few steps from my field, but I have never seen it look so low.',
+    'I walked along the foot of the canal bank to find out why.',
+    '@hole Near the stump, I found a round hole as wide as a teacup, and water was trickling out of it.',
+  ],
+  [
+    '@prints In the mud beside the hole, there were small paw prints and a long groove, as if something had dragged a tail.',
+    'A neat pile of chewed cattail stems lay close by.',
+    'I am only a farmer, but I know that water does not leave a canal by itself.',
+    'A young hoggee ran past on the towpath, leading two mules, and I called out what I had found.',
+    'It was just after dawn, and the aqueduct over the river was still wrapped in mist.',
+    'Soon I heard the captains arguing at the lock, and I decided to write this down for them.',
+  ],
+]);
+
+const d3 = doc('d3', { kind: 'letter', title: 'Letter from the Canal Superintendent', from: 'Mr. Edmund Hale, Canal Superintendent', stretch: true }, [
+  [
+    'Madam, I have received your report that the water above your lock fell by two feet in a single night, and I confess that it alarmed me greatly.',
+    '@bank A canal is not a pond, but a long channel held up by walls of packed earth, and those banks must keep every drop of water where it belongs.',
+    'The aqueduct at Rochester carries our channel over the Genesee River on arches of stone, and I am proud of every one of them.',
+    '@grow A single small hole, if left alone, will grow larger with every hour, because the water rushing through it carries away the soil until the hole becomes a breach, which is a wide gap that no boat can cross.',
+  ],
+  [
+    'Having read the account of the farmer, Mr. Freeman, I know the culprit by its tracks.',
+    '@muskrat The muskrat, a small brown animal that makes its home at the water\'s edge, digs tunnels into soft banks, and it leaves behind paw prints, a groove from its tail, and heaps of chewed reeds.',
+    '@clay I pray you, therefore, to have the hole packed with clay at once, and to keep a sharp watch along the towpath for others.',
+    'Every merchant who ships cargo upon this canal depends upon its channel being full, and every day of delay costs him dearly.',
+    'In a canal, even the smallest creature can cause the greatest trouble.',
+  ],
+]);
+
+const S = handles(d1.ids, d2.ids, d3.ids);
+
+export default {
+  id: 'erie-02', arc: 'erie', order: 2,
+  title: 'The Case of the Vanishing Water',
+  setting: 'Rochester, New York · August 1830',
+  objective: 'Find out where the canal water went, and what made it go.',
+  words: [
+    { word: 'lock', meaning: 'a stone room with gates at both ends that lifts or lowers boats', sentenceId: S.lockdef },
+    { word: 'channel', meaning: 'the long path of water that boats travel along', sentenceId: S.ev },
+    { word: 'breach', meaning: 'a wide gap in a canal bank that lets the water pour out', sentenceId: S.grow },
+  ],
+  briefing: [
+    { who: 'chief', text: 'Detective, three boats are stuck in the mud near Rochester. Overnight, the canal dropped by two feet.' },
+    { who: 'chief', text: 'Find out where the water went, and what made it go.' },
+    { who: 'partner', text: 'The captains blame the new helper at the lock. Let me check that it makes sense before we blame anybody.' },
+    { who: 'archivist', text: 'Today\'s words are lock, channel and breach. Tap each one, and I will give you its meaning.' },
+  ],
+  docs: [d1.doc, d2.doc, d3.doc],
+  questions: [
+    { id: 'q1', type: 'evidence', std: '4R1',
+      prompt: 'Which sentence tells how deep the channel was at midnight?',
+      answer: [S.mid],
+      hint: 'The lock tender wrote down the depth at three different times. Which entry is the middle one?',
+      model: 'I picture Hannah checking her gauge in the dark. The midnight entry says the channel is still four feet deep.',
+      why: 'At midnight the water was still four feet deep, so the water must have gone sometime after midnight.' },
+    { id: 'q2', type: 'inference', std: '4R1',
+      prompt: 'Which sentence shows the missing water did not leave through the lock?',
+      answer: [S.below],
+      hint: 'If water ran down through the lock, what would happen to the channel below it?',
+      model: 'If the water came down through the lock, the channel below would be deeper. Hannah says it is exactly the same, so no water came that way.',
+      why: 'The channel below the lock did not rise, so the water did not go through the gates. That clears Jonas.' },
+    { id: 'q3', type: 'word', std: '4R4',
+      prompt: 'Which sentence helps you understand what a breach is?',
+      answer: [S.grow],
+      hint: 'Read the superintendent\'s letter. Look for the words "which is" after the new word.',
+      model: 'The letter says the hole "becomes a breach, which is a wide gap." The words after "which is" give the meaning.',
+      why: 'The sentence says a breach is a wide gap that no boat can cross, which is how a tiny leak can become a big problem.' },
+    { id: 'q4', type: 'main', std: '4R2',
+      prompt: 'Which sentence in the letter best sums up how a canal stays full?',
+      answer: [S.bank],
+      hint: 'Sum it up: what holds the water in the canal? Look in the first paragraph of the letter.',
+      model: 'The letter says a canal is a long channel held up by walls of packed earth. The banks keep the water in, and that is the main idea.',
+      why: 'This sentence explains that the banks hold the water in, so a hole in a bank is the first place to look.' },
+    { id: 'q5', type: 'inference', std: '4R1',
+      prompt: 'Which sentence in the farmer\'s statement shows that an animal, not a person, made the mark by the hole?',
+      answer: [S.prints],
+      hint: 'Picture the mud beside the hole. What did the farmer see in it?',
+      model: 'People leave boot prints. The farmer saw small paw prints and a groove like a dragged tail, so it was an animal.',
+      why: 'Paw prints and a tail groove are the marks of an animal, and no boots or wheels were mentioned.' },
+    { id: 'q6', type: 'evidence', std: '4R3',
+      prompt: 'Which sentence shows that water was leaking out through the canal bank?',
+      answer: [S.hole],
+      hint: 'Where did Mr. Freeman find the water coming out? Look near the willow stump.',
+      model: 'The farmer found a round hole, and water was trickling out of it. That is where the canal was leaking.',
+      why: 'This sentence shows the water leaving the canal through a hole in the bank.' },
+  ],
+  timeline: {
+    kind: 'cause', prompt: 'What happened, and what made it happen? Put the chain in order.',
+    items: [
+      { id: 't1', text: 'An animal dug a hole in the soft canal bank.', proof: S.muskrat },
+      { id: 't2', text: 'Water trickled out through the hole all night.', proof: S.hole },
+      { id: 't3', text: 'The channel dropped from four feet deep to two.', proof: S.dawn },
+      { id: 't4', text: 'Three boats were stuck in the mud.', proof: S.stuck },
+      { id: 't5', text: 'Hannah sent Jonas to ask the superintendent for help.', proof: S.sent },
+      { id: 't6', text: 'The superintendent said to pack the hole with clay.', proof: S.clay },
+    ],
+    given: [2, 5],
+  },
+  solution: { prompt: 'What dug the hole in the canal bank?', answers: ['muskrat', 'muskrats', 'a muskrat', 'the muskrat'], proof: [S.prints, S.muskrat] },
+  report: { keywords: ['muskrat', 'hole', 'bank', 'water', 'tail', 'paw'] },
+  closing: { who: 'chief', text: 'Case closed! Jonas is in the clear, and one small muskrat has some explaining to do. Great work checking each suspect against the logbook.' },
+  knowledge: 'On the Erie Canal, muskrats dug into the earth banks, and a small leak could grow into a breach, so crews patched holes quickly.',
+  teaser: 'Tomorrow: a young hoggee swears her mule can read. Can he?',
+  facts: [
+    { claim: 'Muskrats burrowed into Erie Canal banks, and their burrowing sometimes caused banks to collapse and the canal to break.', source: 'https://considerthesourceny.org/using-primary-sources/erie-canal-new-yorks-gift-nation/chapter-6-enlarging-and-maintaining-erie-canal/historical-context-maintaining-erie-canal' },
+    { claim: 'A canal lock is a chamber with gates at both ends that raises or lowers boats by filling or emptying with water.', source: 'https://eriecanalway.org/explore/boating/locking-through' },
+    { claim: 'The Erie Canal had lock tenders who operated the locks along the canal, and canal banks were made of earth.', source: 'https://en.wikipedia.org/wiki/Canal_pound' },
+    { claim: 'A Rochester-area stretch of the Erie Canal crossed the Genesee River on an aqueduct built in 1823.', source: 'https://eriecanal.org/Rochester-1.html' },
+  ],
+};
