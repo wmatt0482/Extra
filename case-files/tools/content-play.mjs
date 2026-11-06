@@ -17,6 +17,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const { TRAINING, ARCS } = await import(pathToFileURL(path.join(here, '..', 'src', 'content', 'index.js')).href);
 const CASES = [TRAINING, ...ARCS.flatMap((a) => a.cases)];
+const ONLY_CASES = (process.env.CASE_IDS || '').split(',').filter(Boolean);
 const BASE = process.env.BASE_URL || 'http://localhost:8741';
 const URL0 = BASE + '/case-files/index.html?nosw=1';
 const SHOTS = process.env.SHOTS_DIR || '';
@@ -34,7 +35,7 @@ async function loadPlaywright() {
 const failures = [];
 const check = (cond, msg) => { if (!cond) { failures.push(msg); console.log('  ✗ ' + msg); } else console.log('  ✓ ' + msg); };
 const LAYOUTS = [
-  { name: 'portrait', width: 390, height: 844, insets: { t: 47, r: 0, b: 34, l: 0 }, cases: CASES.map((c) => c.id) },
+  { name: 'portrait', width: 390, height: 844, insets: { t: 47, r: 0, b: 34, l: 0 }, cases: CASES.map((c) => c.id).filter((id) => !ONLY_CASES.length || ONLY_CASES.includes(id)) },
   { name: 'landscape', width: 844, height: 390, insets: { t: 0, r: 47, b: 21, l: 47 }, cases: process.env.ALL_LANDSCAPE ? CASES.map((c) => c.id) : ['training', 'erie-01'] },
 ].filter((l) => !ONLY || l.name === ONLY);
 
@@ -84,6 +85,9 @@ async function kidAudit(page, label) {
 async function layoutOk(page, label) {
   const r = await J(page, () => ({ sw: document.documentElement.scrollWidth, w: innerWidth, bsw: document.body.scrollWidth }));
   check(r.sw <= r.w + 1 && r.bsw <= r.w + 1, `${label}: no horizontal scroll (${r.sw}/${r.bsw} <= ${r.w})`);
+  // an overflow:hidden container that got scrolled sideways (a click that scrolled something into view) shifts the whole screen
+  const shifted = await J(page, () => [document.documentElement, document.body, ...document.querySelectorAll('#app, #app *')].filter((e) => e.scrollLeft > 1 && !e.closest('.doc-tabs, .tabs, [data-hscroll]')).map((e) => `${e.id ? '#' + e.id : e.tagName.toLowerCase() + '.' + e.className}${e === document.documentElement || e === document.body ? '' : ''} scrollLeft ${Math.round(e.scrollLeft)}`));
+  check(shifted.length === 0, `${label}: nothing is scrolled sideways${shifted.length ? ' — ' + shifted.join('; ') : ''}`);
 }
 const stepOk = async (page, label) => { await layoutOk(page, label); await kidAudit(page, label); };
 

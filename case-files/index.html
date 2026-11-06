@@ -201,6 +201,8 @@ button:focus-visible, a:focus-visible, .s:focus-visible { outline: 3px solid var
 .case-go { font: 400 12px/1 var(--font-display); color: var(--accent-ink); background: var(--accent); padding: 9px 12px 8px; border-radius: 5px; box-shadow: 0 3px 0 var(--accent-edge); white-space: nowrap; }
 .case-card.closed .case-go { background: var(--manila-2); color: var(--manila-ink); box-shadow: 0 3px 0 var(--manila-edge); }
 .stamp { display: inline-block; padding: 5px 10px 3px; border: 3px double var(--hot); color: var(--hot); border-radius: 4px; font: 400 14px/1 var(--font-display); letter-spacing: .08em; text-transform: uppercase; transform: rotate(-6deg); opacity: .92; background: rgba(255,255,255,.2); white-space: nowrap; }
+.case-card.closed { grid-template-columns: auto minmax(0, 1fr); }
+.case-card.closed .stamp { grid-column: 2; justify-self: start; margin: 2px 0 2px 6px; font-size: 13px; }
 .stamp.brass { border-color: var(--brass-edge); color: #7a5410; background: linear-gradient(170deg, #f5d98f, #d9a73f); box-shadow: 0 3px 0 rgba(90,60,10,.4); opacity: 1; }
 .next-note { margin-top: 16px; display: inline-flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 4px; background: #fff6dc; color: var(--manila-ink); border: 2px dashed #8a6a2a; font: 400 15px/1.2 var(--font-type); transform: rotate(-1deg); box-shadow: 0 4px 6px rgba(40,20,5,.3); }
 .home-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
@@ -282,7 +284,7 @@ button:focus-visible, a:focus-visible, .s:focus-visible { outline: 3px solid var
 .s.pinned { background: rgba(220,171,74,.4); box-shadow: 0 0 0 2px var(--brass-edge); }
 .s.glow { animation: glow 1s ease-in-out infinite alternate; background: rgba(224,70,63,.25); box-shadow: 0 0 0 2px var(--string); }
 @keyframes glow { to { background: rgba(224,70,63,.5); } }
-.doc-tabs { display: flex; gap: 6px; flex: none; overflow-x: auto; padding: 2px 0; touch-action: pan-x; }
+.doc-tabs { display: flex; gap: 6px; flex: none; min-width: 0; overflow-x: auto; padding: 2px 0; touch-action: pan-x; }
 .doc-tab { flex: none; min-height: 44px; max-width: 220px; padding: 0 14px; border-radius: 8px 8px 0 0; background: var(--panel); border: 2px solid var(--line); border-bottom: 0; font: 400 13px/1.1 var(--font-type); letter-spacing: .04em; color: var(--muted); text-transform: uppercase; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-tab.on { background: #fbf5e3; color: var(--manila-ink); border-color: var(--manila-edge); }
 .doc-tab.flash { animation: tabflash .6s 2; }
@@ -304,7 +306,7 @@ button:focus-visible, a:focus-visible, .s:focus-visible { outline: 3px solid var
 .pindots i.on { background: var(--string); border-color: #8f1f1a; }
 .split { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; }
 .split .notebook { max-height: 48%; }
-.split .doc-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.split .doc-wrap { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; }
 /* the cork board */
 .cork { position: relative; padding: 16px 14px; border-radius: 10px; border: 4px solid #5b3a1c; background: var(--grit), linear-gradient(135deg, var(--cork), var(--cork-2)); box-shadow: inset 0 6px 18px rgba(40,20,5,.4), 0 6px 0 rgba(0,0,0,.4); min-height: 120px; }
 .cork-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 200px), 1fr)); gap: 14px 12px; }
