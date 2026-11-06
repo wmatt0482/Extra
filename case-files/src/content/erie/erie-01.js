@@ -141,6 +141,7 @@ export default {
     { claim: 'The Rochester aqueduct was later replaced by a second aqueduct, which is now the Broad Street Bridge.', source: 'https://structurae.net/structures/broad-street-bridge-1842' },
     { claim: 'Mules or horses pulled canal boats from a towpath beside the canal; a young driver, often a boy, led them and was called a hoggee.', source: 'https://scdemocratonline.com/stories/hoggees-on-the-towpath,57342' },
     { claim: 'Boats had to be cleared at a collector\'s office; toll records list the boat, its master, the articles shipped, where bound, and the weight, so a paper listing the cargo was part of paying tolls.', source: 'https://snaccooperative.org/vocab_administrator/resources/8210835' },
+    { claim: 'A line boat carried cargo and a packet boat carried passengers.', source: 'https://stagecoachdays.blogspot.com/2012/12/the-packet-and-stagecoach.html' },
     { claim: 'Toll collectors worked at Rochester (a cash book of a Rochester toll collector survives from 1826).', source: 'https://snaccooperative.org/vocab_administrator/resources/8316569' },
   ],
 };

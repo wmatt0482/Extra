@@ -129,6 +129,7 @@ export default {
     { claim: 'The Flight of Five opened with the Erie Canal in 1825.', source: 'https://en.wikipedia.org/wiki/Flight_of_Five_Locks' },
     { claim: 'The Erie Canal opened on October 26, 1825, when Governor DeWitt Clinton left Buffalo aboard the Seneca Chief; the canal was 363 miles long, 40 feet wide and 4 feet deep.', source: 'https://www.lockportjournal.com/opinion/columns/erie-canal-discovery-oct-26-1825-the-opening-of-the-erie-canal/article_ac5f22ca-91c7-5dcc-a4aa-474f08384358.html' },
     { claim: 'The Seneca Chief carried a keg of Lake Erie water, which Clinton poured into the Atlantic at New York Harbor on November 4, 1825, in the ceremony known as the Wedding of the Waters.', source: 'https://spectrumlocalnews.com/nys/buffalo/news/2025/10/24/floating-time-capsule--replica-boat-retraces-historic-erie-canal-journey-200-years-later' },
+    { claim: 'The original canal crossed rivers and valleys on aqueducts and passed through 83 locks.', source: 'https://eriecanal.org/Rochester-1.html' },
     { claim: 'Opponents of the canal called it "Clinton\'s Ditch".', source: 'https://todayinhistory.app/events/77984' },
     { claim: 'The canal rises from the Hudson River up to Lake Erie, so boats heading west climb and boats heading east descend.', source: 'https://en.wikipedia.org/wiki/Flight_of_Five_Locks' },
   ],
