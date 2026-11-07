@@ -105,6 +105,9 @@ test('ranks 1-3: read-aloud everywhere, 3 words, hint offered after 20 s; rank 4
   assert.deepEqual([readAloudDefault(4, core), readAloudDefault(4, stretch), supportsFor(4).preTeach, supportsFor(4).idleHintMs], [false, true, 3, 0]);
   for (const r of [5, 6]) assert.deepEqual([readAloudDefault(r, core), readAloudDefault(r, stretch), supportsFor(r).preTeach, supportsFor(r).idleHintMs], [false, false, 2, 0], 'rank ' + r);
   assert.equal(supportsFor(undefined).rank, 4); assert.equal(supportsFor(99).rank, 6); assert.equal(supportsFor(0).rank, 4);
+  // v0.1.1: the parent's "Read it to me" setting overrides the rank defaults
+  for (const r of [1, 4]) for (const m of ['tap', 'off']) assert.deepEqual([readAloudDefault(r, core, m), readAloudDefault(r, stretch, m)], [false, false], `rank ${r} ${m}`);
+  assert.deepEqual([readAloudDefault(1, core, 'auto'), readAloudDefault(4, stretch, 'auto')], [true, true]);
   assert.equal(wordsToTeach(5, E1).length, 2); assert.equal(wordsToTeach(1, E1).length, 3);
 });
 test('the rank label carries the approximate wording verbatim', () => {
@@ -114,7 +117,7 @@ test('the rank label carries the approximate wording verbatim', () => {
 
 section('save');
 test('defaultSave has the SPEC section 6 shape', () => {
-  assert.deepEqual(defaultSave(), { v: 1, rank: 4, opened: {}, closed: {}, nextEarly: false, wordsMet: {}, updatedAt: 0 });
+  assert.deepEqual(defaultSave(), { v: 1, rank: 4, readMode: 'auto', opened: {}, closed: {}, nextEarly: false, wordsMet: {}, updatedAt: 0 });
 });
 test('normalize is idempotent and drops hostile or malformed input', () => {
   const raw = JSON.parse('{"v":1,"rank":9,"opened":{"erie-01":"2026-11-02","__proto__":{"x":1},"bad id":"2026-11-02","erie-02":"tomorrow"},"closed":{"erie-01":{"day":"2026-11-02","at":5,"firstTap":{"q1":true,"q2":"yes"},"hints":{"q1":9,"q2":-1},"timelineTries":2.7,"report":{"who":"Tom","because":"x","clueId":"d1s1"},"listens":{"d1":3,"d2":"x"}},"constructor":{}},"nextEarly":"yes","wordsMet":{"toll":4,"Bad Word":3,"aqueduct":-2},"updatedAt":7}');
@@ -143,6 +146,15 @@ test('mergeCf: union of opened and closed; the earliest `at` wins a case; listen
   assert.deepEqual(m.closed.training.listens, { d1: 2, d2: 4 }); assert.ok(m.closed['erie-01']);
   assert.deepEqual(m.wordsMet, { toll: 2, aqueduct: 3 }); assert.equal(m.updatedAt, 200);
   assert.deepEqual(mergeCf(doc(B), doc(A)), m, 'order does not matter');
+});
+test('v0.1.1 read mode: normalized (default auto), follows the later doc in a merge, Off makes no document clips', () => {
+  assert.equal(defaultSave().readMode, 'auto'); assert.equal(normalize({ readMode: 'loud' }).readMode, 'auto');
+  for (const m of ['auto', 'tap', 'off']) assert.equal(normalize({ readMode: m }).readMode, m);
+  const A = { ...defaultSave(), updatedAt: 10, readMode: 'off' }, B = { ...defaultSave(), updatedAt: 20, readMode: 'tap' };
+  assert.equal(mergeCf(doc(A), doc(B)).readMode, 'tap'); assert.equal(mergeCf(doc(B), doc(A)).readMode, 'tap');
+  const k = TRAINING, docText = k.docs[0].paragraphs[0][0].text;
+  assert.ok(caseVoiceTexts(k, 4, 'auto').includes(docText)); assert.ok(caseVoiceTexts(k, 4, 'tap').includes(docText));
+  assert.ok(!caseVoiceTexts(k, 4, 'off').includes(docText)); assert.ok(caseVoiceTexts(k, 4, 'off').includes(k.briefing[0].text), 'the briefing still speaks');
 });
 test('mergeCf: nextEarly follows the later doc; missing sides return the other; garbage is normalized; idempotent', () => {
   const A = { ...defaultSave(), updatedAt: 10, nextEarly: true }, B = { ...defaultSave(), updatedAt: 20, nextEarly: false };

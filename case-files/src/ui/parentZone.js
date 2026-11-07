@@ -9,7 +9,7 @@
 import { checkPin, hasPin, setPin } from '../../../spell-jump/src/spelling/profiles.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
-import { RANKS, rankLabel } from '../logic/pacing.js';
+import { RANKS, READ_MODES, READ_MODE_LABELS, rankLabel } from '../logic/pacing.js';
 import { accuracyByStandard, sentenceIndex } from '../logic/run.js';
 import { drawAvatar } from './art.js';
 
@@ -196,6 +196,19 @@ export function createParentZone(app) {
     }
     out.push(rankRow, h('div', { class: 'rank-line', id: 'rank-line' }, rankLabel(save.rank)),
       h('div', { class: 'pz-help', style: { marginTop: '6px' } }, 'In this version every case is written at one level. The rank sets the supports: Rank 1-3 turn "Read it to me" on for every document, pre-teach 3 words and offer hint 1 after a pause. Rank 4 reads only the stretch document aloud. Rank 5-6 turn that off too and pre-teach 2 words.'));
+    // v0.1.1: the parent's "Read it to me" setting
+    const rm = app.readModeFor ? app.readModeFor(playerId) : 'auto';
+    out.push(h('div', { class: 'pz-sec' }, 'Read it to me'));
+    const rmRow = h('div', { class: 'rank-row', role: 'group', 'aria-label': 'Read it to me' });
+    for (const m of READ_MODES) {
+      const b = h('button', { class: 'seg-btn' + (rm === m ? ' on' : ''), 'data-readmode': m, 'aria-pressed': String(rm === m), style: { background: rm === m ? 'var(--accent)' : 'var(--ink-2)', border: '2px solid var(--line)', padding: '0 12px', width: 'auto' } }, READ_MODE_LABELS[m]);
+      b.addEventListener('click', () => { app.setReadModeFor(playerId, m); render(); });
+      rmRow.append(b);
+    }
+    out.push(rmRow, h('div', { class: 'pz-help', id: 'readmode-help', style: { marginTop: '6px' } },
+      rm === 'off' ? 'Off: documents are never read aloud and the listen buttons are hidden, so every document is read by the child. The Chief and the partner still speak their lines.'
+        : rm === 'tap' ? 'Only when tapped: nothing reads by itself; the child can still tap a listen button or switch on "Read it to me" for a document.'
+          : 'By rank: "Read it to me" starts on where the rank says (above); the child can switch it off.'));
     // pacing
     const next = app.nextCaseTitleFor(playerId);
     const openBtn = h('button', { class: 'btn btn-brass', id: 'pz-open-next', 'data-sfx': '' }, 'Open the next case now');

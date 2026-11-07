@@ -6,13 +6,13 @@ import { LINES, checkDoc, wordSpeech } from '../logic/lines.js';
 import { wordsToTeach } from '../logic/pacing.js';
 import { speechChunks } from './speech.js';
 
-export function caseVoiceTexts(kase, rank = 4) {
+export function caseVoiceTexts(kase, rank = 4, readMode = 'auto') {
   const out = [];
   for (const b of kase.briefing || []) out.push(b.text);
   for (const w of wordsToTeach(rank, kase)) out.push(wordSpeech(w));
   out.push(kase.objective);
   const docs = kase.docs.slice().sort((a, b) => (a.stretch ? 1 : 0) - (b.stretch ? 1 : 0));
-  for (const d of docs) for (const p of d.paragraphs) for (const s of p) out.push(s.text);
+  if (readMode !== 'off') for (const d of docs) for (const p of d.paragraphs) for (const s of p) out.push(s.text);   // "Read it to me: Off": no document clips
   for (const q of kase.questions) out.push(q.prompt, q.hint, q.model, q.why);
   out.push(LINES.tier2, LINES.tier3Tap, LINES.tier3Again, LINES.oneMore, LINES.checkAgain, LINES.allSet, LINES.timelineDone);
   out.push(kase.timeline.prompt);

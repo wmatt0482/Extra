@@ -82,7 +82,16 @@ export function supportsFor(rank) {
     idleHintMs: r <= 3 ? 20000 : 0,
   };
 }
-/** Is "Read it to me" switched on by default for this document at this rank? */
-export const readAloudDefault = (rank, doc) => { const s = supportsFor(rank); return doc && doc.stretch ? s.readAloudStretch : s.readAloudCore; };
+/** The parent's "Read it to me" setting (v0.1.1): 'auto' = by rank (above), 'tap' = nothing reads by itself (the listen buttons
+ *  and the switch stay), 'off' = no read-aloud on documents at all (the Chief's and partner's lines still speak). */
+export const READ_MODES = ['auto', 'tap', 'off'];
+export const READ_MODE_LABELS = { auto: 'By rank', tap: 'Only when tapped', off: 'Off' };
+/** Is "Read it to me" switched on by default for this document at this rank (and read mode)? */
+export const readAloudDefault = (rank, doc, readMode = 'auto') => {
+  if (readMode === 'tap' || readMode === 'off') return false;
+  const s = supportsFor(rank); return doc && doc.stretch ? s.readAloudStretch : s.readAloudCore;
+};
+/** Do documents offer read-aloud at all? */
+export const docAudioOn = (readMode = 'auto') => readMode !== 'off';
 /** The words to pre-teach: the first `preTeach` of the case's list. */
 export const wordsToTeach = (rank, kase) => (kase.words || []).slice(0, supportsFor(rank).preTeach);

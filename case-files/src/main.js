@@ -31,7 +31,7 @@ import { createFile } from './ui/file.js';
 import { createParentZone } from './ui/parentZone.js';
 import { EXTRA_ICONS, drawBackdrop } from './ui/art.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.1.1';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'caseFiles.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -107,6 +107,9 @@ async function boot() {
     closedCount: (id) => Object.keys(app.saveOf(id).closed).length,
     rankFor: (id) => app.saveOf(id).rank,
     setRankFor(id, rank) { const s = app.saveOf(id); s.rank = rank; writeSave(id, s); },
+    readModeFor: (id) => app.saveOf(id).readMode || 'auto',
+    setReadModeFor(id, m) { const s = app.saveOf(id); s.readMode = m; writeSave(id, s); },
+    readModeNow: () => (save && save.readMode) || 'auto',
     nextCaseTitleFor(id) { const n = nextUnopened(app.saveOf(id)); return n ? caseById[n].title : ''; },
     openNextNow(id) {
       const s = app.saveOf(id);
@@ -258,7 +261,7 @@ async function boot() {
     let run = loadWip(currentPlayerId);
     if (!run || run.caseId !== id) { run = newRun(kase, save.rank); run.startedAt = nowMs(); writeWip(currentPlayerId, run); }
     // the voice for THIS case only (SPEC: never the whole game), in the order the child needs it
-    speech.prepareBulk(caseVoiceTexts(kase, run.rank));
+    speech.prepareBulk(caseVoiceTexts(kase, run.rank, save.readMode));
     go('case', { kase, run });
   }
   function openFile(id, from = 'archive') {

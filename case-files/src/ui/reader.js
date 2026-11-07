@@ -6,21 +6,22 @@ import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 
 /**
- * app: { speech, voiceReady(), toast, noteListen(docId) } ; opts: { mode: 'read' | 'pick', onSelect(id), readAloud: bool, autoRead: bool, onReadAloud(on) }
+ * app: { speech, voiceReady(), toast, noteListen(docId) } ; opts: { mode: 'read' | 'pick', onSelect(id), readAloud: bool, autoRead: bool, onReadAloud(on), noAudio: bool }
  */
 export function createReader(app, kase, doc, opts = {}) {
   const mode = opts.mode || 'read';
   const el = h('div', { class: 'doc' + (mode === 'pick' ? ' pick' : ''), 'data-doc': doc.id });
   const text = h('div', { class: 'doc-text scroll' });
   const toggle = h('button', { class: 'toggle-btn', type: 'button', 'aria-pressed': String(!!opts.readAloud), 'data-act': 'read-all' }, h('span', { class: 'knob' }), 'Read it to me');
-  el.append(h('div', { class: 'doc-head' }, h('h4', {}, doc.title), toggle, h('div', { class: 'from' }, doc.from)), text);
+  const audio = !opts.noAudio;          // the parent's "Read it to me: Off" (v0.1.1): no switch, no listen buttons
+  el.append(h('div', { class: 'doc-head' }, h('h4', {}, doc.title), audio ? toggle : null, h('div', { class: 'from' }, doc.from)), text);
   const paras = [];
   doc.paragraphs.forEach((p, pi) => {
     const sp = p.map((s) => h('span', { class: 's', 'data-id': s.id, role: mode === 'pick' ? 'button' : null, tabindex: mode === 'pick' ? '0' : null }, s.text));
     const body = h('p', {});
     sp.forEach((x, i) => { body.append(x); if (i < sp.length - 1) body.append(' '); });
     const say = h('button', { class: 'say-btn', type: 'button', 'aria-label': `Listen to paragraph ${pi + 1}`, 'data-act': 'listen', 'data-para': String(pi), html: icon('sound') });
-    const para = h('div', { class: 'para', 'data-para': String(pi) }, body, say);
+    const para = h('div', { class: 'para', 'data-para': String(pi) }, body, audio ? say : null);
     text.append(para);
     paras.push({ el: para, say, sp, sentences: p.map((s) => s.text) });
   });
@@ -91,7 +92,7 @@ export function createReader(app, kase, doc, opts = {}) {
     },
     markPinned(ids) { for (const s of el.querySelectorAll('.s')) s.classList.toggle('pinned', ids.includes(s.dataset.id)); },
     stop,
-    startAll() { if (app.voiceReady()) { setToggle(true, true); playParas(0, paras.length - 1, 'all'); } },
+    startAll() { if (audio && app.voiceReady()) { setToggle(true, true); playParas(0, paras.length - 1, 'all'); } },
     hasSentence: (id) => !!el.querySelector(`.s[data-id="${id}"]`),
     paraOf: (id) => paras.findIndex((p) => p.sp.some((s) => s.dataset.id === id)),
   };

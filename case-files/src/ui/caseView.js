@@ -13,7 +13,7 @@ import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { createKeyboard } from '../../../spell-jump/src/spelling/keyboard.js';
 import { display } from '../logic/answers.js';
 import { LINES, KIND_LABEL, checkDoc, wordSpeech } from '../logic/lines.js';
-import { readAloudDefault, supportsFor, wordsToTeach } from '../logic/pacing.js';
+import { docAudioOn, readAloudDefault, supportsFor, wordsToTeach } from '../logic/pacing.js';
 import { attachClue, countListen, docOfSentence, nextQuestion, pinTap, pinnedIn, placeCard, questionOf, requestHint, sentenceIndex, submitReport, submitSolution, trayOf } from '../logic/run.js';
 import { createReader } from './reader.js';
 import { createBoard } from './board.js';
@@ -94,7 +94,7 @@ export function createCaseView(app) {
     const show = (d) => {
       for (const t of tabs.children) t.classList.toggle('on', t.dataset.doc === d.id);
       holder.replaceChildren(); if (cur) cur.stop();
-      cur = createReader(ctx, kase, d, { mode: 'read', readAloud: false }); rs.push(cur);
+      cur = createReader(ctx, kase, d, { mode: 'read', readAloud: false, noAudio: !docAudioOn(readMode()) }); rs.push(cur);
       holder.append(cur.el);
     };
     for (const d of kase.docs) { const t = h('button', { class: 'doc-tab', type: 'button', 'data-doc': d.id }, d.title); t.addEventListener('click', () => show(d)); tabs.append(t); }
@@ -104,6 +104,8 @@ export function createCaseView(app) {
     show(kase.docs[0]);
   }
 
+  // the parent's "Read it to me" setting, read live (a change in the Parent Zone applies to the next document opened)
+  const readMode = () => (app.readModeNow ? app.readModeNow() : 'auto');
   // what the readers need from the app
   const ctx = {
     speech: app.speech,
@@ -182,7 +184,7 @@ export function createCaseView(app) {
     const desk = h('div', { class: 'desk' });
     for (const d of kase.docs) {
       const opened = run.opened.includes(d.id);
-      const rd = readAloudDefault(run.rank, d);
+      const rd = readAloudDefault(run.rank, d, readMode());
       const f = h('button', { class: 'docfolder' + (opened ? ' opened' : ''), type: 'button', 'data-doc': d.id, 'data-kind': KIND_LABEL[d.kind] || 'Document', 'data-sfx': '' },
         h('h4', {}, d.title), h('span', { class: 'from' }, d.from),
         h('span', { class: 'tags' }, d.stretch ? h('span', { class: 'tag stretch' }, 'Stretch') : null, rd ? h('span', { class: 'tag read' }, 'Read to me') : null, opened ? h('span', { class: 'tag' }, 'Opened') : null));
@@ -197,9 +199,10 @@ export function createCaseView(app) {
     body.replaceChildren(h('div', { class: 'pane' }, h('div', { class: 'pane-scroll scroll' }, col), h('div', { class: 'foot' }, go)));
   }
   function renderDocPage(d) {
-    const rd = readAloudDefault(run.rank, d);
-    const on = run.readAloud && d.id in run.readAloud ? run.readAloud[d.id] : rd;
-    const reader = createReader(ctx, kase, d, { mode: 'read', readAloud: on, onReadAloud: (v) => { run.readAloud[d.id] = v; persist(); } });
+    const mode = readMode();
+    const rd = readAloudDefault(run.rank, d, mode);
+    const on = mode === 'off' ? false : (run.readAloud && d.id in run.readAloud ? run.readAloud[d.id] : rd);
+    const reader = createReader(ctx, kase, d, { mode: 'read', readAloud: on, noAudio: !docAudioOn(mode), onReadAloud: (v) => { run.readAloud[d.id] = v; persist(); } });
     const back = h('button', { class: 'btn btn-teal', id: 'doc-back', type: 'button', 'data-sfx': '' }, h('span', { html: icon('back') }), 'Back to the desk');
     back.addEventListener('click', () => { reader.stop(); deskDoc = null; render(); });
     body.replaceChildren(h('div', { class: 'pane' }, reader.el, h('div', { class: 'foot' }, back)));
@@ -244,7 +247,7 @@ export function createCaseView(app) {
       // first time in this beat: the readers, the tabs, the notebook
       readers = new Map();
       for (const d of kase.docs) {
-        const r = createReader(ctx, kase, d, { mode: 'pick', readAloud: false, onSelect: (id) => selectSentence(id) });
+        const r = createReader(ctx, kase, d, { mode: 'pick', readAloud: false, noAudio: !docAudioOn(readMode()), onSelect: (id) => selectSentence(id) });
         readers.set(d.id, r);
       }
       tabs = h('div', { class: 'doc-tabs' });

@@ -568,6 +568,21 @@ async function runLayout(browser, layout) {
   await page.click('[data-rank="2"]');
   check((await textOf(page, '#rank-line')).startsWith('Rank 2 · grade 3 feel'), 'Parent Zone: the rank select changes the label');
   await page.click('[data-rank="4"]');
+  // v0.1.1: the parent's "Read it to me" setting
+  check((await page.$$('[data-readmode]')).length === 3 && (await page.getAttribute('[data-readmode="auto"]', 'aria-pressed')) === 'true', 'Parent Zone: "Read it to me" offers By rank / Only when tapped / Off, By rank on by default');
+  await page.click('[data-readmode="off"]');
+  check((await textOf(page, '#readmode-help')).startsWith('Off:') && (await J(page, () => JSON.parse(localStorage.getItem('caseFiles.pmia.save')).readMode)) === 'off', 'Parent Zone: "Read it to me: Off" is saved for the child');
+  const noAudio = await J(page, async () => {
+    const { createReader } = await import('./src/ui/reader.js');
+    const app = { speech: { cancel() {}, readEach: async () => ({ spoken: 0 }) }, voiceReady: () => true, voiceHint() {}, noteListen() {} };
+    const d = { id: 'd1', title: 'T', from: 'F', paragraphs: [[{ id: 'd1s1', text: 'One.' }], [{ id: 'd1s2', text: 'Two.' }]] };
+    const off = createReader(app, {}, d, { mode: 'read', readAloud: true, noAudio: true }), on = createReader(app, {}, d, { mode: 'read' });
+    return [off.el.querySelectorAll('.say-btn, [data-act="read-all"]').length, on.el.querySelectorAll('.say-btn').length, on.el.querySelectorAll('[data-act="read-all"]').length];
+  });
+  check(noAudio[0] === 0 && noAudio[1] === 2 && noAudio[2] === 1, `"Read it to me: Off" hides the switch and every listen button (${noAudio})`);
+  await page.click('[data-readmode="tap"]');
+  check((await J(page, () => JSON.parse(localStorage.getItem('caseFiles.pmia.save')).readMode)) === 'tap', 'Parent Zone: "Only when tapped" is saved');
+  await page.click('[data-readmode="auto"]');
   const reports = await page.$$eval('.pz-report', (r) => r.map((x) => x.textContent));
   check(reports.length === 2 && reports.some((r) => r.includes('Martin Bell did it because it was a nice day')) && reports.some((r) => r.includes('Tom Fisk did it because the ticket is in the coat pocket')), `Parent Zone: the child's case reports, in full (${reports.length})`);
   const acc = await page.$$eval('#pz-acc tbody tr', (rows) => rows.map((r) => [r.dataset.std, r.children[1].textContent, r.children[2].textContent]));
@@ -637,9 +652,9 @@ async function runOffline(browser) {
   await page.goto(BASE + '/case-files/index.html', { waitUntil: 'networkidle' });
   await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 15000 });
   await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
-  await page.waitForFunction(async () => { const c = await caches.open('case-files-v0.1.0'); return (await c.keys()).length > 25; }, null, { timeout: 15000 });
+  await page.waitForFunction(async () => { const c = await caches.open('case-files-v0.1.1'); return (await c.keys()).length > 25; }, null, { timeout: 15000 });
   const names = await J(page, async () => (await caches.keys()).filter((k) => k.startsWith('case-files-')));
-  check(names.length === 1 && names[0] === 'case-files-v0.1.0', `the service worker cache is named case-files-v0.1.0 (${names.join(',')})`);
+  check(names.length === 1 && names[0] === 'case-files-v0.1.1', `the service worker cache is named case-files-v0.1.1 (${names.join(',')})`);
   await ctx.setOffline(true);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector(visibleSel('#screen-players'), { timeout: 15000 });

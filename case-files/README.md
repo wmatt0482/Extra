@@ -9,7 +9,7 @@ memory and writing a one-sentence case report. One new case opens each day; the 
 - Learning design (technique, evidence, where it lives): [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md).
 - Content (written to the SPEC section 5 format by the content agent): `src/content/`, `docs/CONTENT-GUIDE.md`, `docs/SOURCES.md`.
 
-Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.0`, manifest, icons). Version **0.1.0**.
+Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.1`, manifest, icons). Version **0.1.1**.
 
 ## The flow
 
@@ -84,6 +84,11 @@ picked in Spell Jump. Only the current case's lines are prepared. The device voi
 on the screen and the listen buttons stay quiet (with a gentle note). The sound setting silences everything.
 
 ## Changelog
+
+### 0.1.1
+- Parent Zone → "Read it to me" per child: **By rank** (as before), **Only when tapped** (nothing reads by itself; listen buttons and the
+  switch stay) or **Off** (no read-aloud on documents: the switch and listen buttons are hidden and no document clips are made; the Chief's
+  and partner's lines still speak). Synced with the player's progress.
 
 ### 0.1.0
 - First version: Detective Training and the Erie Canal arc, the five-beat case loop, the cork board, the archive, one case a day with

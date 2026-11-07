@@ -31,7 +31,7 @@ export function createFile(app) {
       if (tab === 'docs') {
         const dt = h('div', { class: 'doc-tabs' });
         const holder = h('div', { style: { flex: '1', minHeight: '0', display: 'flex', flexDirection: 'column' } });
-        const open = (d) => { cur = d; for (const t of dt.children) t.classList.toggle('on', t.dataset.doc === d.id); if (reader) reader.stop(); reader = createReader(ctx, kase, d, { mode: 'read', readAloud: false }); holder.replaceChildren(reader.el); };
+        const open = (d) => { cur = d; for (const t of dt.children) t.classList.toggle('on', t.dataset.doc === d.id); if (reader) reader.stop(); reader = createReader(ctx, kase, d, { mode: 'read', readAloud: false, noAudio: app.readModeNow && app.readModeNow() === 'off' }); holder.replaceChildren(reader.el); };
         for (const d of kase.docs) { const t = h('button', { class: 'doc-tab', type: 'button', 'data-doc': d.id }, d.title); t.addEventListener('click', () => open(d)); dt.append(t); }
         area.append(dt, holder); open(cur);
       } else {

@@ -20,6 +20,7 @@ export function mergeCf(local, remote) {
     : num(A.updatedAt) !== num(B.updatedAt) ? (A.updatedAt > B.updatedAt ? A : B) : (JSON.stringify(A.data) >= JSON.stringify(B.data) ? A : B);
   const out = normalize({});
   out.rank = later.data.rank;
+  out.readMode = later.data.readMode || 'auto';
   out.nextEarly = later.data.nextEarly;
   for (const d of [A.data, B.data]) for (const [id, day] of Object.entries(d.opened)) if (!out.opened[id] || day < out.opened[id]) out.opened[id] = day;
   for (const id of new Set([...Object.keys(A.data.closed), ...Object.keys(B.data.closed)])) {

@@ -139,7 +139,7 @@ The arc has 8–10 target words, each met ≥ 12 times across the arc (track cou
 
 ## 6. Save and sync
 
-Per player, kind `cf`: `{ v: 1, rank: 4, opened: { [caseId]: 'YYYY-MM-DD' }, closed: { [caseId]: { day, at, firstTap:
+Per player, kind `cf`: `{ v: 1, rank: 4, readMode: 'auto' | 'tap' | 'off', opened: { [caseId]: 'YYYY-MM-DD' }, closed: { [caseId]: { day, at, firstTap:
 { [qId]: true|false }, hints: { [qId]: 0..3 }, timelineTries, report: { who, because, clueId }, listens: { [docId]: n } } },
 nextEarly: false, wordsMet: { [word]: n }, updatedAt }`. Merge across devices: union of opened/closed (earliest `at` wins for
 a case's record), max of counters, rank from the later `updatedAt`. Unit-tested.
