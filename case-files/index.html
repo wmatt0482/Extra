@@ -78,10 +78,7 @@ button { font: inherit; color: inherit; border: 0; background: none; padding: 0;
 button:focus-visible, a:focus-visible, .s:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 #app { position: fixed; inset: 0; overflow: hidden; }
 
-/* ---------- backdrop: the agency at dusk ---------- */
-#backdrop { position: absolute; inset: 0; background: linear-gradient(#060e22 0%, #0d1f45 42%, #17335f 70%, #1f4476 100%); }
-#backdrop svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-#backdrop::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(120% 90% at 50% 38%, transparent 45%, rgba(3,8,20,.6)); }
+/* ---------- backdrop: the detective office at dusk (style/scene.css, src/ui/art/scene.js) ---------- */
 
 /* ---------- shared pieces ---------- */
 .screen { position: absolute; inset: 0; display: flex; flex-direction: column; z-index: 2; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); }
@@ -582,10 +579,19 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
 .reduced-motion .toast { animation: none; }
 </style>
 <link rel="stylesheet" href="style/gameplay.css">
+<!-- the look sheets load after gameplay.css so their feedback / chip / tag styles win -->
+<link rel="stylesheet" href="style/scene.css">
+<link rel="stylesheet" href="style/look.css">
 </head>
 <body>
 <div id="app">
-  <div id="backdrop" aria-hidden="true"><svg id="backdrop-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice"></svg></div>
+  <div id="backdrop" aria-hidden="true">
+    <div class="sc-sky sc-dusk"></div><div class="sc-sky sc-night"></div><div class="sc-sky sc-gold"></div>
+    <svg id="backdrop-svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMax slice"></svg>
+    <div class="sc-sill"></div>
+    <div class="sc-rain"></div><div class="sc-rain r2"></div>
+    <div class="sc-lamp"></div><div class="sc-frame"></div><div class="sc-dust"></div><div class="sc-vig"></div>
+  </div>
 
   <!-- ===== Player picker ===== -->
   <section class="screen" id="screen-players" data-screen="players" hidden>
