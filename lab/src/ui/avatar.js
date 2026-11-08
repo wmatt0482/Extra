@@ -76,6 +76,21 @@ const HAT = {
   crown: (c) => { poly(c, [[-17, -88], [-17, -104], [-8, -95], [0, -108], [8, -95], [17, -104], [17, -88]], '#ffcf1a', '#a87c00'); circ(c, 0, -96, 2.2, '#ff4d6d'); circ(c, -10, -93, 1.7, '#5ab0ff'); circ(c, 10, -93, 1.7, '#5ab0ff'); },
 };
 
+// ---- Case Files looks (the detective's): a coat over the shirt, a badge on the chest, a cap instead of the hat
+const COAT = {
+  tweed: (c) => { for (const [x, y, w, h] of [[-20, -50, 40, 36], [-30, -48, 12, 28], [18, -48, 12, 28]]) rr(c, x, y, w, h, 8, '#8a5a34', OUT); c.strokeStyle = 'rgba(60,30,10,.35)'; c.lineWidth = 1.4; for (let i = -16; i <= 16; i += 8) { c.beginPath(); c.moveTo(i, -50); c.lineTo(i, -14); c.stroke(); } poly(c, [[-9, -50], [0, -38], [9, -50]], '#f4f8ff', OUT); circ(c, -24, -22, 5.5, SKIN, OUT); circ(c, 24, -22, 5.5, SKIN, OUT); circ(c, 0, -30, 1.8, '#4a2a12'); circ(c, 0, -22, 1.8, '#4a2a12'); },
+  trench: (c) => { for (const [x, y, w, h] of [[-22, -52, 44, 46], [-32, -48, 13, 30], [19, -48, 13, 30]]) rr(c, x, y, w, h, 8, '#c9a46a', OUT); poly(c, [[-10, -52], [-2, -36], [-16, -34]], '#b38a4e', OUT); poly(c, [[10, -52], [2, -36], [16, -34]], '#b38a4e', OUT); c.fillStyle = '#7a5a2a'; c.fillRect(-22, -28, 44, 5); rr(c, -4, -30, 8, 9, 2, '#e8c870', OUT); c.strokeStyle = 'rgba(80,50,10,.5)'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(0, -36); c.lineTo(0, -6); c.stroke(); circ(c, -26, -22, 5.5, SKIN, OUT); circ(c, 26, -22, 5.5, SKIN, OUT); },
+};
+const BADGE = {
+  magnifier: (c) => { circ(c, 10, -38, 7.5, '#d9a21b', '#7a5a00'); circ(c, 9, -39, 3.4, '#bfefff', '#5a4300'); c.strokeStyle = '#5a4300'; c.lineWidth = 2.2; c.lineCap = 'round'; c.beginPath(); c.moveTo(11.5, -36.4); c.lineTo(14.5, -33.4); c.stroke(); },
+  goldbadge: (c) => { poly(c, [[3, -45], [17, -45], [17, -36], [10, -29], [3, -36]], '#ffcf1a', '#a87c00'); poly(c, starPts(10, -38, 4.6, 2), '#fff2a0'); },
+};
+const DETHAT = {
+  detcap: (c) => { c.beginPath(); c.arc(0, -82, 19.5, Math.PI * 1.02, Math.PI * 1.98); c.lineTo(19, -80); c.quadraticCurveTo(0, -76, -19, -80); c.closePath(); c.fillStyle = '#5b6b46'; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1.6; c.stroke(); rr(c, 3, -83, 25, 5, 2.5, '#3f4c2f', OUT); circ(c, 0, -98, 2.2, '#3f4c2f'); },
+  deerstalker: (c) => { c.beginPath(); c.arc(0, -82, 20, Math.PI, 0); c.closePath(); c.fillStyle = '#b79a68'; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1.6; c.stroke(); c.save(); c.clip(); c.fillStyle = 'rgba(80,55,20,.35)'; for (let y = -102; y < -80; y += 6) for (let x = -20; x < 20; x += 6) if (((x + y) / 6) % 2 === 0) c.fillRect(x, y, 6, 6); c.restore(); rr(c, 4, -85, 24, 6, 3, '#8a6a3a', OUT); rr(c, -28, -85, 24, 6, 3, '#8a6a3a', OUT); rr(c, -21, -86, 6, 18, 3, '#a8895a', OUT); rr(c, 15, -86, 6, 18, 3, '#a8895a', OUT); circ(c, 0, -101, 2.8, '#6a4e22'); },
+};
+const slotTok = (v) => (v ? String(v).split('.').pop() : '');
+
 /** Draw the avatar. o = { x, y, s, color, slots: { hat, shirt, back, face, aura }, frame, mood, t }. Slot values are item ids (or null). */
 export function drawAvatar(c, o = {}) {
   const { x = 0, y = 0, s = 1, color = '#3b7dd9', slots = {}, frame = 0, mood = 'content', t = 0 } = o;
@@ -87,9 +102,12 @@ export function drawAvatar(c, o = {}) {
   c.translate(0, bob);
   const b = BACK[tok(slots.back)]; if (b) b(c, t);
   body(c, color, slots.shirt);
+  const coat = COAT[slotTok(slots.cfcoat)]; if (coat) coat(c);
+  const badge = BADGE[slotTok(slots.cfbadge)]; if (badge) badge(c);
   head(c, mood);
   const f = FACE[tok(slots.face)]; if (f) f(c);
-  const hat = HAT[tok(slots.hat)]; if (hat) hat(c, t);
+  const dh = DETHAT[slotTok(slots.cfhat)];
+  if (dh) dh(c); else { const hat = HAT[tok(slots.hat)]; if (hat) hat(c, t); }
   c.restore();
 }
 

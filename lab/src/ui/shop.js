@@ -9,7 +9,7 @@ import { LAB_LINES } from '../core/view.js';
 import { COIN, gameBadge, glyph } from './glyph.js';
 import { itemPreview, loadGameLooks } from './items.js';
 
-export const SHOP_TABS = [['me', 'Me', ['av', 'pet']], ['home', 'Home', ['home']], ['sj', 'Spell Jump', ['sj']], ['tb', 'Trail Blazer', ['tb']], ['ff', 'Fraction Fright', ['ff']], ['ww', 'Wagon West', ['ww']], ['bc', 'Build Crew', ['bc']]];
+export const SHOP_TABS = [['me', 'Me', ['av', 'pet']], ['home', 'Home', ['home']], ['sj', 'Spell Jump', ['sj']], ['tb', 'Trail Blazer', ['tb']], ['ff', 'Fraction Fright', ['ff']], ['ww', 'Wagon West', ['ww']], ['bc', 'Build Crew', ['bc']], ['cf', 'Case Files', ['cf']]];
 const IN_ROOM = new Set(['home.shelf', 'home.banner']);
 const REASONS = { owned: 'You have this one.', unknown: 'Not here.', notready: 'Coming soon.', gift: 'This one is a gift.', locked: 'This slot opens later.' };
 
@@ -54,7 +54,7 @@ export function mountShop(ctx, params = {}) {
       act.append(h('span', { class: 'lab-price', 'data-act': 'locked' }, h('span', { html: COIN }), ctx.num(it.price)));
     }
     else if (it.state === 'poor') {
-      sub = h('span', { class: 'lab-state poor' }, `Need ${ctx.num(it.need)} more`);
+      sub = h('span', { class: 'lab-state poor' }, `Need ${ctx.num(it.need)} more Lab coins`);
       act.append(h('button', { class: 'lab-btn lab-btn-sm', type: 'button', disabled: true, 'data-act': 'poor' }, h('span', { html: COIN }), ctx.num(it.price)));
     } else {
       if (confirm === it.id) {
@@ -71,6 +71,7 @@ export function mountShop(ctx, params = {}) {
         act.append(yes, no);
       } else {
         const b = h('button', { class: 'lab-btn lab-btn-sm lab-btn-gold', type: 'button', 'data-act': 'buy' }, h('span', { html: COIN }), `Buy ${ctx.num(it.price)}`);
+        b.setAttribute('aria-label', `Buy ${it.name} for ${ctx.num(it.price)} Lab coins`);
         b.addEventListener('click', () => { ctx.sfx('click'); setConfirm(it.id); update(); });
         act.append(b);
       }
@@ -91,7 +92,7 @@ export function mountShop(ctx, params = {}) {
     const v = store.view(); if (!v) return;
     const doc = store.doc();
     tabs.replaceChildren(...SHOP_TABS.map(([id, label]) => {
-      const b = h('button', { class: 'lab-seg-btn' + (id === tab ? ' on' : ''), type: 'button', role: 'tab', 'aria-selected': String(id === tab), 'data-tab': id }, ['sj', 'tb', 'ff', 'ww', 'bc'].includes(id) ? h('span', { html: gameBadge(id, 20) }) : null, label);
+      const b = h('button', { class: 'lab-seg-btn' + (id === tab ? ' on' : ''), type: 'button', role: 'tab', 'aria-selected': String(id === tab), 'data-tab': id }, ['sj', 'tb', 'ff', 'ww', 'bc', 'cf'].includes(id) ? h('span', { html: gameBadge(id, 20) }) : null, label);
       b.addEventListener('click', () => { tab = id; ctx.shopTab = id; clearConfirm(); fresh = ''; msg = ''; update(); });
       return b;
     }));
@@ -112,7 +113,7 @@ export function mountShop(ctx, params = {}) {
         kids.push(h('div', { class: 'lab-grid' }, ...g.items.map((it) => card(it, v))));
       }
     }
-    if (!any) kids.push(h('p', { class: 'lab-empty', id: 'shop-empty' }, tab === 'bc' || ['sj', 'tb', 'ff', 'ww'].includes(tab) ? `New looks for ${OWNER_NAMES[tab]} are on the way.` : 'Nothing here yet.'));
+    if (!any) kids.push(h('p', { class: 'lab-empty', id: 'shop-empty' }, ['sj', 'tb', 'ff', 'ww', 'bc', 'cf'].includes(tab) ? `New looks for ${OWNER_NAMES[tab]} are on the way.` : 'Nothing here yet.'));
     if (msg) kids.push(h('p', { class: 'lab-small', role: 'status' }, msg));
     body.replaceChildren(...kids);
   }

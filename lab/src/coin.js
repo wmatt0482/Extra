@@ -1,0 +1,5 @@
+// The Lab coin icon as a plain SVG string (no imports, so the facade can hand it to a game without loading the UI): lab.coinIcon().
+// A teal coin with a brass rim and a flask mark. It replaces every "$" for Lab coins; never use it for a game's own money.
+export const LAB_COIN = `<svg class="coin lab-coin" viewBox="0 0 24 24" role="img" aria-label="Lab coins"><circle cx="12" cy="12.8" r="10" fill="#0b5b50"/><circle cx="12" cy="11.2" r="10" fill="#27cbb0"/><circle cx="12" cy="11.2" r="8.1" fill="#37e0c0" stroke="#d9a21b" stroke-width="1.7"/><path d="M10.4 5.6h3.2M10.9 5.8v3.4l-3 4.8c-.5.9.1 1.9 1.1 1.9h6c1 0 1.6-1 1.1-1.9l-3-4.8V5.8" fill="none" stroke="#06463d" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M9.4 12.8h5.2l1.4 2.3c.2.4 0 .8-.5.8H8.5c-.5 0-.7-.4-.5-.8z" fill="#fff6c0"/><circle cx="11" cy="14.4" r=".7" fill="#27cbb0"/></svg>`;
+
+export const coinIcon = (size) => (size ? LAB_COIN.replace('<svg ', `<svg width="${Math.max(8, Math.min(128, Math.floor(size)))}" height="${Math.max(8, Math.min(128, Math.floor(size)))}" `) : LAB_COIN);

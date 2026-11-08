@@ -33,7 +33,7 @@ export function buildView(lab, ctx, { ready } = {}) {
     quests: qs, questsDone: qs.filter((q) => q.done).length,
     crates: { waiting: open.length, nextKey: open[0] || '' },
     equipped, owned: ownedIds,
-    avatar: { frame: frameFor(level), title: titleFor(level), slots: slotsOf('av', AVATAR_SLOTS) },
+    avatar: { frame: frameFor(level), title: titleFor(level), slots: { ...slotsOf('av', AVATAR_SLOTS), ...Object.fromEntries(['hat', 'badge', 'coat'].map((s) => ['cf' + s, { open: true, opensAt: 1, id: worn(lab, 'cf.' + s) }])) } },
     pet: { species: lab.pet.species, name: lab.pet.name, stage: petStage(level), mood: played ? 'happy' : 'content', slots: slotsOf('pet', PET_SLOTS) },
     home: {
       wall: worn(lab, 'home.wall'), floor: worn(lab, 'home.floor') || 'home.floor.wood',
@@ -52,10 +52,10 @@ export function buildView(lab, ctx, { ready } = {}) {
 
 /** The fixed lines the Lab says (SPEC §1.3, §5.3), here so the natural voice can prepare them with the quests. */
 export const LAB_LINES = Object.freeze({
-  welcome: 'Welcome to the Lab', crate: 'Lab crate!', newItem: 'New!', cappedToday: "Plenty of coins today. They're all safe; more tomorrow.",
+  welcome: 'Welcome to the Lab', crate: 'Lab crate!', newItem: 'New!', cappedToday: "Plenty of Lab coins today. They're all safe; more tomorrow.",
   freeze: 'Your freeze kept your streak!', dayOne: 'Day 1 today', tryDifferent: 'Try something different', nextWeek: 'Next week',
-  alreadyHad: (coins) => `You already had it: plus ${coins} coins`, levelUp: (level, title) => `Lab level ${level}, ${title}`,
-  gotItem: (name) => `You got the ${name}`, needMore: (n) => `Need ${n} more`,
+  alreadyHad: (coins) => `You already had it: plus ${coins} Lab coins`, levelUp: (level, title) => `Lab level ${level}, ${title}`,
+  gotItem: (name) => `You got the ${name}`, needMore: (n) => `Need ${n} more Lab coins`,
 });
 
 /** Every line the Lab can say that is known before it is said, as the games' voiceTexts modules do (pure, no clock): the quests at every tier

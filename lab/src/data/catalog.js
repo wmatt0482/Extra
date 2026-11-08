@@ -4,9 +4,9 @@
 // 'coins' (shop only) · 'stock' (everyone has it). Price by rarity: common 300 · rare 1,200 · epic 3,000 (coin-only items name their price).
 // `soon: true` = designed, not built: never listed, never dropped.
 export const PRICE = { c: 300, r: 1200, e: 3000 };
-export const OWNERS = ['av', 'pet', 'home', 'sj', 'tb', 'ff', 'ww', 'bc'];
+export const OWNERS = ['av', 'pet', 'home', 'sj', 'tb', 'ff', 'ww', 'bc', 'cf'];
 export const LAB_OWNERS = ['av', 'pet', 'home'];          // always ready: the Lab draws them itself
-export const OWNER_NAMES = { av: 'Me', pet: 'Pet', home: 'Home', sj: 'Spell Jump', tb: 'Trail Blazer', ff: 'Fraction Fright', ww: 'Wagon West', bc: 'Build Crew' };
+export const OWNER_NAMES = { av: 'Me', pet: 'Pet', home: 'Home', sj: 'Spell Jump', tb: 'Trail Blazer', ff: 'Fraction Fright', ww: 'Wagon West', bc: 'Build Crew', cf: 'Case Files' };
 
 // [owner.slot, level the slot opens at, noun added to a name, 'tokens by rarity' c | r | e, gifts 'token:how', ...]
 // how: 'L12' = a level gift; any other text = a named way to earn it
@@ -37,6 +37,11 @@ const TABLE = [
   ['ww.outfit', 1, '', 'bonnet strawhat vest', 'redscarf spectacles plumehat', 'cloak', ''],
   ['bc.paint', 1, 'paint', 'teal plum', 'safety checker', 'gold', ''],
   ['bc.decal', 1, 'decal', 'labmark flame', 'rivets', '', ''],
+  // Case Files: the detective looks. The Lab paints them on its own avatar and in the shop; Case Files draws the same three on the player card from
+  // lab.cosmetics('cf').slots = { hat, badge, coat } (lab/docs/COHESION.md).
+  ['cf.hat', 1, '', 'detcap', 'deerstalker', '', ''],
+  ['cf.badge', 1, '', 'magnifier', 'goldbadge', '', ''],
+  ['cf.coat', 1, '', 'tweed', 'trench', '', ''],
 ];
 // coin-only items with their own price (Build Crew's payoff); `soon` ones are designed but not built
 const COIN_ONLY = [
@@ -47,13 +52,14 @@ const COIN_ONLY = [
   ['bc.bp', 'suspension', 4800, true, 'Suspension bridge blueprint'], ['bc.bp', 'towercrane', 4800, true, 'Tower crane blueprint'],
 ];
 const SLOT_LABEL = { hat: 'Hat', shirt: 'Shirt', back: 'Back', face: 'Face', aura: 'Aura', neck: 'Neck', toy: 'Toy', wall: 'Wall', floor: 'Floor', poster: 'Posters', shelf: 'Shelf', banner: 'Banners',
-  skin: 'Skins', sticker: 'Stickers', trail: 'Trails', paint: 'Paint', decal: 'Decals', rim: 'Rims', ghost: 'Ghost looks', fence: 'Fences', tower: 'Towers', cover: 'Covers', outfit: 'Outfits', veh: 'Vehicles', bp: 'Blueprints' };
+  badge: 'Badges', coat: 'Coats', skin: 'Skins', sticker: 'Stickers', trail: 'Trails', paint: 'Paint', decal: 'Decals', rim: 'Rims', ghost: 'Ghost looks', fence: 'Fences', tower: 'Towers', cover: 'Covers', outfit: 'Outfits', veh: 'Vehicles', bp: 'Blueprints' };
 const NAMES = {   // tokens whose plain capital letter is not the name
   'tee-star': 'Star tee', sunhat: 'Sun hat', starshades: 'Star shades', smallcap: 'Small cap', propellerpet: 'Propeller hat', crownpet: 'Crown', rainbowrug: 'Rainbow rug',
   rocketlab: 'Rocket lab', bluechrome: 'Blue chrome', purplehaze: 'Purple haze', goldleaf: 'Gold leaf', checkeredge: 'Checker edge', goldtrim: 'Gold trim',
   flagred: 'Red flag', flaglab: 'Lab flag', lanternblue: 'Blue lantern', glowtop: 'Glow top', crowntop: 'Crown top', starquilt: 'Star quilt', nightsky: 'Night sky',
   goldthread: 'Gold thread', riverblue: 'River blue', strawhat: 'Straw hat', redscarf: 'Red scarf', plumehat: 'Plume hat', labmark: 'Lab mark', labcoat: 'Lab coat',
   cap: 'Racing cap', beanie: 'Beanie', wizard: 'Wizard hat', crown: 'Crown', stripes: 'Stripe shirt', backpack: 'Backpack', cape: 'Cape', shades: 'Shades', ball: 'Ball',
+  detcap: 'Detective cap', deerstalker: 'Deerstalker', magnifier: 'Magnifier badge', goldbadge: 'Gold badge', tweed: 'Tweed jacket', trench: 'Trench coat',
   party: 'Party hat', bowtie: 'Bow tie', medal: 'Medal', globe: 'Globe', trophy: 'Trophy', sparkle: 'Sparkle', rainbow: 'Rainbow', stars: 'Stars',
 };
 const GIFT_NAMES = { 'home.poster.sj': 'Spell Jump poster', 'home.poster.tb': 'Trail Blazer poster', 'home.poster.ff': 'Fraction Fright poster', 'home.poster.ww': 'Wagon West poster',

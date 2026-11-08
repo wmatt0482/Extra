@@ -37,8 +37,8 @@ export function mountCrate(ctx) {
       rays(r.rarity),
       h('div', { class: 'lab-reveal-art' }, art),
       h('span', { class: `lab-rarity r-${r.rarity}` }, RARITY_NAMES[r.rarity] || ''),
-      h('h3', { class: 'lab-reveal-name', id: 'crate-name' }, item ? item.name : `+${r.coins} coins`),
-      h('p', { class: 'lab-reveal-note', id: 'crate-note' }, item ? LAB_LINES.newItem : `You already had it: +${ctx.num(r.coins)} coins`));
+      h('h3', { class: 'lab-reveal-name', id: 'crate-name' }, item ? item.name : `+${r.coins} Lab coins`),
+      h('p', { class: 'lab-reveal-note', id: 'crate-note' }, item ? LAB_LINES.newItem : `You already had it: +${ctx.num(r.coins)} Lab coins`));
     return { card, equippable, item, slotKey };
   }
   function render() {

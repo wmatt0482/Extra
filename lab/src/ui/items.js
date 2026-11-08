@@ -35,6 +35,7 @@ export function itemPreview(item, size = 64, o = {}) {
   else {
     const m = mods[owner];
     if (m && m.paint) { try { c.save(); m.paint(c, item, w, h); c.restore(); done = true; } catch (_) { done = false; } }
+    if (!done && owner === 'cf') { try { done = paintLabItem(c, item, w, h, o); } catch (_) { done = false; } }       // the detective looks: the Lab paints them
   }
   c.restore();
   if (done) return cv;

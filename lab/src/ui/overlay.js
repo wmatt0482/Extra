@@ -28,7 +28,7 @@ export function openOverlay(store, { view = 'home', game = 'sj', unlocked = fals
   }
   document.addEventListener('keydown', onKey, true);          // on the document: focus may sit on <body> after a view re-renders
   if (store.view()) {
-    app = createApp(store, { mode: 'overlay', view, game, unlocked, onClose: close, params: view === 'shop' ? { tab: ['sj', 'tb', 'ff', 'ww', 'bc'].includes(game) ? game : 'me' } : {} });
+    app = createApp(store, { mode: 'overlay', view, game, unlocked, onClose: close, params: view === 'shop' ? { tab: ['sj', 'tb', 'ff', 'ww', 'bc', 'cf'].includes(game) ? game : 'me' } : {} });
     root.append(app.el);
   } else {
     const b = h('button', { class: 'lab-btn lab-btn-go', type: 'button' }, 'OK');
