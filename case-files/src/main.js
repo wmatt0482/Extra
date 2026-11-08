@@ -14,14 +14,14 @@ import { hydrateIcons, icon } from '../../spell-jump/src/ui/icons.js';
 import { createCloudVoice } from '../../spell-jump/src/spelling/cloudVoice.js';
 import { createSpeech } from './meta/speech.js';
 import { registerCaseFilesSync } from './meta/sync.js';
-import { defaultSave, loadSave, loadSettings, loadWip, removeSave, writeSave, writeSettings, writeWip } from './meta/save.js';
+import { defaultSave, loadReplay, loadSave, loadSettings, loadWip, removeSave, writeReplay, writeSave, writeSettings, writeWip } from './meta/save.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { labBridge } from './meta/labBridge.js';
 import { ARCS, CASE_BY_ID, TRAINING } from './content/index.js';
 import { LINES } from './logic/lines.js';
 import { allCoachLines } from './logic/coach.js';
 import { dayKey, nextUnopened, rankLabel, refreshOpened } from './logic/pacing.js';
-import { applyClose, closeRecord, newRun } from './logic/run.js';
+import { applyClose, applyReplay, closeRecord, newRun } from './logic/run.js';
 import { closeReports } from './logic/payout.js';
 import { caseVoiceTexts } from './meta/voiceTexts.js';
 import { createPlayers } from './ui/players.js';
@@ -34,7 +34,7 @@ import { createCoach } from './ui/coach.js';
 import { createParentZone } from './ui/parentZone.js';
 import { EXTRA_ICONS, drawBackdrop } from './ui/art.js';
 
-const VERSION = '0.1.2';
+const VERSION = '0.1.3';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'caseFiles.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -91,7 +91,7 @@ async function boot() {
     currentPlayer: () => Profiles.playerById(family, currentPlayerId),
     today: () => dayKey(nowMs()),
     persist: () => writeSave(currentPlayerId, save),
-    persistWip: (run) => writeWip(currentPlayerId, run),
+    persistWip: (run) => (run && run.replay ? writeReplay(currentPlayerId, run) : writeWip(currentPlayerId, run)),   // a replay never overwrites the case in progress
     hasWip: (id) => { const w = loadWip(currentPlayerId); return !!w && w.caseId === id; },
     // ----- the voice -----
     voiceReady,
@@ -127,7 +127,7 @@ async function boot() {
     },
     createPlayer: (name, color) => Profiles.createPlayer(family, name, color),
     openParents: (opts) => pz.open(opts),
-    go, toast, selectPlayer, setSetting, openCase, openFile, finishCase,
+    go, toast, selectPlayer, setSetting, openCase, openFile, finishCase, replayCase,
     onFamilyChanged() { if (screen === 'home') screens.home.show(); },
     onParentZoneClosed() {
       saveCache.clear();
@@ -275,6 +275,15 @@ async function boot() {
     speech.prepareBulk(caseVoiceTexts(kase, run.rank, save.readMode));
     go('case', { kase, run });
   }
+  /** "Solve it again" on a closed case (v0.1.3): the full case as a fresh run (or the replay the child left half done). No payout, no record change. */
+  function replayCase(id) {
+    const kase = caseById[id];
+    if (!kase || !save.closed[id]) return;
+    let run = loadReplay(currentPlayerId);
+    if (!run || run.caseId !== id) { run = newRun(kase, save.rank, true); run.startedAt = nowMs(); writeReplay(currentPlayerId, run); }
+    speech.prepareBulk(caseVoiceTexts(kase, run.rank, save.readMode));
+    go('case', { kase, run });
+  }
   function openFile(id, from = 'archive') {
     const kase = caseById[id];
     if (!kase || !save.closed[id]) return;
@@ -283,6 +292,15 @@ async function boot() {
   }
   /** The case is solved and the report filed: save it, tell the Lab (one flat payment), show the stamp. */
   function finishCase(kase, run, who) {
+    if (run.replay) {
+      // a replay: no Lab payout and no record change except `replays: n` on the closed record
+      applyReplay(save, kase);
+      app.persist();
+      writeReplay(currentPlayerId, null);
+      if (settings.reducedMotion) Audio.cash(); else Audio.fanfare();
+      go('file', { kase, from: fileFrom, replayDone: true });
+      return;
+    }
     const today = app.today();
     const firstCaseToday = !Object.values(save.closed).some((r) => r.day === today);
     const rec = closeRecord(run, kase, who, nowMs(), today);

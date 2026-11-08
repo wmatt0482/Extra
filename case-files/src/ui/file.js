@@ -3,6 +3,7 @@
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { sentenceIndex } from '../logic/run.js';
+import { reportText } from '../logic/report.js';
 import { createReader } from './reader.js';
 import { EXTRA_ICONS } from './art.js';
 
@@ -15,7 +16,7 @@ export function createFile(app) {
   soundBtn.addEventListener('click', () => { app.setSetting('sound', !app.settings.sound); drawSound(); });
   $('#file-back').addEventListener('click', () => { if (reader) reader.stop(); app.go(from); });
 
-  function show({ kase, from: f = 'archive' } = {}) {
+  function show({ kase, from: f = 'archive', replayDone = false } = {}) {
     if (!kase) return;
     from = f; drawSound();
     $('#file-title').textContent = kase.title;
@@ -37,7 +38,7 @@ export function createFile(app) {
       } else {
         const col = h('div', { class: 'col' });
         const clue = rec && idx[rec.report.clueId];
-        col.append(h('div', { class: 'file-row' }, h('b', {}, 'Your case report'), h('p', { id: 'file-report' }, rec ? `${rec.report.who || ''} did it because ${rec.report.because || ''}. The clue that proves it is ${clue ? `“${clue.text}”` : '(none)'}.` : '')));
+        col.append(h('div', { class: 'file-row' }, h('b', {}, 'Your case report'), h('p', { id: 'file-report' }, rec ? reportText(kase, rec, clue ? clue.text : '') : '')));
         col.append(h('div', { class: 'file-row' }, h('b', {}, 'The Chief said'), h('p', {}, kase.closing ? kase.closing.text : '')));
         col.append(h('div', { class: 'file-row' }, h('b', {}, 'You learned'), h('p', {}, kase.knowledge)));
         col.append(h('div', { style: { display: 'flex', justifyContent: 'center' } }, h('span', { class: 'stamp brass' }, rec ? `Closed ${rec.day}` : 'Case closed')));
@@ -49,8 +50,13 @@ export function createFile(app) {
       b.addEventListener('click', () => { tab = id; draw(); });
       tabs.append(b);
     }
-    body.replaceChildren(tabs, area);
+    // "Solve it again" (v0.1.3): the whole case once more, a fresh run. Nothing is paid and the first record stays as it was.
+    const again = h('button', { class: 'btn btn-teal btn-big', id: 'file-replay', type: 'button', 'data-sfx': '' }, 'Solve it again', h('span', { html: icon('right') }));
+    again.addEventListener('click', () => { if (reader) reader.stop(); app.replayCase(kase.id); });
+    const note = replayDone ? h('p', { class: 'replay-note', id: 'replay-note', role: 'status' }, 'Solved again. Nice detective work!') : null;
+    body.replaceChildren(...[note, tabs, area, h('div', { class: 'foot file-foot' }, again)].filter(Boolean));
     draw();
+    if (replayDone) { tab = 'report'; draw(); }
   }
   return { show, hide() { if (reader) reader.stop(); app.speech.cancel(); } };
 }

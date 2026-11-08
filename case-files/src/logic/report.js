@@ -33,7 +33,8 @@ export function wordChips(kase, clueText, max = 14) {
     if (word.length < 3 || !key || STOP.has(word.toLowerCase()) || seen.has(key)) return;
     seen.add(key); out.push(word);
   };
-  String(clueText || '').split(/\s+/).forEach(add);
+  const caps = new Set(((kase.report && kase.report.keywords) || []).filter((k) => /^[A-Z]/.test(k)).map((k) => k.toLowerCase()));
+  String(clueText || '').split(/\s+/).forEach((w, i) => add(i === 0 && !caps.has(w.toLowerCase().replace(/[^a-z'-]/g, '')) ? w.toLowerCase() : w));   // the sentence's first word is capital only because it starts the sentence
   for (const k of (kase.report && kase.report.keywords) || []) String(k).split(/\s+/).forEach(add);
   return out.slice(0, max);
 }

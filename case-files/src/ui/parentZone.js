@@ -11,6 +11,7 @@ import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { RANKS, READ_MODES, READ_MODE_LABELS, rankLabel } from '../logic/pacing.js';
 import { accuracyByStandard, sentenceIndex } from '../logic/run.js';
+import { reportText } from '../logic/report.js';
 import { drawAvatar } from './art.js';
 
 const HOLD_MS = 3000;
@@ -222,7 +223,7 @@ export function createParentZone(app) {
     if (!closed.length) out.push(h('div', { class: 'pz-help' }, 'No cases closed yet. Reports appear here, in the child\'s own words.'));
     for (const { r, k } of closed) {
       const clue = sentenceIndex(k)[r.report.clueId];
-      out.push(h('div', { class: 'pz-report', 'data-case': k.id }, h('b', {}, k.title), h('p', {}, `${r.report.who || '?'} did it because ${r.report.because || '(nothing written)'}. The clue that proves it is ${clue ? `“${clue.text}”` : '(none)'}.`), h('small', {}, r.day)));
+      out.push(h('div', { class: 'pz-report', 'data-case': k.id }, h('b', {}, k.title), h('p', {}, reportText(k, r, clue ? clue.text : '')), h('small', {}, r.day + (r.replays ? ` · played again ${r.replays} ${r.replays === 1 ? 'time' : 'times'}` : ''))));
     }
     // accuracy per standard
     const acc = accuracyByStandard(save, app.caseById), stds = Object.keys(acc).sort();

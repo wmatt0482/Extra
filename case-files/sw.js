@@ -9,13 +9,14 @@
 // (/api/tts/clip/<id>) are content-addressed: cache-first in Spell Jump's clip cache (TTS_CACHE, shared on this origin).
 // Caches are per origin, shared with the other games' workers: this worker only ever deletes its own
 // ('case-files-…'). If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'case-files-v0.1.2';
+const VERSION = 'case-files-v0.1.3';
 const PREFIX = 'case-files-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
   './',
   'index.html',
+  'style/gameplay.css',
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
@@ -27,6 +28,7 @@ const SHELL = [
   'src/logic/lines.js',
   'src/logic/pacing.js',
   'src/logic/payout.js',
+  'src/logic/report.js',
   'src/logic/run.js',
   'src/meta/labBridge.js',
   'src/meta/labLooks.js',
@@ -41,6 +43,7 @@ const SHELL = [
   'src/ui/closed.js',
   'src/ui/coach.js',
   'src/ui/coachArt.js',
+  'src/ui/fb.js',
   'src/ui/file.js',
   'src/ui/home.js',
   'src/ui/modal.js',

@@ -17,8 +17,10 @@ import { createKeyboard } from '../../../spell-jump/src/spelling/keyboard.js';
 import { display } from '../logic/answers.js';
 import { LINES, KIND_LABEL, checkDoc, wordSpeech } from '../logic/lines.js';
 import { docAudioOn, readAloudDefault, supportsFor, wordsToTeach } from '../logic/pacing.js';
-import { attachClue, countListen, docOfSentence, nextQuestion, pinTap, pinnedIn, placeCard, questionOf, requestHint, sentenceIndex, submitReport, submitSolution, trayOf } from '../logic/run.js';
+import { attachClue, countListen, docOfSentence, nextQuestion, pinTap, pinnedIn, placeCard, questionOf, requestHint, requiredDocs, sentenceIndex, submitReport, submitSolution, trayOf } from '../logic/run.js';
+import { CLUE_INTRO, leadOf, splitLead, wordChips } from '../logic/report.js';
 import { coachKeyForBeat } from '../logic/coach.js';
+import { flash } from './fb.js';
 import { createReader } from './reader.js';
 import { createBoard } from './board.js';
 import { EXTRA_ICONS } from './art.js';
@@ -40,6 +42,7 @@ export function createCaseView(app) {
   const say = (text) => app.speak(text);
   const sayWhenIdle = (text) => app.modal.whenIdle(() => say(text));       // a line waits until a coach card or popup has closed
   const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
+  const afterFlash = (ms, fn) => { if (ms > 0) later(fn, ms); else fn(); };      // a popup waits a moment so the shake / flash is seen first
   const clearTimers = () => { for (const t of timers.splice(0)) clearTimeout(t); };
   const persist = () => app.persistWip(run);
 
@@ -81,9 +84,10 @@ export function createCaseView(app) {
     close.addEventListener('click', () => { closeSheet(); if (onClose) onClose(); });
     wrap.addEventListener('click', (e) => { if (e.target === wrap) { closeSheet(); if (onClose) onClose(); } });
     body.append(wrap); sheet = wrap;
+    kb.setActive(false);                                  // the physical keyboard types only into the field that is showing, not behind a sheet
     return wrap;
   }
-  function closeSheet() { if (sheet) { for (const r of sheet._readers || []) r.stop(); sheet.remove(); sheet = null; } }
+  function closeSheet() { if (sheet) { for (const r of sheet._readers || []) r.stop(); sheet.remove(); sheet = null; if (kbMode) kb.setActive(true); } }
   function openBoardSheet(glow = []) {
     const scroll = h('div', { class: 'pane-scroll scroll' });
     const board = createBoard(kase, run.board, { glow, empty: 'Nothing pinned yet.' });
@@ -167,8 +171,9 @@ export function createCaseView(app) {
       b.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); b.click(); } });
       b.addEventListener('click', () => {
         if (run.wordsDone.includes(w.word)) { if (right) say(wordSpeech(w)); return; }
-        if (!right) { b.classList.remove('nudge'); void b.offsetWidth; b.classList.add('nudge'); app.audio.click(); return; }
-        b.classList.add('right'); card.classList.add('done'); app.audio.pop();
+        if (!right) { flash(app, b, false); return; }
+        flash(app, b, true);
+        b.classList.add('right'); card.classList.add('done');
         run.wordsDone.push(w.word); persist();
         card.append(h('p', { class: 'wc-mean' }, h('b', {}, w.word), ' means ', w.meaning, '.'));
         say(wordSpeech(w)); onDone();
@@ -188,17 +193,22 @@ export function createCaseView(app) {
     const col = h('div', { class: 'col' });
     col.append(h('div', { class: 'bubble partner' }, h('span', { class: 'who' }, 'PT'), h('p', {}, h('span', { class: 'who-name' }, 'Your partner'), LINES.openDocs), h('span')));
     const desk = h('div', { class: 'desk' });
+    const need = requiredDocs(kase);
+    // the harder (stretch) document is a bonus unless a question's answer or the solution's proof is in it (then it says so)
+    const stretchNeeded = kase.docs.some((d) => d.stretch && need.has(d.id)), stretchBonus = kase.docs.some((d) => d.stretch && !need.has(d.id));
+    if (stretchNeeded) col.append(h('p', { class: 'desk-note', id: 'desk-note', 'data-needed': '1' }, 'The harder file has a clue you need, so read it too.'));
+    else if (stretchBonus) col.append(h('p', { class: 'desk-note', id: 'desk-note', 'data-needed': '0' }, 'The harder file is a bonus. Read it if you want a challenge.'));
     for (const d of kase.docs) {
       const opened = run.opened.includes(d.id);
       const rd = readAloudDefault(run.rank, d, readMode());
-      const f = h('button', { class: 'docfolder' + (opened ? ' opened' : ''), type: 'button', 'data-doc': d.id, 'data-kind': KIND_LABEL[d.kind] || 'Document', 'data-sfx': '' },
+      const f = h('button', { class: 'docfolder' + (opened ? ' opened' : ''), type: 'button', 'data-doc': d.id, 'data-required': need.has(d.id) ? '1' : '0', 'data-kind': KIND_LABEL[d.kind] || 'Document', 'data-sfx': '' },
         h('h4', {}, d.title), h('span', { class: 'from' }, d.from),
-        h('span', { class: 'tags' }, d.stretch ? h('span', { class: 'tag stretch' }, 'Stretch') : null, rd ? h('span', { class: 'tag read' }, 'Read to me') : null, opened ? h('span', { class: 'tag' }, 'Opened') : null));
+        h('span', { class: 'tags' }, d.stretch ? h('span', { class: 'tag stretch' }, need.has(d.id) ? 'Harder · needed' : 'Bonus · harder') : null, rd ? h('span', { class: 'tag read' }, 'Read to me') : null, opened ? h('span', { class: 'tag' }, 'Opened') : null));
       f.addEventListener('click', () => { deskDoc = d; if (!run.opened.includes(d.id)) run.opened.push(d.id); persist(); render(); });
       desk.append(f);
     }
     col.append(desk);
-    const all = kase.docs.every((d) => run.opened.includes(d.id));
+    const all = kase.docs.every((d) => !need.has(d.id) || run.opened.includes(d.id));
     const go = h('button', { class: 'btn btn-teal btn-big', id: 'open-notebook', type: 'button', 'data-sfx': '' }, 'Open the notebook', h('span', { html: icon('right') }));
     go.disabled = !all;
     go.addEventListener('click', () => { run.beat = 'pin'; persist(); render(); });
@@ -299,7 +309,7 @@ export function createCaseView(app) {
       act.append(next);
     } else {
       const hint = h('button', { class: 'btn btn-sm', id: 'nb-hint-btn', type: 'button', 'data-sfx': '' }, h('span', { html: EXTRA_ICONS.bulb }), 'Hint');
-      hint.addEventListener('click', () => { const t = requestHint(run, q.id); qState.note = ''; persist(); app.audio.click(); showTier(q, t, false); });
+      hint.addEventListener('click', () => hintButton(q));
       const pin = h('button', { class: 'btn btn-teal', id: 'nb-pin', type: 'button', 'data-sfx': '' }, h('span', { html: EXTRA_ICONS.pin }), 'Pin it');
       pin.disabled = !sel;
       pin.addEventListener('click', () => pinIt(q));
@@ -321,6 +331,19 @@ export function createCaseView(app) {
     if (txt) say(txt);
     armIdle(q);
   }
+  /**
+   * The Hint button (v0.1.3): always a visible result. The next tier opens as the partner's popup (same modal as the other popups; its
+   * highlight shows after it closes) and the inline hint line stays in the notebook. A press at the last tier shows the model again.
+   */
+  function hintButton(q) {
+    if (app.modal.has('hint')) return;
+    const was = run.hints[q.id] || 0, repeated = was >= 3;
+    const t = requestHint(run, q.id); qState.note = ''; persist(); app.audio.click();
+    drawNotebook(q);
+    const lines = t >= 3 ? [LINES.hint3, q.model, repeated ? LINES.tier3Again : LINES.tier3Tap] : [t === 1 ? LINES.hint1 : LINES.hint2, t === 1 ? q.hint : LINES.tier2];
+    app.feedback({ id: 'hint', lines, button: t === 2 ? 'Show me' : 'Got it', focusSel: '#nb-hint-btn',
+      onClose: () => { if (run.beat === 'pin' && questionOf(run, kase) === q && !qState.done) { applyTierView(q, t, repeated); armIdle(q); } } });
+  }
   function pinIt(q) {
     if (!sel) return;
     const id = sel, from = readers.get(curDoc.id).el.querySelector(`.s[data-id="${id}"]`);
@@ -328,20 +351,20 @@ export function createCaseView(app) {
     for (const rd of readers.values()) rd.setSelected('');
     sel = '';
     if (r.ok) {
-      app.audio.pop(); fly(from, id); clearTierView(); qState.note = '';
+      flash(app, from, true); fly(from, id); clearTierView(); qState.note = '';
       for (const rd of readers.values()) rd.markPinned(run.board);
       chrome(); persist();
       if (r.done) { qState.done = true; drawNotebook(q); say(q.why); clearIdle(); }
       else { qState.note = LINES.oneMore; drawNotebook(q); say(LINES.oneMore); armIdle(q); }
     } else {
       // not the proving sentence: the partner's popup (kind, never "wrong"); the next hint tier is already counted, and its highlight shows AFTER the popup
-      app.audio.click(); persist();
+      const wait = flash(app, from, false); persist();
       qState.note = '';
       drawNotebook(q);
       const t = r.tier, lead = t === 1 ? LINES.pinMiss1 : t === 2 ? LINES.pinMiss2 : LINES.pinMiss3;
       const lines = t >= 3 ? [lead, q.model, r.repeated ? LINES.tier3Again : LINES.tier3Tap] : [lead, t === 1 ? q.hint : LINES.tier2];
-      app.feedback({ id: 'pin-miss', lines, button: t === 1 ? 'Try again' : t === 2 ? 'Show me' : 'Got it', focusSel: '#nb-hint-btn',
-        onClose: () => { if (run.beat === 'pin' && questionOf(run, kase) === q) { applyTierView(q, t, r.repeated); armIdle(q); } } });
+      afterFlash(wait, () => app.feedback({ id: 'pin-miss', lines, button: t === 1 ? 'Try again' : t === 2 ? 'Show me' : 'Got it', focusSel: '#nb-hint-btn',
+        onClose: () => { if (run.beat === 'pin' && questionOf(run, kase) === q) { applyTierView(q, t, r.repeated); armIdle(q); } } }));
     }
   }
   function fly(fromEl, id) {
@@ -416,16 +439,17 @@ export function createCaseView(app) {
       selCard = '';
       if (r.ignored) { draw(); return; }
       if (r.ok) {
-        app.audio.pop(); justPlaced = slot; msg = r.done ? LINES.timelineDone : ''; persist();
+        justPlaced = slot; msg = r.done ? LINES.timelineDone : ''; persist();
         if (r.done) say(LINES.timelineDone);
         draw(); justPlaced = -1;
+        flash(app, slotsEl.querySelector(`[data-slot="${slot}"]`), true);
       } else {
-        app.audio.click();
         const d = docOfSentence(kase, r.item.proof);
         msg = ''; persist();
         draw();
         const back = trayEl.querySelector(`[data-card="${cardId}"]`); if (back) back.classList.add('back');
-        app.feedback({ id: 'card-miss', lines: [LINES.cardMiss, checkDoc(d ? d.kind : '')], button: 'Try again', focusSel: '#tl-docs' });
+        const wait = flash(app, back || slotsEl.querySelector(`[data-slot="${slot}"]`), false);
+        afterFlash(wait, () => app.feedback({ id: 'card-miss', lines: [LINES.cardMiss, checkDoc(d ? d.kind : '')], button: 'Try again', focusSel: '#tl-docs' }));
       }
     }
     // tap a card then a slot; dragging a card onto a slot works too
@@ -492,8 +516,8 @@ export function createCaseView(app) {
       typed = run.sol.text || '';
       useKeyboard({ max: 40, label: 'Check', draw: drawAnswer, enter: () => {
         const r = submitSolution(run, kase, typed.trim()); persist();
-        if (r.ok) { app.audio.cash(); say(LINES.attach); renderSolve(); }
-        else { app.audio.click(); showSolveTier(r.tier); }
+        if (r.ok) { say(LINES.attach); renderSolve(); flash(app, $('#answer-ok'), true); }
+        else { const wait = flash(app, answer, false); afterFlash(wait, () => showSolveTier(r.tier)); }
       } });
       drawAnswer();
       if (run.sol.hint > 0) hintLine([LINES.solveTier1, LINES.solveTier2, LINES.solveTier3][run.sol.hint - 1]);
@@ -501,14 +525,15 @@ export function createCaseView(app) {
     }
     releaseKeyboard();
     const col = h('div', { class: 'col' });
-    col.append(prompt, h('div', { class: 'answer-box', style: { borderColor: 'var(--go)' } }, h('span', {}, display(run.sol.text || sol.answers[0]))));
+    col.append(prompt, h('div', { class: 'answer-box', id: 'answer-ok', style: { borderColor: 'var(--go)' } }, h('span', {}, display(run.sol.text || sol.answers[0]))));
     const note = h('p', { class: 'msg', id: 'attach-msg' }, run.sol.clueId ? 'Clue attached.' : LINES.attach);
     col.append(note);
     const go = h('button', { class: 'btn btn-teal btn-big', id: 'solve-go', type: 'button', 'data-sfx': '' }, 'Write the case report', h('span', { html: icon('right') }));
     go.disabled = !run.sol.clueId;
     const board = () => createBoard(kase, run.board, { pickable: true, selected: run.sol.clueId, onPick: (id) => {
-      if (attachClue(run, kase, id)) { app.audio.pop(); persist(); note.textContent = 'Clue attached.'; go.disabled = false; swap(); }
-      else { app.audio.click(); app.feedback({ id: 'clue-miss', lines: [LINES.notThatClue], button: 'Try again' }); }
+      const el = () => holder.querySelector(`[data-clue="${id}"]`);
+      if (attachClue(run, kase, id)) { persist(); note.textContent = 'Clue attached.'; go.disabled = false; swap(); flash(app, el(), true); }
+      else { const wait = flash(app, el(), false); afterFlash(wait, () => app.feedback({ id: 'clue-miss', lines: [LINES.notThatClue], button: 'Try again' })); }
     } });
     const holder = h('div', {});
     const swap = () => { const b = board(); holder.replaceChildren(b); b.redraw(); };
@@ -523,14 +548,29 @@ export function createCaseView(app) {
     const who = display(sol.answers[0]);
     const because = h('span', { class: 'blank active', id: 'blank-because' });
     const clueBtn = h('button', { class: 'blank empty', id: 'blank-clue', type: 'button', 'data-sfx': '' });
+    const chips = h('div', { class: 'word-chips', id: 'word-chips', role: 'group', 'aria-label': 'Words to tap' });
+    // the clue's own words and the case's keywords, to tap instead of typing (typing stays available)
+    const drawChips = () => {
+      const c = idx[run.sol.clueId] || idx[run.rep.clueId];
+      chips.replaceChildren(...wordChips(kase, c ? c.text : '').map((w) => h('button', { class: 'word-chip', type: 'button', 'data-word': w }, w)));
+      chips.hidden = !chips.children.length;
+    };
+    const insertWord = (w) => {
+      if (!kbMode) return;
+      const base = typed && !typed.endsWith(' ') ? `${typed} ` : typed;
+      if (base.length + w.length + 1 > kbMode.max) return;
+      typed = `${base}${w} `; app.audio.letter(); kbMode.draw();
+    };
+    chips.addEventListener('click', (e) => { const b = e.target.closest('.word-chip'); if (b) insertWord(b.dataset.word); });
     const drawBecause = () => {
-      because.replaceChildren(typed ? h('span', {}, typed.charAt(0).toUpperCase() + typed.slice(1)) : h('span', { class: 'ph', style: { fontWeight: 400, fontStyle: 'italic', color: '#8a7a52' } }, 'type why'), h('i', { class: 'caret', style: { height: '1.2em', verticalAlign: 'text-bottom' } }));
+      because.replaceChildren(typed ? h('span', {}, typed.charAt(0).toUpperCase() + typed.slice(1)) : h('span', { class: 'ph', style: { fontWeight: 400, fontStyle: 'italic', color: '#8a7a52' } }, 'type why'), h('i', { class: 'caret', style: { height: '1.2em', verticalAlign: 'text-bottom' } }), h('span', { class: 'dot' }, '.'));
       run.rep.because = typed; syncEnter();
     };
     const drawClue = () => {
       const c = run.rep.clueId && idx[run.rep.clueId];
       clueBtn.classList.toggle('empty', !c);
       clueBtn.textContent = c ? `“${c.text}”` : 'tap a clue';
+      drawChips();
     };
     const pickClue = () => {
       const scroll = h('div', { class: 'pane-scroll scroll clue-pick' });
@@ -539,17 +579,24 @@ export function createCaseView(app) {
       openSheet('Pick the clue that proves it', scroll); board.redraw();
     };
     clueBtn.addEventListener('click', pickClue);
-    const frame = h('p', { class: 'frame', id: 'frame' }, h('span', { class: 'blank fixed', id: 'blank-who' }, who), ' did it because ', because, '. The clue that proves it is ', clueBtn, '.');
+    // "<lead with the answer> because ___. The clue that proves it is: “…”" (the lead is per case: report.lead, SPEC §5)
+    const [before, after] = splitLead(leadOf(kase));
+    const frame = h('p', { class: 'frame', id: 'frame' }, before, h('span', { class: 'blank fixed', id: 'blank-who' }, who), after, ' because ', because, h('span', { class: 'frame-clue' }, CLUE_INTRO, clueBtn));
     const prompt = h('div', { class: 'bubble partner' }, h('span', { class: 'who' }, 'PT'), h('p', {}, h('span', { class: 'who-name' }, 'Case report'), 'Finish the sentence. Then tap the clue that proves it.'), h('button', { class: 'say-btn', type: 'button', 'aria-label': 'Hear it', html: icon('sound'), onclick: () => say(LINES.writeReport) }));
     const grid = h('div', { class: 'solve-grid report' }, h('div', { class: 's-prompt' }, prompt), h('div', { class: 's-answer' }, frame));
-    body.replaceChildren(h('div', { class: 'pane' }, h('div', { class: 'pane-scroll scroll solve-scroll' }, grid), h('div', { class: 'kbwrap' }, kb.el)));
+    body.replaceChildren(h('div', { class: 'pane' }, h('div', { class: 'pane-scroll scroll solve-scroll' }, grid), h('div', { class: 'kbwrap' }, chips, kb.el)));
+    let filing = false;
     useKeyboard({ max: 110, label: 'File it', draw: drawBecause, enter: () => {
+      if (filing) return;
       const r = submitReport(run, kase, typed.trim(), run.rep.clueId); persist();
-      if (r === 'ok') { app.audio.cash(); finish(who); return; }
-      app.audio.click();
-      if (r === 'short') app.feedback({ id: 'report-short', lines: [LINES.moreWords], button: 'Try again' });
-      else if (r === 'ask') app.feedback({ id: 'report-ask', lines: [LINES.addMore], button: 'Got it' });
-      else app.feedback({ id: 'report-clue', lines: [LINES.pickClue], button: 'Show me', onClose: () => { if (run.beat === 'report') pickClue(); } });
+      if (r === 'ok') { filing = true; flash(app, frame, true); later(() => finish(who), app.settings.reducedMotion ? 300 : 650); return; }
+      if (r === 'short' || r === 'ask') {
+        const wait = flash(app, because, false);
+        afterFlash(wait, () => app.feedback(r === 'short' ? { id: 'report-short', lines: [LINES.moreWords], button: 'Try again' } : { id: 'report-ask', lines: [LINES.addMore], button: 'Got it' }));
+      } else {
+        const wait = flash(app, clueBtn, false);
+        afterFlash(wait, () => app.feedback({ id: 'report-clue', lines: [LINES.pickClue], button: 'Show me', onClose: () => { if (run.beat === 'report') pickClue(); } }));
+      }
     } });
     drawBecause(); drawClue();
   }

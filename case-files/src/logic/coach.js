@@ -10,7 +10,7 @@ export const COACH = Object.freeze({
   brief: { tab: 'Step 1 · Brief', title: 'Meet the Chief', who: 'chief',
     lines: ['Listen while I tell you about the case.', 'Then learn the case words. Tap each word in its sentence to see what it means.'] },
   read: { tab: 'Step 2 · Read', title: 'Read every document', who: 'partner',
-    lines: ['Open every document on the desk, one at a time.', 'Read slowly and hunt for clues.', 'Tap the speaker to hear a paragraph, or switch on Read it to me.'] },
+    lines: ['Open the documents on the desk, one at a time.', 'Read slowly and hunt for clues.', 'Tap the speaker to hear a paragraph, or switch on Read it to me.'] },
   pin: { tab: 'Step 3 · Pin', title: 'Pin the proof', who: 'partner',
     lines: ['Read the question in my notebook.', 'Tap the sentence that proves the answer, then tap Pin it.', 'Stuck? The Hint button is always here to help.'] },
   order: { tab: 'Step 4 · Order', title: 'Put the story in order', who: 'partner',

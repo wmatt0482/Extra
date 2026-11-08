@@ -66,8 +66,8 @@ export function createPlayers(app) {
     grid.replaceChildren();
     for (const p of f.players) {
       const cv = h('canvas', { class: 'pl-avatar', 'aria-hidden': 'true' });
-      const closed = app.closedCount(p.id), rank = app.rankFor(p.id);
-      const b = h('button', { class: 'card pl-tile', 'data-player': p.id, 'data-sfx': '', style: { '--c': p.color }, 'aria-label': `${p.name}, rank ${rank}, ${closed} ${closed === 1 ? 'case' : 'cases'} closed` },
+      const closed = app.closedCount(p.id);      // the Detective Rank is a parent setting (Parent Zone only): never shown or announced here
+      const b = h('button', { class: 'card pl-tile', 'data-player': p.id, 'data-sfx': '', style: { '--c': p.color }, 'aria-label': `${p.name}, ${closed} ${closed === 1 ? 'case' : 'cases'} closed` },
         cv, h('span', { class: 'pl-name' }, p.name), h('span', { class: 'pl-level', 'data-closed': String(closed) }, `${closed} closed`));
       b.addEventListener('click', () => app.selectPlayer(p.id));
       grid.append(b);

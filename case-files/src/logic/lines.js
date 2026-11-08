@@ -15,7 +15,7 @@ export const LINES = Object.freeze({
   notThatClue: 'Good detectives check again. Which clue proves it?',
   attach: 'That is the name. Now attach the clue that proves it.',
   writeReport: 'Now write your case report.',
-  openDocs: 'Open every document. Read first, then we will pin the proof.',
+  openDocs: 'Open the documents on the desk. Read first, then we will pin the proof.',
   seeYou: 'Case closed. See you tomorrow, Detective.',
   allSet: 'Every clue is on the board. Now put the story in order.',
   timelineDone: 'The story is in order. Now close the case.',
