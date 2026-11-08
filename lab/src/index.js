@@ -27,13 +27,14 @@ const NO_COSMETICS = () => ({ slots: {}, owns: () => false, ready: [] });
 function loadLooks(g) {
   if (!GAME_MODULES[g]) return Promise.resolve([]);
   if (!loading[g]) {
-    loading[g] = import(GAME_MODULES[g]).then((m) => { if (looks[g] && looks[g].standin) return looks[g].ids; looks[g] = { ids: Array.isArray(m.LOOKS_READY) ? m.LOOKS_READY.filter((x) => typeof x === 'string') : [], mod: m }; return looks[g].ids; })
+    loading[g] = import(GAME_MODULES[g]).then((m) => { if (looks[g] && looks[g].standin) return looks[g].ids; looks[g] = { ids: Array.isArray(m.LOOKS_READY) ? m.LOOKS_READY.filter((x) => typeof x === 'string') : [], prices: pricesOf(m), mod: m }; return looks[g].ids; })
       .catch(() => { if (looks[g] && looks[g].standin) return looks[g].ids; looks[g] = { ids: [], mod: null }; return []; })
       .then((ids) => { publishReady(); return ids; });
   }
   return loading[g];
 }
-const publishReady = () => { try { getStore().setReady(GAMES.flatMap((g) => (looks[g] ? looks[g].ids : []))); } catch (_) { /* ignore */ } };
+const pricesOf = (m) => { const o = {}; const p = m && m.LOOKS_PRICES; if (p && typeof p === 'object') for (const k of Object.keys(p)) if (typeof p[k] === 'number' && Number.isFinite(p[k]) && p[k] >= 0) o[k] = Math.floor(p[k]); return o; };
+const publishReady = () => { try { const st = getStore(); st.setPrices(Object.assign({}, ...GAMES.map((g) => (looks[g] && looks[g].prices) || {}))); st.setReady(GAMES.flatMap((g) => (looks[g] ? looks[g].ids : []))); } catch (_) { /* ignore */ } };
 const loadAllLooks = () => Promise.all(GAMES.map(loadLooks));
 const lazyUi = () => import('./ui/index.js');
 
@@ -128,7 +129,7 @@ lab.__test = {
   setQuests: (ids) => getStore().__test.setQuests(ids),
   advanceDay: () => getStore().__test.advanceDay(),
   reset: () => getStore().__test.reset(),
-  setLooks: (g, ids) => { looks[g] = { ids: ids.slice(), mod: null, standin: true }; loading[g] = Promise.resolve(ids); publishReady(); },
+  setLooks: (g, ids, prices) => { looks[g] = { ids: ids.slice(), prices: pricesOf({ LOOKS_PRICES: prices }), mod: null, standin: true }; loading[g] = Promise.resolve(ids); publishReady(); },
 };
 try {
   if (typeof window !== 'undefined' && typeof location !== 'undefined' && /^(localhost|127\.0\.0\.1)$/.test(location.hostname)) {

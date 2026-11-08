@@ -54,8 +54,9 @@ export function mountShop(ctx, params = {}) {
       act.append(h('span', { class: 'lab-price', 'data-act': 'locked' }, h('span', { html: COIN }), ctx.num(it.price)));
     }
     else if (it.state === 'poor') {
-      sub = h('span', { class: 'lab-state poor' }, `Need ${ctx.num(it.need)} more Lab coins`);
-      act.append(h('button', { class: 'lab-btn lab-btn-sm', type: 'button', disabled: true, 'data-act': 'poor' }, h('span', { html: COIN }), ctx.num(it.price)));
+      sub = h('span', { class: 'lab-state poor', 'data-gap': String(it.need) }, `${ctx.num(it.need)} more Lab coins`);
+      // not greyed out and not a padlock: the price stays in full colour and the line above says how far away it is
+      act.append(h('span', { class: 'lab-price lab-price-poor', 'data-act': 'poor' }, h('span', { html: COIN }), ctx.num(it.price)));
     } else {
       if (confirm === it.id) {
         const yes = h('button', { class: 'lab-btn lab-btn-sm lab-btn-go', type: 'button', 'data-act': 'confirm' }, 'Yes, buy');
@@ -101,7 +102,7 @@ export function mountShop(ctx, params = {}) {
     if (tab === 'bc') kids.push(h('div', { class: 'lab-shop-head' }, h('b', {}, 'New in Build Crew'), h('span', {}, 'New machines and blueprints. Everything you already build with stays open.')));
     let any = false;
     for (const owner of owners) {
-      const items = shelf(doc, { game: owner, ready: store.ready, level: v.level.level }).map((i) => (i.slot === 'poster' ? { ...i, poster: v.equipped['home.poster'] === i.id ? 'home.poster' : 'home.poster2' } : i));
+      const items = shelf(doc, { game: owner, ready: store.ready, level: v.level.level, prices: store.prices }).map((i) => (i.slot === 'poster' ? { ...i, poster: v.equipped['home.poster'] === i.id ? 'home.poster' : 'home.poster2' } : i));
       if (!items.length) continue;
       any = true;
       // group by slot with a heading each

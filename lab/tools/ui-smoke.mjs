@@ -92,7 +92,7 @@ const waitFor = async (page, sel, ms = 4000) => { try { await page.waitForSelect
 async function runLayout(browser, layout) {
   const size = LAYOUTS[layout];
   const phone = layout !== 'desktop';
-  const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: 1, hasTouch: phone, serviceWorkers: 'block' });
+  const ctx = await browser.newContext({ viewport: size, deviceScaleFactor: Number(process.env.DSF || 1), hasTouch: phone, serviceWorkers: 'block' });
   // the games' own looks modules are real now (the Lab reads LOOKS_READY from each); Fraction Fright's is withheld here so the "looks not ready shows no items" rule is still tested
   await ctx.route('**/fraction-fright/src/meta/labLooks.js', (route) => route.abort('failed'));
   const page = await ctx.newPage();
@@ -310,7 +310,12 @@ async function runLayout(browser, layout) {
     await shot(page, layout, '12-shop-bought');
     // not enough coins
     await pickPlayer(page, 'ben'); await clickTab(page, 'shop');
-    check('"Need N more" when the purse is short (never "too expensive")', /Need [\d,]+ more/.test(await page.innerText('.lab-shop')) && !/too expensive/i.test(await page.innerText('.lab-shop')));
+    check('the gap is said in words when the purse is short: "N more Lab coins" (never "too expensive")', /[\d,]+ more Lab coins/.test(await page.innerText('.lab-shop')) && !/too expensive/i.test(await page.innerText('.lab-shop')));
+    {
+      const g = await L(page, () => { const coins = __lab.store.view().coins; const c = document.querySelector('.lab-item[data-state="poor"]'); if (!c) return null; const cs = getComputedStyle(c), pv = getComputedStyle(c.querySelector('.lab-card-prev')); const price = Number(c.querySelector('.lab-price').textContent.replace(/[^\d]/g, '')); return { coins, price, text: c.querySelector('.lab-state.poor').textContent, gap: Number(c.querySelector('.lab-state.poor').dataset.gap), filter: cs.filter + pv.filter, opacity: cs.opacity, lock: !!c.querySelector('.lab-lock-badge'), padlock: !!c.querySelector('.lab-state svg') }; });
+      check('a price-short item says the exact gap ("130 more Lab coins"), stays in full colour and has no padlock', !!g && g.gap === g.price - g.coins && g.text === `${g.gap.toLocaleString('en-US')} more Lab coins` && !/grayscale|saturate|brightness/.test(g.filter) && g.opacity === '1' && !g.lock && !g.padlock, JSON.stringify(g));
+      await shot(page, layout, '36-shop-gap');
+    }
     await pickPlayer(page, 'mia'); await clickTab(page, 'shop');
     // a game
     await page.click('.lab-seg-btn[data-tab="sj"]'); await page.waitForTimeout(350);

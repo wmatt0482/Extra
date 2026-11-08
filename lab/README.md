@@ -41,6 +41,7 @@ BASE_URL=http://localhost:8130 node lab/tools/e2e-cross.mjs    # the cross-game 
   - The shop has a Case Files tab (detective cap, deerstalker, magnifier and gold badges, tweed and trench coats; `cf.*` items, listed in `case-files/src/meta/labLooks.js`); the Lab avatar wears them.
   - Quest titles name their game and what counts ("Finish a Trail Blazer race (any place)", "Close a Case Files case"). The playtest's "Win a race" counts first place only and "Finish 2 runs" was Spell Jump's.
   - The XP bar is the share of the current level (XP into the level over what it takes) with "N XP to Lab LV M"; every level label says "Lab LV". Titles change at Lab levels 1, 5, 10, 20, 30, 40, 50, 65, 80, 95.
+  - A shop item the child cannot afford yet shows the gap in words ("130 more Lab coins"), still in full colour. A game's coin-only prices come from its `labLooks.js` (`LOOKS_PRICES`), see docs/COHESION.md.
   - A lighter, warmer Lab: a sky behind the screens, a warm plaster room with a sunny window, plants and the pet's bed; the panels and the top bar stay deep navy for contrast.
 
 - **1.1.0** (service worker `lab-v1.1.0`; the data version `LAB_VERSION` stays 1, nothing in the saved profile changed)

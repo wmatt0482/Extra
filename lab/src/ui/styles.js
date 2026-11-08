@@ -180,6 +180,7 @@ font:400 15px/1 var(--font-display);letter-spacing:.02em;color:#fff;background:v
 .lab-nw{white-space:nowrap}
 .lab-price{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 12px;border-radius:var(--r-sm);background:rgba(8,12,40,.55);border:2px solid var(--line);font:700 14px/1 var(--font-body);white-space:nowrap}
 .lab-price svg{width:18px;height:18px}
+.lab-price-poor{background:var(--panel-2);border-color:var(--accent);color:var(--accent)}
 .lab-item.confirming{border-color:var(--go);background:#16355a}
 .lab-item.fresh{border-color:var(--accent)}
 .lab-card-prev{flex:none;width:76px;height:76px;border-radius:12px;overflow:hidden}
@@ -190,7 +191,7 @@ font:400 15px/1 var(--font-display);letter-spacing:.02em;color:#fff;background:v
 .lab-new{padding:1px 7px;border-radius:6px;background:var(--accent);color:var(--accent-ink);font:700 11px/1.4 var(--font-body);text-transform:uppercase}
 .lab-state{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--muted)}
 .lab-state svg{width:16px;height:16px}
-.lab-state.ok{color:#8ff0b3}.lab-state.gift{color:#ffe28a}.lab-state.locked{color:var(--muted)}.lab-state.poor{color:var(--muted)}
+.lab-state.ok{color:#8ff0b3}.lab-state.gift{color:#ffe28a}.lab-state.locked{color:var(--muted)}.lab-state.poor{color:#ffe28a;font-weight:700}
 .lab-card-act{flex:none;display:flex;flex-direction:column;gap:6px;align-items:stretch}
 
 .lab-levelup{position:absolute;inset:0;z-index:7;display:grid;place-items:center;padding:16px;background:rgba(5,8,28,.82);animation:labFade .25s ease-out}
@@ -408,8 +409,8 @@ font:400 15px/1 var(--font-display);letter-spacing:.02em;color:#fff;background:v
  .lab-overlay>.lab-shell{flex:0 1 auto;height:min(100%,860px);max-height:100%;border-radius:24px;background:rgba(255,255,255,.22);box-shadow:0 0 0 2px rgba(255,255,255,.35)}
 }
 @media (max-width:640px){
- .lab-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto auto;grid-template-areas:'lead chip games streak' 'lv lv lv purse';gap:8px}
- #lab-lead{grid-area:lead}.lab-chip{grid-area:chip;max-width:none}.lab-streak{grid-area:streak}.lab-games-btn{grid-area:games}.lab-lvblock{grid-area:lv;min-width:0}.lab-purse{grid-area:purse}
+ .lab-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:'lead chip games' 'lv lv lv' 'streak streak purse';gap:8px}
+ #lab-lead{grid-area:lead}.lab-chip{grid-area:chip;max-width:none}.lab-streak{grid-area:streak;justify-self:start}.lab-games-btn{grid-area:games}.lab-lvblock{grid-area:lv;min-width:0}.lab-purse{grid-area:purse;justify-self:end}
  .lab-nav{gap:4px}.lab-tab{min-width:0;border-width:1px;padding:0}.lab-tab-tx{font-size:9px;letter-spacing:-.02em;text-overflow:clip}
  .lab-seg-btn{padding:0 9px;font-size:12px}.lab-seg-btn svg{display:none}
  .lab-grid{grid-template-columns:1fr}

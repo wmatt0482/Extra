@@ -152,6 +152,24 @@ same three slots on its player card.
 - To add a look later: add one row to `TABLE` in `lab/src/data/catalog.js` (slot, tokens by rarity), give the token a name in `NAMES`, add its
   painter to `avatar.js`, and list its id in the game's `LOOKS_READY`.
 
+## 7b. Prices: the game's labLooks is the source of truth
+
+A game that sells coin-only items in the Lab shop (Build Crew's machines and blueprints) exports their prices from its own `labLooks.js`:
+
+```js
+export const LOOKS_PRICES = { 'bc.bp.lighthouse': 1800, 'bc.bp.windmill': 2400, 'bc.bp.castlegate': 3000, 'bc.bp.arch': 3400, 'bc.veh.dump': 8000, 'bc.veh.fork': 12000 };
+```
+
+The Lab reads it when it loads the module (`lab/src/index.js` and `ui/items.js`) and uses it for the shelf, the Buy button, the price check, `paid` and
+the receipt; the game's own job board must read the same object. Common, rare and epic items of the Lab's own (and the rarity-priced looks of
+each game) keep the Lab's price table (300 / 1,200 / 3,000), they are not in `LOOKS_PRICES`. Nothing else in `lab/` carries a game's price.
+**Known leftover:** `COIN_ONLY` in `lab/src/data/catalog.js` still holds the old Build Crew numbers (2,400 and 3,600 for the blueprints) as a
+stand-in used only when a game's `labLooks` exports no price for that item. Build Crew does not export `LOOKS_PRICES` yet; once it does the stand-in
+never shows, and the numbers should be deleted from `catalog.js` (give those items `price: 0`).
+
+Shop copy for an item the child cannot afford yet: the price stays in full colour and a line says the gap in words ("130 more Lab coins"); an
+item whose slot is level-locked says "Opens at level N" instead.
+
 ## 8. Quests: titles, what counts, and the events games must send
 
 Every quest title names its game and what counts. A quest moves only when its **game** sends one of its **events** (`lab.report({ game, event, n, firstTry })`

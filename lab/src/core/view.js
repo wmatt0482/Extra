@@ -55,7 +55,7 @@ export const LAB_LINES = Object.freeze({
   welcome: 'Welcome to the Lab', crate: 'Lab crate!', newItem: 'New!', cappedToday: "Plenty of Lab coins today. They're all safe; more tomorrow.",
   freeze: 'Your freeze kept your streak!', dayOne: 'Day 1 today', tryDifferent: 'Try something different', nextWeek: 'Next week',
   alreadyHad: (coins) => `You already had it: plus ${coins} Lab coins`, levelUp: (level, title) => `Lab level ${level}, ${title}`,
-  gotItem: (name) => `You got the ${name}`, needMore: (n) => `Need ${n} more Lab coins`,
+  gotItem: (name) => `You got the ${name}`, needMore: (n) => `${n} more Lab coins`,
 });
 
 /** Every line the Lab can say that is known before it is said, as the games' voiceTexts modules do (pure, no clock): the quests at every tier

@@ -44,7 +44,7 @@ export function createLabStore({ storage, now = Date.now, rand = Math.random, de
   if (!device) { device = newDeviceKey(rand); write(DEVICE_STORAGE_KEY, device); }
   setLocalDevice(device);
 
-  let player = null, info = {}, lab = null, lastWritten = null, dirty = false, timer = 0, ready = [], hooked = false;
+  let player = null, info = {}, lab = null, lastWritten = null, dirty = false, timer = 0, ready = [], prices = {}, hooked = false;
   const sessions = {};
   const subs = new Set();
   let familyCache = { raw: null, players: [] };
@@ -143,6 +143,9 @@ export function createLabStore({ storage, now = Date.now, rand = Math.random, de
     get player() { return player; },
     get device() { return device; },
     get ready() { return ready; },
+    get prices() { return prices; },
+    /** { itemId: coins } from the games' labLooks (LOOKS_PRICES): a game's own price wins over the Lab's table. */
+    setPrices(map) { prices = map && typeof map === 'object' ? { ...map } : {}; emit({ type: 'ready' }); },
     setReady(ids) { ready = Array.isArray(ids) ? ids.slice() : []; emit({ type: 'ready' }); },
     now: () => clock(),
 
@@ -201,7 +204,7 @@ export function createLabStore({ storage, now = Date.now, rand = Math.random, de
     buy(id) {
       if (!player) return { ok: false, spent: 0, reason: 'none' };
       refresh();
-      const r = shopBuy(lab, ctx(), id, { ready });
+      const r = shopBuy(lab, ctx(), id, { ready, prices });
       if (r.ok) { schedule(true); emit({ type: 'buy', id }); }
       return r;
     },

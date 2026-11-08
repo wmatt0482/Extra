@@ -9,10 +9,11 @@ import { paintLabItem } from './scene.js';
 const mods = {};          // game -> { ids, paint } once loaded
 let loadingAll = null;
 /** Load every game's labLooks module (a missing one hides that game's items). Resolves the list of ready ids. */
+export const loadedPrices = () => Object.assign({}, ...GAMES.map((g) => (mods[g] && mods[g].prices) || {}));
 export function loadGameLooks() {
   if (!loadingAll) {
-    loadingAll = Promise.all(GAMES.map((g) => import(GAME_MODULES[g]).then((m) => { mods[g] = { ids: Array.isArray(m.LOOKS_READY) ? m.LOOKS_READY.filter((x) => typeof x === 'string') : [], paint: typeof m.paintPreview === 'function' ? m.paintPreview : null }; })
-      .catch(() => { mods[g] = { ids: [], paint: null }; }))).then(() => GAMES.flatMap((g) => mods[g].ids));
+    loadingAll = Promise.all(GAMES.map((g) => import(GAME_MODULES[g]).then((m) => { mods[g] = { ids: Array.isArray(m.LOOKS_READY) ? m.LOOKS_READY.filter((x) => typeof x === 'string') : [], prices: (m.LOOKS_PRICES && typeof m.LOOKS_PRICES === 'object') ? m.LOOKS_PRICES : {}, paint: typeof m.paintPreview === 'function' ? m.paintPreview : null }; })
+      .catch(() => { mods[g] = { ids: [], prices: {}, paint: null }; }))).then(() => GAMES.flatMap((g) => mods[g].ids));
   }
   return loadingAll;
 }

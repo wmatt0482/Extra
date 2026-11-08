@@ -242,6 +242,18 @@ test('catalogue generated from the table: 149 items, 31 gifts + 1 stock, 112 buy
 });
 
 section('shop');
+test('prices come from the game when its labLooks exports LOOKS_PRICES (one source of truth); the Lab table covers its own items; shelf/canBuy/buy agree', () => {
+  const lab = defaultLab(); addCoins(lab, 5000);
+  const prices = { 'bc.bp.lighthouse': 1800, 'bc.bp.windmill': 2400, 'bc.bp.castlegate': 3000, 'bc.bp.arch': 3400 };
+  assert.equal(priceOf(ITEM_BY_ID['bc.bp.lighthouse'], prices), 1800); assert.equal(priceOf(ITEM_BY_ID['av.hat.sunhat'], prices), 300, 'the Lab\'s own items keep the Lab table');
+  assert.equal(priceOf(ITEM_BY_ID['bc.bp.arch'], { 'bc.bp.arch': -5 }), ITEM_BY_ID['bc.bp.arch'].price, 'a bad price is ignored');
+  const row = shelf(lab, { game: 'bc', ready: ['bc.bp.lighthouse', 'bc.bp.arch'], prices }); assert.deepEqual(row.map((i) => [i.id, i.price]), [['bc.bp.lighthouse', 1800], ['bc.bp.arch', 3400]]);
+  assert.deepEqual(canBuy(lab, 'bc.bp.arch', { ready: ['bc.bp.arch'], prices }), { ok: true, reason: '', need: 0 });
+  const poor = defaultLab(); addCoins(poor, 3000); assert.deepEqual(canBuy(poor, 'bc.bp.arch', { ready: ['bc.bp.arch'], prices }), { ok: false, reason: 'coins', need: 400 });
+  const r = buy(lab, ctxAt(T0), 'bc.bp.castlegate', { ready: ['bc.bp.castlegate'], prices }); assert.equal(r.spent, 3000); assert.equal(wallet(lab).coins, 2000); assert.equal(lab.paid['bc.bp.castlegate'], 3000);
+  const gap = shelf(poor, { game: 'bc', ready: ['bc.bp.arch'], prices })[0]; assert.deepEqual([gap.state, gap.need], ['poor', 400]);
+});
+
 test('canBuy reasons: unknown, owned, gift, notready, locked, coins; buy charges and records paid; the dump truck unlocks owns', () => {
   const lab = defaultLab();
   assert.equal(canBuy(lab, 'nope.x.y', {}).reason, 'unknown'); assert.equal(canBuy(lab, 'av.hat.cap', { ready: READY_ALL }).reason, 'gift');

@@ -8,7 +8,7 @@ import { totalXp } from '../core/model.js';
 import { createApp, prepareVoice } from './app.js';
 import { drawPortrait } from './avatar.js';
 import { glyph } from './glyph.js';
-import { loadGameLooks } from './items.js';
+import { loadGameLooks, loadedPrices } from './items.js';
 import { gentleSaved } from './parent.js';
 import { sharedVoice } from './voice.js';
 import { sfx } from './util.js';
@@ -95,7 +95,7 @@ export function renderPage(root, store, { sync, player: wanted = '', view: wante
     if (!store.attach({ game: 'sj', playerId: p.id, name: p.name, color: p.color, gentle: gentleSaved() })) return showPlayers();
     try { f.lastPlayer = p.id; } catch (_) { /* ignore */ }
     screen = 'lab';
-    loadGameLooks().then((ids) => { if (store.player) store.setReady([...new Set([...store.ready, ...ids])]); });
+    loadGameLooks().then((ids) => { if (store.player) { store.setPrices({ ...loadedPrices(), ...store.prices }); store.setReady([...new Set([...store.ready, ...ids])]); } });
     if (app) app.destroy();
     app = createApp(store, { mode: 'page', view: view || '', sync, onExit: showPlayers });
     shell.replaceChildren(app.el);
