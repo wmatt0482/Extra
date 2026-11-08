@@ -87,6 +87,7 @@ const SHELL = [
 ];
 // Optional: the Lab (/lab/). A missing, blocked or older Lab never stops the game from installing.
 const OPTIONAL = [
+  "../lab/src/coin.js",
   "../lab/src/core/combo.js",
   "../lab/src/core/crate.js",
   "../lab/src/core/engine.js",
@@ -97,11 +98,13 @@ const OPTIONAL = [
   "../lab/src/core/quests.js",
   "../lab/src/core/shop.js",
   "../lab/src/core/streak.js",
+  "../lab/src/core/summary.js",
   "../lab/src/core/view.js",
   "../lab/src/core/xp.js",
   "../lab/src/data/catalog.js",
   "../lab/src/data/crate.js",
   "../lab/src/data/events.js",
+  "../lab/src/data/games.js",
   "../lab/src/data/goals.js",
   "../lab/src/data/quests.js",
   "../lab/src/index.js",
@@ -110,8 +113,11 @@ const OPTIONAL = [
   "../lab/src/ui/app.js",
   "../lab/src/ui/avatar.js",
   "../lab/src/ui/board.js",
+  "../lab/src/ui/chip.js",
   "../lab/src/ui/crate.js",
   "../lab/src/ui/gallery.js",
+  "../lab/src/ui/gamecards.js",
+  "../lab/src/ui/games.js",
   "../lab/src/ui/glyph.js",
   "../lab/src/ui/home.js",
   "../lab/src/ui/hud.js",

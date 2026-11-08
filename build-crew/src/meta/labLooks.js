@@ -5,6 +5,7 @@
 // the tables below, and the module loads in Node.
 import { BLUEPRINTS, MACHINES, TOYS, COLORS } from '../content.mjs';
 import { paintBlueprint } from '../blueprint.mjs';
+import { VEHICLE_PRICE } from '../app/vehiclePrice.mjs';
 
 /** The Lab paints (bc.paint.*): body colours for the paint layer. `checker` is a two-colour check drawn by the scene's
  *  paint material; the others are plain colours. */
@@ -20,6 +21,13 @@ export const LAB_DECAL = { 'bc.decal.labmark': 'labmark', 'bc.decal.flame': 'fla
 /** The Lab vehicles and blueprints this game can enforce (they are unlock gates, not looks). */
 export const LAB_VEHICLES = ['bc.veh.dump', 'bc.veh.fork'];
 export const LAB_BLUEPRINTS = BLUEPRINTS.map((r) => r.lab);
+
+/** What the Lab shop asks for Build Crew's coin-only items, in Lab coins: the single source of truth (lab/docs/COHESION.md 7b).
+ *  The Lab reads this when it loads this module, and the job board reads the same object, so the two always agree. */
+export const LOOKS_PRICES = {
+  ...Object.fromEntries(BLUEPRINTS.map((r) => [r.lab, r.price])),
+  ...Object.fromEntries(Object.entries(VEHICLE_PRICE).map(([k, p]) => [`bc.veh.${k}`, p])),
+};
 
 /** Every id this game can draw or enforce. */
 export const LOOKS_READY = [...Object.keys(LAB_PAINT), ...Object.keys(LAB_DECAL), ...LAB_VEHICLES, ...LAB_BLUEPRINTS];

@@ -20,21 +20,14 @@ const EMPTY = Object.freeze({
   day: '',
 });
 let L = null,
-  dead = false,
-  catalog = null;
+  dead = false;
 const queue = [],
   ready = [];
 function load() {
   if (L || dead || load.p) return;
   load.p = import('../../../lab/src/index.js')
-    .then(async (m) => {
+    .then((m) => {
       L = m.lab;
-      // The Lab's own price list (read-only data): the job board shows what the Lab's shop asks, whatever this game was built with.
-      try {
-        catalog = (await import('../../../lab/src/data/catalog.js')).ITEM_BY_ID;
-      } catch (e) {
-        console.warn('[lab] prices unavailable', e);
-      }
       for (const f of queue.splice(0)) {
         try {
           f(L);
@@ -129,10 +122,34 @@ export const labBridge = {
       return false;
     }
   },
-  /** The Lab shop's price for an item (the shop is the one source of truth), or `fallback` while the Lab has not loaded. */
-  price(id, fallback) {
-    const p = catalog?.[id]?.price;
-    return Number.isFinite(p) ? p : fallback;
+  /** Cohesion (lab/docs/COHESION.md): the one Lab chip, the picker button, the Games panel, the per-game summary and the Lab
+   *  coin icon. All lazy and safe. */
+  mountChip(container, opts) {
+    return lazy((l) => l.mountChip(container, opts));
+  },
+  mountPickerButton(container, opts) {
+    return lazy((l) => l.mountPickerButton(container, opts));
+  },
+  openGames(o) {
+    later((l) => l.openGames(o || {}));
+  },
+  /** This game's card in the Lab: { level, line, today, lastPlayed }. Queued like a report; the same text twice is a no-op. */
+  summary(row) {
+    try {
+      if (L) return !!L.summary(GAME, row);
+      later((l) => l.summary(GAME, row));
+    } catch (e) {
+      console.warn('[lab]', e);
+    }
+    return false;
+  },
+  /** The Lab coin as an SVG string ('' until the Lab has loaded: draw Lab-coin prices after `ready`). */
+  coinIcon(size) {
+    try {
+      return L && L.coinIcon ? L.coinIcon(size) : '';
+    } catch (_) {
+      return '';
+    }
   },
   openShop(o) {
     later((l) => l.openShop({ game: GAME, ...o }));

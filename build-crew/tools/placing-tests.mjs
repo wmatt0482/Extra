@@ -253,6 +253,12 @@ export function placingTests(report) {
     // the shop's price is the single source: the board takes the Lab catalogue's number when the Lab is there
     const { ITEM_BY_ID } = await import('../../lab/src/data/catalog.js');
     for (const r of BLUEPRINTS) assert.equal(ITEM_BY_ID[r.lab].price, r.price);
+    // the game's labLooks exports the prices the Lab reads (COHESION 7b), and they are the numbers the board shows
+    const { LOOKS_PRICES } = await import('../src/meta/labLooks.js');
+    assert.deepEqual(Object.keys(LOOKS_PRICES).sort(), [...BLUEPRINTS.map((r) => r.lab), 'bc.veh.dump', 'bc.veh.fork'].sort());
+    for (const r of BLUEPRINTS) assert.equal(LOOKS_PRICES[r.lab], r.price);
+    assert.equal(LOOKS_PRICES['bc.veh.dump'], 8000);
+    assert.equal(LOOKS_PRICES['bc.veh.fork'], 12000);
     assert.equal(measureLine(ROUNDS[2]), 'Foundation grid: 5.2 m long, 1.2 m tall');
     assert.equal(measureLine(job1), '');
     assert.equal(measure(lh).tall, 5.7);

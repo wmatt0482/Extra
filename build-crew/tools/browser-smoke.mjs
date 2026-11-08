@@ -168,9 +168,34 @@ async function labStages() {
     await lp.goto(BASE + '/build-crew/?test=1&nosw=1');
     await ready(lp);
     await addBuilder(lp, 'Mia');
-    await lp.waitForFunction(() => window.__lab && document.querySelector('#lab-open') && !document.querySelector('#lab-open').hidden, undefined, { timeout: 20000 });
-    assert.equal(await lp.locator('#lab-gallery').isVisible(), true, 'the Gallery button shows once the Lab has loaded');
+    await lp.waitForFunction(() => window.__lab && document.querySelector('#title-chip-host .lab-chipx'), undefined, { timeout: 20000 });
+    // 0.8.1 cohesion: the one Lab chip top-left of the home screen replaces the game's own Lab buttons, pill and flame
+    assert.equal(await lp.locator('#lab-open, #lab-gallery, #lab-slot-title, #title-streak, #btn-spelljump, #btn-wagonwest').count(), 0, 'no Lab buttons, own pill, game flame or cross-link chips remain');
+    const chip = await lp.locator('#title-chip-host .lab-chipx').boundingBox();
+    assert(chip.x < 24 && chip.y < 24 && chip.height >= 44, 'the chip is top-left and at least 44 px tall: ' + JSON.stringify(chip));
+    assert.match(await lp.locator('.lab-chipx').innerText(), /Lab LV 1/, 'the chip says Lab LV');
+    assert.equal(await lp.locator('.lab-chipx svg.lab-coin').count() > 0, true, 'the chip shows the Lab coin icon');
+    assert.equal(await lp.locator('.lab-chipx-flame').count(), 1, 'one flame in the header: the chip');
+    assert.equal(await lp.locator('#title .topbar .lv-pill').innerText(), '0 / 20');
+    // the summary: this builder's card in the Lab says Builder LV and the jobs line
+    const sum = await lp.evaluate(() => window.__lab.store.doc().sum?.bc || null);
+    assert(sum && /^Builder LV 1$/.test(sum.level) && sum.line === '0 / 20 jobs', 'lab.summary sent Builder LV 1 and 0 / 20 jobs: ' + JSON.stringify(sum));
     await lp.screenshot({ path: path.join(shots, 'lab-title.png') });
+    // the chip's Games button opens the six-game panel with Build Crew marked as the current game
+    await lp.locator('#lab-chip-games').click();
+    await lp.waitForSelector('.lab-gp-row.here', { timeout: 10000 });
+    assert.equal(await lp.locator('.lab-gp-row').count(), 8, 'Home, The Lab and the six games');
+    assert.match(await lp.locator('.lab-gp-row.here').textContent(), /Build Crew.*You are here/, 'Build Crew is marked as here');
+    await lp.screenshot({ path: path.join(shots, 'lab-games-panel.png') });
+    await lp.keyboard.press('Escape');
+    // the Lab button on "Who's building?", with the Lab's own look, under the cards
+    await lp.locator('#btn-player').click();
+    await lp.locator('#lab-picker-btn').waitFor();
+    assert.equal(await lp.locator('#screen-players #lab-picker-btn').count(), 1, 'the Lab button is on the picker');
+    assert.equal(await lp.locator('#screen-players a[href*="spell-jump"], #screen-players a[href*="wagon-west"]').count(), 0, 'no Also play chips');
+    await lp.screenshot({ path: path.join(shots, 'lab-picker.png') });
+    await lp.locator('#player-grid [data-profile]').filter({ hasText: 'Mia' }).click();
+    await lp.locator('#title').waitFor();
     // Locked: the board shows the lock and the price, the sandbox has only what was earned, a locked blueprint will not start.
     await lp.locator('#jobs').click();
     assert.equal(await lp.locator('#blueprint-row .job-tile').count(), 4);
@@ -179,6 +204,10 @@ async function labStages() {
       ['false', 'false', 'false', 'false'],
     );
     assert.match(await lp.locator('#blueprint-row .job-tile').first().textContent(), /2,400 Lab coins/);
+    assert(await lp.locator('#blueprint-row .job-tile .lab-amt svg.lab-coin').count() >= 4, 'every blueprint price carries the Lab coin icon');
+    assert.equal(await lp.locator('#blueprint-row .job-tile').first().innerText().then((t) => /\$/.test(t)), false, 'never a dollar sign');
+    assert(await lp.locator('[data-job="1"] .pay svg.lab-coin').count() === 1, 'a job card payout carries the Lab coin icon');
+    assert.match(await lp.locator('[data-job="1"] .pay').innerText(), /52 Lab coins · 64 XP/);
     assert.match(await lp.locator('#vehicle-row .job-tile').nth(1).textContent(), /12,000 Lab coins/);
     await lp.screenshot({ path: path.join(shots, 'lab-board-locked.png') });
     await lp.locator('#modal-close').click();
@@ -287,8 +316,8 @@ async function labStages() {
     await addBuilder(bp, 'Solo');
     await bp.waitForTimeout(1500);
     assert.equal(await bp.evaluate(() => !!window.__lab), false, 'the Lab never loaded');
-    assert.equal(await bp.locator('#lab-open').isHidden(), true);
-    assert.equal(await bp.locator('#lab-gallery').isHidden(), true);
+    assert.equal(await bp.locator('.lab-chipx').count(), 0, 'no Lab chip when the Lab is blocked');
+    assert.equal(await bp.locator('#picker-lab > *').count(), 0, 'no Lab picker button when the Lab is blocked');
     assert.equal(await bp.locator('#lab-hud > *').count(), 0);
     await bp.locator('#jobs').click();
     assert.equal(await bp.locator('.job-tile').count(), JOBS, 'only the twenty jobs are on the board');

@@ -8,7 +8,8 @@ import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { refreshStreak } from '../../../spell-jump/src/meta/engagement.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { BLUEPRINTS, LAB_MACHINES, MACHINES, labVehicleId, JOB_COUNT, SITE_JOBS } from '../content.mjs';
-import { jobPayout, payoutText, measureLine } from '../payout.mjs';
+import { jobPayout, measureLine } from '../payout.mjs';
+import { LOOKS_PRICES } from '../meta/labLooks.js';
 import { blueprintSvg } from '../blueprint.mjs';
 import { labBridge } from '../meta/labBridge.js';
 import { VEHICLE_PRICE } from './vehiclePrice.mjs';
@@ -143,10 +144,6 @@ export function renderTitle() {
   const jobsDone = save.done.filter((id) => id <= JOB_COUNT).length;
   $('#done-total').textContent = `${jobsDone} / ${JOB_COUNT}`;
   $('#title-jobs').textContent = `${jobsDone} / ${JOB_COUNT}`;
-  const streak = save.streak?.count || 0;
-  $('#title-streak').hidden = !streak;
-  $('#title-streak').dataset.count = String(streak);
-  $('#title-streak-n').textContent = String(streak);
   $('#play-label').textContent = jobsDone === JOB_COUNT ? 'Build again' : jobsDone ? 'Next job' : 'Start building';
   $('#my-yard').hidden = !save.yard;
   $('#saved-thumb').replaceChildren();
@@ -169,17 +166,26 @@ export function renderSound() {
   b.classList.toggle('off', !app.settings.sound);
 }
 
-/** The home menu's two Lab buttons ("The Lab" and "Gallery") exist only once the Lab has loaded: with /lab/ missing or
- *  blocked they never appear and the menu is exactly the game's own. The menu grid is told how many buttons show, and
- *  an odd last one spans the row. */
+/** The home menu has no Lab buttons of its own any more: the Lab chip (top-left) opens The Lab and the Games panel. The menu
+ *  grid is told how many buttons show, and an odd last one spans the row. Also sends this builder's card to the Lab. */
 export function renderLab() {
-  const on = labBridge.ready && !!app.playerId;
-  for (const id of ['lab-open', 'lab-gallery']) $('#' + id).hidden = !on;
   const row = $('#title .menu-row'),
     shown = [...row.children].filter((b) => !b.hidden);
   row.dataset.count = String(shown.length);
   for (const b of shown) b.classList.toggle('wide', shown.length % 2 === 1 && b === shown.at(-1));
 }
+
+/** The Lab's card for Build Crew (lab/docs/COHESION.md section 4): "Builder LV n" (one more than the jobs finished), "N / 20
+ *  jobs" and no daily target. Sent when the home screen shows and after each job; the same text twice is a no-op. */
+export function labSummary() {
+  if (!app.playerId || !app.save) return;
+  const done = app.save.done.filter((id) => id <= JOB_COUNT).length;
+  labBridge.summary({ level: `Builder LV ${done + 1}`, line: `${done} / ${JOB_COUNT} jobs`, today: '', lastPlayed: Date.now() });
+}
+
+/** A Lab-coin amount as markup: the Lab coin icon, the number and "Lab coins" ("" icon until the Lab has loaded). */
+export const payHtml = (p) => `<span class="lab-amt">${labBridge.coinIcon(14)}<span>${p.coins} Lab coins · ${p.xp} XP</span></span>`;
+export const labCoins = (n, size = 16) => `<span class="lab-amt">${labBridge.coinIcon(size)}<span>${n.toLocaleString('en-US')} Lab coins</span></span>`;
 
 /** The looks row: earned paints (plus Original), the star and stripe decals, and the bell horn. The buttons change
  *  the current builder's save when pressed. */
@@ -287,7 +293,7 @@ export function jobBoard() {
           h('b', {}, h('span', { class: 'sr-only' }, `Job ${r.id}${done ? ', done' : ''}: `), r.title),
           h('small', {}, r.reward),
           // what the job pays in the Lab (only once the Lab is there), and the blueprint's measurements in metres
-          lab ? h('small', { class: 'pay' }, payoutText(jobPayout(r, { replay: done }))) : null,
+          lab ? h('small', { class: 'pay', html: payHtml(jobPayout(r, { replay: done })) }) : null,
           measureLine(r) ? h('small', { class: 'measure' }, measureLine(r)) : null,
         );
       }),
@@ -320,8 +326,8 @@ export function jobBoard() {
                   owned ? '' : h('span', { class: 'lock', html: icon('lock') }),
                   `${save.done.includes(r.id) ? '✓ ' : ''}${r.title}`,
                 ),
-                h('small', {}, owned ? 'Blueprint' : `${labBridge.price(r.lab, r.price).toLocaleString('en-US')} Lab coins`),
-                lab ? h('small', { class: 'pay' }, payoutText(jobPayout(r, { replay: save.done.includes(r.id) }))) : null,
+                owned ? h('small', {}, 'Blueprint') : h('small', { html: labCoins(LOOKS_PRICES[r.lab] ?? r.price) }),
+                lab ? h('small', { class: 'pay', html: payHtml(jobPayout(r, { replay: save.done.includes(r.id) })) }) : null,
                 h('small', { class: 'measure' }, measureLine(r)),
               );
             }),
@@ -343,7 +349,9 @@ export function jobBoard() {
                   onclick: () => (owned ? startRound(0) : labBridge.openShop({})),
                 },
                 h('b', {}, owned ? '' : h('span', { class: 'lock', html: icon('lock') }), MACHINES[k].label),
-                h('small', {}, owned ? 'In your sandbox' : `${labBridge.price(labVehicleId(k), VEHICLE_PRICE[k]).toLocaleString('en-US')} Lab coins`),
+                owned
+                  ? h('small', {}, 'In your sandbox')
+                  : h('small', { html: labCoins(LOOKS_PRICES[labVehicleId(k)] ?? VEHICLE_PRICE[k]) }),
               );
             }),
           )
@@ -379,6 +387,7 @@ export function showTitle() {
   leavePlay();
   showMenu('title');
   renderTitle();
+  labSummary();
   Music.play(true);
   if (fromPlay) {
     app.updater.check();

@@ -227,5 +227,5 @@ comes back to that builder's home screen (`sessionStorage`), as in Spell Jump. T
 job-complete card are the family's `.card.sheet`; the Parent Zone, toasts and the Lab pill use the family's look and
 places. The job HUD keeps its 0.4 sizes and places (the touch layout is unchanged) and takes the family's chips,
 beveled buttons and display face. `shell.css` holds all of it and loads last; style.css lost the 0.6 title, cream Parent
-Zone and modal-keyboard rules. Version 0.8.0: `VERSION` in `src/content.mjs`, cache `build-crew-v0.8.0` in `sw.js`,
+Zone and modal-keyboard rules. Version 0.8.1: `VERSION` in `src/content.mjs`, cache `build-crew-v0.8.1` in `sw.js`,
 `offline.js` regenerated for `shell.css`, `src/app/players.js` and the fonts.

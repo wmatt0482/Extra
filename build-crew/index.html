@@ -59,10 +59,10 @@
         </div>
         <div class="players-body scroll">
           <div class="player-grid" id="player-grid"></div>
+          <!-- The Lab's button, last on the picker like every game (lab/docs/COHESION.md section 3) -->
+          <div class="picker-lab" id="picker-lab"></div>
           <div class="pl-foot">
             <button class="sync-chip" id="sync-chip" hidden></button>
-            <a class="btn btn-sm pl-link pl-other" id="btn-spelljump" href="../spell-jump/">Also play: Spell Jump<span data-icon="right"></span></a>
-            <a class="btn btn-sm pl-link pl-other" id="btn-wagonwest" href="../wagon-west/">Wagon West<span data-icon="right"></span></a>
           </div>
         </div>
       </section>
@@ -84,12 +84,11 @@
       <!-- ===== Home: the builder's top bar, the logo, Start building and the menu; the live yard behind ===== -->
       <section class="screen" id="title" hidden aria-labelledby="game-title">
         <div class="topbar">
-          <button class="btn player-chip" id="btn-player" aria-label="Switch builder"
+          <!-- The one Lab chip, top-left (lab.mountChip); the only flame in this header is its streak -->
+          <div class="title-chip-host" id="title-chip-host"></div
+          ><button class="btn player-chip" id="btn-player" aria-label="Switch builder"
             ><span class="pl-badge" id="title-avatar" aria-hidden="true"></span><span id="title-player">Builder</span
             ><b class="lv-pill" id="title-jobs">0 / 20</b></button
-          ><span class="chip streak-chip" id="title-streak" data-count="0" hidden
-            ><span data-icon="flame"></span><b id="title-streak-n">0</b></span
-          ><div class="lab-slot" id="lab-slot-title"></div
           ><button class="btn icon-btn" id="sound-title" aria-label="Sound on"><span data-icon="sound"></span></button>
         </div>
         <div class="title-main">
@@ -106,8 +105,6 @@
                 ><span id="saved-thumb" aria-hidden="true"></span><span data-icon="crate"></span>Saved site</button
               >
               <button class="btn" id="parents"><span data-icon="lock"></span>Parents</button>
-              <button class="btn" id="lab-open" hidden><span data-icon="flask"></span>The Lab</button>
-              <button class="btn" id="lab-gallery" hidden><span data-icon="star"></span>Gallery</button>
             </div>
             <div id="looks" class="looks"></div>
           </div>

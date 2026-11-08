@@ -25,7 +25,7 @@ export async function placingStage({ browser, BASE, shots, errors, results, mark
   await page.keyboard.type('Mia');
   await page.keyboard.press('Enter');
   await page.locator('#title').waitFor();
-  await page.waitForFunction(() => window.__lab && !document.querySelector('#lab-open').hidden, undefined, { timeout: 30000 });
+  await page.waitForFunction(() => window.__lab && document.querySelector('#title-chip-host .lab-chipx'), undefined, { timeout: 30000 });
   const shot = (name) => page.screenshot({ path: path.join(shots, name + '.png') });
   const adv = (axes, n) => page.evaluate(([a, n]) => window.__buildCrew.test.advance(a, n), [axes, n]);
   const st = () => page.evaluate(() => window.__buildCrew.state);
@@ -93,13 +93,13 @@ export async function placingStage({ browser, BASE, shots, errors, results, mark
 
   // ---- the job card, the intro and the payout ---------------------------------------------------------------------------
   await page.locator('#jobs').click();
-  assert.match(await page.locator('[data-job="1"]').textContent(), /52 coins · 64 XP/, 'the job card shows the payout');
+  assert.match(await page.locator('[data-job="1"]').textContent(), /52 Lab coins · 64 XP/, 'the job card shows the payout');
   assert.match(await page.locator('[data-job="3"]').textContent(), /Foundation grid: 5\.2 m long, 1\.2 m tall/, 'a blueprint job card shows its metres');
   await shot('job-card-payout');
   await page.locator('#modal-close').click();
   await page.evaluate(() => window.__buildCrew.test.start(1));
   await page.waitForTimeout(250);
-  assert.equal(await page.locator('#job-number').getAttribute('data-pay'), '52 coins · 64 XP');
+  assert.equal(await page.locator('#job-number').getAttribute('data-pay'), '52 Lab coins · 64 XP');
   await page.waitForFunction(() => /PAYS 52 LAB COINS AND 64 XP/i.test(document.querySelector('#toasts').innerText), undefined, { timeout: 10000 });
   await shot('job-intro-payout');
   mark('job 1: payout on the card and in the intro');
@@ -216,6 +216,7 @@ export async function placingStage({ browser, BASE, shots, errors, results, mark
   burst = await page.locator('#payout-burst').innerText();
   assert.match(burst, /JOB COMPLETE/i);
   assert.match(burst, /\+52 LAB COINS · \+64 XP/i, 'the celebration shows the exact payout');
+  assert.equal(await page.locator('#payout-burst svg.lab-coin').count(), 1, 'the payout burst carries the Lab coin icon');
   await shot('celebration-payout');
   await page.waitForSelector('#next-round', { timeout: 45000 });
   assert.match(await page.locator('#payout-line').innerText(), /\+52 LAB COINS · \+64 XP/i, 'the sheet repeats it');
@@ -225,7 +226,8 @@ export async function placingStage({ browser, BASE, shots, errors, results, mark
 
   // Gallery gets the build
   await page.locator('#to-base').click();
-  await page.locator('#lab-gallery').click();
+  await page.locator('#lab-chip-main').click();
+  await page.locator('.lab-overlay').getByRole('tab', { name: /Gallery/ }).or(page.locator('.lab-overlay').getByText('Gallery', { exact: true })).first().click();
   await page.waitForFunction(() => /Cargo transfer/.test(document.querySelector('.lab-overlay')?.innerText || ''), undefined, { timeout: 15000 });
   await shot('gallery');
   mark('the Gallery holds the Cargo transfer build');

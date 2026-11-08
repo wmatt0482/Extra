@@ -38,7 +38,7 @@ import { PAINTS, rewardArt } from '../scene/machines.js';
 import { app, persist, account, activePlay, setSetting, applyLook } from './state.js';
 import { MACHINE_UI, toast, showHint, modal, closeModal, renderMachines, updateUI } from './hud.js';
 import { prepareVoice, say } from './voice.js';
-import { showTitle } from './title.js';
+import { showTitle, labSummary, payHtml } from './title.js';
 import { goalStep } from './goals.js';
 import { resetClock } from './loop.js';
 
@@ -118,7 +118,9 @@ function showPayout(round) {
     if (app.yard?.round !== round || !round.id) return;
     const pay = jobPayout(round, { replay: app.save.done.includes(round.id) });
     // drawn by the stylesheet from data-pay, so the label's own text stays "THE YARD / JOB 01"
-    label.dataset.pay = `${pay.coins} coins · ${pay.xp} XP`;
+    label.dataset.pay = `${pay.coins} Lab coins · ${pay.xp} XP`;
+    const coin = labBridge.coinIcon(14);
+    if (coin) label.style.setProperty('--coin', `url("data:image/svg+xml;utf8,${encodeURIComponent(coin.replace('<svg ', '<svg xmlns="http://www.w3.org/2000/svg" '))}")`);
     toast(payoutLine(pay));
     const m = measureLine(round);
     if (m) toast(m);
@@ -407,7 +409,7 @@ function win() {
         'div',
         { class: 'payout-burst', id: 'payout-burst', role: 'status' },
         h('b', {}, 'Job complete!'),
-        h('span', {}, `+${earned.coins} Lab coins · +${earned.xp} XP`),
+        h('span', { html: `<span class="lab-amt">${labBridge.coinIcon(22)}<span>+${earned.coins} Lab coins · +${earned.xp} XP</span></span>` }),
         earned.bonus.coins || earned.bonus.xp
           ? h('small', {}, `and +${earned.bonus.coins} coins · +${earned.bonus.xp} XP for your first job today`)
           : null,
@@ -417,6 +419,7 @@ function win() {
   // The job is done: the hint line empties and stays empty until the next job starts. Controls rest during the show.
   setJobDone(true);
   app.yard.lockMatched();
+  labSummary();
   showHint('');
   app.paused = true;
   app.controls.clear();
@@ -465,7 +468,11 @@ function reveal(show) {
     }),
     h('p', { class: 'reward-line' }, bp ? 'Blueprint complete.' : `Job complete. Unlocked: ${r.reward}.`),
     app.payout && (app.payout.coins || app.payout.xp)
-      ? h('p', { class: 'payout-line', id: 'payout-line' }, `+${app.payout.coins} Lab coins · +${app.payout.xp} XP`)
+      ? h('p', {
+          class: 'payout-line',
+          id: 'payout-line',
+          html: `<span class="lab-amt">${labBridge.coinIcon(18)}<span>+${app.payout.coins} Lab coins · +${app.payout.xp} XP</span></span>`,
+        })
       : null,
     app.payout?.bonus.coins || app.payout?.bonus.xp
       ? h('p', { class: 'payout-bonus', id: 'payout-bonus' }, `and +${app.payout.bonus.coins} coins · +${app.payout.bonus.xp} XP for your first job today`)

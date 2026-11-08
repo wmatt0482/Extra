@@ -109,8 +109,6 @@ const BUTTONS = {
   'close-tray': closeTray,
   'clear-yard': clearSite,
   wreck: toggleWreckingBall,
-  'lab-open': () => labBridge.openHome({}),
-  'lab-gallery': () => labBridge.openHome({ view: 'gallery' }),
   'sound-title': () => {
     setSetting('sound', !app.settings.sound);
     renderSound();
@@ -245,7 +243,8 @@ const TITLE_YARD = {
 function startLab() {
   if (app.playerId) attachLab(app.playerId);
   app.labHud = labBridge.hud({ mount: $('#lab-hud'), compact: isTouchLayout() });
-  app.labTitleHud = labBridge.hud({ mount: $('#lab-slot-title'), compact: true });
+  mountTitleChip();
+  labBridge.mountPickerButton($('#picker-lab'));
   labBridge.onReady(() => {
     renderLab();
     applyLook();
@@ -256,6 +255,16 @@ function startLab() {
   });
 }
 const isTouchLayout = () => document.documentElement.classList.contains('touch');
+
+/** The one Lab chip, top-left of the home screen (lab/docs/COHESION.md section 1): compact on a phone (narrow, or short and
+ *  touch), themed to the yard's yellow and steel. It is mounted again when the window changes between the two sizes. */
+const phoneMq = window.matchMedia ? window.matchMedia('(max-width: 520px), (max-height: 520px) and (pointer: coarse)') : { matches: false };
+function mountTitleChip() {
+  app.titleChip?.destroy();
+  $('#title-chip-host').replaceChildren();
+  app.titleChip = labBridge.mountChip($('#title-chip-host'), { game: 'bc', current: 'bc', compact: phoneMq.matches, theme: 'dark' });
+}
+phoneMq.addEventListener?.('change', mountTitleChip);
 
 /** Loads physics and the renderer, settles the title yard for 1.5 simulated seconds and shows "Who's building?" (or,
  *  after a reload in the same tab, that builder's home screen). */
