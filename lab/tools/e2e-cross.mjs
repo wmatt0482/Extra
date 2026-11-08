@@ -168,7 +168,7 @@ try {
       await page.waitForFunction(() => window.__buildCrew, null, { timeout: 60000 });
       await page.locator('[data-profile]').filter({ hasText: name }).first().click();
       await page.waitForFunction(() => window.__buildCrew.state.screen === 'title' && window.__buildCrew.state.playerId, null, { timeout: 15000 });
-      await page.waitForFunction(() => window.__lab && document.querySelector('#lab-open') && !document.querySelector('#lab-open').hidden, null, { timeout: 20000 });
+      await page.waitForFunction(() => window.__lab && document.querySelector('#title-chip-host .lab-chipx'), null, { timeout: 20000 });
       await page.locator('#jobs').click();
       const board = await page.evaluate(() => ({
         jobs: [...document.querySelectorAll('.job-grid:not(.blueprints):not(.vehicles) .job-tile')].map((e) => ({ id: e.dataset.job, disabled: e.disabled })),
