@@ -365,6 +365,18 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {}, voiceW
     }
   }
 
+  // v3.11: the word counts the moment its result is known (ctx.onResult banks it), not when the celebration ends: leaving the panel
+  // during the banner no longer loses the word
+  function resultOf(st) {
+    const [powerScale, nitroScale] = st.result.power;
+    return { word: st.word, firstTry: st.result.firstTry, fixed: st.result.fixed, bonus: st.result.firstTry ? st.bonus : 0, powerScale, nitroScale, misses: st.misses };
+  }
+  function answered(st) {
+    if (st.answered) return;
+    st.answered = true;
+    if (typeof st.ctx.onResult === 'function') { try { st.ctx.onResult(resultOf(st)); } catch (e) { console.error('[spellPanel] onResult', e); } }
+  }
+
   async function flow(st) {
     note.hidden = true;           // the no-speech hint shows once per app session (tts.hintShown)
     retry.hidden = true;          // the retry belongs to one word
@@ -414,6 +426,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {}, voiceW
       st.result = { firstTry: true, fixed: false, power: POWER.perfect };
       st.bonus = spellBonus(st.ctx.streakBefore || 0, st.ctx.coinMult || 1);
       st.streak = (st.ctx.streakBefore || 0) + 1;
+      answered(st);
       await celebrate(st, 'perfect');
       return;
     }
@@ -424,6 +437,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {}, voiceW
       attempt = await cover(st, round);
       if (attempt === st.word) {
         st.result = { firstTry: false, fixed: true, power: POWER.fixed };
+        answered(st);
         await celebrate(st, 'fixed');
         return;
       }
@@ -431,6 +445,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {}, voiceW
     }
     await compare(st, attempt);
     st.result = { firstTry: false, fixed: false, power: POWER.anyway };
+    answered(st);
     await celebrate(st, 'anyway');
   }
 
@@ -471,8 +486,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {}, voiceW
         st.resolve = resolve;
         flow(st).then(() => {
           if (st.dead) return;
-          const [powerScale, nitroScale] = st.result.power;
-          const out = { word, firstTry: st.result.firstTry, fixed: st.result.fixed, bonus: st.result.firstTry ? st.bonus : 0, powerScale, nitroScale, misses: st.misses };
+          const out = resultOf(st);
           st.resolve = null;
           finishUI(!!ctx.keepOpen);
           resolve(out);

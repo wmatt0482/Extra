@@ -144,9 +144,9 @@ export function createTestScreen(root, { tts, audio, voiceWaitMs = VOICE_WAIT_MS
   }
 
   function progress(st) {
-    const i = st.results.length;
-    count.textContent = `${Math.min(i + 1, st.words.length)} / ${st.words.length}`;
-    bar.firstChild.style.width = `${(i / st.words.length) * 100}%`;
+    const i = st.results.length, n = st.total;
+    count.textContent = `${Math.min(i + 1, n)} / ${n}`;
+    bar.firstChild.style.width = `${n ? (i / n) * 100 : 0}%`;
   }
 
   function showCard(st, { heading, lines, button, cls = '' }) {
@@ -217,6 +217,8 @@ export function createTestScreen(root, { tts, audio, voiceWaitMs = VOICE_WAIT_MS
       const a = await waitCheck(); guard(st);
       const correct = a === w.word;
       st.results.push({ word: w.word, correct });
+      // v3.11: the answer counts the moment it is given (the game banks it here), so leaving the test now loses nothing
+      if (st.onAnswer) { try { st.onAnswer({ word: w.word, correct }); } catch (e) { console.error('[testMode] onAnswer', e); } }
       if (correct) {
         root.dataset.mode = 'right';
         audio.correct && audio.correct();
@@ -250,9 +252,12 @@ export function createTestScreen(root, { tts, audio, voiceWaitMs = VOICE_WAIT_MS
     get mode() { return root.dataset.mode || null; },
     get word() { return S ? S.word : null; },
     /** opts: { kind: 'qualifier'|'friday', title, words: [{word, sentence, sayAs}], upper, intro: {heading, lines, button},
-     *          summary(results) → {heading, lines, button} } */
+     *          answered?: [{word, correct}] (resume), onAnswer?({word, correct}) (called at each answer), summary(results) → {heading, lines, button} } */
     run(opts) {
-      const st = S = { ...opts, words: shuffle(opts.words), results: [], attempt: '', typing: false, dead: false };
+      // opts.answered: [{ word, correct }] already banked by an earlier sitting of this same test; those words are not asked again
+      const prior = (opts.answered || []).filter((a) => opts.words.some((w) => w.word === a.word)).map((a) => ({ word: a.word, correct: !!a.correct }));
+      const left = opts.words.filter((w) => !prior.some((a) => a.word === w.word));
+      const st = S = { ...opts, words: shuffle(left), total: opts.words.length, results: prior, attempt: '', typing: false, dead: false };
       title.textContent = opts.title;
       root.dataset.kind = opts.kind;
       kb.setUpper(!!opts.upper);

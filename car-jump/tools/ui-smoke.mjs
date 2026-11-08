@@ -441,7 +441,7 @@ async function runLayout(browser, layout) {
     mission: document.querySelector('#title-mission-text').textContent, sample: !document.querySelector('#title-sample').hidden,
     links: [...document.querySelectorAll('a[href]')].filter((a) => a.origin !== location.origin).length,   // the Learning Lab home link is same-origin
   }));
-  check(title.buttons.join('|') === 'play|friday test|badges|trophies|parents', `title buttons: ${title.buttons.join(', ')}`);
+  check(title.buttons.join('|') === 'play|friday test|badges|trophies|days|parents', `title buttons: ${title.buttons.join(', ')}`);
   check(title.mission === 'Today: 0 / 8 words' && title.sample, `title shows "${title.mission}" and the Sample-list notice`);
   check(title.links === 0, 'no external links anywhere');
 
@@ -1112,7 +1112,7 @@ async function engagement(browser, layout) {
     `family board: ${board.rows.map((r) => `${r.rank}. ${r.id} ${r.words} words, streak ${r.streak}, ${r.jump} m`).join(' | ')}`);
   check(board.crownOn.join() === 'pleo', `crown on the leader's tile (${board.crownOn})`);
   check(board.nudge === 'Leo is 3 words ahead', `nudge: "${board.nudge}"`);
-  check(board.levels.pmia === 'Lv 1' && board.levels.pleo === 'Lv 3', `tiles show the level (${JSON.stringify(board.levels)})`);
+  check(board.levels.pmia === 'Speller LV 1' && board.levels.pleo === 'Speller LV 3', `tiles show the level (${JSON.stringify(board.levels)})`);
   await shot(page, layout, `e01-picker-board`);
   await layoutAudit(page, layout.insets, 'picker with family board');
 
@@ -1125,9 +1125,9 @@ async function engagement(browser, layout) {
     bar: document.querySelector('#title-lv-bar').style.width, crate: !document.querySelector('#btn-crates').hidden, buttons: [...document.querySelectorAll('#screen-title .title-actions button')].map((b) => b.textContent.replace(/\d+/g, '').trim().toLowerCase()) }));
   const s0 = await readSave(page);
   check(t.flame === '2' && s0.streak.shieldUsedDays.includes(seed.yesterday), `title flame "${t.flame}": yesterday (${seed.yesterday}) was missed and the week's shield covered it (${s0.streak.shieldUsedDays})`);
-  check(t.lv === 'Lv 1' && t.lvName === 'Rookie Speller' && t.bar === '90%', `level row: ${t.lv} · ${t.lvName}, bar ${t.bar}`);
+  check(t.lv === 'Speller LV 1' && t.lvName === 'Rookie Speller' && t.bar === '90%', `level row: ${t.lv} · ${t.lvName}, bar ${t.bar}`);
   check(!t.crate, 'no crate button while no crate waits');
-  check(t.buttons.join('|') === 'play|friday test|badges|trophies|parents', `title buttons: ${t.buttons.join(', ')}`);
+  check(t.buttons.join('|') === 'play|friday test|badges|trophies|days|parents', `title buttons: ${t.buttons.join(', ')}`);
   await shot(page, layout, 'e02-title');
   await layoutAudit(page, layout.insets, 'title (flame, level)');
   await page.click('#btn-streak');
@@ -1219,7 +1219,7 @@ async function engagement(browser, layout) {
   await page.click('#screen-garage [data-back]');
   await page.waitForSelector(visibleSel('#screen-title'));
   t = await J(page, () => ({ crate: document.querySelector('#btn-crates').hidden ? null : document.querySelector('#btn-crates').textContent.trim(), flame: document.querySelector('#title-streak').textContent, lv: document.querySelector('#title-lv').textContent }));
-  check(t.crate === '1 crate' && t.flame === '3' && t.lv === 'Lv 3', `title: "${t.crate}" button, flame ${t.flame}, ${t.lv}`);
+  check(t.crate === '1 crate' && t.flame === '3' && t.lv === 'Speller LV 3', `title: "${t.crate}" button, flame ${t.flame}, ${t.lv}`);
   await shot(page, layout, 'e10-title-crate');
   await layoutAudit(page, layout.insets, 'title (crate waiting)');
   await page.click('#btn-crates');
@@ -2527,6 +2527,115 @@ async function skyTeaserTest(browser, layout, { reduced = false } = {}) {
   await ctx.close();
 }
 
+// v3.11: every answered word banks at once. A Qualifier left midway keeps its answers (the word records, today's count, the cash) and resumes where it
+// stopped next time without asking the answered words again; a race word answered and then left mid-banner still counts.
+async function bankingTest(browser, layout) {
+  console.log(`\n=== every word banks when it is answered (${layout.name}) ===`);
+  const context = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
+  await routeFonts(context);
+  const page = await context.newPage();
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.(googleapis|gstatic)|\/lab\/src\//.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.addInitScript(({ insets }) => { window.__noSkyTeaser = true;
+    window.__spoken = [];
+    window.__noClassLists = true;
+    window.__ttsBackend = {
+      speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
+      cancel() {}, addEventListener() {},
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const s = document.createElement('style');
+      s.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(s);
+    });
+  }, { insets: layout.insets });
+  await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  const WS8 = ['shred', 'screw', 'strap', 'string', 'scrub', 'spray', 'straw', 'splash'];
+  await J(page, async ({ ws }) => {
+    const S = await import('/src/spelling/scheduler.js');
+    const now = Date.now(), DAY = 864e5, dk = (t) => S.dayKey(t);
+    localStorage.clear();
+    localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, migrated: true, lastPlayer: 'pmia', options: { pmia: { wordsPerRace: 1 } },
+      players: [{ id: 'pmia', name: 'Mia', color: '#ff3b5c', createdAt: 1, updatedAt: 1 }] }));
+    localStorage.setItem('spellJump.pmia.save', JSON.stringify({ v: 2, cash: 1000, owned: ['beater'], selectedCar: 'beater', seen: { coach: true, ach: 0 } }));
+    localStorage.setItem('spellJump.pmia.words', JSON.stringify({ v: 1, lists: [{ id: 'L1', name: 'Scr words', createdAt: now - DAY, archivedAt: 0, pattern: '', words: ws.map((word) => ({ word })) }], activeId: 'L1',
+      records: {}, tests: [], qualifierPending: 'L1', today: { date: dk(now), count: 0, newCount: 0, missionPaid: false }, streak: 0, bestStreak: 0, perfectTotal: 0 }));
+  }, { ws: WS8 });
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const rawWords = () => J(page, () => JSON.parse(localStorage.getItem('spellJump.pmia.words')));
+  const rawSave = () => J(page, () => JSON.parse(localStorage.getItem('spellJump.pmia.save')));
+  const askOne = async () => {
+    await page.waitForFunction(() => document.querySelector('#screen-test').dataset.mode === 'ask' && !document.querySelector('#tm-keyboard').classList.contains('is-disabled'), null, { timeout: 9000 });
+    const w = await J(page, () => window.__spellJump.testScreen.word);
+    await tapKeys(page, '#tm-keyboard', w);
+    await page.tap('#tm-keyboard [data-key="enter"]');
+    await page.waitForFunction(() => document.querySelector('#screen-test').dataset.mode === 'right', null, { timeout: 4000 });
+    return w;
+  };
+  // ---- Qualifier: two right answers, then leave mid-test (during the "Yes!" feedback)
+  await page.click('#btn-play');
+  await page.waitForSelector('#tm-go');
+  check(/New words!/.test(await page.textContent('#screen-test h3')), 'first sitting: the Qualifier intro says "New words!"');
+  await page.click('#tm-go');
+  const asked1 = [await askOne()];
+  await page.waitForFunction(() => document.querySelector('#screen-test').dataset.mode === 'ask', null, { timeout: 5000 });
+  const mid = await rawWords(), midSave = await rawSave();
+  check(mid.today.count === 1 && midSave.cash === 1100, `word 1 banked at once: today ${mid.today.count} / 8, cash ${midSave.cash}`);
+  asked1.push(await askOne());
+  await page.click('#tm-exit');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const w2 = await rawWords(), s2 = await rawSave();
+  check(w2.today.count === 2 && s2.cash === 1200, `left mid-test: today ${w2.today.count} / 8, cash ${s2.cash} (+$100 a word kept)`);
+  check(asked1.every((w) => w2.records[w] && w2.records[w].box >= 2 && w2.records[w].seenCount >= 1), `the answered words keep their results (${asked1.join(', ')}: box ${asked1.map((w) => w2.records[w].box).join(',')})`);
+  check(w2.testRun && w2.testRun.kind === 'qualifier' && w2.testRun.results.length === 2 && w2.tests.length === 0 && w2.qualifierPending === 'L1', 'the Qualifier is still pending with its 2 answers remembered, no test entry yet');
+  check(/Today: 2 \/ 8 words/i.test(await page.textContent('#title-mission-text')), `the title says "${await page.textContent('#title-mission-text')}"`);
+  // ---- next time (a fresh load): it resumes where it stopped
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  check(/new words/i.test(await page.textContent('#btn-play')), 'PLAY still announces the new words');
+  await page.click('#btn-play');
+  await page.waitForSelector('#tm-go');
+  const intro = await J(page, () => ({ h: document.querySelector('#screen-test h3').textContent, p: document.querySelector('#screen-test .tm-card p').textContent, count: document.querySelector('#tm-count').textContent }));
+  check(/Welcome back/.test(intro.h) && /2 of 8/.test(intro.p) && intro.count === '3 / 8', `resume intro: "${intro.h}" · "${intro.p}" · counter ${intro.count}`);
+  await page.click('#tm-go');
+  const asked2 = [];
+  for (let i = 0; i < 6; i++) {
+    asked2.push(await askOne());
+    if (i < 5) await page.waitForFunction(() => document.querySelector('#screen-test').dataset.mode === 'ask', null, { timeout: 5000 });
+  }
+  check(asked2.every((w) => !asked1.includes(w)) && new Set(asked2).size === 6, `the answered words are not asked again (asked now: ${asked2.join(', ')})`);
+  await page.waitForSelector('#tm-score', { timeout: 8000 });
+  check((await page.textContent('#tm-score')).trim() === '8 / 8', `the end card counts all 8 (${(await page.textContent('#tm-score')).trim()})`);
+  const w3 = await rawWords(), s3 = await rawSave();
+  const q = w3.tests.find((t) => t.kind === 'qualifier');
+  check(q && q.correct === 8 && q.total === 8 && !w3.qualifierPending && !w3.testRun && s3.cash === 2300, `finished: one Qualifier entry 8/8, no longer pending, nothing left to resume, cash ${s3.cash} (= 1000 + 8 × $100 + the $500 mission the 8th word completes, each paid once)`);
+  await page.click('#tm-go');
+  await page.waitForFunction(() => document.querySelector('#screen-garage') && !document.querySelector('#screen-garage').hidden, null, { timeout: 8000 }).catch(async () => { console.log('  (screen after the Qualifier:', await J(page, () => [...document.querySelectorAll('.screen')].filter((x) => !x.hidden).map((x) => x.id).join()), ')'); });
+  // ---- a race word answered, then the panel is left during the banner: the word still counts
+  await J(page, () => { const S = window.__spellJump; S.words.today = { date: S.words.today.date, count: 0, newCount: 0, missionPaid: false }; S.app.persistWords(); });
+  const cash0 = (await rawSave()).cash;
+  await J(page, () => window.__spellJump.app.startRun({ trackId: 'canyon' }));
+  await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 8000 });
+  await waitMode(page, 'write', 9000);
+  const rw = await J(page, () => window.__spellJump.spellPanel.word);
+  await tapKeys(page, '#sp-keyboard', rw);
+  await page.tap('#sp-keyboard [data-key="enter"]');
+  await page.waitForFunction(() => window.__spellJump.spellPanel.mode === 'done', null, { timeout: 4000 });
+  await page.click('#spell .sp-exit');                             // the back button during the banner
+  await page.waitForSelector(visibleSel('#screen-garage'));
+  const w4 = await rawWords(), s4 = await rawSave();
+  check(w4.today.count === 1 && w4.records[rw].firstTry >= 1 && s4.cash > cash0, `a race word left mid-banner still counts: today ${w4.today.count}, "${rw}" firstTry ${w4.records[rw].firstTry}, cash ${cash0} → ${s4.cash}`);
+  check(errors.length === 0, `no console errors (${errors.join(' | ')})`);
+  await context.close();
+}
+
 const only = process.env.ONLY;
 try {
   for (const l of LAYOUTS) if (!only || only === l.name) await runLayout(browser, l);
@@ -2536,6 +2645,7 @@ try {
   if (!only || only === 'update') await selfUpdate(browser);
   for (const l of LAYOUTS) if (!only || only === 'cloud') await cloudVoiceTest(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'levels' || only === l.name) await levelsTest(browser, l);
+  for (const l of LAYOUTS) if (!only || only === 'bank' || only === l.name) await bankingTest(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'class' || only === l.name) await classListTest(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'class' || only === l.name) await openTitleNewWeekTest(browser, l);
   if (!only || only === 'voice') for (const sc of ['cloud', 'qualifier', 'nokey', 'slow']) await newListVoiceTest(browser, LAYOUTS[0], sc);

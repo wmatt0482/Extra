@@ -90,7 +90,7 @@ export function createPlayers(app) {
       const cv = h('canvas', { class: 'pl-avatar', 'aria-hidden': 'true' });
       const cures = app.curesFor(p.id), lv = app.levelFor(p.id);
       const b = h('button', { class: 'card pl-tile', 'data-player': p.id, 'data-sfx': '', style: { '--c': p.color }, 'aria-label': `${p.name}, level ${lv}, ${cures} neighbours cured` },
-        cv, h('span', { class: 'pl-name' }, p.name), h('span', { class: 'pl-level', 'data-level': String(lv), 'data-cures': String(cures) }, `Lv ${lv} · ${cures} cured`));
+        cv, h('span', { class: 'pl-name' }, p.name), h('span', { class: 'pl-level', 'data-level': String(lv), 'data-cures': String(cures) }, `Cure LV ${lv} · ${cures} cured`));
       b.addEventListener('click', () => app.selectPlayer(p.id));
       grid.append(b);
       drawAvatar(cv, p.color);

@@ -1,7 +1,7 @@
 // Playwright smoke test of Fraction Fright on the mock engine (?mock=1&nosw=1), landscape 844×390 and portrait 390×844
 // (iPhone safe-area insets faked), from the repo root:
 //   node fraction-fright/tools/ui-smoke.mjs        (ONLY=landscape | portrait | real runs one part)
-// Covers: the picker and a new player (on-screen keyboard), the title (the Lab first), the Zombie Lab (a real drag on
+// Covers: the picker and a new player (on-screen keyboard), the title (the Lab first), the Zombie School (a real drag on
 // the road, a cut that does not land on 1 and gets help, the three throws recorded, +100 XP, Streets open), the
 // Streets screen (★, the locked street, coming soon), wave 1 with a bull, a hit, the card stack (a second zombie's
 // small card; tapping it calls that zombie), the combo chip (from ×2; gone after a miss), a near (the nudge arrow), a
@@ -185,9 +185,9 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '01-players');
   await audit(page, layout.insets, 'player picker');
   const pick = await J(page, () => ({ tiles: document.querySelectorAll('[data-player]').length, add: !!document.querySelector('#pl-add'), origin: location.origin,
-    home: document.querySelector('#btn-home').href, sj: document.querySelector('#btn-spelljump').href, tb: document.querySelector('#btn-trailblazer').href }));
+    home: document.querySelector('#btn-home').href, cross: document.querySelectorAll('#screen-players a[href*="spell-jump"], #screen-players a[href*="trail-blazer"]').length, labSlot: !!document.querySelector('#picker-lab') }));
   check(pick.tiles === 0 && pick.add, 'picker is the first screen, with "+ New player"');
-  check(pick.home === pick.origin + '/' && pick.sj === pick.origin + '/spell-jump/' && pick.tb === pick.origin + '/trail-blazer/', 'Learning Lab, Spell Jump and Trail Blazer links, same origin');
+  check(pick.home === pick.origin + '/' && pick.cross === 0 && pick.labSlot, 'Learning Lab link stays; no Spell Jump / Trail Blazer cross-links (the Games panel is the nav); a slot for the Lab button');
   await page.click('#pl-add');
   await page.waitForSelector(visibleSel('#screen-newplayer'));
   check(await J(page, () => !document.querySelector('#screen-newplayer input, #screen-newplayer textarea')), 'new player: no native text input');
@@ -203,7 +203,7 @@ async function runLayout(browser, layout) {
   // ---------- title: the Lab comes first ----------
   const t1 = await J(page, () => ({ btn: document.querySelector('#btn-streets').textContent.trim(), note: !document.querySelector('#title-lab-note').hidden,
     cures: document.querySelector('#title-cures-n').textContent, neighbours: document.querySelector('#yard-scene').dataset.neighbours }));
-  check(/zombie lab/i.test(t1.btn) && t1.note, `before the Lab the big button is "${t1.btn}" with "Start in the Zombie Lab"`);
+  check(/zombie school/i.test(t1.btn) && t1.note, `before the Lab the big button is "${t1.btn}" with "Start in the Zombie School"`);
   check(t1.cures === '0' && t1.neighbours === '0', 'the Cure Counter starts at 0, no neighbours on the street yet');
   await shot(page, layout, '03-title');
   await audit(page, layout.insets, 'title');
@@ -211,14 +211,14 @@ async function runLayout(browser, layout) {
   await page.click('#btn-streets');
   await page.waitForSelector(visibleSel('#screen-lab'));
 
-  // ---------- the Zombie Lab ----------
+  // ---------- the Zombie School ----------
   const lab = (fn) => J(page, fn);
-  check(await lab(() => window.__fractionFright.lab.step) === 'intro', 'Streets before the Lab opens the Zombie Lab');
+  check(await lab(() => window.__fractionFright.lab.step) === 'intro', 'Streets before the Lab opens the Zombie School');
   const say0 = await J(page, () => document.querySelector('#lab-say').textContent);
   check(say0.split(/\s+/).length <= 8, `Lab: at most 8 words on screen ("${say0}")`);
   check(await J(page, () => [...document.querySelectorAll('#lab-road .lab-label')].map((t) => t.textContent).join(' ')) === '0 ½ 1', 'Lab: the road shows 0, ½ and 1');
   await shot(page, layout, '04-lab');
-  await audit(page, layout.insets, 'Zombie Lab');
+  await audit(page, layout.insets, 'Zombie School');
   texts.push(await kidText(page));
   await page.click('#lab-next');
   check(await lab(() => window.__fractionFright.lab.step) === 'cut4', 'Lab: "Drag to cut the road into 4 jumps"');
@@ -510,7 +510,7 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '16-pz-fractions');
   await audit(page, layout.insets, 'Parent Zone (Fractions)');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.6\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
+  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.7\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
   await page.click('.pz-tabs [data-tab="report"]');
   const rep = await J(page, () => ({ big: document.querySelector('#report-week .pw-big').textContent, small: document.querySelector('#report-week .pw-small').textContent, pct: document.querySelector('#report-week').dataset.pct,
     bar: document.querySelector('#report-week .pw-bar i').style.width, streets: document.querySelectorAll('#report-streets li').length }));
@@ -659,17 +659,33 @@ async function labIntegration(browser) {
   const { ctx, page, errors } = await labPage(browser);
   await page.waitForFunction(() => window.__lab && window.__fractionFright.app.labReady(), null, { timeout: 8000 });
   // --- title: the bar, the button ---
-  await page.waitForSelector('#lab-slot-title .lab-hud', { timeout: 5000 }).catch(() => {});
-  await page.waitForSelector('#btn-thelab:not([hidden])', { timeout: 5000 }).catch(() => {});
-  const t = await J(page, () => ({ btn: !!document.querySelector('#btn-thelab') && !document.querySelector('#btn-thelab').hidden, pill: !!document.querySelector('#lab-slot-title .lab-hud'), zl: document.querySelector('#btn-lab').textContent.trim() }));
-  check(t.btn && t.pill, `the title shows the Lab pill (XP bar) and a "The Lab" button once the Lab has loaded (${JSON.stringify(t)})`);
-  check(/zombie lab/i.test(t.zl), 'the old "Lab" button is "Zombie Lab" now, so it is never mistaken for The Lab');
+  await page.waitForSelector('#title-chip-host .lab-chipx', { timeout: 5000 });
+  const t = await J(page, () => {
+    const chip = document.querySelector('#title-chip-host .lab-chipx'), r = chip.getBoundingClientRect();
+    return { chip: /Lab LV \d+/i.test(chip.textContent), games: !!chip.querySelector('#lab-chip-games'), one: document.querySelectorAll('.lab-chipx').length, left: r.left, top: r.top,
+      oldBtn: !!document.querySelector('#btn-thelab'), oldPill: !!document.querySelector('#lab-slot-title'), zl: document.querySelector('#btn-lab').textContent.trim(),
+      flames: document.querySelectorAll('#screen-title .topbar [data-icon="flame"], #screen-title .topbar .lab-chipx-flame').length, lv: document.querySelector('#title-lv').textContent,
+      money: document.querySelector('#screen-title .cash-pill').textContent.replace(/\s+/g, ' ').trim() };
+  });
+  check(t.chip && t.games && t.one === 1 && !t.oldBtn && !t.oldPill, `the title shows ONE Lab chip ("Lab LV n", with the Games button); the old pill and "The Lab" button are gone (${JSON.stringify({ chip: t.chip, one: t.one })})`);
+  check(t.top < 30 + L.insets.t && t.left < 40 + L.insets.l, `the chip is in the top-left corner (inside the safe area) (${Math.round(t.left)}, ${Math.round(t.top)})`);
+  check(/zombie school/i.test(t.zl), 'the tutorial button is "Zombie School", so it is never mistaken for The Lab');
+  check(t.flames === 1 && /^Cure LV \d+$/.test(t.lv), `the only header flame is the chip's (${t.flames}); the level badge says "${t.lv}"`);
+  check(/Yard cash/.test(t.money) && !/Lab coin/i.test(t.money), `the money pill is named: "${t.money}"`);
   await shot(page, L, '30-title-lab-bar');
   await audit(page, L.insets, 'title with the Lab');
-  await page.click('#btn-thelab');
-  await page.waitForSelector('.lab-overlay', { timeout: 3000 });
-  check(true, '"The Lab" opens the Lab overlay');
-  await J(page, () => document.querySelector('.lab-overlay button').click());
+  const gm = await J(page, async () => { document.querySelector('#lab-chip-games').click(); await new Promise((r) => setTimeout(r, 500)); const p = document.querySelector('#lab-games-panel'); const here = p && p.querySelector('.lab-gp-here'); const out = { open: !!p, links: p ? p.querySelectorAll('a').length : 0, here: here ? here.parentElement.textContent : '' }; const c = document.querySelector('#lab-games-close'); if (c) c.click(); return out; });
+  check(gm.open && gm.links >= 8 && /Fraction Fright/.test(gm.here) && /You are here/.test(gm.here), `the chip's Games button opens the six-game panel, Fraction Fright "You are here" (${gm.links} links)`);
+  const sum = await J(page, () => window.__lab.store.doc().sum.ff || null);
+  check(sum && /^Cure LV \d+$/.test(sum.level) && /^\d+ (fractions cured|neighbors helped)$/.test(sum.line) && sum.lastPlayed > 0, `summary: the title sent the Lab "${sum && sum.level}" · "${sum && sum.line}"`);
+  await page.click('#btn-player');
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.waitForSelector('#picker-lab #lab-picker-btn', { timeout: 4000 });
+  const pkb = await J(page, () => { const b = document.querySelector('#picker-lab #lab-picker-btn'); return { text: b.textContent.replace(/\s+/g, ' ').trim(), h: b.getBoundingClientRect().height }; });
+  check(/The Lab/.test(pkb.text) && pkb.h >= 44, `the Lab button is on "Who's on duty?" under the cards ("${pkb.text}")`);
+  await shot(page, L, '30b-picker-lab-button');
+  await page.click('[data-player]');
+  await page.waitForSelector(visibleSel('#screen-title'));
   await wait(page, 300);
   // --- streets: the pill, Twin Alley ---
   await page.click('#btn-streets');
@@ -822,8 +838,8 @@ async function labBlocked(browser) {
   const L = { name: 'blocked', ...LAYOUTS[0] };
   const { ctx, page, errors, warns } = await labPage(browser, { block: true });
   await wait(page, 800);
-  const t = await J(page, () => ({ btn: document.querySelector('#btn-thelab').hidden, pill: document.querySelectorAll('.lab-hud, .lab-strip').length, ready: window.__fractionFright.app.labReady() }));
-  check(t.btn && t.pill === 0 && !t.ready, 'with /lab/ blocked the game boots to the title: no "The Lab" button, no pill');
+  const t = await J(page, () => ({ chip: document.querySelectorAll('.lab-chipx, #lab-picker-btn').length, pill: document.querySelectorAll('.lab-hud, .lab-strip').length, ready: window.__fractionFright.app.labReady() }));
+  check(t.chip === 0 && t.pill === 0 && !t.ready, 'with /lab/ blocked the game boots to the title: no Lab chip, no pill');
   await shot(page, L, '36-title-no-lab');
   await J(page, () => window.__fractionFright.app.go('yard'));
   await wait(page, 600);
@@ -873,7 +889,7 @@ async function labParent(browser) {
   for (const d of '1234') await page.click(`.pinpad [data-digit="${d}"]`);
   await page.waitForSelector('.pz-tabs');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-lab-row') && /own coins/.test(document.querySelector('#opt-lab-row').textContent)), 'the Parent Zone Options has "The Lab" row (its own coins, never mixed with the cash)');
+  check(await J(page, () => !!document.querySelector('#opt-lab-row') && /Lab coins are earned in every game/.test(document.querySelector('#opt-lab-row').textContent)), 'the Parent Zone Options has "The Lab" row (its own coins, never mixed with the cash)');
   await audit(page, L.insets, 'portrait Parent Zone Options with the Lab row');
   await page.click('#opt-lab');
   await page.waitForSelector('.lab-overlay', { timeout: 3000 });

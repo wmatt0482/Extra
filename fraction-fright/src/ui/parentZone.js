@@ -3,7 +3,7 @@
 // press and hold 3 s, then answer a 2-digit × 2-digit multiplication, then set a new PIN. Same flow as Trail Blazer's.
 // Tabs (SPEC §2, §9): Family code (opens first; works with no players; a strip per child "Fractions this week · N % of
 // the ladder · N % accurate") · Fractions (per player: "Where <kid> is", the ladder of streets with each one's state,
-// the tolerance it plays at, the Zombie Lab) · Options (per player: fractions aloud, the voice as set in Spell Jump;
+// the tolerance it plays at, the Zombie School) · Options (per player: fractions aloud, the voice as set in Spell Jump;
 // this device's sound, music, motion; Change PIN) · Report (the week's %, per street, closest and trickiest fractions,
 // moved up, this week's waves, play day by day, Copy report) · Players (rename, reset fraction skills, reset Fraction
 // Fright progress, remove). Native text inputs exist only here (family code, player names).
@@ -207,9 +207,9 @@ export function createParentZone(app) {
     const pct = (x) => `${Math.round(x * 100)} %`;
     const where = h('div', { class: 'where', id: 'fracs-where' },
       h('div', { class: 'label' }, `Where ${p.name} is`),
-      h('div', { class: 'where-line', id: 'fracs-where-line' }, !d.lab.done ? 'Zombie Lab not done yet: it comes before the first street'
+      h('div', { class: 'where-line', id: 'fracs-where-line' }, !d.lab.done ? 'Zombie School not done yet: it comes before the first street'
         : `${TIER_BY_ID[rec].name} (★ recommended) · ${stateWord(lv.find((t) => t.id === rec).state)} · aiming zone ±${Math.round(toleranceFor(lv.find((t) => t.id === rec).state) * 100)} % of the road`),
-      h('div', { class: 'pz-help' }, d.lab.done ? `Zombie Lab done ${new Date(d.lab.done).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${d.lab.runs > 1 ? ` (played ${d.lab.runs} times)` : ''} · ${d.xp} XP` : `${d.xp} XP`),
+      h('div', { class: 'pz-help' }, d.lab.done ? `Zombie School done ${new Date(d.lab.done).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}${d.lab.runs > 1 ? ` (played ${d.lab.runs} times)` : ''} · ${d.xp} XP` : `${d.xp} XP`),
       h('div', { class: 'pz-help', id: 'fracs-pace' }, paceLine(d)));
     const chips = lv.map((t) => h('span', { class: `lad st-${t.state}`, 'data-tier': t.id, 'data-state': t.state, title: `${t.name}: ${stateWord(t.state)}` }, t.name, h('small', {}, t.playable ? (t.open ? stateWord(t.state) : 'locked') : 'coming later')));
     const rows = lv.filter((t) => t.playable).map((t) => {
@@ -217,7 +217,7 @@ export function createParentZone(app) {
       return h('tr', { 'data-tier': t.id }, h('td', { class: 'op' }, t.name, h('small', {}, t.what)), h('td', {}, stateWord(t.state)), h('td', {}, String(s.n)),
         h('td', {}, s.n ? pct(s.rate) : '—'), h('td', {}, s.n ? closeText(s.pae) : '—'), h('td', {}, `±${Math.round(toleranceFor(t.state) * 100)} %`));
     });
-    const labBtn = h('button', { class: 'btn btn-sm btn-cyan', id: 'fracs-lab', 'data-sfx': '' }, 'Play the Zombie Lab');
+    const labBtn = h('button', { class: 'btn btn-sm btn-cyan', id: 'fracs-lab', 'data-sfx': '' }, 'Play the Zombie School');
     labBtn.addEventListener('click', () => app.runLabFor(p.id));
     return [
       where,
@@ -227,7 +227,7 @@ export function createParentZone(app) {
       h('div', { class: 'pz-table-wrap' }, h('table', { class: 'pz-table', id: 'fracs-table' },
         h('thead', {}, h('tr', {}, ...['Street', 'State', 'Throws', 'On target', 'Closeness', 'Zone'].map((x) => h('th', {}, x)))), h('tbody', {}, ...rows))),
       h('div', { class: 'pz-help pz-sec' }, `${p.name} picks the street; the ★ marks the lowest open street that is not secure yet. A street opens when the one before is working, and a street once open stays open. The aiming zone narrows as a street goes well: ±10 % of the road to start, ±5 % when working, ±3 % when secure. Nothing is timed: accuracy is what counts.`),
-      h('div', { class: 'pz-check-row row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Zombie Lab'),
+      h('div', { class: 'pz-check-row row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Zombie School'),
         h('div', { class: 'sub' }, 'The short lesson: a fraction is a number on the road, equal jumps, and ½ in the same spot on every road. Required once; play it again any time.')), labBtn),
     ];
   }
@@ -292,7 +292,7 @@ export function createParentZone(app) {
     return [
       weekBlock(wk),
       ...chartBlock(d, now),
-      h('div', { class: 'pz-help pz-first', id: 'report-summary' }, `${r.fractions} different fractions thrown at · ${r.xp} XP · Zombie Lab ${r.lab.done ? 'done' : 'not done yet'}`),
+      h('div', { class: 'pz-help pz-first', id: 'report-summary' }, `${r.fractions} different fractions thrown at · ${r.xp} XP · Zombie School ${r.lab.done ? 'done' : 'not done yet'}`),
       h('div', { class: 'hud-label pz-sec' }, 'Streets'), h('ul', { class: 'pat-list', id: 'report-streets' }, ...streets),
       h('div', { class: 'hud-label pz-sec' }, 'Closest fractions'),
       h('div', { class: 'pz-help', id: 'report-closest' }, r.closest.length ? r.closest.map((x) => `${x.show} (${closeText(x.mean)})`).join(' · ') : 'Not enough throws yet.'),
@@ -393,7 +393,7 @@ export function createParentZone(app) {
     const voiceText = `${cv ? `Natural voice: ${cv.name}${v.synced ? '' : ' (needs a family code)'}` : v.voiceName ? `Device voice: ${v.voiceName}` : 'Device voice: automatic'} · rate ${v.rate === 'veryslow' ? 'very slow' : v.rate}`;
     return [
       h('div', { class: 'hud-label pz-sec pz-first' }, `Fractions for ${p.name}`),
-      toggle('Fractions aloud', 'The scout reads each fraction as it is called ("three quarters"), and the Lab reads its lines', d.opts.aloud, (x) => { d.opts.aloud = x; d.opts.updatedAt = Date.now(); app.saveSkillsFor(p.id, d); }, 'opt-aloud'),
+      toggle('Fractions aloud', 'The scout reads each fraction as it is called ("three quarters"), and Zombie School reads its lines', d.opts.aloud, (x) => { d.opts.aloud = x; d.opts.updatedAt = Date.now(); app.saveSkillsFor(p.id, d); }, 'opt-aloud'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Voice'),
         h('div', { class: 'sub', id: 'opt-voice' }, `${voiceText}. Set in Spell Jump → Parents → Options.`))),
     ];
@@ -413,7 +413,7 @@ export function createParentZone(app) {
           h('button', { class: `seg-btn${(st.pace || 'auto') === id ? ' on' : ''}`, 'data-pace': id, role: 'radio', 'aria-checked': String((st.pace || 'auto') === id), 'data-sfx': '', onclick: () => { app.setSetting('pace', id); render(); } }, text)))),
       ...(app.labReady() ? [h('div', { class: 'hud-label pz-sec' }, 'The Lab'),
         h('div', { class: 'row', id: 'opt-lab-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'The Lab: coins, quests and looks'),
-          h('div', { class: 'sub' }, 'The Lab is shared by all the games and has its own coins; they never mix with the cash here. Switches, crate odds and reset are in its grown-ups panel.')),
+          h('div', { class: 'sub' }, 'Lab coins are earned in every game and spent in The Lab. They never mix with Yard cash. Switches, crate odds and reset are in its grown-ups panel.')),
         h('button', { class: 'btn btn-sm', id: 'opt-lab', 'data-sfx': '', onclick: () => app.openLabParent() }, 'Open'))] : []),
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with Spell Jump and Trail Blazer')),
@@ -436,7 +436,7 @@ export function createParentZone(app) {
       const card = h('div', { class: 'pz-player', 'data-player': p.id, style: { '--c': p.color } },
         h('div', { class: 'pz-player-head' }, cv, h('div', { class: 'name' }, p.name, h('div', { class: 'sub' }, `${app.curesFor(p.id)} neighbours cured, on this device`))),
         h('div', { class: 'pz-rename' }, input, save),
-        ...confirmRow('Reset fraction skills', `Every street back to the start for ${p.name}, the Zombie Lab too (the options stay).`, 'Reset',
+        ...confirmRow('Reset fraction skills', `Every street back to the start for ${p.name}, the Zombie School too (the options stay).`, 'Reset',
           `Reset ${p.name}'s fraction skills?`, 'Reset skills', () => { app.resetSkillsFor(p.id); app.toast('Fraction skills reset'); render(); }, `pz-reset-skills-${p.id}`),
         ...confirmRow('Reset Fraction Fright progress', `Cash, the yard, pumpkins and the Cure Counter back to the start for ${p.name}. Spell Jump, Trail Blazer and the Lab are not touched.`, 'Reset',
           `Reset ${p.name}'s Fraction Fright progress?`, 'Reset', () => { app.resetSaveFor(p.id); app.toast('Progress reset'); render(); }, `pz-reset-${p.id}`),

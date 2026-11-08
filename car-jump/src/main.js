@@ -50,7 +50,7 @@ import { CEREMONY_LINES, improvement, qualifierFor, tierFor } from './ui/ceremon
 import { createSkyTeaser } from './ui/skyTeaser.js';
 import { SKY_ROAD_STEPS, markTeaserSeen, skyName, skyRoadSteps, teaserDue, teaserTexts } from './meta/skyRoad.js';
 
-const VERSION = '3.10.0';
+const VERSION = '3.11.0';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
@@ -341,7 +341,8 @@ async function boot() {
   }
 
   function refreshCash() {
-    const html = `${COIN}<span>${money(save.cash)}</span>`;
+    // v3.11: the game's own money has a name wherever a balance shows ("Garage cash"); Lab coins are a different thing with their own icon
+    const html = `${COIN}<span class="cash-txt"><span>${money(save.cash)}</span><small>Garage cash</small></span>`;
     for (const el of $$('[data-cash]')) el.innerHTML = html;
   }
 
@@ -470,11 +471,36 @@ async function boot() {
     if (labAttached) { labBridge.detach(); labAttached = false; labRoundKind = ''; }
     refreshLabCos();
   }
+  // v3.11 (lab/docs/COHESION.md): the one Lab chip on the title (top-left), the Lab button on "Who's playing?", and this game's card for the Lab
+  const phoneMq = window.matchMedia ? window.matchMedia('(max-width: 520px)') : { matches: false };
+  let titleChip = null;
+  function mountTitleChip() {
+    if (titleChip) titleChip.destroy();
+    $('#title-chip-host').replaceChildren();
+    titleChip = labBridge.mountChip($('#title-chip-host'), { game: 'sj', current: 'sj', compact: phoneMq.matches, theme: 'dark' });
+  }
+  mountTitleChip();
+  if (phoneMq.addEventListener) phoneMq.addEventListener('change', mountTitleChip);
+  labBridge.mountPickerButton($('#picker-lab'));
+  /** lab.summary for this player's Spell Jump card: after every answered word and run, and when the title shows. Same text twice is a no-op. */
+  function labSummary() {
+    if (!labAttached || !words || !currentPlayerId) return;
+    try {
+      const m = WS.missionState(words, Date.now());
+      const mastered = WS.masteredCount(words);
+      labBridge.summary({
+        level: `Speller LV ${levelFor(save.xp || 0)}`,
+        line: `${mastered} word${mastered === 1 ? '' : 's'} mastered`,
+        today: `Today: ${m.count} / ${m.size} words`,
+        lastPlayed: Date.now(),
+      });
+    } catch (e) { console.warn('[SpellJump] lab summary', e); }
+  }
+  app.labSummary = labSummary;
   // a new Lab round per mission or Mega Run, never per 3-word race: the combo lives one round (the Lab core's note)
   function labRound(kind) { if (kind !== labRoundKind) { labRoundKind = kind; labBridge.beginRound(); } }
   labBridge.onChange((e) => {
     refreshLabCos();
-    $('#btn-lab').hidden = !labBridge.ready || !currentPlayerId;
     if (e && ['attach', 'ready', 'equip', 'sync', 'reset'].includes(e.type)) { try { hero.redraw(); } catch (_) { /* no hero yet */ } }
   });
 
@@ -491,6 +517,7 @@ async function boot() {
     $('#btn-play').textContent = WS.qualifierDue(words) ? 'Play: new words!' : 'Play';
     refreshEngagement();
     refreshSkyCard();
+    labSummary();
   }
 
   // ---------- v3.10: the Sky Road card on the title + the Sky Era teaser ----------
@@ -572,15 +599,14 @@ async function boot() {
   function refreshEngagement() {
     const now = Date.now();
     const n = streakNow(save.streak, now);
-    $('#title-streak').textContent = String(n);
-    $('#btn-streak').classList.toggle('cold', n === 0);
-    $('#btn-lab').hidden = !labBridge.ready || !currentPlayerId;
-    $('#btn-streak').setAttribute('aria-label', `Streak: ${n} day${n === 1 ? '' : 's'}. Opens the streak calendar.`);
+    $('#title-streak').textContent = String(n);        // v3.11: the streak lives behind the Days button (a panel), not in the header: the one header flame is the Lab chip's
+    $('#title-streak').classList.toggle('cold', n === 0);
+    $('#btn-streak').setAttribute('aria-label', `Days in a row: ${n} day${n === 1 ? '' : 's'}. Opens the streak calendar.`);
     const lp = levelProgress(save.xp || 0);
-    $('#title-lv').textContent = `Lv ${lp.level}`;
+    $('#title-lv').textContent = `Speller LV ${lp.level}`;
     $('#title-lv-name').textContent = lp.title;
     $('#title-lv-bar').style.width = `${lp.max ? 100 : Math.round((lp.into / lp.need) * 100)}%`;
-    $('#title-level').setAttribute('aria-label', `Level ${lp.level}, ${lp.title}${lp.max ? '' : `, ${lp.need - lp.into} XP to the next level`}`);
+    $('#title-level').setAttribute('aria-label', `Speller level ${lp.level}, ${lp.title}${lp.max ? '' : `, ${lp.need - lp.into} XP to the next level`}`);
     const c = unopened(save);
     const cb = $('#btn-crates');
     cb.hidden = c === 0;
@@ -732,18 +758,43 @@ async function boot() {
   }
 
   // ---------- Qualifier / Friday Test ----------
+  // v3.11: every answer is banked the moment it is given (the word's record, today's count, the cash, XP, the Lab); a test left midway
+  // keeps those results and resumes where it stopped (answered words are not asked again). The Friday Test is still a test: one try per word.
+  function bankTestAnswer(kind, r, eng) {
+    const now = Date.now();
+    const b = WS.bankTestWord(words, kind, r.word, r.correct, now);
+    if (!b) return null;
+    labBridge.report({ event: 'testWord', n: 1, firstTry: !!r.correct });      // one per word, as asked (no combo)
+    let paid = 0;
+    if (r.correct) {
+      paid = earn(save, kind === 'qualifier' ? QUALIFIER_PAY : MEGA_PAY);
+      if (kind === 'friday') gainXp(eng, XP.testWord);
+    }
+    if (b.newlyMastered) masteredWord(eng, r.word, words.activeId);
+    if (b.missionJustDone) { earn(save, MISSION_REWARD); gainXp(eng, XP.mission); eng.crates += earnCrate(save); dayDone(eng, now); }
+    app.persist(); app.persistWords();
+    refreshCash();
+    labSummary();
+    return { ...b, paid };
+  }
   function startTest(kind) {
     if (!words) return;
     const list = WS.activeList(words);
     const n = list.words.length;
+    const answered = WS.testAnswered(words, kind);
+    const eng = newEng();
     go('test');
     const upper = opts().tileCase === 'upper';
     const q = kind === 'qualifier';
     if (!q) testBoss.start(n);          // v3.9: the Test Titan towers over the Friday Test (the test itself is unchanged)
+    const resumed = answered.length > 0 && answered.length < n;
     testScreen.run({
-      kind, title: q ? 'Qualifier' : 'Friday Test', upper,
+      kind, title: q ? 'Qualifier' : 'Friday Test', upper, answered,
       words: list.words.map((w) => ({ word: w.word, sentence: w.sentence, sayAs: w.sayAs || '' })),
-      intro: q
+      onAnswer: (r) => bankTestAnswer(kind, r, eng),
+      intro: resumed
+        ? { heading: 'Welcome back!', lines: [`You already did ${answered.length} of ${n}. Your answers are saved: ${n - answered.length} to go.`, q ? `$${QUALIFIER_PAY} for each one you get right.` : 'No hints!'], button: 'Keep going' }
+        : q
         ? { heading: 'New words!', lines: [`A quick check of this week's ${n} words: listen, then spell each one once.`, `Words you already know skip ahead. $${QUALIFIER_PAY} for each one you get right.`], button: 'Start' }
         : { heading: 'Friday Test', lines: [`All ${n} words. Listen and spell. No hints!`, 'Your score powers the MEGA RUN.'], button: 'Start' },
       summary(results) {
@@ -751,12 +802,11 @@ async function boot() {
         const correct = results.filter((r) => r.correct).length;
         const total = results.length;
         const missed = total - correct;
-        for (const r of results) labBridge.report({ event: 'testWord', n: 1, firstTry: !!r.correct });   // one per word, in the order asked (no combo)
+        WS.finishTest(words, kind, results, now);
         if (q) {
-          WS.recordQualifier(words, results, now);
-          const paid = earn(save, correct * QUALIFIER_PAY);
+          const paid = correct * QUALIFIER_PAY;                  // already banked word by word
           app.persist(); app.persistWords();
-          if (paid) Audio.cash();
+          labSummary();
           return {
             heading: correct === total ? 'You knew them all!' : 'Qualifier done!',
             lines: [h('div', { class: 'big-score', id: 'tm-score' }, `${correct} / ${total}`), `+$${money(paid)}`,
@@ -764,14 +814,11 @@ async function boot() {
             button: "Let's go",
           };
         }
-        const ft = WS.recordFriday(words, results, now);
+        const ft = words.tests[words.tests.length - 1];
         pingNow('test');
         const score = total ? correct / total : 0;
-        const paid = earn(save, correct * MEGA_PAY);
-        // v3.3: XP per correct word, trophies for words the test mastered, and the test counts as a streak day
-        const eng = newEng();
-        gainXp(eng, correct * XP.testWord);
-        for (const w of ft.mastered || []) masteredWord(eng, w, words.activeId);
+        const paid = correct * MEGA_PAY;                         // already banked word by word
+        // v3.3: the test counts as a streak day (XP, trophies and cash were banked per word)
         dayDone(eng, now);
         // v3.9: the Lab hears about the finished test (its trophy shelf records the tier); the ceremony is the game's own and needs no Lab
         const tier = tierFor(correct, total);
@@ -779,6 +826,7 @@ async function boot() {
         const pre = qualifierFor(words.tests, ft);
         const gain = improvement(ft, pre);
         app.persist(); app.persistWords();
+        labSummary();
         lastTest = { correct, total, score, paid, eng };
         if (score >= 0.8) Audio.fanfare(); else Audio.cash();
         const practice = results.filter((r) => !r.correct).map((r) => r.word);
@@ -972,14 +1020,16 @@ async function boot() {
         if (!ok || run !== r || r.ended) return;
       }
       r.pick = pick;
+      let banked = null;       // v3.11: banked the moment the word is answered (onResult), even if the child leaves during the banner
       const res = await spellPanel.run(pick, {
+        onResult: (out) => { if (run === r && !r.ended) banked = recordWord(r, pick, out); },
         coinMult: r.stats.coinMult || 1, streakBefore: Math.min(WS.STREAK_CAP, words.streak),
         mission: WS.missionState(words, Date.now()), upper: opts().tileCase === 'upper',
         set: { index: i, count: n }, keepOpen: i < n - 1,
       });
+      if (!res || res.cancelled) return;      // quitRun already ran (back button); an answered word is already banked
       if (run !== r || r.ended) return;
-      if (!res || res.cancelled) return;      // quitRun already ran (back button)
-      done.push(recordWord(r, pick, res));
+      done.push(banked || recordWord(r, pick, res));
       if (i < n - 1) pick = WS.nextWord(words, Date.now(), session, opts());
     }
     spellPanel.close();
@@ -1002,6 +1052,8 @@ async function boot() {
     if (rec.newlyMastered) masteredWord(eng, pick.word, rec.listId);
     if (rec.missionJustDone) { gainXp(eng, XP.mission); eng.crates += earnCrate(save); dayDone(eng, now); }
     app.persist(); app.persistWords();
+    refreshCash();
+    labSummary();
     achievements.spell({ firstTry: res.firstTry, streak: rec.streak, newlyMastered: rec.newlyMastered });
     return { word: pick.word, firstTry: res.firstTry, fixed: res.fixed, misses: res.misses, bonus, streak: rec.streak };
   }
@@ -1216,6 +1268,7 @@ async function boot() {
     app.persist();
     pingNow('run');
     labBridge.report({ event: 'run', n: 1 });
+    labSummary();
     const result = lastResult = {
       trackId: r.trackId, daily: r.daily, carId: r.carId, stats: r.stats, summary, bank, goals,
       dailyReward, dailyAlreadyDone, dailyGoalText: r.def && r.def.goal.text, dailyValue: r.def && r.def.value(summary),
@@ -1334,7 +1387,6 @@ async function boot() {
   $('#btn-sky').addEventListener('click', () => { if (currentPlayerId && screen === 'title' && !sky.isOpen) playSky({ kind: 'full', step: skyRoadSteps(save) }); });
   $('#btn-player').addEventListener('click', () => go('players'));
   $('#btn-streak').addEventListener('click', () => openPanel('streak'));
-  $('#btn-lab').addEventListener('click', () => labBridge.openHome({}));        // the title's "Lab" chip (shown once the Lab has loaded)
   $('#btn-crates').addEventListener('click', () => { if (!crates.busy) crates.open(() => { refreshEngagement(); refreshCash(); }); });
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));
   for (const b of $$('[data-open]')) b.addEventListener('click', () => openPanel(b.dataset.open));

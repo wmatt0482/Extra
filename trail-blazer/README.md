@@ -143,6 +143,18 @@ node trail-blazer/tools/make-icons.mjs     # regenerates icons/*.png
 `bash build.sh` at the repo root copies `trail-blazer/` to `dist/trail-blazer/` (without `tools/`, `docs/`,
 `dev.html`, `SPEC.md`), next to `dist/spell-jump/`.
 
+## 1.10.0 (cohesion: one Lab chip, named money)
+
+Stage 2 of the Lab cohesion round (`lab/docs/COHESION.md`). The game, its economy and its saves are unchanged.
+
+- **One Lab chip** (`lab.mountChip`, top-left of the title, compact under 520 px) replaces "The Lab" menu button and the title's flame chip: the one
+  header flame is the Lab streak. The rider chip and the cup sit under it; the days-in-a-row count stays on the results and in the Parents report.
+- **"The Lab" on Who's riding?** (`lab.mountPickerButton`, under the cards); the "Also play: Spell Jump" link is gone (the chip's Games panel is the nav).
+- **Rider LV n** on the title chip and the picker tiles (never a bare "LV"). **Trail cash** names the money on every balance pill.
+- **`lab.summary('tb', ...)`**: "Rider LV n", "N of 30 trails", "Today: x / 12 math gates", when the title shows and after every race.
+- **The `race` event only counts a crossed finish line** (`summary.finishCrossed`): a race quit on the trail reports nothing for "Finish a race".
+  `win`, `ghostBeat`, `star` and `day` are unchanged. VERSION 1.10.0; the service worker is `trail-blazer-v1.10.0`.
+
 ## 1.9.1 (a race does not depend on the device's speed)
 
 `tools/ui-smoke.mjs` failed now and then in a queue on a loaded machine: race 1, scripted to finish 2nd, finished 3rd.

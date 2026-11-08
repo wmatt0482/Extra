@@ -1,4 +1,4 @@
-// The Zombie Lab (SPEC §4): the short lesson before the first street (Nuraydin et al. 2022: the same game without a
+// The Zombie School (SPEC §4): the short lesson before the first street (Nuraydin et al. 2022: the same game without a
 // lesson did not transfer), replayable from the title. About 60–90 s, interactive, one line of at most 8 words on
 // screen at a time (read aloud too), arrows instead of text where possible.
 //   1  "A fraction is a number on the road."          the road 0 → 1, with 0, ½ and 1 labelled
@@ -233,7 +233,7 @@ export function createLab(app) {
       foot.append(nextBtn('Streets'));
       foot.firstChild.id = 'lab-streets';
       app.audio.fanfare();
-      if (!r.first) { line('Lab done. Streets open.'); return; }   // the +100 XP is for the first time only
+      if (!r.first) { line('School done. Streets open.'); return; }   // the +100 XP is for the first time only
     }
     line(s.say, s.voice);
   }

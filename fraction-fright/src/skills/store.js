@@ -1,7 +1,7 @@
 // A player's fraction skills (SPEC §6, §9): `fractionFright.<id>.skills`. Pure functions over a plain object; the save
 // module reads / writes it and the sync registers it as the `fracs` kind (src/skills/sync.js).
 //   { v, updatedAt, xp,
-//     lab: { done: at | 0, runs },                 the Zombie Lab (required once, replayable)
+//     lab: { done: at | 0, runs },                 the Zombie School (required once, replayable)
 //     opened: { T2: at },                          streets opened (an opened street is never closed again)
 //     records: { 'T1.bounce': [[at, pae, code]] }, per tier + kind, the last 12 throws (code b / h / n / m)
 //     fracs: { '3/4': { n, hits, bulls, pae, last } }   per fraction: throws, hits, bulls, PAE sum, last throw at
@@ -155,7 +155,7 @@ export function progressSeries(d, now = Date.now(), n = 28) {
     secure, streets: PLAYABLE.length };
 }
 
-/** The Zombie Lab finished: +100 XP the first time, Maple Street opens. → { first, xp }. */
+/** The Zombie School finished: +100 XP the first time, Maple Street opens. → { first, xp }. */
 export function finishLab(d, at = Date.now()) {
   const first = !d.lab.done;
   d.lab = { done: d.lab.done || at, runs: d.lab.runs + 1 };
@@ -213,7 +213,7 @@ export const moveText = (m) => `${TIER_BY_ID[m.tier].name}: ${stateWord(m.from)}
 export function reportText(d, name, now = Date.now()) {
   const r = report(d, now);
   const lines = [`Fraction Fright report for ${name} (${new Date(now).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })})`];
-  lines.push(`Zombie Lab: ${r.lab.done ? `done (${r.lab.runs} time${r.lab.runs === 1 ? '' : 's'})` : 'not done yet'} · ${r.xp} XP`);
+  lines.push(`Zombie School: ${r.lab.done ? `done (${r.lab.runs} time${r.lab.runs === 1 ? '' : 's'})` : 'not done yet'} · ${r.xp} XP`);
   lines.push('', 'Streets');
   for (const t of r.tiers.filter((x) => x.playable)) {
     const s = t.stats;

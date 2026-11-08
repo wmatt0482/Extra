@@ -10,7 +10,7 @@ Options) turns that into the 1.0 cure: the zombie turns back into a slightly emb
 Off the spot: a plop, and the true spot lights up with the fraction drawn as jumps from 0. No lives, no timers.
 
 `SPEC.md` is the design (§0 holds the non-negotiables from the research); `docs/LEARNING-DESIGN.md` maps every
-technique to its source and its code. Version **1.0** = the Zombie Lab, Maple Street and Oak Lane, waves, results, the
+technique to its source and its code. Version **1.0** = the Zombie School, Maple Street and Oak Lane, waves, results, the
 yard basics, the Cure Counter, the Parent Zone with the weekly %, family sync, pings and the voice. Version **1.1 "The
 Horde"** (SPEC §13) = zombies in the fog at their spot, 2–4 at once with a card stack to call any of them, twins
 (two spellings of one number at one spot, one grenade cures both), a boss on every final wave (3 hits, the same number
@@ -48,7 +48,7 @@ open http://localhost:8080/fraction-fright/?mock=1     # the mock engine (src/me
 
 - **Parents** (the same PIN as the other games): Family code (one code syncs all four games; a strip per child
   "Fractions this week · N % of the ladder · N % accurate") · **Fractions** ("Where Mia is", the ladder of streets
-  with each one's state and aiming zone, play the Zombie Lab again) · Options (fractions aloud; sound, music, motion;
+  with each one's state and aiming zone, play the Zombie School again) · Options (fractions aloud; sound, music, motion;
   the voice as set in Spell Jump) · **Report** (this week's %, **progress charts** (v1.5: throws each day, on-target
   and bull's-eye %, and the streets secure, over 2 / 4 / 12 weeks; the day log keeps 90 days and syncs), each street,
   closest and trickiest fractions, moves, this week's waves, play by day, Copy report) · Players (rename, reset
@@ -59,9 +59,9 @@ open http://localhost:8080/fraction-fright/?mock=1     # the mock engine (src/me
 ## How it plays
 
 - **Title**: the yard at dusk, the street of neighbours the kid has cured (one per 10 cures: the Cure Counter, a tally
-  board), the fence, the jack-o'-lanterns. DEFEND THE FENCE · LAB · YARD · PARENTS. Before the Lab the big button is the
-  Zombie Lab.
-- **Zombie Lab** (`src/ui/lab.js`): about a minute; a fraction is a number on the road, cut it into equal jumps, lob at
+  board), the fence, the jack-o'-lanterns. DEFEND THE FENCE · SCHOOL · YARD · PARENTS. Before Zombie School the big button is the
+  Zombie School.
+- **Zombie School** (`src/ui/lab.js`): about a minute; a fraction is a number on the road, cut it into equal jumps, lob at
   ¾ and ⅔, ½ in the same spot on every road, lob at 4/8. +100 XP · Streets open.
 - **Streets** (`src/ui/streets.js`): street names on rusted signs; the ★ suggests one, the kid picks among the open ones.
 - **A wave**: 5 waves per street (8, 9, 10, 10, 12 zombies, plus the boss on the 5th); 2, 2, 4, 3, 3 live at once;
@@ -107,12 +107,24 @@ fraction the side with more throws; waves and moves union by time; the Lab and o
 the later. **Pings** (anonymous, `meta/pings.js`): 'day', 'wave' after each wave, 'lab' when the Lab ends; counted
 under `ff` by the stats function. Privacy: no names or ids leave the device in a ping.
 
+## 1.7.0 (cohesion: one Lab chip, Zombie School)
+
+Stage 2 of the Lab cohesion round (`lab/docs/COHESION.md`). The game, its economy and its saves are unchanged.
+
+- **The tutorial is Zombie School** everywhere (buttons, the picker line, voice lines, Parents, docs, tests) so "The Lab" means one thing: the shared Lab.
+- **One Lab chip** (`lab.mountChip`, top-left of the title, compact under 520 px) replaces the title's XP pill and "The Lab" button; the neighbour chip
+  and the Cure Counter sit under it. **"The Lab" on Who's on duty?** (`lab.mountPickerButton`, under the cards); the "Spell Jump" / "Trail Blazer"
+  cross-links are gone (the chip's Games panel is the nav). There is no streak here, so no header flame but the chip's.
+- **Cure LV n** on the title chip and the picker tiles. **Yard cash** names the money on every balance pill; Lab coins are named as such.
+- **`lab.summary('ff', ...)`**: "Cure LV n", "N fractions cured" (Gentle: "N neighbors helped"); no daily goal, so no "today" line.
+  When the title shows and after every wave. VERSION 1.7.0; the service worker is `fraction-fright-v1.7.0`.
+
 ## Lab integration (v1)
 
 The Lab (`/lab/`, one coin purse, avatar, pet and quests across the five games) is wired in through `src/meta/labBridge.js`, the one file
 that knows it; a missing or blocked `/lab/` changes nothing. The Lab's XP pill and results strip show on the title, the streets, the results and
 the yard, never in a wave; zaps (first try), bullseyes, waves, bosses and streets are reported to it; its fence finishes and tower toppers are
-drawn here (`src/meta/labLooks.js`, `yardArt.js`); the Lab's coins are separate from the cash. New with it: the Yard's tower and walls (own cash),
+drawn here (`src/meta/labLooks.js`, `yardArt.js`); Lab coins are earned in every game and spent in The Lab (they never mix with Yard cash). New with it: the Yard's tower and walls (own cash),
 Twin Alley (equal fractions, "Same spot!") with the equivalence boss Mayor Mirror, and a "The Lab" row in the Parent Zone. See `lab/SPEC.md` §4.3
 and `SPEC.md` §17.
 

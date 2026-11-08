@@ -2,7 +2,7 @@
 // (the save and the fraction skills registered as the 'ff' and 'fracs' kinds), the save, audio and the voice, the
 // engine (real or mock), the screens and the wave lifecycle. SPEC.md is the design; §0 holds the rules nothing here
 // may break: the aim point alone decides a hit, the true spot is shown after every throw, 0 / ½ / 1 stay labelled,
-// the Zombie Lab comes before the first street, accuracy (never speed) is scored and adapted on, big effects only on
+// the Zombie School comes before the first street, accuracy (never speed) is scored and adapted on, big effects only on
 // success, no progress meters or timers, no streak, the number line (not pies) is the picture.
 // The real engine lives at ./game/engine.js (the engine agent's, SPEC §3); it is imported dynamically so the shell keeps
 // working on the mock engine (./meta/mockEngine.js) if it is missing or broken (?mock=1 forces the mock).
@@ -48,7 +48,7 @@ import { createParentZone } from './ui/parentZone.js';
 import { labBridge } from './meta/labBridge.js';
 import { labLooks } from './meta/labLooks.js';
 
-const VERSION = '1.6.0';
+const VERSION = '1.7.0';
 const GAME = 'fraction-fright';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'fractionFright.resumePlayer';   // sessionStorage: the player to come back to after an update reload
@@ -174,7 +174,7 @@ async function boot() {
     openLabHome: () => labBridge.openHome({ onClose: () => { if (screen === 'title') { refreshTitle(); drawBackdrop(); } } }),
     openLabParent: () => labBridge.openParent({ unlocked: true }),
     yardBought(kind, it) { if (kind === 'tower' && it.stage === 1 && labBridge.ready) toast('Dress the tower up in the Lab shop!'); },
-    // ----- the Zombie Lab -----
+    // ----- the Zombie School -----
     labDone: () => !!(skills && skills.lab.done),
     recordLabThrow({ n, d, pae, result }) {
       if (!currentPlayerId) return;
@@ -238,7 +238,8 @@ async function boot() {
   const pz = createParentZone(app);
 
   function refreshCash() {
-    const html = `${COIN}<span>${money(save.cash)}</span>`;
+    // v1.7: the game's own money has a name wherever a balance shows ("Yard cash"); Lab coins are another thing, with their own icon
+    const html = `${COIN}<span class="cash-txt"><span>${money(save.cash)}</span><small>Yard cash</small></span>`;
     for (const el of $$('[data-cash]')) el.innerHTML = html;
   }
   const replaceInPlace = (obj, fresh) => { for (const k of Object.keys(obj)) delete obj[k]; Object.assign(obj, fresh); };
@@ -255,7 +256,7 @@ async function boot() {
   }
   function labDetach() { if (labPlayer) { labPlayer = null; labBridge.detach(); } }
   /** The Lab's XP pill and results strip belong on the title, the streets, the results and the yard, never in a wave or the bonus round. */
-  const LAB_SLOTS = { title: [['hud', '#lab-slot-title', false]], streets: [['hud', '#lab-slot-streets', true]], yard: [['hud', '#lab-slot-yard', true]], results: [['hud', '#lab-slot-results-pill', true], ['results', '#lab-slot-results', false]] };
+  const LAB_SLOTS = { title: [], streets: [['hud', '#lab-slot-streets', true]], yard: [['hud', '#lab-slot-yard', true]], results: [['hud', '#lab-slot-results-pill', true], ['results', '#lab-slot-results', false]] };
   function labMount(name) {
     for (const m of labMounts.splice(0)) { try { m.destroy(); } catch (_) { /* ignore */ } }
     for (const el of $$('.lab-slot')) el.replaceChildren();
@@ -306,6 +307,7 @@ async function boot() {
     labReport({ event: 'wave' });
     if (bank.cleared) labReport({ event: 'street' });
     if (firstWaveToday) labReport({ event: 'day' });
+    setTimeout(labSummary, 0);
   }
 
   // ---------- players ----------
@@ -327,7 +329,7 @@ async function boot() {
     if (!p) return;
     $('#title-player').textContent = p.name;
     drawAvatar($('#title-avatar'), p.color);
-    $('#title-lv').textContent = `Lv ${levelFor(skills.xp)}`;
+    $('#title-lv').textContent = `Cure LV ${levelFor(skills.xp)}`;
     $('#title-cures-n').textContent = money(save.cures);
     $('#title-cures .tb-label').textContent = app.verb().Past;
     $('#title-cures').setAttribute('aria-label', app.verb().total);
@@ -336,20 +338,29 @@ async function boot() {
     $('#title-lab-note').hidden = labDone;
     const b = $('#btn-streets');
     b.dataset.lab = String(!labDone);
-    b.firstChild.textContent = labDone ? 'Defend the fence' : 'Zombie Lab';
-    showLabButton();
+    b.firstChild.textContent = labDone ? 'Defend the fence' : 'Zombie School';
+    labSummary();
   }
-  /** "The Lab" button: only once the Lab has loaded (a blocked or missing /lab/ simply shows no button). */
-  function showLabButton() {
-    const btn = $('#btn-thelab');
-    if (!btn) return;
-    btn.hidden = !labBridge.ready;
-    clearInterval(labSlotTimer);
-    if (!labBridge.ready) {
-      let n = 0;
-      labSlotTimer = setInterval(() => { if (labBridge.ready) { btn.hidden = false; clearInterval(labSlotTimer); } else if (++n > 100) clearInterval(labSlotTimer); }, 120);
-    }
+  // v1.7 (lab/docs/COHESION.md): the one Lab chip on the title (top-left, compact on phones), the Lab button on "Who's on duty?", and this game's card
+  const phoneMq = window.matchMedia ? window.matchMedia('(max-width: 520px)') : { matches: false };
+  let titleChip = null;
+  function mountTitleChip() {
+    if (titleChip) titleChip.destroy();
+    $('#title-chip-host').replaceChildren();
+    titleChip = labBridge.mountChip($('#title-chip-host'), { game: 'ff', current: 'ff', compact: phoneMq.matches, theme: 'dark' });
   }
+  mountTitleChip();
+  if (phoneMq.addEventListener) phoneMq.addEventListener('change', mountTitleChip);
+  labBridge.mountPickerButton($('#picker-lab'));
+  /** lab.summary for this player's Fraction Fright card: when the title shows and after every wave. Same text twice is a no-op. */
+  function labSummary() {
+    if (!currentPlayerId || !labPlayer || !skills) return;
+    try {
+      const gentle = !!settings.gentle;
+      labBridge.summary({ level: `Cure LV ${levelFor(skills.xp)}`, line: gentle ? `${save.cures} neighbors helped` : `${save.cures} fractions cured`, today: '', lastPlayed: Date.now() });
+    } catch (e) { console.warn('[FractionFright] lab summary', e); }
+  }
+  app.labSummary = labSummary;
   function drawBackdrop() { drawYard($('#yard-scene'), currentPlayerId ? save : defaultSave(), currentPlayerId ? app.labLooks() : {}); }
 
   // Ghost-click guard (same as the other games): swallow a click that lands just after a screen change when its
@@ -794,7 +805,6 @@ async function boot() {
   $('#btn-streets').addEventListener('click', () => go(app.labDone() ? 'streets' : 'lab'));
   $('#btn-lab').addEventListener('click', () => go('lab'));
   $('#btn-yard').addEventListener('click', () => go('yard'));
-  $('#btn-thelab').addEventListener('click', () => app.openLabHome());
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'sync' }));
   $('#btn-player').addEventListener('click', () => go('players'));
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));

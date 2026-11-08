@@ -659,8 +659,8 @@ and plays exactly as before when `/lab/` is missing, blocked or offline. The Lab
   engine's `land` with quality perfect), `run` (a run ended), `day` (beside `completeDay`), and for the Qualifier and the Friday Test one `testWord`
   per word in order, then `test` (n right, `meta { of, tier }`; the Lab's trophy shelf records the tier). The Lab round (the combo) lives one mission
   or one Mega Run, not one 3-word race.
-- **Mounts**: the XP pill in `#hud-lab` beside the run cash, the Lab strip in `#res-lab` on the results, a "Lab" button on the title (shown once the
-  Lab has loaded).
+- **Mounts**: the XP pill in `#hud-lab` beside the run cash, the Lab strip in `#res-lab` on the results, and (v3.11) the one Lab chip in `#title-chip-host` on the title
+  plus "The Lab" button in `#picker-lab` on "Who's playing?".
 - **"Perfect Launch"**: five first-try words in a row make the Lab's combo moment; the launch shows a gold ring burst and the name on the engine's own
   banner lane (`game.moment(name)`), and the natural voice says it.
 - **Looks** (`src/meta/labLooks.js`, read by the Lab at `/spell-jump/src/meta/labLooks.js`): `LOOKS_READY` lists the 15 Spell Jump items (8 skins,
@@ -678,6 +678,20 @@ and plays exactly as before when `/lab/` is missing, blocked or offline. The Lab
 - **Service worker**: `/lab/src/index.js` is OPTIONAL; `certificate.html` is its own network-first page (never answered with `index.html`).
 - **Tests**: `node tools/lab-tests.mjs` (economy snapshot, bridge, looks, ceremony, certificate, kid-rule audit) and `node tools/lab-smoke.mjs`
   (Playwright against the repo root: the Lab present, and every `/lab/` request blocked).
+
+## v3.11: one Lab chip, named money, every word banks (changelog)
+
+- **The Lab chip** (`lab.mountChip`, top-left of the title, `compact` under 520 px) replaces the cyan "Lab" button and the title's flame chip: the one
+  header flame is the Lab streak. Spell Jump's own streak stays in its Streak panel, opened by the **Days** button in the title menu.
+  The title's player chip sits under the Lab chip; the level badge says **Speller LV n** (also on the picker tiles).
+- **"The Lab" on Who's playing?** (`lab.mountPickerButton`), under the cards. **The Games panel** (the chip's grid button) is the six-game nav.
+- **`lab.summary('sj', ...)`**: "Speller LV n", "N words mastered", "Today: x / 8 words", on the title and after every answered word and run.
+- **Garage cash**: the game's money is named on every balance pill (a small caption under the amount); Lab coins keep the Lab's own coin and name.
+- **Every word banks the moment it is answered.** Race and mission words bank on the spell panel's result (`ctx.onResult`), before the banner, so
+  leaving mid-banner keeps the word. The **Qualifier and the Friday Test** bank each answer through `WS.bankTestWord` (the word's record, today's
+  count and mission, the cash, XP, the Lab `testWord`), and `words.testRun` remembers the answered words: a test left midway keeps its results and
+  resumes next time ("Welcome back!"), never asking an answered word again; `WS.finishTest` closes it (test entry, Qualifier no longer pending). The
+  Friday Test is still a test: one attempt per word, no hints.
 
 ## Add to the iPhone Home Screen
 

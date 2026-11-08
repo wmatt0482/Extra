@@ -100,6 +100,12 @@ export function normalizeWordsData(raw, now = Date.now()) {
     id: str(t.id), kind: t.kind, listId: str(t.listId), at: num(t.at, now), correct: Math.max(0, num(t.correct)), total: Math.max(0, num(t.total)), missed: strArr(t.missed),
   })).slice(-60) : [];
   d.qualifierPending = d.lists.some((l) => l.id === raw.qualifierPending) ? raw.qualifierPending : null;
+  // v3.11: a Qualifier / Friday Test left midway keeps its answers here, so it resumes where it stopped
+  if (raw.testRun && typeof raw.testRun === 'object' && (raw.testRun.kind === 'qualifier' || raw.testRun.kind === 'friday') && d.lists.some((l) => l.id === raw.testRun.listId) && Array.isArray(raw.testRun.results)) {
+    const seen = new Set();
+    const results = raw.testRun.results.filter((r) => r && typeof r.word === 'string' && !seen.has(r.word) && seen.add(r.word)).map((r) => ({ word: r.word, correct: !!r.correct }));
+    d.testRun = { kind: raw.testRun.kind, listId: raw.testRun.listId, startedAt: num(raw.testRun.startedAt, now), results };
+  }
   if (raw.today && typeof raw.today === 'object') {
     d.today = { date: str(raw.today.date), count: Math.max(0, num(raw.today.count)), newCount: Math.max(0, num(raw.today.newCount)), missionPaid: !!raw.today.missionPaid };
   }
@@ -339,6 +345,42 @@ function pushTest(d, kind, results, now) {
   return t;
 }
 
+// ---------- v3.11: tests bank one word at a time ----------
+// A Qualifier / Friday Test answer counts the moment it is given: the word's record, today's count (and the mission when it
+// completes), the progress log. d.testRun remembers which words of the test are answered so a test left midway resumes there
+// (answered words are not asked again). finishTest() then closes the test: the test entry, qualifierPending, the run cleared.
+/** The answers already banked for this kind of test on the active list: [{ word, correct }] (empty when none). */
+export function testAnswered(d, kind) {
+  const r = d.testRun;
+  return r && r.kind === kind && r.listId === d.activeId ? r.results.filter((x) => activeList(d).words.some((w) => w.word === x.word)) : [];
+}
+/** Bank one answer. Returns null when the word was already answered in this test (nothing changes), else { rec, newlyMastered, missionJustDone, mission, wasNew }. */
+export function bankTestWord(d, kind, word, correct, now) {
+  if (!d.testRun || d.testRun.kind !== kind || d.testRun.listId !== d.activeId) d.testRun = { kind, listId: d.activeId, startedAt: now, results: [] };
+  if (d.testRun.results.some((r) => r.word === word)) return null;
+  const t = rollToday(d, now);
+  const rec = d.records[word] || (d.records[word] = newRecord(word, d.activeId));
+  const wasNew = isNew(rec), wasMastered = isMastered(rec);
+  if (kind === 'qualifier') applyQualifier(rec, !!correct, now); else applyTest(rec, !!correct, now);
+  const newlyMastered = !wasMastered && isMastered(rec);
+  if (newlyMastered) rec.masteredAt = now;
+  if (wasNew) t.newCount += 1;
+  t.count += 1;
+  let missionJustDone = false;
+  if (!t.missionPaid && t.count >= MISSION_SIZE) { t.missionPaid = true; missionJustDone = true; }
+  d.testRun.results.push({ word, correct: !!correct });
+  noteProgress(d, now);
+  return { rec, newlyMastered, missionJustDone, mission: missionState(d, now), wasNew };
+}
+/** Close a test whose answers were banked word by word: the test entry, the Qualifier no longer pending, the resume point cleared. */
+export function finishTest(d, kind, results, now) {
+  const t = pushTest(d, kind, results, now);
+  if (kind === 'qualifier') d.qualifierPending = null;
+  delete d.testRun;
+  noteProgress(d, now);
+  return t;
+}
+
 // Qualifier (pretest): correct → box 2, missed → Focus. results: [{word, correct}]
 export function recordQualifier(d, results, now) {
   for (const r of results) {
@@ -346,6 +388,7 @@ export function recordQualifier(d, results, now) {
     applyQualifier(rec, r.correct, now);
   }
   d.qualifierPending = null;
+  delete d.testRun;
   const t = pushTest(d, 'qualifier', results, now);
   noteProgress(d, now);
   return t;
@@ -360,6 +403,7 @@ export function recordFriday(d, results, now) {
     applyTest(rec, r.correct, now);
     if (!was && isMastered(rec)) { rec.masteredAt = now; mastered.push(r.word); }
   }
+  delete d.testRun;
   const t = pushTest(d, 'friday', results, now);
   Object.defineProperty(t, 'mastered', { value: mastered, enumerable: false });
   noteProgress(d, now);
@@ -372,6 +416,7 @@ export function resetSpelling(d, now) {
   const fresh = defaultWords(now);
   d.records = {};
   d.tests = [];
+  delete d.testRun;
   d.today = fresh.today;
   d.streak = 0; d.bestStreak = 0; d.perfectTotal = 0;
   d.progress = {};

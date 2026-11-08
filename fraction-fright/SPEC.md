@@ -33,7 +33,7 @@ a closed-form arc). Never modify car-jump/ or trail-blazer/; the sync registry a
 
 ## 2. Screens
 Players (shared picker) → **Title** (the yard at dusk: fence, pumpkins, the Cure Counter "Neighbours cured 37",
-buttons STREETS · LAB · YARD · PARENTS) → **Zombie Lab** (the lesson, §4) → **Streets** (the tier picker, §6) →
+buttons STREETS · SCHOOL · YARD · PARENTS) → **Zombie School** (the lesson, §4) → **Streets** (the tier picker, §6) →
 **Wave** (the game) → **Results** → **Yard** (upgrades / cosmetics) → **Parent Zone** (Family code · Fractions ·
 Options · Report · Players). Landscape and portrait, iPhone and iPad.
 
@@ -60,11 +60,11 @@ arrow toward the spot; miss = plop. Effects never cover the road or its labels. 
 mean PAE, per-item results, cash parts that add up (cure cash scaled by accuracy, bull bonus, effort bonus §8).
 Perf ≤ 12 ms a frame on the test box; procedural art (no image assets), zombies with 6 silly looks and hats.
 
-## 4. Zombie Lab (the lesson; app)
+## 4. Zombie School (the lesson; app)
 60–90 s, interactive, before the first street and replayable from the title. "A fraction is a number on the road."
 Drag to cut the road 0→1 into 4 equal jumps; the game names them ¼, 2/4, ¾; tap where ¾ is; repeat with thirds;
 then "½ is the same spot on every road" (benchmark). Max 8 words on screen at a time (Fan), animated arrows over
-text. Ends with "+100 XP · Streets open". The Lab is required once; its three mini-tasks are the first three throws.
+text. Ends with "+100 XP · Streets open". Zombie School is required once; its three mini-tasks are the first three throws.
 
 ## 5. Items and the ladder (`src/skills/items.js`, pure, tested)
 Denominators limited to CCSS grade 4: 2, 3, 4, 5, 6, 8, 10, 12, 100. Streets = tiers:
@@ -84,9 +84,9 @@ item: an arrow toward the spot, then the denominator's ticks for one throw (Moti
 new zombies, landmarks, weather, hats; difficulty rises through the math, never through speed.
 
 ## 6. Adaptive layer (`src/skills/`: ladder, placement, frontier, governor, scouts; port Trail Blazer's shapes)
-- **Lab Check** (placement) after the Lab: a staircase over T1–T5, 2 throws per tier, ≤ 16 throws, no score on
+- **School Check** (placement) after Zombie School: a staircase over T1–T5, 2 throws per tier, ≤ 16 throws, no score on
   screen; seeds the records; a **Start line** names Fluent / Working on / Up next streets. Re-checks after 14 days
-  or when stale. "Race first" has no equivalent: the Lab Check is the Lab's last part (it is short).
+  or when stale. "Race first" has no equivalent: the School Check is Zombie School's last part (it is short).
 - **Records** are per tier + kind: last 12 throws' PAE and results. **Secure** = ≥ 8 throws, hit rate ≥ 80 %, mean
   PAE ≤ tolerance / 2. A secure tier moves on the same sitting; a slip (two misses in a row) brings it back.
 - **Governor** on the last 12 throws across streets: ≥ 92 % hits → tolerance tightens one step and a scout item from
@@ -132,7 +132,7 @@ card and the Why page a section; the dev symlink scheme stays (dev servers serve
 the full feedback beat and hint ladder, results, yard basics (3 goo colours, 2 fences), the Cure Counter, Parent
 Zone with Report, sync of both keys, pings, tests (skills-tests, engine-smoke, ui-smoke both orientations,
 sync-smoke), docs, site card. Kid-rule audit passes (no timer text, no lives, no "kill/die").
-**1.1:** Twin Alley, Sum Street, Decimal Drive, Pumpkin Hill with bosses, the Lab Check, governor, scouts, crates,
+**1.1:** Twin Alley, Sum Street, Decimal Drive, Pumpkin Hill with bosses, the School Check, governor, scouts, crates,
 co-op nights, economy sim.
 
 ## 12. Sources (consulted through abstracts and secondary summaries; see docs/LEARNING-DESIGN.md)

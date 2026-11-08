@@ -125,8 +125,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .pl-links { grid-column: 1; justify-self: start; display: flex; gap: 8px; }
 .pl-link { text-decoration: none; }
 .pl-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; flex: none; margin-top: 6px; }
-.pl-sj { background: rgba(26,51,41,.86); color: var(--muted); font-size: 13px; }
-.pl-sj svg { width: 16px; height: 16px; }
 .pl-parents svg { width: 18px; height: 18px; }
 .players-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
 .players-body::before, .players-body::after { content: ''; flex: 1 0 0; }
@@ -175,9 +173,25 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .kb-enter:disabled { background: #557565; color: #c0d6ca; box-shadow: 0 4px 0 #2c4237; }
 
 /* ---------- title ---------- */
-#screen-title { align-items: center; justify-content: center; text-align: center; padding-top: calc(var(--pad-t) + 54px); }
-#screen-title .topbar { position: absolute; top: var(--pad-t); right: var(--pad-r); left: var(--pad-l); justify-content: flex-start; gap: 10px; }
+#screen-title { align-items: center; justify-content: center; text-align: center; padding-top: calc(var(--pad-t) + 64px); }
+#screen-title .topbar { position: absolute; top: var(--pad-t); right: var(--pad-r); left: var(--pad-l); justify-content: flex-start; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 #screen-title .cash-pill { margin-left: auto; }
+/* v1.10: the one Lab chip top-left (row 1, with the cash), the rider chip and the cup under it */
+.title-chip-host { display: flex; min-height: 44px; }
+.title-chip-host .lab-chipx { --labchip-bg: rgba(13,26,22,.9); --labchip-edge: rgba(255,255,255,.4); --labchip-bar: #ff8a1f; }
+#screen-title .player-chip { order: 1; }
+#screen-title .trails-chip { order: 2; }
+#screen-title .cash-pill { order: 3; }
+@media (orientation: portrait) {
+  #screen-title .topbar::after { content: ""; order: 1; flex-basis: 100%; height: 0; }
+  #screen-title .cash-pill { order: 0; }
+  #screen-title .player-chip, #screen-title .trails-chip { order: 2; }
+}
+.cash-pill { height: 46px; }
+.cash-pill .cash-txt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.cash-pill .cash-txt small { font: 800 9.5px/1 var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.picker-lab { display: flex; justify-content: center; width: 100%; max-width: 360px; padding: 0 12px; flex: none; }
+.picker-lab > * { width: 100%; }
 .player-chip { min-height: 46px; padding: 0 14px 0 6px; gap: 8px; font-size: 15px; max-width: 46%; }
 .player-chip canvas { width: 52px; height: 34px; flex: none; }
 .player-chip span { overflow: hidden; text-overflow: ellipsis; }
@@ -191,7 +205,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .title-actions { display: flex; flex-direction: column; align-items: center; gap: 16px; }
 .menu-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
 .menu-row .btn { min-width: 116px; font-size: 15px; }
-@media (orientation: landscape) { .trails-chip { position: absolute; left: 50%; transform: translateX(-50%); } }
 
 /* ---------- garage ---------- */
 .garage-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 14px; padding-top: 6px; }
@@ -532,11 +545,8 @@ html:not(.kbd) .kb-only { display: none; }
 /* ---------- portrait: same flow, stacked ---------- */
 @media (orientation: portrait) {
   #hero { left: 50%; transform: translateX(-50%); bottom: 3%; width: min(70vw, 300px); height: min(42vw, 176px); }
-  #screen-title { padding-top: calc(var(--pad-t) + 132px); justify-content: flex-start; }
-  #screen-title .topbar { flex-wrap: wrap; }
-  #screen-title .topbar::after { content: ""; order: 2; flex-basis: 100%; height: 0; }
-  .trails-chip { order: 3; margin: 6px auto 0; }
-  .player-chip { max-width: 58%; }
+  #screen-title { padding-top: calc(var(--pad-t) + 176px); justify-content: flex-start; }
+  .player-chip { max-width: 100%; }
   .title-actions { width: min(100%, 360px); }
   #btn-ride { width: 100%; }
   .menu-row { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
@@ -886,12 +896,6 @@ html.hill .boost-bar::after { content: ''; }
 .pz-week-row .pw-mini { grid-column: 1 / -1; height: 8px; }
 /* ===== v1.5 The Season: title (streak, daily card), garage (vehicles row, rider gear), Garage Wall, Cups, crates,
    results (stars, lines, weekend, cup podium), HUD (ghost, turbo, combo, rivals) ===== */
-.streak-chip { display: inline-flex; align-items: center; gap: 4px; height: 42px; padding: 0 12px 0 8px; border-radius: 999px; flex: none;
-  background: rgba(13,26,22,.82); border: 2px solid var(--line); color: var(--dim); font: 400 18px/1 var(--font-display); }
-.streak-chip svg { width: 22px; height: 22px; }
-.streak-chip small { font: 800 11px/1 var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.streak-chip.lit { border-color: var(--accent); color: #fff; }
-.streak-chip.lit svg { color: var(--accent); filter: drop-shadow(0 0 6px rgba(255,138,31,.8)); }
 .daily-card { display: inline-flex; align-items: center; gap: 10px; max-width: min(560px, 100%); min-height: 52px; margin: 6px 0 12px; padding: 6px 8px 6px 10px; border-radius: 16px; text-align: left;
   background: rgba(13,26,22,.86); border: 2px solid var(--cyan); box-shadow: 0 5px 0 rgba(3,10,7,.55); }
 .daily-card .dc-ico { flex: none; width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; background: var(--cyan); color: #032634; }
@@ -1100,8 +1104,6 @@ html.hill .boost-bar::after { content: ''; }
   .crate-stage { min-height: 120px; }
 }
 @media (orientation: portrait) {
-  .streak-chip { order: 3; margin: 6px 0 0; }
-  #screen-title .trails-chip { order: 4; }
   .garage-side { min-height: auto; }
   .garage-body { align-content: start; grid-template-rows: none; grid-auto-rows: max-content; }
   .veh-card { min-height: max-content; }
@@ -1157,7 +1159,8 @@ html.hill .boost-bar::after { content: ''; }
 }
 @media (orientation: portrait) and (max-width: 520px) {
   .hud-right { position: relative; }
-  .hud-lab { position: absolute; right: 0; top: calc(100% + 6px); }       /* under the speed box, so the pause button stays on screen */
+  .hud-lab { position: absolute; right: 0; top: calc(100% + 6px); justify-content: flex-end; }
+  .hud-lab .lab-hud { justify-content: flex-end; }       /* under the speed box, so the pause button stays on screen; the pill (wider than the 120 px slot since the Lab's stage-1 pill) grows leftwards, never off the screen */
   #hud.chase .hud-top { grid-template-columns: 1fr; }
   #hud.chase .race-bar { top: calc(var(--pad-t) + 128px); }
 }
@@ -1195,7 +1198,8 @@ html.hill .boost-bar::after { content: ''; }
     </div>
     <div class="players-body scroll"><div class="player-grid" id="player-grid"></div>
       <div class="pl-foot"><button class="sync-chip" id="sync-chip" data-sfx hidden></button>
-        <a class="btn btn-sm pl-link pl-sj" id="btn-spelljump" href="../spell-jump/">Also play: Spell Jump<span data-icon="right"></span></a></div></div>
+      </div>
+      <div class="picker-lab" id="picker-lab"></div></div>
   </section>
 
   <!-- ===== New player ===== -->
@@ -1217,10 +1221,10 @@ html.hill .boost-bar::after { content: ''; }
   <!-- ===== Title ===== -->
   <section class="screen" id="screen-title" data-screen="title" hidden>
     <div class="topbar">
-      <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span><b class="lv-pill" id="title-lv">Lv 1</b></button>
-      <span class="streak-chip" id="title-streak" data-days="0" aria-label="Streak"><span data-icon="flame"></span><b id="title-streak-n">0</b><small id="title-streak-u">days</small></span>
-      <span class="trails-chip" id="title-trails"><span data-icon="trophy"></span><span id="title-trails-text">Rookie Cup: 0 / 6 · 0 ★</span></span>
+      <div class="title-chip-host" id="title-chip-host"></div>
       <span class="cash-pill" data-cash></span>
+      <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span><b class="lv-pill" id="title-lv">Rider LV 1</b></button>
+      <span class="trails-chip" id="title-trails"><span data-icon="trophy"></span><span id="title-trails-text">Rookie Cup: 0 / 6 · 0 ★</span></span>
     </div>
     <h1 class="logo">Trail<span>Blazer</span></h1>
     <button class="daily-card" id="title-daily" data-sfx><span class="dc-ico" data-icon="calendar"></span><span class="dc-txt"><small>Pit Challenge</small><b id="title-daily-text">Today: Fog on Lake Loop · ×2 cash</b></span><span class="dc-go" id="title-daily-go">Go</span></button>
@@ -1230,7 +1234,6 @@ html.hill .boost-bar::after { content: ''; }
       <div class="menu-row">
         <button class="btn" id="btn-garage" data-sfx><span data-icon="wrench"></span>Garage</button>
         <button class="btn" id="btn-grid" data-sfx><span data-icon="grid"></span>Facts</button>
-        <button class="btn" id="btn-lab" data-sfx><span data-icon="flask"></span>The Lab</button>
         <button class="btn" id="btn-parents" data-sfx><span data-icon="lock"></span>Parents</button>
       </div>
     </div>

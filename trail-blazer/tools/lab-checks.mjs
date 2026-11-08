@@ -109,8 +109,8 @@ export async function runLabChecks(browser, layout, BASE, { J, typeAnswer, check
   // ---------- 1. the bridge with /lab/ blocked ----------
   {
     const { ctx, page, errors, warnings, ids } = await open({ block: true });
-    const t = await J(page, () => ({ lab: document.querySelector('#btn-lab').hidden, failed: window.__trailBlazer.lab.failed, ready: window.__trailBlazer.lab.ready, pill: !!document.querySelector('#hud-lab *') }));
-    check(t.lab && t.failed && !t.ready && !t.pill, 'bridge: with every /lab/ request blocked the game boots to the title: no Lab button, no HUD pill (the bridge is inert)');
+    const t = await J(page, () => ({ lab: !!document.querySelector('.lab-chipx') || !!document.querySelector('#btn-lab'), failed: window.__trailBlazer.lab.failed, ready: window.__trailBlazer.lab.ready, pill: !!document.querySelector('#hud-lab *') }));
+    check(!t.lab && t.failed && !t.ready && !t.pill, 'bridge: with every /lab/ request blocked the game boots to the title: no Lab chip, no HUD pill (the bridge is inert)');
     await J(page, () => { const a = window.__trailBlazer.app; a.startRide('pine-ridge', { skipCheck: true }); });
     await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
     const hudLab = await rect(page, '#hud-lab');
@@ -119,7 +119,7 @@ export async function runLabChecks(browser, layout, BASE, { J, typeAnswer, check
     const r = await J(page, () => ({ strip: document.querySelector('#res-lab').children.length, rep: window.__trailBlazer.lab.report({ event: 'fact', n: 1, firstTry: true }), cash: window.__trailBlazer.app.save.cash, rows: document.querySelectorAll('#res-pay tr[data-row]').length }));
     check(r.strip === 0 && r.rep && r.rep.ok === false && r.rep.coins === 0 && r.cash > 0 && r.rows >= 5, 'bridge: no Lab strip on the results, report() returns the empty receipt, the race still paid its own cash');
     await J(page, () => window.__trailBlazer.app.go('title'));
-    check(await J(page, () => !document.querySelector('#btn-lab') || document.querySelector('#btn-lab').hidden), 'bridge: still no "The Lab" button on the title');
+    check(await J(page, () => !document.querySelector('.lab-chipx') && !document.querySelector('#picker-lab *')), 'bridge: still no Lab chip on the title and no Lab button on the picker');
     check(warnings.length >= 1 && warnings.every((w) => /\[lab\] unavailable/.test(w)) && errors.length === 0, `bridge: the only console noise is the bridge's warning (${warnings.length} warning, ${errors.length} errors${errors.length ? ': ' + errors.slice(0, 2).join(' | ') : ''})`);
     await ctx.close();
   }
@@ -129,9 +129,42 @@ export async function runLabChecks(browser, layout, BASE, { J, typeAnswer, check
     const { ctx, page, errors, ids } = await open();
     await page.waitForFunction(() => window.__trailBlazer.lab.ready && window.__lab && window.__lab.store.view());
     // the title: "The Lab" button
-    const tt = await J(page, () => ({ btn: !document.querySelector('#btn-lab').hidden }));
-    check(tt.btn, 'title: "The Lab" button shows once the Lab has loaded');
+    await page.waitForSelector('#title-chip-host .lab-chipx', { timeout: 5000 });
+    const tt = await J(page, () => {
+      const chip = document.querySelector('#title-chip-host .lab-chipx'), r = chip.getBoundingClientRect();
+      return { chip: /Lab LV \d+/i.test(chip.textContent), left: r.left, top: r.top, oldBtn: !!document.querySelector('#btn-lab'), games: !!chip.querySelector('#lab-chip-games'), one: document.querySelectorAll('.lab-chipx').length,
+        flames: document.querySelectorAll('#screen-title .topbar [data-icon="flame"], #screen-title .topbar .lab-chipx-flame').length, compact: chip.classList.contains('compact'), money: document.querySelector('#screen-title .cash-pill').textContent.replace(/\s+/g, ' ').trim() };
+    });
+    check(tt.chip && tt.games && tt.one === 1 && !tt.oldBtn, 'title: ONE Lab chip ("Lab LV n" with the Games button) replaces the old "The Lab" button');
+    check(tt.top < 30 + layout.insets.t && tt.left < 40 + layout.insets.l, `title: the chip is in the top-left corner (inside the safe area) (${Math.round(tt.left)}, ${Math.round(tt.top)})`);
+    check(tt.flames === 1 && tt.compact === (layout.width <= 520), `title: the only header flame is the chip's (${tt.flames}); compact on phones (${tt.compact})`);
+    check(/Trail cash/.test(tt.money) && !/Lab coin/i.test(tt.money), `title: the money pill says "Trail cash" (${tt.money})`);
+    await page.click('#lab-chip-games');
+    await page.waitForSelector('#lab-games-panel .lab-gp-here', { timeout: 6000 }).catch(() => {});
+    const gm = await J(page, () => { const p = document.querySelector('#lab-games-panel'); const here = p && p.querySelector('.lab-gp-here'); const out = { open: !!p, names: p ? p.querySelectorAll('a').length : 0, here: here ? here.parentElement.textContent : '' }; const c = document.querySelector('#lab-games-close'); if (c) c.click(); return out; });
+    check(gm.open && gm.names >= 8 && /Trail Blazer/.test(gm.here) && /You are here/.test(gm.here), `title: the chip's Games button opens the six-game panel with Trail Blazer marked "You are here" (${gm.names} links)`);
+    const sum = await J(page, () => window.__lab.store.doc().sum.tb || null);
+    check(sum && /^Rider LV \d+$/.test(sum.level) && /^\d+ of \d+ trails$/.test(sum.line) && /^Today: \d+ \/ \d+ math gates$/.test(sum.today) && sum.lastPlayed > 0, `summary: the title sent the Lab "${sum && sum.level}" · "${sum && sum.line}" · "${sum && sum.today}"`);
+    await J(page, () => window.__trailBlazer.app.go('players'));
+    await page.waitForSelector('#picker-lab #lab-picker-btn', { timeout: 4000 });
+    const pk = await J(page, () => { const b = document.querySelector('#picker-lab #lab-picker-btn'), r = b.getBoundingClientRect(); return { text: b.textContent.replace(/\s+/g, ' ').trim(), h: r.height, inside: r.right <= innerWidth && r.left >= 0 && r.bottom <= innerHeight }; });
+    check(/The Lab/.test(pk.text) && pk.h >= 44, `picker: the Lab button is under the cards ("${pk.text}", ${Math.round(pk.h)} px high)`);
+    await shot(page, '00-picker-lab-button');
+    await J(page, (id) => { window.__trailBlazer.app.selectPlayer(id); }, ids.mia);
+    await page.waitForFunction(() => window.__trailBlazer.screen === 'title');
     await shot(page, '01-title');
+    // a race left on the trail (End race) never counts as "finish a race": no race, no day reported; the quest says Finish
+    await J(page, () => { const lab = window.__trailBlazer.lab, orig = lab.report; window.__quitRep = []; window.__quitOrig = orig; lab.report = (ev) => { window.__quitRep.push(ev.event); return orig.call(lab, ev); }; });
+    await J(page, () => { window.__trailBlazer.app.startRide('pine-ridge', { skipCheck: true }); });
+    await page.waitForFunction(() => window.__trailBlazer.screen === 'ride');
+    await page.waitForTimeout(400);
+    await page.click('#btn-pause');
+    await page.click('#pause-end');
+    await page.waitForFunction(() => window.__trailBlazer.screen === 'results', null, { timeout: 10000 });
+    await page.waitForTimeout(500);
+    const quit = await J(page, () => { window.__trailBlazer.lab.report = window.__quitOrig; return { rep: window.__quitRep, fin: window.__trailBlazer.lastResult.summary.finishCrossed }; });
+    check(!quit.fin && !quit.rep.includes('race') && !quit.rep.includes('day') && !quit.rep.includes('win'), `a race ended on the trail (finish line not crossed) reports no "race", "day" or "win" (${quit.rep.join(' ') || 'nothing'})`);
+    await J(page, () => window.__trailBlazer.app.go('title'));
     await J(page, () => { const a = window.__trailBlazer.app.facts; a.opts.gates = 6; window.__trailBlazer.app.persistFacts(); });
     await watch(page);
     const before = await J(page, () => { const v = window.__lab.store.view(); return { coins: v.coins, xp: v.level.into + (v.level.level - 1) * 1000, lv: v.level.level, cash: window.__trailBlazer.app.save.cash }; });
