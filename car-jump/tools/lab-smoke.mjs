@@ -1,7 +1,7 @@
 // Lab integration smoke test for Spell Jump (lab/SPEC.md §4.1, §7.4 step 8): Playwright against a static server at the REPO ROOT, so the game
 // is at /spell-jump/ (the repo-root symlink to car-jump/) and the real Lab is at /lab/ exactly as on learninglab.fun. Runs on its own port.
 //   node car-jump/tools/lab-smoke.mjs        (SHOTS_DIR=/some/dir for the screenshots)
-// Landscape 844x390 (the Lab present): the bridge loads the Lab, "The Lab" title button appears, the XP pill is mounted in the run HUD, a spelled word
+// Landscape 844x390 (the Lab present): the bridge loads the Lab, the one Lab chip appears on the title (top-left, no flame of the game's own), "The Lab" on the picker, the Games panel, the summary reaches the Lab, the XP pill is mounted in the run HUD, a spelled word
 //   reaches the Lab (XP, coins, the day's play), the results strip is mounted, five first-try words in a row make the "Perfect Launch" moment, a Lab skin
 //   and trail are worn through the garage's own pipeline, the Friday Test is a boss event (the Titan sheds a block per right word, a Gold ceremony, the
 //   trophy recorded in the Lab) and the Parent Zone prints the certificate (a print-styled page, zero off-origin requests, the buttons hidden in print).
@@ -167,17 +167,43 @@ async function runLayout(browser, base, layout) {
   if (labUp) {
     await page.waitForFunction(() => window.__spellJump.app.lab.ready, null, { timeout: 8000 });
     check(true, 'the bridge loaded /lab/src/index.js');
-    check(await J(page, () => !document.querySelector('#btn-lab').hidden), 'title: "The Lab" button is shown once the Lab has loaded');
+    await page.waitForSelector('#title-chip-host .lab-chipx', { timeout: 8000 });
+    const tt = await J(page, () => {
+      const chip = document.querySelector('#title-chip-host .lab-chipx'), r = chip.getBoundingClientRect();
+      return { chip: /Lab LV \d+/i.test(chip.textContent), games: !!chip.querySelector('#lab-chip-games'), one: document.querySelectorAll('.lab-chipx').length, left: r.left, top: r.top, compact: chip.classList.contains('compact'),
+        oldBtn: !!document.querySelector('#btn-lab'), headerFlames: document.querySelectorAll('#screen-title .topbar [data-icon="flame"], #screen-title .topbar .lab-chipx-flame').length,
+        lv: document.querySelector('#title-lv').textContent, money: document.querySelector('#screen-title .cash-pill').textContent.replace(/\s+/g, ' ').trim(),
+        days: !!document.querySelector('#btn-streak [data-icon="calendar"], #btn-streak svg') && !document.querySelector('#btn-streak [data-icon="flame"]') };
+    });
+    check(tt.chip && tt.games && tt.one === 1 && !tt.oldBtn, 'title: ONE Lab chip ("Lab LV n" and the Games button) replaces the cyan "Lab" button');
+    check(tt.top < 30 + layout.insets.t && tt.left < 40 + layout.insets.l, `title: the chip is in the top-left corner (inside the safe area) (${Math.round(tt.left)}, ${Math.round(tt.top)})`);
+    check(tt.headerFlames === 1 && tt.days, `title: the only header flame is the chip's (${tt.headerFlames}); Spell Jump's own streak is behind the Days button (calendar icon)`);
+    check(/^Speller LV \d+$/.test(tt.lv) && /Garage cash/.test(tt.money) && !/Lab coin/i.test(tt.money), `title: "${tt.lv}" and the money pill "${tt.money}"`);
+    check(tt.compact === (layout.width <= 520), `title: the chip is compact on phones only (${tt.compact})`);
+    const sum = await J(page, () => window.__lab.store.doc().sum.sj || null);
+    check(sum && /^Speller LV \d+$/.test(sum.level) && /^\d+ words? mastered$/.test(sum.line) && /^Today: \d+ \/ 8 words$/.test(sum.today) && sum.lastPlayed > 0, `summary: the title sent the Lab "${sum && sum.level}" · "${sum && sum.line}" · "${sum && sum.today}"`);
     await shot(page, layout, 'lab-01-title');
     await layoutIssues(page, 'title');
-    await page.tap('#btn-lab');
+    const gm = await J(page, async () => { document.querySelector('#lab-chip-games').click(); await new Promise((r) => setTimeout(r, 500)); const p = document.querySelector('#lab-games-panel'); const here = p && p.querySelector('.lab-gp-here'); const out = { open: !!p, links: p ? p.querySelectorAll('a').length : 0, here: here ? here.parentElement.textContent : '' }; return out; });
+    check(gm.open && gm.links >= 8 && /Spell Jump/.test(gm.here) && /You are here/.test(gm.here), `title: the Games button opens the six-game panel with Spell Jump "You are here" (${gm.links} links)`);
+    await shot(page, layout, 'lab-01b-games-panel');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await page.tap('#title-chip-host .lab-chipx-main');
     check(await page.waitForSelector('.lab-overlay', { timeout: 8000 }).then(() => true, () => false), 'tapping the title\'s Lab chip opens the Lab (the real overlay)');
     await page.keyboard.press('Escape'); await page.waitForTimeout(500);
     await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    // the picker's Lab button
+    await J(page, () => window.__spellJump.app.go('players'));
+    await page.waitForSelector('#picker-lab #lab-picker-btn', { timeout: 4000 });
+    const pkb = await J(page, () => { const b = document.querySelector('#picker-lab #lab-picker-btn'); return { text: b.textContent.replace(/\s+/g, ' ').trim(), h: b.getBoundingClientRect().height, tile: document.querySelector('.pl-level').textContent }; });
+    check(/The Lab/.test(pkb.text) && pkb.h >= 44 && /^Speller LV \d+$/.test(pkb.tile), `picker: "The Lab" button under the cards ("${pkb.text}", ${Math.round(pkb.h)} px) and the tile says "${pkb.tile}"`);
+    await shot(page, layout, 'lab-01c-picker');
+    await page.click('[data-player="pmia"]');
+    await page.waitForSelector(visibleSel('#screen-title'));
   } else {
     await page.waitForFunction(() => window.__spellJump.app.lab.unavailable, null, { timeout: 8000 });
     check(true, 'every /lab/ request blocked: the bridge gave up quietly');
-    check(await J(page, () => document.querySelector('#btn-lab').hidden), 'title: no Lab button, the game looks as before');
+    check(await J(page, () => !document.querySelector('.lab-chipx') && !document.querySelector('#btn-lab') && !document.querySelector('#picker-lab *')), 'title: no Lab chip, the game looks as before');
     check(await J(page, () => { const r = window.__spellJump.app.lab.report({ event: 'word', n: 1, firstTry: true }); return r.ok === false && r.coins === 0 && r.combo.moment === false && !window.__spellJump.app.lab.ready; }), 'a report is a no-op that returns the empty receipt');
     check(errors.warns.some((w) => /\[lab\] unavailable/.test(w)), 'one console warning from the bridge');
   }
@@ -267,6 +293,7 @@ async function runLayout(browser, base, layout) {
   check(await J(page, () => !document.querySelector('#tm-titan').hidden), 'the Test Titan towers over the Friday Test intro');
   await shot(page, layout, 'friday-01-intro');
   await layoutIssues(page, 'friday intro');
+  await J(page, () => { const lab = window.__spellJump.app.lab, orig = lab.report; window.__tw = []; lab.report = (ev) => { window.__tw.push(ev.event); return orig.call(lab, ev); }; });
   await page.click('#tm-go');
   const rightBy = [];
   for (let i = 0; i < WORDS.length; i++) {
@@ -279,6 +306,10 @@ async function runLayout(browser, base, layout) {
     await page.waitForFunction(() => ['right', 'compare'].includes(document.querySelector('#screen-test').dataset.mode), null, { timeout: 4000 });
     await page.waitForTimeout(120);
     rightBy.push(await J(page, () => ({ shed: document.querySelectorAll('.ttn-blk.shed').length, wob: document.querySelector('#tm-titan').classList.contains('wobble'), shrug: document.querySelector('#tm-titan').classList.contains('shrug') })));
+    if (i === 1) {      // v3.11: each word reaches the Lab (and the store) the moment it is answered, not at the end
+      const mid = await J(page, () => ({ tw: window.__tw.filter((e) => e === 'testWord').length, test: window.__tw.includes('test'), today: window.__spellJump.words.today.count }));
+      check(mid.tw === 2 && !mid.test && mid.today >= 2, `after 2 test words the Lab has had ${mid.tw} "testWord" reports (no "test" yet) and today's count is ${mid.today}`);
+    }
     if (i === 2) await shot(page, layout, 'friday-03-midway', 100);
   }
   const maxShed = rightBy.at(-1).shed;

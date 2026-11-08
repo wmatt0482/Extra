@@ -39,6 +39,13 @@ export const labBridge = {
     try { if (L) return L.report({ game: GAME, ...ev }) || EMPTY; later((l) => l.report({ game: GAME, ...ev })); } catch (e) { console.warn('[lab]', e); }
     return EMPTY;
   },
+  /** Cohesion (lab/docs/COHESION.md): the one Lab chip, the picker button, the Games panel, the per-game summary and the Lab coin icon. All lazy and safe. */
+  mountChip(container, opts) { return lazy((l) => l.mountChip(container, opts)); },
+  mountPickerButton(container, opts) { return lazy((l) => l.mountPickerButton(container, opts)); },
+  openGames(o) { later((l) => l.openGames(o || {})); },
+  summary(row) { try { if (L) return !!L.summary(GAME, row); later((l) => l.summary(GAME, row)); } catch (e) { console.warn('[lab]', e); } return false; },
+  /** The Lab coin as an SVG string; '' until the Lab has loaded (draw Lab-coin prices after ready). */
+  coinIcon(size) { try { return L && L.coinIcon ? L.coinIcon(size) : ''; } catch (_) { return ''; } },
   beginRound() { later((l) => l.beginRound(GAME)); },
   hud(opts) { return lazy((l) => l.hud(opts)); },
   results(opts) { return lazy((l) => l.results(opts)); },

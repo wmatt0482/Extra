@@ -588,7 +588,14 @@ html.kbd .touch-only { display: none; }
 /* title: player chip, today's mission, sample-list note */
 #screen-title .topbar { gap: 10px; justify-content: flex-start; }
 #screen-title .cash-pill { margin-left: auto; }
-#screen-title { padding-top: calc(var(--pad-t) + 54px); }
+.cash-pill { height: 46px; padding-right: 14px; }
+.cash-pill .cash-txt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.cash-pill .cash-txt small { font: 800 9.5px/1 var(--font-body); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); }
+.menu-n { margin-left: 2px; padding: 3px 7px 2px; border-radius: 8px; background: var(--ink); color: var(--accent); font: 400 13px/1 var(--font-display); }
+.menu-n.cold { color: var(--dim); }
+.picker-lab { display: flex; justify-content: center; width: 100%; max-width: 360px; padding: 0 12px; }
+.picker-lab > * { width: 100%; }
+#screen-title { padding-top: calc(var(--pad-t) + 96px); }
 #screen-title:has(#title-sample:not([hidden])) .tagline { display: none; }
 #screen-title:has(#title-sample:not([hidden])) .sample-note { margin-top: 10px; }
 html.spelling #hud, html.spelling #controls { visibility: hidden; }
@@ -604,7 +611,14 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 @media (orientation: landscape) {
   #screen-title .logo { font-size: clamp(46px, 9vmin + 1.6vw, 96px); }
   #screen-title .tagline { margin: 8px 0 12px; }
-  .mission-chip { position: absolute; left: 50%; transform: translateX(-50%); margin: 0; }
+  /* v3.11: the Lab chip and the player chip share a row, the level bar under them; the mission chip sits by the cash instead of the middle */
+  #screen-title .mission-chip { position: static; transform: none; margin: 2px 0 0 auto; }
+  #screen-title .mission-chip + .cash-pill { margin-left: 0; }
+  #screen-title { padding-top: calc(var(--pad-t) + 38px); }
+  #screen-title .title-who { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px 8px; max-width: 68%; }
+  #screen-title .title-who .level-row { flex: 0 0 100%; max-width: 236px; }
+  #screen-title .menu-row { gap: 8px; }
+  #screen-title .menu-row .btn { min-width: 0; padding: 0 11px; gap: 6px; font-size: 14px; }
 }
 @media (orientation: portrait) {
   #screen-title { padding-top: calc(var(--pad-t) + 104px); }
@@ -1057,17 +1071,14 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 /* title: player chip + streak flame, level + progress under them, crates waiting */
 #screen-title .topbar { align-items: flex-start; }
 #screen-title .topbar .mission-chip, #screen-title .topbar .cash-pill { margin-top: 2px; }
-.title-who { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; min-width: 0; max-width: 44%; }
+.title-who { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; max-width: 62%; }
+.title-chip-host { display: flex; min-height: 44px; }
+.title-chip-host .lab-chipx { --labchip-bg: rgba(13,18,48,.9); --labchip-edge: rgba(255,255,255,.4); }
 .title-who-row { display: flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0; }
 .title-who .player-chip { max-width: none; min-width: 0; flex: 0 1 auto; }
-.streak-chip { --edge: 4px; flex: none; min-height: 46px; padding: 0 12px 0 8px; gap: 3px; font-size: 19px; color: #fff;
-  background: linear-gradient(#ffa24d, #ff5a1f); box-shadow: 0 var(--edge) 0 #a8351a, inset 0 2px 0 rgba(255,255,255,.35); }
-.streak-chip:active { box-shadow: 0 1px 0 #a8351a; }
-.streak-chip svg { width: 22px; height: 22px; color: #ffe066; }
-.streak-chip.cold { background: var(--panel-2); box-shadow: 0 var(--edge) 0 var(--ink), inset 0 2px 0 rgba(255,255,255,.18); color: var(--muted); }
-.streak-chip.cold svg { color: var(--dim); }
-.level-row { display: flex; flex-direction: column; gap: 4px; width: 190px; max-width: 100%; padding: 5px 10px 7px; border-radius: 10px; background: rgba(13,18,48,.82); text-align: left; }
+.level-row { display: flex; flex-direction: column; gap: 4px; width: 236px; max-width: 100%; padding: 5px 10px 7px; border-radius: 10px; background: rgba(13,18,48,.82); text-align: left; }
 .lv-text { display: flex; align-items: baseline; gap: 6px; min-width: 0; font: 800 11px/1.1 var(--font-body); color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.lv-text span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .lv-text b { flex: none; font: 400 13px/1 var(--font-display); color: var(--accent); }
 .lv-bar { display: block; height: 7px; border-radius: 4px; background: var(--ink-2); overflow: hidden; }
 .lv-bar i { display: block; height: 100%; width: 0; border-radius: 4px; background: linear-gradient(90deg, var(--cyan), var(--go)); transition: width .5s ease; }
@@ -1077,8 +1088,8 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 @keyframes crateBounce { 0%, 55%, 100% { transform: translateY(0); } 65% { transform: translateY(-9px); } 75% { transform: translateY(0); } 85% { transform: translateY(-3px); } }
 .reduced-motion .crate-btn { animation: none; }
 @media (orientation: portrait) {
-  #screen-title { padding-top: calc(var(--pad-t) + 136px); }
-  .title-who { max-width: 62%; }
+  #screen-title { padding-top: calc(var(--pad-t) + 200px); }
+  .title-who { max-width: 66%; }
   .crate-btn { top: auto; right: auto; left: 50%; bottom: calc(var(--pad-b) + 10px); margin-left: -80px; width: 160px; }
 }
 
@@ -1279,10 +1290,6 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 .reduced-motion .record, .reduced-motion .toast, .reduced-motion .sheet { animation: none; }
 
 /* ================= v3.9: the Lab (lab/SPEC.md §4.1) and the Friday Test as a boss event ================= */
-.title-lab-chip { --edge: 4px; flex: none; min-height: 46px; padding: 0 12px 0 8px; gap: 4px; font-size: 16px; color: #06242d;
-  background: linear-gradient(#8ff4ff, var(--cyan)); box-shadow: 0 var(--edge) 0 var(--cyan-edge), inset 0 2px 0 rgba(255,255,255,.5); }
-.title-lab-chip:active { box-shadow: 0 1px 0 var(--cyan-edge); }
-.title-lab-chip svg { width: 22px; height: 22px; }
 .res-lab { flex: none; display: flex; }
 .res-lab:empty { display: none; }
 .banner.b-moment > span { color: var(--accent-ink); --sh: var(--accent-edge); background: linear-gradient(#fff3b0, var(--accent)); border-color: #fff; }
@@ -1385,6 +1392,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
       <button class="btn btn-sm pl-parents" id="btn-parents-picker" data-sfx><span data-icon="lock"></span>Parents</button></div>
     <div class="players-body scroll"><div class="players-main"><div class="player-grid" id="player-grid"></div>
       <div class="card board" id="family-board" hidden></div></div>
+      <div class="picker-lab" id="picker-lab"></div>
       <button class="sync-chip" id="sync-chip" data-sfx hidden></button></div>
   </section>
 
@@ -1408,12 +1416,11 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
   <section class="screen" id="screen-title" data-screen="title" hidden>
     <div class="topbar">
       <div class="title-who">
+        <div class="title-chip-host" id="title-chip-host"></div>
         <div class="title-who-row">
           <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span></button>
-          <button class="btn streak-chip cold" id="btn-streak" aria-label="Streak" data-sfx><span data-icon="flame"></span><span id="title-streak">0</span></button>
-          <button class="btn title-lab-chip" id="btn-lab" aria-label="The Lab" data-sfx hidden><span data-icon="flask"></span><span>Lab</span></button>
         </div>
-        <div class="level-row" id="title-level" role="img"><span class="lv-text"><b id="title-lv">Lv 1</b><span id="title-lv-name">Rookie Speller</span></span><span class="lv-bar"><i id="title-lv-bar"></i></span></div>
+        <div class="level-row" id="title-level" role="img"><span class="lv-text"><b id="title-lv">Speller LV 1</b><span id="title-lv-name">Rookie Speller</span></span><span class="lv-bar"><i id="title-lv-bar"></i></span></div>
       </div>
       <span class="mission-chip" id="title-mission"><span data-icon="star"></span><span id="title-mission-text">Today: 0 / 8 words</span></span>
       <span class="cash-pill" data-cash></span>
@@ -1428,6 +1435,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
         <button class="btn btn-cyan" id="btn-friday" data-sfx><span data-icon="check"></span>Friday Test</button>
         <button class="btn" data-open="achievements" data-sfx><span data-icon="medal"></span>Badges<span class="badge" id="badge-ach" hidden></span></button>
         <button class="btn" id="btn-trophies" data-open="trophies" data-sfx><span data-icon="trophy"></span>Trophies</button>
+        <button class="btn" id="btn-streak" aria-label="Days in a row" data-sfx><span data-icon="calendar"></span>Days<b class="menu-n cold" id="title-streak">0</b></button>
         <button class="btn" id="btn-parents" data-sfx><span data-icon="lock"></span>Parents</button>
       </div>
     </div>

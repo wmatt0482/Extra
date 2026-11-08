@@ -143,6 +143,9 @@ export function mergeWords(local, remote, now = Date.now()) {
     bestStreak: Math.max(...progress.map((d) => num(d.bestStreak))),
     perfectTotal: Math.max(...progress.map((d) => num(d.perfectTotal))),
   };
+  // v3.11: a test left midway resumes: keep the fuller run of the two (only while it is still wanted)
+  const runs = [A.testRun, B.testRun].filter((r) => r && Array.isArray(r.results) && merged.some((l) => l.id === r.listId) && r.listId === activeId && (r.kind !== 'qualifier' || out.qualifierPending === r.listId));
+  if (runs.length) out.testRun = clone(runs.sort((a, b) => b.results.length - a.results.length)[0]);
   // v3.8: the per-day progress log: each day's counts by max (both devices counted the same child)
   out.progress = {};
   for (const d of progress) for (const [day, p] of Object.entries(d.progress || {})) {

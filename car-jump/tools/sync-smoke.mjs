@@ -206,7 +206,7 @@ async function main() {
     console.log('\n=== sync off: nothing goes to the network ===');
     await L.waitForSelector(visibleSel('#screen-players'));
     check(apiLog.length === 0, 'no /api/family requests before a family exists');
-    check(await J(L, () => window.__spellJump.app.version) === '3.10.0', 'app version 3.10.0');
+    check(await J(L, () => window.__spellJump.app.version) === '3.11.0', 'app version 3.10.0');
 
     console.log('\n=== laptop: Mia, PIN, Create family code ===');
     await typeName(L, 'Mia');

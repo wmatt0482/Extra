@@ -22,7 +22,7 @@ import { diffAttempt, formatList, normalizeWord, parseList, patternRanges, ringL
 import {
   activeList, archivedLists, defaultWords, deleteList, missionState, nextWord, normalizeWordsData, qualifierDue, recordFriday,
   recordQualifier, recordSpell, report, reportText, resetSpelling, restoreList, saveNewList, setLaunch, spellBonus, wordInfo, DEFAULT_OPTIONS, WORDS_PER_RACE, allWords, allWordsText, weekProgress,
-  noteProgress, progressSeries, PROGRESS_KEPT,
+  noteProgress, progressSeries, PROGRESS_KEPT, bankTestWord, finishTest, testAnswered,
 } from '../src/spelling/wordStore.js';
 
 let passed = 0;
@@ -2300,6 +2300,86 @@ console.log('the Sky Road (v3.10)');
     const d1 = S(day(1), (s) => { s.streak.days = ['2026-11-06', '2026-11-07']; s.streak.lastDay = '2026-11-07'; s.streak.count = 2; });
     const d2 = S(day(2), (s) => { s.streak.days = ['2026-11-08']; s.streak.lastDay = '2026-11-08'; s.streak.count = 1; });
     assert.equal(SR.skyRoadSteps(mergeSave(d1, d2)), 3);
+  });
+}
+
+console.log('v3.11: tests bank one word at a time, and a test left midway resumes');
+{
+  const six = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta'];
+  test('a Qualifier answer counts at once: the record, today\'s count, no test entry until it is finished', () => {
+    const d = dataWith(six); d.qualifierPending = d.activeId;
+    const b = bankTestWord(d, 'qualifier', 'alpha', true, T0);
+    assert.ok(b && !b.missionJustDone);
+    assert.equal(d.records.alpha.box, 2, 'a right word skips ahead');
+    bankTestWord(d, 'qualifier', 'beta', false, T0 + 1000);
+    assert.equal(d.records.beta.focus, true, 'a missed word is a Focus word at once');
+    assert.equal(missionState(d, T0).count, 2, "today's count moved");
+    assert.equal(d.tests.length, 0, 'the test is not finished yet');
+    assert.equal(qualifierDue(d), true, 'still due until finished');
+    assert.deepEqual(testAnswered(d, 'qualifier').map((r) => r.word), ['alpha', 'beta']);
+  });
+  test('answers survive a save and reload (normalize keeps the resume point)', () => {
+    const d = dataWith(six); d.qualifierPending = d.activeId;
+    bankTestWord(d, 'qualifier', 'alpha', true, T0); bankTestWord(d, 'qualifier', 'beta', false, T0);
+    const back = normalizeWordsData(JSON.parse(JSON.stringify(d)), T0);
+    assert.deepEqual(testAnswered(back, 'qualifier'), [{ word: 'alpha', correct: true }, { word: 'beta', correct: false }]);
+    assert.equal(back.records.alpha.box, 2);
+    assert.equal(missionState(back, T0).count, 2);
+  });
+  test('a word is banked once: answering it again changes nothing (an answered word is never asked or paid twice)', () => {
+    const d = dataWith(six); bankTestWord(d, 'qualifier', 'alpha', true, T0);
+    const before = JSON.stringify(d);
+    assert.equal(bankTestWord(d, 'qualifier', 'alpha', false, T0 + 5), null);
+    assert.equal(JSON.stringify(d), before);
+  });
+  test('finishing closes the test: one entry with every answer, Qualifier no longer pending, the resume point cleared', () => {
+    const d = dataWith(six.slice(0, 3)); d.qualifierPending = d.activeId;
+    const res = [{ word: 'alpha', correct: true }, { word: 'beta', correct: false }, { word: 'gamma', correct: true }];
+    for (const r of res) bankTestWord(d, 'qualifier', r.word, r.correct, T0);
+    const t = finishTest(d, 'qualifier', res, T0 + 10);
+    assert.equal(t.correct, 2); assert.equal(t.total, 3); assert.deepEqual(t.missed, ['beta']);
+    assert.equal(qualifierDue(d), false); assert.equal(d.testRun, undefined); assert.equal(d.tests.length, 1);
+    assert.deepEqual(testAnswered(d, 'qualifier'), []);
+  });
+  test('the banked result equals the old all-at-once result (same records either way)', () => {
+    const a = dataWith(six.slice(0, 4)), b = dataWith(six.slice(0, 4));
+    const res = [{ word: 'alpha', correct: true }, { word: 'beta', correct: false }, { word: 'gamma', correct: true }, { word: 'delta', correct: false }];
+    recordQualifier(a, res, T0);
+    for (const r of res) bankTestWord(b, 'qualifier', r.word, r.correct, T0);
+    finishTest(b, 'qualifier', res, T0);
+    for (const w of six.slice(0, 4)) assert.deepEqual(b.records[w], a.records[w], w);
+  });
+  test('the Friday Test banks per word too, one attempt each; a mastered word is reported', () => {
+    const d = dataWith(['alpha', 'beta']);
+    const r = d.records.alpha; r.box = 3; r.firstTry = 2; r.daysCorrect = ['2026-10-10', '2026-10-11']; r.seenCount = 3;
+    const b = bankTestWord(d, 'friday', 'alpha', true, T0);
+    assert.equal(b.newlyMastered, true); assert.ok(d.records.alpha.masteredAt);
+    bankTestWord(d, 'friday', 'beta', false, T0);
+    assert.equal(d.records.beta.box, 0);
+    assert.equal(d.tests.length, 0);
+    finishTest(d, 'friday', testAnswered(d, 'friday'), T0 + 5);
+    assert.equal(d.tests.length, 1); assert.equal(d.tests[0].kind, 'friday'); assert.equal(d.tests[0].correct, 1);
+  });
+  test('words answered in a test count toward the mission, and the last one finishes it (once)', () => {
+    const d = dataWith(six);
+    let done = 0;
+    for (const w of six) { const b = bankTestWord(d, 'friday', w, true, T0); if (b.missionJustDone) done++; }
+    assert.equal(done, 1); assert.equal(missionState(d, T0).done, true); assert.equal(missionState(d, T0).paid, true);
+  });
+  test('a resume point for another list or kind is not offered', () => {
+    const d = dataWith(six); bankTestWord(d, 'qualifier', 'alpha', true, T0);
+    assert.deepEqual(testAnswered(d, 'friday'), []);
+    saveNewList(d, [{ word: 'omega' }], '', T0 + 99);
+    assert.deepEqual(testAnswered(d, 'qualifier'), []);
+  });
+  test('reset clears the resume point', () => {
+    const d = dataWith(six); bankTestWord(d, 'qualifier', 'alpha', true, T0);
+    resetSpelling(d, T0 + 5); assert.equal(d.testRun, undefined);
+  });
+  test('family merge keeps the fuller resume point while the Qualifier is still wanted', () => {
+    const mk = (n) => { const d = dataWith(six); d.qualifierPending = d.activeId; for (const w of six.slice(0, n)) bankTestWord(d, 'qualifier', w, true, T0); return d; };
+    const m = mergeWords({ updatedAt: 5, data: mk(2) }, { updatedAt: 9, data: mk(4) }, T0);
+    assert.equal(testAnswered(m, 'qualifier').length, 4);
   });
 }
 
