@@ -20,14 +20,21 @@ const EMPTY = Object.freeze({
   day: '',
 });
 let L = null,
-  dead = false;
+  dead = false,
+  catalog = null;
 const queue = [],
   ready = [];
 function load() {
   if (L || dead || load.p) return;
   load.p = import('../../../lab/src/index.js')
-    .then((m) => {
+    .then(async (m) => {
       L = m.lab;
+      // The Lab's own price list (read-only data): the job board shows what the Lab's shop asks, whatever this game was built with.
+      try {
+        catalog = (await import('../../../lab/src/data/catalog.js')).ITEM_BY_ID;
+      } catch (e) {
+        console.warn('[lab] prices unavailable', e);
+      }
       for (const f of queue.splice(0)) {
         try {
           f(L);
@@ -121,6 +128,11 @@ export const labBridge = {
     } catch (_) {
       return false;
     }
+  },
+  /** The Lab shop's price for an item (the shop is the one source of truth), or `fallback` while the Lab has not loaded. */
+  price(id, fallback) {
+    const p = catalog?.[id]?.price;
+    return Number.isFinite(p) ? p : fallback;
   },
   openShop(o) {
     later((l) => l.openShop({ game: GAME, ...o }));

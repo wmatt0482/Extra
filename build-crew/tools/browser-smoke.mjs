@@ -11,6 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPlaywright, resultsPath, SWIFTSHADER_ARGS } from './runner.mjs';
+import { placingStage } from './placing-stage.mjs';
 const game = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pw = await loadPlaywright();
 let stage = 'boot';
@@ -327,6 +328,30 @@ async function labStages() {
     console.log('PASS UI stage');
     results.checks.push('with /lab/ blocked the original jobs and sandbox play and every Lab item stays hidden');
   }
+}
+/** The 0.8 stage (tools/placing-stage.mjs): Job 1 finished by pour and push with a bump test, payout, goals, tap driving. */
+const placing = () =>
+  placingStage({
+    browser,
+    BASE,
+    shots,
+    errors,
+    results,
+    mark: (m) => {
+      console.log('PASS ' + m);
+      results.checks.push(m);
+    },
+  });
+if (process.env.PLACING_ONLY) {
+  try {
+    await placing();
+    assert.deepEqual(errors, []);
+    console.log('All placing browser checks passed.');
+  } finally {
+    await browser.close();
+    clearTimeout(watchdog);
+  }
+  process.exit(0);
 }
 if (process.env.LAB_ONLY) {
   try {
@@ -1147,6 +1172,8 @@ try {
   console.log('PASS UI stage');
   results.checks.push('natural voice: every spoken line prepared, none on the device voice, nothing before a builder');
   await labStages();
+  stage = 'placing';
+  await placing();
   assert.deepEqual(errors, []);
   writeFileSync(resultsPath('browser-results.json'), JSON.stringify(results, null, 2) + '\n');
   console.log('All browser checks passed.');

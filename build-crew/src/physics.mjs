@@ -7,7 +7,7 @@ import RAPIER from '../vendor/rapier.mjs';
 import { TOYS, MACHINES } from './content.mjs';
 import { RECESS, hillHeight, hillPoints, rampHeight, rampPoints } from './terrain.mjs';
 import { SITES, HARBOR, siteOf, mudAt, inWater, terrainGrid } from './sites.mjs';
-import { grassTouches } from './missions.mjs';
+import { grassTouches, evaluate, halfHeight } from './missions.mjs';
 export { RAPIER };
 
 let ready;
@@ -43,8 +43,44 @@ const TILT = [-0.7, 0.7];
 /** How fast the tool rises and falls (m/s at full stick). */
 const LIFT_RATE = 2.2;
 
-/** How close (metres) the tool tip must be to a toy's centre to grab it. */
-const GRAB_RADIUS = 1.55;
+/** Where a bucket (the skid steer's and the wheel loader's) can pick a block up, in metres around the grab point in the
+ *  machine's heading: this far to either side (the bucket is 2.4 m wide, a block 1.2 m), from this far behind to this far
+ *  ahead (a block pushed in front of the lip sits about 1.3 m out) and this far below and above it. The bucket's tilt
+ *  does not matter. Machines with a hanging tool (the excavator's bucket, the crane's magnet) grab inside a sphere. */
+export const GRAB_BOX = { x: 1.8, z: [-1.1, 2.4], y: [-1.5, 1.4] };
+const GRAB_SPHERE = 2.1;
+
+/** Once a block has matched its place for this long (seconds) and is not being held, it locks there (see lockStep). The
+ *  check runs every LOCK_EVERY steps; a locking block glides to its exact slot over SNAP_STEPS steps. */
+export const LOCK_AFTER = 0.4;
+const LOCK_EVERY = 4;
+const SNAP_STEPS = 10;
+/** A block resting this long (seconds) just outside the delivery zone, or near a free outline, slides into it. */
+const NEAR_AFTER = 0.7;
+/** How far outside the zone's edge (metres, measured at the block's centre) and how far from an outline's centre a block
+ *  may rest and still be drawn in. */
+const NEAR_EDGE = 0.7;
+const NEAR_GHOST = 1.0;
+
+/** Pouring: a bucket tilted forward past POUR_TILT (radians) with a block lying in it lets the block slide out. Rubber on
+ *  steel at 40 degrees (the bucket's largest tilt) is below the friction angle of the blocks' 0.9, so a released block used
+ *  to stay wedged; while it is in a tilted bucket it now has POUR_FRICTION, a gentle push down the floor and some damping. */
+export const POUR_TILT = 0.25;
+const POUR_FRICTION = 0.1;
+const POUR_PUSH = 2.2;
+const POUR_DAMPING = 2.2;
+const POUR_LIGHTEN = 0.8;
+const BLOCK_FRICTION = 0.9;
+
+/** Collision groups (Rapier packs membership in the high 16 bits and the filter in the low 16). Tools are group 2; a
+ *  block that has just been grabbed is group 1 and ignores group 2 until it has been drawn into the bucket (a block pushed
+ *  in front of the lip, or grabbed with the bucket tilted, would otherwise jam against the plates), then it is ordinary. */
+const GROUP_ALL = 0xffffffff;
+const GROUP_TOOL = 0x0002ffff;
+const GROUP_THROUGH = 0x0001fffd;
+
+/** The share of the gap to the stick's speed a machine closes each step: 0.12 as usual, QUICK_EASE with the keyboard. */
+const QUICK_EASE = 0.24;
 
 /** The tool's orientation: a pure yaw for a hanging magnet or an excavator bucket that follows the stick... */
 const yawOnly = (a) => qyaw(a);
@@ -316,6 +352,7 @@ export const MACHINE = {
     extend: null,
     swings: false,
     wreckingBall: false,
+    bucket: true,
   },
   excavator: {
     ...pick(MACHINES.excavator),
@@ -356,6 +393,7 @@ export const MACHINE = {
     extend: null,
     swings: false,
     wreckingBall: false,
+    bucket: true,
   },
   // The Lab machines. `place(m)` gives the tool's pose (and the tip the camera and effects follow) from the joints, in
   // place of the boom rule; `chassis` lists the body's box colliders; `gate` is the dump truck's second kinematic body.
@@ -471,6 +509,8 @@ export class Yard {
     /** Rule breaks this job has sent back (the "off the grass" rule), and the steps until the rule is next checked. */
     this.returned = 0;
     this.ruleTick = 0;
+    /** The steps since the placed-block check last ran (it runs every LOCK_EVERY steps, in jobs only). */
+    this.lockTick = 0;
     this.tiles = new Map();
     if (this.site.floor === 'tiles') {
       for (let x = -YARD.half; x <= YARD.half; x += YARD.tile) {
@@ -585,7 +625,7 @@ export class Yard {
       const part = shape.hull
         ? RAPIER.ColliderDesc.convexHull(new Float32Array(shape.hull))
         : RAPIER.ColliderDesc.cuboid(...shape[0].map((v) => v / 2)).setTranslation(...shape[1]);
-      this.world.createCollider(part.setFriction(friction), m.tool);
+      this.world.createCollider(part.setFriction(friction).setCollisionGroups(GROUP_TOOL), m.tool);
     }
     if (def.gate) {
       m.gate = this.world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased());
@@ -655,14 +695,17 @@ export class Yard {
       .setCcdEnabled(true);
     const b = this.world.createRigidBody(desc);
     if (t.rotation) b.setRotation(t.rotation, true);
+    const colliders = [];
     const add = (shape, mass) => {
       const collider = shape
         .setMass(mass)
-        .setFriction(0.9)
+        .setFriction(BLOCK_FRICTION)
         .setRestitution(0.07)
         .setActiveEvents(RAPIER.ActiveEvents.CONTACT_FORCE_EVENTS)
         .setContactForceEventThreshold(130);
-      return this.world.createCollider(collider, b);
+      const made = this.world.createCollider(collider, b);
+      colliders.push(made);
+      return made;
     };
     if (t.type === 'pallet') {
       // A pallet is a deck on two runners, leaving fork space underneath.
@@ -681,8 +724,15 @@ export class Yard {
       type: def.type,
       color: t.color || '#e65e4b',
       body: b,
+      colliders,
       home: { ...def },
       born: this.time,
+      // placed for good (see lockStep), and the counters that decide it
+      locked: false,
+      settle: 0,
+      near: 0,
+      pour: null,
+      glide: null,
     };
     this.blocks.push(block);
     return block;
@@ -801,34 +851,69 @@ export class Yard {
     }
   }
 
-  /** Grab toggles: releases a held toy, or picks the nearest toy within reach of the tool. Returns false only when
-   *  nothing is close enough, so the HUD can explain why. */
+  /** The block a Grab would pick up now (null when none is in reach, the machine has no Grab, or a block is already
+   *  held). A bucket reaches a box around its grab point in its own heading, whatever its tilt, so a block pushed in front
+   *  of the lip or lying off to one side is in reach; the excavator's bucket and the crane's magnet use a sphere. Of the
+   *  blocks in reach the nearest and best centred wins. A locked (placed) block is never offered: only a bump could have
+   *  moved it, and a bump does not pick things up. The scene glows this block and the Grab button lights up for it. */
+  grabCandidate() {
+    const m = this.machine,
+      def = MACHINE[m.kind];
+    if (this.held || def.grabs === false || !m.tip) return null;
+    const tip = m.tip,
+      a = m.yaw + m.swing,
+      s = Math.sin(a),
+      c = Math.cos(a);
+    let best = null,
+      bestScore = Infinity;
+    for (const b of this.blocks) {
+      if (b.locked) continue;
+      const p = b.body.translation(),
+        dx = p.x - tip.x,
+        dy = p.y - tip.y,
+        dz = p.z - tip.z;
+      let score;
+      if (def.bucket) {
+        const lx = dx * c - dz * s,
+          lz = dx * s + dz * c;
+        if (Math.abs(lx) > GRAB_BOX.x || lz < GRAB_BOX.z[0] || lz > GRAB_BOX.z[1] || dy < GRAB_BOX.y[0] || dy > GRAB_BOX.y[1]) continue;
+        score = lx * lx * 0.6 + (lz - 0.5) * (lz - 0.5) + dy * dy;
+      } else {
+        score = dx * dx + dy * dy + dz * dz;
+        if (score > GRAB_SPHERE * GRAB_SPHERE) continue;
+      }
+      if (score < bestScore) {
+        bestScore = score;
+        best = b;
+      }
+    }
+    return best;
+  }
+
+  /** Grab toggles: releases a held toy, or picks the block grabCandidate() names. Returns false only when nothing is
+   *  close enough, so the HUD can explain why. */
   grab() {
     if (this.held) {
       this.release();
       return true;
     }
     if (MACHINE[this.machine.kind].grabs === false) return false;
-    const tip = this.tool;
-    const near = this.blocks
-      .map((b) => {
-        const p = b.body.translation();
-        return { b, d: Math.hypot(p.x - tip.x, p.y - tip.y, p.z - tip.z) };
-      })
-      .filter((x) => x.d < GRAB_RADIUS)
-      .sort((a, b) => a.d - b.d);
-    const nearest = near[0];
-    if (!nearest) return false;
-    this.held = nearest.b;
+    const found = this.grabCandidate();
+    if (!found) return false;
+    this.held = found;
     this.held.body.wakeUp();
+    // a bucket draws the block in through its plates, and gives them back once it sits in the bucket
+    if (MACHINE[this.machine.kind].tool.length) this.setGroups(found, GROUP_THROUGH);
+    this.held.pour && this.endPour(this.held);
     this.grabs++;
-    this.onEvent({ type: 'grab' });
+    this.onEvent({ type: 'grab', id: found.id });
     return true;
   }
 
   /** Lets go of the held toy; a released toy keeps no assistance at all. */
   release() {
     if (this.held) {
+      this.setGroups(this.held, GROUP_ALL);
       this.held.body.resetForces(true);
       this.held.body.resetTorques(true);
       this.held = null;
@@ -867,6 +952,7 @@ export class Yard {
       rotation: { ...b.body.rotation() },
       velocity: { ...b.body.linvel() },
       angular: { ...b.body.angvel() },
+      locked: b.locked,
     }));
   }
 
@@ -894,8 +980,17 @@ export class Yard {
     if (d.artic) m.artic += (clamp(input.steer || 0, -1, 1) * LOADER.artic - m.artic) * LOADER.articEase;
     this.seat(m);
     for (const machine of this.machines) this.updateTip(machine);
-    if (this.held) this.carry(this.held.body, m.tip);
+    if (this.held) {
+      this.carry(this.held.body, m.tip);
+      // seated in the bucket: it collides with the plates again
+      if (this.held.through) {
+        const p = this.held.body.translation();
+        if (Math.hypot(p.x - m.tip.x, p.y - m.tip.y, p.z - m.tip.z) < 0.5) this.setGroups(this.held, GROUP_ALL);
+      }
+    }
     if (this.ball) this.swingBall();
+    this.glideLocks();
+    this.pourStep();
     this.world.step(this.queue);
     this.queue.drainContactForceEvents((e) => this.contact(e));
     const harbor = this.site.id === 'harbor';
@@ -907,6 +1002,11 @@ export class Yard {
         this.onEvent({ type: 'splash', position: { x: p.x, y: HARBOR.water.level, z: p.z } });
         this.recover(b);
       }
+    }
+    // Placed blocks: a block that has matched its place and settled locks there (jobs only; the sandbox has no places).
+    if (this.round.id && ++this.lockTick >= LOCK_EVERY) {
+      this.lockTick = 0;
+      this.lockStep(DT * LOCK_EVERY);
     }
     // A job's "keep the blocks off the grass" rule: a block resting on the grass goes back to its start (never a fail).
     if (this.round.rules?.includes('noGrass') && ++this.ruleTick >= 6) {
@@ -925,7 +1025,9 @@ export class Yard {
    *  point on its centre line (the dump truck about its rear axle, the forklift about its front axle, so its tail
    *  swings), and one with `steerLow` turns more slowly when it is not moving. */
   drive(m, d, input, dt) {
-    m.speed += (clamp(input.drive || 0, -1, 1) * d.speed - m.speed) * (d.ease ?? 0.12);
+    // A keyboard (input.quick) gets a quicker start on the machines with the standard feel, so a tap on a key is a nudge
+    // you can see; the Lab machines keep their own slow, heavy ease.
+    m.speed += (clamp(input.drive || 0, -1, 1) * d.speed - m.speed) * (input.quick && d.ease === undefined ? QUICK_EASE : (d.ease ?? 0.12));
     const steer = clamp(input.steer || 0, -1, 1),
       low = d.steerLow ?? 1,
       rate = d.turn * (low + (1 - low) * Math.min(1, Math.abs(m.speed) / (0.5 * d.speed))),
@@ -998,6 +1100,316 @@ export class Yard {
     );
   }
 
+  // ---- Placed blocks ----------------------------------------------------------------------------------------------
+  /** How high the surface under block `p` (a pose) is: the ground there, or the top of a locked block it rests on. A
+   *  block that is not on something low (the dump truck's bed, a bucket held up in the air) has no support near it. */
+  supportUnder(p, self) {
+    const half = TOYS[p.type].size,
+      r = Math.hypot(half[0], half[2]) / 2,
+      bottom = p.position.y - halfHeight(p);
+    let top = this.groundAt(p.position.x, p.position.z);
+    for (const o of this.blocks) {
+      if (!o.locked || o.id === self) continue;
+      const q = o.body.translation(),
+        d = TOYS[o.type].size,
+        ro = Math.hypot(d[0], d[2]) / 2;
+      if (Math.hypot(q.x - p.position.x, q.z - p.position.z) > (r + ro) * 0.75) continue;
+      const t = q.y + halfHeight({ type: o.type, rotation: o.body.rotation() });
+      if (t <= bottom + 0.3 && t > top) top = t;
+    }
+    return top;
+  }
+
+  /** The once-in-a-few-steps check that makes a placed block stay placed. Anything that has matched the job's blueprint
+   *  slot (or lies inside the delivery zone), is not held, rests on the ground or on another placed block, and has done so
+   *  for LOCK_AFTER seconds is locked: it becomes a kinematic body, so no touch from a machine moves it and it can never
+   *  drop out of the count, and it glides to its slot's exact pose. A block that comes to rest just outside the zone, or
+   *  near an open outline, is drawn in the same way after a little longer. Fires a 'placed' event for each. */
+  lockStep(dt) {
+    const round = this.round,
+      poses = this.poses(),
+      held = this.held?.id ?? null,
+      status = evaluate(round, poses, held),
+      pose = new Map(poses.map((p) => [p.id, p])),
+      taken = new Set(this.blocks.filter((b) => b.locked && b.slot != null).map((b) => b.slot));
+    const matched = new Map();
+    status.matches.forEach((id, i) => {
+      if (id != null) matched.set(id, round.ghosts ? i : -1);
+    });
+    for (const b of this.blocks) {
+      if (b.locked || b.id === held) {
+        b.settle = b.near = 0;
+        continue;
+      }
+      const p = pose.get(b.id),
+        slot = matched.get(b.id);
+      if (slot !== undefined && !(slot >= 0 && taken.has(slot))) {
+        const support = this.supportUnder(p, b.id);
+        const resting = round.ghosts || p.position.y - halfHeight(p) - support < 0.25,
+          calm =
+            !b.pour &&
+            Math.hypot(p.velocity.x, p.velocity.y, p.velocity.z) < 0.3 &&
+            Math.hypot(p.angular.x, p.angular.y, p.angular.z) < 0.5;
+        b.settle = resting && calm ? b.settle + dt : 0;
+        b.near = 0;
+        if (b.settle >= LOCK_AFTER) {
+          this.lock(b, p, round.ghosts ? round.ghosts[slot] : null, support);
+          if (slot >= 0) taken.add(slot);
+        }
+        continue;
+      }
+      b.settle = 0;
+      // a block resting just outside the delivery zone, or beside an open outline, is drawn in
+      const still =
+        Math.hypot(p.velocity.x, p.velocity.y, p.velocity.z) < 0.25 &&
+        Math.hypot(p.angular.x, p.angular.y, p.angular.z) < 0.4;
+      let aim = null;
+      if (still && !b.pour) {
+        if (round.ghosts) {
+          let near = Infinity;
+          round.ghosts.forEach((g, i) => {
+            const d = Math.hypot(p.position.x - g.x, p.position.z - g.z);
+            if (
+              g.type === b.type &&
+              !taken.has(i) &&
+              !status.matches[i] &&
+              d < NEAR_GHOST &&
+              Math.abs(p.position.y - g.y) < 0.45 &&
+              Math.abs(p.rotation.x) < 0.25 &&
+              Math.abs(p.rotation.z) < 0.25 &&
+              d < near
+            ) {
+              near = d;
+              aim = { slot: i, g };
+            }
+          });
+        } else if (round.pad) {
+          const pad = round.pad,
+            t = TOYS[b.type],
+            margin = Math.hypot(t.size[0], t.size[2]) / 2,
+            dx = p.position.x - pad.x,
+            dz = p.position.z - pad.z;
+          if (
+            Math.abs(dx) < pad.w / 2 + NEAR_EDGE &&
+            Math.abs(dz) < pad.d / 2 + NEAR_EDGE &&
+            p.position.y - halfHeight(p) - this.supportUnder(p, b.id) < 0.25
+          ) {
+            const spot = this.freeSpot(b, pad, margin);
+            if (spot) aim = { slot: -1, g: spot };
+          }
+        }
+      }
+      if (aim) {
+        b.near += dt;
+        if (b.near >= NEAR_AFTER) {
+          this.lock(b, p, aim.g, this.supportUnder(p, b.id));
+          if (aim.slot >= 0) taken.add(aim.slot);
+        }
+      } else b.near = 0;
+    }
+  }
+
+  /** Locks every block that matches its place right now without waiting for it to settle (the job is complete: the blocks
+   *  that finished it stay put from then on). */
+  lockMatched() {
+    const round = this.round;
+    if (!round.id) return;
+    const poses = this.poses(),
+      status = evaluate(round, poses, this.held?.id ?? null),
+      pose = new Map(poses.map((p) => [p.id, p]));
+    status.matches.forEach((id, i) => {
+      const b = id == null ? null : this.blocks.find((x) => x.id === id);
+      if (b && !b.locked) this.lock(b, pose.get(id), round.ghosts ? round.ghosts[i] : null, this.supportUnder(pose.get(id), id));
+    });
+  }
+
+  /** A place inside the delivery zone for block `b`, as close as possible to where it lies: clear of every other block, or
+   *  null when the zone is too full there. */
+  freeSpot(b, pad, margin) {
+    const p = b.body.translation(),
+      ox = pad.w / 2 - margin - 0.12,
+      oz = pad.d / 2 - margin - 0.12;
+    const clamped = { x: clamp(p.x, pad.x - ox, pad.x + ox), z: clamp(p.z, pad.z - oz, pad.z + oz) };
+    const free = (x, z) =>
+      this.blocks.every((o) => {
+        if (o === b) return true;
+        const q = o.body.translation(),
+          d = TOYS[o.type].size;
+        return Math.hypot(q.x - x, q.z - z) > margin + Math.hypot(d[0], d[2]) / 2 + 0.05 || Math.abs(q.y - p.y) > 1;
+      });
+    for (const ring of [0, 0.45, 0.9, 1.35, 1.8]) {
+      for (let k = 0; k < (ring ? 8 : 1); k++) {
+        const a = (k / 8) * Math.PI * 2,
+          x = clamp(clamped.x + Math.sin(a) * ring, pad.x - ox, pad.x + ox),
+          z = clamp(clamped.z + Math.cos(a) * ring, pad.z - oz, pad.z + oz);
+        if (free(x, z)) return { x, z, y: p.y };
+      }
+    }
+    return null;
+  }
+
+  /** Locks block `b` (a pose `p`) in place at `slot` (an outline {x, y, z} or a spot {x, z, y}), or where it lies. */
+  lock(b, p, slot, support) {
+    const type = TOYS[b.type],
+      symmetric = b.type === 'cube' || type.round,
+      rest = support + halfHeight({ type: b.type, rotation: { x: 0, y: 0, z: 0, w: 1 } }),
+      to = slot
+        ? { x: slot.x, y: slot.y ?? p.position.y, z: slot.z }
+        : { x: p.position.x, y: Math.abs(p.position.y - rest) < 0.3 ? rest : p.position.y, z: p.position.z },
+      yaw = Math.atan2(
+        2 * (p.rotation.w * p.rotation.y + p.rotation.x * p.rotation.z),
+        1 - 2 * (p.rotation.y ** 2 + p.rotation.z ** 2),
+      ),
+      // a cube or a barrel looks the same turned a quarter, so it squares up for nothing; anything else keeps its heading
+      toQ = symmetric || (slot && this.round.ghosts) ? { x: 0, y: 0, z: 0, w: 1 } : qyaw(yaw);
+    if (b.pour) this.endPour(b);
+    b.locked = true;
+    b.slot = slot && this.round.ghosts ? this.round.ghosts.indexOf(slot) : null;
+    if (b.slot < 0) b.slot = null;
+    b.settle = b.near = 0;
+    b.body.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    b.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    b.body.setBodyType(RAPIER.RigidBodyType.KinematicPositionBased, true);
+    b.glide = { i: 0, from: { ...p.position }, fromQ: { ...p.rotation }, to, toQ };
+    const count = this.blocks.filter((o) => o.locked).length;
+    this.onEvent({ type: 'placed', id: b.id, position: { ...to }, count, slot: b.slot });
+  }
+
+  /** Unlocks a block (it was sent back to its start): it is an ordinary dynamic toy again. */
+  unlock(b) {
+    if (!b.locked) return;
+    b.locked = false;
+    b.slot = null;
+    b.glide = null;
+    b.body.setBodyType(RAPIER.RigidBodyType.Dynamic, true);
+  }
+
+  /** Moves each gliding block one step along its way to its slot (a smooth ease over SNAP_STEPS steps). */
+  glideLocks() {
+    for (const b of this.blocks) {
+      const g = b.glide;
+      if (!g) continue;
+      const t = ++g.i / SNAP_STEPS,
+        k = t >= 1 ? 1 : t * t * (3 - 2 * t),
+        dot = g.fromQ.x * g.toQ.x + g.fromQ.y * g.toQ.y + g.fromQ.z * g.toQ.z + g.fromQ.w * g.toQ.w,
+        sign = dot < 0 ? -1 : 1,
+        q = {
+          x: g.fromQ.x + (g.toQ.x * sign - g.fromQ.x) * k,
+          y: g.fromQ.y + (g.toQ.y * sign - g.fromQ.y) * k,
+          z: g.fromQ.z + (g.toQ.z * sign - g.fromQ.z) * k,
+          w: g.fromQ.w + (g.toQ.w * sign - g.fromQ.w) * k,
+        },
+        l = Math.hypot(q.x, q.y, q.z, q.w) || 1;
+      q.x /= l;
+      q.y /= l;
+      q.z /= l;
+      q.w /= l;
+      b.body.setNextKinematicTranslation({
+        x: g.from.x + (g.to.x - g.from.x) * k,
+        y: g.from.y + (g.to.y - g.from.y) * k,
+        z: g.from.z + (g.to.z - g.from.z) * k,
+      });
+      b.body.setNextKinematicRotation(q);
+      if (t >= 1) b.glide = null;
+    }
+  }
+
+  // ---- Pouring ----------------------------------------------------------------------------------------------------
+  /** Sets the collision groups of every collider of block `b`. */
+  setGroups(b, groups) {
+    for (const c of b.colliders) c.setCollisionGroups(groups);
+    b.through = groups === GROUP_THROUGH;
+  }
+
+  /** Sets the friction of every collider of block `b`. */
+  setFriction(b, f) {
+    for (const c of b.colliders) c.setFriction(f);
+  }
+
+  /** Ends a block's pour: its own friction, damping and forces come back. */
+  endPour(b) {
+    if (!b.pour) return;
+    b.pour = null;
+    this.setFriction(b, BLOCK_FRICTION);
+    b.body.setLinearDamping(0.45);
+    b.body.resetForces(true);
+  }
+
+  /** A block lying in a bucket that is tilted forward past POUR_TILT slides out: while it is in the bucket it has little
+   *  friction and a gentle push down the floor, so it leaves forward in a second or so, falls, and lands with a small hop
+   *  (a 'thud' event for the sound and the dust). Blocks that are held, locked or just resting elsewhere are never touched. */
+  pourStep() {
+    for (const m of this.machines) {
+      const def = MACHINE[m.kind];
+      if (!def.bucket || !m.tool) continue;
+      const tilted = m.tilt > POUR_TILT,
+        q = m.tool.rotation(),
+        at = m.tool.translation(),
+        inv = conj(q),
+        fwd = rotate(q, { x: 0, y: 0, z: 1 }),
+        hl = Math.hypot(fwd.x, fwd.z) || 1,
+        bucket = m.kind === 'loader' ? LOADER.bucket : SKID_BUCKET,
+        half = bucket.width / 2 + 0.05;
+      for (const b of this.blocks) {
+        if (b.locked || b === this.held) continue;
+        const t = b.body.translation(),
+          l = rotate(inv, { x: t.x - at.x, y: t.y - at.y, z: t.z - at.z }),
+          inside =
+            Math.abs(l.x) < half &&
+            l.z > bucket.floor.z[0] - 0.15 &&
+            l.z < bucket.floor.z[1] + 0.2 &&
+            l.y > -0.8 &&
+            l.y < 0.7;
+        if (inside && tilted) {
+          if (!b.pour) {
+            b.pour = { out: false, vy: 0, t: 0 };
+            this.setFriction(b, POUR_FRICTION);
+            b.body.setLinearDamping(POUR_DAMPING);
+            b.body.wakeUp();
+          }
+          b.pour.out = false;
+          b.body.resetForces(false);
+          // the push is along the heading, level: a bucket low to the ground has no slope under the block to slide it
+          const f = (b.body.mass() * POUR_PUSH) / hl;
+          // and most of its weight is taken off, so it never stays pressed between the tilted floor and the ground ahead
+          b.body.addForce({ x: fwd.x * f, y: b.body.mass() * 9.81 * POUR_LIGHTEN, z: fwd.z * f }, true);
+        } else if (b.pour && !b.pour.out) {
+          // out of the bucket (it left the lip), or the bucket came back up before the block went
+          if (!inside && tilted) {
+            b.pour.out = true;
+            b.body.resetForces(true);
+            b.body.setLinearDamping(0.45);
+            // a block that slides off a bucket lying on the ground lands as it leaves: a small hop and a thud
+            const t = b.body.translation(),
+              v = b.body.linvel();
+            if (t.y - this.groundAt(t.x, t.z) - halfHeight({ type: b.type, rotation: b.body.rotation() }) < 0.35) {
+              b.body.setLinvel({ x: v.x, y: Math.max(v.y, 1.3), z: v.z }, true);
+              b.pour.landed = true;
+              this.onEvent({ type: 'thud', id: b.id, position: { x: t.x, y: t.y - 0.5, z: t.z }, speed: 2 });
+            }
+          } else this.endPour(b);
+        }
+      }
+    }
+    // a poured block in the air: friction stays low until it lands, then it hops a little and settles
+    for (const b of this.blocks) {
+      const pr = b.pour;
+      if (!pr || !pr.out) continue;
+      pr.t += DT;
+      const v = b.body.linvel(),
+        p = b.body.translation(),
+        low = p.y - this.groundAt(p.x, p.z) - halfHeight({ type: b.type, rotation: b.body.rotation() }) < 0.15;
+      if (low && pr.vy < -0.7 && !pr.landed) {
+        b.body.setLinvel({ x: v.x * 0.6, y: Math.min(1.9, -pr.vy * 0.4), z: v.z * 0.6 }, true);
+        this.onEvent({ type: 'thud', id: b.id, position: { x: p.x, y: p.y - 0.5, z: p.z }, speed: -pr.vy });
+        this.endPour(b);
+        continue;
+      }
+      pr.vy = v.y;
+      if (pr.t > 3 || (low && Math.hypot(v.x, v.z) < 0.2)) this.endPour(b);
+    }
+  }
+
   /** The wrecking ball hangs from its own crane's tip on a softer spring, even after hopping to another machine. */
   swingBall() {
     const p = this.ball.translation(),
@@ -1034,6 +1446,8 @@ export class Yard {
   /** Returns a lost (or shattered) toy to its starting spot, upright and still. */
   recover(b) {
     if (this.held === b) this.release();
+    this.unlock(b);
+    this.endPour(b);
     b.body.setTranslation({ x: b.home.x, y: b.home.y || 2, z: b.home.z }, true);
     b.body.setRotation({ x: 0, y: 0, z: 0, w: 1 }, true);
     b.body.setLinvel({ x: 0, y: 0, z: 0 }, true);

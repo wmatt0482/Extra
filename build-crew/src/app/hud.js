@@ -297,6 +297,12 @@ export function updateUI() {
   const grab = (refs.grab ||= $('#grab')),
     progress = (refs.progress ||= $('#progress')),
     held = String(!!yard.held);
+  // Grab glows while a block is in reach (the block itself glows in the yard)
+  const ready = String(!!app.grabReady && !yard.held);
+  if (grab.dataset.ready !== ready) {
+    grab.dataset.ready = ready;
+    grab.classList.toggle('ready', ready === 'true');
+  }
   if (grab.dataset.held !== held) {
     grab.dataset.held = held;
     grab.innerHTML = `${icon(yard.held ? 'air' : 'land')} ${yard.held ? 'Release' : 'Grab'} <kbd>SPACE</kbd>`;

@@ -102,6 +102,12 @@ function frame(now) {
     }
     updateUI();
   } else acc = 0;
+  // The block a Grab would pick up glows, the Grab button lights, and the forward arrow shows; none of it outside play.
+  const playing = activePlay(),
+    candidate = playing ? app.yard.grabCandidate() : null;
+  app.grabReady = !!candidate;
+  app.scene.glowId = candidate ? candidate.id : null;
+  app.scene.arrowOn = playing;
   Sound.update(
     app.yard?.machine.kind,
     input.drive || 0,

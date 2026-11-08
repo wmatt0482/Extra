@@ -10,9 +10,11 @@ const speed = (v) => Math.hypot(v?.x || 0, v?.y || 0, v?.z || 0);
  *  wholly inside the pad, with its footprint's half-diagonal as the margin. Returns the per-ghost (or per-toy) match
  *  ids, the count, the total and whether everything matches. */
 export function evaluate(round, blocks, held = null) {
-  const eligible = blocks.filter(
-    (b) => b.id !== held && !b.broken && speed(b.velocity) < 0.65 && speed(b.angular) < 0.7,
-  );
+  // A locked (placed) block always counts and is matched first, so a block hovering near its slot never takes the place
+  // of the one that is already there.
+  const eligible = blocks
+    .filter((b) => b.id !== held && !b.broken && (b.locked || (speed(b.velocity) < 0.65 && speed(b.angular) < 0.7)))
+    .sort((a, b) => (b.locked ? 1 : 0) - (a.locked ? 1 : 0));
   const matches = [];
   if (round.ghosts) {
     const used = new Set();
@@ -123,7 +125,7 @@ export class Challenge {
 }
 
 /** The vertical half-extent of a toy in its real orientation (half its height when it stands upright). */
-function halfHeight(b) {
+export function halfHeight(b) {
   const d = TOYS[b.type]?.size;
   if (!d) return 0.6;
   const { x, y, z, w } = b.rotation;

@@ -4,7 +4,7 @@
 // and moon base sites and the machines SPEC.md lists for them are deliberately absent until they are built.
 import { SITES } from './sites.mjs';
 /** The game version reported by pings and the Parent Zone (the service worker has its own cache version). */
-export const VERSION = '0.7.0';
+export const VERSION = '0.8.0';
 /** The five paint colors for loads: red first, because the jobs say "red loads"; also the confetti colors. */
 export const COLORS = ['#c6412f', '#e9aa26', '#287da5', '#64816b', '#87909c'];
 /** Toy shapes. size is [width, height, depth] in metres (a cylinder uses width as its diameter), mass in kilograms.
@@ -709,6 +709,30 @@ export const NEAT_LINE = 'Blueprint complete. Neat build!';
 /** Said by the "read the job aloud" button. */
 export const jobGoalLine = (r) => speakable(r.goal);
 
+/** What the hint line says after a block has been placed, so it never goes stale: how many are still to bring, and what
+ *  kind. A job whose toys are all one paint says it ("2 to go: bring the next red block."); a blueprint says outline.
+ *  Fixed strings, all prepared for the voice (PLACED_HINTS), because a clip exists only for an exact text. */
+export const PAINT_WORD = { '#c6412f': 'red', '#e9aa26': 'yellow', '#287da5': 'blue', '#64816b': 'green', '#87909c': 'grey', '#a5643e': 'spoil' };
+export function placedHint(round, left) {
+  if (!(left > 0)) return '';
+  const colors = new Set((round.toys || []).map((t) => t.color)),
+    word = colors.size === 1 ? PAINT_WORD[[...colors][0]] : '',
+    thing = round.ghosts ? 'outline' : (round.toys || []).every((t) => t.type === 'cube') ? 'block' : 'load';
+  if (left === 1) return round.ghosts ? 'Last one to go: fill the final outline.' : `Last one to go: bring the final ${word ? word + ' ' : ''}${thing}.`;
+  return round.ghosts ? `${left} to go: fill the next outline.` : `${left} to go: bring the next ${word ? word + ' ' : ''}${thing}.`;
+}
+/** Every placed-block line any job can show. */
+export const PLACED_HINTS = [
+  ...new Set(
+    ALL_JOBS.flatMap((r) => {
+      const total = r.ghosts?.length ?? r.toys.length;
+      return Array.from({ length: Math.max(0, total - 1) }, (_, i) => placedHint(r, total - 1 - i));
+    }),
+  ),
+];
+/** The pop over a block that has just locked in place. */
+export const PLACED_POP = 'Placed!';
+
 /** The first hint of each machine, as said. */
 const machineHints = Object.values(MACHINES).map((m) => speakable(m.hint));
 /** Every line the voice may say, in the order a new builder needs them: the first job, the fixed lines, then the rest.
@@ -732,6 +756,8 @@ export const SPOKEN = {
     NEAT_LINE,
     // the harbor and the hillside
     ...[HINT.steep, HINT.mud, HINT.grass, HINT.optional].map(speakable),
+    // after a block is placed: how many are still to bring
+    ...PLACED_HINTS.map(speakable),
   ],
 };
 /** Every spoken line (no duplicates). */

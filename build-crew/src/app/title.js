@@ -8,6 +8,7 @@ import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { refreshStreak } from '../../../spell-jump/src/meta/engagement.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { BLUEPRINTS, LAB_MACHINES, MACHINES, labVehicleId, JOB_COUNT, SITE_JOBS } from '../content.mjs';
+import { jobPayout, payoutText, measureLine } from '../payout.mjs';
 import { blueprintSvg } from '../blueprint.mjs';
 import { labBridge } from '../meta/labBridge.js';
 import { VEHICLE_PRICE } from './vehiclePrice.mjs';
@@ -285,6 +286,9 @@ export function jobBoard() {
           ),
           h('b', {}, h('span', { class: 'sr-only' }, `Job ${r.id}${done ? ', done' : ''}: `), r.title),
           h('small', {}, r.reward),
+          // what the job pays in the Lab (only once the Lab is there), and the blueprint's measurements in metres
+          lab ? h('small', { class: 'pay' }, payoutText(jobPayout(r, { replay: done }))) : null,
+          measureLine(r) ? h('small', { class: 'measure' }, measureLine(r)) : null,
         );
       }),
     ),
@@ -316,7 +320,9 @@ export function jobBoard() {
                   owned ? '' : h('span', { class: 'lock', html: icon('lock') }),
                   `${save.done.includes(r.id) ? '✓ ' : ''}${r.title}`,
                 ),
-                h('small', {}, owned ? 'Blueprint' : `${r.price.toLocaleString('en-US')} Lab coins`),
+                h('small', {}, owned ? 'Blueprint' : `${labBridge.price(r.lab, r.price).toLocaleString('en-US')} Lab coins`),
+                lab ? h('small', { class: 'pay' }, payoutText(jobPayout(r, { replay: save.done.includes(r.id) }))) : null,
+                h('small', { class: 'measure' }, measureLine(r)),
               );
             }),
           )
@@ -337,7 +343,7 @@ export function jobBoard() {
                   onclick: () => (owned ? startRound(0) : labBridge.openShop({})),
                 },
                 h('b', {}, owned ? '' : h('span', { class: 'lock', html: icon('lock') }), MACHINES[k].label),
-                h('small', {}, owned ? 'In your sandbox' : `${VEHICLE_PRICE[k].toLocaleString('en-US')} Lab coins`),
+                h('small', {}, owned ? 'In your sandbox' : `${labBridge.price(labVehicleId(k), VEHICLE_PRICE[k]).toLocaleString('en-US')} Lab coins`),
               );
             }),
           )

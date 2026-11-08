@@ -22,7 +22,10 @@ import {
   JOB_COUNT,
   DECALS,
   HORNS,
+  placedHint,
+  PLACED_POP,
 } from '../content.mjs';
+import { jobPayout, payoutLine, measureLine } from '../payout.mjs';
 import { SITES, mudAt } from '../sites.mjs';
 import { Yard, DT } from '../physics.mjs';
 import { Mission, Challenge } from '../missions.mjs';
@@ -36,6 +39,7 @@ import { app, persist, account, activePlay, setSetting, applyLook } from './stat
 import { MACHINE_UI, toast, showHint, modal, closeModal, renderMachines, updateUI } from './hud.js';
 import { prepareVoice, say } from './voice.js';
 import { showTitle } from './title.js';
+import { goalStep } from './goals.js';
 import { resetClock } from './loop.js';
 
 /** How long the job-complete show runs before the reward sheet, and the short beat used in calm motion (ms). */
@@ -59,6 +63,7 @@ function cancelCelebration() {
   if (!show) return;
   clearTimeout(show.timer);
   app.celebration = null;
+  $('#payout-burst')?.remove();
   if (app.screen === 'play' && app.paused) {
     app.paused = false;
     app.controls?.setEnabled(true);
@@ -76,6 +81,51 @@ export function availableMachines() {
   );
 }
 
+/** A star and "Placed!" over a block that has just locked into its place, a gold burst, the settling sound, and a hint that
+ *  says what to do next ("2 to go: bring the next red block."). Called from the yard's 'placed' event. */
+function placed(event) {
+  if (app.screen !== 'play') return;
+  const yard = app.yard,
+    round = yard?.round;
+  if (!round?.id) return;
+  Sound.placed();
+  app.scene?.effects.sparkle(event.position);
+  const at = app.scene?.screenPoint(event.position.x, event.position.y + 1.1, event.position.z);
+  if (at && !at.behind) {
+    const pop = h(
+      'div',
+      { class: 'placed-pop', role: 'status' },
+      h('span', { html: icon('star') }),
+      PLACED_POP,
+    );
+    const x = Math.max(70, Math.min(innerWidth - 70, at.x)),
+      y = Math.max(90, Math.min(innerHeight - 160, at.y));
+    pop.style.left = x + 'px';
+    pop.style.top = y + 'px';
+    $('#hud').append(pop);
+    setTimeout(() => pop.remove(), 1700);
+  }
+  const total = round.ghosts?.length ?? round.toys.length,
+    left = total - event.count;
+  if (left > 0) hint(placedHint(round, left));
+}
+
+/** What the job pays, once the Lab is there: a chip on the job label and one line under the hint when the job starts. */
+function showPayout(round) {
+  const label = $('#job-number');
+  delete label.dataset.pay;
+  const apply = () => {
+    if (app.yard?.round !== round || !round.id) return;
+    const pay = jobPayout(round, { replay: app.save.done.includes(round.id) });
+    // drawn by the stylesheet from data-pay, so the label's own text stays "THE YARD / JOB 01"
+    label.dataset.pay = `${pay.coins} coins · ${pay.xp} XP`;
+    toast(payoutLine(pay));
+    const m = measureLine(round);
+    if (m) toast(m);
+  };
+  if (round.id) labBridge.onReady(apply);
+}
+
 /** Replaces the physics yard with a new one for `round` (optionally restoring a saved sandbox) and shows it with
  *  the builder's paint, decal and the saved daylight. Physics events become sounds and effects. */
 export function makeWorld(round, snapshot) {
@@ -87,6 +137,11 @@ export function makeWorld(round, snapshot) {
       if (event.type === 'impact') Sound.impact(event.force);
       if (event.type === 'glitter') app.scene?.emit(event.position, '#def8e7', 25);
       if (event.type === 'stamp') app.scene?.syncStamps();
+      if (event.type === 'placed') placed(event);
+      if (event.type === 'thud') {
+        Sound.thud(event.speed);
+        app.scene?.emit(event.position, '#d7ba85', 7);
+      }
       // the harbor and the hillside: a load in the water or on the grass goes back to its start (never a fail)
       if (event.type === 'splash') {
         app.scene?.emit(event.position, '#d3ebe5', 22);
@@ -167,7 +222,8 @@ export function startRound(id, { restore = false } = {}) {
       : 'THE YARD / SANDBOX';
   $('#job-title').textContent = job.title;
   $('#goal').textContent = job.goal;
-  for (const el of ['open-tray', 'save-yard']) $('#' + el).hidden = !!id;
+  showPayout(job);
+  for (const el of ['open-tray', 'save-yard', 'open-goals']) $('#' + el).hidden = !!id;
   $('#wreck').hidden = !(app.save.unlockAll || app.save.rewards.includes('wrecking'));
   $('#clear-yard').hidden = !!id;
   renderMachines();
@@ -194,13 +250,8 @@ export function step(input) {
   const mission = app.mission,
     challenge = app.challenge;
   if (mission && !mission.complete) {
-    const was = mission.status.count;
     poses = yard.poses();
     const done = mission.step(poses, yard.held?.id, DT);
-    if (mission.status.count > was && yard.time - app.lastChime > 0.25) {
-      app.lastChime = yard.time;
-      Audio.coin();
-    }
     if (challenge) challenge.step(poses, yard.held?.id, yard.grabs);
     if (done) win();
   } else if (challenge && !app.neat && challenge.spec.kind === 'height') {
@@ -208,6 +259,8 @@ export function step(input) {
     challenge.step((poses = yard.poses()), yard.held?.id, yard.grabs);
     if (app.jobDone && challenge.met) neatBuild(true);
   }
+  // the sandbox's optional goals (a star each) are checked twice a second
+  if (!yard.round.id) goalStep(yard);
   const arm = Math.abs(input.lift || 0) + Math.abs(input.tool || 0);
   if (arm > 0.1 && !app.said.has('tool')) {
     app.said.add('tool');
@@ -264,7 +317,7 @@ function coach(yard) {
 function neatBuild(late = false) {
   if (app.neat) return;
   app.neat = true;
-  labBridge.report({ event: 'challenge' });
+  app.neatPay = labBridge.report({ event: 'challenge' });
   if (late) toast('Neat build!');
 }
 
@@ -306,6 +359,16 @@ function win() {
     calm = app.settings.reducedMotion,
     first = !save.done.includes(r.id);
   account();
+  // Every Lab payment this job makes is added up, so the sheet can say exactly what was earned (the Lab's own receipts).
+  const earned = (app.payout = { coins: 0, xp: 0, bonus: { coins: 0, xp: 0 } });
+  const report = (ev) => {
+    const got = labBridge.report(ev);
+    // the Lab's once-a-day bonus is told apart, so the job's own payment matches the card
+    const into = ev.event === 'day' ? earned.bonus : earned;
+    into.coins += got?.coins || 0;
+    into.xp += got?.xp || 0;
+    return got;
+  };
   if (first) {
     save.done.push(r.id);
     if (r.unlock) save.rewards.push(r.unlock);
@@ -314,7 +377,7 @@ function win() {
     save.play[key].rounds++;
     completeDay(save, Date.now());
     if (r.unlock) equipReward(save, r.unlock);
-    labBridge.report({ event: 'day' });
+    report({ event: 'day' });
   }
   persist();
   app.ping('round');
@@ -325,12 +388,35 @@ function win() {
     title: r.title,
     pieces: galleryPieces(app.yard.poses().filter((b) => buildSpotHas(app.yard, b))),
   };
-  labBridge.report({ event: 'job', meta: { ...meta, first } });
-  labBridge.report({ event: 'piece', n: Math.max(1, app.mission?.status.total || 1) });
-  if (r.blueprint) labBridge.report({ event: 'blueprint', meta });
-  if (app.challenge?.finish(app.yard.grabs)) neatBuild();
+  report({ event: 'job', meta: { ...meta, first } });
+  report({ event: 'piece', n: Math.max(1, app.mission?.status.total || 1) });
+  if (r.blueprint) report({ event: 'blueprint', meta });
+  if (app.challenge?.finish(app.yard.grabs)) {
+    const was = app.neat;
+    neatBuild();
+    if (!was && app.neat) {
+      // the challenge's own payment was reported in neatBuild(); add it to the sum
+      earned.coins += app.neatPay?.coins || 0;
+      earned.xp += app.neatPay?.xp || 0;
+    }
+  }
+  // While the yard celebrates, the exact payout shows in a burst; the sheet repeats it.
+  if (earned.coins || earned.xp) {
+    $('#hud').append(
+      h(
+        'div',
+        { class: 'payout-burst', id: 'payout-burst', role: 'status' },
+        h('b', {}, 'Job complete!'),
+        h('span', {}, `+${earned.coins} Lab coins · +${earned.xp} XP`),
+        earned.bonus.coins || earned.bonus.xp
+          ? h('small', {}, `and +${earned.bonus.coins} coins · +${earned.bonus.xp} XP for your first job today`)
+          : null,
+      ),
+    );
+  }
   // The job is done: the hint line empties and stays empty until the next job starts. Controls rest during the show.
   setJobDone(true);
+  app.yard.lockMatched();
   showHint('');
   app.paused = true;
   app.controls.clear();
@@ -362,6 +448,7 @@ function buildSpotHas(yard, b) {
 function reveal(show) {
   if (app.celebration !== show) return;
   app.celebration = null;
+  $('#payout-burst')?.remove();
   if (app.screen !== 'play') return;
   const r = app.yard.round,
     bp = !!r.blueprint;
@@ -377,6 +464,12 @@ function reveal(show) {
       html: bp ? blueprintSvg(r, { neat: app.neat }) : rewardArt(r.unlock, app.yard.machine.kind, app.save.paint),
     }),
     h('p', { class: 'reward-line' }, bp ? 'Blueprint complete.' : `Job complete. Unlocked: ${r.reward}.`),
+    app.payout && (app.payout.coins || app.payout.xp)
+      ? h('p', { class: 'payout-line', id: 'payout-line' }, `+${app.payout.coins} Lab coins · +${app.payout.xp} XP`)
+      : null,
+    app.payout?.bonus.coins || app.payout?.bonus.xp
+      ? h('p', { class: 'payout-bonus', id: 'payout-bonus' }, `and +${app.payout.bonus.coins} coins · +${app.payout.bonus.xp} XP for your first job today`)
+      : null,
     app.neat ? h('p', { class: 'neat', id: 'neat' }, 'Neat build!') : null,
     h('div', { class: 'lab-results', id: 'lab-results' }),
     h(

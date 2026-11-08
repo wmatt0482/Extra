@@ -36,6 +36,7 @@ import {
 } from './app/title.js';
 import { labBridge } from './meta/labBridge.js';
 import { makeWorld, startRound, step, resetBlocks, action } from './app/rounds.js';
+import { openGoals } from './app/goals.js';
 import {
   toggleTray,
   closeTray,
@@ -104,6 +105,7 @@ const BUTTONS = {
   'save-yard': () => saveYard(),
   'modal-close': closeModal,
   'open-tray': toggleTray,
+  'open-goals': openGoals,
   'close-tray': closeTray,
   'clear-yard': clearSite,
   wreck: toggleWreckingBall,
@@ -302,6 +304,9 @@ function exposeHooks() {
           ? { ...app.challenge.spec, label: app.challenge.label(), met: app.challenge.met, neat: app.neat }
           : null,
         held: yard.held?.id,
+        // the block Grab would pick up (glowing) and whether the forward arrow shows
+        glow: scene.glowId,
+        arrow: scene.arrowOn,
         blocks: yard.poses(),
         machines: yard.machines.map((m) => ({
           kind: m.kind,
