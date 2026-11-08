@@ -2438,21 +2438,27 @@ html.touch #hud .center-controls {
 /* ---------- 0.8: placing, payout and site goals ---------- */
 /* Grab lights up while a block is within reach (the block glows in the yard). */
 #hud .grab.ready {
+  position: relative;
+}
+/* a ring that pulses by opacity and scale only, so it never repaints the button (a box-shadow animation did, and cost frames) */
+#hud .grab.ready::after {
+  content: '';
+  position: absolute;
+  inset: -5px;
+  border-radius: 13px;
+  border: 3px solid rgba(255, 210, 63, 0.9);
+  box-shadow: 0 0 14px 3px rgba(255, 210, 63, 0.5);
+  pointer-events: none;
   animation: grab-ready 1.1s ease-in-out infinite;
 }
 @keyframes grab-ready {
   50% {
-    box-shadow:
-      0 5px 0 var(--accent-edge),
-      0 0 0 5px rgba(255, 210, 63, 0.45),
-      0 0 18px 6px rgba(255, 210, 63, 0.55);
+    opacity: 0.25;
+    transform: scale(1.05);
   }
 }
-.reduced-motion #hud .grab.ready {
+.reduced-motion #hud .grab.ready::after {
   animation: none;
-  box-shadow:
-    0 5px 0 var(--accent-edge),
-    0 0 0 5px rgba(255, 210, 63, 0.45);
 }
 /* "Placed!" over a block that has locked into its place: a star and a word that rise and fade. Nothing on it is a timer. */
 .placed-pop {
@@ -2521,7 +2527,8 @@ html.touch #hud .center-controls {
   }
 }
 /* What the job pays: a chip on the job's label, a line on the finished sheet and a burst while the yard celebrates. */
-#job-number .payout {
+#job-number[data-pay]::after {
+  content: attr(data-pay);
   margin-left: 10px;
   padding: 2px 7px;
   border-radius: 3px;

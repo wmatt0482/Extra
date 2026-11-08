@@ -113,11 +113,12 @@ function placed(event) {
 /** What the job pays, once the Lab is there: a chip on the job label and one line under the hint when the job starts. */
 function showPayout(round) {
   const label = $('#job-number');
+  delete label.dataset.pay;
   const apply = () => {
     if (app.yard?.round !== round || !round.id) return;
     const pay = jobPayout(round, { replay: app.save.done.includes(round.id) });
-    label.querySelector('.payout')?.remove();
-    label.append(h('b', { class: 'payout', id: 'payout' }, `${pay.coins} coins · ${pay.xp} XP`));
+    // drawn by the stylesheet from data-pay, so the label's own text stays "THE YARD / JOB 01"
+    label.dataset.pay = `${pay.coins} coins · ${pay.xp} XP`;
     toast(payoutLine(pay));
     const m = measureLine(round);
     if (m) toast(m);

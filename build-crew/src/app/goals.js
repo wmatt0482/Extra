@@ -37,6 +37,7 @@ export function goalStep(yard) {
 /** Opens the card. */
 export function openGoals() {
   if (!app.yard || app.yard.round.id) return;
+  $('#tray').hidden = true;
   meters = evaluateGoals(app.yard);
   const stars = app.save.goals.length;
   modal(

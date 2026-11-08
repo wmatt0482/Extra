@@ -99,7 +99,7 @@ export async function placingStage({ browser, BASE, shots, errors, results, mark
   await page.locator('#modal-close').click();
   await page.evaluate(() => window.__buildCrew.test.start(1));
   await page.waitForTimeout(250);
-  assert.match(await page.locator('#job-number').textContent(), /52 coins · 64 XP/);
+  assert.equal(await page.locator('#job-number').getAttribute('data-pay'), '52 coins · 64 XP');
   await page.waitForFunction(() => /PAYS 52 LAB COINS AND 64 XP/i.test(document.querySelector('#toasts').innerText), undefined, { timeout: 10000 });
   await shot('job-intro-payout');
   mark('job 1: payout on the card and in the intro');
@@ -233,6 +233,7 @@ export async function placingStage({ browser, BASE, shots, errors, results, mark
 
   // ---- Sandbox: site goals --------------------------------------------------------------------------------------------------
   await page.locator('#sandbox').click();
+  await page.locator('#open-tray').click();
   await page.locator('#open-goals').click();
   assert.equal(await page.locator('#goal-list .goal').count(), 8, 'eight site goals');
   assert.equal(await page.locator('#goal-list .goal.done').count(), 0);
@@ -254,6 +255,7 @@ export async function placingStage({ browser, BASE, shots, errors, results, mark
   assert.equal((await st()).stamps.length, 4, 'four terrain pieces placed');
   await adv({}, 60);
   assert((await st()).save.goals.includes('shape'), 'the terrain goal earned its star');
+  await page.locator('#open-tray').click();
   await page.locator('#open-goals').click();
   assert((await page.locator('#goal-list .goal.done').count()) >= 1, 'the card shows the earned star');
   assert.equal(await page.locator('#goal-list .goal[data-goal="shape"].done').count(), 1);
