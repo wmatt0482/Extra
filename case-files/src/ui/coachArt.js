@@ -57,9 +57,7 @@ export const COACH_ART = {
     + '<g transform="translate(80 70)">' + FINGER + '</g>'),
 };
 
-// The faces: the Chief (a brass badge, a flat cap, grey at the temples) and the partner (a teal ring, a fedora, a magnifier).
-export const AVATAR = {
-  chief: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><circle cx="32" cy="32" r="30" fill="#dcab4a" stroke="#fff3c8" stroke-width="3"/><circle cx="32" cy="38" r="15" fill="#d9a77a"/><path d="M16 26q16-17 32 0z" fill="#0a1630"/><rect x="14" y="24" width="36" height="4.5" rx="2.2" fill="#14305a"/><path d="M17 36q-2 8 2 12M47 36q2 8-2 12" stroke="#b8b8c0" stroke-width="4" stroke-linecap="round" fill="none"/><circle cx="26" cy="38" r="2.2" fill="#0a1630"/><circle cx="38" cy="38" r="2.2" fill="#0a1630"/><path d="M24 46q8 5 16 0" fill="none" stroke="#6b3d1c" stroke-width="2.4" stroke-linecap="round"/><path d="M26 43q6-3 12 0" stroke="#b8b8c0" stroke-width="3.4" stroke-linecap="round" fill="none"/><path d="M32 18l2 4 4.4.6-3.2 3 .8 4.4-4-2.2-4 2.2.8-4.4-3.2-3 4.4-.6z" fill="#dcab4a" transform="translate(0 -3) scale(.78) translate(9 3)"/></svg>',
-  partner: '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><circle cx="32" cy="32" r="30" fill="#2fd1c0" stroke="#d6fffa" stroke-width="3"/><circle cx="32" cy="38" r="14" fill="#f0c9a0"/><ellipse cx="32" cy="29" rx="23" ry="5" fill="#0a1630"/><path d="M19 29q1-15 13-15t13 15z" fill="#14305a"/><rect x="19" y="24" width="26" height="4.5" fill="#dcab4a"/><circle cx="26.5" cy="38" r="2.2" fill="#0a1630"/><circle cx="37.5" cy="38" r="2.2" fill="#0a1630"/><path d="M25 44q7 6 14 0" fill="none" stroke="#7a3d1c" stroke-width="2.4" stroke-linecap="round"/><circle cx="50" cy="48" r="7.5" fill="#d6fffa" fill-opacity=".55" stroke="#0a1630" stroke-width="2.4"/><path d="M55 53l5 5" stroke="#0a1630" stroke-width="3.2" stroke-linecap="round"/></svg>',
-};
-export const WHO_NAME = { chief: 'The Chief', partner: 'Your partner' };
+// The faces in the popups: the Chief and the partner, Pip (the portraits live in ./art/characters.js; the feedback popup swaps in Pip thinking).
+import { chiefAvatar, pipAvatar } from './art/characters.js';
+export const AVATAR = { chief: chiefAvatar(), partner: pipAvatar('happy') };
+export const WHO_NAME = { chief: 'The Chief', partner: 'Pip' };

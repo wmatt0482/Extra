@@ -1,5 +1,19 @@
-// Procedural art for Case Files (no image files): the detective avatar for the picker and the chips, the dusk skyline behind
-// the menus, small inline icons the shared icon set does not have, and the red string on the cork board.
+// Procedural art for Case Files (no image files): the detective avatar for the picker and the chips, small inline icons the shared
+// icon set does not have, and the red string on the cork board. The rest of the art lives in ./art/ and is re-exported here, so a
+// call site only ever imports from art.js:
+//   scene.js       drawBackdrop(svg)     the living detective-office backdrop (style/scene.css)
+//   characters.js  pipAvatar(mood) ('happy' | 'thinking' | 'surprised' | 'cheer'), chiefAvatar(), wenAvatar(), portrait(who, mood)
+//   docs.js        docArt(kind)          a small illustration per document kind
+//   routemap.js    createRouteMap(...)   the Erie Canal route on the agency home
+//   enhance.js     startEnhancers(app)   swaps the "PT" / "CH" badges for portraits, adds the document pictures, Pip's moods
+import { drawBackdrop as sceneBackdrop } from './art/scene.js';
+import { startEnhancers } from './art/enhance.js';
+export { createRouteMap } from './art/routemap.js';
+export { pipAvatar, chiefAvatar, wenAvatar, portrait, PIP_MOODS, NAMES } from './art/characters.js';
+export { docArt, DOC_KIND_NAME } from './art/docs.js';
+
+/** Fill the backdrop (called once at boot by main.js) and start the small art enhancers (portraits, document pictures). */
+export function drawBackdrop(svg) { sceneBackdrop(svg); startEnhancers(); }
 
 /** The player's detective: a fedora in the player's color, a trench-coat collar, a magnifier. */
 export function drawAvatar(canvas, color = '#2fd1c0') {
@@ -30,26 +44,6 @@ export function drawAvatar(canvas, color = '#2fd1c0') {
   c.fillStyle = 'rgba(160,220,255,.35)'; c.beginPath(); c.arc(21, 18, 6, 0, Math.PI * 2); c.fill();
   c.lineCap = 'round'; c.lineWidth = 3.6; c.beginPath(); c.moveTo(26, 23); c.lineTo(31, 29); c.stroke();
   c.setTransform(1, 0, 0, 1, 0, 0);
-}
-
-/** The dusk skyline behind the menus: city blocks, lit windows, a moon, a street lamp. */
-export function drawBackdrop(svg) {
-  if (!svg || svg.dataset.drawn) return;
-  svg.dataset.drawn = '1';
-  let s = '';
-  s += '<circle cx="1330" cy="170" r="64" fill="#f2e8c4" opacity=".92"/><circle cx="1352" cy="156" r="58" fill="#0d1f45" opacity=".55"/>';
-  for (let i = 0; i < 42; i++) s += `<circle cx="${(i * 197) % 1600}" cy="${30 + ((i * 89) % 340)}" r="${1 + (i % 3) * 0.6}" fill="#fff" opacity="${0.35 + (i % 4) * 0.12}"/>`;
-  const blocks = [[0, 560, 150, 340], [140, 470, 130, 430], [262, 590, 150, 310], [404, 420, 120, 480], [518, 540, 170, 360], [684, 610, 120, 290], [800, 450, 140, 450], [934, 560, 160, 340], [1090, 500, 120, 400], [1204, 600, 150, 300], [1346, 440, 130, 460], [1468, 560, 140, 340]];
-  for (const [x, y, w, h] of blocks) {
-    s += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="#0a1a38"/><rect x="${x}" y="${y}" width="${w}" height="6" fill="#16305c"/>`;
-    for (let wy = y + 24; wy < 840; wy += 38) for (let wx = x + 14; wx < x + w - 18; wx += 30) {
-      const lit = ((wx * 7 + wy * 13) % 11) < 3;
-      s += `<rect x="${wx}" y="${wy}" width="16" height="22" rx="2" fill="${lit ? '#f4cf72' : '#0e2347'}" opacity="${lit ? 0.9 : 1}"/>`;
-    }
-  }
-  s += '<rect x="0" y="840" width="1600" height="60" fill="#06112a"/>';
-  s += '<rect x="1020" y="610" width="8" height="240" fill="#1c2a45"/><path d="M1000 612h56l-10-16h-36z" fill="#1c2a45"/><ellipse cx="1028" cy="618" rx="26" ry="8" fill="#f9dc8a" opacity=".9"/><path d="M1002 626l-40 214h132l-40-214z" fill="#f9dc8a" opacity=".07"/>';
-  svg.innerHTML = s;
 }
 
 /** Inline icons the shared set does not have (24x24, currentColor). */

@@ -4,10 +4,18 @@
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { ARCS, TRAINING } from '../content/index.js';
 import { currentCase, waitingState } from '../logic/pacing.js';
-import { drawAvatar } from './art.js';
+import { drawAvatar, createRouteMap, portrait } from './art.js';
 
 export function createHome(app) {
   const homeBody = $('#home-body'), archiveBody = $('#archive-body');
+  let routeMap = null;                                   // the Erie route (src/ui/art/routemap.js), redrawn when the board changes width
+  const face = (who, mood = 'happy', cls = '') => h('span', { class: `face ${cls}`, 'aria-hidden': 'true', html: portrait(who, mood) });
+
+  /** The canal-route map of an arc: Albany, Rochester, Lockport, Buffalo and one stop per case (closed = stamped, next = glowing, sealed = dim). */
+  function routeFor(arc, save, cur) {
+    const stops = arc.cases.map((k, i) => ({ id: k.id, no: i + 1, title: k.title, setting: k.setting, state: save.closed[k.id] ? 'closed' : !save.opened[k.id] ? 'sealed' : cur === k.id ? 'now' : 'open' }));
+    return createRouteMap({ stops, onOpen: (id) => app.openCase(id), reduced: !!app.settings.reducedMotion || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) });
+  }
 
   function card(kase, no, save, now) {
     const closed = save.closed[kase.id], opened = !!save.opened[kase.id];
@@ -36,7 +44,11 @@ export function createHome(app) {
     if (p) drawAvatar($('#home-avatar'), p.color);
     const cur = currentCase(save);
     const wait = waitingState(save);
-    const kids = [h('div', { class: 'board-title' }, h('h1', {}, 'The Agency'), h('span', { class: 'label-type' }, 'Case board'))];
+    const kids = [h('div', { class: 'board-title' }, h('h1', {}, 'The Agency'), h('span', { class: 'label-type' }, 'Case board'),
+      h('span', { class: 'team', 'aria-hidden': 'true' }, face('chief', 'happy', 'f-chief'), face('partner', 'happy', 'f-pip')))];
+    if (routeMap) { routeMap.destroy(); routeMap = null; }
+    const erie = ARCS.find((a) => a.id === 'erie') || ARCS[0];
+    if (erie && erie.cases.length) { routeMap = routeFor(erie, save, cur); kids.push(routeMap); }
     const folders = h('div', { class: 'folders' });
     folders.append(folder('Training', 'Detective Training', 'Learn the moves every detective uses.', [card(TRAINING, 'T', save, cur === TRAINING.id)]));
     for (const a of ARCS) folders.append(folder(a.title.replace(/^The /, '').replace(/ Files$/, ''), a.title, a.blurb, a.cases.map((k, i) => card(k, i + 1, save, cur === k.id))));
@@ -50,7 +62,8 @@ export function createHome(app) {
   function showArchive() {
     const save = app.save;
     const list = Object.entries(save.closed).map(([id, r]) => ({ id, r, k: app.caseById[id] })).filter((x) => x.k).sort((a, b) => b.r.at - a.r.at);
-    const kids = [h('div', { class: 'board-title' }, h('h1', {}, 'The Archive'), h('span', { class: 'label-type' }, 'Closed cases'))];
+    const kids = [h('div', { class: 'board-title' }, h('h1', {}, 'The Archive'), h('span', { class: 'label-type' }, 'Closed cases')),
+      h('div', { class: 'wen-note' }, face('wen', 'happy', 'f-wen'), h('p', {}, h('b', {}, 'Mr. Wen, the archivist'), 'Every closed case is filed here. Pull one out and read it again, any time.'))];
     if (!list.length) kids.push(h('div', { class: 'next-note', id: 'archive-empty' }, 'No closed cases yet. Close your first case and it is filed here.'));
     else {
       const l = h('div', { class: 'case-list', style: { maxWidth: '720px' } });
