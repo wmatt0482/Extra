@@ -132,6 +132,11 @@ span.rm-stop { cursor: default; }
 .word-chip[aria-pressed="true"], .word-chip.sel { background: var(--accent); border-color: var(--accent-edge); color: var(--accent-ink); box-shadow: 0 4px 0 var(--accent-edge); }
 .word-chip.right { background: #ffe27a; border-color: var(--brass-edge); color: var(--brass-ink); box-shadow: 0 4px 0 var(--brass-edge); }
 .word-chip[disabled] { opacity: .55; cursor: default; }
+/* short landscape phones: the chips are one row that scrolls sideways, so the keyboard keeps its room above the home indicator */
+@media (orientation: landscape) and (max-height: 500px) {
+  .word-chips { flex-wrap: nowrap; overflow: auto hidden; gap: 6px; margin-bottom: 4px; scrollbar-width: none; touch-action: pan-x; }
+  .word-chip { min-height: 44px; min-width: 44px; font-size: 16px; padding: 0 12px; }
+}
 .tag.stretch { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px 4px; border-radius: 4px; background: linear-gradient(#ffe27a, #e9ae38); color: var(--brass-ink); border: 1px solid var(--brass-edge); box-shadow: 0 2px 0 var(--brass-edge); font-size: 12px; font-weight: 400; letter-spacing: .06em; }
 .tag.stretch::before { content: ''; width: 11px; height: 11px; background: #8a5a0a; clip-path: polygon(50% 0, 62% 36%, 100% 38%, 70% 60%, 80% 100%, 50% 76%, 20% 100%, 30% 60%, 0 38%, 38% 36%); }
 
