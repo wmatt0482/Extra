@@ -9,7 +9,7 @@ import { glyph } from './glyph.js';
 /** What opened going from `from` to `to` (levels): { items: [names], slots: ['Back', ...] }. Pure. */
 export function levelUnlocks(from, to) {
   const items = ITEMS.filter((i) => i.source === 'gift' && i.level > from && i.level <= to).map((i) => i.name);
-  const slots = SLOTS.filter((s) => s.open > from && s.open <= to && s.open > 1).map((s) => String(s.label || s.key));
+  const slots = [...new Set(SLOTS.filter((s) => s.open > from && s.open <= to && s.open > 1).map((s) => String(s.label || s.key)))];
   return { items, slots };
 }
 

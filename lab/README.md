@@ -39,4 +39,4 @@ BASE_URL=http://localhost:8130 node lab/tools/e2e-cross.mjs    # the cross-game 
   - Locked Shop items show in full colour with a small lock badge, the price and "Opens at level N". The closed crate and closed slots are no longer greyed.
   - A level-up moment inside the Lab: badge burst, "Level N", the new title and what opened, the shared level-up sound and voice line; reduced motion fades only.
   - Names wrap to two lines instead of truncating (player tiles, top chip, pet name).
-- **1.0.1** first release.
+- **1.0.1** and earlier: the first releases.

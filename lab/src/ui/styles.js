@@ -177,6 +177,7 @@ font:400 15px/1 var(--font-display);letter-spacing:.02em;color:#fff;background:v
 .lab-card-prev{position:relative}
 .lab-lock-badge{position:absolute;right:3px;bottom:3px;width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:var(--ink);border:2px solid var(--muted);color:#fff}
 .lab-lock-badge svg{width:13px;height:13px}
+.lab-nw{white-space:nowrap}
 .lab-price{display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:36px;padding:0 12px;border-radius:var(--r-sm);background:rgba(8,12,40,.55);border:2px solid var(--line);font:700 14px/1 var(--font-body);white-space:nowrap}
 .lab-price svg{width:18px;height:18px}
 .lab-item.confirming{border-color:var(--go);background:#16355a}

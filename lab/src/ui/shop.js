@@ -50,7 +50,7 @@ export function mountShop(ctx, params = {}) {
     } else if (it.state === 'gift') sub = h('span', { class: 'lab-state gift' }, h('span', { html: glyph('sparkle') }), `Gift: ${it.how || 'a surprise'}`);
     else if (it.state === 'locked') {
       // full colour, never a silhouette: the price and what opens it, a small lock badge on the picture
-      sub = h('span', { class: 'lab-state locked' }, h('span', { html: glyph('lock') }), `Opens at level ${it.opensAt}`);
+      sub = h('span', { class: 'lab-state locked' }, h('span', { html: glyph('lock') }), h('span', {}, 'Opens at ', h('span', { class: 'lab-nw' }, `level ${it.opensAt}`)));
       act.append(h('span', { class: 'lab-price', 'data-act': 'locked' }, h('span', { html: COIN }), ctx.num(it.price)));
     }
     else if (it.state === 'poor') {
