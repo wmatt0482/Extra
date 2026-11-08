@@ -4,8 +4,13 @@
 // tilt and from either side of the bucket. Everything goes through production axes and the real Yard.
 import assert from 'node:assert/strict';
 import { Yard, DT, GRAB_BOX, POUR_TILT, LOCK_AFTER, MACHINE } from '../src/physics.mjs';
-import { ROUNDS, SANDBOX } from '../src/content.mjs';
+import { ROUNDS, SANDBOX, MACHINES } from '../src/content.mjs';
 import { Mission } from '../src/missions.mjs';
+import { TAP_MS } from '../src/controls.js';
+import { GOALS, GOAL_IDS, evaluateGoals, stackStats } from '../src/goals.mjs';
+import { LAB_PAY, jobPayout, measure, measureLine, pieceCount } from '../src/payout.mjs';
+import { defaultSave, normalize, mergeBc } from '../src/meta/save.mjs';
+import { placedHint, PLACED_HINTS, BLUEPRINTS } from '../src/content.mjs';
 
 const job1 = ROUNDS[0];
 const cube = (x, z, y = 0.68) => ({ type: 'cube', color: '#c6412f', x, y, z });
@@ -204,4 +209,116 @@ export function placingTests(report) {
     assert.equal(MACHINE.dump.grabs, false);
     console.log(`PASS grab: ${cases} approaches (off to the side, bucket tilted either way) all pick the block up and carry it`);
   }
+
+  // ---- tap driving -----------------------------------------------------------------------------------------------------
+  {
+    // a keyboard tap (held TAP_MS with the quick start) is a clear nudge; the same tap without the quick start was a few cm
+    const nudge = (axes, steps) => {
+      const y = new Yard({ ...SANDBOX, machines: ['skid'], toys: [], spawns: [[0, -8]] });
+      const z0 = y.machine.z;
+      run(y, axes, steps);
+      run(y, { quick: axes.quick }, 90);
+      const d = y.machine.z - z0;
+      y.destroy();
+      return d;
+    };
+    const steps = Math.ceil((TAP_MS / 1000) * 60),
+      tap = nudge({ drive: 1, quick: true }, steps),
+      oldTap = nudge({ drive: 1 }, 1);
+    assert(tap > 0.35 && tap < 1.2, `a tap nudges the machine ${tap.toFixed(2)} m`);
+    assert(oldTap < 0.1, `a one-frame tap used to move it ${oldTap.toFixed(2)} m`);
+    // a held key still reaches full speed, and a stick (no quick start) keeps its old feel
+    const y = new Yard({ ...SANDBOX, machines: ['skid'], toys: [], spawns: [[0, -8]] });
+    run(y, { drive: 1, quick: true }, 60);
+    assert(Math.abs(y.machine.speed - MACHINES.skid.speed) < 0.01, 'holding the key reaches full speed');
+    y.destroy();
+    report.tap = { metres: tap, oldMetres: oldTap };
+    console.log(`PASS keyboard tap: ${tap.toFixed(2)} m per tap (was ${oldTap.toFixed(2)} m)`);
+  }
+
+  // ---- the payout, the measures and the placed-block hints --------------------------------------------------------------------
+  // every Build Crew row the cards quote is the Lab's own (a read-only import of its exchange table and catalogue)
+  return import('../../lab/src/data/events.js').then(async ({ EVENTS }) => {
+    const row = (event) => EVENTS.find((e) => e.game === 'bc' && e.event === event);
+    for (const k of ['job', 'piece', 'challenge', 'blueprint']) {
+      assert.equal(LAB_PAY[k].coins, row(k).coins, `bc ${k} coins`);
+      assert.equal(LAB_PAY[k].xp, row(k).xp, `bc ${k} xp`);
+    }
+    assert.equal(LAB_PAY.job.replay, row('job').replay);
+    assert.deepEqual(jobPayout(job1), { coins: 52, xp: 64 }, 'job 1 pays 52 coins and 64 XP');
+    assert.deepEqual(jobPayout(job1, { replay: true }), { coins: 22, xp: 23 });
+    assert.equal(pieceCount(job1), 3);
+    const lh = BLUEPRINTS[0];
+    assert.deepEqual(jobPayout(lh), { coins: 40 + 5 * 4 + 30, xp: 55 + 5 * 3 + 30 });
+    // the shop's price is the single source: the board takes the Lab catalogue's number when the Lab is there
+    const { ITEM_BY_ID } = await import('../../lab/src/data/catalog.js');
+    for (const r of BLUEPRINTS) assert.equal(ITEM_BY_ID[r.lab].price, r.price);
+    assert.equal(measureLine(ROUNDS[2]), 'Foundation grid: 5.2 m long, 1.2 m tall');
+    assert.equal(measureLine(job1), '');
+    assert.equal(measure(lh).tall, 5.7);
+    assert.equal(placedHint(job1, 2), '2 to go: bring the next red block.');
+    assert.equal(placedHint(ROUNDS[2], 1), 'Last one to go: fill the final outline.');
+    assert(PLACED_HINTS.includes('2 to go: bring the next red block.'));
+    console.log('PASS payout numbers match the Lab, blueprint measures, placed-block hints');
+    goalTests();
+  });
+}
+
+/** The eight site goals, each met by a real settled yard. */
+function goalTests() {
+  const cubes = (n, x = 5, z = 5) => Array.from({ length: n }, (_, i) => ({ type: 'cube', color: '#c6412f', x, y: 0.61 + i * 1.21, z }));
+  const settle = (round, n = 240) => {
+    const y = new Yard({ ...SANDBOX, ...round });
+    run(y, {}, n);
+    return y;
+  };
+  let y = settle({ toys: cubes(3), machines: ['skid'] });
+  let got = evaluateGoals(y);
+  assert(got.done.includes('tower3') && got.done.includes('tall2') && !got.done.includes('tall4'), '3 cubes: a tower, 2 m, not 4 m');
+  assert(got.tallest > 3.4 && got.tallest < 3.8, `tallest stack ${got.tallest} m`);
+  y.destroy();
+  y = settle({ toys: cubes(4), machines: ['skid'] });
+  assert(evaluateGoals(y).done.includes('tall4'), 'four cubes make 4 m');
+  y.destroy();
+  y = settle({ toys: [{ type: 'cube', color: '#c33', x: -10, y: 0.7, z: 6 }], machines: ['skid'] });
+  assert.deepEqual(evaluateGoals(y).done, [], 'a single block meets nothing');
+  assert.equal(stackStats(y.poses()).blocks, 1);
+  y.destroy();
+  y = settle({ toys: [0, 1, 2, 3].map((i) => ({ type: 'pallet', color: '#c33', x: 3 + (i % 2) * 2.2, y: 0.3, z: 3.2 + Math.floor(i / 2) * 2 })), machines: ['skid'] });
+  assert(evaluateGoals(y).done.includes('pallets4'), 'four pallets in the bay');
+  y.destroy();
+  y = settle({ toys: [{ type: 'cube', color: '#c33', x: 1.5, y: 2, z: -2 }], machines: ['skid'] });
+  y.stamp('pit', 2, -2);
+  y.blocks[0].body.setTranslation({ x: 2, y: 2, z: -2 }, true);
+  run(y, {}, 240);
+  assert(evaluateGoals(y).done.includes('pit'), 'a block rests in the pit');
+  y.destroy();
+  y = settle({ toys: [], machines: ['skid'], spawns: [[2, -9]] });
+  y.stamp('ramp', 2, -2);
+  assert(!evaluateGoals(y).done.includes('ramp'));
+  for (let i = 0; i < 700 && y.groundAt(y.machine.x, y.machine.z) < 1; i++) y.step({ drive: 0.7 });
+  assert(evaluateGoals(y).done.includes('ramp'), 'driving up a ramp counts (at ' + y.machine.z.toFixed(1) + ')');
+  y.destroy();
+  y = settle({
+    toys: [
+      { type: 'cube', color: '#c33', x: 3, y: 0.61, z: -3 },
+      { type: 'cube', color: '#c33', x: 6.4, y: 0.61, z: -3 },
+      { type: 'beam', color: '#c33', x: 4.7, y: 1.5, z: -3 },
+    ],
+    machines: ['skid'],
+  });
+  assert(evaluateGoals(y).done.includes('bridge'), 'a beam across two blocks');
+  y.destroy();
+  y = settle({ toys: [], machines: ['skid'] });
+  for (const [k, x, z] of [['hill', 6, 6], ['pit', -6, 6], ['ramp', -6, -6], ['water', 6, -6]]) y.stamp(k, x, z);
+  assert(evaluateGoals(y).done.includes('shape'), 'all four terrain pieces');
+  y.destroy();
+  assert.equal(GOALS.length, 8);
+  // saved stars: bounded to the known goals, and merging two devices keeps every star
+  assert.deepEqual(defaultSave().goals, []);
+  assert.deepEqual(normalize({ goals: ['ramp', 'nope', 'ramp', 7] }).goals, ['ramp']);
+  const a = { ...defaultSave(), goals: ['pit'] },
+    b = { ...defaultSave(), goals: ['tower3', 'pit'] };
+  assert.deepEqual(mergeBc({ updatedAt: 1, data: a }, { updatedAt: 2, data: b }).goals, GOAL_IDS.filter((g) => ['tower3', 'pit'].includes(g)));
+  console.log('PASS site goals: eight rules, each met by a real yard; saved stars bounded and merged');
 }

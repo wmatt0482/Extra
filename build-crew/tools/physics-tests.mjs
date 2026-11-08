@@ -596,7 +596,7 @@ const HARBOR_SITE = { ...SANDBOX, site: 'harbor', id: 98, toys: [] };
 }
 
 // 0.8: placed blocks lock, a tilted bucket pours, a Grab is forgiving (tools/placing-tests.mjs)
-placingTests(report);
+await placingTests(report);
 
 const a = defaultSave(),
   b = defaultSave();

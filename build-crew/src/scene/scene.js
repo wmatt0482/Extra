@@ -19,6 +19,7 @@ import { buildMachine, syncMachine, buildWreckingBall, syncWreckingBall } from '
 import { Effects } from './effects.js';
 import { CameraRig } from './camera.js';
 import { Quality, TIER, initialPixelRatio } from './quality.js';
+import { TOYS } from '../content.mjs';
 
 /** The ground plane that taps on the yard are projected onto. */
 const GROUND = new T.Plane(new T.Vector3(0, 1, 0), 0);
@@ -54,6 +55,11 @@ export class Scene {
     this.ndc = new T.Vector2();
     this.tapPoint = new T.Vector3();
     this.machineModels = [];
+    /** The block the next Grab would pick up (its id, or null) and whether the forward arrow shows: the app sets both every
+     *  frame during play, so a menu, a pause or a finished job never shows them. */
+    this.glowId = null;
+    this.arrowOn = false;
+    this.aids = null;
     // The painted toys wear the yard's gravel grain on every site (it belongs to the scene, not to a site).
     this.toyTexture = toyTexture();
     this.kit.mat('#ffffff').map = this.toyTexture;
@@ -176,6 +182,7 @@ export class Scene {
     this.carDrive = null;
     yard.machines.forEach((m) => this.machineModels.push(buildMachine(this.kit, this.roundGroup, m.kind)));
     this.wreckMesh = buildWreckingBall(this.kit, this.roundGroup);
+    this.buildAids(this.roundGroup);
     this.stampGroup = new T.Group();
     this.roundGroup.add(this.stampGroup);
     this.syncStamps();
@@ -250,6 +257,7 @@ export class Scene {
     this.effects.updateContacts(frame, yard);
     this.toys.updateGhosts(status, yard.time);
     for (let i = 0; i < yard.machines.length; i++) syncMachine(this.kit, this.machineModels[i], yard.machines[i], this);
+    this.updateAids(frame, yard);
     this.effects.trail(yard);
     this.effects.drawMarks(yard);
     this.effects.updateParticles(dt);
@@ -259,6 +267,89 @@ export class Scene {
     if (blend) blend.restore(yard);
     this.quality.beforeRender();
     this.renderer.render(this.scene, this.camera);
+  }
+
+  /** Where a world point is on screen, in CSS pixels (the pop over a placed block). The result is a fresh object. */
+  screenPoint(x, y, z) {
+    const v = this.tapPoint.set(x, y, z).project(this.camera);
+    const rect = this.canvas.getBoundingClientRect();
+    return { x: rect.x + ((v.x + 1) / 2) * rect.width, y: rect.y + ((1 - v.y) / 2) * rect.height, behind: v.z > 1 };
+  }
+
+  /** The two small helpers drawn over the ground: a glowing ring and box round the block Grab would pick up, and an arrow
+   *  on the ground ahead of the machine you drive, which says which way is forward (the front and the back of a machine are
+   *  hard to tell apart from the isometric camera). Both are single meshes that move; nothing is built per frame. */
+  buildAids(group) {
+    const kit = this.kit,
+      own = (o) => {
+        o.userData.ownGeometry = true;
+        o.userData.ownMaterial = true;
+        o.renderOrder = 5;
+        o.visible = false;
+        group.add(o);
+        return o;
+      };
+    // the glow: a box a little bigger than the block, soft and bright, with a ring under it
+    const box = new T.BoxGeometry(1, 1, 1),
+      shell = own(new T.Mesh(box, new T.MeshBasicMaterial({ color: '#ffe27a', transparent: true, opacity: 0.3, depthWrite: false, fog: false }))),
+      ring = own(new T.Mesh(new T.RingGeometry(0.66, 1, 40), new T.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.9, depthWrite: false, side: T.DoubleSide, fog: false })));
+    shell.userData.ownGeometry = true;
+    const edges = new T.LineSegments(new T.EdgesGeometry(box), new T.LineBasicMaterial({ color: '#fff4b8', fog: false }));
+    edges.userData.ownGeometry = true;
+    edges.userData.ownMaterial = true;
+    shell.add(edges);
+    ring.rotation.x = -Math.PI / 2;
+    // the arrow: a tail and a head lying flat, pointing along +z (the machine's heading), amber over a dark edge
+    const arrow = (grow, y) => {
+      const w = 0.2 + grow,
+        hw = 0.62 + grow,
+        tail = 1.1 + grow,
+        tip = 1.9 + grow * 1.6,
+        pts = [[-w, 0], [w, 0], [w, tail], [-w, tail], [-hw, tail], [hw, tail], [0, tip]],
+        idx = [0, 1, 2, 0, 2, 3, 4, 5, 6],
+        g = new T.BufferGeometry();
+      g.setAttribute('position', new T.Float32BufferAttribute(pts.flatMap(([x, z]) => [x, y, z]), 3));
+      g.setIndex(idx);
+      return g;
+    };
+    const back = own(new T.Mesh(arrow(0.1, 0), new T.MeshBasicMaterial({ color: '#10161b', transparent: true, opacity: 0.55, depthWrite: false, side: T.DoubleSide, fog: false }))),
+      front = new T.Mesh(arrow(0, 0.012), new T.MeshBasicMaterial({ color: '#ffc42e', transparent: true, opacity: 0.92, depthWrite: false, side: T.DoubleSide, fog: false }));
+    front.userData.ownGeometry = true;
+    front.userData.ownMaterial = true;
+    back.add(front);
+    this.aids = { shell, ring, arrow: back, front };
+  }
+
+  /** Places the aids for this frame: the glow on the block `glowId` names (drawn from the same poses as the toys), the arrow
+   *  ahead of the active machine. */
+  updateAids(poses, yard) {
+    const a = this.aids;
+    if (!a) return;
+    const pulse = this.reducedMotion ? 0.5 : 0.5 + 0.5 * Math.sin(yard.time * 5);
+    const pose = this.glowId == null ? null : poses.find((p) => p.id === this.glowId);
+    a.shell.visible = a.ring.visible = !!pose;
+    if (pose) {
+      const d = TOYS[pose.type].size,
+        g = yard.groundAt(pose.position.x, pose.position.z);
+      a.shell.position.copy(pose.position);
+      a.shell.quaternion.copy(pose.rotation);
+      a.shell.scale.set(d[0] * 1.16, d[1] * 1.16, d[2] * 1.16);
+      a.shell.material.opacity = 0.34 + 0.26 * pulse;
+      const r = Math.hypot(d[0], d[2]) * 0.62 * (1 + 0.06 * pulse);
+      a.ring.position.set(pose.position.x, g + 0.09, pose.position.z);
+      a.ring.scale.set(r, r, 1);
+    }
+    const m = yard.machine;
+    a.arrow.visible = this.arrowOn && !!m;
+    if (a.arrow.visible) {
+      const nudge = this.reducedMotion ? 0 : 0.18 * Math.sin(yard.time * 3.2),
+        dist = 3.7 + nudge,
+        x = m.x + Math.sin(m.yaw) * dist,
+        z = m.z + Math.cos(m.yaw) * dist;
+      a.arrow.position.set(x, yard.groundAt(x, z) + 0.1, z);
+      a.arrow.rotation.set(-(m.pitch || 0), m.yaw, 0, 'YXZ');
+      a.front.material.opacity = 0.8 + 0.15 * pulse;
+    }
   }
 
   /** A small JPEG of the current view for the saved-site card on the title. */

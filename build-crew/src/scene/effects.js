@@ -209,6 +209,23 @@ export class Effects {
     if (elapsed > 3000) this.show = null;
   }
 
+  /** A little gold burst where a block has just been placed: sparks that streak out and a few flakes that drift down. Does
+   *  nothing in calm motion. */
+  sparkle(at) {
+    if (this.isCalm()) return;
+    const scale = BUDGET.particles / 120;
+    for (let i = 0, n = Math.max(6, Math.round(16 * scale)); i < n; i++) {
+      const a = i * 2.399,
+        out = 1.6 + (i % 4) * 0.7;
+      this.flake('spark', at.x, at.y + 0.3, at.z, Math.sin(a) * out, 5 + (i % 4) * 1.2, Math.cos(a) * out, SPARK_COLORS[i % SPARK_COLORS.length], 0.7 + (i % 3) * 0.12);
+    }
+    for (let i = 0, n = Math.max(3, Math.round(8 * scale)); i < n; i++) {
+      const a = i * 2.399 + 0.6;
+      this.flake('confetti', at.x, at.y + 0.5, at.z, Math.sin(a) * 1.4, 5.5 + (i % 3), Math.cos(a) * 1.4, SHOW_COLORS[i % 2], 1.5);
+    }
+    this.emit({ x: at.x, y: at.y - 0.4, z: at.z }, '#e8d9a8', 6, 1.1, 0.5);
+  }
+
   /** The legacy entry: five bursts of confetti in the paint colors across the pad. */
   confetti(pad) {
     this.celebrate({ x: pad.x, y: 0, z: pad.z }, 3);

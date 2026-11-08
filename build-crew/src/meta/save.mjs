@@ -4,6 +4,7 @@
 import { defaultStreak, defaultCosmetics, defaultCrates } from '../../../spell-jump/src/meta/engagement.js';
 import { mergeStreak } from '../../../spell-jump/src/sync/merge.js';
 import { TOYS, MACHINES, JOB_COUNT, REWARDS, DECALS, HORNS } from '../content.mjs';
+import { GOAL_IDS } from '../goals.mjs';
 export const saveKey = (id) => `buildCrew.${id}.save`;
 /** A fresh builder: no jobs done, stock look, no saved yard, and the shared streak/cosmetics/crates defaults. */
 export const defaultSave = () => ({
@@ -17,6 +18,8 @@ export const defaultSave = () => ({
   paint: 'stock',
   decal: 'none',
   horn: 'stock',
+  // the Sandbox's site goals earned so far (a star each; see goals.mjs)
+  goals: [],
   streak: defaultStreak(),
   cosmetics: defaultCosmetics(),
   crates: defaultCrates(),
@@ -96,6 +99,7 @@ export function normalize(raw) {
   out.paint = ['stock', ...rewards].includes(raw.paint) ? raw.paint : 'stock';
   out.decal = ['none', ...DECALS].includes(raw.decal) ? raw.decal : 'none';
   out.horn = HORNS.includes(raw.horn) ? raw.horn : 'stock';
+  out.goals = [...new Set((Array.isArray(raw.goals) ? raw.goals : []).filter((g) => GOAL_IDS.includes(g)))];
   // Reuse shared streak merging to normalize its persisted schema and preserve earned cosmetics.
   if (raw.streak && Array.isArray(raw.streak.days)) {
     out.streak = {
@@ -129,6 +133,7 @@ export function mergeBc(local, remote) {
   const out = normalize(later);
   out.done = [...new Set([...a.done, ...b.done])].sort((a, b) => a - b);
   out.rewards = [...new Set([...a.rewards, ...b.rewards])].sort();
+  out.goals = GOAL_IDS.filter((g) => a.goals.includes(g) || b.goals.includes(g));
   out.streak = mergeStreak(a.streak, b.streak);
   for (const day of new Set([...Object.keys(a.play), ...Object.keys(b.play)]))
     out.play[day] = {

@@ -79,6 +79,9 @@ const GROUP_ALL = 0xffffffff;
 const GROUP_TOOL = 0x0002ffff;
 const GROUP_THROUGH = 0x0001fffd;
 
+/** The share of the gap to the stick's speed a machine closes each step: 0.12 as usual, QUICK_EASE with the keyboard. */
+const QUICK_EASE = 0.24;
+
 /** The tool's orientation: a pure yaw for a hanging magnet or an excavator bucket that follows the stick... */
 const yawOnly = (a) => qyaw(a);
 
@@ -1022,7 +1025,9 @@ export class Yard {
    *  point on its centre line (the dump truck about its rear axle, the forklift about its front axle, so its tail
    *  swings), and one with `steerLow` turns more slowly when it is not moving. */
   drive(m, d, input, dt) {
-    m.speed += (clamp(input.drive || 0, -1, 1) * d.speed - m.speed) * (d.ease ?? 0.12);
+    // A keyboard (input.quick) gets a quicker start on the machines with the standard feel, so a tap on a key is a nudge
+    // you can see; the Lab machines keep their own slow, heavy ease.
+    m.speed += (clamp(input.drive || 0, -1, 1) * d.speed - m.speed) * (input.quick && d.ease === undefined ? QUICK_EASE : (d.ease ?? 0.12));
     const steer = clamp(input.steer || 0, -1, 1),
       low = d.steerLow ?? 1,
       rate = d.turn * (low + (1 - low) * Math.min(1, Math.abs(m.speed) / (0.5 * d.speed))),
@@ -1204,6 +1209,20 @@ export class Yard {
     }
   }
 
+  /** Locks every block that matches its place right now without waiting for it to settle (the job is complete: the blocks
+   *  that finished it stay put from then on). */
+  lockMatched() {
+    const round = this.round;
+    if (!round.id) return;
+    const poses = this.poses(),
+      status = evaluate(round, poses, this.held?.id ?? null),
+      pose = new Map(poses.map((p) => [p.id, p]));
+    status.matches.forEach((id, i) => {
+      const b = id == null ? null : this.blocks.find((x) => x.id === id);
+      if (b && !b.locked) this.lock(b, pose.get(id), round.ghosts ? round.ghosts[i] : null, this.supportUnder(pose.get(id), id));
+    });
+  }
+
   /** A place inside the delivery zone for block `b`, as close as possible to where it lies: clear of every other block, or
    *  null when the zone is too full there. */
   freeSpot(b, pad, margin) {
@@ -1379,7 +1398,7 @@ export class Yard {
       pr.t += DT;
       const v = b.body.linvel(),
         p = b.body.translation(),
-        low = p.y - this.groundAt(p.x, p.z) - halfHeight({ type: b.type, rotation: b.body.rotation() }) < 0.08;
+        low = p.y - this.groundAt(p.x, p.z) - halfHeight({ type: b.type, rotation: b.body.rotation() }) < 0.15;
       if (low && pr.vy < -0.7 && !pr.landed) {
         b.body.setLinvel({ x: v.x * 0.6, y: Math.min(1.9, -pr.vy * 0.4), z: v.z * 0.6 }, true);
         this.onEvent({ type: 'thud', id: b.id, position: { x: p.x, y: p.y - 0.5, z: p.z }, speed: -pr.vy });

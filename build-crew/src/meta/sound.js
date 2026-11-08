@@ -55,6 +55,18 @@ export const Sound = {
     lastImpact = ctx.currentTime;
     this.note(70, 0.15, Math.min(0.5, force / 30000));
   },
+  // A block locks into its place: a low settling thunk and two bright bell notes over it.
+  placed() {
+    this.note(118, 0.16, 0.2);
+    this.ring(784, 0.02, 0.55, 0.06);
+    this.ring(1175, 0.11, 0.8, 0.05);
+  },
+  // A poured block lands: a thud and a smaller second bounce.
+  thud(speed = 2) {
+    if (!ctx || ctx.state !== 'running') return;
+    this.note(92, 0.17, Math.min(0.36, 0.14 + speed * 0.03));
+    setTimeout(() => this.note(128, 0.1, 0.1), 140);
+  },
   // A falling one-shot tone, used by impacts and the horn.
   note(f, d = 0.2, v = 0.3) {
     if (!ctx || ctx.state !== 'running') return;

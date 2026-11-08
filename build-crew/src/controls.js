@@ -6,6 +6,14 @@ const DEAD_ZONE = 0.12;
 const FULL_AT = 0.92;
 const STICK_AXES = { drive: ['drive', 'steer'], tool: ['lift', 'tool'] };
 
+/** A tap on a driving key (W A S D or an arrow) lasts at least this long (milliseconds) however briefly the key is down,
+ *  so a quick tap is a clear nudge of about half a metre (a 20 ms tap used to move the machine a few centimetres, too
+ *  little to see). Holding a key works exactly as before, and the lift and tool keys are left alone: they place loads. */
+export const TAP_MS = 170;
+/** ...and is seen by at least this many frames, so a very slow device (frames longer than TAP_MS) still gets the nudge. */
+const TAP_FRAMES = 3;
+const DRIVE_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+
 /** Shapes a stick deflection (x, y each -1..1, length up to 1) into `out`: nothing inside the 12 % dead zone, then a
  *  smooth curve that starts gentle (for placing a load precisely) and reaches full power just before the rim. The
  *  direction is kept, so diagonals work. Returns out. */
@@ -27,6 +35,8 @@ export function shapeStick(x, y, out = { x: 0, y: 0 }) {
  *  { clear, setEnabled, read } where read() returns the axes clamped to -1..1, or {} while disabled. */
 export function createControls(canvas, { action, orbit, zoom, tap }) {
   const keys = new Set(),
+    // when each driving key last went down: until TAP_MS later it still counts as down
+    tapped = new Map(),
     axes = { drive: 0, steer: 0, lift: 0, tool: 0, swing: 0, tilt: 0, extend: 0 };
   let enabled = true,
     previous = [],
@@ -40,6 +50,7 @@ export function createControls(canvas, { action, orbit, zoom, tap }) {
   // Releases every key, axis and stick dot.
   const neutral = () => {
     keys.clear();
+    tapped.clear();
     for (const k in axes) axes[k] = 0;
     for (const release of releases) release();
   };
@@ -72,6 +83,7 @@ export function createControls(canvas, { action, orbit, zoom, tap }) {
     if (e.target.closest('button') && ['Space', 'Enter'].includes(e.code)) return;
     if (codes.includes(e.code) || special[e.code]) e.preventDefault();
     if (special[e.code] && !e.repeat) action(special[e.code]);
+    if (DRIVE_KEYS.has(e.code) && !keys.has(e.code)) tapped.set(e.code, { until: performance.now() + TAP_MS, reads: 0 });
     keys.add(e.code);
   });
   window.addEventListener('keyup', (e) => keys.delete(e.code));
@@ -198,9 +210,18 @@ export function createControls(canvas, { action, orbit, zoom, tap }) {
     },
     { passive: false },
   );
-  // +1, -1 or 0 for a pair of opposing keys.
-  const down = (a, b) => Number(keys.has(a)) - Number(keys.has(b));
-  const out = { drive: 0, steer: 0, lift: 0, tool: 0, swing: 0, tilt: 0, extend: 0 };
+  // +1, -1 or 0 for a pair of opposing keys. A driving key tapped a moment ago still counts as down (see TAP_MS).
+  let now = 0;
+  const isDown = (k) => {
+    if (keys.has(k)) return true;
+    const t = tapped.get(k);
+    if (t === undefined) return false;
+    if (now < t.until || t.reads < TAP_FRAMES) return true;
+    tapped.delete(k);
+    return false;
+  };
+  const down = (a, b) => Number(isDown(a)) - Number(isDown(b));
+  const out = { drive: 0, steer: 0, lift: 0, tool: 0, swing: 0, tilt: 0, extend: 0, quick: false };
   const clamp = (v) => (v > 1 ? 1 : v < -1 ? -1 : v);
   const NONE = Object.freeze({});
   return {
@@ -216,6 +237,10 @@ export function createControls(canvas, { action, orbit, zoom, tap }) {
     // the next read, so the game loop allocates nothing here.
     read() {
       if (!enabled) return NONE;
+      if (tapped.size) {
+        now = performance.now();
+        for (const t of tapped.values()) t.reads++;
+      }
       const shift = keys.has('ShiftLeft') || keys.has('ShiftRight'),
         horizontal = down('KeyL', 'KeyJ') + down('ArrowRight', 'ArrowLeft');
       let drive = axes.drive + down('KeyW', 'KeyS'),
@@ -241,6 +266,10 @@ export function createControls(canvas, { action, orbit, zoom, tap }) {
       out.swing = clamp(axes.swing + (shift ? horizontal : 0));
       out.tilt = clamp(axes.tilt);
       out.extend = clamp(axes.extend + down('KeyO', 'KeyU'));
+      // keys (not a stick) get the machine's quick start, so a tap reads as a nudge
+      let quick = tapped.size > 0;
+      if (!quick) for (const k of DRIVE_KEYS) if (keys.has(k)) quick = true;
+      out.quick = quick;
       return out;
     },
   };
