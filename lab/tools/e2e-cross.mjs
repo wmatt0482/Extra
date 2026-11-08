@@ -103,7 +103,7 @@ try {
   // ================= 2. earn in Trail Blazer =================
   section('2. Earn in Trail Blazer (the real game, its mock engine): the pill, the strip, the chips, "Lab crate!"');
   await openTb(page);
-  check('Trail Blazer loads the Lab and offers "The Lab" on its title', !!(await until(() => page.evaluate(() => window.__trailBlazer.lab.ready && !document.querySelector('#btn-lab').hidden), 8000)));
+  check('Trail Blazer loads the Lab and shows the Lab chip on its title', !!(await until(() => page.evaluate(() => window.__trailBlazer.lab.ready && !!document.querySelector('.lab-chipx')), 8000)));
   const q0 = await page.evaluate(() => window.__lab.store.view().quests.map((q) => q.id).join());
   check('the seeded quests reach the game (same origin, same save)', q0 === 'tb-races,tb-facts,tb-win', q0);
   let pillXp0 = null, pillTxt0 = '';
@@ -253,7 +253,7 @@ try {
     check(`${folder}: boots with /lab/ blocked, no Lab UI, no page errors`, errs.length === 0 && lab === 0, errs.slice(0, 2).join(' | '));
     if (g === 'tb') {
       await openTb(p);
-      check('trail-blazer: with /lab/ blocked the title has no Lab button', await p.evaluate(() => !window.__trailBlazer.lab.ready && document.querySelector('#btn-lab').hidden));
+      check('trail-blazer: with /lab/ blocked the title has no Lab chip', await p.evaluate(() => !window.__trailBlazer.lab.ready && !document.querySelector('.lab-chipx')));
       await p.evaluate(() => window.__trailBlazer.app.startRide('pine-ridge', { skipCheck: true }));
       await p.waitForFunction(() => window.__trailBlazer.screen === 'ride', null, { timeout: 8000 });
       check('trail-blazer: a whole race plays to the results with /lab/ blocked', (await tbRaceToResults(p)) === true);
