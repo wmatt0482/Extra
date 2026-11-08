@@ -25,7 +25,7 @@ export function createRouteMap({ stops = [], onOpen = () => {}, reduced = false 
   const el = document.createElement('div');
   el.className = 'routemap';
   el.setAttribute('role', 'group');
-  el.setAttribute('aria-label', 'The Erie Canal route, Albany to Buffalo. Each stop is a case.');
+  el.setAttribute('aria-label', 'The Erie Canal route, Buffalo in the west to Albany in the east. Each stop is a case.');
   let lastW = 0;
 
   function draw(W) {
@@ -33,7 +33,8 @@ export function createRouteMap({ stops = [], onOpen = () => {}, reduced = false 
     const H = narrow ? 216 : 210;
     const mid = narrow ? 100 : 98;
     const amp = narrow ? 11 : 13;
-    const fx = narrow ? { albany: 0.1, rochester: 0.4, lockport: 0.65, buffalo: 0.92 } : { albany: 0.07, rochester: 0.42, lockport: 0.73, buffalo: 0.93 };
+    // true geography, west on the left: Buffalo, Lockport, Rochester, then the long run east to Albany (order right, not to scale)
+    const fx = narrow ? { buffalo: 0.09, lockport: 0.27, rochester: 0.53, albany: 0.92 } : { buffalo: 0.07, lockport: 0.24, rochester: 0.5, albany: 0.93 };
     const X = (t) => fx[t] * W;
     const Y = (x) => mid + amp * Math.sin((x / W) * Math.PI * 2 * 1.5 + 0.7);
     // the canal
@@ -66,8 +67,8 @@ export function createRouteMap({ stops = [], onOpen = () => {}, reduced = false 
     let towns = '';
     for (const t of ['albany', 'rochester', 'lockport', 'buffalo']) {
       const x = X(t), y = Y(x);
-      const anchor = t === 'albany' ? 'start' : t === 'buffalo' ? 'end' : 'middle';
-      const tx = t === 'albany' ? Math.max(8, x - 18) : t === 'buffalo' ? Math.min(W - 8, x + 18) : x;
+      const anchor = t === 'buffalo' ? 'start' : t === 'albany' ? 'end' : 'middle';
+      const tx = t === 'buffalo' ? Math.max(8, x - 18) : t === 'albany' ? Math.min(W - 8, x + 18) : x;
       towns += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><circle r="${t === 'rochester' ? 22 : 19}" fill="#f6ebc6" stroke="${INK}" stroke-width="2" opacity=".96"/><g transform="scale(.74)">${ICON[t]}</g></g>`;
       towns += `<text x="${tx.toFixed(1)}" y="${H - 11}" text-anchor="${anchor}" font-family="Special Elite, Courier New, monospace" font-size="${narrow ? 11 : 13}" letter-spacing="${narrow ? 0.5 : 1.2}" fill="${INK2}">${NAME[t].toUpperCase()}</text>`;
       towns += `<path d="M${x.toFixed(1)} ${(y + 22).toFixed(1)}V${H - 26}" stroke="${INK}" stroke-width="1.4" stroke-dasharray="2 4" opacity=".55"/>`;

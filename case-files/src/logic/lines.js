@@ -40,4 +40,4 @@ export const checkDoc = (kind) => `Check the ${KIND_NAMES[kind] || 'document'}.`
 export const wordSpeech = (w) => `${w.word}. ${w.meaning}.`;
 
 /** The DOCUMENT label for a doc kind (the shelf and the tab). */
-export const KIND_LABEL = Object.freeze({ logbook: 'Logbook', letter: 'Letter', statement: 'Statement', placard: 'Museum placard', newspaper: 'Newspaper', notice: 'Notice', ledger: 'Ledger', map: 'Map', diary: 'Diary', receipt: 'Receipt' });
+export const KIND_LABEL = Object.freeze({ logbook: 'Logbook', letter: 'Letter', statement: 'Statement', witness: 'Witness statement', note: 'Note', placard: 'Museum placard', newspaper: 'Newspaper', notice: 'Notice', ledger: 'Ledger', map: 'Map', diary: 'Diary', receipt: 'Receipt' });
