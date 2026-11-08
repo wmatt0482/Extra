@@ -77,7 +77,7 @@ export default {
     ],
     given: [0, 3] },
   solution: { prompt: 'Who has the toll ticket?', answers: ['Tom Fisk', 'Tom', 'Fisk'], proof: ['d1s5', 'd2s4'] },
-  report: { keywords: ['ticket', 'pocket', 'coat'] },
+  report: { lead: 'The toll ticket was with ___', keywords: ['ticket', 'pocket', 'coat'] },
   closing: { who: 'chief', text: 'Case closed. Tom Fisk has the ticket without knowing it: it is still in the captain’s coat pocket. Send a rider to bring it back.' },
   knowledge: 'The Erie Canal opened in 1825 and ran 363 miles from Albany to Buffalo.',
   teaser: 'Tomorrow: a mule driver swears his mule can read. Can it?',

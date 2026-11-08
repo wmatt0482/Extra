@@ -134,7 +134,7 @@ export const countListen = (run, docId) => { run.listens[docId] = (run.listens[d
 export function closeRecord(run, kase, who, now, day) {
   const firstTap = {}, hints = {};
   for (const q of kase.questions) { firstTap[q.id] = run.firstTap[q.id] === true; hints[q.id] = Math.min(MAX_TIER, run.hints[q.id] || 0); }
-  return { day, at: now, firstTap, hints, timelineTries: run.tl.tries,
+  return { day, at: now, firstTap, hints, timelineTries: run.tl.tries, replays: 0,
     report: { who, because: run.rep.because.trim(), clueId: run.rep.clueId }, listens: { ...run.listens } };
 }
 /** Write a closed case into a save. The first close of a case wins (re-reading never changes it). -> true when it was the first. */

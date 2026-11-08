@@ -42,6 +42,18 @@ function checkCase(c, isTraining) {
   req(Array.isArray(c.facts), 'facts must be an array');
   req(c.closing && WHO.has(c.closing.who) && c.closing.text, 'closing needs who + text');
   req(c.report && Array.isArray(c.report.keywords) && c.report.keywords.length >= 3, 'report.keywords needs 3+ entries');
+  if (c.report && c.report.lead === undefined) warn(id, 'no report.lead: the report will read "The answer is ___ because ___." (fine, but a tailored lead reads better)');
+  // report.lead (optional, v0.1.3): the start of the report sentence with ONE "___" for the answer, e.g. "The waybill was with ___"; the frame adds " because ___."
+  if (c.report && c.report.lead !== undefined) {
+    const lead = c.report.lead;
+    req(typeof lead === 'string' && (lead.match(/___/g) || []).length === 1, 'report.lead must be a string with exactly one "___"');
+    if (typeof lead === 'string') {
+      req(!/because/i.test(lead), 'report.lead must not contain "because" (the frame adds it)');
+      req(!/[.!?]\s*$/.test(lead.trim()), 'report.lead must not end with punctuation (the frame adds " because ___.")');
+      req(countWords(lead.replace('___', 'x')) <= 12, 'report.lead is longer than 12 words');
+      if (c.solution && Array.isArray(c.solution.answers) && /[.!?]\s*\S/.test(lead)) fail(id, 'report.lead must be one short clause');
+    }
+  }
 
   // ---- docs
   req(Array.isArray(c.docs), 'docs must be an array');
@@ -208,6 +220,7 @@ for (const r of reports) {
     console.log(`    ${d.id}${d.stretch ? ' (stretch)' : '        '}  ${String(d.words).padStart(4)} words  FK ${d.fk.toFixed(1)}`);
     if (!d.stretch && r.id !== 'training' && d.fk > 7.5) warn(r.id, `${d.id} core doc FK ${d.fk.toFixed(1)} is above ~7`);
     if (d.stretch && d.fk < 6) warn(r.id, `${d.id} stretch doc FK ${d.fk.toFixed(1)} is below 6`);
+    if (d.stretch && d.fk > 9) fail(r.id, `${d.id} stretch doc FK ${d.fk.toFixed(1)} is above 9 (v0.1.3: the harder document stays readable)`);
   }
 }
 

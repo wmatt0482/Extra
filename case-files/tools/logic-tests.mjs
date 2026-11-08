@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { TRAINING, ARCS, CASE_BY_ID } from './fixtures/index.js';
 import { becauseStep, checkTap, display, editDistance, matchSolution, norm, proofClues } from '../src/logic/answers.js';
 import { currentCase, dayKey, nextUnopened, rankLabel, readAloudDefault, refreshOpened, supportsFor, waitingState, wordsToTeach } from '../src/logic/pacing.js';
-import { accuracyByStandard, allPinned, applyClose, attachClue, closeRecord, hashString, newRun, nextQuestion, pinTap, placeCard, requestHint, submitReport, submitSolution, trayOf } from '../src/logic/run.js';
+import { accuracyByStandard, allPinned, applyClose, applyReplay, attachClue, closeRecord, hashString, newRun, nextQuestion, pinTap, placeCard, requestHint, requiredDocs, submitReport, submitSolution, trayOf } from '../src/logic/run.js';
+import { DEFAULT_LEAD, cleanBecause, leadOf, reportText, splitLead, wordChips } from '../src/logic/report.js';
 import { HELP_KEYS, defaultSave, normalize } from '../src/meta/save.js';
 import { mergeCf } from '../src/meta/sync.js';
 import { closeReports } from '../src/logic/payout.js';
@@ -245,7 +246,8 @@ test('closing: the record has the SPEC section 6 shape; the first close wins; wo
   const run = play(5); submitSolution(run, kase, 'Tom'); attachClue(run, kase, 'd2s4'); submitReport(run, kase, 'the ticket is in the coat pocket', 'd2s4');
   run.listens = { d1: 2, d3: 1 };
   const r = closeRecord(run, kase, 'Tom Fisk', 1234, '2026-11-02'), save = defaultSave();
-  assert.deepEqual(Object.keys(r).sort(), ['at', 'day', 'firstTap', 'hints', 'listens', 'report', 'timelineTries']);
+  assert.deepEqual(Object.keys(r).sort(), ['at', 'day', 'firstTap', 'hints', 'listens', 'replays', 'report', 'timelineTries']);
+  assert.equal(r.replays, 0);
   assert.equal(r.firstTap.q1, false); assert.equal(r.firstTap.q2, true); assert.equal(r.hints.q1, 3); assert.deepEqual(r.report, { who: 'Tom Fisk', because: 'the ticket is in the coat pocket', clueId: 'd2s4' });
   assert.equal(applyClose(save, kase, r, 5), true); assert.equal(applyClose(save, kase, closeRecord(run, kase, 'X', 9999, '2026-11-09'), 5), false);
   assert.equal(save.closed['erie-01'].at, 1234); assert.deepEqual(save.wordsMet, { toll: 1, aqueduct: 1 }, 'rank 5 pre-teaches 2 words');
@@ -287,6 +289,67 @@ test('splitSay cuts long lines at sentence breaks under the clip limit', () => {
   const long = Array.from({ length: 12 }, (_, i) => `This is sentence number ${i} of a long line.`).join(' ');
   const parts = splitSay(long); assert.ok(parts.length > 1 && parts.every((p) => p.length <= CLIP_MAX)); assert.equal(parts.join(' '), long);
   assert.deepEqual(splitSay('  '), []); assert.deepEqual(splitSay('Hi.'), ['Hi.']);
+});
+
+section('v0.1.3: report sentence, word chips, required documents, replays');
+test('report.lead: the per-case lead, or the neutral default; the sentence has no orphan period and the clue after a colon', () => {
+  assert.equal(leadOf(E1), 'The toll ticket was with ___');
+  assert.equal(leadOf({ report: { keywords: ['a'] } }), DEFAULT_LEAD); assert.equal(DEFAULT_LEAD, 'The answer is ___');
+  assert.equal(leadOf({ report: { lead: 'no blank here', keywords: [] } }), DEFAULT_LEAD, 'a lead without ___ is ignored');
+  assert.deepEqual(splitLead('The toll ticket was with ___'), ['The toll ticket was with ', '']); assert.deepEqual(splitLead('___ moved the lunchbox'), ['', ' moved the lunchbox']);
+  const rec = { report: { who: 'Tom Fisk', because: 'it was in his coat.', clueId: 'd2s5' } };
+  const t = reportText(E1, rec, 'Tom had it.');
+  assert.equal(t, 'The toll ticket was with Tom Fisk because it was in his coat. The clue that proves it is: “Tom had it.”');
+  assert.ok(!/(^|\s)\.($|\s)/.test(t), 'no period on its own'); assert.ok(!/\.\./.test(t));
+  assert.equal(reportText({ report: { keywords: [] } }, rec, ''), 'The answer is Tom Fisk because it was in his coat. The clue that proves it is: (none)');
+  assert.equal(cleanBecause('  it was there!! '), 'it was there');
+});
+test('wordChips: the attached clue words then the report keywords; unique, no filler words, short, first word not capitalized by the sentence', () => {
+  const c = wordChips(E1, 'The ticket was tucked in Tom\'s coat pocket.');
+  assert.ok(c.includes('ticket') && c.includes('tucked') && c.includes('coat') && c.includes('pocket'), c.join());
+  assert.ok(!c.includes('the') && !c.includes('was') && !c.includes('in') && c.length <= 14); assert.equal(new Set(c.map((w) => w.toLowerCase())).size, c.length);
+  assert.ok(!c.includes('The'), 'filler');
+  assert.ok(wordChips({ report: { keywords: ['Biscuit', 'hat'] } }, 'Biscuit wore the hat.').includes('Biscuit'), 'a name keeps its capital');
+  assert.ok(wordChips({ report: { keywords: [] } }, 'Halfway across, a gust came.').includes('halfway'));
+  assert.deepEqual(wordChips({ report: { keywords: ['hat'] } }, ''), ['hat']);
+});
+test('requiredDocs: every core document, a stretch document only when a question answer or the solution proof is in it', () => {
+  const need = requiredDocs(E1);
+  for (const d of E1.docs.filter((x) => !x.stretch)) assert.ok(need.has(d.id), d.id);
+  const stretch = E1.docs.find((d) => d.stretch), ids = new Set(stretch.paragraphs.flat().map((s) => s.id));
+  const referenced = E1.questions.some((q) => q.answer.some((a) => ids.has(a))) || E1.solution.proof.some((p) => ids.has(p));
+  assert.equal(need.has(stretch.id), referenced);
+  // a copy of the case where nothing points into the stretch document: it is optional
+  const free = { ...E1, questions: E1.questions.map((q) => ({ ...q, answer: q.answer.filter((a) => !ids.has(a)).length ? q.answer.filter((a) => !ids.has(a)) : ['d1s1'] })), solution: { ...E1.solution, proof: E1.solution.proof.filter((p) => !ids.has(p)).concat(['d1s1']) } };
+  assert.ok(!requiredDocs(free).has(stretch.id)); assert.equal(requiredDocs(free).size, E1.docs.length - 1);
+  // and one that does point into it: required
+  const pointed = { ...E1, questions: [{ ...E1.questions[0], answer: [[...ids][0]] }, ...E1.questions.slice(1)] };
+  assert.ok(requiredDocs(pointed).has(stretch.id));
+});
+test('replays: newRun(…, true) is flagged; applyReplay only raises `replays` on the closed record (nothing else changes); no record, no count', () => {
+  const run = newRun(E1, 4, true); assert.equal(run.replay, true); assert.equal(newRun(E1, 4).replay, undefined);
+  const save = defaultSave(); const before = (r) => JSON.stringify({ ...r, replays: 0 });
+  assert.equal(applyReplay(save, E1), 0, 'a case that was never closed');
+  const rec = closeRecord(play(), kase, 'Tom Fisk', 1234, '2026-11-02'); applyClose(save, kase, rec, 4);
+  const was = before(save.closed[kase.id]), wm = JSON.stringify(save.wordsMet);
+  assert.equal(applyReplay(save, E1), 1); assert.equal(applyReplay(save, E1), 2);
+  assert.equal(save.closed[kase.id].replays, 2); assert.equal(before(save.closed[kase.id]), was, 'the first record is untouched'); assert.equal(JSON.stringify(save.wordsMet), wm, 'no words counted twice');
+  assert.deepEqual(closeReports({ firstCaseToday: false }), [{ event: 'case' }], 'finishCase pays only through closeReports, which a replay never calls');
+});
+test('replays: normalize keeps a whole number (default 0, capped), mergeCf takes the larger count and keeps the earliest record', () => {
+  const mk = (replays, at, who) => ({ day: '2026-11-02', at, firstTap: {}, hints: {}, timelineTries: 0, report: { who, because: 'x y z', clueId: '' }, listens: {}, ...(replays === undefined ? {} : { replays }) });
+  const n = normalize({ closed: { a: mk(3, 5, 'A'), b: mk(-4, 5, 'B'), c: mk('x', 5, 'C'), d: mk(2.9, 5, 'D'), e: mk(1e12, 5, 'E'), f: mk(undefined, 5, 'F') } });
+  assert.deepEqual([n.closed.a, n.closed.b, n.closed.c, n.closed.d, n.closed.f].map((r) => r.replays), [3, 0, 0, 2, 0]); assert.ok(n.closed.e.replays <= 1e6);
+  assert.deepEqual(normalize(JSON.parse(JSON.stringify(n))), n, 'idempotent');
+  const A = { ...defaultSave(), updatedAt: 100, closed: { 'erie-01': mk(1, 900, 'Later') } }, B = { ...defaultSave(), updatedAt: 200, closed: { 'erie-01': mk(4, 500, 'Earlier') } };
+  const m = mergeCf({ updatedAt: 100, data: A }, { updatedAt: 200, data: B });
+  assert.equal(m.closed['erie-01'].replays, 4); assert.equal(m.closed['erie-01'].report.who, 'Earlier');
+  assert.deepEqual(mergeCf({ updatedAt: 200, data: B }, { updatedAt: 100, data: A }), m, 'order does not matter');
+  const solo = mergeCf({ updatedAt: 100, data: A }, { updatedAt: 200, data: { ...defaultSave(), updatedAt: 200, closed: { 'erie-01': mk(undefined, 800, 'X') } } });
+  assert.equal(solo.closed['erie-01'].replays, 1, 'an older save without replays does not lower the count');
+});
+test('the Hint popup lines are in the voice list, kind and short', () => {
+  const v = caseVoiceTexts(E1, 4); for (const k of ['hint1', 'hint2', 'hint3']) { assert.ok(v.includes(LINES[k]), k); assert.ok(LINES[k].length <= 60 && !/wrong|incorrect/i.test(LINES[k])); }
 });
 
 section('Lab payout');

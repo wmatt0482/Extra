@@ -545,7 +545,8 @@ export function createCaseView(app) {
 
   function renderReport() {
     const sol = kase.solution;
-    const who = display(sol.answers[0]);
+    const [before, after] = splitLead(leadOf(kase));
+    const who = before.trim() ? String(sol.answers[0]) : display(sol.answers[0]);       // mid-sentence the answer reads as authored ("a muskrat"); at the start it is a name
     const because = h('span', { class: 'blank active', id: 'blank-because' });
     const clueBtn = h('button', { class: 'blank empty', id: 'blank-clue', type: 'button', 'data-sfx': '' });
     const chips = h('div', { class: 'word-chips', id: 'word-chips', role: 'group', 'aria-label': 'Words to tap' });
@@ -580,7 +581,6 @@ export function createCaseView(app) {
     };
     clueBtn.addEventListener('click', pickClue);
     // "<lead with the answer> because ___. The clue that proves it is: “…”" (the lead is per case: report.lead, SPEC §5)
-    const [before, after] = splitLead(leadOf(kase));
     const frame = h('p', { class: 'frame', id: 'frame' }, before, h('span', { class: 'blank fixed', id: 'blank-who' }, who), after, ' because ', because, h('span', { class: 'frame-clue' }, CLUE_INTRO, clueBtn));
     const prompt = h('div', { class: 'bubble partner' }, h('span', { class: 'who' }, 'PT'), h('p', {}, h('span', { class: 'who-name' }, 'Case report'), 'Finish the sentence. Then tap the clue that proves it.'), h('button', { class: 'say-btn', type: 'button', 'aria-label': 'Hear it', html: icon('sound'), onclick: () => say(LINES.writeReport) }));
     const grid = h('div', { class: 'solve-grid report' }, h('div', { class: 's-prompt' }, prompt), h('div', { class: 's-answer' }, frame));
