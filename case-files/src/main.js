@@ -17,10 +17,11 @@ import { registerCaseFilesSync } from './meta/sync.js';
 import { defaultSave, loadReplay, loadSave, loadSettings, loadWip, removeSave, writeReplay, writeSave, writeSettings, writeWip } from './meta/save.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { labBridge } from './meta/labBridge.js';
+import { labLooks } from './meta/labLooks.js';
 import { ARCS, CASE_BY_ID, TRAINING } from './content/index.js';
 import { LINES } from './logic/lines.js';
 import { allCoachLines } from './logic/coach.js';
-import { dayKey, nextUnopened, rankLabel, refreshOpened } from './logic/pacing.js';
+import { dayKey, nextUnopened, rankLabel, refreshOpened, waitingState } from './logic/pacing.js';
 import { applyClose, applyReplay, closeRecord, newRun } from './logic/run.js';
 import { closeReports } from './logic/payout.js';
 import { caseVoiceTexts } from './meta/voiceTexts.js';
@@ -32,9 +33,9 @@ import { createFile } from './ui/file.js';
 import { createModal } from './ui/modal.js';
 import { createCoach } from './ui/coach.js';
 import { createParentZone } from './ui/parentZone.js';
-import { EXTRA_ICONS, drawBackdrop } from './ui/art.js';
+import { EXTRA_ICONS, drawAvatar, drawBackdrop } from './ui/art.js';
 
-const VERSION = '0.1.3';
+const VERSION = '0.1.4';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'caseFiles.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -137,6 +138,16 @@ async function boot() {
       setTimeout(() => updater.check(), 0);
     },
     openLabHome: () => labBridge.openHome({}),
+    /** v0.1.4 (cohesion): the Lab's own button on "Who's on the case?" (last in the players' block). */
+    labPickerButton: (mount) => labBridge.mountPickerButton(mount),
+    /** The Lab's Case Files looks to draw on a player's detective ({ hat, badge, coat } item ids or null): this player's from lab.cosmetics, a sibling's from lab.cosmeticsOf. */
+    looksFor(id) {
+      try {
+        let c = id === currentPlayerId && labPlayer ? labBridge.cosmetics() : null;      // (no player attached on the picker: the Lab still knows each family member's doc)
+        if (!c || !Object.values(c.slots || {}).some(Boolean)) c = labBridge.cosmeticsOf(id);
+        return labLooks(c && c.slots);
+      } catch (_) { return labLooks(null); }
+    },
   };
 
   // ---------- UI ----------
@@ -161,25 +172,41 @@ async function boot() {
     labBridge.attach({ playerId: p.id, name: p.name, color: p.color, gentle: false, reducedMotion: !!settings.reducedMotion, sound: !!settings.sound });
   }
   function labDetach() { if (labPlayer) { labPlayer = null; labBridge.detach(); } }
-  const LAB_SLOTS = { home: [['hud', '#lab-slot-home', false]], closed: [['hud', '#lab-slot-closed-pill', true], ['results', '#lab-slot-closed', false]] };
+  // v0.1.4 (cohesion): the agency home carries the Lab chip (top-left, the Games button inside it); the closed screen keeps the XP pill and the results strip
+  const LAB_SLOTS = { home: [['chip', '#lab-slot-home', false]], closed: [['hud', '#lab-slot-closed-pill', true], ['results', '#lab-slot-closed', false]] };
   function labMount(name) {
     for (const m of labMounts.splice(0)) { try { m.destroy(); } catch (_) { /* ignore */ } }
     for (const el of $$('.lab-slot')) el.replaceChildren();
     if (!currentPlayerId || !LAB_SLOTS[name]) return;
     for (const [kind, sel, compact] of LAB_SLOTS[name]) {
       const mount = $(sel);
-      if (mount) labMounts.push(kind === 'hud' ? labBridge.hud({ mount, compact }) : labBridge.results({ mount }));
+      if (!mount) continue;
+      if (kind === 'chip') labMounts.push(labBridge.mountChip(mount, { compact: window.innerWidth < 520, theme: 'dark', current: 'cf' }));
+      else labMounts.push(kind === 'hud' ? labBridge.hud({ mount, compact }) : labBridge.results({ mount }));
     }
   }
-  function showLabButton() {
-    const btn = $('#btn-thelab');
-    clearInterval(labTimer);
-    btn.hidden = !labBridge.ready;
-    if (!labBridge.ready) {
-      let n = 0;
-      labTimer = setInterval(() => { if (labBridge.ready) { btn.hidden = false; clearInterval(labTimer); } else if (++n > 100) clearInterval(labTimer); }, 120);
-    }
+  /** v0.1.4 (cohesion): this game's card on the Lab home: "Detective: n cases closed", "Erie Canal: n / 5", today's case ("New case ready" / "Next case tomorrow"). */
+  function labSummary() {
+    if (!labPlayer) return;
+    try {
+      const n = Object.keys(save.closed || {}).length;
+      const erie = ARCS.find((a) => a.id === 'erie') || ARCS[0];
+      const inErie = erie ? erie.cases.filter((k) => save.closed && save.closed[k.id]).length : 0;
+      const w = waitingState(save);
+      labBridge.summary({ level: `Detective: ${n} ${n === 1 ? 'case' : 'cases'} closed`, line: erie ? `Erie Canal: ${inErie} / ${erie.cases.length}` : `${n} cases closed`,
+        today: w === 'open' ? 'New case ready' : w === 'tomorrow' ? 'Next case tomorrow' : 'All cases closed' });
+    } catch (_) { /* never in the way */ }
   }
+
+  // the Lab's looks arrive (or change) after the first draw: redraw the detectives that are on screen
+  function redrawLooks() {
+    try {
+      if (screen === 'players') screens.players.show();
+      else if (screen === 'home') { const p = app.currentPlayer(); if (p) drawAvatar($('#home-avatar'), p.color, app.looksFor(p.id)); }
+    } catch (_) { /* ignore */ }
+  }
+  labBridge.whenReady(redrawLooks);
+  labBridge.onChange(redrawLooks);
 
   // ---------- players ----------
   function selectPlayer(id) {
@@ -209,7 +236,7 @@ async function boot() {
     screen = name;
     document.documentElement.dataset.screen = name;
     if (name === 'players') labDetach();
-    if (name === 'home') { refreshOpened(save, app.today()); app.persist(); const p = app.currentPlayer(); $('#home-player').textContent = p ? p.name : ''; showLabButton(); }
+    if (name === 'home') { refreshOpened(save, app.today()); app.persist(); const p = app.currentPlayer(); $('#home-player').textContent = p ? p.name : ''; labSummary(); }
     if (screens[name]) screens[name].show(arg);
     if (name === 'home') app.coach.auto('home');          // the first time the agency home appears
     labMount(name);
@@ -309,6 +336,7 @@ async function boot() {
     writeWip(currentPlayerId, null);
     let receipt = null;
     for (const ev of closeReports({ firstCaseToday })) { const rc = labBridge.report(ev); if (ev.event === 'case') receipt = rc; }
+    labSummary();                                         // v0.1.4 (cohesion): the card after each case
     go('closed', { kase, receipt });
   }
 
@@ -317,7 +345,6 @@ async function boot() {
   $('#btn-player').addEventListener('click', () => go('players'));
   $('#btn-archive').addEventListener('click', () => go('archive'));
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'det', player: currentPlayerId }));
-  $('#btn-thelab').addEventListener('click', () => labBridge.openHome({ onClose: () => { if (screen === 'home') screens.home.show(); } }));
   $('#case-back').addEventListener('click', () => go('home'));
   $('#btn-help-home').addEventListener('click', () => app.coach.show('home'));
   document.addEventListener('click', (e) => { if (e.target.closest('[data-sfx]')) Audio.click(); });

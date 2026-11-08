@@ -4,7 +4,8 @@
 // learned), tomorrow's teaser, and "See you tomorrow, Detective." Nothing here starts the next case (SPEC §1). Calm motion (the Parent
 // Zone switch or the OS setting): no confetti, no jolt, the stamp just fades in.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
-import { icon, COIN } from '../../../spell-jump/src/ui/icons.js';
+import { icon } from '../../../spell-jump/src/ui/icons.js';
+import { labBridge } from '../meta/labBridge.js';
 import { LINES } from '../logic/lines.js';
 import { portrait } from './art.js';
 
@@ -27,7 +28,8 @@ export function fillPayout(pay, payout) {
   pay.replaceChildren();
   if (!text) { pay.hidden = true; return; }
   pay.hidden = false;
-  pay.append(h('span', { class: 'pay-coin', html: COIN, 'aria-hidden': 'true' }), h('span', { class: 'pay-text' }, text));
+  const coin = labBridge.coinIcon();       // the Lab's own coin (teal, brass rim, flask), never the game's dollar coin: these are Lab coins
+  pay.append(coin && coins ? h('span', { class: 'pay-coin', html: coin, 'aria-hidden': 'true' }) : null, h('span', { class: 'pay-text' }, text));
   pay.setAttribute('aria-label', `${text}. Reward for closing the case.`);
 }
 

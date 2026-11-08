@@ -143,7 +143,7 @@ export function createParentZone(app) {
       const b = h('button', { class: 'pz-ptab' + (p.id === playerId ? ' on' : ''), role: 'tab', 'aria-selected': String(p.id === playerId), 'data-player': p.id }, cv, h('span', {}, p.name));
       b.addEventListener('click', () => { playerId = p.id; render(); });
       row.append(b);
-      drawAvatar(cv, p.color);
+      drawAvatar(cv, p.color, app.looksFor(p.id));
     }
     return row;
   }

@@ -9,7 +9,7 @@ memory and writing a one-sentence case report. One new case opens each day; the 
 - Learning design (technique, evidence, where it lives): [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md).
 - Content (written to the SPEC section 5 format by the content agent): `src/content/`, `docs/CONTENT-GUIDE.md`, `docs/SOURCES.md`.
 
-Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.3`, manifest, icons). Version **0.1.3**.
+Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.4`, manifest, icons). Version **0.1.4**.
 
 ## The flow
 
@@ -96,6 +96,17 @@ picked in Spell Jump. Only the current case's lines are prepared. The device voi
 on the screen and the listen buttons stay quiet (with a gentle note). The sound setting silences everything.
 
 ## Changelog
+
+### 0.1.4
+The Lab cohesion round (stage 2; `lab/docs/COHESION.md`).
+- **One Lab chip, top-left of the agency home** (`labBridge.mountChip`, compact under 520 px): avatar, "Lab LV n", Lab coins, the Lab streak flame and the Games button (the six-game nav).
+  It replaces the star "The Lab" button and the "LAB LV" pill on the home; the closed screen keeps the XP pill and the results strip. The partial "Spell Jump / Wagon West" links under the picker are gone (the Games button is the nav).
+- **The picker's Lab button** ("Who's on the case?", `labBridge.mountPickerButton`, last in the players' block).
+- **Summary** (`lab.summary`): "Detective: n cases closed", "Erie Canal: n / 5", today "New case ready" / "Next case tomorrow" (no countdown); on every home and after each case.
+- **Money**: the close-case payout shows the Lab coin icon (`labBridge.coinIcon`) and "Lab coins". The game has no money of its own. The Detective Rank is still only in the Parent Zone.
+- **Looks**: the Lab shop's Case Files items are drawn on the detective (picker tile, home chip, Parent Zone tabs) from `lab.cosmetics('cf').slots` / `cosmeticsOf`: `cf.hat.detcap` / `deerstalker` (in place of the fedora),
+  `cf.badge.magnifier` / `goldbadge` (a lapel pin; the held magnifier steps aside), `cf.coat.tweed` / `trench` (`src/ui/art/looks.js`, `labLooks()` in `src/meta/labLooks.js`).
+- Tests: `ui-smoke` checks the chip, the picker button, the Games panel, the summary, the payout's Lab coin and the looks drawn (pixels differ per item).
 
 ### 0.1.3
 A playtest of the live 0.1.0 found these; all fixed (gameplay and content; the look is a separate pass, `style/`).

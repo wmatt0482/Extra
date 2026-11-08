@@ -8,6 +8,7 @@
 //   enhance.js     startEnhancers(app)   swaps the "PT" / "CH" badges for portraits, adds the document pictures, Pip's moods
 import { drawBackdrop as sceneBackdrop } from './art/scene.js';
 import { startEnhancers } from './art/enhance.js';
+import { COAT, BADGE, HAT } from './art/looks.js';
 export { createRouteMap } from './art/routemap.js';
 export { pipAvatar, chiefAvatar, wenAvatar, portrait, PIP_MOODS, NAMES } from './art/characters.js';
 export { docArt, DOC_KIND_NAME } from './art/docs.js';
@@ -16,7 +17,8 @@ export { docArt, DOC_KIND_NAME } from './art/docs.js';
 export function drawBackdrop(svg) { sceneBackdrop(svg); startEnhancers(); }
 
 /** The player's detective: a fedora in the player's color, a trench-coat collar, a magnifier. */
-export function drawAvatar(canvas, color = '#2fd1c0') {
+export function drawAvatar(canvas, color = '#2fd1c0', looks = null) {
+  const L = looks || {};
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   const r = canvas.getBoundingClientRect();
   const w = Math.max(24, Math.round(r.width || 64)), hh = Math.max(24, Math.round(r.height || 64));
@@ -30,19 +32,25 @@ export function drawAvatar(canvas, color = '#2fd1c0') {
   c.fillStyle = '#2b3a55'; c.beginPath(); c.moveTo(-30, 32); c.quadraticCurveTo(-30, 10, -18, 6); c.lineTo(18, 6); c.quadraticCurveTo(30, 10, 30, 32); c.closePath(); c.fill();
   c.fillStyle = '#e8dcc0'; c.beginPath(); c.moveTo(-9, 6); c.lineTo(0, 20); c.lineTo(9, 6); c.closePath(); c.fill();
   c.fillStyle = '#1d2840'; c.beginPath(); c.moveTo(-22, 8); c.lineTo(-8, 8); c.lineTo(-2, 24); c.closePath(); c.fill(); c.beginPath(); c.moveTo(22, 8); c.lineTo(8, 8); c.lineTo(2, 24); c.closePath(); c.fill();
+  if (COAT[L.coat]) COAT[L.coat](c);                       // the Lab's coat over the shirt (null: the game's own)
+  if (BADGE[L.badge]) BADGE[L.badge](c);                   // the lapel pin
   // face
   c.fillStyle = '#d9a67e'; c.beginPath(); c.ellipse(0, -4, 13, 14, 0, 0, Math.PI * 2); c.fill();
   c.fillStyle = '#1b1f2a'; c.beginPath(); c.arc(-5, -3, 1.9, 0, Math.PI * 2); c.arc(5, -3, 1.9, 0, Math.PI * 2); c.fill();
   c.strokeStyle = '#6a3f27'; c.lineWidth = 2; c.beginPath(); c.moveTo(-4, 5); c.quadraticCurveTo(0, 8, 4, 5); c.stroke();
-  // fedora
+  // fedora (or the Lab's cap in its place)
+  if (HAT[L.hat]) HAT[L.hat](c); else {
   c.fillStyle = color; c.beginPath(); c.ellipse(0, -13, 25, 6.5, 0, 0, Math.PI * 2); c.fill();
   c.beginPath(); c.moveTo(-14, -14); c.quadraticCurveTo(-13, -30, 0, -30); c.quadraticCurveTo(13, -30, 14, -14); c.closePath(); c.fill();
   c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(-14, -19, 28, 5);
   c.fillStyle = 'rgba(255,255,255,.22)'; c.beginPath(); c.ellipse(-7, -27, 4, 2, -0.5, 0, Math.PI * 2); c.fill();
-  // magnifier
+  }
+  // magnifier (the held one steps aside when a badge is pinned on)
+  if (!BADGE[L.badge]) {
   c.strokeStyle = '#dcab4a'; c.lineWidth = 3.2; c.beginPath(); c.arc(21, 18, 7, 0, Math.PI * 2); c.stroke();
   c.fillStyle = 'rgba(160,220,255,.35)'; c.beginPath(); c.arc(21, 18, 6, 0, Math.PI * 2); c.fill();
   c.lineCap = 'round'; c.lineWidth = 3.6; c.beginPath(); c.moveTo(26, 23); c.lineTo(31, 29); c.stroke();
+  }
   c.setTransform(1, 0, 0, 1, 0, 0);
 }
 

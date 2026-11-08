@@ -60,6 +60,7 @@ export function createPlayers(app) {
     chip.setAttribute('aria-label', `Family sync on, code ${s.code}. Opens Parents.`);
   }
 
+  let pickerLab = null;
   function showPicker() {
     const f = app.family;
     refreshSyncChip();
@@ -71,13 +72,16 @@ export function createPlayers(app) {
         cv, h('span', { class: 'pl-name' }, p.name), h('span', { class: 'pl-level', 'data-closed': String(closed) }, `${closed} closed`));
       b.addEventListener('click', () => app.selectPlayer(p.id));
       grid.append(b);
-      drawAvatar(cv, p.color);
+      drawAvatar(cv, p.color, app.looksFor(p.id));
     }
     if (f.players.length < MAX_PLAYERS) {
       const add = h('button', { class: 'card pl-tile pl-add', id: 'pl-add', 'data-sfx': '' }, h('span', { class: 'pl-plus' }, '+'), h('span', { class: 'pl-name' }, 'New player'));
       add.addEventListener('click', () => app.go('newplayer'));
       grid.append(add);
     }
+    // the Lab's own button, last in the family's block (lab/docs/COHESION.md §3)
+    if (pickerLab) pickerLab.destroy();
+    pickerLab = app.labPickerButton(grid);
   }
   function showNew() {
     name = '';

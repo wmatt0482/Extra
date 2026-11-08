@@ -112,6 +112,9 @@ button:focus-visible, a:focus-visible, .s:focus-visible { outline: 3px solid var
 .scroll { overflow: auto; -webkit-overflow-scrolling: touch; touch-action: pan-y; overscroll-behavior: contain; }
 .lab-slot { display: flex; align-items: center; justify-content: center; min-width: 0; }
 .lab-slot:empty { display: none; }
+.topbar-break { display: none; }
+#screen-home .lab-chipx { --labchip-bg: rgba(8,22,48,.92); --labchip-edge: #2fd1c0; --labchip-accent: #f2c64f; --labchip-bar: #2fd1c0; }
+.player-grid .lab-pickbtn { flex: 0 0 auto; width: min(100%, 322px); justify-content: center; }
 .coin { display: inline-block; flex: none; width: 1.25em; height: 1.25em; vertical-align: -.28em; }
 .chip { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 14px; border-radius: 22px; background: rgba(10,22,48,.82); border: 2px solid var(--line); font: 700 14px/1 var(--font-body); color: var(--text); }
 .label-type { font: 400 12px/1 var(--font-type); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
@@ -123,8 +126,6 @@ button:focus-visible, a:focus-visible, .s:focus-visible { outline: 3px solid var
 .pl-links { grid-column: 1; justify-self: start; display: flex; gap: 8px; }
 .pl-link { text-decoration: none; }
 .pl-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; flex: none; margin-top: 6px; }
-.pl-other { background: rgba(20,48,90,.86); color: var(--muted); font-size: 13px; }
-.pl-other svg { width: 16px; height: 16px; }
 .pl-parents svg { width: 18px; height: 18px; }
 .players-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
 .players-body::before, .players-body::after { content: ''; flex: 1 0 0; }
@@ -520,10 +521,11 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
   .np-colors { width: 100%; justify-content: center; }
   .kb { --kgap: 3px; --kh: 54px; width: 100%; }
   .kb-key { font-size: 22px; border-radius: 4px; }
-  #screen-home .topbar .lab-slot { order: 6; flex: 1 1 0; justify-content: flex-start; }
-  #screen-home .topbar #btn-player { order: 1; } #screen-home .topbar .grow { order: 2; } #screen-home .topbar #btn-archive { order: 3; } #screen-home .topbar #btn-parents { order: 4; width: 48px; padding: 0; }
-  #screen-home .topbar #btn-thelab { order: 5; }
-  #screen-home .topbar #btn-help-home { order: 3; }
+  /* v0.1.4: the Lab chip leads the agency home's top bar; on a phone it is row one (with Parents), the player chip, help and Archive are row two */
+  #screen-home .topbar .lab-slot { order: 1; }
+  #screen-home .topbar .grow { order: 2; } #screen-home .topbar #btn-parents { order: 3; width: 48px; padding: 0; }
+  #screen-home .topbar .topbar-break { display: block; order: 4; flex: 0 0 100%; height: 0; }
+  #screen-home .topbar #btn-player { order: 5; } #screen-home .topbar #btn-help-home { order: 6; } #screen-home .topbar #btn-archive { order: 7; }
   #btn-parents .btn-text { display: none; }
   .player-chip { max-width: 44%; }
   #screen-case .topbar { flex-wrap: nowrap; }
@@ -601,9 +603,7 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
       <button class="btn btn-sm pl-parents" id="btn-parents-picker" data-sfx><span data-icon="lock"></span>Parents</button>
     </div>
     <div class="players-body scroll"><div class="player-grid" id="player-grid"></div>
-      <div class="pl-foot"><button class="sync-chip" id="sync-chip" data-sfx hidden></button>
-        <a class="btn btn-sm pl-link pl-other" id="btn-spelljump" href="../spell-jump/">Spell Jump<span data-icon="right"></span></a>
-        <a class="btn btn-sm pl-link pl-other" id="btn-wagonwest" href="../wagon-west/">Wagon West<span data-icon="right"></span></a></div></div>
+      <div class="pl-foot"><button class="sync-chip" id="sync-chip" data-sfx hidden></button></div></div>
   </section>
 
   <!-- ===== New player ===== -->
@@ -625,11 +625,11 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
   <!-- ===== Agency home (src/ui/home.js) ===== -->
   <section class="screen" id="screen-home" data-screen="home" hidden>
     <div class="topbar">
-      <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="home-avatar" aria-hidden="true"></canvas><span id="home-player">Player</span></button>
       <div class="lab-slot" id="lab-slot-home"></div>
+      <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="home-avatar" aria-hidden="true"></canvas><span id="home-player">Player</span></button>
       <span class="grow"></span>
       <button class="btn icon-btn help-btn" id="btn-help-home" aria-label="How this step works" data-sfx>?</button>
-      <button class="btn btn-sm btn-cyan" id="btn-thelab" data-sfx hidden><span data-icon="star"></span>The Lab</button>
+      <span class="topbar-break" aria-hidden="true"></span>
       <button class="btn btn-sm" id="btn-archive" data-sfx><span class="ico-archive"></span>Archive</button>
       <button class="btn btn-sm" id="btn-parents" data-sfx aria-label="Parents"><span data-icon="lock"></span><span class="btn-text">Parents</span></button>
     </div>

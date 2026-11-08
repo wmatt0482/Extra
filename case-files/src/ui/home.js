@@ -41,7 +41,7 @@ export function createHome(app) {
     const save = app.save;
     const p = app.currentPlayer();
     $('#home-player').textContent = p ? p.name : 'Player';
-    if (p) drawAvatar($('#home-avatar'), p.color);
+    if (p) drawAvatar($('#home-avatar'), p.color, app.looksFor(p.id));
     const cur = currentCase(save);
     const wait = waitingState(save);
     const kids = [h('div', { class: 'board-title' }, h('h1', {}, 'The Agency'), h('span', { class: 'label-type' }, 'Case board'),

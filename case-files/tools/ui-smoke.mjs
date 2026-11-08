@@ -319,6 +319,9 @@ async function runLayout(browser, layout) {
   check(await exists(page, '[data-player="pmia"]') && await exists(page, '[data-player="pleo"]') && await exists(page, '#pl-add'), 'player cards (from the family) and the dashed New player card');
   await kidAudit(page, 'picker'); await audit(page, layout.insets, 'picker');
   check(!/\brank\b/i.test(await kidText(page)) && !/rank/i.test(await page.$eval('[data-player="pmia"]', (e) => e.getAttribute('aria-label'))), 'v0.1.3: the Detective Rank is not shown or announced on the picker (it is a Parent Zone setting)');
+  await page.waitForSelector('#player-grid #lab-picker-btn', { timeout: 8000 }).catch(() => {});
+  const pb = await J(page, () => { const b = document.querySelector('#player-grid #lab-picker-btn'); return b ? { last: b === document.querySelector('#player-grid').lastElementChild, h: b.getBoundingClientRect().height, txt: b.textContent, links: document.querySelectorAll('.pl-other, #btn-spelljump, #btn-wagonwest').length } : null; });
+  check(pb && pb.last && pb.h >= 44 && /The Lab/.test(pb.txt) && pb.links === 0, 'v0.1.4: the picker has the Lab\'s own "The Lab" button, last in the players\' block, and no partial Spell Jump / Wagon West links');
   await shot(page, layout, '01-picker');
   await page.click('#pl-add');
   await page.waitForSelector(visibleSel('#screen-newplayer'));
@@ -333,7 +336,36 @@ async function runLayout(browser, layout) {
   await waitScreen(page, 'home');
   await expectCoach(page, layout, 'home', { shotName: '02a-coach-home' });
   await expectHelp(page, layout, '#btn-help-home', 'home');
-  await page.waitForFunction(() => !document.querySelector('#btn-thelab').hidden, null, { timeout: 8000 }).catch(() => {});
+  await page.waitForSelector('#lab-slot-home .lab-chipx', { timeout: 8000 });
+  const chip = await J(page, () => { const c = document.querySelector('#lab-slot-home .lab-chipx'); const r = c.getBoundingClientRect(); const m = c.querySelector('.lab-chipx-main').getBoundingClientRect(); const pc = document.querySelector('#btn-player').getBoundingClientRect(); return { left: r.left, top: r.top, h: m.height, compact: c.classList.contains('compact'), txt: c.textContent, first: r.top < pc.top || r.left < pc.left, n: document.querySelectorAll('.lab-chipx').length, old: !!document.querySelector('#btn-thelab'), pill: !!document.querySelector('#screen-home .lab-pill, #screen-home .lab-hud'), w: innerWidth, flames: document.querySelectorAll('#screen-home .lab-chipx-flame').length, bare: /(?<!Lab )\bLV\b/.test(document.querySelector("#screen-home").textContent) }; });
+  check(chip.n === 1 && chip.flames === 1 && !chip.old && !chip.pill && /Lab LV \d+/.test(chip.txt) && chip.h >= 44 && chip.top < 80 && chip.left < 80 && chip.first && chip.compact === (chip.w < 520), `v0.1.4: ONE Lab chip top-left of the agency home (${Math.round(chip.left)},${Math.round(chip.top)}), "Lab LV n", ${chip.compact ? 'compact' : 'full'} at ${chip.w} px, before the player chip, the one flame; no star button, no LAB LV pill`);
+  check(!chip.bare, 'v0.1.4: no bare "LV" on the agency home');
+  const sum = await J(page, () => { const d = window.__lab.store.doc(); return d && d.sum && d.sum.cf; });
+  check(sum && /^Detective: \d+ cases? closed$/.test(sum.level) && /^Erie Canal: \d+ \/ \d+$/.test(sum.line) && /^(New case ready|Next case tomorrow|All cases closed)$/.test(sum.today), `v0.1.4: the Lab's summary for Case Files: "${sum && sum.level}" · "${sum && sum.line}" · "${sum && sum.today}"`);
+  await page.click('#lab-chip-games');
+  await page.waitForSelector('#lab-games-panel');
+  const gp = await J(page, () => ({ n: document.querySelectorAll('#lab-games-panel .lab-gp-row').length, here: (document.querySelector('#lab-games-panel .lab-gp-row.here') || {}).dataset && document.querySelector('#lab-games-panel .lab-gp-row.here').dataset.game, cf: ((document.querySelector('#lab-games-panel [data-game="cf"] small') || {}).textContent || '') }));
+  check(gp.n === 8 && gp.here === 'cf' && /Detective/.test(gp.cf), `v0.1.4: the chip's Games button opens the six-game panel, Case Files highlighted with "${gp.cf}"`);
+  await shot(page, layout, '02-games');
+  await page.click('#lab-games-close');
+  await page.waitForFunction(() => !document.querySelector('#lab-games-panel'));
+  // the Lab's looks are drawn on the detective: a deerstalker, a trench coat and a gold badge change the home chip's avatar (and the picker tile's)
+  const px = () => J(page, () => document.querySelector('#home-avatar').toDataURL());
+  const plain = await px();
+  await J(page, () => { window.__lab.grantCoins(9000); for (const id of ['cf.hat.deerstalker', 'cf.coat.trench', 'cf.badge.goldbadge', 'cf.hat.detcap', 'cf.coat.tweed', 'cf.badge.magnifier']) window.__lab.store.buy(id); });
+  const seen = {};
+  for (const [slot, id] of [['cf.hat', 'cf.hat.detcap'], ['cf.hat', 'cf.hat.deerstalker'], ['cf.coat', 'cf.coat.tweed'], ['cf.coat', 'cf.coat.trench'], ['cf.badge', 'cf.badge.magnifier'], ['cf.badge', 'cf.badge.goldbadge']]) {
+    await J(page, ([sl, i]) => window.__lab.store.equip(sl, i), [slot, id]);
+    await page.waitForTimeout(200);
+    seen[id] = await px();
+    await J(page, ([sl]) => window.__lab.store.equip(sl, null), [slot]);
+  }
+  const imgs = Object.values(seen);
+  check(imgs.every((u) => u !== plain) && new Set(imgs).size === 6, 'v0.1.4: each of the six Lab looks changes the detective drawn on the agency home chip, and each looks different');
+  await J(page, () => { window.__lab.store.equip('cf.hat', 'cf.hat.deerstalker'); window.__lab.store.equip('cf.coat', 'cf.coat.trench'); window.__lab.store.equip('cf.badge', 'cf.badge.goldbadge'); });
+  await page.waitForTimeout(300);
+  await shot(page, layout, '02b-home-looks');
+  await J(page, () => { for (const sl of ['cf.hat', 'cf.coat', 'cf.badge']) window.__lab.store.equip(sl, null); });
   const home1 = await J(page, () => Object.fromEntries([...document.querySelectorAll('.case-card')].map((c) => [c.dataset.case, c.dataset.state])));
   check(home1.training === 'new' && home1['erie-01'] === 'new' && home1['erie-02'] === 'sealed', `day 1: Training and Erie case 1 are open, case 2 is sealed (${JSON.stringify(home1)})`);
   check((await textOf(page, '.folder[data-tab="Training"] h3')) === 'Detective Training' && (await exists(page, '.folder[data-tab="Erie Canal"]')), 'the case board: Detective Training first, then the Erie Canal folder');
@@ -664,6 +696,8 @@ async function runLayout(browser, layout) {
   await page.waitForFunction(() => !!document.querySelector('#payout') && Number(document.querySelector('#payout').dataset.coins) > 0, null, { timeout: 6000 }).catch(() => {});
   const coins1 = Number(await page.getAttribute('#payout', 'data-coins'));
   check(coins1 > 0, `the flat Lab payout shows (${coins1} coins)`);
+  const payUi = await J(page, () => ({ coin: !!document.querySelector('#payout .pay-coin svg.lab-coin'), old: !!document.querySelector('#payout .pay-coin svg:not(.lab-coin)'), text: document.querySelector('#payout').textContent }));
+  check(payUi.coin && !payUi.old && /Lab coins/.test(payUi.text) && !payUi.text.includes('$'), `v0.1.4: the payout uses the Lab coin icon and says "Lab coins" ("${payUi.text}")`);
   await sleep(1500);
   check((await state(page)).screen === 'closed', 'the next case is never started automatically');
   await kidAudit(page, 'closed'); await audit(page, layout.insets, 'closed');
@@ -927,9 +961,9 @@ async function runOffline(browser) {
   await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 15000 });
   await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
   await closeModal(page);
-  await page.waitForFunction(async () => { const c = await caches.open('case-files-v0.1.3'); return (await c.keys()).length > 25; }, null, { timeout: 15000 });
+  await page.waitForFunction(async () => { const c = await caches.open('case-files-v0.1.4'); return (await c.keys()).length > 25; }, null, { timeout: 15000 });
   const names = await J(page, async () => (await caches.keys()).filter((k) => k.startsWith('case-files-')));
-  check(names.length === 1 && names[0] === 'case-files-v0.1.3', `the service worker cache is named case-files-v0.1.3 (${names.join(',')})`);
+  check(names.length === 1 && names[0] === 'case-files-v0.1.4', `the service worker cache is named case-files-v0.1.4 (${names.join(',')})`);
   await ctx.setOffline(true);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector(visibleSel('#screen-players'), { timeout: 15000 });
