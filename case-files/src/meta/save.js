@@ -40,7 +40,7 @@ export function normalize(raw) {
   const rank = Math.floor(num(raw.rank, 4));
   s.rank = rank >= 1 && rank <= 6 ? rank : 4;
   s.readMode = ['auto', 'tap', 'off'].includes(raw.readMode) ? raw.readMode : 'auto';   // "Read it to me": by rank / only when tapped / off (v0.1.1)
-  if (raw.seenHelp && typeof raw.seenHelp === 'object') for (const k of HELP_KEYS) s.seenHelp[k] = raw.seenHelp[k] === true;   // step coach cards already shown (v0.1.2)
+  if (raw.seenHelp && typeof raw.seenHelp === 'object') for (const k of HELP_KEYS) s.seenHelp[k] = Object.prototype.hasOwnProperty.call(raw.seenHelp, k) && raw.seenHelp[k] === true;   // step coach cards already shown (v0.1.2)
   for (const [id, day] of own(raw.opened)) if (ID.test(id) && DAY.test(day)) s.opened[id] = day;
   for (const [id, rec] of own(raw.closed)) if (ID.test(id)) { s.closed[id] = normalizeClosed(rec); if (!s.opened[id] && DAY.test(s.closed[id].day)) s.opened[id] = s.closed[id].day; }
   s.nextEarly = raw.nextEarly === true;

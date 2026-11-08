@@ -7,12 +7,13 @@ import { TRAINING, ARCS, CASE_BY_ID } from './fixtures/index.js';
 import { becauseStep, checkTap, display, editDistance, matchSolution, norm, proofClues } from '../src/logic/answers.js';
 import { currentCase, dayKey, nextUnopened, rankLabel, readAloudDefault, refreshOpened, supportsFor, waitingState, wordsToTeach } from '../src/logic/pacing.js';
 import { accuracyByStandard, allPinned, applyClose, attachClue, closeRecord, hashString, newRun, nextQuestion, pinTap, placeCard, requestHint, submitReport, submitSolution, trayOf } from '../src/logic/run.js';
-import { defaultSave, normalize } from '../src/meta/save.js';
+import { HELP_KEYS, defaultSave, normalize } from '../src/meta/save.js';
 import { mergeCf } from '../src/meta/sync.js';
 import { closeReports } from '../src/logic/payout.js';
 import { caseClips, caseVoiceTexts } from '../src/meta/voiceTexts.js';
 import { CLIP_MAX, splitSay } from '../src/meta/speech.js';
 import { LINES } from '../src/logic/lines.js';
+import { COACH, COACH_KEYS, allCoachLines, coachKeyForBeat, coachLines } from '../src/logic/coach.js';
 
 let passed = 0; const failed = [];
 function test(name, fn) { try { fn(); passed++; console.log('  ok  ' + name); } catch (e) { failed.push(name); console.log('  FAIL ' + name + '\n      ' + (e && e.stack || e).toString().split('\n').slice(0, 4).join('\n      ')); } }
@@ -117,7 +118,7 @@ test('the rank label carries the approximate wording verbatim', () => {
 
 section('save');
 test('defaultSave has the SPEC section 6 shape', () => {
-  assert.deepEqual(defaultSave(), { v: 1, rank: 4, readMode: 'auto', opened: {}, closed: {}, nextEarly: false, wordsMet: {}, updatedAt: 0 });
+  assert.deepEqual(defaultSave(), { v: 1, rank: 4, readMode: 'auto', seenHelp: { home: false, brief: false, read: false, pin: false, order: false, close: false }, opened: {}, closed: {}, nextEarly: false, wordsMet: {}, updatedAt: 0 });
 });
 test('normalize is idempotent and drops hostile or malformed input', () => {
   const raw = JSON.parse('{"v":1,"rank":9,"opened":{"erie-01":"2026-11-02","__proto__":{"x":1},"bad id":"2026-11-02","erie-02":"tomorrow"},"closed":{"erie-01":{"day":"2026-11-02","at":5,"firstTap":{"q1":true,"q2":"yes"},"hints":{"q1":9,"q2":-1},"timelineTries":2.7,"report":{"who":"Tom","because":"x","clueId":"d1s1"},"listens":{"d1":3,"d2":"x"}},"constructor":{}},"nextEarly":"yes","wordsMet":{"toll":4,"Bad Word":3,"aqueduct":-2},"updatedAt":7}');
@@ -155,6 +156,20 @@ test('v0.1.1 read mode: normalized (default auto), follows the later doc in a me
   const k = TRAINING, docText = k.docs[0].paragraphs[0][0].text;
   assert.ok(caseVoiceTexts(k, 4, 'auto').includes(docText)); assert.ok(caseVoiceTexts(k, 4, 'tap').includes(docText));
   assert.ok(!caseVoiceTexts(k, 4, 'off').includes(docText)); assert.ok(caseVoiceTexts(k, 4, 'off').includes(k.briefing[0].text), 'the briefing still speaks');
+});
+test('v0.1.2 seenHelp: normalized (default all false, only real booleans, unknown keys dropped), merged as an OR across devices', () => {
+  assert.deepEqual(HELP_KEYS, ['home', 'brief', 'read', 'pin', 'order', 'close']);
+  assert.ok(Object.values(defaultSave().seenHelp).every((v) => v === false));
+  assert.deepEqual(normalize({}).seenHelp, defaultSave().seenHelp); assert.deepEqual(normalize({ seenHelp: 'yes' }).seenHelp, defaultSave().seenHelp);
+  const n = normalize({ seenHelp: { home: true, brief: 'true', read: 1, pin: true, bogus: true, __proto__: { order: true } } });
+  assert.deepEqual(n.seenHelp, { home: true, brief: false, read: false, pin: true, order: false, close: false }); assert.ok(!('bogus' in n.seenHelp));
+  assert.deepEqual(normalize(JSON.parse(JSON.stringify(n))), n, 'idempotent');
+  const A = { ...defaultSave(), updatedAt: 10, seenHelp: { ...defaultSave().seenHelp, home: true, brief: true } };
+  const B = { ...defaultSave(), updatedAt: 20, seenHelp: { ...defaultSave().seenHelp, brief: true, pin: true } };
+  const want = { home: true, brief: true, read: false, pin: true, order: false, close: false };
+  assert.deepEqual(mergeCf(doc(A), doc(B)).seenHelp, want, 'OR, whichever doc is later'); assert.deepEqual(mergeCf(doc(B), doc(A)).seenHelp, want);
+  assert.deepEqual(mergeCf(doc(A), doc({ ...B, seenHelp: undefined })).seenHelp, { ...defaultSave().seenHelp, home: true, brief: true }, 'a side without seenHelp adds nothing');
+  assert.deepEqual(mergeCf(doc(mergeCf(doc(A), doc(B))), doc(A)).seenHelp, want, 'a seen card never becomes unseen');
 });
 test('mergeCf: nextEarly follows the later doc; missing sides return the other; garbage is normalized; idempotent', () => {
   const A = { ...defaultSave(), updatedAt: 10, nextEarly: true }, B = { ...defaultSave(), updatedAt: 20, nextEarly: false };
@@ -242,11 +257,31 @@ test('closing: the record has the SPEC section 6 shape; the first close wins; wo
 section('voice');
 test('the voice texts of a case: the briefing first, the closing last-ish, all clips <= 200 characters, only this case', () => {
   const t = caseVoiceTexts(kase, 4), clips = caseClips(kase, 4);
-  assert.equal(t[0], kase.briefing[0].text); assert.ok(t.includes(kase.closing.text) && t.includes(kase.knowledge) && t.includes(LINES.seeYou));
+  assert.equal(t[0], allCoachLines()[0], 'the step coach cards come first'); assert.equal(t[allCoachLines().length], kase.briefing[0].text, 'then the briefing'); assert.ok(t.includes(kase.closing.text) && t.includes(kase.knowledge) && t.includes(LINES.seeYou));
   assert.ok(clips.every((c) => c.length <= CLIP_MAX) && clips.length === new Set(clips).size);
   assert.ok(kase.docs.every((d) => d.paragraphs.every((p) => p.every((s) => clips.includes(s.text)))), 'every sentence');
   const other = CASE_BY_ID['erie-02']; assert.ok(!clips.includes(other.briefing[0].text));
   assert.equal(caseVoiceTexts(kase, 5).length, caseVoiceTexts(kase, 4).length - 1, 'rank 5 pre-teaches one word fewer');
+});
+test('v0.1.2 the voice list holds every coach line and every popup line (so clips exist); Read it to me: Off drops only the speaker sentence', () => {
+  const t = caseVoiceTexts(kase, 4, 'auto');
+  for (const l of allCoachLines('auto')) assert.ok(t.includes(l), l);
+  for (const l of [LINES.pinMiss1, LINES.pinMiss2, LINES.pinMiss3, LINES.cardMiss, LINES.nameMiss, LINES.checkAgain, LINES.notThatClue, LINES.moreWords, LINES.addMore, LINES.pickClue, LINES.tier2, LINES.tier3Tap, LINES.tier3Again]) assert.ok(t.includes(l), l);
+  for (const q of kase.questions) assert.ok(t.includes(q.hint) && t.includes(q.model));
+  const off = caseVoiceTexts(kase, 4, 'off'), speaker = COACH.read.lines[2];
+  assert.ok(t.includes(speaker) && !off.includes(speaker) && off.includes(COACH.read.lines[0]));
+  assert.ok(caseClips(kase, 4).every((c) => c.length <= CLIP_MAX));
+});
+test('v0.1.2 the coach cards: one per step + the home, 2-3 short kind sentences each, voiced by the Chief or the partner, nothing banned', () => {
+  assert.deepEqual(COACH_KEYS, HELP_KEYS);
+  for (const k of COACH_KEYS) {
+    const c = COACH[k]; assert.ok(c.title && c.tab && ['chief', 'partner'].includes(c.who), k);
+    assert.ok(c.lines.length >= 2 && c.lines.length <= 3, k);
+    for (const l of c.lines) assert.ok(l.length <= 140 && !/\b(wrong|incorrect|lose|lost|die|dead|hurry|timer|fail)/i.test(l), l);
+  }
+  assert.deepEqual(['brief', 'investigate', 'pin', 'rebuild', 'solve', 'report', 'closed'].map(coachKeyForBeat), ['brief', 'read', 'pin', 'order', 'close', 'close', '']);
+  assert.equal(coachLines('read', 'off').length, 2); assert.equal(coachLines('read', 'tap').length, 3); assert.deepEqual(coachLines('nope'), []);
+  for (const l of Object.values(LINES)) assert.ok(!/\b(wrong|incorrect|buzz)/i.test(l), l);
 });
 test('splitSay cuts long lines at sentence breaks under the clip limit', () => {
   const long = Array.from({ length: 12 }, (_, i) => `This is sentence number ${i} of a long line.`).join(' ');
