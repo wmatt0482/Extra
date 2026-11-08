@@ -16,6 +16,7 @@ export function caseVoiceTexts(kase, rank = 4, readMode = 'auto') {
   if (readMode !== 'off') for (const d of docs) for (const p of d.paragraphs) for (const s of p) out.push(s.text);   // "Read it to me: Off": no document clips
   for (const q of kase.questions) out.push(q.prompt, q.hint, q.model, q.why);
   out.push(LINES.pinMiss1, LINES.pinMiss2, LINES.pinMiss3, LINES.cardMiss, LINES.nameMiss);   // the feedback popups (v0.1.2)
+  out.push(LINES.hint1, LINES.hint2, LINES.hint3);                                            // the Hint button's popup (v0.1.3)
   out.push(LINES.tier2, LINES.tier3Tap, LINES.tier3Again, LINES.oneMore, LINES.checkAgain, LINES.allSet, LINES.timelineDone);
   out.push(kase.timeline.prompt);
   for (const k of new Set(kase.docs.map((d) => d.kind))) out.push(checkDoc(k));

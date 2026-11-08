@@ -29,6 +29,7 @@ export function mergeCf(local, remote) {
     const win = !a ? b : !b ? a : (a.at && b.at ? (a.at <= b.at ? a : b) : (a.at ? a : b));
     const rec = clone(win);
     for (const side of [a, b]) if (side) for (const [doc, n] of Object.entries(side.listens)) rec.listens[doc] = Math.max(num(rec.listens[doc]), n);
+    rec.replays = Math.max(num(a && a.replays), num(b && b.replays));                      // replays (v0.1.3): the larger count
     out.closed[id] = rec;
     if (!out.opened[id] && rec.day) out.opened[id] = rec.day;
   }

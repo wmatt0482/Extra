@@ -26,7 +26,7 @@ const str = (v, max) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, '
 
 export function normalizeClosed(r) {
   const o = r && typeof r === 'object' ? r : {};
-  const c = { day: DAY.test(o.day) ? o.day : '', at: stamp(o.at), firstTap: {}, hints: {}, timelineTries: int0(o.timelineTries), report: { who: '', because: '', clueId: '' }, listens: {} };
+  const c = { day: DAY.test(o.day) ? o.day : '', at: stamp(o.at), firstTap: {}, hints: {}, timelineTries: int0(o.timelineTries), replays: int0(o.replays, 1e6), report: { who: '', because: '', clueId: '' }, listens: {} };
   for (const [k, v] of own(o.firstTap)) if (ID.test(k) && typeof v === 'boolean') c.firstTap[k] = v;
   for (const [k, v] of own(o.hints)) if (ID.test(k)) c.hints[k] = Math.min(3, int0(v));
   if (o.report && typeof o.report === 'object') c.report = { who: str(o.report.who, 80), because: str(o.report.because, 400), clueId: ID.test(o.report.clueId) ? o.report.clueId : '' };
@@ -79,7 +79,7 @@ export function writeSave(playerId, save) {
   localWrite(saveKey(playerId));
   return true;
 }
-export function removeSave(playerId) { if (playerId) try { localStorage.removeItem(saveKey(playerId)); localStorage.removeItem(wipKey(playerId)); } catch (_) { /* ignore */ } }
+export function removeSave(playerId) { if (playerId) try { localStorage.removeItem(saveKey(playerId)); localStorage.removeItem(wipKey(playerId)); localStorage.removeItem(replayKey(playerId)); } catch (_) { /* ignore */ } }
 
 // the case in progress (plain JSON; device-local)
 export function loadWip(playerId) {
@@ -87,6 +87,14 @@ export function loadWip(playerId) {
   try { const o = JSON.parse(readText(wipKey(playerId)) || 'null'); return o && typeof o === 'object' && typeof o.caseId === 'string' ? o : null; } catch (_) { return null; }
 }
 export function writeWip(playerId, run) { if (!playerId) return; try { if (run) localStorage.setItem(wipKey(playerId), JSON.stringify(run)); else localStorage.removeItem(wipKey(playerId)); } catch (_) { /* ignore */ } }
+
+// a replay of a closed case in progress (device-local, separate from the wip so a new case is never overwritten)
+export const replayKey = (playerId) => `caseFiles.${playerId}.replay`;
+export function loadReplay(playerId) {
+  if (!playerId) return null;
+  try { const o = JSON.parse(readText(replayKey(playerId)) || 'null'); return o && typeof o === 'object' && typeof o.caseId === 'string' && o.replay === true ? o : null; } catch (_) { return null; }
+}
+export function writeReplay(playerId, run) { if (!playerId) return; try { if (run) localStorage.setItem(replayKey(playerId), JSON.stringify(run)); else localStorage.removeItem(replayKey(playerId)); } catch (_) { /* ignore */ } }
 
 export function loadSettings() {
   const d = defaultSettings();

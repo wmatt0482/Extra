@@ -25,6 +25,10 @@ export const LINES = Object.freeze({
   pinMiss3: "Let's work this one out together.",
   cardMiss: "Hmm, that card doesn't go there yet.",
   nameMiss: "Hmm, that is not the name yet.",
+  // the Hint button's popup (v0.1.3): the partner's first line for each tier
+  hint1: 'Here is a hint.',
+  hint2: 'Let me point you the right way.',
+  hint3: 'Let me show you how I think it through.',
   noVoice: 'No voice on this device yet. A grown-up can turn on a natural voice.',
   soundOff: 'Sound is off. A grown-up can turn it on in Parents.',
 });

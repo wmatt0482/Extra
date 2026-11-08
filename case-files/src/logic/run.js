@@ -19,7 +19,8 @@ export function sentenceIndex(kase) {
 }
 export const docOfSentence = (kase, id) => kase.docs.find((d) => d.paragraphs.some((p) => p.some((s) => s.id === id))) || null;
 
-export function newRun(kase, rank = 4) {
+/** replay: a closed case played again (v0.1.3): the same moves, but nothing is paid and the first record never changes. */
+export function newRun(kase, rank = 4, replay = false) {
   const slots = kase.timeline.items.map((it, i) => ((kase.timeline.given || []).includes(i) ? it.id : null));
   return {
     caseId: kase.id, rank, beat: 'brief', startedAt: 0,
@@ -30,7 +31,19 @@ export function newRun(kase, rank = 4) {
     sol: { hint: 0, tries: 0, ok: false, text: '', clueId: '' },
     rep: { because: '', asked: false, clueId: '' },
     listens: {}, readAloud: {},
+    ...(replay ? { replay: true } : {}),
   };
+}
+
+/**
+ * The documents the child has to open before the notebook (v0.1.3): every core document, and a stretch document only when a question's
+ * answer or the solution's proof is in it (then the desk says so). -> Set of doc ids
+ */
+export function requiredDocs(kase) {
+  const need = new Set(kase.docs.filter((d) => !d.stretch).map((d) => d.id));
+  const ids = [...kase.questions.flatMap((q) => q.answer || []), ...((kase.solution && kase.solution.proof) || [])];
+  for (const id of ids) { const d = docOfSentence(kase, id); if (d) need.add(d.id); }
+  return need;
 }
 
 export const questionOf = (run, kase) => kase.questions[run.q] || null;
@@ -131,6 +144,14 @@ export function applyClose(save, kase, record, rank = 4) {
   if (!save.opened[kase.id]) save.opened[kase.id] = record.day;
   for (const w of wordsToTeach(rank, kase)) { const key = String(w.word).toLowerCase(); save.wordsMet[key] = (save.wordsMet[key] || 0) + 1; }
   return true;
+}
+
+/** A replay closed: the closed record is untouched except `replays` goes up by one. -> the new count (0 if the case was never closed) */
+export function applyReplay(save, kase) {
+  const rec = save.closed[kase.id];
+  if (!rec) return 0;
+  rec.replays = Math.min(1e6, (rec.replays || 0) + 1);
+  return rec.replays;
 }
 
 /** Which standards the first taps cover: { '4R1': { right, total } } over the closed records (the Parent Zone's accuracy). */
