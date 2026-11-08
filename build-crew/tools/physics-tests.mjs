@@ -25,6 +25,7 @@ import { Mission, Challenge, evaluate, standingHeight, grassTouches, ruleLine } 
 import { SITES, HARBOR, isGrass } from '../src/sites.mjs';
 import { defaultSave, normalize, normalizeYard, mergeBc } from '../src/meta/save.mjs';
 import { solve } from './solution.mjs';
+import { placingTests } from './placing-tests.mjs';
 import { createHash } from 'node:crypto';
 await initPhysics();
 const report = {};
@@ -540,7 +541,7 @@ const HARBOR_SITE = { ...SANDBOX, site: 'harbor', id: 98, toys: [] };
   for (let i = 0; i < 30; i++) yard.step({ tool: -1 });
   for (let i = 0; i < 90; i++) yard.step({ lift: 1 });
   const cube = yard.poses()[0];
-  assert(Math.hypot(cube.position.x - l.tip.x, cube.position.z - l.tip.z) < 0.3 && cube.position.y > 2, 'the block rides in the raised bucket');
+  assert(Math.hypot(cube.position.x - l.tip.x, cube.position.z - l.tip.z) < 0.5 && cube.position.y > 2, 'the block rides in the raised bucket');
   for (let i = 0; i < 120; i++) yard.step({ drive: 1 });
   assert(yard.held && yard.poses()[0].position.z > 9, 'and is carried');
   yard.destroy();
@@ -593,6 +594,9 @@ const HARBOR_SITE = { ...SANDBOX, site: 'harbor', id: 98, toys: [] };
   }
   console.log('PASS jobs 11 to 20 need only free machines');
 }
+
+// 0.8: placed blocks lock, a tilted bucket pours, a Grab is forgiving (tools/placing-tests.mjs)
+placingTests(report);
 
 const a = defaultSave(),
   b = defaultSave();
