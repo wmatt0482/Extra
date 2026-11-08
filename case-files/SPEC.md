@@ -16,14 +16,15 @@ that proves each point, rebuilding the timeline from memory, and writing a one-s
   tappable option is a true sentence from the case document.
 - No external links. Native `<input>`/`<textarea>` only inside the PIN-locked Parent Zone; kids type on the in-game keyboard.
 - Voice: natural cloud-voice clips or silence. Never the device/robot voice for kids.
-- Wrong taps/answers are a normal part of the story ("Good detectives check again"), with no "wrong" buzzer, no lost coins.
+- Wrong taps/answers are a normal part of the story ("Good detectives check again"), with no "wrong" buzzer, no red X, no lost coins. Since 0.1.2
+  they show as the partner's popup (§4a), never a small inline line.
 - Never auto-start the next case. After closing a case: "Case closed. See you tomorrow, Detective." screen.
 - Never show the child accuracy percentages or grades (Parent Zone only).
 
 ## 2. Place in the site
 
-- Folder `case-files/`, served at `/case-files/`, name **Case Files**, version **0.1.0**, PWA with its own `sw.js` (cache
-  name `case-files-v0.1.0`), `manifest.webmanifest`, icons (make them with a `tools/make-icons.mjs` like other games).
+- Folder `case-files/`, served at `/case-files/`, name **Case Files**, version **0.1.0** (now 0.1.2, see README changelog), PWA with its own `sw.js` (cache
+  name `case-files-v<version>`), `manifest.webmanifest`, icons (make them with a `tools/make-icons.mjs` like other games).
 - `build.sh` copies it to `dist/case-files/` (same excludes as the other games). `netlify.toml`: add the redirect
   `/case-files` → `/case-files/`, the sw.js/manifest headers, and `case-files` to the build `ignore` path list.
 - Home page `site/index.html`: a Case Files card like the others.
@@ -76,7 +77,18 @@ text ≥ 18px on phones, line-height ≥ 1.5, max ~65 characters per line). Port
       "Can you add what the clue shows?" then accepts whatever comes next), blank 3 is filled by tapping a pinned clue.
    Then: CASE CLOSED stamp, the Chief's closing line (voiced), the arc's knowledge card (one fact learned), the teaser for
    tomorrow, the flat Lab payout, and the "See you tomorrow" screen. Never auto-start the next case.
-4. **Parent Zone** (PIN-locked, shared PIN like the other games):
+4a. **Step coach and feedback popups (0.1.2).** One modal component (centered manila card on a dimmed screen, `role=dialog aria-modal`, the
+   screens behind `inert`, focus on the big button and back to where it was, Enter / Escape / button close it, one at a time with a queue).
+   - **Coach cards**: one per step (1 Brief, 2 Read, 3 Pin, 4 Order, 5 Close) and one for the agency home. The Chief or the partner, a short
+     title, 2-3 short sentences (grade 3-4), a small picture of the action (still under calm motion / `prefers-reduced-motion`), "Got it".
+     Shown automatically the first time a player reaches the step (any case) and from the round "?" button (aria-label "How this step
+     works"), which is on the home screen and on every step. Spoken with the natural voice or silence; the lines are in the voice list.
+   - **Feedback popups** replace every inline "not quite" line: a wrong pin (and the hint tier it brings), a misplaced timeline card, a wrong
+     accusation, a clue that is not in the proof set, a report that is too short, "add what the clue shows", a report with no clue, the
+     "no voice on this device" note. The partner's face, the message large and voiced, one big button ("Try again" / "Show me" / "Got it").
+     A hint highlight, the document drawer / evidence board or the clue picker that the step leads to appears after the popup closes.
+     Kind, story-like wording; no "wrong", no red X, no penalty. Correct answers (the "why it proves it" line, progress) stay inline.
+5. **Parent Zone** (PIN-locked, shared PIN like the other games):
    - Starting **Detective Rank** select (1–6), shown with approximate labels: "Rank 4 · grade 5 feel · roughly comparable
      to F&P S–U / about 830–1010L (approximate; not affiliated with or leveled by Fountas & Pinnell, Heinemann or
      MetaMetrics)". In v0.1 every case is written at one level (core documents about grade 5 / S–T feel, stretch document
@@ -139,10 +151,11 @@ The arc has 8–10 target words, each met ≥ 12 times across the arc (track cou
 
 ## 6. Save and sync
 
-Per player, kind `cf`: `{ v: 1, rank: 4, readMode: 'auto' | 'tap' | 'off', opened: { [caseId]: 'YYYY-MM-DD' }, closed: { [caseId]: { day, at, firstTap:
+Per player, kind `cf`: `{ v: 1, rank: 4, readMode: 'auto' | 'tap' | 'off', seenHelp: { home, brief, read, pin, order, close: bool }, opened: { [caseId]: 'YYYY-MM-DD' }, closed: { [caseId]: { day, at, firstTap:
 { [qId]: true|false }, hints: { [qId]: 0..3 }, timelineTries, report: { who, because, clueId }, listens: { [docId]: n } } },
 nextEarly: false, wordsMet: { [word]: n }, updatedAt }`. Merge across devices: union of opened/closed (earliest `at` wins for
-a case's record), max of counters, rank from the later `updatedAt`. Unit-tested.
+a case's record), max of counters, rank from the later `updatedAt`, `seenHelp` = OR per card (default all false; a card seen on any device stays
+seen). Unit-tested.
 
 ## 7. Tests (`case-files/tools/`)
 

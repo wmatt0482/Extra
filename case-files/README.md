@@ -9,7 +9,7 @@ memory and writing a one-sentence case report. One new case opens each day; the 
 - Learning design (technique, evidence, where it lives): [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md).
 - Content (written to the SPEC section 5 format by the content agent): `src/content/`, `docs/CONTENT-GUIDE.md`, `docs/SOURCES.md`.
 
-Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.1`, manifest, icons). Version **0.1.1**.
+Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.2`, manifest, icons). Version **0.1.2**.
 
 ## The flow
 
@@ -20,10 +20,19 @@ CLOSED stamp and stay re-readable in the Archive) → a case:
 2. **Investigate**: the desk of documents; each opens in a reader (silent, a listen button per paragraph with the sentence highlighted;
    "Read it to me" is on by default for the stretch document and, at ranks 1-3, for every document).
 3. **Pin evidence**: the partner's notebook asks one question at a time; tap the sentence, then Pin it (it flies to the cork board).
-   A wrong tap goes straight to the next hint tier (guiding question, the paragraph lights up, the partner models it); then a "why" line.
-4. **Reconstruct**: a half-filled timeline; tap a card then a slot (or drag); a misplaced card slides back with "Check the logbook".
+   A wrong tap opens the partner's popup and goes straight to the next hint tier (guiding question, the paragraph lights up after the popup closes,
+   the partner models it); then a "why" line.
+4. **Reconstruct**: a half-filled timeline; tap a card then a slot (or drag); a misplaced card slides back and the partner's popup says "Check the logbook".
 5. **Close the case**: the answer on the in-game keyboard (generous match), attach a pinned clue that proves it, then the sentence-frame
    case report ("___ did it because ___. The clue that proves it is ___.").
+
+**Help and feedback (0.1.2).** Every step opens with a **coach card** the first time a player reaches it (the agency home too): the Chief or the
+partner, a short title, 2-3 short sentences, a little animated picture, one big "Got it". The round **?** button (home and every step) opens the
+current step's card again. Whatever is not right yet (a sentence that does not prove it, a card in the wrong slot, a name that does not fit, a
+clue that does not prove it, a short report, "no voice on this device yet") is a **partner popup**: a centered card on a dimmed screen with the
+partner's face, large text, voiced, one big button; one at a time, Enter / Escape / the button close it, focus comes back; the hint highlight, the
+evidence board or the clue picker that follows appears after it closes. Good news (a correct pin's "why it proves it", progress) stays inline.
+Both are one component (`src/ui/modal.js`; cards in `src/logic/coach.js`, pictures in `src/ui/coachArt.js`). Calm motion shows the pictures still.
 
 Then the CASE CLOSED stamp, the Chief's closing line, a knowledge card, tomorrow's teaser, the flat Lab payout and "See you tomorrow".
 
@@ -37,10 +46,11 @@ index.html            the shell and all CSS (family look in a detective-agency t
 src/main.js           boot: family, sync, voice, screens, case lifecycle, Lab
 src/content/          the cases (SPEC section 5): index.js exports TRAINING, ARCS, CASE_BY_ID
 src/logic/            pure: answers.js (matching), pacing.js (one a day, rank supports), run.js (a case's state and moves),
-                      lines.js (fixed partner lines), payout.js (what the Lab is told)
+                      lines.js (fixed partner lines), coach.js (the step coach cards), payout.js (what the Lab is told)
 src/meta/             save.js (+ normalize), sync.js (the cf merge), speech.js (natural voice or silence), voiceTexts.js (one case's
                       lines), labBridge.js / labLooks.js (the only Lab files), selfUpdate.js
-src/ui/               players, home (+ archive), caseView (the five beats), reader, board, closed, file, parentZone, art
+src/ui/               players, home (+ archive), caseView (the five beats), reader, board, closed, file, parentZone, art,
+                      modal (coach cards + feedback popups), coach, coachArt
 sw.js, manifest.webmanifest, icons/    the PWA
 tools/                logic-tests.mjs, ui-smoke.mjs, sync-smoke.mjs, make-icons.mjs, fixtures/ (test copy of the content format)
 ```
@@ -72,8 +82,9 @@ tools (`lab/tools/*`); they must all still pass.
 
 ## Save, sync and the Lab
 
-Per player, `caseFiles.<id>.save` (sync kind `cf`): `{ v: 1, rank, opened, closed, nextEarly, wordsMet, updatedAt }` (SPEC section 6).
-Merge: union of opened and closed (the earliest `at` wins a case record), max of counters, rank from the later `updatedAt`. The case in
+Per player, `caseFiles.<id>.save` (sync kind `cf`): `{ v: 1, rank, readMode, seenHelp, opened, closed, nextEarly, wordsMet, updatedAt }` (SPEC section 6).
+Merge: union of opened and closed (the earliest `at` wins a case record), max of counters, rank from the later `updatedAt`, `seenHelp` = OR
+per card (a card seen on any device stays seen). The case in
 progress is kept device-locally at `caseFiles.<id>.wip` so stopping mid-case loses nothing. Device settings (sound, calm motion) are
 `caseFiles.settings`. The Lab gets one flat `case` event per closed case (plus its once-a-day `day`); no per-answer events, no crates.
 
@@ -84,6 +95,17 @@ picked in Spell Jump. Only the current case's lines are prepared. The device voi
 on the screen and the listen buttons stay quiet (with a gentle note). The sound setting silences everything.
 
 ## Changelog
+
+### 0.1.2
+- **Step coach**: a card for each step (Brief, Read, Pin, Order, Close) and the agency home, shown the first time a player reaches it (any case) and
+  again from the round **?** button (always on screen, home and every step). The Chief or the partner, a short title, 2-3 short sentences,
+  a small picture of the action, one "Got it"; voiced in the natural voice (or silent), reduced motion = still pictures. Seen state is per
+  player and synced (`seenHelp` in the `cf` save, merged as an OR).
+- **Popups instead of error lines**: a wrong pin (and the hint tier it brings), a misplaced timeline card, a wrong accusation, a clue that does
+  not prove it, a short or "add what the clue shows" report, a report without a clue, and the "no voice yet" note are now the partner's popup
+  (centered card, dimmed screen, face, large voiced text, one big button; one at a time; Enter / Escape / button; focus returns). The highlight,
+  the evidence board and the clue picker appear after it closes. Correct answers stay inline.
+- Tests: coach and popup checks in `ui-smoke` and `content-play`, `seenHelp` normalize / merge and the new voice lines in `logic-tests`.
 
 ### 0.1.1
 - Parent Zone → "Read it to me" per child: **By rank** (as before), **Only when tapped** (nothing reads by itself; listen buttons and the

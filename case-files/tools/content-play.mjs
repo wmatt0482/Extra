@@ -7,6 +7,8 @@
 // the case report, Case Closed (+ closing line, knowledge card, teaser). Days are advanced with window.__caseFilesNow so all six cases
 // open. Asserts: no console errors, no horizontal scroll, the device voice is never used, the kid rules hold on every rendered screen
 // (banned words, no timers/pressure text, no authored wrong options), and every case reaches Case Closed.
+// v0.1.2: each step's coach card shows once (the first case) and never again; a wrong pin, a misplaced card, a wrong accusation, a clue that
+// does not prove it and a short report each open the partner's popup (closed before play goes on).
 // Sizes: 390x844 plays all six; 844x390 plays Training + Erie 1 (all six with ALL_LANDSCAPE=1).
 import { execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -17,6 +19,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const { TRAINING, ARCS } = await import(pathToFileURL(path.join(here, '..', 'src', 'content', 'index.js')).href);
 const CASES = [TRAINING, ...ARCS.flatMap((a) => a.cases)];
+const { COACH } = await import(pathToFileURL(path.join(here, '..', 'src', 'logic', 'coach.js')).href);
+const { LINES } = await import(pathToFileURL(path.join(here, '..', 'src', 'logic', 'lines.js')).href);
 const ONLY_CASES = (process.env.CASE_IDS || '').split(',').filter(Boolean);
 const BASE = process.env.BASE_URL || 'http://localhost:8741';
 const URL0 = BASE + '/case-files/index.html?nosw=1';
@@ -57,6 +61,23 @@ async function typeText(page, text) {
   }
 }
 const pressEnter = (page) => page.click('#case-kb .kb-key[data-key="enter"]');
+// ---- the modal: coach cards (once per step) and the partner's popups ----
+const modalText = (page) => page.$eval('.modal-wrap .modal-text', (e) => e.textContent.trim()).catch(() => null);
+const modalButton = (page) => page.$eval('.modal-wrap .modal-go', (e) => e.textContent.trim()).catch(() => null);
+const waitModal = (page, kind) => page.waitForSelector(`.modal-wrap${kind ? `[data-kind="${kind}"]` : ''}`, { timeout: 5000 });
+const closeModal = async (page) => { await waitModal(page); await page.click('.modal-go'); await page.waitForFunction(() => !document.querySelector('.modal-wrap'), null, { timeout: 4000 }); };
+let seenCoach = new Set();            // the coach cards this browser context has shown (a new player context starts empty)
+async function coach(page, key, tag, shot) {
+  if (!seenCoach.has(key)) {
+    seenCoach.add(key);
+    await waitModal(page, 'coach');
+    const id = await page.$eval('.modal-wrap', (e) => e.dataset.id), text = await modalText(page);
+    check(id === `coach-${key}` && COACH[key].lines.every((l) => text.includes(l)), `${tag}: the ${key} coach card opens on first play`);
+    await stepOk(page, `${tag} ${key} coach`);
+    if (shot) await shot();
+    await closeModal(page);
+  } else check(!(await exists(page, '.modal-wrap')), `${tag}: no ${key} coach card the second time`);
+}
 
 // every visible word outside the Parent Zone; case text (the documents, which are authored history) is returned separately
 const renderedText = (page) => J(page, () => {
@@ -123,6 +144,7 @@ async function playCase(page, layout, k, i) {
   await J(page, (ms) => { window.__fakeNow = ms; }, day * DAY + (day ? 3600000 : 0));
   await page.click('#btn-player'); await waitScreen(page, 'players');
   await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
+  await coach(page, 'home', tag);
   const state0 = await J(page, (id) => { const c = document.querySelector(`.case-card[data-case="${id}"]`); return c && c.dataset.state; }, k.id);
   check(state0 === 'new', `${tag}: the case is open on its day (state ${state0})`);
   const sealedNext = CASES[i + 1] && CASES[i + 1].id !== 'erie-01' ? await J(page, (id) => document.querySelector(`.case-card[data-case="${id}"]`).dataset.state, CASES[i + 1].id) : 'sealed';
@@ -133,6 +155,7 @@ async function playCase(page, layout, k, i) {
 
   // 1. briefing + word pre-teach
   await waitBeat(page, 'brief');
+  await coach(page, 'brief', tag, () => shot(page, layout, `${k.id}-00b-coach-brief`));
   check((await textOf(page, '.objective p')) === k.objective, `${tag}: the objective is shown: "${k.objective}"`);
   const cards = await page.$$eval('.wordcard', (c) => c.map((x) => x.dataset.word));
   check(cards.length >= 2 && cards.length <= 3 && cards.every((w) => k.words.some((x) => x.word === w)), `${tag}: ${cards.length} pre-taught words (${cards.join(', ')})`);
@@ -145,6 +168,7 @@ async function playCase(page, layout, k, i) {
   await stepOk(page, `${tag} briefing`);
   await shot(page, layout, `${k.id}-01-briefing`);
   await page.click('#brief-go'); await waitBeat(page, 'investigate');
+  await coach(page, 'read', tag, () => shot(page, layout, `${k.id}-01b-coach-read`));
 
   // 2. investigate: every document, every paragraph visible, no overflow
   const folders = await page.$$eval('.docfolder', (f) => f.map((x) => x.dataset.doc));
@@ -164,6 +188,7 @@ async function playCase(page, layout, k, i) {
     await page.click('#doc-back'); await page.waitForSelector('#open-notebook');
   }
   await page.click('#open-notebook'); await waitBeat(page, 'pin');
+  await coach(page, 'pin', tag, () => shot(page, layout, `${k.id}-03b-coach-pin`));
 
   // 3. pin evidence: a wrong pin on question 1 (-> hint tier 1), then every question with its key
   for (let qi = 0; qi < k.questions.length; qi++) {
@@ -174,8 +199,14 @@ async function playCase(page, layout, k, i) {
       await pickSentence(page, k, bad);
       await shot(page, layout, `${k.id}-04-sentence-selected`);
       await page.click('#nb-pin');
-      check((await textOf(page, '#nb-hint')) === null ? false : (await textOf(page, '#nb-hint')).includes(q.hint) && (await page.getAttribute('#nb-hint', 'data-tier')) === '1', `${tag} ${q.id}: a wrong pin -> hint tier 1 (the authored guiding question)`);
-      check((await textOf(page, '#nb-note') || '').includes('Good detectives check again'), `${tag}: the wrong pin says "Good detectives check again"`);
+      await waitModal(page, 'feedback');
+      const pt = await modalText(page);
+      check(pt.includes(LINES.pinMiss1) && pt.includes(q.hint) && (await modalButton(page)) === 'Try again' && !/wrong|incorrect/i.test(pt), `${tag} ${q.id}: a wrong pin opens the partner's popup with the authored guiding question`);
+      await stepOk(page, `${tag} wrong pin popup`);
+      await shot(page, layout, `${k.id}-04b-popup-wrong-pin`);
+      if (!layout.__voiced) { layout.__voiced = true; check(await page.waitForFunction((t) => window.__cloudPlayed.includes(t), q.hint, { timeout: 4000 }).then(() => true).catch(() => false), `${tag}: the popup is voiced (clip)`); }
+      await closeModal(page);
+      check((await textOf(page, '#nb-hint')) !== null && (await textOf(page, '#nb-hint')).includes(q.hint) && (await page.getAttribute('#nb-hint', 'data-tier')) === '1' && !(await exists(page, '#nb-note')), `${tag} ${q.id}: after the popup, hint tier 1 stays in the notebook (no inline error line)`);
       await stepOk(page, `${tag} hint tier 1`);
     }
     await pinAnswer(page, k, q);
@@ -189,6 +220,10 @@ async function playCase(page, layout, k, i) {
     await page.click('#nb-next'); await sleep(60);
   }
   await waitBeat(page, 'rebuild');
+  await coach(page, 'order', tag, () => shot(page, layout, `${k.id}-06b-coach-order`));
+  await page.click('#case-help'); await waitModal(page, 'coach');
+  check((await page.$eval('.modal-wrap', (e) => e.dataset.id)) === 'coach-order', `${tag}: the "?" help button reopens this step's card`);
+  await closeModal(page);
   check((await page.getAttribute('#case-board', 'data-count')) === String(new Set(k.questions.flatMap((q) => q.answer)).size), `${tag}: the board holds every pinned clue`);
 
   // 4. reconstruct: one misplaced card, then everything placed
@@ -200,22 +235,31 @@ async function playCase(page, layout, k, i) {
   if (open.length > 1) {
     await page.click(`[data-card="${tl.items[open[1]].id}"]`);
     await page.click(`.slot[data-slot="${open[0]}"]`);
-    const msg = await textOf(page, '#tl-msg');
-    check(/^Check the /.test(msg || '') && !/wrong/i.test(msg || ''), `${tag}: a misplaced card slides back ("${msg}")`);
+    await waitModal(page, 'feedback');
+    const msg = await modalText(page);
+    check(msg.includes(LINES.cardMiss) && /Check the /.test(msg) && !/wrong/i.test(msg) && (await modalButton(page)) === 'Try again', `${tag}: a misplaced card opens a popup ("${msg}")`);
+    await stepOk(page, `${tag} misplaced card popup`);
+    await shot(page, layout, `${k.id}-06c-popup-misplaced-card`);
+    await closeModal(page);
   }
   for (const n of open) { await page.click(`[data-card="${tl.items[n].id}"]`); await page.click(`.slot[data-slot="${n}"]`); await sleep(40); }
   await page.waitForSelector('#tl-go:not([hidden])', { timeout: 6000 });
   await stepOk(page, `${tag} timeline done`);
   await shot(page, layout, `${k.id}-07-timeline-done`);
   await page.click('#tl-go'); await waitBeat(page, 'solve');
+  await coach(page, 'close', tag, () => shot(page, layout, `${k.id}-07b-coach-close`));
 
   // 5. accuse: wrong first, then the first accepted answer; attach a proof clue
   const WRONG = { training: 'Mia', 'erie-01': 'Tom Fisk', 'erie-02': 'beaver', 'erie-03': 'bell', 'erie-04': 'Lively Nell', 'erie-05': 'blue' }[k.id] || 'banana';
   check((await textOf(page, '.bubble.partner p')).includes(k.solution.prompt), `${tag}: the solution question is asked ("${k.solution.prompt}")`);
   await typeText(page, WRONG); await pressEnter(page);
-  await page.waitForSelector('#solve-hint');
-  check((await textOf(page, '#solve-hint')).includes('Good detectives check again'), `${tag}: a wrong accusation ("${WRONG}") -> "Good detectives check again" + a hint`);
-  await stepOk(page, `${tag} wrong accusation`);
+  await waitModal(page, 'feedback');
+  const at = await modalText(page);
+  check(at.includes('Good detectives check again') && at.includes(LINES.solveTier1) && (await modalButton(page)) === 'Try again', `${tag}: a wrong accusation ("${WRONG}") opens a popup: "Good detectives check again" + a hint`);
+  await stepOk(page, `${tag} wrong accusation popup`);
+  await shot(page, layout, `${k.id}-07c-popup-wrong-accusation`);
+  await closeModal(page);
+  check((await textOf(page, '#solve-hint')).includes(LINES.solveTier1), `${tag}: after the popup the partner's hint stays on the page`);
   for (let n = 0; n < 30; n++) await page.click('#case-kb .kb-key[data-key="back"]');
   await typeText(page, k.solution.answers[0]);
   await shot(page, layout, `${k.id}-08-accuse`);
@@ -227,7 +271,9 @@ async function playCase(page, layout, k, i) {
   check(!!proofClue, `${tag}: a pinned clue from the proof set (${k.solution.proof.join(', ')}) is on the board`);
   if (notProof) {
     await page.click(`.clue[data-clue="${notProof}"]`);
-    check((await textOf(page, '#attach-msg')).includes('check again') && await J(page, () => document.querySelector('#solve-go').disabled), `${tag}: a clue that does not prove it -> check again, nothing attached`);
+    await waitModal(page, 'feedback');
+    check((await modalText(page)) === LINES.notThatClue && await J(page, () => document.querySelector('#solve-go').disabled), `${tag}: a clue that does not prove it -> a popup (check again), nothing attached`);
+    await closeModal(page);
   }
   await page.click(`.clue[data-clue="${proofClue}"]`);
   check(!(await J(page, () => document.querySelector('#solve-go').disabled)), `${tag}: the proof clue attaches`);
@@ -237,7 +283,12 @@ async function playCase(page, layout, k, i) {
 
   // 6. the case report
   const because = `it was ${k.report.keywords.slice(0, 3).join(' and ')} in the story`.replace(/[^a-z ]/gi, '');
-  await typeText(page, because);
+  await typeText(page, 'it was'); await pressEnter(page);                 // two words: too short -> a popup
+  await waitModal(page, 'feedback');
+  check((await modalText(page)) === LINES.moreWords && (await modalButton(page)) === 'Try again', `${tag}: a too-short report opens a popup ("${LINES.moreWords}")`);
+  await shot(page, layout, `${k.id}-10b-popup-short-report`);
+  await closeModal(page);
+  await typeText(page, because.slice('it was'.length));
   await page.click('#blank-clue'); await page.waitForSelector('.sheet .clue'); await page.click(`.sheet .clue[data-clue="${proofClue}"]`);
   check((await textOf(page, '#blank-clue')).includes('“'), `${tag}: the report shows the tapped clue`);
   await shot(page, layout, `${k.id}-10-report`);
@@ -321,7 +372,9 @@ async function runLayout(browser, layout) {
 
   await page.goto(URL0, { waitUntil: 'networkidle' });
   await page.waitForSelector(visibleSel('#screen-players'));
+  seenCoach = new Set();
   await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
+  await coach(page, 'home', `${layout.name}`, () => shot(page, layout, 'coach-home'));
   await layoutOk(page, `${layout.name} home`);
   let played = 0;
   for (const id of layout.cases) {
