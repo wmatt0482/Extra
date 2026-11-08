@@ -19,6 +19,12 @@ export const LINES = Object.freeze({
   seeYou: 'Case closed. See you tomorrow, Detective.',
   allSet: 'Every clue is on the board. Now put the story in order.',
   timelineDone: 'The story is in order. Now close the case.',
+  // the feedback popups (v0.1.2): the partner's first line when something does not fit yet. Kind, story-like, never "wrong".
+  pinMiss1: "Hmm, that sentence doesn't prove it yet.",
+  pinMiss2: "Not that one yet. Let's look closer.",
+  pinMiss3: "Let's work this one out together.",
+  cardMiss: "Hmm, that card doesn't go there yet.",
+  nameMiss: "Hmm, that is not the name yet.",
   noVoice: 'No voice on this device yet. A grown-up can turn on a natural voice.',
   soundOff: 'Sound is off. A grown-up can turn it on in Parents.',
 });

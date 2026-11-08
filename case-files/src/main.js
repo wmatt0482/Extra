@@ -19,6 +19,7 @@ import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdat
 import { labBridge } from './meta/labBridge.js';
 import { ARCS, CASE_BY_ID, TRAINING } from './content/index.js';
 import { LINES } from './logic/lines.js';
+import { allCoachLines } from './logic/coach.js';
 import { dayKey, nextUnopened, rankLabel, refreshOpened } from './logic/pacing.js';
 import { applyClose, closeRecord, newRun } from './logic/run.js';
 import { closeReports } from './logic/payout.js';
@@ -28,10 +29,12 @@ import { createHome } from './ui/home.js';
 import { createCaseView } from './ui/caseView.js';
 import { createClosed } from './ui/closed.js';
 import { createFile } from './ui/file.js';
+import { createModal } from './ui/modal.js';
+import { createCoach } from './ui/coach.js';
 import { createParentZone } from './ui/parentZone.js';
 import { EXTRA_ICONS, drawBackdrop } from './ui/art.js';
 
-const VERSION = '0.1.1';
+const VERSION = '0.1.2';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'caseFiles.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -92,7 +95,10 @@ async function boot() {
     hasWip: (id) => { const w = loadWip(currentPlayerId); return !!w && w.caseId === id; },
     // ----- the voice -----
     voiceReady,
-    voiceHint: () => toast(settings.sound ? LINES.noVoice : LINES.soundOff),
+    // the "no voice yet" note is a partner popup (v0.1.2), not a toast
+    voiceHint: () => { if (!app.modal.has('voice-hint')) app.feedback({ id: 'voice-hint', lines: [settings.sound ? LINES.noVoice : LINES.soundOff], button: 'Got it' }); },
+    /** A feedback popup from the partner (v0.1.2): see src/ui/modal.js. Queued, one at a time. */
+    feedback: (spec) => app.modal.show({ kind: 'feedback', who: 'partner', ...spec }),
     speak(text) { if (!voiceReady()) return Promise.resolve(null); return speech.say(text); },
     voiceStatus() {
       if (!settings.sound) return 'Sound is off on this device.';
@@ -134,6 +140,8 @@ async function boot() {
   };
 
   // ---------- UI ----------
+  app.modal = createModal(app);
+  app.coach = createCoach(app, app.modal);
   const playersUI = createPlayers(app);
   const homeUI = createHome(app);
   const caseView = createCaseView(app);
@@ -183,6 +191,7 @@ async function boot() {
     refreshOpened(save, app.today());
     app.persist();
     applyVoice();
+    speech.prepareBulk(allCoachLines(save.readMode));       // the step coach cards are said in the natural voice too
     labAttach();
     go('home');
   }
@@ -195,12 +204,14 @@ async function boot() {
   function go(name, arg) {
     lastGo = performance.now();
     for (const el of $$('.screen')) el.hidden = el.dataset.screen !== name;
+    app.modal.clear();                                   // a popup never follows a screen change
     for (const [k, s] of Object.entries(screens)) if (k !== name && s.hide) s.hide();
     screen = name;
     document.documentElement.dataset.screen = name;
     if (name === 'players') labDetach();
     if (name === 'home') { refreshOpened(save, app.today()); app.persist(); const p = app.currentPlayer(); $('#home-player').textContent = p ? p.name : ''; showLabButton(); }
     if (screens[name]) screens[name].show(arg);
+    if (name === 'home') app.coach.auto('home');          // the first time the agency home appears
     labMount(name);
     drawCaseSound();
     setTimeout(() => updater.check(), 0);
@@ -290,6 +301,7 @@ async function boot() {
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'det', player: currentPlayerId }));
   $('#btn-thelab').addEventListener('click', () => labBridge.openHome({ onClose: () => { if (screen === 'home') screens.home.show(); } }));
   $('#case-back').addEventListener('click', () => go('home'));
+  $('#btn-help-home').addEventListener('click', () => app.coach.show('home'));
   document.addEventListener('click', (e) => { if (e.target.closest('[data-sfx]')) Audio.click(); });
 
   // ---------- audio unlock (first gesture anywhere): WebAudio only, never the device speech engine ----------
@@ -305,7 +317,7 @@ async function boot() {
   document.addEventListener('dblclick', (e) => e.preventDefault());
   document.addEventListener('contextmenu', (e) => { if (!e.target.closest('.pz input, .pz textarea, .pz pre, .pz-report p')) e.preventDefault(); });
   document.addEventListener('touchmove', (e) => {
-    if (!e.target.closest('.scroll, .doc-tabs, .pz-players, .pz-table-wrap, .pz input')) e.preventDefault();
+    if (!e.target.closest('.scroll, .modal-card, .doc-tabs, .pz-players, .pz-table-wrap, .pz input')) e.preventDefault();
   }, { passive: false });
 
   go('players');

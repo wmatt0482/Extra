@@ -6,6 +6,9 @@
 //                   3 the partner models it); after pinning, the "why" line
 //   4 Reconstruct a half-filled timeline: tap a card then a slot (or drag); a misplaced card slides back, "Check the logbook"
 //   5 Close       the answer on the in-game keyboard, attach a pinned clue, then the sentence-frame case report
+// v0.1.2: every step opens with its coach card the first time (and from the "?" button); whatever is not right yet (a sentence that does not
+// prove it, a card in the wrong slot, a name that does not fit, a short report) is a partner popup (app.feedback), never a small line.
+// The hint highlight / the evidence board / the clue picker that a popup leads to appear AFTER it closes.
 // All state is the plain `run` object (src/logic/run.js); this file draws it and calls the moves. Nothing here shows a
 // timer, a score, a count of mistakes or a "wrong" (SPEC §1).
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
@@ -15,6 +18,7 @@ import { display } from '../logic/answers.js';
 import { LINES, KIND_LABEL, checkDoc, wordSpeech } from '../logic/lines.js';
 import { docAudioOn, readAloudDefault, supportsFor, wordsToTeach } from '../logic/pacing.js';
 import { attachClue, countListen, docOfSentence, nextQuestion, pinTap, pinnedIn, placeCard, questionOf, requestHint, sentenceIndex, submitReport, submitSolution, trayOf } from '../logic/run.js';
+import { coachKeyForBeat } from '../logic/coach.js';
 import { createReader } from './reader.js';
 import { createBoard } from './board.js';
 import { EXTRA_ICONS } from './art.js';
@@ -34,6 +38,7 @@ export function createCaseView(app) {
   let kbMode = null;                  // { max, label, onEnter, upper }
   let sheet = null;                   // the open sheet element (board / documents)
   const say = (text) => app.speak(text);
+  const sayWhenIdle = (text) => app.modal.whenIdle(() => say(text));       // a line waits until a coach card or popup has closed
   const later = (fn, ms) => { const t = setTimeout(fn, ms); timers.push(t); return t; };
   const clearTimers = () => { for (const t of timers.splice(0)) clearTimeout(t); };
   const persist = () => app.persistWip(run);
@@ -67,6 +72,7 @@ export function createCaseView(app) {
     boardBtn.dataset.count = String(run.board.length);
   }
   boardBtn.addEventListener('click', () => openBoardSheet());
+  $('#case-help').addEventListener('click', () => { if (run) app.coach.show(coachKeyForBeat(run.beat)); });
 
   function openSheet(title, content, onClose, tall = false) {
     closeSheet();
@@ -141,12 +147,12 @@ export function createCaseView(app) {
     // the Chief speaks the briefing, line by line, with the bubble lit
     if (!run.briefed) {
       run.briefed = true;
-      later(async () => {
-        if (!app.voiceReady()) return;
+      later(() => app.modal.whenIdle(async () => {
+        if (!app.voiceReady() || run.beat !== 'brief') return;
         const lines = kase.briefing.map((b) => b.text);
         await app.speech.readEach(lines, (i) => { for (const b of bubbles) b.classList.toggle('speaking', i != null && b.dataset.line === String(i)); });
         for (const b of bubbles) b.classList.remove('speaking');
-      }, 250);
+      }), 250);
     }
   }
   function wordCard(w, onDone) {
@@ -206,7 +212,7 @@ export function createCaseView(app) {
     const back = h('button', { class: 'btn btn-teal', id: 'doc-back', type: 'button', 'data-sfx': '' }, h('span', { html: icon('back') }), 'Back to the desk');
     back.addEventListener('click', () => { reader.stop(); deskDoc = null; render(); });
     body.replaceChildren(h('div', { class: 'pane' }, reader.el, h('div', { class: 'foot' }, back)));
-    if (on) later(() => reader.startAll(), 350);
+    if (on) later(() => app.modal.whenIdle(() => reader.startAll()), 350);
   }
 
   // ---------- beat 3: pin the evidence ----------
@@ -287,7 +293,7 @@ export function createCaseView(app) {
       const next = h('button', { class: 'btn btn-teal', id: 'nb-next', type: 'button', 'data-sfx': '' }, last ? 'Put the story in order' : 'Next question', h('span', { html: icon('right') }));
       next.addEventListener('click', () => {
         qState = { done: false, note: '' }; sel = ''; clearTierView();
-        if (last) { run.beat = 'rebuild'; nb = null; persist(); say(LINES.allSet); render(); return; }
+        if (last) { run.beat = 'rebuild'; nb = null; persist(); render(); sayWhenIdle(LINES.allSet); return; }
         nextQuestion(run, kase); persist(); startQuestion();
       });
       act.append(next);
@@ -328,9 +334,14 @@ export function createCaseView(app) {
       if (r.done) { qState.done = true; drawNotebook(q); say(q.why); clearIdle(); }
       else { qState.note = LINES.oneMore; drawNotebook(q); say(LINES.oneMore); armIdle(q); }
     } else {
-      app.audio.click();
-      qState.note = LINES.checkAgain; persist();
-      showTier(q, r.tier, r.repeated);
+      // not the proving sentence: the partner's popup (kind, never "wrong"); the next hint tier is already counted, and its highlight shows AFTER the popup
+      app.audio.click(); persist();
+      qState.note = '';
+      drawNotebook(q);
+      const t = r.tier, lead = t === 1 ? LINES.pinMiss1 : t === 2 ? LINES.pinMiss2 : LINES.pinMiss3;
+      const lines = t >= 3 ? [lead, q.model, r.repeated ? LINES.tier3Again : LINES.tier3Tap] : [lead, t === 1 ? q.hint : LINES.tier2];
+      app.feedback({ id: 'pin-miss', lines, button: t === 1 ? 'Try again' : t === 2 ? 'Show me' : 'Got it', focusSel: '#nb-hint-btn',
+        onClose: () => { if (run.beat === 'pin' && questionOf(run, kase) === q) { applyTierView(q, t, r.repeated); armIdle(q); } } });
     }
   }
   function fly(fromEl, id) {
@@ -349,7 +360,7 @@ export function createCaseView(app) {
     qState = { done: false, note: '' }; sel = '';
     clearTierView();
     render();
-    if (q) { say(q.prompt); armIdle(q); }
+    if (q) { sayWhenIdle(q.prompt); armIdle(q); }
   }
   // ranks 1-3: the partner offers hint tier 1 after 20 s idle (no visible timer)
   function clearIdle() { clearTimeout(idleTimer); idleTimer = 0; }
@@ -359,6 +370,7 @@ export function createCaseView(app) {
     if (!ms || !q || run.beat !== 'pin' || qState.done) return;
     idleTimer = setTimeout(() => {
       if (run.beat !== 'pin' || qState.done || questionOf(run, kase) !== q) return;
+      if (app.modal.isOpen) { armIdle(q); return; }                      // not while a card or popup is on screen
       if ((run.hints[q.id] || 0) === 0) { requestHint(run, q.id); persist(); showTier(q, 1, false); }
     }, ms);
   }
@@ -368,7 +380,7 @@ export function createCaseView(app) {
     releaseKeyboard(); clearIdle();
     const tl = kase.timeline, items = tl.items;
     const byId = Object.fromEntries(items.map((it) => [it.id, it]));
-    let selCard = '', msg = '', justPlaced = -1;
+    let selCard = '', msg = '', justPlaced = -1;                 // msg: only the good news ("the story is in order")
     const slotsEl = h('div', { class: 'tl', id: 'tl-slots' });
     const trayEl = h('div', { class: 'tray', id: 'tl-tray' });
     const msgEl = h('p', { class: 'msg', id: 'tl-msg', 'aria-live': 'polite' });
@@ -410,9 +422,10 @@ export function createCaseView(app) {
       } else {
         app.audio.click();
         const d = docOfSentence(kase, r.item.proof);
-        msg = checkDoc(d ? d.kind : ''); persist(); say(msg);
+        msg = ''; persist();
         draw();
         const back = trayEl.querySelector(`[data-card="${cardId}"]`); if (back) back.classList.add('back');
+        app.feedback({ id: 'card-miss', lines: [LINES.cardMiss, checkDoc(d ? d.kind : '')], button: 'Try again', focusSel: '#tl-docs' });
       }
     }
     // tap a card then a slot; dragging a card onto a slot works too
@@ -450,7 +463,7 @@ export function createCaseView(app) {
     body.replaceChildren(h('div', { class: 'pane' }, prompt, tlWrap, h('div', { class: 'foot' }, docs, goEl)));
     msg = run.tl.slots.every(Boolean) ? LINES.timelineDone : '';
     draw();
-    if (!run.tlSpoken) { run.tlSpoken = true; later(() => say(tl.prompt), 200); }
+    if (!run.tlSpoken) { run.tlSpoken = true; later(() => sayWhenIdle(tl.prompt), 200); }
   }
 
   // ---------- beat 5: close the case ----------
@@ -467,10 +480,11 @@ export function createCaseView(app) {
     const hintLine = (txt) => hintBox.replaceChildren(h('p', { class: 'nb-hint', style: { background: 'rgba(47,209,192,.2)', color: '#e8fffd', border: '2px solid var(--accent)' } }, h('b', { style: { color: 'var(--accent)' } }, 'Your partner'), txt));
     function showSolveTier(tier) {
       const proof = (sol.proof || []).map((id) => idx[id] && idx[id].text).filter(Boolean);
-      const lines = [LINES.checkAgain, [LINES.solveTier1, LINES.solveTier2, LINES.solveTier3][tier - 1]];
-      if (tier >= 3) lines.push(`“${proof.join('” “')}”`);
-      hintLine(lines.join(' ')); say(lines.slice(0, 2));
-      if (tier >= 2) openBoardSheet((sol.proof || []).filter((id) => run.board.includes(id)));
+      const tierLine = [LINES.solveTier1, LINES.solveTier2, LINES.solveTier3][tier - 1];
+      const lines = [LINES.nameMiss, LINES.checkAgain, tierLine];
+      hintLine(tierLine);
+      app.feedback({ id: 'name-miss', lines, extra: tier >= 3 ? [`“${proof.join('” “')}”`] : [], button: tier >= 2 ? 'Show me' : 'Try again',
+        onClose: () => { if (tier >= 2 && run.beat === 'solve') openBoardSheet((sol.proof || []).filter((id) => run.board.includes(id))); } });
     }
     if (stage === 'type') {
       const grid = h('div', { class: 'solve-grid' }, h('div', { class: 's-prompt' }, prompt, hintBox), h('div', { class: 's-answer' }, answer));
@@ -482,7 +496,7 @@ export function createCaseView(app) {
         else { app.audio.click(); showSolveTier(r.tier); }
       } });
       drawAnswer();
-      if (run.sol.hint > 0) hintLine([LINES.checkAgain, [LINES.solveTier1, LINES.solveTier2, LINES.solveTier3][run.sol.hint - 1]].join(' '));
+      if (run.sol.hint > 0) hintLine([LINES.solveTier1, LINES.solveTier2, LINES.solveTier3][run.sol.hint - 1]);
       return;
     }
     releaseKeyboard();
@@ -494,7 +508,7 @@ export function createCaseView(app) {
     go.disabled = !run.sol.clueId;
     const board = () => createBoard(kase, run.board, { pickable: true, selected: run.sol.clueId, onPick: (id) => {
       if (attachClue(run, kase, id)) { app.audio.pop(); persist(); note.textContent = 'Clue attached.'; go.disabled = false; swap(); }
-      else { app.audio.click(); note.textContent = LINES.notThatClue; say(LINES.notThatClue); }
+      else { app.audio.click(); app.feedback({ id: 'clue-miss', lines: [LINES.notThatClue], button: 'Try again' }); }
     } });
     const holder = h('div', {});
     const swap = () => { const b = board(); holder.replaceChildren(b); b.redraw(); };
@@ -509,7 +523,6 @@ export function createCaseView(app) {
     const who = display(sol.answers[0]);
     const because = h('span', { class: 'blank active', id: 'blank-because' });
     const clueBtn = h('button', { class: 'blank empty', id: 'blank-clue', type: 'button', 'data-sfx': '' });
-    const msg = h('p', { class: 'msg', id: 'report-msg', 'aria-live': 'polite' });
     const drawBecause = () => {
       because.replaceChildren(typed ? h('span', {}, typed.charAt(0).toUpperCase() + typed.slice(1)) : h('span', { class: 'ph', style: { fontWeight: 400, fontStyle: 'italic', color: '#8a7a52' } }, 'type why'), h('i', { class: 'caret', style: { height: '1.2em', verticalAlign: 'text-bottom' } }));
       run.rep.because = typed; syncEnter();
@@ -521,22 +534,22 @@ export function createCaseView(app) {
     };
     const pickClue = () => {
       const scroll = h('div', { class: 'pane-scroll scroll clue-pick' });
-      const board = createBoard(kase, run.board, { pickable: true, selected: run.rep.clueId, onPick: (id) => { run.rep.clueId = id; persist(); app.audio.pop(); drawClue(); closeSheet(); msg.textContent = ''; } });
+      const board = createBoard(kase, run.board, { pickable: true, selected: run.rep.clueId, onPick: (id) => { run.rep.clueId = id; persist(); app.audio.pop(); drawClue(); closeSheet(); } });
       scroll.append(board);
       openSheet('Pick the clue that proves it', scroll); board.redraw();
     };
     clueBtn.addEventListener('click', pickClue);
     const frame = h('p', { class: 'frame', id: 'frame' }, h('span', { class: 'blank fixed', id: 'blank-who' }, who), ' did it because ', because, '. The clue that proves it is ', clueBtn, '.');
     const prompt = h('div', { class: 'bubble partner' }, h('span', { class: 'who' }, 'PT'), h('p', {}, h('span', { class: 'who-name' }, 'Case report'), 'Finish the sentence. Then tap the clue that proves it.'), h('button', { class: 'say-btn', type: 'button', 'aria-label': 'Hear it', html: icon('sound'), onclick: () => say(LINES.writeReport) }));
-    const grid = h('div', { class: 'solve-grid report' }, h('div', { class: 's-prompt' }, prompt), h('div', { class: 's-answer' }, frame, msg));
+    const grid = h('div', { class: 'solve-grid report' }, h('div', { class: 's-prompt' }, prompt), h('div', { class: 's-answer' }, frame));
     body.replaceChildren(h('div', { class: 'pane' }, h('div', { class: 'pane-scroll scroll solve-scroll' }, grid), h('div', { class: 'kbwrap' }, kb.el)));
     useKeyboard({ max: 110, label: 'File it', draw: drawBecause, enter: () => {
       const r = submitReport(run, kase, typed.trim(), run.rep.clueId); persist();
       if (r === 'ok') { app.audio.cash(); finish(who); return; }
       app.audio.click();
-      const line = r === 'short' ? LINES.moreWords : r === 'ask' ? LINES.addMore : LINES.pickClue;
-      msg.textContent = line; say(line);
-      if (r === 'needclue') pickClue();
+      if (r === 'short') app.feedback({ id: 'report-short', lines: [LINES.moreWords], button: 'Try again' });
+      else if (r === 'ask') app.feedback({ id: 'report-ask', lines: [LINES.addMore], button: 'Got it' });
+      else app.feedback({ id: 'report-clue', lines: [LINES.pickClue], button: 'Show me', onClose: () => { if (run.beat === 'report') pickClue(); } });
     } });
     drawBecause(); drawClue();
   }
@@ -551,10 +564,11 @@ export function createCaseView(app) {
     clearTimers(); closeSheet();
     chrome();
     $('#screen-case').dataset.beat = run.beat;
+    app.coach.auto(coachKeyForBeat(run.beat));            // the first time at this step: its coach card (the voice below waits for it)
     switch (run.beat) {
       case 'brief': return renderBrief();
       case 'investigate': return renderInvestigate();
-      case 'pin': { const q = questionOf(run, kase), fresh = !nb; renderPin(); if (fresh && q && !qState.done) { say(q.prompt); armIdle(q); } return undefined; }
+      case 'pin': { const q = questionOf(run, kase), fresh = !nb; renderPin(); if (fresh && q && !qState.done) { sayWhenIdle(q.prompt); armIdle(q); } return undefined; }
       case 'rebuild': nb = null; qState = { done: false, note: '' }; return renderRebuild();
       case 'solve': return renderSolve();
       case 'report': return renderReport();

@@ -4,9 +4,9 @@
 // A merge runs when both this device and the server changed the same key. local / remote = { updatedAt, data }; both sides
 // are normalized first. opened and closed are unions (the earliest day wins for an open day; for a closed case the record
 // with the earliest `at` wins whole, its listen counts raised to the per-document maximum), wordsMet = per-word max,
-// rank and nextEarly from the later updatedAt, updatedAt = the max.
+// rank, readMode and nextEarly from the later updatedAt, seenHelp = OR per key, updatedAt = the max.
 import { registerSyncKind } from '../../../spell-jump/src/sync/client.js';
-import { normalize, saveKey } from './save.js';
+import { HELP_KEYS, normalize, saveKey } from './save.js';
 
 const clone = (x) => (x == null ? x : JSON.parse(JSON.stringify(x)));
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
@@ -22,6 +22,7 @@ export function mergeCf(local, remote) {
   out.rank = later.data.rank;
   out.readMode = later.data.readMode || 'auto';
   out.nextEarly = later.data.nextEarly;
+  for (const k of HELP_KEYS) out.seenHelp[k] = A.data.seenHelp[k] || B.data.seenHelp[k];     // a coach card seen on any device stays seen (OR)
   for (const d of [A.data, B.data]) for (const [id, day] of Object.entries(d.opened)) if (!out.opened[id] || day < out.opened[id]) out.opened[id] = day;
   for (const id of new Set([...Object.keys(A.data.closed), ...Object.keys(B.data.closed)])) {
     const a = A.data.closed[id], b = B.data.closed[id];

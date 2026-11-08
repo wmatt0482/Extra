@@ -460,6 +460,52 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
 .pz-confirm .btns { display: flex; gap: 10px; }
 @media (max-width: 480px) { .pz-tabs .tab-more { display: none; } }
 
+/* ---------- the "?" help button, the coach cards and the feedback popups (v0.1.2): one modal, the game's manila / navy / brass ---------- */
+.help-btn { border-radius: 50%; background: var(--brass); color: var(--brass-ink); font: 400 26px/1 var(--font-display); box-shadow: 0 var(--edge) 0 var(--brass-edge), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.5); }
+.help-btn:active { box-shadow: 0 1px 0 var(--brass-edge); }
+#modal-root { position: absolute; inset: 0; z-index: 125; pointer-events: none; }
+.modal-wrap { position: absolute; inset: 0; pointer-events: auto; display: grid; place-items: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l); background: rgba(3,8,20,.76); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); animation: modalFade .18s ease-out; }
+.modal-card { position: relative; width: min(440px, 100%); max-height: 100%; overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 12px; padding: 16px 16px 18px;
+  border-radius: 6px 16px 10px 10px; background: var(--grit), linear-gradient(170deg, var(--manila), var(--manila-2)); color: var(--manila-ink); border: 2px solid var(--manila-edge);
+  box-shadow: 0 8px 0 rgba(60,35,8,.5), 0 20px 40px rgba(0,0,0,.5); animation: modalPop .24s cubic-bezier(.2,1.25,.4,1); }
+.modal-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.modal-face { flex: none; width: 60px; height: 60px; filter: drop-shadow(0 3px 0 rgba(60,35,8,.4)); }
+.modal-face svg { display: block; width: 100%; height: 100%; }
+.modal-who { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.modal-who .label-type { color: #7a5410; font-size: 13px; }
+.modal-title { margin: 0; font: 400 clamp(21px, 5.6vw, 25px)/1.12 var(--font-display); color: var(--manila-ink); }
+.modal-main { display: flex; flex-direction: column; gap: 14px; }
+.modal-text p { margin: 0 0 8px; font: 400 19px/1.45 var(--font-body); }
+.modal-text p:last-child { margin-bottom: 0; }
+.modal-card.feedback .modal-text p { font-size: 22px; line-height: 1.4; }
+.modal-card.feedback .modal-text p.lead { font-weight: 700; }
+.modal-text p.extra { font-style: italic; padding: 8px 10px; border-radius: 6px; background: rgba(255,255,255,.5); font-size: 17px; }
+.modal-go { width: 100%; }
+.coach-art { border-radius: 10px; overflow: hidden; line-height: 0; box-shadow: 0 4px 0 rgba(40,25,5,.35); background: #0f2a52; }
+.coach-art svg { display: block; width: 100%; height: auto; }
+@keyframes modalFade { from { opacity: 0; } }
+@keyframes modalPop { from { opacity: 0; transform: translateY(14px) scale(.96); } }
+/* the coach pictures: every part rests in its finished pose; these only move it toward that pose (calm motion switches them off) */
+.cf-finger { animation: cfTap 2.6s ease-in-out infinite; }
+.cf-glow { animation: cfGlow 2.6s ease-in-out infinite; }
+.cf-sweep { animation: cfSweep 4.8s steps(1) infinite; }
+.cf-fly { animation: cfFly 3.4s ease-in-out infinite; }
+.cf-drop { animation: cfDrop 3.4s ease-in-out infinite; }
+.cf-pop { animation: cfPop 3.2s ease-out infinite; }
+.cf-clue { animation: cfClue 3.4s ease-in-out infinite; }
+.cf-caret { animation: blink .6s steps(1) infinite alternate; }
+.cf-key { animation: cfKey 2.6s ease-in-out infinite; }
+@keyframes cfTap { 0%, 45%, 100% { transform: translateY(0); } 58% { transform: translateY(6px); } 70% { transform: translateY(0); } }
+@keyframes cfGlow { 50% { opacity: .55; } }
+@keyframes cfSweep { 0%, 24% { transform: translateY(0); } 25%, 49% { transform: translateY(12px); } 50%, 74% { transform: translateY(24px); } 75%, 99% { transform: translateY(36px); } }
+@keyframes cfFly { 0%, 18% { transform: translate(-124px, -10px) scale(1.12); opacity: 0; } 24% { opacity: 1; } 62%, 100% { transform: translate(0, 0) scale(1); opacity: 1; } }
+@keyframes cfDrop { 0%, 22% { transform: translateY(-46px); opacity: 0; } 30% { opacity: 1; } 58%, 100% { transform: translateY(0); opacity: 1; } }
+@keyframes cfPop { 0%, 40% { opacity: 0; transform: translateY(6px); } 58%, 100% { opacity: 1; transform: none; } }
+@keyframes cfClue { 0%, 40% { transform: translate(-36px, 36px); opacity: 0; } 50% { opacity: 1; } 78%, 100% { transform: translate(0, 0); opacity: 1; } }
+@keyframes cfKey { 0%, 35%, 100% { fill: #ecd6a2; } 50% { fill: #2fd1c0; } }
+.reduced-motion .modal-wrap, .reduced-motion .modal-card, .reduced-motion .coach-art * { animation: none !important; }
+@media (prefers-reduced-motion: reduce) { .coach-art * { animation: none !important; } }
+
 /* ---------- portrait: same flow, stacked ---------- */
 @media (orientation: portrait) {
   .topbar { flex-wrap: wrap; }
@@ -480,6 +526,7 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
   #screen-home .topbar .lab-slot { order: 6; flex: 1 1 0; justify-content: flex-start; }
   #screen-home .topbar #btn-player { order: 1; } #screen-home .topbar .grow { order: 2; } #screen-home .topbar #btn-archive { order: 3; } #screen-home .topbar #btn-parents { order: 4; width: 48px; padding: 0; }
   #screen-home .topbar #btn-thelab { order: 5; }
+  #screen-home .topbar #btn-help-home { order: 3; }
   #btn-parents .btn-text { display: none; }
   .player-chip { max-width: 44%; }
   #screen-case .topbar { flex-wrap: nowrap; }
@@ -520,6 +567,16 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
   .kb { --kgap: 4px; }
   .kbwrap { padding-top: 6px; }
   .kb-key { height: 44px; }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  .modal-card { width: min(720px, 100%); display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); grid-template-areas: "head main" "art main"; column-gap: 16px; row-gap: 10px; align-items: start; padding: 12px 14px 16px; }
+  .modal-card.no-art { grid-template-columns: 128px minmax(0, 1fr); grid-template-areas: "head main"; align-items: center; }
+  .modal-card.no-art .modal-head { flex-direction: column; text-align: center; gap: 8px; }
+  .modal-card.no-art .modal-face { width: 68px; height: 68px; }
+  .modal-head { grid-area: head; } .coach-art { grid-area: art; } .modal-main { grid-area: main; align-self: center; gap: 12px; }
+  .modal-face { width: 48px; height: 48px; }
+  .modal-text p { font-size: 18px; line-height: 1.4; }
+  .modal-card.feedback .modal-text p { font-size: 20px; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
 .reduced-motion .toast { animation: none; }
@@ -564,6 +621,7 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
       <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="home-avatar" aria-hidden="true"></canvas><span id="home-player">Player</span></button>
       <div class="lab-slot" id="lab-slot-home"></div>
       <span class="grow"></span>
+      <button class="btn icon-btn help-btn" id="btn-help-home" aria-label="How this step works" data-sfx>?</button>
       <button class="btn btn-sm btn-cyan" id="btn-thelab" data-sfx hidden><span data-icon="star"></span>The Lab</button>
       <button class="btn btn-sm" id="btn-archive" data-sfx><span class="ico-archive"></span>Archive</button>
       <button class="btn btn-sm" id="btn-parents" data-sfx aria-label="Parents"><span data-icon="lock"></span><span class="btn-text">Parents</span></button>
@@ -597,6 +655,7 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
       <h2 id="case-title">Case</h2>
       <div class="steps" id="case-steps" aria-hidden="true"></div>
       <button class="btn icon-btn" id="case-board" aria-label="Open the evidence board" data-sfx hidden></button>
+      <button class="btn icon-btn help-btn" id="case-help" aria-label="How this step works" data-sfx>?</button>
       <button class="btn icon-btn" id="case-sound" aria-label="Sound" data-sfx></button>
     </div>
     <div class="steps steps-row" id="case-steps2" aria-hidden="true"></div>
@@ -615,6 +674,7 @@ button.blank { font-family: inherit; font-size: inherit; color: inherit; cursor:
   <!-- ===== Parent Zone (built by src/ui/parentZone.js) ===== -->
   <div class="pz" id="pz" hidden></div>
   <div id="toasts"></div>
+  <div id="modal-root"></div>
 </div>
 <script>
 // Self-update safety net (the real handler is src/main.js + src/meta/selfUpdate.js, which reload only on a safe screen): if
