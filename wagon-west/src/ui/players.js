@@ -84,6 +84,7 @@ export function createPlayers(app) {
     chip.setAttribute('aria-label', `Family sync on, code ${s.code}. Opens Parents.`);
   }
 
+  let pickerLab = null;
   function showPicker() {
     const f = app.family;
     refreshSyncChip();
@@ -102,6 +103,9 @@ export function createPlayers(app) {
       add.addEventListener('click', () => app.go('newplayer'));
       grid.append(add);
     }
+    // the Lab's own button, last in the family's block (lab/docs/COHESION.md §3)
+    if (pickerLab) pickerLab.destroy();
+    pickerLab = app.labPickerButton(grid);
   }
   function showNew() {
     name = '';

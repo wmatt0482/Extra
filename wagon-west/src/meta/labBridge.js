@@ -22,7 +22,7 @@ const later = (f) => {
 function lazy(make) {          // a handle that is usable at once and mounts when the Lab has loaded
   let real = null, gone = false;
   later((l) => { if (!gone) real = make(l); });
-  return { update() { if (real) real.update(); }, destroy() { gone = true; if (real) real.destroy(); } };
+  return { get el() { return real ? real.el : null; }, update() { if (real) real.update(); }, destroy() { gone = true; if (real) real.destroy(); } };
 }
 export const labBridge = {
   attach(info) { load(); later((l) => l.attach({ game: GAME, ...info })); },
@@ -31,6 +31,13 @@ export const labBridge = {
   beginRound() { later((l) => l.beginRound(GAME)); },
   hud(opts) { return lazy((l) => l.hud(opts)); },
   results(opts) { return lazy((l) => l.results(opts)); },
+  /** Stage 2 (lab/docs/COHESION.md): the Lab chip (top-left of the home / title), the picker's Lab button, the Games panel, the per-game summary and the Lab coin icon. */
+  mountChip(container, opts) { return lazy((l) => l.mountChip(container, { game: GAME, ...opts })); },
+  mountPickerButton(container, opts) { return lazy((l) => l.mountPickerButton(container, { game: GAME, ...opts })); },
+  openGames(o) { later((l) => l.openGames({ ...o })); },
+  summary(row) { later((l) => l.summary(GAME, row)); },       // queued like report; the Lab drops text it does not accept
+  coinIcon(size) { try { return L && L.coinIcon ? L.coinIcon(size) : ''; } catch (_) { return ''; } },   // '' until the Lab has loaded
+  cosmeticsOf(playerId) { try { return L && L.cosmeticsOf ? L.cosmeticsOf(playerId, GAME) : { slots: {} }; } catch (_) { return { slots: {} }; } },
   cosmetics() { try { return L ? L.cosmetics(GAME) : NO_LOOKS(); } catch (_) { return NO_LOOKS(); } },
   owns(id) { try { return !!(L && L.owns(id)); } catch (_) { return false; } },
   openShop(o) { later((l) => l.openShop({ game: GAME, ...o })); },

@@ -320,6 +320,9 @@ async function runLayout(browser, layout) {
   const pick = await J(page, () => ({ tiles: document.querySelectorAll('[data-player]').length, add: !!document.querySelector('#pl-add'), origin: location.origin, home: document.querySelector('#btn-home').href, scene: window.__wagonWest.app.sceneName }));
   check(pick.tiles === 0 && pick.add, 'picker is the first screen, with "+ New player"');
   check(pick.home === pick.origin + '/', 'the Learning Lab link stays on this origin');
+  await page.waitForSelector('#player-grid #lab-picker-btn', { timeout: 8000 }).catch(() => {});
+  const pb = await J(page, () => { const b = document.querySelector('#player-grid #lab-picker-btn'); return b ? { last: b === document.querySelector('#player-grid').lastElementChild, h: b.getBoundingClientRect().height, txt: b.textContent, also: document.querySelectorAll('.pl-other').length } : null; });
+  check(pb && pb.last && pb.h >= 44 && /The Lab/.test(pb.txt) && pb.also === 0, 'the picker has the Lab\'s own "The Lab" button, last in the players\' block, and no partial game links');
   check(pick.scene === 'mock scene', 'the mock scene is running (?mock=1)');
   await page.click('#pl-add');
   await page.waitForSelector(visibleSel('#screen-newplayer'));
@@ -645,8 +648,9 @@ async function runLayout(browser, layout) {
   check(await J(page, () => /^People met · \d+ of \d+$/.test(document.querySelector('#met-card b').textContent)), 'v1.2 journal → Map: "People met" below the map');
   await page.click('#screen-journal [data-back="title"]');
   await page.waitForSelector(visibleSel('#screen-title'));
-  const t2 = await J(page, () => ({ label: document.querySelector('#btn-trail-label').textContent, streak: Number(document.querySelector('#title-streak-n').textContent), done: document.querySelector('#title-map').dataset.legsDone }));
-  check(t2.label === 'Hit the trail' && t2.streak === 1 && t2.done === String(layout.legs), `the title after ${layout.legs} leg(s): "${t2.label}", the streak flame at ${t2.streak}, the map at stop ${t2.done}`);
+  await page.waitForFunction(() => document.querySelector('.lab-chipx-flamen'), null, { timeout: 8000 }).catch(() => {});
+  const t2 = await J(page, () => ({ label: document.querySelector('#btn-trail-label').textContent, streak: Number((document.querySelector('.lab-chipx-flamen') || {}).textContent), own: !!document.querySelector('#title-streak'), flames: document.querySelectorAll('#screen-title .lab-chipx-flame, #screen-title [data-icon="flame"] svg').length, done: document.querySelector('#title-map').dataset.legsDone }));
+  check(t2.label === 'Hit the trail' && t2.streak === 1 && !t2.own && t2.flames === 1 && t2.done === String(layout.legs), `the title after ${layout.legs} leg(s): "${t2.label}", ONE flame (the Lab chip's) at ${t2.streak} and no game flame of its own (${t2.flames}), the map at stop ${t2.done}`);
   await shot(page, layout, '20-title-later');
   await audit(page, layout.insets, 'title (on the way)');
   await sideGames(page, layout, grab);
@@ -3905,11 +3909,30 @@ async function stopToResults(page, legId, plan = {}) {
 }
 async function labBoot(page, layout, grab) {
   console.log('  -- the bridge: the Lab loads by itself; the title\'s button and the Parent Zone\'s row; the Lab\'s numbers start --');
-  const b = await J(page, () => ({ ready: window.__wagonWest.labBridge.ready, btn: !document.querySelector('#btn-lab').hidden, n: document.querySelector('.menu-row').dataset.n, attached: !!(window.__lab && window.__lab.store.doc()), v: window.__wagonWest.app.version }));
-  check(b.ready && b.btn && b.attached && b.v === '1.7.1', `the Lab loaded behind the game (version ${b.v}); the title shows "The Lab" (${b.n} buttons); the Lab knows the player`);
+  await page.waitForSelector('#title-lab .lab-chipx', { timeout: 8000 });
+  const b = await J(page, () => ({ ready: window.__wagonWest.labBridge.ready, btn: !!document.querySelector('#title-lab .lab-chipx') && !document.querySelector('#btn-lab'), n: document.querySelector('.menu-row').dataset.n, attached: !!(window.__lab && window.__lab.store.doc()), v: window.__wagonWest.app.version }));
+  check(b.ready && b.btn && b.attached && b.v === '1.8.0', `the Lab loaded behind the game (version ${b.v}); the title shows the Lab chip, not a button of its own (${b.n} buttons); the Lab knows the player`);
   await J(page, () => { const lb = window.__wagonWest.labBridge; window.__opened = []; lb.openHome = (o) => window.__opened.push(['home', o]); lb.openParent = (o) => window.__opened.push(['parent', o]); });
-  await page.click('#btn-lab');
-  check((await J(page, () => window.__opened.map((x) => x[0]).join())) === 'home', 'the button opens the Lab\'s home (labBridge.openHome)');
+  const chip = await J(page, () => { const c = document.querySelector('#title-lab .lab-chipx'); const r = c.getBoundingClientRect(); const m = c.querySelector('.lab-chipx-main').getBoundingClientRect(); const pc = document.querySelector('#btn-player').getBoundingClientRect(); return { left: r.left, top: r.top, h: m.height, compact: c.classList.contains('compact'), txt: c.textContent, beforePlayer: r.left < pc.left || r.top < pc.top, own: document.querySelectorAll('#screen-title .lab-chipx').length, w: innerWidth }; });
+  check(chip.own === 1 && /Lab LV \d+/.test(chip.txt) && chip.h >= 44 && chip.top < 80 && chip.left < 80 && chip.beforePlayer && chip.compact === (chip.w < 520), `one Lab chip top-left of the title (${Math.round(chip.left)},${Math.round(chip.top)}), "Lab LV n", 44 px tall, ${chip.compact ? 'compact' : 'full'} at ${chip.w} px, before the player chip`);
+  check(!chip.txt.includes('$'), 'the chip says Lab coins by icon, never a "$"');
+  const pur = await J(page, () => [...document.querySelectorAll('.cash-pill')].filter((e) => e.offsetParent).map((e) => ({ t: e.textContent, a: e.getAttribute('aria-label') })));
+  check(pur.length >= 1 && pur.every((p) => /Wagon purse/.test(p.t) && /^Wagon purse: \$/.test(p.a)), `the story money is labelled "Wagon purse" on the pill (${pur.map((p) => p.a).join(' | ')})`);
+  const sum = await J(page, () => { const d = window.__lab.store.doc(); return d && d.sum && d.sum.ww; });
+  check(sum && /^[A-Za-z' .-]+$/.test(sum.level) && /^\d+ of \d+ stops$/.test(sum.line) && /^Today's challenge is (open|done)$|^$/.test(sum.today || ''), `the Lab's summary for Wagon West: "${sum && sum.level}" · "${sum && sum.line}" · "${sum && sum.today}"`);
+  await page.click('#lab-chip-games');
+  await page.waitForSelector('#lab-games-panel');
+  const gp = await J(page, () => ({ rows: [...document.querySelectorAll('#lab-games-panel .lab-gp-row')].map((a) => a.dataset.game || a.getAttribute('href')), here: (document.querySelector('#lab-games-panel .lab-gp-row.here') || {}).dataset && document.querySelector('#lab-games-panel .lab-gp-row.here').dataset.game, ww: ((document.querySelector('#lab-games-panel [data-game="ww"] small') || {}).textContent || '') }));
+  check(gp.rows.length === 8 && gp.here === 'ww' && /stops/.test(gp.ww), `the chip's Games button opens the six-game panel (${gp.rows.length} rows), Wagon West highlighted, its line "${gp.ww}"`);
+  await shot(page, layout, 'lab-00-games');
+  await page.click('#lab-games-close');
+  await page.waitForFunction(() => !document.querySelector('#lab-games-panel'));
+  await page.click('#title-lab .lab-chipx-main');
+  await page.waitForSelector('.lab-overlay');
+  check(true, 'a tap on the chip opens the Lab');
+  await J(page, () => { const o = document.querySelector('.lab-overlay'); const b = o && o.querySelector('[aria-label="Close"], .lab-close, .lab-x'); if (b) b.click(); });
+  await page.keyboard.press('Escape');
+  await page.waitForFunction(() => !document.querySelector('.lab-overlay'));
   await audit(page, layout.insets, 'the title with The Lab');
   await shot(page, layout, 'lab-01-title');
   await page.click('#btn-parents');
@@ -4150,8 +4173,8 @@ async function labBlocked(browser, layout) {
   await page.click('[data-player="pmia"]');
   await page.waitForSelector(visibleSel('#screen-title'));
   await page.waitForTimeout(800);
-  const t = await J(page, () => ({ ready: window.__wagonWest.labBridge.ready, btn: document.querySelector('#btn-lab').hidden, hud: document.querySelector('#hud-lab').children.length, res: document.querySelector('#res-lab').children.length, n: document.querySelector('.menu-row').dataset.n }));
-  check(!t.ready && t.btn && t.hud === 0 && t.res === 0 && t.n === '3', 'the Lab never loaded: no button, no pill, no strip');
+  const t = await J(page, () => ({ ready: window.__wagonWest.labBridge.ready, btn: !document.querySelector('#title-lab .lab-chipx'), hud: document.querySelector('#hud-lab').children.length, res: document.querySelector('#res-lab').children.length, n: document.querySelector('.menu-row').dataset.n }));
+  check(!t.ready && t.btn && t.hud === 0 && t.res === 0 && t.n === '3', 'the Lab never loaded: no chip, no pill, no strip');
   await J(page, () => { const a = window.__wagonWest.app; a.outfitDone({ wagonName: 'Dusty', animal: 'oxen', companions: ['blacksmith', 'teacher', 'fiddler'] }, { fresh: true }); });
   await skipIndependenceTalk(page);
   await page.waitForSelector(visibleSel('#screen-store'));

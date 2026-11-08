@@ -21,7 +21,7 @@
 // v1.6 (The Lab, lab/SPEC.md §4.4) adds the Lab bridge (src/meta/labBridge.js: it loads /lab/src/index.js on its own, so a missing, blocked or old Lab never stops the game), the choice
 // panel and its words (src/ui/choicePanel.js, src/content/choices.js) to the shell; the choice and preview journey modules, the Lab looks (src/meta/labLooks.js, src/scene/looks16.js)
 // and the Lab's own entry (/lab/src/index.js, outside this scope) are OPTIONAL: cached when present, and the page posts every Lab module it loaded.
-const VERSION = 'wagon-west-v1.7.1';
+const VERSION = 'wagon-west-v1.8.0';
 const PREFIX = 'wagon-west-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;

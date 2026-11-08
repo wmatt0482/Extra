@@ -346,6 +346,16 @@ build notes). The Lab only listens and decorates: **no Lab call reads or writes 
   **stop's line** (a person's "Traded …") goes when the stop's screen changes; the Lab pill's HUD row lets taps beside the pill through.
 - VERSION 1.7.1; the service worker is `wagon-west-v1.7.1`.
 
+## 1.8.0 · the Lab cohesion round (stage 2)
+
+- **One Lab chip, top-left of the title** (`labBridge.mountChip`, `compact` under 520 px; themed to the wagon's browns): the avatar, "Lab LV n", Lab coins, the Lab streak flame and the Games button
+  (the six-game nav). It replaces the title's small "The Lab" button; the title's own streak flame is gone (the chip's flame is the only one in a header; the game's own streak stays on its panels).
+- **The picker's Lab button** ("Who's going west?", `labBridge.mountPickerButton`, last in the players' block).
+- **Summaries** (`labBridge.summary`, `labSummary()` in `main.js`): the last stop reached ("Fort Laramie"), "N of 20 stops", and "Today's challenge is open / done"; on every title show and after each leg.
+- **Money**: the story money keeps its "$" and is labelled "Wagon purse" on every cash pill (aria-label too); Lab coins are only ever in the Lab's own pieces (chip, pill, results strip) with its coin icon.
+- Tests: the old `#btn-lab` / `#title-streak-n` checks are now the chip, the Games panel, the picker button, the summary, the purse label and "one flame".
+- VERSION 1.8.0; the service worker is `wagon-west-v1.8.0`.
+
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail

@@ -138,7 +138,7 @@ import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
 import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts, V15, dampLine as dampText } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.7.1';
+const VERSION = '1.8.0';
 // the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
 // is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];
@@ -426,6 +426,8 @@ async function boot() {
     get cloud() { return cloud; },
     // ---- v1.6 (The Lab) ----
     labReady: () => labBridge.ready,
+    labSummary: () => labSummary(),
+    labPickerButton: (mount) => labBridge.mountPickerButton(mount),
     openLab: (o) => labBridge.openHome(o || {}),
     openLabParent: () => labBridge.openParent({ unlocked: true }),
     pendingChoice,
@@ -523,8 +525,10 @@ async function boot() {
 
   function refreshCash() {
     const J = save.journey;
-    const html = `${COIN}<span>$${money(J ? J.cash : 0)}</span>`;
-    for (const el of $$('[data-cash]')) el.innerHTML = html;
+    // v1.8 (cohesion): story money is labelled "Wagon purse" (the Lab's coins are "Lab coins", never a "$")
+    const amt = `$${money(J ? J.cash : 0)}`;
+    const html = `${COIN}<span class="cp-txt"><small class="cp-label">Wagon purse</small><span>${amt}</span></span>`;
+    for (const el of $$('.cash-pill')) { el.innerHTML = html; el.setAttribute('aria-label', `Wagon purse: ${amt}`); }
   }
   const replaceInPlace = (obj, fresh) => { for (const k of Object.keys(obj)) delete obj[k]; Object.assign(obj, fresh); };
   const partySize = (J) => { try { if (JA.partySize) return JA.partySize(J); } catch (_) { /* below */ } return ((J.party && J.party.length) || 3) + 1; };
@@ -815,6 +819,35 @@ async function boot() {
     try { labHud.update(); labResults.update(); } catch (_) { /* ignore */ }
   }
   function labDetach() { if (labAttached) { labAttached = null; labBridge.detach(); } }
+  /** v1.8 (cohesion): this game's card on the Lab home: the last stop reached, "N of 20 stops", today's challenge. Plain text, no pressure words. */
+  function labSummary() {
+    if (!labAttached) return;
+    try {
+      const J = save.journey;
+      const legs = planLegs(J), n = legs.length;
+      let level = (legs[0] && legs[0].from) || 'Independence', line = `0 of ${n} stops`;
+      if (J) {
+        const idx = Math.max(0, Math.min(n, num(J.legIndex)));
+        const prev = idx > 0 ? legs[idx - 1] : null;
+        level = J.done ? (J.route === 'gold-road' ? 'Home with gold' : 'In the valley') : prev ? ((prev.stop && prev.stop.name) || prev.name || 'On the trail') : ((legs[0] && legs[0].from) || 'Independence');
+        line = `${J.done ? n : idx} of ${n} stops`;
+      }
+      let today = '';
+      try { const dc = dailyInfo(); if (dc) today = dc.done ? "Today's challenge is done" : "Today's challenge is open"; } catch (_) { /* none */ }
+      labBridge.summary({ level, line, today });
+    } catch (_) { /* never in the way */ }
+  }
+  // the Lab chip: top-left of the title, once per page; the phone variant under 520 px wide (re-mounted when the window crosses it)
+  let chip = null, chipCompact = null;
+  function mountLabChip() {
+    const compact = window.innerWidth < 520;
+    if (chip && chipCompact === compact) return;
+    if (chip) chip.destroy();
+    chipCompact = compact;
+    chip = labBridge.mountChip($('#title-lab'), { compact, theme: 'dark', current: 'ww' });
+  }
+  mountLabChip();
+  window.addEventListener('resize', () => { try { mountLabChip(); } catch (_) { /* ignore */ } });
   /** One event to the Lab (never in a frame loop, once per event); a combo moment (every fifth answer in a row without a miss) is Trail Cheer. Returns the receipt (EMPTY when the Lab is off). */
   function labReport(ev) {
     if (!labAttached) return null;
@@ -1767,7 +1800,8 @@ async function boot() {
     try { const out = completeDay(proxy, now); save.streak = proxy.streak; if (out.crates) { save.crates.queue.push('silver'); save.crates.earned += 1; toast(`${out.count}-day streak! A crate`); } } catch (e) { console.warn('[WagonWest] streak', e); }
     labReport({ event: 'day', n: 1 });                                               // v1.6 (The Lab): beside the day's streak
     logPlay(save, { legs: 1 }, now);
-    labReport({ event: 'leg', n: 1 });                                               // v1.6 (The Lab): the arrival, and each star earned on the leg
+    labReport({ event: 'leg', n: 1 });
+    setTimeout(() => labSummary(), 0);                                               // v1.8 (cohesion): the card after each leg                                               // v1.6 (The Lab): the arrival, and each star earned on the leg
     for (const lit of stars) if (lit) labReport({ event: 'star', n: 1 });
     save.legsLog = [...save.legsLog, { at: now, leg: leg.id, season: J.season, stars: stars.filter(Boolean).length, markers: num(stats.markers), markersRight: num(stats.markersRight), problems: num(stats.problems), problemsRight: num(stats.problemsRight), words: num(stats.words), wordsRight: num(stats.wordsRight) }].slice(-40);
     const tokens = Math.max(0, num(J.tokens) - num(save.trip && save.trip.tokens0));
@@ -3198,7 +3232,6 @@ async function boot() {
   $('#btn-farm').addEventListener('click', () => { const ids = SITES.map((s) => s.id).filter((id) => save.farm.sites[id]); if (ids.length) openFarm(screens.farm.site && save.farm.sites[screens.farm.site] ? screens.farm.site : ids[0]); });
   $('#btn-outfit').addEventListener('click', () => go('outfit', save.journey ? { tab: 'look' } : { fresh: true }));
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'sync' }));
-  $('#btn-lab').addEventListener('click', () => labBridge.openHome({}));       // v1.6 (The Lab): the shared page across the games
   $('#btn-player').addEventListener('click', () => go('players'));
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));
   for (const b of $$('[data-camp]')) b.addEventListener('click', () => { spellPanel.cancel(); go('title'); });

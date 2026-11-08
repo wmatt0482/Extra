@@ -11,7 +11,6 @@
 // emigrant trail"); the big button is Hit the trail / Keep going / A new year, "The farm" sits beside Journal, Outfit and Parents once a farm
 // exists, and a pending fork says so ("A choice at Fort Hall").
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
-import { streakNow } from '../../../spell-jump/src/meta/engagement.js';
 import { drawMap } from './map.js';
 import { drawAvatar } from './players.js';
 
@@ -25,11 +24,7 @@ export function createTitle(app) {
     $('#title-player').textContent = p.name;
     drawAvatar($('#title-avatar'), p.color);
     const save = app.save, J = save.journey;
-    const st = streakNow(save.streak, Date.now());
-    const flame = $('#title-streak');
-    flame.dataset.count = String(st);
-    $('#title-streak-n').textContent = String(st);
-    flame.setAttribute('aria-label', st ? `${st}-day streak` : 'Streak: finish a leg today to start one');
+    app.labSummary();                                         // v1.8 (cohesion): the Lab's card for this game, every time the title shows (the streak flame is the Lab chip's now)
     const words = app.weekWords();
     $('#title-words-n').textContent = String(words);
     $('#title-words').setAttribute('aria-label', `${words} spelling words this week`);
@@ -58,9 +53,7 @@ export function createTitle(app) {
     $('#title-season').textContent = `${J && J.wagonName ? `${J.wagonName} · ` : ''}${run.year} · ${run.tier} · ${run.route}`;
     const farmBtn = $('#btn-farm');
     farmBtn.hidden = !app.hasFarm();
-    const labBtn = $('#btn-lab');
-    labBtn.hidden = !app.labReady();                          // v1.6 (The Lab): the Lab's button shows once the Lab has loaded (never a dead button)
-    $('.menu-row').dataset.n = String(3 + (farmBtn.hidden ? 0 : 1) + (labBtn.hidden ? 0 : 1));
+    $('.menu-row').dataset.n = String(3 + (farmBtn.hidden ? 0 : 1));
     const crew = J ? (J.companions && J.companions.length ? J.companions : (J.party || []).map((p) => p.id)) : [];
     const skills = app.partyLine(crew);
     const sk = $('#title-skills');
