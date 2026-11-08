@@ -70,8 +70,9 @@ export function createRouteMap({ stops = [], onOpen = () => {}, reduced = false 
       const anchor = t === 'buffalo' ? 'start' : t === 'albany' ? 'end' : 'middle';
       const tx = t === 'buffalo' ? Math.max(8, x - 18) : t === 'albany' ? Math.min(W - 8, x + 18) : x;
       towns += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><circle r="${t === 'rochester' ? 22 : 19}" fill="#f6ebc6" stroke="${INK}" stroke-width="2" opacity=".96"/><g transform="scale(.74)">${ICON[t]}</g></g>`;
-      towns += `<text x="${tx.toFixed(1)}" y="${H - 11}" text-anchor="${anchor}" font-family="Special Elite, Courier New, monospace" font-size="${narrow ? 11 : 13}" letter-spacing="${narrow ? 0.5 : 1.2}" fill="${INK2}">${NAME[t].toUpperCase()}</text>`;
-      towns += `<path d="M${x.toFixed(1)} ${(y + 22).toFixed(1)}V${H - 26}" stroke="${INK}" stroke-width="1.4" stroke-dasharray="2 4" opacity=".55"/>`;
+      const ly = narrow && t === 'lockport' ? H - 27 : H - 11;   // Lockport sits close to Buffalo: its label rides one line up on phones
+      towns += `<text x="${tx.toFixed(1)}" y="${ly}" text-anchor="${anchor}" font-family="Special Elite, Courier New, monospace" font-size="${narrow ? 11 : 13}" letter-spacing="${narrow ? 0.5 : 1.2}" fill="${INK2}">${NAME[t].toUpperCase()}</text>`;
+      towns += `<path d="M${x.toFixed(1)} ${(y + 22).toFixed(1)}V${ly - 15}" stroke="${INK}" stroke-width="1.4" stroke-dasharray="2 4" opacity=".55"/>`;
     }
     // the medallions (drawn in svg; the hit areas are real buttons below)
     let meds = '';
