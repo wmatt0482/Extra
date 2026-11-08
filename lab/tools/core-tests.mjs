@@ -326,6 +326,37 @@ test('any-explore counts distinct games with any event today', () => {
   const r2 = applyEvent(lab, ctxAt(T0, { session: newSession('tb') }), ev('tb', 'fact', { firstTry: true })); const q = r2.quests.find((x) => x.id === 'any-explore');
   assert.deepEqual([q.progress, q.target, q.justDone], [2, 2, true]);
 });
+test('any-explore: opening a game (an attach, no report) never counts; a game counts after its first reported event; the card says so', () => {
+  const lab = defaultLab(), c = ctxAt(T0);
+  lab.quests[c.day] = { ids: ['sj-runs', 'tb-win', 'any-explore'], drawnAt: T0, rr: 0, tier: 'easy', p: {}, done: {} };
+  assert.deepEqual(questView(lab, c).find((q) => q.id === 'any-explore').progress, 0, 'nothing played yet');
+  applyEvent(lab, c, ev('xx', 'word'));                                  // an unknown game or event is ignored: no play
+  applyEvent(lab, c, ev('sj', 'nonsense'));
+  assert.equal(questView(lab, c).find((q) => q.id === 'any-explore').progress, 0, 'unknown events do not count as playing');
+  applyEvent(lab, c, ev('sj', 'testWord', { firstTry: true }));          // a Spell Jump qualifier word is a real answer
+  assert.equal(questView(lab, c).find((q) => q.id === 'any-explore').progress, 1);
+  const v = questView(lab, c).find((q) => q.id === 'any-explore');
+  assert.equal(v.text, 'Play 2 different games'); assert.match(v.hint, /Answer something or finish a piece in each one/); assert.match(v.hint, /opening a game does not count/i);
+});
+test('any-explore reads today live: a swap into it and play from another device show at once, not at the next event', () => {
+  const lab = defaultLab(), c = ctxAt(T0);
+  lab.play[c.day] = { sj: 3, tb: 2, ff: 0, ww: 0, bc: 0, cf: 0 };         // two games already played today (e.g. on another device)
+  lab.quests[c.day] = { ids: ['sj-runs', 'tb-win', 'any-explore'], drawnAt: T0, rr: 0, tier: 'easy', p: {}, done: {} };
+  const e = questView(lab, c).find((q) => q.id === 'any-explore');
+  assert.deepEqual([e.progress, e.target, e.done], [2, 2, false], 'the view counts both games without waiting for an event');
+  const r = applyEvent(lab, c, ev('sj', 'word')); assert.equal(r.quests.find((q) => q.id === 'any-explore').justDone, true);
+});
+test('any-explore follows the quest day when a session runs past midnight', () => {
+  const lab = defaultLab(), c = ctxAt(at(0, 7)); const y = c.day;  // 11 pm
+  lab.quests[y] = { ids: ['sj-runs', 'tb-win', 'any-explore'], drawnAt: T0, rr: 0, tier: 'easy', p: {}, done: {} };
+  applyEvent(lab, c, ev('sj', 'word'));
+  const c2 = ctxAt(at(0, 9), { session: c.session });   // 1 am, the next day
+  assert.equal(c2.day !== y, true);
+  const r = applyEvent(lab, c2, ev('tb', 'fact'));
+  assert.equal(c2.session.questDay, y);
+  assert.equal(r.quests.find((q) => q.id === 'any-explore').justDone, true, 'a game before midnight and one after count together');
+  assert.equal(questView(lab, c2).find((q) => q.id === 'any-explore').progress, 2);
+});
 test('the swap works once a day and not on a done quest; the swapped quest is new and keeps its slot', () => {
   const lab = defaultLab(), c = ctxAt(T0); seedPlay(lab, c.day, [[1, ['sj', 'tb', 'ww']], [2, ['sj', 'tb']]]);
   const q = ensureToday(lab, c); const before = q.ids.slice();

@@ -130,12 +130,12 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .players-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
 .players-body::before, .players-body::after { content: ''; flex: 1 0 0; }
 .player-grid { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; max-width: 100%; }
-.pl-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 150px; height: 168px; padding: 10px 8px; border-color: var(--c, var(--line)); }
+.pl-tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; width: 150px; min-height: 168px; padding: 10px 8px; border-color: var(--c, var(--line)); }
 .pl-tile::before { content: ''; position: absolute; inset: 0; border-radius: inherit; background: radial-gradient(90% 60% at 50% 30%, color-mix(in srgb, var(--c, #fff) 30%, transparent), transparent 70%); pointer-events: none; }
 .pl-tile:active { transform: translateY(4px); box-shadow: 0 2px 0 rgba(0,0,0,.45); }
 .pl-avatar { position: relative; width: 80px; height: 80px; }
-.pl-name { position: relative; font: 400 17px/1.1 var(--font-display); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pl-level { position: relative; max-width: 100%; padding: 4px 8px 3px; border-radius: 999px; background: var(--ink); border: 2px solid var(--c, var(--line)); font: 800 11px/1.1 var(--font-body); color: #fff; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-name { position: relative; font: 400 17px/1.1 var(--font-display); max-width: 100%; text-align: center; white-space: normal; overflow-wrap: break-word; }
+.pl-level { position: relative; max-width: 100%; padding: 4px 8px 3px; border-radius: 999px; background: var(--ink); border: 2px solid var(--c, var(--line)); font: 800 11px/1.1 var(--font-body); color: #fff; text-align: center; white-space: normal; overflow-wrap: break-word; }
 .pl-add { border-style: dashed; background: rgba(52,37,26,.8); }
 .pl-plus { display: grid; place-items: center; width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font: 400 40px/1 var(--font-display); box-shadow: 0 4px 0 var(--accent-edge); }
 .sync-chip { position: relative; isolation: isolate; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 12px; flex: none; border-radius: 8px; color: var(--muted); font: 800 12px/1 var(--font-body); letter-spacing: .04em; }
@@ -172,7 +172,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 #screen-title .cash-pill { margin-left: auto; }
 .player-chip { min-height: 46px; padding: 0 14px 0 6px; gap: 8px; font-size: 15px; max-width: 40%; }
 .player-chip canvas { width: 36px; height: 36px; flex: none; }
-.player-chip span { overflow: hidden; text-overflow: ellipsis; }
+.player-chip span { min-width: 0; white-space: normal; overflow-wrap: break-word; line-height: 1.05; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 42px; padding: 0 12px; border-radius: 999px; background: rgba(31,21,13,.82); border: 2px solid var(--line); font: 800 13px/1 var(--font-body); color: #fff; white-space: nowrap; flex: none; }
 .chip svg { width: 18px; height: 18px; }
 .chip b { font: 400 16px/1 var(--font-display); color: var(--accent); }

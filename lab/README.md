@@ -30,3 +30,13 @@ BASE_URL=http://localhost:8130 node lab/tools/e2e-cross.mjs    # the cross-game 
 
 `SHOTS=<dir>` sets where the screenshots go. `/lab/?labtest` (on localhost) exposes `window.__lab` (`grantCoins`, `setQuests`, `setLooks`,
 `advanceDay`, `reset`); `?nosw` skips the service worker; `?player=<id>` opens that player.
+
+## Changelog
+
+- **1.1.0** (service worker `lab-v1.1.0`; the data version `LAB_VERSION` stays 1, nothing in the saved profile changed)
+  - "Play N different games" counts the distinct games that reported at least one event today (an answer, a run, a race, a delivered block, a closed case); opening a game or sitting on its title screen does not count. The card now says so. It is read live from today's play (a swap into it, or play from another device, shows at once) and counts across midnight for a session held past it. Note: a Spell Jump Qualifier reports its words when the whole test is finished, so starting one does not move the card until it ends.
+  - The Lab modal fits the viewport at every size (the overlay used a grid whose percent height fell back to the content height on short and wide screens): fixed header and nav, the content scrolls inside.
+  - Locked Shop items show in full colour with a small lock badge, the price and "Opens at level N". The closed crate and closed slots are no longer greyed.
+  - A level-up moment inside the Lab: badge burst, "Level N", the new title and what opened, the shared level-up sound and voice line; reduced motion fades only.
+  - Names wrap to two lines instead of truncating (player tiles, top chip, pet name).
+- **1.0.1** and earlier: the first releases.

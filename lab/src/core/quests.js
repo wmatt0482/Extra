@@ -25,6 +25,10 @@ export function questText(q, gentle = false, n) {
   return base.replace('{n}', String(count));
 }
 
+/** How many distinct games reported an event on `day` (what the "Play n different games" quest counts). `alsoDay` = a session held past midnight:
+ *  its events after midnight land on the new day but belong to the quest day, so both days count. */
+export const gamesPlayedOn = (lab, day, alsoDay = day) => GAMES.filter((g) => ((lab.play[day] || {})[g] > 0) || ((lab.play[alsoDay] || {})[g] > 0)).length;
+
 /** { sj: n, tb: n, … }: on how many of the last `span` days (ending at `day`) each game had any event. */
 export function playedDays(lab, day, span = 14) {
   const out = Object.fromEntries(GAMES.map((g) => [g, 0]));
@@ -119,8 +123,7 @@ export function questEvent(lab, ctx, game, event, { n = 1, firstTry = null } = {
     let progress;
     const target = targetFor(id, q.tier, index);
     if (t.explore) {
-      const today = lab.play[ctx.day] || {};
-      progress = Math.min(target, GAMES.filter((g) => today[g] > 0).length);
+      progress = Math.min(target, gamesPlayedOn(lab, questDayFor(lab, ctx), ctx.day));
       if (progress === (q.p[id] || 0)) return;
     } else {
       if ((t.game !== game && t.game !== 'any') || !t.events.includes(event) || (t.firstTry && firstTry !== true)) return;
@@ -190,7 +193,9 @@ export function questView(lab, ctx) {
     if (!t) return;
     const target = targetFor(id, q.tier, index), done = q.done[id] !== undefined;
     const r = rewardOf(index);
-    out.push({ id, index, game: t.game, text: questText({ id, target }, !!ctx.gentle), progress: done ? target : Math.min(target, q.p[id] || 0), target, done, coins: r.coins, xp: r.xp, nudge: index === NUDGE_SLOT });
+    // the explore quest is read live from today's play (a swap into it, or play on another device, shows at once, not at the next event)
+    const live = t.explore ? Math.min(target, gamesPlayedOn(lab, questDayFor(lab, ctx), ctx.day)) : Math.min(target, q.p[id] || 0);
+    out.push({ id, index, game: t.game, text: questText({ id, target }, !!ctx.gentle), hint: t.hint || '', progress: done ? target : live, target, done, coins: r.coins, xp: r.xp, nudge: index === NUDGE_SLOT });
   });
   return out;
 }
