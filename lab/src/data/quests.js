@@ -22,8 +22,10 @@ export const QUESTS = [
   { id: 'bc-challenge', game: 'bc', events: ['challenge'], text: 'Meet {n} build challenges', one: 'Meet a build challenge', easy: 1, mid: 1, hard: 1 },
   // (not a nudge: a case opens once a day, so a child is never nudged toward a game that makes them wait)
   { id: 'cf-case', game: 'cf', events: ['case'], text: 'Close {n} case', one: 'Close a case', easy: 1, mid: 1, hard: 1 },
-  // counts the distinct games with any event today; the nudge for a child who has played one game or none lately
-  { id: 'any-explore', game: 'any', events: [], explore: true, text: 'Play {n} different games', easy: 2, mid: 2, hard: 3, nudge: true, nudgeOnly: true },
+  // counts the distinct games that reported at least one event today (an answer, a run, a race, a delivered block, a finished case: anything a game
+  // reports, so a game that was only opened or sat on its title screen does not count); the nudge for a child who has played one game or none lately.
+  // `hint` = the small line under the card that says exactly what counts.
+  { id: 'any-explore', game: 'any', events: [], explore: true, text: 'Play {n} different games', hint: 'Answer something or finish a piece in each one. Just opening a game does not count.', easy: 2, mid: 2, hard: 3, nudge: true, nudgeOnly: true },
 ];
 export const QUEST_REWARD = { coins: 80, xp: 60 };
 export const NUDGE_REWARD = { coins: 120, xp: 90 };

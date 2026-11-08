@@ -25,6 +25,7 @@ export function mountQuests(ctx) {
           h('span', { class: 'lab-quest-body' },
             q.nudge ? h('span', { class: 'lab-tag' }, 'Try something different') : null,
             h('span', { class: 'lab-quest-tx' }, q.text),
+            q.hint ? h('span', { class: 'lab-quest-hint' }, q.hint) : null,
             h('span', { class: 'lab-bar lab-bar-q', role: 'progressbar', 'aria-valuemin': '0', 'aria-valuemax': String(q.target), 'aria-valuenow': String(q.progress) }, h('i', { style: { width: `${p}%` } })),
             h('span', { class: 'lab-quest-n' }, q.done ? 'Done' : `${q.progress} / ${q.target}`))),
         h('span', { class: 'lab-quest-reward' }, q.done ? h('span', { class: 'lab-check big', html: glyph('check'), 'aria-label': 'Done' }) : h('span', { html: COIN }), h('b', {}, `+${q.coins}`)));
