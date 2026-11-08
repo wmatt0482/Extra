@@ -595,6 +595,9 @@ async function runLayout(browser, layout) {
           check(!pp.paper.includes(w), `R1: the word "${w}" is not on the letter before it is spelled`);
           await shot(page, layout, '15-letter-spell', 0);
         }
+        // the letter's read-back starts the moment the foot shows and a tap on the big button leaves the screen, which (rightly) cuts any line the
+        // child is still hearing: a patient child lets "Here is your letter." be said before tapping "Send it"
+        if (s.screen === 'post' && s.poFoot) await page.waitForFunction(() => window.__spoken.some((t) => /^Here is your letter/.test(t)), null, { timeout: 10000 }).catch(() => {});
         if (s.screen === 'post' && s.poFoot && !globalThis.__poShot) { globalThis.__poShot = true; await shot(page, layout, '16-letter', 50); await audit(page, layout.insets, 'post office (the letter)'); await grab(); }
       },
     });
@@ -933,7 +936,26 @@ async function v12Journey(page, layout, grab) {
 
   // ----- the Wagon panel: the HUD's food box -----
   await drive(page, idleTrail, far(page), 20000);
-  await J(page, () => document.querySelector('#hud-food-box').click());
+  // the fast test trail keeps rolling (a day is 0.12 s) while the sections above screenshot and audit: a day's own event (a breakdown uses the spare part,
+  // a hunt the arrows and adds pelts, a cold night a blanket) changes the counts this panel is checked against. Hold the days and put the cards away, then in ONE
+  // task (no day can tick inside it) set the goods, let the loop go (the HUD only opens the panel on an idle trail) and open the panel: an open panel stops the days itself.
+  for (let k = 0; k < 20; k++) {
+    await hold(page, true);
+    await J(page, () => { const w = window.__wagonWest; try { w.markerPanel.cancel(); w.problemPanel.cancel(); } catch (_) { /* ignore */ } });
+    await closeCards(page);
+    const opened = await J(page, () => {
+      const w = window.__wagonWest, Jn = w.save.journey;
+      Object.assign(Jn, { foods: { flour: 300, bacon: 100, beans: 100, other: 0 }, parts: 1, animals: { n: 2, tired: 0 }, limp: false });
+      Object.assign(Jn.goods, { parts: 1, rope: 0, blankets: 1, arrows: 15, pelts: 6 });
+      w.holdTrail(false);
+      document.querySelector('#hud-food-box').click();
+      if (!document.querySelector('#panel-wagon').hidden) { w.app.persist(); return true; }
+      w.holdTrail(true);                      // (a flow was still in flight and the HUD ignored the tap: hold again and retry)
+      return false;
+    });
+    if (opened) break;
+    await page.waitForTimeout(250);
+  }
   await page.waitForSelector(visibleSel('#panel-wagon'));
   const wp = await J(page, () => ({
     title: document.querySelector('#wg-title').textContent,
@@ -969,18 +991,22 @@ async function v12Journey(page, layout, grab) {
   await setJ(page, `J.animals.tired = 0; J.limp = false; J.foods = { flour: 300, bacon: 100, beans: 100, other: 0 };`);
   await J(page, () => window.__wagonWest.wagonPanel.refresh());
   // Ask Eli from the panel: a 'distance' problem (the panel stays under it), a token on a right first answer
-  const tk = await J(page, () => window.__wagonWest.save.journey.tokens);
   await page.click('#wg-eli');
   await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'ask', null, { timeout: 8000 });
+  const tk = await J(page, () => window.__wagonWest.save.journey.tokens);      // (read with the question open: nothing else can pay a token from here to the answer)
   const e1 = await W(page);
   check(e1.pKind === 'distance', `Ask Eli (from the Wagon panel) asks a 'distance' problem: "${await J(page, () => document.querySelector('#pp-text').textContent)}"`);
   await typeDigits(page, '#panel-problem', e1.pAns);
   await page.waitForFunction(() => window.__wagonWest.problemPanel.state === 'closed', null, { timeout: 8000 });
-  check(await J(page, (t) => window.__wagonWest.save.journey.tokens === t + 1, tk), 'a right first answer: a trade token');
+  const tkAfter = await J(page, () => window.__wagonWest.save.journey.tokens);
+  check(tkAfter === tk + 1, `a right first answer: a trade token (${tk} → ${tkAfter})`);
   check(await J(page, () => !document.querySelector('#panel-wagon').hidden && !!document.querySelector('#wg-eli') && !document.querySelector('#wg-eli').disabled), 'back on the Wagon panel, Eli has one question left this leg');
+  // (closing hands the trail back, and at 0.12 s a day the next mile marker or card can open before the check below reads: hold the days across the close)
+  await J(page, () => window.__wagonWest.holdTrail(true));
   await page.click('#wg-close');
   await page.waitForSelector('#panel-wagon', { state: 'hidden' });
   check(await J(page, () => window.__wagonWest.screen === 'trail' && !window.__wagonWest.app.overlayOpen()), '"Back to the trail": the panel closes onto the trail');
+  await J(page, () => window.__wagonWest.holdTrail(false));
   // Ask Eli on the HUD: the 'ration' problem; then no more this leg
   await drive(page, idleTrail, far(page), 20000);
   check(await J(page, () => !document.querySelector('#btn-eli').hidden), 'the HUD offers "Ask Eli: how many days?" while he has a question left');
@@ -2406,8 +2432,10 @@ async function funNose(page, layout, grab) {
   await page.waitForFunction(() => !window.__wagonWest.findPop.showing, null, { timeout: 8000 });
   // the arrowhead is sketched, never kept
   const g0 = (await funState(page)).goods;
+  // (the count is the journey's: leg start can already have drawn an arrowhead from the dog's random nose before the trail was held, so wait for ONE MORE, not for "1")
+  const arrow0 = await J(page, () => window.__wagonWest.fun.finds.arrowhead | 0);
   await hook(page, 'playNose', 'find', 'arrowhead');
-  await waitFn(page, () => window.__wagonWest.fun.finds.arrowhead === 1).catch(async (e) => { console.log('    (arrowhead: ' + JSON.stringify(await J(page, () => { const w = window.__wagonWest; return { finds: w.fun.finds, travel: w.travel, screen: w.screen, findPop: { showing: w.findPop.showing, visible: w.findPop.visible, log: w.findPop.log } }; })) + ')'); throw e; });
+  await waitFn(page, (n) => window.__wagonWest.fun.finds.arrowhead === n + 1, arrow0).catch(async (e) => { console.log('    (arrowhead: ' + JSON.stringify(await J(page, () => { const w = window.__wagonWest; return { finds: w.fun.finds, travel: w.travel, screen: w.screen, findPop: { showing: w.findPop.showing, visible: w.findPop.visible, log: w.findPop.log } }; })) + ')'); throw e; });
   const g1 = (await funState(page)).goods;
   check(JSON.stringify(g0) === JSON.stringify(g1), 'the arrowhead is sketched and left where it lay: nothing goes in the wagon');
   await page.waitForFunction(() => !window.__wagonWest.findPop.showing, null, { timeout: 12000 });
@@ -4185,16 +4213,10 @@ async function labBlocked(browser, layout) {
   const rep = await J(page, () => { const r = window.__wagonWest.labReport({ event: 'marker', n: 1, firstTry: true }); return r && { ok: r.ok, coins: r.coins }; });
   check(rep && rep.ok === false && rep.coins === 0, 'a report to a Lab that is not there is an empty receipt, never an error');
   let answered = 0;
-  // a time budget (about 80 s), not 300 turns: a random trail event ("Stuck in the mud" is a problem on the same panel) takes turns of its own
-  const until0 = Date.now() + 80000;
-  for (let i = 0; Date.now() < until0 && answered < 2; i++) {
-    const st = await W(page);
-    if (st.marker === 'ask' && st.mReal) { await typeDigits(page, '#panel-marker', st.mAns); answered++; await page.waitForTimeout(150); }
-    else if (st.marker === 'copy' || (st.marker === 'ask' && !st.mReal)) await typeDigits(page, '#panel-marker', st.mAns);
-    else if (st.card) await page.click('#tc-go').catch(() => {});
-    else if (st.problem === 'ask') await typeDigits(page, '#panel-problem', st.pAns);
-    await page.waitForTimeout(60);
-  }
+  // the shared driver answers whatever the trail puts up (a random event can be a card, a fact, a problem, a hunt or fishing with its bait row, a river
+  // choice with its words, the dog's namer ...: the old hand-rolled loop here knew only four of those and stalled on the others, so the count
+  // depended on which event came); a time budget, not a number of turns
+  try { await drive(page, async () => answered >= 2, { onMarker: (n) => { answered = n; } }, 120000); } catch (e) { console.log('    (' + String(e.message).slice(0, 300) + ')'); }
   check(answered >= 2, `the game plays on (${answered} mile markers answered)`);
   const cash = await J(page, () => window.__wagonWest.save.journey.cash);
   check(Number.isFinite(cash) && cash >= 0, 'the dollars are the game\'s alone');

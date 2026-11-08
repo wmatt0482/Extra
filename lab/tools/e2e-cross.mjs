@@ -73,7 +73,9 @@ async function tbAnswer(page, value) {
   await page.click('#gate .np-key[data-key="go"]');
 }
 // a race on the mock engine, every gate answered right, until the results show; `onGate` runs once on the first gate
-async function tbRaceToResults(page, { timeout = 60000, onFirstGate = null } = {}) {
+// (the mock engine runs the race in real time: with aiTimes [40, 44, 48] the player's own run, the gates' answers and the finish take about 59 s, so a
+// 60 s budget was a coin flip on a loaded machine; the loop ends the moment the results show, so a generous budget costs nothing when it passes)
+async function tbRaceToResults(page, { timeout = 150000, onFirstGate = null } = {}) {
   const end = Date.now() + timeout; let first = false;
   while (Date.now() < end) {
     const st = await J(page, () => { const T = window.__trailBlazer, g = T.gate; return { results: T.screen === 'results', gate: g.open && g.state === 'ask', answer: g.answer, index: g.index, pit: !document.querySelector('#pit-offer').hidden }; });
