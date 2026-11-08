@@ -3059,7 +3059,7 @@ async function boot() {
     return { kind };
   }
   Object.assign(app, {
-    playNose: (kind, findId) => { const n = makeNose(kind, findId); return n ? onTrailRun(() => runNose(n, T)) : false; },
+    playNose: (kind, findId) => { if (!T || (T.busy && !T.held)) return false; const n = makeNose(kind, findId); return n ? onTrailRun(() => runNose(n, T)) : false; },   // (a busy trail refuses BEFORE makeNose records the find / adds the plums: a caller that retries, as the tests' hook() does, used to record it once per try)
     playFact(id) {
       const tf = TRAIL_FACT_BY_ID[id];
       return tf ? onTrailRun(() => runFact({ id, night: tf.when === 'night', ambient: tf.ambient || null, sound: tf.sound }, T)) : false;
