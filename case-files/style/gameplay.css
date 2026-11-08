@@ -27,13 +27,13 @@
 
 /* ---------- word chips (the case report): tap the clue's words instead of typing ---------- */
 .kbwrap { flex-direction: column; align-items: center; }
-.word-chips { width: min(100%, 720px); display: flex; flex-wrap: wrap; gap: 6px; margin: 0 auto 8px; max-height: 88px; overflow-y: auto; touch-action: pan-y; }
+.word-chips { width: min(100%, 720px); display: flex; flex-wrap: wrap; gap: 6px; margin: 0 auto 8px; max-height: 146px; overflow-y: auto; touch-action: pan-y; }
 .word-chips[hidden] { display: none; }
-.word-chip { flex: none; min-height: 40px; padding: 0 14px; border-radius: 999px; border: 2px solid var(--manila-edge); background: var(--manila); color: var(--manila-ink); font: 700 17px/1 var(--font-body); box-shadow: 0 3px 0 var(--manila-edge); cursor: pointer; }
+.word-chip { flex: none; min-height: 44px; padding: 0 14px; border-radius: 999px; border: 2px solid var(--manila-edge); background: var(--manila); color: var(--manila-ink); font: 700 17px/1 var(--font-body); box-shadow: 0 3px 0 var(--manila-edge); cursor: pointer; }
 .word-chip:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--manila-edge); background: #fff3c8; }
 @media (orientation: landscape) and (max-height: 500px) {
   .word-chips { flex-wrap: nowrap; overflow: auto hidden; max-height: none; touch-action: pan-x; margin-bottom: 4px; scrollbar-width: none; }
-  .word-chip { min-height: 36px; font-size: 16px; }
+  .word-chip { min-height: 44px; font-size: 16px; }
 }
 
 /* ---------- the report sentence: the clue on its own line, the period stays with the blank ---------- */

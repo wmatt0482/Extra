@@ -57,7 +57,10 @@ export function createCaseView(app) {
     onBackspace: () => { if (!kbMode || !typed) return; typed = typed.slice(0, -1); app.audio.letter(true); kbMode.draw(); },
     onEnter: () => { if (kbMode && typed.trim()) kbMode.enter(); },
   });
-  function useKeyboard(mode) { for (const k of kb.el.querySelectorAll('.is-down')) k.classList.remove('is-down'); kbMode = mode; kb.setEnterLabel(mode.label); kb.setEnabled(true); kb.setEnterEnabled(!!typed.trim()); kb.setActive(true); }
+  function useKeyboard(mode) {
+    // a key pressed while its beat was being replaced never got its pointerup: the shared keyboard would keep it "held" (and drawn down). Cancel any such pointer.
+    for (let id = 0; id < 12; id++) { try { kb.el.dispatchEvent(new PointerEvent('pointercancel', { pointerId: id })); } catch (_) { /* ignore */ } }
+    for (const k of kb.el.querySelectorAll('.is-down')) k.classList.remove('is-down'); kbMode = mode; kb.setEnterLabel(mode.label); kb.setEnabled(true); kb.setEnterEnabled(!!typed.trim()); kb.setActive(true); }
   const syncEnter = () => kb.setEnterEnabled(!!typed.trim());
   function releaseKeyboard() { kbMode = null; kb.setActive(false); }
 

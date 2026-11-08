@@ -304,10 +304,10 @@ test('report.lead: the per-case lead, or the neutral default; the sentence has n
   assert.equal(reportText({ report: { keywords: [] } }, rec, ''), 'The answer is Tom Fisk because it was in his coat. The clue that proves it is: (none)');
   assert.equal(cleanBecause('  it was there!! '), 'it was there');
 });
-test('wordChips: the attached clue words then the report keywords; unique, no filler words, short, first word not capitalized by the sentence', () => {
+test('wordChips: the report keywords then the attached clue words; unique, no filler words, short, first word not capitalized by the sentence', () => {
   const c = wordChips(E1, 'The ticket was tucked in Tom\'s coat pocket.');
   assert.ok(c.includes('ticket') && c.includes('tucked') && c.includes('coat') && c.includes('pocket'), c.join());
-  assert.ok(!c.includes('the') && !c.includes('was') && !c.includes('in') && c.length <= 14); assert.equal(new Set(c.map((w) => w.toLowerCase())).size, c.length);
+  assert.ok(!c.includes('the') && !c.includes('was') && !c.includes('in') && c.length <= 16); assert.equal(new Set(c.map((w) => w.toLowerCase())).size, c.length);
   assert.ok(!c.includes('The'), 'filler');
   assert.ok(wordChips({ report: { keywords: ['Biscuit', 'hat'] } }, 'Biscuit wore the hat.').includes('Biscuit'), 'a name keeps its capital');
   assert.ok(wordChips({ report: { keywords: [] } }, 'Halfway across, a gust came.').includes('halfway'));

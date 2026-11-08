@@ -24,8 +24,8 @@ export function reportText(kase, rec, clueText) {
 }
 
 const STOP = new Set('the a an of to in on at is was were are be it its that this which what who how why when where and or for with as by from his her their he she they i my me we our you your not no do did does has have had so but if then than there here him them out up off into over under too very just said says one'.split(' '));
-/** Word chips for the "because" blank: the words of the attached clue, then the case's report keywords (unique, a short list). */
-export function wordChips(kase, clueText, max = 14) {
+/** Word chips for the "because" blank: the case's report keywords, then the words of the attached clue (unique, a short list). */
+export function wordChips(kase, clueText, max = 16) {
   const seen = new Set(), out = [];
   const add = (w) => {
     const word = String(w).replace(/[^A-Za-z'-]/g, '').replace(/^['-]+|['-]+$/g, '');
@@ -34,7 +34,7 @@ export function wordChips(kase, clueText, max = 14) {
     seen.add(key); out.push(word);
   };
   const caps = new Set(((kase.report && kase.report.keywords) || []).filter((k) => /^[A-Z]/.test(k)).map((k) => k.toLowerCase()));
-  String(clueText || '').split(/\s+/).forEach((w, i) => add(i === 0 && !caps.has(w.toLowerCase().replace(/[^a-z'-]/g, '')) ? w.toLowerCase() : w));   // the sentence's first word is capital only because it starts the sentence
-  for (const k of (kase.report && kase.report.keywords) || []) String(k).split(/\s+/).forEach(add);
+  for (const k of (kase.report && kase.report.keywords) || []) String(k).split(/\s+/).forEach(add);      // the case's own keywords first (the words a good report uses) ...
+  String(clueText || '').split(/\s+/).forEach((w, i) => add(i === 0 && !caps.has(w.toLowerCase().replace(/[^a-z'-]/g, '')) ? w.toLowerCase() : w));   // ... then the clue's words (the first is capital only because it starts the sentence)
   return out.slice(0, max);
 }

@@ -58,5 +58,5 @@ export function createFile(app) {
     draw();
     if (replayDone) { tab = 'report'; draw(); }
   }
-  return { show, hide() { if (reader) reader.stop(); app.speech.cancel(); } };
+  return { show, hide() { if (reader) reader.stop(); reader = null; app.speech.cancel(); body.replaceChildren(); } };      // (no stale document left behind a replay)
 }
