@@ -8,6 +8,8 @@ import { totalXp } from './core/model.js';
 import { labStreakNow, freezeView } from './core/streak.js';
 import { SLOTS, ITEM_BY_ID } from './data/catalog.js';
 import { collectVoiceTexts, voiceTexts, LAB_LINES } from './core/view.js';
+import { coinIcon } from './coin.js';
+import { GAME_INFO, GAME_PATH } from './data/games.js';
 
 export { NOOP_RECEIPT, LAB_VERSION };
 /** Each game's looks module: `export const LOOKS_READY = [item ids it can draw or enforce]` and an optional paintPreview(ctx, item, w, h). */
@@ -69,6 +71,21 @@ export const lab = {
   beginRound(g) { try { getStore().beginRound(g || game); } catch (_) { /* ignore */ } },
   roundSummary() { try { return getStore().roundSummary(game) || null; } catch (_) { return null; } },
   hud({ mount, compact = false } = {}) { return lazyHandle((ui) => ui.mountHud(mount, getStore(), { game, compact })); },
+  /** The Lab chip (avatar, "Lab LV n", Lab coins, the Lab streak flame; tap = The Lab) with the Games button. mountChip(container?, { game, current, compact, theme: 'dark' | 'light' }):
+   *  without a container it is a fixed element in the top-left corner. Returns { el, update(), destroy() } (el is null until the Lab's UI has loaded). */
+  mountChip(container, opts) {
+    const o = container && typeof container === 'object' && !container.nodeType ? container : (opts || {});
+    const host = container && container.nodeType ? container : null;
+    return lazyHandle((ui) => ui.mountChip(host, getStore(), { game, ...o }));
+  },
+  /** The "The Lab" button for a game's "Who's playing?" screen. */
+  mountPickerButton(container, opts = {}) { return lazyHandle((ui) => ui.mountPickerButton(container || null, getStore(), { game, ...opts })); },
+  /** The Games panel (all six games, The Lab and Home; the current one highlighted). openGames({ current, onClose }). */
+  openGames(o = {}) { lazyUi().then((ui) => { ui.installStyles(); ui.openGames(getStore(), { current: game, ...o }); }).catch((e) => console.warn('[lab] ui unavailable', e)); },
+  /** The Lab coin as an SVG string (class "coin lab-coin"): use it for a Lab-coin price in a game. coinIcon(size?) sets width and height in px. */
+  coinIcon,
+  /** The six games and their same-origin paths (for a game that draws its own links). */
+  games: GAME_INFO.map((g) => ({ id: g.id, name: g.name, path: g.path })), paths: GAME_PATH,
   results({ mount } = {}) { return lazyHandle((ui) => ui.mountResults(mount, getStore(), { game })); },
   /** What to DRAW: { slots: { [slot]: itemId | null }, owns(id), ready } (null = use the game's own look). */
   cosmetics(g) {
