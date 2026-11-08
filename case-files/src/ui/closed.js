@@ -46,12 +46,20 @@ export function celebrate(el, payout, app) {
   if (stamp) { stamp.classList.remove('slam', 'fade'); void stamp.offsetWidth; stamp.classList.add(still ? 'fade' : 'slam'); }
   for (const old of screen.querySelectorAll('.confetti')) old.remove();
   if (!still) {
-    const box = h('div', { class: 'confetti', 'aria-hidden': 'true' });
+    // one <svg> holding the pieces (a single box for layout, pieces animated with transform and opacity only)
+    const NS = 'http://www.w3.org/2000/svg';
+    const box = document.createElementNS(NS, 'svg');
+    box.setAttribute('class', 'confetti'); box.setAttribute('aria-hidden', 'true'); box.setAttribute('width', '100%'); box.setAttribute('height', '100%');
     const n = 44;
     for (let i = 0; i < n; i++) {
-      const r = (a) => Math.random() * a;
-      box.append(h('i', { style: { '--x': `${(r(100)).toFixed(1)}%`, '--dx': `${((r(2) - 1) * 90).toFixed(0)}px`, '--rot': `${(360 + r(540)).toFixed(0)}deg`, '--c': CONFETTI_COLORS[i % CONFETTI_COLORS.length],
-        '--d': `${(1.7 + r(1.3)).toFixed(2)}s`, '--dl': `${(0.34 + r(0.55)).toFixed(2)}s`, '--w': `${(7 + r(7)).toFixed(0)}px`, '--h': `${(10 + r(10)).toFixed(0)}px` }, class: i % 3 === 0 ? 'dot' : '' }));
+      const r = (a) => Math.random() * a, dot = i % 3 === 0;
+      const w = 7 + r(7), hh = dot ? w : 10 + r(10);
+      const p = document.createElementNS(NS, dot ? 'circle' : 'rect');
+      if (dot) { p.setAttribute('r', String(w / 2)); p.setAttribute('cx', `${r(100).toFixed(1)}%`); p.setAttribute('cy', '-20'); }
+      else { p.setAttribute('width', String(w)); p.setAttribute('height', String(hh)); p.setAttribute('rx', '2'); p.setAttribute('x', `${r(100).toFixed(1)}%`); p.setAttribute('y', '-26'); }
+      p.setAttribute('fill', CONFETTI_COLORS[i % CONFETTI_COLORS.length]);
+      p.style.cssText = `--dx:${((r(2) - 1) * 90).toFixed(0)}px;--rot:${(360 + r(540)).toFixed(0)}deg;--d:${(1.7 + r(1.3)).toFixed(2)}s;--dl:${(0.34 + r(0.55)).toFixed(2)}s`;
+      box.append(p);
     }
     screen.append(box);
     setTimeout(() => box.remove(), 3800);                           // the burst is short
