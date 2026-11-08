@@ -5,13 +5,15 @@ import { T0, at, atest, dayOf, finish, rng, section, test } from './testlib.mjs'
 import { LAB_VERSION, GAMES, LIMITS, cleanPetName, defaultLab, deviceKeyOk, labKey, mondayOfWeek, normalizeLab, owns, totalXp, wallet, weekShift } from '../src/core/model.js';
 import { EVENTS, COMBO, DAILY_COIN_CAP, MOMENT, MOMENT_NAMES, eventDef, payFor } from '../src/core/events.js';
 import { comboStep, newCombo } from '../src/core/combo.js';
-import { LEVEL_GIFTS, LEVEL_MAX, SLOT_LEVEL, frameFor, levelFor, levelProgress, petStage, slotOpen, titleFor, xpToReach } from '../src/core/xp.js';
+import { LEVEL_GIFTS, LEVEL_MAX, SLOT_LEVEL, TITLES, frameFor, levelFor, levelProgress, petStage, slotOpen, titleFor, xpBar, xpToReach } from '../src/core/xp.js';
+import { friendlyDay, gameCards, setSummary } from '../src/core/summary.js';
 import { QUESTS, QUEST_BY_ID, drawQuests, ensureToday, playedDays, questEvent, questText, questView, rerollQuest, targetFor, tierFor } from '../src/core/quests.js';
 import { CRATE_ODDS, crateOddsTable, earnCrate, openCrate, rollCrate, unopened } from '../src/core/crate.js';
 import { buy, canBuy, equip, equippedIds, grant, isReady, priceOf, shelf } from '../src/core/shop.js';
 import { earnLabBonusFreeze, freezeView, labDayDone, labRefresh, labStreakNow } from '../src/core/streak.js';
 import { boardFor, claimGoal, ensureGoalPick, goalFor, goalTarget, pickGoal, settleCrowns, weekNumbers } from '../src/core/family.js';
 import { NOOP_RECEIPT, applyEvent, beginRound, newSession, roundSummary } from '../src/core/engine.js';
+import { GAME_INFO } from '../src/data/games.js';
 import { buildView, voiceTexts } from '../src/core/view.js';
 import { ITEMS, ITEM_BY_ID, SLOTS } from '../src/data/catalog.js';
 import { FAMILY_GOALS } from '../src/data/goals.js';
@@ -27,7 +29,7 @@ section('model');
 test('defaultLab is a normalized fixed point and matches the spec shape', () => {
   const d = defaultLab();
   assert.deepEqual(normalizeLab(d, 0), d);
-  assert.deepEqual(Object.keys(d), ['v', 'resetAt', 'dev', 'paid', 'owned', 'equipped', 'pet', 'streak', 'quests', 'crates', 'play', 'weeks', 'fam', 'picks', 'claimed', 'crowns', 'trophies', 'gallery', 'best', 'opts', 'seen', 'coinDay']);
+  assert.deepEqual(Object.keys(d), ['v', 'resetAt', 'dev', 'paid', 'owned', 'equipped', 'pet', 'streak', 'quests', 'crates', 'play', 'weeks', 'fam', 'picks', 'claimed', 'crowns', 'trophies', 'gallery', 'best', 'opts', 'seen', 'coinDay', 'sum']);
   assert.equal(d.v, LAB_VERSION); assert.deepEqual(d.pet, { species: 'fox', name: 'Pip', at: 0 });
 });
 test('normalizeLab survives hostile input and is idempotent', () => {
@@ -193,8 +195,19 @@ test('levelProgress: into, need, toNext, next; the last level', () => {
   assert.deepEqual(levelProgress(300), { level: 3, title: 'Cadet', into: 0, need: 300, toNext: 300, next: 4, max: false });
   const m = levelProgress(200000); assert.equal(m.level, 100); assert.equal(m.max, true); assert.equal(m.next, null); assert.equal(m.toNext, 0);
 });
-test('titles every 10 levels, frames at 10/25/50/75/100, pet stages, slots open by level', () => {
-  const t = { 1: 'Cadet', 9: 'Cadet', 10: 'Scout', 20: 'Ranger', 30: 'Captain', 40: 'Pioneer', 50: 'Commander', 60: 'Inventor', 70: 'Master', 80: 'Legend', 90: 'Lab Legend', 100: 'Lab Legend' };
+test('the XP bar fills with the XP INTO the level over what the level takes, and always says Lab LV (the LV 3 / "258 XP to level 4" playtest)', () => {
+  const b = xpBar(xpToReach(3) + 42);              // 42 into level 3, which takes 300: 258 to go
+  assert.deepEqual([b.level, b.name, b.into, b.need, b.pct, b.toGo, b.max], [3, 'Lab LV 3', 42, 300, 14, '258 XP to Lab LV 4', false]);
+  assert.ok(b.pct !== b.into && b.pct <= 100, 'the fill is a share of the level, not the raw XP');
+  assert.deepEqual([xpBar(0).pct, xpBar(0).toGo, xpBar(99).pct, xpBar(100).name, xpBar(100).pct], [0, '100 XP to Lab LV 2', 99, 'Lab LV 2', 0]);
+  const half = xpToReach(10) + Math.round((xpToReach(11) - xpToReach(10)) / 2); assert.equal(xpBar(half).pct, 50);
+  assert.deepEqual([xpBar(1e9).pct, xpBar(1e9).toGo, xpBar(1e9).max, xpBar(1e9).name], [100, 'Top Lab level', true, 'Lab LV 100']);
+  assert.ok(xpBar(1234567).toGo.includes('Lab LV') || xpBar(1234567).max);
+  for (let x = 0; x < 20000; x += 137) { const p = xpBar(x); assert.ok(p.pct >= 0 && p.pct <= 100); assert.ok(p.into >= 0 && p.into <= p.need || p.max); }
+  assert.deepEqual(TITLES.map((t) => t[0]), [1, 5, 10, 20, 30, 40, 50, 65, 80, 95]);
+});
+test('titles change at sensible bands, frames at 10/25/50/75/100, pet stages, slots open by level', () => {
+  const t = { 1: 'Cadet', 4: 'Cadet', 5: 'Scout', 9: 'Scout', 10: 'Ranger', 19: 'Ranger', 20: 'Captain', 30: 'Pioneer', 40: 'Inventor', 50: 'Commander', 64: 'Commander', 65: 'Master', 80: 'Legend', 94: 'Legend', 95: 'Lab Legend', 100: 'Lab Legend' };
   for (const [l, name] of Object.entries(t)) assert.equal(titleFor(+l), name, 'level ' + l);
   assert.deepEqual([1, 9, 10, 24, 25, 50, 74, 75, 100].map(frameFor), [0, 0, 1, 1, 2, 3, 3, 4, 5]);
   assert.deepEqual([1, 7, 8, 19, 20, 39, 40, 69, 70, 100].map(petStage), [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]);
@@ -267,6 +280,25 @@ test('shelf: states owned / gift / locked / poor / buy; a game with nothing read
   assert.equal(shelf(lab, { game: 'bc', ready: ['bc.veh.dump', 'bc.veh.loader'] }).length, 1, 'soon items are hidden');
 });
 
+section('summaries');
+test('friendlyDay: Today, Yesterday, a weekday inside the week, Last week, A while ago, nothing when never', () => {
+  const now = new Date(2026, 10, 8, 15, 0, 0).getTime();      // Sunday Nov 8 2026
+  const d = (n) => new Date(2026, 10, 8 - n, 9, 0, 0).getTime();
+  assert.deepEqual([0, 1, 2, 5, 6, 7, 13, 14, 60].map((n) => friendlyDay(d(n), now)), ['Today', 'Yesterday', 'Friday', 'Tuesday', 'Monday', 'Last week', 'Last week', 'A while ago', 'A while ago']);
+  assert.equal(friendlyDay(0, now), ''); assert.equal(friendlyDay(now + 3600000, now), 'Today');
+});
+test('gameCards: six cards in order; a played game shows its row, a never-played game has a pitch; setSummary cleans and keeps the later row', () => {
+  const lab = defaultLab(), now = T0;
+  assert.equal(setSummary(lab, 'cf', { level: 'Detective: 2 cases', line: 'Cases closed: 2', today: '', lastPlayed: now - 3 * 86400000 }, now), true);
+  assert.equal(setSummary(lab, 'cf', { level: 'older', lastPlayed: now - 9 * 86400000 }, now), false); assert.equal(lab.sum.cf.level, 'Detective: 2 cases');
+  assert.equal(setSummary(lab, 'xx', { level: 'a' }, now), false); assert.equal(setSummary(lab, 'sj', { level: '', line: '', today: '', lastPlayed: 0 }, now), true, 'an empty row still stamps lastPlayed (= now)');
+  const cards = gameCards(lab, now);
+  assert.deepEqual(cards.map((c) => c.game), GAMES); assert.equal(cards.length, 6);
+  const cf = cards[5]; assert.deepEqual([cf.played, cf.level, cf.lastLabel], [true, 'Detective: 2 cases', 'Friday']);
+  const bc = cards[4]; assert.deepEqual([bc.played, bc.lastLabel], [false, '']); assert.ok(bc.pitch && !/[<>]/.test(bc.pitch));
+  assert.deepEqual(cards.map((c) => c.path), ['/spell-jump/', '/trail-blazer/', '/fraction-fright/', '/wagon-west/', '/build-crew/', '/case-files/']);
+});
+
 section('quests');
 const seedPlay = (lab, day, spec) => { for (const [off, games] of spec) lab.play[addDays(day, -off)] = Object.fromEntries(GAMES.map((g) => [g, games.includes(g) ? 3 : 0])); };
 test('drawQuests is deterministic per (player, day) and varies across days and players; no duplicate template', () => {
@@ -301,8 +333,30 @@ test('a brand-new child: the game they opened is a home quest; tiers by level; t
   for (const q of QUESTS) assert.ok(q.easy <= q.mid && q.mid <= q.hard);
 });
 test('text: {n} filled, single wording, the gentle wording for Fraction Fright', () => {
-  assert.equal(questText({ id: 'sj-words', target: 8 }), 'Spell 8 words'); assert.equal(questText({ id: 'tb-races', target: 1 }), 'Finish a race');
-  assert.equal(questText({ id: 'ff-zap', target: 6 }), 'Zap 6 fractions'); assert.equal(questText({ id: 'ff-zap', target: 6 }, true), 'Help 6 neighbors home'); assert.equal(questText({ id: 'tb-win', target: 1 }), 'Win a race');
+  assert.equal(questText({ id: 'sj-words', target: 8 }), 'Spell 8 words in Spell Jump'); assert.equal(questText({ id: 'tb-races', target: 1 }), 'Finish a Trail Blazer race (any place)');
+  assert.equal(questText({ id: 'ff-zap', target: 6 }), 'Zap 6 fractions in Fraction Fright'); assert.equal(questText({ id: 'ff-zap', target: 6 }, true), 'Help 6 neighbors home in Fraction Fright'); assert.equal(questText({ id: 'tb-win', target: 1 }), 'Win a Trail Blazer race (finish 1st)');
+  assert.equal(questText({ id: 'cf-case', target: 1 }), 'Close a Case Files case'); assert.equal(questText({ id: 'sj-runs', target: 2 }), 'Finish 2 Spell Jump runs');
+});
+test('every quest title names its game; the title and the events it counts agree (a race finished 4th of 4 moves the race quest, not Win a race)', () => {
+  const GAME_WORDS = { sj: 'Spell Jump', tb: 'Trail Blazer', ff: 'Fraction Fright', ww: 'Wagon West', bc: 'Build Crew', cf: 'Case Files' };
+  for (const q of QUESTS) {
+    if (q.game === 'any') { assert.match(questText(q, false, 2), /different games/); continue; }
+    for (const n of new Set([q.easy, q.mid, q.hard])) for (const gentle of [false, true]) { const t = questText(q, gentle, n); assert.ok(t.includes(GAME_WORDS[q.game]), `${q.id}: "${t}" names ${GAME_WORDS[q.game]}`); assert.ok(!/\{n\}/.test(t)); }
+  }
+  assert.deepEqual(QUEST_BY_ID['tb-races'].events, ['race']); assert.deepEqual(QUEST_BY_ID['tb-win'].events, ['win']);
+  assert.match(questText(QUEST_BY_ID['tb-races'], false, 1), /any place/); assert.match(questText(QUEST_BY_ID['tb-win'], false, 1), /1st/);
+  assert.match(QUEST_BY_ID['tb-races'].hint, /any place/i); assert.match(QUEST_BY_ID['tb-win'].hint, /1st/);
+  // a tester finished a full race in 4th of 4: the game reports `race` (and `day`), never `win`
+  const lab = defaultLab(), c = ctxAt(T0);
+  lab.quests[c.day] = { ids: ['sj-runs', 'tb-win', 'tb-races'], drawnAt: T0, rr: 0, tier: 'easy', p: {}, done: {} };
+  const rows = questEvent(lab, c, 'tb', 'race', {});
+  assert.deepEqual(rows.map((r) => [r.id, r.progress, r.justDone]), [['tb-races', 1, true]], 'Finish a race counts any finished race');
+  assert.equal(lab.quests[c.day].p['tb-win'], undefined, 'Win a race stays 0 below 1st place');
+  assert.equal(lab.quests[c.day].p['sj-runs'], undefined, '"Finish 2 runs" is a Spell Jump quest: a Trail Blazer race never moves it');
+  assert.equal(questEvent(lab, c, 'tb', 'win', {})[0].id, 'tb-win');
+  assert.equal(questEvent(lab, c, 'sj', 'run', {})[0].id, 'sj-runs');
+  // every quest's events exist in the exchange table for its game (a quest on an event nobody pays is a quest nobody can finish)
+  for (const q of QUESTS) if (!q.explore) for (const e of q.events) assert.ok(eventDef(q.game, e), `${q.id} counts ${q.game}.${e}`);
 });
 test('progress counts only matching events and filters; completion pays once, in the same event; all three: one crate key, a bonus freeze', () => {
   const lab = defaultLab(), c = ctxAt(T0);
@@ -534,7 +588,7 @@ test('a report end to end: a Receipt with every field, a level-up banner, quests
   const r = applyEvent(lab, c, ev('tb', 'race'));
   for (const f of ['ok', 'coins', 'xp', 'capped', 'combo', 'level', 'quests', 'questsAllDone', 'crate', 'unlocks', 'streak', 'day', 'bonus']) assert.ok(f in r, f);
   assert.deepEqual(Object.keys(r.combo), ['count', 'boosted', 'moment', 'name']); assert.deepEqual(Object.keys(NOOP_RECEIPT).sort(), Object.keys(r).sort());
-  assert.equal(r.quests[0].id, 'tb-races'); assert.equal(r.quests[0].text, 'Finish a race');
+  assert.equal(r.quests[0].id, 'tb-races'); assert.equal(r.quests[0].text, 'Finish a Trail Blazer race (any place)');
   assert.equal(applyEvent(lab, c, ev('tb', 'fact', { firstTry: true })).quests.length, 1);
   for (let i = 0; i < 8; i++) applyEvent(lab, c, ev('tb', 'fact', { firstTry: true }));
   const last = applyEvent(lab, c, ev('tb', 'win'));
@@ -566,7 +620,7 @@ test('roundSummary and the view', () => {
   assert.equal(v.coins, 6); assert.equal(v.player.name, 'Mia'); assert.deepEqual(Object.keys(v.avatar.slots), ['hat', 'shirt', 'back', 'face', 'aura']); assert.equal(v.avatar.slots.back.open, false); assert.equal(v.avatar.slots.back.opensAt, 4);
   assert.deepEqual([v.pet.species, v.pet.name, v.pet.stage, v.pet.mood], ['fox', 'Pip', 1, 'happy']); assert.equal(buildView(defaultLab(), c).pet.mood, 'content');
   assert.deepEqual(Object.keys(v.streak), ['count', 'best', 'weeklyReady', 'bonus']); assert.equal(v.crates.waiting, 0);
-  assert.ok(voiceTexts().length > 100 && voiceTexts().includes('Help 6 neighbors home') && voiceTexts().includes('Dump truck'));
+  assert.ok(voiceTexts().length > 100 && voiceTexts().includes('Help 6 neighbors home in Fraction Fright') && voiceTexts().includes('Dump truck'));
 });
 test('performance: 1,000 reports through the engine in well under a second', () => {
   const lab = defaultLab(), c = ctxAt(T0); ensureToday(lab, c); const t0 = performance.now();

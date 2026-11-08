@@ -45,6 +45,7 @@ function randomLab(r, i = 0) {
   d.trophies = some([{ game: 'sj', id: 'friday', tier: 'gold', at: 5, n: 18, of: 20 }, { game: 'sj', id: 'friday', tier: 'bronze', at: 9, n: 11, of: 20 }, { game: 'sj', id: 'friday', tier: 'brave', at: 12, n: 3, of: 20 }], 0.5);
   d.gallery = some([{ id: 'bc.job3.a', at: 3, kind: 'job', title: 'Low bridge', pieces: [[1, 2, 3, 4, 5]] }, { id: 'bc.job3.b', at: 7, kind: 'site', title: 'Site', pieces: [] }, { id: 'bc.job3.a', at: 9, kind: 'job', title: 'Low bridge 2', pieces: [[1, 2, 3, 4, 6]] }], 0.5);
   for (const g of some(GAMES, 0.5)) d.best[g] = Math.floor(r() * 12);
+  for (const g of some(GAMES, 0.5)) d.sum[g] = { level: pick(['Speller LV 3', 'Rider LV 2', '']), line: pick(['24 words mastered', '3 cases closed']), today: pick(['Today: 3 / 8 words', '']), lastPlayed: pick([0, 1000, 2000, 2000, 3000]) };
   d.opts = { quests: r() < 0.8, board: r() < 0.8, goal: r() < 0.8, at: Math.floor(r() * 4) };
   for (const g of some(GAMES, 0.5)) d.seen.games[g] = 1 + Math.floor(r() * 9);
   d.seen.welcome = r() < 0.5 ? 1 + Math.floor(r() * 9) : 0;
@@ -210,6 +211,30 @@ section('the client registry');
   globalThis.localStorage = prev; if (!prev) delete globalThis.localStorage;
 }
 
+section('per-game summaries');
+test('summary merge: the later lastPlayed wins per game; a tie is decided the same way on both sides; an old doc without sum never erases one', () => {
+  const a = defaultLab(), b = defaultLab();
+  a.sum.sj = { level: 'Speller LV 3', line: '24 words mastered', today: 'Today: 3 / 8 words', lastPlayed: 2000 };
+  b.sum.sj = { level: 'Speller LV 2', line: '20 words mastered', today: '', lastPlayed: 1000 };
+  b.sum.cf = { level: 'Detective', line: '3 cases closed', today: '', lastPlayed: 500 };
+  const m = mergeLabData(a, b);
+  assert.equal(m.sum.sj.level, 'Speller LV 3', 'later lastPlayed wins'); assert.equal(m.sum.cf.line, '3 cases closed', 'the other game is kept');
+  assert.deepEqual(mergeLabData(b, a), m, 'commutative');
+  const tie1 = defaultLab(), tie2 = defaultLab();
+  tie1.sum.tb = { level: 'Rider LV 1', line: 'a', today: '', lastPlayed: 700 }; tie2.sum.tb = { level: 'Rider LV 1', line: 'b', today: '', lastPlayed: 700 };
+  assert.deepEqual(mergeLabData(tie1, tie2), mergeLabData(tie2, tie1), 'a tie picks the same row on both sides');
+  const old = clone(a); delete old.sum;
+  assert.deepEqual(mergeLabData(a, old).sum, a.sum, 'a doc from an older build keeps the summaries');
+  assert.deepEqual(mergeLabData(old, a).sum, a.sum);
+  const viaSync = mergeLab({ updatedAt: 1, data: a }, { updatedAt: 2, data: b }); assert.equal(viaSync.sum.sj.level, 'Speller LV 3');
+});
+test('normalize: summaries keep only the six games, clean and cut the text, drop empty rows, and are a fixed point', () => {
+  const n = normalizeLab({ sum: { sj: { level: '<b>Speller LV 3</b>' + 'x'.repeat(60), line: '24 words mastered!', today: 'Today: 3 / 8 words', lastPlayed: 12.7 }, zz: { level: 'x', lastPlayed: 1 }, tb: {}, ww: 5, cf: { level: '', line: '', today: '', lastPlayed: 9 } } }, 0);
+  assert.deepEqual(Object.keys(n.sum), ['cf', 'sj']);
+  assert.ok(n.sum.sj.level.length <= 28 && !/[<>]/.test(n.sum.sj.level)); assert.equal(n.sum.sj.today, 'Today: 3 / 8 words'); assert.equal(n.sum.sj.lastPlayed, 12);
+  assert.deepEqual(normalizeLab(n, 0), n);
+});
+
 section('the store (a fake localStorage)');
 const { createLabStore } = await import('../src/store.js');
 const { onLocalWrite } = await import('../../car-jump/src/sync/notify.js');
@@ -229,6 +254,20 @@ test('report: NOOP when nobody is attached; a Receipt after attach; writes are d
   store.report({ game: 'sj', event: 'day' }); assert.equal(stored(), memory(), 'day writes at once'); assert.ok(memory() >= c1 + 4 + 10);
   const c2 = memory(); store.report({ game: 'ww', event: 'leg' }); assert.equal(stored(), memory(), 'leg writes at once'); assert.ok(memory() >= c2 + 24);
   off(); assert.ok(written.length >= 3);
+});
+test('store.summary: stored per player per game, persisted, ignored when older, and shown on the view as six cards', () => {
+  const { ls, store, setNow } = mkStore(); assert.equal(store.summary('sj', { level: 'x', lastPlayed: 1 }), false, 'nobody attached');
+  attach(store); const seen = []; store.subscribe((e) => seen.push(e.type));
+  assert.equal(store.summary('sj', { level: 'Speller LV 3', line: '24 words mastered', today: 'Today: 3 / 8 words', lastPlayed: T0 - 86400000 }), true); assert.ok(seen.includes('summary'));
+  assert.equal(store.summary('sj', { level: 'Speller LV 1', line: 'old', lastPlayed: T0 - 2 * 86400000 }), false, 'an older row is ignored');
+  assert.equal(store.summary('nope', { level: 'x' }), false); assert.equal(store.summary('tb', null), false); assert.equal(store.summary('tb', 'x'), false);
+  store.flush(); assert.equal(JSON.parse(ls.getItem(labKey('mia'))).sum.sj.line, '24 words mastered');
+  const v = store.view(); assert.equal(v.games.length, 6); assert.deepEqual(v.games.map((g) => g.game), ['sj', 'tb', 'ff', 'ww', 'bc', 'cf']);
+  const sj = v.games[0]; assert.deepEqual([sj.played, sj.level, sj.line, sj.today, sj.lastLabel], [true, 'Speller LV 3', '24 words mastered', 'Today: 3 / 8 words', 'Yesterday']);
+  const tb = v.games[1]; assert.deepEqual([tb.played, tb.lastLabel, tb.level], [false, '', '']); assert.ok(tb.pitch.length > 10);
+  store.summary('sj', { level: 'Speller LV 4' }); assert.equal(store.view().games[0].level, 'Speller LV 4', 'no lastPlayed means now'); assert.equal(store.view().games[0].lastLabel, 'Today');
+  assert.equal(store.summary('sj', { level: 'Speller LV 4' }), false, 'the same row again is not a change');
+  store.report({ game: 'ww', event: 'word', firstTry: true }); assert.equal(store.view().games[3].played, true, 'a game with play history but no summary counts as played');
 });
 test('a doc replaced behind the store\'s back (the sync client, another tab) is merged, not overwritten', () => {
   const { ls, store } = mkStore(); attach(store);

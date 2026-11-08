@@ -16,6 +16,7 @@ import { openCrate as crateOpen } from './core/crate.js';
 import { boardFor, claimGoal as familyClaim, ensureGoalPick, goalFor, settleCrowns } from './core/family.js';
 import { buildView } from './core/view.js';
 import { levelFor } from './core/xp.js';
+import { setSummary } from './core/summary.js';
 import { GOAL_CLAIM_WINDOW } from './data/goals.js';
 import { registerLabSync, markLabDocsDirty } from './sync.js';
 
@@ -181,6 +182,16 @@ export function createLabStore({ storage, now = Date.now, rand = Math.random, de
         emit({ type: 'report', receipt, event: ev });
         return receipt;
       } catch (e) { console.warn('[lab] report error', e); return NOOP_RECEIPT; }
+    },
+    /** A game's one-line progress for the Lab home, the Games panel and Grown-ups (core/summary.js). Never throws; a row older than the stored one is ignored. */
+    summary(game, row) {
+      try {
+        if (!player) return false;
+        refresh();
+        if (!setSummary(lab, game, row, clock())) return false;
+        schedule(false); emit({ type: 'summary', game });
+        return true;
+      } catch (e) { console.warn('[lab] summary error', e); return false; }
     },
     beginRound(game) { try { beginRound(sessionFor(game || info.game || 'sj'), clock()); emit({ type: 'round' }); } catch (_) { /* ignore */ } },
     roundSummary(game) { if (!player) return null; refresh(); return roundSummary(lab, ctx(game), sessionFor(game || info.game || 'sj')); },

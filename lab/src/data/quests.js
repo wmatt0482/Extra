@@ -3,25 +3,25 @@
 // (and `firstTry: true` = only first-try answers). `nudge` = may be the "try something different" quest. `one` = the text when n is 1.
 // `gentle` = the text for gentle mode (Fraction Fright only). Quest ids are what lab.quests[day].ids stores.
 export const QUESTS = [
-  { id: 'sj-words', game: 'sj', events: ['word'], text: 'Spell {n} words', easy: 4, mid: 8, hard: 12, nudge: true },
-  { id: 'sj-first', game: 'sj', events: ['word'], firstTry: true, text: 'Spell {n} words on the first try', easy: 3, mid: 5, hard: 8 },
-  { id: 'sj-runs', game: 'sj', events: ['run'], text: 'Finish {n} runs', one: 'Finish a run', easy: 2, mid: 3, hard: 5, nudge: true },
-  { id: 'sj-perfect', game: 'sj', events: ['perfect'], text: 'Stick {n} perfect landings', one: 'Stick a perfect landing', easy: 1, mid: 1, hard: 2 },
-  { id: 'tb-races', game: 'tb', events: ['race'], text: 'Finish {n} races', one: 'Finish a race', easy: 1, mid: 3, hard: 5, nudge: true },
-  { id: 'tb-win', game: 'tb', events: ['win'], text: 'Win a race', one: 'Win a race', easy: 1, mid: 1, hard: 1 },
-  { id: 'tb-facts', game: 'tb', events: ['fact'], text: 'Answer {n} gate facts', easy: 6, mid: 10, hard: 16 },
-  { id: 'ff-zap', game: 'ff', events: ['zap'], text: 'Zap {n} fractions', gentle: 'Help {n} neighbors home', easy: 6, mid: 10, hard: 16 },
-  { id: 'ff-bull', game: 'ff', events: ['bull'], text: 'Hit {n} bullseyes', one: 'Hit a bullseye', easy: 1, mid: 2, hard: 3 },
-  { id: 'ff-waves', game: 'ff', events: ['wave'], text: 'Finish {n} waves', one: 'Finish a wave', easy: 1, mid: 2, hard: 3, nudge: true },
-  { id: 'ww-leg', game: 'ww', events: ['leg'], text: 'Finish {n} legs of the trail', one: 'Finish a leg of the trail', easy: 1, mid: 1, hard: 2, nudge: true },
-  { id: 'ww-problems', game: 'ww', events: ['problem', 'marker'], text: 'Solve {n} trail problems', easy: 3, mid: 5, hard: 8 },
-  { id: 'ww-words', game: 'ww', events: ['word'], text: 'Spell {n} river or letter words', easy: 2, mid: 3, hard: 4 },
-  { id: 'ww-stars', game: 'ww', events: ['star'], text: 'Earn {n} stars on the trail', one: 'Earn a star on the trail', easy: 1, mid: 2, hard: 3 },
-  { id: 'bc-job', game: 'bc', events: ['job'], text: 'Finish {n} jobs', one: 'Finish a job', easy: 1, mid: 1, hard: 2, nudge: true },
-  { id: 'bc-pieces', game: 'bc', events: ['piece'], text: 'Deliver {n} blocks', easy: 3, mid: 5, hard: 8 },
-  { id: 'bc-challenge', game: 'bc', events: ['challenge'], text: 'Meet {n} build challenges', one: 'Meet a build challenge', easy: 1, mid: 1, hard: 1 },
+  { id: 'sj-words', game: 'sj', events: ['word'], text: 'Spell {n} words in Spell Jump', hint: 'Every word you spell in Spell Jump counts.', easy: 4, mid: 8, hard: 12, nudge: true },
+  { id: 'sj-first', game: 'sj', events: ['word'], firstTry: true, text: 'Spell {n} Spell Jump words on the first try', easy: 3, mid: 5, hard: 8 },
+  { id: 'sj-runs', game: 'sj', events: ['run'], text: 'Finish {n} Spell Jump runs', one: 'Finish a Spell Jump run', hint: 'A run is one trip down the road in Spell Jump.', easy: 2, mid: 3, hard: 5, nudge: true },
+  { id: 'sj-perfect', game: 'sj', events: ['perfect'], text: 'Stick {n} perfect landings in Spell Jump', one: 'Stick a perfect landing in Spell Jump', easy: 1, mid: 1, hard: 2 },
+  { id: 'tb-races', game: 'tb', events: ['race'], text: 'Finish {n} Trail Blazer races (any place)', one: 'Finish a Trail Blazer race (any place)', hint: 'Cross the finish line in any place. 1st, 2nd, 3rd or 4th all count.', easy: 1, mid: 3, hard: 5, nudge: true },
+  { id: 'tb-win', game: 'tb', events: ['win'], text: 'Win a Trail Blazer race (finish 1st)', one: 'Win a Trail Blazer race (finish 1st)', hint: 'Only 1st place counts for this one.', easy: 1, mid: 1, hard: 1 },
+  { id: 'tb-facts', game: 'tb', events: ['fact'], text: 'Answer {n} gate facts in Trail Blazer', easy: 6, mid: 10, hard: 16 },
+  { id: 'ff-zap', game: 'ff', events: ['zap'], text: 'Zap {n} fractions in Fraction Fright', gentle: 'Help {n} neighbors home in Fraction Fright', easy: 6, mid: 10, hard: 16 },
+  { id: 'ff-bull', game: 'ff', events: ['bull'], text: 'Hit {n} bullseyes in Fraction Fright', one: 'Hit a bullseye in Fraction Fright', easy: 1, mid: 2, hard: 3 },
+  { id: 'ff-waves', game: 'ff', events: ['wave'], text: 'Finish {n} Fraction Fright waves', one: 'Finish a Fraction Fright wave', easy: 1, mid: 2, hard: 3, nudge: true },
+  { id: 'ww-leg', game: 'ww', events: ['leg'], text: 'Finish {n} legs of the Wagon West trail', one: 'Finish a leg of the Wagon West trail', easy: 1, mid: 1, hard: 2, nudge: true },
+  { id: 'ww-problems', game: 'ww', events: ['problem', 'marker'], text: 'Solve {n} trail problems in Wagon West', easy: 3, mid: 5, hard: 8 },
+  { id: 'ww-words', game: 'ww', events: ['word'], text: 'Spell {n} river or letter words in Wagon West', easy: 2, mid: 3, hard: 4 },
+  { id: 'ww-stars', game: 'ww', events: ['star'], text: 'Earn {n} stars on the Wagon West trail', one: 'Earn a star on the Wagon West trail', easy: 1, mid: 2, hard: 3 },
+  { id: 'bc-job', game: 'bc', events: ['job'], text: 'Finish {n} Build Crew jobs', one: 'Finish a Build Crew job', easy: 1, mid: 1, hard: 2, nudge: true },
+  { id: 'bc-pieces', game: 'bc', events: ['piece'], text: 'Deliver {n} blocks in Build Crew', easy: 3, mid: 5, hard: 8 },
+  { id: 'bc-challenge', game: 'bc', events: ['challenge'], text: 'Meet {n} Build Crew challenges', one: 'Meet a Build Crew challenge', easy: 1, mid: 1, hard: 1 },
   // (not a nudge: a case opens once a day, so a child is never nudged toward a game that makes them wait)
-  { id: 'cf-case', game: 'cf', events: ['case'], text: 'Close {n} case', one: 'Close a case', easy: 1, mid: 1, hard: 1 },
+  { id: 'cf-case', game: 'cf', events: ['case'], text: 'Close {n} Case Files cases', one: 'Close a Case Files case', hint: 'Finish a case in Case Files. A new case opens each day.', easy: 1, mid: 1, hard: 1 },
   // counts the distinct games that reported at least one event today (an answer, a run, a race, a delivered block, a finished case: anything a game
   // reports, so a game that was only opened or sat on its title screen does not count); the nudge for a child who has played one game or none lately.
   // `hint` = the small line under the card that says exactly what counts.

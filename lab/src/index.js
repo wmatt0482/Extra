@@ -64,6 +64,8 @@ export const lab = {
   detach() { try { if (store) store.detach(); } catch (_) { /* ignore */ } },
   /** One game event. Synchronous, never throws, returns a Receipt (NOOP_RECEIPT when anything is off). */
   report(ev) { try { return getStore().report(ev) || NOOP_RECEIPT; } catch (_) { return NOOP_RECEIPT; } },
+  /** A game's progress for the six cards: lab.summary('sj', { level: 'Speller LV 3', line: '24 words mastered', today: 'Today: 3 / 8 words', lastPlayed: Date.now() }). */
+  summary(g, row) { try { return getStore().summary(g, row); } catch (_) { return false; } },
   beginRound(g) { try { getStore().beginRound(g || game); } catch (_) { /* ignore */ } },
   roundSummary() { try { return getStore().roundSummary(game) || null; } catch (_) { return null; } },
   hud({ mount, compact = false } = {}) { return lazyHandle((ui) => ui.mountHud(mount, getStore(), { game, compact })); },

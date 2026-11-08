@@ -23,6 +23,7 @@ const CRATE_RE = /^[a-z]{3,10}:[A-Za-z0-9_@:-]{1,28}$/;
 const EVKEY_RE = /^[a-z]{2,3}\.[A-Za-z]{2,12}$/;
 const GALID_RE = /^[A-Za-z0-9._-]{1,48}$/;
 const GOAL_RE = /^[a-z]{2,12}$/;
+const SUM_TEXT_RE = /[^A-Za-z0-9 '.,!:\/%+&()-]/g;
 export const deviceKeyOk = (k) => typeof k === 'string' && DEV_RE.test(k);
 
 // ---------- small helpers ----------
@@ -57,7 +58,7 @@ export function defaultLab() {
     fam: { week: '', goal: '', at: 0 }, picks: {}, claimed: {}, crowns: [], trophies: [], gallery: [],
     best: { sj: 0, tb: 0, ff: 0, ww: 0, bc: 0, cf: 0 },
     opts: { quests: true, board: true, goal: true, at: 0 },
-    seen: { games: {}, welcome: 0 }, coinDay: { day: '', n: 0, ev: {} },
+    seen: { games: {}, welcome: 0 }, coinDay: { day: '', n: 0, ev: {} }, sum: {},
   };
 }
 
@@ -141,6 +142,17 @@ function normWeeks(raw) {
   }
   return sortedObject(out);
 }
+const sumText = (v, max) => String(typeof v === 'string' ? v : '').replace(SUM_TEXT_RE, '').replace(/\s+/g, ' ').trim().slice(0, max);
+/** Per-game summaries (core/summary.js): { sj: { level, line, today, lastPlayed } }, only the six games, text cleaned and cut. */
+function normSum(raw) {
+  const out = [];
+  for (const [g, v] of ownEntries(raw)) {
+    if (!GAMES.includes(g) || !isObj(v)) continue;
+    const row = { level: sumText(v.level, 28), line: sumText(v.line, 44), today: sumText(v.today, 44), lastPlayed: ts(v.lastPlayed) };
+    if (row.level || row.line || row.today || row.lastPlayed) out.push([g, row]);
+  }
+  return sortedObject(out);
+}
 function normTrophies(raw) {
   const seen = new Set(), out = [];
   for (const t of Array.isArray(raw) ? raw : []) {
@@ -221,6 +233,7 @@ export function normalizeLab(raw, now = 0) {
       welcome: ts(seen.welcome),
     },
     coinDay: { day: isDayKey(cd.day) ? cd.day : '', n: int(cd.n), ev: normCount(cd.ev, EVKEY_RE, 99999) },
+    sum: normSum(raw.sum),
   };
 }
 

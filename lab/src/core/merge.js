@@ -4,6 +4,7 @@
 // raised so the wallet reads exactly 0 (never charged back).
 import { weekOfDay } from '../../../spell-jump/src/meta/engagement.js';
 import { mergeStreak } from '../../../spell-jump/src/sync/merge.js';
+import { laterSummary } from './summary.js';
 import { GAMES, WEEK_FIELDS, deviceKeyOk, normalizeLab, wallet } from './model.js';
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -83,6 +84,7 @@ export function mergeLabData(rawA, rawB) {
   o.opts = clone(laterAt(a.opts, a.opts.at, b.opts, b.opts.at));
   o.seen = { games: {}, welcome: minPos(a.seen.welcome, b.seen.welcome) };
   for (const g of keys(a.seen.games, b.seen.games)) o.seen.games[g] = minPos(a.seen.games[g] || 0, b.seen.games[g] || 0);
+  o.sum = {}; for (const g of keys(a.sum, b.sum)) o.sum[g] = clone(laterSummary(a.sum[g], b.sum[g]));
   const ca = a.coinDay, cb = b.coinDay;
   if (ca.day === cb.day) { o.coinDay = { day: ca.day, n: Math.max(ca.n, cb.n), ev: {} }; for (const k of keys(ca.ev, cb.ev)) o.coinDay.ev[k] = Math.max(ca.ev[k] || 0, cb.ev[k] || 0); }
   else o.coinDay = clone(ca.day > cb.day ? ca : cb);

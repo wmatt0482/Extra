@@ -3,11 +3,12 @@ import { ITEMS } from '../data/catalog.js';
 import { QUESTS } from '../data/quests.js';
 import { DAILY_COIN_CAP } from './events.js';
 import { owns, totalXp, wallet } from './model.js';
-import { frameFor, levelProgress, petStage, slotOpen, SLOT_LEVEL, titleFor } from './xp.js';
+import { frameFor, levelProgress, petStage, slotOpen, SLOT_LEVEL, titleFor, TITLES } from './xp.js';
 import { unopened } from './crate.js';
 import { questText, questView } from './quests.js';
 import { freezeView, labStreakNow } from './streak.js';
 import { equippedIds } from './shop.js';
+import { gameCards } from './summary.js';
 
 const AVATAR_SLOTS = ['hat', 'shirt', 'back', 'face', 'aura'];
 const PET_SLOTS = ['neck', 'toy', 'hat'];
@@ -45,6 +46,7 @@ export function buildView(lab, ctx, { ready } = {}) {
     combo: { count: ctx.session ? ctx.session.combo.count : 0 },
     welcome: lab.seen.welcome === 0 && Object.keys(lab.seen.games).length > 0,
     equippedIds: equippedIds(lab),
+    games: gameCards(lab, ctx.now),
   };
 }
 
@@ -52,7 +54,7 @@ export function buildView(lab, ctx, { ready } = {}) {
 export const LAB_LINES = Object.freeze({
   welcome: 'Welcome to the Lab', crate: 'Lab crate!', newItem: 'New!', cappedToday: "Plenty of coins today. They're all safe; more tomorrow.",
   freeze: 'Your freeze kept your streak!', dayOne: 'Day 1 today', tryDifferent: 'Try something different', nextWeek: 'Next week',
-  alreadyHad: (coins) => `You already had it: plus ${coins} coins`, levelUp: (level, title) => `Level ${level}, ${title}`,
+  alreadyHad: (coins) => `You already had it: plus ${coins} coins`, levelUp: (level, title) => `Lab level ${level}, ${title}`,
   gotItem: (name) => `You got the ${name}`, needMore: (n) => `Need ${n} more`,
 });
 
@@ -63,7 +65,7 @@ export function collectVoiceTexts() {
   const out = new Set();
   for (const q of QUESTS) for (const n of new Set([q.easy, q.mid, q.hard])) { out.add(questText(q, false, n)); out.add(questText(q, true, n)); }
   for (const i of ITEMS) { out.add(i.name); out.add(LAB_LINES.gotItem(i.name)); }
-  for (const t of ['Cadet', 'Scout', 'Ranger', 'Captain', 'Pioneer', 'Commander', 'Inventor', 'Master', 'Legend', 'Lab Legend']) out.add(t);
+  for (const [, t] of TITLES) out.add(t);
   for (const v of Object.values(LAB_LINES)) if (typeof v === 'string') out.add(v);
   for (const c of [150, 600, 1500]) out.add(LAB_LINES.alreadyHad(c));
   return [...out];

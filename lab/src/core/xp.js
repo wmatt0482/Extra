@@ -17,7 +17,8 @@ export function levelFor(xp) {
   return lo;
 }
 
-export const TITLES = [[1, 'Cadet'], [10, 'Scout'], [20, 'Ranger'], [30, 'Captain'], [40, 'Pioneer'], [50, 'Commander'], [60, 'Inventor'], [70, 'Master'], [80, 'Legend'], [90, 'Lab Legend']];
+// the title changes at these Lab levels (the first changes come quickly, the later ones are long goals)
+export const TITLES = [[1, 'Cadet'], [5, 'Scout'], [10, 'Ranger'], [20, 'Captain'], [30, 'Pioneer'], [40, 'Inventor'], [50, 'Commander'], [65, 'Master'], [80, 'Legend'], [95, 'Lab Legend']];
 export const titleFor = (level) => { let t = TITLES[0][1]; for (const [l, name] of TITLES) if (level >= l) t = name; return t; };
 export const FRAME_LEVELS = [10, 25, 50, 75, 100];
 /** The avatar's frame: 0 for none, else 1..5 (the number of frame levels reached). */
@@ -32,6 +33,14 @@ export function levelProgress(xp) {
   if (level >= LEVEL_MAX) return { level, title: titleFor(level), into: x - TABLE[level], need: 0, toNext: 0, next: null, max: true };
   const need = TABLE[level + 1] - TABLE[level], into = x - TABLE[level];
   return { level, title: titleFor(level), into, need, toNext: need - into, next: level + 1, max: false };
+}
+
+/** The XP bar as a screen shows it: the fill is the XP INTO the current level over the XP the level takes (never the lifetime total), and the labels
+ *  always say "Lab LV" so they never collide with a game's own level. { level, title, name: 'Lab LV 3', into, need, pct (0-100), toGo: '258 XP to Lab LV 4' | 'Top Lab level', max }. */
+export function xpBar(xp) {
+  const p = levelProgress(xp);
+  const pct = p.max ? 100 : p.need ? Math.max(0, Math.min(100, Math.round((100 * p.into) / p.need))) : 0;
+  return { level: p.level, title: p.title, name: `Lab LV ${p.level}`, into: p.into, need: p.need, pct, toGo: p.max ? 'Top Lab level' : `${p.toNext.toLocaleString('en-US')} XP to Lab LV ${p.next}`, max: p.max };
 }
 
 /** slot key -> the level it opens at (avatar, pet and home slots; a game's slots are open from level 1). */
