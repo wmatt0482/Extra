@@ -202,11 +202,11 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'player picker');
   const pick = await J(page, () => ({
     tiles: document.querySelectorAll('[data-player]').length, add: !!document.querySelector('#pl-add'),
-    home: document.querySelector('#btn-home').href, homeShown: !document.querySelector('#btn-home').hidden, sj: document.querySelector('#btn-spelljump').href,
+    home: document.querySelector('#btn-home').href, homeShown: !document.querySelector('#btn-home').hidden, crossLinks: document.querySelectorAll('#screen-players a[href*="spell-jump"], #screen-players a[href*="fraction-fright"]').length, labSlot: !!document.querySelector('#picker-lab'),
     origin: location.origin,
   }));
   check(pick.tiles === 0 && pick.add, 'picker is the first screen, with "+ New player"');
-  check(pick.homeShown && pick.home === pick.origin + '/' && pick.sj === pick.origin + '/spell-jump/', `Learning Lab (${pick.home}) and Spell Jump (${pick.sj}) links, same origin`);
+  check(pick.homeShown && pick.home === pick.origin + '/' && pick.crossLinks === 0 && pick.labSlot, `Learning Lab link (${pick.home}) stays, no "Also play" cross-links (the Games panel is the nav), a slot for the Lab button`);
 
   // ---------- Parents before any player: set the shared PIN ----------
   await page.click('#btn-parents-picker');
@@ -248,8 +248,9 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '04-title');
   await audit(page, layout.insets, 'title');
   check(await J(page, () => document.querySelector('#title-trails-text').textContent === 'Rookie Cup: 0 / 6 · 0 ★' && /race/i.test(document.querySelector('#btn-ride').textContent)), 'title: "Rookie Cup: 0 / 6 · 0 ★" and a RACE button');
-  const t0 = await J(page, () => ({ days: document.querySelector('#title-streak').dataset.days, lit: document.querySelector('#title-streak').classList.contains('lit'), daily: document.querySelector('#title-daily-text').textContent, shown: !document.querySelector('#title-daily').hidden }));
-  check(t0.days === '0' && !t0.lit, 'title: the streak flame is out before the first race (0 days)');
+  const t0 = await J(page, () => ({ flames: document.querySelectorAll('#screen-title .topbar [data-icon="flame"], #screen-title .topbar .streak-chip').length, cash: document.querySelector('#screen-title .cash-pill').textContent, lv: document.querySelector('#title-lv').textContent, oldLab: !!document.querySelector('#btn-lab'), daily: document.querySelector('#title-daily-text').textContent, shown: !document.querySelector('#title-daily').hidden }));
+  check(t0.flames === 0 && !t0.oldLab, 'title: no game flame in the header (the Lab chip carries the one flame) and no separate "The Lab" button');
+  check(/Trail cash/.test(t0.cash) && /^Rider LV \d+$/.test(t0.lv), `title: the money is named ("${t0.cash.replace(/\s+/g, ' ').trim()}") and the level says "${t0.lv}"`);
   check(t0.shown && /^Today: .+ on Pine Ridge · ×2 cash$/.test(t0.daily), `title: the daily Pit Challenge card ("${t0.daily}")`);
   // a v2 save (one vehicle, top-level upgrade levels) migrates to v3: the Ranger owned with those levels, the rest empty
   const mig = await J(page, async () => {
@@ -679,8 +680,8 @@ async function runLayout(browser, layout) {
   await page.click('#res-garage');
   await page.click('[data-back="title"]');
   await page.waitForSelector(visibleSel('#screen-title'));
-  const t1s = await J(page, () => ({ days: document.querySelector('#title-streak').dataset.days, lit: document.querySelector('#title-streak').classList.contains('lit'), text: document.querySelector('#title-trails-text').textContent }));
-  check(t1s.days === '1' && t1s.lit, 'title: the streak flame is lit (1 day)');
+  const t1s = await J(page, () => ({ flames: document.querySelectorAll('#screen-title .topbar [data-icon="flame"]').length, text: document.querySelector('#title-trails-text').textContent }));
+  check(t1s.flames === 0, 'title: still no game flame in the header after a race (the streak shows on the results)');
   check(/^Rookie Cup: 1 \/ 6 · \d+ ★$/.test(t1s.text), `title: cup progress "${t1s.text}" (podiums · stars)`);
   await shot(page, layout, '16-title-daily');
   await audit(page, layout.insets, 'title (daily card, streak)');
@@ -905,7 +906,7 @@ async function runLayout(browser, layout) {
   check(await J(page, () => /^Pro Cup: 0 \/ 6 · 0 ★$/.test(document.querySelector('#title-trails-text').textContent)), `title: a Rookie trophy + 12 ★ opened the Pro Cup ("${await J(page, () => document.querySelector('#title-trails-text').textContent)}")`);
   await shot(page, layout, '16-title-after');
   const today = await J(page, () => window.__trailBlazer.facts.today.count);
-  check(await J(page, (n) => document.querySelector('#title-mission-text').textContent === (n >= 12 ? 'Mission complete! Race on' : `Today: ${n} / 12 math gates`) && /^Lv \d+$/.test(document.querySelector('#title-lv').textContent), today) && today >= 9,
+  check(await J(page, (n) => document.querySelector('#title-mission-text').textContent === (n >= 12 ? 'Mission complete! Race on' : `Today: ${n} / 12 math gates`) && /^Rider LV \d+$/.test(document.querySelector('#title-lv').textContent), today) && today >= 9,
     `title: today's math gates (${today}) and the level`);
 
   // ---------- Fact Grid ----------

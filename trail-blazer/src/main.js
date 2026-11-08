@@ -83,7 +83,7 @@ import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, setLookO
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.9.1';
+const VERSION = '1.10.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -338,7 +338,8 @@ async function boot() {
   loadVehicle().then((m) => { if (!m) return; if (screen === 'title') drawHero(); if (screen === 'players') screens.players.show(); });
 
   function refreshCash() {
-    const html = `${COIN}<span>${money(save.cash)}</span>`;
+    // v1.10: the game's own money has a name wherever a balance shows ("Trail cash"); Lab coins are another thing, with their own icon
+    const html = `${COIN}<span class="cash-txt"><span>${money(save.cash)}</span><small>Trail cash</small></span>`;
     for (const el of $$('[data-cash]')) el.innerHTML = html;
   }
   function replaceSave(fresh) {
@@ -380,11 +381,12 @@ async function boot() {
   /** The events a finished (or ended) race reports to the Lab, once each: race, win (1st, never in a chase), ghostBeat, a star each, day. */
   function labAfterRace(r, summary, bank, season) {
     const finished = !!summary.finishCrossed;
-    noteLabReceipt(r, labReport('race'));
+    if (finished) noteLabReceipt(r, labReport('race'));      // v1.10: "Finish a race" counts a crossed finish line only; a race quit on the trail reports nothing
     if (finished && !r.chase && bank.place === 1) noteLabReceipt(r, labReport('win'));
     if (season.ghost && season.ghost.beat) noteLabReceipt(r, labReport('ghostBeat'));
     if (season.stars) for (let i = 0; i < season.stars.fresh.length; i++) noteLabReceipt(r, labReport('star'));
     if (finished) noteLabReceipt(r, labReport('day'));
+    labSummary();
   }
   /** One spoken line when the results show (the natural voice when the family has it): the chase's result, else a level-up, else a Lab crate. */
   function labResultsVoice(r, result) {
@@ -395,13 +397,28 @@ async function boot() {
     else if (r.lab.crate && LL && LL.crate) line = LL.crate;
     if (line) setTimeout(() => { if (screen === 'results') app.say(line); }, 700);
   }
-  function labRevealButton() {
-    const on = labBridge.ready;
-    const b = $('#btn-lab');
-    if (b) b.hidden = !on;
+  labBridge.whenLoaded(() => { if (currentPlayerId && refreshLabLooks()) onLabLooksChanged(); });
+  // v1.10 (lab/docs/COHESION.md): the one Lab chip on the title (top-left, compact on phones) and the Lab button on "Who's riding?"
+  const phoneMq = window.matchMedia ? window.matchMedia('(max-width: 520px)') : { matches: false };
+  let titleChip = null;
+  function mountTitleChip() {
+    if (titleChip) titleChip.destroy();
+    $('#title-chip-host').replaceChildren();
+    titleChip = labBridge.mountChip($('#title-chip-host'), { game: 'tb', current: 'tb', compact: phoneMq.matches, theme: 'dark' });
   }
-  labBridge.whenLoaded(() => { labRevealButton(); if (currentPlayerId && refreshLabLooks()) onLabLooksChanged(); });
-  $('#btn-lab').hidden = true;                 // shown when /lab/ has loaded: with it blocked there is no Lab button and the game is as it was
+  mountTitleChip();
+  if (phoneMq.addEventListener) phoneMq.addEventListener('change', mountTitleChip);
+  labBridge.mountPickerButton($('#picker-lab'));
+  /** lab.summary for this rider's Trail Blazer card: when the title shows and after each race. Same text twice is a no-op. */
+  function labSummary() {
+    if (!currentPlayerId || !facts) return;
+    try {
+      const done = finishedCount(save, trails);
+      const m = missionState(facts, Date.now());
+      labBridge.summary({ level: `Rider LV ${levelFor(facts.xp)}`, line: `${done} of ${trails.length} trails`, today: `Today: ${m.count} / ${m.size} math gates`, lastPlayed: Date.now() });
+    } catch (e) { console.warn('[TrailBlazer] lab summary', e); }
+  }
+  app.labSummary = labSummary;
 
   // ---------- players ----------
   function selectPlayer(id) {
@@ -432,13 +449,7 @@ async function boot() {
     const inCup = trailsOfCup(cup.id, trails);
     const cupStars = inCup.reduce((a, t) => a + (save.stars[t.id] || []).filter(Boolean).length, 0);
     $('#title-trails-text').textContent = `${cup.name}: ${inCup.filter((t) => finishedCount(save, [t])).length} / ${inCup.length} · ${cupStars} ★`;
-    const days = streakDays(save);
-    const sEl = $('#title-streak');
-    sEl.dataset.days = String(days);
-    sEl.classList.toggle('lit', days > 0);
-    $('#title-streak-n').textContent = String(days);
-    $('#title-streak-u').textContent = days === 1 ? 'day' : 'days';
-    sEl.setAttribute('aria-label', `Streak: ${days} day${days === 1 ? '' : 's'}`);
+    // v1.10: no flame in the header (the Lab chip's is the one); the days-in-a-row count lives on the results and in the Parents report
     const d = dailyInfo();
     const card = $('#title-daily');
     card.hidden = !d;
@@ -450,11 +461,12 @@ async function boot() {
       $('#title-daily-go').textContent = d.done ? 'Race' : 'Go';
     }
     if (facts) {
-      $('#title-lv').textContent = `Lv ${levelFor(facts.xp)}`;
+      $('#title-lv').textContent = `Rider LV ${levelFor(facts.xp)}`;
       const m = missionState(facts, Date.now());
       $('#title-mission').classList.toggle('done', m.done);
       $('#title-mission-text').textContent = m.done ? 'Mission complete! Race on' : `Today: ${m.count} / ${m.size} math gates`;
     }
+    labSummary();
   }
   /** Today's Pit Challenge: { trail, mutator, done } (seeded by the date; picks among the unlocked trails). */
   function dailyInfo() {
@@ -1230,7 +1242,6 @@ async function boot() {
   $('#btn-garage').addEventListener('click', () => go('garage'));
   $('#title-daily').addEventListener('click', () => { const d = dailyInfo(); if (d) startRide(d.trail.id, { daily: !d.done }); });
   $('#btn-grid').addEventListener('click', () => go('grid'));
-  $('#btn-lab').addEventListener('click', () => app.openLab());
   $('#btn-parents').addEventListener('click', () => pz.open({ tab: 'sync' }));
   $('#btn-player').addEventListener('click', () => go('players'));
   for (const b of $$('[data-back]')) b.addEventListener('click', () => go(b.dataset.back));
