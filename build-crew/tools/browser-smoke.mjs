@@ -173,7 +173,7 @@ async function labStages() {
     assert.equal(await lp.locator('#lab-open, #lab-gallery, #lab-slot-title, #title-streak, #btn-spelljump, #btn-wagonwest').count(), 0, 'no Lab buttons, own pill, game flame or cross-link chips remain');
     const chip = await lp.locator('#title-chip-host .lab-chipx').boundingBox();
     assert(chip.x < 24 && chip.y < 24 && chip.height >= 44, 'the chip is top-left and at least 44 px tall: ' + JSON.stringify(chip));
-    assert.match(await lp.locator('.lab-chipx').innerText(), /Lab LV 1/, 'the chip says Lab LV');
+    await lp.waitForFunction(() => /Lab LV 1/i.test(document.querySelector('#lab-chip-main')?.innerText || ''), undefined, { timeout: 15000 });
     assert.equal(await lp.locator('.lab-chipx svg.lab-coin').count() > 0, true, 'the chip shows the Lab coin icon');
     assert.equal(await lp.locator('.lab-chipx-flame').count(), 1, 'one flame in the header: the chip');
     assert.equal(await lp.locator('#title .topbar .lv-pill').innerText(), '0 / 20');
