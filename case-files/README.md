@@ -9,7 +9,7 @@ memory and writing a one-sentence case report. One new case opens each day; the 
 - Learning design (technique, evidence, where it lives): [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md).
 - Content (written to the SPEC section 5 format by the content agent): `src/content/`, `docs/CONTENT-GUIDE.md`, `docs/SOURCES.md`.
 
-Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.2`, manifest, icons). Version **0.1.2**.
+Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.3`, manifest, icons). Version **0.1.3**.
 
 ## The flow
 
@@ -24,7 +24,7 @@ CLOSED stamp and stay re-readable in the Archive) → a case:
    the partner models it); then a "why" line.
 4. **Reconstruct**: a half-filled timeline; tap a card then a slot (or drag); a misplaced card slides back and the partner's popup says "Check the logbook".
 5. **Close the case**: the answer on the in-game keyboard (generous match), attach a pinned clue that proves it, then the sentence-frame
-   case report ("___ did it because ___. The clue that proves it is ___.").
+   case report ("<lead> because ___. The clue that proves it is: “…”", for example "The waybill was with Biscuit because …"; word chips help).
 
 **Help and feedback (0.1.2).** Every step opens with a **coach card** the first time a player reaches it (the agency home too): the Chief or the
 partner, a short title, 2-3 short sentences, a little animated picture, one big "Got it". The round **?** button (home and every step) opens the
@@ -43,14 +43,15 @@ report the child wrote, first-tap accuracy per standard, hints, listens, words m
 
 ```
 index.html            the shell and all CSS (family look in a detective-agency theme)
+style/gameplay.css    gameplay additions (fb-right / fb-wrong, word chips, the report frame, the desk note), linked after the page CSS
 src/main.js           boot: family, sync, voice, screens, case lifecycle, Lab
 src/content/          the cases (SPEC section 5): index.js exports TRAINING, ARCS, CASE_BY_ID
 src/logic/            pure: answers.js (matching), pacing.js (one a day, rank supports), run.js (a case's state and moves),
-                      lines.js (fixed partner lines), coach.js (the step coach cards), payout.js (what the Lab is told)
+                      lines.js (fixed partner lines), coach.js (the step coach cards), payout.js (what the Lab is told), report.js (the report sentence, word chips)
 src/meta/             save.js (+ normalize), sync.js (the cf merge), speech.js (natural voice or silence), voiceTexts.js (one case's
                       lines), labBridge.js / labLooks.js (the only Lab files), selfUpdate.js
 src/ui/               players, home (+ archive), caseView (the five beats), reader, board, closed, file, parentZone, art,
-                      modal (coach cards + feedback popups), coach, coachArt
+                      modal (coach cards + feedback popups), coach, coachArt, fb (fb-right / fb-wrong + sounds)
 sw.js, manifest.webmanifest, icons/    the PWA
 tools/                logic-tests.mjs, ui-smoke.mjs, sync-smoke.mjs, make-icons.mjs, fixtures/ (test copy of the content format)
 ```
@@ -95,6 +96,27 @@ picked in Spell Jump. Only the current case's lines are prepared. The device voi
 on the screen and the listen buttons stay quiet (with a gentle note). The sound setting silences everything.
 
 ## Changelog
+
+### 0.1.3
+A playtest of the live 0.1.0 found these; all fixed (gameplay and content; the look is a separate pass, `style/`).
+- **Feedback on every checked tap**: the tapped element flashes gold (`fb-right`, with a soft chime) or gives a gentle shake (`fb-wrong`, with a soft low
+  boop; calm color pulse under reduced motion), including the briefing word taps, pins, timeline cards, the typed name, the attached clue and the report;
+  the 0.1.2 popup follows the shake. Default CSS in `style/gameplay.css`, sounds from the game's own Audio (the sound setting rules), `src/ui/fb.js`.
+- **Hint button** always shows something: it opens the partner's popup with the next hint tier (a repeat shows the model again) and keeps the inline line.
+- **Physical keyboard** types into the in-game field everywhere it shows (letters, space, Backspace, apostrophe, hyphen, Enter); not behind a popup or sheet.
+  A stale "held" key of the shared keyboard is cleared when a new field starts.
+- **Word chips** above the keyboard in the case report (the case keywords and the attached clue's words; tap to insert, typing stays).
+- **Report sentence**: no orphan period; the clue on its own line after "The clue that proves it is:"; optional per-case `report.lead`
+  ("The waybill was with ___", "Theo moved the lunchbox because …"), neutral default "The answer is ___". Archive file and Parent Zone use the same sentence.
+- **Erie difficulty**: stretch documents are optional ("Bonus · harder", `tag stretch`) unless an answer or proof is in them ("Harder · needed", said on the
+  desk); every Erie stretch document is now Flesch-Kincaid grade 9 or below (`content-tests` enforces it); erie-05's stretch document is now a real bonus.
+  Prompts were blind-solved and reworded where a second sentence fit as well (erie-01 Q2 "the gust sentence" trap, and others, see the commit message).
+- **Detective Rank** no longer appears on any child screen (it was in the picker tile's label); it stays in the Parent Zone.
+- **Solve it again** on a closed case file: the full case as a fresh run, no Lab payout, nothing in the record changes but `replays: n` (merged as a max).
+- The first briefing bubble is no longer clipped under the header.
+- Tests: `ui-smoke` and `content-play` check the feedback classes and sounds on right and wrong taps (words included), the Hint popup, physical typing, chips, the
+  report frame and leads, bonus vs needed documents, no rank for the child, and Solve it again without payout; `logic-tests` cover report text, chips, required
+  documents and `replays`; `content-tests` check `report.lead` and stretch grade.
 
 ### 0.1.2
 - **Step coach**: a card for each step (Brief, Read, Pin, Order, Close) and the agency home, shown the first time a player reaches it (any case) and

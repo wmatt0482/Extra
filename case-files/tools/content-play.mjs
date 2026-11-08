@@ -21,6 +21,9 @@ const { TRAINING, ARCS } = await import(pathToFileURL(path.join(here, '..', 'src
 const CASES = [TRAINING, ...ARCS.flatMap((a) => a.cases)];
 const { COACH } = await import(pathToFileURL(path.join(here, '..', 'src', 'logic', 'coach.js')).href);
 const { LINES } = await import(pathToFileURL(path.join(here, '..', 'src', 'logic', 'lines.js')).href);
+const { wordChips, leadOf, splitLead, CLUE_INTRO } = await import(pathToFileURL(path.join(here, '..', 'src', 'logic', 'report.js')).href);
+const { requiredDocs } = await import(pathToFileURL(path.join(here, '..', 'src', 'logic', 'run.js')).href);
+const { display } = await import(pathToFileURL(path.join(here, '..', 'src', 'logic', 'answers.js')).href);
 const ONLY_CASES = (process.env.CASE_IDS || '').split(',').filter(Boolean);
 const BASE = process.env.BASE_URL || 'http://localhost:8741';
 const URL0 = BASE + '/case-files/index.html?nosw=1';
@@ -61,6 +64,9 @@ async function typeText(page, text) {
   }
 }
 const pressEnter = (page) => page.click('#case-kb .kb-key[data-key="enter"]');
+const fbClear = (page) => J(page, () => { window.__fb.length = 0; window.__snd.correct = 0; window.__snd.oops = 0; });
+const fbOn = (page, k, what = '') => J(page, ([k, what]) => window.__fb.some((x) => x.startsWith(k + ':') && x.includes(what)), [k, what]);
+const sounds = (page) => J(page, () => ({ ...window.__snd }));
 // ---- the modal: coach cards (once per step) and the partner's popups ----
 const modalText = (page) => page.$eval('.modal-wrap .modal-text', (e) => e.textContent.trim()).catch(() => null);
 const modalButton = (page) => page.$eval('.modal-wrap .modal-go', (e) => e.textContent.trim()).catch(() => null);
@@ -100,6 +106,7 @@ async function kidAudit(page, label) {
   const all = t.chrome + ' ' + t.docs;
   const m = all.match(HARD) || t.chrome.match(CHROME);
   check(!m, `${label}: kid rules (no banned or pressure words)${m ? ` — found "${m[0]}" in "…${(all.slice(Math.max(0, all.search(m[0]) - 40), all.search(m[0]) + 40))}…"` : ''}`);
+  check(!/\brank\b/i.test(t.chrome), `${label}: the Detective Rank is not shown to the child`);
   const opts = await J(page, () => document.querySelectorAll('#app input[type=radio], #app input[type=checkbox], #app [role=radio], #app [role=option], #app select, #app .choice, #app .option').length);
   check(opts === 0, `${label}: no multiple choice or authored options on screen`);
 }
@@ -162,8 +169,15 @@ async function playCase(page, layout, k, i) {
   check(await J(page, () => document.querySelector('#brief-go').disabled), `${tag}: "Start investigating" waits for the words`);
   const w0 = k.words.find((w) => cards.includes(w.word));
   const wrongTok = await page.$(`.wordcard[data-word="${w0.word}"] .tok[data-right="0"]`);
-  if (wrongTok) { await wrongTok.click(); check(!(await exists(page, `.wordcard[data-word="${w0.word}"] .wc-mean`)), `${tag}: a wrong word tap shows no meaning, no penalty`); }
+  if (wrongTok) {
+    await fbClear(page);
+    await wrongTok.click();
+    check(!(await exists(page, `.wordcard[data-word="${w0.word}"] .wc-mean`)), `${tag}: a wrong word tap shows no meaning, no penalty`);
+    check((await fbOn(page, 'fb-wrong', 'tok')) && (await sounds(page)).oops === 1 && !(await exists(page, '.modal-wrap')), `${tag}: a wrong word tap shakes (fb-wrong) with the soft boop`);
+  }
+  await fbClear(page);
   for (const w of cards) await page.click(`.wordcard[data-word="${w}"] .tok[data-right="1"]`);
+  check((await fbOn(page, 'fb-right', 'tok')) && (await sounds(page)).correct === cards.length, `${tag}: each right word tap flashes gold (fb-right) with the chime`);
   for (const w of cards) check(((await textOf(page, `.wordcard[data-word="${w}"] .wc-mean`)) || '').includes(k.words.find((x) => x.word === w).meaning), `${tag}: "${w}" shows its meaning`);
   await stepOk(page, `${tag} briefing`);
   await shot(page, layout, `${k.id}-01-briefing`);
@@ -173,6 +187,18 @@ async function playCase(page, layout, k, i) {
   // 2. investigate: every document, every paragraph visible, no overflow
   const folders = await page.$$eval('.docfolder', (f) => f.map((x) => x.dataset.doc));
   check(folders.length === k.docs.length, `${tag}: the desk shows all ${k.docs.length} documents`);
+  const need = requiredDocs(k);
+  for (const d of k.docs.filter((x) => x.stretch)) {
+    const want = need.has(d.id) ? 'Harder · needed' : 'Bonus · harder';
+    check((await textOf(page, `.docfolder[data-doc="${d.id}"] .tag.stretch`)) === want, `${tag}: the harder document ${d.id} is tagged "${want}" (${need.has(d.id) ? 'a question answer or the proof is in it' : 'optional reading'})`);
+  }
+  if (!k.docs.some((x) => x.stretch)) check(!(await exists(page, '#desk-note')), `${tag}: no desk note when there is no harder document`);
+  else check(((await textOf(page, '#desk-note')) || '').includes(k.docs.some((x) => x.stretch && need.has(x.id)) ? 'clue you need' : 'bonus'), `${tag}: the desk note says whether the harder file is needed or a bonus`);
+  const notNeeded = k.docs.filter((x) => !need.has(x.id));
+  if (notNeeded.length) {
+    for (const d of k.docs.filter((x) => need.has(x.id))) { await page.click(`.docfolder[data-doc="${d.id}"]`); await page.waitForSelector(`.doc[data-doc="${d.id}"]`); await page.click('#doc-back'); await page.waitForSelector('#open-notebook'); }
+    check(!(await J(page, () => document.querySelector('#open-notebook').disabled)), `${tag}: the notebook opens without the bonus document`);
+  } else check(await J(page, () => document.querySelector('#open-notebook').disabled), `${tag}: the notebook waits for every document (the harder one holds an answer)`);
   await stepOk(page, `${tag} desk`);
   await shot(page, layout, `${k.id}-02-desk`);
   let firstDoc = true;
@@ -198,8 +224,10 @@ async function playCase(page, layout, k, i) {
       const bad = wrongSentence(k, q);
       await pickSentence(page, k, bad);
       await shot(page, layout, `${k.id}-04-sentence-selected`);
+      await fbClear(page);
       await page.click('#nb-pin');
       await waitModal(page, 'feedback');
+      check((await fbOn(page, 'fb-wrong', ':s ')) && (await sounds(page)).oops === 1, `${tag} ${q.id}: the wrong sentence shook (fb-wrong) with the soft boop before the popup`);
       const pt = await modalText(page);
       check(pt.includes(LINES.pinMiss1) && pt.includes(q.hint) && (await modalButton(page)) === 'Try again' && !/wrong|incorrect/i.test(pt), `${tag} ${q.id}: a wrong pin opens the partner's popup with the authored guiding question`);
       await stepOk(page, `${tag} wrong pin popup`);
@@ -209,7 +237,16 @@ async function playCase(page, layout, k, i) {
       check((await textOf(page, '#nb-hint')) !== null && (await textOf(page, '#nb-hint')).includes(q.hint) && (await page.getAttribute('#nb-hint', 'data-tier')) === '1' && !(await exists(page, '#nb-note')), `${tag} ${q.id}: after the popup, hint tier 1 stays in the notebook (no inline error line)`);
       await stepOk(page, `${tag} hint tier 1`);
     }
+    if (qi === 1) {
+      await page.click('#nb-hint-btn'); await waitModal(page, 'feedback');
+      const hm = await modalText(page);
+      check(hm.includes(LINES.hint1) && hm.includes(q.hint) && (await modalButton(page)) === 'Got it', `${tag} ${q.id}: the Hint button opens a popup with the authored guiding question`);
+      await closeModal(page);
+      check((await textOf(page, '#nb-hint')).includes(q.hint), `${tag} ${q.id}: the inline hint line stays after the popup`);
+    }
+    await fbClear(page);
     await pinAnswer(page, k, q);
+    check((await fbOn(page, 'fb-right', ':s ')) && (await sounds(page)).correct === q.answer.length, `${tag} ${q.id}: each right sentence flashed gold (fb-right) with the chime (${q.answer.length})`);
     check((await textOf(page, '#nb-why')).includes(q.why), `${tag} ${q.id}: the "why it proves it" line shows (${q.answer.length} pinned sentence${q.answer.length > 1 ? 's' : ''})`);
     if (qi === 1) {
       await page.click('#case-board'); await page.waitForSelector('.sheet .clue');
@@ -234,16 +271,20 @@ async function playCase(page, layout, k, i) {
   await shot(page, layout, `${k.id}-06-timeline`);
   if (open.length > 1) {
     await page.click(`[data-card="${tl.items[open[1]].id}"]`);
+    await fbClear(page);
     await page.click(`.slot[data-slot="${open[0]}"]`);
     await waitModal(page, 'feedback');
+    check((await fbOn(page, 'fb-wrong', 'tcard')) && (await sounds(page)).oops === 1, `${tag}: the misplaced card shook (fb-wrong) with the soft boop before the popup`);
     const msg = await modalText(page);
     check(msg.includes(LINES.cardMiss) && /Check the /.test(msg) && !/wrong/i.test(msg) && (await modalButton(page)) === 'Try again', `${tag}: a misplaced card opens a popup ("${msg}")`);
     await stepOk(page, `${tag} misplaced card popup`);
     await shot(page, layout, `${k.id}-06c-popup-misplaced-card`);
     await closeModal(page);
   }
+  await fbClear(page);
   for (const n of open) { await page.click(`[data-card="${tl.items[n].id}"]`); await page.click(`.slot[data-slot="${n}"]`); await sleep(40); }
   await page.waitForSelector('#tl-go:not([hidden])', { timeout: 6000 });
+  check((await fbOn(page, 'fb-right', 'slot')) && (await sounds(page)).correct === open.length, `${tag}: each right card flashed its slot gold (fb-right) with the chime`);
   await stepOk(page, `${tag} timeline done`);
   await shot(page, layout, `${k.id}-07-timeline-done`);
   await page.click('#tl-go'); await waitBeat(page, 'solve');
@@ -252,18 +293,23 @@ async function playCase(page, layout, k, i) {
   // 5. accuse: wrong first, then the first accepted answer; attach a proof clue
   const WRONG = { training: 'Mia', 'erie-01': 'Tom Fisk', 'erie-02': 'beaver', 'erie-03': 'bell', 'erie-04': 'Lively Nell', 'erie-05': 'blue' }[k.id] || 'banana';
   check((await textOf(page, '.bubble.partner p')).includes(k.solution.prompt), `${tag}: the solution question is asked ("${k.solution.prompt}")`);
-  await typeText(page, WRONG); await pressEnter(page);
+  await typeText(page, WRONG); await fbClear(page); await pressEnter(page);
   await waitModal(page, 'feedback');
+  check((await fbOn(page, 'fb-wrong', 'answer-box')) && (await sounds(page)).oops === 1, `${tag}: the wrong accusation shook the answer box (fb-wrong) with the soft boop before the popup`);
   const at = await modalText(page);
   check(at.includes('Good detectives check again') && at.includes(LINES.solveTier1) && (await modalButton(page)) === 'Try again', `${tag}: a wrong accusation ("${WRONG}") opens a popup: "Good detectives check again" + a hint`);
   await stepOk(page, `${tag} wrong accusation popup`);
   await shot(page, layout, `${k.id}-07c-popup-wrong-accusation`);
   await closeModal(page);
   check((await textOf(page, '#solve-hint')).includes(LINES.solveTier1), `${tag}: after the popup the partner's hint stays on the page`);
-  for (let n = 0; n < 30; n++) await page.click('#case-kb .kb-key[data-key="back"]');
-  await typeText(page, k.solution.answers[0]);
+  for (let n = 0; n < 30; n++) await page.keyboard.press('Backspace');                       // the physical keyboard deletes ...
+  check((await textOf(page, '#answer-box')) === 'Type your answer', `${tag}: the physical Backspace cleared the answer box`);
+  await page.keyboard.type(k.solution.answers[0]);                                          // ... and types (v0.1.3), Enter = Check
+  check((await textOf(page, '#answer-box')).toLowerCase() === k.solution.answers[0].toLowerCase(), `${tag}: the physical keyboard typed "${k.solution.answers[0]}" into the in-game field`);
   await shot(page, layout, `${k.id}-08-accuse`);
-  await pressEnter(page); await page.waitForSelector('#attach-msg');
+  await fbClear(page);
+  await page.keyboard.press('Enter'); await page.waitForSelector('#attach-msg');
+  check((await fbOn(page, 'fb-right', 'answer-ok')) && (await sounds(page)).correct === 1, `${tag}: the right name flashed gold (fb-right) with the chime`);
   check(/attach/.test(await textOf(page, '#attach-msg')), `${tag}: "${k.solution.answers[0]}" is accepted, then: attach a clue`);
   const clueIds = await page.$$eval('.clue', (c) => c.map((x) => x.dataset.clue));
   const proofClue = k.solution.proof.find((id) => clueIds.includes(id));
@@ -283,8 +329,22 @@ async function playCase(page, layout, k, i) {
 
   // 6. the case report
   const because = `it was ${k.report.keywords.slice(0, 3).join(' and ')} in the story`.replace(/[^a-z ]/gi, '');
-  await typeText(page, 'it was'); await pressEnter(page);                 // two words: too short -> a popup
+  // the frame: this case's lead (or the neutral default), the answer, "because", the blank with its own period, the clue on its own line
+  const [lb, la] = splitLead(leadOf(k));
+  const whoText = lb.trim() ? k.solution.answers[0] : display(k.solution.answers[0]);
+  const frameText = await textOf(page, '#frame');
+  check(frameText.startsWith(`${lb}${whoText}${la} because `) && frameText.includes(CLUE_INTRO), `${tag}: the report reads "${lb}${whoText}${la} because … ${CLUE_INTRO} …" (${k.report.lead ? 'the case lead' : 'the neutral default'})`);
+  check(await J(page, () => { const d = document.querySelector('#blank-because .dot'); return !!d && d.textContent === '.' && ![...document.querySelectorAll('#frame > *')].some((x) => x.textContent.trim() === '.'); }), `${tag}: no orphan period (it lives inside the "because" blank)`);
+  const clueText = k.docs.flatMap((d) => d.paragraphs.flat()).find((s) => s.id === proofClue).text;
+  const chipWords = await page.$$eval('#word-chips .word-chip', (c) => c.map((x) => x.dataset.word));
+  check(chipWords.length >= 4 && JSON.stringify(chipWords) === JSON.stringify(wordChips(k, clueText)) && k.report.keywords.some((w) => chipWords.map((x) => x.toLowerCase()).includes(w.toLowerCase())), `${tag}: word chips above the keyboard (${chipWords.join(', ')})`);
+  await page.click(`#word-chips .word-chip[data-word="${chipWords[0]}"]`);
+  check((await textOf(page, '#blank-because')).toLowerCase().startsWith(chipWords[0].toLowerCase()), `${tag}: tapping a chip inserts its word`);
+  for (let n = 0; n < chipWords[0].length + 1; n++) await page.keyboard.press('Backspace');
+  check((await textOf(page, '#blank-because')) === 'type why.', `${tag}: the chip's word can be deleted again`);
+  await typeText(page, 'it was'); await fbClear(page); await pressEnter(page);                 // two words: too short -> a popup
   await waitModal(page, 'feedback');
+  check((await fbOn(page, 'fb-wrong', 'blank-because')) && (await sounds(page)).oops === 1, `${tag}: the short report shook the blank (fb-wrong) before the popup`);
   check((await modalText(page)) === LINES.moreWords && (await modalButton(page)) === 'Try again', `${tag}: a too-short report opens a popup ("${LINES.moreWords}")`);
   await shot(page, layout, `${k.id}-10b-popup-short-report`);
   await closeModal(page);
@@ -293,7 +353,9 @@ async function playCase(page, layout, k, i) {
   check((await textOf(page, '#blank-clue')).includes('“'), `${tag}: the report shows the tapped clue`);
   await shot(page, layout, `${k.id}-10-report`);
   await stepOk(page, `${tag} report`);
-  await pressEnter(page); await waitScreen(page, 'closed');
+  await fbClear(page);
+  await page.keyboard.press('Enter'); await waitScreen(page, 'closed');
+  check((await fbOn(page, 'fb-right', 'frame')) && (await sounds(page)).correct === 1, `${tag}: filing the report flashed the sentence (fb-right) with the chime`);
 
   // Case Closed
   check((await textOf(page, '#big-stamp')).toLowerCase() === 'case closed', `${tag}: CASE CLOSED stamp`);
@@ -311,6 +373,47 @@ async function playCase(page, layout, k, i) {
   check(!!rec && rec.report.clueId === proofClue && rec.report.because.toLowerCase() === because.toLowerCase(), `${tag}: the save has the closed record and the report`);
   check(!!rec && rec.firstTap[k.questions[0].id] === false && k.questions.slice(1).every((q) => rec.firstTap[q.id] === true), `${tag}: first taps recorded (first question missed on purpose, the rest right)`);
   await page.click('#closed-home'); await waitScreen(page, 'home');
+  if (k.id === 'training' || k.id === 'erie-01') await replayCase(page, layout, k);
+}
+
+// v0.1.3 "Solve it again": the whole closed case once more on the real content; no Lab payout, the record unchanged but `replays`
+async function replayCase(page, layout, k) {
+  const tag = `${layout.name} ${k.id} replay`;
+  const before = await J(page, (id) => JSON.parse(JSON.stringify(window.__caseFiles.save.closed[id])), k.id);
+  const words = await J(page, () => JSON.stringify(window.__caseFiles.save.wordsMet));
+  await J(page, async () => { const { labBridge } = await import('./src/meta/labBridge.js'); window.__labCalls = []; if (!labBridge.__spied) { labBridge.__spied = true; const o = labBridge.report.bind(labBridge); labBridge.report = (ev) => { window.__labCalls.push(ev); return o(ev); }; } });
+  await page.click(`.case-card[data-case="${k.id}"]`); await waitScreen(page, 'file');
+  check((await exists(page, '#file-replay')) && (await textOf(page, '#file-replay')) === 'Solve it again', `${tag}: the closed case file offers "Solve it again" (read-only view stays)`);
+  await page.click('#file-body [data-tab="report"]');
+  const [lb, la] = splitLead(leadOf(k));
+  const rep = await textOf(page, '#file-report');
+  check(rep.startsWith(`${lb}`) && rep.includes(` because `) && rep.includes(`${CLUE_INTRO} “`) && !/\s\.($|\s)/.test(rep), `${tag}: the file shows the report with the case lead: "${rep.slice(0, 90)}…"`);
+  await page.click('#file-replay'); await waitBeat(page, 'brief');
+  check(await J(page, () => window.__caseFiles.run.replay === true && window.__caseFiles.run.board.length === 0), `${tag}: a fresh run (a replay)`);
+  const cards = await page.$$eval('.wordcard', (c) => c.map((x) => x.dataset.word));
+  for (const w of cards) await page.click(`.wordcard[data-word="${w}"] .tok[data-right="1"]`);
+  await page.click('#brief-go'); await waitBeat(page, 'investigate');
+  const need = requiredDocs(k);
+  for (const d of k.docs.filter((x) => need.has(x.id))) { await page.click(`.docfolder[data-doc="${d.id}"]`); await page.waitForSelector(`.doc[data-doc="${d.id}"]`); await page.click('#doc-back'); await page.waitForSelector('#open-notebook'); }
+  await page.click('#open-notebook'); await waitBeat(page, 'pin');
+  for (const q of k.questions) { await pinAnswer(page, k, q); await page.click('#nb-next'); await sleep(50); }
+  await waitBeat(page, 'rebuild');
+  const tl = k.timeline;
+  for (const n of tl.items.map((it, i) => (tl.given.includes(i) ? -1 : i)).filter((i) => i >= 0)) { await page.click(`[data-card="${tl.items[n].id}"]`); await page.click(`.slot[data-slot="${n}"]`); await sleep(40); }
+  await page.waitForSelector('#tl-go:not([hidden])'); await page.click('#tl-go'); await waitBeat(page, 'solve');
+  await page.keyboard.type(k.solution.answers[0]); await page.keyboard.press('Enter'); await page.waitForSelector('#attach-msg');
+  const proof = k.solution.proof.find((id) => k.questions.some((q) => q.answer.includes(id)));
+  await page.click(`.clue[data-clue="${proof}"]`); await page.click('#solve-go'); await waitBeat(page, 'report');
+  await page.keyboard.type(`it was ${k.report.keywords.slice(0, 3).join(' and ')} in the story`.replace(/[^a-z ]/gi, ''));
+  await page.click('#blank-clue'); await page.waitForSelector('.sheet .clue'); await page.click(`.sheet .clue[data-clue="${proof}"]`);
+  await page.keyboard.press('Enter');
+  await waitScreen(page, 'file');
+  check(((await textOf(page, '#replay-note')) || '').includes('Solved again'), `${tag}: the replay ends on the case file ("Solved again")`);
+  const after = await J(page, (id) => JSON.parse(JSON.stringify(window.__caseFiles.save.closed[id])), k.id);
+  check(after.replays === 1 && JSON.stringify({ ...after, replays: 0 }) === JSON.stringify({ ...before, replays: 0 }), `${tag}: the closed record is unchanged except replays: 1`);
+  check((await J(page, () => JSON.stringify(window.__caseFiles.save.wordsMet))) === words && (await J(page, () => window.__labCalls.length)) === 0, `${tag}: no Lab payout and no words counted again`);
+  await stepOk(page, `${tag} file`);
+  await page.click('#file-back'); await waitScreen(page, 'home');
 }
 
 async function runLayout(browser, layout) {
@@ -344,6 +447,11 @@ async function runLayout(browser, layout) {
     window.__fakeNow = 0;
     window.__caseFilesNow = () => Date.now() + window.__fakeNow;
     window.__cloudAsked = []; window.__cloudPlayed = []; window.__spoken = [];
+    window.__fb = []; window.__snd = { correct: 0, oops: 0 };       // v0.1.3: every fb-right / fb-wrong class that appears, and the feedback sounds
+    document.addEventListener('DOMContentLoaded', () => {
+      new MutationObserver((ms) => { for (const m of ms) { const c = m.target.classList; for (const k of ['fb-right', 'fb-wrong']) if (c && c.contains(k)) window.__fb.push(k + ':' + (m.target.id || m.target.className)); } })
+        .observe(document.documentElement, { attributes: true, attributeFilter: ['class'], subtree: true });
+    });
     window.__ttsBackend = {   // a SPY on the device voice: Case Files must never use it
       speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
       speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 30); },
@@ -375,6 +483,7 @@ async function runLayout(browser, layout) {
   seenCoach = new Set();
   await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
   await coach(page, 'home', `${layout.name}`, () => shot(page, layout, 'coach-home'));
+  await J(page, () => { const a = window.__caseFiles.app.audio; for (const k of ['correct', 'oops']) { const o = a[k].bind(a); a[k] = (...x) => { window.__snd[k]++; return o(...x); }; } });   // count the feedback sounds
   await layoutOk(page, `${layout.name} home`);
   let played = 0;
   for (const id of layout.cases) {
@@ -387,7 +496,7 @@ async function runLayout(browser, layout) {
       for (const d of '1234') await page.click(`.pin-key[data-digit="${d}"]`);
       await page.waitForSelector('.pz-tabs'); await page.click('.pz-tabs [data-tab="det"]'); await page.waitForSelector('#rank-line');
       const reports = await page.$$eval('.pz-report', (r) => r.map((x) => x.textContent));
-      check(reports.length === 2 && reports.every((r) => /did it because/.test(r)), `${layout.name}: Parent Zone shows both case reports in full (${reports.length})`);
+      check(reports.length === 2 && reports.every((r) => / because .+The clue that proves it is: “/.test(r)), `${layout.name}: Parent Zone shows both case reports in full (${reports.length})`);
       await layoutOk(page, `${layout.name} parent zone`);
       await shot(page, layout, 'parent-zone-two-closed', 500);
       await page.click('#pz-close'); await waitScreen(page, 'home');

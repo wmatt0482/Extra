@@ -19,11 +19,11 @@ that proves each point, rebuilding the timeline from memory, and writing a one-s
 - Wrong taps/answers are a normal part of the story ("Good detectives check again"), with no "wrong" buzzer, no red X, no lost coins. Since 0.1.2
   they show as the partner's popup (§4a), never a small inline line.
 - Never auto-start the next case. After closing a case: "Case closed. See you tomorrow, Detective." screen.
-- Never show the child accuracy percentages or grades (Parent Zone only).
+- Never show the child accuracy percentages or grades, or the Detective Rank (Parent Zone only).
 
 ## 2. Place in the site
 
-- Folder `case-files/`, served at `/case-files/`, name **Case Files**, version **0.1.0** (now 0.1.2, see README changelog), PWA with its own `sw.js` (cache
+- Folder `case-files/`, served at `/case-files/`, name **Case Files**, version **0.1.0** (now 0.1.3, see README changelog), PWA with its own `sw.js` (cache
   name `case-files-v<version>`), `manifest.webmanifest`, icons (make them with a `tools/make-icons.mjs` like other games).
 - `build.sh` copies it to `dist/case-files/` (same excludes as the other games). `netlify.toml`: add the redirect
   `/case-files` → `/case-files/`, the sw.js/manifest headers, and `case-files` to the build `ignore` path list.
@@ -72,9 +72,13 @@ text ≥ 18px on phones, line-height ≥ 1.5, max ~65 characters per line). Port
    5. **Close the case**: the child types the solution (who/what) on the in-game keyboard (generous match: case-insensitive,
       ignores "the", accepts listed variants, edit distance ≤ 2 for names) and attaches at least one pinned clue that is in
       the solution's proof set. Wrong name → "Good detectives check again" + the next hint tier. Then the **case report**:
-      the sentence frame "___ did it because ___. The clue that proves it is ___." Blank 1 is pre-filled from the solution,
-      blank 2 is typed (accepted if ≥ 3 words; if it contains none of the case's report keywords, the partner asks once
-      "Can you add what the clue shows?" then accepts whatever comes next), blank 3 is filled by tapping a pinned clue.
+      the sentence frame "<lead with the answer> because ___. The clue that proves it is: “…”" (since 0.1.3; the lead is the case's
+      optional `report.lead`, e.g. "The waybill was with ___", else the neutral "The answer is ___"; see §5). The answer blank is
+      pre-filled from the solution, the "because" blank is typed (accepted if ≥ 3 words; if it contains none of the case's report
+      keywords, the partner asks once "Can you add what the clue shows?" then accepts whatever comes next), the clue is filled by
+      tapping a pinned clue. The period belongs to the "because" blank (never alone on a line); the clue sits on its own line.
+      Above the keyboard are **word chips** (class `word-chip`): the case's `report.keywords` and the words of the attached clue, tap to
+      insert (typing stays available).
    Then: CASE CLOSED stamp, the Chief's closing line (voiced), the arc's knowledge card (one fact learned), the teaser for
    tomorrow, the flat Lab payout, and the "See you tomorrow" screen. Never auto-start the next case.
 4a. **Step coach and feedback popups (0.1.2).** One modal component (centered manila card on a dimmed screen, `role=dialog aria-modal`, the
@@ -88,6 +92,23 @@ text ≥ 18px on phones, line-height ≥ 1.5, max ~65 characters per line). Port
      "no voice on this device" note. The partner's face, the message large and voiced, one big button ("Try again" / "Show me" / "Got it").
      A hint highlight, the document drawer / evidence board or the clue picker that the step leads to appears after the popup closes.
      Kind, story-like wording; no "wrong", no red X, no penalty. Correct answers (the "why it proves it" line, progress) stay inline.
+4b. **Instant feedback, hints, keyboard, bonus documents, replay (0.1.3).**
+   - **Every checked tap answers at once**: the tapped element gets `fb-right` (a gold flash) and a soft synthesized chime, or `fb-wrong`
+     (a gentle shake, never red, never an X; reduced motion: a calm color pulse, no shake) and a soft low "boop", never a buzzer. This
+     covers the briefing word taps, "Pin it", timeline cards, the typed name, the attached clue and filing the report; where a popup
+     exists (§4a) it opens after the shake. The sounds are the game's own Audio (the sound setting rules). `src/ui/fb.js`,
+     `style/gameplay.css`.
+   - **Hint button**: always a visible result: it opens the partner's popup (§4a) with the next tier (a repeat at the last tier shows the
+     model again) and keeps the inline hint line; the highlight appears after the popup closes. Asking for a hint is not a tap.
+   - **Physical keyboard**: wherever the in-game keyboard shows, the real one types into it (letters, space, Backspace, apostrophe,
+     hyphen, Enter = Check / File it) through a `keydown` listener, never a native input. Nothing types behind an open popup or sheet.
+   - **The stretch document is optional reading** (desk tag `tag stretch`, "Bonus · harder", and a desk note) unless a question's
+     `answer` or the solution `proof` is in it: then the tag reads "Harder · needed", the notebook waits for it and the desk says so
+     (`requiredDocs` in `src/logic/run.js`). Stretch documents are written at Flesch-Kincaid grade 9 or below.
+   - **Detective Rank is a parent setting**: it is shown only in the Parent Zone, never on a child screen (picker, home, case, closed).
+   - **Solve it again**: a closed case's file (Archive or home) keeps its read-only view and adds "Solve it again": the full case as a
+     fresh run (kept apart from the case in progress), no Lab payout, no change to the closed record but `replays: n` (§6); it ends
+     on the case file ("Solved again").
 5. **Parent Zone** (PIN-locked, shared PIN like the other games):
    - Starting **Detective Rank** select (1–6), shown with approximate labels: "Rank 4 · grade 5 feel · roughly comparable
      to F&P S–U / about 830–1010L (approximate; not affiliated with or leveled by Fountas & Pinnell, Heinemann or
@@ -129,7 +150,7 @@ export default {
     items: [ { id: 't1', text: '...', proof: 'd1s2' }, ... ],   // correct order, 5–7 items
     given: [0, 3] },                                                // indexes pre-placed
   solution: { prompt: 'Who has the toll ticket?', answers: ['Tom Fisk', 'Tom', 'Fisk'], proof: ['d2s5', 'd3s2'] },
-  report: { keywords: ['ticket', 'pocket', 'coat'] },
+  report: { lead: 'The toll ticket was with ___', keywords: ['ticket', 'pocket', 'coat'] },   // lead optional (see below)
   closing: { who: 'chief', text: '...' },
   knowledge: 'The Erie Canal opened in 1825 and ran 363 miles from Albany to Buffalo.',
   teaser: 'Tomorrow: a mule driver swears his mule can read. Can it?',
@@ -140,7 +161,11 @@ export default {
 Rules: sentence ids are unique within a case (`d<doc>s<n>`); every `answer`, `proof`, `sentenceId` and timeline `proof`
 exists; each question has exactly one best proving sentence set (a second equally good sentence is a bug); the solution is
 only reachable by reading (not guessable from the title); 2–4 docs, about 600–1,200 words per case in total; one `stretch`
-doc per case. Characters are fictional; places, dates, objects and jobs are real and sourced. Non-violent mysteries
+doc per case (grade 9 or below by Flesch-Kincaid; optional reading unless an `answer` or `proof` points into it, §4b). `report.lead` is
+optional: the start of the case-report sentence with exactly one `___` where the answer goes, no "because", no end punctuation, at most
+12 words ("The waybill was with ___", "___ moved the lunchbox"); the game adds " because ___." and "The clue that proves it is: “…”".
+Where a person did it write "___ <verb> …"; for an animal, object or cause use a neutral lead. No lead: "The answer is ___".
+Characters are fictional; places, dates, objects and jobs are real and sourced. Non-violent mysteries
 (mix-ups, missing objects, misread instructions, history/science puzzles). Representation: varied, respectful cast.
 
 **Content for v0.1:** `TRAINING` ("Detective Training: The Case of the Moved Lunchbox", a modern school setting, teaches the
@@ -152,9 +177,10 @@ The arc has 8–10 target words, each met ≥ 12 times across the arc (track cou
 ## 6. Save and sync
 
 Per player, kind `cf`: `{ v: 1, rank: 4, readMode: 'auto' | 'tap' | 'off', seenHelp: { home, brief, read, pin, order, close: bool }, opened: { [caseId]: 'YYYY-MM-DD' }, closed: { [caseId]: { day, at, firstTap:
-{ [qId]: true|false }, hints: { [qId]: 0..3 }, timelineTries, report: { who, because, clueId }, listens: { [docId]: n } } },
-nextEarly: false, wordsMet: { [word]: n }, updatedAt }`. Merge across devices: union of opened/closed (earliest `at` wins for
-a case's record), max of counters, rank from the later `updatedAt`, `seenHelp` = OR per card (default all false; a card seen on any device stays
+{ [qId]: true|false }, hints: { [qId]: 0..3 }, timelineTries, replays: n, report: { who, because, clueId }, listens: { [docId]: n } } },
+nextEarly: false, wordsMet: { [word]: n }, updatedAt }`. `replays` (0.1.3) counts how often the child pressed "Solve it again" and finished;
+a replay changes nothing else in the record and pays nothing (a replay in progress is device-local at `caseFiles.<id>.replay`). Merge across devices: union of opened/closed (earliest `at` wins for
+a case's record, its `replays` and listen counts raised to the maximum of both sides), max of counters, rank from the later `updatedAt`, `seenHelp` = OR per card (default all false; a card seen on any device stays
 seen). Unit-tested.
 
 ## 7. Tests (`case-files/tools/`)
