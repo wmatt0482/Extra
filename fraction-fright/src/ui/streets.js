@@ -40,7 +40,7 @@ export function createStreets(app) {
       h('div', { class: 'street-info' }, h('div', { class: 'street-name' }, st.name), h('div', { class: 'street-blurb' }, st.blurb),
         open ? h('div', { class: 'street-next', 'data-wave': String(next) }, `Next: wave ${next}${next === 3 ? ' (big wave)' : next === 5 ? ' (final wave)' : ''}${ss && ss.cleared ? ` · cleared ×${ss.cleared}` : ''}`) : null),
       st.tier === rec ? h('span', { class: 'star', 'aria-hidden': 'true' }, '★ Try this') : null,
-      open ? null : h('div', { class: 'lock', html: `${app.icon('lock')}<span>Opens when ${before || 'the Lab'} is going well</span>` }));
+      open ? null : h('div', { class: 'lock', html: `${app.icon('lock')}<span>Opens when ${before || 'Zombie School'} is going well</span>` }));
       card.addEventListener('click', () => { if (open) app.startWave(st.id); else { app.audio.error(); app.toast(`Play ${before} a bit more first`); } });
       grid.append(card);
     }

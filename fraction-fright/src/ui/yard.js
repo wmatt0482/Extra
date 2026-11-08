@@ -86,8 +86,8 @@ export function createYard(app) {
       h('div', { class: 'yard-sec' }, 'Fences'), ...FENCES.map((f) => row('fence', f)),
       h('div', { class: 'yard-sec' }, 'Tower'), ...towers.map((x) => row('tower', x)),
       h('div', { class: 'yard-sec' }, 'Yard extras'), ...EXTRAS.map((x) => row('extra', x)),
-      ...(app.labReady() ? [h('div', { class: 'yard-sec' }, 'From the Lab')] : []),
-      ...(app.labReady() ? [h('div', { class: 'card yard-lab' }, h('div', {}, h('div', { class: 'yi-name' }, 'Fence and tower looks'), h('div', { class: 'yi-sub' }, 'Paint the fence and dress the tower with Lab coins. They are separate from this cash.')),
+      ...(app.labReady() ? [h('div', { class: 'yard-sec' }, 'From The Lab')] : []),
+      ...(app.labReady() ? [h('div', { class: 'card yard-lab' }, h('div', {}, h('div', { class: 'yi-name' }, 'Fence and tower looks'), h('div', { class: 'yi-sub' }, 'Paint the fence and dress the tower with Lab coins. Lab coins are earned in every game and spent in The Lab.')),
         h('button', { class: 'btn btn-sm', id: 'yard-lab-shop', 'data-sfx': '', onclick: () => app.openLabShop() }, 'Lab shop'))] : []),
       h('div', { class: 'yard-note' }, `Jack-o'-lanterns: ${app.save.pumpkins}. Clear a street's final wave for another one. Everything here is for looks: the road and the aim never change.`));
   }

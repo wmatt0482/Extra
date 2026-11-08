@@ -123,8 +123,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .pl-links { grid-column: 1; justify-self: start; display: flex; gap: 8px; }
 .pl-link { text-decoration: none; }
 .pl-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; flex: none; margin-top: 6px; }
-.pl-other { background: rgba(29,28,34,.86); color: var(--muted); font-size: 13px; }
-.pl-other svg { width: 16px; height: 16px; }
 .pl-parents svg { width: 18px; height: 18px; }
 .players-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
 .players-body::before, .players-body::after { content: ''; flex: 1 0 0; }
@@ -168,8 +166,24 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 
 /* ---------- title: the yard at dusk, the growing town ---------- */
 #screen-title { align-items: center; justify-content: flex-start; text-align: center; }
-#screen-title .topbar { width: 100%; justify-content: flex-start; gap: 10px; }
-#screen-title .cash-pill { margin-left: auto; }
+#screen-title .topbar { width: 100%; justify-content: flex-start; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+#screen-title .cash-pill { margin-left: auto; order: 0; }
+/* v1.7: the one Lab chip top-left (row 1, with the cash); the neighbour chip and the Cure Counter under it */
+.title-chip-host { display: flex; min-height: 44px; order: 0; }
+.title-chip-host .lab-chipx { --labchip-bg: rgba(20,18,22,.92); --labchip-edge: rgba(236,231,218,.4); --labchip-bar: #9be22a; }
+#screen-title .player-chip { order: 1; }
+#screen-title .tally-board { order: 2; }
+#screen-title .cash-pill { order: 3; }
+@media (orientation: portrait) {
+  #screen-title .topbar::after { content: ""; order: 1; flex-basis: 100%; height: 0; }
+  #screen-title .cash-pill { order: 0; }
+  #screen-title .player-chip, #screen-title .tally-board { order: 2; }
+}
+.cash-pill { height: 46px; }
+.cash-pill .cash-txt { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.cash-pill .cash-txt small { font: 700 9.5px/1 var(--font-body); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.picker-lab { display: flex; justify-content: center; width: 100%; max-width: 360px; padding: 0 12px; flex: none; }
+.picker-lab > * { width: 100%; }
 .player-chip { min-height: 46px; padding: 0 14px 0 6px; gap: 8px; font-size: 15px; max-width: 46%; }
 .player-chip canvas { width: 36px; height: 36px; flex: none; }
 .player-chip span { overflow: hidden; text-overflow: ellipsis; }
@@ -313,7 +327,7 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .results-foot { display: flex; justify-content: center; gap: 12px; flex: none; }
 .results-foot .btn { min-width: 150px; }
 
-/* ---------- the Zombie Lab ---------- */
+/* ---------- the Zombie School ---------- */
 #screen-lab { background: var(--grit), linear-gradient(#0c0c10, #1c1b22 60%, #0e0d10); z-index: 6; }
 .lab-body { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
 .lab-say { margin: 0; text-align: center; font: 400 clamp(20px, 3.4vmin + 1vw, 34px)/1.15 var(--font-display); color: #fff; text-shadow: 0 3px 0 var(--ink); max-width: 22ch; }
@@ -347,8 +361,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .lab-slot { display: flex; align-items: center; justify-content: center; min-width: 0; }
 .lab-slot:empty { display: none; }
 .topbar .lab-slot { flex: none; max-width: 42%; }
-#screen-title .lab-slot { margin-left: auto; }
-#screen-title .lab-slot ~ .cash-pill { margin-left: 0; }
 .lab-slot-strip { flex: none; justify-content: center; padding: 0 4px; }
 .results-head .lab-slot { flex: none; }
 .lab-burst { position: absolute; right: calc(var(--pad-r) + 16%); bottom: calc(var(--pad-b) + 22px); width: min(190px, 44vw); aspect-ratio: 200 / 90; display: grid; place-items: center; pointer-events: none; z-index: 5; transform-origin: center; }
@@ -359,7 +371,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
 .reduced-motion .lab-burst.go { animation: labBurstCalm .9s ease forwards; }
 @keyframes labBurstCalm { 0% { opacity: 0; } 20% { opacity: 1; } 75% { opacity: 1; } 100% { opacity: 0; } }
 .fc-note { font: 400 12px/1 var(--font-display); color: #1e5a12; text-transform: uppercase; letter-spacing: .05em; padding: 3px 6px 2px; border-radius: 2px; background: #c8f56a; border: 2px solid #3f7a14; }
-.menu-row:has(#btn-thelab:not([hidden])) .btn { min-width: 104px; }
 .yard-next { padding: 8px 10px; border-radius: 4px; background: rgba(14,13,16,.72); border: 2px dashed var(--accent); font: 400 13px/1.15 var(--font-display); text-transform: uppercase; color: var(--text); }
 .yard-lab { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 10px; }
 .yi-tower { display: block; }
@@ -512,7 +523,6 @@ button:focus-visible, a:focus-visible { outline: 3px solid var(--cyan); outline-
   .title-actions { width: min(100%, 360px); }
   #btn-streets { width: 100%; }
   .menu-row { display: grid; grid-template-columns: 1fr 1fr 1fr; width: 100%; }
-  .menu-row:has(#btn-thelab:not([hidden])) { grid-template-columns: 1fr 1fr; }
   .topbar { flex-wrap: wrap; }
   .topbar .lab-slot { order: 5; flex: 1 1 100%; max-width: none; justify-content: flex-start; }
   .menu-row .btn { min-width: 0; padding: 0 8px; }
@@ -630,9 +640,8 @@ body { font-weight: 600; letter-spacing: .01em; }
       <button class="btn btn-sm pl-parents" id="btn-parents-picker" data-sfx><span data-icon="lock"></span>Parents</button>
     </div>
     <div class="players-body scroll"><div class="player-grid" id="player-grid"></div>
-      <div class="pl-foot"><button class="sync-chip" id="sync-chip" data-sfx hidden></button>
-        <a class="btn btn-sm pl-link pl-other" id="btn-spelljump" href="../spell-jump/">Spell Jump<span data-icon="right"></span></a>
-        <a class="btn btn-sm pl-link pl-other" id="btn-trailblazer" href="../trail-blazer/">Trail Blazer<span data-icon="right"></span></a></div></div>
+      <div class="picker-lab" id="picker-lab"></div>
+      <div class="pl-foot"><button class="sync-chip" id="sync-chip" data-sfx hidden></button></div></div>
   </section>
 
   <!-- ===== New player ===== -->
@@ -654,32 +663,31 @@ body { font-weight: 600; letter-spacing: .01em; }
   <!-- ===== Title: the yard, the Cure Counter ===== -->
   <section class="screen" id="screen-title" data-screen="title" hidden>
     <div class="topbar">
-      <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span><b class="lv-pill" id="title-lv">Lv 1</b></button>
-      <span class="tally-board" id="title-cures" aria-label="Neighbours cured"><span class="tb-label">Cured</span><b id="title-cures-n">0</b><span id="title-tally" aria-hidden="true"></span></span>
-      <div class="lab-slot" id="lab-slot-title"></div>
+      <div class="title-chip-host" id="title-chip-host"></div>
       <span class="cash-pill" data-cash></span>
+      <button class="btn player-chip" id="btn-player" aria-label="Switch player" data-sfx><canvas id="title-avatar" aria-hidden="true"></canvas><span id="title-player">Player</span><b class="lv-pill" id="title-lv">Cure LV 1</b></button>
+      <span class="tally-board" id="title-cures" aria-label="Neighbours cured"><span class="tb-label">Cured</span><b id="title-cures-n">0</b><span id="title-tally" aria-hidden="true"></span></span>
     </div>
     <div class="title-main">
       <h1 class="logo">Fraction<span>Fright</span></h1>
       <p class="tagline" id="title-tagline">Zombies incoming. They're mostly harmless.</p>
-      <p class="zl-note" id="title-lab-note" hidden>First stop: the Zombie Lab</p>
+      <p class="zl-note" id="title-lab-note" hidden>First stop: the Zombie School</p>
       <div class="title-actions">
         <button class="btn btn-slime btn-big" id="btn-streets" data-sfx>Defend the fence<span data-icon="right"></span></button>
         <div class="menu-row">
-          <button class="btn" id="btn-lab" data-sfx><span data-icon="target"></span>Zombie Lab</button>
+          <button class="btn" id="btn-lab" data-sfx><span data-icon="target"></span>Zombie School</button>
           <button class="btn" id="btn-yard" data-sfx><span data-icon="style"></span>Yard</button>
-          <button class="btn btn-cyan" id="btn-thelab" data-sfx hidden><span data-icon="star"></span>The Lab</button>
           <button class="btn" id="btn-parents" data-sfx><span data-icon="lock"></span>Parents</button>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- ===== Zombie Lab (src/ui/lab.js): the lesson before the first street ===== -->
+  <!-- ===== Zombie School (src/ui/lab.js): the lesson before the first street ===== -->
   <section class="screen" id="screen-lab" data-screen="lab" hidden>
     <div class="topbar">
       <button class="btn icon-btn" id="lab-back" aria-label="Back" data-sfx><span data-icon="back"></span></button>
-      <h2>Zombie Lab</h2>
+      <h2>Zombie School</h2>
       <div class="lab-steps" id="lab-steps" aria-hidden="true"></div>
     </div>
     <div class="lab-body" id="lab-body"></div>

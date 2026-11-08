@@ -6,7 +6,7 @@
 //   secure    ≥ 8 plain-locate throws among the last 12, ≥ 80 % hits, mean PAE ≤ 3.5 % of the road (finger aim on a phone), and
 //             no slip (the last two plain throws both missed): a slip brings a secure tier back to working
 // A street unlocks when the one before is working (not secure), so there is always a choice of two; the first
-// street opens with the Zombie Lab; an opened street stays open (skills.opened, stamped by the store). The ★ is the lowest open street that is not secure (else the highest open one).
+// street opens with the Zombie School; an opened street stays open (skills.opened, stamped by the store). The ★ is the lowest open street that is not secure (else the highest open one).
 import { PLAYABLE, TIERS, TOL_STEPS, TIER_BY_ID, isHit, toleranceFor } from './items.js';
 
 export const RECORD_KEPT = 12;
