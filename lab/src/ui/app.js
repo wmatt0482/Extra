@@ -4,6 +4,9 @@ import { h } from '../../../spell-jump/src/ui/dom.js';
 import { sfx, reducedMotion, num } from './util.js';
 import { drawPortrait } from './avatar.js';
 import { COIN, glyph } from './glyph.js';
+import { xpBar } from '../core/xp.js';
+import { totalXp } from '../core/model.js';
+import { lab as labFacade } from '../index.js';
 import { sharedVoice } from './voice.js';
 import { LAB_LINES, collectVoiceTexts } from '../core/view.js';
 import { ITEM_BY_ID } from '../data/catalog.js';
@@ -71,12 +74,14 @@ export function createApp(store, o = {}) {
   const chip = h('button', { class: 'lab-chip', type: 'button', id: 'lab-me-chip', 'aria-label': 'Me' }, chipCv, nameEl);
   chip.addEventListener('click', () => go('me'));
   const lvEl = h('span', { class: 'lab-lv' }), xpText = h('span', { class: 'lab-xp-tx', id: 'lab-xp-text' }), xpFill = h('i');
-  const xpBar = h('span', { class: 'lab-bar lab-bar-xp', role: 'progressbar', 'aria-label': 'Lab XP' }, xpFill);
-  const lvBlock = h('div', { class: 'lab-lvblock' }, h('div', { class: 'lab-lvrow' }, lvEl, xpText), xpBar);
+  const xpBarEl = h('span', { class: 'lab-bar lab-bar-xp', role: 'progressbar', 'aria-label': 'Lab XP', 'aria-valuemin': '0' }, xpFill);
+  const lvBlock = h('div', { class: 'lab-lvblock' }, h('div', { class: 'lab-lvrow' }, lvEl, xpText), xpBarEl);
   const coinsEl = h('span', { class: 'lab-coins', id: 'lab-coins' });
-  const purse = h('div', { class: 'lab-purse', title: 'Lab coins', 'aria-label': 'Lab coins' }, h('span', { html: COIN }), coinsEl);
+  const purse = h('div', { class: 'lab-purse', title: 'Lab coins', role: 'group', 'aria-label': 'Lab coins' }, h('span', { html: COIN }), coinsEl, h('span', { class: 'lab-purse-unit' }, 'Lab coins'));
   const flame = h('div', { class: 'lab-streak', id: 'lab-streak' });
-  top.append(lead, chip, lvBlock, purse, flame);
+  const gamesBtn = h('button', { class: 'lab-btn lab-icon-btn lab-games-btn', type: 'button', id: 'lab-games', 'aria-label': 'Games', title: 'Games', html: glyph('grid') });
+  gamesBtn.addEventListener('click', () => labFacade.openGames({ current: 'lab' }));
+  top.append(lead, chip, lvBlock, purse, flame, gamesBtn);
 
   function renderTop() {
     const v = store.view();
@@ -92,11 +97,16 @@ export function createApp(store, o = {}) {
     const pid = store.player ? store.player.id : '';
     if (pid === seenPlayer && seenLevel > 0 && L.level > seenLevel) showLevelUp(el, { level: L.level, title: L.title, from: seenLevel, reduced: ctx.reduced, sfx, say: (t) => voice.later(t) });
     seenPlayer = pid; seenLevel = L.level;
-    lvEl.textContent = `Lv ${L.level} · ${L.title}`;
-    xpText.textContent = L.max ? 'Top level' : `${num(L.toNext)} XP to level ${L.next}`;
-    xpFill.style.width = `${L.max ? 100 : L.need ? Math.round((100 * L.into) / L.need) : 0}%`;
-    xpBar.setAttribute('aria-valuenow', String(L.max ? 100 : Math.round((100 * L.into) / Math.max(1, L.need))));
+    // the bar is the share of THIS level done (XP into the level over what the level takes), and every label says "Lab LV"
+    const bar = xpBar(totalXp(store.doc()));
+    lvEl.textContent = `${bar.name} · ${bar.title}`;
+    xpText.textContent = bar.toGo;
+    xpFill.style.width = `${bar.pct}%`;
+    xpBarEl.setAttribute('aria-valuemax', String(bar.max ? 1 : bar.need));
+    xpBarEl.setAttribute('aria-valuenow', String(bar.max ? 1 : bar.into));
+    xpBarEl.setAttribute('aria-valuetext', bar.max ? `${bar.name}, top level` : `${bar.name}: ${bar.into} of ${bar.need} XP. ${bar.toGo}`);
     coinsEl.textContent = num(v.coins);
+    purse.setAttribute('aria-label', `${num(v.coins)} Lab coins`);
     const st = v.streak;
     flame.replaceChildren(
       h('span', { class: 'lab-flame' + (st.count > 0 ? ' on' : ''), html: glyph('flame'), 'aria-hidden': 'true' }),

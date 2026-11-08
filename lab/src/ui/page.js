@@ -33,8 +33,8 @@ export function renderPage(root, store, { sync, player: wanted = '', view: wante
       const doc = store.docOf(p.id);
       const lp = levelProgress(doc ? totalXp(doc) : 0);
       const cv = h('canvas', { class: 'lab-pl-cv', width: 160, height: 160, 'aria-hidden': 'true' });
-      const b = h('button', { class: 'lab-card lab-pl-tile', type: 'button', 'data-player': p.id, style: { '--c': p.color }, 'aria-label': `${p.name}, level ${lp.level}` },
-        cv, h('span', { class: 'lab-pl-name' }, p.name), h('span', { class: 'lab-pl-level' }, `Lv ${lp.level} · ${lp.title}`));
+      const b = h('button', { class: 'lab-card lab-pl-tile', type: 'button', 'data-player': p.id, style: { '--c': p.color }, 'aria-label': `${p.name}, Lab LV ${lp.level}` },
+        cv, h('span', { class: 'lab-pl-name' }, p.name), h('span', { class: 'lab-pl-level' }, `Lab LV ${lp.level} · ${lp.title}`));
       b.addEventListener('click', () => { sfx('click'); pick(p.id); });
       requestAnimationFrame(() => drawPortrait(cv, { color: p.color, slots: wornOf(doc) }));
       return b;

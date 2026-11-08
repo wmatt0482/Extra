@@ -4,7 +4,7 @@
 // Steps (the numbers are §7.4's):
 //   1. a fresh profile "Mia" (and "Ben") on a clean origin; /lab/?labtest&player=mia seeds the quests tb-races, tb-facts, tb-win through __lab.setQuests.
 //   2. earn in Trail Blazer: /trail-blazer/ (mock engine), six gates answered and the race won: the Lab pill shows XP rising, the results strip shows
-//      coins and "XP to level 2", the three quest chips tick, the third completion shows "Lab crate!".
+//      coins and "XP to Lab LV 2", the three quest chips tick, the third completion shows "Lab crate!".
 //   3. the crate opens from the strip (inside the game); the item is owned.
 //   4. __lab.grantCoins(8000); /lab/ -> Build Crew tab -> buy the Dump truck (two taps); the wallet drops by 8,000.
 //   5. /build-crew/ as Mia: the dump truck is selectable; Ben (no purchase) does not see it; the original machines and all ten jobs are open for both.
@@ -121,7 +121,7 @@ try {
   await page.screenshot({ path: join(SHOTS, 'e2e-2-tb-results.png') }).catch(() => {});
   const lineEl = await until(() => page.$('#res-lab #lab-strip-line'), 6000);
   const line = lineEl ? (await lineEl.textContent()).trim() : '';
-  check('the results strip shows coins and "XP to level 2"', /Lab coins/.test(line) && /XP to level \d+/.test(line), line);
+  check('the results strip shows coins and "XP to Lab LV 2"', /Lab coins/.test(line) && /XP to Lab LV \d+/.test(line), line);
   check('the three quest chips tick', (await page.locator('#res-lab .lab-qchip.done').count()) === 3, `done chips: ${await page.locator('#res-lab .lab-qchip.done').count()}`);
   check('the third completion shows "Lab crate!"', (await page.locator('#res-lab #lab-strip-crate').count()) === 1 && /Lab crate!/.test(await page.textContent('#res-lab #lab-strip-crate')));
 

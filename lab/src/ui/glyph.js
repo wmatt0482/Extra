@@ -1,8 +1,13 @@
 // Glyphs: the Lab's small inline SVG art (no image files). Game badges, tab icons, the crate, the shield for a freeze, the flame,
 // and the blueprint-style views of a Build Crew build (the gallery). Everything is a string, so it can be dropped in with innerHTML.
-import { ICONS, COIN } from '../../../spell-jump/src/ui/icons.js';
+import { ICONS } from '../../../spell-jump/src/ui/icons.js';
+import { LAB_COIN } from '../coin.js';
 
-export { COIN };
+/** The Lab coin: a teal coin with a brass rim and a flask mark. It replaces every "$" for Lab coins (the chip, the shop, crates, receipts) and is
+ *  exported by the facade as lab.coinIcon() so a game can show a Lab-coin price (Build Crew blueprints) with the same coin. Never use a game's own
+ *  money icon for Lab coins, nor this one for a game's own money. */
+export { LAB_COIN };
+export const COIN = LAB_COIN;
 const S = (body, w = 2.4) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${body}</svg>`;
 
 /** Icons by name: the shared set (back, close, check, lock, star, crown, crate, flame, shield, trophy, medal ...) plus the Lab's own. */
@@ -19,6 +24,8 @@ export const GLYPHS = {
   swap: S('<path d="M4.5 8h13M14 4.5L17.5 8 14 11.5M19.5 16h-13M10 12.5L6.5 16 10 19.5"/>'),
   pawprint: S('<circle cx="7" cy="10" r="1.8"/><circle cx="11" cy="6.8" r="1.8"/><circle cx="15.5" cy="7.6" r="1.8"/><circle cx="18" cy="12" r="1.8"/><path d="M8 18c0-3 2-5 4.5-5s4.5 2 4.5 5c0 1.6-1.4 2-3 2-1 0-1.5-.5-2-.5s-1 .5-2 .5c-1.6 0-2-.4-2-2z"/>'),
   sparkle: S('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8zM18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/>', 2),
+  grid: S('<rect x="4" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.8"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.8"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.8"/>'),
+  flask: S('<path d="M9.5 3.5h5M10.5 3.5v6l-5 8.6a2 2 0 0 0 1.7 3h9.6a2 2 0 0 0 1.7-3l-5-8.6v-6"/><path d="M8 15h8" />'),
   eye: S('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.8"/>'),
 };
 export const glyph = (name) => GLYPHS[name] || '';

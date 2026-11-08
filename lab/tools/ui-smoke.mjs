@@ -109,7 +109,7 @@ async function runLayout(browser, layout) {
   await page.goto(`${BASE}/lab/?nosw`);
   await waitFor(page, '.lab-pl-tile');
   check('the picker lists the family in order, then "New player"', JSON.stringify(await L(page, () => [...document.querySelectorAll('.lab-pl-tile')].map((t) => t.dataset.player || 'add'))) === '["mia","ben","add"]');
-  check('each tile shows the child\'s Lab level', /Lv 1 · Cadet/.test(await page.textContent('[data-player="mia"]')));
+  check('each tile shows the child\'s Lab level', /Lab LV 1 · Cadet/.test(await page.textContent('[data-player="mia"]')));
   check('a same-origin link back to the Learning Lab home', (await page.getAttribute('#pl-home', 'href')) === '/');
   await shot(page, layout, '01-players');
   await audit(page, 'players');
@@ -153,10 +153,16 @@ async function runLayout(browser, layout) {
     const painted = await L(page, () => { const c = document.querySelector('.lab-room-cv'), g = c.getContext('2d'), d = g.getImageData(0, 0, c.width, c.height).data; const seen = new Set(); for (let i = 0; i < d.length; i += 4 * 97) seen.add((d[i] >> 4) * 256 + (d[i + 1] >> 4) * 16 + (d[i + 2] >> 4)); return seen.size; });
     check(`level ${lv}: the room is drawn (not blank)`, painted > 12, String(painted));
     if (layout === 'desktop' && [1, 20, 70, 100].includes(lv)) await shot(page, layout, `04-home-level-${lv}`);
-    if (lv === 20) check('the title is Ranger at level 20', (await page.textContent('.lab-lv')).includes('Ranger'));
+    if (lv === 20) check('the title is Captain at level 20', (await page.textContent('.lab-lv')).includes('Captain'));
   }
   await setXp(page, 28);
-  check('the top bar says "N XP to level M"', /^\d+ XP to level \d+$/.test((await page.textContent('#lab-xp-text')).trim()), await page.textContent('#lab-xp-text'));
+  check('the top bar says "N XP to Lab LV M"', /^\d+ XP to Lab LV \d+$/.test((await page.textContent('#lab-xp-text')).trim()), await page.textContent('#lab-xp-text'));
+  {
+    const bar = await L(page, () => { const b = document.querySelector('.lab-bar-xp'), f = b.querySelector('i'); return { now: +b.getAttribute('aria-valuenow'), max: +b.getAttribute('aria-valuemax'), text: b.getAttribute('aria-valuetext'), fill: parseFloat(f.style.width), label: document.querySelector('.lab-lv').textContent, go: document.querySelector('#lab-xp-text').textContent }; });
+    const toGo = +/^(\d+)/.exec(bar.go)[1];
+    check('the XP bar is XP into this level over what the level takes (fill = into / need), and its text agrees', bar.max > 0 && bar.now + toGo === bar.max && Math.abs(bar.fill - Math.round((100 * bar.now) / bar.max)) <= 1 && /^Lab LV \d+ · /.test(bar.label) && bar.text.includes(`${bar.now} of ${bar.max} XP`), JSON.stringify(bar));
+    await shot(page, layout, '34-xp-bar');
+  }
   check('the coin purse and the streak flame are in the top bar', (await page.locator('#lab-coins').count()) === 1 && (await page.locator('#lab-streak .lab-freeze').count()) >= 1);
   await shot(page, layout, '04-home');
   await audit(page, 'home');
@@ -171,6 +177,13 @@ async function runLayout(browser, layout) {
   await L(page, () => __lab.setQuests(['tb-races', 'tb-facts', 'tb-win']));
   await clickTab(page, 'quests');
   check('three quest cards', (await page.locator('.lab-quest').count()) === 3);
+  {
+    const texts = await L(page, () => [...document.querySelectorAll('.lab-quest-tx')].map((n) => n.textContent.trim()));
+    check('every quest title names its game and what counts', texts.length === 3 && texts.every((t) => /Spell Jump|Trail Blazer|Fraction Fright|Wagon West|Build Crew|Case Files/.test(t)), JSON.stringify(texts));
+    check('the race quests say "any place" and "first" in words', texts.includes('Finish a Trail Blazer race (any place)') && texts.includes('Win a Trail Blazer race (come in first)'), JSON.stringify(texts));
+    check('the quest cards show the Lab coin icon, never a "$"', (await page.locator('.lab-quest-reward svg.lab-coin').count()) === 3 && !/\$/.test(await page.innerText('.lab-quests')));
+    await shot(page, layout, '30-quest-cards');
+  }
   check('no clock, "resets in" or "expired" on the quests', !/resets|expire|left today|\d:\d\d/i.test(await page.innerText('.lab-quests')));
   const before = await L(page, () => [...document.querySelectorAll('.lab-quest-n')].map((n) => n.textContent));
   await L(page, () => { for (let i = 0; i < 3; i++) __lab.store.report({ game: 'tb', event: 'fact', firstTry: true }); });
@@ -250,10 +263,22 @@ async function runLayout(browser, layout) {
   section(`[${layout}] Shop`);
   await L(page, () => { __lab.grantCoins(20000); __lab.setLooks('sj', ['sj.skin.mint', 'sj.skin.grape', 'sj.skin.lemon']); __lab.setLooks('bc', ['bc.veh.dump', 'bc.veh.fork', 'bc.bp.arch', 'bc.bp.windmill']); __lab.setLooks('ff', []); });
   await setXp(page, 28);
+  await clickTab(page, 'home'); await page.waitForTimeout(300);
+  {
+    const px = await L(page, () => { const c = document.querySelector('.lab-room-cv'), g = c.getContext('2d'); const d = g.getImageData(Math.floor(c.width * 0.5), Math.floor(c.height * 0.39), 1, 1).data; const bg = getComputedStyle(document.querySelector('.lab-page')).backgroundImage; return { wall: [...d], bg: bg.slice(0, 80) }; });
+    check('the Lab room is light and warm (the wall is not the old dark navy)', px.wall[0] > 180 && px.wall[1] > 150, JSON.stringify(px));
+    await shot(page, layout, '35-lab-room-light');
+  }
   await clickTab(page, 'shop');
   const tabs = await L(page, () => [...document.querySelectorAll('.lab-shop-tabs .lab-seg-btn')].map((b) => b.textContent.trim()));
-  check('shop tabs: Me, Home and the five games', JSON.stringify(tabs) === JSON.stringify(['Me', 'Home', 'Spell Jump', 'Trail Blazer', 'Fraction Fright', 'Wagon West', 'Build Crew']), JSON.stringify(tabs));
+  check('shop tabs: Me, Home and the six games', JSON.stringify(tabs) === JSON.stringify(['Me', 'Home', 'Spell Jump', 'Trail Blazer', 'Fraction Fright', 'Wagon West', 'Build Crew', 'Case Files']), JSON.stringify(tabs));
   check('prices show on buyable cards', (await page.locator('[data-act="buy"]').count()) > 0);
+  {
+    const coin = await L(page, () => ({ old: document.querySelectorAll('.lab-root svg.coin:not(.lab-coin)').length, lab: document.querySelectorAll('.lab-root svg.lab-coin').length, dollar: /\$/.test(document.body.innerText), prices: [...document.querySelectorAll('[data-act="buy"]')].slice(0, 3).map((b) => b.getAttribute('aria-label')) }));
+    check('the shop and the purse use the Lab coin icon (flask), no gold "$" coin and no "$" in the text', coin.old === 0 && coin.lab >= 4 && !coin.dollar, JSON.stringify(coin));
+    check('a Buy button says Lab coins in words for a screen reader', coin.prices.every((t) => /for [\d,]+ Lab coins/.test(t || '')), JSON.stringify(coin.prices));
+    check('the purse says what the coins are', /Lab coins/.test(await page.innerText('.lab-purse')) && (await page.getAttribute('.lab-purse', 'aria-label')).includes('Lab coins'));
+  }
   check('a gift says how it is earned', /Gift: Level \d+/.test(await page.innerText('.lab-shop')));
   const locked = await page.locator('[data-state="locked"]').count();
   check('a slot that opens later says "Opens at level N"', locked > 0 && /Opens at level \d+/.test(await page.innerText('.lab-shop')), String(locked));
@@ -308,6 +333,29 @@ async function runLayout(browser, layout) {
     await page.click('.lab-seg-btn[data-tab="home"]'); await page.waitForTimeout(300);
     await shot(page, layout, '15-shop-home');
     await audit(page, 'shop (Home)');
+  }
+
+  // ================= Case Files shop tab =================
+  section(`[${layout}] Case Files shop tab`);
+  {
+    const real = await L(page, async () => (await import('/case-files/src/meta/labLooks.js')).LOOKS_READY);
+    check('Case Files lists its six detective looks in LOOKS_READY', JSON.stringify([...real].sort()) === JSON.stringify(['cf.badge.goldbadge', 'cf.badge.magnifier', 'cf.coat.trench', 'cf.coat.tweed', 'cf.hat.deerstalker', 'cf.hat.detcap']), JSON.stringify(real));
+    await L(page, (ids) => __lab.setLooks('cf', ids), real);
+  }
+  await page.click('.lab-shop-tabs [data-tab="cf"]'); await page.waitForTimeout(500);
+  {
+    const cf = await L(page, () => [...document.querySelectorAll('.lab-item[data-item^="cf."]')].map((c) => [c.dataset.item, c.querySelector('.lab-item-name').textContent.trim(), c.dataset.state]));
+    check('the Case Files tab lists the six detective looks (hat, badge, coat)', cf.length === 6 && ['cf.hat.detcap', 'cf.hat.deerstalker', 'cf.badge.magnifier', 'cf.badge.goldbadge', 'cf.coat.tweed', 'cf.coat.trench'].every((id) => cf.some((c) => c[0] === id)), JSON.stringify(cf));
+    check('the looks are named for a detective', ['Detective cap', 'Deerstalker', 'Magnifier badge', 'Trench coat'].every((n) => cf.some((c) => c[1] === n)), JSON.stringify(cf.map((c) => c[1])));
+    check('each look has a painted preview (the Lab draws the detective looks itself)', (await page.locator('.lab-item[data-item^="cf."] canvas.lab-prev').count()) === 6 && (await page.locator('.lab-item[data-item^="cf."] .lab-swatch').count()) === 0);
+    await shot(page, layout, '31-shop-case-files');
+    await page.click('.lab-item[data-item="cf.hat.deerstalker"] [data-act="buy"]'); await page.waitForTimeout(150);
+    await page.click('.lab-item[data-item="cf.hat.deerstalker"] [data-act="confirm"]'); await page.waitForTimeout(250);
+    check('a detective look can be bought with Lab coins and worn', await page.locator('.lab-item[data-item="cf.hat.deerstalker"] [data-act="equip"]').count() === 1);
+    await page.click('.lab-item[data-item="cf.hat.deerstalker"] [data-act="equip"]'); await page.waitForTimeout(250);
+    const worn = await L(page, async () => { const { lab } = await import('/lab/src/index.js'); return { hat: lab.cosmetics('cf').slots.hat, view: __lab.store.view().avatar.slots.cfhat.id }; });
+    check('lab.cosmetics("cf") hands the game the worn slots, and the Lab avatar wears them', worn.hat === 'cf.hat.deerstalker' && worn.view === 'cf.hat.deerstalker', JSON.stringify(worn));
+    await L(page, () => __lab.store.equip('cf.hat', null));
   }
 
   // ================= Me =================
@@ -391,11 +439,33 @@ async function runLayout(browser, layout) {
     check('each build is drawn (two blueprint views), never a stored picture', (await page.locator('.lab-build svg.lab-bp').count()) === 6 && (await page.locator('.lab-gallery img, .lab-gallery canvas').count()) === 0);
     await shot(page, layout, '19-gallery');
     await audit(page, 'gallery');
+    await dismissLevelUp(page);
     await page.locator('.lab-build').first().click(); await page.waitForTimeout(250);
     check('tap a build for a large view', await page.locator('.lab-bigview:not([hidden]) svg.lab-bp').count() === 2);
     await shot(page, layout, '20-gallery-large');
     await page.click('#gallery-close'); await page.waitForTimeout(200);
   } else { await shot(page, layout, '19-gallery'); await audit(page, 'gallery'); }
+
+  // ================= six game cards on the Lab home =================
+  section(`[${layout}] Lab home: six game cards`);
+  await L(page, () => {
+    const st = __lab.store, now = st.now(), d = 86400000;
+    st.summary('sj', { level: 'Speller LV 3', line: '24 words mastered', today: 'Today: 3 / 8 words', lastPlayed: now - 3 * 3600000 });
+    st.summary('tb', { level: 'Rider LV 2', line: '14 miles ridden', today: 'Today: 1 / 3 races', lastPlayed: now - d });
+    st.summary('ww', { level: 'Trail LV 2', line: 'Leg 3 of 9', today: '', lastPlayed: now - 3 * d });
+  });
+  await clickTab(page, 'home'); await page.waitForTimeout(400);
+  {
+    const cards = await L(page, () => [...document.querySelectorAll('.lab-gcards .lab-gcard')].map((c) => ({ game: c.dataset.game, href: c.getAttribute('href'), played: c.dataset.played, text: c.innerText.replace(/\s+/g, ' ').trim() })));
+    check('the Lab home has six game cards in order, each a same-origin link', cards.length === 6 && JSON.stringify(cards.map((c) => c.href)) === JSON.stringify(['/spell-jump/', '/trail-blazer/', '/fraction-fright/', '/wagon-west/', '/build-crew/', '/case-files/']), JSON.stringify(cards.map((c) => c.href)));
+    const sj = cards[0].text, tb = cards[1].text, ff = cards[5].text, cf = cards[3].text;
+    check('a played game shows its level label, line, today\'s target and "last played" as a day word', /Speller LV 3/.test(sj) && /24 words mastered/.test(sj) && /Today: 3 \/ 8 words/.test(sj) && /Played today/.test(sj) && /Rider LV 2/.test(tb) && /Played yesterday/.test(tb), sj + ' | ' + tb);
+    check('a game from three days ago says the weekday', /Last played (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)/.test(cf) && /Trail LV 2/.test(cf), cf);
+    check('a never-played game says "Try it" with a one-line pitch', cards[5].played === 'false' && /try it/i.test(ff) && ff.length > 30 && !/Played|Last played/.test(ff), ff);
+    check('the cards leave out clocks and pressure words', !/hurry|expire|\d:\d\d|only|limited/i.test(cards.map((c) => c.text).join(' ')));
+    await shot(page, layout, '32-lab-home-six-cards');
+    await audit(page, 'home with the six cards');
+  }
 
   // ================= Grown-ups =================
   section(`[${layout}] Grown-ups`);
@@ -411,6 +481,13 @@ async function runLayout(browser, layout) {
     check('a mismatch says so, gently', /did not match/.test(await page.textContent('#pin-err')));
     await pin('1234'); await pin('1234');
     check('the panel opens', await waitFor(page, '#odds-table'));
+    {
+      const pg = await L(page, () => ({ cards: document.querySelectorAll('.lab-parent .lab-gcard').length, links: document.querySelectorAll('.lab-parent a.lab-gcard').length, code: (document.querySelector('#family-code-line') || {}).textContent, dollar: /\$/.test(document.querySelector('.lab-parent').innerText) }));
+      check('Grown-ups shows "Progress at a glance": the same six cards (read only)', pg.cards === 6 && pg.links === 0, JSON.stringify(pg));
+      check('Grown-ups says where the family code is, and the code itself is not here', pg.code === 'Family code: open Parents in any game \u2192 Family code' && !/code [A-Z0-9]{4,}/.test(await page.innerText('.lab-parent')), pg.code);
+      check('Grown-ups says "Lab coins" and has no "$"', !pg.dollar && /Lab coins earned in all/.test(await page.innerText('.lab-parent')));
+      await shot(page, layout, '33-grownups-progress');
+    }
     // the odds equal crateOddsTable()
     const want = await L(page, async () => (await import('/lab/src/core/crate.js')).crateOddsTable());
     const got = await L(page, () => [...document.querySelectorAll('#odds-table tbody tr')].map((r) => [r.dataset.rarity, r.children[0].textContent, r.children[1].textContent]));
@@ -460,7 +537,7 @@ async function runLayout(browser, layout) {
       window.__res = lab.results({ mount: document.querySelector('#fake-results') });
     });
     await page.waitForTimeout(600);
-    check('the Lab pill is in the HUD: "Lv n" and a bar', /^Lv \d+$/.test((await page.textContent('#fake-hud .lab-hud-lv')).trim()) && (await page.locator('#fake-hud .lab-hud-bar').count()) === 1);
+    check('the Lab pill is in the HUD: "Lab LV n" and a bar', /^Lab LV \d+$/.test((await page.textContent('#fake-hud .lab-hud-lv')).trim()) && (await page.locator('#fake-hud .lab-hud-bar').count()) === 1);
     check('the HUD pill shows no coins (coins are for results only)', !/coin|\d{2,}/i.test((await page.innerText('#fake-hud .lab-hud')).trim()));
     const pill = await page.locator('#fake-hud .lab-hud').boundingBox();
     check('the pill is a 44 px target', pill.height >= 43.5 && pill.width >= 43.5, JSON.stringify(pill));
@@ -475,12 +552,12 @@ async function runLayout(browser, layout) {
     check('a miss lets the flame go on its own: no message', (await page.locator('#fake-hud .lab-hud-flame.on').count()) === 0 && !/lost|lose|miss/i.test(await page.innerText('#fake-hud')));
     await shot(page, layout, '23-hud-and-strip');
     const line = (await page.textContent('#lab-strip-line')).trim();
-    check('the results strip: "+N Lab coins · N XP to level M · k of 3 quests"', /^\+\d+ Lab coins · \d+ XP to level \d+ · \d of 3 quests$/.test(line), line);
+    check('the results strip: "+N Lab coins · N XP to Lab LV M · k of 3 quests"', /^\+\d+ Lab coins · \d+ XP to Lab LV \d+ · \d of 3 quests$/.test(line), line);
     check('the strip has a chip per quest', (await page.locator('#fake-results .lab-qchip').count()) === 3);
     // level up: banner and shared sound
     await L(page, () => { const s = __lab.store, d = s.doc(), v = s.view(); d.dev[s.device].x += v.level.toNext - 1; s.setOpt('quests', true); __lab_lab.report({ game: 'tb', event: 'race' }); });
     await page.waitForTimeout(500);
-    check('a level-up raises one calm banner naming the level', await page.locator('.lab-banner.in').count() === 1 && /Level \d+ · /.test(await page.textContent('.lab-banner.in')));
+    check('a level-up raises one calm banner naming the level', await page.locator('.lab-banner.in').count() === 1 && /Lab LV \d+ · /.test(await page.textContent('.lab-banner.in')));
     await shot(page, layout, '24-level-up-banner');
     await L(page, () => { __lab.store.__test.setQuests(['tb-races', 'tb-facts', 'tb-win']); __lab_lab.report({ game: 'tb', event: 'race' }); __lab_lab.report({ game: 'tb', event: 'win' }); __lab_lab.report({ game: 'tb', event: 'fact', n: 6, firstTry: true }); });
     await page.waitForTimeout(500);
@@ -518,7 +595,7 @@ async function runLayout(browser, layout) {
     await L(page, () => { __lab_lab.openHome({}); });
     await waitFor(page, '.lab-overlay .lab-shell', 3000);
     await L(page, () => { const s = __lab.store, d = s.doc(), v = s.view(); window.__lvBefore = v.level.level; d.dev[s.device].x += v.level.toNext - 1; __lab_lab.report({ game: 'tb', event: 'race' }); });
-    check('crossing a level with the Lab open shows the level-up moment (badge, level, title)', await waitFor(page, '.lab-overlay .lab-levelup', 3000) && (await page.textContent('.lab-overlay .lab-levelup')).includes(`Level ${(await L(page, () => window.__lvBefore)) + 1}`) && (await page.locator('.lab-overlay .lab-lv-badge').count()) === 1 && (await page.locator('.lab-overlay .lab-lv-rays i').count()) > 5 && (await page.locator('.lab-overlay .lab-lv-name').textContent()).trim().length > 2);
+    check('crossing a level with the Lab open shows the level-up moment (badge, level, title)', await waitFor(page, '.lab-overlay .lab-levelup', 3000) && (await page.textContent('.lab-overlay .lab-levelup')).includes(`Lab LV ${(await L(page, () => window.__lvBefore)) + 1}`) && (await page.locator('.lab-overlay .lab-lv-badge').count()) === 1 && (await page.locator('.lab-overlay .lab-lv-rays i').count()) > 5 && (await page.locator('.lab-overlay .lab-lv-name').textContent()).trim().length > 2);
     check('the moment has no pressure text and no clock', !/hurry|limited|expires|\d:\d\d|don't miss|only/i.test(await page.innerText('.lab-overlay .lab-levelup')));
     await shot(page, layout, '28-level-up-moment');
     await page.click('.lab-overlay #levelup-ok'); await page.waitForTimeout(200);
@@ -537,6 +614,78 @@ async function runLayout(browser, layout) {
     await page.waitForTimeout(600);
     check('the first results strip says "Welcome to the Lab" and calls markWelcome()', /Welcome to the Lab/.test(await page.textContent('#fake-game2 #lab-welcome')) && (await L(page, () => __lab.store.doc().seen.welcome)) > 0);
     await L(page, () => { window.__res2.destroy(); document.querySelector('#fake-game2').remove(); });
+  }
+
+  // ================= the Lab chip, the Games panel, the picker button =================
+  if (!fast) {
+    section(`[${layout}] Lab chip, Games panel, picker button`);
+    await clickTab(page, 'home'); await page.click('#lab-lead'); await page.waitForTimeout(300);
+    await page.click('[data-player="mia"]'); await page.waitForTimeout(400);
+    await L(page, () => { const st = __lab.store; st.summary('sj', { level: 'Speller LV 3', line: '24 words mastered', today: 'Today: 3 / 8 words', lastPlayed: st.now() }); st.summary('tb', { level: 'Rider LV 2', line: '14 miles ridden', lastPlayed: st.now() - 86400000 }); });
+    await L(page, async () => {
+      const { lab } = await import('/lab/src/index.js');
+      window.__lab_lab = lab;
+      lab.attach({ game: 'ff', playerId: 'mia', name: 'Mia', color: '#ff3b5c' });
+      document.querySelector('#app').style.visibility = 'hidden';
+      const stage = document.createElement('div'); stage.id = 'fake-stage'; stage.style.cssText = 'position:fixed;inset:0;background:linear-gradient(#0c0b14,#3a2430 60%,#8a3a14);z-index:5';
+      stage.innerHTML = '<div id="fake-slot" style="position:absolute;left:12px;top:70px"></div><div id="fake-pick" style="position:absolute;left:12px;bottom:20px"></div>';
+      document.body.append(stage);
+      window.__chip = lab.mountChip(null, { game: 'ff' });                           // no container: fixed, top-left
+      window.__chip2 = lab.mountChip(document.querySelector('#fake-slot'), { game: 'ff', compact: true });
+      window.__pick = lab.mountPickerButton(document.querySelector('#fake-pick'));
+    });
+    await page.waitForTimeout(700);
+    {
+      const m = await L(page, () => { const r = (e) => { const b = e.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; }; const f = document.querySelector('.lab-chipx.fixed'); const c = f.querySelector('.lab-chipx-main'), g = f.querySelector('.lab-chipx-games'); const cs = getComputedStyle(f); return { fixed: cs.position, rect: r(f), main: r(c), games: r(g), text: c.innerText.replace(/\s+/g, ' ').trim(), aria: c.getAttribute('aria-label'), coinSvg: !!c.querySelector('svg.lab-coin'), oldCoin: !!c.querySelector('svg.coin:not(.lab-coin)'), flame: !!c.querySelector('.lab-chipx-flame svg'), canvas: !!c.querySelector('canvas'), dollar: /\$/.test(c.innerText), compact: (() => { const k = document.querySelector('#fake-slot .lab-chipx'); return k && [r(k.querySelector('.lab-chipx-main')), r(k.querySelector('.lab-chipx-games')), k.classList.contains('compact')]; })() }; });
+      check('mountChip() with no container is a fixed element in the top-left corner', m.fixed === 'fixed' && m.rect[0] <= 16 && m.rect[1] <= 16, JSON.stringify(m.rect));
+      check('the chip shows the avatar, "Lab LV n", the Lab coin icon and amount, and the streak flame; no "$"', m.canvas && m.coinSvg && !m.oldCoin && m.flame && /^Lab LV \d+/i.test(m.text) && !m.dollar, m.text);
+      check('the chip says Lab coins and the Lab level in words for a screen reader', /Lab LV \d+\. [\d,]+ Lab coins\./.test(m.aria), m.aria);
+      check('the chip and the Games button are 44 px targets (compact too)', m.main[3] >= 43.5 && m.main[2] >= 43.5 && m.games[3] >= 43.5 && m.games[2] >= 43.5 && m.compact && m.compact[0][3] >= 43.5 && m.compact[1][2] >= 43.5 && m.compact[1][3] >= 43.5 && m.compact[2], JSON.stringify(m));
+      check('the chip fits a phone beside the game\'s own header', layout === 'desktop' || m.rect[0] + m.rect[2] <= size.width - 8, JSON.stringify(m.rect));
+    }
+    // live updates: coins and the level follow the store
+    const c0 = await page.innerText('.lab-chipx.fixed .lab-chipx-coins');
+    await L(page, () => { __lab.grantCoins(777); });
+    await page.waitForTimeout(250);
+    const c1 = await page.innerText('.lab-chipx.fixed .lab-chipx-coins');
+    check('the chip updates live when Lab coins change', c0 !== c1 && Number(c1.replace(/,/g, '')) - Number(c0.replace(/,/g, '')) === 777, c0 + ' -> ' + c1);
+    await shot(page, layout, '40-chip-dark');
+    // light theme on a light background
+    await L(page, () => { document.querySelector('#fake-stage').style.background = 'linear-gradient(#bfe6ff,#fff7d6)'; window.__chip.destroy(); window.__chip2.destroy(); window.__chip = window.__lab_lab.mountChip(null, { game: 'ff', theme: 'light' }); window.__chip2 = window.__lab_lab.mountChip(document.querySelector('#fake-slot'), { game: 'ff', compact: true, theme: 'light' }); });
+    await page.waitForTimeout(500);
+    check('the light theme sets its own colours (dark text on a light chip)', await L(page, () => { const c = document.querySelector('.lab-chipx.fixed .lab-chipx-main'); const cs = getComputedStyle(c); return cs.color === 'rgb(20, 32, 79)' && /rgba\(255, 255, 255/.test(cs.backgroundColor); }));
+    await shot(page, layout, '41-chip-light');
+    // the Games panel
+    await page.click('.lab-chipx.fixed .lab-chipx-games'); await page.waitForTimeout(400);
+    {
+      const g = await L(page, () => ({ rows: [...document.querySelectorAll('.lab-gp-row')].map((a) => [a.dataset.game, a.getAttribute('href'), a.classList.contains('here')]), text: document.querySelector('.lab-gp').innerText.replace(/\s+/g, ' '), role: document.querySelector('.lab-gp').getAttribute('role'), tall: [...document.querySelectorAll('.lab-gp-row, .lab-gp-close')].every((e) => e.getBoundingClientRect().height >= 43.5) }));
+      check('the Games panel lists Home, The Lab and all six games with same-origin links', JSON.stringify(g.rows.map((r) => r[1])) === JSON.stringify(['/', '/lab/', '/spell-jump/', '/trail-blazer/', '/fraction-fright/', '/wagon-west/', '/build-crew/', '/case-files/']), JSON.stringify(g.rows));
+      check('the panel shows each game\'s one-line progress and "Try it" for the unplayed', /Speller LV 3 · 24 words mastered/.test(g.text) && /Try it/.test(g.text), g.text);
+      check('the panel is a dialog with 44 px rows', g.role === 'dialog' && g.tall);
+      check('the current game is highlighted (from the page, else the caller\'s word)', g.rows.filter((r) => r[2]).length === 1 && g.rows.find((r) => r[2])[0] === 'lab' || g.rows.filter((r) => r[2]).length === 1);
+      await shot(page, layout, '42-games-panel');
+    }
+    await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+    check('Escape closes the Games panel', (await page.locator('.lab-gp').count()) === 0);
+    await L(page, () => window.__lab_lab.openGames({ current: 'tb' })); await page.waitForTimeout(350);
+    check('lab.openGames({ current }) opens it with that game highlighted', await page.locator('.lab-gp-row.here[data-game="tb"]').count() === 1 || await page.locator('.lab-gp-row.here').count() === 1);
+    await page.click('.lab-gp-scrim', { position: { x: size.width - 10, y: size.height / 2 } }); await page.waitForTimeout(400);
+    check('the scrim closes the panel', (await page.locator('.lab-gp').count()) === 0);
+    // the chip opens The Lab
+    await page.click('.lab-chipx.fixed .lab-chipx-main'); await page.waitForTimeout(700);
+    check('tapping the chip opens The Lab', await page.locator('.lab-overlay').count() === 1);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300); await page.keyboard.press('Escape').catch(() => {}); await page.waitForTimeout(300);
+    // the picker button
+    {
+      const pk = await L(page, () => { const b = document.querySelector('#lab-picker-btn'); const r = b.getBoundingClientRect(); return { text: b.innerText.replace(/\s+/g, ' ').trim(), h: r.height, w: r.width }; });
+      check('the picker button says "The Lab" and is a big target', /^The Lab/i.test(pk.text) && pk.h >= 44 && pk.w >= 44, JSON.stringify(pk));
+      await shot(page, layout, '43-picker-button');
+      await page.click('#lab-picker-btn'); await page.waitForTimeout(700);
+      check('with a player picked the picker button opens the Lab\'s family view', (await page.getAttribute('.lab-overlay .lab-shell', 'data-view')) === 'family');
+      await page.keyboard.press('Escape'); await page.waitForTimeout(300); await page.keyboard.press('Escape').catch(() => {}); await page.waitForTimeout(300);
+    }
+    await L(page, () => { window.__chip.destroy(); window.__chip2.destroy(); window.__pick.destroy(); document.querySelector('#fake-stage').remove(); document.querySelector('#app').style.visibility = ''; });
+    check('destroying the chip removes it', (await page.locator('.lab-chipx').count()) === 0);
   }
 
   // ================= the voice =================

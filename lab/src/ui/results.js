@@ -22,12 +22,12 @@ export function mountResults(host, store, { game = 'sj' } = {}) {
     }
     if (welcomed) kids.push(h('div', { class: 'lab-strip-welcome', id: 'lab-welcome' }, h('span', { html: glyph('sparkle') }), LAB_LINES.welcome));
     const bits = [`+${s.coins} Lab coins`];
-    if (s.next) bits.push(`${s.toNext} XP to level ${s.next}`);
+    if (s.next) bits.push(`${s.toNext} XP to Lab LV ${s.next}`);
     const showQ = v.opts.quests !== false && s.quests.length > 0;
     if (showQ) bits.push(`${s.questsDone} of ${s.quests.length} quests`);
     kids.push(h('div', { class: 'lab-strip-line', id: 'lab-strip-line' }, bits.join(' · ')));
     const cum = xpToReach(s.level) + s.into;
-    if (s.xp > 0 && levelFor(Math.max(0, cum - s.xp)) < s.level) kids.push(h('div', { class: 'lab-strip-level' }, h('span', { html: glyph('star') }), `Level ${s.level} · ${s.title}`));
+    if (s.xp > 0 && levelFor(Math.max(0, cum - s.xp)) < s.level) kids.push(h('div', { class: 'lab-strip-level' }, h('span', { html: glyph('star') }), `Lab LV ${s.level} · ${s.title}`));
     kids.push(h('span', { class: 'lab-bar lab-strip-bar' }, h('i', { style: { width: `${s.max ? 100 : s.need ? Math.round((100 * s.into) / s.need) : 0}%` } })));
     if (showQ) kids.push(h('div', { class: 'lab-strip-quests' }, ...s.quests.map((q) => h('span', { class: 'lab-qchip' + (q.done ? ' done' : ''), title: q.text, 'aria-label': `${q.text}: ${q.done ? 'done' : 'not yet'}` }, h('span', { html: gameBadge(q.game, 18) }), h('span', { class: 'lab-qmark', html: q.done ? glyph('check') : '' })))));
     if (s.crateWaiting && v.opts.quests !== false) {

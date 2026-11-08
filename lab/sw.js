@@ -6,7 +6,7 @@
 // /api/... (family sync, voice prepare / status) is network only; natural-voice clips (/api/tts/clip/<id>) are content-addressed and cache-first in
 // Spell Jump's clip cache (TTS_CACHE, shared on this origin). Caches are per origin, shared with the games' workers: this worker only ever deletes its
 // own ('lab-...'). If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'lab-v1.1.0';
+const VERSION = 'lab-v1.2.0';
 const PREFIX = 'lab-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -20,6 +20,7 @@ const SHELL = [
   'icons/favicon.png',
   'src/main.js',
   'src/index.js',
+  'src/coin.js',
   'src/store.js',
   'src/sync.js',
   'src/core/combo.js',
@@ -32,18 +33,23 @@ const SHELL = [
   'src/core/quests.js',
   'src/core/shop.js',
   'src/core/streak.js',
+  'src/core/summary.js',
   'src/core/view.js',
   'src/core/xp.js',
   'src/data/catalog.js',
   'src/data/crate.js',
   'src/data/events.js',
+  'src/data/games.js',
   'src/data/goals.js',
   'src/data/quests.js',
   'src/ui/app.js',
   'src/ui/avatar.js',
   'src/ui/board.js',
+  'src/ui/chip.js',
   'src/ui/crate.js',
   'src/ui/gallery.js',
+  'src/ui/gamecards.js',
+  'src/ui/games.js',
   'src/ui/glyph.js',
   'src/ui/home.js',
   'src/ui/hud.js',

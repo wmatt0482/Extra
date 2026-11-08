@@ -4,6 +4,7 @@ import { h } from '../../../spell-jump/src/ui/dom.js';
 import { LAB_LINES } from '../core/view.js';
 import { glyph, gameBadge } from './glyph.js';
 import { HOT, ROOM_H, ROOM_W, paintRoom } from './scene.js';
+import { gameCards } from './gamecards.js';
 
 const pct = (a, b) => `${(a / b) * 100}%`;
 const day = (d) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : '');
@@ -38,7 +39,8 @@ export function mountHome(ctx) {
   const room = h('div', { class: 'lab-room' }, cv, spot('gallery', 'Open the gallery', () => ctx.go('gallery')), spot('avatar', 'Change how I look', () => ctx.go('me')), petBtn);
   const notes = h('div', { class: 'lab-notes' });
   const today = h('section', { class: 'lab-card lab-today', 'aria-label': 'Today' });
-  const wrap = h('div', { class: 'lab-home' }, notes, room, today);
+  const gamesSec = h('section', { class: 'lab-games-sec', 'aria-label': 'Your games' });
+  const wrap = h('div', { class: 'lab-home' }, notes, room, today, gamesSec);
 
   function note(text, kind) {
     const n = h('div', { class: `lab-note ${kind || ''}`, role: 'status' }, h('span', { class: 'lab-note-ic', html: glyph(kind === 'freeze' ? 'shield' : 'sparkle') }), h('span', {}, text));
@@ -75,6 +77,10 @@ export function mountHome(ctx) {
     }
     today.replaceChildren(...kids);
   }
+  // six progress cards: one per game, what the child has done there and what is waiting; a game not played yet says "Try it"
+  function renderGames(v) {
+    gamesSec.replaceChildren(h('h3', { class: 'lab-h' }, 'Your games'), gameCards(v.games || [], { link: true }));
+  }
 
   function frame(now) {
     raf = 0; if (dead) return;
@@ -107,6 +113,7 @@ export function mountHome(ctx) {
     }
     if (!freezeShown && freezeNote(store, v)) { freezeShown = true; note(LAB_LINES.freeze, 'freeze'); ctx.later(LAB_LINES.freeze); }
     renderToday(v);
+    renderGames(v);
     kick();
   }
   update();

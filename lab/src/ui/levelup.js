@@ -23,11 +23,11 @@ export function showLevelUp(host, o) {
   for (const n of items.slice(0, 4)) lines.push(h('li', {}, h('span', { html: glyph('sparkle') }), `New: ${n}`));
   for (const s of slots.slice(0, 3)) lines.push(h('li', {}, h('span', { html: glyph('lock') }), `${s} spot is open`));
   const done = h('button', { class: 'lab-btn lab-btn-go', type: 'button', id: 'levelup-ok' }, 'Nice!');
-  const card = h('div', { class: 'lab-levelup-card' + (o.reduced ? ' calm' : ''), role: 'dialog', 'aria-label': `Level ${o.level}, ${o.title}` },
+  const card = h('div', { class: 'lab-levelup-card' + (o.reduced ? ' calm' : ''), role: 'dialog', 'aria-label': `Lab LV ${o.level}, ${o.title}` },
     rays,
     h('div', { class: 'lab-lv-badge' }, h('span', { html: glyph('star') }), h('b', {}, String(o.level))),
     h('div', { class: 'lab-lv-kicker' }, 'You reached'),
-    h('div', { class: 'lab-lv-title' }, `Level ${o.level}`),
+    h('div', { class: 'lab-lv-title' }, `Lab LV ${o.level}`),
     h('div', { class: 'lab-lv-name' }, o.title),
     lines.length ? h('ul', { class: 'lab-lv-list' }, ...lines) : null,
     done);

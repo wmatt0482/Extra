@@ -229,10 +229,10 @@ test('LEVEL_GIFTS reference real gift items; the engine grants each exactly once
 });
 
 section('catalogue');
-test('catalogue generated from the table: 143 items, 31 gifts + 1 stock, 106 buyable for 140,300 coins; ids, slots, prices', () => {
-  assert.equal(ITEMS.length, 143); assert.equal(ITEMS.filter((i) => i.source === 'gift').length, 31); assert.equal(ITEMS.filter((i) => i.source === 'stock').length, 1);
+test('catalogue generated from the table: 149 items, 31 gifts + 1 stock, 112 buyable for 144,800 coins; ids, slots, prices', () => {
+  assert.equal(ITEMS.length, 149); assert.equal(ITEMS.filter((i) => i.source === 'gift').length, 31); assert.equal(ITEMS.filter((i) => i.source === 'stock').length, 1);
   const buyable = ITEMS.filter((i) => ['both', 'coins'].includes(i.source) && !i.soon);
-  assert.equal(buyable.length, 106); assert.equal(buyable.reduce((a, i) => a + i.price, 0), 140300);
+  assert.equal(buyable.length, 112); assert.equal(buyable.reduce((a, i) => a + i.price, 0), 144800); assert.deepEqual(ITEMS.filter((i) => i.owner === 'cf').map((i) => i.id), ['cf.hat.detcap', 'cf.hat.deerstalker', 'cf.badge.magnifier', 'cf.badge.goldbadge', 'cf.coat.tweed', 'cf.coat.trench'], 'the Case Files detective looks');
   assert.equal(new Set(ITEMS.map((i) => i.id)).size, ITEMS.length, 'ids are unique');
   for (const i of ITEMS) { assert.match(i.id, /^[a-z]+\.[a-z]+\.[a-z0-9-]+$/); assert.equal(i.key, `${i.owner}.${i.slot}`); assert.ok(SLOTS.some((s) => s.key === i.key)); assert.ok(i.name && !/undefined/.test(i.name)); }
   const p = (id) => ITEM_BY_ID[id].price;
@@ -334,7 +334,7 @@ test('a brand-new child: the game they opened is a home quest; tiers by level; t
 });
 test('text: {n} filled, single wording, the gentle wording for Fraction Fright', () => {
   assert.equal(questText({ id: 'sj-words', target: 8 }), 'Spell 8 words in Spell Jump'); assert.equal(questText({ id: 'tb-races', target: 1 }), 'Finish a Trail Blazer race (any place)');
-  assert.equal(questText({ id: 'ff-zap', target: 6 }), 'Zap 6 fractions in Fraction Fright'); assert.equal(questText({ id: 'ff-zap', target: 6 }, true), 'Help 6 neighbors home in Fraction Fright'); assert.equal(questText({ id: 'tb-win', target: 1 }), 'Win a Trail Blazer race (finish 1st)');
+  assert.equal(questText({ id: 'ff-zap', target: 6 }), 'Zap 6 fractions in Fraction Fright'); assert.equal(questText({ id: 'ff-zap', target: 6 }, true), 'Help 6 neighbors home in Fraction Fright'); assert.equal(questText({ id: 'tb-win', target: 1 }), 'Win a Trail Blazer race (come in first)');
   assert.equal(questText({ id: 'cf-case', target: 1 }), 'Close a Case Files case'); assert.equal(questText({ id: 'sj-runs', target: 2 }), 'Finish 2 Spell Jump runs');
 });
 test('every quest title names its game; the title and the events it counts agree (a race finished 4th of 4 moves the race quest, not Win a race)', () => {
@@ -344,8 +344,8 @@ test('every quest title names its game; the title and the events it counts agree
     for (const n of new Set([q.easy, q.mid, q.hard])) for (const gentle of [false, true]) { const t = questText(q, gentle, n); assert.ok(t.includes(GAME_WORDS[q.game]), `${q.id}: "${t}" names ${GAME_WORDS[q.game]}`); assert.ok(!/\{n\}/.test(t)); }
   }
   assert.deepEqual(QUEST_BY_ID['tb-races'].events, ['race']); assert.deepEqual(QUEST_BY_ID['tb-win'].events, ['win']);
-  assert.match(questText(QUEST_BY_ID['tb-races'], false, 1), /any place/); assert.match(questText(QUEST_BY_ID['tb-win'], false, 1), /1st/);
-  assert.match(QUEST_BY_ID['tb-races'].hint, /any place/i); assert.match(QUEST_BY_ID['tb-win'].hint, /1st/);
+  assert.match(questText(QUEST_BY_ID['tb-races'], false, 1), /any place/); assert.match(questText(QUEST_BY_ID['tb-win'], false, 1), /first/);
+  assert.match(QUEST_BY_ID['tb-races'].hint, /any place/i); assert.match(QUEST_BY_ID['tb-win'].hint, /first/);
   // a tester finished a full race in 4th of 4: the game reports `race` (and `day`), never `win`
   const lab = defaultLab(), c = ctxAt(T0);
   lab.quests[c.day] = { ids: ['sj-runs', 'tb-win', 'tb-races'], drawnAt: T0, rr: 0, tier: 'easy', p: {}, done: {} };
@@ -617,7 +617,7 @@ test('roundSummary and the view', () => {
   beginRound(s, T0); assert.equal(roundSummary(lab, c, s).coins, 0);
   const v = buildView(lab, { ...c, name: 'Mia', color: '#f00' }, { ready: [] });
   for (const f of ['player', 'coins', 'level', 'streak', 'quests', 'questsDone', 'crates', 'equipped', 'owned', 'avatar', 'pet', 'trophies', 'gallery', 'opts', 'capped']) assert.ok(f in v, f);
-  assert.equal(v.coins, 6); assert.equal(v.player.name, 'Mia'); assert.deepEqual(Object.keys(v.avatar.slots), ['hat', 'shirt', 'back', 'face', 'aura']); assert.equal(v.avatar.slots.back.open, false); assert.equal(v.avatar.slots.back.opensAt, 4);
+  assert.equal(v.coins, 6); assert.equal(v.player.name, 'Mia'); assert.deepEqual(Object.keys(v.avatar.slots), ['hat', 'shirt', 'back', 'face', 'aura', 'cfhat', 'cfbadge', 'cfcoat']); assert.equal(v.avatar.slots.back.open, false); assert.equal(v.avatar.slots.back.opensAt, 4);
   assert.deepEqual([v.pet.species, v.pet.name, v.pet.stage, v.pet.mood], ['fox', 'Pip', 1, 'happy']); assert.equal(buildView(defaultLab(), c).pet.mood, 'content');
   assert.deepEqual(Object.keys(v.streak), ['count', 'best', 'weeklyReady', 'bonus']); assert.equal(v.crates.waiting, 0);
   assert.ok(voiceTexts().length > 100 && voiceTexts().includes('Help 6 neighbors home in Fraction Fright') && voiceTexts().includes('Dump truck'));

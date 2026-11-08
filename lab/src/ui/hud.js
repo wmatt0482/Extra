@@ -38,7 +38,7 @@ export function mountHud(host, store, { game = 'sj', compact = false } = {}) {
   const update = () => {
     const v = store.view(game); if (!v) return;
     const L = v.level;
-    lv.textContent = compact ? `Lv ${L.level}` : `Lab Lv ${L.level}`;
+    lv.textContent = `Lab LV ${L.level}`;
     fill.style.width = `${L.max ? 100 : L.need ? Math.round((100 * L.into) / L.need) : 0}%`;
     const n = v.combo.count;
     if (n >= 2) last = n;
@@ -46,7 +46,7 @@ export function mountHud(host, store, { game = 'sj', compact = false } = {}) {
     root.classList.toggle('flaming', n >= 2);
     flame.classList.toggle('big', n >= 3);
     flame.querySelector('b').textContent = n >= 3 ? '×2' : '';
-    root.setAttribute('aria-label', `The Lab. Level ${L.level}.${L.max ? '' : ` ${L.toNext} XP to level ${L.next}.`}`);
+    root.setAttribute('aria-label', `The Lab. Lab LV ${L.level}.${L.max ? '' : ` ${L.toNext} XP to Lab LV ${L.next}.`}`);
   };
   const off = store.subscribe((e) => {
     update();
@@ -55,7 +55,7 @@ export function mountHud(host, store, { game = 'sj', compact = false } = {}) {
     let say = '';
     const names = (r.unlocks || []).map((u) => `New: ${u.name}`);
     if (r.level && r.level.up) {
-      lines.push(`Level ${r.level.after} · ${r.level.title}`, ...names);
+      lines.push(`Lab LV ${r.level.after} · ${r.level.title}`, ...names);
       say = LAB_LINES.levelUp(r.level.after, r.level.title);
       sfx('levelUp');
     } else if (r.crate) { lines.push(LAB_LINES.crate, ...names); say = LAB_LINES.crate; sfx('crateOpen'); }
