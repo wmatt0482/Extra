@@ -6,7 +6,7 @@
 // /api/... (family sync, voice prepare / status) is network only; natural-voice clips (/api/tts/clip/<id>) are content-addressed and cache-first in
 // Spell Jump's clip cache (TTS_CACHE, shared on this origin). Caches are per origin, shared with the games' workers: this worker only ever deletes its
 // own ('lab-...'). If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'lab-v1.0.1';
+const VERSION = 'lab-v1.1.0';
 const PREFIX = 'lab-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -47,6 +47,7 @@ const SHELL = [
   'src/ui/glyph.js',
   'src/ui/home.js',
   'src/ui/hud.js',
+  'src/ui/levelup.js',
   'src/ui/index.js',
   'src/ui/items.js',
   'src/ui/me.js',

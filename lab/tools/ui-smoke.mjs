@@ -77,9 +77,10 @@ async function audit(page, label) {
 // ---------- helpers ----------
 const L = (page, fn, arg) => page.evaluate(fn, arg);
 const view = (page) => L(page, () => __lab.store.view());
-const clickTab = async (page, v) => { await page.evaluate((v) => { const sh = document.querySelector('.lab-shell'); if (sh.dataset.view === v) return; if (v === 'home') document.querySelector('#lab-lead').click(); else document.querySelector(`.lab-tab[data-view="${v}"]`).click(); }, v); await page.waitForTimeout(450); };
+const clickTab = async (page, v) => { await dismissLevelUp(page); await page.evaluate((v) => { const sh = document.querySelector('.lab-shell'); if (sh.dataset.view === v) return; if (v === 'home') document.querySelector('#lab-lead').click(); else document.querySelector(`.lab-tab[data-view="${v}"]`).click(); }, v); await page.waitForTimeout(450); };
 async function shot(page, layout, name) { await page.screenshot({ path: join(SHOTS, `${layout}-${name}.png`) }); }
-async function setXp(page, xp) { await L(page, (xp) => { const s = __lab.store, d = s.doc(); d.dev[s.device] = { c: (d.dev[s.device] || { c: 0 }).c, x: xp }; s.setOpt('quests', true); }, xp); await page.waitForTimeout(200); }
+const dismissLevelUp = (page) => page.evaluate(() => document.querySelectorAll('.lab-levelup').forEach((e) => e.remove()));      // seeding XP crosses levels: the moment is tested on its own below
+async function setXp(page, xp) { await L(page, (xp) => { const s = __lab.store, d = s.doc(); d.dev[s.device] = { c: (d.dev[s.device] || { c: 0 }).c, x: xp }; s.setOpt('quests', true); }, xp); await page.waitForTimeout(200); await dismissLevelUp(page); }
 async function typeName(page, name) { for (const ch of name.toLowerCase()) await page.click(`.kb-key[data-key="${ch}"]`); }
 async function pickPlayer(page, id) {
   const back = await page.evaluate(() => document.querySelector('.lab-pl-grid') ? 'players' : 'lab');
@@ -186,6 +187,23 @@ async function runLayout(browser, layout) {
     check('after one swap there are no more swaps today', (await page.locator('.lab-swap').count()) === 0);
     check('the swap really changed a quest', (await page.locator('.lab-quest').count()) === 3);
   }
+  if (!fast) {
+    await L(page, () => { __lab.setQuests(['sj-words', 'tb-facts', 'any-explore']); });
+    await page.waitForTimeout(350);
+    const card = page.locator('[data-quest="any-explore"]');
+    check('the "Play 2 different games" card says exactly what counts', /Play \d different games/.test(await card.innerText()) && /Answer something or finish a piece in each one/.test(await card.innerText()) && /Just opening a game does not count/.test(await card.innerText()), await card.innerText());
+    const n0 = await card.locator('.lab-quest-n').textContent();
+    await L(page, () => { __lab.store.report({ game: 'sj', event: 'word', firstTry: true }); });
+    await page.waitForTimeout(350);
+    const n1 = await card.locator('.lab-quest-n').textContent();
+    await L(page, () => { __lab.store.report({ game: 'ww', event: 'marker', firstTry: true }); });
+    await page.waitForTimeout(350);
+    const n2 = await page.locator('[data-quest="any-explore"] .lab-quest-n').textContent();
+    check('it counts games that reported play, and is done at the second (earlier tests already played Trail Blazer today)', /^[01] \/ [23]$/.test(n0) && /^(1 \/ [23]|Done)$/.test(n1) && /^(Done|2 \/ 3)$/.test(n2), JSON.stringify([n0, n1, n2]));
+    await shot(page, layout, '05b-quest-explore');
+    await L(page, () => __lab.setQuests(['tb-races', 'tb-facts', 'tb-win']));
+    await page.waitForTimeout(250);
+  }
   await shot(page, layout, '05-quests');
   await audit(page, 'quests');
 
@@ -239,6 +257,9 @@ async function runLayout(browser, layout) {
   check('a gift says how it is earned', /Gift: Level \d+/.test(await page.innerText('.lab-shop')));
   const locked = await page.locator('[data-state="locked"]').count();
   check('a slot that opens later says "Opens at level N"', locked > 0 && /Opens at level \d+/.test(await page.innerText('.lab-shop')), String(locked));
+  const lk = await L(page, () => { const c = document.querySelector('.lab-item[data-state="locked"]'); if (!c) return null; const pv = c.querySelector('.lab-card-prev'); const cs = getComputedStyle(c); const pcs = getComputedStyle(pv); const cv = c.querySelector('.lab-prev'); return { filter: cs.filter + '|' + pcs.filter + '|' + (cv ? getComputedStyle(cv).filter : ''), opacity: cs.opacity, badge: !!c.querySelector('.lab-lock-badge'), price: (c.querySelector('.lab-price') || {}).textContent || '', text: c.innerText }; });
+  check('a locked item shows in full colour (no filter, full opacity), with a lock badge, its price and "Opens at level N"', !!lk && !/grayscale|saturate|brightness/.test(lk.filter) && lk.opacity === '1' && lk.badge && /\d/.test(lk.price) && /Opens at level \d+/.test(lk.text), JSON.stringify(lk));
+  check('nothing on the shop says limited, hurry, only or a countdown', !/limited|hurry|only \d|last chance|ends|left!/i.test(await page.innerText('.lab-shop')));
   await shot(page, layout, '10-shop-me');
   await audit(page, 'shop (Me)');
   if (!fast) {
@@ -476,9 +497,36 @@ async function runLayout(browser, layout) {
     await L(page, () => { window.__closed = false; __lab_lab.openShop({ game: 'bc', onClose: () => { window.__closed = true; } }); });
     check('openShop({ game: "bc" }) opens the Build Crew tab', await waitFor(page, '.lab-overlay .lab-seg-btn.on[data-tab="bc"]', 3000));
     await shot(page, layout, '26-overlay-shop');
+    if (layout === 'desktop') {
+      for (const [vw, vh] of [[1920, 998], [1440, 900], [390, 844], [844, 390]]) {
+        await page.setViewportSize({ width: vw, height: vh }); await page.waitForTimeout(250);
+        await page.click('.lab-overlay .lab-seg-btn[data-tab="me"]'); await page.waitForTimeout(250);          // the longest shelf
+        await L(page, () => { const m = document.querySelector('.lab-overlay .lab-main'); m.scrollTop = m.scrollHeight; });
+        const fit = await L(page, () => { const r = (s) => { const e = document.querySelector(s); const b = e.getBoundingClientRect(); return { top: b.top, bottom: b.bottom }; }; const m = document.querySelector('.lab-overlay .lab-main'); return { shell: r('.lab-overlay .lab-shell'), nav: r('.lab-overlay .lab-nav'), top: r('.lab-overlay .lab-top'), main: { sh: m.scrollHeight, ch: m.clientHeight, st: m.scrollTop }, vh: innerHeight, docH: document.documentElement.scrollHeight }; });
+        check(`the Lab modal fits ${vw}x${vh}: shell inside the viewport, the nav reachable after scrolling the Shop to the bottom, the content scrolls inside`, fit.shell.top >= -0.5 && fit.shell.bottom <= vh + 0.5 && fit.nav.bottom <= vh + 0.5 && fit.nav.top >= fit.top.bottom && fit.docH <= vh + 1 && fit.main.sh > fit.main.ch && fit.main.st > 0, JSON.stringify(fit));
+        const navHit = await L(page, () => { const e = document.querySelector('.lab-overlay .lab-tab[data-view="quests"]:not([hidden]), .lab-overlay .lab-tab[data-view="shop"]'); const b = e.getBoundingClientRect(); const t = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2); return !!t && !!t.closest('.lab-nav'); });
+        check(`${vw}x${vh}: a bottom-nav button can be tapped`, navHit);
+        await page.screenshot({ path: join(SHOTS, `desktop-27-modal-${vw}x${vh}.png`) });
+      }
+      await page.setViewportSize(size); await page.waitForTimeout(250);
+    }
     await page.click('.lab-overlay #lab-lead'); await page.waitForTimeout(300);
     await page.click('.lab-overlay #lab-lead'); await page.waitForTimeout(300);
     check('Back goes Home, then Close calls onClose', await L(page, () => window.__closed === true));
+    // the level-up moment inside the Lab (page or overlay): open the Lab on Home, cross a level, expect the celebration
+    await page.keyboard.press('Escape').catch(() => {});
+    await L(page, () => { __lab_lab.openHome({}); });
+    await waitFor(page, '.lab-overlay .lab-shell', 3000);
+    await L(page, () => { const s = __lab.store, d = s.doc(), v = s.view(); window.__lvBefore = v.level.level; d.dev[s.device].x += v.level.toNext - 1; __lab_lab.report({ game: 'tb', event: 'race' }); });
+    check('crossing a level with the Lab open shows the level-up moment (badge, level, title)', await waitFor(page, '.lab-overlay .lab-levelup', 3000) && (await page.textContent('.lab-overlay .lab-levelup')).includes(`Level ${(await L(page, () => window.__lvBefore)) + 1}`) && (await page.locator('.lab-overlay .lab-lv-badge').count()) === 1 && (await page.locator('.lab-overlay .lab-lv-rays i').count()) > 5 && (await page.locator('.lab-overlay .lab-lv-name').textContent()).trim().length > 2);
+    check('the moment has no pressure text and no clock', !/hurry|limited|expires|\d:\d\d|don't miss|only/i.test(await page.innerText('.lab-overlay .lab-levelup')));
+    await shot(page, layout, '28-level-up-moment');
+    await page.click('.lab-overlay #levelup-ok'); await page.waitForTimeout(200);
+    check('"Nice!" closes it', (await page.locator('.lab-overlay .lab-levelup').count()) === 0);
+    // reduced motion: fade only (no rays, no badge burst)
+    const calm = await L(page, async () => { const { showLevelUp } = await import('/lab/src/ui/levelup.js'); const host = document.querySelector('.lab-overlay .lab-shell'); const el = showLevelUp(host, { level: 8, title: 'Scout', from: 7, reduced: true, sfx: null, say: null }); const out = { rays: el.querySelectorAll('.lab-lv-rays').length, calm: !!el.querySelector('.lab-levelup-card.calm'), anim: getComputedStyle(el.querySelector('.lab-lv-badge')).animationName }; el.remove(); return out; });
+    check('reduced motion: the moment is a fade (no rays, no burst animation)', calm.rays === 0 && calm.calm && calm.anim === 'none', JSON.stringify(calm));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(250); await page.keyboard.press('Escape').catch(() => {}); await page.waitForTimeout(250);
     await L(page, () => { window.__hud.destroy(); window.__res.destroy(); document.querySelector('#fake-game').remove(); });
     await L(page, () => { __lab_lab.openParent({ unlocked: true }); });
     check('openParent({ unlocked: true }) skips the PIN (the game\'s own Parent Zone just took it)', await waitFor(page, '.lab-overlay #odds-table', 3000));

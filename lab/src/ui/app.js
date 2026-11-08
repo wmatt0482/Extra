@@ -15,6 +15,7 @@ import { mountMe } from './me.js';
 import { mountFamily } from './board.js';
 import { mountGallery } from './gallery.js';
 import { mountParent } from './parent.js';
+import { showLevelUp } from './levelup.js';
 
 export const TABS = [['quests', 'Quests'], ['crate', 'Crate'], ['shop', 'Shop'], ['family', 'Family'], ['gallery', 'Gallery'], ['me', 'Me'], ['parent', 'Grown-ups']];
 const MOUNTS = { home: mountHome, quests: mountQuests, crate: mountCrate, shop: mountShop, me: mountMe, family: mountFamily, gallery: mountGallery, parent: mountParent };
@@ -40,7 +41,7 @@ export function createApp(store, o = {}) {
   const voice = sharedVoice();
   voice.setPlayer(store.player ? store.player.id : '');
   setTimeout(() => prepareVoice(store, voice), 400);
-  let view = '', cur = null, raf = 0, dead = false, toastTimer = 0;
+  let view = '', cur = null, raf = 0, dead = false, toastTimer = 0, seenLevel = 0, seenPlayer = '';
   const ctx = {
     store, voice, mode, game: o.game || 'sj', sync: o.sync || null, unlocked: !!o.unlocked, reduced: reducedMotion(),
     go: (v, params) => go(v, params), toast, sfx, num,
@@ -87,6 +88,10 @@ export function createApp(store, o = {}) {
     const slots = {}; for (const [k, s] of Object.entries(v.avatar.slots)) slots[k] = s.id;
     drawPortrait(chipCv, { color: v.player.color || '#3b7dd9', slots, mood: 'content' });
     const L = v.level;
+    // a level crossed while the Lab is open (same player): the celebration, not just a number
+    const pid = store.player ? store.player.id : '';
+    if (pid === seenPlayer && seenLevel > 0 && L.level > seenLevel) showLevelUp(el, { level: L.level, title: L.title, from: seenLevel, reduced: ctx.reduced, sfx, say: (t) => voice.later(t) });
+    seenPlayer = pid; seenLevel = L.level;
     lvEl.textContent = `Lv ${L.level} · ${L.title}`;
     xpText.textContent = L.max ? 'Top level' : `${num(L.toNext)} XP to level ${L.next}`;
     xpFill.style.width = `${L.max ? 100 : L.need ? Math.round((100 * L.into) / L.need) : 0}%`;

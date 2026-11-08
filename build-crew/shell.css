@@ -362,7 +362,7 @@ a.btn:focus-visible {
   justify-content: center;
   gap: 8px;
   width: 150px;
-  height: 168px;
+  min-height: 168px;
   padding: 10px 8px;
   color: #fff;
   border-color: var(--c, var(--line));
@@ -405,9 +405,9 @@ a.btn:focus-visible {
   font: 400 17px/1.1 var(--font-display);
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: break-word;
 }
 .pl-level {
   position: absolute;
@@ -2376,7 +2376,7 @@ html.touch #hud .center-controls {
   }
   .pl-tile {
     width: 146px;
-    height: 150px;
+    min-height: 150px;
   }
   .pl-name {
     font-size: 15px;

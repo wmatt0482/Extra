@@ -48,7 +48,11 @@ export function mountShop(ctx, params = {}) {
         act.append(b);
       }
     } else if (it.state === 'gift') sub = h('span', { class: 'lab-state gift' }, h('span', { html: glyph('sparkle') }), `Gift: ${it.how || 'a surprise'}`);
-    else if (it.state === 'locked') sub = h('span', { class: 'lab-state locked' }, h('span', { html: glyph('lock') }), `Opens at level ${it.opensAt}`);
+    else if (it.state === 'locked') {
+      // full colour, never a silhouette: the price and what opens it, a small lock badge on the picture
+      sub = h('span', { class: 'lab-state locked' }, h('span', { html: glyph('lock') }), `Opens at level ${it.opensAt}`);
+      act.append(h('span', { class: 'lab-price', 'data-act': 'locked' }, h('span', { html: COIN }), ctx.num(it.price)));
+    }
     else if (it.state === 'poor') {
       sub = h('span', { class: 'lab-state poor' }, `Need ${ctx.num(it.need)} more`);
       act.append(h('button', { class: 'lab-btn lab-btn-sm', type: 'button', disabled: true, 'data-act': 'poor' }, h('span', { html: COIN }), ctx.num(it.price)));
@@ -73,6 +77,7 @@ export function mountShop(ctx, params = {}) {
     }
     const prev = h('button', { class: 'lab-card-prev', type: 'button', 'aria-label': `Hear the name: ${it.name}` }, itemPreview(it, 76, { color: v.player.color, species: v.pet.species }));
     prev.addEventListener('click', () => ctx.say(it.name));
+    if (it.state === 'locked') prev.append(h('span', { class: 'lab-lock-badge', 'aria-hidden': 'true', html: glyph('lock') }));
     return h('article', { class: `lab-card lab-item s-${it.state}` + (confirm === it.id ? ' confirming' : '') + (fresh === it.id ? ' fresh' : ''), 'data-item': it.id, 'data-state': it.state },
       prev,
       h('div', { class: 'lab-item-body' },
