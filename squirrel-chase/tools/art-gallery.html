@@ -24,5 +24,14 @@ const cells = (s, items, cls = '') => { const r = $(`<div class="row panel ${cls
 
 { const s = sec('Gang');
   for (const id of A.GANG_IDS) cells(s, A.GANG_MOODS.map((m) => [`${id} ${m}`, A.gangPortrait(id, m)]), 'light');
+  cells(s, A.GANG_MOODS.map((m) => [`dark ${m}`, A.gangPortrait('squirrel', m)]).concat([['crow', A.gangPortrait('crow', 'laughing')], ['goat', A.gangPortrait('goat', 'smug')]]), 'dark');
+}
+{ const s = sec('Detective agency');
+  cells(s, [['pip happy', A.pipPortrait('happy')], ['pip thinking', A.pipPortrait('thinking')], ['pip surprised', A.pipPortrait('surprised')], ['pip cheer', A.pipPortrait('cheer')], ['chief', A.chiefPortrait()], ['wen', A.wenPortrait()]], 'light');
+  cells(s, [['pip', A.pipPortrait('happy')], ['chief', A.chiefPortrait()], ['wen', A.wenPortrait()]], 'dark');
+}
+{ const s = sec('Witnesses');
+  const all = []; for (let i = 0; i < 40; i++) all.push([`seed ${i}`, A.witnessPortrait('w' + i)]);
+  cells(s, all.slice(0, 20), 'light'); cells(s, all.slice(20), 'light');
 }
 </script></body></html>
