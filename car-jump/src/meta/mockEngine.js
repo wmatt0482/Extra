@@ -6,6 +6,11 @@
 // flight flies through one letter ring per letter, in order (letterRing events, then wordComplete).
 // Grand Finale: every 3rd run of this engine ends with finaleWhine, then (0.3 s) finale {cash $150 x coinMult,
 // into cash.stunts}, then finish 1.6 s after the scripted end with summary.finale = true.
+// v4.0 Sky Era (SPEC "Sky Era (v4.0) — build contract", the app's side of the engine contract): on a track with era 'sky' and
+// start({ spellBoost: true }) the first flight reaches the Spell Boost gate just after the apex: it emits spellBoost {x, y} and FREEZES
+// (nothing advances: no timer; the car just hovers on screen). game.freeze(false) resumes; game.boost({ power, word }) adds the second jump
+// (+80 m x power, one boostRing event per letter of the word, summary.spellBoost = { used, power, distance }). getHudState() is getState()
+// plus { frozen, boostReady, boostUsed }. Earth tracks and spellBoost:false never freeze.
 
 import { OBSTACLE_KINDS } from '../data/tracks.js';
 import { mulberry32 } from './rng.js';
@@ -52,7 +57,7 @@ export function createGame(canvas, opts = {}) {
   }
   const kindCash = (kind) => (OBSTACLE_KINDS[kind] ? OBSTACLE_KINDS[kind].cash : EXPLOSIVE[kind] || 20);
 
-  function start({ car, stats, track, seed = 1, bestDistance = null, shake = 1, letters = null, powerScale = 1, nitroScale = 1 }) {
+  function start({ car, stats, track, seed = 1, bestDistance = null, shake = 1, letters = null, powerScale = 1, nitroScale = 1, spellBoost = false }) {
     const rnd = mulberry32(seed ^ 0x9e3779b9);
     const g = Math.max(0.2, track.gravity || 1);
     const baseTarget = (250 + 110 * stats.power * stats.launchBoost + rnd() * 40) / Math.pow(g, 0.3);
@@ -87,6 +92,7 @@ export function createGame(canvas, opts = {}) {
     run = {
       finalePlanned: runNo % 3 === 0, finaleT: null, boomed: false, finaleRaw: 0,
       baseTarget, target: baseTarget, powerScale: 1, nitroScale: 1, parked: true,
+      boostGate: track.era === 'sky' && spellBoost === true, frozen: false, boostUsed: false, boosted: false, boostPower: 0, boostDistance: 0, boostWord: '',
       letters: lt, letterQ: lt.map((letter, index) => ({ a: lt.length > 1 ? 0.08 + (0.84 * index) / (lt.length - 1) : 0.5, letter, index })),
       lettersCollected: 0, lettersInOrder: true,
       car, stats, track, flipsPlanned: flips, quality, timeline, air, air2: [{ a: 0.5, kind: 'ring' }],
@@ -175,6 +181,7 @@ export function createGame(canvas, opts = {}) {
       letters: { collected: r.lettersCollected, total: r.letters.length, inOrder: r.lettersInOrder && r.lettersCollected === r.letters.length },
       finale: r.boomed,
     };
+    if (r.boosted) summary.spellBoost = { used: true, power: r.boostPower, distance: r.boostDistance, word: r.boostWord };
     summary.ratingScore = ratingScore(summary, r.track.finish);
     summary.rating = ratingLetter(summary.ratingScore);
     emit({ type: 'finish', summary });
@@ -247,6 +254,7 @@ export function createGame(canvas, opts = {}) {
     if (!r || r.ended) return;
     // parked at the ramp top until the first GAS (the engine never auto-starts)
     if (r.parked) { if (!input.gas) return; r.parked = false; }
+    if (r.frozen) return;                         // v4.0: the Spell Boost freeze: nothing ticks
     r.t += dt;
     const nitroOn = input.nitro && r.nitro > 0 && r.phase !== 'done';
     if (nitroOn) { r.nitro = Math.max(0, r.nitro - dt / (1.2 * r.stats.nitroCapacity * Math.max(0.2, r.nitroScale))); r.bonus += dt * 12 * r.stats.nitroPower; }
@@ -271,6 +279,11 @@ export function createGame(canvas, opts = {}) {
       r.rot = -0.2 + dir * Math.min(1, a * 1.2) * r.flipsPlanned * Math.PI * 2;
       while (r.air.length && r.air[0].a <= a) hitAir(r, r.air.shift().kind);
       while (r.letterQ.length && r.letterQ[0].a <= a) hitLetter(r, r.letterQ.shift());
+      if (r.boostGate && !r.boostUsed && a >= 0.58) {
+        r.boostUsed = true; r.frozen = true;
+        emit({ type: 'spellBoost', x: Math.round(r.distance), y: Math.round(r.altitude * 10) / 10 });
+        return;
+      }
       if (!r.orbited && r.altitude > 45) { r.orbited = true; emit({ type: 'orbit', altitude: Math.round(r.altitude) }); popup('ORBIT!', '#c9a8ff'); }
     } else if (r.t < KICK_T || (r.t >= LAND2_T)) {
       if (!r.landed) {
@@ -319,6 +332,7 @@ export function createGame(canvas, opts = {}) {
       const e = r.timeline.shift();
       if (e.ev === 'smash') smash(r, e);
       else if (e.ev === 'damage') emit({ type: 'damage', part: e.part });
+      else if (e.ev === 'boostRing') { emit({ type: 'boostRing', letter: e.letter, index: e.index, cash: Math.round(40 * r.stats.coinMult) }); r.airCash += Math.round(40 * r.stats.coinMult); }
     }
     if (r.combo.count > 0 && r.t - r.combo.last > COMBO_WINDOW) endCombo(r);
     if (r.speedKmh > r.maxSpeed) r.maxSpeed = r.speedKmh;
@@ -408,6 +422,9 @@ export function createGame(canvas, opts = {}) {
     if (input.nitro && r.nitro > 0) { ctx.fillStyle = '#52d6ff'; ctx.beginPath(); ctx.moveTo(-2, 0.1); ctx.lineTo(-3.4, 0.25); ctx.lineTo(-2, 0.4); ctx.fill(); }
     ctx.restore();
     ctx.globalAlpha = 1;
+    if (r.frozen) {                                // the frozen scene: a calm soft glow, the car hovers
+      ctx.fillStyle = 'rgba(127,232,255,.18)'; ctx.beginPath(); ctx.arc(sx(cx), sy(cy), ppm * (4 + Math.sin(performance.now() / 500)), 0, Math.PI * 2); ctx.fill();
+    }
     ctx.restore();
     // popups
     ctx.textAlign = 'center';
@@ -434,10 +451,26 @@ export function createGame(canvas, opts = {}) {
     start,
     setInput(i) { if (i) { input.gas = !!i.gas; input.brake = !!i.brake; input.nitro = !!i.nitro; } },
     setLaunchPower(p, n) { return setPower(p, n); },
+    /** v4.0: hold / release the simulation (the Spell Boost gate does it by itself; the app releases it after the spelling). */
+    freeze(on) { if (run && !run.ended) { run.frozen = !!on; if (!on) last = performance.now(); } },
+    /** v4.0: the second jump. power 1 = first try, 0.5 = fixed after a miss. Once per start(); only after the spellBoost event. */
+    boost({ power = 1, word = '' } = {}) {
+      const r = run;
+      if (!r || r.ended || !r.boostUsed || r.boosted) return false;
+      const p = Math.max(0, Math.min(1, Number(power) || 0));
+      r.boosted = true; r.boostPower = p; r.boostWord = String(word || '');
+      r.boostDistance = Math.round(80 * p); r.bonus += r.boostDistance; r.nitro = Math.min(1, r.nitro + 0.5 * p);
+      const lt = Array.from(r.boostWord).filter((c) => /[a-z' -]/i.test(c));
+      lt.forEach((letter, index) => r.timeline.push({ t: r.t + 0.3 + 0.22 * index, ev: 'boostRing', letter, index }));
+      r.timeline.sort((a, b) => a.t - b.t);
+      popup(p >= 1 ? 'SPELL BOOST!' : 'BOOST HOP', '#7fe8ff');
+      return true;
+    },
     pause() { paused = true; },
     resume() { paused = false; last = performance.now(); },
     stop() { if (run && !run.ended) finish(); },
     destroy() { cancelAnimationFrame(raf); raf = 0; if (ro) ro.disconnect(); run = null; },
+    getHudState() { return this.getState(); },   // v4.0 name in the contract (getState plus frozen / boostReady / boostUsed)
     getState() {
       const r = run;
       if (!r) return { phase: 'done', distance: 0, speedKmh: 0, nitro: 1, airTime: 0, flips: 0, smashed: 0, cash: 0, finishCrossed: false, landing: null,
@@ -449,6 +482,7 @@ export function createGame(canvas, opts = {}) {
         flips: r.flips, smashed: r.smashed, cash: cashParts(r).total, finishCrossed: r.finishCrossed, landing: r.landing,
         altitude: r.phase === 'air' ? r.altitude : 0, combo: { count: c.count, mult: c.mult, timer01 }, rejumps: r.rejumps,
         letters: { collected: r.lettersCollected, total: r.launched ? r.letters.length : 0 },   // R1: nothing before launch
+        frozen: !!r.frozen, boostReady: !!(r.boostGate && !r.boostUsed), boostUsed: !!r.boostUsed,   // v4.0
       };
     },
   };

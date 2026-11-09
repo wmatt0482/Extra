@@ -2,9 +2,13 @@
 // v3.3: a "Style" row under the preview: skin chips then sticker chips. Owned ones are in color (a mini swatch /
 // the sticker glyph); locked ones are gray with how to earn them ("Crate", "7-day streak", "Level 8", "Week
 // Champion"). Equipping is per car (owned cars only); the preview, the title hero and the run use the equipped look.
+// v4.0 (Sky Era): once it is open the carousel also holds the sky rides; in the Sky era they come first (and a "Sky rides" row jumps
+// to each), in the Earth era the cars come first and the rides follow. Every car and ride stays owned in both.
 // v3.6: the row has two tabs, Paint and Stickers (13 paint chips used to push the stickers off the screen, so nobody
 // found them); owned chips come first, and the Stickers tab shows how many are owned.
 import { CARS, MAX_TIER } from '../data/cars.js';
+import { skyAvailable, skyRides } from '../meta/skyData.js';
+import { currentEra, skyUnlocked } from '../meta/sky.js';
 import { SKINS, STICKERS } from '../data/cosmetics.js';
 import { earnHint, equip, equippedFor, lookFor, owns } from '../meta/engagement.js';
 import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
@@ -23,10 +27,23 @@ export function createGarage(app) {
   let index = 0, raf = 0, t0 = 0, slide = 0;
   let styleTab = 'skin';            // 'skin' (Paint) | 'sticker' (Stickers)
 
-  CARS.forEach(() => ui.dots.append(h('i')));
+  ui.rides = $('#sky-rides');
+  // the carousel: Earth cars (+ the sky rides once the era is open); the era decides which come first
+  let CARS_NOW = CARS;
+  function carList() {
+    const open = skyUnlocked(app.save) && skyAvailable() && skyRides().length > 0;
+    if (!open) return CARS;
+    return currentEra(app.save) === 'sky' ? [...skyRides(), ...CARS] : [...CARS, ...skyRides()];
+  }
+  function syncList() {
+    CARS_NOW = carList();
+    if (ui.dots.children.length !== CARS_NOW.length) { ui.dots.replaceChildren(...CARS_NOW.map(() => h('i'))); }
+    ui.dots.dataset.n = String(CARS_NOW.length);
+  }
+  syncList();
 
   function nav(dir) {
-    index = (index + dir + CARS.length) % CARS.length;
+    index = (index + dir + CARS_NOW.length) % CARS_NOW.length;
     slide = dir;
     t0 = performance.now();
     render();
@@ -45,7 +62,7 @@ export function createGarage(app) {
   canvas.addEventListener('pointercancel', () => { sx = null; });
 
   ui.action.addEventListener('click', () => {
-    const car = CARS[index];
+    const car = CARS_NOW[index];
     const s = app.save;
     if (!isOwned(s, car.id)) {
       const r = buyCar(s, car.id);
@@ -58,7 +75,7 @@ export function createGarage(app) {
   });
 
   $('#btn-race').addEventListener('click', () => {
-    const car = CARS[index];
+    const car = CARS_NOW[index];
     if (isOwned(app.save, car.id)) { selectCar(app.save, car.id); app.persist(); }
     app.go('tracks');
   });
@@ -118,7 +135,7 @@ export function createGarage(app) {
     return b;
   }
   function renderStyle() {
-    const car = CARS[index];
+    const car = CARS_NOW[index];
     const owned = isOwned(app.save, car.id);
     const eq = equippedFor(app.save, car.id);
     const keep = ui.style.scrollLeft;
@@ -134,9 +151,27 @@ export function createGarage(app) {
     canvas.dataset.lookSkin = eq.skin; canvas.dataset.lookSticker = eq.sticker;
   }
 
+  // the "Sky rides" row (Sky era only): one chip per ride, owned ones ticked
+  function renderRides() {
+    const sky = currentEra(app.save) === 'sky' && skyUnlocked(app.save) && skyRides().length > 0;
+    ui.rides.hidden = !sky;
+    ui.rides.replaceChildren();
+    if (!sky) return;
+    ui.rides.append(h('span', { class: 'sr-label' }, 'Sky rides'));
+    for (const r of skyRides()) {
+      const own = isOwned(app.save, r.id), on = CARS_NOW[index] && CARS_NOW[index].id === r.id;
+      const b = h('button', { class: 'sr-chip' + (own ? ' owned' : '') + (on ? ' on' : ''), 'data-ride': r.id, 'data-sfx': '', 'aria-pressed': String(!!on),
+        'aria-label': `${r.name}${own ? ', yours' : ', $' + money(r.price)}` }, own ? h('span', { html: icon('check') }) : null, r.name);
+      b.addEventListener('click', () => { const i = CARS_NOW.findIndex((c) => c.id === r.id); if (i >= 0) { slide = i > index ? 1 : -1; index = i; t0 = performance.now(); render(); } });
+      ui.rides.append(b);
+    }
+  }
+
   function render() {
     const s = app.save;
-    const car = CARS[index];
+    syncList();
+    if (index >= CARS_NOW.length) index = 0;
+    const car = CARS_NOW[index];
     const owned = isOwned(s, car.id);
     ui.name.textContent = car.name;
     ui.tag.textContent = car.tagline;
@@ -162,6 +197,7 @@ export function createGarage(app) {
     ui.upgrades.innerHTML = '';
     for (const u of UPGRADES) ui.upgrades.append(upgradeRow(car, u, owned));
     renderStyle();
+    renderRides();
     app.refreshCash();
     paint();
   }
@@ -171,8 +207,8 @@ export function createGarage(app) {
     const rm = app.save.settings.reducedMotion;
     const k = rm ? 1 : Math.min(1, (now - t0) / 280);
     const ease = 1 - Math.pow(1 - k, 3);
-    const look = app.look ? app.look(CARS[index].id) : lookFor(app.save, CARS[index].id);   // v3.9: the Lab's skin / sticker over the garage's
-    drawCar(canvas, CARS[index], {
+    const look = app.look ? app.look(CARS_NOW[index].id) : lookFor(app.save, CARS_NOW[index].id);   // v3.9: the Lab's skin / sticker over the garage's
+    drawCar(canvas, CARS_NOW[index], {
       skin: look.skin, sticker: look.sticker,
       spin: rm ? 0 : now / 300 + (1 - ease) * 6 * slide,
       bob: rm ? 0 : Math.sin(now / 380) * 1.5,
@@ -188,7 +224,10 @@ export function createGarage(app) {
 
   return {
     show() {
-      index = Math.max(0, CARS.findIndex((c) => c.id === app.save.selectedCar));
+      syncList();
+      index = Math.max(0, CARS_NOW.findIndex((c) => c.id === app.save.selectedCar));
+      // Sky era with no ride bought yet: the shop window opens on the first ride
+      if (currentEra(app.save) === 'sky' && skyUnlocked(app.save) && skyRides().length && !skyRides().some((r) => isOwned(app.save, r.id))) index = 0;
       slide = 0;
       render();
       cancelAnimationFrame(raf);

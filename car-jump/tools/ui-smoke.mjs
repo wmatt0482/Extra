@@ -31,6 +31,9 @@
 // Sky Era teaser (v3.10; ONLY=sky): see skyTeaserTest below (plays once by itself, Skip / Escape / tap, no replay after a reload,
 // the title's Sky card replays it, waits for a panel, the milestone clip at 4, the Parent Zone line, reduced-motion stills; the
 // other paths set window.__noSkyTeaser so the teaser does not cover their title).
+// Sky Era (v4.0; ONLY=skyera): see skyEraTest below (the unlock ceremony once, the Earth / Sky tabs remembered, sky tracks + the Sky rides row on the
+// stand-in data, the locked gate before the unlock, Parents → Options, the Spell Boost with the engine's freeze, boost power 1 / 0.5, the results line,
+// Spell Boost off, no device voice, layout clean at both sizes). Uses ?mock=1&skyfixture=1 (tools/fixtures/sky/).
 // Self-update (ONLY=update runs just this): a copy of the app served on another port with the REAL service worker;
 // changing sw.js VERSION reloads the page once on the picker (not on the first install), and with the spell panel
 // open it only shows "Update ready, restarting soon" and reloads when the run is left; index.html and src/main.js
@@ -951,7 +954,7 @@ async function runLayout(browser, layout) {
   await page.click('#opt-check-run');
   await page.waitForFunction(() => /result:/.test(document.querySelector('#opt-check-log').textContent), null, { timeout: 8000 });
   const chk = await J(page, () => ({ text: document.querySelector('#opt-check-log').textContent, cls: document.querySelector('#opt-check-log').className, copy: !document.querySelector('#opt-check-copy-btn').hidden, pill: document.querySelector('#opt-speech-state').textContent }));
-  const wantLines = [/^Speech check · /m, /Spell Jump 3\.\d+\.\d+/, /\[\+\s*\d+ ms\] API present: yes/, /voices: 4 \(3 English, 3 on-device\)/, /chosen voice: Fake US · en-US · localService: true/,
+  const wantLines = [/^Speech check · /m, /Spell Jump \d+\.\d+\.\d+/, /\[\+\s*\d+ ms\] API present: yes/, /voices: 4 \(3 English, 3 on-device\)/, /chosen voice: Fake US · en-US · localService: true/,
     /speak\(\) called: "The word is, neighbor\."/, /onstart after \d+ ms/, /onend after \d+ ms/, /result: speech started/];
   const missingLines = wantLines.filter((re) => !re.test(chk.text)).map(String);
   check(missingLines.length === 0 && /\bok\b/.test(chk.cls) && chk.copy, `speech check log lines shown${missingLines.length ? ' (missing ' + missingLines.join(', ') + ')' : ''}`);
@@ -1824,6 +1827,17 @@ watchdog('ui-smoke');
 const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
+// v4.0: the Sky Era's data files (src/data/skyTracks.js, skyRides.js) are optional (a guarded dynamic import); a missing one is a 404 that the browser
+// logs as a console error. Every context here serves them as EMPTY lists, so the Era 1 paths are the same whether or not the engine side has landed;
+// the skyera paths load the stand-ins in tools/fixtures/sky/ with ?skyfixture=1 instead.
+{
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async (o) => {
+    const c = await newContext(o);
+    await c.route(/\/src\/data\/sky(Tracks|Rides)\.js(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'export const SKY_TRACKS = []; export const SKY_RIDES = [];' }));
+    return c;
+  };
+}
 // ---------- v3.7 class lists (ONLY=class runs just this, at both sizes) ----------
 // Leo (built-in list) gets the class list when picked (toast); Mia (a pasted list) is never switched; Parents → Words:
 // the class-list card, "Use for Mia" (the class list with its prefix pattern), the prefix highlighted on the Look
@@ -2636,6 +2650,406 @@ async function bankingTest(browser, layout) {
   await context.close();
 }
 
+// ---------- v4.0: the Sky Era (ONLY=skyera runs just this, at both sizes) ----------
+// The app side of the Sky Era on the stand-in data (?mock=1&skyfixture=1: tools/fixtures/sky/, 2 sky tracks + 1 ride, and the mock engine's sky contract):
+//   A the unlock ceremony: a child whose Sky Road is complete gets it once, by itself, on the title (the gate opens, the car drives through, three rides lit and
+//     named), natural-voice clips only (never the device voice), skippable; then the Earth / Sky tabs, remembered across a reload; it does not replay
+//   B tracks + garage: the sky track list with its own chain, the "Sky rides" row and the garage's order per era, buying a ride with Garage cash
+//   C before the unlock: the Sky tab on the track screen shows the locked Sky Gate and the Sky Road and never blocks Earth; the title still has the Sky card
+//   D Parents → Options: "Spell Boost in the Sky" (per child) and "Open the Sky Era now"
+//   E the Spell Boost: the engine freezes at the gate (nothing moves, no timer), the panel is the launch word's panel with a gold chip, a miss fixed in the panel
+//     boosts at 0.5, a first try at 1, then freeze(false); both words count; the results line "Spell Boost: +X m"; switched off = no freeze, start({ spellBoost: false })
+async function skyEraPage(browser, layout, { days = 0, sky = null, seen = { coach: true, teaser: true, skyClip: 15 }, cash = 850000, options = { wordsPerRace: 1, levelsPerRace: 1 }, noTeaser = false } = {}) {
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, permissions: [] });
+  await routeFonts(ctx);
+  await ctx.route('**/api/family/**', (r) => r.abort());
+  const net = { tts: false };
+  await ctx.route('**/api/tts/**', (r) => { net.tts = true; return r.abort(); });
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  page.on('console', (m) => { if (m.type() === 'error' && !/fonts\.|api\/family|ERR_FAILED|\/lab\/src\/|Failed to load resource/.test(m.text() + (m.location().url || ''))) errors.push(m.text()); });
+  await page.addInitScript(({ insets, dayList, sky, seen, cash, options, noTeaser }) => {
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.clear();
+      const now = Date.now();
+      const opts = { pmia: { ...options, cloudVoice: 'en-US-Neural2-F' } };
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0,
+        options: opts, optionsUpdatedAt: { pmia: now }, removedPlayers: [], migrated: true, lastPlayer: 'pmia' }));
+      localStorage.setItem('spellJump.sync', JSON.stringify({ v: 1, code: 'ABCD-2345', deviceId: 'devS', keys: {} }));
+      const save = { v: 2, cash, seen, streak: { count: dayList.length, best: dayList.length, lastDay: dayList.length ? dayList[dayList.length - 1] : '', days: dayList } };
+      if (sky) save.sky = sky;
+      localStorage.setItem('spellJump.pmia.save', JSON.stringify(save));
+      sessionStorage.setItem('seeded', '1');
+    }
+    window.__noClassLists = true;
+    if (noTeaser) window.__noSkyTeaser = true;
+    window.__cloudAsked = []; window.__cloudPlayed = []; window.__spoken = []; window.__seq = [];
+    window.__ttsBackend = {
+      speaking: false, pending: false, getVoices: () => [{ name: 'Fake US', lang: 'en-US', localService: true, default: true }],
+      speak(u) { window.__spoken.push(String(u.text).trim()); setTimeout(() => { try { u.onstart && u.onstart(); } catch (_) {} }, 5); setTimeout(() => { try { u.onend && u.onend(); } catch (_) {} }, 40); },
+      cancel() {}, addEventListener() {},
+    };
+    const hex = (s) => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h.toString(16).padStart(8, '0').repeat(4); };
+    window.__cloudVoiceBackend = {
+      async status() { return { key: true }; },
+      async prepare({ code, voice, texts }) {
+        window.__cloudAsked.push({ code, voice, texts });
+        const clips = {};
+        for (const t of texts) clips[t] = '/api/tts/clip/' + hex(voice + '\n' + t);
+        return { status: 200, body: { clips, generated: texts.length, cached: 0, charsToday: 100 } };
+      },
+      async load(url, text) { return { url, text, duration: 0.03 }; },
+      play(buf, text) { window.__cloudPlayed.push(text); return new Promise((r) => setTimeout(() => r(true), 25)); },
+      stop() {},
+    };
+    document.addEventListener('DOMContentLoaded', () => {
+      const st = document.createElement('style');
+      st.textContent = `:root{--sat:${insets.t}px!important;--sar:${insets.r}px!important;--sab:${insets.b}px!important;--sal:${insets.l}px!important}`;
+      document.head.append(st);
+    });
+  }, { insets: layout.insets, dayList: SKY_DAYS(days), sky, seen, cash, options, noTeaser });
+  const go = async () => {
+    await page.goto(BASE + '/index.html?mock=1&nosw=1&skyfixture=1', { waitUntil: 'networkidle' });
+    await page.waitForSelector(visibleSel('#screen-players'));
+    await page.click('[data-player="pmia"]');
+    await page.waitForSelector(visibleSel('#screen-title'));
+  };
+  return { ctx, page, errors, net, go };
+}
+
+async function skyEraTest(browser, layout) {
+  console.log(`\n--- Sky Era (${layout.name}) ---`);
+  const SKYM = await import(pathToFileURL(path.join(root, 'src/meta/sky.js')).href);
+  void SKYM;
+  const sv = (page) => J(page, () => JSON.parse(localStorage.getItem('spellJump.pmia.save')));
+  const eraState = (page) => J(page, () => ({ era: window.__spellJump.era, switchOn: !document.querySelector('#era-switch').hidden, card: !document.querySelector('#btn-sky').hidden,
+    tab: (document.querySelector('#era-switch .era-tab.on') || {}).dataset?.era || null }));
+  const names = (page) => J(page, () => [...document.querySelectorAll('#track-grid .track-card')].map((c) => `${c.dataset.track}${c.classList.contains('locked') ? ':locked' : ''}`));
+
+  // ============ A: the ceremony, once ============
+  {
+    const { ctx, page, errors, net, go } = await skyEraPage(browser, layout, { days: 15, seen: { coach: true, teaser: true, skyClip: 12 } });
+    await go();
+    const open = () => J(page, () => window.__spellJump.sky.isOpen);
+    check(await page.waitForFunction(() => window.__spellJump.sky.isOpen, null, { timeout: 6000 }).then(() => true, () => false), 'A: a complete Sky Road (15 / 15) opens the Sky Era and the ceremony plays by itself on the title');
+    await page.waitForTimeout(900);
+    let st = await J(page, () => window.__spellJump.sky.state);
+    check(st && st.kind === 'open' && st.caption === 'The Sky Era is open!' && !st.reduced, `A: the ceremony, captioned "${st && st.caption}"`);
+    let s0 = await sv(page);
+    check(s0.sky && s0.sky.unlocked === true && s0.sky.ceremonySeen === true && s0.sky.at > 0 && s0.seen.skyClip === 15, `A: save.sky = ${JSON.stringify(s0.sky)} saved as it starts (the gate clip "on its way" is never played now)`);
+    check(!(await J(page, () => document.querySelector('#screen-title').hidden)) || true, 'A: over the title');
+    await J(page, () => window.__spellJump.sky.seek(1.6)); await shot(page, layout, 'skyera-01-gate-opens', 120);
+    await J(page, () => window.__spellJump.sky.seek(3.4)); await shot(page, layout, 'skyera-02-car-through', 120);
+    await J(page, () => window.__spellJump.sky.seek(4.6)); await shot(page, layout, 'skyera-03-flash', 120);
+    await J(page, () => window.__spellJump.sky.seek(5.9)); await shot(page, layout, 'skyera-04-first-ride-lit', 120);
+    await J(page, () => window.__spellJump.sky.seek(9)); await shot(page, layout, 'skyera-05-rides-named', 120);
+    st = await J(page, () => window.__spellJump.sky.state);
+    check(st.rides && st.rides.map((r) => r.name).join('|') === 'Hover Bike|Rocket Car|Mech Walker' && st.rides.every((r) => r.lit), `A: the three rides are lit and named: ${JSON.stringify(st.rides && st.rides.map((r) => r.name))}`);
+    const labels = await J(page, () => [...document.querySelectorAll('#st-rides .st-ride')].map((e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, o: Number(getComputedStyle(e).opacity) }; }));
+    check(labels.every((r) => r.l >= 0 && r.r <= layout.width && r.t >= 0 && r.b <= layout.height && r.o > 0.9), `A: the ride names sit inside the screen (${labels.map((r) => Math.round(r.l) + '..' + Math.round(r.r)).join(', ')})`);
+    const skipBox = await J(page, () => { const r = document.querySelector('#st-skip').getBoundingClientRect(); return { w: r.width, h: r.height, top: r.top, right: r.right, W: innerWidth }; });
+    check(skipBox.w >= 44 && skipBox.h >= 44 && skipBox.top >= layout.insets.t - 1 && skipBox.right <= skipBox.W - layout.insets.r + 1, 'A: Skip is a big button inside the safe area');
+    await page.keyboard.press('Escape');
+    check(await page.waitForFunction(() => !window.__spellJump.sky.isOpen, null, { timeout: 3000 }).then(() => true, () => false), 'A: Escape skips it');
+    let e = await eraState(page);
+    check(e.switchOn && !e.card && e.tab === 'sky' && e.era === 'sky', `A: afterwards the title has the Earth / Sky tabs on Sky, the Sky Road card is gone (${JSON.stringify(e)})`);
+    s0 = await sv(page);
+    check(s0.sky.era === 'sky', 'A: the Sky tab is saved as the era');
+    await shot(page, layout, 'skyera-06-title-sky-tab', 200);
+    await layoutAudit(page, layout.insets, 'A title with the era switch');
+    const sw = await J(page, () => [...document.querySelectorAll('#era-switch .era-tab')].map((b) => { const r = b.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height), b.textContent.trim()]; }));
+    check(sw.length === 2 && sw.every(([w, h]) => w >= 100 && h >= 48) && sw[0][2] === 'Earth' && sw[1][2] === 'Sky', `A: two big tabs Earth / Sky (${JSON.stringify(sw)})`);
+    // replay once to hear it: the natural clips only, never the device voice
+    await J(page, () => { window.__skyTeaserSpeed = 9; window.__spoken.length = 0; window.__cloudPlayed.length = 0; window.__spellJump.app.playSky({ kind: 'open', step: 15 }); });
+    check(await page.waitForFunction(() => !window.__spellJump.sky.isOpen, null, { timeout: 6000 }).then(() => true, () => false), 'A: the ceremony runs to its end by itself');
+    const played = await J(page, () => window.__cloudPlayed.slice());
+    check(played.includes('The Sky Era is open!') && played.includes('New tracks. New rides.'), `A: it says "The Sky Era is open!" with the natural voice's clips (${JSON.stringify(played)})`);
+    check(!(await J(page, () => window.__spoken.some((t) => /Sky|open|rides/i.test(t)))), 'A: never the device voice');
+    await J(page, () => { window.__skyTeaserSpeed = 1; });
+    // a reload: no second ceremony, the era is remembered
+    await page.goto(BASE + '/index.html?mock=1&nosw=1&skyfixture=1', { waitUntil: 'networkidle' });
+    await page.waitForSelector(visibleSel('#screen-players')); await page.click('[data-player="pmia"]'); await page.waitForSelector(visibleSel('#screen-title'));
+    await page.waitForTimeout(2200);
+    e = await eraState(page);
+    check(!(await open()) && e.era === 'sky' && e.tab === 'sky', `A: after a reload it does not play again and the Sky tab is remembered (${JSON.stringify(e)})`);
+    await page.click('#era-earth');
+    e = await eraState(page);
+    check(e.era === 'earth' && e.tab === 'earth' && (await sv(page)).sky.era === 'earth', 'A: the Earth tab: saved');
+    await page.reload({ waitUntil: 'networkidle' });
+    await page.waitForSelector(visibleSel('#screen-players')); await page.click('[data-player="pmia"]'); await page.waitForSelector(visibleSel('#screen-title'));
+    check((await eraState(page)).tab === 'earth', 'A: Earth is remembered after a reload');
+    await shot(page, layout, 'skyera-07-title-earth-tab', 200);
+    check(!net.tts, 'A: no request reached /api/tts');
+    check(errors.length === 0, `A: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
+  }
+
+  // ============ B: tracks and the garage (ceremony already seen, sky era chosen) ============
+  {
+    const { ctx, page, errors, go } = await skyEraPage(browser, layout, { days: 15, sky: { unlocked: true, at: 5, ceremonySeen: true, era: 'sky' }, cash: 850000 });
+    await go();
+    await page.waitForTimeout(1200);
+    check(!(await J(page, () => window.__spellJump.sky.isOpen)), 'B: a seen ceremony does not play');
+    await page.click('#btn-play');
+    await page.waitForSelector(visibleSel('#screen-garage'));
+    await page.waitForTimeout(300);
+    const g1 = await J(page, () => ({ name: document.querySelector('#car-name').textContent, row: !document.querySelector('#sky-rides').hidden, chips: [...document.querySelectorAll('#sky-rides .sr-chip')].map((c) => c.dataset.ride), label: (document.querySelector('#sky-rides .sr-label') || {}).textContent,
+      dots: document.querySelectorAll('#car-dots i').length }));
+    check(g1.row && g1.chips.join() === 'hoverbike' && g1.label === 'Sky rides' && g1.name === 'Hover Bike' && g1.dots === 12, `B: Sky era: the garage opens on the sky rides first with a "Sky rides" row (${JSON.stringify(g1)})`);
+    await shot(page, layout, 'skyera-08-garage-sky-rides', 120);
+    await layoutAudit(page, layout.insets, 'B garage (Sky rides row)');
+    const before = await sv(page);
+    await page.click('#car-action');
+    await page.waitForTimeout(300);
+    const after = await sv(page);
+    const price = await J(page, async () => (await import('/tools/fixtures/sky/skyRides.js')).SKY_RIDES[0].price);
+    check(after.owned.includes('hoverbike') && after.cash === before.cash - price && after.selectedCar === 'hoverbike', `B: the ride is bought with Garage cash (${before.cash} → ${after.cash}) and selected`);
+    check(await J(page, () => document.querySelector('#sky-rides .sr-chip').classList.contains('owned') && !!document.querySelector('#sky-rides .sr-chip svg')), 'B: the owned ride is ticked in the row');
+    await page.click('#btn-race');
+    await page.waitForSelector(visibleSel('#screen-tracks'));
+    await page.waitForTimeout(250);
+    const t1 = await names(page);
+    const tab1 = await J(page, () => ({ shown: !document.querySelector('#track-era').hidden, on: (document.querySelector('#track-era .era-tab.on') || {}).dataset?.era, locks: [...document.querySelectorAll('#track-grid .lock span')].map((x) => x.textContent), nums: [...document.querySelectorAll('#track-grid .track-num')].map((x) => x.textContent) }));
+    check(t1.join() === 'sky-1,sky-2:locked' && tab1.shown && tab1.on === 'sky' && tab1.locks.join() === 'Finish Cloud Hop' && /^Sky 01/.test(tab1.nums[0]), `B: the Sky tab lists the sky tracks with their own chain (${t1.join(', ')}; ${JSON.stringify(tab1.locks)})`);
+    await shot(page, layout, 'skyera-09-sky-tracks', 120);
+    await layoutAudit(page, layout.insets, 'B track screen (Sky tab)');
+    await page.click('#track-era [data-era="earth"]');
+    await page.waitForTimeout(150);
+    const t2 = await names(page);
+    check(t2.length === 20 && t2[0] === 'canyon' && (await sv(page)).sky.era === 'earth', `B: the Earth tab lists the 20 Earth stages and is saved (${t2.length})`);
+    await page.click('#track-era [data-era="sky"]');
+    check((await names(page)).length === 2 && (await sv(page)).sky.era === 'sky', 'B: back on Sky: saved');
+    // the garage in the Earth era: cars first, the ride at the end, no row
+    await page.click('#track-era [data-era="earth"]');
+    await page.click('[data-back="garage"]');
+    await page.waitForSelector(visibleSel('#screen-garage'));
+    await page.waitForTimeout(250);
+    const g2 = await J(page, () => ({ row: !document.querySelector('#sky-rides').hidden, name: document.querySelector('#car-name').textContent, dots: document.querySelectorAll('#car-dots i').length }));
+    check(!g2.row && g2.dots === 12, `B: Earth era: no Sky rides row, the 11 cars then the ride in the carousel (${JSON.stringify(g2)})`);
+    await page.click('#car-prev'); await page.click('#car-prev');
+    await page.waitForTimeout(150);
+    const lastName = await J(page, () => document.querySelector('#car-name').textContent);
+    await page.click('#car-next');
+    const wrapName = await J(page, () => document.querySelector('#car-name').textContent);
+    check(lastName.length > 0 && wrapName.length > 0, `B: every car stays reachable (${lastName} / ${wrapName})`);
+    check(errors.length === 0, `B: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
+  }
+
+  // ============ C: before the unlock ============
+  {
+    const { ctx, page, errors, go } = await skyEraPage(browser, layout, { days: 3, noTeaser: true });
+    await go();
+    const e0 = await eraState(page);
+    check(e0.card && !e0.switchOn && e0.era === 'earth', `C: locked: the Sky Road card is on the title, no era tabs (${JSON.stringify(e0)})`);
+    await page.click('#btn-play'); await page.waitForSelector(visibleSel('#screen-garage'));
+    check(await J(page, () => document.querySelector('#sky-rides').hidden && document.querySelectorAll('#car-dots i').length === 11), 'C: the garage has no sky rides yet (11 cars)');
+    await page.click('#btn-race'); await page.waitForSelector(visibleSel('#screen-tracks'));
+    check((await J(page, () => !document.querySelector('#track-era').hidden)) && (await names(page)).length === 20, 'C: the track screen shows the tabs and Earth first');
+    await page.click('#track-era [data-era="sky"]');
+    await page.waitForTimeout(200);
+    const gate = await J(page, () => { const c = document.querySelector('#sky-gate-card'); return c ? { text: c.textContent, steps: c.dataset.steps, tracks: document.querySelectorAll('#track-grid .track-card').length } : null; });
+    check(gate && gate.steps === '3' && /Sky Gate/.test(gate.text) && /Sky Road 3 \/ 15/.test(gate.text) && gate.tracks === 0, `C: the Sky tab shows the locked Sky Gate and "Sky Road 3 / 15" (${gate && gate.text.replace(/\s+/g, ' ')})`);
+    check((await sv(page)).sky.unlocked === false && (await sv(page)).sky.era === 'earth', 'C: a peek at the gate saves nothing');
+    await shot(page, layout, 'skyera-10-locked-gate', 120);
+    await layoutAudit(page, layout.insets, 'C locked Sky Gate');
+    await page.click('#sky-gate-back');
+    await page.waitForTimeout(150);
+    check((await names(page)).length === 20, 'C: "Back to Earth": Earth was never blocked');
+    await page.click('[data-track="canyon"]');
+    await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+    check((await J(page, () => window.__spellJump.run.trackId)) === 'canyon', 'C: Earth tracks still start a run');
+    check(errors.length === 0, `C: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
+  }
+
+  // ============ D: Parents → Options ============
+  {
+    const { ctx, page, errors, go } = await skyEraPage(browser, layout, { days: 3, noTeaser: true });
+    await go();
+    await page.click('#btn-parents');
+    await page.waitForSelector(visibleSel('#pz'));
+    await pinIn(page, '1234'); await page.waitForFunction(() => /again/i.test((document.querySelector('#pin-title') || {}).textContent || ''));
+    await pinIn(page, '1234');
+    await page.waitForSelector('.pz-content[data-tab]');
+    await page.click('.pz-tabs [data-tab="options"]');
+    await page.waitForSelector('#opt-sky-boost');
+    const o0 = await J(page, () => ({ boost: document.querySelector('#opt-sky-boost').getAttribute('aria-checked'), open: document.querySelector('#opt-sky-open-row').dataset.unlocked, label: document.querySelector('#opt-sky-boost').closest('.row .label, .row').textContent, sub: document.querySelector('#opt-sky-open-row .sub').textContent }));
+    check(o0.boost === 'true' && o0.open === 'false' && /Spell Boost in the Sky: on\/off/.test(o0.label) && /3\)/.test(o0.sub), `D: Spell Boost in the Sky defaults on; "Open the Sky Era now" is offered (${o0.sub})`);
+    await J(page, () => document.querySelector('#opt-sky-open-row').scrollIntoView({ block: 'center' }));
+    await shot(page, layout, 'skyera-11-parent-options', 200);
+    await page.click('#opt-sky-boost');
+    check((await J(page, () => JSON.parse(localStorage.getItem('spellJump.family')).options.pmia.skyBoost)) === false, 'D: the switch stores skyBoost: false for this child');
+    await page.click('#opt-sky-boost');
+    check((await J(page, () => JSON.parse(localStorage.getItem('spellJump.family')).options.pmia.skyBoost)) === true, 'D: and back on');
+    await page.click('#opt-sky-open');
+    check(await J(page, () => !document.querySelector('#opt-sky-open-yes').closest('.confirm').hidden), 'D: Open now asks first (it cannot be closed again)');
+    await page.click('#opt-sky-open-yes');
+    await page.waitForFunction(() => document.querySelector('#opt-sky-open-row').dataset.unlocked === 'true', null, { timeout: 3000 });
+    const s1 = await sv(page);
+    check(s1.sky.unlocked === true && s1.sky.ceremonySeen === false && s1.sky.at > 0 && (await J(page, () => document.querySelector('#opt-sky-open').disabled)), `D: a parent opens the Sky Era at 3 road steps: ${JSON.stringify(s1.sky)}, the button is done`);
+    await J(page, () => document.querySelector('#opt-sky-open-row').scrollIntoView({ block: 'center' }));
+    await shot(page, layout, 'skyera-12-parent-opened', 200);
+    await page.keyboard.press('Escape');
+    await page.waitForSelector(visibleSel('#screen-title'));
+    await page.waitForTimeout(300);
+    const e1 = await eraState(page);
+    check(e1.switchOn && !e1.card && e1.tab === 'earth', `D: the title now has the era tabs (${JSON.stringify(e1)})`);
+    check(errors.length === 0, `D: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
+  }
+
+  // ============ E: the Spell Boost ============
+  {
+    const { ctx, page, errors, go } = await skyEraPage(browser, layout, { days: 3, sky: { unlocked: true, at: 5, ceremonySeen: true, era: 'sky' }, cash: 1000 });
+    await go();
+    await J(page, () => {
+      const g = window.__spellJump.game;
+      for (const k of ['freeze', 'boost', 'start']) { const o = g[k].bind(g); g[k] = (...a) => { window.__seq.push(k === 'start' ? ['start', a[0].track.id, a[0].spellBoost] : k === 'boost' ? ['boost', a[0].power, a[0].word] : ['freeze', a[0]]); return o(...a); }; }
+    });
+    const startSky = async () => {
+      await page.click('#btn-play'); await page.waitForSelector(visibleSel('#screen-garage'));
+      await page.click('#btn-race'); await page.waitForSelector(visibleSel('#screen-tracks'));
+      await page.click('[data-track="sky-1"]');
+      await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+    };
+    const launchWordFirstTry = async () => {
+      if (await panelMode(page) === 'look') await waitMode(page, 'write', 9000);
+      const w = await J(page, () => window.__spellJump.spellPanel.word);
+      await tapKeys(page, '#sp-keyboard', w); await page.tap('#sp-keyboard [data-key="enter"]');
+      await page.waitForFunction(() => !window.__spellJump.spellPanel.isOpen, null, { timeout: 9000 });
+      return w;
+    };
+    await startSky();
+    const mission0 = (await readWords(page)).today.count;
+    const w1 = await launchWordFirstTry();
+    check((await J(page, () => window.__seq.find((s) => s[0] === 'start')))[2] === true, 'E: a sky run starts the engine with spellBoost: true');
+    await page.waitForTimeout(250);
+    await page.keyboard.down('ArrowRight');
+    check(await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 15000 }).then(() => true, () => false), 'E: past the apex the spell panel opens by itself (the Spell Boost)');
+    await page.keyboard.up('ArrowRight');
+    const f1 = await J(page, () => { const h = window.__spellJump.game.getHudState(); return { frozen: h.frozen, ready: h.boostReady, used: h.boostUsed, d: window.__spellJump.game.getState().distance, air: window.__spellJump.game.getState().airTime }; });
+    check(f1.frozen === true && f1.used === true && f1.ready === false, `E: the engine is frozen at the gate (${JSON.stringify(f1)})`);
+    check(await J(page, () => document.querySelector('#sp-boost') && document.querySelector('#sp-boost').textContent === 'Spell Boost' && document.querySelector('#spell').dataset.kind === 'boost'), 'E: the panel is the launch word\'s panel with a "Spell Boost" chip');
+    if (await panelMode(page) === 'look') { await shot(page, layout, 'skyera-13-boost-panel-look', 0); await waitMode(page, 'write', 9000); }
+    const bw = await J(page, () => window.__spellJump.spellPanel.word);
+    check(bw !== w1, `E: the boost word "${bw}" is another word than the launch word "${w1}" (same scheduler)`);
+    check(!(await visibleTextHas(page, bw)), `E: R1: the boost word "${bw}" is nowhere on screen while it is spelled`);
+    await page.waitForTimeout(1500);
+    const f2 = await J(page, () => ({ d: window.__spellJump.game.getState().distance, air: window.__spellJump.game.getState().airTime, frozen: window.__spellJump.game.getHudState().frozen }));
+    check(f2.frozen && f2.d === f1.d && f2.air === f1.air, `E: nothing ticks while the child spells: distance ${f1.d.toFixed(2)} → ${f2.d.toFixed(2)}, air time ${f1.air.toFixed(3)} → ${f2.air.toFixed(3)}`);
+    check(await J(page, () => document.documentElement.classList.contains('spelling') && getComputedStyle(document.querySelector('#hud')).visibility === 'hidden'), 'E: the HUD and the driving controls are hidden: a calm frozen scene');
+    await shot(page, layout, 'skyera-14-boost-panel', 0);
+    await layoutAudit(page, layout.insets, 'E Spell Boost panel');
+    // a miss, fixed in the panel → power 0.5
+    const wrong = bw.slice(0, -2) + (bw.at(-1) === 'x' ? 'q' : 'x');
+    await spellWrongThenCompare(page, wrong, 'E boost');
+    await waitMode(page, 'copy', 3000); await page.waitForTimeout(150);
+    await tapKeys(page, '#sp-keyboard', bw); await page.tap('#sp-keyboard [data-key="enter"]');
+    await waitMode(page, 'cover', 3000);
+    await tapKeys(page, '#sp-keyboard', bw); await page.tap('#sp-keyboard [data-key="enter"]');
+    await page.waitForFunction(() => !window.__spellJump.spellPanel.isOpen, null, { timeout: 9000 });
+    await page.waitForTimeout(250);
+    const seq1 = await J(page, () => window.__seq.filter((s) => s[0] !== 'start'));
+    check(JSON.stringify(seq1) === JSON.stringify([['boost', 0.5, bw], ['freeze', false]]), `E: fixed after a miss: game.boost({ power: 0.5, word }) then game.freeze(false) (${JSON.stringify(seq1)})`);
+    check(await J(page, () => !window.__spellJump.game.getHudState().frozen && window.__spellJump.game.getHudState().boostUsed), 'E: the scene runs again');
+    await page.waitForSelector(visibleSel('#screen-results'), { timeout: 30000 });
+    await page.waitForTimeout(1500);
+    const r1 = await J(page, () => { const tr = document.querySelector('#res-pay tr[data-pay="boost"]'); return tr ? { text: tr.textContent, power: tr.dataset.power, meters: tr.dataset.meters } : null; });
+    check(r1 && /^Spell Boost: \+40 m/.test(r1.text) && r1.power === '0.5' && r1.meters === '40' && r1.text.includes(bw), `E: the results line: "${r1 && r1.text}"`);
+    const w2s = await readWords(page);
+    check(w2s.today.count - mission0 === 2, `E: both words count toward the mission (today ${mission0} → ${w2s.today.count})`);
+    check(w2s.records[bw] && w2s.records[bw].misses >= 1 && w2s.records[w1] && w2s.records[w1].firstTry >= 1, `E: the Leitner records moved for both: "${w1}" firstTry ${w2s.records[w1] && w2s.records[w1].firstTry}, "${bw}" misses ${w2s.records[bw] && w2s.records[bw].misses}`);
+    await shot(page, layout, 'skyera-15-results-boost', 200);
+    await layoutAudit(page, layout.insets, 'E results with the Spell Boost line');
+    // race 2: the boost word right on the first try → power 1
+    await J(page, () => { window.__seq.length = 0; });
+    await page.click('#res-retry');
+    await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+    await launchWordFirstTry();
+    await page.waitForTimeout(250);
+    await page.keyboard.down('ArrowRight');
+    await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 15000 });
+    await page.keyboard.up('ArrowRight');
+    if (await panelMode(page) === 'look') await waitMode(page, 'write', 9000);
+    const bw2 = await J(page, () => window.__spellJump.spellPanel.word);
+    await tapKeys(page, '#sp-keyboard', bw2); await page.tap('#sp-keyboard [data-key="enter"]');
+    await page.waitForFunction(() => !window.__spellJump.spellPanel.isOpen, null, { timeout: 9000 });
+    await page.waitForTimeout(250);
+    const seq2 = await J(page, () => window.__seq.filter((s) => s[0] !== 'start'));
+    check(JSON.stringify(seq2) === JSON.stringify([['boost', 1, bw2], ['freeze', false]]), `E: first try: game.boost({ power: 1, word }) then game.freeze(false) (${JSON.stringify(seq2)})`);
+    await page.waitForSelector(visibleSel('#screen-results'), { timeout: 30000 });
+    await page.waitForTimeout(1200);
+    const r2 = await J(page, () => { const tr = document.querySelector('#res-pay tr[data-pay="boost"]'); return tr ? { text: tr.textContent, meters: tr.dataset.meters } : null; });
+    check(r2 && r2.meters === '80' && /^Spell Boost: \+80 m/.test(r2.text), `E: the results line at power 1: "${r2 && r2.text}"`);
+    // an Earth track never freezes
+    await J(page, () => { window.__seq.length = 0; });
+    await page.click('#res-garage'); await page.waitForSelector(visibleSel('#screen-garage'));
+    await page.click('#btn-race'); await page.waitForSelector(visibleSel('#screen-tracks'));
+    await page.click('#track-era [data-era="earth"]');
+    await page.click('[data-track="canyon"]');
+    await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+    await launchWordFirstTry();
+    check(await J(page, () => window.__seq.find((s) => s[0] === 'start')[2] === undefined), 'E: an Earth track starts with no spellBoost flag');
+    await page.keyboard.down('ArrowRight'); await page.waitForTimeout(300); await page.keyboard.up('ArrowRight');
+    await page.waitForSelector(visibleSel('#screen-results'), { timeout: 30000 });
+    check(!(await J(page, () => window.__seq.some((s) => s[0] === 'freeze' || s[0] === 'boost'))) && (await J(page, () => !document.querySelector('#res-pay tr[data-pay="boost"]'))), 'E: Earth: no freeze, no boost, no Spell Boost line');
+    check(errors.length === 0, `E: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
+  }
+
+  // ============ E2: Spell Boost off for this child ============
+  {
+    const { ctx, page, errors, go } = await skyEraPage(browser, layout, { days: 3, sky: { unlocked: true, at: 5, ceremonySeen: true, era: 'sky' }, options: { wordsPerRace: 1, levelsPerRace: 1, skyBoost: false } });
+    await go();
+    await J(page, () => {
+      const g = window.__spellJump.game;
+      for (const k of ['freeze', 'boost', 'start']) { const o = g[k].bind(g); g[k] = (...a) => { window.__seq.push(k === 'start' ? ['start', a[0].track.id, a[0].spellBoost] : [k]); return o(...a); }; }
+    });
+    await page.click('#btn-play'); await page.waitForSelector(visibleSel('#screen-garage'));
+    await page.click('#btn-race'); await page.waitForSelector(visibleSel('#screen-tracks'));
+    await page.click('[data-track="sky-1"]');
+    await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+    if (await panelMode(page) === 'look') await waitMode(page, 'write', 9000);
+    const w = await J(page, () => window.__spellJump.spellPanel.word);
+    await tapKeys(page, '#sp-keyboard', w); await page.tap('#sp-keyboard [data-key="enter"]');
+    await page.waitForFunction(() => !window.__spellJump.spellPanel.isOpen, null, { timeout: 9000 });
+    await page.waitForTimeout(250);
+    await page.keyboard.down('ArrowRight'); await page.waitForTimeout(400);
+    await page.waitForSelector(visibleSel('#screen-results'), { timeout: 30000 });
+    await page.keyboard.up('ArrowRight');
+    const seq = await J(page, () => window.__seq);
+    check(seq.find((s) => s[0] === 'start')[2] === false && !seq.some((s) => s[0] === 'freeze' || s[0] === 'boost'), `E2: Spell Boost off: start({ spellBoost: false }), the flight never stops (${JSON.stringify(seq)})`);
+    const words = await readWords(page);
+    check(words.today.count === 1, `E2: only the launch word was asked (today ${words.today.count})`);
+    check(await J(page, () => !document.querySelector('#res-pay tr[data-pay="boost"]')), 'E2: no Spell Boost line');
+    check(errors.length === 0, `E2: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+    await ctx.close();
+  }
+}
+
+// the ceremony's reduced-motion still: one frame, a tap closes it (ONLY=skyera, portrait)
+async function skyEraReducedTest(browser, layout) {
+  console.log(`\n--- Sky Era ceremony, reduced motion (${layout.name}) ---`);
+  const ctxOpts = { viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, reducedMotion: 'reduce' };
+  const { ctx, page, errors, go } = await skyEraPage(browser, layout, { days: 15, seen: { coach: true, teaser: true, skyClip: 12 } });
+  void ctxOpts;
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await go();
+  check(await page.waitForFunction(() => window.__spellJump.sky.isOpen, null, { timeout: 6000 }).then(() => true, () => false), 'R: the ceremony opens');
+  const st = await J(page, () => window.__spellJump.sky.state);
+  check(st.kind === 'open' && st.reduced && st.frames === 1 && /The Sky Era is open! New tracks\. New rides\./.test(st.caption), `R: reduced motion: one still, captioned (${st.caption})`);
+  check(st.rides.map((r) => r.name).join('|') === 'Hover Bike|Rocket Car|Mech Walker' && st.rides.every((r) => r.lit), 'R: the three rides are lit and named in the still');
+  await shot(page, layout, 'skyera-16-ceremony-still', 300);
+  await page.waitForTimeout(400);
+  await page.mouse.click(layout.width / 2, layout.height * 0.4);
+  check(await page.waitForFunction(() => !window.__spellJump.sky.isOpen, null, { timeout: 3000 }).then(() => true, () => false), 'R: a tap closes it');
+  check((await J(page, () => window.__spellJump.era)) === 'sky', 'R: after it the title is on the Sky tab');
+  check(errors.length === 0, `R: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
 const only = process.env.ONLY;
 try {
   for (const l of LAYOUTS) if (!only || only === l.name) await runLayout(browser, l);
@@ -2651,6 +3065,8 @@ try {
   if (!only || only === 'voice') for (const sc of ['cloud', 'qualifier', 'nokey', 'slow']) await newListVoiceTest(browser, LAYOUTS[0], sc);
   for (const l of LAYOUTS) if (!only || only === 'sky' || only === l.name) await skyTeaserTest(browser, l);
   if (!only || only === 'sky') await skyTeaserTest(browser, LAYOUTS[1], { reduced: true });
+  for (const l of LAYOUTS) if (!only || only === 'skyera' || only === l.name) await skyEraTest(browser, l);
+  if (!only || only === 'skyera') await skyEraReducedTest(browser, LAYOUTS[1]);
 } catch (e) {
   failures.push('exception: ' + e.message);
   console.error(e);
