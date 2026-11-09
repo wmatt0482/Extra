@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Squirrel Chase art gallery</title>
+<style>
+:root{--bg:#f7edd3;--ink:#1f1630;}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:16px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:18px;margin:26px 0 8px;border-bottom:2px solid #0002;padding-bottom:4px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;margin-bottom:10px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px}
+.cell svg.sq-char{width:120px;height:120px}
+.panel{padding:10px;border-radius:14px}
+.light{background:#f7edd3}.dark{background:#15182b;color:#fff}
+.wide{display:block;width:100%}
+</style></head><body>
+<h1>Pip's Squirrel Chase art</h1>
+<div id="app"></div>
+<script type="module">
+import * as A from '../src/art/index.js';
+const $ = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.firstElementChild; };
+const app = document.getElementById('app');
+const sec = (t) => { const s = $(`<section><h2>${t}</h2></section>`); app.appendChild(s); return s; };
+const cells = (s, items, cls = '') => { const r = $(`<div class="row panel ${cls}"></div>`); items.forEach(([label, html]) => r.appendChild($(`<div class="cell">${html}<span>${label}</span></div>`))); s.appendChild(r); return r; };
+
+{ const s = sec('Gang');
+  for (const id of A.GANG_IDS) cells(s, A.GANG_MOODS.map((m) => [`${id} ${m}`, A.gangPortrait(id, m)]), 'light');
+}
+</script></body></html>
