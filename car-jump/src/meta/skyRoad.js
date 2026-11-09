@@ -31,6 +31,7 @@ export const milestoneFor = (steps) => MILESTONES.filter((m) => m <= steps).pop(
  *  { kind: 'clip', step: m } (milestone m reached and its clip not played yet; several crossed at once: only the highest),
  *  or null. step = the road's steps for the full teaser, the milestone for a clip. */
 export function teaserDue(save) {
+  if (save && save.sky && save.sky.unlocked) return null;     // v4.0: the era is open: the road's clips are over (the unlock ceremony, src/meta/sky.js, plays instead)
   const seen = (save && save.seen) || {};
   const steps = skyRoadSteps(save);
   if (!seen.teaser) return { kind: 'full', step: steps };
@@ -68,10 +69,11 @@ export const SKY_LINES = {
   jump: 'And a second jump you earn by spelling.',
   road: 'Every mission you finish builds your road to the sky.',
   gate: 'You made it to the Sky Gate! The Sky Era is on its way.',
+  open: 'The Sky Era is open!',          // v4.0: the unlock ceremony
 };
 /** The milestone clip's line ("Your Sky Road grew! Step 8 of 15."). Spoken only for 4 / 8 / 12 (pre-made clips). */
 export const stepLine = (n) => `Your Sky Road grew! Step ${n} of ${SKY_ROAD_STEPS}.`;
 /** The meter as text ("Sky Road: 3 / 15"): shown, never spoken. */
 export const roadText = (n) => `Sky Road: ${n} / ${SKY_ROAD_STEPS}`;
-/** Every line to prepare as a natural-voice clip (9 short texts). */
+/** Every line to prepare as a natural-voice clip (10 short texts; v4.0 added the ceremony's "The Sky Era is open!"). */
 export const teaserTexts = () => [...Object.values(SKY_LINES), ...MILESTONES.filter((m) => m < SKY_ROAD_STEPS).map(stepLine)];

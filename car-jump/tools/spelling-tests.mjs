@@ -2271,13 +2271,14 @@ console.log('the Sky Road (v3.10)');
   });
   test('the spoken lines are name-free and the step variants are pre-made for 4 / 8 / 12; the meter text is not a countdown', () => {
     const t = SR.teaserTexts();
-    assert.equal(t.length, 9); assert.equal(new Set(t).size, 9);
+    assert.equal(t.length, 10); assert.equal(new Set(t).size, 10);
     assert.ok(t.includes('Your Sky Road grew! Step 4 of 15.') && t.includes('Your Sky Road grew! Step 8 of 15.') && t.includes('Your Sky Road grew! Step 12 of 15.'));
     assert.ok(t.includes("What's up above the clouds?") && t.includes('You made it to the Sky Gate! The Sky Era is on its way.'));
     assert.equal(SR.roadText(3), 'Sky Road: 3 / 15');
     const bad = /\b(hurry|only|left|lose|lost|kill|die|dead|lives|days? left|countdown|don't miss)\b/i;
     for (const line of [...t, SR.roadText(3)]) assert.ok(!bad.test(line), `kid rules: "${line}"`);
     assert.ok(t.every((x) => x.length <= 200), 'each fits a clip');
+    assert.ok(t.includes('The Sky Era is open!'), 'v4.0: the ceremony line');
   });
   test('save: seen.teaser / seen.skyClip default to false / 0; an old save loads fine; junk is cleaned', () => {
     const d = defaultSave(); assert.equal(d.seen.teaser, false); assert.equal(d.seen.skyClip, 0);
@@ -2381,6 +2382,180 @@ console.log('v3.11: tests bank one word at a time, and a test left midway resume
     const m = mergeWords({ updatedAt: 5, data: mk(2) }, { updatedAt: 9, data: mk(4) }, T0);
     assert.equal(testAnswered(m, 'qualifier').length, 4);
   });
+}
+
+// ---------- v4.0: the Sky Era (src/meta/sky.js, skyData.js, the save / merge rules, the Spell Boost word's bookkeeping) ----------
+console.log('the Sky Era (v4.0)');
+{
+  const SR = await import('../src/meta/skyRoad.js');
+  const SK = await import('../src/meta/sky.js');
+  const SD = await import('../src/meta/skyData.js');
+  const ECO = await import('../src/meta/economy.js');
+  const PR = await import('../src/spelling/profiles.js');
+  const { normalize: normSave } = await import('../src/meta/save.js');
+  const daysFrom = (start, n) => Array.from({ length: n }, (_, i) => { const d = new Date(start + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + i); return d.toISOString().slice(0, 10); });
+  const road = (n, extra = {}) => { const s = defaultSave(); s.streak.days = daysFrom('2026-11-06', n); Object.assign(s, extra); return s; };
+  const loaded = await SD.loadSkyData({ fixtures: true });
+  const FIX_TRACKS = loaded.tracks, FIX_RIDES = loaded.rides;
+
+  test('the stand-in data loads (2 tracks, 1 ride) and the registry answers for sky ids; Earth ids are untouched', () => {
+    assert.equal(loaded.source, 'fixture'); assert.deepEqual(FIX_TRACKS.map((t) => t.id), ['sky-1', 'sky-2']); assert.deepEqual(FIX_RIDES.map((r) => r.id), ['hoverbike']);
+    assert.equal(SD.trackById('sky-1').era, 'sky'); assert.equal(SD.carById('hoverbike').era, 'sky'); assert.equal(SD.trackById('canyon').id, 'canyon'); assert.equal(SD.carById('beater').id, 'beater');
+    assert.equal(SD.carById('nope'), null); assert.equal(SD.skyAvailable(), true);
+    assert.equal(SD.allTracks().length, 22, '20 Earth + 2 sky'); assert.equal(SD.allCars().length > 11, true);
+    assert.deepEqual(SD.skyFirstTrackIds(), ['sky-1']);
+  });
+  test('bad entries are dropped (an Earth id, a missing theme) so a broken data file cannot shadow Era 1', () => {
+    SD.setSkyData({ tracks: [{ id: 'canyon', theme: {}, finish: 1 }, { id: 'sky-x', finish: 100 }, ...FIX_TRACKS], rides: [{ id: 'beater', body: [], wheels: [], base: {} }, ...FIX_RIDES] });
+    assert.deepEqual(SD.skyTracks().map((t) => t.id), ['sky-1', 'sky-2']); assert.deepEqual(SD.skyRides().map((t) => t.id), ['hoverbike']);
+    assert.equal(SD.trackById('canyon').name, 'Climb Canyon');
+  });
+  test('the three ceremony rides keep their names: the real ones when there are three, else Hover Bike / Rocket Car / Mech Walker', () => {
+    assert.deepEqual(SD.ceremonyRides().map((r) => r.name), ['Hover Bike', 'Rocket Car', 'Mech Walker'], 'one ride on this data: the fixture\'s Hover Bike + fallbacks');
+    SD.setSkyData({ tracks: FIX_TRACKS, rides: [...FIX_RIDES, { ...FIX_RIDES[0], id: 'r2', name: 'Comet' }, { ...FIX_RIDES[0], id: 'r3', name: 'Walker Z' }] });
+    assert.deepEqual(SD.ceremonyRides().map((r) => r.name), ['Hover Bike', 'Comet', 'Walker Z']);
+    SD.setSkyData({ tracks: FIX_TRACKS, rides: FIX_RIDES });
+  });
+  await atest('loadSkyData without fixtures never throws: a missing data file is an empty list (Era 1 only)', async () => {
+    SD.setSkyData({});
+    const r = await SD.loadSkyData({ fixtures: false });
+    assert.ok(Array.isArray(r.tracks) && Array.isArray(r.rides));
+    await SD.loadSkyData({ fixtures: true });
+  });
+
+  test('save.sky defaults and normalize: locked, no ceremony, Earth; junk is cleaned; a locked era cannot be Sky', () => {
+    assert.deepEqual(defaultSave().sky, { unlocked: false, at: 0, ceremonySeen: false, era: 'earth' });
+    assert.deepEqual(normSave({ v: 2, cash: 1 }).sky, { unlocked: false, at: 0, ceremonySeen: false, era: 'earth' }, 'an old save gets the default');
+    assert.deepEqual(normSave({ sky: { unlocked: 'yes', at: 'x', ceremonySeen: 1, era: 'sky' } }).sky, { unlocked: false, at: 0, ceremonySeen: false, era: 'earth' });
+    assert.deepEqual(normSave({ sky: { unlocked: false, at: 99, ceremonySeen: true, era: 'sky' } }).sky, { unlocked: false, at: 0, ceremonySeen: false, era: 'earth' }, 'locked: nothing else counts');
+    assert.deepEqual(normSave({ sky: { unlocked: true, at: 1234.7, ceremonySeen: true, era: 'sky' } }).sky, { unlocked: true, at: 1234, ceremonySeen: true, era: 'sky' });
+    assert.equal(normSave({ sky: { unlocked: true, at: 5, era: 'mars' } }).sky.era, 'earth');
+    assert.equal(normSave({ sky: [1, 2] }).sky.unlocked, false);
+  });
+  test('unlock by the road: 14 days no, 15 days yes (once, with a time), idempotent', () => {
+    const s = road(14); assert.equal(SK.autoUnlock(s, 5000), false); assert.equal(s.sky.unlocked, false);
+    s.streak.days = daysFrom('2026-11-06', 15);
+    assert.equal(SK.autoUnlock(s, 5000), true); assert.deepEqual([s.sky.unlocked, s.sky.at, s.sky.ceremonySeen, s.sky.era], [true, 5000, false, 'earth']);
+    assert.equal(SK.autoUnlock(s, 9999), false, 'already open'); assert.equal(s.sky.at, 5000, 'the first time stays');
+  });
+  test('unlock needs sky tracks on this device: with no sky data the road at 15 / 15 opens nothing (Era 1 only, nothing promised)', () => {
+    SD.setSkyData({});
+    const s = road(15); assert.equal(SK.autoUnlock(s, 1), false); assert.equal(s.sky.unlocked, false);
+    assert.equal(SK.currentEra(s), 'earth'); assert.equal(SK.ceremonyDue(s), false);
+    SD.setSkyData({ tracks: FIX_TRACKS, rides: FIX_RIDES });
+  });
+  test('parent override: "Open the Sky Era now" opens it at 0 road steps; a second tap changes nothing; the ceremony is then due', () => {
+    const s = defaultSave(); assert.equal(SR.skyRoadSteps(s), 0);
+    assert.equal(SK.unlockSky(s, 7000), true); assert.equal(s.sky.unlocked, true); assert.equal(s.sky.at, 7000);
+    assert.equal(SK.unlockSky(s, 9000), false); assert.equal(s.sky.at, 7000);
+    assert.equal(SK.ceremonyDue(s), true);
+    assert.equal(SK.skyUnlocked(s), true); assert.equal(SK.skyUnlocked(null), false);
+  });
+  test('the ceremony is once: markCeremonySeen stops it, counts as the teaser and every milestone clip, and the road\'s own clips stay quiet once open', () => {
+    const s = road(15); SK.autoUnlock(s, 1);
+    assert.deepEqual(SR.teaserDue(s), null, 'open: no gate clip ("on its way" would be a lie)');
+    assert.equal(SK.ceremonyDue(s), true);
+    SK.markCeremonySeen(s);
+    assert.equal(s.sky.ceremonySeen, true); assert.equal(s.seen.teaser, true); assert.equal(s.seen.skyClip, 15);
+    assert.equal(SK.ceremonyDue(s), false, 'not again'); assert.equal(SR.teaserDue(s), null);
+    const locked = road(3); SK.markCeremonySeen(locked); assert.equal(locked.sky.ceremonySeen, false, 'a locked era has no ceremony to see');
+  });
+  test('the era tab is remembered; a locked era is always Earth; Sky is not the era when the sky has no data', () => {
+    const s = defaultSave(); assert.equal(SK.setEra(s, 'sky'), 'earth'); assert.equal(SK.currentEra(s), 'earth');
+    SK.unlockSky(s, 1); assert.equal(SK.setEra(s, 'sky'), 'sky'); assert.equal(SK.currentEra(s), 'sky');
+    assert.equal(normSave(JSON.parse(JSON.stringify(s))).sky.era, 'sky', 'survives a save and load');
+    assert.equal(SK.setEra(s, 'earth'), 'earth'); assert.equal(SK.currentEra(s), 'earth');
+    SK.setEra(s, 'sky'); SD.setSkyData({}); assert.equal(SK.currentEra(s), 'earth'); SD.setSkyData({ tracks: FIX_TRACKS, rides: FIX_RIDES });
+  });
+  test('teaserTexts: the ceremony line is prepared as a natural-voice clip with the rest (10 texts, all unique)', () => {
+    const t = SR.teaserTexts(); assert.equal(t.length, 10); assert.equal(new Set(t).size, 10);
+    assert.ok(t.includes('The Sky Era is open!')); assert.equal(SR.SKY_LINES.open, 'The Sky Era is open!');
+  });
+
+  test('save: sky track and ride ids survive normalize (owned, levels, unlocked, best, cosmetics) while the data is loaded; the first sky track is open with the era', () => {
+    const raw = { v: 2, cash: 9, owned: ['beater', 'hoverbike'], selectedCar: 'hoverbike', levels: { hoverbike: { engine: 3 } }, unlocked: ['canyon', 'sky-2'], selectedTrack: 'sky-2', best: { 'sky-1': 410, canyon: 12 },
+      cosmetics: { skins: [], stickers: [], equipped: { hoverbike: { skin: 'gold', sticker: 'none' } } } };
+    const s = normSave(raw);
+    assert.deepEqual(s.owned, ['beater', 'hoverbike']); assert.equal(s.selectedCar, 'hoverbike'); assert.equal(s.levels.hoverbike.engine, 3);
+    assert.deepEqual(s.unlocked, ['canyon', 'sky-1', 'sky-2']); assert.equal(s.selectedTrack, 'sky-2'); assert.equal(s.best['sky-1'], 410);
+    assert.equal(ECO.isUnlocked(s, 'sky-1'), true);
+    SD.setSkyData({});
+    const gone = normSave(raw);                                   // a device without the sky data: ids it does not know are dropped (Era 1 loads clean)
+    assert.deepEqual(gone.owned, ['beater']); assert.equal(gone.selectedCar, 'beater'); assert.deepEqual(gone.unlocked, ['canyon']); assert.equal(gone.selectedTrack, 'canyon');
+    SD.setSkyData({ tracks: FIX_TRACKS, rides: FIX_RIDES });
+  });
+  test('economy: buy a sky ride with Garage cash; upgrades work on it; finishing sky-1 opens sky-2 (their own chain); Earth stays as it was', () => {
+    const s = normSave({ v: 2, cash: 1000000 });
+    const ride = SD.carById('hoverbike');
+    const b = ECO.buyCar(s, 'hoverbike'); assert.equal(b.ok, true); assert.equal(s.cash, 1000000 - ride.price); assert.equal(s.selectedCar, 'hoverbike');
+    assert.equal(ECO.buyCar(s, 'hoverbike').reason, 'owned');
+    assert.equal(ECO.buyUpgrade(s, 'hoverbike', 'engine').ok, true);
+    assert.equal(ECO.statsFor(s, 'hoverbike').power > ride.base.power, true);
+    assert.equal(ECO.nextTrackId('sky-1'), 'sky-2'); assert.equal(ECO.nextTrackId('canyon'), 'city'); assert.equal(ECO.nextTrackId('sky-2'), null);
+    assert.equal(ECO.isUnlocked(s, 'sky-2'), false);
+    const out = ECO.bankRun(s, 'sky-1', { distance: 640, finishCrossed: true, cash: { total: 100 } });
+    assert.equal(out.unlocked, 'sky-2'); assert.equal(ECO.isUnlocked(s, 'sky-2'), true); assert.deepEqual(s.unlocked.filter((id) => id.startsWith('sky')), ['sky-1', 'sky-2']);
+    assert.equal(ECO.isUnlocked(s, 'city'), false, 'an Earth track is not unlocked by a sky finish');
+    assert.equal(ECO.trackFinish('sky-2'), 900);
+  });
+
+  test('merge: unlocked OR, at = the earliest, ceremonySeen OR, era from the later doc (and symmetric where it must be)', () => {
+    const a = S(day(1), (s) => { s.sky = { unlocked: true, at: 5000, ceremonySeen: false, era: 'sky' }; });
+    const b = S(day(2), (s) => { s.sky = { unlocked: true, at: 3000, ceremonySeen: true, era: 'earth' }; });
+    const m = mergeSave(a, b);
+    assert.deepEqual(m.sky, { unlocked: true, at: 3000, ceremonySeen: true, era: 'earth' });
+    const m2 = mergeSave(b, a); assert.deepEqual(m2.sky, m.sky, 'same either way round');
+    const c = S(day(3), (s) => { s.sky = { unlocked: false, at: 0, ceremonySeen: false, era: 'earth' }; });
+    const n = mergeSave(a, c);
+    assert.deepEqual(n.sky, { unlocked: true, at: 5000, ceremonySeen: false, era: 'sky' }, 'a device that has not opened it yet never re-locks the other; the era comes from the open side');
+    assert.equal(mergeSave(c, S(day(4), () => {})).sky.unlocked, false);
+  });
+  test('merge: sky rides and tracks ride in the owned / unlocked / levels / best unions with the Earth ones', () => {
+    const a = S(day(1), (s) => { s.owned = ['beater', 'hoverbike']; s.levels.hoverbike = { engine: 2 }; s.unlocked = ['canyon', 'sky-1', 'sky-2']; s.best = { 'sky-1': 300 }; });
+    const b = S(day(2), (s) => { s.owned = ['beater', 'rally']; s.levels.hoverbike = { engine: 4, nitro: 1 }; s.unlocked = ['canyon', 'city']; s.best = { 'sky-1': 500, canyon: 80 }; });
+    const m = mergeSave(a, b);
+    assert.deepEqual([...m.owned].sort(), ['beater', 'hoverbike', 'rally']); assert.deepEqual(m.unlocked, ['canyon', 'city', 'sky-1', 'sky-2']);
+    assert.equal(m.levels.hoverbike.engine, 4); assert.equal(m.levels.hoverbike.nitro, 1); assert.equal(m.best['sky-1'], 500); assert.equal(m.best.canyon, 80);
+  });
+
+  test('Spell Boost off per child: skyBoost is a family option (absent = on), kept by cleanOptions, and a normal option round-trip leaves it alone', () => {
+    const f = PR.defaultFamily(); f.players.push({ id: 'pa', name: 'Mia', color: '#3b7dd9', createdAt: 1, updatedAt: 1 });
+    assert.equal(PR.playerOptions(f, 'pa').skyBoost, undefined, 'default: not set = on');
+    assert.equal(PR.playerOptions(f, 'pa').skyBoost !== false, true);
+    PR.setPlayerOption(f, 'pa', 'skyBoost', false);
+    assert.equal(PR.playerOptions(f, 'pa').skyBoost, false);
+    PR.setPlayerOption(f, 'pa', 'wordsPerRace', 3); assert.equal(PR.playerOptions(f, 'pa').skyBoost, false, 'another option does not reset it');
+    PR.setPlayerOption(f, 'pa', 'skyBoost', true); assert.equal(PR.playerOptions(f, 'pa').skyBoost, true);
+    const back = PR.normalizeFamily(JSON.parse(JSON.stringify(f))); assert.equal(PR.playerOptions(back, 'pa').skyBoost, true);
+    PR.setPlayerOption(f, 'pa', 'skyBoost', 'maybe'); assert.equal(PR.playerOptions(f, 'pa').skyBoost, undefined, 'junk is dropped (= on)');
+  });
+  test('the boost word counts like any retrieval: the mission takes launch word + boost word, the Leitner record moves, the next pick is another word', () => {
+    const six = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta'];
+    const d = dataWith(six), sess = createSession();
+    const first = nextWord(d, T0, sess, DEFAULT_OPTIONS, () => 0);                          // the launch word
+    const r1 = recordSpell(d, first.word, { firstTry: true }, T0, sess);
+    assert.equal(missionState(d, T0).count, 1); assert.equal(r1.missionJustDone, false);
+    const boost = nextWord(d, T0 + 1000, sess, DEFAULT_OPTIONS, () => 0);                   // the Spell Boost word: the same scheduler
+    assert.ok(boost && boost.word !== first.word, 'never the same word twice in a row');
+    const r2 = recordSpell(d, boost.word, { firstTry: false }, T0 + 1000, sess);            // a miss, fixed in the panel
+    assert.equal(missionState(d, T0).count, 2, 'both words count toward the 8');
+    assert.equal(missionState(d, T0).size, 8, 'the mission stays 8 words');
+    assert.equal(d.records[first.word].box, 1); assert.equal(d.records[boost.word].box, 0); assert.equal(d.records[boost.word].misses, 1);
+    assert.ok(r2.streak === 0, 'a miss resets the first-try streak');
+  });
+  test('the 8th word of the day finishes the mission once, whichever of launch / boost it was', () => {
+    const six = ['alpha', 'beta', 'gamma', 'delta', 'epsilon', 'zeta', 'eta', 'theta'];
+    const d = dataWith(six), sess = createSession();
+    let done = 0, last = null;
+    for (let i = 0; i < 8; i++) { const p = nextWord(d, T0 + i * 1000, sess, DEFAULT_OPTIONS, () => 0); last = p.word; const r = recordSpell(d, p.word, { firstTry: true }, T0 + i * 1000, sess); if (r.missionJustDone) done++; }
+    assert.equal(done, 1); assert.equal(missionState(d, T0).done, true); assert.ok(last);
+  });
+  test('Lab line: "Sky Era · 2 / 5 tracks" counts the open tracks of the era', () => {
+    const tracks = [{ id: 'a' }, { id: 'b', unlockedBy: 'a' }, { id: 'c', unlockedBy: 'b' }, { id: 'd', unlockedBy: 'c' }, { id: 'e', unlockedBy: 'd' }];
+    assert.equal(SK.skyTracksText({ unlocked: ['canyon', 'b'] }, tracks), 'Sky Era · 2 / 5 tracks');
+    assert.equal(SK.skyTracksText({ unlocked: [] }, tracks), 'Sky Era · 1 / 5 tracks');
+  });
+  SD.setSkyData({});
 }
 
 console.log(`\n${passed} passed, ${failures.length} failed`);

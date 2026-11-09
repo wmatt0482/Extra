@@ -17,6 +17,9 @@
 //         the later week, the farther jump within the same week.
 //         v3.10: seen.teaser = OR, seen.skyClip = max (the Sky Era teaser and its milestone clips play once per child, not
 //         once per device).
+//         v4.0: sky = { unlocked, at, ceremonySeen, era }: unlocked OR, at = the earliest, ceremonySeen OR, era from the later doc
+//         (the Sky Era never re-locks and its unlock ceremony plays once per child); sky tracks / rides ride in the same
+//         owned / unlocked / levels / best unions.
 // words   v3.7: a class list has the class list's id on every device, so the same week applied on two devices is one
 //         list (the later copy's fields win; "Stop following" stamps editedAt so that edit wins).
 // words   v3.3: a record's masteredAt comes with the winning record; when that one is Mastered without a date, the
@@ -24,6 +27,7 @@
 import { MAX_PLAYERS } from '../spelling/profiles.js';
 import { normalizeWordsData } from '../spelling/wordStore.js';
 import { normalize as normalizeSave } from '../meta/save.js';
+import { mergeSky } from '../meta/sky.js';
 import { isMastered } from '../spelling/scheduler.js';
 
 const clone = (x) => (x == null ? x : JSON.parse(JSON.stringify(x)));
@@ -186,6 +190,7 @@ export function mergeSave(local, remote) {
   mergeEngagement(s, o);
   const sa = obj(s.seen), sb = obj(o.seen);
   s.seen = { ...sa, teaser: !!(sa.teaser || sb.teaser), skyClip: Math.max(num(sa.skyClip), num(sb.skyClip)) };
+  s.sky = mergeSky(s.sky, o.sky);
   return normalizeSave(s);
 }
 

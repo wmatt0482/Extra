@@ -1,7 +1,7 @@
 // Players and the family record (SPEC v3 "Players"). Storage layout:
 //   spellJump.family              { v, players: [{id, name, color, createdAt, updatedAt}], pinHash, pinUpdatedAt,
 //                                   options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace, levelsPerRace,
-//                                   voiceName, voiceLang, cloudVoice?}}, optionsUpdatedAt: {playerId: ms},
+//                                   voiceName, voiceLang, cloudVoice?, skyBoost? (v4.0: false = no Spell Boost in the Sky; absent = on)}}, optionsUpdatedAt: {playerId: ms},
 //                                   removedPlayers: [id] (tombstones for family sync), migrated, lastPlayer }
 //                                   (migrated and lastPlayer are per device; the rest is what family sync shares)
 //   spellJump.<playerId>.save     the player's full game save (src/meta/save.js schema)
@@ -88,6 +88,7 @@ function cleanOptions(o) {
   if (o.tileCase === 'lower' || o.tileCase === 'upper') d.tileCase = o.tileCase;
   if ([1, 2, 3, 4].includes(o.wordsPerRace)) d.wordsPerRace = o.wordsPerRace;
   if ([1, 2, 3].includes(o.levelsPerRace)) d.levelsPerRace = o.levelsPerRace;
+  if (typeof o.skyBoost === 'boolean') d.skyBoost = o.skyBoost;       // v4.0: the Sky Era's Spell Boost (absent = on)
   return d;
 }
 
