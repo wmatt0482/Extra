@@ -12,6 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadPlaywright, resultsPath, SWIFTSHADER_ARGS } from './runner.mjs';
 import { placingStage } from './placing-stage.mjs';
+import { musicOffStage } from './music-off-stage.mjs';
 const game = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const pw = await loadPlaywright();
 let stage = 'boot';
@@ -376,6 +377,29 @@ if (process.env.PLACING_ONLY) {
     await placing();
     assert.deepEqual(errors, []);
     console.log('All placing browser checks passed.');
+  } finally {
+    await browser.close();
+    clearTimeout(watchdog);
+  }
+  process.exit(0);
+}
+/** 0.8.2: the parent's family-wide "Background music in all games" switch (tools/music-off-stage.mjs). */
+const musicOff = () =>
+  musicOffStage({
+    browser,
+    BASE,
+    shots,
+    errors,
+    mark: (m) => {
+      console.log('PASS ' + m);
+      results.checks.push(m);
+    },
+  });
+if (process.env.ONLY_MUSICOFF) {
+  try {
+    await musicOff();
+    assert.deepEqual(errors, []);
+    console.log('All music-switch browser checks passed.');
   } finally {
     await browser.close();
     clearTimeout(watchdog);
@@ -1203,6 +1227,7 @@ try {
   await labStages();
   stage = 'placing';
   await placing();
+  await musicOff();
   assert.deepEqual(errors, []);
   writeFileSync(resultsPath('browser-results.json'), JSON.stringify(results, null, 2) + '\n');
   console.log('All browser checks passed.');

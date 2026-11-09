@@ -86,6 +86,11 @@ export function applyLook() {
   app.scene.decal = look.decal;
 }
 
+// The parent's family-wide "Background music in all games" switch (Parents → Options, Spell Jump's family record): while it
+// is off the tune never plays (Music.lock), it stops at once when the switch flips, and the child's own Music setting is kept.
+Music.lock(Audio.musicLocked);
+Audio.onMusicLock((off) => Music.lock(off));
+
 /** Changes one setting, stores it on this device and applies every setting to the audio, music and scene. */
 export function setSetting(k, v) {
   app.settings[k] = v;
