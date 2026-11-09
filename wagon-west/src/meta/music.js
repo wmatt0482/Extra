@@ -6,6 +6,7 @@
 //
 //   Music.unlock()        create / resume the context (safe to call on every tap); starts the music if on(true) was asked
 //   Music.on(bool)        start / stop; the choice is remembered (also if asked before the first tap)
+//   Music.lock(bool)      the parent's family-wide music-off switch: true = never plays (the choice is kept)
 //   Music.tune(id)        'susanna' | 'buffalo' | 'tucker': switches at the next bar (restarts that tune from bar 1)
 //   Music.mood(m)         'trail' (104 bpm, banjo + bass + shaker) | 'camp' (76 bpm, quieter, melody + soft bass) |
 //                         'post' (= camp) | 'off' (silence now: a panel is open); trail / camp / post switch at the next bar
@@ -118,6 +119,7 @@ function createMusic() {
   let AC = AC0;
   let ctx = null, master = null, vol = null, duckG = null, moodG = null, noiseBuf = null;
   let enabled = false;            // Music.on(...): the child's choice
+  let locked = false;             // Music.lock(...): a grown-up turned background music off for the whole family (overrides the choice)
   let tuneId = 'susanna', moodName = 'trail', volume = 1, ducked = false;
   let pendingTune = null, pendingMood = null;
   let timer = 0;
@@ -193,7 +195,7 @@ function createMusic() {
     cur = { spb: 60 / mood.bpm, ev: barEvents(tune.bars[barIdx], mood), i: 0 };
   }
   function pump() {
-    if (!ctx || !enabled || moodName === 'off') return;
+    if (!ctx || !enabled || locked || moodName === 'off') return;
     if (ctx.state !== 'running') { try { const p = ctx.resume(); if (p && p.catch) p.catch(() => {}); } catch (_) { /* needs a gesture */ } return; }
     const now = ctx.currentTime;
     // the page slept (a throttled background timer): start over cleanly rather than racing to catch up
@@ -223,7 +225,7 @@ function createMusic() {
   }
   /** start or stop the scheduler to match the choice, the context and the mood */
   function sync() {
-    const run = !!(ctx && enabled && moodName !== 'off');
+    const run = !!(ctx && enabled && !locked && moodName !== 'off');
     if (run && !timer) { restartClock(); ramp(moodG.gain, 1, 0.03); startTimer(); pump(); }
     else if (!run && timer) { stopTimer(); if (ctx) ramp(moodG.gain, 0, 0.08); cur = null; }
   }
@@ -255,6 +257,9 @@ function createMusic() {
     },
     /** Start / stop the music. Remembered: on(true) before the first tap starts it at unlock(). */
     on(v) { enabled = !!v; sync(); },
+    /** The family-wide "Background music in all games" switch (Spell Jump's Audio.lockMusic): true = silent, whatever the choice is. */
+    lock(v) { locked = !!v; sync(); },
+    get locked() { return locked; },
     /** 'susanna' | 'buffalo' | 'tucker': switches at the next bar (immediately when nothing is playing). */
     tune(id) {
       if (!TUNES[id]) return;

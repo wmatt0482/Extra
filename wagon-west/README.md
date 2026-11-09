@@ -356,6 +356,14 @@ build notes). The Lab only listens and decorates: **no Lab call reads or writes 
 - Tests: the old `#btn-lab` / `#title-streak-n` checks are now the chip, the Games panel, the picker button, the summary, the purse label and "one flame".
 - VERSION 1.8.0; the service worker is `wagon-west-v1.8.0`.
 
+## 1.9.0 · a grown-up can turn the music off for every game
+
+- **Parents → Options → All games → Background music in all games** (On / Off, behind the PIN): the family-wide switch kept in Spell Jump's family record
+  (`musicOff` + `musicOffAt`, synced, the later change wins). Off: the trail's banjo tunes (`Music.lock(true)`, driven by Spell Jump's `Audio.onMusicLock`)
+  never start and stop at once, also when a sync brings the change in; effects and the voice stay on. The pause menu's Music button reads Off, disabled,
+  "Music is off (set by a grown-up)"; turning it back on restores the child's own Music setting. Test: `tools/ui-smoke.mjs` (`ONLY=musicoff`).
+- VERSION 1.9.0; the service worker is `wagon-west-v1.9.0`.
+
 ## Data and sync
 
 One family code syncs all four games. Wagon West adds the per-player kind `ww` (the save) and registers Trail

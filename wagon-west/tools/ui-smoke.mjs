@@ -71,6 +71,7 @@ import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { runMusicOffCheck } from '../../car-jump/tools/music-off-check.mjs';   // v1.9: the family music switch (Parents → Options)
 import { RAFT } from '../src/journey/economy.js';          // the raft's pay is read from the economy, never typed here
 import { seasonOf } from '../src/journey/route.js';
 
@@ -3939,7 +3940,7 @@ async function labBoot(page, layout, grab) {
   console.log('  -- the bridge: the Lab loads by itself; the title\'s button and the Parent Zone\'s row; the Lab\'s numbers start --');
   await page.waitForSelector('#title-lab .lab-chipx', { timeout: 8000 });
   const b = await J(page, () => ({ ready: window.__wagonWest.labBridge.ready, btn: !!document.querySelector('#title-lab .lab-chipx') && !document.querySelector('#btn-lab'), n: document.querySelector('.menu-row').dataset.n, attached: !!(window.__lab && window.__lab.store.doc()), v: window.__wagonWest.app.version }));
-  check(b.ready && b.btn && b.attached && b.v === '1.8.0', `the Lab loaded behind the game (version ${b.v}); the title shows the Lab chip, not a button of its own (${b.n} buttons); the Lab knows the player`);
+  check(b.ready && b.btn && b.attached && b.v === '1.9.0', `the Lab loaded behind the game (version ${b.v}); the title shows the Lab chip, not a button of its own (${b.n} buttons); the Lab knows the player`);
   await J(page, () => { const lb = window.__wagonWest.labBridge; window.__opened = []; lb.openHome = (o) => window.__opened.push(['home', o]); lb.openParent = (o) => window.__opened.push(['parent', o]); });
   const chip = await J(page, () => { const c = document.querySelector('#title-lab .lab-chipx'); const r = c.getBoundingClientRect(); const m = c.querySelector('.lab-chipx-main').getBoundingClientRect(); const pc = document.querySelector('#btn-player').getBoundingClientRect(); return { left: r.left, top: r.top, h: m.height, compact: c.classList.contains('compact'), txt: c.textContent, beforePlayer: r.left < pc.left || r.top < pc.top, own: document.querySelectorAll('#screen-title .lab-chipx').length, w: innerWidth }; });
   check(chip.own === 1 && /Lab LV \d+/.test(chip.txt) && chip.h >= 44 && chip.top < 80 && chip.left < 80 && chip.beforePlayer && chip.compact === (chip.w < 520), `one Lab chip top-left of the title (${Math.round(chip.left)},${Math.round(chip.top)}), "Lab LV n", 44 px tall, ${chip.compact ? 'compact' : 'full'} at ${chip.w} px, before the player chip`);
@@ -4266,8 +4267,17 @@ try {
     if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await labTest(browser, layout);          // v1.6: The Lab
     if (!process.env.PLAY_ONLY) await funVoiceTest(browser, layout);
   }
+  if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY && (!process.env.ONLY || process.env.ONLY === 'musicoff')) {
+    // v1.9: the parent's "Background music in all games": the trail's own banjo player (Music.isPlaying) never runs while it is Off
+    await runMusicOffCheck(browser, { name: 'wagon-west', url: URL0, audio: '/spell-jump/src/audio.js',
+      state: (page) => page.evaluate(() => ({ playing: window.__wagonWest.Music.isPlaying, locked: window.__wagonWest.Music.locked })),
+      pick: async (page) => { await page.waitForSelector('#screen-players:not([hidden])'); await page.click('[data-player="pkid"]'); await page.waitForSelector('#screen-title:not([hidden])'); },
+      parentsBtn: '#btn-parents', famToggle: '#opt-family-music', childToggle: '#opt-music', pauseBtn: '#pause-music', shot: process.env.MUSICOFF_SHOT || null }, check);
+  }
+  if (process.env.ONLY !== 'musicoff') {
   if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await mockMiniGames(browser);
   staticAudit();
+  }
 } catch (e) {
   failures.push('crashed: ' + (e && e.stack || e));
   console.error(e);
