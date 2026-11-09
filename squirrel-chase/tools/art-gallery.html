@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Squirrel Chase art gallery</title>
+<style>
+:root{--bg:#f7edd3;--ink:#1f1630;}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--ink);padding:16px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:18px;margin:26px 0 8px;border-bottom:2px solid #0002;padding-bottom:4px}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;margin-bottom:10px}
+.cell{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px}
+.cell svg.sq-char{width:120px;height:120px}
+.panel{padding:10px;border-radius:14px}
+.light{background:#f7edd3}.dark{background:#15182b;color:#fff}
+.wide{display:block;width:100%}.cell.sign{width:min(360px,100%)}.cell.sign svg{width:100%;height:auto}
+</style></head><body>
+<h1>Pip's Squirrel Chase art</h1>
+<div id="app"></div>
+<script type="module">
+import * as A from '../src/art/index.js';
+const $ = (h) => { const d = document.createElement('div'); d.innerHTML = h; return d.firstElementChild; };
+const app = document.getElementById('app');
+const sec = (t) => { const s = $(`<section><h2>${t}</h2></section>`); app.appendChild(s); return s; };
+const cells = (s, items, cls = '') => { const r = $(`<div class="row panel ${cls}"></div>`); items.forEach(([label, html]) => r.appendChild($(`<div class="cell">${html}<span>${label}</span></div>`))); s.appendChild(r); return r; };
+
+{ const s = sec('Gang');
+  for (const id of A.GANG_IDS) cells(s, A.GANG_MOODS.map((m) => [`${id} ${m}`, A.gangPortrait(id, m)]), 'light');
+  cells(s, A.GANG_MOODS.map((m) => [`dark ${m}`, A.gangPortrait('squirrel', m)]).concat([['crow', A.gangPortrait('crow', 'laughing')], ['goat', A.gangPortrait('goat', 'smug')]]), 'dark');
+}
+{ const s = sec('Detective agency');
+  cells(s, [['pip happy', A.pipPortrait('happy')], ['pip thinking', A.pipPortrait('thinking')], ['pip surprised', A.pipPortrait('surprised')], ['pip cheer', A.pipPortrait('cheer')], ['chief', A.chiefPortrait()], ['wen', A.wenPortrait()]], 'light');
+  cells(s, [['pip', A.pipPortrait('happy')], ['chief', A.chiefPortrait()], ['wen', A.wenPortrait()]], 'dark');
+}
+{ const s = sec('Witnesses');
+  const all = []; for (let i = 0; i < 40; i++) all.push([`seed ${i}`, A.witnessPortrait('w' + i)]);
+  cells(s, all.slice(0, 20), 'light'); cells(s, all.slice(20), 'light');
+}
+{ const s = sec('Signs');
+  const row = $('<div class="row panel light signs"></div>'); s.appendChild(row);
+  const mk = (t, miss, v) => { const c = $(`<div class="cell sign">${A.signSvg(t, miss, { variant: v })}<span>${t} / ${v}</span><button>animate</button></div>`); row.appendChild(c);
+    c.querySelector('button').onclick = async () => { for (const i of miss) { await A.animateLetterIn(c, i); } }; return c; };
+  mk('ERIE CANAL', [1, 6], 'wood'); mk('HALL OF FAME', [0, 6, 10], 'metal'); mk('NIAGARA FALLS', [0, 8, 9], 'neon'); mk('LIBERTY', [2, 5], 'wood'); mk('CAPITOL', [0, 3, 6], 'metal'); mk('GLASS CENTER', [4, 8], 'neon');
+  mk('ERIE CANAL', [], 'wood');
+  const dk = $('<div class="row panel dark signs"></div>'); s.appendChild(dk); dk.appendChild($(`<div class="cell sign">${A.signSvg('HALL OF FAME', [1, 5], {variant:'neon'})}</div>`));
+}
+{ const s = sec('Map');
+  const ll = (lon, lat) => ({ x: (lon + 79.8) / 8, y: (45.05 - lat) / 4.55 });
+  const cities = [['rochester','Rochester',-77.61,43.16],['buffalo','Buffalo',-78.88,42.89],['niagara-falls','Niagara Falls',-79.06,43.09],['syracuse','Syracuse',-76.15,43.05],['albany','Albany',-73.76,42.65],['cooperstown','Cooperstown',-74.92,42.70],['corning','Corning',-77.05,42.15],['lake-placid','Lake Placid',-73.98,44.28],['saratoga','Saratoga Springs',-73.78,43.08],['ithaca','Ithaca',-76.5,42.44],['nyc','New York City',-74.0,40.71]].map(([id,name,lo,la]) => ({ id, name, coords: ll(lo, la) }));
+  const a = $('<div class="map-wrap" style="max-width:760px"></div>'); s.appendChild(a);
+  const m = A.drawMap(a, { cities, highlight: 'syracuse', visited: ['rochester', 'buffalo'] });
+  window.__map = m;
+  const b = $('<div class="map-wrap" style="max-width:380px;margin-top:12px"></div>'); s.appendChild(b);
+  A.drawMap(b, { cities, highlight: 'ithaca', visited: ['corning'] });
+  s.appendChild($('<p id="maplog">tap a pin</p>')); a.addEventListener('click', (e) => { const g = e.target.closest('[data-city]'); if (g) document.getElementById('maplog').textContent = 'clicked ' + g.dataset.city; });
+}
+{ const s = sec('Postcards');
+  const cs = [['rochester','Rochester'],['buffalo','Buffalo'],['niagara-falls','Niagara Falls'],['syracuse','Syracuse'],['albany','Albany'],['cooperstown','Cooperstown'],['corning','Corning'],['lake-placid','Lake Placid'],['saratoga','Saratoga Springs'],['ithaca','Ithaca'],['nyc','New York City'],['x','Watertown']];
+  const r = $('<div class="row"></div>'); s.appendChild(r);
+  cs.forEach(([id, name]) => r.appendChild($(`<div class="cell" style="width:min(440px,100%)">${A.postcardSvg({ id, name })}<span>${name}</span></div>`)));
+}
+{ const s = sec('Travel');
+  cells(s, ['plane','train','car'].map((m) => [m, A.travelSvg(m).replace('class="sq-travel', 'style="width:160px;height:80px" class="sq-travel')]), 'light');
+  cells(s, ['plane','train','car'].map((m) => [m, A.travelSvg(m).replace('class="sq-travel', 'style="width:160px;height:80px" class="sq-travel')]), 'dark');
+}
+</script></body></html>
