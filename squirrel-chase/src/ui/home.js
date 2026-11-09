@@ -2,12 +2,11 @@
 // as postcard stamps, the sealed ones to come, and the postcard album. One case a day: a case that has not arrived yet is sealed (its title is not
 // shown) and the board says "Next case tomorrow" with no countdown. A closed case stays on the board and in the album.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
-import { CASE_LIST, CITY_LIST, TOUR_TOTAL, hideoutCity, missingOf, routeOf, signOf } from '../logic/caseModel.js';
+import { CASE_LIST, CITY_BY_ID, CITY_LIST, TOUR_TOTAL, hideoutCity, missingOf, routeOf, signOf } from '../logic/caseModel.js';
 import { currentCase, waitingState } from '../logic/pacing.js';
 import { drawMap, pipPortrait, postcardSvg, signSvg } from '../art/index.js';
 import { artBox } from './fx.js';
 import { drawAvatar } from './avatar.js';
-import { CITY_BY_ID } from '../logic/caseModel.js';
 
 export function createHome(app) {
   const body = $('#home-body');

@@ -124,6 +124,10 @@ h2 { font-size: clamp(24px, 6.4vw, 34px); line-height: 1.05; margin-bottom: 20px
 .btn-cf { background: #dcab4a; color: #2a1c02; box-shadow: 0 var(--edge) 0 #8a6418, 0 calc(var(--edge) + 8px) 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45); }
 .btn-cf:active { box-shadow: 0 1px 0 #8a6418, inset 0 -3px 0 rgba(0,0,0,.12); }
 .chip.cf { background: rgba(220,171,74,.14); border-color: #dcab4a; color: #f5dca0; }
+.game-art.sq { background: linear-gradient(#5cb8ea, #bfe6f7 62%, #ffd993); display: grid; place-items: center; }
+.btn-sq { background: #ffb12b; color: #3a2200; box-shadow: 0 var(--edge) 0 #b66d00, 0 calc(var(--edge) + 8px) 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45); }
+.btn-sq:active { box-shadow: 0 1px 0 #b66d00, inset 0 -3px 0 rgba(0,0,0,.12); }
+.chip.sq { background: rgba(255,177,43,.14); border-color: #ffb12b; color: #ffe2a8; }
 .btn-lab { background: #37e0c0; color: #04271f; box-shadow: 0 var(--edge) 0 #12806f, 0 calc(var(--edge) + 8px) 18px rgba(0,0,0,.35), inset 0 -3px 0 rgba(0,0,0,.12), inset 0 2px 0 rgba(255,255,255,.45); }
 .btn-lab:active { box-shadow: 0 1px 0 #12806f, inset 0 -3px 0 rgba(0,0,0,.12); }
 .game-art.lab { background: linear-gradient(#1c2a78, #12606a 60%, #0d3a40); }
@@ -207,6 +211,10 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
         Play Case Files
       </a>
+      <a class="btn btn-sq" href="/squirrel-chase/">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></svg>
+        Play Pip's Squirrel Chase
+      </a>
       <a class="btn btn-lab" href="/lab/">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6v2h-1v5.2l4.6 8A2 2 0 0 1 16.9 21H7.1a2 2 0 0 1-1.7-2.8L10 10.2V5H9z" fill="currentColor"/><path d="M8.2 15h7.6" stroke="#37e0c0" stroke-width="1.6" opacity=".7"/></svg>
         Open The Lab
@@ -261,7 +269,7 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
         </svg>
       </div>
       <div class="game-body">
-        <span class="kicker lab">Your home base · all six games</span>
+        <span class="kicker lab">Your home base · all seven games</span>
         <h2 id="lab-title">The Lab</h2>
         <p>Whatever you play fills one purse of Lab coins and one level bar. Grow your avatar and pet, finish three quests, open a surprise crate, and spend your coins on looks for your car, bike, wagon and fence, or on new machines in Build Crew. Your family fills a goal together every week.</p>
         <span class="chip lab">Free · no ads</span>
@@ -435,6 +443,14 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       </div>
     </article>
 
+    <article class="card game second" aria-labelledby="game7-title">
+      <div class="game-art sq"><img src="/squirrel-chase/icons/icon-512.png" width="200" height="200" alt="A cheeky orange squirrel running off with a letter from a road sign" loading="lazy"></div>
+      <div class="game-body"><span class="kicker">Game seven · spelling</span><h2 id="game7-title">Pip's Squirrel Chase</h2>
+        <p>A spelling chase across New York. The Scribble Gang, led by Scrabble the squirrel, swipes letters off famous signs. Every witness gives you a sealed note: spell the next word from your own spelling list to open it, read the clue, tap the next city on the map and win the letters back. At the hideout, listen to the gang's password and type it from memory. One new case a day, and every word you spell counts toward the same daily mission as Spell Jump.</p>
+        <a class="chip sq" href="/squirrel-chase/">Play Pip's Squirrel Chase</a><span class="chip sq">One case a day</span><span class="chip sq">No timers, no lives</span>
+      </div>
+    </article>
+
     <section aria-labelledby="science-title">
       <span class="kicker">Why it works</span>
       <h2 id="science-title">The science we build on</h2>
@@ -465,7 +481,7 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       <span class="kicker">Five minutes, once a week</span>
       <h2 id="parents-title">Get started as a parent</h2>
       <ol class="steps">
-        <li class="card">Open <a href="/spell-jump/">Spell Jump</a>, tap <b>Parents</b>, set a PIN, and create a family code. Join with that code on your kids' devices so their progress follows them: one code syncs all six games.</li>
+        <li class="card">Open <a href="/spell-jump/">Spell Jump</a>, tap <b>Parents</b>, set a PIN, and create a family code. Join with that code on your kids' devices so their progress follows them: one code syncs all seven games.</li>
         <li class="card">Paste this week's spelling words in <b>Parents → Words of the week</b>, one per line. To add a sentence, put it after two bars, like <code>neighbor | | My neighbor has a dog.</code></li>
         <li class="card">Kids play about 8 words a day. Check the <b>Report</b> on Friday to see how far each word has come, and its progress chart to see the weeks add up (every game's Report has one).</li>
         <li class="card">For math, open <a href="/trail-blazer/">Trail Blazer</a> → <b>Parents → Facts this week</b> and pick the times tables (×2 to ×12, with ÷ if you like), or type your own problems one per line, like <code>7 x 8</code> or <code>56 / 7</code>. Each race asks 4 facts; 12 a day is the daily mission.</li>
@@ -475,7 +491,7 @@ footer .meta { margin: 0; color: var(--dim); font-weight: 700; }
       </ol>
       <p class="more">For reading, open <a href="/case-files/">Case Files</a>: one new case a day. <b>Parents</b> sets the starting Detective Rank and shows each case report your child wrote, first-tap accuracy by skill, hints and word help used. A "Talking with school" card explains reading levels.</p>
       <p class="more">For building and exploring, open <a href="/build-crew/">Build Crew</a>: ten construction jobs and a saved free-play yard. Parents can see jobs completed and minutes played, and unlock the three machines for free play.</p>
-      <p class="more">All six games and The Lab share the same players, family code and parent PIN: set them up once in any game.</p>
+      <p class="more">All seven games and The Lab share the same players, family code and parent PIN: set them up once in any game.</p>
     </section>
   </div>
 </main>

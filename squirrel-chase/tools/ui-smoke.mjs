@@ -430,11 +430,33 @@ async function quietLayout(browser, layout) {
   await ctx.close();
 }
 
+// ---------- the PWA: the service worker caches the game and it opens offline ----------
+async function offlineTest(browser, layout) {
+  console.log(`\n=== offline (${layout.name}) ===`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, serviceWorkers: 'allow' });
+  await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, body: '', contentType: 'text/css' }));
+  await ctx.route('**/api/**', (r) => r.abort());
+  const page = await ctx.newPage();
+  await page.goto(BASE + '/squirrel-chase/index.html', { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 15000 }).catch(() => {});
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.waitForTimeout(2500);                                                      // (the worker fills its cache from what the page loaded)
+  const names = await page.evaluate(() => caches.keys());
+  check(names.includes('squirrel-chase-v0.1.0'), `the service worker's cache is squirrel-chase-v0.1.0 (${names.filter((n) => /squirrel/.test(n)).join(', ')})`);
+  const manifest = await page.evaluate(() => fetch('manifest.webmanifest').then((r) => r.json()));
+  check(manifest.name === "Pip's Squirrel Chase" && manifest.icons.length >= 2, 'the manifest names the game and has icons');
+  await ctx.setOffline(true);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector(visibleSel('#screen-players'), { timeout: 15000 }).then(() => check(true, 'offline: the page and its modules come back from the cache (the picker shows)'), () => check(false, 'offline: the picker shows'));
+  await ctx.close();
+}
+
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 try {
   for (const layout of LAYOUTS) await playLayout(browser, layout);
   await quietLayout(browser, LAYOUTS[0]);
+  await offlineTest(browser, LAYOUTS[0]);
 } catch (e) { failures.push('crashed: ' + (e && e.stack || e)); console.log('  ✗ crashed: ' + (e && e.stack || e)); }
 await browser.close();
 console.log(failures.length ? `\n${failures.length} FAILED:\n- ${failures.join('\n- ')}` : '\nALL SQUIRREL CHASE UI CHECKS PASSED');

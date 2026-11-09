@@ -462,7 +462,7 @@ async function runLayout(browser, layout) {
   await clickTab(page, 'home'); await page.waitForTimeout(400);
   {
     const cards = await L(page, () => [...document.querySelectorAll('.lab-gcards .lab-gcard')].map((c) => ({ game: c.dataset.game, href: c.getAttribute('href'), played: c.dataset.played, text: c.innerText.replace(/\s+/g, ' ').trim() })));
-    check('the Lab home has six game cards in order, each a same-origin link', cards.length === 6 && JSON.stringify(cards.map((c) => c.href)) === JSON.stringify(['/spell-jump/', '/trail-blazer/', '/fraction-fright/', '/wagon-west/', '/build-crew/', '/case-files/']), JSON.stringify(cards.map((c) => c.href)));
+    check('the Lab home has seven game cards in order, each a same-origin link', cards.length === 7 && JSON.stringify(cards.map((c) => c.href)) === JSON.stringify(['/spell-jump/', '/trail-blazer/', '/fraction-fright/', '/wagon-west/', '/build-crew/', '/case-files/', '/squirrel-chase/']), JSON.stringify(cards.map((c) => c.href)));
     const sj = cards[0].text, tb = cards[1].text, ff = cards[5].text, cf = cards[3].text;
     check('a played game shows its level label, line, today\'s target and "last played" as a day word', /Speller LV 3/.test(sj) && /24 words mastered/.test(sj) && /Today: 3 \/ 8 words/.test(sj) && /Played today/.test(sj) && /Rider LV 2/.test(tb) && /Played yesterday/.test(tb), sj + ' | ' + tb);
     check('a game from three days ago says the weekday', /Last played (Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)/.test(cf) && /Trail LV 2/.test(cf), cf);
@@ -488,7 +488,7 @@ async function runLayout(browser, layout) {
     check('the panel opens', await waitFor(page, '#odds-table'));
     {
       const pg = await L(page, () => ({ cards: document.querySelectorAll('.lab-parent .lab-gcard').length, links: document.querySelectorAll('.lab-parent a.lab-gcard').length, code: (document.querySelector('#family-code-line') || {}).textContent, dollar: /\$/.test(document.querySelector('.lab-parent').innerText) }));
-      check('Grown-ups shows "Progress at a glance": the same six cards (read only)', pg.cards === 6 && pg.links === 0, JSON.stringify(pg));
+      check('Grown-ups shows "Progress at a glance": the same seven cards (read only)', pg.cards === 7 && pg.links === 0, JSON.stringify(pg));
       check('Grown-ups says where the family code is, and the code itself is not here', pg.code === 'Family code: open Parents in any game \u2192 Family code' && !/code [A-Z0-9]{4,}/.test(await page.innerText('.lab-parent')), pg.code);
       check('Grown-ups says "Lab coins" and has no "$"', !pg.dollar && /Lab coins earned in all/.test(await page.innerText('.lab-parent')));
       await shot(page, layout, '33-grownups-progress');
@@ -687,7 +687,7 @@ async function runLayout(browser, layout) {
     await page.click('.lab-chipx.fixed .lab-chipx-games'); await page.waitForTimeout(400);
     {
       const g = await L(page, () => ({ rows: [...document.querySelectorAll('.lab-gp-row')].map((a) => [a.dataset.game, a.getAttribute('href'), a.classList.contains('here')]), text: document.querySelector('.lab-gp').innerText.replace(/\s+/g, ' '), role: document.querySelector('.lab-gp').getAttribute('role'), tall: [...document.querySelectorAll('.lab-gp-row, .lab-gp-close')].every((e) => e.getBoundingClientRect().height >= 43.5) }));
-      check('the Games panel lists Home, The Lab and all six games with same-origin links', JSON.stringify(g.rows.map((r) => r[1])) === JSON.stringify(['/', '/lab/', '/spell-jump/', '/trail-blazer/', '/fraction-fright/', '/wagon-west/', '/build-crew/', '/case-files/']), JSON.stringify(g.rows));
+      check('the Games panel lists Home, The Lab and all seven games with same-origin links', JSON.stringify(g.rows.map((r) => r[1])) === JSON.stringify(['/', '/lab/', '/spell-jump/', '/trail-blazer/', '/fraction-fright/', '/wagon-west/', '/build-crew/', '/case-files/', '/squirrel-chase/']), JSON.stringify(g.rows));
       check('the panel shows each game\'s one-line progress and "Try it" for the unplayed', /Speller LV 3 · 24 words mastered/.test(g.text) && /Try it/.test(g.text), g.text);
       check('the panel is a dialog with 44 px rows', g.role === 'dialog' && g.tall);
       check('the current game is highlighted (from the page, else the caller\'s word)', g.rows.filter((r) => r[2]).length === 1 && g.rows.find((r) => r[2])[0] === 'lab' || g.rows.filter((r) => r[2]).length === 1);

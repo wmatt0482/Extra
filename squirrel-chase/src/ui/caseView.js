@@ -93,13 +93,14 @@ export function createCaseView(app) {
     if (!run.hideout) { setHideout(run, app.words.planHideout(run)); save(); app.prepareHideoutVoice(run.hideout.sentence); }
     typed = ''; scored = null; looking = !app.voiceReady();
     const wrap = h('div', { class: 'pane hideout' });
-    const intro = h('div', { class: 'hide-intro' }, artBox(gangPortrait(gang.id, 'sorry'), 'face'),
-      h('div', { class: 'b-text' }, h('span', { class: 'who-name' }, `${gang.name} and the gang`), h('p', {}, hid.description || 'You found the hideout! The gang will hand the letters back if you can say their password.'),
-        h('p', { class: 'ask' }, 'Listen to the password, then type it from memory.')));
     const listen = h('button', { class: 'btn btn-cyan btn-sm', id: 'btn-hear', type: 'button', 'data-sfx': '' }, h('span', { html: app.icon('sound') }), 'Hear the password');
     listen.addEventListener('click', () => { if (!busy) { looking = false; renderHideoutBits(); app.speakHideout(run.hideout.sentence); } });
     const again = h('button', { class: 'btn btn-paper btn-sm', id: 'look-again', type: 'button', 'data-sfx': '', hidden: true }, 'Look again');
     again.addEventListener('click', () => { looking = true; renderHideoutBits(); });
+    const intro = h('div', { class: 'hide-intro' }, artBox(gangPortrait(gang.id, 'sorry'), 'face'),
+      h('div', { class: 'b-text' }, h('span', { class: 'who-name' }, `${gang.name} and the gang`), h('p', { class: 'desc' }, hid.description || 'You found the hideout! The gang will hand the letters back if you can say their password.'),
+        h('p', { class: 'ask' }, 'Listen to the password, then type it from memory.')),
+      h('div', { class: 'hide-tools' }, listen, again));
     const look = h('div', { class: 'look-card', id: 'look-card', hidden: true });
     const box = h('div', { class: 'type-box', id: 'type-box', 'aria-live': 'polite', 'aria-label': 'Your answer' });
     const result = h('div', { class: 'hide-result', id: 'hide-result', hidden: true });
@@ -111,7 +112,7 @@ export function createCaseView(app) {
       onEnter: () => checkIt(),
     });
     kbHost.append(kb.el);
-    wrap.append(h('div', { class: 'pane-scroll scroll' }, h('div', { class: 'col' }, intro, h('div', { class: 'hide-tools' }, listen, again), look, box, result)), kbHost);
+    wrap.append(h('div', { class: 'pane-scroll scroll' }, h('div', { class: 'col' }, intro, look, box, result)), kbHost);
     queueMicrotask(() => { kb.setEnabled(true); kb.setActive(true); renderTyped(); renderHideoutBits(); if (app.voiceReady()) app.speakHideout(run.hideout.sentence); });
     return wrap;
   }
@@ -142,7 +143,8 @@ export function createCaseView(app) {
     const res = scoreHideout(run.hideout.sentence, run.hideout.words, typed);
     scored = res;
     app.speech.cancel();
-    kb.setEnterEnabled(false);
+    kb.setEnterEnabled(false); kb.setActive(false);
+    const kh = $('#hide-kb'); if (kh) kh.hidden = true;                  // the keyboard steps aside: the result gets the room
     try { await app.words.bankHideout(res.perWord); } catch (e) { console.warn('[SquirrelChase] bankHideout', e); }
     const marks = markSentence(run.hideout.sentence, run.hideout.words, typed);
     const done = h('button', { class: 'btn btn-sun btn-big', id: 'btn-letters', type: 'button', 'data-sfx': '' }, 'Hand back the letters');

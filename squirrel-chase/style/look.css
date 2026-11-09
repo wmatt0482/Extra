@@ -123,9 +123,9 @@ button.stamp-card:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(
 .letter-chip { display: grid; place-items: center; width: 40px; height: 44px; border-radius: 8px; background: #ffd34d; color: #3a2200; border: 3px solid #fff; font: 400 26px/1 var(--font-display); box-shadow: 0 4px 6px rgba(0, 0, 0, .35); }
 
 /* the hideout */
-.hide-intro { display: flex; align-items: flex-start; gap: 12px; padding: 12px; border-radius: 14px; background: #fff0c8; border: 3px solid var(--cream-edge); color: var(--cream-ink); }
+.hide-intro { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 12px; padding: 12px; border-radius: 14px; background: #fff0c8; border: 3px solid var(--cream-edge); color: var(--cream-ink); }
 .hide-intro .ask { font-weight: 800; color: #14325e; }
-.hide-tools { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.hide-tools { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; flex: 1 1 100%; }
 .look-card { padding: 12px 14px; border-radius: 12px; background: #fff; color: var(--cream-ink); border: 3px solid var(--cyan); text-align: center; }
 .look-card p { margin: 6px 0 10px; font: 800 22px/1.35 var(--font-body); }
 .type-box { display: flex; align-items: center; flex-wrap: wrap; min-height: 62px; padding: 8px 14px; border-radius: 12px; background: #fff; color: var(--cream-ink); border: 4px solid var(--accent); font: 700 22px/1.35 var(--font-body); word-break: break-word; }
@@ -212,7 +212,9 @@ button.stamp-card:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(
   .kb-key { font-size: 20px; }
   .face { width: 44px; height: 44px; }
   .b-text p { font-size: 16px; line-height: 1.3; }
-  .hide-intro { padding: 8px 10px; }
+  .hide-intro { padding: 8px 10px; flex-wrap: nowrap; align-items: center; }
+  .hide-intro .desc, .hide-intro .who-name { display: none; }
+  .hide-tools { flex: none; margin-left: auto; }
   .type-box { min-height: 48px; font-size: 20px; padding: 4px 12px; }
   .scene-art { width: 80px; }
   .scene-text h2 { font-size: 20px; }

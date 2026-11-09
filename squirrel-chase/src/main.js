@@ -34,7 +34,6 @@ import { createCaseView } from './ui/caseView.js';
 import { createClosed } from './ui/closed.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
-import { drawAvatar } from './ui/avatar.js';
 
 const VERSION = '0.1.0';
 const params = new URLSearchParams(location.search);
@@ -380,7 +379,6 @@ async function boot() {
     app, pz, sync, speech, cloud, tts, caseView, spellPanel,
     get screen() { return screen; }, get save() { return save; }, get run() { return caseView.run; }, get session() { return spellSession; },
   };                                   // debugging / smoke tests
-  void drawAvatar;
   registerSW();
 }
 
