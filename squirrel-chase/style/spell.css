@@ -1,0 +1,68 @@
+/* Spell Jump's spell panel (spell-jump/src/spelling/spellPanel.js, shared as is), in this game's colours. The rules follow Wagon West's, which reuses the same panel. */
+.sp-row { --n: 8; --gap: 5px; display: flex; justify-content: center; gap: var(--gap); width: 100%; min-height: var(--th); }
+.sp-row .tile { --tw: min(var(--tmax), calc((100% - (var(--n) - 1 + var(--b, 0) * 2) * var(--gap)) / var(--n))); flex: 0 0 var(--tw); width: var(--tw); height: var(--th);
+  display: grid; place-items: center; border-radius: 8px; background: var(--paper); color: var(--paper-ink); font: 800 calc(var(--th) * .62)/1 var(--font-body); box-shadow: 0 3px 0 #a88b5c; position: relative; }
+.sp-row .tile.sp { background: transparent; box-shadow: none; }
+.sp-row .tile.cursor { background: transparent; box-shadow: inset 0 0 0 2px rgba(255,255,255,.35); }
+.sp-row .tile.cursor::after { content: ''; width: 3px; height: 60%; background: var(--accent); animation: blink .6s steps(1) infinite alternate; }
+.sp-row .tile.model { background: var(--go); color: #10260a; box-shadow: 0 3px 0 var(--go-edge); }
+.sp-row .tile.lit { background: #e4ffd0; color: #10260a; box-shadow: 0 3px 0 var(--go-edge), 0 0 0 3px var(--tile-lit); }
+.sp-row .tile.now { transform: translateY(-4px) scale(1.08); }
+.sp-row .tile.pat { box-shadow: 0 3px 0 var(--go-edge), inset 0 -6px 0 var(--tile-lit); }
+.sp-row .tile.pat.lit, .sp-row .tile.pat.model { background: #fff3b0; color: #2a1a00; }
+.sp-row .tile.brk { margin-left: calc(var(--gap) * 2); }
+.sp-row .tile.brk::before { content: ''; position: absolute; left: calc(var(--gap) * -1.5 - 3px); top: 50%; width: 6px; height: 6px; margin-top: -3px; border-radius: 50%; background: var(--accent); }
+.sp-row .tile.ok { background: var(--go); color: #10260a; box-shadow: 0 3px 0 var(--go-edge); }
+.sp-row .tile.bad { background: var(--hot); color: #fff; box-shadow: 0 3px 0 var(--hot-edge), 0 0 0 3px #fff; }
+.sp-row .tile.missing { background: rgba(226,88,75,.15); box-shadow: inset 0 0 0 3px var(--hot); }
+.sp-row .tile.hint { animation: hintFlash .45s ease; }
+@keyframes hintFlash { 40% { transform: translateY(-6px) scale(1.15); box-shadow: 0 0 0 4px var(--tile-lit); } }
+.sp-attempt.flash .tile { animation: tileWin .5s cubic-bezier(.2,1.6,.4,1) both; }
+@keyframes tileWin { 0% { transform: scale(.6); } 60% { transform: scale(1.15) rotate(-3deg); } 100% { transform: none; } }
+#spell { position: absolute; inset: 0; z-index: 25; display: flex; justify-content: center; padding: var(--pad-t) var(--pad-r) var(--pad-b) var(--pad-l);
+  background: linear-gradient(rgba(12,26,52,.82), rgba(12,26,52,.95) 45%); backdrop-filter: blur(7px); -webkit-backdrop-filter: blur(7px); }
+.sp-card { position: relative; width: min(100%, 760px); height: 100%; display: flex; flex-direction: column; gap: 6px; }
+.sp-top { display: flex; align-items: center; gap: 8px; flex: none; min-height: 48px; }
+.sp-top .btn { min-height: 46px; font-size: 14px; padding: 0 12px; --edge: 4px; }
+.sp-top .btn svg { width: 22px; height: 22px; }
+.sp-top .sp-exit { width: 46px; padding: 0; }
+.sp-chip { margin-left: auto; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 12px; border-radius: 999px; background: var(--ink); border: 2px solid var(--go); font: 400 13px/1 var(--font-display); white-space: nowrap; }
+.sp-chip.two { padding: 5px 12px; border-radius: 14px; font-size: 12px; }
+.sp-chip .sp-set { color: var(--accent); }
+.sp-tiles { --th: 40px; --tmax: 42px; flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; position: relative; }
+.sp-model { --th: 36px; --tmax: 40px; }
+.sp-msg { min-height: 20px; font: 400 16px/1.1 var(--font-display); color: #fff; text-align: center; text-shadow: 0 2px 0 rgba(0,0,0,.5); }
+.sp-msg.cyan { color: var(--cyan); } .sp-msg.go { color: var(--go); } .sp-msg.hot { color: #ffb0a0; }
+.sp-msgrow { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 4px 10px; max-width: 100%; }
+.sp-retry { min-height: 44px; padding: 0 12px; font-size: 13px; gap: 6px; }
+.sp-retry svg { width: 18px; height: 18px; }
+.sp-retry[hidden] { display: none; }
+@media (orientation: landscape) { .sp-retry { position: absolute; top: 0; right: 0; z-index: 2; } }
+.sp-note { font-size: 12px; font-weight: 700; color: #ffe9b0; text-align: center; }
+.sp-note .sp-tip { display: block; margin-top: 3px; font-size: 11px; font-weight: 600; color: var(--muted); max-width: 560px; }
+@media (orientation: landscape) and (max-height: 430px) { .sp-note .sp-tip { display: none; } }
+.sp-kb { flex: none; }
+.sp-banner { position: absolute; left: 50%; top: 52%; z-index: 3; transform: translate(-50%, -50%) rotate(-3deg); display: flex; flex-direction: column; align-items: center; gap: 4px;
+  padding: 12px 34px 14px; border-radius: 16px; background: linear-gradient(var(--go), var(--go-edge)); box-shadow: 0 8px 0 rgba(10,6,2,.5); pointer-events: none;
+  animation: spBanner .45s cubic-bezier(.2,1.5,.4,1) both; white-space: nowrap; }
+.sp-banner b { font: 400 clamp(26px, 4vmin + 2vw, 44px)/1 var(--font-display); color: #fff; text-shadow: 0 4px 0 var(--go-edge), 0 7px 0 var(--ink); }
+.sp-banner small { font: 800 14px/1 var(--font-body); color: #10260a; letter-spacing: .04em; }
+.sp-banner.fixed { background: linear-gradient(var(--cyan), var(--cyan-edge)); }
+.sp-banner.fixed small { color: #032634; }
+.sp-banner.anyway { background: linear-gradient(var(--violet), var(--violet-edge)); }
+.sp-banner.anyway b { font-size: clamp(22px, 3vmin + 1.6vw, 36px); }
+.sp-banner.anyway small { color: #fff; }
+@keyframes spBanner { from { transform: translate(-50%, -50%) scale(2) rotate(8deg); opacity: 0; } }
+.sp-today { color: var(--muted); font-weight: 800; }
+@media (orientation: portrait) {
+  #spell { padding-left: max(4px, var(--sal)); padding-right: max(4px, var(--sar)); }
+  .sp-top { flex-wrap: wrap; row-gap: 8px; }
+  .sp-top::after { content: ''; order: 2; flex-basis: 100%; height: 0; }
+  .sp-top .sp-hear, .sp-top .sp-again, .sp-top .sp-sentence, .sp-top .sp-syl { order: 3; flex: 1 1 0; padding: 0 6px; font-size: 12px; gap: 5px; min-width: 0; }
+  .sp-top .btn svg { width: 18px; height: 18px; }
+  .sp-top .sp-sentence svg, .sp-top .sp-syl svg { display: none; }
+  .sp-tiles { --th: 44px; --tmax: 40px; gap: 12px; }
+  .sp-model { --th: 40px; }
+  .sp-row { --gap: 3px; }
+}
+.reduced-motion .sp-banner { animation: none; }
