@@ -686,7 +686,7 @@ async function runLayout(browser, layout) {
   await audit(page, layout.insets, 'Parent Zone (Journey)');
   await shot(page, layout, '22-pz-journey');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.8\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
+  check(await J(page, () => !!document.querySelector('#opt-hunting') && !!document.querySelector('#opt-fractions') && /Wagon West 1\.9\.0 · mock scene/.test(document.querySelector('.ver').textContent)), 'Options: hunting, fractions at rivers, the version and the scene');
   // v1.4: "Far-off sounds on the trail" (default on) turns the four far facts off: it is the journey's J.opts.farSounds too
   const far0 = await J(page, () => ({ on: document.querySelector('#opt-far-sounds').getAttribute('aria-checked'), label: document.querySelector('#opt-far-sounds').getAttribute('aria-label') }));
   check(far0.on === 'true' && /^Far-off sounds on the trail/.test(far0.label), `Options: "${far0.label}" is On by default`);
