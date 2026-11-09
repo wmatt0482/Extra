@@ -547,6 +547,127 @@ try {
     check(errors.length === 0, `(v3.3 skin) no console errors (${errors.join(' | ')})`);
     await context.close();
   }
+
+  // ================= v4.0 Sky Era =================
+  const SKY_DRIVER = `
+  window.__sky = ({ until = 'false', after = 0, maxSteps = 60 * 200, boost = null, glide = false, word = 'friend' }) => {
+    const r = window.__rr, g = r.game;
+    const cond = new Function('ev', 's', 'info', 'return (' + until + ');');
+    let hit = false, extra = after, n = 0;
+    for (; n < maxSteps && !r.finished; n++) {
+      const s = g.getState(), info = g.debugInfo();
+      if (s.frozen) { if (boost == null) break; if (boost !== 'none') g.boost({ power: boost, word }); g.freeze(false); }
+      g.setInput({ gas: s.phase !== 'air', brake: false, nitro: s.phase === 'ground' || (glide && s.phase === 'air' && info.vy < 0 && s.altitude < 60) });
+      g.debugStep(1);
+      if (!hit && cond(r.events, g.getState(), g.debugInfo())) { hit = true; extra = after; }
+      if (hit && extra-- <= 0) break;
+    }
+    return { hit, n, state: g.getState(), info: g.debugInfo(), finished: r.finished };
+  };`;
+  const skyOpen = async (params) => {
+    const o = await openRun(browser, params);
+    await o.page.evaluate(SKY_DRIVER);
+    await o.page.evaluate(() => { window.__rr.restart(); window.__rr.game.pause(); });
+    return o;
+  };
+  const sky = (page, o) => page.evaluate((o) => window.__sky(o), o);
+  const types = (page, t) => page.evaluate((t) => window.__rr.events.filter((e) => e.type === t), t);
+
+  // ---- sky 1: the Spell Boost gate, the freeze (really stops the sim, then resumes), the boost and its letter rings ----
+  {
+    const { page, context, errors } = await skyOpen({ car: 'tank', track: 'sky-2', lvl: '6', seed: '42', bword: 'friend' });
+    let r = await sky(page, { until: 's.boostReady' });
+    check(r.hit && !r.state.frozen && !r.state.boostUsed, `(sky) the gate appears past the apex (boostReady, not frozen yet, vy ${Math.round(r.info.vy)} m/s)`);
+    r = await sky(page, { until: 's.frozen' });
+    const sb = await types(page, 'spellBoost');
+    check(sb.length === 1 && r.state.frozen && Number.isFinite(sb[0].x) && Number.isFinite(sb[0].y), `(sky) spellBoost event fires once and freezes the run (${JSON.stringify(sb[0])})`);
+    await page.evaluate(() => { window.__rr.game.resume(); });
+    const a = await page.evaluate(() => ({ s: window.__rr.game.getState(), i: window.__rr.game.debugInfo() }));
+    await page.waitForTimeout(900);
+    await page.evaluate(() => window.__rr.game.debugStep(120)); // even explicit steps do not simulate while frozen
+    const b = await page.evaluate(() => ({ s: window.__rr.game.getState(), i: window.__rr.game.debugInfo() }));
+    check(a.i.x === b.i.x && a.i.y === b.i.y && a.s.airTime === b.s.airTime && a.s.cash === b.s.cash && b.s.frozen, `(sky) frozen: nothing moves or ticks over 0.9 s real + 120 steps (x ${a.i.x.toFixed(2)} -> ${b.i.x.toFixed(2)}, air ${a.s.airTime} -> ${b.s.airTime})`);
+    check(b.i.cam && Number.isFinite(b.i.cam.x), '(sky) the idle scene keeps drawing while frozen');
+    await page.screenshot({ path: path.join(SHOTS, 'sky-freeze-idle.png') });
+    const ok = await page.evaluate(() => { const g = window.__rr.game; const ok = g.boost({ power: 1, word: 'friend' }); g.freeze(false); g.pause(); return ok; });
+    check(ok === true, '(sky) boost({power:1, word}) accepted at the gate');
+    check(await page.evaluate(() => window.__rr.game.boost({ power: 1 })) === false, '(sky) a second boost in the same run is refused');
+    r = await sky(page, { until: 'ev.some((e) => e.type === "wordComplete" && e.boost)', maxSteps: 60 * 40 });
+    const lr = (await types(page, 'letterRing')).filter((e) => e.boost);
+    check(r.hit && lr.length === 6 && lr.map((e) => String(e.letter).toLowerCase()).join('') === 'friend', `(sky) the boost word's six letter rings fire in order with boost:true (${lr.map((e) => e.letter).join('')})`);
+    check(r.hit, '(sky) wordComplete { boost: true } after the last ring');
+    r = await sky(page, {});
+    const s = r.finished;
+    check(!!s && s.boost && s.boost.used && s.boost.collected === 6 && s.boost.inOrder && s.sky, `(sky) summary.boost / summary.sky present (${JSON.stringify(s && s.boost)})`);
+    check(sumOK(s), '(sky) cash adds up');
+    check(!r.state.frozen && errors.length === 0, `(sky) no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- sky 2: boost power 1.0 > 0.5 > none (position 6 s after the gate) ----
+  {
+    const out = {};
+    for (const [name, boost] of [['full', 1], ['half', 0.5], ['none', 'none']]) {
+      const { page, context } = await skyOpen({ car: 'tank', track: 'sky-2', lvl: '6', seed: '42' });
+      let r = await sky(page, { until: 's.frozen' });
+      r = await sky(page, { until: 'false', boost, maxSteps: 60 * 6 });
+      out[name] = { x: r.info.x, alt: r.state.altitude, dist: r.state.distance };
+      await context.close();
+    }
+    console.log('sky boost power:', JSON.stringify(out));
+    check(out.full.x > out.half.x && out.half.x > out.none.x, `(sky) boost 1.0 (${Math.round(out.full.x)} m) > 0.5 (${Math.round(out.half.x)} m) > none (${Math.round(out.none.x)} m)`);
+  }
+  // ---- sky 3: spellBoost: false -> no gate ----
+  {
+    const { page, context } = await skyOpen({ car: 'tank', track: 'sky-1', lvl: '6', seed: '42', spellboost: '0' });
+    const r = await sky(page, {});
+    check(r.finished && !(await types(page, 'spellBoost')).length && !r.state.boostReady, '(sky) start({ spellBoost:false }): no gate, no spellBoost event');
+    await context.close();
+  }
+  // ---- sky 4: boost rings and gravity wells fire events; the splash never crashes or ends the run ----
+  {
+    const { page, context, errors } = await skyOpen({ car: 'tank', track: 'sky-1', lvl: '6', seed: '42', spellboost: '0' });
+    const r = await sky(page, {});
+    const br = await types(page, 'boostRing'), gw = await types(page, 'gravityWell'), il = await types(page, 'islandLand');
+    check(br.length >= 1 && br.every((e) => e.cash > 0 && e.nitroRefill > 0), `(sky) boost rings fire boostRing events with cash + nitro (${br.length})`);
+    check(gw.some((e) => e.state === 'enter') && gw.some((e) => e.state === 'exit'), `(sky) gravity wells fire enter and exit (${gw.length} events, ${gw.filter((e) => e.slingshot).length} slingshots)`);
+    check(il.length >= 1, `(sky) islandLand events (${il.length})`);
+    check(r.finished && r.finished.sky.boostRings === br.length, '(sky) summary.sky.boostRings matches');
+    check(errors.length === 0, `(sky) no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  {
+    const { page, context, errors } = await skyOpen({ car: 'beater', track: 'sky-3', lvl: '0', seed: '42', spellboost: '0' });
+    let r = await sky(page, { until: 'ev.some((e) => e.type === "cloudSplash")', after: 90 });
+    const sp = await types(page, 'cloudSplash');
+    check(sp.length >= 1 && sp[0].nextX > sp[0].x, `(sky) a slow car splashes between islands (${sp.length}x, to ${sp[0] && sp[0].nextX} m)`);
+    check(r.state.phase !== 'done', '(sky) the run goes on after a splash');
+    r = await sky(page, {});
+    const s = r.finished;
+    const lands = await types(page, 'land');
+    check(s && lands.every((e) => e.quality !== 'crash'), `(sky) no crash landing in a cloud-splash run (${lands.map((e) => e.quality[0]).join('')})`);
+    check(s && s.sky.splashes === (await types(page, 'cloudSplash')).length && Number.isFinite(s.distance), `(sky) splashes counted (${s && s.sky.splashes}), ends normally (${s && s.distance} m)`);
+    check(errors.length === 0, `(sky) no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // ---- sky 5: each sky ride completes a sky track on the scripted player; Earth cars can fly the sky ----
+  for (const [car, lvl] of [['hoverbike', '5'], ['rocketcar', '5'], ['mechwalker', '5'], ['rally', '5']]) {
+    const { page, context, errors } = await skyOpen({ car, track: 'sky-1', lvl, seed: '42', spellboost: '0' });
+    const glide = car === 'hoverbike' || car === 'rocketcar';
+    const r = await sky(page, { glide });
+    const s = r.finished;
+    console.log(`sky ${car}/sky-1/L${lvl}:`, JSON.stringify(s && { d: s.distance, fin: s.finishCrossed, landing: s.landing, cash: s.cash.total, sky: s.sky }));
+    check(!!s && Number.isFinite(s.distance) && s.distance > 300, `(sky) ${car} runs sky-1 to the end (${s && s.distance} m)`);
+    if (car !== 'rally') check(s && s.finishCrossed, `(sky) ${car} (L${lvl}) completes sky-1 (finish crossed)`);
+    check(errors.length === 0, `(sky) ${car}: no console errors (${errors.join(' | ')})`);
+    await context.close();
+  }
+  // Earth is untouched: no sky fields, never frozen
+  {
+    const { page, context } = await skyOpen({ car: 'beater', track: 'canyon', lvl: '0', seed: '42' });
+    const r = await sky(page, {});
+    check(r.finished && !('sky' in r.finished) && !('boost' in r.finished) && r.state.frozen === false && r.state.boostReady === false, '(sky) Earth runs have no sky summary fields and never freeze');
+    await context.close();
+  }
 } finally {
   await browser.close().catch((e) => console.error('browser.close', e));
   if (server) await server.stop();

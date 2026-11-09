@@ -79,6 +79,7 @@ export const TUNING = {
   boostRingCash: 120, boostRingNitro: 0.4, boostKick: 9, // boost ring: $ (x coinMult, cash.air), tank share refilled, m/s added along the velocity
   wellPull: 15, wellSwirl: 24, wellSlingGain: 3, wellCash: 150, // gravity well: m/s^2 toward the centre / around it (peak), m/s gained = slingshot, $
   islandCash: [60, 30], // $ for a perfect / good landing on an island (x coinMult, cash.air), only after a flight over a gap
+  skyKeep: 0.15, skyRoll: 0.6, // sky islands: share of the ground drive that never fades; rolling resistance multiplier
   splashMinSpeed: 15, splashKeep: 0.55, splashPop: 5.5, // cloud splash: pop-up speed floor (m/s), share of the speed kept, hop up (m/s)
   gateAfterApex: 0.9, gateClear: 6, gateR: 4.5, // Spell Boost gate: s ahead of the apex point, min clearance over the ground (m), size
   boostRise: 28, boostFwd: 14, boostNitro: 0.3, // Spell Boost at power 1: rise (m), forward kick (m/s), tank share refilled
@@ -336,16 +337,16 @@ export function createGame(canvas, opts = {}) {
       // v4.0 Mech Walker: the "wheels" are feet at the end of long legs (a tall A-frame from the hips), springier travel
       const legs = r.ride.legs;
       for (const ax of legs ? [-0.4, 0.4] : [-0.55, 0.55]) {
-        const px = w.x + ax, py = legs ? w.y + 1.4 : w.y + 0.42;
+        const px = w.x + ax, py = legs ? w.y + 0.95 : w.y + 0.42;
         cons.push(Constraint.create({
           bodyA: chassis, pointA: { x: (px - g.centroid[0]) * S, y: -(py - g.centroid[1]) * S },
           bodyB: wb, pointB: { x: 0, y: 0 },
-          stiffness: legs ? 0.4 : 0.45, damping: legs ? 0.2 : 0.12, label: 'susp',
+          stiffness: legs ? 0.6 : 0.45, damping: legs ? 0.15 : 0.12, label: 'susp',
         }));
       }
     });
     r.chassis = chassis;
-    r.stops = r.ride.legs ? { x: 0.32, up: 0.7, down: 0.5 } : { x: 0.22, up: 0.32, down: 0.22 };
+    r.stops = r.ride.legs ? { x: 0.25, up: 0.45, down: 0.3 } : { x: 0.22, up: 0.32, down: 0.22 };
     r.wheels = wheels;
     // rest offsets of the wheels in the chassis frame (px, Matter y-down) for the bump stops
     r.wheelRest = g.wheels.map((w) => ({ x: (w.x - g.centroid[0]) * S, y: -(w.y - g.centroid[1]) * S }));
@@ -478,7 +479,7 @@ export function createGame(canvas, opts = {}) {
     return {
       float: car.float || 0, glide: car.glide || 0, glideDrag: car.glideDrag == null ? 0.12 : car.glideDrag, glideBurn: car.glideBurn == null ? 1 : car.glideBurn,
       boostMul: car.boostMul || 1, hop: car.hop || 0, hopPeriod: car.hopPeriod || 0.5, groundKeep: car.groundKeep || 0, righting: car.righting || 0,
-      legs: !!car.legs, art: car.art || null,
+      legs: !!car.legs, art: car.art || null, drag: car.drag == null ? 1 : car.drag, splashKeep: car.splashKeep || 0, ringMul: car.ringMul || 1,
     };
   }
 
@@ -919,7 +920,8 @@ export function createGame(canvas, opts = {}) {
       return;
     }
     // hard safety cap on speed
-    if (r.speed > 120) { const f = 120 / r.speed; addVelAll(r, r.com.vx * (f - 1), r.com.vy * (f - 1)); measure(r); }
+    const capV = r.sky ? 170 : 120; // sky rides outrun the Earth cap
+    if (r.speed > capV) { const f = capV / r.speed; addVelAll(r, r.com.vx * (f - 1), r.com.vy * (f - 1)); measure(r); }
     r.t += dt;
     if (r.combo.timer > 0) {
       r.combo.timer -= dt;
@@ -950,13 +952,13 @@ export function createGame(canvas, opts = {}) {
       const sl = r.course.rampSlope(r.com.x);
       const nn = Math.hypot(sl, 1), nx = -sl / nn, ny = 1 / nn;
       const perp = (r.com.y - r.course.rampY(r.com.x)) / nn;
-      if (perp < r.restAlt + 4) {
+      if (perp < r.restAlt + (r.ride.legs ? 8 : 4)) {
         addVelAll(r, -nx * T.rampGlue * dt, -ny * T.rampGlue * dt);
         const vn = r.com.vx * nx + r.com.vy * ny;
         if (vn > 0 && perp > r.restAlt + 0.1) addVelAll(r, -nx * vn, -ny * vn);
         let diff = r.ang - Math.atan(sl);
         diff = ((((diff + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
-        if (Math.abs(diff) > 0.03) setOmegaAll(r, r.omega + (-diff * 10 - r.omega * 4) * dt);
+        if (Math.abs(diff) > 0.03) setOmegaAll(r, r.omega + (-diff * (r.ride.legs ? 30 : 10) - r.omega * (r.ride.legs ? 10 : 4)) * dt);
         wheelsDown = wheelsDown || perp < r.restAlt + 0.45;
       }
     }
@@ -967,7 +969,7 @@ export function createGame(canvas, opts = {}) {
           const vTop = T.vTopBase * Math.pow(power, T.vTopExp);
           a = vTop > 0 ? T.rampDrive * power * Math.max(0, 1 - Math.pow(v / vTop, 8)) : 0;
         } else {
-          a = T.groundDrive * power * Math.max(Math.exp(-r.groundT / T.groundFade), r.ride.groundKeep); // a walker keeps pushing
+          a = T.groundDrive * power * Math.max(Math.exp(-r.groundT / T.groundFade), r.ride.groundKeep, r.sky ? T.skyKeep : 0); // a walker keeps pushing; on cloud-grass everyone keeps a little drive
         }
         a *= Math.min(1, gripF);
         addVelAll(r, fx * a * dt, fy * a * dt);
@@ -1019,13 +1021,13 @@ export function createGame(canvas, opts = {}) {
     measure(r);
     const sp = r.speed;
     if (sp > 0.01) {
-      let dec = T.airDrag * sp * sp;
+      let dec = T.airDrag * sp * sp * r.ride.drag; // sky rides are slippery (drag < 1)
       if (r.phase === 'ramp' && wheelsDown) {
         const vTop = T.vTopBase * Math.pow(power, T.vTopExp);
         if (sp > vTop) dec += T.limiterK * (sp - vTop);
       }
       if (r.phase === 'ground') {
-        if (wheelsDown) dec += T.rollBase + T.rollGrav * r.gMul + T.rollLin * sp;
+        if (wheelsDown) dec += (T.rollBase + T.rollGrav * r.gMul + T.rollLin * sp) * (r.sky ? T.skyRoll : 1); // islands are slick: momentum carries across the gaps
         else if (r.chassisDown) dec += 1.5; // sliding on the roof/side (plus Matter friction)
       }
       if (r.finishCrossed && r.phase === 'ground') dec += 5;
@@ -1414,7 +1416,7 @@ export function createGame(canvas, opts = {}) {
     const tx = k >= 0 && cs.islands[k] === nx ? Math.max(c.x + 5, nx.x0 + 3.5) : nx.x0 + 3.5;
     const ty = cs.groundY(tx) + r.restAlt + 1.0;
     const sp0 = r.speed;
-    const nvx = Math.max(T.splashMinSpeed, Math.min(sp0 * T.splashKeep, 140)), nvy = T.splashPop * Math.sqrt(r.gMul);
+    const nvx = Math.max(T.splashMinSpeed, Math.min(sp0 * (r.ride.splashKeep || T.splashKeep), 140)), nvy = T.splashPop * Math.sqrt(r.gMul);
     // move every body by the same offset, level the car to the island, then set the new velocity (the joints stay intact)
     const dx = (tx - c.x) * S, dy = -(ty - c.y) * S;
     for (const b of r.parts) Body.setPosition(b, { x: b.position.x + dx, y: b.position.y + dy });
@@ -1589,7 +1591,7 @@ export function createGame(canvas, opts = {}) {
       raw = T.boostRingCash; refill = T.boostRingNitro; r.rings++; r.boostRings++;
       refillNitro(r, T.boostRingNitro);
       const sp = r.speed || 1, dx = sp > 1 ? r.com.vx / sp : 1, dy = sp > 1 ? r.com.vy / sp : 0;
-      addVelAll(r, dx * T.boostKick, dy * T.boostKick);
+      addVelAll(r, dx * T.boostKick * r.ride.ringMul, dy * T.boostKick * r.ride.ringMul);
       for (let k = 0; k < 20; k++) {
         const ang = (k / 20) * TAU;
         particle(r, 'spark', a.x + Math.cos(ang) * a.r * 0.8, a.y + Math.sin(ang) * a.r, Math.cos(ang) * 6 + r.com.vx * 0.3, Math.sin(ang) * 7, 0.1, k % 2 ? '#e0fbff' : '#22d3ff', 0.6);
@@ -1617,7 +1619,7 @@ export function createGame(canvas, opts = {}) {
     r.airRaw += raw;
     r.airHits++;
     const cash = Math.round(raw * m);
-    if (a.kind === 'boost') emit({ type: 'boostRing', cash, nitroRefill: refill, kickKmh: Math.round(T.boostKick * 3.6), x: Math.round(a.x * 10) / 10, y: Math.round(a.y * 10) / 10 });
+    if (a.kind === 'boost') emit({ type: 'boostRing', cash, nitroRefill: refill, kickKmh: Math.round(T.boostKick * r.ride.ringMul * 3.6), x: Math.round(a.x * 10) / 10, y: Math.round(a.y * 10) / 10 });
     else emit({ type: 'airTarget', kind: a.kind, cash, nitroRefill: refill });
     if (a.kind !== 'coin' || r.coinPopT < r.realT - 0.25) {
       popup(r, `+$${cash}`, a.x, a.y + (a.kind === 'blimp' ? a.rh + 1 : a.kind === 'ring' ? a.r + 0.6 : 1.2), a.kind === 'coin' ? '#ffe14a' : '#ffd23f', a.kind === 'coin' ? 0.6 : 0.85, true);
@@ -2269,10 +2271,10 @@ export function createGame(canvas, opts = {}) {
       }
       const gt = r.gate;
       const gk = gt && gt.hit ? clamp((t - gt.hitT) / 0.8, 0, 1) : 0;
-      if (gt && gk < 1 && airVis(gt, gt.r * 2)) SR.drawGate(ctx, gt, t, 'back', lw, r.frozen ? 0 : gk, r.frozen);
+      if (gt && (r.frozen || gk < 1) && airVis(gt, gt.r * 2)) SR.drawGate(ctx, gt, t, 'back', lw, r.frozen ? 0 : gk, r.frozen);
       if (r.frozen && !r.carGone) SR.drawIdleGlow(ctx, r.com.x, r.com.y + Math.sin(t * 2.2) * 0.3, t, Math.max(2.6, (r.geom.maxX - r.geom.minX) * 0.7));
       if (!r.carGone) drawCar(r, lw);
-      if (gt && gk < 1 && airVis(gt, gt.r * 2)) SR.drawGate(ctx, gt, t, 'front', lw, r.frozen ? 0 : gk, r.frozen);
+      if (gt && (r.frozen || gk < 1) && airVis(gt, gt.r * 2)) SR.drawGate(ctx, gt, t, 'front', lw, r.frozen ? 0 : gk, r.frozen);
       for (let i = 0; i < A.length; i++) {
         const a = A[i];
         if ((a.kind !== 'ring' && a.kind !== 'boost') || a.gone || !airVis(a, 4)) continue;

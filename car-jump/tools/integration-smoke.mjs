@@ -1,7 +1,7 @@
 // Integration test (Spell Jump v3): the full app (index.html?nosw=1) on the REAL engine, driven with real
 // touch input (Playwright touchscreen taps; GAS / BRAKE / NITRO holds through CDP Input.dispatchTouchEvent).
 //   SHOTS_DIR=/some/dir node tools/integration-smoke.mjs      (starts python3 -m http.server 8080 if needed)
-//   ONLY=landscape|portrait|speech|perf to run one part.
+//   ONLY=landscape|portrait|speech|perf|sky to run one part.
 // At 844×390 and 390×844 (DPR 2, touch), with a fake speech backend (window.__ttsBackend) that records speech:
 //   player picker → new player → title (sample list: no Qualifier) → PLAY → garage → tracks →
 //   A: new word → Look → Write → first try → drive with GAS → letterRing events, WORD COMPLETE, bonus credited
@@ -831,6 +831,63 @@ async function runPerf(browser) {
   await ctx.close();
 }
 
+// v4.0 Sky Era: a full sky run in real time (rAF, held keys, the sim at 4x) through the app's Spell Boost handshake: spellBoost event ->
+// the engine is frozen (checked over a 1.2 s "spell panel" with nothing moving) -> boost({power, word}) -> freeze(false) -> the word's
+// letter rings are flown (boost: true) -> finish with the sky summary. The app UI of the Sky Era is built by the app agent; this part
+// drives the engine contract the app uses, on dev.html (the mock engine in src/meta has no sky yet).
+async function runSky(browser) {
+  console.log('\n== sky run (real time, spell boost) ==');
+  const ctx = await browser.newContext({ viewport: { width: 844, height: 390 }, deviceScaleFactor: 2, hasTouch: true });
+  const page = await ctx.newPage();
+  const errors = [];
+  page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.goto(`${BASE}/dev.html?ui=0&panel=0&car=tank&track=sky-1&lvl=6&seed=42&sim=4&letters=word`);
+  await page.waitForFunction(() => window.__rr && window.__rr.game && window.__rr.game.getState().phase === 'ramp');
+  await page.evaluate(() => {
+    const rr = window.__rr;
+    rr.panel = null;
+    const prev = rr.events.push.bind(rr.events);
+    rr.events.push = (e) => {
+      if (e.type === 'spellBoost') {
+        const g = rr.game, a = g.debugInfo();
+        rr.panel = { open: true, frozen: g.getState().frozen, x0: a.x, y0: a.y, t0: performance.now() };
+        // "the spell panel": 1.2 s real time; nothing may move meanwhile; then the correct answer boosts and the panel closes
+        setTimeout(() => {
+          const b = g.debugInfo();
+          rr.panel.moved = Math.abs(b.x - a.x) + Math.abs(b.y - a.y);
+          rr.panel.stillFrozen = g.getState().frozen;
+          rr.panel.boosted = g.boost({ power: 1, word: 'friend' });
+          g.freeze(false);
+          rr.panel.open = false;
+        }, 1200);
+      }
+      return prev(e);
+    };
+  });
+  const client = await ctx.newCDPSession(page);
+  await page.keyboard.down('ArrowRight');
+  await page.keyboard.down('Shift');
+  await page.waitForFunction(() => window.__rr.finished, null, { timeout: 170000, polling: 250 });
+  await page.keyboard.up('ArrowRight');
+  await page.keyboard.up('Shift');
+  const res = await page.evaluate(() => ({ s: window.__rr.finished, panel: window.__rr.panel, ev: window.__rr.events.map((e) => e.type + (e.boost ? '*' : '')) }));
+  const count = (t) => res.ev.filter((x) => x === t).length;
+  console.log(`  sky-1 / Rhino L6: ${res.s.distance} m, boost ${JSON.stringify(res.s.boost)}, sky ${JSON.stringify(res.s.sky)}, rating ${res.s.rating}`);
+  check(count('spellBoost') === 1 && !!res.panel && res.panel.frozen, 'sky: exactly one spellBoost event, and the engine was frozen when it fired');
+  check(res.panel && res.panel.moved === 0 && res.panel.stillFrozen, `sky: nothing moved during the 1.2 s spell panel (moved ${res.panel && res.panel.moved})`);
+  check(res.panel && res.panel.boosted === true, 'sky: boost({power:1, word}) accepted after the panel');
+  check(count('boost') === 1, 'sky: a boost event follows');
+  check(res.s.boost && res.s.boost.used && res.s.boost.total === 6, `sky: the boost word rode the rings (${res.s.boost && res.s.boost.collected}/6 collected)`);
+  check(count('letterRing*') >= 1, `sky: boost-word letterRing events carry boost:true (${count('letterRing*')})`);
+  check(res.s.sky && Number.isFinite(res.s.distance) && res.s.distance > 300 && res.s.cash.total > 0, 'sky: finished with distance, cash and the sky summary');
+  check(res.s.cash.total === res.s.cash.distance + res.s.cash.stunts + res.s.cash.smash + res.s.cash.landing + res.s.cash.combo + res.s.cash.air, 'sky: cash breakdown adds up');
+  check(errors.length === 0, `sky: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await page.screenshot({ path: path.join(SHOTS, 'sky-run-end.png') });
+  void client;
+  await ctx.close();
+}
+
 watchdog('integration-smoke');
 const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
@@ -840,6 +897,7 @@ try {
   for (const l of LAYOUTS) if (!only || only === l.name) await runLayout(browser, l);
   if (!only || only === 'speech') await runSpeech(browser);
   if (!only || only === 'perf') await runPerf(browser);
+  if (!only || only === 'sky') await runSky(browser);
 } catch (e) {
   failures.push('exception: ' + e.message);
   console.error(e);
