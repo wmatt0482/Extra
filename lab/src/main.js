@@ -16,7 +16,7 @@ async function boot() {
   let page = null;
   const sync = createSyncClient({
     canApply: () => true,
-    onApply: () => { if (page) page.onSync(); },
+    onApply: (k) => { if (k === 'family') { try { Audio.syncFamilyMusic(); } catch (_) { /* ignore */ } } if (page) page.onSync(); },
     onStatus: () => { if (page && page.screen === 'players') page.onSync(); },
   });
   const root = document.getElementById('app');

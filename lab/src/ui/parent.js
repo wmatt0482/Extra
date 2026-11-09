@@ -4,6 +4,7 @@
 // This file is the ONE place in the Lab with native inputs (the switches); kids never reach it without the PIN.
 import { h } from '../../../spell-jump/src/ui/dom.js';
 import { checkPin, hasPin, loadFamily, setPin } from '../../../spell-jump/src/spelling/profiles.js';
+import { FAMILY_MUSIC_HELP, FAMILY_MUSIC_LABEL, familyMusicIsOn, setFamilyMusic } from '../../../spell-jump/src/ui/musicNote.js';
 import { SYNC_KEY } from '../../../spell-jump/src/sync/client.js';
 import { crateOddsTable } from '../core/crate.js';
 import { wallet, mondayOfWeek } from '../core/model.js';
@@ -112,6 +113,8 @@ export function mountParent(ctx) {
         sw('Family board', 'A crown for the most XP, a star for the biggest step up.', v.opts.board !== false, (on) => store.setOpt('board', on), 'opt-board'),
         sw('Family goal', 'One shared goal a week.', v.opts.goal !== false, (on) => store.setOpt('goal', on), 'opt-goal'),
         sw('Gentle wording', 'Fraction Fright says "Help neighbors home" instead of zapping.', gentleSaved(), (on) => { try { localStorage.setItem(GENTLE_KEY, on ? '1' : '0'); } catch (_) { /* ignore */ } store.gentle(on); }, 'opt-gentle')),
+      sec('All games',
+        sw(FAMILY_MUSIC_LABEL, FAMILY_MUSIC_HELP, familyMusicIsOn(loadFamily()), (on) => setFamilyMusic(loadFamily(), on), 'opt-family-music')),
       sec('Lab coins',
         h('div', { class: 'lab-stats' },
           h('div', {}, h('b', { id: 'coins-earned' }, ctx.num(w.earned)), h('span', {}, 'Lab coins earned in all')),

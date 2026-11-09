@@ -498,7 +498,30 @@ async function runLayout(browser, layout) {
     const got = await L(page, () => [...document.querySelectorAll('#odds-table tbody tr')].map((r) => [r.dataset.rarity, r.children[0].textContent, r.children[1].textContent]));
     check('the odds table equals crateOddsTable() (common 86 / rare 12 / epic 2)', JSON.stringify(got) === JSON.stringify(want.rows.map((r) => [r.id, r.name, `${r.percent} in 100`])) && want.rows.map((r) => r.percent).join() === '86,12,2');
     check('the 7-crate guarantee and "cosmetics only" are stated', /guaranteed at least every 7 crates/.test(await page.innerText('.lab-parent')) && /Cosmetics only/.test(await page.innerText('.lab-parent')));
-    check('native inputs exist only here (the switches)', (await page.locator('.lab-parent input[type="checkbox"]').count()) === 4);
+    check('native inputs exist only here (the switches)', (await page.locator('.lab-parent input[type="checkbox"]').count()) === 5);
+    {
+      // 1.3.0: the family-wide "Background music in all games" (the same record as Parents → Options in every game)
+      const A = () => L(page, async () => { const { Audio } = await import('/spell-jump/src/audio.js'); return { playing: Audio.musicPlaying, locked: Audio.musicLocked }; });
+      const txt = await page.innerText('.lab-parent');
+      check('Grown-ups: "Background music in all games" and its one-line help', /Background music in all games/.test(txt) && /Turns off the music in every game on every device in the family\. Sound effects and the voice stay on\./.test(txt));
+      check('the switch starts On', await L(page, () => document.querySelector('#opt-family-music').checked === true));
+      await L(page, () => { window.__oscN = 0; const AC = window.AudioContext || window.webkitAudioContext; if (AC && !AC.prototype.__spied) { AC.prototype.__spied = true; const o = AC.prototype.createOscillator; AC.prototype.createOscillator = function () { window.__oscN++; return o.apply(this, arguments); }; } });
+      await page.click('label[for="opt-family-music"]'); await page.waitForTimeout(350);
+      const fam = await L(page, () => JSON.parse(localStorage.getItem('spellJump.family')));
+      check('Off: stored in the family record (musicOff + musicOffAt) and the audio module is locked, no music playing', fam.musicOff === true && fam.musicOffAt > 0 && (await A()).locked === true && (await A()).playing === false, JSON.stringify(await A()));
+      const n0 = await L(page, () => window.__oscN);
+      await L(page, async () => { const { Audio } = await import('/spell-jump/src/audio.js'); Audio.unlock(); Audio.music(true); Audio.correct(); });
+      check('effects still play, the music does not start (even for Audio.music(true) + unlock)', (await L(page, () => window.__oscN)) > n0 && (await A()).playing === false);
+      await L(page, () => { const f = JSON.parse(localStorage.getItem('spellJump.family')); f.musicOff = false; f.musicOffAt = Date.now() + 100000; localStorage.setItem('spellJump.family', JSON.stringify(f)); window.dispatchEvent(new StorageEvent('storage', { key: 'spellJump.family' })); });
+      await page.waitForTimeout(250);
+      check('a change from another tab / a sync (On) unlocks it again', (await A()).locked === false);
+      await L(page, () => { const f = JSON.parse(localStorage.getItem('spellJump.family')); f.musicOff = true; f.musicOffAt = Date.now() + 200000; localStorage.setItem('spellJump.family', JSON.stringify(f)); window.dispatchEvent(new StorageEvent('storage', { key: 'spellJump.family' })); });
+      await page.waitForTimeout(250);
+      check('and a change to Off stops any music at once', (await A()).locked === true && (await A()).playing === false);
+      await L(page, () => { const f = JSON.parse(localStorage.getItem('spellJump.family')); f.musicOff = false; f.musicOffAt = Date.now() + 300000; localStorage.setItem('spellJump.family', JSON.stringify(f)); window.dispatchEvent(new StorageEvent('storage', { key: 'spellJump.family' })); });
+      await page.waitForTimeout(250);
+      check('back On: the music is allowed again (the child\'s own Music setting applies)', (await A()).locked === false);
+    }
     check('coin history, the daily cap and what the Lab keeps are listed', (await page.locator('#coin-history li').count()) >= 1 && /1,800 a day/.test(await page.innerText('.lab-parent')) && /What the Lab keeps/i.test(await page.innerText('.lab-parent')));
     await shot(page, layout, '22-grownups');
     await audit(page, 'grown-ups');
