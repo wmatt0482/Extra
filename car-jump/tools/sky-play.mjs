@@ -172,9 +172,20 @@ async function startSkyRace(page, track = 'sky-1') {
 const instrument = (page) => J(page, () => {
   const g = window.__spellJump.game;
   window.__seq = [];
+  window.__snaps = {};
+  // a picture of the boost rings on screen at exact moments of the lap: two frames after the scene runs again, and as the first ring is flown
+  const snap = (name) => {
+    const d = g.debugInfo(); if (!d) return;
+    const W = d.view.W, H = d.view.H, z = d.cam.z;
+    const rings = d.letterRings.filter((r) => r.bw).map((r) => { const sx = (r.x - d.cam.x) * z + W / 2, sy = H / 2 - (r.y - d.cam.y) * z; return { hit: r.hit, sx: Math.round(sx), sy: Math.round(sy), on: sx > -1.2 * z && sx < W + 1.2 * z && sy > -1.25 * z && sy < H + 1.25 * z } ; });   // "on": at least ~3/4 of the ring is in the frame
+    window.__snaps[name] = { z, W, H, rings, ahead: rings.filter((r) => r.on && !r.hit).length, carPx: d.carHalf * 2 * z };
+  };
+  if (window.__lapPoll) clearInterval(window.__lapPoll);
+  window.__lapPoll = setInterval(() => { try { const h = g.getHudState(); if (window.__snaps.start && h.boostLetters.collected >= 1 && !window.__snaps.ring1) snap('ring1'); } catch (_) {} }, 16);
+  window.__snapFn = snap;
   if (!g.__wrapped) {
     g.__wrapped = true;
-    for (const k of ['freeze', 'boost', 'start']) { const o = g[k].bind(g); g[k] = (...a) => { window.__seq.push(k === 'start' ? ['start', a[0].track.id, a[0].spellBoost, a[0].car.id] : k === 'boost' ? ['boost', a[0].power, a[0].word] : ['freeze', a[0]]); return o(...a); }; }
+    for (const k of ['freeze', 'boost', 'start']) { const o = g[k].bind(g); g[k] = (...a) => { if (k === 'freeze' && a[0] === false) requestAnimationFrame(() => requestAnimationFrame(() => window.__snapFn('start'))); window.__seq.push(k === 'start' ? ['start', a[0].track.id, a[0].spellBoost, a[0].car.id] : k === 'boost' ? ['boost', a[0].power, a[0].word] : ['freeze', a[0]]); return o(...a); }; }
   }
 });
 
@@ -249,12 +260,15 @@ async function skyRace(page, layout, { boost, prefix }) {
   await holdGas(page, true);
   const lt = await J(page, () => window.__spellJump.game.getHudState().boostLetters);
   check(lt.total > 0, `${prefix}: the boost letter rings appear only after spelling (${lt.total} for "${bw}")`);
-  // measure as the lap starts: the word's rings ahead of the car must be in the frame
-  await page.waitForTimeout(30);
+  // the lap: the word's rings must be in the frame as it starts (two frames after the boost) and as the first ring is flown
+  const lap1 = await page.waitForFunction(() => window.__snaps.ring1, null, { timeout: 15000, polling: 30 }).then(() => true, () => false);
+  check(lap1, `${prefix}: the first letter ring is flown`);
+  const snaps = await J(page, () => window.__snaps);
   const cb = await camera(page);
-  const readable = cb.rings.filter((r) => r.on && !r.hit).length;
   await shot(page, layout, `${prefix}-boost`, 0);
-  console.log(`    boost camera: car ${cb.carPx.toFixed(0)} px at ${cb.car.x},${cb.car.y} of ${cb.W}x${cb.H}, ${readable} of ${cb.rings.length} rings ahead on screen (z ${cb.z.toFixed(2)}) ${JSON.stringify(cb.rings.map((r) => [r.sx, r.sy]))}`);
+  const sA = snaps.start || { ahead: 0, rings: [], z: 0, carPx: 0 }, sB = snaps.ring1 || { ahead: 0, rings: [], z: 0, carPx: 0 };
+  console.log(`    lap camera: start ${sA.ahead} ahead (z ${sA.z.toFixed(2)}) ${JSON.stringify(sA.rings.map((r) => [r.sx, r.sy]))}; first ring flown: ${sB.ahead} ahead (z ${sB.z.toFixed(2)}) ${JSON.stringify(sB.rings.map((r) => [r.sx, r.sy]))}`);
+  const readable = Math.min(sA.ahead, sB.ahead);
   const lap = await page.waitForFunction(() => window.__spellJump.game.getHudState().boostLetters.collected >= 2, null, { timeout: 25000 }).then(() => true, () => false);
   if (lap) await shot(page, layout, `${prefix}-lap`, 0);
   await page.waitForSelector(vis('#screen-results'), { timeout: 150000 });
@@ -266,7 +280,7 @@ async function skyRace(page, layout, { boost, prefix }) {
   check(words1.today.count - words0 === 2, `${prefix}: the mission count goes up by 2 (${words0} → ${words1.today.count})`);
   if (boost === 'miss') check(words1.records[bw] && words1.records[bw].misses >= 1, `${prefix}: the boost word's record has the miss`);
   await shot(page, layout, `${prefix}-results`, 200);
-  return { w1, bw, rl, rings: cb.rings.length, readable, ringPx: 5 * cb.z, carPx: cb.carPx, frozenCarPx: cf.carPx, flightCarPx: c1.carPx };
+  return { w1, bw, rl, rings: sA.rings.length, readable, ringPx: 5 * Math.min(sA.z, sB.z), carPx: Math.min(sA.carPx, sB.carPx), frozenCarPx: cf.carPx, flightCarPx: c1.carPx };
 }
 
 async function parentOpensSky(page, layout) {
@@ -336,7 +350,7 @@ async function mainFlow(browser, layout) {
   console.log('  -- race 3: Spell Boost off in Parents → Options');
   await page.click('#res-garage'); await page.waitForSelector(vis('#screen-garage'));
   await J(page, async () => {
-    const S = window.__spellJump, P = await import('/src/spelling/profiles.js');
+    const S = window.__spellJump, P = await import(new URL('src/spelling/profiles.js', document.baseURI).href);
     P.setPlayerOption(S.app.family, S.app.currentPlayerId, 'skyBoost', false); S.app.persistFamily(); S.app.onOptionsChanged(S.app.currentPlayerId);
   });
   await startSkyRace(page);
@@ -347,7 +361,7 @@ async function mainFlow(browser, layout) {
     check(r.flightCarPx >= minSide * 0.1, `${n}: the car reads in flight: ${r.flightCarPx.toFixed(0)} px = ${(100 * r.flightCarPx / minSide).toFixed(0)} % of ${minSide} (need >= 10 %)`);
     check(r.frozenCarPx >= minSide * 0.1, `${n}: the car reads in the frozen scene: ${r.frozenCarPx.toFixed(0)} px`);
     check(r.carPx >= minSide * 0.1, `${n}: the car reads during the boost: ${r.carPx.toFixed(0)} px`);
-    check(r.rings >= 3 && r.readable >= 1, `${n}: the boost letter rings ahead are on screen (${r.readable} of ${r.rings} in view as the lap starts)`);
+    check(r.rings >= 3 && r.readable >= 1, `${n}: a boost letter ring is ahead on screen both as the lap starts and as the first ring is flown (min ${r.readable} of ${r.rings})`);
     check(r.ringPx >= minSide * 0.1, `${n}: a letter ring reads: ${r.ringPx.toFixed(0)} px tall = ${(100 * r.ringPx / minSide).toFixed(0)} % of ${minSide}`);
   }
   const spoken = (await J(page, () => window.__spoken.slice())).filter((t) => t !== 'ready');   // 'ready' = the silent iOS gesture unlock, not speech
@@ -374,21 +388,23 @@ async function ridesFlow(browser, layout) {
     await page.waitForTimeout(300);
     await holdGas(page, true);
     await page.waitForFunction(() => { const d = window.__spellJump.game.debugInfo(); return d && d.phase === 'air'; }, null, { timeout: 30000 });
-    await page.waitForFunction(() => { const d = window.__spellJump.game.debugInfo(); return d && d.phase === 'air' && !d.letterbox; }, null, { timeout: 8000, polling: 40 }).catch(() => {});
-    await page.waitForTimeout(250);
+    await page.waitForTimeout(500);
     const c = await camera(page);
     await shot(page, layout, `20-ride-${id}-flight`, 0);
     check(c.carPx >= Math.min(layout.width, layout.height) * 0.1, `${id}: the ride reads in flight: ${c.carPx.toFixed(0)} px`);
     // let the boost play out with a correct word so the run ends cleanly
     if (await panelOpen(page, 40000)) {
+      await page.waitForTimeout(1500);   // a child takes a moment to spell (and the frozen camera settles)
       if (await mode(page) === 'look') await waitMode(page, 'write', 9000);
       const bw = await J(page, () => window.__spellJump.spellPanel.word);
       await holdGas(page, false);
       await tapKeys(page, bw); await page.tap('#sp-keyboard [data-key="enter"]');
       await panelClosed(page);
       await holdGas(page, true);
-      await page.waitForTimeout(900);
+      await page.waitForTimeout(150);
+      const cl = await camera(page);
       await shot(page, layout, `21-ride-${id}-boost`, 0);
+      check(cl.carPx >= Math.min(layout.width, layout.height) * 0.1, `${id}: the ride reads in the boost lap: ${cl.carPx.toFixed(0)} px (z ${cl.z.toFixed(1)}, ${cl.W}x${cl.H})`);
     }
     await page.waitForSelector(vis('#screen-results'), { timeout: 150000 });
     await holdGas(page, false);

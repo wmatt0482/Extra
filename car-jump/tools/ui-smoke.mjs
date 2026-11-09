@@ -1600,7 +1600,8 @@ async function levelsTest(browser, layout) {
   await page.waitForSelector(visibleSel('#screen-title'));
   await instrument(page);
   const save0 = await readSave(page);
-  check(save0.selectedCar === 'super' && save0.unlocked.length === 1, `start: Vantablack GT selected, ${save0.unlocked.length} track unlocked`);
+  const earthUnlocked = save0.unlocked.filter((id) => !id.startsWith('sky-'));   // v4.0: the first sky track is open with the era (real data files)
+  check(save0.selectedCar === 'super' && earthUnlocked.length === 1, `start: Vantablack GT selected, ${earthUnlocked.length} track unlocked`);
   await page.click('#btn-play');
   await page.waitForSelector(visibleSel('#screen-garage'));
   await page.click('#btn-race');

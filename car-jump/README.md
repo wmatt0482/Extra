@@ -703,12 +703,53 @@ section of `SPEC.md`; the engine side (tracks, rides, physics, `freeze` / `boost
   banked per word (mission, Leitner record, cash, XP, Lab). First try -> `game.boost({ power: 1, word })`; fixed after a miss -> `power: 0.5`; then
   `game.freeze(false)`. The word is never shown before it is spelled; the engine draws its letters as rings on the new arc afterwards. One per `game.start`
   (so one per level). **Parents → Options → "Spell Boost in the Sky: on/off"** (per child, default on; family option `skyBoost`): off = `start({ spellBoost: false })`.
-  The Mega Run never has a Spell Boost. Results: **"Spell Boost: +X m"** (the engine's `summary.spellBoost.distance`, summed over the levels).
+  The Mega Run never has a Spell Boost. Results: **"Spell Boost: +X m"** (the engine's `summary.boost.distance`, summed over the levels; see "Sky tuning" below).
 - **Lab**: sky runs report the same events as Earth runs; the Spell Jump card's line adds "Sky Era · 2 / 5 tracks" once the era is open.
 - **Data loading** (`src/meta/skyData.js`): the two data files are loaded with guarded dynamic imports; a missing file is an empty list and Era 1 never notices.
   Everything asks the registry (`carById`, `trackById`, `allTracks`, `allCars`). `?mock=1&skyfixture=1` loads the stand-ins in `tools/fixtures/sky/` (tests and
   screenshots only); the mock engine implements the sky contract (the Spell Boost gate after the apex, `freeze`, `boost`, `getHudState`).
 - Version 4.0.0 (main.js, `sw.js` cache `spell-jump-v4.0.0`; the new modules are in the shell, the sky data files are in the precache shell).
+
+### Sky tuning (v4.0 integration)
+
+- **`summary.boost = { used, power, collected, total, inOrder, distance }`**: `distance` is the metres the Spell Boost added, measured as where the flight really came
+  down (the first touchdown or cloud splash after the boost, or where the run ended if it never did) minus where the same arc would have come down with no boost (a
+  ballistic prediction made at the moment of the boost). The app shows it as "Spell Boost: +X m". Events of the boost word carry `boost: true` (`letterRing`,
+  `wordComplete`); the HUD tiles belong to the launch word only. `gravityWell` events carry `state: 'enter' | 'exit'` (plus `phase`, `enter`).
+- **The boost** is a real second jump: power 1 climbs 46 m and kicks +22 m/s forward (x the ride's `boostMul`), power 0.5 climbs half as high (height grows with power).
+  Typical gain: +180 to +900 m depending on the ride. The word's letter rings sit 34 m apart (the first 22 m ahead) along the new arc, and the camera aims between the
+  car and the next ring so the next rings are in frame.
+- **Sky camera**: a tight window (height 24-40 m landscape, 32 m portrait, scaled to the car's size so even the Mech Walker is >= ~13 % of the short screen side),
+  a vertical lead that stays inside the window, a chase that tightens with vertical speed, the cloud sea never pushes the car to the top edge, and the lap aims at the next
+  ring. `tools/sky-play.mjs` asserts: car >= 10 % of the short side, a letter ring >= 10 %, a ring ahead on screen as the lap starts.
+- **Rides** (same upgrade level): Hover Bike = long glides (`glide .88`, `glideDrag .02`, burn .4/s; holding NITRO in the air keeps ~400 km/h): beats the Rhino on sky-3..5;
+  Rocket Car = biggest boost (`boostMul 1.4`) and ring kicks (`ringMul 2.2`) and the fastest raw speed; Mech Walker = never loses speed on a splash (`splashKeep 1.0`), a
+  walker's push never fades (`groundKeep .95`), power 9, mass 2.6: best on islands. Earth cars are worse in the sky: no glide, a smaller Spell Boost (x0.85), smaller
+  boost-ring kicks (x0.7), less speed kept through a cloud splash (0.45 vs 0.75-1.0). At L6 (all four upgrades) the Rhino reaches ~5000 m on sky-3..5 in a 120 s run,
+  the three rides 5400-8400 m; the finish lines are sky-3 5600 m, sky-4 5900 m, sky-5 6200 m.
+- **Prices**: Hover Bike $3.5M, Rocket Car $6.5M, Mech Walker $11.5M. `node tools/economy-sim.mjs --sky --runs 480` (8 runs a day, Rhino L6 on arrival, spell boost 75 % first try):
+
+```
+Sky Era economy: Rhino at level 6/10 on arrival, 480 runs, 8 runs a day, spell boost 75 % first try.
+
+track                          finish  grav  first finish          avg $/run   avg m   finish rate (by ride)
+sky-1 Sunrise Shelf             1500 m  0.95  run 1 (tank)            50151    2990   tank 1/1
+sky-2 Marshmallow Mile          2600 m  0.85  run 2 (tank)            51402    2842   tank 1/1
+sky-3 Rainbow Reef              5600 m   0.8  run 25 (tank)           85003    4888   tank 1/23
+sky-4 Thunder Isles             5900 m   0.7  run 36 (tank)           92581    4946   tank 1/11
+sky-5 Starlight Summit          6200 m   0.6  run 88 (hoverbike)      75358    4681   tank 0/42, hoverbike 23/95, rocketcar 0/152, mechwalker 0/155
+
+ride              price   own at run (day)
+Hover Bike     $ 3500000   run 78 (day 10)
+Rocket Car     $ 6500000   run 173 (day 22)
+Mech Walker    $11500000   run 325 (day 41)
+
+Simulated 480 runs in 177.0 s; lifetime sky earnings $36,534,043.
+```
+  (day 10 / 22 / 41 = about 1.5 / 3 / 6 weeks of normal Sky play.)
+- **Tests**: `node tools/sky-play.mjs` (the Sky Era played end to end in the app with the real engine and data, both phone sizes; `SHOTS_DIR=...` for pictures; `SIM=3` is
+  the engine's sim speed via `?sim=3`, a test knob), `ONLY=skyreal node tools/ui-smoke.mjs` (the Sky part on the real data files). The fixtures in `tools/fixtures/sky/`
+  remain only for the fast ui-smoke paths (`?mock=1&skyfixture=1`); the mock engine mirrors the real events and `summary.boost` / `summary.sky`.
 
 ## v3.11: one Lab chip, named money, every word banks (changelog)
 

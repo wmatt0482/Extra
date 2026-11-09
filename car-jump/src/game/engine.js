@@ -68,7 +68,7 @@ export const TUNING = {
   letterCash: 40, letterNitro: 0.25, wordCash: 200, // per letter ring / all letters in order (x coinMult, into cash.air)
   letterR: 2.5, // letter ring hit radius (m), a little bigger than a plain ring
   letterGapMax: 11, letterGapMin: 4, letterStart: 10, // arc-length spacing / first ring (m past the lip)
-  boostLetterGap: 34, boostLetterStart: 22, // the Spell Boost word's rings: wider spacing / first ring (m along the new arc), so the victory lap lasts and each ring reads
+  boostLetterGap: 34, boostLetterGapPortrait: 20, boostLetterStart: 22, // the Spell Boost word's rings: wider spacing / first ring (m along the new arc), so the victory lap lasts and each ring reads
   letterClear: 4.5, // plain air targets this close to a letter ring are removed (no clutter between letters)
   letterFitSteps: 4, // the letter arc is refitted to the real flight this many steps after the lip
   letterGlide: 0.35, // s (real time): rings glide from the preview arc onto the fitted one
@@ -444,7 +444,7 @@ export function createGame(canvas, opts = {}) {
     let sB = 0;
     for (const p of pts) if (p.y - c.surfaceY(p.x) >= R + 1.2) sB = p.s;
     let sA = Math.min(bw ? T.boostLetterStart : T.letterStart, sB * 0.15);
-    let d = N > 1 ? Math.min(bw ? T.boostLetterGap : T.letterGapMax, (sB - sA) / (N - 1)) : 0;
+    let d = N > 1 ? Math.min(bw ? (view.H > view.W ? T.boostLetterGapPortrait : T.boostLetterGap) : T.letterGapMax, (sB - sA) / (N - 1)) : 0; // portrait shows ~40 m across: a tighter lap
     if (N > 1 && d < T.letterGapMin) { d = T.letterGapMin; sA = Math.max(4, sB - d * (N - 1)); }
     const at = (sv) => {
       let lo = 0, hi = pts.length - 1;
@@ -1044,7 +1044,7 @@ export function createGame(canvas, opts = {}) {
     const grounded = r.phase === 'ground' && r.wheelsDown > 0;
     if (f.float && r.phase !== 'ramp' && !grounded) addVelAll(r, 0, f.float * g * dt); // floaty: a share of gravity cancelled
     r.gliding = false;
-    if (f.glide && r.phase === 'air' && input.nitro && r.nitroFuel > 0) {
+    if (f.glide && r.phase === 'air' && input.nitro && r.nitroFuel > 0 && r.com.vy <= 0) { // lift only on the way down (a glider never climbs on lift: a boosted bike would soar for ever)
       // glide: lift cancels a share of gravity and bleeds forward speed (speed traded for lift), at a slow burn of the tank
       r.nitroFuel = Math.max(0, r.nitroFuel - dt * f.glideBurn);
       addVelAll(r, -r.com.vx * f.glideDrag * dt, f.glide * g * dt);
@@ -2031,6 +2031,8 @@ export function createGame(canvas, opts = {}) {
     // v4.0 sky: the islands hang 40-130 m up and the boost climbs higher still; a camera that widened with altitude shrank the car to a speck. The sky
     // keeps a tight window (the car stays >= ~10 % of the short screen side and a letter ring ~45 px on a phone): the height term is soft and capped.
     let skyLow = 14;
+    let lapRing = null; // the next letter ring of the Spell Boost lap (aimed at below)
+    if (r.sky && r.bw && !r.bw.done && r.phase !== 'done') for (const a of r.air) if (a.bw && a.li != null && !a.hit && a.x > c.x - 3 && (!lapRing || a.li < lapRing.li)) lapRing = a;
     if (r.sky) {
       // the window also follows the car's own size, so a small ride (the Mech Walker) still reads: it fills >= ~13 % of the short screen side
       const g = r.geom, size = Math.max(2.4, Math.max(g.maxX - g.minX, g.maxY - g.minY));
@@ -2038,6 +2040,13 @@ export function createGame(canvas, opts = {}) {
       const capH = Math.max(17, view.H > view.W ? view.W / (zNeed * 1.2) : view.H / zNeed);
       visH = Math.min(24 + sp * 0.1 + Math.min(alt, 60) * 0.12, view.H > view.W ? 32 : 40, capH);
       skyLow = Math.min(26, capH);
+      // the lap: on a wide view the window opens a little so the next rings of the climbing arc are in the frame (a ring stays >= ~45 px)
+      if (lapRing && view.H > view.W) visH = Math.max(visH, Math.min(33, capH)); // portrait: wide enough for the car and the next ring
+      if (lapRing && view.H <= view.W) {
+        let dy = 0; // the next two rings: the window opens for the higher one
+        for (const a of r.air) if (a.bw && a.li != null && !a.hit && a.li <= lapRing.li + 1 && a.x > c.x - 3) dy = Math.max(dy, Math.abs(a.y - c.y));
+        visH = Math.max(visH, Math.min(3 * dy + 12, 39, capH));
+      }
     }
     if (r.phase === 'ramp' && sp < 5) visH = Math.max(visH, 30 - sp * 2);
     if (r.cine === 'launch') visH *= 1.55; // launch: the camera pulls back while time slows
@@ -2051,15 +2060,17 @@ export function createGame(canvas, opts = {}) {
     let tx = c.x + lx + visW * (r.sky ? 0.08 : 0.12);
     let ty = c.y + ly + (r.sky ? visHH * 0.05 : 0);
     if (r.phase === 'ramp') ty -= visHH * 0.14;
-    if (r.sky && r.bw && !r.bw.done && r.phase !== 'done') {
+    if (lapRing) {
       // the victory lap: aim between the car and the next letter ring, so the next rings are in the frame (the boost arc climbs; a plain chase left them above the top edge)
-      let nr = null;
-      for (const a of r.air) if (a.bw && a.li != null && !a.hit && a.x > c.x - 3 && (!nr || a.li < nr.li)) nr = a;
-      if (nr) { tx = c.x + (nr.x - c.x) * 0.6; ty = c.y + (nr.y - c.y) * 0.6 + visHH * 0.03; }
+      let ax = lapRing.x, ay = lapRing.y, n = 1; // the average of the next two rings, so the aim is already moving to ring k+1 when ring k is flown
+      for (const a of r.air) if (a.bw && a.li === lapRing.li + 1 && !a.hit) { ax += a.x; ay += a.y; n++; }
+      tx = c.x + (ax / n - c.x) * (view.H > view.W ? 0.85 : 0.65); ty = c.y + (ay / n - c.y) * 0.85 + visHH * 0.03;
     }
     const gAhead = r.sky ? r.course.sky.sea : Math.min(surf, r.course.surfaceY(tx)); // the sky keeps the cloud sea in the frame
-    ty = Math.min(ty, gAhead - 1.5 + visHH / 2);
-    if (r.sky) ty = Math.max(ty, c.y - visHH * 0.12); // sky: keeping the cloud sea in view must never push the car up to the top edge (under the HUD and banners)
+    if (!lapRing) { // (the victory lap aims at the rings, not at the sea)
+      ty = Math.min(ty, gAhead - 1.5 + visHH / 2);
+      if (r.sky) ty = Math.max(ty, c.y - visHH * 0.12);
+    } // sky: keeping the cloud sea in view must never push the car up to the top edge (under the HUD and banners)
     ty = clamp(ty, c.y + 2.5 - visHH / 2, c.y - 2.5 + visHH / 2);
     // finish: ease out so the banner (and the fireworks over it) and the car share the frame
     let fz = z;
@@ -2089,8 +2100,8 @@ export function createGame(canvas, opts = {}) {
     if (snap) { cam.x = tx; cam.y = ty; cam.z = fz; return; }
     // launch cine: the camera lags (the car crosses the frame in slow-mo), then the chase snaps back
     // sky: the boost climbs ~60 m/s, so the chase tightens with vertical speed (a lag of v / rate metres) or the car would ride the top edge
-    const fol = r.cine === 'launch' ? 1.6 : r.chaseT > 0 ? 9 : r.sky ? clamp(5 + Math.abs(c.vy) * 0.12, 5, 13) : 5;
-    const kp = 1 - Math.exp(-dt * fol), kz = 1 - Math.exp(-dt * (r.cine === 'launch' ? 4.5 : r.chaseT > 0 ? 3.5 : 2.2));
+    const fol = r.cine === 'launch' ? 1.6 : r.chaseT > 0 ? 9 : r.sky ? clamp(lapRing ? 9 : 5 + Math.abs(c.vy) * 0.12, 5, 13) : 5;
+    const kp = 1 - Math.exp(-dt * fol), kz = 1 - Math.exp(-dt * (r.cine === 'launch' ? 4.5 : r.chaseT > 0 ? 3.5 : lapRing ? 9 : 2.2));
     cam.x += (tx - cam.x) * kp;
     cam.y += (ty - cam.y) * kp;
     cam.z = Math.exp(Math.log(cam.z) + (Math.log(fz) - Math.log(cam.z)) * kz);
