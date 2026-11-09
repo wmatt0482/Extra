@@ -9,6 +9,7 @@
 import { checkPin, hasPin, setPin } from '../../../spell-jump/src/spelling/profiles.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
+import { FAMILY_MUSIC_HELP, FAMILY_MUSIC_LABEL, familyMusicIsOn, setFamilyMusic } from '../../../spell-jump/src/ui/musicNote.js';
 import { RANKS, READ_MODES, READ_MODE_LABELS, rankLabel } from '../logic/pacing.js';
 import { accuracyByStandard, sentenceIndex } from '../logic/run.js';
 import { reportText } from '../logic/report.js';
@@ -248,6 +249,8 @@ export function createParentZone(app) {
   function optionsTab() {
     const out = [];
     out.push(toggle('Sound', 'This device. Turns the natural voice and the sound effects on or off.', app.settings.sound, (v) => app.setSetting('sound', v), 'pz-sound'));
+    // the family-wide switch (every game, every device); Case Files itself plays no background music, but it is the same one setting
+    out.push(toggle(FAMILY_MUSIC_LABEL, FAMILY_MUSIC_HELP, familyMusicIsOn(app.family), (v) => setFamilyMusic(app.family, v), 'pz-family-music'));
     out.push(toggle('Calm motion', 'This device. Skips the stamp slam and flying cards.', app.settings.reducedMotion, (v) => app.setSetting('reducedMotion', v), 'pz-motion'));
     out.push(h('div', { class: 'pz-sec' }, 'Voice'), h('div', { class: 'pz-note', id: 'pz-voice' }, app.voiceStatus()),
       h('div', { class: 'pz-help' }, 'Case Files only ever uses the natural voice, never the device voice. A player\'s natural voice is picked in Spell Jump (Parents, Options); it needs a family code. With no natural voice the words are always on the screen and the listen buttons stay quiet.'));
