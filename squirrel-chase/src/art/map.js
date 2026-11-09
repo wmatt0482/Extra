@@ -105,7 +105,7 @@ const compass = (x, y, r = 34) => `<g transform="translate(${x} ${y})"><circle r
 
 // ------------------------------------------------------------------ pins
 const FALLBACK = { x: 0.5, y: 0.5 };
-const FS = 24, LH = FS * 1.04;
+const FS = 26, LH = FS * 1.04;
 const splitName = (name) => {
   if (name.length <= 10 || !name.includes(' ')) return [name];
   const w = name.split(' ');
@@ -141,6 +141,7 @@ function pinsSvg(cities, highlight, visited, avoid = []) {
       pinBoxes.forEach((o, i) => { if (i !== ci) score += overlap(b, o) * 8; });
       if (withPlaced) placed.forEach((o) => { score += overlap(b, o) * 3; });
       avoid.forEach((o) => { score += overlap(b, o) * 2; });
+      if (c.label === k) score -= 70;                        // a side the map's author asked for wins unless it runs off the map or sits on another pin
       score += overlap(b, pinBoxes[ci]) * 3 + (k === 'r' || k === 'l' ? 0 : k.length === 2 ? 60 : 100) + want.indexOf(k) * 0.5;
       if (!best || score < best.score) best = { score, k, b };
       if (score < 1) break;
@@ -163,7 +164,7 @@ function pinsSvg(cities, highlight, visited, avoid = []) {
     const far = Math.hypot(nx - hx0, ny - hy0) > 14;
     const leader = far ? `<path class="sqm-leader" d="M0 -16L${(nx - c.x).toFixed(1)} ${(ny - c.y).toFixed(1)}" fill="none" stroke="#8a6a2c" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="5 4"/>` : '';
     const nearest = Math.min(1e9, ...list.filter((o) => o !== c).map((o) => Math.hypot(o.x - c.x, o.y - c.y)));
-    const hr = Math.max(32, Math.min(48, nearest * 0.8));
+    const hr = Math.max(32, Math.min(56, nearest * 0.8));
     const cls = `sqm-pin${highlight === c.id ? ' is-hl' : ''}${visited && visited.includes(c.id) ? ' is-visited' : ''}`;
     const text = ls.map((t, i) => `<tspan x="${(tx - c.x).toFixed(1)}" y="${(best.b.y + FS * 0.86 + i * LH + 2 - c.y).toFixed(1)}">${esc(t)}</tspan>`).join('');
     return `<g class="${cls}" data-city="${esc(c.id)}" role="button" tabindex="0" aria-label="${esc(c.name)}" transform="translate(${c.x} ${c.y})">

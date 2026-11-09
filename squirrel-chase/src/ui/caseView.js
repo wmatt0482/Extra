@@ -117,9 +117,10 @@ export function createCaseView(app) {
     const back = h('div', { class: 'lens-back', id: 'city-lens', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Zoomed in: tap the city' });
     const close = () => { back.remove(); document.removeEventListener('keydown', onKey); };
     const onKey = (e) => { if (e.key === 'Escape') close(); };
-    const mapEl = h('div', { class: 'lens-map', style: `height:${list.length * 62}px` });
+    const rowH = innerHeight < 520 ? 54 : 62;
+    const mapEl = h('div', { class: 'lens-map', style: `height:${list.length * rowH}px` });
     list.forEach((c, i) => {
-      const b = h('button', { class: 'lens-pin', type: 'button', 'data-city': c.id, 'data-sfx': '', style: `top:${i * 62}px;left:${Math.round(((c.x - minX) / spanX) * 70)}px` }, h('i', { 'aria-hidden': 'true' }), c.name);
+      const b = h('button', { class: 'lens-pin', type: 'button', 'data-city': c.id, 'data-sfx': '', style: `top:${i * rowH}px;left:${Math.round(((c.x - minX) / spanX) * 70)}px` }, h('i', { 'aria-hidden': 'true' }), c.name);
       b.addEventListener('click', () => { close(); pickCity(c.id); });
       mapEl.append(b);
     });

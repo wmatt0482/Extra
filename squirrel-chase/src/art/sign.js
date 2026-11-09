@@ -70,12 +70,13 @@ export function signSvg(text, missingIdx = [], opts = {}) {
       const cx = x + cw / 2;
       if (missing.has(idx)) {
         const sw = cw * 0.94, sh = fs * 0.98;
-        glyphs += `<g class="sq-slot" data-slot="${idx}" data-letter="${esc(ch)}"><rect class="sq-slot-bg" x="${cx - sw / 2}" y="${y - fs * 0.78}" width="${sw}" height="${sh}" rx="7" fill="${th.slot}" stroke="${th.slotLn}" stroke-width="2.4" stroke-dasharray="6 5" opacity=".95"/>${variant === 'neon' ? '' : `<rect x="${cx - sw / 2 + 2}" y="${y - fs * 0.78 + 2}" width="${sw - 4}" height="${sh * 0.3}" rx="5" fill="#000" opacity=".16"/>`}<text class="sq-slot-letter" x="${cx}" y="${y}" text-anchor="middle" font-family="${SLAB}" font-size="${fs}" opacity="0" style="transform-box:fill-box;transform-origin:center" ${letterPaint(variant, th)}>${esc(ch)}</text></g>`;
+        glyphs += `<g class="sq-slot" data-slot="${idx}" data-gap="${idx}" data-letter="${esc(ch)}"><rect class="sq-slot-bg" x="${cx - sw / 2}" y="${y - fs * 0.78}" width="${sw}" height="${sh}" rx="7" fill="${th.slot}" stroke="${th.slotLn}" stroke-width="2.4" stroke-dasharray="6 5" opacity=".95"/>${variant === 'neon' ? '' : `<rect x="${cx - sw / 2 + 2}" y="${y - fs * 0.78 + 2}" width="${sw - 4}" height="${sh * 0.3}" rx="5" fill="#000" opacity=".16"/>`}<text class="sq-slot-letter" x="${cx}" y="${y}" text-anchor="middle" font-family="${SLAB}" font-size="${fs}" opacity="0" style="transform-box:fill-box;transform-origin:center" ${letterPaint(variant, th)}>${esc(ch)}</text></g>`;
       } else {
         glyphs += `<g class="sq-letter" data-idx="${idx}">${letterEl(variant, th, esc(ch), cx, y, fs)}</g>`;
       }
       x += cw; idx++;
     }
+    if (li < lines.length - 1 && t[idx] === ' ') idx++;     // the space a long sign wrapped at still counts as an index into the text
   });
 
   return `<svg class="sq-sign sq-sign-${variant}" id="${id}" viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Sign with missing letters" data-text="${esc(t)}">${post}${board}${glyphs}</svg>`;

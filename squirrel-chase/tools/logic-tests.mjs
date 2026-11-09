@@ -5,10 +5,13 @@ import assert from 'node:assert/strict';
 import * as WS from '../../spell-jump/src/spelling/wordStore.js';
 import { createSession, noteSpelled, MISSION_SIZE } from '../../spell-jump/src/spelling/scheduler.js';
 import { PLAYER_KINDS, parseKey } from '../../car-jump/src/sync/protocol.mjs';
-import { CASE_LIST, CITY_BY_ID, CITY_LIST, SEQUENCE, hideoutCity, missingOf, postcardOf, routeOf, signOf, stopsOf } from '../src/logic/caseModel.js';
+import { CASE_LIST, CITY_BY_ID, CITY_LIST, HIDEOUT_TEMPLATE_LIST, SEQUENCE, artCity, briefingOf, crewOf, flightOrder, gangArt, gangOf, hideoutCity, hideoutOf, missingOf, postcardOf, recoveryOf, routeOf, signOf, stopsOf, teaserOf } from '../src/logic/caseModel.js';
+import { CASES as REAL_CASES, CLUE_BY_ID, GANG as REAL_GANG } from '../src/content/index.js';
+import { GANG_LOOK, gangPortrait, MAP_BOX } from '../src/art/index.js';
+import { MAP_BOUNDS, toMap } from '../src/content/geo.js';
 import { currentCase, dayKey, nextUnopened, refreshOpened, waitingState } from '../src/logic/pacing.js';
 import { activeEntries, activeWords, pickMany, pickWord, recordWord, schedulerOptions } from '../src/logic/words.js';
-import { buildHideout, listWordsIn, markSentence, normSentence, scoreHideout, templateSentence, tokens } from '../src/logic/hideout.js';
+import { buildHideout, fillTemplate, usedAsNoun, listWordsIn, markSentence, normSentence, scoreHideout, templateSentence, tokens } from '../src/logic/hideout.js';
 import { applyClose, bothOpen, chooseCity, closeRecord, finish, followTrail, newRun, openNote, reviveRun, setHideout, startChase, stillMissing } from '../src/logic/run.js';
 import { closeReports } from '../src/logic/payout.js';
 import { defaultSave, mergeSaves, normalize, normalizeClosed } from '../src/meta/save.js';
@@ -322,6 +325,88 @@ test('closeReports: ONE flat case event whatever the accuracy, and the day mark 
   assert.equal(closeReports.length, 0, 'takes no accuracy argument');
 });
 test('the active entries carry the list\'s own sentences', () => { const d = mkWords(); assert.equal(activeEntries(d).find((e) => e.word === 'friend').sentence, 'A good friend sailed to the island.'); });
+
+// ---------------- the real content through the adapter ----------------
+console.log('\nthe real content through the adapter');
+test('every witness plays its own sealed note and line exactly as written; the hideout stop leads to the hideout spot', () => {
+  for (const k of REAL_CASES) {
+    const stops = stopsOf(CASE_BY_ID_REAL(k.id));
+    k.stops.forEach((st, i) => st.witnesses.forEach((w, j) => {
+      const g = stops[i].witnesses[j];
+      assert.equal(g.clue, w.note, `${k.id} stop ${i} witness ${j}`); assert.equal(g.line, w.line); assert.equal(g.name, w.name); assert.equal(g.clueId, w.clueId);
+      if (i < k.stops.length - 1) assert.equal(CLUE_BY_ID[w.clueId].city, k.route[i + 1], 'a travel note points to the next city');
+      else assert.equal(w.clueId, null);
+    }));
+    assert.ok(!stops.some((s) => s.witnesses.some((w) => /saw the gang (head|slip)/.test(w.clue))), `${k.id}: no generic fallback line`);
+  }
+});
+test('the sign: the content\'s swiped indexes, in recovery order; one letter per correct city, the rest at the hideout', () => {
+  for (const k of REAL_CASES) {
+    const c = CASE_LIST.find((x) => x.id === k.id);
+    assert.deepEqual(recoveryOf(c), k.sign.swiped); assert.deepEqual(flightOrder(c), k.sign.swiped); assert.deepEqual(missingOf(c), [...k.sign.swiped].sort((a, b) => a - b));
+    assert.equal(signOf(c), k.sign.text); assert.deepEqual(k.sign.swiped.map((i) => k.sign.text[i]).join(''), k.sign.letters);
+    const run = newRun(c); startChase(run);
+    const flown = [];
+    c.route.forEach(() => {});
+    for (let i = 0; i < routeOf(c).length - 1; i++) {
+      run.phase = 'travel';
+      const wrong = chooseCity(run, c, CITY_LIST.find((x) => x.id !== routeOf(c)[i + 1]).id);
+      assert.equal(wrong.ok, false);
+      const r = chooseCity(run, c, routeOf(c)[i + 1]); assert.ok(r.ok); flown.push(r.letter);
+    }
+    assert.deepEqual(flown, k.sign.swiped.slice(0, routeOf(c).length - 1), `${k.id}: letters in the content's order`);
+    assert.ok(stillMissing(run, c).length >= 1, 'at least one letter is left for the hideout');
+    assert.deepEqual(stillMissing(run, c), [...k.sign.swiped.slice(routeOf(c).length - 1)].sort((a, b) => a - b));
+  }
+});
+test('lead, crew, briefing speakers, hideout lines and teaser come from the content; the art id is the gang member\'s animal', () => {
+  for (const k of REAL_CASES) {
+    const c = CASE_LIST.find((x) => x.id === k.id);
+    assert.equal(gangOf(c).id, k.lead); assert.deepEqual(crewOf(c).map((g) => g.id).sort(), [...new Set([k.lead, ...k.crew])].sort()); assert.equal(crewOf(c)[0].id, k.lead);
+    assert.deepEqual(briefingOf(c), k.briefing.map((l) => ({ who: l.who, text: l.text })));
+    assert.deepEqual(hideoutOf(c).gangLines.map((l) => [l.who.id, l.text]), k.hideout.gangLines.map((l) => [l.who, l.text]));
+    assert.equal(hideoutOf(c).place, k.hideout.place); assert.equal(hideoutOf(c).description, k.hideout.description);
+    assert.equal(teaserOf(c), k.teaser);
+    assert.deepEqual(postcardOf(c).facts, k.postcard.facts.map((f) => f.text));
+  }
+  assert.deepEqual(REAL_GANG.map((g) => gangArt(g)), ['squirrel', 'raccoon', 'crow', 'possum', 'goat']);
+});
+test('the art uses the content\'s gang names and accepts a content id; a city goes to the art as id + name only', () => {
+  assert.deepEqual(Object.values(GANG_LOOK).map((l) => l.name), REAL_GANG.map((g) => g.name));
+  const strip = (x) => x.replace(/sqc\d+/g, 'sqc');
+  assert.equal(strip(gangPortrait('sudsy', 'sorry')), strip(gangPortrait('raccoon', 'sorry')));
+  assert.deepEqual(artCity(CITY_BY_ID.cooperstown), { id: 'cooperstown', name: 'Cooperstown' });
+});
+test('one map box: the art\'s box is the content\'s MAP_BOUNDS, and every city\'s coords are toMap(latLng)', () => {
+  assert.equal(MAP_BOX.latMin, MAP_BOUNDS.south); assert.equal(MAP_BOX.latMax, MAP_BOUNDS.north); assert.equal(MAP_BOX.lonMin, MAP_BOUNDS.west); assert.equal(MAP_BOX.lonMax, MAP_BOUNDS.east);
+  for (const c of CITY_LIST) { const m = toMap(c.latLng.lat, c.latLng.lng); assert.deepEqual({ x: c.x, y: c.y }, m, c.id); }
+  assert.ok(CITY_BY_ID['watkins-glen'] && CITY_BY_ID.binghamton);
+});
+test('usedAsNoun: after a/the and followed by an end or a small word; not "the beautiful sky"', () => {
+  assert.equal(usedAsNoun('script', 'The actors read the script for the school play.'), true);
+  assert.equal(usedAsNoun('screw', 'Turn the screw until the shelf is tight.'), false, 'followed by "until": not listed, so not trusted as a noun');
+  assert.equal(usedAsNoun('thrill', 'The roller coaster ride was a thrill.'), true);
+  assert.equal(usedAsNoun('throat', 'Warm tea helps a scratchy throat.'), false);
+  assert.equal(usedAsNoun('pretty', 'The pretty sign looked nice.'), false);
+  assert.equal(usedAsNoun('island', 'The island was green.'), true);
+});
+test('template password: noun slots only get words used as nouns, any slots any word; capitals and quotes are forgiven', () => {
+  const picks = [{ word: 'thrill', sentence: 'The roller coaster ride was a thrill.' }, { word: 'throb', sentence: 'My thumb began to throb after I bumped it.' }, { word: 'island', sentence: 'The island was green.' }];
+  for (const t of HIDEOUT_TEMPLATE_LIST) {
+    const f = fillTemplate(picks, [t]);
+    if (!f) { assert.ok(t.slots.filter((s) => s === 'noun').length > 2 || t.slots.length > 3, t.id); continue; }
+    const nouns = new Set(['thrill', 'island']);
+    t.slots.forEach((slot, i) => { if (slot === 'noun') assert.ok(nouns.has(f.words[i]), `${t.id}: slot ${i} got ${f.words[i]}`); });
+    assert.equal(f.words.length, t.slots.length); assert.ok(!/\{w\}/.test(f.sentence));
+    const held = scoreHideout(f.sentence, f.words, f.sentence.replace(/["]/g, '').toUpperCase());
+    assert.equal(held.correct, held.total);
+  }
+  const none = [{ word: 'throb', sentence: 'My thumb began to throb after I bumped it.' }, { word: 'shred', sentence: null }];
+  const f2 = buildHideout(none, ENTRIES.concat([{ word: 'throb' }, { word: 'shred' }]), HIDEOUT_TEMPLATE_LIST);
+  assert.equal(f2.source, 'template'); assert.ok(f2.words.length >= 2); assert.ok(f2.words.every((w) => f2.sentence.includes(w)));
+  assert.ok(!/(the|The) (throb|shred)/.test(f2.sentence), 'a non-noun never sits after "the": ' + f2.sentence);
+});
+function CASE_BY_ID_REAL(id) { return CASE_LIST.find((c) => c.id === id); }
 
 console.log(`\n${passed} passed, ${failed.length} failed`);
 if (failed.length) { console.log('FAILED:\n- ' + failed.join('\n- ')); process.exit(1); }

@@ -209,6 +209,7 @@ button.stamp-card:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(
 .teaser { margin: 0; text-align: center; font: 800 17px/1.35 var(--font-body); color: #14325e; font-style: italic; }
 .lens-back { position: fixed; inset: 0; z-index: 250; display: grid; place-items: center; padding: 16px; background: rgba(10, 22, 48, .6); }
 .lens { width: min(100%, 360px); display: flex; flex-direction: column; gap: 10px; padding: 14px; border-radius: 16px; background: var(--cream); color: var(--cream-ink); border: 4px solid var(--cream-edge); box-shadow: 0 8px 0 rgba(120, 85, 20, .4); max-height: 100%; overflow: auto; }
+.lens > * { flex: none; }
 .lens h3 { margin: 0; font: 400 22px/1.15 var(--font-display); }
 .lens p { margin: 0; font: 700 16px/1.35 var(--font-body); }
 .lens-map { position: relative; }
@@ -227,6 +228,10 @@ button.stamp-card:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(
   .case-body[data-phase="hideout"] .case-side { display: none; }
 }
 @media (orientation: landscape) and (max-height: 520px) {
+  /* the map is the point of the travel step: the sign shrinks to a side strip so the map gets the height */
+  .case-body[data-phase="travel"] .case-grid { grid-template-columns: 150px minmax(0, 1fr); }
+  .case-body[data-phase="travel"] .travel-grid { grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); }
+  .case-body[data-phase="travel"] .step-chip { font-size: 13px; padding: 6px 10px; }
   .btn-big { min-height: 52px; font-size: 19px; }
   .topbar { min-height: 46px; }
   .kb { --kgap: 4px; --kh: 44px; }
@@ -241,6 +246,10 @@ button.stamp-card:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(
   .hide-intro .desc { font-size: 14px; margin: 0; }
   .crew-faces .face { width: 36px; height: 36px; }
   .hide-place { display: none; }
+  .lens { gap: 6px; padding: 10px 14px; }
+  .lens p { display: none; }
+  .lens h3 { font-size: 19px; }
+  .lens-pin { min-height: 48px; }
   .hide-tools { flex: none; margin-left: auto; }
   .type-box { min-height: 44px; font-size: 20px; padding: 0 12px; border-width: 3px; }
   .scene-art { width: 80px; }
