@@ -42,4 +42,14 @@ const cells = (s, items, cls = '') => { const r = $(`<div class="row panel ${cls
   mk('ERIE CANAL', [], 'wood');
   const dk = $('<div class="row panel dark signs"></div>'); s.appendChild(dk); dk.appendChild($(`<div class="cell sign">${A.signSvg('HALL OF FAME', [1, 5], {variant:'neon'})}</div>`));
 }
+{ const s = sec('Map');
+  const ll = (lon, lat) => ({ x: (lon + 79.8) / 8, y: (45.05 - lat) / 4.55 });
+  const cities = [['rochester','Rochester',-77.61,43.16],['buffalo','Buffalo',-78.88,42.89],['niagara-falls','Niagara Falls',-79.06,43.09],['syracuse','Syracuse',-76.15,43.05],['albany','Albany',-73.76,42.65],['cooperstown','Cooperstown',-74.92,42.70],['corning','Corning',-77.05,42.15],['lake-placid','Lake Placid',-73.98,44.28],['saratoga','Saratoga Springs',-73.78,43.08],['ithaca','Ithaca',-76.5,42.44],['nyc','New York City',-74.0,40.71]].map(([id,name,lo,la]) => ({ id, name, coords: ll(lo, la) }));
+  const a = $('<div class="map-wrap" style="max-width:760px"></div>'); s.appendChild(a);
+  const m = A.drawMap(a, { cities, highlight: 'syracuse', visited: ['rochester', 'buffalo'] });
+  window.__map = m;
+  const b = $('<div class="map-wrap" style="max-width:380px;margin-top:12px"></div>'); s.appendChild(b);
+  A.drawMap(b, { cities, highlight: 'ithaca', visited: ['corning'] });
+  s.appendChild($('<p id="maplog">tap a pin</p>')); a.addEventListener('click', (e) => { const g = e.target.closest('[data-city]'); if (g) document.getElementById('maplog').textContent = 'clicked ' + g.dataset.city; });
+}
 </script></body></html>

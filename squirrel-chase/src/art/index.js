@@ -5,3 +5,4 @@ export const pipPortrait = (mood = 'happy', opts) => pipAvatar(mood, { ringFill:
 export const chiefPortrait = (mood = 'happy', opts) => chiefAvatar(mood, { ringFill: '#ffe6a8', ...opts });
 export const wenPortrait = (mood = 'happy', opts) => wenAvatar(mood, { ringFill: '#d3f1e1', ...opts });
 export { signSvg, animateLetterIn, fillLetter, SIGN_VARIANTS } from './sign.js';
+export { drawMap, mapSvg, MAP_BOX } from './map.js';
