@@ -1081,7 +1081,7 @@ async function engagement(browser, layout) {
     const E = await import('/src/meta/engagement.js'), S = await import('/src/spelling/scheduler.js');
     const now = Date.now(), DAY = 864e5, dk = (t) => S.dayKey(t);
     const near = (w, list) => ({ word: w, listId: list, box: 3, due: now - 1000, attempts: 3, firstTry: 2, seenCount: 3, lastSeen: now - DAY, daysCorrect: [dk(now - 2 * DAY), dk(now - DAY)], daysSeen: [dk(now - 2 * DAY), dk(now - DAY)], focus: false, studied: true, reviewsDone: 0, misses: 0 });
-    const done = (w, list) => ({ ...near(w, list), firstTry: 3, masteredAt: now - 3600e3 });
+    const done = (w, list) => ({ ...near(w, list), firstTry: 3, masteredAt: now - 1000 });   // a moment ago, so it is this ISO week even just after midnight on a Monday
     const words = (id, ws, recs, today) => ({ v: 1, lists: [{ id, name: 'Week of practice', createdAt: now - 3 * DAY, archivedAt: 0, pattern: '', words: ws.map((word) => ({ word })) }], activeId: id,
       records: recs, tests: [], qualifierPending: null, today, streak: 0, bestStreak: 0, perfectTotal: 0 });
     localStorage.clear();
