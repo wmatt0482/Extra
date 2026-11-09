@@ -15,7 +15,8 @@
 // per-player tabs only say "Add a player first".
 // Only this zone deletes anything. The whole zone is one scrollable sheet sized to the visual viewport so the
 // iOS keyboard never hides the text area.
-import { PLAYER_COLORS, checkPin, hasPin, playerById, playerOptions, setPin, setPlayerOption } from '../spelling/profiles.js';
+import { PLAYER_COLORS, checkPin, familyMusicOff, hasPin, playerById, playerOptions, setFamilyMusicOff, setPin, setPlayerOption } from '../spelling/profiles.js';
+import { Audio } from '../audio.js';
 import { formatList, parseList, MAX_WORDS } from '../spelling/words.js';
 import { SAMPLE_PRESENTATION, SYSTEM_VOICE, VOICE_TIP, buildPresentation, voiceQuality } from '../spelling/tts.js';
 import { CLOUD_VOICES, cloudVoiceInfo } from '../tts/voices.js';
@@ -772,6 +773,9 @@ export function createParentZone(app) {
     shake.addEventListener('input', () => { shakeOut.textContent = `${shake.value}%`; fill(); setGame('shake', Number(shake.value)); });
     fill();
     return [
+      h('div', { class: 'hud-label pz-sec' }, 'ALL GAMES'),
+      toggle('Background music in all games', 'Turns off the music in every game on every device in the family. Sound effects and the voice stay on.', !familyMusicOff(app.family),
+        (v) => { setFamilyMusicOff(app.family, !v); app.persistFamily(); Audio.lockMusic(!v); }, 'opt-family-music'),
       h('div', { class: 'hud-label pz-sec' }, 'SPELLING'),
       speechRow(),
       ...speechCheck(),

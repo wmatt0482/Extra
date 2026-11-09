@@ -7,7 +7,8 @@ const AC = typeof window !== 'undefined' ? (window.AudioContext || window.webkit
 
 function createAudio() {
   let ctx = null, master, sfxBus, musicBus, voiceBus, noiseBuf;
-  let soundOn = true, musicOn = true, ducked = false, unlocked = false, voiceOn = false;
+  let soundOn = true, musicOn = true, musicLocked = false, ducked = false, unlocked = false, voiceOn = false;
+  const lockListeners = new Set();
   let voiceStalls = 0;                  // clips abandoned because the audio clock did not move (playVoice)
   let stalledAt = -1;                   // the clock reading of the last stall: clips fail at once until it moves again
   const CLOCK_CHECK_MS = 400;
@@ -96,7 +97,7 @@ function createAudio() {
   const sfxLevel = () => (soundOn ? (voiceOn ? 0.6 : 1) : 0);
 
   function startMusic() {
-    if (!ready() || musicTimer) return;
+    if (musicLocked || !ready() || musicTimer) return;
     lead = ctx.createOscillator(); lead.type = 'square';
     bass = ctx.createOscillator(); bass.type = 'triangle';
     leadGain = ctx.createGain(); leadGain.gain.value = 0;
@@ -194,6 +195,24 @@ function createAudio() {
       if (!ctx) return;
       if (musicOn) startMusic(); else stopMusic();
     },
+    // the parent's family-wide "background music off" switch: overrides the child's own Music setting (which keeps its value)
+    lockMusic(off) {
+      const was = musicLocked;
+      musicLocked = !!off;
+      if (musicLocked) { if (ctx) stopMusic(); } else if (musicOn && ctx && unlocked) startMusic();
+      if (was !== musicLocked) for (const fn of lockListeners) { try { fn(musicLocked); } catch (_) { /* ignore */ } }
+    },
+    /** Re-read the family record (spellJump.family, shared by every game on this origin) and apply its music switch.
+     *  Called at load, after a sync brings the family in, and on a `storage` event from another tab. */
+    syncFamilyMusic() {
+      let off = false;
+      try { const f = JSON.parse(localStorage.getItem('spellJump.family') || 'null'); off = !!(f && f.musicOff === true && Number(f.musicOffAt) > 0); } catch (_) { /* no storage / corrupt: music allowed */ }
+      api.lockMusic(off);
+      return off;
+    },
+    onMusicLock(fn) { lockListeners.add(fn); return () => lockListeners.delete(fn); },
+    get musicLocked() { return musicLocked; },
+    get musicPlaying() { return !!musicTimer; },     // test hook
     duck(on) {
       ducked = !!on;
       if (ctx && musicTimer) musicBus.gain.setTargetAtTime(musicLevel(), now(), 0.4);
@@ -468,6 +487,8 @@ function createAudio() {
     suspend() { if (ctx && ctx.state === 'running') ctx.suspend().catch(() => {}); },
     resume() { if (ctx && unlocked && ctx.state !== 'running') ctx.resume().catch(() => {}); },
   };
+  api.syncFamilyMusic();
+  try { if (typeof window !== 'undefined') window.addEventListener('storage', (e) => { if (!e.key || e.key === 'spellJump.family') api.syncFamilyMusic(); }); } catch (_) { /* ignore */ }
   return api;
 }
 

@@ -3077,11 +3077,92 @@ async function skyEraReducedTest(browser, layout) {
   await ctx.close();
 }
 
+// ---------- family music switch (ONLY=musicoff): Parents → Options → "Background music in all games" ----------
+// Off: the music never starts (and stops at once if playing, also when a sync / another tab brings the change in),
+// effects still play, the pause menu's Music button is Off + disabled with the note; On again: the child's own preference applies.
+async function musicOffTest(browser, layout) {
+  console.log(`\n=== family music switch: ${layout.name} ===`);
+  const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height } });
+  await routeFonts(ctx);
+  const errors = [];
+  const page = await ctx.newPage();
+  page.on('pageerror', (e) => errors.push('pageerror: ' + e.message));
+  await page.addInitScript(() => { window.__noSkyTeaser = true; window.__noClassLists = true;
+    if (!sessionStorage.getItem('seeded')) {
+      localStorage.clear();
+      const now = Date.now();
+      localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, players: [{ id: 'pmia', name: 'Mia', color: '#3b7dd9', createdAt: now, updatedAt: now }], pinHash: null, pinUpdatedAt: 0,
+        options: { pmia: { wordsPerRace: 1 } }, optionsUpdatedAt: { pmia: now }, removedPlayers: [], migrated: true, lastPlayer: 'pmia' }));
+      sessionStorage.setItem('seeded', '1');
+    }
+    window.__oscCount = 0;                       // every oscillator the page creates (music lead + bass, and effects)
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) { const o = AC.prototype.createOscillator; AC.prototype.createOscillator = function () { window.__oscCount++; return o.apply(this, arguments); }; }
+  });
+  await page.goto(BASE + '/index.html?mock=1&nosw=1', { waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  const A = () => J(page, async () => { const { Audio } = await import('/src/audio.js'); return { playing: Audio.musicPlaying, locked: Audio.musicLocked }; });
+  await page.waitForFunction(async () => (await import('/src/audio.js')).Audio.musicPlaying, null, { timeout: 5000 }).catch(() => {});
+  check((await A()).playing === true && (await A()).locked === false, 'baseline: music plays (family switch absent)');
+  const btnState = () => J(page, () => { const b = document.querySelector('#pause-music'), n = document.querySelector('[data-music-lock-note]'); return { text: b.textContent, disabled: b.disabled, note: n ? n.textContent : null }; });
+
+  await page.click('#btn-parents');
+  await page.waitForSelector(visibleSel('#pz'));
+  await pinIn(page, '1234'); await page.waitForFunction(() => /again/i.test((document.querySelector('#pin-title') || {}).textContent || ''));
+  await pinIn(page, '1234');
+  await page.waitForSelector('.pz-content[data-tab="sync"]');
+  check(await J(page, () => !document.querySelector('#opt-family-music')), 'the switch is not on the PIN screen / sync tab (Options only, behind the PIN)');
+  await page.click('.pz-tabs [data-tab="options"]');
+  await page.waitForSelector('#opt-family-music');
+  check(await J(page, () => document.querySelector('#opt-family-music').getAttribute('aria-checked') === 'true'), 'Options: "Background music in all games" is On by default');
+  check(await J(page, () => /Turns off the music in every game on every device in the family\. Sound effects and the voice stay on\./.test(document.querySelector('#opt-family-music').parentElement.textContent)), 'the help line is shown');
+  await page.screenshot({ path: path.join(process.env.MUSICOFF_SHOTS || SHOTS, `spell-jump-parent-zone-${layout.name}.png`) });
+  const oscBefore = await J(page, () => window.__oscCount);
+  await page.click('#opt-family-music');                         // → Off
+  await page.waitForTimeout(300);
+  const fam = await family(page);
+  check(fam.musicOff === true && fam.musicOffAt > 0, 'stored in the family record (musicOff + musicOffAt)');
+  check((await A()).playing === false && (await A()).locked === true, 'turning it Off stops the music at once');
+  const bs = await btnState();
+  check(bs.text === 'Music: Off' && bs.disabled && bs.note === 'Music is off (set by a grown-up)', `the pause menu's Music button: ${bs.text}, disabled=${bs.disabled}, note="${bs.note}"`);
+  const o1 = await J(page, () => window.__oscCount);
+  await J(page, async () => { const { Audio } = await import('/src/audio.js'); Audio.correct(); Audio.land(1); });
+  check((await J(page, () => window.__oscCount)) > o1 && (await A()).playing === false, 'sound effects still play, the music stays off');
+  await J(page, async () => { const { Audio } = await import('/src/audio.js'); Audio.music(true); Audio.unlock(); });
+  check((await A()).playing === false, 'even a direct Audio.music(true) cannot start it');
+  await page.click('#opt-family-music');                         // → On: the child's own preference (on) applies again
+  await page.waitForFunction(async () => (await import('/src/audio.js')).Audio.musicPlaying, null, { timeout: 3000 }).catch(() => {});
+  check((await A()).playing === true && !(await btnState()).disabled && (await btnState()).note === null && (await btnState()).text === 'Music: On', 'On again: music resumes, the button and the note are back to normal');
+  // the child's own "Music: off" is respected once the family switch is back on
+  await page.click('#opt-music');
+  check((await A()).playing === false, "the child's own Music off stops it");
+  await page.click('#opt-family-music'); await page.waitForTimeout(200);
+  await page.click('#opt-family-music'); await page.waitForTimeout(300);
+  check((await A()).playing === false && (await btnState()).text === 'Music: Off' && !(await btnState()).disabled, "family Off then On: the child's own Off still applies (not restarted)");
+  await page.click('#opt-music');                                // child's pref back on
+  // a change that arrives by sync / from another tab
+  await J(page, () => { const f = JSON.parse(localStorage.getItem('spellJump.family')); f.musicOff = true; f.musicOffAt = Date.now() + 100000; localStorage.setItem('spellJump.family', JSON.stringify(f)); window.dispatchEvent(new StorageEvent('storage', { key: 'spellJump.family' })); });
+  await page.waitForTimeout(200);
+  check((await A()).playing === false && (await A()).locked === true, 'a family change arriving from elsewhere stops playing music at once');
+  // a fresh load with the switch Off: never starts
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  await page.click('[data-player="pmia"]');
+  await page.waitForSelector(visibleSel('#screen-title'));
+  await page.waitForTimeout(600);
+  check((await A()).playing === false && (await A()).locked === true, 'a fresh load with the switch Off: the music never starts');
+  check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
 const only = process.env.ONLY;
 try {
   for (const l of LAYOUTS) if (!only || only === l.name) await runLayout(browser, l);
   for (const l of LAYOUTS) if (!only || only === 'engage' || only === l.name) await engagement(browser, l);
   if (!only || only === 'keys') await coachKeys(browser);
+  for (const l of LAYOUTS) if (!only || only === 'musicoff' || only === l.name) await musicOffTest(browser, l);
   if (!only || only === 'corrupt') await corruptBoot(browser);
   if (!only || only === 'update') await selfUpdate(browser);
   for (const l of LAYOUTS) if (!only || only === 'cloud') await cloudVoiceTest(browser, l);
