@@ -37,6 +37,8 @@ const RATES = {
   bc: { rph: 6, answers: [], units: [['job', 1], ['piece', 1, 5], ['challenge', 0.5], ['blueprint', 1 / 6], ['site', 1 / 6]] },
   // Case Files: one case is about 25 minutes of reading (the game opens one new case a day), one flat payment per closed case
   cf: { rph: 2.4, answers: [], units: [['case', 1]] },
+  // Pip's Squirrel Chase: one case a day (about 20 minutes of spelling and map play), one flat payment per closed case; its words bank to Spell Jump
+  sq: { rph: 3, answers: [], units: [['case', 1]] },
 };
 // A week's swing is the share of the usual minutes a kid plays that week (school weeks, sports, a cold): the younger the kid, the bigger the swing.
 const KIDS = [
@@ -76,7 +78,7 @@ function playGame(lab, base, game, minutes, acc, r, t0, sessions) {
 
 // ================= A: coins and XP an hour =================
 // the five games played by the hour; Case Files opens one case a day (a flat payment per closed case), so it has no hourly spec
-const HOURLY = GAMES.filter((g) => g !== 'cf');
+const HOURLY = GAMES.filter((g) => g !== 'cf' && g !== 'sq');
 const SPEC_TABLE = { 0.45: { sj: 451, tb: 453, ff: 463, ww: 490, bc: 540 }, 0.7: { sj: 563, tb: 558, ff: 606, ww: 609, bc: 540 }, 0.9: { sj: 724, tb: 709, ff: 814, ww: 779, bc: 540 } };
 function perHour(game, acc, hours, seed) {
   const r = rng(seed), lab = defaultLab(); lab.opts.quests = false;

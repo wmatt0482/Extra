@@ -22,6 +22,8 @@ export const QUESTS = [
   { id: 'bc-challenge', game: 'bc', events: ['challenge'], text: 'Meet {n} Build Crew challenges', one: 'Meet a Build Crew challenge', easy: 1, mid: 1, hard: 1 },
   // (not a nudge: a case opens once a day, so a child is never nudged toward a game that makes them wait)
   { id: 'cf-case', game: 'cf', events: ['case'], text: 'Close {n} Case Files cases', one: 'Close a Case Files case', hint: 'Finish a case in Case Files. A new case opens each day.', easy: 1, mid: 1, hard: 1 },
+  // (not a nudge: a case opens once a day, like Case Files)
+  { id: 'sq-case', game: 'sq', events: ['case'], text: "Close {n} Squirrel Chase cases", one: 'Close a Squirrel Chase case', hint: "Finish a case in Pip's Squirrel Chase. A new case opens each day.", easy: 1, mid: 1, hard: 1 },
   // counts the distinct games that reported at least one event today (an answer, a run, a race, a delivered block, a finished case: anything a game
   // reports, so a game that was only opened or sat on its title screen does not count); the nudge for a child who has played one game or none lately.
   // `hint` = the small line under the card that says exactly what counts.

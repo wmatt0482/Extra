@@ -31,8 +31,8 @@ export const GLYPHS = {
 export const glyph = (name) => GLYPHS[name] || '';
 
 // ---------- the five games ----------
-export const GAME_LABELS = { sj: 'Spell Jump', tb: 'Trail Blazer', ff: 'Fraction Fright', ww: 'Wagon West', bc: 'Build Crew', cf: 'Case Files', any: 'Any game' };
-export const GAME_COLORS = { sj: '#ffcf1a', tb: '#ff8a1f', ff: '#5fd38d', ww: '#d9653b', bc: '#22d3ff', cf: '#e0b24a', any: '#8f6bff' };
+export const GAME_LABELS = { sj: 'Spell Jump', tb: 'Trail Blazer', ff: 'Fraction Fright', ww: 'Wagon West', bc: 'Build Crew', cf: 'Case Files', sq: "Squirrel Chase", any: 'Any game' };
+export const GAME_COLORS = { sj: '#ffcf1a', tb: '#ff8a1f', ff: '#5fd38d', ww: '#d9653b', bc: '#22d3ff', cf: '#e0b24a', sq: '#f08a2e', any: '#8f6bff' };
 const GAME_ART = {
   sj: '<path d="M7 17.5L12 6l5 11.5M9 13.5h6" stroke="#2a1a00" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
   tb: '<path d="M7 18V6.5M7 7h9.5l-2 3.2 2 3.2H7" stroke="#2b1200" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>',
@@ -40,6 +40,7 @@ const GAME_ART = {
   ww: '<circle cx="12" cy="12" r="5.5" stroke="#2a0f02" stroke-width="2.2" fill="none"/><path d="M12 6.5v11M6.5 12h11M8 8l8 8M16 8l-8 8" stroke="#2a0f02" stroke-width="1.3"/>',
   bc: '<path d="M6 18h12M9 18V9.5l7-3.5M16 6v5.5" stroke="#032634" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="14" y="11.5" width="4" height="3.4" rx=".6" fill="#032634"/>',
   cf: '<circle cx="10.5" cy="10.5" r="4.6" stroke="#2a1c02" stroke-width="2.4" fill="none"/><path d="M14 14l5 5" stroke="#2a1c02" stroke-width="2.8" stroke-linecap="round"/>',
+  sq: '<path d="M8 18c-3-1-4-5-2-8 1.5-2.2 4-2.2 5-.4M11 9.6c.6-3.4 4-5 6.4-3.2 2 1.5 1.6 4.8-.6 6.4-1.4 1-1.6 2.6-1.2 4.2" stroke="#2a1002" stroke-width="2.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="9.2" cy="15.6" r="1.1" fill="#2a1002"/>',
   any: '<path d="M12 5.5l1.7 4.2 4.5.4-3.4 3 1 4.4L12 15l-3.8 2.5 1-4.4-3.4-3 4.5-.4z" fill="#1c0e3a"/>',
 };
 /** A rounded-square badge for a game (or 'any'). */

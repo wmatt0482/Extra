@@ -82,7 +82,7 @@ test('week helpers', () => {
 
 section('events');
 test('every exchange row is whole numbers >= 0; answers fix = ceil(first-try / 2) in coins and XP', () => {
-  assert.equal(EVENTS.length, 32);
+  assert.equal(EVENTS.length, 33);
   for (const r of EVENTS) {
     for (const f of ['coins', 'xp']) assert.ok(Number.isInteger(r[f]) && r[f] >= 0, `${r.game}.${r.event}.${f}`);
     if (r.kind === 'answer') {
@@ -299,16 +299,16 @@ test('friendlyDay: Today, Yesterday, a weekday inside the week, Last week, A whi
   assert.deepEqual([0, 1, 2, 5, 6, 7, 13, 14, 60].map((n) => friendlyDay(d(n), now)), ['Today', 'Yesterday', 'Friday', 'Tuesday', 'Monday', 'Last week', 'Last week', 'A while ago', 'A while ago']);
   assert.equal(friendlyDay(0, now), ''); assert.equal(friendlyDay(now + 3600000, now), 'Today');
 });
-test('gameCards: six cards in order; a played game shows its row, a never-played game has a pitch; setSummary cleans and keeps the later row', () => {
+test('gameCards: seven cards in order; a played game shows its row, a never-played game has a pitch; setSummary cleans and keeps the later row', () => {
   const lab = defaultLab(), now = T0;
   assert.equal(setSummary(lab, 'cf', { level: 'Detective: 2 cases', line: 'Cases closed: 2', today: '', lastPlayed: now - 3 * 86400000 }, now), true);
   assert.equal(setSummary(lab, 'cf', { level: 'older', lastPlayed: now - 9 * 86400000 }, now), false); assert.equal(lab.sum.cf.level, 'Detective: 2 cases');
   assert.equal(setSummary(lab, 'xx', { level: 'a' }, now), false); assert.equal(setSummary(lab, 'sj', { level: '', line: '', today: '', lastPlayed: 0 }, now), true, 'an empty row still stamps lastPlayed (= now)');
   const cards = gameCards(lab, now);
-  assert.deepEqual(cards.map((c) => c.game), GAMES); assert.equal(cards.length, 6);
+  assert.deepEqual(cards.map((c) => c.game), GAMES); assert.equal(cards.length, 7);
   const cf = cards[5]; assert.deepEqual([cf.played, cf.level, cf.lastLabel], [true, 'Detective: 2 cases', 'Friday']);
   const bc = cards[4]; assert.deepEqual([bc.played, bc.lastLabel], [false, '']); assert.ok(bc.pitch && !/[<>]/.test(bc.pitch));
-  assert.deepEqual(cards.map((c) => c.path), ['/spell-jump/', '/trail-blazer/', '/fraction-fright/', '/wagon-west/', '/build-crew/', '/case-files/']);
+  assert.deepEqual(cards.map((c) => c.path), ['/spell-jump/', '/trail-blazer/', '/fraction-fright/', '/wagon-west/', '/build-crew/', '/case-files/', '/squirrel-chase/']);
 });
 
 section('quests');
@@ -341,7 +341,7 @@ test('property: with >= 2 played games, >= 2 of the 3 are in played games and ex
 test('a brand-new child: the game they opened is a home quest; tiers by level; the nudge is always easy', () => {
   const ids = drawQuests(defaultLab(), ctxAt(T0, { game: 'tb' })); assert.equal(QUEST_BY_ID[ids[0]].game === 'tb' || QUEST_BY_ID[ids[1]].game === 'tb', true); assert.equal(ids[2], 'any-explore');
   assert.deepEqual([1, 4, 5, 19, 20, 99].map(tierFor), ['easy', 'easy', 'mid', 'mid', 'hard', 'hard']);
-  assert.equal(targetFor('sj-words', 'hard', 0), 12); assert.equal(targetFor('sj-words', 'hard', 2), 4, 'the nudge slot is easy'); assert.equal(QUESTS.length, 19);
+  assert.equal(targetFor('sj-words', 'hard', 0), 12); assert.equal(targetFor('sj-words', 'hard', 2), 4, 'the nudge slot is easy'); assert.equal(QUESTS.length, 20);
   for (const q of QUESTS) assert.ok(q.easy <= q.mid && q.mid <= q.hard);
 });
 test('text: {n} filled, single wording, the gentle wording for Fraction Fright', () => {
@@ -350,7 +350,7 @@ test('text: {n} filled, single wording, the gentle wording for Fraction Fright',
   assert.equal(questText({ id: 'cf-case', target: 1 }), 'Close a Case Files case'); assert.equal(questText({ id: 'sj-runs', target: 2 }), 'Finish 2 Spell Jump runs');
 });
 test('every quest title names its game; the title and the events it counts agree (a race finished 4th of 4 moves the race quest, not Win a race)', () => {
-  const GAME_WORDS = { sj: 'Spell Jump', tb: 'Trail Blazer', ff: 'Fraction Fright', ww: 'Wagon West', bc: 'Build Crew', cf: 'Case Files' };
+  const GAME_WORDS = { sj: 'Spell Jump', tb: 'Trail Blazer', ff: 'Fraction Fright', ww: 'Wagon West', bc: 'Build Crew', cf: 'Case Files', sq: 'Squirrel Chase' };
   for (const q of QUESTS) {
     if (q.game === 'any') { assert.match(questText(q, false, 2), /different games/); continue; }
     for (const n of new Set([q.easy, q.mid, q.hard])) for (const gentle of [false, true]) { const t = questText(q, gentle, n); assert.ok(t.includes(GAME_WORDS[q.game]), `${q.id}: "${t}" names ${GAME_WORDS[q.game]}`); assert.ok(!/\{n\}/.test(t)); }

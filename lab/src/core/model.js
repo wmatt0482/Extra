@@ -5,8 +5,8 @@ import { addDays, isDayKey, normalizeStreak, weekOfDay } from '../../../spell-ju
 import { ITEM_BY_ID, SLOT_BY_KEY, isStock } from '../data/catalog.js';
 
 export const LAB_VERSION = 1;
-export const GAMES = ['sj', 'tb', 'ff', 'ww', 'bc', 'cf'];
-export const GAME_NAMES = { sj: 'Spell Jump', tb: 'Trail Blazer', ff: 'Fraction Fright', ww: 'Wagon West', bc: 'Build Crew', cf: 'Case Files' };
+export const GAMES = ['sj', 'tb', 'ff', 'ww', 'bc', 'cf', 'sq'];
+export const GAME_NAMES = { sj: 'Spell Jump', tb: 'Trail Blazer', ff: 'Fraction Fright', ww: 'Wagon West', bc: 'Build Crew', cf: 'Case Files', sq: "Pip's Squirrel Chase" };
 export const DEVICE_STORAGE_KEY = 'learningLab.device';
 export const PET_SPECIES = ['fox', 'owl', 'otter', 'dino'];
 export const WEEK_FIELDS = ['xp', 'coins', 'zap', 'race', 'word', 'ft', 'leg', 'job'];
@@ -56,7 +56,7 @@ export function defaultLab() {
     streak: normalizeStreak(null),
     quests: {}, crates: { earned: {}, opened: {} }, play: {}, weeks: {},
     fam: { week: '', goal: '', at: 0 }, picks: {}, claimed: {}, crowns: [], trophies: [], gallery: [],
-    best: { sj: 0, tb: 0, ff: 0, ww: 0, bc: 0, cf: 0 },
+    best: { sj: 0, tb: 0, ff: 0, ww: 0, bc: 0, cf: 0, sq: 0 },
     opts: { quests: true, board: true, goal: true, at: 0 },
     seen: { games: {}, welcome: 0 }, coinDay: { day: '', n: 0, ev: {} }, sum: {},
   };

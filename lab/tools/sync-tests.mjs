@@ -255,14 +255,14 @@ test('report: NOOP when nobody is attached; a Receipt after attach; writes are d
   const c2 = memory(); store.report({ game: 'ww', event: 'leg' }); assert.equal(stored(), memory(), 'leg writes at once'); assert.ok(memory() >= c2 + 24);
   off(); assert.ok(written.length >= 3);
 });
-test('store.summary: stored per player per game, persisted, ignored when older, and shown on the view as six cards', () => {
+test('store.summary: stored per player per game, persisted, ignored when older, and shown on the view as seven cards', () => {
   const { ls, store, setNow } = mkStore(); assert.equal(store.summary('sj', { level: 'x', lastPlayed: 1 }), false, 'nobody attached');
   attach(store); const seen = []; store.subscribe((e) => seen.push(e.type));
   assert.equal(store.summary('sj', { level: 'Speller LV 3', line: '24 words mastered', today: 'Today: 3 / 8 words', lastPlayed: T0 - 86400000 }), true); assert.ok(seen.includes('summary'));
   assert.equal(store.summary('sj', { level: 'Speller LV 1', line: 'old', lastPlayed: T0 - 2 * 86400000 }), false, 'an older row is ignored');
   assert.equal(store.summary('nope', { level: 'x' }), false); assert.equal(store.summary('tb', null), false); assert.equal(store.summary('tb', 'x'), false);
   store.flush(); assert.equal(JSON.parse(ls.getItem(labKey('mia'))).sum.sj.line, '24 words mastered');
-  const v = store.view(); assert.equal(v.games.length, 6); assert.deepEqual(v.games.map((g) => g.game), ['sj', 'tb', 'ff', 'ww', 'bc', 'cf']);
+  const v = store.view(); assert.equal(v.games.length, 7); assert.deepEqual(v.games.map((g) => g.game), ['sj', 'tb', 'ff', 'ww', 'bc', 'cf', 'sq']);
   const sj = v.games[0]; assert.deepEqual([sj.played, sj.level, sj.line, sj.today, sj.lastLabel], [true, 'Speller LV 3', '24 words mastered', 'Today: 3 / 8 words', 'Yesterday']);
   const tb = v.games[1]; assert.deepEqual([tb.played, tb.lastLabel, tb.level], [false, '', '']); assert.ok(tb.pitch.length > 10);
   store.summary('sj', { level: 'Speller LV 4' }); assert.equal(store.view().games[0].level, 'Speller LV 4', 'no lastPlayed means now'); assert.equal(store.view().games[0].lastLabel, 'Today');

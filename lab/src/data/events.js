@@ -45,6 +45,8 @@ export const EVENTS = [
   { game: 'bc', event: 'site', kind: 'unit', coins: 30, xp: 25, limit: 2 },
   // ---- Case Files (reading, no authored wrong answers: one flat payment per closed case, whatever the accuracy; no combo, no first try)
   { game: 'cf', event: 'case', kind: 'unit', coins: 40, xp: 55 },
+  // ---- Pip's Squirrel Chase (spelling words bank to Spell Jump's own store and its mission; the Lab pays one flat amount per closed case, like Case Files)
+  { game: 'sq', event: 'case', kind: 'unit', coins: 40, xp: 55 },
   // ---- every game: the game counted its day (paid once a local day across all games)
   { game: 'any', event: 'day', kind: 'unit', coins: 10, xp: 25, once: true },
 ];

@@ -8,5 +8,6 @@ export const GAME_INFO = [
   { id: 'ww', name: 'Wagon West', path: '/wagon-west/', noun: 'Trail', pitch: 'Lead a wagon west and solve the trail problems.' },
   { id: 'bc', name: 'Build Crew', path: '/build-crew/', noun: 'Builder', pitch: 'Build machines and blueprints, block by block.' },
   { id: 'cf', name: 'Case Files', path: '/case-files/', noun: 'Detective', pitch: 'Read the clues and close a new case each day.' },
+  { id: 'sq', name: "Pip's Squirrel Chase", path: '/squirrel-chase/', noun: 'Chaser', pitch: 'Chase the Scribble Gang across New York, one spelled clue at a time.' },
 ];
 export const GAME_PATH = Object.freeze({ ...Object.fromEntries(GAME_INFO.map((g) => [g.id, g.path])), lab: '/lab/', home: '/' });

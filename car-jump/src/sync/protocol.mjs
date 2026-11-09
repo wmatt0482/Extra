@@ -2,7 +2,7 @@
 // Blobs store to the `store` interface below and forwards each request here; tools/spelling-tests.mjs drives it with
 // an in-memory Map store.
 //
-//   GET  /api/family/:code        → 200 { family: doc|null, players: { id: { save, words, tb, facts, ff, fracs, ww, bc, cf, lab } } } (each
+//   GET  /api/family/:code        → 200 { family: doc|null, players: { id: { save, words, tb, facts, ff, fracs, ww, bc, cf, sq, lab } } } (each
 //                                   doc|null; 404 when the family does not exist; removed players are not listed;
 //                                   older clients simply ignore the fields they do not know)
 //   POST /api/family/:code        body = doc (rev 1) → 201 { ok, rev, updatedAt }; 409 { error: 'exists' }
@@ -31,13 +31,13 @@ const bad = (msg) => reply(400, { error: 'bad-request', message: msg });
 const tooLarge = () => reply(400, { error: 'too-large', message: `body over ${MAX_BODY / 1024} KB` });
 
 /** The per-player document kinds: Spell Jump's save and words, Trail Blazer's save (tb) and math facts (facts),
- *  Fraction Fright's save (ff) and fraction skills (fracs), Wagon West's save (ww), Build Crew's save (bc), Case Files' save (cf) and The
+ *  Fraction Fright's save (ff) and fraction skills (fracs), Wagon West's save (ww), Build Crew's save (bc), Case Files' save (cf), Pip's Squirrel Chase's save (sq) and The
  *  Lab's per-child profile (lab). */
-export const PLAYER_KINDS = ['save', 'words', 'tb', 'facts', 'ff', 'fracs', 'ww', 'bc', 'cf', 'lab'];
+export const PLAYER_KINDS = ['save', 'words', 'tb', 'facts', 'ff', 'fracs', 'ww', 'bc', 'cf', 'sq', 'lab'];
 
 export function parseKey(key) {
   if (key === 'family') return { kind: 'family' };
-  const m = /^(.+)\.(save|words|tb|facts|ff|fracs|ww|bc|cf|lab)$/.exec(key || '');
+  const m = /^(.+)\.(save|words|tb|facts|ff|fracs|ww|bc|cf|sq|lab)$/.exec(key || '');
   if (!m || !PLAYER_ID_RE.test(m[1])) return null;
   return { kind: m[2], playerId: m[1] };
 }
@@ -98,7 +98,7 @@ async function route(req, store) {
     return { ...reply(405, { error: 'method-not-allowed' }), headers: { ...HEADERS, allow: 'GET, POST' } };
   }
   const k = parseKey(key);
-  if (!k) return bad('key must be family or <playerId>.save | .words | .tb | .facts | .ff | .fracs | .ww | .bc | .cf | .lab (player id: a-z 0-9 _ -, up to 32)');
+  if (!k) return bad('key must be family or <playerId>.save | .words | .tb | .facts | .ff | .fracs | .ww | .bc | .cf | .sq | .lab (player id: a-z 0-9 _ -, up to 32)');
   if (method !== 'PUT') return { ...reply(405, { error: 'method-not-allowed', message: 'players are removed through the removedPlayers list in the family doc' }), headers: { ...HEADERS, allow: 'PUT' } };
   return putKey(code, key, req, store);
 }

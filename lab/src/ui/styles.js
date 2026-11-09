@@ -528,7 +528,7 @@ padding:max(14px,env(safe-area-inset-top,0px)) 14px max(14px,env(safe-area-inset
 @media (min-width:980px){.lab-gcards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .lab-gcard{--gc:#8f6bff;display:flex;align-items:flex-start;gap:12px;min-height:84px;padding:12px;border-radius:16px;background:var(--panel);border:2px solid var(--line);border-left:7px solid var(--gc);box-shadow:0 5px 0 rgba(0,0,0,.3);color:#fff;text-decoration:none}
 a.lab-gcard:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(0,0,0,.3)}
-.lab-gcard.g-sj{--gc:#ffcf1a}.lab-gcard.g-tb{--gc:#ff8a1f}.lab-gcard.g-ff{--gc:#5fd38d}.lab-gcard.g-ww{--gc:#d9653b}.lab-gcard.g-bc{--gc:#22d3ff}.lab-gcard.g-cf{--gc:#e0b24a}
+.lab-gcard.g-sj{--gc:#ffcf1a}.lab-gcard.g-tb{--gc:#ff8a1f}.lab-gcard.g-ff{--gc:#5fd38d}.lab-gcard.g-ww{--gc:#d9653b}.lab-gcard.g-bc{--gc:#22d3ff}.lab-gcard.g-cf{--gc:#e0b24a}.lab-gcard.g-sq{--gc:#f08a2e}
 .lab-gcard-badge{flex:none;display:grid;place-items:center}
 .lab-gcard-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
 .lab-gcard-name{font:400 13px/1.1 var(--font-display);letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}

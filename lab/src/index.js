@@ -16,6 +16,7 @@ export { NOOP_RECEIPT, LAB_VERSION };
 export const GAME_MODULES = Object.freeze({
   sj: '/spell-jump/src/meta/labLooks.js', tb: '/trail-blazer/src/meta/labLooks.js', ff: '/fraction-fright/src/meta/labLooks.js',
   ww: '/wagon-west/src/meta/labLooks.js', bc: '/build-crew/src/meta/labLooks.js', cf: '/case-files/src/meta/labLooks.js',
+  sq: '/squirrel-chase/src/meta/labLooks.js',
 });
 
 let store = null, game = 'sj';
