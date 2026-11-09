@@ -11,7 +11,7 @@ h1{font-size:22px;margin:0 0 4px}h2{font-size:18px;margin:26px 0 8px;border-bott
 .cell svg.sq-char{width:120px;height:120px}
 .panel{padding:10px;border-radius:14px}
 .light{background:#f7edd3}.dark{background:#15182b;color:#fff}
-.wide{display:block;width:100%}
+.wide{display:block;width:100%}.cell.sign{width:min(360px,100%)}.cell.sign svg{width:100%;height:auto}
 </style></head><body>
 <h1>Pip's Squirrel Chase art</h1>
 <div id="app"></div>
@@ -33,5 +33,13 @@ const cells = (s, items, cls = '') => { const r = $(`<div class="row panel ${cls
 { const s = sec('Witnesses');
   const all = []; for (let i = 0; i < 40; i++) all.push([`seed ${i}`, A.witnessPortrait('w' + i)]);
   cells(s, all.slice(0, 20), 'light'); cells(s, all.slice(20), 'light');
+}
+{ const s = sec('Signs');
+  const row = $('<div class="row panel light signs"></div>'); s.appendChild(row);
+  const mk = (t, miss, v) => { const c = $(`<div class="cell sign">${A.signSvg(t, miss, { variant: v })}<span>${t} / ${v}</span><button>animate</button></div>`); row.appendChild(c);
+    c.querySelector('button').onclick = async () => { for (const i of miss) { await A.animateLetterIn(c, i); } }; return c; };
+  mk('ERIE CANAL', [1, 6], 'wood'); mk('HALL OF FAME', [0, 6, 10], 'metal'); mk('NIAGARA FALLS', [0, 8, 9], 'neon'); mk('LIBERTY', [2, 5], 'wood'); mk('CAPITOL', [0, 3, 6], 'metal'); mk('GLASS CENTER', [4, 8], 'neon');
+  mk('ERIE CANAL', [], 'wood');
+  const dk = $('<div class="row panel dark signs"></div>'); s.appendChild(dk); dk.appendChild($(`<div class="cell sign">${A.signSvg('HALL OF FAME', [1, 5], {variant:'neon'})}</div>`));
 }
 </script></body></html>
