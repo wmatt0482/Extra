@@ -21,8 +21,20 @@ export async function musicOffStage({ browser, BASE, shots, errors, mark = () =>
     if (AC) { const o = AC.prototype.createOscillator; AC.prototype.createOscillator = function () { window.__oscCount++; return o.apply(this, arguments); }; }
   });
   const music = () => page.evaluate(async () => { const { Music } = await import('/build-crew/src/meta/music.js'); return { playing: Music.isPlaying, locked: Music.locked }; });
-  const pick = async () => { await page.locator('#screen-players').waitFor(); await page.locator('#player-grid [data-profile="kai01"]').click(); await page.locator('#title').waitFor(); };
+  const pick = async () => {
+    await page.waitForSelector('#screen-players:not([hidden]), #title:not([hidden])');      // (a reload in the same tab returns to the builder's home screen)
+    if (await page.locator('#screen-players:not([hidden])').count()) await page.locator('#player-grid [data-profile="kai01"]').click();
+    await page.locator('#title').waitFor();
+  };
   const pinIn = async (pin) => { for (const d of pin) await page.locator(`.pinpad [data-digit="${d}"]`).click(); await page.waitForTimeout(250); };
+  // reopening the zone right after closing it can still be unlocked: the PIN pad is skipped then
+  const reopen = async () => {
+    await page.locator('#parents').click();
+    await page.waitForSelector('.pinpad, .pz-content');
+    if (await page.locator('.pinpad').count()) await pinIn('1234');
+    await page.waitForSelector('.pz-content');
+    await page.locator('.pz-tabs [data-tab="options"]').click();
+  };
   await page.goto(BASE + '/build-crew/?test=1&nosw=1');
   await page.waitForFunction(() => window.__buildCrew, undefined, { timeout: 90000 });
   await pick();
@@ -73,9 +85,7 @@ export async function musicOffStage({ browser, BASE, shots, errors, mark = () =>
   mark('music switch: Off, the tune is silent and locked, effects still play, the child button is off + disabled + noted');
 
   // On again: the child's own preference (on) applies
-  await page.locator('#parents').click();
-  await pinIn('1234');
-  await page.locator('.pz-tabs [data-tab="options"]').click();
+  await reopen();
   await page.locator('#opt-family-music').click();
   await page.locator('#pz-close').click();
   await page.locator('#title').waitFor();
@@ -83,9 +93,7 @@ export async function musicOffStage({ browser, BASE, shots, errors, mark = () =>
   assert.deepEqual(await music(), { playing: true, locked: false }, 'On again: the tune plays again');
   assert.equal(await page.evaluate(() => !document.querySelector('#probe-music') || !document.querySelector('#probe-music').disabled), true, 'a bound button un-disables');
   // the child's own Off survives an Off / On of the family switch
-  await page.locator('#parents').click();
-  await pinIn('1234');
-  await page.locator('.pz-tabs [data-tab="options"]').click();
+  await reopen();
   await page.locator('#opt-music').click();                           // the child's own Music: off
   await page.locator('#opt-family-music').click();                    // family Off
   await page.locator('#opt-family-music').click();                    // family On
@@ -93,9 +101,7 @@ export async function musicOffStage({ browser, BASE, shots, errors, mark = () =>
   await page.locator('#title').waitFor();
   await page.waitForTimeout(500);
   assert.deepEqual(await music(), { playing: false, locked: false }, "family On again: the child's own Music Off still applies");
-  await page.locator('#parents').click();
-  await pinIn('1234');
-  await page.locator('.pz-tabs [data-tab="options"]').click();
+  await reopen();
   await page.locator('#opt-music').click();                           // child's own: on again
   await page.locator('#pz-close').click();
   await page.locator('#title').waitFor();

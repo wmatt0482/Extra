@@ -984,8 +984,8 @@ async function main() {
     if (!ONLY || ONLY === 'musicoff') {
       // Case Files plays no background music of its own: the check is the toggle behind the PIN, the stored record, the shared audio lock and that effects still play
       await runMusicOffCheck(browser, { name: 'case-files', url: BASE + '/case-files/index.html', audio: '/spell-jump/src/audio.js', hasMusic: false,
-        pick: async (page) => { await page.waitForSelector('#screen-players:not([hidden])'); await page.click('[data-player="pkid"]'); await page.waitForSelector('#screen-home:not([hidden])'); },
-        parentsBtn: '#btn-parents', famToggle: '#pz-family-music', shot: process.env.MUSICOFF_SHOT || null }, check);
+        pick: async (page) => { await page.waitForSelector('#screen-players:not([hidden])'); },      // (the Parents button on the picker; the agency home opens with a coach card)
+        parentsBtn: '#btn-parents-picker', zoneReady: '.pz-tabs', famToggle: '#pz-family-music', shot: process.env.MUSICOFF_SHOT || null }, check);
     }
     for (const l of LAYOUTS) await runLayout(browser, l); if (!ONLY || ONLY === 'offline') await runOffline(browser); } finally { await browser.close(); }
   console.log(`\nscreenshots: ${SHOTS}`);

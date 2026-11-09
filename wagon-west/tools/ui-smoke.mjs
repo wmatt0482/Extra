@@ -4272,7 +4272,7 @@ try {
     await runMusicOffCheck(browser, { name: 'wagon-west', url: URL0, audio: '/spell-jump/src/audio.js',
       state: (page) => page.evaluate(() => ({ playing: window.__wagonWest.Music.isPlaying, locked: window.__wagonWest.Music.locked })),
       pick: async (page) => { await page.waitForSelector('#screen-players:not([hidden])'); await page.click('[data-player="pkid"]'); await page.waitForSelector('#screen-title:not([hidden])'); },
-      parentsBtn: '#btn-parents', famToggle: '#opt-family-music', childToggle: '#opt-music', pauseBtn: '#pause-music', shot: process.env.MUSICOFF_SHOT || null }, check);
+      parentsBtn: '#btn-parents', closeParent: '#pz-close', famToggle: '#opt-family-music', childToggle: '#opt-music', pauseBtn: '#pause-music', shot: process.env.MUSICOFF_SHOT || null }, check);
   }
   if (process.env.ONLY !== 'musicoff') {
   if (!process.env.VOICE_ONLY && !process.env.PLAY_ONLY) await mockMiniGames(browser);
