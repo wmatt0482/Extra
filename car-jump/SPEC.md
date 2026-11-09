@@ -634,3 +634,70 @@ built; the Sky Era's tracks, rides and mechanics are not. Era 1 is unchanged and
 - **Skip**: a tap anywhere after 0.5 s, the Skip button (top right, safe-area aware), Esc / Enter / Space; closing stops
   the rAF loop and the voice and returns to the title as it was. Parents → Report: "Sky Road: N / 15 mission days (the
   Sky Era teaser)".
+
+## Sky Era (v4.0) — build contract
+
+The next era of Spell Jump, promised by the v3.10 teaser ("New tracks. New rides. And a second jump you earn by spelling.").
+Era 1 (Earth) stays fully playable; nothing transfers away. Research guardrails (docs/LEARNING-DESIGN.md) are unchanged:
+words are retrieved from audio, never shown before spelling; spelling is typed on the keyboard, never by steering; no timers,
+no countdowns, no multiple choice, no wrong spellings shown longer than the existing 3 s compare; the weekly class list,
+Qualifier, Friday Test, mission (8 words) and spaced review work exactly as in Era 1.
+
+### Unlock and era switch
+- The Sky Era unlocks when the Sky Road reaches 15 / 15 (`src/meta/skyRoad.js`), or when a parent taps "Open the Sky Era now"
+  in Parents → Options (for families who want it sooner; label it plainly). Save: `save.sky = { unlocked: bool, at: ms,
+  ceremonySeen: bool, era: 'earth' | 'sky' }` (normalize; merge: unlocked OR, at = earliest, ceremonySeen OR, era from the later doc).
+- **Unlock ceremony** (once): extends the teaser scene (`src/ui/skyTeaser.js` art): the gate swings open, the player's car drives
+  through, the three ride silhouettes light up in full colour and are named, voice: "The Sky Era is open!". Skippable, reduced-motion
+  stills, natural voice only.
+- **Era switch** on the title and the track screen: two big tabs "Earth" / "Sky". The chosen era is remembered. The garage shows
+  the era's rides first; every car and ride stays owned.
+- Before unlock the Sky tab shows the Sky Road card (existing) and the locked gate; it never blocks Earth.
+
+### Sky tracks (Phase 1: 5 tracks; Phase 2 adds 5 more)
+Data in a NEW file `src/data/skyTracks.js` (same shape as `src/data/tracks.js` plus sky fields), ids `sky-1`…; their own unlock chain
+starting from `sky-1`. Floating islands over a cloud sea, low-to-normal gravity, distances tuned with `tools/economy-sim.mjs`.
+New course features (course.js / engine.js / render.js):
+- **Boost rings** (big glowing hoops in the air; flying through = a speed kick + nitro refill + cash).
+- **Gravity wells** (slow-swirling orbs: inside their radius the car is pulled toward the centre; skilled flying slingshots).
+- **Island hops**: landing zones are islands with gaps; falling between islands lands softly on the cloud sea (a "splash" of cloud,
+  the run continues from the next island's edge, no crash, no penalty except distance) — never a fail state.
+- **Spell Boost gate**: one per flight at a fixed point after the apex (see below).
+- Sky backdrops/styles: dusk-to-day sky, cloud sea parallax, sun rays, floating islands (reuse the teaser's palette).
+
+### Sky rides (Phase 1: 3)
+NEW file `src/data/skyRides.js` (same shape as `src/data/cars.js`, `era: 'sky'`), bought with Garage cash, priced above the Rhino
+tier but reachable from Sky track earnings (tune with the economy sim): **Hover Bike** (light, floaty, glides: holding nitro in the
+air trades speed for lift), **Rocket Car** (heavy, huge boost, short glide), **Mech Walker** (lands on its feet, hops instead of
+rolling on the ground, best grip). Each has its own body/wheels-or-legs art and handling profile; upgrades use the same system.
+The player's Earth cars can also fly Sky tracks (worse there); the three rides can also run Earth tracks.
+
+### The second jump you earn by spelling (the Spell Boost)
+- On Sky tracks, once per flight, when the car passes the apex and reaches the Spell Boost gate, the engine emits
+  `{ type: 'spellBoost', x, y }` and **freezes** the simulation (`game.freeze(true)`; the scene keeps a gentle idle animation:
+  clouds drift, the car hovers with a soft glow; NO timer, no countdown, nothing ticks).
+- The app shows the spell panel exactly as for the launch word (same scheduler pick, same audio-first flow, same compare / fix /
+  cover-copy-compare after a miss; it counts toward today's mission and the word's Leitner record like any retrieval).
+- Correct first try → `game.boost({ power: 1.0 })`: a big second jump (upward + forward thrust), then the word's letters appear
+  as rings along the new arc **after** spelling (a victory lap: each ring says its letter as it's flown through; Simultaneous Oral
+  Spelling). Fixed after a miss → `game.boost({ power: 0.5 })` (a smaller hop; the child still gets the lap). The app calls
+  `game.freeze(false)` after the panel closes. No word is ever shown before it is spelled.
+- A run has at most one Spell Boost (so a Sky race = launch word + boost word = 2 retrievals); the mission size stays 8.
+- `wordsPerRace` (Parents) still applies to the launch; the Spell Boost can be switched off per child in Parents → Options
+  ("Spell Boost in the Sky: on/off", default on).
+
+### Engine contract additions (`src/game/engine.js`)
+- `start(cfg)` accepts `track.era === 'sky'` tracks and `car.era === 'sky'` rides; new events `spellBoost`, `boostRing`, `gravityWell`
+  (enter/exit), `cloudSplash`, `islandLand`; new methods `freeze(on)`, `boost({ power })`; `getHudState()` gains
+  `{ frozen, boostReady, boostUsed }`. Earth tracks behave exactly as before (regression: engine-smoke, integration-smoke).
+
+### Phase 2 (later, not in this build)
+5 more sky tracks; harder word forms from mastered words (suffix and doubling rules: hop → hopping), offered at most 20% of words
+and counted as new words; homophone sentences (the voice says a sentence, the child types the right homophone; no choices);
+a dictation boss (a short sentence with 2–3 of the week's words typed from memory); Space Era teaser.
+
+### Versions / tests
+Spell Jump 4.0.0. Tests: engine-smoke (sky physics, freeze/boost, cloud splash never crashes), integration-smoke (a full sky run with
+a spell boost on the mock), spelling-tests (unlock rules, save merge, mission counting with the boost word), economy-sim (sky tracks and
+rides tuned), ui-smoke (ceremony once, era switch, garage sky rides, boost panel flow with the freeze, parent override, no device voice,
+layout at 390×844 / 844×390). All Era 1 suites must still pass.
