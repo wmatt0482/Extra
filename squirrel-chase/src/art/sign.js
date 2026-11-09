@@ -121,11 +121,11 @@ export function animateLetterIn(el, idx) {
     { opacity: 1, transform: 'translate(0,0) rotate(-6deg) scale(0.9)', offset: 0.85 },
     { opacity: 1, transform: 'translate(0,0) rotate(0) scale(1)' },
   ], { duration: 760, easing: 'cubic-bezier(.3,.6,.4,1)' });
-  a.onfinish = () => { finish(); sparkle(slot, bg); };
+  
   letter.style.opacity = '0';
   a.addEventListener && a.addEventListener('finish', () => { letter.style.opacity = '1'; });
   letter.setAttribute('opacity', '1');
-  return a.finished.then(() => true, () => { finish(); return true; });
+  return a.finished.then(() => { finish(); sparkle(slot, bg); return true; }, () => { finish(); return true; });
 }
 
 function sparkle(slot, bg) {

@@ -161,7 +161,7 @@ function pinsSvg(cities, highlight, visited, avoid = []) {
     const far = Math.hypot(nx - hx0, ny - hy0) > 14;
     const leader = far ? `<path class="sqm-leader" d="M0 -16L${(nx - c.x).toFixed(1)} ${(ny - c.y).toFixed(1)}" fill="none" stroke="#8a6a2c" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1 5"/>` : '';
     const nearest = Math.min(1e9, ...list.filter((o) => o !== c).map((o) => Math.hypot(o.x - c.x, o.y - c.y)));
-    const hr = Math.max(30, Math.min(44, nearest * 0.75));
+    const hr = Math.max(32, Math.min(48, nearest * 0.8));
     const cls = `sqm-pin${highlight === c.id ? ' is-hl' : ''}${visited && visited.includes(c.id) ? ' is-visited' : ''}`;
     const text = ls.map((t, i) => `<tspan x="${(tx - c.x).toFixed(1)}" y="${(best.b.y + FS * 0.86 + i * LH + 2 - c.y).toFixed(1)}">${esc(t)}</tspan>`).join('');
     return `<g class="${cls}" data-city="${esc(c.id)}" role="button" tabindex="0" aria-label="${esc(c.name)}" transform="translate(${c.x} ${c.y})">

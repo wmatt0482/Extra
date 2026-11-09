@@ -52,4 +52,13 @@ const cells = (s, items, cls = '') => { const r = $(`<div class="row panel ${cls
   A.drawMap(b, { cities, highlight: 'ithaca', visited: ['corning'] });
   s.appendChild($('<p id="maplog">tap a pin</p>')); a.addEventListener('click', (e) => { const g = e.target.closest('[data-city]'); if (g) document.getElementById('maplog').textContent = 'clicked ' + g.dataset.city; });
 }
+{ const s = sec('Postcards');
+  const cs = [['rochester','Rochester'],['buffalo','Buffalo'],['niagara-falls','Niagara Falls'],['syracuse','Syracuse'],['albany','Albany'],['cooperstown','Cooperstown'],['corning','Corning'],['lake-placid','Lake Placid'],['saratoga','Saratoga Springs'],['ithaca','Ithaca'],['nyc','New York City'],['x','Watertown']];
+  const r = $('<div class="row"></div>'); s.appendChild(r);
+  cs.forEach(([id, name]) => r.appendChild($(`<div class="cell" style="width:min(440px,100%)">${A.postcardSvg({ id, name })}<span>${name}</span></div>`)));
+}
+{ const s = sec('Travel');
+  cells(s, ['plane','train','car'].map((m) => [m, A.travelSvg(m).replace('class="sq-travel', 'style="width:160px;height:80px" class="sq-travel')]), 'light');
+  cells(s, ['plane','train','car'].map((m) => [m, A.travelSvg(m).replace('class="sq-travel', 'style="width:160px;height:80px" class="sq-travel')]), 'dark');
+}
 </script></body></html>
