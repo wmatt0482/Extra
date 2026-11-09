@@ -39,8 +39,6 @@ const SHELL = [
   "../spell-jump/src/ui/musicNote.js",
   "../spell-jump/src/ui/parentZone.js",
   "../spell-jump/src/ui/players.js",
-  "../spell-jump/tools/fixtures/sky/skyRides.js",
-  "../spell-jump/tools/fixtures/sky/skyTracks.js",
   "celebrate.css",
   "icons/icon-192.png",
   "icons/icon-512.png",

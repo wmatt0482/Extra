@@ -13,6 +13,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 // its door so the game's own shell never needs it, and a second pass lists what the Lab brings along separately.
 function visit(file, set = files, stopAtLab = true) {
   if (set.has(file) || (stopAtLab && file.startsWith(lab))) return;
+  // tools/ is never deployed (build.sh excludes it): a precached tools/ file would 404 and break the worker's install
+  if (file.split(path.sep).includes('tools')) { console.warn('skipped test-only import', path.relative(process.cwd(), file)); return; }
   set.add(file);
   if (!/\.(m?js)$/.test(file) || file.includes('/vendor/')) return;
   const s = readFileSync(file, 'utf8');

@@ -55,7 +55,10 @@ export async function loadSkyData({ fixtures = false } = {}) {
   let tracks = [], rides = [], source = 'none';
   if (fixtures) {
     try {
-      const [t, r] = await Promise.all([import('../../tools/fixtures/sky/skyTracks.js'), import('../../tools/fixtures/sky/skyRides.js')]);
+      // the path is built at run time on purpose: test-only files must never look like a dependency to the offline-list scanners
+      // (build-crew/tools/prepare-offline.mjs and friends), because tools/ is not deployed and a missing precache file breaks install
+      const dir = ['..', '..', 'tools', 'fixtures', 'sky', ''].join('/');
+      const [t, r] = await Promise.all([import(dir + 'skyTracks.js'), import(dir + 'skyRides.js')]);
       tracks = t.SKY_TRACKS || []; rides = r.SKY_RIDES || []; source = 'fixture';
     } catch (e) { console.warn('[sky] fixtures unavailable', e && e.message ? e.message : e); }
   } else {
