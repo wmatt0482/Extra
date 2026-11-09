@@ -35,7 +35,7 @@ import { createCoach } from './ui/coach.js';
 import { createParentZone } from './ui/parentZone.js';
 import { EXTRA_ICONS, drawAvatar, drawBackdrop } from './ui/art.js';
 
-const VERSION = '0.1.4';
+const VERSION = '0.1.5';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'caseFiles.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -281,6 +281,7 @@ async function boot() {
       return;
     }
     if (k !== 'family') return;
+    Audio.syncFamilyMusic();
     replaceInPlace(family, Profiles.loadFamily());
     if (currentPlayerId && !Profiles.playerById(family, currentPlayerId)) {
       currentPlayerId = null; replaceInPlace(save, defaultSave());

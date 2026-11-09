@@ -22,6 +22,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { CASE_BY_ID, TRAINING } from './fixtures/index.js';
+import { runMusicOffCheck } from '../../car-jump/tools/music-off-check.mjs';   // the family music switch (Parents → Options)
 import { COACH } from '../src/logic/coach.js';
 import { LINES } from '../src/logic/lines.js';
 import { wordChips } from '../src/logic/report.js';
@@ -961,9 +962,9 @@ async function runOffline(browser) {
   await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 15000 });
   await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
   await closeModal(page);
-  await page.waitForFunction(async () => { const c = await caches.open('case-files-v0.1.4'); return (await c.keys()).length > 25; }, null, { timeout: 15000 });
+  await page.waitForFunction(async () => { const c = await caches.open('case-files-v0.1.5'); return (await c.keys()).length > 25; }, null, { timeout: 15000 });
   const names = await J(page, async () => (await caches.keys()).filter((k) => k.startsWith('case-files-')));
-  check(names.length === 1 && names[0] === 'case-files-v0.1.4', `the service worker cache is named case-files-v0.1.4 (${names.join(',')})`);
+  check(names.length === 1 && names[0] === 'case-files-v0.1.5', `the service worker cache is named case-files-v0.1.5 (${names.join(',')})`);
   await ctx.setOffline(true);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector(visibleSel('#screen-players'), { timeout: 15000 });
@@ -979,7 +980,14 @@ async function runOffline(browser) {
 async function main() {
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch();
-  try { for (const l of LAYOUTS) await runLayout(browser, l); if (!ONLY || ONLY === 'offline') await runOffline(browser); } finally { await browser.close(); }
+  try {
+    if (!ONLY || ONLY === 'musicoff') {
+      // Case Files plays no background music of its own: the check is the toggle behind the PIN, the stored record, the shared audio lock and that effects still play
+      await runMusicOffCheck(browser, { name: 'case-files', url: BASE + '/case-files/index.html', audio: '/spell-jump/src/audio.js', hasMusic: false,
+        pick: async (page) => { await page.waitForSelector('#screen-players:not([hidden])'); },      // (the Parents button on the picker; the agency home opens with a coach card)
+        parentsBtn: '#btn-parents-picker', zoneReady: '.pz-tabs', famToggle: '#pz-family-music', shot: process.env.MUSICOFF_SHOT || null }, check);
+    }
+    for (const l of LAYOUTS) await runLayout(browser, l); if (!ONLY || ONLY === 'offline') await runOffline(browser); } finally { await browser.close(); }
   console.log(`\nscreenshots: ${SHOTS}`);
   if (failures.length) { console.log(`\n${failures.length} FAILED:\n- ` + failures.join('\n- ')); process.exit(1); }
   console.log('\nALL CASE FILES UI CHECKS PASSED');

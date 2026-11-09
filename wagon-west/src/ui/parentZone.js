@@ -23,6 +23,7 @@ import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spe
 import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
 import { $, h, money } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
+import { FAMILY_MUSIC_HELP, FAMILY_MUSIC_LABEL, familyMusicIsOn, setFamilyMusic } from '../../../spell-jump/src/ui/musicNote.js';
 import { dayChart, lastDays, rangeChips } from '../../../spell-jump/src/ui/chart.js';
 import { ANIMAL_BY_ID, LEG_BY_ID } from '../content/legs.js';
 import { ROUTES, SITES } from '../content/routes.js';
@@ -495,6 +496,8 @@ export function createParentZone(app) {
     const st = app.settings;
     return [
       ...(p ? playerOptions(p) : []),
+      h('div', { class: 'hud-label pz-sec' }, 'All games'),
+      toggle(FAMILY_MUSIC_LABEL, FAMILY_MUSIC_HELP, familyMusicIsOn(app.family), (v) => setFamilyMusic(app.family, v), 'opt-family-music'),
       h('div', { class: 'hud-label pz-sec' }, 'This device'),
       toggle('Sound effects', null, st.sound, (v) => app.setSetting('sound', v), 'opt-sound'),
       toggle('Music', null, st.music, (v) => app.setSetting('music', v), 'opt-music'),

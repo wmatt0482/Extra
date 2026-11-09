@@ -50,6 +50,7 @@ export function familySyncData(f) {
     options: clone(f.options || {}),
     optionsUpdatedAt: clone(f.optionsUpdatedAt || {}),
     removedPlayers: (f.removedPlayers || []).slice(),
+    ...(num(f.musicOffAt) > 0 ? { musicOff: f.musicOff === true, musicOffAt: num(f.musicOffAt) } : {}),
   };
 }
 
@@ -81,10 +82,14 @@ export function mergeFamily(local, remote, { preferRemotePin = false } = {}) {
     const t = pick === lo ? lt : rt;
     if (t) optionsUpdatedAt[p.id] = t;
   }
+  // the parent's family-wide music switch: the later change wins (a tie keeps "off")
+  const lm = num(local.musicOffAt), rm = num(remote.musicOffAt);
+  const musicSide = lm !== rm ? (lm > rm ? local : remote) : (local.musicOff === true ? local : remote);
   return {
     v: Math.max(num(local.v), num(remote.v), 1), players,
     pinHash: pinSide.pinHash || null, pinUpdatedAt: pinSide.pinHash ? num(pinSide.pinUpdatedAt) : 0,
     options, optionsUpdatedAt, removedPlayers: removed,
+    ...(Math.max(lm, rm) > 0 ? { musicOff: musicSide.musicOff === true, musicOffAt: num(musicSide.musicOffAt) } : {}),
   };
 }
 

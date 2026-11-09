@@ -56,6 +56,7 @@ import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
 import { createPinger } from '../../spell-jump/src/meta/pings.js';
 import { Audio } from '../../spell-jump/src/audio.js';
+import { bindMusicButton } from '../../spell-jump/src/ui/musicNote.js';
 import { $, $$, h, money } from '../../spell-jump/src/ui/dom.js';
 import { COIN, hydrateIcons, icon } from '../../spell-jump/src/ui/icons.js';
 import { tts } from '../../spell-jump/src/spelling/tts.js';
@@ -138,7 +139,7 @@ import { createSpeech, splitSay, HEAD_START_MS } from './meta/speech.js';
 import { FIXED_LINES, TEST_LINE, COACH_TEXT, CAMP_EVENING, DOG_OFFER, RAFT_INTRO, RIVER_ACROSS, HUNT_FISH_ONLY, HUNT_NO_ARROWS, COVER_LINE, spoken as spokenText, breakdownText, collectVoiceTexts, V15, dampLine as dampText } from './meta/voiceTexts.js';
 import { listTexts, wordTexts, cloudLetterText } from '../../spell-jump/src/spelling/cloudVoice.js';
 
-const VERSION = '1.8.0';
+const VERSION = '1.9.0';
 // the natural voice (src/meta/speech.js, src/meta/voiceTexts.js): the server makes clips of at most 200 characters, so a longer line
 // is said (and prepared) a piece at a time; the fixed lines the screens say are in voiceTexts.js (FIXED_LINES)
 const TUNES = ['susanna', 'buffalo', 'tucker'];
@@ -797,6 +798,7 @@ async function boot() {
       return;
     }
     if (k !== 'family') return;
+    Audio.syncFamilyMusic();               // the parent's "Background music in all games" switch (-> Music.lock)
     replaceInPlace(family, Profiles.loadFamily());
     if (currentPlayerId) applyVoice();
     if (currentPlayerId && !Profiles.playerById(family, currentPlayerId)) {
@@ -3193,15 +3195,17 @@ async function boot() {
     if (T) T.last = 0;
   }
   function closePause() { if (paused) { paused = false; S('play'); } $('#panel-pause').hidden = true; }
+  let paintMusicBtn = () => {};
   function renderPauseToggles() {
     $('#pause-sound').textContent = `Sound: ${settings.sound ? 'On' : 'Off'}`;
-    $('#pause-music').textContent = `Music: ${settings.music ? 'On' : 'Off'}`;
+    paintMusicBtn();
     $('#pause-motion').textContent = `Motion: ${settings.reducedMotion ? 'Calm' : 'Full'}`;
   }
   $('#btn-pause').addEventListener('click', pause);
   $('#pause-resume').addEventListener('click', resume);
   $('#pause-sound').addEventListener('click', () => setSetting('sound', !settings.sound));
   $('#pause-music').addEventListener('click', () => setSetting('music', !settings.music));
+  paintMusicBtn = bindMusicButton($('#pause-music'), () => settings.music);      // disabled + note while a grown-up has music off
   $('#pause-motion').addEventListener('click', () => setSetting('reducedMotion', !settings.reducedMotion));
   $('#pause-wagon').addEventListener('click', () => { closePause(); if (screen === 'trail' && T) wagonPanel.open(); });
   $('#pause-camp').addEventListener('click', () => { closePause(); openCamp('trail').catch((e) => console.error('[WagonWest] camp', e)); });
@@ -3241,6 +3245,8 @@ async function boot() {
   // the shared Audio.music() loop is never started in this game: the trail has its own tunes (./meta/music.js)
   Audio.setSound(settings.sound); Audio.music(false); Sfx.setSound(settings.sound);
   try { Music.on(settings.music); } catch (_) { /* ignore */ }
+  // the family-wide music switch: Music never plays while it is off, and stops at once when it flips (also from a sync / another tab)
+  try { Music.lock(Audio.musicLocked); Audio.onMusicLock((off) => Music.lock(off)); } catch (_) { /* ignore */ }
   const unlock = () => { Audio.unlock(); Sfx.unlock(); tts.unlock(); Audio.setSound(settings.sound); try { Music.unlock(); } catch (_) { /* ignore */ } syncMusic(); };
   document.addEventListener('pointerdown', unlock, { capture: true });
   document.addEventListener('touchend', unlock, { capture: true });

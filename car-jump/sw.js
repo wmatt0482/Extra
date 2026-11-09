@@ -71,6 +71,7 @@ const SHELL = [
   'src/ui/titleHero.js',
   'src/ui/players.js',
   'src/ui/parentZone.js',
+  'src/ui/musicNote.js',
   'src/spelling/words.js',
   'src/spelling/scheduler.js',
   'src/spelling/wordStore.js',

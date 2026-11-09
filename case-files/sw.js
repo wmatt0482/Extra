@@ -9,7 +9,7 @@
 // (/api/tts/clip/<id>) are content-addressed: cache-first in Spell Jump's clip cache (TTS_CACHE, shared on this origin).
 // Caches are per origin, shared with the other games' workers: this worker only ever deletes its own
 // ('case-files-…'). If another worker removed this cache, the next online launch puts the shell back (ensureShell).
-const VERSION = 'case-files-v0.1.4';
+const VERSION = 'case-files-v0.1.5';
 const PREFIX = 'case-files-';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
@@ -66,6 +66,7 @@ const OPTIONAL = [
   '../lab/src/index.js',       // The Lab (lab/SPEC.md §3.6): optional, so a game never fails to start without it; the page posts the Lab modules it loaded
   '../spell-jump/src/audio.js',
   '../spell-jump/src/ui/dom.js',
+  '../spell-jump/src/ui/musicNote.js',
   '../spell-jump/src/ui/icons.js',
   '../spell-jump/src/spelling/profiles.js',
   '../spell-jump/src/spelling/keyboard.js',

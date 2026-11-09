@@ -107,6 +107,13 @@ fraction the side with more throws; waves and moves union by time; the Lab and o
 the later. **Pings** (anonymous, `meta/pings.js`): 'day', 'wave' after each wave, 'lab' when the Lab ends; counted
 under `ff` by the stats function. Privacy: no names or ids leave the device in a ping.
 
+## 1.8.0 (a grown-up can turn the music off for every game)
+
+- **Parents → Options → Background music in all games** (On / Off, behind the PIN): the family-wide switch kept in Spell Jump's family record
+  (`musicOff` + `musicOffAt`, synced, the later change wins). Off: the music never starts and stops at once, also when a sync brings the change in;
+  effects and the voice stay on. The pause menu's Music button reads Off, disabled, "Music is off (set by a grown-up)"; turning it back on restores
+  the child's own Music setting. Test: `tools/ui-smoke.mjs` (`ONLY=musicoff`). VERSION 1.8.0; the service worker is `fraction-fright-v1.8.0`.
+
 ## 1.7.0 (cohesion: one Lab chip, Zombie School)
 
 Stage 2 of the Lab cohesion round (`lab/docs/COHESION.md`). The game, its economy and its saves are unchanged.

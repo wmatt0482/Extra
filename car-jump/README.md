@@ -681,6 +681,16 @@ and plays exactly as before when `/lab/` is missing, blocked or offline. The Lab
 - **Tests**: `node tools/lab-tests.mjs` (economy snapshot, bridge, looks, ceremony, certificate, kid-rule audit) and `node tools/lab-smoke.mjs`
   (Playwright against the repo root: the Lab present, and every `/lab/` request blocked).
 
+## Next: parent-controlled "Background music in all games" (changelog; not versioned yet)
+
+Matt: "mute the background music on parent side for all games." **Parents → Options → ALL GAMES → Background music in all games** (On / Off,
+PIN-locked like the rest of the Parent Zone). Off turns the music off in every game and The Lab, on every device in the family; sound
+effects and the voice stay on. Stored in the family record as `musicOff` + `musicOffAt` (ms; `familyMusicOff` / `setFamilyMusicOff` in
+`src/spelling/profiles.js`), synced inside the `family` key; `mergeFamily` takes the later `musicOffAt` (a tie keeps off). `Audio.lockMusic`
+/ `Audio.syncFamilyMusic` (`src/audio.js`, shared by all games) stop the music at once and keep `startMusic` from running; the child's own
+Music setting is never touched, so turning the family switch back on restores it. The pause menu's Music button shows Off, disabled,
+with "Music is off (set by a grown-up)" (`src/ui/musicNote.js`). Tests: `tools/spelling-tests.mjs` (helpers, normalize, merge), `tools/ui-smoke.mjs` (`ONLY=musicoff`).
+
 ## v4.0: the Sky Era (changelog; the app side)
 
 The Sky Road of v3.10 now leads somewhere. Era 1 (Earth) is unchanged and always open; nothing transfers away. The contract is the "Sky Era (v4.0)"

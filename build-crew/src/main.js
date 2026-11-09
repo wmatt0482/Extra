@@ -60,6 +60,7 @@ app.sync = createSyncClient({
   canApply: () => onMenu() && !app.pz?.isOpen,
   onApply(k) {
     if (k === 'family') {
+      Audio.syncFamilyMusic();
       app.family = Profiles.loadFamily();
       if (!Profiles.playerById(app.family, app.playerId)) app.playerId = null;
     }

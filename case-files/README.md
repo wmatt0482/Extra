@@ -9,7 +9,7 @@ memory and writing a one-sentence case report. One new case opens each day; the 
 - Learning design (technique, evidence, where it lives): [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md).
 - Content (written to the SPEC section 5 format by the content agent): `src/content/`, `docs/CONTENT-GUIDE.md`, `docs/SOURCES.md`.
 
-Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.4`, manifest, icons). Version **0.1.4**.
+Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.5`, manifest, icons). Version **0.1.5**.
 
 ## The flow
 
@@ -96,6 +96,12 @@ picked in Spell Jump. Only the current case's lines are prepared. The device voi
 on the screen and the listen buttons stay quiet (with a gentle note). The sound setting silences everything.
 
 ## Changelog
+
+### 0.1.5
+- **Parents → Options → Background music in all games** (On / Off, behind the PIN): the family-wide switch kept in Spell Jump's family record
+  (`musicOff` + `musicOffAt`, synced, the later change wins). Case Files plays no background music of its own (`Audio.music(false)`), so here it only
+  sets the one family switch for the other games, and `Audio.syncFamilyMusic()` keeps the shared audio module locked when a sync brings it in.
+  Test: `tools/ui-smoke.mjs` (`ONLY=musicoff`: the toggle behind the PIN, the stored record, the lock, effects). VERSION 0.1.5.
 
 ### 0.1.4
 The Lab cohesion round (stage 2; `lab/docs/COHESION.md`).

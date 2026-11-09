@@ -28,6 +28,7 @@
 // ghost or a family member's, with no clock, gap chip, position badge or countdown (the ghost is the clock); see startRide's `chase`.
 
 import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
+import { bindMusicButton } from '../../spell-jump/src/ui/musicNote.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
 import { createPinger } from '../../spell-jump/src/meta/pings.js';
 import { registerTrailBlazerSync } from './meta/sync.js';
@@ -83,7 +84,7 @@ import { drawAvatar, drawPreview, enginePaint, loadVehicle, playerLook, setLookO
 import { COLOR_BY_PAINT } from './data/paints.js';
 import { medalTimesFor, ordinal } from './data/medals.js';
 
-const VERSION = '1.10.0';
+const VERSION = '1.11.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'trailBlazer.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -549,6 +550,7 @@ async function boot() {
     const m = /^([a-z0-9_-]{1,32})\.(tb|facts)$/.exec(k);
     if (m) { trailBlazerApplied(m[1], m[2]); return; }
     if (k !== 'family') return;                    // Spell Jump's own keys: nothing in memory here
+    Audio.syncFamilyMusic();                       // the parent's "Background music in all games" switch
     replaceInPlace(family, Profiles.loadFamily());
     if (currentPlayerId && !Profiles.playerById(family, currentPlayerId)) {
       currentPlayerId = null; replaceSave(defaultSave());
@@ -1141,9 +1143,10 @@ async function boot() {
     shakeEl.style.setProperty('--p', String(v / 100));
     $('#pause-shake-val').textContent = `${v}%`;
   }
+  let paintMusicBtn = () => {};
   function renderPauseToggles() {
     $('#pause-sound').textContent = `Sound: ${settings.sound ? 'On' : 'Off'}`;
-    $('#pause-music').textContent = `Music: ${settings.music ? 'On' : 'Off'}`;
+    paintMusicBtn();
     $('#pause-motion').textContent = `Motion: ${settings.reducedMotion ? 'Calm' : 'Full'}`;
     paintShake(settings.shake);
     shakeEl.setAttribute('aria-disabled', String(shakeOff()));
@@ -1168,6 +1171,7 @@ async function boot() {
   $('#pause-resume').addEventListener('click', resume);
   $('#pause-sound').addEventListener('click', () => setSetting('sound', !settings.sound));
   $('#pause-music').addEventListener('click', () => setSetting('music', !settings.music));
+  paintMusicBtn = bindMusicButton($('#pause-music'), () => settings.music);      // disabled + note while a grown-up has music off
   $('#pause-motion').addEventListener('click', () => setSetting('reducedMotion', !settings.reducedMotion));
   $('#pause-end').addEventListener('click', () => {
     if (!run && hill && hill.active) {        // v1.7: leaving the hill keeps what was climbed

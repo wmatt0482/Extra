@@ -1120,6 +1120,32 @@ test('per-player options: the later optionsUpdatedAt wins per player (both devic
   assert.deepEqual(m.optionsUpdatedAt, { pmia: T0 + 100, pleo: T0 + 200 });
   assert.deepEqual(mergeFamily(b, a).options, m.options, 'symmetric');
 });
+test('family music switch: the later musicOffAt wins either way, a tie keeps off, absent changes nothing', () => {
+  const a = famData([], { musicOff: true, musicOffAt: T0 + 10 }), b = famData([], { musicOff: false, musicOffAt: T0 + 20 });
+  assert.equal(mergeFamily(a, b).musicOff, false); assert.equal(mergeFamily(b, a).musicOff, false);
+  assert.equal(mergeFamily(a, b).musicOffAt, T0 + 20);
+  const c = famData([], { musicOff: true, musicOffAt: T0 + 30 });
+  assert.equal(mergeFamily(c, b).musicOff, true); assert.equal(mergeFamily(b, c).musicOff, true);
+  assert.equal(mergeFamily(famData([], { musicOff: true, musicOffAt: T0 }), famData([], { musicOff: false, musicOffAt: T0 })).musicOff, true, 'tie: off');
+  const none = famData([]);
+  assert.equal(mergeFamily(a, none).musicOff, true, 'a device that never set it does not undo it');
+  assert.equal(mergeFamily(none, a).musicOff, true);
+  assert.equal('musicOff' in mergeFamily(none, famData([])), false, 'absent stays absent');
+});
+const PRm = await import('../src/spelling/profiles.js');
+const { familySyncData } = await import('../src/sync/merge.js');
+test('family music helpers: familyMusicOff / setFamilyMusicOff, normalize, familySyncData round trip', () => {
+  const PR = PRm;
+  const f = PR.defaultFamily();
+  assert.equal(PR.familyMusicOff(f), false); assert.equal(PR.familyMusicOff(null), false);
+  PR.setFamilyMusicOff(f, true, T0); assert.equal(PR.familyMusicOff(f), true); assert.equal(f.musicOffAt, T0);
+  PR.setFamilyMusicOff(f, false, T0); assert.equal(PR.familyMusicOff(f), false); assert.ok(f.musicOffAt > T0, 'a change in the same ms still moves the stamp forward');
+  PR.setFamilyMusicOff(f, true, T0 + 5000);
+  const back = PR.normalizeFamily(JSON.parse(JSON.stringify(familySyncData(f))));
+  assert.equal(PR.familyMusicOff(back), true); assert.equal(back.musicOffAt, T0 + 5000);
+  assert.equal('musicOff' in familySyncData(PR.defaultFamily()), false, 'never set: nothing in the synced record');
+  assert.equal(PR.familyMusicOff(PR.normalizeFamily({ players: [], musicOff: true })), false, 'no stamp: ignored');
+});
 
 console.log('sync: merge rules — words');
 const W = (d, t) => ({ updatedAt: t, data: d });

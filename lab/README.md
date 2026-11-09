@@ -34,6 +34,12 @@ BASE_URL=http://localhost:8130 node lab/tools/e2e-cross.mjs    # the cross-game 
 
 ## Changelog
 
+- **1.3.0** (service worker `lab-v1.3.0`; the data version `LAB_VERSION` stays 1)
+  - Grown-ups → **All games → Background music in all games** (On / Off, behind the PIN, the same switch as Parents → Options in every game): the family-wide
+    music switch kept in Spell Jump's family record (`musicOff` + `musicOffAt`, synced, the later change wins). Off: the shared audio module never starts the
+    music loop (`Audio.lockMusic`) and stops it at once, also when a sync or another tab brings the change in; effects and the voice stay on. The Lab has no
+    music toggle of its own, so there is no button to disable. Test: `tools/ui-smoke.mjs` (Grown-ups; the native-input count is now 5).
+
 - **1.2.0** (service worker `lab-v1.2.0`; the data version `LAB_VERSION` stays 1: the lab doc gained one additive map, `sum`, which an older build simply drops)
   - The Lab holds the six games together: `lab.mountChip(container?, opts)` (the same avatar, "Lab LV n", Lab coins and the Lab streak flame in every game, tap = The Lab), the Games panel (`lab.openGames()`, all six games, The Lab and Home with the current one highlighted), `lab.mountPickerButton(container)` and `lab.summary(game, { level, line, today, lastPlayed })`, kept per child per game and merged by family sync (the later `lastPlayed` wins).
   - The Lab home shows six progress cards (one per game; a game not played yet says "Try it"); Grown-ups shows the same six as "Progress at a glance" with where the family code is.

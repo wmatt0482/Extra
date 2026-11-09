@@ -18,6 +18,8 @@ let ctx,
   allowed = true,
   ducked = false,
   playing = false,
+  /** The parent's family-wide "Background music in all games" switch (Spell Jump's Audio.lockMusic): true = silent. */
+  locked = false,
   /** AudioContext time before which the tune stays silent, so the celebration stinger plays alone. */
   holdUntil = 0;
 /** Plays one plucked note: a fast 8 ms attack, then an exponential fade over dur seconds. */
@@ -38,10 +40,10 @@ function tone(note, dur, gain, type = 'triangle', delay = 0) {
 /** Applies the current state to the bus volume (ducked under speech) and starts the one sequencer timer. The timer
  *  keeps ticking while muted so the tune resumes cleanly; a bass note lands on every fourth melody note. */
 function sync() {
-  if (bus) bus.gain.setTargetAtTime(allowed && playing ? (ducked ? 0.025 : 0.08) : 0, ctx.currentTime, 0.12);
+  if (bus) bus.gain.setTargetAtTime(allowed && playing && !locked ? (ducked ? 0.025 : 0.08) : 0, ctx.currentTime, 0.12);
   if (ctx && !timer)
     timer = setInterval(() => {
-      if (!allowed || !playing || ctx.state !== 'running' || ctx.currentTime < holdUntil) return;
+      if (!allowed || !playing || locked || ctx.state !== 'running' || ctx.currentTime < holdUntil) return;
       if (ticks === 0) {
         const [note, length] = phrase[index++ % phrase.length];
         tone(note, 0.13 * length, 0.48);
@@ -70,6 +72,17 @@ export const Music = {
   on(v) {
     allowed = v;
     sync();
+  },
+  lock(v) {
+    locked = !!v;
+    sync();
+  },
+  get locked() {
+    return locked;
+  },
+  /** True while the tune is audible: the sequencer runs, the setting is on, nothing (modal, parent zone, parent switch) holds it. */
+  get isPlaying() {
+    return !!ctx && allowed && playing && !locked;
   },
   play(v) {
     playing = v;

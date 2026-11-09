@@ -15,6 +15,7 @@
 // the dial race by race.
 // the title. Native text inputs exist only here (family code, custom problems, player names).
 import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spell-jump/src/spelling/profiles.js';
+import { FAMILY_MUSIC_HELP, FAMILY_MUSIC_LABEL, familyMusicIsOn, setFamilyMusic } from '../../../spell-jump/src/ui/musicNote.js';
 import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
 import { ALL_FAMILIES, MAX_CUSTOM, factText, famLabel, parseCustom } from '../facts/facts.js';
 import { STATUSES } from '../facts/scheduler.js';
@@ -534,6 +535,7 @@ export function createParentZone(app) {
       toggle('Hill Climb', 'After a finished race: a mountain past the finish, one fact per burst up it (never timed)', st.hill !== false, (v) => app.setSetting('hill', v), 'opt-hill'),
       h('div', { class: 'row slider-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Screen shake')), h('div', { class: 'slider' }, shake, out)),
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
+      toggle(FAMILY_MUSIC_LABEL, FAMILY_MUSIC_HELP, familyMusicIsOn(app.family), (v) => setFamilyMusic(app.family, v), 'opt-family-music'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with Spell Jump')),
         h('button', { class: 'btn btn-sm', id: 'opt-pin', onclick: () => { pinMode = 'reset'; pinEntry = ''; view = 'pin'; render(); } }, 'Change PIN')),
       // v1.9: The Lab's Grown-ups panel (crate odds, the quest / board / goal switches, reset): the PIN was just entered, so it opens unlocked

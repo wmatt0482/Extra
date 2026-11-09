@@ -2,7 +2,8 @@
 //   spellJump.family              { v, players: [{id, name, color, createdAt, updatedAt}], pinHash, pinUpdatedAt,
 //                                   options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace, levelsPerRace,
 //                                   voiceName, voiceLang, cloudVoice?, skyBoost? (v4.0: false = no Spell Boost in the Sky; absent = on)}}, optionsUpdatedAt: {playerId: ms},
-//                                   removedPlayers: [id] (tombstones for family sync), migrated, lastPlayer }
+//                                   removedPlayers: [id] (tombstones for family sync), migrated, lastPlayer,
+//                                   musicOff?: bool + musicOffAt: ms (the parent's "Background music in all games" switch; the later change wins) }
 //                                   (migrated and lastPlayer are per device; the rest is what family sync shares)
 //   spellJump.<playerId>.save     the player's full game save (src/meta/save.js schema)
 //   spellJump.<playerId>.words    the player's spelling data (src/spelling/wordStore.js schema)
@@ -64,6 +65,7 @@ export function normalizeFamily(raw) {
   f.pinUpdatedAt = f.pinHash && typeof raw.pinUpdatedAt === 'number' ? raw.pinUpdatedAt : 0;
   f.migrated = !!raw.migrated;
   f.lastPlayer = f.players.some((p) => p.id === raw.lastPlayer) ? raw.lastPlayer : null;
+  if (typeof raw.musicOffAt === 'number' && raw.musicOffAt > 0) { f.musicOff = !!raw.musicOff; f.musicOffAt = raw.musicOffAt; }
   if (raw.options && typeof raw.options === 'object') {
     for (const p of f.players) if (raw.options[p.id] && typeof raw.options[p.id] === 'object') f.options[p.id] = cleanOptions(raw.options[p.id]);
   }
@@ -120,6 +122,15 @@ export function loadFamily() {
 }
 
 export const writeFamily = (f) => write(FAMILY_KEY, JSON.stringify(f));
+
+/** The parent's family-wide "Background music: off for all games" switch (absent = music allowed). */
+export const familyMusicOff = (f) => !!(f && f.musicOff === true);
+/** Turn the family-wide music switch on/off; stamped so two devices resolve by time (later wins). */
+export function setFamilyMusicOff(f, on, at = Date.now()) {
+  f.musicOff = !!on;
+  f.musicOffAt = Math.max(at, (Number(f.musicOffAt) || 0) + 1);
+  return f.musicOff;
+}
 
 export const playerById = (f, id) => f.players.find((p) => p.id === id) || null;
 export const playerOptions = (f, id) => ({ ...DEFAULT_OPTIONS, ...(f.options[id] || {}) });

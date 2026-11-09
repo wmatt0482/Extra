@@ -5,6 +5,7 @@
 // and then the sheet slides in with the reward drawn large and offers the next job. Completion only ever comes from
 // the mission check on real poses; nothing in the celebration needs a press or runs against a clock the child feels.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
+import { bindMusicButton } from '../../../spell-jump/src/ui/musicNote.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { Audio } from '../../../spell-jump/src/audio.js';
 import { dayKey } from '../../../spell-jump/src/ui/chart.js';
@@ -614,4 +615,6 @@ function pause() {
     ],
     { kind: 'pause' },
   );
+  // a grown-up turned the music off for every game: the button reads Off, disabled, with a note
+  bindMusicButton($('#pause-music'), () => settings.music, (on) => `Music ${on ? 'on' : 'off'}`);
 }

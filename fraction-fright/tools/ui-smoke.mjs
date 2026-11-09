@@ -18,6 +18,7 @@ import { mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { runMusicOffCheck } from '../../car-jump/tools/music-off-check.mjs';   // the family music switch (Parents → Options)
 import { FENCES, TOWERS } from '../src/data/looks.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -510,7 +511,7 @@ async function runLayout(browser, layout) {
   await shot(page, layout, '16-pz-fractions');
   await audit(page, layout.insets, 'Parent Zone (Fractions)');
   await page.click('.pz-tabs [data-tab="options"]');
-  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.7\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
+  check(await J(page, () => !!document.querySelector('#opt-aloud') && /Fraction Fright 1\.8\.0 · mock engine/.test(document.querySelector('.ver').textContent)), 'Options: fractions aloud, the version and engine');
   await page.click('.pz-tabs [data-tab="report"]');
   const rep = await J(page, () => ({ big: document.querySelector('#report-week .pw-big').textContent, small: document.querySelector('#report-week .pw-small').textContent, pct: document.querySelector('#report-week').dataset.pct,
     bar: document.querySelector('#report-week .pw-bar i').style.width, streets: document.querySelectorAll('#report-streets li').length }));
@@ -903,6 +904,10 @@ const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 try {
   for (const layout of LAYOUTS.filter((l) => !process.env.ONLY || l.name === process.env.ONLY)) await runLayout(browser, layout);
+  if (!process.env.ONLY || process.env.ONLY === 'musicoff') await runMusicOffCheck(browser, { name: 'fraction-fright', url: BASE + '/fraction-fright/index.html?mock=1&nosw=1', audio: '/spell-jump/src/audio.js',
+    pick: async (page) => { await page.waitForSelector('#screen-players:not([hidden])'); await page.click('[data-player="pkid"]'); await page.waitForSelector('#screen-title:not([hidden])'); },
+    parentsBtn: '#btn-parents', famToggle: '#opt-family-music', childToggle: '#opt-music', pauseBtn: '#pause-music',
+    shot: process.env.MUSICOFF_SHOT || null }, check);
   if (!process.env.ONLY || process.env.ONLY === 'real') { staticAudit(); await realEngine(browser); }
   if (!process.env.ONLY || process.env.ONLY === 'lab') { await labIntegration(browser); await labReal(browser); await labBlocked(browser); await labParent(browser); }
 } catch (e) {

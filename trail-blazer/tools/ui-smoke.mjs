@@ -34,6 +34,7 @@ import { mkdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { runMusicOffCheck } from '../../car-jump/tools/music-off-check.mjs';   // the family music switch (Parents → Options)
 import { runGateAgreement } from './gate-agreement.mjs';
 import { runLabChecks } from './lab-checks.mjs';       // v1.9: The Lab (the bridge, reports, the pill, Ghost Chase)
 import { runMockFrameRateCheck } from './frame-rate-check.mjs';   // v1.9.1: a race does not depend on the frame rate
@@ -1081,6 +1082,10 @@ const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 try {
   for (const layout of LAYOUTS.filter((l) => !process.env.ONLY || l.name === process.env.ONLY)) await runLayout(browser, layout);
+  if (!process.env.ONLY || process.env.ONLY === 'musicoff') await runMusicOffCheck(browser, { name: 'trail-blazer', url: BASE + '/trail-blazer/index.html?mock=1&nosw=1', audio: '/spell-jump/src/audio.js',
+    pick: async (page) => { await page.waitForSelector('#screen-players:not([hidden])'); await page.click('[data-player="pkid"]'); await page.waitForSelector('#screen-title:not([hidden])'); },
+    parentsBtn: '#btn-parents', famToggle: '#opt-family-music', childToggle: '#opt-music', pauseBtn: '#pause-music',
+    shot: process.env.MUSICOFF_SHOT || null }, check);
   // v1.9.1: the same mock race at 1x and 6x CPU (+ frame jitter): the same finishing order and time (ONLY=framerate: alone)
   if (!process.env.ONLY || process.env.ONLY === 'framerate') await runMockFrameRateCheck(browser, BASE, { check });
 } catch (e) {

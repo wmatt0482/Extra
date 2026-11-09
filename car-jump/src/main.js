@@ -36,6 +36,7 @@ import { createPanels } from './ui/panels.js';
 import { createTitleHero } from './ui/titleHero.js';
 import { createPlayers, drawAvatar } from './ui/players.js';
 import { createParentZone } from './ui/parentZone.js';
+import { bindMusicButton } from './ui/musicNote.js';
 import { createCrateOpener } from './ui/crates.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { createSyncClient } from './sync/client.js';
@@ -758,6 +759,7 @@ async function boot() {
   const replaceInPlace = (obj, fresh) => { for (const k of Object.keys(obj)) delete obj[k]; Object.assign(obj, fresh); };
   function syncApplied(k) {
     if (k === 'family') {
+      Audio.syncFamilyMusic();
       replaceInPlace(family, Profiles.loadFamily());
       for (const id of [...wordsCache.keys()]) if (!Profiles.playerById(family, id)) wordsCache.delete(id);
       if (currentPlayerId && !Profiles.playerById(family, currentPlayerId)) {
@@ -1410,9 +1412,10 @@ async function boot() {
     shakeInput.style.setProperty('--p', String(v / 100));
     $('#pause-shake-val').textContent = `${v}%`;
   }
+  let paintMusicBtn = null;
   function renderPauseToggles() {
     $('#pause-sound').textContent = `Sound: ${save.settings.sound ? 'On' : 'Off'}`;
-    $('#pause-music').textContent = `Music: ${save.settings.music ? 'On' : 'Off'}`;
+    paintMusicBtn();   // family music switch: disabled + note
     $('#pause-motion').textContent = `Motion: ${save.settings.reducedMotion ? 'Calm' : 'Full'}`;
     paintShake(save.settings.shake);
     shakeInput.setAttribute('aria-disabled', String(shakeOff()));
@@ -1439,6 +1442,7 @@ async function boot() {
   $('#pause-resume').addEventListener('click', resume);
   $('#pause-sound').addEventListener('click', () => setSetting('sound', !save.settings.sound));
   $('#pause-music').addEventListener('click', () => setSetting('music', !save.settings.music));
+  paintMusicBtn = bindMusicButton($('#pause-music'), () => save.settings.music);
   $('#pause-motion').addEventListener('click', () => setSetting('reducedMotion', !save.settings.reducedMotion));
   $('#pause-end').addEventListener('click', () => {
     if (!run) return;
