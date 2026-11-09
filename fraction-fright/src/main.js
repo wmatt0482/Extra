@@ -20,6 +20,7 @@ import * as Profiles from '../../spell-jump/src/spelling/profiles.js';
 import { createSyncClient } from '../../spell-jump/src/sync/client.js';
 import { createPinger } from '../../spell-jump/src/meta/pings.js';
 import { Audio } from '../../spell-jump/src/audio.js';
+import { bindMusicButton } from '../../spell-jump/src/ui/musicNote.js';
 import { $, $$, h, money } from '../../spell-jump/src/ui/dom.js';
 import { COIN, hydrateIcons, icon } from '../../spell-jump/src/ui/icons.js';
 import { tts } from '../../spell-jump/src/spelling/tts.js';
@@ -48,7 +49,7 @@ import { createParentZone } from './ui/parentZone.js';
 import { labBridge } from './meta/labBridge.js';
 import { labLooks } from './meta/labLooks.js';
 
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const GAME = 'fraction-fright';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'fractionFright.resumePlayer';   // sessionStorage: the player to come back to after an update reload
@@ -434,6 +435,7 @@ async function boot() {
       return;
     }
     if (k !== 'family') return;               // the other games' keys: nothing in memory here
+    Audio.syncFamilyMusic();                  // the parent's "Background music in all games" switch
     replaceInPlace(family, Profiles.loadFamily());
     if (currentPlayerId && !Profiles.playerById(family, currentPlayerId)) {
       currentPlayerId = null; replaceInPlace(save, defaultSave());
@@ -751,15 +753,17 @@ async function boot() {
     closePanel();
     try { game.resume(); } catch (_) { /* ignore */ }
   }
+  let paintMusicBtn = () => {};
   function renderPauseToggles() {
     $('#pause-sound').textContent = `Sound: ${settings.sound ? 'On' : 'Off'}`;
-    $('#pause-music').textContent = `Music: ${settings.music ? 'On' : 'Off'}`;
+    paintMusicBtn();
     $('#pause-motion').textContent = `Motion: ${settings.reducedMotion ? 'Calm' : 'Full'}`;
   }
   $('#btn-pause').addEventListener('click', pause);
   $('#pause-resume').addEventListener('click', resume);
   $('#pause-sound').addEventListener('click', () => setSetting('sound', !settings.sound));
   $('#pause-music').addEventListener('click', () => setSetting('music', !settings.music));
+  paintMusicBtn = bindMusicButton($('#pause-music'), () => settings.music);      // disabled + note while a grown-up has music off
   $('#pause-motion').addEventListener('click', () => setSetting('reducedMotion', !settings.reducedMotion));
   $('#pause-stop').addEventListener('click', () => { closePanel(); paused = false; stopWave(); });
   $('#btn-say').addEventListener('click', () => { if (hud.target) app.say(`${hud.target.say}.`); });

@@ -11,6 +11,7 @@ import { checkPin, hasPin, playerById, renamePlayer, setPin } from '../../../spe
 import { cloudVoiceInfo } from '../../../spell-jump/src/tts/voices.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
+import { FAMILY_MUSIC_HELP, FAMILY_MUSIC_LABEL, familyMusicIsOn, setFamilyMusic } from '../../../spell-jump/src/ui/musicNote.js';
 import { TIER_BY_ID, closeText, toleranceFor } from '../skills/items.js';
 import { ladderView, recommended, tierStats } from '../skills/ladder.js';
 import { moveText, progressSeries, report, reportText, stateWord } from '../skills/store.js';
@@ -416,6 +417,7 @@ export function createParentZone(app) {
           h('div', { class: 'sub' }, 'Lab coins are earned in every game and spent in The Lab. They never mix with Yard cash. Switches, crate odds and reset are in its grown-ups panel.')),
         h('button', { class: 'btn btn-sm', id: 'opt-lab', 'data-sfx': '', onclick: () => app.openLabParent() }, 'Open'))] : []),
       h('div', { class: 'hud-label pz-sec' }, 'Family'),
+      toggle(FAMILY_MUSIC_LABEL, FAMILY_MUSIC_HELP, familyMusicIsOn(app.family), (v) => setFamilyMusic(app.family, v), 'opt-family-music'),
       h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Parent PIN'), h('div', { class: 'sub' }, 'Shared with Spell Jump and Trail Blazer')),
         h('button', { class: 'btn btn-sm', id: 'opt-pin', onclick: () => { pinMode = 'reset'; pinEntry = ''; view = 'pin'; render(); } }, 'Change PIN')),
       h('div', { class: 'ver' }, `Fraction Fright ${app.version}${app.engineName ? ' · ' + app.engineName : ''}`),
