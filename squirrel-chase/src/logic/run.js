@@ -1,7 +1,7 @@
 // A case in progress (SPEC §4): the state machine behind the case screen. Plain JSON (device-local at squirrelChase.<id>.wip), so leaving mid-case
 // keeps what was answered and resumes at the same stop. Pure: no DOM, no storage, no words (the words bank through the shared store, per word).
 //   phase  'brief' (the Chief's text) → 'stop' (2 sealed notes) → 'travel' (tap the next city) → 'stop' … → 'hideout' (the dictation) → 'done'
-import { hideoutCity, missingOf, stopsOf } from './caseModel.js';
+import { flightOrder, hideoutCity, missingOf, stopsOf } from './caseModel.js';
 
 export const RUN_VERSION = 1;
 
@@ -48,7 +48,7 @@ export function chooseCity(run, kase, cityId) {
   if (run.phase !== 'travel') return { ok: false, ignored: true };
   const stop = stopsOf(kase)[run.stop];
   if (!stop || stop.last || cityId !== stop.next) return { ok: false };
-  const letter = missingOf(kase).filter((i) => !run.found.includes(i))[0];
+  const letter = flightOrder(kase).filter((i) => !run.found.includes(i))[0];   // the content's recovery order: one letter per correct city, the rest come back at the hideout
   if (letter != null) run.found.push(letter);
   run.stop += 1; run.phase = 'stop';
   return { ok: true, letter: letter == null ? null : letter, from: stop.cityId, to: stop.next };

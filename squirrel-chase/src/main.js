@@ -21,7 +21,7 @@ import { registerSquirrelChaseSync } from './meta/sync.js';
 import { defaultSave, loadSave, loadSettings, loadWip, removeSave, writeSave, writeSettings, writeWip } from './meta/save.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { labBridge } from './meta/labBridge.js';
-import { CASE_BY_ID, TOUR_TOTAL } from './logic/caseModel.js';
+import { CASE_BY_ID, HIDEOUT_TEMPLATE_LIST, TOUR_TOTAL } from './logic/caseModel.js';
 import { dayKey, nextUnopened, refreshOpened, waitingState } from './logic/pacing.js';
 import { applyClose, closeRecord, newRun, reviveRun } from './logic/run.js';
 import { closeReports } from './logic/payout.js';
@@ -124,7 +124,7 @@ async function boot() {
     const d = Profiles.loadWords(currentPlayerId);
     const o = Profiles.playerOptions(family, currentPlayerId);
     const picks = pickMany(d, Date.now(), spellSession, o, 3, run.words || []);
-    return buildHideout(picks, activeEntries(d));
+    return buildHideout(picks, activeEntries(d), HIDEOUT_TEMPLATE_LIST);
   }
   async function bankHideout(perWord) {
     for (const { word, ok } of perWord) { bankWord(word, ok); lastWord = word; }

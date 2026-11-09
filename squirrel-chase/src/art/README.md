@@ -12,9 +12,9 @@ Portraits are round badges, `viewBox 0 0 100 100`, `aria-hidden` (the name and t
 | --- | --- |
 | `drawMap(el, { cities, highlight, visited, arc = 'ny', usRoute })` | Fills `el` with the responsive NY map SVG. Returns `{ svg, pins, update }`. |
 | `mapSvg(opts)` | Same map as a string (no handlers). |
-| `MAP_BOX` | `{ lonMin: -79.8, lonMax: -71.8, latMin: 40.5, latMax: 45.05, width: 720, height: 560 }` |
+| `MAP_BOX` | `{ lonMin: -79.8, lonMax: -71.8, latMin: 40.45, latMax: 45.05, width: 720, height: 560 }` |
 | `gangPortrait(memberId, mood, opts?)` | `memberId`: `squirrel｜raccoon｜crow｜possum｜goat`; `mood`: `smug｜surprised｜sorry｜laughing`. |
-| `GANG_IDS`, `GANG_MOODS`, `GANG_LOOK` | Ids, moods, and `{ name, animal, color, tint, prop }` per member (Scrabble, Bandit, Glint, Snooze, Munch; names are art-side suggestions only). |
+| `GANG_IDS`, `GANG_MOODS`, `GANG_LOOK` | Ids, moods, and `{ name, animal, color, tint, prop }` per member (names come from the content: Scrabble, Sudsy, Glint, Snoozy, Bleatrice; a content id such as `sudsy` is accepted as a member id). |
 | `witnessPortrait(seed, opts?)` | Deterministic townsperson (any string/number seed): ages, skin tones, hair, head coverings, glasses, beards, outfits. |
 | `signSvg(text, missingIdx = [], opts?)` | Landmark sign, variant `wood｜metal｜neon` picked from the text (or `opts.variant`). Indexes in `missingIdx` are indexes into `text` (spaces count) and show as empty slots. Long texts wrap to two lines at a space. |
 | `animateLetterIn(el, idx)` | `el` = the sign svg or a container. Flies the missing letter at `idx` into its slot (rotating drop-in, bounce, sparkles). Reduced motion: a plain 260 ms fade. Returns a Promise (resolves `true` when it landed, `false` if already filled / not found). |
@@ -28,7 +28,7 @@ Portraits are round badges, `viewBox 0 0 100 100`, `aria-hidden` (the name and t
 ## Map
 
 Bounding box (city `coords` are `{ x, y }` in 0..1 over this box): longitude -79.8 .. -71.8 (west to east), latitude 45.05 .. 40.5 (north to south).
-`x = (lon + 79.8) / 8`, `y = (45.05 - lat) / 4.55`. Example Rochester (-77.61, 43.16) is `{ x: 0.274, y: 0.416 }`.
+`x = (lon + 79.8) / 8`, `y = (45.05 - lat) / 4.6`. Example Rochester (-77.61, 43.16) is `{ x: 0.274, y: 0.411 }`.
 
 - Pins: each is `<g class="sqm-pin" data-city="id" role="button" tabindex="0" aria-label="Name">`. Attach click handlers to `pins[id]` (or delegate on `[data-city]`).
   Enter / Space on a focused pin fires a click. The transparent hit target is about 48 px on a 390 px phone (it shrinks toward half the distance to the nearest other pin when cities are very close).

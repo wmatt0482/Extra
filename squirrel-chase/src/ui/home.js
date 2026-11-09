@@ -2,7 +2,7 @@
 // as postcard stamps, the sealed ones to come, and the postcard album. One case a day: a case that has not arrived yet is sealed (its title is not
 // shown) and the board says "Next case tomorrow" with no countdown. A closed case stays on the board and in the album.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
-import { CASE_LIST, CITY_BY_ID, CITY_LIST, TOUR_TOTAL, hideoutCity, missingOf, routeOf, signOf } from '../logic/caseModel.js';
+import { CASE_LIST, CITY_BY_ID, artCity, CITY_LIST, TOUR_TOTAL, hideoutCity, missingOf, routeOf, signOf } from '../logic/caseModel.js';
 import { currentCase, waitingState } from '../logic/pacing.js';
 import { drawMap, pipPortrait, postcardSvg, signSvg } from '../art/index.js';
 import { artBox } from './fx.js';
@@ -27,7 +27,7 @@ export function createHome(app) {
   function stampCard(kase, rec) {
     const city = CITY_BY_ID[hideoutCity(kase)] || { id: '', name: '' };
     const b = h('button', { class: 'stamp-card', type: 'button', 'data-case': kase.id, 'data-state': 'closed', 'data-sfx': '', 'aria-label': `${kase.title}, case closed. Open the postcard album` },
-      artBox(postcardSvg(city), 'mini-card'), h('div', { class: 'sc-text' }, h('div', { class: 'sc-title' }, kase.title), h('div', { class: 'sc-meta' }, `Closed ${rec.day}`)), h('span', { class: 'stamp' }, 'Case closed'));
+      artBox(postcardSvg(artCity(city)), 'mini-card'), h('div', { class: 'sc-text' }, h('div', { class: 'sc-title' }, kase.title), h('div', { class: 'sc-meta' }, `Closed ${rec.day}`)), h('span', { class: 'stamp' }, 'Case closed'));
     b.addEventListener('click', () => app.go('album'));
     return b;
   }

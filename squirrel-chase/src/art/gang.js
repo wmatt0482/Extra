@@ -1,18 +1,23 @@
 // The Scribble Gang as round-badge portraits (viewBox 0 0 100 100, decorative). Each animal has a signature colour and a prop, and four moods:
 //   smug | surprised | sorry | laughing
 // Mischievous, never scary: big eyes, silly props, flat bold shapes in the same vector style as the Case Files cast.
+import { GANG as CONTENT_GANG } from '../content/gang.js';
 import { INK, badge, eyePair, browPair, mouthFor, moodMarks, tile, stroke, SLAB } from './shared.js';
 
 export const GANG_IDS = Object.freeze(['squirrel', 'raccoon', 'crow', 'possum', 'goat']);
 export const GANG_MOODS = Object.freeze(['smug', 'surprised', 'sorry', 'laughing']);
 /** Signature colours + display info (name, prop) the app can use for chips and headings. */
-export const GANG_LOOK = Object.freeze({
+const LOOK = {
   squirrel: { name: 'Scrabble', animal: 'squirrel', color: '#f08a24', tint: '#ffe3bd', prop: 'a sack stuffed with letter tiles' },
   raccoon:  { name: 'Bandit',   animal: 'raccoon',  color: '#7f88a6', tint: '#dfe4f2', prop: 'a trash-can-lid helmet' },
   crow:     { name: 'Glint',    animal: 'crow',     color: '#7a5cd6', tint: '#e5dcff', prop: 'a necklace of shiny letters' },
   possum:   { name: 'Snooze',   animal: 'possum',   color: '#e5629f', tint: '#ffdcec', prop: 'a nightcap and a snoozing Z' },
   goat:     { name: 'Munch',    animal: 'goat',     color: '#37b27a', tint: '#d3f5e2', prop: 'a vowel to munch' },
-});
+};
+// the content's gang names win everywhere: every member's name comes from src/content/gang.js (matched by animal), and a content id (scrabble, sudsy, ...) is accepted wherever an art id is
+const CONTENT_ID = {};
+for (const g of CONTENT_GANG) if (LOOK[g.animal]) { LOOK[g.animal].name = g.name; CONTENT_ID[g.id] = g.animal; }
+export const GANG_LOOK = Object.freeze(Object.fromEntries(Object.entries(LOOK).map(([k, v]) => [k, Object.freeze(v)])));
 
 // ------------------------------------------------------------------ Scrabble the squirrel
 function squirrel(m) {
@@ -160,7 +165,7 @@ const DRAW = { squirrel, raccoon, crow, possum, goat };
  * memberId: squirrel | raccoon | crow | possum | goat. mood: smug | surprised | sorry | laughing.
  */
 export function gangPortrait(memberId, mood = 'smug', opts = {}) {
-  const id = DRAW[memberId] ? memberId : 'squirrel';
+  const id = DRAW[memberId] ? memberId : DRAW[CONTENT_ID[memberId]] ? CONTENT_ID[memberId] : 'squirrel';
   const m = GANG_MOODS.includes(mood) ? mood : 'smug';
   const look = GANG_LOOK[id];
   return badge(DRAW[id](m), { ringColor: look.color, ringFill: look.tint, cls: `gang gang-${id} gang-${m}`, scale: 1.0, ...opts });

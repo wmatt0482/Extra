@@ -1,8 +1,8 @@
 // The illustrated New York State map (+ a small USA inset).
 //
-// MAP BOUNDING BOX (this is what city coords are relative to): lon -79.8 .. -71.8 (x: 0 -> 1, west -> east), lat 45.05 .. 40.5 (y: 0 -> 1, north -> south).
-// So a city's coords are  x = (lon + 79.8) / 8   and   y = (45.05 - lat) / 4.55   (simple linear, the map is drawn at 720 x 560 which keeps the shape true).
-// Example: Rochester (-77.61, 43.16) -> { x: 0.274, y: 0.416 }.  Syracuse (-76.15, 43.05) -> { x: 0.456, y: 0.440 }. NYC (-74.0, 40.71) -> { x: 0.725, y: 0.953 }.
+// MAP BOUNDING BOX (this is what city coords are relative to): lon -79.8 .. -71.8 (x: 0 -> 1, west -> east), lat 45.05 .. 40.45 (y: 0 -> 1, north -> south).
+// So a city's coords are  x = (lon + 79.8) / 8   and   y = (45.05 - lat) / 4.6   (simple linear, the map is drawn at 720 x 560 which keeps the shape true).
+// Example: Rochester (-77.61, 43.16) -> { x: 0.274, y: 0.411 }  (the same numbers the content gets from toMap in src/content/geo.js).
 //
 // drawMap(el, { cities, highlight, visited, arc = 'ny', usRoute }) fills `el` with a responsive SVG and returns { svg, pins, update }:
 //   pins    - { [cityId]: element } the pin groups (each has data-city, role=button, tabindex=0; the transparent hit target is >= 44px on a phone screen)
@@ -10,10 +10,12 @@
 // Enter / Space on a focused pin fires a click on it. `arc` 'ny' = the New York map (other arcs reuse it for now; `usRoute` [[lon,lat],...] draws a dashed
 // route on the inset for later US arcs).
 import { INK, SANS, esc, hash, rng } from './shared.js';
+import { MAP_BOUNDS } from '../content/geo.js';
 
-export const MAP_BOX = Object.freeze({ lonMin: -79.8, lonMax: -71.8, latMin: 40.5, latMax: 45.05, width: 720, height: 560 });
+// the box is the CONTENT's (src/content/geo.js MAP_BOUNDS), so city coords from toMap() land on the right spot
+export const MAP_BOX = Object.freeze({ lonMin: MAP_BOUNDS.west, lonMax: MAP_BOUNDS.east, latMin: MAP_BOUNDS.south, latMax: MAP_BOUNDS.north, width: 720, height: 560 });
 const W = 720, H = 560;
-const px = (lon, lat) => [+(((lon + 79.8) / 8) * W).toFixed(1), +(((45.05 - lat) / 4.55) * H).toFixed(1)];
+const px = (lon, lat) => [+(((lon - MAP_BOUNDS.west) / (MAP_BOUNDS.east - MAP_BOUNDS.west)) * W).toFixed(1), +(((MAP_BOUNDS.north - lat) / (MAP_BOUNDS.north - MAP_BOUNDS.south)) * H).toFixed(1)];
 const pts = (a) => a.map(([lo, la]) => px(lo, la));
 const poly = (a, close = true) => `M${pts(a).map((p) => p.join(' ')).join('L')}${close ? 'Z' : ''}`;
 /** Catmull-Rom spline through the points as cubic Beziers. */
@@ -159,7 +161,7 @@ function pinsSvg(cities, highlight, visited, avoid = []) {
     const hx0 = c.x, hy0 = c.y - 16;
     const nx = Math.max(best.b.x, Math.min(best.b.x + best.b.w, hx0)), ny = Math.max(best.b.y, Math.min(best.b.y + best.b.h, hy0));
     const far = Math.hypot(nx - hx0, ny - hy0) > 14;
-    const leader = far ? `<path class="sqm-leader" d="M0 -16L${(nx - c.x).toFixed(1)} ${(ny - c.y).toFixed(1)}" fill="none" stroke="#8a6a2c" stroke-width="2.2" stroke-linecap="round" stroke-dasharray="1 5"/>` : '';
+    const leader = far ? `<path class="sqm-leader" d="M0 -16L${(nx - c.x).toFixed(1)} ${(ny - c.y).toFixed(1)}" fill="none" stroke="#8a6a2c" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="5 4"/>` : '';
     const nearest = Math.min(1e9, ...list.filter((o) => o !== c).map((o) => Math.hypot(o.x - c.x, o.y - c.y)));
     const hr = Math.max(32, Math.min(48, nearest * 0.8));
     const cls = `sqm-pin${highlight === c.id ? ' is-hl' : ''}${visited && visited.includes(c.id) ? ' is-visited' : ''}`;
