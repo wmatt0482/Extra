@@ -2,7 +2,8 @@
 // order, a case's stops (a city and two witnesses each, every witness's text clue), its sign with the gaps, its hideout and its
 // postcard. It tolerates the usual spellings of a field (a route of ids or of city objects, witnesses on the case or on a stop,
 // a fact as a string or { text }), so a content update that renames a field is fixed here and nowhere else. Pure: no DOM.
-import { ARCS, CASES, CITIES, GANG, HIDEOUT_TEMPLATES } from '../content/index.js';
+import * as CONTENT from '../content/index.js';   // (a namespace: older content, and the tests' fixture content, may not export every list)
+const { ARCS, CASES, CITIES, GANG } = CONTENT, HIDEOUT_TEMPLATES = CONTENT.HIDEOUT_TEMPLATES;
 
 const own = (v, d) => (v == null ? d : v);
 const text = (x) => (typeof x === 'string' ? x : x && typeof x === 'object' ? String(x.text || x.fact || x.line || x.say || x.clue || x.body || x.statement || '') : '');

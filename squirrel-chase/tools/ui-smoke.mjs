@@ -156,6 +156,12 @@ const deviceSpoken = (page) => J(page, () => window.__deviceSpoken.slice());
 const exists = (page, sel) => page.$(sel).then((e) => !!e);
 const textOf = (page, sel) => page.$eval(sel, (e) => e.textContent.trim()).catch(() => null);
 
+/** Tap a city on the travel map as a child does: a pin close to others opens the zoom-in list, so then tap the city in it. */
+async function tapCity(page, id) {
+  await page.click(`#travel-map [data-city="${id}"] .sqm-pin-shape`, { force: true });
+  await page.waitForTimeout(100);
+  if (await page.$('#city-lens')) await page.click(`#city-lens .lens-pin[data-city="${id}"]`);
+}
 async function typeKeys(page, root, text) {
   for (const ch of text) await page.click(`${root} .kb-key[data-key="${ch === ' ' ? 'space' : ch}"]`);
 }
@@ -270,13 +276,13 @@ async function playLayout(browser, layout) {
     check((await textOf(page, '#clue-recap')).includes(stop.clues[0]) && (await textOf(page, '#clue-recap')).includes(stop.clues[1]), 'the map shows both clues');
     const wrong = M.cities.find((c) => c.id !== stop.next && c.id !== stop.cityId) || M.cities[0];
     const before = await state(page);
-    await page.click(`#travel-map [data-city="${wrong.id}"]`);
+    await tapCity(page, wrong.id);
     check((await textOf(page, '#case-msg')) === COLD, `a wrong city ("${wrong.name}") gets the gentle line: "${COLD}"`);
     const after = await state(page);
     check(after.run.stop === before.run.stop && after.run.phase === 'travel' && after.run.found.length === before.run.found.length, 'a wrong city costs nothing: same stop, no letter, no counter');
     if (!coldShown) { coldShown = true; await audit(page, layout.insets, 'a wrong city'); await kidAudit(page, 'a wrong city'); await shot(page, layout, '07-wrong-city'); }
     const gaps0 = await page.$$eval('#case-sign [data-gap]', (e) => e.length);
-    await page.click(`#travel-map [data-city="${stop.next}"]`);
+    await tapCity(page, stop.next);
     if (i === 0) await shot(page, layout, '08-travel-and-letter', 450);
     await page.waitForFunction((s) => window.__squirrelChase.run.stop === s, i + 1, { timeout: 8000 });
     await page.waitForSelector('.note.sealed', { timeout: 8000 });
