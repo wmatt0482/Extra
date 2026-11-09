@@ -24,9 +24,10 @@ const src = (p) => pathToFileURL(path.join(ROOT, 'src', p)).href;
 
 // ---------- 1. the economy snapshot ----------
 console.log('economy snapshot (the Lab never changes a number the game computes)');
+// v4.0: meta/economy.js was re-hashed once: it resolves cars / tracks through the Sky Era registry (src/meta/skyData.js) so a sky ride or track id works; the numbers it computes are unchanged.
 const SNAPSHOT = {
   'data/cars': 'db27005de5bc4792', 'data/tracks': '080fb267650438fd', 'data/upgrades': 'dce2100d50d6c58b', 'data/rating': '0f0bc028f39fa8af',
-  'data/cosmetics': 'dee1cd6f13ea07ee', 'meta/economy': '2e2a15767ace4791', 'meta/goals': '9d0b88caaecb954d', 'meta/daily': '97174e039177deab',
+  'data/cosmetics': 'dee1cd6f13ea07ee', 'meta/economy': '42bc9e2e58f4d900', 'meta/goals': '9d0b88caaecb954d', 'meta/daily': '97174e039177deab',
 };
 const canon = (v) => (typeof v === 'function' ? 'fn:' + v.toString() : JSON.stringify(v));
 for (const [m, want] of Object.entries(SNAPSHOT)) {

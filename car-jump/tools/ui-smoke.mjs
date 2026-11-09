@@ -2839,7 +2839,7 @@ async function skyEraTest(browser, layout) {
 
   // ============ C: before the unlock ============
   {
-    const { ctx, page, errors, go } = await skyEraPage(browser, layout, { days: 3, noTeaser: true });
+    const { ctx, page, errors, go } = await skyEraPage(browser, layout, { days: 3, noTeaser: true, cash: 90000 });
     await go();
     const e0 = await eraState(page);
     check(e0.card && !e0.switchOn && e0.era === 'earth', `C: locked: the Sky Road card is on the title, no era tabs (${JSON.stringify(e0)})`);
