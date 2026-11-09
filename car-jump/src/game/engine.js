@@ -68,6 +68,7 @@ export const TUNING = {
   letterCash: 40, letterNitro: 0.25, wordCash: 200, // per letter ring / all letters in order (x coinMult, into cash.air)
   letterR: 2.5, // letter ring hit radius (m), a little bigger than a plain ring
   letterGapMax: 11, letterGapMin: 4, letterStart: 10, // arc-length spacing / first ring (m past the lip)
+  boostLetterGap: 34, boostLetterStart: 22, // the Spell Boost word's rings: wider spacing / first ring (m along the new arc), so the victory lap lasts and each ring reads
   letterClear: 4.5, // plain air targets this close to a letter ring are removed (no clutter between letters)
   letterFitSteps: 4, // the letter arc is refitted to the real flight this many steps after the lip
   letterGlide: 0.35, // s (real time): rings glide from the preview arc onto the fitted one
@@ -80,9 +81,9 @@ export const TUNING = {
   wellPull: 15, wellSwirl: 24, wellSlingGain: 3, wellCash: 150, // gravity well: m/s^2 toward the centre / around it (peak), m/s gained = slingshot, $
   islandCash: [60, 30], // $ for a perfect / good landing on an island (x coinMult, cash.air), only after a flight over a gap
   skyKeep: 0.15, skyRoll: 0.6, // sky islands: share of the ground drive that never fades; rolling resistance multiplier
-  splashMinSpeed: 28, splashKeep: 0.55, splashPop: 5.5, // cloud splash: pop-up speed floor (m/s), share of the speed kept, hop up (m/s)
+  splashMinSpeed: 26, splashKeep: 0.45, splashPop: 5.5, // cloud splash: pop-up speed floor (m/s), share of the speed kept, hop up (m/s)
   gateAfterApex: 0.9, gateClear: 6, gateR: 4.5, // Spell Boost gate: s ahead of the apex point, min clearance over the ground (m), size
-  boostRise: 28, boostFwd: 14, boostNitro: 0.3, // Spell Boost at power 1: rise (m), forward kick (m/s), tank share refilled
+  boostRise: 46, boostFwd: 22, boostNitro: 0.3, // Spell Boost at power 1: rise (m), forward kick (m/s), tank share refilled
 };
 const T = TUNING;
 // Screen-space popup lanes (fractions of the view height). The HUD's banners and toasts own the band
@@ -442,8 +443,8 @@ export function createGame(canvas, opts = {}) {
     const R = T.letterR;
     let sB = 0;
     for (const p of pts) if (p.y - c.surfaceY(p.x) >= R + 1.2) sB = p.s;
-    let sA = Math.min(T.letterStart, sB * 0.15);
-    let d = N > 1 ? Math.min(T.letterGapMax, (sB - sA) / (N - 1)) : 0;
+    let sA = Math.min(bw ? T.boostLetterStart : T.letterStart, sB * 0.15);
+    let d = N > 1 ? Math.min(bw ? T.boostLetterGap : T.letterGapMax, (sB - sA) / (N - 1)) : 0;
     if (N > 1 && d < T.letterGapMin) { d = T.letterGapMin; sA = Math.max(4, sB - d * (N - 1)); }
     const at = (sv) => {
       let lo = 0, hi = pts.length - 1;
@@ -474,12 +475,13 @@ export function createGame(canvas, opts = {}) {
     r.airLo = 0;
   }
 
-  // v4.0 handling fields of a ride (src/data/skyRides.js); Earth cars have none, so every field is 0 and Era 1 is untouched
+  // v4.0 handling fields of a ride (src/data/skyRides.js); Earth cars have none (every field 0 and Era 1 is untouched), and in the SKY they are worse than a
+  // ride: no glide, a smaller Spell Boost (x0.85), smaller boost-ring kicks (x0.7), less speed kept through a cloud splash (T.splashKeep)
   function rideOf(car) {
     return {
       float: car.float || 0, glide: car.glide || 0, glideDrag: car.glideDrag == null ? 0.12 : car.glideDrag, glideBurn: car.glideBurn == null ? 1 : car.glideBurn,
-      boostMul: car.boostMul || 1, hop: car.hop || 0, hopPeriod: car.hopPeriod || 0.5, groundKeep: car.groundKeep || 0, righting: car.righting || 0,
-      legs: !!car.legs, art: car.art || null, drag: car.drag == null ? 1 : car.drag, splashKeep: car.splashKeep || 0, ringMul: car.ringMul || 1,
+      boostMul: car.boostMul || (car.era === 'sky' ? 1 : 0.85), hop: car.hop || 0, hopPeriod: car.hopPeriod || 0.5, groundKeep: car.groundKeep || 0, righting: car.righting || 0,
+      legs: !!car.legs, art: car.art || null, drag: car.drag == null ? 1 : car.drag, splashKeep: car.splashKeep || 0, ringMul: car.ringMul || (car.era === 'sky' ? 1 : 0.7),
     };
   }
 
@@ -1381,7 +1383,9 @@ export function createGame(canvas, opts = {}) {
   function applyBoost(r, power, letters) {
     const g = 9.81 * r.gMul, mul = r.ride.boostMul || 1;
     measure(r);
-    const up = Math.sqrt(2 * g * T.boostRise) * power * mul;
+    r.bwPred = predictLandX(r); // where the car would have come down without the boost (summary.boost.distance = actual - this)
+    r.bwLand = null;
+    const up = Math.sqrt(2 * g * T.boostRise * power) * mul; // height grows with power (half power = half the climb): the hop at 0.5 is still a real jump
     const nvy = Math.max(0, r.com.vy) + up;
     const nvx = Math.max(r.com.vx + T.boostFwd * power * mul, 12 * power);
     addVelAll(r, nvx - r.com.vx, nvy - r.com.vy);
@@ -1405,6 +1409,21 @@ export function createGame(canvas, opts = {}) {
     }
     emit({ type: 'boost', power, letters: letters.length });
   }
+
+  // v4.0: where the flight would end with no boost: the ballistic arc from the car's state until it meets the surface (or the cloud sea)
+  function predictLandX(r) {
+    const g = 9.81 * r.gMul, h = 1 / 30, cs = r.course;
+    let x = r.com.x, y = r.com.y, vx = r.com.vx, vy = r.com.vy;
+    for (let t = 0; t < 20; t += h) {
+      const sp = Math.hypot(vx, vy), k = T.airDrag * sp;
+      vx -= k * vx * h; vy -= (g + k * vy) * h;
+      x += vx * h; y += vy * h;
+      if (vy < 0 && y - cs.surfaceY(x) <= r.restAlt) break;
+    }
+    return x;
+  }
+  // the first touchdown (or cloud splash) after the boost closes its measurement
+  function boostLanded(r, x) { if (r.bw && r.bwLand == null) r.bwLand = x; }
 
   // Land softly in the clouds: the car pops back up onto the next island's near edge with part of its speed. No crash, no fail state.
   function cloudSplash(r) {
@@ -1430,6 +1449,7 @@ export function createGame(canvas, opts = {}) {
     measure(r);
     r.px = r.com.x; r.py = r.com.y; r.prevAngle = r.chassis.angle;
     r.splashes++;
+    boostLanded(r, fromX);
     r.popLand = true;
     r.wheelAgo.fill(9);
     r.well = null;
@@ -1722,6 +1742,7 @@ export function createGame(canvas, opts = {}) {
     }
     r.phase = 'ground';
     r.noContactT = 0;
+    boostLanded(r, r.com.x);
     r.landing = q;
     if (q !== 'crash') r.cleanFlips += r.flightFlips; // rating: only flips the car came down from count
     if (q !== 'crash') {
@@ -1848,7 +1869,10 @@ export function createGame(canvas, opts = {}) {
     if (r.sky) {
       // v4.0 Sky Era extras (absent on Earth tracks)
       summary.sky = { splashes: r.splashes, islandLands: r.islandLands, boostRings: r.boostRings, slingshots: r.slingshots, glideSec: Math.round(r.glideT * 10) / 10 };
-      summary.boost = { used: !!r.bw || r.boostPower > 0, power: r.boostPower, collected: r.bw ? r.bw.n : 0, total: r.bw ? r.bw.letters.length : 0, inOrder: !!(r.bw && r.bw.done) };
+      // distance = metres the Spell Boost added: where the flight really came down (first touchdown or cloud splash after the boost, or where
+      // the run ended if it never did) minus where the same arc would have come down without it (a ballistic prediction made at the boost).
+      const bd = r.bw ? Math.max(0, Math.round((r.bwLand != null ? r.bwLand : r.com.x) - (r.bwPred != null ? r.bwPred : r.com.x))) : 0;
+      summary.boost = { used: !!r.bw || r.boostPower > 0, power: r.boostPower, collected: r.bw ? r.bw.n : 0, total: r.bw ? r.bw.letters.length : 0, inOrder: !!(r.bw && r.bw.done), distance: bd };
     }
     summary.ratingScore = ratingScore({ ...summary, cleanFlips: r.cleanFlips }, r.course.finish);
     summary.rating = ratingLetter(summary.ratingScore);
@@ -2004,18 +2028,38 @@ export function createGame(canvas, opts = {}) {
     const surf = r.course.surfaceY(c.x);
     const alt = Math.max(0, c.y - surf);
     let visH = 14 + sp * 0.22 + alt * 1.05;
+    // v4.0 sky: the islands hang 40-130 m up and the boost climbs higher still; a camera that widened with altitude shrank the car to a speck. The sky
+    // keeps a tight window (the car stays >= ~10 % of the short screen side and a letter ring ~45 px on a phone): the height term is soft and capped.
+    let skyLow = 14;
+    if (r.sky) {
+      // the window also follows the car's own size, so a small ride (the Mech Walker) still reads: it fills >= ~13 % of the short screen side
+      const g = r.geom, size = Math.max(2.4, Math.max(g.maxX - g.minX, g.maxY - g.minY));
+      const zNeed = (Math.min(view.W, view.H) * 0.13) / size;
+      const capH = Math.max(17, view.H > view.W ? view.W / (zNeed * 1.2) : view.H / zNeed);
+      visH = Math.min(24 + sp * 0.1 + Math.min(alt, 60) * 0.12, view.H > view.W ? 32 : 40, capH);
+      skyLow = Math.min(26, capH);
+    }
     if (r.phase === 'ramp' && sp < 5) visH = Math.max(visH, 30 - sp * 2);
     if (r.cine === 'launch') visH *= 1.55; // launch: the camera pulls back while time slows
-    visH = clamp(visH, r.sky ? 22 : 14, 170);
+    visH = clamp(visH, skyLow, 170);
     // landscape: fit visH vertically; portrait: fit a slightly wider span horizontally
     const z = view.H > view.W ? view.W / (visH * 1.2) : Math.min(view.H / visH, view.W / (visH * 1.55));
     const visW = view.W / z, visHH = view.H / z;
-    const lx = clamp(c.vx * 0.45, -22, 22), ly = clamp(c.vy * 0.35, -16, 16);
-    let tx = c.x + lx + visW * 0.12;
-    let ty = c.y + ly;
+    const lxMax = r.sky ? Math.min(22, visW * 0.26) : 22; // sky on a narrow (portrait) view: the lead never pushes the car off the edge
+    const lyMax = r.sky ? visHH * 0.2 : 16; // sky: a small window, so the vertical lead is a share of it (the car stays inside, clear of the HUD)
+    const lx = clamp(c.vx * 0.45, -lxMax, lxMax), ly = clamp(c.vy * (r.sky ? 0.2 : 0.35), -lyMax, lyMax);
+    let tx = c.x + lx + visW * (r.sky ? 0.08 : 0.12);
+    let ty = c.y + ly + (r.sky ? visHH * 0.05 : 0);
     if (r.phase === 'ramp') ty -= visHH * 0.14;
+    if (r.sky && r.bw && !r.bw.done && r.phase !== 'done') {
+      // the victory lap: aim between the car and the next letter ring, so the next rings are in the frame (the boost arc climbs; a plain chase left them above the top edge)
+      let nr = null;
+      for (const a of r.air) if (a.bw && a.li != null && !a.hit && a.x > c.x - 3 && (!nr || a.li < nr.li)) nr = a;
+      if (nr) { tx = c.x + (nr.x - c.x) * 0.6; ty = c.y + (nr.y - c.y) * 0.6 + visHH * 0.03; }
+    }
     const gAhead = r.sky ? r.course.sky.sea : Math.min(surf, r.course.surfaceY(tx)); // the sky keeps the cloud sea in the frame
     ty = Math.min(ty, gAhead - 1.5 + visHH / 2);
+    if (r.sky) ty = Math.max(ty, c.y - visHH * 0.12); // sky: keeping the cloud sea in view must never push the car up to the top edge (under the HUD and banners)
     ty = clamp(ty, c.y + 2.5 - visHH / 2, c.y - 2.5 + visHH / 2);
     // finish: ease out so the banner (and the fireworks over it) and the car share the frame
     let fz = z;
@@ -2044,7 +2088,8 @@ export function createGame(canvas, opts = {}) {
     }
     if (snap) { cam.x = tx; cam.y = ty; cam.z = fz; return; }
     // launch cine: the camera lags (the car crosses the frame in slow-mo), then the chase snaps back
-    const fol = r.cine === 'launch' ? 1.6 : r.chaseT > 0 ? 9 : 5;
+    // sky: the boost climbs ~60 m/s, so the chase tightens with vertical speed (a lag of v / rate metres) or the car would ride the top edge
+    const fol = r.cine === 'launch' ? 1.6 : r.chaseT > 0 ? 9 : r.sky ? clamp(5 + Math.abs(c.vy) * 0.12, 5, 13) : 5;
     const kp = 1 - Math.exp(-dt * fol), kz = 1 - Math.exp(-dt * (r.cine === 'launch' ? 4.5 : r.chaseT > 0 ? 3.5 : 2.2));
     cam.x += (tx - cam.x) * kp;
     cam.y += (ty - cam.y) * kp;
@@ -2580,7 +2625,7 @@ export function createGame(canvas, opts = {}) {
         debris: r.debris.length, particles: r.particles.length, props: r.props.length, chunks: r.chunks.size, endReason: r.endReason, launchKmh: r.launchKmh, wd: r.wheelsDown, cd: r.chassisDown,
         timeScale: r.timeScale, lastLand: r.lastLand || null, cam: { ...cam }, perf: { ...perf },
         letterbox: r.letterbox, popups: r.popups.map((p) => ({ text: p.text, slot: p.slot, world: p.world, t: p.t, life: p.life, x: p.x, y: p.y, scale: p.scale })),
-        letterRings: r.air.filter((a) => a.li != null).map((a) => ({ letter: a.letter, i: a.li, x: a.x, y: a.y, hit: a.hit })),
+        letterRings: r.air.filter((a) => a.li != null).map((a) => ({ letter: a.letter, i: a.li, x: a.x, y: a.y, hit: a.hit, bw: !!a.bw })),
         lettersRevealed: r.lettersRevealed, glyphLeaks: r.glyphLeaks,
         finale: r.finale ? { t: r.finale.t, boomed: r.finale.boomed, x: r.finale.x, y: r.finale.y, driver: r.finale.driver && { ...r.finale.driver } } : null,
         finaleRoll: r.finaleRoll, finaleChance, flash: r.flash, carGone: r.carGone,

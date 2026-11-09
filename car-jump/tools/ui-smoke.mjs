@@ -1827,17 +1827,8 @@ watchdog('ui-smoke');
 const srv = await ensureServer();
 const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
-// v4.0: the Sky Era's data files (src/data/skyTracks.js, skyRides.js) are optional (a guarded dynamic import); a missing one is a 404 that the browser
-// logs as a console error. Every context here serves them as EMPTY lists, so the Era 1 paths are the same whether or not the engine side has landed;
-// the skyera paths load the stand-ins in tools/fixtures/sky/ with ?skyfixture=1 instead.
-{
-  const newContext = browser.newContext.bind(browser);
-  browser.newContext = async (o) => {
-    const c = await newContext(o);
-    await c.route(/\/src\/data\/sky(Tracks|Rides)\.js(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'export const SKY_TRACKS = []; export const SKY_RIDES = [];' }));
-    return c;
-  };
-}
+// v4.0: the real Sky Era data files (src/data/skyTracks.js, skyRides.js) load in every context; the skyera paths use the stand-ins in tools/fixtures/sky/ with
+// ?skyfixture=1 (small and fast) and the 'skyreal' path runs once against the real files.
 // ---------- v3.7 class lists (ONLY=class runs just this, at both sizes) ----------
 // Leo (built-in list) gets the class list when picked (toast); Mia (a pasted list) is never switched; Parents → Words:
 // the class-list card, "Use for Mia" (the class list with its prefix pattern), the prefix highlighted on the Look
@@ -2659,7 +2650,7 @@ async function bankingTest(browser, layout) {
 //   D Parents → Options: "Spell Boost in the Sky" (per child) and "Open the Sky Era now"
 //   E the Spell Boost: the engine freezes at the gate (nothing moves, no timer), the panel is the launch word's panel with a gold chip, a miss fixed in the panel
 //     boosts at 0.5, a first try at 1, then freeze(false); both words count; the results line "Spell Boost: +X m"; switched off = no freeze, start({ spellBoost: false })
-async function skyEraPage(browser, layout, { days = 0, sky = null, seen = { coach: true, teaser: true, skyClip: 15 }, cash = 850000, options = { wordsPerRace: 1, levelsPerRace: 1 }, noTeaser = false } = {}) {
+async function skyEraPage(browser, layout, { days = 0, sky = null, seen = { coach: true, teaser: true, skyClip: 15 }, cash = 850000, options = { wordsPerRace: 1, levelsPerRace: 1 }, noTeaser = false, fixture = true } = {}) {
   const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, permissions: [] });
   await routeFonts(ctx);
   await ctx.route('**/api/family/**', (r) => r.abort());
@@ -2710,7 +2701,7 @@ async function skyEraPage(browser, layout, { days = 0, sky = null, seen = { coac
     });
   }, { insets: layout.insets, dayList: SKY_DAYS(days), sky, seen, cash, options, noTeaser });
   const go = async () => {
-    await page.goto(BASE + '/index.html?mock=1&nosw=1&skyfixture=1', { waitUntil: 'networkidle' });
+    await page.goto(BASE + '/index.html?mock=1&nosw=1' + (fixture ? '&skyfixture=1' : ''), { waitUntil: 'networkidle' });
     await page.waitForSelector(visibleSel('#screen-players'));
     await page.click('[data-player="pmia"]');
     await page.waitForSelector(visibleSel('#screen-title'));
@@ -2930,7 +2921,7 @@ async function skyEraTest(browser, layout) {
     check(await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 15000 }).then(() => true, () => false), 'E: past the apex the spell panel opens by itself (the Spell Boost)');
     await page.keyboard.up('ArrowRight');
     const f1 = await J(page, () => { const h = window.__spellJump.game.getHudState(); return { frozen: h.frozen, ready: h.boostReady, used: h.boostUsed, d: window.__spellJump.game.getState().distance, air: window.__spellJump.game.getState().airTime }; });
-    check(f1.frozen === true && f1.used === true && f1.ready === false, `E: the engine is frozen at the gate (${JSON.stringify(f1)})`);
+    check(f1.frozen === true && f1.used === false && f1.ready === true, `E: the engine is frozen at the gate (${JSON.stringify(f1)})`);
     check(await J(page, () => document.querySelector('#sp-boost') && document.querySelector('#sp-boost').textContent === 'Spell Boost' && document.querySelector('#spell').dataset.kind === 'boost'), 'E: the panel is the launch word\'s panel with a "Spell Boost" chip');
     if (await panelMode(page) === 'look') { await shot(page, layout, 'skyera-13-boost-panel-look', 0); await waitMode(page, 'write', 9000); }
     const bw = await J(page, () => window.__spellJump.spellPanel.word);
@@ -3029,6 +3020,42 @@ async function skyEraTest(browser, layout) {
   }
 }
 
+// ============ F: the REAL data files (src/data/skyTracks.js, skyRides.js), once: tabs, the 5 tracks and their chain, the 3 rides, the Spell Boost handshake on the mock engine ============
+async function skyRealTest(browser, layout) {
+  console.log(`\n--- Sky Era on the real data files (${layout.name}) ---`);
+  const { ctx, page, errors, go } = await skyEraPage(browser, layout, { days: 3, sky: { unlocked: true, at: 5, ceremonySeen: true, era: 'sky' }, cash: 1000, fixture: false });
+  await go();
+  check(await J(page, () => window.__spellJump.app.skyFor('pmia').available), 'F: the real sky data is loaded (the Sky Era is available without the stand-ins)');
+  await page.click('#btn-play'); await page.waitForSelector(visibleSel('#screen-garage'));
+  await page.click('#btn-race'); await page.waitForSelector(visibleSel('#screen-tracks'));
+  const names = await J(page, () => [...document.querySelectorAll('#track-grid .track-card')].map((c) => `${c.dataset.track}${c.classList.contains('locked') ? ':locked' : ''}`));
+  check(JSON.stringify(names) === JSON.stringify(['sky-1', 'sky-2:locked', 'sky-3:locked', 'sky-4:locked', 'sky-5:locked']), `F: the five real sky tracks, one chain (${names.join(' ')})`);
+  await shot(page, layout, 'skyreal-01-tracks', 120);
+  await page.click('#track-era [data-era="earth"]'); await page.click('#track-era [data-era="sky"]');
+  await page.click('[data-track="sky-1"]');
+  await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 5000 });
+  if (await panelMode(page) === 'look') await waitMode(page, 'write', 9000);
+  const w = await J(page, () => window.__spellJump.spellPanel.word);
+  await tapKeys(page, '#sp-keyboard', w); await page.tap('#sp-keyboard [data-key="enter"]');
+  await page.waitForFunction(() => !window.__spellJump.spellPanel.isOpen, null, { timeout: 9000 });
+  await page.waitForTimeout(250);
+  await page.keyboard.down('ArrowRight');
+  check(await page.waitForFunction(() => window.__spellJump.spellPanel.isOpen, null, { timeout: 15000 }).then(() => true, () => false), 'F: the Spell Boost panel opens on the real sky-1');
+  await page.keyboard.up('ArrowRight');
+  if (await panelMode(page) === 'look') await waitMode(page, 'write', 9000);
+  const bw = await J(page, () => window.__spellJump.spellPanel.word);
+  await tapKeys(page, '#sp-keyboard', bw); await page.tap('#sp-keyboard [data-key="enter"]');
+  await page.waitForSelector(visibleSel('#screen-results'), { timeout: 30000 });
+  await page.waitForTimeout(1200);
+  const r = await J(page, () => { const tr = document.querySelector('#res-pay tr[data-pay="boost"]'); return tr ? tr.textContent : null; });
+  check(r && /^Spell Boost: \+80 m/.test(r), `F: the results line on the real track: "${r}"`);
+  await page.click('#res-garage'); await page.waitForSelector(visibleSel('#screen-garage'));
+  const rides = await J(page, () => [...document.querySelectorAll('#sky-rides .sr-chip')].map((e) => e.dataset.ride));
+  check(['hoverbike', 'rocketcar', 'mechwalker'].every((id) => rides.includes(id)), `F: the garage lists the three real rides (${rides.join(' ')})`);
+  check(errors.length === 0, `F: no console errors${errors.length ? ': ' + errors.join(' | ') : ''}`);
+  await ctx.close();
+}
+
 // the ceremony's reduced-motion still: one frame, a tap closes it (ONLY=skyera, portrait)
 async function skyEraReducedTest(browser, layout) {
   console.log(`\n--- Sky Era ceremony, reduced motion (${layout.name}) ---`);
@@ -3067,6 +3094,7 @@ try {
   if (!only || only === 'sky') await skyTeaserTest(browser, LAYOUTS[1], { reduced: true });
   for (const l of LAYOUTS) if (!only || only === 'skyera' || only === l.name) await skyEraTest(browser, l);
   if (!only || only === 'skyera') await skyEraReducedTest(browser, LAYOUTS[1]);
+  if (!only || only === 'skyera' || only === 'skyreal') await skyRealTest(browser, LAYOUTS[0]);
 } catch (e) {
   failures.push('exception: ' + e.message);
   console.error(e);

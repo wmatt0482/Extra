@@ -286,7 +286,7 @@ async function boot() {
   // ---------- engine ----------
   function makeGame() {
     try {
-      game = engineMod.createGame(canvas, { onEvent, reducedMotion: save.settings.reducedMotion });
+      game = engineMod.createGame(canvas, { onEvent, reducedMotion: save.settings.reducedMotion, simSpeed: Math.min(6, Number(params.get('sim')) || 1) });   // ?sim=N: a test knob (tools/sky-play.mjs); players never set it
     } catch (e) {
       console.error('[SpellJump] createGame threw', e);
       game = null;
@@ -1167,13 +1167,13 @@ async function boot() {
     if (coaching) return;
     if (!paused) controls.enable(true);
   }
-  /** The second jump's distance in metres: the engine's summary.spellBoost.distance (or .boostDistance) summed over the race's levels; null when it did not say. */
+  /** The second jump's distance in metres: the engine's summary.boost.distance (metres the boost added vs the unboosted arc) summed over the race's levels; null when no boost was used. */
   function boostMeters(r, summary) {
     const sums = [...r.levelDone.map((l) => l.summary), summary].filter(Boolean);
     let total = 0, any = false;
     for (const sm of sums) {
-      const v = sm.spellBoost && Number.isFinite(Number(sm.spellBoost.distance)) ? Number(sm.spellBoost.distance) : Number.isFinite(Number(sm.boostDistance)) ? Number(sm.boostDistance) : null;
-      if (v != null) { total += v; any = true; }
+      const b = sm.boost;
+      if (b && b.used && Number.isFinite(Number(b.distance))) { total += Number(b.distance); any = true; }
     }
     return any ? Math.max(0, Math.round(total)) : null;
   }
@@ -1306,17 +1306,18 @@ async function boot() {
       case 'letterRing':
         Audio.ring();
         if (evt.letter) setTimeout(() => vtts.sayLetter(evt.letter), 140);
-        hud.letterHit(evt.index);
+        if (!evt.boost) hud.letterHit(evt.index);       // the Spell Boost word's rings are in the world only: the HUD tiles are the launch word's
         break;
       case 'wordComplete':
-        hud.wordComplete();
+        if (!evt.boost) hud.wordComplete();
         hud.banner('word', 'Word complete!');
         setTimeout(() => Audio.cash(), 380);
         break;
       // ----- v4.0 Sky Era: the engine froze the scene at the Spell Boost gate; the spell panel hands the second jump back -----
       case 'spellBoost': spellBoost(run, evt).catch((e) => { console.error('[SpellJump] spell boost', e); unfreeze(); }); break;
+      case 'boost': Audio.rejump(); Audio.whoosh(); hud.banner('rejump', evt.power >= 1 ? 'SPELL BOOST!' : 'Boost hop!'); break;      // the second jump goes
       case 'boostRing': Audio.ring(); break;
-      case 'gravityWell': if (!(evt.exit || evt.phase === 'exit' || evt.kind === 'exit' || evt.enter === false)) Audio.orbit(); break;
+      case 'gravityWell': if (evt.state === 'enter') Audio.orbit(); break;     // engine: { state: 'enter' | 'exit', phase, enter, x, y, ... }
       case 'cloudSplash': Audio.pop(); break;
       case 'islandLand': Audio.land(evt.quality || 'good'); break;
       case 'finish': endRun(evt.summary); return;

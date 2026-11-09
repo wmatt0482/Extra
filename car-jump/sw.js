@@ -7,7 +7,7 @@
 // answered from the cache. The natural voice's clips (/api/tts/clip/<id>, v3.4) are content-addressed (a clip never
 // changes), so they are cache-first in their own cache, TTS_CACHE, which survives version updates: a clip played once
 // plays offline afterwards.
-// v4.0 (Sky Era): sky.js / skyData.js / skyRoadSvg.js are in the shell; the sky tracks and rides data are optional (below).
+// v4.0 (Sky Era): sky.js / skyData.js / skyRoadSvg.js and the sky tracks and rides data (src/data/sky*.js) are in the shell.
 // v3.9: certificate.html (the printable Friday Test certificate) is its own network-first page, never answered with index.html; the
 // Lab (/lab/src/index.js, one folder up) is OPTIONAL: the game starts and plays without it, and the modules the page loaded are cached
 // by the 'cache-urls' message like any other.
@@ -32,6 +32,8 @@ const SHELL = [
   'src/data/rating.js',
   'src/data/cosmetics.js',
   'src/data/classLists.js',
+  'src/data/skyTracks.js',
+  'src/data/skyRides.js',
   'src/meta/save.js',
   'src/meta/economy.js',
   'src/meta/goals.js',
@@ -89,9 +91,9 @@ const SHELL = [
 ];
 // The engine is built separately and may be split into several modules: cache the entry if present;
 // the page also posts every module it actually loaded (see 'cache-urls' below).
-// v4.0: the Sky Era's data files (src/data/skyTracks.js, skyRides.js) are written by the engine side and loaded with a guarded dynamic import
-// (a missing file = Era 1 only), so they are optional here too: a missing one must never fail the install.
-const OPTIONAL = ['src/game/engine.js', 'src/data/skyTracks.js', 'src/data/skyRides.js', '../lab/src/index.js'];
+// v4.0: the Sky Era's data files (src/data/skyTracks.js, skyRides.js) are in the SHELL above (they exist and are precached); the page also loads
+// them with a guarded dynamic import, so an old cache without them is still just Era 1.
+const OPTIONAL = ['src/game/engine.js', '../lab/src/index.js'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {

@@ -88,7 +88,6 @@ async function playRace(page, { words = 2, gas = true } = {}) {
 async function openPage(browser, base, layout, errors, requests) {
   const ctx = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
   await ctx.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.fulfill({ status: 200, body: '', contentType: 'text/css' }));
-  await ctx.route(/\/src\/data\/sky(Tracks|Rides)\.js(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'export const SKY_TRACKS = []; export const SKY_RIDES = [];' }));   // v4.0: optional sky data = empty lists (no 404 in the console)
   if (layout.blockLab) await ctx.route(/^https?:\/\/[^/]+\/lab\//, (r) => r.abort());
   const page = await ctx.newPage();
   page.on('console', (m) => {

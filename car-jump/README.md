@@ -708,7 +708,7 @@ section of `SPEC.md`; the engine side (tracks, rides, physics, `freeze` / `boost
 - **Data loading** (`src/meta/skyData.js`): the two data files are loaded with guarded dynamic imports; a missing file is an empty list and Era 1 never notices.
   Everything asks the registry (`carById`, `trackById`, `allTracks`, `allCars`). `?mock=1&skyfixture=1` loads the stand-ins in `tools/fixtures/sky/` (tests and
   screenshots only); the mock engine implements the sky contract (the Spell Boost gate after the apex, `freeze`, `boost`, `getHudState`).
-- Version 4.0.0 (main.js, `sw.js` cache `spell-jump-v4.0.0`; the new modules are in the shell, the sky data files are optional so a missing one cannot fail the install).
+- Version 4.0.0 (main.js, `sw.js` cache `spell-jump-v4.0.0`; the new modules are in the shell, the sky data files are in the precache shell).
 
 ## v3.11: one Lab chip, named money, every word banks (changelog)
 

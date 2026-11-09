@@ -71,7 +71,6 @@ async function routeFonts(ctx) {
 async function device(browser, name, opts) {
   const ctx = await browser.newContext({ ...opts, ignoreHTTPSErrors: true });
   await routeFonts(ctx);
-  await ctx.route(/\/src\/data\/sky(Tracks|Rides)\.js(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'export const SKY_TRACKS = []; export const SKY_RIDES = [];' }));   // v4.0: optional sky data = empty lists (no 404 in the console)
   await ctx.route('**/api/family/**', async (route) => {
     const req = route.request();
     if (!online[name]) { apiLog.push({ name, method: req.method(), status: 'offline' }); await route.abort('internetdisconnected'); return; }
