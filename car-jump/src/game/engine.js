@@ -80,7 +80,7 @@ export const TUNING = {
   wellPull: 15, wellSwirl: 24, wellSlingGain: 3, wellCash: 150, // gravity well: m/s^2 toward the centre / around it (peak), m/s gained = slingshot, $
   islandCash: [60, 30], // $ for a perfect / good landing on an island (x coinMult, cash.air), only after a flight over a gap
   skyKeep: 0.15, skyRoll: 0.6, // sky islands: share of the ground drive that never fades; rolling resistance multiplier
-  splashMinSpeed: 15, splashKeep: 0.55, splashPop: 5.5, // cloud splash: pop-up speed floor (m/s), share of the speed kept, hop up (m/s)
+  splashMinSpeed: 28, splashKeep: 0.55, splashPop: 5.5, // cloud splash: pop-up speed floor (m/s), share of the speed kept, hop up (m/s)
   gateAfterApex: 0.9, gateClear: 6, gateR: 4.5, // Spell Boost gate: s ahead of the apex point, min clearance over the ground (m), size
   boostRise: 28, boostFwd: 14, boostNitro: 0.3, // Spell Boost at power 1: rise (m), forward kick (m/s), tank share refilled
 };
