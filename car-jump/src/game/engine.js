@@ -5,6 +5,7 @@
 import { createCourse, CHUNK, SEG } from './course.js';
 import { carGeometry, resolveLook, carPieces } from './car.js';
 import * as R from './render.js';
+import * as SR from './skyRender.js';
 import { OBSTACLE_KINDS } from '../data/tracks.js';
 import { ratingLetter, ratingScore } from '../data/rating.js';
 import { TAU, clamp, shade, luminance, mulberry32, smoothstep } from './util.js';
@@ -73,6 +74,13 @@ export const TUNING = {
   finaleChance: 0.3, // default chance on a clean run end (opts.finaleChance overrides; crash ends always go)
   finaleCash: 150, // flat bonus x coinMult, into cash.stunts
   finaleWobble: 0.3, finaleDur: 1.6, // s: wobble + whine, then KABOOM; finish fires finaleDur after the stop
+  // ---- v4.0 Sky Era ----
+  boostRingCash: 120, boostRingNitro: 0.4, boostKick: 9, // boost ring: $ (x coinMult, cash.air), tank share refilled, m/s added along the velocity
+  wellPull: 15, wellSwirl: 24, wellSlingGain: 3, wellCash: 150, // gravity well: m/s^2 toward the centre / around it (peak), m/s gained = slingshot, $
+  islandCash: [60, 30], // $ for a perfect / good landing on an island (x coinMult, cash.air), only after a flight over a gap
+  splashMinSpeed: 15, splashKeep: 0.55, splashPop: 5.5, // cloud splash: pop-up speed floor (m/s), share of the speed kept, hop up (m/s)
+  gateAfterApex: 0.9, gateClear: 6, gateR: 4.5, // Spell Boost gate: s ahead of the apex point, min clearance over the ground (m), size
+  boostRise: 28, boostFwd: 14, boostNitro: 0.3, // Spell Boost at power 1: rise (m), forward kick (m/s), tank share refilled
 };
 const T = TUNING;
 // Screen-space popup lanes (fractions of the view height). The HUD's banners and toasts own the band
@@ -187,7 +195,8 @@ export function createGame(canvas, opts = {}) {
       const dx = w.position.x - ch.position.x, dy = w.position.y - ch.position.y;
       const lx = c * dx + s * dy, ly = -s * dx + c * dy; // into chassis frame
       const ox = lx - rest.x, oy = ly - rest.y;
-      const cx = clamp(ox, -0.22 * S, 0.22 * S), cy = clamp(oy, -0.32 * S, 0.22 * S); // up is -y
+      const st = r.stops;
+      const cx = clamp(ox, -st.x * S, st.x * S), cy = clamp(oy, -st.up * S, st.down * S); // up is -y
       if (cx === ox && cy === oy) continue;
       const nlx = rest.x + cx, nly = rest.y + cy;
       const wx = c * nlx - s * nly, wy = s * nlx + c * nly;
@@ -249,10 +258,14 @@ export function createGame(canvas, opts = {}) {
     const bodies = [];
     const g = r.course.groundY;
     const x0 = ci * CHUNK;
-    const xs = r.course.terrainXs(x0, x0 + CHUNK);
-    for (let i = 0; i < xs.length - 1; i++) {
-      const xa = xs[i], xb = xs[i + 1];
-      bodies.push(segBody(xa, g(xa), xb, g(xb), 'terrain', 4));
+    if (r.course.terrainSegs) { // v4.0 sky: only the island surfaces are solid; the gaps are open air
+      for (const [xa, xb] of r.course.terrainSegs(x0, x0 + CHUNK)) bodies.push(segBody(xa, g(xa), xb, g(xb), 'terrain', 4));
+    } else {
+      const xs = r.course.terrainXs(x0, x0 + CHUNK);
+      for (let i = 0; i < xs.length - 1; i++) {
+        const xa = xs[i], xb = xs[i + 1];
+        bodies.push(segBody(xa, g(xa), xb, g(xb), 'terrain', 4));
+      }
     }
     const props = [];
     for (const p of r.course.propsInChunk(ci)) {
@@ -319,16 +332,19 @@ export function createGame(canvas, opts = {}) {
       }, 24);
       Body.setMass(wb, 1.4 * st.mass);
       wheels.push(wb);
-      for (const ax of [-0.55, 0.55]) {
-        const px = w.x + ax, py = w.y + 0.42;
+      // v4.0 Mech Walker: the "wheels" are feet at the end of long legs (a tall A-frame from the hips), springier travel
+      const legs = r.ride.legs;
+      for (const ax of legs ? [-0.4, 0.4] : [-0.55, 0.55]) {
+        const px = w.x + ax, py = legs ? w.y + 1.4 : w.y + 0.42;
         cons.push(Constraint.create({
           bodyA: chassis, pointA: { x: (px - g.centroid[0]) * S, y: -(py - g.centroid[1]) * S },
           bodyB: wb, pointB: { x: 0, y: 0 },
-          stiffness: 0.45, damping: 0.12, label: 'susp',
+          stiffness: legs ? 0.4 : 0.45, damping: legs ? 0.2 : 0.12, label: 'susp',
         }));
       }
     });
     r.chassis = chassis;
+    r.stops = r.ride.legs ? { x: 0.32, up: 0.7, down: 0.5 } : { x: 0.22, up: 0.32, down: 0.22 };
     r.wheels = wheels;
     // rest offsets of the wheels in the chassis frame (px, Matter y-down) for the bump stops
     r.wheelRest = g.wheels.map((w) => ({ x: (w.x - g.centroid[0]) * S, y: -(w.y - g.centroid[1]) * S }));
@@ -397,8 +413,9 @@ export function createGame(canvas, opts = {}) {
   // v3 letter rings: one ring per letter, in order, along the jump's flight arc (arc-length spacing
   // letterGapMin..letterGapMax m, starting letterStart m past the lip). `from` = {x, y, vx, vy} of the
   // real flight (refit at the lip), or null for the preview arc from predictLaunch.
-  function layoutLetters(r, from) {
-    const N = r.letters.length;
+  function layoutLetters(r, from, bw = false) {
+    const lets = bw ? r.bw.letters : r.letters;
+    const N = lets.length;
     if (!N) return;
     const c = r.course;
     let s0 = from;
@@ -433,13 +450,14 @@ export function createGame(canvas, opts = {}) {
       const p = pts[lo], q = pts[hi], k = (sv - p.s) / Math.max(1e-6, q.s - p.s);
       return { x: p.x + (q.x - p.x) * k, y: p.y + (q.y - p.y) * k };
     };
-    const old = r.air.filter((a) => a.li != null);
-    const keep = r.air.filter((a) => a.li == null);
+    const mine = (a) => a.li != null && !!a.bw === bw;
+    const old = r.air.filter(mine);
+    const keep = r.air.filter((a) => !mine(a));
     const rings = [];
     for (let i = 0; i < N; i++) {
       const p = at(sA + d * i);
       const o = old[i];
-      const a = o || { id: 10000 + i, kind: 'ring', li: i, letter: r.letters[i], r: R, hit: false, hitT: 0, ox: 0, oy: 0, vx: 0, vy: 0, rot: 0, spin: 0, gx: 0, gy: 0, glideT: -9 };
+      const a = o || { id: (bw ? 20000 : 10000) + i, kind: 'ring', li: i, bw, letter: lets[i], r: R, hit: false, hitT: 0, ox: 0, oy: 0, vx: 0, vy: 0, rot: 0, spin: 0, gx: 0, gy: 0, glideT: -9 };
       if (o && from) { a.gx = o.x - p.x; a.gy = o.y - p.y; a.glideT = r.realT; }
       a.x = p.x; a.y = p.y;
       rings.push(a);
@@ -447,11 +465,20 @@ export function createGame(canvas, opts = {}) {
     // no plain ring/coin/balloon sitting among the letters (a stray gold ring between F and R would read
     // as a missing letter); targets already hit are left alone
     for (const a of keep) {
-      if (a.kind === 'blimp' || a.hit) continue;
+      if (a.kind === 'blimp' || a.hit || a.li != null) continue;
       a.gone = rings.some((l) => Math.hypot(a.x - l.x, a.y - l.y) < T.letterClear + (a.r || 0));
     }
     r.air = keep.concat(rings).sort((a, b) => a.x - b.x);
     r.airLo = 0;
+  }
+
+  // v4.0 handling fields of a ride (src/data/skyRides.js); Earth cars have none, so every field is 0 and Era 1 is untouched
+  function rideOf(car) {
+    return {
+      float: car.float || 0, glide: car.glide || 0, glideDrag: car.glideDrag == null ? 0.12 : car.glideDrag, glideBurn: car.glideBurn == null ? 1 : car.glideBurn,
+      boostMul: car.boostMul || 1, hop: car.hop || 0, hopPeriod: car.hopPeriod || 0.5, groundKeep: car.groundKeep || 0, righting: car.righting || 0,
+      legs: !!car.legs, art: car.art || null,
+    };
   }
 
   function start(cfg = {}) {
@@ -508,6 +535,10 @@ export function createGame(canvas, opts = {}) {
       // R1: no letter glyph is drawn and getState().letters reveals nothing until the car leaves the ramp lip
       // (phase 'air'): the rings show '?' while the child may still be spelling behind the panel
       lettersRevealed: false, glyphLeaks: 0,
+      // v4.0 Sky Era
+      sky: !!course.sky, frozen: false, gate: null, gateOn: !!course.sky && cfg.spellBoost !== false, boostUsed: false, boostSkip: 0,
+      bw: null, boostPower: 0, splashes: 0, islandLands: 0, curIsland: -1, popLand: false, wellNow: null, wellEnter: 0, wellEnterT: 0,
+      slingshots: 0, boostRings: 0, hopT: 0, hopSteps: 0, gliding: false, glideT: 0, skyT: 0, ride: rideOf(car), well: null, lastGapLand: 0,
       // Grand Finale: decided at the run end (a dedicated seeded roll, so replays agree), see startFinale
       finale: null, finaleRaw: 0, finaleRoll: mulberry32((seed ^ 0xf1a1e5) >>> 0)(), endT: 0, carGone: false, fxN: 0,
     };
@@ -824,6 +855,7 @@ export function createGame(canvas, opts = {}) {
   // ---------- simulation ----------
   function tick() {
     const r = run;
+    if (r.boostSkip === 1) { r.boostSkip = 2; r.boostUsed = true; } // freeze(false) without boost(): the gate is spent a step later
     if (r.slowmoT > 0) {
       r.slowmoT -= STEP;
       r.timeScale = r.slowmoT > 0 ? r.slowScale : 1;
@@ -934,7 +966,7 @@ export function createGame(canvas, opts = {}) {
           const vTop = T.vTopBase * Math.pow(power, T.vTopExp);
           a = vTop > 0 ? T.rampDrive * power * Math.max(0, 1 - Math.pow(v / vTop, 8)) : 0;
         } else {
-          a = T.groundDrive * power * Math.exp(-r.groundT / T.groundFade);
+          a = T.groundDrive * power * Math.max(Math.exp(-r.groundT / T.groundFade), r.ride.groundKeep); // a walker keeps pushing
         }
         a *= Math.min(1, gripF);
         addVelAll(r, fx * a * dt, fy * a * dt);
@@ -971,8 +1003,10 @@ export function createGame(canvas, opts = {}) {
       }
     }
     if (r.phase === 'air') airControl(r, dt);
+    if (r.sky || r.ride.legs || r.ride.float || r.ride.glide) skyControls(r, dt);
     r.nitroOn = false;
-    if (input.nitro && r.nitroFuel > 0) {
+    const glideNow = r.ride.glide && r.phase === 'air'; // a glider's NITRO in the air is lift (skyControls), not thrust
+    if (input.nitro && r.nitroFuel > 0 && !glideNow) {
       r.nitroFuel = Math.max(0, r.nitroFuel - dt);
       const vMax = T.nitroVMax + T.nitroVMaxPer * st.nitroPower;
       const a = T.nitroAcc * Math.sqrt(st.nitroPower) * Math.max(0.1, 1 - r.speed / vMax);
@@ -996,6 +1030,81 @@ export function createGame(canvas, opts = {}) {
       if (r.finishCrossed && r.phase === 'ground') dec += 5;
       const dv = Math.min(sp, dec * dt);
       addVelAll(r, (-r.com.vx / sp) * dv, (-r.com.vy / sp) * dv);
+    }
+  }
+
+  // v4.0: ride handling (float / glide / walker hops / self-righting) and the gravity wells. Runs inside controls() every step.
+  function skyControls(r, dt) {
+    const f = r.ride, g = 9.81 * r.gMul;
+    const grounded = r.phase === 'ground' && r.wheelsDown > 0;
+    if (f.float && r.phase !== 'ramp' && !grounded) addVelAll(r, 0, f.float * g * dt); // floaty: a share of gravity cancelled
+    r.gliding = false;
+    if (f.glide && r.phase === 'air' && input.nitro && r.nitroFuel > 0) {
+      // glide: lift cancels a share of gravity and bleeds forward speed (speed traded for lift), at a slow burn of the tank
+      r.nitroFuel = Math.max(0, r.nitroFuel - dt * f.glideBurn);
+      addVelAll(r, -r.com.vx * f.glideDrag * dt, f.glide * g * dt);
+      r.gliding = true;
+      r.glideT += dt;
+      r.started = true;
+    }
+    if (f.hop && r.phase === 'ground') {
+      // Mech Walker: it hops along the ground, one push-off per step, on its feet
+      r.hopT -= dt;
+      if (r.hopT <= 0 && r.wheelsDown > 0 && (input.gas || r.speed > 3)) {
+        r.hopT = f.hopPeriod;
+        r.hopSteps++;
+        addVelAll(r, 0, f.hop * Math.sqrt(r.gMul));
+        r.stepFx = r.realT;
+        particle(r, 'dust', r.com.x - 0.4, r.course.groundY(r.com.x) + 0.15, -r.com.vx * 0.05, 0.5 + Math.random(), 0.28 + Math.random() * 0.2, r.dustColor, 0.5, 0.6);
+      }
+    }
+    if (f.righting && r.phase === 'ground' && !grounded) {
+      // upside down on the ground: a walker rights itself instead of lying on its roof
+      let diff = r.ang - Math.atan(r.course.groundSlope(r.com.x));
+      diff = ((((diff + Math.PI) % TAU) + TAU) % TAU) - Math.PI;
+      if (Math.abs(diff) > 1.2) setOmegaAll(r, r.omega + (-diff * 7 - r.omega * 3) * dt);
+    }
+    if (r.course.wells.length && r.phase !== 'ramp') wellsStep(r, dt);
+  }
+
+  // v4.0 gravity wells: inside the radius the car is pulled toward the centre and swirled around it (counter-clockwise: flying
+  // through the lower half whips the car forward and up). Events on enter/exit; a gain of wellSlingGain m/s or more is a slingshot.
+  function wellsStep(r, dt) {
+    const W = r.course.wells;
+    const x = r.com.x, y = r.com.y;
+    let inside = null;
+    for (let i = 0; i < W.length; i++) {
+      const w = W[i];
+      if (w.x < x - 40) continue;
+      if (w.x > x + 40) break;
+      const dx = w.x - x, dy = w.y - y, d = Math.hypot(dx, dy);
+      if (d >= w.R) continue;
+      inside = w;
+      const s = 1 - d / w.R, dd = Math.max(d, 1.5);
+      const pull = T.wellPull * s, sw = T.wellSwirl * 4 * s * (1 - s) * w.spin;
+      addVelAll(r, ((dx / dd) * pull + (dy / dd) * sw) * dt, ((dy / dd) * pull - (dx / dd) * sw) * dt);
+    }
+    if (inside && !r.well) {
+      r.well = inside; r.wellEnter = r.speed; r.wellEnterT = r.realT;
+      emit({ type: 'gravityWell', state: 'enter', phase: 'enter', enter: true, x: Math.round(inside.x * 10) / 10, y: Math.round(inside.y * 10) / 10, speedKmh: Math.round(r.speed * 3.6) });
+    } else if (!inside && r.well) {
+      const w = r.well;
+      r.well = null;
+      measure(r);
+      const gain = r.speed - r.wellEnter;
+      const sling = gain >= T.wellSlingGain;
+      let cash = 0;
+      if (sling) {
+        r.slingshots++;
+        r.airRaw += T.wellCash;
+        cash = Math.round(T.wellCash * r.stats.coinMult);
+        popup(r, 'SLINGSHOT!', r.com.x, r.com.y + 3.2, '#c9a8ff', 1.0, true, 1.3);
+        for (let k = 0; k < 14; k++) {
+          const a = (k / 14) * TAU;
+          particle(r, 'spark', r.com.x + Math.cos(a) * 1.2, r.com.y + Math.sin(a) * 1.2, Math.cos(a) * 7 + r.com.vx * 0.2, Math.sin(a) * 7, 0.09, k % 2 ? '#e9d9ff' : '#8f6bff', 0.55);
+        }
+      }
+      emit({ type: 'gravityWell', state: 'exit', phase: 'exit', enter: false, x: Math.round(w.x * 10) / 10, y: Math.round(w.y * 10) / 10, speedKmh: Math.round(r.speed * 3.6), gainKmh: Math.round(gain * 3.6), slingshot: sling, cash });
     }
   }
 
@@ -1061,7 +1170,7 @@ export function createGame(canvas, opts = {}) {
       // no flip input: settle toward the nearest wheels-down attitude for where it will land
       const imp = predictImpact(r, 3);
       const target = Math.atan(r.course.groundSlope(imp ? imp.x : r.com.x + r.com.vx * 0.5));
-      w = levelStep(r, w, target, dt, 1);
+      w = levelStep(r, w, target, dt, r.ride.righting || 1); // a walker levels itself harder: it lands on its feet
     }
     r.airW = w;
     if (w !== r.omega) setOmegaAll(r, w);
@@ -1170,7 +1279,10 @@ export function createGame(canvas, opts = {}) {
       r.flightRot += r.chassis.angle - r.prevAngle;
       while (r.flightRot - r.flipMark >= TAU) { r.flipMark += TAU; flip(r, 'front'); }
       while (r.flightRot - r.flipMark <= -TAU) { r.flipMark -= TAU; flip(r, 'back'); }
-      if (r.airTime > 0.15 && r.touchTerrain) land(r, pre);
+      if (r.airTime > 0.15 && r.touchTerrain) {
+        if (r.gate && !r.gate.hit) reachGate(r); // the flight ended before the gate plane: the Spell Boost happens right here
+        land(r, pre);
+      }
     } else if (r.phase === 'ground') {
       r.groundT += dt;
       for (const k of r.course.kickers) {
@@ -1179,7 +1291,8 @@ export function createGame(canvas, opts = {}) {
       if (r.phase !== 'ground') { /* kicked into a new flight */ } else if (!anyDown) {
         r.noContactT += dt;
         const alt = r.com.y - r.course.groundY(r.com.x);
-        if (r.noContactT > 0.45 && alt > 3) beginFlight(r);
+        const overGap = r.sky && r.course.gapAt(r.com.x); // v4.0: rolling off an island edge is a flight at once
+        if ((r.noContactT > 0.45 && alt > 3) || (overGap && r.noContactT > 0.25)) beginFlight(r);
       } else {
         // touchdown after a small hop: wheels-down and roughly level keeps its momentum
         if (r.noContactT > 0.08 && wd > 0) {
@@ -1191,6 +1304,7 @@ export function createGame(canvas, opts = {}) {
       }
     }
     r.prevAngle = r.chassis.angle;
+    if (r.sky && r.phase !== 'ramp' && r.phase !== 'done') skyLogic(r, dt);
     r.px = r.com.x; r.py = r.com.y;
 
     if (!r.finishCrossed && r.com.x >= r.course.finish) {
@@ -1207,12 +1321,132 @@ export function createGame(canvas, opts = {}) {
       const slow = r.speed < T.slowSpeed && r.phase !== 'air';
       r.slowT = slow ? r.slowT + dt : 0;
       const upCos = Math.cos(r.ang); // car up . world up
-      if (upCos < -0.4 && r.speed < 1.5 && anyDown && r.phase !== 'air') r.upsideT += dt; else r.upsideT = 0;
+      if (upCos < -0.4 && r.speed < 1.5 && anyDown && r.phase !== 'air' && !r.ride.righting) r.upsideT += dt; else r.upsideT = 0;
       if (r.slowT >= T.slowTime) return endRun(r, 'stopped');
       if (r.upsideT >= 1.0) return endRun(r, 'upside-down');
       if (r.com.y < r.course.groundY(r.com.x) - 60) return endRun(r, 'fell');
       if (r.runT >= T.maxRun) return endRun(r, 'timeout');
     }
+  }
+
+  // ---------- v4.0 Sky Era: cloud splash, the Spell Boost gate ----------
+  function skyLogic(r, dt) {
+    const cs = r.course, c = r.com;
+    r.skyT = clamp(c.x / Math.max(1, cs.finish), 0, 1);
+    // the Spell Boost gate appears once the jump's flight is past its apex, a moment ahead along the arc
+    if (r.gateOn && !r.gate && !r.boostUsed && r.phase === 'air' && r.flightNo === 1 && c.vy <= 0) makeGate(r);
+    if (r.gate && !r.gate.hit && r.phase === 'air' && c.x >= r.gate.x) reachGate(r);
+    // below the cloud tops (or under an island): a soft cloud splash lifts the car onto the next island, never a crash
+    if (r.phase === 'air' || r.phase === 'ground') {
+      const sea = cs.sky.sea;
+      let down = c.y < sea + 1.2;
+      if (!down) { const k = cs.islIdx(c.x); if (k >= 0 && c.y < cs.islandTop(cs.islands[k], c.x) - 5.5) down = true; }
+      if (!down && c.x > cs.xL && r.phase === 'ground' && r.noContactT > 1.5 && cs.gapAt(c.x)) down = true; // hanging in the gap, never settling
+      if (down) cloudSplash(r);
+    }
+  }
+
+  function makeGate(r) {
+    const g = 9.81 * r.gMul, h = 1 / 30, cs = r.course;
+    let x = r.com.x, y = r.com.y, vx = r.com.vx, vy = r.com.vy;
+    const pts = [];
+    for (let t = 0; t < 10; t += h) {
+      pts.push({ t, x, y, clear: y - cs.surfaceY(x) });
+      const sp = Math.hypot(vx, vy), k = T.airDrag * sp;
+      vx -= k * vx * h; vy -= (g + k * vy) * h;
+      x += vx * h; y += vy * h;
+    }
+    let pick = pts[Math.min(pts.length - 1, Math.round(T.gateAfterApex / h))];
+    if (pick.clear < T.gateClear) {
+      // not enough room above the ground that far on: take the latest earlier point that still clears it
+      let best = null;
+      for (const p of pts) if (p.t >= 0.25 && p.t <= T.gateAfterApex && p.clear >= T.gateClear) best = p;
+      pick = best || pts[Math.min(pts.length - 1, 9)];
+    }
+    r.gate = { x: pick.x, y: pick.y, r: T.gateR, hit: false, t0: r.realT, hitT: 0 };
+  }
+
+  function reachGate(r) {
+    const gt = r.gate;
+    gt.hit = true;
+    gt.hitT = r.realT;
+    r.frozen = true;
+    emit({ type: 'spellBoost', x: Math.round(r.com.x * 10) / 10, y: Math.round(r.com.y * 10) / 10 });
+  }
+
+  // The Spell Boost: a second jump (up + forward). power 1 rises T.boostRise m and kicks T.boostFwd m/s forward (x the ride's boostMul).
+  function applyBoost(r, power, letters) {
+    const g = 9.81 * r.gMul, mul = r.ride.boostMul || 1;
+    measure(r);
+    const up = Math.sqrt(2 * g * T.boostRise) * power * mul;
+    const nvy = Math.max(0, r.com.vy) + up;
+    const nvx = Math.max(r.com.vx + T.boostFwd * power * mul, 12 * power);
+    addVelAll(r, nvx - r.com.vx, nvy - r.com.vy);
+    setOmegaAll(r, 0);
+    r.airW = null;
+    refillNitro(r, T.boostNitro * power);
+    measure(r);
+    r.boostUsed = true;
+    r.boostPower = power;
+    r.bw = { letters, hit: [], n: 0, done: false };
+    r.px = r.com.x; r.py = r.com.y;
+    if (letters.length) layoutLetters(r, { x: r.com.x, y: r.com.y, vx: r.com.vx, vy: r.com.vy }, true);
+    // burst under the car
+    r.radial = reducedMotion ? 0.3 : 0.6;
+    r.shake = Math.max(r.shake, 5 * power);
+    particle(r, 'ring', r.com.x, r.com.y - 0.4, 0, 0, 0.6, '#ffffff', 0.8, 0.95, 14);
+    particle(r, 'ring', r.com.x, r.com.y - 0.4, 0, 0, 0.35, '#9ff3ff', 0.6, 0.8, 9);
+    for (let k = 0; k < 26; k++) {
+      const a = Math.PI * (1.05 + 0.9 * Math.random()), sp = 5 + Math.random() * 12 * power;
+      particle(r, 'spark', r.com.x + (Math.random() - 0.5) * 2, r.com.y - 0.6, Math.cos(a) * sp * 0.6 + r.com.vx * 0.2, Math.sin(a) * sp, 0.09 + Math.random() * 0.06, k % 3 ? '#fff6a8' : '#7cf2ff', 0.5 + Math.random() * 0.4);
+    }
+    emit({ type: 'boost', power, letters: letters.length });
+  }
+
+  // Land softly in the clouds: the car pops back up onto the next island's near edge with part of its speed. No crash, no fail state.
+  function cloudSplash(r) {
+    const cs = r.course, c = r.com;
+    const fromX = c.x, fromY = c.y;
+    let nx = cs.islAfter(c.x, 8);
+    if (!nx) nx = cs.islands[cs.islands.length - 1];
+    const k = cs.islIdx(c.x);
+    const tx = k >= 0 && cs.islands[k] === nx ? Math.max(c.x + 5, nx.x0 + 3.5) : nx.x0 + 3.5;
+    const ty = cs.groundY(tx) + r.restAlt + 1.0;
+    const sp0 = r.speed;
+    const nvx = Math.max(T.splashMinSpeed, Math.min(sp0 * T.splashKeep, 140)), nvy = T.splashPop * Math.sqrt(r.gMul);
+    // move every body by the same offset, level the car to the island, then set the new velocity (the joints stay intact)
+    const dx = (tx - c.x) * S, dy = -(ty - c.y) * S;
+    for (const b of r.parts) Body.setPosition(b, { x: b.position.x + dx, y: b.position.y + dy });
+    const slopeAng = Math.atan(cs.groundSlope(tx));
+    const rot = -(slopeAng - r.ang);
+    for (const b of r.parts) Body.rotate(b, rot, { x: tx * S, y: -ty * S });
+    measure(r);
+    addVelAll(r, nvx - r.com.vx, nvy - r.com.vy);
+    for (const b of r.parts) Body.setAngularVelocity(b, 0);
+    for (let i = 1; i < r.parts.length; i++) Body.setAngularVelocity(r.parts[i], (nvx / r.wheelR[i - 1]) / 60);
+    measure(r);
+    r.px = r.com.x; r.py = r.com.y; r.prevAngle = r.chassis.angle;
+    r.splashes++;
+    r.popLand = true;
+    r.wheelAgo.fill(9);
+    r.well = null;
+    beginFlight(r);
+    r.flightKind = 'hop';
+    r.noContactT = 0;
+    // cloud puffs where it went down and where it comes up, and a soft popup
+    const seaY = cs.sky.sea;
+    for (let q = 0; q < 16; q++) {
+      const a = Math.PI * (0.1 + 0.8 * Math.random());
+      particle(r, 'dust', fromX + (Math.random() - 0.5) * 3, Math.max(seaY, Math.min(fromY, seaY + 2)), Math.cos(a) * (2 + Math.random() * 5), Math.sin(a) * (3 + Math.random() * 6),
+        0.8 + Math.random() * 0.9, '#ffffff', 0.9 + Math.random() * 0.7, 0.9);
+    }
+    particle(r, 'ring', fromX, Math.max(seaY, fromY), 0, 0, 0.6, '#ffffff', 0.7, 0.8, 9);
+    for (let q = 0; q < 10; q++) {
+      particle(r, 'dust', tx - Math.random() * 3, ty - 1, (Math.random() - 0.2) * 5, 1 + Math.random() * 3, 0.5 + Math.random() * 0.6, '#ffffff', 0.7 + Math.random() * 0.5, 0.85);
+    }
+    popup(r, 'SPLASH!', tx, ty + 3.6, '#ffffff', 0.9, true, 1.3);
+    r.shake = Math.max(r.shake, 3);
+    emit({ type: 'cloudSplash', x: Math.round(fromX * 10) / 10, y: Math.round(fromY * 10) / 10, nextX: Math.round(tx * 10) / 10, speedKmh: Math.round(r.speed * 3.6) });
   }
 
   function beginFlight(r) {
@@ -1306,15 +1540,18 @@ export function createGame(canvas, opts = {}) {
   function hitLetter(r, a) {
     a.hit = true;
     a.hitT = r.realT;
-    const m = r.stats.coinMult, N = r.letters.length, i = a.li;
+    const B = a.bw ? r.bw : null; // v4.0: the Spell Boost word has its own bookkeeping; its events carry boost: true
+    const hits = B ? B.hit : r.letterHit;
+    const m = r.stats.coinMult, N = B ? B.letters.length : r.letters.length, i = a.li;
     let inOrder = true;
-    for (let j = 0; j < i; j++) if (!r.letterHit[j]) inOrder = false;
-    r.letterHit[i] = true;
-    r.lettersCollected++;
+    for (let j = 0; j < i; j++) if (!hits[j]) inOrder = false;
+    hits[i] = true;
+    if (B) B.n++; else r.lettersCollected++;
     r.airRaw += T.letterCash;
     refillNitro(r, T.letterNitro);
     const cash = Math.round(T.letterCash * m);
-    emit({ type: 'letterRing', letter: a.letter, index: i, inOrder, cash, nitroRefill: T.letterNitro });
+    emit(B ? { type: 'letterRing', letter: a.letter, index: i, inOrder, cash, nitroRefill: T.letterNitro, boost: true }
+      : { type: 'letterRing', letter: a.letter, index: i, inOrder, cash, nitroRefill: T.letterNitro });
     for (let k = 0; k < 16; k++) {
       const ang = (k / 16) * TAU;
       particle(r, 'spark', a.x + Math.cos(ang) * a.r * 0.8, a.y + Math.sin(ang) * a.r, Math.cos(ang) * 5 + r.com.vx * 0.3, Math.sin(ang) * 6,
@@ -1322,10 +1559,10 @@ export function createGame(canvas, opts = {}) {
     }
     popup(r, `+$${cash}`, a.x, a.y + a.r + 0.7, '#ffd23f', 0.8, true);
     if (i === N - 1 && inOrder) {
-      r.wordDone = true;
+      if (B) B.done = true; else r.wordDone = true;
       r.airRaw += T.wordCash;
       const wc = Math.round(T.wordCash * m);
-      emit({ type: 'wordComplete', cash: wc });
+      emit(B ? { type: 'wordComplete', cash: wc, boost: true } : { type: 'wordComplete', cash: wc });
       // the big "WORD COMPLETE" text is the HUD's (one big text per moment); the engine adds the in-world
       // cash popup and a confetti burst at the last ring
       popup(r, `+$${wc}`, a.x + 1.5, a.y + a.r + 2.4, '#7dff6b', 1.05, true, 1.6);
@@ -1346,6 +1583,18 @@ export function createGame(canvas, opts = {}) {
           0.08, k % 2 ? '#fff3a0' : '#ffc93c', 0.5);
       }
       popup(r, '+25% NITRO', a.x, a.y - a.r - 0.6, '#7cf2ff', 0.62, true, 1.1);
+    } else if (a.kind === 'boost') {
+      // v4.0 boost ring: a speed kick along the velocity, a nitro refill, cash
+      raw = T.boostRingCash; refill = T.boostRingNitro; r.rings++; r.boostRings++;
+      refillNitro(r, T.boostRingNitro);
+      const sp = r.speed || 1, dx = sp > 1 ? r.com.vx / sp : 1, dy = sp > 1 ? r.com.vy / sp : 0;
+      addVelAll(r, dx * T.boostKick, dy * T.boostKick);
+      for (let k = 0; k < 20; k++) {
+        const ang = (k / 20) * TAU;
+        particle(r, 'spark', a.x + Math.cos(ang) * a.r * 0.8, a.y + Math.sin(ang) * a.r, Math.cos(ang) * 6 + r.com.vx * 0.3, Math.sin(ang) * 7, 0.1, k % 2 ? '#e0fbff' : '#22d3ff', 0.6);
+      }
+      particle(r, 'ring', a.x, a.y, 0, 0, 0.5, '#9ff3ff', 0.5, 0.9, 7);
+      popup(r, 'BOOST!', a.x, a.y + a.r + 1.4, '#7cf2ff', 0.8, true, 1.1);
     } else if (a.kind === 'coin') {
       raw = T.coinCash; r.coins++;
       particle(r, 'spark', a.x, a.y, r.com.vx * 0.3, 3, 0.07, '#ffe14a', 0.3);
@@ -1367,7 +1616,8 @@ export function createGame(canvas, opts = {}) {
     r.airRaw += raw;
     r.airHits++;
     const cash = Math.round(raw * m);
-    emit({ type: 'airTarget', kind: a.kind, cash, nitroRefill: refill });
+    if (a.kind === 'boost') emit({ type: 'boostRing', cash, nitroRefill: refill, kickKmh: Math.round(T.boostKick * 3.6), x: Math.round(a.x * 10) / 10, y: Math.round(a.y * 10) / 10 });
+    else emit({ type: 'airTarget', kind: a.kind, cash, nitroRefill: refill });
     if (a.kind !== 'coin' || r.coinPopT < r.realT - 0.25) {
       popup(r, `+$${cash}`, a.x, a.y + (a.kind === 'blimp' ? a.rh + 1 : a.kind === 'ring' ? a.r + 0.6 : 1.2), a.kind === 'coin' ? '#ffe14a' : '#ffd23f', a.kind === 'coin' ? 0.6 : 0.85, true);
       if (a.kind === 'coin') r.coinPopT = r.realT;
@@ -1451,6 +1701,7 @@ export function createGame(canvas, opts = {}) {
     else if (ang < 20 && impact < thr) q = 'perfect';
     else if (ang < 35 && impact < thr * 1.5) q = 'good';
     else q = 'rough';
+    if (r.ride.legs) q = q === 'crash' ? 'rough' : q === 'rough' ? 'good' : q; // a walker lands on its feet: one step kinder
     // a flip that is landed wheels-down counts even if the slope saved the last few degrees
     // (lip kicks up ~15°, landings are often downhill: a flush backflip is only ~310° of rotation)
     if (q !== 'crash') {
@@ -1476,7 +1727,8 @@ export function createGame(canvas, opts = {}) {
       redirectAlongGround(r, pre, q === 'perfect' ? 1 : q === 'good' ? 0.96 : 0.85);
       setOmegaAll(r, clamp(r.omega, -1.5, 1.5)); // wheels down: the spin dies in the springs
     }
-    const jump = !r.firstLanding; // the landing bonus is paid for the big jump only, not for later hops
+    const jump = !r.firstLanding && !r.popLand; // the landing bonus is paid for the big jump only, not for later hops (nor a cloud-splash pop)
+    r.popLand = false;
     if (jump) { r.firstLanding = q; r.groundT = 0; }
     // v2: a kicker flight's landing is scored again at half bonus
     const kicker = !jump && r.flightKind === 'kicker';
@@ -1485,6 +1737,7 @@ export function createGame(canvas, opts = {}) {
     const bonus = scale * (q === 'perfect' ? 300 : q === 'good' ? 100 : 0);
     r.landingRaw += bonus;
     emit({ type: 'land', quality: q, impact: Math.round(impact * 10) / 10, peak: Math.round(peak * 1000) / 1000 });
+    if (r.sky) islandLanded(r, q);
     const cx = r.com.x, cy = r.com.y;
     const pay = Math.round(bonus * st.coinMult);
     if (!scale && (q === 'perfect' || q === 'good')) {
@@ -1517,6 +1770,21 @@ export function createGame(canvas, opts = {}) {
         0.4 + Math.random() * 0.5, r.dustColor, 0.7 + Math.random() * 0.6, 0.75);
     }
     r.shake = Math.max(r.shake, clamp(impact * 0.9, 3, 16) * (q === 'crash' ? 1.4 : 1));
+  }
+
+  // v4.0: the first touchdown on a new island is an `islandLand` (a small bonus for a clean one after a real gap)
+  function islandLanded(r, q) {
+    const cs = r.course;
+    const idx = r.com.x <= cs.xL ? -1 : cs.islIdx(r.com.x);
+    if (idx === r.curIsland || idx < -1) return;
+    r.curIsland = idx;
+    r.islandLands++;
+    const gap = idx >= 0 ? cs.islands[idx].x0 - (idx > 0 ? cs.islands[idx - 1].x1 : cs.xL) : 0;
+    const raw = q === 'perfect' ? T.islandCash[0] : q === 'good' && gap > 0 ? T.islandCash[1] : 0;
+    const cash = Math.round(raw * r.stats.coinMult);
+    r.airRaw += raw;
+    emit({ type: 'islandLand', x: Math.round(r.com.x * 10) / 10, y: Math.round(r.com.y * 10) / 10, quality: q, island: idx + 1, gap: Math.round(gap), cash });
+    if (cash > 0) popup(r, `+$${cash}`, r.com.x, r.com.y + 2.4, '#9bffc6', 0.7, true, 1.0);
   }
 
   function cashBreakdown(r) {
@@ -1557,7 +1825,7 @@ export function createGame(canvas, opts = {}) {
       flips: r.flips, frontFlips: r.frontFlips, backFlips: r.backFlips,
       smashed: r.smashed,
       maxSpeedKmh: Math.round(r.maxKmh),
-      landing: r.firstLanding,
+      landing: r.firstLanding || (r.splashes ? 'good' : null), // v4.0: a run that only ever splashed still lands softly
       finishCrossed: r.finishCrossed,
       cash,
       durationSec: Math.round(r.endT * 10) / 10,
@@ -1574,6 +1842,11 @@ export function createGame(canvas, opts = {}) {
       letters: { collected: r.lettersCollected, total: r.letters.length, inOrder: r.wordDone },
       finale: !!(r.finale && r.finale.boomed), // the car went up in a Grand Finale (cash.stunts holds its bonus)
     };
+    if (r.sky) {
+      // v4.0 Sky Era extras (absent on Earth tracks)
+      summary.sky = { splashes: r.splashes, islandLands: r.islandLands, boostRings: r.boostRings, slingshots: r.slingshots, glideSec: Math.round(r.glideT * 10) / 10 };
+      summary.boost = { used: !!r.bw || r.boostPower > 0, power: r.boostPower, collected: r.bw ? r.bw.n : 0, total: r.bw ? r.bw.letters.length : 0, inOrder: !!(r.bw && r.bw.done) };
+    }
     summary.ratingScore = ratingScore({ ...summary, cleanFlips: r.cleanFlips }, r.course.finish);
     summary.rating = ratingLetter(summary.ratingScore);
     r.summary = summary;
@@ -1730,7 +2003,7 @@ export function createGame(canvas, opts = {}) {
     let visH = 14 + sp * 0.22 + alt * 1.05;
     if (r.phase === 'ramp' && sp < 5) visH = Math.max(visH, 30 - sp * 2);
     if (r.cine === 'launch') visH *= 1.55; // launch: the camera pulls back while time slows
-    visH = clamp(visH, 14, 170);
+    visH = clamp(visH, r.sky ? 22 : 14, 170);
     // landscape: fit visH vertically; portrait: fit a slightly wider span horizontally
     const z = view.H > view.W ? view.W / (visH * 1.2) : Math.min(view.H / visH, view.W / (visH * 1.55));
     const visW = view.W / z, visHH = view.H / z;
@@ -1738,7 +2011,7 @@ export function createGame(canvas, opts = {}) {
     let tx = c.x + lx + visW * 0.12;
     let ty = c.y + ly;
     if (r.phase === 'ramp') ty -= visHH * 0.14;
-    const gAhead = Math.min(surf, r.course.surfaceY(tx));
+    const gAhead = r.sky ? r.course.sky.sea : Math.min(surf, r.course.surfaceY(tx)); // the sky keeps the cloud sea in the frame
     ty = Math.min(ty, gAhead - 1.5 + visHH / 2);
     ty = clamp(ty, c.y + 2.5 - visHH / 2, c.y - 2.5 + visHH / 2);
     // finish: ease out so the banner (and the fireworks over it) and the car share the frame
@@ -1885,8 +2158,9 @@ export function createGame(canvas, opts = {}) {
     if (u <= 0) { a.gx = 0; a.gy = 0; return a; }
     return { ...a, x: a.x + a.gx * u, y: a.y + a.gy * u };
   }
-  function nextLetter(r) {
-    for (let i = 0; i < r.letters.length; i++) if (!r.letterHit[i]) return i;
+  function nextLetter(r, bw = false) {
+    const lets = bw ? r.bw.letters : r.letters, hit = bw ? r.bw.hit : r.letterHit;
+    for (let i = 0; i < lets.length; i++) if (!hit[i]) return i;
     return -1;
   }
   function render() {
@@ -1903,7 +2177,10 @@ export function createGame(canvas, opts = {}) {
     }
     const course = src.course, bd = src.bd;
     const t = run ? run.realT : wallT;
-    R.drawBackground(ctx, view, cam, bd, t, run ? run.spaceK : 0);
+    const sky = !!course.sky;
+    const prog = run ? run.skyT : 0;
+    if (sky) SR.drawSkyBackground(ctx, view, cam, bd, t, prog, run ? run.spaceK : 0);
+    else R.drawBackground(ctx, view, cam, bd, t, run ? run.spaceK : 0);
     R.worldTransform(ctx, view, cam);
     const z = cam.z;
     const vis = {
@@ -1912,8 +2189,15 @@ export function createGame(canvas, opts = {}) {
     };
     const lwPx = clamp(z * 0.14, 1.3, 3.2);
     const lw = lwPx / z;
-    R.drawTerrain(ctx, course, bd, vis, lw, cam);
+    if (sky) SR.drawSkyWorld(ctx, course, bd, vis, lw, cam, t);
+    else R.drawTerrain(ctx, course, bd, vis, lw, cam);
     R.drawRamp(ctx, course, bd, vis, lw);
+    if (sky) {
+      // the near cloud sea over the island undersides (screen space), then back to the world
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      SR.drawSeaNear(ctx, view, cam, bd, t, prog);
+      R.worldTransform(ctx, view, cam);
+    }
     for (const k of course.kickers) if (k.x2 > vis.x0 - 2 && k.x0 < vis.x1 + 2) R.drawKicker(ctx, course, k, lw, bd);
     for (const f of course.formationsIn(vis.x0 - 3, vis.x1 + 3)) if (f.frame) R.drawFormationBase(ctx, f, lw, t);
     R.drawFinish(ctx, course, vis, lw);
@@ -1922,6 +2206,7 @@ export function createGame(canvas, opts = {}) {
       if (r.best > 0 && r.best > vis.x0 - 8 && r.best < vis.x1 + 4) {
         R.drawBestFlag(ctx, course, r.best, t, r.recordHit, r.recordHit ? Math.min(1, (t - r.recordT) / 0.5) : 0, lw, z);
       }
+      if (sky) for (const w of course.wells) if (w.x + w.R > vis.x0 && w.x - w.R < vis.x1 && w.y + w.R > vis.y0 && w.y - w.R < vis.y1) SR.drawWell(ctx, w, t, lw);
       for (const pr of r.props) {
         if (pr.smashed || pr.x < vis.x0 - 9 || pr.x > vis.x1 + 9 || pr.y - 4 > vis.y1 || pr.y + (pr.h || 4) + 4 < vis.y0) continue;
         for (let j = 0; j < pr.bodies.length; j++) {
@@ -1970,25 +2255,33 @@ export function createGame(canvas, opts = {}) {
         if (a.gone || !airVis(a, 4)) continue;
         if (a.li != null) {
           const k = a.hit ? clamp((t - a.hitT) / 0.55, 0, 1) : 0;
-          if (k < 1 && R.drawLetterRing(ctx, letterPos(a, t), t, 'back', lw, k, a.li === nextLetter(r), r.lettersRevealed) && !r.lettersRevealed) r.glyphLeaks++;
+          if (k < 1 && R.drawLetterRing(ctx, letterPos(a, t), t, 'back', lw, k, a.li === nextLetter(r, !!a.bw), r.lettersRevealed || !!a.bw) && !r.lettersRevealed && !a.bw) r.glyphLeaks++;
         } else if (a.kind === 'ring') {
           const k = a.hit ? clamp((t - a.hitT) / 0.45, 0, 1) : 0;
           if (k < 1) R.drawRing(ctx, a, t, 'back', lw, k);
+        } else if (a.kind === 'boost') {
+          const k = a.hit ? clamp((t - a.hitT) / 0.5, 0, 1) : 0;
+          if (k < 1) SR.drawBoostRing(ctx, a, t, 'back', lw, k);
         } else if (a.hit) continue;
         else if (a.kind === 'coin') R.drawCoin(ctx, a, t, lw);
         else if (a.kind === 'balloon') R.drawBalloon(ctx, a.x, a.y + 0.35 * Math.sin(r.t * 1.4 + a.id * 1.7), a, BALLOON_COLS[a.hue % BALLOON_COLS.length], lw, t);
       }
+      const gt = r.gate;
+      const gk = gt && gt.hit ? clamp((t - gt.hitT) / 0.8, 0, 1) : 0;
+      if (gt && gk < 1 && airVis(gt, gt.r * 2)) SR.drawGate(ctx, gt, t, 'back', lw, r.frozen ? 0 : gk, r.frozen);
+      if (r.frozen && !r.carGone) SR.drawIdleGlow(ctx, r.com.x, r.com.y + Math.sin(t * 2.2) * 0.3, t, Math.max(2.6, (r.geom.maxX - r.geom.minX) * 0.7));
       if (!r.carGone) drawCar(r, lw);
+      if (gt && gk < 1 && airVis(gt, gt.r * 2)) SR.drawGate(ctx, gt, t, 'front', lw, r.frozen ? 0 : gk, r.frozen);
       for (let i = 0; i < A.length; i++) {
         const a = A[i];
-        if (a.kind !== 'ring' || a.gone || !airVis(a, 4)) continue;
+        if ((a.kind !== 'ring' && a.kind !== 'boost') || a.gone || !airVis(a, 4)) continue;
         if (a.li != null) {
           const k = a.hit ? clamp((t - a.hitT) / 0.55, 0, 1) : 0;
-          if (k < 1) R.drawLetterRing(ctx, letterPos(a, t), t, 'front', lw, k, a.li === nextLetter(r), r.lettersRevealed);
+          if (k < 1) R.drawLetterRing(ctx, letterPos(a, t), t, 'front', lw, k, a.li === nextLetter(r, !!a.bw), r.lettersRevealed || !!a.bw);
           continue;
         }
-        const k = a.hit ? clamp((t - a.hitT) / 0.45, 0, 1) : 0;
-        if (k < 1) R.drawRing(ctx, a, t, 'front', lw, k);
+        const k = a.hit ? clamp((t - a.hitT) / (a.kind === 'boost' ? 0.5 : 0.45), 0, 1) : 0;
+        if (k < 1) { if (a.kind === 'boost') SR.drawBoostRing(ctx, a, t, 'front', lw, k); else R.drawRing(ctx, a, t, 'front', lw, k); }
       }
       R.drawParticles(ctx, r.particles, vis);
       if (r.finale && r.finale.boomed) drawFinale(r, lw, vis); // over the smoke: a bright fireball, not a smudge
@@ -2051,6 +2344,8 @@ export function createGame(canvas, opts = {}) {
       ctx.translate(-r.com.x, -r.com.y);
       lw /= boost;
     }
+    // frozen at the Spell Boost gate: the car hovers gently (the only thing that moves besides the clouds)
+    if (r.frozen) ctx.translate(0, Math.sin(r.realT * 2.2) * 0.3);
     // Grand Finale wobble: the car rattles and swells before it goes up
     const wob = r.finale && !r.finale.boomed ? clamp(r.finale.t / T.finaleWobble, 0, 1) : 0;
     if (wob > 0) {
@@ -2075,7 +2370,7 @@ export function createGame(canvas, opts = {}) {
     ctx.translate(ch.position.x / S, -ch.position.y / S);
     ctx.rotate(-ch.angle);
     ctx.translate(-g.centroid[0], -g.centroid[1]);
-    g.rim = r.bd.night || r.spaceK > 0.25 ? 'rgba(225,232,255,0.9)' : null; // dark cars stay readable in space
+    g.rim = r.bd.night || r.spaceK > 0.25 || (r.sky && r.bd.starK >= 0.9 && r.skyT > 0.55) ? 'rgba(225,232,255,0.9)' : null; // dark cars stay readable in space
     R.drawChassis(ctx, g, lw, r.realT, r.nitroOn, r.damage ? r.lost : null);
     if (wob > 0) {
       // the paint glows hot and blinks red/white
@@ -2111,10 +2406,10 @@ export function createGame(canvas, opts = {}) {
     const r = run;
     const tA = performance.now();
     if (r && !paused) {
-      acc += dt * simSpeed;
+      if (r.frozen) acc = 0; else acc += dt * simSpeed; // v4.0: frozen at the Spell Boost gate: nothing simulates, the scene idles
       let n = 0;
       const maxSteps = MAX_STEPS_PER_FRAME * Math.ceil(simSpeed);
-      while (acc >= STEP && n < maxSteps && run === r) {
+      while (acc >= STEP && n < maxSteps && run === r && !r.frozen) {
         const t0 = performance.now();
         tick(); acc -= STEP; n++;
         const tt = performance.now() - t0;
@@ -2142,7 +2437,8 @@ export function createGame(canvas, opts = {}) {
     const r = run;
     if (!r) {
       return { phase: 'done', distance: 0, speedKmh: 0, nitro: 0, airTime: 0, flips: 0, smashed: 0, cash: 0, finishCrossed: false, landing: null,
-        altitude: 0, combo: { count: 0, mult: 1, timer01: 0 }, rejumps: 0, letters: { collected: 0, total: 0 } };
+        altitude: 0, combo: { count: 0, mult: 1, timer01: 0 }, rejumps: 0, letters: { collected: 0, total: 0 },
+        frozen: false, boostReady: false, boostUsed: false, boostLetters: { collected: 0, total: 0 }, gliding: false, inWell: false };
     }
     return {
       phase: r.phase,
@@ -2161,6 +2457,14 @@ export function createGame(canvas, opts = {}) {
       rejumps: r.rejumps,
       // v3 (R1: nothing about the word, not even its length, before the car is airborne)
       letters: { collected: r.lettersCollected, total: r.lettersRevealed ? r.letters.length : 0 },
+      // v4.0 Sky Era (all false / zero on Earth tracks). boostReady: a Spell Boost gate is in the world (past the apex) and not yet
+      // spent; frozen: the car is parked at the gate (or the app froze the run); boostUsed: boost() was called or the gate was skipped
+      frozen: r.frozen,
+      boostReady: !!(r.gate && !r.boostUsed),
+      boostUsed: r.boostUsed,
+      boostLetters: { collected: r.bw ? r.bw.n : 0, total: r.bw ? r.bw.letters.length : 0 },
+      gliding: r.gliding,
+      inWell: !!r.well,
     };
   }
 
@@ -2203,6 +2507,30 @@ export function createGame(canvas, opts = {}) {
       popup(r, String(name || 'Perfect Launch').toUpperCase() + '!', 0.5, LANE_BIG, gold, 1.15, false, 1.2, 'big');
       return true;
     },
+    // v4.0 Sky Era. freeze(true): stop the simulation (no timers tick; the scene idles: clouds drift, the car hovers with a glow).
+    // freeze(false): resume. Returns true if the state changed. The Spell Boost gate freezes the run by itself (event 'spellBoost').
+    freeze(on = true) {
+      const r = run;
+      if (!r || r.phase === 'done') return false;
+      if (on) { if (r.frozen) return false; r.frozen = true; return true; }
+      if (!r.frozen) return false;
+      r.frozen = false;
+      acc = 0; last = performance.now();
+      if (r.gate && r.gate.hit && !r.boostUsed && !r.bw && r.boostSkip === 0) r.boostSkip = 1; // resumed without boost(): spent next step
+      return true;
+    },
+    // The second jump you earn by spelling. Only while the car is parked at the gate (after the 'spellBoost' event), once per run.
+    // power 1.0 = a big second jump (up + forward), 0.5 = a smaller hop (scaled by the ride's boostMul, 0..1.25). `word` (string or letters)
+    // spawns the letter rings along the new arc (events letterRing / wordComplete carry boost: true). Does not unfreeze: call freeze(false).
+    boost(o = {}) {
+      const r = run;
+      if (!r || r.phase === 'done' || !r.gate || !r.gate.hit || r.boostUsed || r.bw) return false;
+      const power = clamp(o.power == null || o.power === '' || !Number.isFinite(Number(o.power)) ? 1 : Number(o.power), 0, 1.25);
+      applyBoost(r, power, lettersArg(o.word != null ? o.word : o.letters));
+      return true;
+    },
+    // alias of getState() (the HUD's name for it in SPEC.md)
+    getHudState() { return getState(); },
     pause() { paused = true; },
     resume() { paused = false; last = performance.now(); acc = 0; },
     stop() {
@@ -2220,7 +2548,10 @@ export function createGame(canvas, opts = {}) {
     getState,
     // --- not part of the contract: test/debug helpers ---
     debugStep(n = 1) {
-      for (let i = 0; i < n && run; i++) { tick(); run && (run.realT += STEP, updateFx(run, STEP), updateCamera(run, STEP, false)); }
+      for (let i = 0; i < n && run; i++) {
+        if (run.frozen) { run.realT += STEP; updateFx(run, STEP); updateCamera(run, STEP, false); continue; } // frozen: only the idle scene moves
+        tick(); run && (run.realT += STEP, updateFx(run, STEP), updateCamera(run, STEP, false));
+      }
       return getState();
     },
     debugPerf(reset = false) {

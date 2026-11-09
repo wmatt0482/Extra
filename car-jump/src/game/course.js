@@ -19,7 +19,8 @@ export function createCourse(track, seed) {
   // The ramp stands on a plateau; the lip overhangs a landing hill that runs down to the
   // far terrain baseline (y = 0). The hill catches a good jump at a shallow angle.
   const gk = track.gravity || 1;
-  const plateau = Math.round(Math.max(30, H * 0.45));
+  const sk = track.era === 'sky' ? track.sky || {} : null; // v4.0 Sky Era: floating islands over a cloud sea
+  const plateau = sk && sk.plateau ? sk.plateau : Math.round(Math.max(30, H * 0.45));
   const gapDrop = 6; // lip height above the plateau
   const lipY = plateau + gapDrop;
   const kickA = (15 * Math.PI) / 180;
@@ -97,11 +98,121 @@ export function createCourse(track, seed) {
   // terrain without kickers (the renderer draws kickers as structures on top of this)
   function baseY(x) {
     if (x <= 0) return plateau;
+    if (sk) return skyGround(x);
     return hill(x) + noise(x) * smoothstep(b0, b1, x);
   }
   function baseSlope(x) {
     if (x <= 0) return 0;
     return (baseY(x + 0.05) - baseY(x - 0.05)) / 0.1;
+  }
+
+  // ---- v4.0 Sky Era: islands over a cloud sea ----
+  // The launch island runs from under the ramp to xL (the Earth landing hill, ending at sk.floor instead of 0); after it a seeded
+  // chain of islands with gaps. groundY() is continuous everywhere (gaps interpolate between the island edges, so altitude,
+  // camera and landing prediction keep working); only island surfaces get physics bodies (terrainSegs).
+  const SKY_BEV = 1.3, SKY_BEVW = 4.5; // island edge: a bevel dropping SKY_BEV m over SKY_BEVW m (a soft ledge, not a wall)
+  const seaY = sk ? sk.sea || 0 : 0;
+  const skyFloor = sk ? sk.floor || 14 : 0;
+  const isl = []; // islands after the launch island: { i, x0, x1, y, amp, ph, pad }
+  const launchX0 = rampStart - 16;
+  const hillTop = (x) => skyFloor + (hill(x) * (plateau - skyFloor)) / plateau;
+  function islandTop(I, x) {
+    const d = Math.min(x - I.x0, I.x1 - x);
+    const fade = smoothstep(0, 10, d);
+    let y = I.y + I.amp * fade * (0.6 * Math.sin(x * 0.11 + I.ph) + 0.4 * Math.sin(x * 0.27 + I.ph * 2));
+    if (I.pad) y += I.pad * smoothstep(I.x1 - 10, I.x1 - 2.5, x);
+    return y - SKY_BEV * (1 - smoothstep(0, SKY_BEVW, d));
+  }
+  function launchTop(x) {
+    if (x <= 0) return plateau;
+    return hillTop(x) - SKY_BEV * (1 - smoothstep(0, SKY_BEVW, xL - x));
+  }
+  if (sk) {
+    const sr = mulberry32(hash2(seed, 0x51c7));
+    const [wMin, wMax] = sk.isle || [60, 100], [gMin, gMax] = sk.gap || [12, 24];
+    const F = track.finish, end = F + 900;
+    let x = xL, y = skyFloor, n = 0;
+    while (x < end) {
+      const along = clamp(x / Math.max(1, F), 0, 1);
+      const gapLen = (n === 0 ? gMin : gMin + (gMax - gMin) * sr()) + ((sk.gapGrow || 0) * x) / 1000;
+      const w = (wMin + (wMax - wMin) * sr()) * (1 - 0.12 * along);
+      const x0 = x + gapLen, x1 = x0 + w;
+      y = clamp(y + (sr() - 0.5) * 6, skyFloor - 1.5, skyFloor + 9);
+      isl.push({ i: 0, x0, x1, y, amp: Math.min(3, track.terrain.amplitude * 0.7), ph: sr() * TAU, pad: sr() < 0.7 ? 0.9 + sr() * 1.1 : 0 });
+      x = x1; n++;
+    }
+    // the finish stands on an island: one wide island over [F - 20, F + 42], the islands it swallowed are dropped
+    const keep = isl.filter((I) => I.x1 < F - 34 || I.x0 > F + 56);
+    let fy = skyFloor;
+    for (const I of keep) if (I.x1 < F) fy = I.y;
+    keep.push({ i: 0, x0: F - 20, x1: F + 42, y: fy, amp: 1.2, ph: 0.7, pad: 0 });
+    keep.sort((a, b) => a.x0 - b.x0);
+    keep[keep.length - 1].x1 = Math.max(keep[keep.length - 1].x1, end + 400); // and one long one to coast out on
+    isl.length = 0;
+    keep.forEach((I, k) => { I.i = k; isl.push(I); });
+  }
+  // the island holding x (index into isl), -1 if none; binary search
+  function islIdx(x) {
+    let lo = 0, hi = isl.length - 1;
+    while (lo <= hi) {
+      const m = (lo + hi) >> 1;
+      if (x < isl[m].x0) hi = m - 1; else if (x > isl[m].x1) lo = m + 1; else return m;
+    }
+    return -1;
+  }
+  // first island whose far edge is more than `m` ahead of x
+  function islAfter(x, m = 0) {
+    let lo = 0, hi = isl.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (isl[mid].x1 > x + m) hi = mid; else lo = mid + 1; }
+    return lo < isl.length ? isl[lo] : null;
+  }
+  // x on solid ground (launch island or an island), at least `margin` m inside its edges
+  function onIsland(x, margin = 0) {
+    if (x <= xL) return x >= launchX0 + margin && x <= xL - margin;
+    const k = islIdx(x);
+    return k >= 0 && x >= isl[k].x0 + margin && x <= isl[k].x1 - margin;
+  }
+  function skyGround(x) {
+    if (x <= xL) return launchTop(x);
+    const k = islIdx(x);
+    if (k >= 0) return islandTop(isl[k], x);
+    // in a gap: a straight line between the edges (the ground the car "would" land on)
+    const nx = islAfter(x);
+    if (!nx) { const L = isl[isl.length - 1]; return islandTop(L, L.x1); }
+    const pk = nx.i - 1;
+    const xa = pk < 0 ? xL : isl[pk].x1, ya = pk < 0 ? launchTop(xL) : islandTop(isl[pk], xa);
+    const t = clamp((x - xa) / Math.max(0.01, nx.x0 - xa), 0, 1);
+    return ya + (islandTop(nx, nx.x0) - ya) * t;
+  }
+  // the gap holding x: { i, x0, x1, y0, y1 } or null (x on an island)
+  function gapAt(x) {
+    if (!sk || x <= xL || islIdx(x) >= 0) return null;
+    const nx = islAfter(x);
+    if (!nx) return null;
+    const pk = nx.i - 1;
+    const xa = pk < 0 ? xL : isl[pk].x1;
+    return { i: nx.i, x0: xa, x1: nx.x0, y0: pk < 0 ? launchTop(xL) : islandTop(isl[pk], xa), y1: islandTop(nx, nx.x0) };
+  }
+  // physics segments [xa, xb] of the island surfaces inside [ca, cb): fine (1 m) near the island edges (the bevel), SEG inside
+  function terrainSegs(ca, cb) {
+    const out = [];
+    const spans = [];
+    if (ca < xL) spans.push([Math.max(ca, launchX0), Math.min(cb, xL), launchX0, xL]);
+    for (let k = 0; k < isl.length; k++) {
+      if (isl[k].x1 < ca) continue;
+      if (isl[k].x0 >= cb) break;
+      spans.push([Math.max(ca, isl[k].x0), Math.min(cb, isl[k].x1), isl[k].x0, isl[k].x1]);
+    }
+    for (const [a, b, i0, i1] of spans) {
+      let x = a;
+      while (x < b - 1e-6) {
+        const dEdge = Math.min(x - i0, i1 - x);
+        const nxt = Math.min(b, x + (dEdge < 5 ? 1 : SEG));
+        out.push([x, nxt]);
+        x = nxt;
+      }
+    }
+    return out;
   }
 
   // ---- v2 kicker ramps: 1-3 seeded circular kickers in the landing zone (after the landing hill) ----
@@ -110,7 +221,8 @@ export function createCourse(track, seed) {
     const kr = mulberry32(hash2(seed, 0x4b1c));
     const k0 = Math.max(40, xL + 12);
     const k1 = Math.max(k0 + 60, track.finish * 0.8);
-    const n = 1 + Math.floor(kr() * 3);
+    const kn = 1 + Math.floor(kr() * 3);
+    const n = sk ? 0 : kn; // no kickers over the clouds: the island edges are the launch pads
     const span = (k1 - k0) / n;
     for (let i = 0; i < n; i++) {
       let x0 = k0 + span * i + kr() * span * 0.55;
@@ -178,11 +290,13 @@ export function createCourse(track, seed) {
   const kinds = ob.kinds.filter((k) => OBSTACLE_KINDS[k]);
   const has = (k) => kinds.includes(k);
   const formTypes = [];
-  if (has('crate')) formTypes.push(['pyramid', 1.0]);
-  if (has('glass')) formTypes.push(['tower', 1.0]);
-  if (has('barrel')) formTypes.push(['barrels', 0.8]);
-  if (has('fuel')) formTypes.push(['depot', 0.7]);
-  formTypes.push(['bridge', 0.9]);
+  if (!sk) { // the sky has no crate pyramids or scaffolds: a few puffs and crystals on the islands instead
+    if (has('crate')) formTypes.push(['pyramid', 1.0]);
+    if (has('glass')) formTypes.push(['tower', 1.0]);
+    if (has('barrel')) formTypes.push(['barrels', 0.8]);
+    if (has('fuel')) formTypes.push(['depot', 0.7]);
+    formTypes.push(['bridge', 0.9]);
+  }
   const formW = formTypes.reduce((a, f) => a + f[1], 0);
   const frand = mulberry32(hash2(seed, 0xf0a3));
   const forms = [];
@@ -251,6 +365,7 @@ export function createCourse(track, seed) {
   }
 
   function genFormsUntil(xMax) {
+    if (!formTypes.length) return;
     while (formNext < xMax) {
       let pick = frand() * formW, type = formTypes[0][0];
       for (const [t, w] of formTypes) { if ((pick -= w) <= 0) { type = t; break; } }
@@ -316,6 +431,7 @@ export function createCourse(track, seed) {
           const px = x + k * (def.w + 0.25);
           const slope = groundSlope(px);
           if (Math.abs(slope) > 0.45) continue;
+          if (sk && !onIsland(px, def.w / 2 + 3)) continue;
           if (busy.some(([a, b]) => px + def.w / 2 > a && px - def.w / 2 < b)) continue;
           out.push({ id: ci * 1000 + n++, kind, x: px });
         }
@@ -335,6 +451,7 @@ export function createCourse(track, seed) {
   // tracks launch faster). Arcs at several speed factors so weaker and stronger cars both find
   // things, a high tier that needs nitro/upgrades, and a short arc over each kicker.
   const air = [];
+  const wells = []; // v4.0 gravity wells: { id, x, y, R, spin }
   {
     const ar = mulberry32(hash2(seed, 0xa1e7));
     const g = 9.81 * gk;
@@ -353,6 +470,7 @@ export function createCourse(track, seed) {
       }
       return pts;
     };
+    const ringKind = sk ? 'boost' : 'ring', ringR = sk ? 3.1 : 2.3; // sky: big glowing boost rings
     const lip = (13.5 * Math.PI) / 180;
     const tiers = [0.8, 0.9, 1.0, 1.1, 1.25].map((f) => arcOf(refV * f, lip, 0, launchY));
     const at = (pts, u) => pts[clamp(Math.round(u * (pts.length - 1)), 0, pts.length - 1)];
@@ -366,12 +484,12 @@ export function createCourse(track, seed) {
       const p = at(tiers[ti], 0.22 + ar() * 0.56);
       const y = p[1] + (ar() - 0.5) * 2;
       if (p[1] - groundY(p[0]) < 5 || tooClose(p[0], y, 9)) continue;
-      add('ring', p[0], y, { r: 2.3 });
+      add(ringKind, p[0], y, { r: ringR });
       i++;
     }
     {
       const p = at(tiers[2], 0.35 + ar() * 0.25);
-      if (!tooClose(p[0], p[1] + 8, 6)) add('ring', p[0], p[1] + 7 + ar() * 3, { r: 2.3, high: true });
+      if (!tooClose(p[0], p[1] + 8, 6)) add(ringKind, p[0], p[1] + 7 + ar() * 3, { r: ringR, high: true });
     }
     // coin arcs (5-9 coins riding an arc exactly)
     const nC = 2 + Math.floor(ar() * 2);
@@ -396,7 +514,7 @@ export function createCourse(track, seed) {
       i++;
     }
     // a blimp above the main arc's apex on tracks that ask for one (city, moon, neon, sky)
-    if (track.blimp || track.id === 'city' || track.id === 'moon') {
+    if (!sk && (track.blimp || track.id === 'city' || track.id === 'moon')) {
       const pts = tiers[3];
       let apex = pts[0];
       for (const p of pts) if (p[1] > apex[1]) apex = p;
@@ -410,7 +528,32 @@ export function createCourse(track, seed) {
       add('ring', top[0], top[1] + 0.5, { r: 2.3, kicker: true });
       for (let j = 0; j < 5; j++) { const p = at(pts, 0.12 + j * 0.05); add('coin', p[0], p[1], { r: 0.55 }); }
     }
+    if (sk) {
+      // gravity wells on the first arcs: a car flying the arc passes under the centre, where the swirl flings it forward
+      for (const [ti, u] of [[1, 0.5], [3, 0.62]]) {
+        const p = at(tiers[ti], u);
+        if (p[1] - groundY(p[0]) < 14) continue;
+        wells.push({ id: wells.length, x: p[0], y: p[1] + 5.5 + ar() * 2, R: 12.5, spin: 1 });
+      }
+      // islands: a coin arc over every gap, a boost ring over every sk.rings-th gap, a well over every sk.wells-th gap
+      const gaps = [];
+      let pa = { x: xL, y: launchTop(xL) };
+      for (const I of isl) { gaps.push({ x0: pa.x, x1: I.x0, y0: pa.y, y1: islandTop(I, I.x0) }); pa = { x: I.x1, y: islandTop(I, I.x1) }; }
+      const lastGap = Math.min(gaps.length, Math.max(8, Math.ceil(track.finish / 40)));
+      for (let k = 0; k < lastGap; k++) {
+        const G = gaps[k], cx = (G.x0 + G.x1) / 2, lv = (G.y0 + G.y1) / 2, gw = G.x1 - G.x0;
+        const nC = 5 + Math.floor(ar() * 3);
+        for (let j = 0; j < nC; j++) {
+          const u = (j + 0.5) / nC, x = G.x0 - 2 + (gw + 4) * u;
+          add('coin', x, lv + 1.8 + 3.8 * (1 - Math.pow(2 * u - 1, 2)), { r: 0.55 });
+        }
+        if (sk.rings && k % sk.rings === 1) add('boost', cx, lv + 3.8, { r: ringR, gap: true });
+        if (sk.wells && k % sk.wells === sk.wells - 1) wells.push({ id: wells.length, x: cx, y: lv + 10.5, R: 11.5, spin: 1 });
+      }
+    }
     air.sort((a, b) => a.x - b.x);
+    wells.sort((a, b) => a.x - b.x);
+    wells.forEach((w, i) => { w.id = i; });
   }
 
   return {
@@ -420,5 +563,8 @@ export function createCourse(track, seed) {
     startX: rampStart + 3.2,
     // v2
     baseY, kickers: kicks, kickerAt, terrainXs, formationsIn, airTargets: air,
+    // v4.0 Sky Era (all null/empty on Earth tracks)
+    sky: sk ? { sea: seaY, floor: skyFloor, bev: SKY_BEV, bevW: SKY_BEVW, launchX0 } : null,
+    islands: isl, wells, onIsland, gapAt, islAfter, islIdx, terrainSegs: sk ? terrainSegs : null, islandTop, launchTop,
   };
 }

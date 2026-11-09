@@ -59,6 +59,10 @@
     <label>Nitro tank <input id="nitroS" type="range" min="0" max="1.5" step="0.05" value="1"><span id="v-nitroS">1</span></label>
     <button id="startBtn">Start run</button> <button id="stopBtn">Stop</button>
     <button id="powerBtn" title="game.setLaunchPower(power, nitro tank): only while parked at the ramp top">Set launch power</button>
+    <hr>
+    <label>Boost word <input id="bword" type="text" placeholder="rings after the boost" autocomplete="off"></label>
+    <label>Spell Boost <select id="sb"><option value="1">gate on</option><option value="0">off</option></select></label>
+    <button id="b10" title="game.boost({power:1, word}) while frozen at the gate">Boost 1.0</button> <button id="b05">Boost 0.5</button> <button id="unfreeze">Unfreeze</button>
   </div>
 </div>
 <pre id="state"></pre>
@@ -73,6 +77,8 @@
 import { createGame } from './src/game/engine.js';
 import { CARS, CAR_BY_ID } from './src/data/cars.js';
 import { TRACKS, TRACK_BY_ID } from './src/data/tracks.js';
+import { SKY_TRACKS, SKY_TRACK_BY_ID } from './src/data/skyTracks.js';
+import { SKY_RIDES, SKY_RIDE_BY_ID } from './src/data/skyRides.js';
 import { resolveStats } from './src/data/upgrades.js';
 import { SKINS, STICKERS } from './src/data/cosmetics.js';
 import { resolveLook } from './src/game/car.js';
@@ -80,8 +86,10 @@ import { resolveLook } from './src/game/car.js';
 const q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
 if (q.get('ui') === '0') document.body.classList.add('noui');
-for (const c of CARS) $('car').add(new Option(c.name + ' (' + c.id + ')', c.id));
-for (const t of TRACKS) $('track').add(new Option(t.name + ' (' + t.id + ')', t.id));
+for (const c of CARS.concat(SKY_RIDES)) $('car').add(new Option(c.name + ' (' + c.id + ')', c.id));
+for (const t of TRACKS.concat(SKY_TRACKS)) $('track').add(new Option(t.name + ' (' + t.id + ')', t.id));
+const carById = (id) => CAR_BY_ID[id] || SKY_RIDE_BY_ID[id];
+const trackById = (id) => TRACK_BY_ID[id] || SKY_TRACK_BY_ID[id];
 $('car').value = q.get('car') || 'beater';
 $('track').value = q.get('track') || 'canyon';
 $('seed').value = q.get('seed') || '42';
@@ -100,6 +108,10 @@ $('toggle').onclick = () => $('panel').classList.toggle('collapsed');
 // v3: ?letters=friend&power=0.65&nitro=1.25 (start() values); the panel's "Set launch power" calls
 // game.setLaunchPower(power, nitro) on the parked car (parked-then-powered flow)
 $('letters').value = q.get('letters') || '';
+// v4.0 Sky Era: ?spellboost=0 (no gate), ?bword=friend (letters of the Spell Boost rings), ?autoboost=1|0.5|none (the harness answers the
+// gate by itself after ?boostdelay=<ms> of the freeze; "none" just unfreezes), the panel's buttons do the same by hand
+$('bword').value = q.get('bword') || 'friend';
+$('sb').value = q.get('spellboost') === '0' ? '0' : '1';
 $('power').value = q.get('power') || '1';
 $('nitroS').value = q.get('nitro') || '1';
 for (const id of ['power', 'nitroS']) {
@@ -110,8 +122,21 @@ if (q.get('panel') === '0') $('panel').classList.add('collapsed');
 
 const rr = (window.__rr = { events: [], finished: null, launch: null, game: null });
 const logLines = [];
+function boostNow(power) {
+  const ok = game.boost({ power, word: $('bword').value.trim() });
+  game.freeze(false);
+  return ok;
+}
+rr.boost = boostNow;
+$('b10').onclick = () => boostNow(1);
+$('b05').onclick = () => boostNow(0.5);
+$('unfreeze').onclick = () => game.freeze(false);
 function onEvent(evt) {
   rr.events.push(evt);
+  if (evt.type === 'spellBoost' && q.get('autoboost') != null) {
+    const a = q.get('autoboost'), delay = Number(q.get('boostdelay') || 900);
+    setTimeout(() => { if (a === 'none') game.freeze(false); else boostNow(Number(a)); }, delay);
+  }
   if (evt.type === 'launch') rr.launch = evt;
   if (evt.type === 'finish') {
     rr.finished = evt.summary;
@@ -138,8 +163,8 @@ const game = (rr.game = createGame($('c'), { onEvent, reducedMotion: q.get('rm')
   finaleChance: q.get('finale') != null ? Number(q.get('finale')) : undefined }));
 
 function startRun() {
-  const car = CAR_BY_ID[$('car').value];
-  const track = TRACK_BY_ID[$('track').value];
+  const car = carById($('car').value);
+  const track = trackById($('track').value);
   const levels = Object.fromEntries(UPS.map((u) => [u, Number($('lv-' + u).value)]));
   rr.events.length = 0; rr.finished = null; rr.launch = null;
   $('results').style.display = 'none';
@@ -148,7 +173,7 @@ function startRun() {
   const word = $('letters').value.trim();
   const look = resolveLook(car, { skin: $('skin').value, sticker: $('sticker').value });
   game.start({ skin: look.skin, sticker: look.sticker, car, stats: resolveStats(car, levels), track, seed: Number($('seed').value) | 0, bestDistance: best, shake,
-    letters: word ? [...word] : null, powerScale: Number($('power').value), nitroScale: Number($('nitroS').value) });
+    letters: word ? [...word] : null, powerScale: Number($('power').value), nitroScale: Number($('nitroS').value), spellBoost: $('sb').value !== '0' });
 }
 function setLaunchPower() {
   const ok = game.setLaunchPower(Number($('power').value), Number($('nitroS').value));

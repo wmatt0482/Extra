@@ -3,6 +3,7 @@
 
 import { TAU, mulberry32, clamp, mix, shade, withAlpha, luminance } from './util.js';
 import { drawChassis, drawWheel } from './car.js';
+import { createSkyBackdrop } from './skyRender.js';
 
 export const OUT = '#1d1b26';
 const FONT = '900 {S}px "Arial Black", "Helvetica Neue", system-ui, -apple-system, sans-serif';
@@ -60,6 +61,7 @@ const STYLE_BY_TRACK = { canyon: 'mesa', city: 'city', desert: 'dunes', arctic: 
 
 // ---------- backdrop (parallax layers), generated once per run ----------
 export function createBackdrop(track, seed) {
+  if (track.era === 'sky') return createSkyBackdrop(track, seed); // v4.0 Sky Era (src/game/skyRender.js)
   const rand = mulberry32((seed * 31 + 7) >>> 0);
   const theme = track.theme;
   const style = track.style || STYLE_BY_TRACK[track.id] || 'hills';
