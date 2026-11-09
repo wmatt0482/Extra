@@ -5,7 +5,7 @@
 import { ARCS, CASES, CITIES, GANG } from '../content/index.js';
 
 const own = (v, d) => (v == null ? d : v);
-const text = (x) => (typeof x === 'string' ? x : x && typeof x === 'object' ? String(x.text || x.line || x.say || x.clue || '') : '');
+const text = (x) => (typeof x === 'string' ? x : x && typeof x === 'object' ? String(x.text || x.fact || x.line || x.say || x.clue || x.body || x.statement || '') : '');
 const idOf = (x) => (typeof x === 'string' ? x : x && x.id) || '';
 const arr = (x) => (Array.isArray(x) ? x : x == null ? [] : [x]);
 
@@ -28,7 +28,7 @@ export const CASE_BY_ID = Object.freeze(Object.fromEntries(CASE_LIST.map((c) => 
 export const SEQUENCE = Object.freeze(CASE_LIST.map((c) => c.id));
 export const TOUR_TOTAL = CASE_LIST.length;
 
-export const routeOf = (kase) => arr(kase.route).map(idOf).filter((id) => CITY_BY_ID[id]);
+export const routeOf = (kase) => (arr(kase.route).length ? arr(kase.route) : arr(kase.stops).map((s) => s && (s.cityId || s.city))).map(idOf).filter((id) => CITY_BY_ID[id]);
 export const hideoutCity = (kase) => { const r = routeOf(kase); return r[r.length - 1] || ''; };
 export const gangOf = (kase) => GANG_BY_ID[kase.leader || kase.gang || kase.gangMember] || GANG[0] || { id: 'scrabble', name: 'Scrabble', animal: 'squirrel', reason: '' };
 

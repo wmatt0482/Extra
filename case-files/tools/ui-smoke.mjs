@@ -346,7 +346,7 @@ async function runLayout(browser, layout) {
   await page.click('#lab-chip-games');
   await page.waitForSelector('#lab-games-panel');
   const gp = await J(page, () => ({ n: document.querySelectorAll('#lab-games-panel .lab-gp-row').length, here: (document.querySelector('#lab-games-panel .lab-gp-row.here') || {}).dataset && document.querySelector('#lab-games-panel .lab-gp-row.here').dataset.game, cf: ((document.querySelector('#lab-games-panel [data-game="cf"] small') || {}).textContent || '') }));
-  check(gp.n === 8 && gp.here === 'cf' && /Detective/.test(gp.cf), `v0.1.4: the chip's Games button opens the six-game panel, Case Files highlighted with "${gp.cf}"`);
+  check(gp.n === 9 && gp.here === 'cf' && /Detective/.test(gp.cf), `v0.1.4: the chip's Games button opens the seven-game panel, Case Files highlighted with "${gp.cf}"`);
   await shot(page, layout, '02-games');
   await page.click('#lab-games-close');
   await page.waitForFunction(() => !document.querySelector('#lab-games-panel'));

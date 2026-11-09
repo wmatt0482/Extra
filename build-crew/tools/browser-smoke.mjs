@@ -182,10 +182,10 @@ async function labStages() {
     const sum = await lp.evaluate(() => window.__lab.store.doc().sum?.bc || null);
     assert(sum && /^Builder LV 1$/.test(sum.level) && sum.line === '0 / 20 jobs', 'lab.summary sent Builder LV 1 and 0 / 20 jobs: ' + JSON.stringify(sum));
     await lp.screenshot({ path: path.join(shots, 'lab-title.png') });
-    // the chip's Games button opens the six-game panel with Build Crew marked as the current game
+    // the chip's Games button opens the seven-game panel with Build Crew marked as the current game
     await lp.locator('#lab-chip-games').click();
     await lp.waitForSelector('.lab-gp-row.here', { timeout: 10000 });
-    assert.equal(await lp.locator('.lab-gp-row').count(), 8, 'Home, The Lab and the six games');
+    assert.equal(await lp.locator('.lab-gp-row').count(), 9, 'Home, The Lab and the seven games');
     assert.match(await lp.locator('.lab-gp-row.here').textContent(), /Build Crew.*You are here/, 'Build Crew is marked as here');
     await lp.screenshot({ path: path.join(shots, 'lab-games-panel.png') });
     await lp.keyboard.press('Escape');

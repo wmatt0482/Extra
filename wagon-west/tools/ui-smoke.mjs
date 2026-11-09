@@ -3952,7 +3952,7 @@ async function labBoot(page, layout, grab) {
   await page.click('#lab-chip-games');
   await page.waitForSelector('#lab-games-panel');
   const gp = await J(page, () => ({ rows: [...document.querySelectorAll('#lab-games-panel .lab-gp-row')].map((a) => a.dataset.game || a.getAttribute('href')), here: (document.querySelector('#lab-games-panel .lab-gp-row.here') || {}).dataset && document.querySelector('#lab-games-panel .lab-gp-row.here').dataset.game, ww: ((document.querySelector('#lab-games-panel [data-game="ww"] small') || {}).textContent || '') }));
-  check(gp.rows.length === 8 && gp.here === 'ww' && /stops/.test(gp.ww), `the chip's Games button opens the six-game panel (${gp.rows.length} rows), Wagon West highlighted, its line "${gp.ww}"`);
+  check(gp.rows.length === 9 && gp.here === 'ww' && /stops/.test(gp.ww), `the chip's Games button opens the seven-game panel (${gp.rows.length} rows), Wagon West highlighted, its line "${gp.ww}"`);
   await shot(page, layout, 'lab-00-games');
   await page.click('#lab-games-close');
   await page.waitForFunction(() => !document.querySelector('#lab-games-panel'));
