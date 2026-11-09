@@ -71,6 +71,7 @@ async function routeFonts(ctx) {
 async function device(browser, name, opts) {
   const ctx = await browser.newContext({ ...opts, ignoreHTTPSErrors: true });
   await routeFonts(ctx);
+  await ctx.route(/\/src\/data\/sky(Tracks|Rides)\.js(\?.*)?$/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'export const SKY_TRACKS = []; export const SKY_RIDES = [];' }));   // v4.0: optional sky data = empty lists (no 404 in the console)
   await ctx.route('**/api/family/**', async (route) => {
     const req = route.request();
     if (!online[name]) { apiLog.push({ name, method: req.method(), status: 'offline' }); await route.abort('internetdisconnected'); return; }
@@ -206,7 +207,7 @@ async function main() {
     console.log('\n=== sync off: nothing goes to the network ===');
     await L.waitForSelector(visibleSel('#screen-players'));
     check(apiLog.length === 0, 'no /api/family requests before a family exists');
-    check(await J(L, () => window.__spellJump.app.version) === '3.11.0', 'app version 3.10.0');
+    check(await J(L, () => window.__spellJump.app.version) === '4.0.0', 'app version 4.0.0');
 
     console.log('\n=== laptop: Mia, PIN, Create family code ===');
     await typeName(L, 'Mia');
@@ -369,6 +370,9 @@ async function main() {
     const crates0 = await J(L, () => ({ ...window.__spellJump.app.save.crates }));
     await J(L, () => { const s = window.__spellJump.app.save; s.cosmetics.skins.push('flames'); s.crates.earned += 2; s.xp = 400; window.__spellJump.app.persist(); });
     await J(I, () => { const s = window.__spellJump.app.save; s.cosmetics.stickers.push('star'); s.cosmetics.equipped.beater = { skin: 'stock', sticker: 'star' }; s.crates.earned += 1; s.crates.opened += 1; s.xp = 250; window.__spellJump.app.persist(); });
+    // v4.0: and the Sky Era block (opened on both devices offline: the laptop later, with an unseen ceremony; the ipad earlier, ceremony seen)
+    await J(L, () => { const s = window.__spellJump.app.save; s.sky = { unlocked: true, at: 9000, ceremonySeen: false, era: 'sky' }; window.__spellJump.app.persist(); });
+    await J(I, () => { const s = window.__spellJump.app.save; s.sky = { unlocked: true, at: 4000, ceremonySeen: true, era: 'earth' }; window.__spellJump.app.persist(); });
     await sleep(2600);                                   // both debounced pushes fail offline
     check((await syncStatus(L)).offline && (await syncStatus(I)).offline, 'both devices offline with changes waiting');
     online.ipad = true;
@@ -393,6 +397,9 @@ async function main() {
     const okSave = (x) => x.cosmetics.skins.includes('flames') && x.cosmetics.stickers.includes('star') && x.crates.earned === crates0.earned + 2 && x.crates.opened === crates0.opened + 1 && x.xp === 400;
     check(okSave(sv.l) && okSave(sv.i) && okSave(sv.s), `cosmetics + crates merged across the devices: skins ${sv.s.cosmetics.skins}, stickers ${sv.s.cosmetics.stickers}, crates ${JSON.stringify(sv.s.crates)}, xp ${sv.s.xp} (laptop, ipad and server agree)`);
     check(await J(L, () => window.__spellJump.app.save.cosmetics.stickers.includes('star') && window.__spellJump.app.save.crates.earned) === crates0.earned + 2, "the laptop's in-memory save got the ipad's sticker");
+    const okSky = (x) => x.sky && x.sky.unlocked === true && x.sky.at === 4000 && x.sky.ceremonySeen === true;
+    check(okSky(sv.l) && okSky(sv.i) && okSky(sv.s) && sv.l.sky.era === sv.s.sky.era && sv.i.sky.era === sv.s.sky.era, `v4.0 sky block merged across the devices: ${JSON.stringify(sv.s.sky)} (unlocked OR, the earliest time, ceremony seen once; laptop, ipad and server agree)`);
+    check(await J(L, () => window.__spellJump.app.save.sky.ceremonySeen === true && window.__spellJump.app.save.sky.at === 4000), "the laptop's in-memory save has the merged sky block (no second ceremony)");
 
     console.log('\n=== status screens ===');
     await L.click('#btn-parents');

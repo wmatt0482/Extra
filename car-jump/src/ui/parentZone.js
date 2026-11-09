@@ -482,9 +482,9 @@ export function createParentZone(app) {
     const why = h('button', { class: 'btn btn-sm', 'data-sfx': '', id: 'pz-why-2' }, 'Why this works');
     why.addEventListener('click', () => { view = 'why'; render(); });
     // v3.10: the Sky Road (one step per mission day since the release; the Sky Era teaser shows it to the child)
-    let sky = 0;
-    try { sky = skyRoadSteps(app.playerData(p.id).save); } catch (_) { /* no save yet */ }
-    const skyLine = h('div', { class: 'sub pz-sky', id: 'pz-sky', 'data-steps': String(sky) }, `Sky Road: ${sky} / ${SKY_ROAD_STEPS} mission days (the Sky Era teaser)`);
+    let sky = 0, skyOpen = false;
+    try { sky = skyRoadSteps(app.playerData(p.id).save); skyOpen = !!(app.skyFor && app.skyFor(p.id).unlocked); } catch (_) { /* no save yet */ }
+    const skyLine = h('div', { class: 'sub pz-sky', id: 'pz-sky', 'data-steps': String(sky) }, `Sky Road: ${sky} / ${SKY_ROAD_STEPS} mission days (the Sky Era teaser)${skyOpen ? ' · Sky Era open' : ''}`);
     return [
       chips,
       weekBlock(d, r.list.id),
@@ -741,6 +741,26 @@ export function createParentZone(app) {
     ];
   }
 
+  // v4.0: the Sky Era's two controls: the per-child Spell Boost switch and the plain "Open the Sky Era now"
+  function skyRows(p, o, set) {
+    const sk = app.skyFor ? app.skyFor(p.id) : { unlocked: false, available: false, steps: 0 };
+    const sub = sk.unlocked ? `The Sky Era is open for ${p.name}.`
+      : !sk.available ? 'The Sky tracks are not on this device yet.'
+      : `It opens by itself when ${p.name}'s Sky Road reaches ${SKY_ROAD_STEPS} / ${SKY_ROAD_STEPS} mission days (now ${sk.steps}). Tap Open to start it today instead.`;
+    const box = h('div', { class: 'confirm', hidden: true },
+      h('p', {}, `Open the Sky Era for ${p.name} now? It cannot be closed again, and Earth stays open.`),
+      h('div', { class: 'btns' },
+        h('button', { class: 'btn btn-sm', onclick: () => { box.hidden = true; } }, 'Cancel'),
+        h('button', { class: 'btn btn-sm btn-green', id: 'opt-sky-open-yes', onclick: () => { box.hidden = true; app.openSkyFor(p.id); app.toast(`Sky Era open for ${p.name}`); render(); } }, 'Open the Sky Era')));
+    const open = h('button', { class: 'btn btn-sm btn-green', id: 'opt-sky-open', disabled: sk.unlocked || !sk.available ? true : null, onclick: () => { box.hidden = false; box.scrollIntoView({ block: 'nearest' }); } }, sk.unlocked ? 'Open' : 'Open now');
+    return [
+      h('div', { class: 'hud-label pz-sec' }, 'SKY ERA'),
+      h('div', { class: 'row', id: 'opt-sky-open-row', 'data-unlocked': String(sk.unlocked) }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Open the Sky Era now'), h('div', { class: 'sub' }, sub)), open),
+      box,
+      toggle('Spell Boost in the Sky: on/off', 'On Sky tracks the car stops in the air once a flight and a word is spelled for a bigger second jump. Nothing is timed. Off = no word in the air.', o.skyBoost !== false, (v) => set('skyBoost', v), 'opt-sky-boost'),
+    ];
+  }
+
   function optionsTab(p) {
     const o = playerOptions(app.family, p.id);
     const set = (k, v) => { setPlayerOption(app.family, p.id, k, v); app.persistFamily(); app.onOptionsChanged(p.id); };
@@ -767,6 +787,7 @@ export function createParentZone(app) {
       toggle('Music', null, st.music, (v) => setGame('music', v), 'opt-music'),
       toggle('Reduced motion', 'No screen shake or slow-mo', st.reducedMotion, (v) => setGame('reducedMotion', v), 'opt-motion'),
       h('div', { class: 'row slider-row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, 'Screen shake')), h('div', { class: 'slider' }, shake, shakeOut)),
+      ...skyRows(p, o, set),
       ...labRows(p),
       h('div', { class: 'hud-label pz-sec' }, 'RESET'),
       ...confirmRow('Reset spelling data', `Clears ${p.name}'s word progress and test history (lists stay)`, 'Reset', `Clear ${p.name}'s spelling progress? Lists stay.`, 'Reset spelling', () => {

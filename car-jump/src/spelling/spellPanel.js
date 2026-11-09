@@ -454,7 +454,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {}, voiceW
     get mode() { return S ? S.mode : null; },
     get word() { return S ? S.word : null; },
     /**
-     * info: { word, syllables, sentence, sayAs, pattern, isNew, look }; ctx: { coinMult, streakBefore, mission: {count,size}, upper }
+     * info: { word, syllables, sentence, sayAs, pattern, isNew, look }; ctx: { coinMult, streakBefore, mission: {count,size}, upper, badge? }
      */
     run(info, ctx = {}) {
       if (S) cancel();
@@ -473,10 +473,13 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {}, voiceW
       const set = ctx.set && ctx.set.count > 1 ? ctx.set : null;
       const today = ctx.mission ? `Today ${Math.min(ctx.mission.count, ctx.mission.size)} / ${ctx.mission.size}` : '';
       chip.replaceChildren();
+      // v4.0: the Spell Boost word (the Sky Era's second jump) is the same panel with a gold chip; ctx.badge = 'Spell Boost'
+      if (ctx.badge) { const c = el('span', 'sp-boost'); c.id = 'sp-boost'; c.textContent = String(ctx.badge); chip.append(c); }
+      root.dataset.kind = ctx.badge ? 'boost' : 'launch';
       if (set) { const c = el('span', 'sp-set'); c.id = 'sp-set'; c.textContent = `Word ${set.index + 1} of ${set.count}`; chip.append(c); }
       if (today) { const c = el('span', 'sp-today'); c.textContent = today; chip.append(c); }
-      chip.classList.toggle('two', !!(set && today));
-      chip.hidden = !set && !ctx.mission;
+      chip.classList.toggle('two', !!((set || ctx.badge) && today));
+      chip.hidden = !set && !ctx.mission && !ctx.badge;
       kb.setUpper(!!ctx.upper);
       kb.setEnterLabel('Launch');
       kb.setActive(true);

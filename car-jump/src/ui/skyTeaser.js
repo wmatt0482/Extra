@@ -12,6 +12,9 @@
 //                           a gate; the steps walked so far glow and the car sits on its real step; "Sky Road: N / 15".
 // Milestone clip (~5.4 s; 7 s at the gate): only the road; the car hops up to its new step with a sparkle.
 // Reduced motion: three still frames (one for a clip) with their captions; a tap goes to the next one.
+// v4.0 unlock ceremony (kind 'open', ~10.5 s, plays once when the Sky Era opens): the Sky Gate swings open, the player's car drives
+// through into the light, then the three ride silhouettes light up in full colour one by one and are named; "The Sky Era is open!"
+// (natural-voice clip only). One still in reduced motion.
 // Spoken lines go through deps.speak(text) (natural-voice clips only; main.js never falls back to the device voice
 // here) and every line is also a big caption. Skip: a tap anywhere after 0.5 s, the Skip button, Escape / Enter / Space.
 // The rAF loop stops on close; nothing is left running.
@@ -23,6 +26,7 @@ const DPR_CAP = 1.5;                     // as titleHero
 export const FULL_LEN = 25;
 export const CLIP_LEN = 5.4;
 export const GATE_LEN = 7;
+export const OPEN_LEN = 10.5;
 const B2 = 6, B3 = 18;                   // beat starts
 const TAU = Math.PI * 2;
 const TAP_GRACE = 0.5;                   // a tap in the first half second does not skip (the tap that opened the title)
@@ -169,7 +173,10 @@ export function createSkyTeaser(root, deps = {}) {
   const bottom = document.createElement('div');
   bottom.className = 'st-bottom';
   bottom.append(caption, tapHint);
-  root.append(canvas, badge, bottom, skip);
+  const ridesBox = document.createElement('div');                     // v4.0: the three ride names of the unlock ceremony (placed over the canvas)
+  ridesBox.className = 'st-rides'; ridesBox.id = 'st-rides'; ridesBox.hidden = true; ridesBox.setAttribute('aria-label', 'The new rides');
+  const rideEls = [0, 1, 2].map((i) => { const e = document.createElement('div'); e.className = 'st-ride'; e.dataset.ride = String(i); ridesBox.append(e); return e; });
+  root.append(canvas, badge, ridesBox, bottom, skip);
   root.setAttribute('role', 'dialog'); root.setAttribute('aria-label', 'The Sky Era is coming');
   const ctx = canvas.getContext('2d');
 
@@ -574,28 +581,36 @@ export function createSkyTeaser(root, deps = {}) {
     ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(220,190,255,.95)'; ctx.stroke();
   }
   // the three new rides, as dark shapes with a rim of sunlight; positions are in screen units (u = min(W, H))
-  function drawRide(kind, x, y, u, tt) {
+  function drawRide(kind, x, y, u, tt, lit = 0, color = '#7fe8ff') {
     ctx.save();
     ctx.translate(x, y); ctx.scale(u, u);
-    const fill = 'rgba(10,12,40,.94)', rim = 'rgba(255,236,190,.85)';
+    const dark = [10, 12, 40], body = lit > 0 ? mixRgb(dark, hexRgb(color), lit) : dark;
+    const fill = lit > 0 ? rgbStr(body, 0.97) : 'rgba(10,12,40,.94)';
+    const fill2 = lit > 0 ? rgbStr(mixRgb(body, [10, 12, 40], 0.55), 0.97) : fill;       // the rider / fin / cabin: darker than the body
+    const rim = lit > 0 ? `rgba(255,255,255,${0.55 + 0.4 * lit})` : 'rgba(255,236,190,.85)';
     ctx.fillStyle = fill; ctx.strokeStyle = rim; ctx.lineWidth = 0.012; ctx.lineJoin = 'round';
-    const shape = (pts) => { ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (const [a, b] of pts.slice(1)) ctx.lineTo(a, b); ctx.closePath(); ctx.fill(); ctx.stroke(); };
+    if (lit > 0) {                                                    // a soft glow in the ride's own colour behind it
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.5 * lit;
+      ctx.drawImage(glowSprite(color), -0.55, -0.4, 1.1, 0.8);
+      ctx.restore();
+    }
+    const shape = (pts, tone = 0) => { ctx.fillStyle = tone ? fill2 : fill; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]); for (const [a, b] of pts.slice(1)) ctx.lineTo(a, b); ctx.closePath(); ctx.fill(); ctx.stroke(); };
     if (kind === 'bike') {
       ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.55 + 0.25 * Math.sin(tt * 18);
       ctx.drawImage(glowSprite('#7fe8ff'), -0.24, 0.02, 0.2, 0.12); ctx.drawImage(glowSprite('#7fe8ff'), 0.06, 0.02, 0.2, 0.12);
       ctx.restore();
       shape([[-0.28, 0.0], [-0.2, -0.045], [-0.02, -0.06], [0.08, -0.1], [0.15, -0.1], [0.17, -0.06], [0.3, -0.02], [0.27, 0.03], [0.08, 0.05], [-0.14, 0.045]]);
-      shape([[-0.1, -0.05], [-0.06, -0.12], [0.04, -0.15], [0.11, -0.12], [0.06, -0.06]]);         // the rider, crouched
-      ctx.beginPath(); ctx.arc(0.1, -0.165, 0.035, 0, TAU); ctx.fill(); ctx.stroke();
+      shape([[-0.1, -0.05], [-0.06, -0.12], [0.04, -0.15], [0.11, -0.12], [0.06, -0.06]], 1);         // the rider, crouched
+      ctx.fillStyle = fill2; ctx.beginPath(); ctx.arc(0.1, -0.165, 0.035, 0, TAU); ctx.fill(); ctx.stroke();
     } else if (kind === 'rocket') {
       ctx.save(); ctx.globalCompositeOperation = 'lighter';
       const fl = 0.22 + 0.05 * Math.sin(tt * 30);
       const g = ctx.createLinearGradient(-0.32 - fl, 0, -0.3, 0); g.addColorStop(0, 'rgba(255,120,40,0)'); g.addColorStop(1, 'rgba(255,200,120,.95)');
       ctx.fillStyle = g; ctx.beginPath(); ctx.moveTo(-0.3, -0.05); ctx.lineTo(-0.32 - fl, 0); ctx.lineTo(-0.3, 0.04); ctx.closePath(); ctx.fill();
       ctx.restore();
-      ctx.fillStyle = fill;
       shape([[-0.3, -0.06], [-0.24, -0.1], [-0.05, -0.12], [0.08, -0.16], [0.18, -0.11], [0.36, -0.03], [0.36, 0.02], [-0.3, 0.05]]);
-      shape([[-0.28, -0.08], [-0.34, -0.2], [-0.24, -0.2], [-0.16, -0.1]]);                        // the fin
+      shape([[-0.28, -0.08], [-0.34, -0.2], [-0.24, -0.2], [-0.16, -0.1]], 1);                        // the fin
+      ctx.fillStyle = fill2;
       for (const wx of [-0.17, 0.2]) { ctx.beginPath(); ctx.arc(wx, 0.05, 0.055, 0, TAU); ctx.fill(); ctx.stroke(); }
     } else {
       // the mech walker: a cabin on two jointed legs, walking
@@ -603,17 +618,17 @@ export function createSkyTeaser(root, deps = {}) {
       const leg = (side) => {
         const ph = side ? st : -st;
         const hip = [side ? 0.06 : -0.06, 0.02], knee = [hip[0] + 0.1 + ph * 0.06, 0.2 - Math.abs(ph) * 0.03], foot = [hip[0] + ph * 0.12, 0.38 - Math.max(0, ph) * 0.04];
-        ctx.lineWidth = 0.045; ctx.strokeStyle = fill; ctx.lineCap = 'round';
+        ctx.lineWidth = 0.045; ctx.strokeStyle = fill2; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(...hip); ctx.lineTo(...knee); ctx.lineTo(...foot); ctx.stroke();
         ctx.lineWidth = 0.01; ctx.strokeStyle = rim;
         ctx.beginPath(); ctx.moveTo(hip[0] + 0.02, hip[1]); ctx.lineTo(knee[0] + 0.02, knee[1]); ctx.stroke();
-        ctx.fillStyle = fill; ctx.fillRect(foot[0] - 0.06, foot[1] - 0.015, 0.12, 0.03);
+        ctx.fillStyle = fill2; ctx.fillRect(foot[0] - 0.06, foot[1] - 0.015, 0.12, 0.03);
       };
       leg(0);
       ctx.fillStyle = fill; ctx.strokeStyle = rim; ctx.lineWidth = 0.012;
       shape([[-0.16, -0.02], [-0.13, -0.16], [0.08, -0.2], [0.2, -0.12], [0.18, 0.04], [-0.12, 0.06]]);
       ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = 0.8;
-      ctx.drawImage(glowSprite('#ff5a6a'), 0.06, -0.15, 0.14, 0.08);
+      ctx.drawImage(glowSprite(lit > 0 ? '#ffffff' : '#ff5a6a'), 0.06, -0.15, 0.14, 0.08);
       ctx.restore();
       leg(1);
     }
@@ -801,8 +816,8 @@ export function createSkyTeaser(root, deps = {}) {
       ctx.restore();
     }
   }
-  function drawGate(gateOn, rt) {
-    const g = road.gate, S = g.s, x = g.x, y = g.y;
+  function drawGate(gateOn, rt, g = road.gate) {
+    const S = g.s, x = g.x, y = g.y;
     ctx.save();
     // rays and glow
     ctx.globalCompositeOperation = 'lighter';
@@ -943,6 +958,118 @@ export function createSkyTeaser(root, deps = {}) {
     }
   }
 
+
+  // ================= v4.0: the unlock ceremony (kind 'open') =================
+  // 0-1 s the Sky Gate glows over the cloud sea; 1-2.6 s it swings open (the doors fold back, the portal fills with light);
+  // 2.2-4.7 s the player's car drives along a cloud path and through it, shrinking into the light; 4.5 s a burst; 5-8.5 s the
+  // three ride silhouettes (hover bike, rocket car, mech walker) light up in full colour one by one and are named.
+  const O_OPEN = [1.0, 2.6], O_DRIVE = [2.2, 4.7], O_LIGHT = [5.3, 6.4, 7.5];
+  let openLabels = [];                       // screen rects of the ride names, for the DOM labels (set by drawOpen)
+  function openLayout() {
+    const BH = 1000, BW = 1000 * W / H, port = portrait();
+    const S = port ? BW * 0.3 : BH * 0.2;
+    const gate = { x: BW / 2, y: BH * (port ? 0.4 : 0.42), s: S };
+    const rw = port ? BW * 0.62 : Math.min(BW * 0.26, BH * 0.5);                  // a ride is about 0.66 u wide
+    const u = rw / 0.66;
+    const spots = port ? [[BW * 0.5, BH * 0.2], [BW * 0.5, BH * 0.45], [BW * 0.5, BH * 0.7]] : [[BW * 0.2, BH * 0.46], [BW * 0.5, BH * 0.4], [BW * 0.8, BH * 0.46]];
+    return { BW, BH, port, gate, u: port ? u * 0.62 : u, spots };
+  }
+  function drawOpen(rt, o = {}) {
+    const L = openLayout(), R = road, gate = L.gate, S = gate.s;
+    const sc = H / L.BH, cx = L.BW / 2, cy = L.BH / 2;
+    const openK = o.openK != null ? o.openK : easeInOut((rt - O_OPEN[0]) / (O_OPEN[1] - O_OPEN[0]));
+    const drive = o.drive != null ? o.drive : clamp((rt - O_DRIVE[0]) / (O_DRIVE[1] - O_DRIVE[0]));
+    const toRides = o.rides != null ? o.rides : smooth(4.6, 5.4, rt);        // the gate fades, the rides take the stage
+    screen();
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#11185a'); g.addColorStop(0.42, '#3c5fca'); g.addColorStop(0.78, '#94d2ff'); g.addColorStop(1, '#ffe2b4');
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+    cam(cx, cy, sc);
+    ctx.fillStyle = '#fff';
+    for (const st of R.stars) { ctx.globalAlpha = 0.25 + 0.6 * Math.sin(rt * 2 + st.ph) ** 2; ctx.fillRect(st.x, st.y, st.s / curScale, st.s / curScale); }
+    ctx.globalAlpha = 1;
+    const seaWarm = puffSprite('#fff6e6', '#f2c79a', 'rgba(255,255,255,.6)');
+    const seaTop = puffSprite('#ffffff', '#c2d7f2', 'rgba(255,255,255,.6)');
+    for (const q of R.sea[0]) ctx.drawImage(seaWarm, q.x - q.r * 1.07 + Math.sin(rt * 0.3) * 10, q.y - q.r * 1.07, q.r * 2.14, q.r * 2.14);
+    // the gate (fades out as the rides come in) with its doors
+    if (toRides < 1) {
+      ctx.save(); ctx.globalAlpha = 1 - toRides;
+      drawGate(0.3 + 0.7 * openK, rt, gate);
+      const pw = S * 0.16, ph = S * 1.25, gap = S * 0.62, k = 1 - openK;
+      if (k > 0.02) {                                  // the two doors, hinged on the pillars, folding back as the gate opens
+        for (const side of [-1, 1]) {
+          const x0 = gate.x + side * gap, w = gap * k * side * -1;
+          const dg = ctx.createLinearGradient(x0, 0, x0 + w, 0);
+          dg.addColorStop(0, '#9fb8e8'); dg.addColorStop(1, '#e8f0ff');
+          ctx.fillStyle = dg; ctx.beginPath();
+          ctx.moveTo(x0, gate.y + ph * 0.5); ctx.lineTo(x0, gate.y - ph * 0.44); ctx.lineTo(x0 + w, gate.y - ph * 0.44 + ph * 0.06 * (1 - k)); ctx.lineTo(x0 + w, gate.y + ph * 0.5 - ph * 0.04 * (1 - k)); ctx.closePath(); ctx.fill();
+          ctx.lineWidth = Math.max(2, pw * 0.25); ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.stroke();
+        }
+      }
+      ctx.restore();
+    }
+    // the cloud path to the gate and the car
+    const pathY = gate.y + S * 0.62;
+    const nPuff = 9;
+    for (let i = 0; i < nPuff; i++) {
+      const px = -S * 0.3 + ((gate.x - S * 0.2 + S * 0.3) * i) / (nPuff - 1), r = S * (0.2 - 0.006 * i);
+      const spr = puffSprite('#f2f7ff', '#9fb8e8', 'rgba(255,255,255,.6)');
+      ctx.save(); ctx.globalAlpha = 0.85 * (1 - toRides);
+      for (const [dx, dy, rr] of [[-0.6, 0.1, 0.7], [0.6, 0.1, 0.7], [0, -0.05, 0.9]]) ctx.drawImage(spr, px + dx * r * 1.4 - r * rr * 1.07, pathY + r * 0.6 + dy * r - r * rr * 1.07, r * rr * 2.14, r * rr * 2.14);
+      ctx.restore();
+    }
+    drawParts('open');
+    const carK0 = (S * 1.5) / (P.dims.len * PPM);
+    if (P.car && drive < 1 && !o.still) {
+      const e = easeInOut(drive);
+      const px = lerp(-S * 1.2, gate.x, e);
+      const shrink = 1 - 0.78 * smooth(0.55, 1, drive);
+      const k = carK0 * shrink;
+      const bob = Math.sin(rt * 9) * 2.2 * (1 - drive);
+      const py = pathY - P.dims.lift * PPM * k + bob;
+      const fade = 1 - smooth(0.82, 1, drive);
+      drawCar(px, py, 0, k, { spin: rt * 14, alpha: fade, glow: 0.3 + 0.6 * smooth(0.5, 1, drive) });
+    }
+    // the white flash as the car goes in
+    if (!o.still) {
+      const f = Math.max(0, 1 - Math.abs(rt - 4.55) * 2.2);
+      if (f > 0) { screen(); ctx.fillStyle = `rgba(255,250,225,${0.7 * f})`; ctx.fillRect(0, 0, W, H); cam(cx, cy, sc); }
+    }
+    cam(cx, cy, sc);
+    const sea1 = puffSprite('#ffffff', '#c2d7f2', 'rgba(255,255,255,.6)');
+    for (const q of R.sea[1]) ctx.drawImage(sea1, q.x - q.r * 1.07 - Math.sin(rt * 0.25) * 16, q.y - q.r * 1.07, q.r * 2.14, q.r * 2.14);
+    // the three rides: dark silhouettes that light up in colour, one after another, each with its name
+    openLabels = [];
+    if (toRides > 0) {
+      const kinds = ['bike', 'rocket', 'mech'];
+      ctx.save(); ctx.globalAlpha = toRides;
+      for (let i = 0; i < 3; i++) {
+        const [sx, sy0] = L.spots[i];
+        const lit = o.lit != null ? o.lit : smooth(O_LIGHT[i], O_LIGHT[i] + 0.7, rt);
+        const rise = 1 - easeOut(clamp((rt - 4.7 - i * 0.18) / 0.9));
+        const bobY = Math.sin(rt * 1.7 + i * 2) * L.u * 0.012;
+        const x = sx, y = sy0 + (o.lit != null ? 0 : L.u * 0.25 * rise) + bobY;
+        const r = P.rides[i] || { name: '', color: '#7fe8ff' };
+        if (lit > 0.4 && !o.still) {
+          const st = (rt - O_LIGHT[i]) / 0.5;
+          if (st > 0 && st < 0.6 && Math.random() < 0.9) sparkle('open', x + (Math.random() - 0.5) * L.u * 0.6, y - L.u * 0.05, { speed: 90, size: 34, color: r.color, g: 20 });
+        }
+        drawRide(kinds[i], x, y, L.u, rt + i, lit, r.color);
+        // the name goes under the ride (a DOM label, placed from the camera so it stays crisp and readable)
+        openLabels.push({ i, lit, x: W / 2 + (x - cx) * sc, y: H / 2 + (y + L.u * (i === 2 ? 0.46 : 0.12) - cy) * sc, name: r.name, color: r.color });
+      }
+      ctx.restore();
+    }
+    cam(cx, cy, sc);
+  }
+  function updateOpen(rt, dt, from, live) {
+    const L = openLayout(), gate = L.gate;
+    if (from < O_OPEN[0] && rt >= O_OPEN[0]) { burst('open', gate.x, gate.y, 30, { speed: gate.s * 2.4, g: 0, size: gate.s * 0.3, color: '#ffe08a' }); if (live) sfx('gate'); }
+    if (rt > O_OPEN[0] && rt < 4.8 && Math.random() < dt * 12) sparkle('open', gate.x + (Math.random() - 0.5) * gate.s * 1.3, gate.y + gate.s * 0.3, { speed: 20, vy: -gate.s * 0.9, g: 0, size: gate.s * 0.28, decay: 0.8 });
+    if (from < 4.5 && rt >= 4.5) burst('open', gate.x, gate.y, 60, { speed: gate.s * 4, g: 0, size: gate.s * 0.4, color: '#fff2c4' });
+    if (rt > 5.3 && Math.random() < dt * 8) { const [sx, sy] = L.spots[Math.floor(Math.random() * 3)]; sparkle('open', sx + (Math.random() - 0.5) * L.u * 0.7, sy - L.u * 0.08, { speed: 14, vy: -L.u * 0.12, g: 0, size: L.u * 0.07, decay: 0.9 }); }
+  }
+
   // ---------- the play: scenes, captions, cues ----------
   function roadOpts() {
     if (P.kind === 'clip') {
@@ -957,13 +1084,19 @@ export function createSkyTeaser(root, deps = {}) {
     return text;
   }
   function badgeAt(tt) {
+    if (P.kind === 'open') return null;
     if (P.kind === 'clip') return tt < 1.7 || !(P.steps > 0) ? (tt < 0.15 ? null : roadText(Math.max(0, P.steps - 1))) : roadText(P.steps);
     return tt >= B3 + 0.7 ? roadText(P.steps) : null;
   }
   function buildCues() {
     const caps = [], cues = [];
     const line = (t, text, voice = true) => { caps.push({ t, text }); if (voice) cues.push({ t, say: text }); };
-    if (P.kind === 'full') {
+    if (P.kind === 'open') {
+      cues.push({ t: 0.2, fx: 'reveal' }, { t: 2.2, fx: 'whoosh' }, { t: 4.4, fx: 'pass' }, { t: 4.5, fx: 'burst' });
+      for (let i = 0; i < 3; i++) cues.push({ t: O_LIGHT[i], fx: 'chime', i: 2 + i * 2 });
+      line(0.45, SKY_LINES.open);
+      line(5.9, SKY_LINES.rides);
+    } else if (P.kind === 'full') {
       line(0.25, SKY_LINES.hook);
       cues.push({ t: 1.22, fx: 'whoosh' }, { t: 1.7, fx: 'rise' }, { t: 4.3, fx: 'burst' }, { t: 6.05, fx: 'reveal' }, { t: B2 + 2.62, fx: 'whoosh' }, { t: B2 + 3.4, fx: 'orbit' },
         { t: B2 + 9.2, fx: 'pass' }, { t: B2 + 9.75, fx: 'pass' }, { t: 17.3, fx: 'whoosh' }, { t: B3 + 0.3, fx: 'reveal' });
@@ -982,6 +1115,7 @@ export function createSkyTeaser(root, deps = {}) {
     P.cues = cues.sort((a, b) => a.t - b.t);
   }
   function sceneAt(tt) {
+    if (P.kind === 'open') return 'open';
     if (P.kind !== 'full') return 'road';
     if (tt < B2) return 'b1';
     if (tt < B3) return 'b2';
@@ -994,6 +1128,7 @@ export function createSkyTeaser(root, deps = {}) {
     const sc = sceneAt(t);
     if (sc === 'b1') drawBeat1(t);
     else if (sc === 'b2') { drawBeat2(t - B2); drawCurtain(smooth(17.15, 17.95, t)); }
+    else if (sc === 'open') { drawOpen(t); drawCurtain(1 - smooth(0, 0.7, t)); }
     else {
       const rt = P.kind === 'full' ? t - B3 : t;
       drawRoad(rt, roadOpts());
@@ -1001,7 +1136,23 @@ export function createSkyTeaser(root, deps = {}) {
     }
     syncDom(t);
   }
+  function syncOpenLabels() {
+    const show = P.kind === 'open';
+    ridesBox.hidden = !show;
+    if (!show) return;
+    for (let i = 0; i < 3; i++) {
+      const el = rideEls[i], o = openLabels[i];
+      const r = P.rides[i];
+      if (el.textContent !== r.name) el.textContent = r.name;
+      if (!o || o.lit < 0.35) { el.classList.remove('lit'); el.style.opacity = '0'; continue; }
+      el.classList.add('lit');
+      el.style.opacity = String(Math.min(1, (o.lit - 0.35) / 0.4));
+      el.style.left = `${o.x}px`; el.style.top = `${o.y}px`;
+      el.style.setProperty('--c', o.color);
+    }
+  }
   function syncDom(tt) {
+    syncOpenLabels();
     const cap = P.reduced ? stillCaption(frameIdx) : captionAt(tt);
     if (cap !== shownCaption) {
       shownCaption = cap;
@@ -1021,18 +1172,20 @@ export function createSkyTeaser(root, deps = {}) {
     const sc = sceneAt(t);
     if (sc === 'b1') updateBeat1(t, dt);
     else if (sc === 'b2') updateBeat2(t - B2, dt, Math.max(0, from - B2), live);
+    else if (sc === 'open') updateOpen(t, dt, from, live);
     else { const off = P.kind === 'full' ? B3 : 0; updateRoad(t - off, dt, from - off, live, roadOpts()); }
     stepParts(dt);
-    if (live) for (const c of P.cues) if (from < c.t && t >= c.t) { if (c.say) say(c.say); else sfx(c.fx); }
+    if (live) for (const c of P.cues) if (from < c.t && t >= c.t) { if (c.say) say(c.say); else sfx(c.fx, c.i || 0); }
     prevT = t;
   }
 
   // ---------- reduced motion: still frames ----------
   const STILLS_FULL = ['b1', 'b2', 'road'];
-  const stillScene = (i) => (P.kind === 'full' ? STILLS_FULL[i] : 'road');
+  const stillScene = (i) => (P.kind === 'open' ? 'open' : P.kind === 'full' ? STILLS_FULL[i] : 'road');
   const stillCount = () => (P.kind === 'full' ? 3 : 1);
   function stillLines(i) {
     const s = stillScene(i);
+    if (s === 'open') return [SKY_LINES.open, SKY_LINES.rides];
     if (s === 'b1') return [SKY_LINES.hook];
     if (s === 'b2') return [SKY_LINES.era, SKY_LINES.jump, SKY_LINES.rides];
     if (P.kind === 'clip') return [P.step >= SKY_ROAD_STEPS ? SKY_LINES.gate : stepLine(P.steps)];
@@ -1043,6 +1196,7 @@ export function createSkyTeaser(root, deps = {}) {
     const s = stillScene(i);
     parts = []; partScene = '';
     if (s === 'b1') drawBeat1(4.7);
+    else if (s === 'open') drawOpen(9, { openK: 1, drive: 1, rides: 1, lit: 1, still: true });
     else if (s === 'b2') drawBeat2(8.3, { allLit: true, rides: 1.2, noCar: true });
     else drawRoad(5, { from: P.steps, to: P.steps, hop: null, gateAt: P.steps >= SKY_ROAD_STEPS ? 0 : null, zoomIn: 1, endZoom: 1, pull: [0, 0.001] });
     syncDom(0);
@@ -1146,11 +1300,13 @@ export function createSkyTeaser(root, deps = {}) {
       if (open) close('replaced');
       const car = opts.car || null;
       P = {
-        kind: opts.kind === 'clip' ? 'clip' : 'full', step: Number(opts.step) || 0, steps: clamp(Math.floor(Number(opts.steps) || 0), 0, SKY_ROAD_STEPS),
+        kind: opts.kind === 'clip' ? 'clip' : opts.kind === 'open' ? 'open' : 'full', step: Number(opts.step) || 0, steps: clamp(Math.floor(Number(opts.steps) || 0), 0, SKY_ROAD_STEPS),
         car, look: opts.look || null, name: String(opts.name || 'SKY').slice(0, 8) || 'SKY', reduced: !!opts.reduced, sound: opts.sound !== false,
         dims: car ? carDims(car) : { len: 4.4, lift: 0.6, h: 1.6 },
+        rides: [0, 1, 2].map((i) => { const r = (Array.isArray(opts.rides) && opts.rides[i]) || {}; return { name: String(r.name || ['Hover Bike', 'Rocket Car', 'Mech Walker'][i]).slice(0, 24), color: /^#[0-9a-f]{6}$/i.test(r.color || '') ? r.color : ['#22d3ff', '#ff7a3d', '#ffcf1a'][i] }; }),
       };
-      len = P.kind === 'full' ? FULL_LEN : (P.step >= SKY_ROAD_STEPS ? GATE_LEN : CLIP_LEN);
+      len = P.kind === 'open' ? OPEN_LEN : P.kind === 'full' ? FULL_LEN : (P.step >= SKY_ROAD_STEPS ? GATE_LEN : CLIP_LEN);
+      openLabels = [];
       buildCues();
       open = true; paused = false; t = 0; prevT = 0; last = 0; frameIdx = 0; parts = []; partScene = '';
       shownCaption = null; shownBadge = null;
@@ -1175,7 +1331,8 @@ export function createSkyTeaser(root, deps = {}) {
     /** For the smoke tests and screenshots. */
     get state() {
       return open && P ? { kind: P.kind, step: P.step, steps: P.steps, reduced: P.reduced, t, len, frame: frameIdx, frames: stillCount(), scene: P.reduced ? stillScene(frameIdx) : sceneAt(t),
-        caption: caption.hidden ? '' : caption.textContent, badge: badge.hidden ? '' : badge.textContent, name: P.name } : null;
+        caption: caption.hidden ? '' : caption.textContent, badge: badge.hidden ? '' : badge.textContent, name: P.name,
+        rides: P.kind === 'open' ? rideEls.map((e) => ({ name: e.textContent, lit: e.classList.contains('lit') })) : null } : null;
     },
     /** Pause at time tt and draw it (the particles of the second before are simulated so sparkles show). */
     seek(tt) {

@@ -496,8 +496,8 @@ Everything is per player, works offline and follows the player through family sy
 ### The Sky Road and the Sky Era teaser (v3.10)
 
 **v3.10: a peek at the next era.** A short in-game animation (about 25 s, skippable anywhere) shows the child what is
-coming next, the **Sky Era**, and how to get there. Only the teaser and the road are built; the Sky Era itself (new tracks,
-rides, mechanics) is not, and Era 1 stays fully playable.
+coming next, the **Sky Era**, and how to get there. (v4.0: the Sky Era is built, see the v4.0 changelog below; this teaser plays until the era opens, then the
+unlock ceremony takes over.) Era 1 stays fully playable.
 
 - **The teaser** plays once by itself on the title, the first time a player opens it (never over a panel, a crate, the
   Parent Zone, the Lab, a toast or a run; it waits until the title is clear). Their own car, in its own paint, rolls down
@@ -606,7 +606,9 @@ node tools/spelling-tests.mjs   # Node unit tests: intervals, mastery (2 distinc
                                 # caching by id, 20k/day cap 429, no key 503, the TexttoVoice alias, clip 404 / 200),
                                 # the client's texts / batches / status lines, the engine choice + fallback in tts.js;
                                 # usage counter: /api/stats validation, counters, family hashes, ETag retry, key checks
-node tools/ui-smoke.mjs         # (v3.10: ONLY=sky runs the Sky Era teaser part: plays once, Skip / Esc / tap, no replay,
+node tools/ui-smoke.mjs         # (v4.0: ONLY=skyera runs the Sky Era part: the ceremony once, the era switch, sky tracks + rides on the stand-ins, the Spell Boost
+                                # flow with freeze / boost on the mock, the results line, the parent toggles, no device voice, layout at both sizes)
+                                # (v3.10: ONLY=sky runs the Sky Era teaser part: plays once, Skip / Esc / tap, no replay,
                                 # the Sky card, the milestone clip, reduced-motion stills, the Parent Zone line)
                                 # Playwright, 844×390 + 390×844, mock engine + fake speechSynthesis: players, PIN,
                                 # word list, Qualifier, every spell-panel path, mission, Friday Test + Mega Run,
@@ -643,7 +645,7 @@ is never stopped (it is someone else's); one serving something else is an error.
 leave a child behind. lab-smoke serves the repo root in-process on a free port (never 8080) and closes it on every way
 out. Run the browser suites one at a time: they share port 8080.
 
-`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud|voice|class|sky` runs one
+`SHOTS_DIR=/some/dir` sets where the Playwright tools write screenshots; `ONLY=landscape|portrait|corrupt|cloud|voice|class|sky|skyera` runs one
 part of `ui-smoke.mjs`, `ONLY=landscape|portrait|speech|perf` one part of `integration-smoke.mjs`. `tts.js` uses `window.__ttsBackend` instead of `speechSynthesis` when a test sets it, and `cloudVoice.js` uses `window.__cloudVoiceBackend` (status / prepare / load / play) instead of the network and WebAudio.
 
 ## The Lab (v3.9, lab/SPEC.md §4.1)
@@ -678,6 +680,35 @@ and plays exactly as before when `/lab/` is missing, blocked or offline. The Lab
 - **Service worker**: `/lab/src/index.js` is OPTIONAL; `certificate.html` is its own network-first page (never answered with `index.html`).
 - **Tests**: `node tools/lab-tests.mjs` (economy snapshot, bridge, looks, ceremony, certificate, kid-rule audit) and `node tools/lab-smoke.mjs`
   (Playwright against the repo root: the Lab present, and every `/lab/` request blocked).
+
+## v4.0: the Sky Era (changelog; the app side)
+
+The Sky Road of v3.10 now leads somewhere. Era 1 (Earth) is unchanged and always open; nothing transfers away. The contract is the "Sky Era (v4.0)"
+section of `SPEC.md`; the engine side (tracks, rides, physics, `freeze` / `boost`) is `src/game/**`, `src/data/skyTracks.js`, `src/data/skyRides.js`.
+
+- **Unlock** (`src/meta/sky.js`, pure, unit-tested): `save.sky = { unlocked, at, ceremonySeen, era }`. The era opens when the Sky Road reaches 15 / 15
+  (only if the sky tracks are on this device: nothing is promised that is not there) or when a parent taps **Parents → Options → SKY ERA → Open the Sky
+  Era now** (any child, any day; it cannot be closed again). Sync merge: unlocked OR, `at` = earliest, ceremonySeen OR (the ceremony plays once per child),
+  `era` from the later doc. Sky rides and tracks ride in the same owned / unlocked / levels / best unions as Earth's.
+- **Ceremony** (`src/ui/skyTeaser.js`, kind `open`, ~10 s, once, on the title; skippable): the Sky Gate swings open, the child's own car drives through into the
+  light, then the three ride silhouettes light up in full colour one by one with their names (from `SKY_RIDES`, fallback Hover Bike / Rocket Car / Mech
+  Walker). Voice: "The Sky Era is open!" (and "New tracks. New rides."), natural-voice clips only, prepared with the other teaser lines, never the device voice.
+  Reduced motion: one still. After it the title is on the Sky tab.
+- **Era switch**: two big tabs **Earth / Sky** on the title (the Sky Road card turns into it once the era is open) and on the track screen; the choice is
+  remembered (`save.sky.era`). Before the unlock the track screen's Sky tab shows the locked **Sky Gate** and the Sky Road; it never blocks Earth. The
+  track list shows the era's tracks (sky tracks have their own chain starting at `sky-1`); the garage carousel puts the era's rides first (a **Sky rides**
+  row jumps to each), every car and ride stays owned, rides are bought with Garage cash like cars.
+- **Spell Boost** (`main.js spellBoost`): on `{ type: 'spellBoost' }` the engine has frozen the scene (nothing ticks: no timer, no countdown). The next word is
+  picked by the same scheduler as a launch word and spelled in the same panel (audio first, compare / fix / cover-copy-compare, a gold "Spell Boost" chip),
+  banked per word (mission, Leitner record, cash, XP, Lab). First try -> `game.boost({ power: 1, word })`; fixed after a miss -> `power: 0.5`; then
+  `game.freeze(false)`. The word is never shown before it is spelled; the engine draws its letters as rings on the new arc afterwards. One per `game.start`
+  (so one per level). **Parents → Options → "Spell Boost in the Sky: on/off"** (per child, default on; family option `skyBoost`): off = `start({ spellBoost: false })`.
+  The Mega Run never has a Spell Boost. Results: **"Spell Boost: +X m"** (the engine's `summary.spellBoost.distance`, summed over the levels).
+- **Lab**: sky runs report the same events as Earth runs; the Spell Jump card's line adds "Sky Era · 2 / 5 tracks" once the era is open.
+- **Data loading** (`src/meta/skyData.js`): the two data files are loaded with guarded dynamic imports; a missing file is an empty list and Era 1 never notices.
+  Everything asks the registry (`carById`, `trackById`, `allTracks`, `allCars`). `?mock=1&skyfixture=1` loads the stand-ins in `tools/fixtures/sky/` (tests and
+  screenshots only); the mock engine implements the sky contract (the Spell Boost gate after the apex, `freeze`, `boost`, `getHudState`).
+- Version 4.0.0 (main.js, `sw.js` cache `spell-jump-v4.0.0`; the new modules are in the shell, the sky data files are optional so a missing one cannot fail the install).
 
 ## v3.11: one Lab chip, named money, every word banks (changelog)
 
@@ -733,7 +764,7 @@ car-jump/
   src/
     main.js               boot: players, saves, audio + speech, engine loading, navigation, spelling flow, runs
     audio.js              WebAudio synth (engine, smashes, music, …, v3: letter click, correct, oops, mission, ducking)
-    data/                 cars, tracks, upgrades, rating, cosmetics (skins, stickers, levels, XP, crate odds),
+    data/                 cars, tracks, (v4.0: skyTracks, skyRides, from the engine side), upgrades, rating, cosmetics (skins, stickers, levels, XP, crate odds),
                           classLists (v3.7: the weekly class spelling lists, newest first)
     game/                 the physics engine (createGame contract in SPEC.md)
     spelling/
@@ -756,12 +787,13 @@ car-jump/
                           engagement (v3.3 streak / XP / crates / trophies / family board rules, pure),
                           transfer (progress transfer code), pings (the anonymous usage counter, v3.7.2),
                           labBridge (v3.9: the one file that knows the Lab), labLooks (the Lab's skins, stickers, trails),
-                          skyRoad (v3.10: the Sky Road steps and when the teaser plays, pure)
+                          skyRoad (v3.10: the Sky Road steps and when the teaser plays, pure),
+                          sky (v4.0: save.sky, unlock rules, era, ceremony due, pure), skyData (v4.0: the sky tracks / rides registry + guarded loader)
     stats/server.mjs      the usage counter API as a pure request handler (used by netlify/functions/stats.mjs)
     ui/                   players (picker + family board), parentZone, garage (+ Style row), tracks, results,
                           panels (badges, streak, trophies), crates (crate opening), HUD, controls, icons,
                           car preview, title hero, fireworks, testBoss + ceremony + certificate (v3.9),
-                          skyTeaser (v3.10: the Sky Era teaser, a canvas overlay)
+                          skyTeaser (v3.10: the Sky Era teaser + v4.0 unlock ceremony, a canvas overlay), skyRoadSvg
   dev.html                engine harness (keyboard + on-screen buttons, no meta)
   tools/                  spelling-tests, ui-smoke, engine-smoke, integration-smoke, sync-smoke,
                           sync-function-check, tts-function-check, stats-function-check, economy-sim, make-icons

@@ -130,8 +130,8 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 
 /* ---------- garage ---------- */
 .garage-body { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); gap: 14px; padding-top: 6px; }
-.car-card { display: flex; flex-direction: column; min-height: 0; padding: 10px 12px 12px; position: relative; }
-.car-stage { position: relative; flex: 1; min-height: 96px; }
+.car-card { display: flex; flex-direction: column; min-height: 0; padding: 10px 12px 10px; position: relative; }
+.car-stage { position: relative; flex: 1; min-height: 88px; }
 .car-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: pan-y; }
 .car-nav { position: absolute; top: 50%; transform: translateY(-50%); }
 .car-nav.prev { left: -4px; } .car-nav.next { right: -4px; }
@@ -147,6 +147,7 @@ button:focus-visible { outline: 3px solid var(--cyan); outline-offset: 3px; }
 .dots i.on { background: #fff; width: 20px; border-radius: 4px; }
 .car-actions { display: flex; gap: 10px; margin-top: 10px; }
 .car-actions .btn { flex: 1 1 0; min-width: 0; padding: 0 12px; }
+#car-action { white-space: nowrap; gap: 6px; padding: 0 8px; font-size: clamp(15px, 4vw, 20px); }
 #btn-race { flex-grow: 1.15; }
 .btn-selected, .btn-selected[disabled] { background: transparent; color: var(--go); box-shadow: inset 0 0 0 2px var(--go); filter: none; }
 .btn-selected[disabled]:active { box-shadow: inset 0 0 0 2px var(--go); }
@@ -660,6 +661,51 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 @media (orientation: landscape) {
   .sky-card { position: absolute; z-index: 2; right: var(--pad-r); bottom: calc(var(--pad-b) + 84px); margin: 0; }
 }
+
+
+/* ================= v4.0: the Sky Era (era switch, sky rides row, the locked gate, the unlock ceremony's ride names, the Spell Boost chip) ================= */
+.era-switch { display: flex; gap: 6px; margin: 0 0 12px; padding: 5px; border-radius: 20px; background: rgba(13,18,48,.72); border: 2px solid rgba(127,232,255,.5);
+  box-shadow: 0 0 18px rgba(127,232,255,.2); }
+.era-switch[hidden] { display: none; }
+.era-tab { min-width: 118px; min-height: 52px; padding: 0 18px; border: 0; border-radius: 15px; background: transparent; color: #cfd8ff; cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; font: 400 19px/1 var(--font-display); letter-spacing: .04em; text-transform: uppercase; -webkit-tap-highlight-color: transparent; }
+.era-tab .era-lock svg { width: 18px; height: 18px; display: block; }
+.era-tab.earth.on { background: linear-gradient(#3fd776, #1f8d4d); color: #fff; box-shadow: 0 3px 0 #0f5b30, inset 0 2px 0 rgba(255,255,255,.3); text-shadow: 0 2px 0 rgba(0,0,0,.3); }
+.era-tab.sky.on { background: linear-gradient(#5db7ff, #6a4cff); color: #fff; box-shadow: 0 3px 0 #2b1d8f, inset 0 2px 0 rgba(255,255,255,.3); text-shadow: 0 2px 0 rgba(0,0,0,.3); }
+.era-tab.sky.locked:not(.on) { color: #aab4ee; }
+.era-tab:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.era-track { align-self: center; margin: 4px auto 6px; flex: none; }
+@media (orientation: landscape) {
+  #era-switch { position: absolute; z-index: 2; right: var(--pad-r); bottom: calc(var(--pad-b) + 96px); margin: 0; }
+}
+html.era-sky #screen-title .logo span { color: #7fe8ff; }
+.sky-rides { display: flex; align-items: center; gap: 6px; padding: 2px 2px 6px; overflow-x: auto; scrollbar-width: none; touch-action: pan-x; flex: none; }
+@media (orientation: landscape) {   /* short screens: the row sits in the top bar between the title and the cash */
+  #screen-garage .sky-rides { position: absolute; z-index: 2; top: calc(var(--pad-t) + 4px); left: calc(var(--pad-l) + 216px); width: calc(100% - var(--pad-l) - var(--pad-r) - 216px - 236px); padding: 0; }
+}
+.sky-rides[hidden] { display: none; }
+.sr-label { flex: none; font: 400 12px/1 var(--font-display); letter-spacing: .05em; color: var(--cyan); text-transform: uppercase; }
+.sr-chip { flex: none; min-height: 44px; padding: 0 12px; border-radius: 12px; border: 2px solid var(--line); background: var(--panel); color: #fff; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 5px; font: 800 14px/1 var(--font-body); }
+.sr-chip svg { width: 16px; height: 16px; display: block; }
+.sr-chip.owned { border-color: var(--go); }
+.sr-chip.on { background: linear-gradient(#2a64d8, #4b2fa6); border-color: var(--cyan); }
+.track-grid .sky-gate-card { grid-column: 1 / -1; grid-row: auto; display: flex; align-items: center; gap: 14px; padding: 14px; background: linear-gradient(120deg, #1f47b8 0%, #4b2fa6 55%, #8a2f95 100%); border: 2px solid rgba(127,232,255,.55); }
+.sg-art { flex: none; width: 132px; height: 82px; }
+.sg-art svg { display: block; width: 100%; height: 100%; }
+.sg-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.sg-title { display: flex; align-items: center; gap: 8px; font: 400 19px/1.1 var(--font-display); text-transform: uppercase; color: #fff; }
+.sg-title svg { width: 20px; height: 20px; }
+.sg-road { font: 400 15px/1 var(--font-display); color: var(--accent); }
+.sg-text p { margin: 0; font: 700 13px/1.3 var(--font-body); color: #dfe6ff; }
+@media (max-width: 520px) { .track-grid .sky-gate-card { flex-wrap: wrap; } .sg-text { flex-basis: 60%; } }
+.st-rides { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.st-rides[hidden] { display: none; }
+.st-ride { position: absolute; left: 50%; top: 50%; transform: translate(-50%, 0); padding: 8px 16px 9px; border-radius: 999px; background: rgba(8,10,35,.82);
+  border: 2px solid var(--c, #fff); color: #fff; white-space: nowrap; font: 400 clamp(15px, 1.2vw + 1.3vh, 24px)/1 var(--font-display); letter-spacing: .03em;
+  text-shadow: 0 2px 0 rgba(0,0,0,.45); box-shadow: 0 0 22px var(--c, #fff); opacity: 0; }
+.sp-chip .sp-boost { color: #7fe8ff; }
+#spell[data-kind="boost"] { background: linear-gradient(rgba(10,18,60,.55), rgba(10,14,48,.86) 45%); }
 
 /* player picker: the title centered, the Parents button in the top-right corner (always there, PIN-gated) */
 .players-top { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; }
@@ -1426,6 +1472,10 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
       <span class="cash-pill" data-cash></span>
     </div>
     <button class="btn sky-card" id="btn-sky" data-sfx hidden aria-label="Sky Era: watch the teaser"><span class="sky-mini" id="sky-mini" aria-hidden="true"></span><span class="sky-text"><b>Sky Era</b><span id="sky-steps">Sky Road 0 / 15</span></span></button>
+    <div class="era-switch" id="era-switch" role="tablist" aria-label="Era" hidden>
+      <button class="era-tab earth" id="era-earth" role="tab" data-era="earth" aria-selected="true" data-sfx>Earth</button>
+      <button class="era-tab sky" id="era-sky" role="tab" data-era="sky" aria-selected="false" data-sfx>Sky</button>
+    </div>
     <h1 class="logo">Spell<span>Jump</span></h1>
     <p class="tagline" id="title-tagline">Spell it right. Launch it high.</p>
     <p class="sample-note" id="title-sample" hidden>This week's words are loaded · a grown-up can add next week's words in Parents</p>
@@ -1452,6 +1502,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
       <h2>Garage</h2>
       <span class="cash-pill" data-cash></span>
     </div>
+    <div class="sky-rides" id="sky-rides" aria-label="Sky rides" hidden></div>
     <div class="garage-body">
       <div class="card car-card">
         <div class="car-stage">
@@ -1481,6 +1532,7 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
       <h2>Pick a track</h2>
       <span class="cash-pill" data-cash></span>
     </div>
+    <div class="era-switch era-track" id="track-era" role="tablist" aria-label="Era" hidden></div>
     <div class="tracks-body"><div class="track-grid" id="track-grid"></div></div>
   </section>
 

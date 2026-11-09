@@ -1,8 +1,7 @@
 // Economy: buying cars and upgrades, resolving stats, and banking a finished run.
 // Pure functions over the save object (they mutate it and return a result); the caller persists.
 
-import { CAR_BY_ID } from '../data/cars.js';
-import { TRACKS, TRACK_BY_ID } from '../data/tracks.js';
+import { allTracks, carById, skyFirstTrackIds, trackById } from './skyData.js';
 import { MAX_LEVEL, UPGRADE_BY_ID, resolveStats, upgradeCost } from '../data/upgrades.js';
 import { carLevels } from './save.js';
 import { rateRun } from '../data/rating.js';
@@ -16,7 +15,7 @@ export function isOwned(save, carId) {
 }
 
 export function buyCar(save, carId) {
-  const car = CAR_BY_ID[carId];
+  const car = carById(carId);
   if (!car) return { ok: false, reason: 'unknown car' };
   if (isOwned(save, carId)) return { ok: false, reason: 'owned' };
   if (!canAfford(save, car.price)) return { ok: false, reason: 'cash' };
@@ -35,7 +34,7 @@ export function selectCar(save, carId) {
 
 // Cost of the next level, or null when maxed.
 export function nextUpgradeCost(save, carId, upgradeId) {
-  const car = CAR_BY_ID[carId];
+  const car = carById(carId);
   const lv = carLevels(save, carId)[upgradeId] || 0;
   if (lv >= MAX_LEVEL) return null;
   return upgradeCost(car.tier, lv);
@@ -53,16 +52,16 @@ export function buyUpgrade(save, carId, upgradeId) {
 }
 
 export function statsFor(save, carId) {
-  return resolveStats(CAR_BY_ID[carId], carLevels(save, carId));
+  return resolveStats(carById(carId), carLevels(save, carId));
 }
 
 export function nextTrackId(trackId) {
-  const t = TRACKS.find((x) => x.unlockedBy === trackId);
+  const t = allTracks().find((x) => x.unlockedBy === trackId);
   return t ? t.id : null;
 }
 
 export function isUnlocked(save, trackId) {
-  return save.unlocked.includes(trackId);
+  return save.unlocked.includes(trackId) || skyFirstTrackIds().includes(trackId);   // v4.0: the first sky track is open with the era
 }
 
 export function earn(save, amount) {
@@ -98,8 +97,8 @@ export function bankRun(save, trackId, summary, { ranked = true } = {}) {
     if (summary.finishCrossed) {
       const next = nextTrackId(trackId);
       if (next && !save.unlocked.includes(next)) {
-        // keep TRACKS order
-        save.unlocked = TRACKS.map((t) => t.id).filter((id) => id === next || save.unlocked.includes(id));
+        // keep the tracks' order
+        save.unlocked = allTracks().map((t) => t.id).filter((id) => id === next || save.unlocked.includes(id));
         out.unlocked = next;
       }
     }
@@ -115,5 +114,6 @@ export function ratingFor(summary, finish) {
 }
 
 export function trackFinish(trackId) {
-  return TRACK_BY_ID[trackId] ? TRACK_BY_ID[trackId].finish : 0;
+  const t = trackById(trackId);
+  return t ? t.finish : 0;
 }

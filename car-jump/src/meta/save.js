@@ -4,8 +4,8 @@
 // src/spelling/profiles.js); `setSaveKey` points load/write/wipe at the current player's key. The old
 // single-player key `rampRage.save.v1` (LEGACY_SAVE_KEY) is only read once, to migrate it into the first player.
 
-import { CARS, CAR_BY_ID } from '../data/cars.js';
-import { TRACKS, TRACK_BY_ID } from '../data/tracks.js';
+import { allCars, allTracks, carById, skyFirstTrackIds, trackById } from './skyData.js';
+import { defaultSky, normalizeSky } from './sky.js';
 import { UPGRADES, MAX_LEVEL } from '../data/upgrades.js';
 import { localWrite } from '../sync/notify.js';
 import { defaultCosmetics, defaultCrates, defaultStreak, grantEarned, normalizeCosmetics, normalizeCrates, normalizeStreak, normalizeTrophies } from './engagement.js';
@@ -65,6 +65,8 @@ export function defaultSave() {
     trophies: {},            // listId -> [mastered words]
     champion: [],            // listIds of Week Champion lists
     weekBest: { week: '', distance: 0 },
+    // ----- v4.0 Sky Era (src/meta/sky.js) -----
+    sky: defaultSky(),       // { unlocked, at, ceremonySeen, era }
   };
 }
 
@@ -78,9 +80,9 @@ export function normalize(raw) {
   const s = d;
   s.cash = Math.max(0, Math.floor(num(raw.cash)));
 
-  const owned = Array.isArray(raw.owned) ? raw.owned.filter((id) => CAR_BY_ID[id]) : [];
+  const owned = Array.isArray(raw.owned) ? raw.owned.filter((id) => carById(id)) : [];
   s.owned = Array.from(new Set(['beater', ...owned]));
-  s.selectedCar = CAR_BY_ID[raw.selectedCar] && s.owned.includes(raw.selectedCar) ? raw.selectedCar : 'beater';
+  s.selectedCar = carById(raw.selectedCar) && s.owned.includes(raw.selectedCar) ? raw.selectedCar : 'beater';
 
   s.levels = {};
   for (const id of s.owned) {
@@ -92,12 +94,13 @@ export function normalize(raw) {
     s.levels[id] = lv;
   }
 
-  const unl = Array.isArray(raw.unlocked) ? raw.unlocked.filter((id) => TRACK_BY_ID[id]) : [];
-  s.unlocked = TRACKS.map((t) => t.id).filter((id) => id === 'canyon' || unl.includes(id));
+  const unl = Array.isArray(raw.unlocked) ? raw.unlocked.filter((id) => trackById(id)) : [];
+  const skyFirst = skyFirstTrackIds();            // v4.0: the first sky track is open as soon as the era is (its own chain starts there)
+  s.unlocked = allTracks().map((t) => t.id).filter((id) => id === 'canyon' || skyFirst.includes(id) || unl.includes(id));
   s.selectedTrack = s.unlocked.includes(raw.selectedTrack) ? raw.selectedTrack : 'canyon';
 
   if (raw.best && typeof raw.best === 'object') {
-    for (const t of TRACKS) if (num(raw.best[t.id]) > 0) s.best[t.id] = num(raw.best[t.id]);
+    for (const t of allTracks()) if (num(raw.best[t.id]) > 0) s.best[t.id] = num(raw.best[t.id]);
   }
   if (raw.records && typeof raw.records === 'object') {
     for (const k of Object.keys(s.records)) s.records[k] = Math.max(0, num(raw.records[k]));
@@ -141,11 +144,12 @@ export function normalize(raw) {
   // v3.3 engagement
   s.xp = Math.max(0, Math.floor(num(raw.xp)));
   s.streak = normalizeStreak(raw.streak);
-  s.cosmetics = normalizeCosmetics(raw.cosmetics, CARS.map((c) => c.id));
+  s.cosmetics = normalizeCosmetics(raw.cosmetics, allCars().map((c) => c.id));
   s.crates = normalizeCrates(raw.crates);
   s.trophies = normalizeTrophies(raw.trophies);
   s.champion = Array.isArray(raw.champion) ? [...new Set(raw.champion.filter((id) => typeof id === 'string' && id.length <= 40))].slice(-60) : [];
   if (raw.weekBest && typeof raw.weekBest === 'object' && /^\d{4}-W\d{2}$/.test(raw.weekBest.week)) s.weekBest = { week: raw.weekBest.week, distance: Math.max(0, Math.floor(num(raw.weekBest.distance))) };
+  s.sky = normalizeSky(raw.sky);                // v4.0
   grantEarned(s);          // level / streak / champion cosmetics follow from the numbers (also after a merge)
   return s;
 }

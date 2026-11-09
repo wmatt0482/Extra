@@ -8,10 +8,9 @@
 // MASTERED (the word's tiles go gold and smash into a trophy that flies to the shelf icon, confetti), Week Champion
 // (fireworks + a callout), the level-up stamp ("LEVEL 5 · Word Wrangler", fanfare); then the crates earned in this
 // run drop into the callouts row with a shake — tap to open (src/ui/crates.js). A streak day shows as a callout.
-import { CAR_BY_ID } from '../data/cars.js';
+import { carById, trackById } from '../meta/skyData.js';
 import { levelTitle, unopened } from '../meta/engagement.js';
 import { CRATE_SVG } from './crates.js';
-import { TRACK_BY_ID } from '../data/tracks.js';
 import { isUnlocked, nextTrackId, ratingFor } from '../meta/economy.js';
 import { $, h, money, fmt1 } from './dom.js';
 import { createFireworks } from './fireworks.js';
@@ -184,8 +183,8 @@ export function createResults(app) {
     if (!r) return;
     last = r;
     const { summary: s, bank, trackId } = r;
-    const track = TRACK_BY_ID[trackId];
-    const car = CAR_BY_ID[r.carId];
+    const track = trackById(trackId);
+    const car = carById(r.carId);
     const mult = r.stats.coinMult || 1;
     const lv = s.levels && s.levels.total > 1 ? s.levels : null;   // v3.6 levels per race
     const allClear = lv && lv.reached === lv.total && lv.cleared[lv.reached - 1];
@@ -237,6 +236,15 @@ export function createResults(app) {
         h('td', {}, 'Spelling ', h('span', { class: 'hint' }, list)),
         h('td', { 'data-value': String(sp.bonus || 0) }, sp.bonus ? '+$' + money(sp.bonus) : '$0')));
     }
+    // v4.0: the Sky Era's Spell Boost: "Spell Boost: +X m" (the second jump the spelling earned) with the word and how it went
+    if (r.boost && r.boost.list && r.boost.list.length) {
+      const bl = r.boost.list, one = bl[0];
+      const head = r.boost.meters != null ? `Spell Boost: +${money(r.boost.meters)} m` : `Spell Boost: ${one.power >= 1 ? 'big jump' : 'a hop'}`;
+      const hint = bl.map((b) => `${b.word} ${b.firstTry ? '✓' : '↻'}`).join(' · ');
+      const pay = bl.reduce((a, b) => a + (b.bonus || 0), 0);
+      el.pay.append(h('tr', { class: 'extra boost', 'data-pay': 'boost', 'data-power': String(one.power), 'data-meters': r.boost.meters == null ? '' : String(r.boost.meters) },
+        h('td', {}, head, ' ', h('span', { class: 'hint' }, hint)), h('td', { 'data-value': String(pay) }, pay ? '+$' + money(pay) : '$0')));
+    }
     if (r.missionReward) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'mission' }, h('td', {}, 'Mission ', h('span', { class: 'hint' }, '8 words today')), h('td', { 'data-value': String(r.missionReward) }, '+$' + money(r.missionReward))));
     if (r.mega) el.pay.append(h('tr', { class: 'extra', 'data-pay': 'friday' }, h('td', {}, 'Friday Test ', h('span', { class: 'hint' }, `${r.mega.correct}/${r.mega.total} words · power ${Math.round((0.6 + 0.4 * r.mega.score) * 100)}%`)), h('td', { 'data-value': String(r.mega.paid || 0) }, '+$' + money(r.mega.paid || 0))));
     // goals last: the spelling rows (the learning reward) sit right under the run total, above the fold
@@ -249,7 +257,7 @@ export function createResults(app) {
     if (r.missionReward) el.callouts.append(h('span', { class: 'callout mission', id: 'res-mission' }, 'Mission complete!'));
     if (r.mission && !r.daily) el.callouts.append(h('span', { class: 'callout today', id: 'res-today' }, r.mission.done && !r.missionReward ? 'Free play' : `Today ${r.mission.count} / ${r.mission.size}`));
     if (r.summary.letters && r.summary.letters.total && r.summary.letters.inOrder) el.callouts.append(h('span', { class: 'callout cyan' }, 'Word complete!'));
-    if (bank.unlocked) el.callouts.append(h('span', { class: 'callout' }, `Unlocked: ${TRACK_BY_ID[bank.unlocked].name}!`));
+    if (bank.unlocked) el.callouts.append(h('span', { class: 'callout' }, `Unlocked: ${trackById(bank.unlocked).name}!`));
     if (bank.newBestScore) el.callouts.append(h('span', { class: 'callout cyan' }, 'Best score!'));
     // the run's new achievements: one compact chip (medals + name, or a count when several)
     const achs = r.achievements || [];
@@ -264,6 +272,7 @@ export function createResults(app) {
       else el.callouts.append(h('span', { class: 'callout cyan' }, `Daily: ${r.dailyGoalText} (got ${r.dailyValue})`));
     }
 
+    if (r.eng && r.eng.skyOpened) el.callouts.append(h('span', { class: 'callout cyan', id: 'res-sky-open' }, 'The Sky Era is open!'));
     if (r.eng && r.eng.streak && r.eng.streak.counted) {
       el.callouts.append(h('span', { class: 'callout streak', id: 'res-streak' }, h('span', { html: icon('flame') }), `${r.eng.streak.count}-day streak!`));
     }
@@ -283,7 +292,7 @@ export function createResults(app) {
     const n = nextTrackId(trackId);
     el.next.hidden = r.daily || !n;
     el.next.disabled = !(n && isUnlocked(app.save, n));
-    el.next.title = n ? (isUnlocked(app.save, n) ? TRACK_BY_ID[n].name : `Cross ${track.name}'s finish to unlock`) : '';
+    el.next.title = n ? (isUnlocked(app.save, n) ? trackById(n).name : `Cross ${track.name}'s finish to unlock`) : '';
     app.refreshCash();
   }
   return {

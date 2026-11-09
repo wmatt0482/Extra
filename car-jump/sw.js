@@ -7,10 +7,11 @@
 // answered from the cache. The natural voice's clips (/api/tts/clip/<id>, v3.4) are content-addressed (a clip never
 // changes), so they are cache-first in their own cache, TTS_CACHE, which survives version updates: a clip played once
 // plays offline afterwards.
+// v4.0 (Sky Era): sky.js / skyData.js / skyRoadSvg.js are in the shell; the sky tracks and rides data are optional (below).
 // v3.9: certificate.html (the printable Friday Test certificate) is its own network-first page, never answered with index.html; the
 // Lab (/lab/src/index.js, one folder up) is OPTIONAL: the game starts and plays without it, and the modules the page loaded are cached
 // by the 'cache-urls' message like any other.
-const VERSION = 'spell-jump-v3.11.0';
+const VERSION = 'spell-jump-v4.0.0';
 const TTS_CACHE = 'spell-jump-tts-v1';
 const NETWORK_TIMEOUT_MS = 3000;
 const SHELL = [
@@ -45,6 +46,9 @@ const SHELL = [
   'src/meta/labBridge.js',
   'src/meta/labLooks.js',
   'src/meta/skyRoad.js',
+  'src/meta/sky.js',
+  'src/meta/skyData.js',
+  'src/ui/skyRoadSvg.js',
   'src/ui/skyTeaser.js',
   'src/ui/testBoss.js',
   'src/ui/ceremony.js',
@@ -85,7 +89,9 @@ const SHELL = [
 ];
 // The engine is built separately and may be split into several modules: cache the entry if present;
 // the page also posts every module it actually loaded (see 'cache-urls' below).
-const OPTIONAL = ['src/game/engine.js', '../lab/src/index.js'];
+// v4.0: the Sky Era's data files (src/data/skyTracks.js, skyRides.js) are written by the engine side and loaded with a guarded dynamic import
+// (a missing file = Era 1 only), so they are optional here too: a missing one must never fail the install.
+const OPTIONAL = ['src/game/engine.js', 'src/data/skyTracks.js', 'src/data/skyRides.js', '../lab/src/index.js'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {

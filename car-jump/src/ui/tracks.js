@@ -1,7 +1,11 @@
 // Track select: one card per stage (20 in v3.5) with a procedural mini-landscape, finish distance, best distance and
 // lock state, in a grid that scrolls; opening the screen scrolls the newest unlocked stage into view.
-import { TRACKS, TRACK_BY_ID } from '../data/tracks.js';
+import { TRACKS } from '../data/tracks.js';
 import { isUnlocked } from '../meta/economy.js';
+import { skyAvailable, skyTracks, trackById } from '../meta/skyData.js';
+import { currentEra, skyUnlocked } from '../meta/sky.js';
+import { SKY_ROAD_STEPS, skyRoadSteps } from '../meta/skyRoad.js';
+import { miniRoadSvg } from './skyRoadSvg.js';
 import { luminance } from '../game/util.js';
 import { $, h, money } from './dom.js';
 import { icon } from './icons.js';
@@ -43,27 +47,65 @@ export function trackTag(t) {
 
 export function createTracks(app) {
   const grid = $('#track-grid');
+  const eraBox = $('#track-era');
+  let view = 'earth';             // the tab being looked at: the saved era, or a peek at the locked Sky gate (never saved)
+
+  // v4.0: the Earth / Sky tabs (only when the Sky Era has tracks on this device); a locked Sky tab shows the gate + the Sky Road
+  function renderEra() {
+    const has = skyAvailable();
+    eraBox.hidden = !has;
+    eraBox.replaceChildren();
+    if (!has) return;
+    const locked = !skyUnlocked(app.save);
+    for (const [era, text] of [['earth', 'Earth'], ['sky', 'Sky']]) {
+      const on = view === era;
+      const b = h('button', { class: `era-tab ${era}${on ? ' on' : ''}${era === 'sky' && locked ? ' locked' : ''}`, role: 'tab', 'aria-selected': String(on), 'data-era': era, 'data-sfx': '' },
+        era === 'sky' && locked ? h('span', { class: 'era-lock', html: icon('lock') }) : null, text);
+      b.addEventListener('click', () => {
+        if (era === 'sky' && locked) view = 'sky';
+        else { view = era; if (app.setEra) app.setEra(era); }
+        render();
+      });
+      eraBox.append(b);
+    }
+  }
+
+  function renderGate() {
+    const n = skyRoadSteps(app.save);
+    grid.append(h('div', { class: 'card sky-gate-card', id: 'sky-gate-card', 'data-steps': String(n) },
+      h('div', { class: 'sg-art', html: miniRoadSvg(n) }),
+      h('div', { class: 'sg-text' },
+        h('div', { class: 'sg-title' }, h('span', { html: icon('lock') }), 'The Sky Gate'),
+        h('div', { class: 'sg-road' }, `Sky Road ${n} / ${SKY_ROAD_STEPS}`),
+        h('p', {}, 'Finish each day\'s mission to walk the road to the gate. Earth is open all the time.')),
+      h('button', { class: 'btn btn-sm btn-green', id: 'sky-gate-back', 'data-sfx': '', onclick: () => { view = 'earth'; render(); } }, 'Back to Earth')));
+  }
 
   function render() {
     const s = app.save;
+    if (!skyAvailable()) view = 'earth';
+    renderEra();
     grid.innerHTML = '';
+    grid.dataset.era = view;
+    if (view === 'sky' && !skyUnlocked(s)) { renderGate(); app.refreshCash(); return; }
+    const list = view === 'sky' ? skyTracks() : TRACKS;
     let newest = null;
-    TRACKS.forEach((t, i) => {
+    list.forEach((t, i) => {
       const unlocked = isUnlocked(s, t.id);
       const best = s.best[t.id] || 0;
-      const cleared = best >= t.finish || TRACKS.some((x) => x.unlockedBy === t.id && isUnlocked(s, x.id));
+      const cleared = best >= t.finish || list.some((x) => x.unlockedBy === t.id && isUnlocked(s, x.id));
       const tag = trackTag(t);
       const card = h('button', { class: 'card track-card' + (unlocked ? '' : ' locked'), 'data-track': t.id, 'aria-label': `${t.name}${unlocked ? '' : ' (locked)'}` },
-        h('div', { class: 'track-art', html: trackArt(t) + (unlocked ? '' : `<div class="lock">${icon('lock')}<span>Finish ${TRACK_BY_ID[t.unlockedBy].name}</span></div>`) }),
+        h('div', { class: 'track-art', html: trackArt(t) + (unlocked ? '' : `<div class="lock">${icon('lock')}<span>Finish ${trackById(t.unlockedBy).name}</span></div>`) }),
         h('div', { class: 'track-info' },
-          h('div', { class: 'track-num' }, `Stage ${String(i + 1).padStart(2, '0')}${tag ? ` · ${tag}` : ''}`),
+          h('div', { class: 'track-num' }, `${view === 'sky' ? 'Sky' : 'Stage'} ${String(i + 1).padStart(2, '0')}${tag ? ` · ${tag}` : ''}`),
           h('div', { class: 'track-name' }, t.name),
           h('div', { class: 'track-stat' }, h('span', {}, 'Finish'), h('b', {}, `${money(t.finish)} m`)),
           h('div', { class: 'track-stat' }, h('span', {}, 'Best'), h('b', {}, best ? `${money(best)} m` : '—')),
           h('div', { class: 'track-bar' }, h('i', { style: { width: Math.min(100, (best / t.finish) * 100) + '%' } }))),
         cleared ? h('span', { class: 'cleared' }, 'Cleared') : null);
       card.addEventListener('click', () => {
-        if (!unlocked) { app.audio.error(); app.toast(`Locked: finish ${TRACK_BY_ID[t.unlockedBy].name} first`); return; }
+        if (!unlocked) { app.audio.error(); app.toast(`Locked: finish ${trackById(t.unlockedBy).name} first`); return; }
         s.selectedTrack = t.id;
         app.persist();
         app.startRun({ trackId: t.id });
@@ -78,5 +120,5 @@ export function createTracks(app) {
       try { newest.scrollIntoView({ block: 'nearest', inline: 'nearest' }); } catch (_) { /* older engines */ }
     }
   }
-  return { show: render, hide() {}, render };
+  return { show() { view = currentEra(app.save); render(); }, hide() {}, render, get view() { return view; } };
 }

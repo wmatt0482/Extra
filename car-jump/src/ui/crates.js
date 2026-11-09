@@ -5,6 +5,7 @@
 // dismiss once the card is up. Used by the title's "n crates" button and
 // the crate that drops on the results screen. The roll itself lives in src/meta/engagement.js (openCrate).
 import { CAR_BY_ID } from '../data/cars.js';
+import { carById } from '../meta/skyData.js';
 import { SKIN_BY_ID, STICKER_BY_ID } from '../data/cosmetics.js';
 import { equip, equippedFor, lookFor, openCrate } from '../meta/engagement.js';
 import { drawCar } from './carPreview.js';
@@ -33,7 +34,7 @@ export function createCrateOpener(app) {
   root.addEventListener('click', close);
 
   function reveal(out) {
-    const car = CAR_BY_ID[app.save.selectedCar] || CAR_BY_ID.beater;
+    const car = carById(app.save.selectedCar) || CAR_BY_ID.beater;
     card.className = 'card reveal-card r-' + out.kind;
     art.replaceChildren();
     if (out.kind === 'skin' || out.kind === 'sticker') {
@@ -73,7 +74,7 @@ export function createCrateOpener(app) {
     /** Open one waiting crate. Resolves (via onDone) after the child taps the reveal card away. */
     open(done) {
       if (busy) return null;
-      const car = CAR_BY_ID[app.save.selectedCar] || CAR_BY_ID.beater;
+      const car = carById(app.save.selectedCar) || CAR_BY_ID.beater;
       const out = openCrate(app.save, { tier: car.tier });
       if (!out) return null;
       last = out;

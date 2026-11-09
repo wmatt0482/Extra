@@ -3,8 +3,6 @@
 // The real engine lives at ./game/engine.js (built separately against the SPEC contract). It is imported
 // dynamically so the shell keeps working — on the mock — if it is missing or broken.
 
-import { CAR_BY_ID } from './data/cars.js';
-import { TRACK_BY_ID } from './data/tracks.js';
 import { resolveStats } from './data/upgrades.js';
 import { Audio } from './audio.js';
 import { defaultSave, loadSave, setSaveKey, wipeSave, writeSave } from './meta/save.js';
@@ -48,9 +46,12 @@ import { labLook, trailFor } from './meta/labLooks.js';
 import { createTestBoss } from './ui/testBoss.js';
 import { CEREMONY_LINES, improvement, qualifierFor, tierFor } from './ui/ceremony.js';
 import { createSkyTeaser } from './ui/skyTeaser.js';
+import { miniRoadSvg } from './ui/skyRoadSvg.js';
 import { SKY_ROAD_STEPS, markTeaserSeen, skyName, skyRoadSteps, teaserDue, teaserTexts } from './meta/skyRoad.js';
+import { carById, ceremonyRides, loadSkyData, skyAvailable, skyTracks, trackById } from './meta/skyData.js';
+import { autoUnlock, ceremonyDue, currentEra, markCeremonySeen, setEra, skyTracksText, skyUnlocked, unlockSky } from './meta/sky.js';
 
-const VERSION = '3.11.0';
+const VERSION = '4.0.0';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
@@ -114,6 +115,9 @@ async function boot() {
 
   const canvas = $('#game');
   const engineMod = await loadEngine();
+  // v4.0: the Sky Era's tracks and rides (src/data/skyTracks.js, skyRides.js; a missing file is an empty list and the era stays closed);
+  // ?mock=1&skyfixture=1 loads the stand-ins in tools/fixtures/sky/ (tests and screenshots only)
+  await loadSkyData({ fixtures: params.get('mock') === '1' && params.has('skyfixture') });
   let game = null;
   let run = null;          // active run context, null when not running
   let hudRaf = 0;
@@ -205,6 +209,27 @@ async function boot() {
     setSetting,
     setShake,
     resetProgress,
+    // ----- v4.0 Sky Era (src/meta/sky.js) -----
+    setEra: (era) => chooseEra(era),
+    get era() { return currentEra(save); },
+    /** The era's state for any player (Parents → Options): { unlocked, available, steps }. */
+    skyFor(id) {
+      const sv = id === currentPlayerId ? save : loadSave(Profiles.saveKey(id));
+      return { unlocked: skyUnlocked(sv), available: skyAvailable(), steps: skyRoadSteps(sv) };
+    },
+    /** A parent opens the Sky Era now (also for a child who is not playing): the ceremony plays on that child's next title. */
+    openSkyFor(id) {
+      if (id === currentPlayerId) {
+        const fresh = unlockSky(save, Date.now());
+        app.persist();
+        if (screen === 'title') { refreshTitle(); scheduleSky(); }
+        return fresh;
+      }
+      const sv = loadSave(Profiles.saveKey(id));
+      const fresh = unlockSky(sv, Date.now());
+      writeSave(sv, Profiles.saveKey(id));
+      return fresh;
+    },
     checkAchievements: () => { achievements.checkSave(); },
     createPlayer: (name, color) => Profiles.createPlayer(family, name, color),
     selectPlayer,
@@ -284,7 +309,7 @@ async function boot() {
   const playersUI = createPlayers(app);
   const screens = { garage: createGarage(app), tracks: createTracks(app), results: createResults(app), players: playersUI.players, newplayer: playersUI.newplayer };
   const panels = createPanels(app);
-  const hero = createTitleHero($('#hero'), () => CAR_BY_ID[save.selectedCar], () => (currentPlayerId ? app.look(save.selectedCar) : null));
+  const hero = createTitleHero($('#hero'), () => carById(save.selectedCar), () => (currentPlayerId ? app.look(save.selectedCar) : null));
   const crates = app.crates = createCrateOpener(app);
   // natural voice (v3.4): clips from the server's Google voices, used when the player's options pick one and this
   // device is in a family; the device voice stays the fallback (src/spelling/cloudVoice.js, tts.setCloud)
@@ -321,9 +346,10 @@ async function boot() {
     audio: Audio,
     speak: skySpeak,
     stopSpeech: () => { skyVoiceN++; try { cloud.stop(); } catch (_) { /* ignore */ } Audio.voice(false); },
-    onClose: () => {
+    onClose: (info) => {
       Audio.duck(false);
       hero.setMode(heroMode());
+      if (info && info.kind === 'open') { setEra(save, 'sky'); app.persist(); }      // v4.0: after the ceremony the title is on the Sky tab
       if (screen === 'title') { refreshSkyCard(); setTimeout(() => updater.check(), 0); }
     },
   });
@@ -399,6 +425,7 @@ async function boot() {
     replaceSave(loadSave());
     refreshDaily(save); ensureGoals(save);
     refreshStreak(save, Date.now());     // v3.3: a missed day since the last streak day uses this week's shield
+    autoUnlock(save, Date.now());        // v4.0: a complete Sky Road opens the Sky Era (the ceremony plays on the title)
     words = Profiles.loadWords(id);
     WS.rollToday(words, Date.now());
     const classList = WS.autoClassList(words, Date.now(), classOverride());   // v3.7: a new class-list week for a player who follows them
@@ -488,9 +515,10 @@ async function boot() {
     try {
       const m = WS.missionState(words, Date.now());
       const mastered = WS.masteredCount(words);
+      const skyLine = skyUnlocked(save) && skyAvailable() ? ` · ${skyTracksText(save, skyTracks())}` : '';     // v4.0: "Sky Era · 2 / 5 tracks"
       labBridge.summary({
         level: `Speller LV ${levelFor(save.xp || 0)}`,
-        line: `${mastered} word${mastered === 1 ? '' : 's'} mastered`,
+        line: `${mastered} word${mastered === 1 ? '' : 's'} mastered${skyLine}`,
         today: `Today: ${m.count} / ${m.size} words`,
         lastPlayed: Date.now(),
       });
@@ -522,22 +550,16 @@ async function boot() {
 
   // ---------- v3.10: the Sky Road card on the title + the Sky Era teaser ----------
   // The card shows the road (one step per mission day since release, src/meta/skyRoad.js) and replays the full teaser.
-  function miniRoadSvg(n) {
-    const done = n >= SKY_ROAD_STEPS;
-    let out = '<svg viewBox="0 0 66 40" xmlns="http://www.w3.org/2000/svg">';
-    out += '<path d="M53 15 a5 6 0 0 1 10 0 v9 h-10 z" fill="' + (done ? '#ffe08a' : 'rgba(255,255,255,.3)') + '" stroke="' + (done ? '#fff6cf' : 'rgba(255,255,255,.75)') + '" stroke-width="1.4"/>';
-    for (let i = 1; i <= SKY_ROAD_STEPS; i++) {
-      const u = (i - 0.5) / SKY_ROAD_STEPS;
-      const x = 4 + 44 * u + 3 * Math.sin(u * 7), y = 35 - 19 * u - 3 * Math.sin(u * Math.PI);
-      const on = i <= n;
-      out += '<ellipse cx="' + x.toFixed(1) + '" cy="' + y.toFixed(1) + '" rx="' + (3.4 - 1.1 * u).toFixed(2) + '" ry="' + (2 - 0.6 * u).toFixed(2) + '" fill="' + (on ? '#ffcf1a' : 'rgba(255,255,255,.42)') + '"' + (on ? ' stroke="#fff3c0" stroke-width=".6"' : '') + '/>';
-    }
-    return out + '</svg>';
-  }
+  // v4.0: before the era opens the title shows the Sky Road card; once it is open the card becomes the Earth / Sky switch.
   function refreshSkyCard() {
     const btn = $('#btn-sky');
     if (!btn) return;
-    btn.hidden = !currentPlayerId;
+    const open = !!currentPlayerId && skyUnlocked(save) && skyAvailable();
+    const sw = $('#era-switch');
+    sw.hidden = !open;
+    document.documentElement.classList.toggle('era-sky', open && currentEra(save) === 'sky');
+    if (open) for (const t of $$('#era-switch [data-era]')) { const on = t.dataset.era === currentEra(save); t.classList.toggle('on', on); t.setAttribute('aria-selected', String(on)); }
+    btn.hidden = !currentPlayerId || open;
     if (!currentPlayerId) return;
     const n = skyRoadSteps(save);
     $('#sky-steps').textContent = 'Sky Road ' + n + ' / ' + SKY_ROAD_STEPS;
@@ -545,6 +567,18 @@ async function boot() {
     btn.dataset.steps = String(n);
     btn.setAttribute('aria-label', 'Sky Era: watch the teaser. Sky Road ' + n + ' of ' + SKY_ROAD_STEPS + '.');
   }
+  // the Earth / Sky tabs (title + track screen): the choice is saved (save.sky.era) and the garage / track list follow it
+  function chooseEra(era) {
+    if (!skyUnlocked(save) || !skyAvailable()) era = 'earth';
+    if (currentEra(save) === era) return era;
+    setEra(save, era);
+    app.persist();
+    refreshSkyCard();
+    if (screen === 'tracks') screens.tracks.render();
+    if (screen === 'garage') screens.garage.render();
+    return currentEra(save);
+  }
+  for (const t of $$('#era-switch [data-era]')) t.addEventListener('click', () => chooseEra(t.dataset.era));
   const reducedNow = () => !!save.settings.reducedMotion || (typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches);
   // Play once when due: never over a panel, a crate, the Parent Zone, the Lab, a toast (e.g. a new class list) or the coach,
   // never during a run or a test; it waits until the title is clear. Marked seen when it STARTS (a closed tab does not loop it).
@@ -557,7 +591,8 @@ async function boot() {
   function maybeSky() {
     clearTimeout(skyTimer);
     if (window.__noSkyTeaser || screen !== 'title' || !currentPlayerId) return;
-    const due = teaserDue(save);
+    if (autoUnlock(save, Date.now())) { app.persist(); refreshSkyCard(); }      // v4.0: the road is complete: the era opens
+    const due = ceremonyDue(save) ? { kind: 'open', step: skyRoadSteps(save) } : teaserDue(save);
     if (!due) return;
     if (skyBlocked()) { skyTimer = setTimeout(maybeSky, 900); return; }
     // the voice: wait (up to 6 s on the title) for the teaser's clips so the one full play is heard, then play either way
@@ -571,14 +606,14 @@ async function boot() {
   function scheduleSky(ms = 700) { clearTimeout(skyTimer); skyTimer = setTimeout(maybeSky, ms); }
   function playSky(due) {
     clearTimeout(skyTimer);
-    markTeaserSeen(save, due);
+    if (due.kind === 'open') markCeremonySeen(save); else markTeaserSeen(save, due);
     app.persist();
     const p = Profiles.playerById(family, currentPlayerId);
     hero.setMode('off');
     Audio.duck(true);
     prepareSkyVoice(true);
-    return sky.play({ kind: due.kind, step: due.step, steps: skyRoadSteps(save), car: CAR_BY_ID[save.selectedCar], look: app.look(save.selectedCar),
-      name: skyName(p && p.name), reduced: reducedNow(), sound: !!save.settings.sound });
+    return sky.play({ kind: due.kind, step: due.step, steps: skyRoadSteps(save), car: carById(save.selectedCar), look: app.look(save.selectedCar),
+      name: skyName(p && p.name), reduced: reducedNow(), sound: !!save.settings.sound, rides: ceremonyRides() });
   }
   app.playSky = playSky;
   app.maybeSky = maybeSky;
@@ -628,6 +663,7 @@ async function boot() {
   }
   function dayDone(eng, now) {
     const d = completeDay(save, now);
+    if (d.counted && autoUnlock(save, now)) eng.skyOpened = true;         // v4.0: the 15th Sky Road step opens the Sky Era
     labBridge.report({ event: 'day', n: 1 });           // the Lab pays its day once a local day across all five games
     if (!d.counted) return;
     eng.streak = d; eng.crates += d.crates; eng.unlocks.push(...d.unlocks);
@@ -854,18 +890,18 @@ async function boot() {
     if (!game) { toast('Engine failed to load'); return; }
     closePanel();
     let car, stats, seed, def = null;
-    trackId = daily ? dailyFor(todayKey()).trackId : (TRACK_BY_ID[trackId] && isUnlocked(save, trackId) ? trackId : 'canyon');
-    const track = TRACK_BY_ID[trackId];
+    trackId = daily ? dailyFor(todayKey()).trackId : (trackById(trackId) && isUnlocked(save, trackId) ? trackId : 'canyon');
+    const track = trackById(trackId);
     if (daily) {
       refreshDaily(save);
       def = dailyFor(todayKey());
-      car = CAR_BY_ID[def.carId];
+      car = carById(def.carId);
       stats = resolveStats(car, def.levels);
       seed = def.seed;
       save.daily.attempts += 1;
       app.persist();
     } else {
-      car = CAR_BY_ID[save.selectedCar];
+      car = carById(save.selectedCar) || carById('beater');
       stats = statsFor(save, car.id);
       seed = hashString('track:' + trackId);   // fixed layout per track so it can be learned
     }
@@ -883,8 +919,11 @@ async function boot() {
     runEarned = [];
     if (!daily) labRound(mega ? 'mega' : 'mission');          // the Lab's combo lives a mission or a Mega Run, not one 3-word race
     refreshLabCos();                                           // cosmetics are re-read at the start of every run
+    // v4.0: on a sky track the engine freezes once per flight at the Spell Boost gate (unless a parent switched it off for this child;
+    // the Mega Run is the Friday Test's own power, so it has none)
+    const spellBoost = track.era === 'sky' && !daily && !mega && opts().skyBoost !== false;
     run = {
-      trackId, daily, def, carId: car.id, stats, ended: false, goalToasts: [], earned: runEarned, flight: false, bigAir: false, rampage: false, rings: 0,
+      trackId, daily, def, carId: car.id, sky: track.era === 'sky', boostOn: spellBoost, boosts: [], boosting: false, boostUsed: false, stats, ended: false, goalToasts: [], earned: runEarned, flight: false, bigAir: false, rampage: false, rings: 0,
       spelling: !!pick, pick, letters: letters || [], spell: null, mega, missionReward: 0, setSize, startCfg: null,
       eng: mega && mega.eng ? mega.eng : newEng(),
       level: 1, levels, levelDone: [], levelTimer: 0, pendingLevel: false, quitting: false,
@@ -905,6 +944,7 @@ async function boot() {
         shake: save.settings.reducedMotion ? 0 : save.settings.shake / 100,
         bestDistance: daily ? null : (save.best[trackId] || null),
         letters, powerScale, nitroScale: 1,
+        ...(track.era === 'sky' ? { spellBoost } : {}),
       };
       game.start(run.startCfg);
       game.setInput({ gas: false, brake: false, nitro: false });
@@ -942,10 +982,10 @@ async function boot() {
   function startLevel(r) {
     if (run !== r || r.ended) return;
     r.pendingLevel = false;
-    const track = levelTrack(TRACK_BY_ID[r.trackId], r.level);
+    const track = levelTrack(trackById(r.trackId), r.level);
     const pick = words ? WS.nextWord(words, Date.now(), session, opts()) : null;
     const letters = pick ? ringLetters(pick.word) : null;
-    Object.assign(r, { pick, spelling: !!pick, letters: letters || [], spell: null, lettersShown: false, flight: false, bigAir: false, rampage: false });
+    Object.assign(r, { pick, spelling: !!pick, letters: letters || [], spell: null, lettersShown: false, flight: false, bigAir: false, rampage: false, boosting: false, boostUsed: false });
     hud.reset(track);
     hud.word(null);
     controls.reset();
@@ -1092,6 +1132,52 @@ async function boot() {
     else if (!paused) controls.enable(true);
   }
 
+  // ---------- v4.0: the Spell Boost (the Sky Era's second jump you earn by spelling) ----------
+  // The engine has frozen the simulation at the Spell Boost gate (nothing ticks: no timer, no countdown) and emitted `spellBoost`. The next
+  // word is picked exactly like a launch word (same scheduler), spelled in the same panel (audio first, compare / fix / cover-copy-compare),
+  // banked per word (mission, Leitner record, cash, XP) and then the second jump goes: first try = power 1, fixed after a miss = 0.5.
+  // The engine draws the word's letters as rings along the new arc AFTER the spelling (game.boost({ power, word })), so no word is shown first.
+  function unfreeze() { try { if (typeof game.freeze === 'function') game.freeze(false); } catch (e) { console.warn('[SpellJump] freeze(false)', e); } }
+  async function spellBoost(r, evt) {
+    if (!r || run !== r || r.ended || r.boosting) return;
+    const pick = r.boostOn && words ? WS.nextWord(words, Date.now(), session, opts()) : null;
+    if (!pick) { unfreeze(); return; }                                  // spell boost off for this child / no words: the flight goes on
+    r.boosting = true; r.boostUsed = true;
+    r.spelling = true;
+    setSpelling(true);
+    controls.enable(false);
+    try { game.setInput({ gas: false, brake: false, nitro: false }); } catch (_) { /* ignore */ }
+    Audio.engine(-1); Audio.nitro(false);
+    let banked = null;
+    const res = await spellPanel.run(pick, {
+      onResult: (out) => { if (run === r && !r.ended) banked = recordWord(r, pick, out); },
+      coinMult: r.stats.coinMult || 1, streakBefore: Math.min(WS.STREAK_CAP, words.streak),
+      mission: WS.missionState(words, Date.now()), upper: opts().tileCase === 'upper', badge: 'Spell Boost',
+    });
+    if (!res || res.cancelled) return;                                  // quitRun ran (back button): an answered word is already banked
+    if (run !== r || r.ended) return;
+    const rec = banked || recordWord(r, pick, res);
+    spellPanel.close();
+    setSpelling(false);
+    r.boosting = false; r.spelling = false;
+    const power = res.firstTry ? 1 : 0.5;
+    r.boosts.push({ word: pick.word, power, firstTry: !!res.firstTry, fixed: !!res.fixed, misses: res.misses || 0, bonus: rec.bonus || 0 });
+    try { if (typeof game.boost === 'function') game.boost({ power, word: pick.word }); } catch (e) { console.warn('[SpellJump] game.boost', e); }
+    unfreeze();
+    if (coaching) return;
+    if (!paused) controls.enable(true);
+  }
+  /** The second jump's distance in metres: the engine's summary.spellBoost.distance (or .boostDistance) summed over the race's levels; null when it did not say. */
+  function boostMeters(r, summary) {
+    const sums = [...r.levelDone.map((l) => l.summary), summary].filter(Boolean);
+    let total = 0, any = false;
+    for (const sm of sums) {
+      const v = sm.spellBoost && Number.isFinite(Number(sm.spellBoost.distance)) ? Number(sm.spellBoost.distance) : Number.isFinite(Number(sm.boostDistance)) ? Number(sm.boostDistance) : null;
+      if (v != null) { total += v; any = true; }
+    }
+    return any ? Math.max(0, Math.round(total)) : null;
+  }
+
   // the HUD and the driving controls hide while the spell panel is up
   function setSpelling(on) { document.documentElement.classList.toggle('spelling', !!on); }
 
@@ -1104,6 +1190,7 @@ async function boot() {
     run = null;
     runEarned = null;
     vtts.cancel();
+    try { if (typeof game.freeze === 'function') game.freeze(false); } catch (_) { /* ignore */ }
     try { game.stop(); } catch (_) { /* ignore */ }
     controls.enable(false);
     Audio.engine(-1); Audio.nitro(false); Audio.duck(false);
@@ -1193,7 +1280,7 @@ async function boot() {
         Audio.cheer(1.2); Audio.fireworks();
         if (!run.daily) {
           const n = nextTrackId(run.trackId);
-          if (n && !isUnlocked(save, n)) hud.note(`Unlocked: ${TRACK_BY_ID[n].name}`);
+          if (n && !isUnlocked(save, n)) hud.note(`Unlocked: ${trackById(n).name}`);
         }
         break;
       // ----- v2 -----
@@ -1226,6 +1313,12 @@ async function boot() {
         hud.banner('word', 'Word complete!');
         setTimeout(() => Audio.cash(), 380);
         break;
+      // ----- v4.0 Sky Era: the engine froze the scene at the Spell Boost gate; the spell panel hands the second jump back -----
+      case 'spellBoost': spellBoost(run, evt).catch((e) => { console.error('[SpellJump] spell boost', e); unfreeze(); }); break;
+      case 'boostRing': Audio.ring(); break;
+      case 'gravityWell': if (!(evt.exit || evt.phase === 'exit' || evt.kind === 'exit' || evt.enter === false)) Audio.orbit(); break;
+      case 'cloudSplash': Audio.pop(); break;
+      case 'islandLand': Audio.land(evt.quality || 'good'); break;
       case 'finish': endRun(evt.summary); return;
       default: break;
     }
@@ -1242,6 +1335,7 @@ async function boot() {
     run = null;
     clearTimeout(stopFallback);
     clearTimeout(r.levelTimer);
+    const boostM = boostMeters(r, summary);        // v4.0: "Spell Boost: +X m" (the engine's own number, summed over the levels)
     if (r.levelDone.length) {
       summary = aggregateLevels(r, [...r.levelDone.map((l) => l.summary), summary || {}]);
       r.spell = aggregateSpell(r);
@@ -1254,7 +1348,7 @@ async function boot() {
     if (summary.rings == null && r.rings) summary = { ...summary, rings: r.rings };   // engine without v2 summary fields
     const bank = bankRun(save, r.trackId, summary, { ranked: !r.daily });
     if (!r.daily) noteJump(save, summary.distance, Date.now());   // v3.3: best jump this week (family board)
-    const rating = summary.rating || ratingFor(summary, TRACK_BY_ID[r.trackId].finish);
+    const rating = summary.rating || ratingFor(summary, trackById(r.trackId).finish);
     achievements.summary(summary, rating);
     achievements.endRun();
     for (const g of goalSummary(save, summary)) hud.note(`Goal done: ${goalText(g)}`);
@@ -1272,7 +1366,7 @@ async function boot() {
     const result = lastResult = {
       trackId: r.trackId, daily: r.daily, carId: r.carId, stats: r.stats, summary, bank, goals,
       dailyReward, dailyAlreadyDone, dailyGoalText: r.def && r.def.goal.text, dailyValue: r.def && r.def.value(summary),
-      rating, achievements: r.earned,
+      rating, achievements: r.earned, boost: r.boosts.length ? { list: r.boosts.slice(), meters: boostM } : null,
       spell: r.spell, missionReward: r.missionReward, mega: r.mega, mission: words ? WS.missionState(words, Date.now()) : null,
       eng: r.eng,
     };
@@ -1434,7 +1528,7 @@ async function boot() {
   window.__spellJump = window.__rampRage = {
     app, hud, hero, spellPanel, testScreen, pz, tts, voice, sync, sky,
     get game() { return game; }, get run() { return run; }, get lastResult() { return lastResult; }, get coaching() { return coaching; },
-    get words() { return words; }, get session() { return session; }, get screen() { return screen; },
+    get words() { return words; }, get session() { return session; }, get screen() { return screen; }, get era() { return currentEra(save); },
   }; // debugging / smoke tests
   registerSW();
 }
