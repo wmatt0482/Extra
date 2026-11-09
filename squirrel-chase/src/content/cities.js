@@ -274,7 +274,7 @@ export const CITIES = [
       { id: 'binghamton-c3', text: 'They wanted to try the flight trainer that Edwin Link built in 1929.', fact: 1 },
       { id: 'binghamton-c4', text: 'They went to the city where the Chenango River joins the Susquehanna River.', fact: 2 },
       { id: 'binghamton-c5', text: 'They wanted to practice flying a pretend airplane, like the pilots in Edwin Link\'s trainer.', fact: 1 },
-      { id: 'binghamton-c6', text: 'They followed the Susquehanna River to the spot where another river flows into it.', fact: 2 },
+      { id: 'binghamton-c6', text: 'They followed the Susquehanna River to the spot where another river joins it.', fact: 2 },
     ],
   }),
 ];

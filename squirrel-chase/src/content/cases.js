@@ -142,7 +142,7 @@ export const CASES = [
       ],
     },
     postcard: postcard('ithaca', 0, 3),
-    teaser: 'Next case: somebody has a very big appetite for vowels.',
+    teaser: 'Next case: someone out there is very hungry for vowels.',
   },
 
   // ------------------------------------------------------------------ ny-04: Bleatrice, Cooperstown -> Binghamton -> Corning -> Watkins Glen
