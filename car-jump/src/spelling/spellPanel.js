@@ -481,7 +481,7 @@ export function createSpellPanel(root, { tts, audio, onCancel = () => {}, voiceW
       chip.classList.toggle('two', !!((set || ctx.badge) && today));
       chip.hidden = !set && !ctx.mission && !ctx.badge;
       kb.setUpper(!!ctx.upper);
-      kb.setEnterLabel('Launch');
+      kb.setEnterLabel(ctx.badge ? 'Boost' : 'Launch');   // v4.0: the Spell Boost panel's key says Boost
       kb.setActive(true);
       banner.hidden = true;
       attemptRow.classList.remove('flash');
