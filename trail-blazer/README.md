@@ -143,6 +143,14 @@ node trail-blazer/tools/make-icons.mjs     # regenerates icons/*.png
 `bash build.sh` at the repo root copies `trail-blazer/` to `dist/trail-blazer/` (without `tools/`, `docs/`,
 `dev.html`, `SPEC.md`), next to `dist/spell-jump/`.
 
+## 1.11.0 (a grown-up can turn the music off for every game)
+
+- **Parents → Options → Family → Background music in all games** (On / Off, behind the PIN): the family-wide switch from Spell Jump's family record
+  (`musicOff` + `musicOffAt`, synced; the later change wins). Off: the music never starts and stops at once, also when a sync brings the change in;
+  sound effects and the voice stay on. The pause menu's Music button then reads Off, disabled, with "Music is off (set by a grown-up)"; turning the
+  switch back on restores the child's own Music setting. Code: `Audio.lockMusic` / `syncFamilyMusic` and `ui/musicNote.js` in Spell Jump. Test: `tools/ui-smoke.mjs` (`ONLY=musicoff`).
+  VERSION 1.11.0; the service worker is `trail-blazer-v1.11.0`.
+
 ## 1.10.0 (cohesion: one Lab chip, named money)
 
 Stage 2 of the Lab cohesion round (`lab/docs/COHESION.md`). The game, its economy and its saves are unchanged.
