@@ -108,6 +108,8 @@ export function carGeometry(car, look = {}) {
     colorLight: shade(color, 0.25),
     outline: dark ? '#000000' : '#1d1b26',
     wheels: car.wheels.map((w) => ({ ...w })),
+    art: car.art || null, // v4.0 sky rides: 'bike' | 'rocket' | 'mech' (drawSkyExtras / legs / hover pads)
+    legs: car.legs || null,
     decal: (skin && skin.decal) || null,
     sticker: sticker || null,
     fx: null, // lazily built decal paths / gradients (per canvas context)
@@ -251,10 +253,12 @@ export function drawChassis(ctx, g, lw, t, nitroOn, lost = null) {
   ctx.strokeStyle = 'rgba(0,0,0,0.35)';
   ctx.lineWidth = lw * 0.6;
   const dx = (g.winBox[0] + g.winBox[2]) * 0.5;
-  ctx.beginPath();
-  ctx.moveTo(dx, g.beltY);
-  ctx.lineTo(dx + 0.05, g.minY + h * 0.12);
-  ctx.stroke();
+  if (!g.art) {
+    ctx.beginPath();
+    ctx.moveTo(dx, g.beltY);
+    ctx.lineTo(dx + 0.05, g.minY + h * 0.12);
+    ctx.stroke();
+  }
   if (g.sticker) drawSticker(ctx, g, lw);
   // v2 damage: missing door panel / bumper show the dark shell underneath
   if (lost) {
@@ -281,7 +285,7 @@ export function drawChassis(ctx, g, lw, t, nitroOn, lost = null) {
   ctx.restore();
 
   // window + driver
-  if (g.win.length >= 3) {
+  if (g.win.length >= 3 && !g.art) {
     ctx.save();
     pathPoly(ctx, g.win);
     ctx.fillStyle = '#bfe9ff';
@@ -337,7 +341,117 @@ export function drawChassis(ctx, g, lw, t, nitroOn, lost = null) {
   ctx.lineWidth = lw;
   ctx.strokeStyle = g.outline;
   ctx.stroke();
+  if (g.art) drawSkyExtras(ctx, g, lw, t, nitroOn);
   if (g.decal === 'crown') drawRoofEmblem(ctx, g, lw);
+}
+
+// ---------- v4.0 sky rides: cockpit art, hover pads, mech legs (silhouettes match src/ui/skyTeaser.js) ----------
+function blobPath(ctx, pts) { pathPoly(ctx, pts); }
+function rider(ctx, g, lw, hx, hy, scale = 1) {
+  // a crouched rider: torso, arm to the bars, helmet with a dark visor
+  ctx.fillStyle = '#2b2d42';
+  blobPath(ctx, [[hx - 0.45 * scale, hy - 0.05], [hx - 0.3 * scale, hy + 0.5 * scale], [hx + 0.15 * scale, hy + 0.58 * scale], [hx + 0.38 * scale, hy + 0.1]]);
+  ctx.fill(); ctx.lineWidth = lw * 0.8; ctx.strokeStyle = g.outline; ctx.lineJoin = 'round'; ctx.stroke();
+  ctx.beginPath(); ctx.arc(hx + 0.34 * scale, hy + 0.66 * scale, 0.21 * scale, 0, Math.PI * 2);
+  ctx.fillStyle = g.accent; ctx.fill(); ctx.stroke();
+  ctx.fillStyle = '#20202a'; ctx.fillRect(hx + 0.36 * scale, hy + 0.62 * scale, 0.2 * scale, 0.11 * scale);
+}
+export function drawSkyExtras(ctx, g, lw, t, nitroOn) {
+  const mn = g.minX, mx = g.maxX;
+  if (g.art === 'bike') {
+    // windscreen, rider, glowing pods' mounts, a bright underglow strip
+    ctx.fillStyle = 'rgba(191,233,255,0.8)';
+    blobPath(ctx, [[mx - 0.95, 0.3], [mx - 0.35, 0.3], [mx - 0.6, 0.78]]);
+    ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.strokeStyle = g.outline; ctx.stroke();
+    rider(ctx, g, lw, -0.1, 0.4);
+    ctx.fillStyle = g.accent;
+    ctx.fillRect(mn + 0.5, -0.2, mx - mn - 1.2, 0.07);
+  } else if (g.art === 'rocket') {
+    // nose cone, white band, porthole with the driver, rear nozzle
+    ctx.fillStyle = g.accent;
+    blobPath(ctx, [[mx - 0.9, 0.12], [mx, 0.12], [mx - 0.65, 0.66], [mx - 1.0, 0.7]]);
+    ctx.fill(); ctx.lineWidth = lw * 0.7; ctx.strokeStyle = g.outline; ctx.stroke();
+    ctx.fillStyle = g.accent; ctx.fillRect(-0.4, -0.3, 0.45, 1.1);
+    ctx.beginPath(); ctx.arc(0.95, 0.46, 0.3, 0, Math.PI * 2);
+    ctx.fillStyle = '#bfe9ff'; ctx.fill(); ctx.lineWidth = lw; ctx.strokeStyle = g.outline; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0.98, 0.42, 0.14, 0, Math.PI * 2); ctx.fillStyle = g.accent === '#ffffff' ? '#ff5a3c' : g.accent; ctx.fill();
+    ctx.fillStyle = '#2b2d42'; ctx.fillRect(mn - 0.05, -0.05, 0.28, 0.5);
+    if (!nitroOn) { // idle engine glow
+      ctx.fillStyle = `rgba(255,170,60,${(0.55 + 0.25 * Math.sin(t * 24)).toFixed(2)})`;
+      ctx.beginPath(); ctx.ellipse(mn - 0.12, 0.2, 0.2, 0.18, 0, 0, Math.PI * 2); ctx.fill();
+    }
+  } else if (g.art === 'mech') {
+    // cockpit glass with the pilot, a red eye, shoulder pod, antenna
+    const vis = [[0.15, 0.45], [1.1, 0.45], [1.22, 0.8], [0.7, 0.98], [0.2, 0.9]];
+    ctx.fillStyle = '#9fe2ff'; blobPath(ctx, vis); ctx.fill();
+    ctx.lineWidth = lw * 0.8; ctx.strokeStyle = g.outline; ctx.lineJoin = 'round'; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0.62, 0.64, 0.17, 0, Math.PI * 2); ctx.fillStyle = g.accent; ctx.fill(); ctx.stroke();
+    ctx.fillStyle = '#20202a'; ctx.fillRect(0.64, 0.6, 0.16, 0.09);
+    ctx.fillStyle = `rgba(255,90,106,${(0.7 + 0.3 * Math.sin(t * 5)).toFixed(2)})`;
+    ctx.beginPath(); ctx.arc(1.12, 0.3, 0.07, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = shade(g.color, -0.25);
+    blobPath(ctx, [[-0.95, 0.4], [-0.25, 0.4], [-0.3, 0.8], [-0.85, 0.85]]); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = g.outline; ctx.lineWidth = lw * 0.7;
+    ctx.beginPath(); ctx.moveTo(-0.6, 0.98); ctx.lineTo(-0.7, 1.45); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-0.7, 1.47, 0.08, 0, Math.PI * 2); ctx.fillStyle = g.accent; ctx.fill();
+  }
+}
+
+// a glowing hover pad where the bike's "wheel" is (drawn level with the chassis, not spinning)
+export function drawHoverPad(ctx, r, t, lw, accent = '#7fe8ff') {
+  const g = ctx.createRadialGradient(0, -r * 0.2, 0, 0, -r * 0.2, r * 2.6);
+  g.addColorStop(0, 'rgba(160,250,255,0.85)'); g.addColorStop(0.35, 'rgba(60,200,255,0.35)'); g.addColorStop(1, 'rgba(60,200,255,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.ellipse(0, -r * 0.35, r * 2.6, r * 1.1, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#2b2d42';
+  ctx.beginPath(); ctx.ellipse(0, 0.02, r * 1.05, r * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = lw; ctx.strokeStyle = '#0c0c10'; ctx.stroke();
+  ctx.fillStyle = accent;
+  ctx.beginPath(); ctx.ellipse(0, -r * 0.2, r * 0.8, r * 0.26 * (0.9 + 0.1 * Math.sin(t * 18)), 0, 0, Math.PI * 2); ctx.fill();
+}
+
+// one mech leg, two-bone IK from hip to foot (world coordinates, +y up); the knee bends toward `fwd` (+1 = +x of the car)
+export function drawMechLeg(ctx, hx, hy, fx, fy, thigh, shin, lw, color, accent, angle) {
+  let dx = fx - hx, dy = fy - hy;
+  const L = Math.max(0.05, Math.min(Math.hypot(dx, dy), thigh + shin - 0.02));
+  const ux = dx / Math.hypot(dx, dy || 1e-6) || 0, uy = dy / Math.hypot(dx || 1e-6, dy) || -1;
+  const a = (thigh * thigh - shin * shin + L * L) / (2 * L), h = Math.sqrt(Math.max(0, thigh * thigh - a * a));
+  let nx = -uy, ny = ux;
+  if (nx * Math.cos(angle) + ny * Math.sin(angle) < 0) { nx = -nx; ny = -ny; }
+  const kx = hx + ux * a + nx * h, ky = hy + uy * a + ny * h;
+  const ex = hx + ux * L, ey = hy + uy * L;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  for (const [w, col] of [[0.44, '#0c0c10'], [0.34, color]]) {
+    ctx.strokeStyle = col; ctx.lineWidth = w + (col === '#0c0c10' ? lw * 1.2 : 0);
+    ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(kx, ky); ctx.lineTo(ex, ey); ctx.stroke();
+  }
+  ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(kx, ky, 0.15, 0, Math.PI * 2); ctx.fill();
+  ctx.lineWidth = lw * 0.8; ctx.strokeStyle = '#0c0c10'; ctx.stroke();
+  // the boot: a flat shoe under the foot, along the car
+  ctx.save(); ctx.translate(fx, fy - 0.02); ctx.rotate(angle * 0.5);
+  ctx.fillStyle = shade(color, -0.35);
+  ctx.beginPath(); ctx.moveTo(-0.3, 0.15); ctx.lineTo(0.5, 0.15); ctx.lineTo(0.55, -0.12); ctx.lineTo(-0.3, -0.3); ctx.closePath(); ctx.fill();
+  ctx.lineWidth = lw; ctx.strokeStyle = '#0c0c10'; ctx.stroke();
+  ctx.restore();
+  ctx.lineCap = 'butt';
+}
+
+// A whole ride in car-local data coordinates (+y up), for the garage: legs / pads / wheels + chassis. `look` as resolveLook.
+const rideGeoms = new WeakMap();
+export function paintRide(ctx, car, lw, t = 0, look = null) {
+  let g = rideGeoms.get(car);
+  if (!g || look) { g = carGeometry(car, look || {}); if (!look) rideGeoms.set(car, g); }
+  ctx.save();
+  const legs = car.legs;
+  if (legs) car.wheels.forEach((w, i) => { const hip = legs.hips[Math.min(i, legs.hips.length - 1)]; drawMechLeg(ctx, hip[0], hip[1], w.x, w.y, legs.thigh, legs.shin, lw, g.colorDark, g.accent, 0); });
+  drawChassis(ctx, g, lw, t, false, null);
+  for (const w of car.wheels) {
+    if (car.legs) continue;
+    ctx.save(); ctx.translate(w.x, w.y);
+    if (car.art === 'bike') drawHoverPad(ctx, w.r, t, lw); else drawWheel(ctx, w.r, lw, g.accent);
+    ctx.restore();
+  }
+  ctx.restore();
 }
 
 // Wheel at origin, rotation handled by caller. r in meters.

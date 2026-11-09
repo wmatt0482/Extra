@@ -4,6 +4,7 @@
 
 import { createCourse, CHUNK, SEG } from './course.js';
 import { carGeometry, resolveLook, carPieces } from './car.js';
+import * as CAR from './car.js';
 import * as R from './render.js';
 import * as SR from './skyRender.js';
 import { OBSTACLE_KINDS } from '../data/tracks.js';
@@ -2366,6 +2367,15 @@ export function createGame(canvas, opts = {}) {
       ctx.lineTo(b.x / S, -b.y / S);
     }
     ctx.stroke();
+    if (g.legs) {
+      // mech legs behind the cabin: hips on the chassis, feet at the foot bodies (two-bone IK)
+      const ca = -ch.angle;
+      for (let i = 0; i < r.wheels.length; i++) {
+        const hip = g.legs.hips[Math.min(i, g.legs.hips.length - 1)], hw = localToWorld(r, hip[0], hip[1]);
+        const w = r.wheels[i];
+        CAR.drawMechLeg(ctx, hw[0], hw[1], w.position.x / S, -w.position.y / S, g.legs.thigh, g.legs.shin, lw, g.colorDark, g.accent, ca);
+      }
+    }
     ctx.save();
     ctx.translate(ch.position.x / S, -ch.position.y / S);
     ctx.rotate(-ch.angle);
@@ -2385,8 +2395,10 @@ export function createGame(canvas, opts = {}) {
     const spoke = luminance(g.accent) > 0.7 ? '#8a8f9c' : g.accent;
     for (let i = 0; i < r.wheels.length; i++) {
       const w = r.wheels[i];
+      if (g.legs) continue; // feet are part of the legs
       ctx.save();
       ctx.translate(w.position.x / S, -w.position.y / S);
+      if (g.art === 'bike') { ctx.rotate(-ch.angle); CAR.drawHoverPad(ctx, r.wheelR[i], r.realT, lw); ctx.restore(); continue; }
       ctx.rotate(-w.angle);
       R.drawWheel(ctx, r.wheelR[i], lw, spoke, i === r.wheels.length - 1 && !!r.lost.hubcap);
       ctx.restore();

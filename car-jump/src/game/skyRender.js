@@ -215,10 +215,9 @@ function hazyIsland(ctx, sx, sy, hw, depth, col, seed, alpha) {
     ctx.lineTo(sx - hw + 2 * hw * u, sy + depth * d);
   }
   ctx.lineTo(sx + hw, sy);
+  ctx.quadraticCurveTo(sx, sy - depth * 0.28, sx - hw, sy);
   ctx.closePath();
   ctx.fill();
-  ctx.fillStyle = rgb(mixRgb(col, [255, 255, 255], 0.35));
-  ctx.fillRect(sx - hw, sy - Math.max(2, depth * 0.1), hw * 2, Math.max(2, depth * 0.12));
   ctx.globalAlpha = 1;
 }
 
