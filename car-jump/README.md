@@ -761,6 +761,10 @@ Simulated 480 runs in 177.0 s; lifetime sky earnings $36,534,043.
   the engine's sim speed via `?sim=3`, a test knob), `ONLY=skyreal node tools/ui-smoke.mjs` (the Sky part on the real data files). The fixtures in `tools/fixtures/sky/`
   remain only for the fast ui-smoke paths (`?mock=1&skyfixture=1`); the mock engine mirrors the real events and `summary.boost` / `summary.sky`.
 
+## v4.0.1: the week of Nov 9 class list (changelog)
+
+- New class list "Week of Nov 9 · ar and or" (18 words: dart … door, review screech and throat, high-frequency ready, side, change) in `src/data/classLists.js`; families following the class lists switch on their own. Version 4.0.1 (`sw.js` cache `spell-jump-v4.0.1`).
+
 ## v3.11: one Lab chip, named money, every word banks (changelog)
 
 - **The Lab chip** (`lab.mountChip`, top-left of the title, `compact` under 520 px) replaces the cyan "Lab" button and the title's flame chip: the one

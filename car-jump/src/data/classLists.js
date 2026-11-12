@@ -14,6 +14,32 @@ import { dayKey } from '../spelling/scheduler.js';
 
 const WEEKS = [
   {
+    id: 'class-2026-11-09',
+    name: 'Week of Nov 9 · ar and or',
+    weekOf: '2026-11-09',
+    pattern: 'ar or',
+    words: `
+dart | dart | The puppy likes to dart across the yard after the ball.
+guard | guard | A crossing guard helps us cross the busy street.
+award | a/ward | Our class won an award for the best science project.
+backyard | back/yard | We built a snow fort in the backyard.
+argue | ar/gue | My brother and I sometimes argue about who goes first.
+spark | spark | A spark flew up from the campfire.
+smart | smart | It was smart to bring an umbrella on a rainy day.
+fort | fort | We made a blanket fort in the living room.
+morning | morn/ing | I eat breakfast every morning before school.
+cord | cord | Plug the cord into the wall to charge the tablet.
+worn | worn | My old sneakers are worn out from running.
+stormy | storm/y | It was too stormy to play outside today.
+door | door | Please close the door when you come inside.
+screech | screech | The bus brakes made a loud screech at the stop sign.
+throat | throat | The singer drank water to rest her throat.
+ready | read/y | Are you ready to go to the park?
+side | side | The cat sleeps on the side of my bed.
+change | change | The leaves change color in the fall.
+`,
+  },
+  {
     id: 'class-2026-11-02',
     name: 'Week of Nov 2 · three-letter blends',
     weekOf: '2026-11-02',
