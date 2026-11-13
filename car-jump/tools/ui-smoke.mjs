@@ -1952,8 +1952,9 @@ async function classListTest(browser, layout) {
   await startRunFromTitle(page);
   await page.waitForTimeout(400);
   const look = await J(page, () => ({ word: window.__spellJump.spellPanel.word, mode: window.__spellJump.spellPanel.mode, pat: [...document.querySelectorAll('#sp-model .tile.pat')].map((t) => t.textContent).join('') }));
-  const prefix = CL.pattern.split(' ').map((p) => p.replace(/-/g, '')).find((p) => look.word && look.word.startsWith(p));
-  check(look.mode === 'look' && prefix && look.pat.toLowerCase() === prefix, `Look: the prefix of "${look.word}" is highlighted (${look.pat})`);
+  // the week's pattern chunk is highlighted wherever it sits in the word (a prefix like "un-", or a chunk like "ar" in "dart")
+  const chunk = CL.pattern.split(' ').map((p) => p.replace(/-/g, '')).filter((p) => look.word && look.word.includes(p)).sort((a, b) => b.length - a.length)[0];
+  check(look.mode === 'look' && chunk && look.pat.toLowerCase() === chunk, `Look: the pattern chunk of "${look.word}" is highlighted (${look.pat})`);
   await shot(page, layout, 'cl-04-look-prefix', 0);
   await page.click('#spell .sp-exit').catch(() => {});
   check(errors.length === 0, `class lists: no console errors${errors.length ? ' — ' + errors.slice(0, 3).join(' | ') : ''}`);
