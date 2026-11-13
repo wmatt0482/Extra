@@ -73,16 +73,22 @@ export function defaultSave() {
 const num = (v, d = 0) => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const bool = (v, d) => (typeof v === 'boolean' ? v : d);
 
-// Coerce whatever we read into a valid save. Unknown ids are dropped, numbers clamped.
+// Coerce whatever we read into a valid save. Numbers are clamped; junk is dropped.
+// v4.0.2: ids the registry doesn't know YET are kept when they look like ids. The sky tracks and rides load
+// asynchronously (skyData.js), and every other game's family sync normalizes Spell Jump saves without loading them,
+// so a strict filter here erased a child's Sky Era unlocks, best distances and bought rides (with their upgrades).
+const ID_LIKE = /^[a-z0-9][a-z0-9-]{0,31}$/;
+const keepCar = (id) => !!carById(id) || (typeof id === 'string' && ID_LIKE.test(id));
+const keepTrack = (id) => !!trackById(id) || (typeof id === 'string' && ID_LIKE.test(id));
 export function normalize(raw) {
   const d = defaultSave();
   if (!raw || typeof raw !== 'object') return d;
   const s = d;
   s.cash = Math.max(0, Math.floor(num(raw.cash)));
 
-  const owned = Array.isArray(raw.owned) ? raw.owned.filter((id) => carById(id)) : [];
+  const owned = Array.isArray(raw.owned) ? raw.owned.filter(keepCar) : [];
   s.owned = Array.from(new Set(['beater', ...owned]));
-  s.selectedCar = carById(raw.selectedCar) && s.owned.includes(raw.selectedCar) ? raw.selectedCar : 'beater';
+  s.selectedCar = keepCar(raw.selectedCar) && s.owned.includes(raw.selectedCar) ? raw.selectedCar : 'beater';   // main.js falls back to Rusty at run time if the ride isn't loaded
 
   s.levels = {};
   for (const id of s.owned) {
@@ -94,13 +100,14 @@ export function normalize(raw) {
     s.levels[id] = lv;
   }
 
-  const unl = Array.isArray(raw.unlocked) ? raw.unlocked.filter((id) => trackById(id)) : [];
+  const unl = Array.isArray(raw.unlocked) ? raw.unlocked.filter(keepTrack) : [];
   const skyFirst = skyFirstTrackIds();            // v4.0: the first sky track is open as soon as the era is (its own chain starts there)
   s.unlocked = allTracks().map((t) => t.id).filter((id) => id === 'canyon' || skyFirst.includes(id) || unl.includes(id));
+  for (const id of unl) if (!s.unlocked.includes(id)) s.unlocked.push(id);   // not loaded yet (sky): kept, in their saved order
   s.selectedTrack = s.unlocked.includes(raw.selectedTrack) ? raw.selectedTrack : 'canyon';
 
   if (raw.best && typeof raw.best === 'object') {
-    for (const t of allTracks()) if (num(raw.best[t.id]) > 0) s.best[t.id] = num(raw.best[t.id]);
+    for (const [id, v] of Object.entries(raw.best)) if (keepTrack(id) && num(v) > 0) s.best[id] = num(v);
   }
   if (raw.records && typeof raw.records === 'object') {
     for (const k of Object.keys(s.records)) s.records[k] = Math.max(0, num(raw.records[k]));
@@ -144,7 +151,7 @@ export function normalize(raw) {
   // v3.3 engagement
   s.xp = Math.max(0, Math.floor(num(raw.xp)));
   s.streak = normalizeStreak(raw.streak);
-  s.cosmetics = normalizeCosmetics(raw.cosmetics, allCars().map((c) => c.id));
+  s.cosmetics = normalizeCosmetics(raw.cosmetics, Array.from(new Set([...allCars().map((c) => c.id), ...s.owned])));
   s.crates = normalizeCrates(raw.crates);
   s.trophies = normalizeTrophies(raw.trophies);
   s.champion = Array.isArray(raw.champion) ? [...new Set(raw.champion.filter((id) => typeof id === 'string' && id.length <= 40))].slice(-60) : [];

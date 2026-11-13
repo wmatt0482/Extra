@@ -2424,6 +2424,19 @@ console.log('the Sky Era (v4.0)');
   const loaded = await SD.loadSkyData({ fixtures: true });
   const FIX_TRACKS = loaded.tracks, FIX_RIDES = loaded.rides;
 
+  test('v4.0.2: a save normalized BEFORE the sky data loads (other games\' family sync) keeps sky unlocks, bests, bought rides and their upgrades', () => {
+    SD.setSkyData({ tracks: [], rides: [] });
+    try {
+      const raw = { ...defaultSave(), cash: 5, owned: ['beater', 'hoverbike'], selectedCar: 'hoverbike', levels: { hoverbike: { engine: 4 } },
+        unlocked: ['canyon', 'sky-1', 'sky-2'], selectedTrack: 'sky-2', best: { canyon: 300, 'sky-1': 1600 } };
+      const n = normSave(JSON.parse(JSON.stringify(raw)));
+      assert.deepEqual(n.owned, ['beater', 'hoverbike']); assert.equal(n.selectedCar, 'hoverbike');
+      assert.ok(n.unlocked.includes('sky-1') && n.unlocked.includes('sky-2')); assert.equal(n.selectedTrack, 'sky-2');
+      assert.equal(n.best['sky-1'], 1600); assert.ok(n.levels.hoverbike);
+      const junk = normSave({ ...defaultSave(), owned: ['beater', '<b>', 'X Y'], unlocked: ['canyon', '../x'], best: { 'bad id!': 9 } });
+      assert.deepEqual(junk.owned, ['beater']); assert.deepEqual(junk.unlocked, ['canyon']); assert.deepEqual(junk.best, {});
+    } finally { SD.setSkyData({ tracks: FIX_TRACKS, rides: FIX_RIDES, source: 'fixture' }); }
+  });
   test('the stand-in data loads (2 tracks, 1 ride) and the registry answers for sky ids; Earth ids are untouched', () => {
     assert.equal(loaded.source, 'fixture'); assert.deepEqual(FIX_TRACKS.map((t) => t.id), ['sky-1', 'sky-2']); assert.deepEqual(FIX_RIDES.map((r) => r.id), ['hoverbike']);
     assert.equal(SD.trackById('sky-1').era, 'sky'); assert.equal(SD.carById('hoverbike').era, 'sky'); assert.equal(SD.trackById('canyon').id, 'canyon'); assert.equal(SD.carById('beater').id, 'beater');
@@ -2506,8 +2519,8 @@ console.log('the Sky Era (v4.0)');
     assert.deepEqual(s.unlocked, ['canyon', 'sky-1', 'sky-2']); assert.equal(s.selectedTrack, 'sky-2'); assert.equal(s.best['sky-1'], 410);
     assert.equal(ECO.isUnlocked(s, 'sky-1'), true);
     SD.setSkyData({});
-    const gone = normSave(raw);                                   // a device without the sky data: ids it does not know are dropped (Era 1 loads clean)
-    assert.deepEqual(gone.owned, ['beater']); assert.equal(gone.selectedCar, 'beater'); assert.deepEqual(gone.unlocked, ['canyon']); assert.equal(gone.selectedTrack, 'canyon');
+    const kept = normSave(raw);                                   // v4.0.2: before the sky data loads (or in another game's sync) the sky ids are KEPT, never erased
+    assert.deepEqual(kept.owned, ['beater', 'hoverbike']); assert.equal(kept.selectedCar, 'hoverbike'); assert.ok(kept.unlocked.includes('sky-2')); assert.equal(kept.selectedTrack, 'sky-2');
     SD.setSkyData({ tracks: FIX_TRACKS, rides: FIX_RIDES });
   });
   test('economy: buy a sky ride with Garage cash; upgrades work on it; finishing sky-1 opens sky-2 (their own chain); Earth stays as it was', () => {

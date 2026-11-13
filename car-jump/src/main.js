@@ -52,7 +52,7 @@ import { SKY_ROAD_STEPS, markTeaserSeen, skyName, skyRoadSteps, teaserDue, tease
 import { carById, ceremonyRides, loadSkyData, skyAvailable, skyTracks, trackById } from './meta/skyData.js';
 import { autoUnlock, ceremonyDue, currentEra, markCeremonySeen, setEra, skyTracksText, skyUnlocked, unlockSky } from './meta/sky.js';
 
-const VERSION = '4.0.1';
+const VERSION = '4.0.2';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's

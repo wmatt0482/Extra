@@ -761,6 +761,10 @@ Simulated 480 runs in 177.0 s; lifetime sky earnings $36,534,043.
   the engine's sim speed via `?sim=3`, a test knob), `ONLY=skyreal node tools/ui-smoke.mjs` (the Sky part on the real data files). The fixtures in `tools/fixtures/sky/`
   remain only for the fast ui-smoke paths (`?mock=1&skyfixture=1`); the mock engine mirrors the real events and `summary.boost` / `summary.sky`.
 
+## v4.0.2: Sky Era progress is never erased by another game's sync (changelog)
+
+- Fix: a Spell Jump save normalized before the sky data loaded (every other game's family sync does this) dropped Sky Era unlocks, best distances, bought rides and their upgrades, so a finished sky track could lose its credit and the next track stayed locked. `normalize` now keeps id-like track and ride ids it doesn't know yet (junk is still dropped). Unit test in `tools/spelling-tests.mjs`. Version 4.0.2.
+
 ## v4.0.1: the week of Nov 9 class list (changelog)
 
 - New class list "Week of Nov 9 · ar and or" (18 words: dart … door, review screech and throat, high-frequency ready, side, change) in `src/data/classLists.js`; families following the class lists switch on their own. Version 4.0.1 (`sw.js` cache `spell-jump-v4.0.1`).
