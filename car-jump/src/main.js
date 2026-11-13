@@ -52,7 +52,7 @@ import { SKY_ROAD_STEPS, markTeaserSeen, skyName, skyRoadSteps, teaserDue, tease
 import { carById, ceremonyRides, loadSkyData, skyAvailable, skyTracks, trackById } from './meta/skyData.js';
 import { autoUnlock, ceremonyDue, currentEra, markCeremonySeen, setEra, skyTracksText, skyUnlocked, unlockSky } from './meta/sky.js';
 
-const VERSION = '4.0.2';
+const VERSION = '4.0.3';
 const params = new URLSearchParams(location.search);
 // v3.6 levels: cross a level's finish line and the car launches again (new word set, longer finish, more cash)
 const LEVEL_FINISH = [1, 1.2, 1.4];     // finish line of level k as a multiple of the track's
@@ -1183,10 +1183,26 @@ async function boot() {
   // the HUD and the driving controls hide while the spell panel is up
   function setSpelling(on) { document.documentElement.classList.toggle('spelling', !!on); }
 
-  // leave a run from the spell panel without jumping (nothing is recorded)
+  // leave a run from the spell panel without jumping (nothing of the level being spelled is recorded).
+  // v4.0.3: levels already cleared in this round are NOT thrown away: a child who crossed Level 1's finish line and then left
+  // from Level 2's (or 3's) spell panel used to lose the whole round, so the finish never unlocked the next track. They are
+  // banked like "End run" (their cash, the track best, the unlock: SPEC "the unlock comes from level 1's finish") and the results show.
   function quitRun() {
     setSpelling(false);
     if (!run) return;
+    const r = run;
+    if (r.levelDone.length && !r.ended) {
+      r.quitting = true;                         // never starts another level
+      clearTimeout(r.levelTimer);
+      vtts.cancel();
+      const prev = r.levelDone.pop();            // the last cleared level ends the round (the parked one never launched)
+      r.level -= 1;
+      r.spell = prev.spell;
+      endRun(prev.summary);                      // banks + results; run is null from here
+      try { if (typeof game.freeze === 'function') game.freeze(false); } catch (_) { /* ignore */ }
+      try { game.stop(); } catch (_) { /* ignore */ }   // the parked level's own 'finish' finds no run: ignored
+      return;
+    }
     clearTimeout(run.levelTimer);
     run.ended = true;
     run = null;

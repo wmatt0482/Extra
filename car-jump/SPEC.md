@@ -593,7 +593,8 @@ economy modules).
    the total; the Run total hint says `levels +$n`), distance = the longest level (banked as the track best, the
    unlock comes from level 1's finish), counters summed, the best level's rating, a Levels stat tile (`2/3`), the
    title "All 3 levels!" / "Level 2 done!", and a Spelling row that lists every word of the round. Ending a run
-   from the pause menu never starts the next level.
+   from the pause menu never starts the next level. Leaving from Level 2's or 3's spell panel (the back button) ends the
+   round with the levels already cleared, banked like "End run" (v4.0.3; before, the whole round was lost, unlock included).
 2. **Stretch cars** (`src/data/cars.js` tiers 7-11): Hyperion $900k, Mech Rex $2.2M, Phantom X $5M, Starhopper
    $12M, Dragon $30M, each above the Rhino in every stat (Dragon ≈ 2× Rhino power, coinMult 5). Upgrade costs keep
    the tier rule (×2 per tier). Garage tier pips go to 11. Economy sim (single level, 75 % first-try speller): Rhino

@@ -761,6 +761,16 @@ Simulated 480 runs in 177.0 s; lifetime sky earnings $36,534,043.
   the engine's sim speed via `?sim=3`, a test knob), `ONLY=skyreal node tools/ui-smoke.mjs` (the Sky part on the real data files). The fixtures in `tools/fixtures/sky/`
   remain only for the fast ui-smoke paths (`?mock=1&skyfixture=1`); the mock engine mirrors the real events and `summary.boost` / `summary.sky`.
 
+## v4.0.3: a finish line crossed is never lost by leaving at Level 2 (changelog)
+
+- Fix: with levels per race on (the default, 3), crossing Level 1's finish line starts Level 2 with its own spell panel. A child who left from
+  that panel with the back button (or from the "Next word!" beat, or Level 3's panel) lost the whole round: `quitRun` recorded nothing, so the
+  finish line they had just crossed ("FINISH LINE!", "Unlocked: …") never unlocked the next Earth track, nor paid Level 1's cash or banked its
+  best distance, every time. Now the levels already cleared are banked like "End run" (cash, best, unlock; SPEC: "the unlock comes from level 1's
+  finish") and the results show; leaving from Level 1's panel still records nothing. Lost unlocks cannot be restored from the save (nothing of
+  those rounds was written: no best, no run), so the next finish credits them. Real-engine regression test: `node tools/finish-unlock.mjs`
+  (one level; Level 1 then the back button at Level 2; Level 1 then pause → End run). Version 4.0.3 (`sw.js` cache `spell-jump-v4.0.3`).
+
 ## v4.0.2: Sky Era progress is never erased by another game's sync (changelog)
 
 - Fix: a Spell Jump save normalized before the sky data loaded (every other game's family sync does this) dropped Sky Era unlocks, best distances, bought rides and their upgrades, so a finished sky track could lose its credit and the next track stayed locked. `normalize` now keeps id-like track and ride ids it doesn't know yet (junk is still dropped). Unit test in `tools/spelling-tests.mjs`. Version 4.0.2.
