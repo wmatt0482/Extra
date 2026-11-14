@@ -1,18 +1,20 @@
-// Class lists (v3.7): the weekly spelling list from the class teacher, shipped inside the game for every family.
-// A family whose active list is the built-in sample or a class list "follows the class lists": each new week applies
-// on its own when the game starts (wordStore.js autoClassList); a family with a pasted list is never switched (Parents
-// → Words → "Use for …" applies a class list by hand). Newest first.
+// Classroom subscriptions (v4.1; class lists since v3.7): the weekly spelling list from each child's class teacher, shipped
+// inside the game for every family. Each child subscribes to ONE classroom (Parents -> Words -> Classroom, a synced per-child
+// option `classroom`: 'labue' | 'lombardi' | null; null = custom words). A subscribed child gets that classroom's newest week
+// on its own when the game starts / comes back to the front / once an hour (wordStore.js autoClassList). Custom words never switch.
 //
-// Adding a week (Matt): put one entry at the TOP of WEEKS with
-//   id 'class-YYYY-MM-DD' (the Monday of the week; it is also the list's id on every device, so two devices that
-//   apply the same week merge into one list), name 'Week of Mon D · topic', weekOf 'YYYY-MM-DD', pattern (optional:
-//   one or more spelling patterns, prefixes like 'un-' or suffixes like '-tion'), and the words in the Parent Zone's
-//   format, one per line: word | syl/la/bles | a sentence (≤ 200 characters).
+// Adding a week (Matt): put one entry at the TOP of the right classroom's `weeks` (CLASSROOM_DEFS below) with
+//   id 'class-YYYY-MM-DD' for Miss LaBue (her four old ids keep that form) or '<classroom>-YYYY-MM-DD' for the others, e.g.
+//   'lombardi-2026-11-16' (the Monday of the week; it is also the list's id on every device, so two devices that apply the
+//   same week merge into one list), name 'Week of Mon D · topic', weekOf 'YYYY-MM-DD', pattern (optional: one or more
+//   spelling patterns, prefixes like 'un-' or suffixes like '-tion'), and the words in the Parent Zone's format, one per
+//   line: word | syl/la/bles | a sentence (<= 200 characters).
 // A week becomes "the newest" two days before its weekOf, so it can ship over the weekend.
+// Adding a classroom: one more entry in CLASSROOM_DEFS with a short lowercase id and a name.
 import { normalizePattern, parseList } from '../spelling/words.js';
 import { dayKey } from '../spelling/scheduler.js';
 
-const WEEKS = [
+const LABUE_WEEKS = [
   {
     id: 'class-2026-11-09',
     name: 'Week of Nov 9 · ar and or',
@@ -119,16 +121,33 @@ course | course | We ran the whole course in gym class.
   },
 ];
 
-export const CLASS_LISTS = WEEKS.map((w) => {
+// Miss LaBue (Nathan's class) and Mr. Lombardi (Gabe's class; his lists are not in yet). Newest week first.
+const CLASSROOM_DEFS = [
+  { id: 'labue', name: 'Miss LaBue', weeks: LABUE_WEEKS },
+  { id: 'lombardi', name: 'Mr. Lombardi', weeks: [] },
+];
+
+function buildWeek(classroom, w) {
   const parsed = parseList(w.words);
   if (!parsed.ok) throw new Error(`class list ${w.id}: ${parsed.errors.join('; ')}`);
-  return Object.freeze({ id: w.id, name: w.name, weekOf: w.weekOf, pattern: normalizePattern(w.pattern), words: parsed.words });
-});
+  return Object.freeze({ id: w.id, name: w.name, weekOf: w.weekOf, pattern: normalizePattern(w.pattern), words: parsed.words, classroom });
+}
+const byNewest = (a, b) => (a.weekOf < b.weekOf ? 1 : a.weekOf > b.weekOf ? -1 : 0);
+
+export const CLASSROOMS = Object.freeze(CLASSROOM_DEFS.map((c) =>
+  Object.freeze({ id: c.id, name: c.name, weeks: Object.freeze(c.weeks.map((w) => buildWeek(c.id, w)).sort(byNewest)) })));
+export const CLASSROOM_IDS = Object.freeze(CLASSROOMS.map((c) => c.id));
+export const classroomById = (id) => CLASSROOMS.find((c) => c.id === id) || null;
+
+/** Every week of every classroom, newest first (each tagged with its `classroom`). */
+export const CLASS_LISTS = CLASSROOMS.flatMap((c) => c.weeks).sort(byNewest);
 export const CLASS_LIST_BY_ID = Object.fromEntries(CLASS_LISTS.map((l) => [l.id, l]));
 
 const DAY_MS = 86400000;
-/** The newest class list whose week has started (or starts within 2 days), or null. */
-export function newestClassList(now = Date.now()) {
+/** The newest class list of a classroom whose week has started (or starts within 2 days), or null (an unknown classroom,
+ *  or none yet). Without a classroomId: the newest of all classrooms. */
+export function newestClassList(now = Date.now(), classroomId = null) {
   const limit = dayKey(now + 2 * DAY_MS);
-  return CLASS_LISTS.filter((l) => l.weekOf <= limit).sort((a, b) => (a.weekOf < b.weekOf ? 1 : -1))[0] || null;
+  const pool = classroomId ? (classroomById(classroomId) || { weeks: [] }).weeks : CLASS_LISTS;
+  return pool.filter((l) => l.weekOf <= limit).sort(byNewest)[0] || null;
 }

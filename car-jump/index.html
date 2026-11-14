@@ -608,6 +608,9 @@ html.spelling #hud, html.spelling #controls { visibility: hidden; }
 .mission-chip svg { width: 20px; height: 20px; color: var(--accent); }
 .mission-chip.done { border-color: var(--accent); background: linear-gradient(var(--go), var(--go-edge)); color: #062a12; }
 .mission-chip.done svg { color: #fff; }
+.class-note { margin: -8px 0 10px; font-size: 12px; font-weight: 800; color: var(--muted, #aab2e6); text-shadow: 0 2px 0 rgba(0,0,0,.4); letter-spacing: .02em; }
+.class-note[hidden] { display: none; }
+.pl-class { position: relative; font: 800 11px/1.1 var(--font-body); color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sample-note { margin: -10px 0 12px; padding: 5px 12px; border-radius: 10px; background: rgba(13,18,48,.7); font-size: 13px; font-weight: 700; color: #ffe9b0; }
 @media (orientation: landscape) {
   #screen-title .logo { font-size: clamp(46px, 9vmin + 1.6vw, 96px); }
@@ -1003,6 +1006,10 @@ html.era-sky #screen-title .logo span { color: #7fe8ff; }
 .pz-class .pc-list .pc-sent { grid-column: 1 / -1; font-size: 14px; line-height: 1.4; color: #e6e9ff; }
 .pz-class .pc-list .pc-sent.none { color: var(--muted); font-style: italic; }
 .pz-class .pc-then { flex-basis: 100%; }
+.pz-class .pz-rooms { display: flex; flex-wrap: wrap; width: 100%; }
+.pz-class .pz-rooms .seg-btn { flex: 1 1 0; min-width: 0; min-height: 52px; white-space: normal; line-height: 1.1; padding: 4px 8px; font-size: 16px; }
+.pz-class .pc-status.custom { background: rgba(90, 176, 255, .14); color: var(--cyan); }
+.pz-class[data-waiting="true"] { border-color: var(--accent); }
 .pz-active .pa-now { font-size: 12px; font-weight: 800; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 4px; }
 .pz-arch .row { flex-wrap: wrap; }
 .pz-arch-words { padding: 0 0 10px; font-size: 14px; color: #e6e9ff; line-height: 1.5; }
@@ -1479,6 +1486,7 @@ html.era-sky #screen-title .logo span { color: #7fe8ff; }
     <h1 class="logo">Spell<span>Jump</span></h1>
     <p class="tagline" id="title-tagline">Spell it right. Launch it high.</p>
     <p class="sample-note" id="title-sample" hidden>This week's words are loaded · a grown-up can add next week's words in Parents</p>
+    <p class="class-note" id="title-class" hidden></p>
     <div class="title-actions">
       <button class="btn btn-yellow btn-big" id="btn-play" data-sfx>Play</button>
       <div class="menu-row">

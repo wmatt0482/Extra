@@ -99,6 +99,12 @@ export function createPlayers(app) {
     void now;
   }
 
+  // v4.1: the child's classroom, subtly under the name ("Miss LaBue"); nothing for custom words
+  function classroomTag(id) {
+    const c = app.classroomState ? app.classroomState(id) : null;
+    return c && c.name ? h('span', { class: 'pl-class', 'data-classroom': c.id }, c.name) : null;
+  }
+
   function showPicker() {
     const f = app.family;
     refreshSyncChip();
@@ -110,6 +116,7 @@ export function createPlayers(app) {
       const cv = h('canvas', { class: 'pl-avatar', 'aria-hidden': 'true' });
       const r = byId[p.id];
       const b = h('button', { class: 'card pl-tile' + (r && r.leader ? ' leader' : ''), 'data-player': p.id, 'data-sfx': '', style: { '--c': p.color } }, cv, h('span', { class: 'pl-name' }, p.name),
+        classroomTag(p.id),
         h('span', { class: 'pl-level', 'data-level': String(r ? r.level : 1) }, `Speller LV ${r ? r.level : 1}`),
         r && r.leader ? h('span', { class: 'pl-crown', 'aria-label': 'Leader this week', html: icon('crown') }) : null);
       b.addEventListener('click', () => app.selectPlayer(p.id));

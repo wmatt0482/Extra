@@ -770,17 +770,17 @@ console.log('class lists (v3.7)');
   });
   test('autoClassList: a sample or class-list player gets the newest week; a pasted list is never switched; Stop following keeps the words', () => {
     const fresh = W.defaultWords(T0);
-    assert.equal(W.autoClassList(fresh, day(2026, 10, 19)).id, 'class-2026-10-19');
-    assert.equal(W.autoClassList(fresh, day(2026, 10, 20)), null, 'already on it');
+    assert.equal(W.autoClassList(fresh, day(2026, 10, 19), 'labue').id, 'class-2026-10-19');
+    assert.equal(W.autoClassList(fresh, day(2026, 10, 20), 'labue'), null, 'already on it');
     const older = { ...oct19, id: 'class-2026-10-12', name: 'Week of Oct 12', weekOf: '2026-10-12' };
     const follower = W.defaultWords(T0); W.applyClassList(follower, older, T0);
-    assert.equal(W.autoClassList(follower, day(2026, 10, 19), oct19).id, 'class-2026-10-19', 'a new week applies on its own');
+    assert.equal(W.autoClassList(follower, day(2026, 10, 19), 'labue', oct19).id, 'class-2026-10-19', 'a new week applies on its own');
     assert.equal(W.archivedLists(follower)[0].id, 'class-2026-10-12', 'last week goes to the archive');
     const pasted = W.defaultWords(T0); W.saveNewList(pasted, parseList('neighbor\nbecause').words, '', T0);
-    assert.ok(!W.followsClass(pasted)); assert.equal(W.autoClassList(pasted, day(2026, 10, 19)), null); assert.equal(W.activeList(pasted).words.length, 2);
+    assert.ok(!W.followsClass(pasted)); assert.equal(W.autoClassList(pasted, day(2026, 10, 19), null), null, 'custom (no classroom) is never switched'); assert.equal(W.activeList(pasted).words.length, 2);
     const stop = W.defaultWords(T0); W.applyClassList(stop, oct19, T0);
     assert.ok(W.stopFollowing(stop, T0 + 5)); assert.ok(!W.followsClass(stop)); assert.equal(W.activeList(stop).words.length, 18);
-    assert.equal(W.autoClassList(stop, day(2026, 10, 26), { ...oct19, id: 'class-2026-10-26', weekOf: '2026-10-26' }), null, 'later weeks do not apply after Stop following');
+    assert.equal(W.autoClassList(stop, day(2026, 10, 26), null, { ...oct19, id: 'class-2026-10-26', weekOf: '2026-10-26' }), null, 'later weeks do not apply to custom words');
   });
   test('sync: the same class list applied on two devices the same day merges into ONE list with every word record', () => {
     const a = W.defaultWords(T0), b = W.defaultWords(T0);
@@ -806,7 +806,7 @@ console.log('class lists (v3.7)');
     assert.equal(W.activeList(d).classId, oct19.id, 'Use for: classId is set');
     assert.ok(W.followsClass(d), 'Use for: the child now follows the class lists');
     const next = { ...oct19, id: 'class-2026-10-26', name: 'Week of Oct 26', weekOf: '2026-10-26' };
-    assert.equal(W.autoClassList(d, day(2026, 10, 26), next).id, 'class-2026-10-26', 'the next week applies on its own');
+    assert.equal(W.autoClassList(d, day(2026, 10, 26), 'labue', next).id, 'class-2026-10-26', 'the next week applies on its own');
     assert.ok(W.followsClass(d)); assert.equal(W.activeList(d).classId, 'class-2026-10-26');
     // after "Stop following", "Use for" (Follow the class lists) follows again, stamped so it wins a sync merge over the stopped copy
     const e = W.defaultWords(T0); W.applyClassList(e, oct19, T0);
@@ -817,6 +817,79 @@ console.log('class lists (v3.7)');
     assert.equal(e.lists.length, 1, 'still one list');
     const m = mergeW({ updatedAt: T0 + 5000, data: stopped }, { updatedAt: T0 + 9000, data: e }, T0 + 9500);
     assert.equal(m.lists[0].classId, oct19.id, 'following again wins the merge');
+  });
+}
+console.log('classroom subscriptions (v4.1)');
+{
+  const CL = await import('../src/data/classLists.js');
+  const W = await import('../src/spelling/wordStore.js');
+  const P = await import('../src/spelling/profiles.js');
+  const { mergeFamily } = await import('../src/sync/merge.js');
+  const day = (y, m, d, h = 12) => new Date(y, m - 1, d, h).getTime();
+  const lombWeek = { id: 'lombardi-2026-11-16', name: 'Week of Nov 16 · test', weekOf: '2026-11-16', pattern: '', words: parseList('window\nbecause').words, classroom: 'lombardi' };
+  test('classrooms: Miss LaBue then Mr. Lombardi (no weeks yet); unique ids; Miss LaBue keeps her four old week ids', () => {
+    assert.deepEqual(CL.CLASSROOMS.map((c) => [c.id, c.name]), [['labue', 'Miss LaBue'], ['lombardi', 'Mr. Lombardi']]);
+    assert.deepEqual(CL.classroomById('labue').weeks.map((w) => w.id), ['class-2026-11-09', 'class-2026-11-02', 'class-2026-10-26', 'class-2026-10-19']);
+    assert.equal(CL.classroomById('lombardi').weeks.length, 0); assert.equal(CL.classroomById('nope'), null);
+    const ids = CL.CLASS_LISTS.map((l) => l.id);
+    assert.equal(new Set(ids).size, ids.length, 'unique list ids'); assert.equal(new Set(CL.CLASSROOMS.map((c) => c.id)).size, CL.CLASSROOMS.length);
+    for (const c of CL.CLASSROOMS) for (const w of c.weeks) { assert.equal(w.classroom, c.id); assert.ok(w.id.startsWith('class-') || w.id.startsWith(c.id + '-')); assert.equal(CL.CLASS_LIST_BY_ID[w.id], w); }
+    assert.equal(CL.CLASS_LISTS.length, 4);
+  });
+  test('newestClassList(now, classroom): Miss LaBue has her newest week, Mr. Lombardi none, an unknown classroom none, no classroom = the newest of all', () => {
+    assert.equal(CL.newestClassList(day(2026, 11, 14), 'labue').id, 'class-2026-11-09');
+    assert.equal(CL.newestClassList(day(2026, 11, 14), 'lombardi'), null);
+    assert.equal(CL.newestClassList(day(2026, 11, 14), 'zzz'), null);
+    assert.equal(CL.newestClassList(day(2026, 11, 14)).id, 'class-2026-11-09');
+    assert.equal(CL.newestClassList(day(2026, 10, 16), 'labue'), null, 'before the first week');
+  });
+  test('migration: a child on the built-in or a class list becomes labue; a pasted list stays custom; an explicit choice wins', () => {
+    const f = P.defaultFamily(); f.options = { a: { rate: 'normal' }, b: {}, c: {}, d: {} };
+    const sample = W.defaultWords(T0), cls = W.defaultWords(T0), pasted = W.defaultWords(T0);
+    W.applyClassList(cls, CL.CLASS_LIST_BY_ID['class-2026-11-09'], T0); W.saveNewList(pasted, parseList('neighbor\nbecause').words, '', T0);
+    assert.equal(P.classroomFor(f, 'a', sample), 'labue'); assert.equal(P.classroomFor(f, 'b', cls), 'labue'); assert.equal(P.classroomFor(f, 'c', pasted), null);
+    P.setClassroom(f, 'b', null); assert.equal(P.classroomFor(f, 'b', cls), null, 'custom chosen on a class list: stays null');
+    P.setClassroom(f, 'c', 'lombardi'); assert.equal(P.classroomFor(f, 'c', pasted), 'lombardi');
+    assert.equal(P.playerOptions(f, 'd').classroom, undefined, 'never chosen = absent');
+  });
+  test('the option: kept by cleanOptions, junk dropped, a normal option change leaves it alone, round-trips through normalizeFamily', () => {
+    const f = P.defaultFamily(); f.players = [{ id: 'pa', name: 'A', color: '#ff3b5c', createdAt: 1, updatedAt: 1 }];
+    P.setClassroom(f, 'pa', 'lombardi'); assert.equal(f.options.pa.classroom, 'lombardi');
+    P.setPlayerOption(f, 'pa', 'rate', 'slow'); assert.equal(f.options.pa.classroom, 'lombardi');
+    assert.equal(P.normalizeFamily(JSON.parse(JSON.stringify(f))).options.pa.classroom, 'lombardi');
+    P.setClassroom(f, 'pa', null); assert.equal(P.normalizeFamily(JSON.parse(JSON.stringify(f))).options.pa.classroom, null, 'null = custom survives');
+    f.options.pa.classroom = 'Bad Id!'; assert.equal(P.normalizeFamily(JSON.parse(JSON.stringify(f))).options.pa.classroom, undefined);
+    f.options.pa.classroom = 5; assert.equal(P.normalizeFamily(JSON.parse(JSON.stringify(f))).options.pa.classroom, undefined);
+  });
+  test('autoClassList applies only the child\'s own classroom: labue gets labue, lombardi never gets labue\'s week, custom is never switched', () => {
+    const now = day(2026, 11, 14);
+    const a = W.defaultWords(T0); assert.equal(W.autoClassList(a, now, 'labue').id, 'class-2026-11-09');
+    const b = W.defaultWords(T0); assert.equal(W.autoClassList(b, now, 'lombardi'), null); assert.ok(W.activeList(b).sample, 'no week yet: the current words stay');
+    const c = W.defaultWords(T0); W.saveNewList(c, parseList('neighbor\nbecause').words, '', T0);
+    assert.equal(W.autoClassList(c, now, null), null); assert.equal(W.activeList(c).words.length, 2);
+    // Mr. Lombardi's first week arrives (passed in, as the data file is empty): applies for him, labue's child on a pasted list is untouched
+    const e = W.defaultWords(T0); assert.equal(W.autoClassList(e, day(2026, 11, 16), 'lombardi', lombWeek).id, 'lombardi-2026-11-16');
+    assert.equal(W.activeList(e).classId, 'lombardi-2026-11-16'); assert.equal(W.activeList(e).words.length, 2);
+    assert.equal(W.autoClassList(e, day(2026, 11, 17), 'lombardi', lombWeek), null, 'already on it');
+    assert.equal(W.autoClassList(e, day(2026, 11, 17), 'labue', lombWeek), null, 'a week of another classroom never applies');
+    const n = W.normalizeWordsData(JSON.parse(JSON.stringify(e)), T0); assert.equal(W.activeList(n).classId, 'lombardi-2026-11-16', 'normalize keeps a lombardi classId');
+  });
+  test('switching classroom: labue -> lombardi (no weeks) keeps the words; labue -> custom keeps them and stops auto-apply; custom -> labue applies the newest week', () => {
+    const f = P.defaultFamily(); f.options.pa = {};
+    const d = W.defaultWords(T0); W.applyClassList(d, CL.CLASS_LIST_BY_ID['class-2026-10-26'], T0);
+    P.setClassroom(f, 'pa', 'lombardi');
+    assert.equal(W.autoClassList(d, day(2026, 11, 14), P.classroomFor(f, 'pa', d)), null); assert.equal(W.activeList(d).id, 'class-2026-10-26', 'words stay');
+    P.setClassroom(f, 'pa', null);
+    assert.equal(W.autoClassList(d, day(2026, 11, 14), P.classroomFor(f, 'pa', d)), null); assert.equal(W.activeList(d).id, 'class-2026-10-26');
+    P.setClassroom(f, 'pa', 'labue');
+    assert.equal(W.autoClassList(d, day(2026, 11, 14), P.classroomFor(f, 'pa', d)).id, 'class-2026-11-09'); assert.equal(W.archivedLists(d)[0].id, 'class-2026-10-26', 'the old list goes to the archive');
+  });
+  test('family sync: the classroom option merges with the later change winning (either direction, and null = custom beats an older labue)', () => {
+    const base = (cls, at) => ({ v: 1, players: [{ id: 'pa', name: 'A', color: '#ff3b5c', createdAt: 1, updatedAt: 1 }], pinHash: null, pinUpdatedAt: 0, options: { pa: { rate: 'normal', classroom: cls } }, optionsUpdatedAt: { pa: at }, removedPlayers: [] });
+    const m1 = mergeFamily(base('labue', 100), base('lombardi', 200));
+    assert.equal(m1.options.pa.classroom, 'lombardi');
+    const m2 = mergeFamily(base(null, 300), base('labue', 200)); assert.equal(m2.options.pa.classroom, null);
+    const m3 = mergeFamily(base('labue', 300), base(null, 200)); assert.equal(m3.options.pa.classroom, 'labue');
   });
 }
 console.log('class-list checks on a device that stays open (v3.9.1)');
@@ -855,8 +928,8 @@ console.log('class-list checks on a device that stays open (v3.9.1)');
     W_MOD.applyClassList(d, oct26, new Date(2026, 9, 26, 9).getTime());
     const now = new Date(2026, 10, 2, 8).getTime();          // Monday morning, the page never closed
     assert.ok(C.classCheckAllowed({ screen: 'title' }) && C.hourlyCheckDue(now - 2 * HOUR, now));
-    assert.equal(W_MOD.autoClassList(d, now).id, nov2.id);
-    assert.equal(W_MOD.autoClassList(d, now + HOUR), null, 'the next hour: already on it');
+    assert.equal(W_MOD.autoClassList(d, now, 'labue').id, nov2.id);
+    assert.equal(W_MOD.autoClassList(d, now + HOUR, 'labue'), null, 'the next hour: already on it');
   });
 }
 console.log('week progress (v3.7.1)');

@@ -23,6 +23,7 @@ import { createTestScreen } from './spelling/testMode.js';
 import { createSession } from './spelling/scheduler.js';
 import { ringLetters } from './spelling/words.js';
 import * as WS from './spelling/wordStore.js';
+import { CLASS_LIST_BY_ID, classroomById, newestClassList } from './data/classLists.js';
 import { CLASS_CHECK_EVERY_MS, classCheckAllowed, classCheckWanted, hourlyCheckDue } from './spelling/classCheck.js';
 import * as Profiles from './spelling/profiles.js';
 import { $, $$, h, money } from './ui/dom.js';
@@ -240,6 +241,19 @@ async function boot() {
       if (!wordsCache.has(id)) wordsCache.set(id, Profiles.loadWords(id));
       return wordsCache.get(id);
     },
+    // v4.1: the child's classroom subscription: { id, name, list (the active list when it is one of that classroom's weeks, else null),
+    // week ('Week of Nov 9'), waiting (a classroom with no week yet), label ('Miss LaBue · Week of Nov 9') }; id null = custom words
+    classroomState(id) {
+      const d = app.wordsFor(id);
+      const cid = Profiles.classroomFor(family, id, d);
+      const cr = cid ? classroomById(cid) : null;
+      if (!cr) return { id: cid || null, name: cid ? cid : '', list: null, week: '', waiting: false, label: '' };
+      const act = WS.activeList(d);
+      const cl = act && act.classId ? CLASS_LIST_BY_ID[act.classId] : null;
+      const list = cl && cl.classroom === cr.id ? act : null;
+      const week = list ? list.name.split(' · ')[0] : '';
+      return { id: cr.id, name: cr.name, list, week, waiting: !newestClassList(Date.now(), cr.id), label: week ? `${cr.name} · ${week}` : cr.name };
+    },
     saveWordsFor(id, d) {
       Profiles.writeWords(id, d);
       if (id === currentPlayerId) { words = d; session = createSession(); refreshTitle(); }
@@ -429,7 +443,7 @@ async function boot() {
     autoUnlock(save, Date.now());        // v4.0: a complete Sky Road opens the Sky Era (the ceremony plays on the title)
     words = Profiles.loadWords(id);
     WS.rollToday(words, Date.now());
-    const classList = WS.autoClassList(words, Date.now(), classOverride());   // v3.7: a new class-list week for a player who follows them
+    const classList = WS.autoClassList(words, Date.now(), classOverride(id));   // v3.7: a new week for a child subscribed to a classroom (v4.1: that classroom's newest)
     session = createSession();
     family.lastPlayer = id;
     Profiles.writeFamily(family);
@@ -448,7 +462,7 @@ async function boot() {
     if (classList) { toast(`New class list: ${classList.name}`); pingNow('list'); }
   }
   // test hook (like window.__ttsBackend): window.__noClassLists = true keeps the built-in list (the pre-3.7 UI paths)
-  const classOverride = () => (window.__noClassLists ? null : undefined);
+  const classOverride = (id) => (window.__noClassLists ? null : Profiles.classroomFor(family, id, words));
   /** v3.7: a new class-list week applies when the current player follows them. v3.9.1: not only on a sync: also when the
    *  page comes back to the front ('visible'), whenever the title is shown ('title') and once an hour while the page stays
    *  open ('hourly'); never during a run, a test, the spell panel or the Parent Zone (it stays pending until a menu screen,
@@ -461,7 +475,7 @@ async function boot() {
     if (!ok) { if (words && currentPlayerId) classCheckPending = true; return; }
     classCheckPending = false;
     classCheckAt = Date.now();
-    const l = WS.autoClassList(words, Date.now(), classOverride());
+    const l = WS.autoClassList(words, Date.now(), classOverride(currentPlayerId));
     if (!l) return;
     session = createSession();
     app.persistWords();
@@ -543,6 +557,8 @@ async function boot() {
     chip.classList.toggle('done', m.done);
     $('#title-mission-text').textContent = m.done ? 'Mission complete! Free play' : `Today: ${m.count} / ${m.size} words`;
     $('#title-sample').hidden = !WS.isSampleActive(words);
+    const cs = app.classroomState(currentPlayerId), cn = $('#title-class');       // v4.1: "Miss LaBue · Week of Nov 9" (nothing for custom words)
+    cn.hidden = !cs.label; cn.textContent = cs.label; cn.dataset.classroom = cs.id || '';
     $('#btn-play').textContent = WS.qualifierDue(words) ? 'Play: new words!' : 'Play';
     refreshEngagement();
     refreshSkyCard();

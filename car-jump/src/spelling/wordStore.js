@@ -72,7 +72,7 @@ export function normalizeWordsData(raw, now = Date.now()) {
     // the built-in list follows the shipped version (a new week's words replace a stored older copy)
     if (l.sample) return { ...sampleList(num(l.createdAt, now)), archivedAt: num(l.archivedAt, 0) };
     const out = { id: l.id, name: str(l.name, 'Word list'), createdAt: num(l.createdAt, now), archivedAt: num(l.archivedAt, 0), pattern: normalizePattern(l.pattern), sample: !!l.sample, words };
-    if (typeof l.classId === 'string' && /^class-[a-z0-9-]{1,40}$/.test(l.classId)) out.classId = l.classId;
+    if (typeof l.classId === 'string' && /^[a-z0-9][a-z0-9-]{1,40}$/.test(l.classId)) out.classId = l.classId;
     if (num(l.editedAt, 0) > 0) out.editedAt = num(l.editedAt, 0);
     return out;
   }).filter(Boolean);
@@ -272,9 +272,14 @@ export function applyClassList(d, cl, now) {
   }
   return saveNewList(d, cl.words, cl.pattern, now, { id: cl.id, name: cl.name, classId: cl.id });
 }
-/** A new week for a player who follows the class lists: applies the newest class list. Returns it, or null. */
-export function autoClassList(d, now, newest = newestClassList(now)) {
-  if (!newest || !followsClass(d) || activeList(d).classId === newest.id) return null;
+/** v4.1 migration: the classroom a child had before classrooms existed. A child who followed the class lists was on
+ *  Miss LaBue's lists ('labue'); a child on a pasted list is custom (null). */
+export const legacyClassroom = (d) => (followsClass(d) ? 'labue' : null);
+/** v4.1: a child subscribed to a classroom gets that classroom's newest week (applies it). `classroom` null = custom
+ *  words: never switched. A classroom with no week yet (or an unknown one) keeps the current words. Returns the list
+ *  just applied, or null. */
+export function autoClassList(d, now, classroom, newest = newestClassList(now, classroom)) {
+  if (!classroom || !newest || newest.classroom !== classroom || (activeList(d) && activeList(d).classId === newest.id)) return null;
   return applyClassList(d, newest, now);
 }
 /** "Stop following": the words stay, the list is no longer a class list (later weeks do not apply). */

@@ -21,9 +21,9 @@ import { formatList, parseList, MAX_WORDS } from '../spelling/words.js';
 import { SAMPLE_PRESENTATION, SYSTEM_VOICE, VOICE_TIP, buildPresentation, voiceQuality } from '../spelling/tts.js';
 import { CLOUD_VOICES, cloudVoiceInfo } from '../tts/voices.js';
 import {
-  NEEDS_WORK, activeList, allWords, allWordsText, applyClassList, archivedLists, deleteList, listById, progressSeries, report, reportText, resetSpelling, restoreList, saveNewList, stopFollowing, weekProgress,
+  NEEDS_WORK, activeList, allWords, allWordsText, applyClassList, archivedLists, deleteList, listById, progressSeries, report, reportText, resetSpelling, restoreList, saveNewList, weekProgress,
 } from '../spelling/wordStore.js';
-import { newestClassList } from '../data/classLists.js';
+import { CLASSROOMS, CLASS_LIST_BY_ID, classroomById, newestClassList } from '../data/classLists.js';
 import { WHY_INTRO, WHY_ROWS, WHY_SOURCES } from '../spelling/why.js';
 import { $, h } from './dom.js';
 import { dayChart, rangeChips } from './chart.js';
@@ -279,6 +279,7 @@ export function createParentZone(app) {
         b.addEventListener('click', () => {
           const od = app.wordsFor(o.id);
           saveNewList(od, list.words, list.pattern, Date.now());
+          if (app.classroomState(o.id).id) { setPlayerOption(app.family, o.id, 'classroom', null); app.persistFamily(); }   // v4.1: a copied list is custom words
           app.saveWordsFor(o.id, od);
           if (app.cloudPrepareFor) app.cloudPrepareFor(o.id);
           if (app.ping) app.ping('list');
@@ -287,62 +288,79 @@ export function createParentZone(app) {
         return b;
       })) : null;
 
-    // v3.7: this week's class list (src/data/classLists.js): one tap for this player or the whole family.
-    // v3.9.1: the card says plainly whether this week is in use for this child (a parent saw the new week's bare words
-    // here and last week's list with sentences in the box below, and thought the new week had no sentences), and opens
-    // to show each word with its syllables and sentence.
-    const cl = newestClassList(Date.now());
-    let classCard = null;
-    if (cl) {
-      const following = !!list.classId;
-      const inUse = list.id === cl.id || list.classId === cl.id;
-      const useFor = (ids) => {
-        const now = Date.now();
-        for (const id of ids) {
-          const wd = app.wordsFor(id);
-          applyClassList(wd, cl, now);       // keeps classId: the child follows the class lists from now on
-          app.saveWordsFor(id, wd);
-          if (app.cloudPrepareFor) app.cloudPrepareFor(id);
-        }
-        if (app.ping) app.ping('list');
-      };
-      const status = inUse
-        ? h('div', { class: 'pc-status on', id: 'pz-class-status', 'data-in-use': 'true' }, h('b', {}, 'In use'), ` for ${p.name} ✓`)
-        : h('div', { class: 'pc-status off', id: 'pz-class-status', 'data-in-use': 'false' }, h('b', {}, 'Not in use yet:'), ` tap Use for ${p.name}`);
-      const now = inUse ? null
-        : h('div', { class: 'sub', id: 'pz-class-now' }, list.sample ? `${p.name} is on the built-in list for now.` : `${p.name} is on "${list.name}" for now (below).`);
-      let actions;
-      if (inUse && following) {
-        actions = [h('div', { class: 'pc-follow', id: 'pz-class-following' }, 'Following the class lists ✓ · each new week applies on its own'),
-          h('button', { class: 'pc-stop', id: 'pz-class-stop', 'data-sfx': '', onclick: () => { stopFollowing(d, Date.now()); app.saveWordsFor(p.id, d); app.toast('Stopped following the class lists'); render(); } }, 'Stop following')];
-      } else if (inUse) {
-        actions = [h('div', { class: 'sub', id: 'pz-class-notfollowing' }, 'Not following the class lists: next week will not apply on its own.'),
-          h('button', { class: 'btn btn-sm btn-cyan', id: 'pz-class-follow', 'data-sfx': '', onclick: () => { useFor([p.id]); app.toast('Following the class lists'); render(); } }, 'Follow the class lists')];
-      } else {
-        actions = [h('button', { class: 'btn btn-sm btn-cyan', id: 'pz-class-use', 'data-sfx': '', onclick: () => { useFor([p.id]); app.toast(`Class list for ${p.name}`); render(); } }, `Use for ${p.name}`),
-          app.family.players.length > 1 ? h('button', { class: 'btn btn-sm', id: 'pz-class-all', 'data-sfx': '', onclick: () => { useFor(app.family.players.map((x) => x.id)); app.toast('Class list for everyone'); render(); } }, 'Use for everyone') : null,
-          h('div', { class: 'sub pc-then' }, 'Then each new week applies on its own.')];
+    // v4.1: classroom subscriptions. One obvious control per child: Miss LaBue · Mr. Lombardi · Custom words (built from
+    // CLASSROOMS in src/data/classLists.js). A classroom applies its newest week now (if it has one) and subscribes (each new
+    // week then applies on its own); Custom words unsubscribes (the words stay) and opens the paste editor below. The option
+    // `classroom` is synced with the family record (the later change wins).
+    const cs = app.classroomState(p.id);
+    const custom = !cs.id || !classroomById(cs.id);
+    const cr = custom ? null : classroomById(cs.id);
+    const cl = cr ? newestClassList(Date.now(), cr.id) : null;
+    const choose = (cid) => {
+      if (cid === (custom ? null : cs.id)) return;
+      setPlayerOption(app.family, p.id, 'classroom', cid);
+      app.persistFamily();
+      const now = Date.now();
+      if (!cid) {
+        app.toast(`${p.name}: custom words`);
+        if (app.onOptionsChanged) app.onOptionsChanged(p.id);
+        render();
+        setTimeout(() => { const t = $('#pz-words'); if (t && t.scrollIntoView) t.scrollIntoView({ block: 'center', behavior: 'smooth' }); }, 60);   // the paste editor opens in view
+        return;
       }
-      const withSentences = cl.words.filter((w) => w.sentence).length;
-      const rows = h('ol', { class: 'pc-list', id: 'pz-class-list', hidden: !classOpen },
-        ...cl.words.map((w) => h('li', { 'data-word': w.word },
+      const room = classroomById(cid), week = newestClassList(now, cid);
+      if (week) {
+        applyClassList(d, week, now);
+        app.saveWordsFor(p.id, d);
+        if (app.cloudPrepareFor) app.cloudPrepareFor(p.id);
+        if (app.ping) app.ping('list');
+        app.toast(`${p.name}: ${room.name} · ${week.name.split(' · ')[0]}`);
+      } else app.toast(`No list from ${room.name} yet`);
+      if (app.onOptionsChanged) app.onOptionsChanged(p.id);
+      render();
+    };
+    const roomBtn = (id, text) => {
+      const on = id === 'custom' ? custom : !custom && cs.id === id;
+      return h('button', { class: 'seg-btn' + (on ? ' on' : ''), role: 'radio', 'aria-checked': String(on), 'data-classroom': id, 'data-sfx': '',
+        onclick: () => choose(id === 'custom' ? null : id) }, text);
+    };
+    let statusLine, statusCls = 'pc-status on';
+    if (custom) {
+      statusLine = [h('b', {}, p.name), ' — Custom words', list.sample ? ' · built-in list for now' : ` · ${list.name}`];
+      statusCls = 'pc-status custom';
+    } else if (cl && cs.list) {
+      statusLine = [h('b', {}, p.name), ` — ${cr.name} · ${cs.list.name}`, ' ✓'];
+    } else if (cl) {
+      statusLine = [h('b', {}, p.name), ` — ${cr.name} · ${cl.name}`, ' (applies when the game next opens)'];
+      statusCls = 'pc-status off';
+    } else {
+      statusLine = [h('b', {}, `No list from ${cr.name} yet`), ' — the current words stay until the first one arrives.'];
+      statusCls = 'pc-status off';
+    }
+    let classCard;
+    {
+      const wlist = cs.list || cl;
+      const withSentences = wlist ? wlist.words.filter((w) => w.sentence).length : 0;
+      const rows = wlist ? h('ol', { class: 'pc-list', id: 'pz-class-list', hidden: !classOpen },
+        ...wlist.words.map((w) => h('li', { 'data-word': w.word },
           h('b', {}, w.word),
           w.syllables && w.syllables.length > 1 ? h('span', { class: 'pc-syl' }, w.syllables.join(' · ')) : null,
-          h('span', { class: 'pc-sent' + (w.sentence ? '' : ' none') }, w.sentence || 'No sentence: the word is said on its own.'))));
-      const wordsLine = h('div', { class: 'pc-words' }, cl.words.map((w) => w.word).join(' · '));   // folded: the words in a line
-      const more = h('button', { class: 'pc-more', id: 'pz-class-more', 'data-sfx': '', 'aria-expanded': String(classOpen), 'aria-controls': 'pz-class-list' });
-      const paintMore = () => { more.textContent = classOpen ? 'Hide words and sentences ▴' : `Show words and sentences (${withSentences} of ${cl.words.length}) ▾`; more.setAttribute('aria-expanded', String(classOpen)); rows.hidden = !classOpen; wordsLine.hidden = classOpen; };
-      more.addEventListener('click', () => { classOpen = !classOpen; paintMore(); });
-      paintMore();
-      classCard = h('div', { class: 'pz-class' + (inUse ? ' in-use' : ''), id: 'pz-class', 'data-class': cl.id, 'data-following': String(following), 'data-in-use': String(inUse) },
-        h('div', { class: 'pc-head' }, h('span', { class: 'tag' }, 'Class list'), h('b', {}, `${cl.name} · ${cl.words.length} words`)),
-        status,
-        now,
-        wordsLine,
-        cl.pattern ? h('div', { class: 'sub' }, `Pattern of the week: ${cl.pattern}`) : null,
-        h('div', { class: 'pc-actions' }, ...actions),
-        more,
-        rows);
+          h('span', { class: 'pc-sent' + (w.sentence ? '' : ' none') }, w.sentence || 'No sentence: the word is said on its own.')))) : null;
+      const wordsLine = wlist ? h('div', { class: 'pc-words' }, wlist.words.map((w) => w.word).join(' · ')) : null;
+      const more = wlist ? h('button', { class: 'pc-more', id: 'pz-class-more', 'data-sfx': '', 'aria-expanded': String(classOpen), 'aria-controls': 'pz-class-list' }) : null;
+      if (more) {
+        const paintMore = () => { more.textContent = classOpen ? 'Hide words and sentences ▴' : `Show words and sentences (${withSentences} of ${wlist.words.length}) ▾`; more.setAttribute('aria-expanded', String(classOpen)); rows.hidden = !classOpen; wordsLine.hidden = classOpen; };
+        more.addEventListener('click', () => { classOpen = !classOpen; paintMore(); });
+        paintMore();
+      }
+      classCard = h('div', { class: 'pz-class' + (!custom && cs.list ? ' in-use' : ''), id: 'pz-class', 'data-classroom': custom ? 'custom' : cs.id, 'data-in-use': String(!custom && !!cs.list), 'data-waiting': String(!custom && !cl) },
+        h('div', { class: 'pc-head' }, h('span', { class: 'tag' }, 'Classroom'), h('b', {}, `${p.name}'s words come from`)),
+        h('div', { class: 'seg pz-rooms', id: 'pz-rooms', role: 'radiogroup', 'aria-label': `${p.name}'s classroom` },
+          ...CLASSROOMS.map((c) => roomBtn(c.id, c.name)), roomBtn('custom', 'Custom words')),
+        h('div', { class: statusCls, id: 'pz-class-status' }, ...statusLine),
+        custom ? h('div', { class: 'sub', id: 'pz-class-custom' }, 'Your own list: paste it below. A classroom list is not applied while this is on.')
+          : cl ? h('div', { class: 'sub', id: 'pz-class-following' }, `Each new week from ${cr.name} applies on its own${cl.pattern ? ` · pattern of the week: ${cl.pattern}` : ''}.`) : null,
+        wordsLine, more, rows);
     }
 
     const arch = archivedLists(d);
@@ -356,7 +374,14 @@ export function createParentZone(app) {
       archBox.append(h('div', { class: 'pz-arch', 'data-list': l.id },
         h('div', { class: 'row' }, h('div', { class: 'grow' }, h('div', { class: 'label' }, l.name), h('div', { class: 'sub' }, `${l.words.length} words${l.pattern ? ` · pattern ${l.pattern}` : ''} · archived ${fmtShort(l.archivedAt)}`)),
           h('button', { class: 'btn btn-sm', 'data-view': l.id, onclick: () => { words.hidden = !words.hidden; } }, 'View'),
-          h('button', { class: 'btn btn-sm btn-cyan', 'data-restore': l.id, onclick: () => { restoreList(d, l.id, Date.now()); app.saveWordsFor(p.id, d); app.toast('List restored'); render(); } }, 'Restore'),
+          h('button', { class: 'btn btn-sm btn-cyan', 'data-restore': l.id, onclick: () => {
+            restoreList(d, l.id, Date.now()); app.saveWordsFor(p.id, d);
+            const sub = app.classroomState(p.id).id;
+            const cls = l.classId && CLASS_LIST_BY_ID[l.classId];
+            if (sub && !(cls && cls.classroom === sub)) { setPlayerOption(app.family, p.id, 'classroom', null); app.persistFamily(); app.toast('List restored · custom words now'); }   // v4.1: an own list replaces the classroom
+            else app.toast('List restored');
+            render();
+          } }, 'Restore'),
           h('button', { class: 'btn btn-sm btn-hot', 'data-delete': l.id, onclick: () => { confirm.hidden = false; } }, 'Delete')),
         words, confirm));
     }
@@ -366,7 +391,8 @@ export function createParentZone(app) {
       h('div', { class: 'pz-active', id: 'pz-active' },
         h('div', { class: 'pa-now' }, `${p.name}'s list now`),
         h('div', { class: 'label' }, list.name, list.sample ? h('span', { class: 'tag' }, 'built in') : list.classId ? h('span', { class: 'tag' }, 'class list') : null),
-        h('div', { class: 'sub' }, list.sample ? `${list.words.length} long-o words, ready to play. Paste next week's words below when they arrive; this list moves to the archive.` : `${list.words.length} words${list.pattern ? ` · pattern of the week: ${list.pattern}` : ''} · saved ${fmtDate(list.createdAt)}`)),
+        h('div', { class: 'sub' }, list.sample ? `${list.words.length} long-o words, ready to play.${custom ? " Paste next week's words below when they arrive; this list moves to the archive." : ''}` : `${list.words.length} words${list.pattern ? ` · pattern of the week: ${list.pattern}` : ''} · saved ${fmtDate(list.createdAt)}`)),
+      ...(custom ? [
       h('label', { class: 'pz-label', for: 'pz-words' }, 'Words of the week, one per line', count),
       h('div', { class: 'pz-help' }, 'Optional extras after a word, separated by " | ": syllables with slashes, then a sentence. Example: neighbor | neigh/bor | My neighbor has a dog. Letters, apostrophes, hyphens and spaces only; up to 40 words.'),
       h('div', { class: 'pz-help', id: 'pz-help-sayas' }, 'If the voice says a word wrong, add a 4th part: how to say it. Example: read | | I read a book yesterday. | red. Your child never sees it; the tiles still show "read". Letters, apostrophes, hyphens and spaces, up to 40 characters.'),
@@ -376,6 +402,7 @@ export function createParentZone(app) {
       msg,
       h('div', { class: 'pz-actions' }, save),
       copyRow,
+      ] : []),
       h('div', { class: 'hud-label pz-sec' }, 'ARCHIVE'),
       archBox,
     ];

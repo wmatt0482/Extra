@@ -1,7 +1,7 @@
 // Players and the family record (SPEC v3 "Players"). Storage layout:
 //   spellJump.family              { v, players: [{id, name, color, createdAt, updatedAt}], pinHash, pinUpdatedAt,
 //                                   options: {playerId: {rate, newPerDay, includeReview, tileCase, wordsPerRace, levelsPerRace,
-//                                   voiceName, voiceLang, cloudVoice?, skyBoost? (v4.0: false = no Spell Boost in the Sky; absent = on)}}, optionsUpdatedAt: {playerId: ms},
+//                                   voiceName, voiceLang, cloudVoice?, skyBoost? (v4.0: false = no Spell Boost in the Sky; absent = on), classroom? (v4.1: 'labue' | 'lombardi' | null = custom words)}}, optionsUpdatedAt: {playerId: ms},
 //                                   removedPlayers: [id] (tombstones for family sync), migrated, lastPlayer,
 //                                   musicOff?: bool + musicOffAt: ms (the parent's "Background music in all games" switch; the later change wins) }
 //                                   (migrated and lastPlayer are per device; the rest is what family sync shares)
@@ -12,7 +12,7 @@
 // per-player keys it can still find.
 import { LEGACY_SAVE_KEY, loadSave, writeSave } from '../meta/save.js';
 import { hashString } from '../meta/rng.js';
-import { DEFAULT_OPTIONS, defaultWords, normalizeWordsData } from './wordStore.js';
+import { DEFAULT_OPTIONS, defaultWords, legacyClassroom, normalizeWordsData } from './wordStore.js';
 import { isCloudVoice } from '../tts/voices.js';
 import { localWrite } from '../sync/notify.js';
 
@@ -91,8 +91,21 @@ function cleanOptions(o) {
   if ([1, 2, 3, 4].includes(o.wordsPerRace)) d.wordsPerRace = o.wordsPerRace;
   if ([1, 2, 3].includes(o.levelsPerRace)) d.levelsPerRace = o.levelsPerRace;
   if (typeof o.skyBoost === 'boolean') d.skyBoost = o.skyBoost;       // v4.0: the Sky Era's Spell Boost (absent = on)
+  // v4.1: the classroom this child subscribes to ('labue', 'lombardi', ...), null = custom words, absent = never chosen
+  // (classroomFor derives it from the child's words: following the class lists = Miss LaBue's, a pasted list = custom)
+  if (o.classroom === null || (typeof o.classroom === 'string' && /^[a-z0-9-]{1,20}$/.test(o.classroom))) d.classroom = o.classroom;
   return d;
 }
+
+/** v4.1: the classroom a child is subscribed to: the chosen option, else the migration from what the child had
+ *  (following the class lists -> 'labue' (those were Miss LaBue's lists); a pasted list -> null = custom words).
+ *  A classroom id this build does not know (a newer device synced it) is kept as is: autoClassList finds no week. */
+export function classroomFor(f, id, words) {
+  const c = (f.options[id] || {}).classroom;
+  if (c === null || typeof c === 'string') return c;
+  return words ? legacyClassroom(words) : null;
+}
+export const setClassroom = (f, id, classroom) => setPlayerOption(f, id, 'classroom', classroom || null);
 
 // players whose keys exist but who are missing from the family list (corrupt / lost family record)
 function rebuildPlayers(f) {
