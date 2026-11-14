@@ -265,6 +265,7 @@ async function main() {
     const SIX = ['enough', 'through', 'neighbor', 'friend', 'because', 'thought'];
     await L.click('#btn-parents');
     await L.click('.pz-tabs [data-tab="words"]');
+    await L.click('#pz-rooms [data-classroom="custom"]');       // v4.1: own words = Custom words (the paste editor)
     await L.waitForSelector('#pz-words');
     await L.fill('#pz-words', SIX.join('\n'));
     await L.click('#pz-save');

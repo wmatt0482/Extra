@@ -487,6 +487,7 @@ async function runLayout(browser, layout) {
   await pin(page, '1234');
   await page.waitForSelector('.pz-content[data-tab="sync"]');   // the Parent Zone opens on Family code
   await tap(page, '.pz-tabs [data-tab="words"]');
+  await tap(page, '#pz-rooms [data-classroom="custom"]');   // v4.1: own words = Custom words (the paste editor)
   await page.waitForSelector('#pz-words');
   await page.fill('#pz-words', LIST_TEXT);              // parent-facing native fields (allowed)
   await page.fill('#pz-pattern', PATTERN);

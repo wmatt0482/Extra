@@ -668,6 +668,8 @@ async function runLayout(browser, layout) {
   }
   check(await J(page, () => { const b = document.querySelector('#opt-reload'); return !!b && b.textContent === 'Reload now' && typeof window.__spellJump.app.reloadNow === 'function'; }), 'options tab: a "Reload now" button (v3.7.4: the newest version and this week\'s class list)');
   await page.click('.pz-tabs [data-tab="words"]');
+  await page.waitForSelector('#pz-rooms');
+  await page.click('#pz-rooms [data-classroom="custom"]');     // v4.1: own words = Custom words (the paste editor)
   await page.waitForSelector('#pz-words');
   await shot(page, layout, '17-pz-words');
   await layoutAudit(page, layout.insets, 'parent zone (words)');
