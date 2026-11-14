@@ -761,6 +761,29 @@ Simulated 480 runs in 177.0 s; lifetime sky earnings $36,534,043.
   the engine's sim speed via `?sim=3`, a test knob), `ONLY=skyreal node tools/ui-smoke.mjs` (the Sky part on the real data files). The fixtures in `tools/fixtures/sky/`
   remain only for the fast ui-smoke paths (`?mock=1&skyfixture=1`); the mock engine mirrors the real events and `summary.boost` / `summary.sky`.
 
+## v4.1.0: classroom subscriptions and custom words (changelog)
+
+- **One clear Classroom choice per child.** Parents (PIN) → **Words of the week** now opens with big buttons: **Miss LaBue · Mr. Lombardi · Custom words**
+  (Nathan's class is Miss LaBue, Gabe's is Mr. Lombardi). Picking a classroom applies its newest week now (if it has one) and subscribes the child: every
+  new week from that classroom then applies on its own (when the game starts, comes back to the front, or once an hour while it stays open), with the
+  "New class list" toast. Picking **Custom words** turns the subscription off (the current words stay) and opens the paste editor
+  (`word | syl/la/bles | sentence`); custom words are never switched. A classroom with no list yet (Mr. Lombardi for now) says
+  "No list from Mr. Lombardi yet — the current words stay until the first one arrives". The old "Use for …", "Follow the class lists" and
+  "Stop following" buttons are gone (this is the one way). The card shows the state per child ("Nathan — Miss LaBue · Week of Nov 9 · ar and or"); the
+  title screen shows "Miss LaBue · Week of Nov 9" under the logo and the player picker shows the classroom on the tile (nothing for custom words).
+- **Synced**: the choice is a per-child family option `classroom` (`'labue' | 'lombardi' | null`, null = custom words; the later change wins in family
+  sync), so it follows the child to the other iPads. **Migration**: a child who followed the class lists (the built-in list or a class week, v3.7+) is
+  Miss LaBue's (those were her lists); a child on a pasted list stays on Custom words. Nothing changes until a parent picks.
+  Pasting "Copy this list to …" or restoring an own list from the archive also switches that child to Custom words (a classroom week would replace it).
+- **Other games** (Wagon West, Squirrel Chase, Trail Blazer…) still read the child's active list through the shared word store, so they follow along.
+- **Adding a week (Matt)**: open `src/data/classLists.js`, find the classroom in `CLASSROOM_DEFS` (Miss LaBue's weeks are `LABUE_WEEKS`; Mr. Lombardi's
+  `weeks: []` is empty) and put one entry at the TOP of that classroom's weeks: `id` `'class-YYYY-MM-DD'` for Miss LaBue (the ids she already has) or
+  `'<classroom>-YYYY-MM-DD'` for another (e.g. `'lombardi-2026-11-16'`), `name` `'Week of Nov 16 · topic'`, `weekOf` the Monday, `pattern`, `words`
+  one per line `word | syl/la/bles | sentence`. It becomes the newest two days before its Monday. A new classroom is one more entry in `CLASSROOM_DEFS`
+  (short lowercase `id`, `name`); the Parents buttons are built from it.
+- Tests: `tools/spelling-tests.mjs` ("classroom subscriptions"), `ONLY=class node tools/ui-smoke.mjs` (the Classroom control for three children, both sizes).
+  Version 4.1.0 (`sw.js` cache `spell-jump-v4.1.0`).
+
 ## v4.0.3: a finish line crossed is never lost by leaving at Level 2 (changelog)
 
 - Fix: with levels per race on (the default, 3), crossing Level 1's finish line starts Level 2 with its own spell panel. A child who left from

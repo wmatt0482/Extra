@@ -1832,8 +1832,9 @@ const browser = await chromium.launch();
 // ?skyfixture=1 (small and fast) and the 'skyreal' path runs once against the real files.
 // ---------- v3.7 class lists (ONLY=class runs just this, at both sizes) ----------
 // Leo (built-in list) gets the class list when picked (toast); Mia (a pasted list) is never switched; Parents → Words:
-// the class-list card, "Use for Mia" (the class list with its prefix pattern), the prefix highlighted on the Look
-// step, "Use for everyone" from Zoe's tab, "Stop following" (the words stay, the classId goes).
+// the Classroom control (v4.1: Miss LaBue · Mr. Lombardi · Custom words per child): Mia (custom) picks Miss LaBue, Zoe picks
+// Mr. Lombardi (no weeks yet: the message, the words stay) then Custom words (the paste editor), Leo switches to Custom
+// and back; the title / picker label; the prefix highlighted on the Look step.
 async function classListTest(browser, layout) {
   console.log(`\n=== class lists (${layout.name}) ===`);
   const context = await browser.newContext({ viewport: { width: layout.width, height: layout.height }, deviceScaleFactor: 2, hasTouch: true, isMobile: true });
@@ -1881,70 +1882,81 @@ async function classListTest(browser, layout) {
   const leo = await activeOf('pleo');
   check(leo && leo.classId === CL.id && leo.id === CL.id && !leo.sample && leo.words.length === CL.n, `a built-in-list player gets the class list on start (${leo && leo.name}, ${leo && leo.words.length} words)`);
   check(toastText.includes(`New class list: ${CL.name}`), `toast "New class list: ${CL.name}"`);
+  const tl = await J(page, () => { const n = document.querySelector('#title-class'); const r = n.getBoundingClientRect(); return { text: n.textContent, hidden: n.hidden, vis: r.width > 0 && r.height > 0, right: r.right, vw: innerWidth }; });
+  check(!tl.hidden && tl.vis && tl.text === `Miss LaBue · ${CL.name.split(' · ')[0]}` && tl.right <= tl.vw, `the title says the classroom subtly ("${tl.text}")`);
   await shot(page, layout, 'cl-01-title-toast', 0);
+  await layoutAudit(page, layout.insets, 'title (classroom label)');
   // Mia has a pasted list: never switched
   await page.click('#btn-player').catch(() => J(page, () => window.__spellJump.app.go('players')));
   await page.waitForSelector(visibleSel('#screen-players'));
+  const tiles = await J(page, () => Object.fromEntries([...document.querySelectorAll('.pl-tile[data-player]')].map((t) => [t.dataset.player, (t.querySelector('.pl-class') || {}).textContent || ''])));
+  check(tiles.pleo === 'Miss LaBue' && tiles.pmia === '' && tiles.pzoe === '', `the picker tile shows the classroom for Leo only (${JSON.stringify(tiles)})`);
+  await shot(page, layout, 'cl-01b-picker-label', 0);
   await page.click('[data-player="pmia"]');
   await page.waitForSelector(visibleSel('#screen-title'));
   const mia0 = await activeOf('pmia');
   check(mia0.id === 'L1' && !mia0.classId, 'a player with a pasted list is never switched automatically');
 
-  // Parents → Words: the class list card
+  // Parents → Words: the Classroom control
   await page.click('#btn-parents');
   for (let k = 0; k < 2 && await J(page, () => !!document.querySelector('.pinpad')); k++) { await pinIn(page, '1234'); await page.waitForTimeout(250); }
   await page.waitForSelector('.pz-content');
   await page.click('.pz-tabs [data-tab="words"]');
   await page.waitForSelector('#pz-class');
-  const card = await J(page, () => ({ head: document.querySelector('#pz-class .pc-head').textContent, words: document.querySelector('#pz-class .pc-words').textContent,
-    use: (document.querySelector('#pz-class-use') || {}).textContent || '', all: (document.querySelector('#pz-class-all') || {}).textContent || '', first: document.querySelector('.pz-content').firstElementChild.id }));
-  check(card.head === `Class list${CL.name} · ${CL.n} words` && card.first === 'pz-class', `Words tab: the class-list card on top ("Class list · ${CL.name} · ${CL.n} words")`);
-  check(CL.words.every((w) => card.words.includes(w)) && card.use === 'Use for Mia' && card.all === 'Use for everyone', 'the words shown small, "Use for Mia" and "Use for everyone"');
-  // v3.9.1: the card says plainly that this week is not in use for Mia yet, and which list she is on (the box below)
-  const st0 = await J(page, () => ({ status: document.querySelector('#pz-class-status').textContent, inUse: document.querySelector('#pz-class').dataset.inUse,
-    now: (document.querySelector('#pz-class-now') || {}).textContent || '', box: document.querySelector('#pz-active').textContent, listHidden: document.querySelector('#pz-class-list').hidden,
-    more: document.querySelector('#pz-class-more').getAttribute('aria-expanded') }));
-  check(st0.status === 'Not in use yet: tap Use for Mia' && st0.inUse === 'false', `not in use: "${st0.status}"`);
-  check(/"Our list"/.test(st0.now) && /^Mia's list now/.test(st0.box), `the card names the list Mia is on now ("${st0.now}"), the box below says "Mia's list now"`);
-  check(st0.listHidden && st0.more === 'false', 'the words and sentences are folded away at first');
-  await shot(page, layout, 'cl-02-words-card');
-  await layoutAudit(page, layout.insets, 'parent zone (class list card)');
-  // expand: each word with its sentence
-  await page.click('#pz-class-more');
-  const open = await J(page, () => ({ hidden: document.querySelector('#pz-class-list').hidden, more: document.querySelector('#pz-class-more').getAttribute('aria-expanded'),
-    rows: [...document.querySelectorAll('#pz-class-list li')].map((li) => ({ word: li.dataset.word, b: li.querySelector('b').textContent, sent: li.querySelector('.pc-sent').textContent })) }));
-  const sentOk = open.rows.length === CL.n && open.rows.every((r, i) => r.word === CL.words[i] && r.b === CL.words[i] && r.sent === CL.sentences[i]);
-  check(!open.hidden && open.more === 'true' && sentOk, `expanded: all ${CL.n} words, each with its sentence ("${open.rows[0] && open.rows[0].b}: ${open.rows[0] && open.rows[0].sent}")`);
-  await shot(page, layout, 'cl-02b-words-card-open');
-  await layoutAudit(page, layout.insets, 'parent zone (class list card, expanded)');
-  await page.click('#pz-class-use');
-  await page.waitForSelector('#pz-class-following');
+  const roomOpt = (id) => J(page, (pid) => { const f = JSON.parse(localStorage.getItem('spellJump.family')); return f.options && f.options[pid] ? f.options[pid].classroom : undefined; }, id);
+  const ui = () => J(page, () => ({
+    btns: [...document.querySelectorAll('#pz-rooms .seg-btn')].map((b) => ({ id: b.dataset.classroom, text: b.textContent, on: b.getAttribute('aria-checked') === 'true', h: Math.round(b.getBoundingClientRect().height) })),
+    status: document.querySelector('#pz-class-status').textContent, editor: !!document.querySelector('#pz-words'), save: !!document.querySelector('#pz-save'),
+    first: document.querySelector('.pz-content').firstElementChild.id, waiting: document.querySelector('#pz-class').dataset.waiting, now: document.querySelector('#pz-active').textContent,
+    old: ['#pz-class-use', '#pz-class-all', '#pz-class-stop', '#pz-class-follow'].some((q) => document.querySelector(q)) }));
+  const u0 = await ui();
+  check(u0.first === 'pz-class' && u0.btns.map((b) => b.text).join('|') === 'Miss LaBue|Mr. Lombardi|Custom words' && u0.btns.every((b) => b.h >= 44), 'Words tab: the Classroom control on top: "Miss LaBue", "Mr. Lombardi", "Custom words" (big buttons)');
+  check(u0.btns.find((b) => b.id === 'custom').on && u0.btns.filter((b) => b.on).length === 1 && u0.status === 'Mia — Custom words · Our list', `Mia (a pasted list) is on Custom words: "${u0.status}"`);
+  check(u0.editor && u0.save && !u0.old, 'Custom words: the paste editor is open; the old Use for / Follow / Stop following buttons are gone');
+  await shot(page, layout, 'cl-02-words-classroom');
+  await layoutAudit(page, layout.insets, 'parent zone (Classroom control, custom)');
+  // Mia picks Miss LaBue: the newest week applies, she is subscribed, the editor folds away
+  await page.click('#pz-rooms [data-classroom="labue"]');
+  await page.waitForSelector('#pz-class[data-classroom="labue"]');
   const mia1 = await activeOf('pmia');
-  check(mia1.classId === CL.id && mia1.pattern === CL.pattern && mia1.words.join() === CL.words.join(), `Use for Mia: her active list is the class list with its pattern (${mia1.pattern})`);
-  check(await J(page, () => /^Following the class lists ✓/.test(document.querySelector('#pz-class-following').textContent) && !!document.querySelector('#pz-class-stop')), '"Following the class lists ✓ · each new week applies on its own" with "Stop following"');
-  const st1 = await J(page, () => ({ status: document.querySelector('#pz-class-status').textContent, inUse: document.querySelector('#pz-class').dataset.inUse, now: !!document.querySelector('#pz-class-now'),
-    open: !document.querySelector('#pz-class-list').hidden, follows: document.querySelector('#pz-class').dataset.following }));
-  check(st1.status === 'In use for Mia ✓' && st1.inUse === 'true' && !st1.now && st1.follows === 'true', `in use: "${st1.status}", and Mia follows the class lists from now on`);
-  check(st1.open, 'the expanded list stays open after "Use for Mia"');
-  await shot(page, layout, 'cl-03-following');
-  // Use for everyone (from Zoe's tab)
+  check(mia1.classId === CL.id && mia1.pattern === CL.pattern && mia1.words.join() === CL.words.join(), `Miss LaBue for Mia: her active list is the newest week with its pattern (${mia1.pattern})`);
+  const u1 = await ui();
+  check(u1.status === `Mia — Miss LaBue · ${CL.name} ✓` && u1.btns.find((b) => b.id === 'labue').on && !u1.editor && (await roomOpt('pmia')) === 'labue', `status "${u1.status}", the option is saved (labue), the paste editor is closed`);
+  check(await J(page, () => /^Each new week from Miss LaBue applies on its own/.test(document.querySelector('#pz-class-following').textContent)), '"Each new week from Miss LaBue applies on its own"');
+  // the words and sentences open (folded first)
+  const hid0 = await J(page, () => document.querySelector('#pz-class-list').hidden);
+  await page.click('#pz-class-more');
+  const open = await J(page, () => ({ hidden: document.querySelector('#pz-class-list').hidden, rows: [...document.querySelectorAll('#pz-class-list li')].map((li) => ({ word: li.dataset.word, sent: li.querySelector('.pc-sent').textContent })) }));
+  check(hid0 && !open.hidden && open.rows.length === CL.n && open.rows.every((r, i) => r.word === CL.words[i] && r.sent === CL.sentences[i]), `the week's ${CL.n} words with their sentences open on demand`);
+  await shot(page, layout, 'cl-03-labue-open');
+  await layoutAudit(page, layout.insets, 'parent zone (Classroom control, Miss LaBue, expanded)');
+  // Zoe picks Mr. Lombardi: no weeks yet: the message, her words stay
   await page.click('.pz-ptab[data-player="pzoe"]');
-  await page.waitForSelector('#pz-class-all');
-  await page.click('#pz-class-all');
-  await page.waitForSelector('#pz-class-following');
-  const all = await Promise.all(['pmia', 'pleo', 'pzoe'].map(activeOf));
-  check(all.every((a) => a.classId === CL.id), 'Use for everyone: Mia, Leo and Zoe all on the class list');
-  // Stop following (Zoe): the words stay, the classId goes
-  await page.click('#pz-class-stop');
-  await page.waitForSelector('#pz-class-follow');
-  const zoe = await activeOf('pzoe');
-  check(!zoe.classId && zoe.words.length === CL.n, 'Stop following: the words stay, the list is no longer a class list');
-  check(await J(page, () => document.querySelector('#pz-class-status').textContent === 'In use for Zoe ✓' && /^Not following/.test(document.querySelector('#pz-class-notfollowing').textContent)),
-    'after Stop following: still "In use for Zoe", "Not following the class lists" with "Follow the class lists"');
-  await page.click('#pz-class-follow');
-  await page.waitForSelector('#pz-class-following');
-  const zoe2 = await activeOf('pzoe');
-  check(zoe2.classId === CL.id && zoe2.id === CL.id, 'Follow the class lists: Zoe follows again (same list)');
+  await page.waitForSelector('#pz-class');
+  await page.click('#pz-rooms [data-classroom="lombardi"]');
+  await page.waitForSelector('#pz-class[data-classroom="lombardi"]');
+  const u2 = await ui(), zoe1 = await activeOf('pzoe');
+  check(u2.waiting === 'true' && u2.status === 'No list from Mr. Lombardi yet — the current words stay until the first one arrives.' && !u2.editor, `Mr. Lombardi has no list yet: "${u2.status}"`);
+  check(zoe1.id === 'L1' && !zoe1.classId && zoe1.words.join() === 'friend,thought' && (await roomOpt('pzoe')) === 'lombardi', 'Zoe keeps her current words and is subscribed to Mr. Lombardi');
+  await shot(page, layout, 'cl-04-lombardi-empty');
+  await layoutAudit(page, layout.insets, 'parent zone (Classroom control, Mr. Lombardi, no list yet)');
+  // then Custom words: the paste editor opens, the subscription is off
+  await page.click('#pz-rooms [data-classroom="custom"]');
+  await page.waitForSelector('#pz-words');
+  const u3 = await ui();
+  check(u3.btns.find((b) => b.id === 'custom').on && u3.editor && u3.save && (await roomOpt('pzoe')) === null && /^Zoe — Custom words/.test(u3.status), `Custom words: the paste editor opens, the option is null ("${u3.status}")`);
+  await shot(page, layout, 'cl-05-custom-editor');
+  await layoutAudit(page, layout.insets, 'parent zone (Classroom control, Custom words)');
+  // Leo (Miss LaBue from the built-in list): Custom words keeps the class list's words and stops the weekly switch
+  await page.click('.pz-ptab[data-player="pleo"]');
+  await page.waitForSelector('#pz-class[data-classroom="labue"]');
+  await page.click('#pz-rooms [data-classroom="custom"]');
+  await page.waitForSelector('#pz-words');
+  const leoC = await activeOf('pleo');
+  check(leoC.classId === CL.id && leoC.words.length === CL.n && (await roomOpt('pleo')) === null, 'Leo: Custom words keeps the current words (still the class week) and unsubscribes');
+  await page.click('#pz-rooms [data-classroom="labue"]');
+  await page.waitForSelector('#pz-class[data-classroom="labue"]');
+  check((await roomOpt('pleo')) === 'labue' && !(await ui()).editor, 'Leo: Miss LaBue again subscribes (the editor folds away)');
   await page.click('#pz-close');
 
   // the prefix is highlighted on the Look step (Mia: a new word on the class list; the Qualifier skipped here)
@@ -2189,9 +2201,9 @@ async function newListVoiceTest(browser, layout, scenario) {
   for (let k = 0; k < 2 && await J(page, () => !!document.querySelector('.pinpad')); k++) { await pinIn(page, '1234'); await page.waitForTimeout(250); }
   await page.waitForSelector('.pz-content');
   await page.click('.pz-tabs [data-tab="words"]');
-  await page.waitForSelector('#pz-class-use');
+  await page.waitForSelector('#pz-rooms');
   await J(page, () => { window.__applyAt = Math.round(performance.now()); window.__cloudAsked.length = 0; window.__ulog.length = 0; });
-  await page.click('#pz-class-use');
+  await page.click('#pz-rooms [data-classroom="labue"]');
   await page.waitForSelector('#pz-class-following');
   const CL = await J(page, async (scenario) => {
     const C = await import('/src/data/classLists.js');
