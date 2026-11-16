@@ -829,18 +829,21 @@ console.log('classroom subscriptions (v4.1)');
   const lombWeek = { id: 'lombardi-2026-11-16', name: 'Week of Nov 16 · test', weekOf: '2026-11-16', pattern: '', words: parseList('window\nbecause').words, classroom: 'lombardi' };
   test('classrooms: Miss LaBue then Mr. Lombardi (no weeks yet); unique ids; Miss LaBue keeps her four old week ids', () => {
     assert.deepEqual(CL.CLASSROOMS.map((c) => [c.id, c.name]), [['labue', 'Miss LaBue'], ['lombardi', 'Mr. Lombardi']]);
-    assert.deepEqual(CL.classroomById('labue').weeks.map((w) => w.id), ['class-2026-11-09', 'class-2026-11-02', 'class-2026-10-26', 'class-2026-10-19']);
+    // weeks are added every Monday, so check the four original ids are kept and the list stays newest-first (not a fixed list)
+    const labIds = CL.classroomById('labue').weeks.map((w) => w.id), labDays = CL.classroomById('labue').weeks.map((w) => w.weekOf);
+    for (const old of ['class-2026-11-09', 'class-2026-11-02', 'class-2026-10-26', 'class-2026-10-19']) assert.ok(labIds.includes(old), old + ' kept');
+    assert.deepEqual(labDays, labDays.slice().sort().reverse(), 'newest week first');
     assert.equal(CL.classroomById('lombardi').weeks.length, 0); assert.equal(CL.classroomById('nope'), null);
     const ids = CL.CLASS_LISTS.map((l) => l.id);
     assert.equal(new Set(ids).size, ids.length, 'unique list ids'); assert.equal(new Set(CL.CLASSROOMS.map((c) => c.id)).size, CL.CLASSROOMS.length);
     for (const c of CL.CLASSROOMS) for (const w of c.weeks) { assert.equal(w.classroom, c.id); assert.ok(w.id.startsWith('class-') || w.id.startsWith(c.id + '-')); assert.equal(CL.CLASS_LIST_BY_ID[w.id], w); }
-    assert.equal(CL.CLASS_LISTS.length, 4);
+    assert.equal(CL.CLASS_LISTS.length, CL.CLASSROOMS.reduce((n, c) => n + c.weeks.length, 0));
   });
   test('newestClassList(now, classroom): Miss LaBue has her newest week, Mr. Lombardi none, an unknown classroom none, no classroom = the newest of all', () => {
-    assert.equal(CL.newestClassList(day(2026, 11, 14), 'labue').id, 'class-2026-11-09');
-    assert.equal(CL.newestClassList(day(2026, 11, 14), 'lombardi'), null);
-    assert.equal(CL.newestClassList(day(2026, 11, 14), 'zzz'), null);
-    assert.equal(CL.newestClassList(day(2026, 11, 14)).id, 'class-2026-11-09');
+    assert.equal(CL.newestClassList(day(2026, 11, 12), 'labue').id, 'class-2026-11-09');
+    assert.equal(CL.newestClassList(day(2026, 11, 12), 'lombardi'), null);
+    assert.equal(CL.newestClassList(day(2026, 11, 12), 'zzz'), null);
+    assert.equal(CL.newestClassList(day(2026, 11, 12)).id, 'class-2026-11-09');
     assert.equal(CL.newestClassList(day(2026, 10, 16), 'labue'), null, 'before the first week');
   });
   test('migration: a child on the built-in or a class list becomes labue; a pasted list stays custom; an explicit choice wins', () => {
@@ -862,7 +865,7 @@ console.log('classroom subscriptions (v4.1)');
     f.options.pa.classroom = 5; assert.equal(P.normalizeFamily(JSON.parse(JSON.stringify(f))).options.pa.classroom, undefined);
   });
   test('autoClassList applies only the child\'s own classroom: labue gets labue, lombardi never gets labue\'s week, custom is never switched', () => {
-    const now = day(2026, 11, 14);
+    const now = day(2026, 11, 12);
     const a = W.defaultWords(T0); assert.equal(W.autoClassList(a, now, 'labue').id, 'class-2026-11-09');
     const b = W.defaultWords(T0); assert.equal(W.autoClassList(b, now, 'lombardi'), null); assert.ok(W.activeList(b).sample, 'no week yet: the current words stay');
     const c = W.defaultWords(T0); W.saveNewList(c, parseList('neighbor\nbecause').words, '', T0);
@@ -878,11 +881,11 @@ console.log('classroom subscriptions (v4.1)');
     const f = P.defaultFamily(); f.options.pa = {};
     const d = W.defaultWords(T0); W.applyClassList(d, CL.CLASS_LIST_BY_ID['class-2026-10-26'], T0);
     P.setClassroom(f, 'pa', 'lombardi');
-    assert.equal(W.autoClassList(d, day(2026, 11, 14), P.classroomFor(f, 'pa', d)), null); assert.equal(W.activeList(d).id, 'class-2026-10-26', 'words stay');
+    assert.equal(W.autoClassList(d, day(2026, 11, 12), P.classroomFor(f, 'pa', d)), null); assert.equal(W.activeList(d).id, 'class-2026-10-26', 'words stay');
     P.setClassroom(f, 'pa', null);
-    assert.equal(W.autoClassList(d, day(2026, 11, 14), P.classroomFor(f, 'pa', d)), null); assert.equal(W.activeList(d).id, 'class-2026-10-26');
+    assert.equal(W.autoClassList(d, day(2026, 11, 12), P.classroomFor(f, 'pa', d)), null); assert.equal(W.activeList(d).id, 'class-2026-10-26');
     P.setClassroom(f, 'pa', 'labue');
-    assert.equal(W.autoClassList(d, day(2026, 11, 14), P.classroomFor(f, 'pa', d)).id, 'class-2026-11-09'); assert.equal(W.archivedLists(d)[0].id, 'class-2026-10-26', 'the old list goes to the archive');
+    assert.equal(W.autoClassList(d, day(2026, 11, 12), P.classroomFor(f, 'pa', d)).id, 'class-2026-11-09'); assert.equal(W.archivedLists(d)[0].id, 'class-2026-10-26', 'the old list goes to the archive');
   });
   test('family sync: the classroom option merges with the later change winning (either direction, and null = custom beats an older labue)', () => {
     const base = (cls, at) => ({ v: 1, players: [{ id: 'pa', name: 'A', color: '#ff3b5c', createdAt: 1, updatedAt: 1 }], pinHash: null, pinUpdatedAt: 0, options: { pa: { rate: 'normal', classroom: cls } }, optionsUpdatedAt: { pa: at }, removedPlayers: [] });

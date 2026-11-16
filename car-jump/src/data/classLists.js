@@ -16,6 +16,32 @@ import { dayKey } from '../spelling/scheduler.js';
 
 const LABUE_WEEKS = [
   {
+    id: 'class-2026-11-16',
+    name: 'Week of Nov 16 · er, ir and ur',
+    weekOf: '2026-11-16',
+    pattern: 'er ir ur',
+    words: `
+person | per/son | Each person in line gets one ticket.
+sternly | stern/ly | The coach spoke sternly when we forgot our gear.
+worse | worse | The rain got worse, so we stayed inside.
+pearl | pearl | The shiny pearl came from an oyster.
+dirt | dirt | The dog dug a hole in the dirt.
+birth | birth | My family celebrates the day of my birth every June.
+shirt | shirt | I spilled juice on my clean shirt.
+purse | purse | Grandma keeps her keys in her purse.
+curl | curl | The cat likes to curl up by the fire.
+curve | curve | Slow down when the road starts to curve.
+hurl | hurl | The pitcher will hurl the ball toward home plate.
+turkey | tur/key | We ate turkey and stuffing at Thanksgiving.
+blurred | blurred | The picture was blurred because the camera moved.
+guard | guard | The guard checked our tickets at the gate.
+argue | ar/gue | Let's not argue about whose turn it is.
+even | e/ven | Two, four and six are even numbers.
+item | i/tem | Pick one item from the prize box.
+evil | e/vil | The evil wizard in the story turned the frog green.
+`,
+  },
+  {
     id: 'class-2026-11-09',
     name: 'Week of Nov 9 · ar and or',
     weekOf: '2026-11-09',
