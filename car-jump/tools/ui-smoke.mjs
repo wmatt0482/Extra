@@ -1869,8 +1869,9 @@ async function classListTest(browser, layout) {
     for (const id of ['pmia', 'pleo', 'pzoe']) localStorage.setItem(`spellJump.${id}.save`, JSON.stringify({ v: 2, cash: 100, owned: ['beater'], seen: { coach: true, ach: 0 } }));
     localStorage.setItem('spellJump.pmia.words', pasted(['neighbor', 'because', 'enough']));
     localStorage.setItem('spellJump.pzoe.words', pasted(['friend', 'thought']));
-    const c = C.newestClassList(now);
-    return { id: c.id, name: c.name, pattern: c.pattern, n: c.words.length, words: c.words.map((w) => w.word), sentences: c.words.map((w) => w.sentence) };
+    const c = C.newestClassList(now, 'labue'), lb = C.newestClassList(now, 'lombardi');
+    return { id: c.id, name: c.name, pattern: c.pattern, n: c.words.length, words: c.words.map((w) => w.word), sentences: c.words.map((w) => w.sentence),
+      lomb: lb && { id: lb.id, name: lb.name, words: lb.words.map((w) => w.word) } };
   });
   await page.reload({ waitUntil: 'networkidle' });
   await page.waitForSelector(visibleSel('#screen-players'));
@@ -1932,16 +1933,21 @@ async function classListTest(browser, layout) {
   check(hid0 && !open.hidden && open.rows.length === CL.n && open.rows.every((r, i) => r.word === CL.words[i] && r.sent === CL.sentences[i]), `the week's ${CL.n} words with their sentences open on demand`);
   await shot(page, layout, 'cl-03-labue-open');
   await layoutAudit(page, layout.insets, 'parent zone (Classroom control, Miss LaBue, expanded)');
-  // Zoe picks Mr. Lombardi: no weeks yet: the message, her words stay
+  // Zoe picks Mr. Lombardi: his newest week applies (his own words, never Miss LaBue's); before his first week: the message, her words stay
   await page.click('.pz-ptab[data-player="pzoe"]');
   await page.waitForSelector('#pz-class');
   await page.click('#pz-rooms [data-classroom="lombardi"]');
   await page.waitForSelector('#pz-class[data-classroom="lombardi"]');
   const u2 = await ui(), zoe1 = await activeOf('pzoe');
-  check(u2.waiting === 'true' && u2.status === 'No list from Mr. Lombardi yet — the current words stay until the first one arrives.' && !u2.editor, `Mr. Lombardi has no list yet: "${u2.status}"`);
-  check(zoe1.id === 'L1' && !zoe1.classId && zoe1.words.join() === 'friend,thought' && (await roomOpt('pzoe')) === 'lombardi', 'Zoe keeps her current words and is subscribed to Mr. Lombardi');
-  await shot(page, layout, 'cl-04-lombardi-empty');
-  await layoutAudit(page, layout.insets, 'parent zone (Classroom control, Mr. Lombardi, no list yet)');
+  if (CL.lomb) {
+    check(u2.status === `Zoe — Mr. Lombardi · ${CL.lomb.name} ✓` && !u2.editor, `Mr. Lombardi for Zoe: "${u2.status}"`);
+    check(zoe1.classId === CL.lomb.id && zoe1.words.join() === CL.lomb.words.join() && zoe1.classId !== CL.id && (await roomOpt('pzoe')) === 'lombardi', `Zoe gets Mr. Lombardi's week (${zoe1.words.join(', ')}) and is subscribed`);
+  } else {
+    check(u2.waiting === 'true' && u2.status === 'No list from Mr. Lombardi yet — the current words stay until the first one arrives.' && !u2.editor, `Mr. Lombardi has no list yet: "${u2.status}"`);
+    check(zoe1.id === 'L1' && !zoe1.classId && zoe1.words.join() === 'friend,thought' && (await roomOpt('pzoe')) === 'lombardi', 'Zoe keeps her current words and is subscribed to Mr. Lombardi');
+  }
+  await shot(page, layout, 'cl-04-lombardi');
+  await layoutAudit(page, layout.insets, 'parent zone (Classroom control, Mr. Lombardi)');
   // then Custom words: the paste editor opens, the subscription is off
   await page.click('#pz-rooms [data-classroom="custom"]');
   await page.waitForSelector('#pz-words');
@@ -2026,8 +2032,8 @@ async function openTitleNewWeekTest(browser, layout) {
   const CL = await J(page, async () => {
     const C = await import('/src/data/classLists.js');
     const now = Date.now(), DAY = 864e5;
-    const newest = C.newestClassList(now);
-    const older = C.CLASS_LISTS.find((l) => l.weekOf < newest.weekOf);
+    const newest = C.newestClassList(now, 'labue');
+    const older = C.classroomById('labue').weeks.find((l) => l.weekOf < newest.weekOf);
     localStorage.clear();
     localStorage.setItem('spellJump.family', JSON.stringify({ v: 1, migrated: true, lastPlayer: null, options: { pleo: { cloudVoice: 'en-US-Neural2-F' } }, optionsUpdatedAt: { pleo: now },
       players: [{ id: 'pleo', name: 'Leo', color: '#22d3ff', createdAt: 1, updatedAt: 1 }] }));
@@ -2210,7 +2216,7 @@ async function newListVoiceTest(browser, layout, scenario) {
   const CL = await J(page, async (scenario) => {
     const C = await import('/src/data/classLists.js');
     const S = window.__spellJump;
-    const c = C.newestClassList(Date.now());
+    const c = C.newestClassList(Date.now(), 'labue');
     if (scenario !== 'qualifier') S.words.qualifierPending = null;
     S.words.today.count = 0; S.app.persistWords();
     const Sch = await import('/src/spelling/scheduler.js');

@@ -147,10 +147,26 @@ course | course | We ran the whole course in gym class.
   },
 ];
 
-// Miss LaBue (Nathan's class) and Mr. Lombardi (Gabe's class; his lists are not in yet). Newest week first.
+// Mr. Lombardi (Gabe's class). Newest week first; ids 'lombardi-YYYY-MM-DD'.
+const LOMBARDI_WEEKS = [
+  {
+    id: 'lombardi-2026-11-16',
+    name: 'Week of Nov 16 · vocabulary',
+    weekOf: '2026-11-16',
+    pattern: '',
+    words: `
+brittle | brit/tle | Dry leaves are brittle and crunch when you step on them.
+creative | cre/a/tive | Maya made a creative costume out of cardboard boxes.
+descriptive | de/scrip/tive | Use descriptive words to tell how the beach looked and sounded.
+outstretched | out/stretched | The bird glided with its wings outstretched.
+`,
+  },
+];
+
+// Miss LaBue (Nathan's class) and Mr. Lombardi (Gabe's class). Newest week first.
 const CLASSROOM_DEFS = [
   { id: 'labue', name: 'Miss LaBue', weeks: LABUE_WEEKS },
-  { id: 'lombardi', name: 'Mr. Lombardi', weeks: [] },
+  { id: 'lombardi', name: 'Mr. Lombardi', weeks: LOMBARDI_WEEKS },
 ];
 
 function buildWeek(classroom, w) {

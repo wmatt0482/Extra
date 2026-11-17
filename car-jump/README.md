@@ -761,6 +761,11 @@ Simulated 480 runs in 177.0 s; lifetime sky earnings $36,534,043.
   the engine's sim speed via `?sim=3`, a test knob), `ONLY=skyreal node tools/ui-smoke.mjs` (the Sky part on the real data files). The fixtures in `tools/fixtures/sky/`
   remain only for the fast ui-smoke paths (`?mock=1&skyfixture=1`); the mock engine mirrors the real events and `summary.boost` / `summary.sky`.
 
+## v4.1.1: Mr. Lombardi's first week (changelog)
+
+- Mr. Lombardi's first list (week of Nov 16): brittle, creative, descriptive, outstretched, each with a sentence and syllables. A child set to Mr. Lombardi in Parents → Words gets it on their next start; Miss LaBue's children are untouched.
+- Tests: the classroom checks no longer assume Mr. Lombardi has no weeks (the "no list yet" path is still checked on dates before his first week).
+
 ## v4.1.0: classroom subscriptions and custom words (changelog)
 
 - **One clear Classroom choice per child.** Parents (PIN) → **Words of the week** now opens with big buttons: **Miss LaBue · Mr. Lombardi · Custom words**

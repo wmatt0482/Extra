@@ -738,9 +738,11 @@ console.log('class lists (v3.7)');
   const oct19 = CL.CLASS_LIST_BY_ID['class-2026-10-19'];
   test('the class lists: newest first, 18 valid words for Oct 19 with syllables that spell the word and sentences ≤ 200 chars', () => {
     assert.ok(CL.CLASS_LISTS.length >= 1);
-    for (let i = 1; i < CL.CLASS_LISTS.length; i++) assert.ok(CL.CLASS_LISTS[i - 1].weekOf > CL.CLASS_LISTS[i].weekOf, 'newest first');
+    // two classrooms can share a Monday, so all lists are newest-first (ties allowed) and each classroom strictly so
+    for (let i = 1; i < CL.CLASS_LISTS.length; i++) assert.ok(CL.CLASS_LISTS[i - 1].weekOf >= CL.CLASS_LISTS[i].weekOf, 'newest first');
+    for (const c of CL.CLASSROOMS) for (let i = 1; i < c.weeks.length; i++) assert.ok(c.weeks[i - 1].weekOf > c.weeks[i].weekOf, c.id + ': newest first, one week per Monday');
     for (const l of CL.CLASS_LISTS) {
-      assert.match(l.id, /^class-\d{4}-\d\d-\d\d$/); assert.equal(l.id, `class-${l.weekOf}`); assert.ok(l.words.length >= 1 && l.words.length <= 40);
+      assert.equal(l.id, l.classroom === 'labue' ? `class-${l.weekOf}` : `${l.classroom}-${l.weekOf}`); assert.match(l.weekOf, /^\d{4}-\d\d-\d\d$/); assert.ok(l.words.length >= 1 && l.words.length <= 40);
       for (const w of l.words) {
         assert.ok(validWord(w.word), w.word);
         if (w.syllables) assert.equal(w.syllables.join(''), w.word.replace(/[^a-z]/g, ''), w.word);
@@ -826,22 +828,24 @@ console.log('classroom subscriptions (v4.1)');
   const P = await import('../src/spelling/profiles.js');
   const { mergeFamily } = await import('../src/sync/merge.js');
   const day = (y, m, d, h = 12) => new Date(y, m - 1, d, h).getTime();
-  const lombWeek = { id: 'lombardi-2026-11-16', name: 'Week of Nov 16 · test', weekOf: '2026-11-16', pattern: '', words: parseList('window\nbecause').words, classroom: 'lombardi' };
-  test('classrooms: Miss LaBue then Mr. Lombardi (no weeks yet); unique ids; Miss LaBue keeps her four old week ids', () => {
+  const lombWeek = { id: 'lombardi-2026-11-23', name: 'Week of Nov 23 · test', weekOf: '2026-11-23', pattern: '', words: parseList('window\nbecause').words, classroom: 'lombardi' };
+  test('classrooms: Miss LaBue then Mr. Lombardi; unique ids; Miss LaBue keeps her four old week ids', () => {
     assert.deepEqual(CL.CLASSROOMS.map((c) => [c.id, c.name]), [['labue', 'Miss LaBue'], ['lombardi', 'Mr. Lombardi']]);
     // weeks are added every Monday, so check the four original ids are kept and the list stays newest-first (not a fixed list)
     const labIds = CL.classroomById('labue').weeks.map((w) => w.id), labDays = CL.classroomById('labue').weeks.map((w) => w.weekOf);
     for (const old of ['class-2026-11-09', 'class-2026-11-02', 'class-2026-10-26', 'class-2026-10-19']) assert.ok(labIds.includes(old), old + ' kept');
     assert.deepEqual(labDays, labDays.slice().sort().reverse(), 'newest week first');
-    assert.equal(CL.classroomById('lombardi').weeks.length, 0); assert.equal(CL.classroomById('nope'), null);
+    assert.ok(CL.classroomById('lombardi').weeks.some((w) => w.id === 'lombardi-2026-11-16'), 'Mr. Lombardi\'s first week'); assert.equal(CL.classroomById('nope'), null);
     const ids = CL.CLASS_LISTS.map((l) => l.id);
     assert.equal(new Set(ids).size, ids.length, 'unique list ids'); assert.equal(new Set(CL.CLASSROOMS.map((c) => c.id)).size, CL.CLASSROOMS.length);
     for (const c of CL.CLASSROOMS) for (const w of c.weeks) { assert.equal(w.classroom, c.id); assert.ok(w.id.startsWith('class-') || w.id.startsWith(c.id + '-')); assert.equal(CL.CLASS_LIST_BY_ID[w.id], w); }
     assert.equal(CL.CLASS_LISTS.length, CL.CLASSROOMS.reduce((n, c) => n + c.weeks.length, 0));
   });
-  test('newestClassList(now, classroom): Miss LaBue has her newest week, Mr. Lombardi none, an unknown classroom none, no classroom = the newest of all', () => {
+  test('newestClassList(now, classroom): Miss LaBue has her newest week, Mr. Lombardi none before Nov 14, an unknown classroom none, no classroom = the newest of all', () => {
     assert.equal(CL.newestClassList(day(2026, 11, 12), 'labue').id, 'class-2026-11-09');
-    assert.equal(CL.newestClassList(day(2026, 11, 12), 'lombardi'), null);
+    assert.equal(CL.newestClassList(day(2026, 11, 12), 'lombardi'), null, 'before his first week');
+    assert.equal(CL.newestClassList(day(2026, 11, 17), 'lombardi').id, 'lombardi-2026-11-16');
+    assert.equal(CL.newestClassList(day(2026, 11, 17), 'labue').id, 'class-2026-11-16', 'same Monday: each classroom gets its own');
     assert.equal(CL.newestClassList(day(2026, 11, 12), 'zzz'), null);
     assert.equal(CL.newestClassList(day(2026, 11, 12)).id, 'class-2026-11-09');
     assert.equal(CL.newestClassList(day(2026, 10, 16), 'labue'), null, 'before the first week');
@@ -870,14 +874,14 @@ console.log('classroom subscriptions (v4.1)');
     const b = W.defaultWords(T0); assert.equal(W.autoClassList(b, now, 'lombardi'), null); assert.ok(W.activeList(b).sample, 'no week yet: the current words stay');
     const c = W.defaultWords(T0); W.saveNewList(c, parseList('neighbor\nbecause').words, '', T0);
     assert.equal(W.autoClassList(c, now, null), null); assert.equal(W.activeList(c).words.length, 2);
-    // Mr. Lombardi's first week arrives (passed in, as the data file is empty): applies for him, labue's child on a pasted list is untouched
-    const e = W.defaultWords(T0); assert.equal(W.autoClassList(e, day(2026, 11, 16), 'lombardi', lombWeek).id, 'lombardi-2026-11-16');
-    assert.equal(W.activeList(e).classId, 'lombardi-2026-11-16'); assert.equal(W.activeList(e).words.length, 2);
-    assert.equal(W.autoClassList(e, day(2026, 11, 17), 'lombardi', lombWeek), null, 'already on it');
-    assert.equal(W.autoClassList(e, day(2026, 11, 17), 'labue', lombWeek), null, 'a week of another classroom never applies');
-    const n = W.normalizeWordsData(JSON.parse(JSON.stringify(e)), T0); assert.equal(W.activeList(n).classId, 'lombardi-2026-11-16', 'normalize keeps a lombardi classId');
+    // a later Mr. Lombardi week arrives (passed in): applies for him, labue's child on a pasted list is untouched
+    const e = W.defaultWords(T0); assert.equal(W.autoClassList(e, day(2026, 11, 23), 'lombardi', lombWeek).id, 'lombardi-2026-11-23');
+    assert.equal(W.activeList(e).classId, 'lombardi-2026-11-23'); assert.equal(W.activeList(e).words.length, 2);
+    assert.equal(W.autoClassList(e, day(2026, 11, 24), 'lombardi', lombWeek), null, 'already on it');
+    assert.equal(W.autoClassList(e, day(2026, 11, 24), 'labue', lombWeek), null, 'a week of another classroom never applies');
+    const n = W.normalizeWordsData(JSON.parse(JSON.stringify(e)), T0); assert.equal(W.activeList(n).classId, 'lombardi-2026-11-23', 'normalize keeps a lombardi classId');
   });
-  test('switching classroom: labue -> lombardi (no weeks) keeps the words; labue -> custom keeps them and stops auto-apply; custom -> labue applies the newest week', () => {
+  test('switching classroom: labue -> lombardi (before his first week) keeps the words; labue -> custom keeps them and stops auto-apply; custom -> labue applies the newest week', () => {
     const f = P.defaultFamily(); f.options.pa = {};
     const d = W.defaultWords(T0); W.applyClassList(d, CL.CLASS_LIST_BY_ID['class-2026-10-26'], T0);
     P.setClassroom(f, 'pa', 'lombardi');
