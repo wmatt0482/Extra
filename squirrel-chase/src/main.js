@@ -21,8 +21,8 @@ import { registerSquirrelChaseSync } from './meta/sync.js';
 import { defaultSave, loadSave, loadSettings, loadWip, removeSave, writeSave, writeSettings, writeWip } from './meta/save.js';
 import { UPDATE_NOTICE, createUpdateGuard, safeToReload } from './meta/selfUpdate.js';
 import { labBridge } from './meta/labBridge.js';
-import { CASE_BY_ID, HIDEOUT_TEMPLATE_LIST, TOUR_TOTAL } from './logic/caseModel.js';
-import { dayKey, nextUnopened, refreshOpened, waitingState } from './logic/pacing.js';
+import { CASE_BY_ID, HIDEOUT_TEMPLATE_LIST, activeArc, tourClosed, tourTotal } from './logic/caseModel.js';
+import { currentCase, dayKey, nextUnopened, refreshOpened, waitingState } from './logic/pacing.js';
 import { applyClose, closeRecord, newRun, reviveRun } from './logic/run.js';
 import { closeReports } from './logic/payout.js';
 import { buildHideout } from './logic/hideout.js';
@@ -35,7 +35,7 @@ import { createClosed } from './ui/closed.js';
 import { createParentZone } from './ui/parentZone.js';
 import { skinSpellPanel } from './ui/spellSkin.js';
 
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'squirrelChase.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -221,13 +221,13 @@ async function boot() {
       else labMounts.push(kind === 'hud' ? labBridge.hud({ mount, compact }) : labBridge.results({ mount }));
     }
   }
-  /** This game's card on the Lab home: "Chaser: n cases", "NY tour: n / 6", today's case ("New case ready" / "Next case tomorrow"). */
+  /** This game's card on the Lab home: "Chaser: n cases", "NY tour: n / 6", then "USA tour: n / 6", today's case ("New case ready" / "Next case tomorrow"). */
   function labSummary() {
     if (!labPlayer) return;
     try {
       const n = Object.keys(save.closed || {}).length;
-      const w = waitingState(save);
-      labBridge.summary({ level: `Chaser: ${n} ${n === 1 ? 'case' : 'cases'}`, line: `NY tour: ${n} / ${TOUR_TOTAL}`,
+      const w = waitingState(save), arc = activeArc(save, currentCase(save));
+      labBridge.summary({ level: `Chaser: ${n} ${n === 1 ? 'case' : 'cases'}`, line: arc ? `${arc.labName}: ${tourClosed(save, arc)} / ${tourTotal(arc)}` : `Tour: ${n}`,
         today: w === 'open' ? 'New case ready' : w === 'tomorrow' ? 'Next case tomorrow' : 'All cases closed' });
     } catch (_) { /* never in the way */ }
   }

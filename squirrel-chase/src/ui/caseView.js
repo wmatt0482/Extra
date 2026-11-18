@@ -4,7 +4,7 @@
 // a gentle line, no penalty, no counter. Leaving keeps what was answered (each word already banked) and resumes at the same stop.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { createKeyboard } from '../../../spell-jump/src/spelling/keyboard.js';
-import { CITY_BY_ID, CITY_LIST, artCity, briefingOf, gangArt, gangOf, hideoutOf, missingOf, signOf, stopsOf } from '../logic/caseModel.js';
+import { CITY_BY_ID, artCity, citiesFor, mapOf, mapPos, briefingOf, gangArt, gangOf, hideoutOf, missingOf, signOf, stopsOf } from '../logic/caseModel.js';
 import { bothOpen, chooseCity, finish, firstSealed, followTrail, openNote, setHideout, startChase, stillMissing } from '../logic/run.js';
 import { markSentence, scoreHideout, tokens } from '../logic/hideout.js';
 import { chiefPortrait, drawMap, gangPortrait, pipPortrait, postcardSvg, signSvg, wenPortrait, witnessPortrait } from '../art/index.js';
@@ -19,6 +19,7 @@ export function createCaseView(app) {
   const root = $('#case-body');
   let kase = null, run = null, stops = [], busy = false, kb = null, typed = '', scored = null, looking = false, token = 0, fix = null, fixTimer = 0;
   const signEl = () => $('#case-sign');
+  const mapKind = () => mapOf(kase);          // 'ny' | 'usa': every map of this case is drawn for its tour and lists only that tour's cities
 
   const save = () => app.persistWip(run);
   const msgEl = () => $('#case-msg');
@@ -85,10 +86,10 @@ export function createCaseView(app) {
   }
   function visitedIds() { return stops.slice(0, run.stop + 1).map((s) => s.cityId); }
   function paintMap(box, highlight = null) {
-    drawMap(box, { cities: CITY_LIST, highlight, visited: visitedIds() });
+    drawMap(box, { cities: citiesFor(mapKind()), highlight, visited: visitedIds(), arc: mapKind() });
     const pins = box.querySelectorAll('[data-city]');
     if (!pins.length) {          // the map art offers no tappable pins: every real city as a button under it
-      const row = h('div', { class: 'city-row' }, ...CITY_LIST.map((c) => h('button', { class: 'btn btn-sm', type: 'button', 'data-city': c.id }, c.name)));
+      const row = h('div', { class: 'city-row' }, ...citiesFor(mapKind()).map((c) => h('button', { class: 'btn btn-sm', type: 'button', 'data-city': c.id }, c.name)));
       box.append(row);
     }
     box.onclick = (e) => {
@@ -112,7 +113,7 @@ export function createCaseView(app) {
   }
   function openLens(ids) {
     if (busy || $('#city-lens')) return;
-    const list = ids.map((id) => CITY_BY_ID[id]).filter(Boolean).sort((p, q) => p.y - q.y);
+    const list = ids.map((id) => CITY_BY_ID[id]).filter(Boolean).map((c) => ({ id: c.id, name: c.name, ...mapPos(c, mapKind()) })).sort((p, q) => p.y - q.y);
     const xs = list.map((c) => c.x), minX = Math.min(...xs), spanX = Math.max(...xs) - minX || 1;
     const back = h('div', { class: 'lens-back', id: 'city-lens', role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Zoomed in: tap the city' });
     const close = () => { back.remove(); document.removeEventListener('keydown', onKey); };
@@ -302,7 +303,8 @@ export function createCaseView(app) {
     app.audio.cash();
     const a = box && box.querySelector(`[data-city="${res.from}"]`), b = box && box.querySelector(`[data-city="${res.to}"]`);
     if (a && b) {
-      const v = h('span', { class: 'vehicle', html: vehicleSvg(stop.index % 2 ? 'train' : 'plane') });
+      const kind = mapKind() === 'usa' || !(stop.index % 2) ? 'plane' : 'train';       // long US hops are always the plane
+      const v = h('span', { class: 'vehicle', 'data-vehicle': kind, html: vehicleSvg(kind) });
       await fly(v, rectOfEl(a), rectOfEl(b), { ms: 1000, arc: 24 });
     }
     if (res.letter != null) await flyLetters([res.letter], b || box, true);

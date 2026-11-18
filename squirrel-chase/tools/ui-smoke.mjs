@@ -147,7 +147,7 @@ const state = (page) => J(page, () => {
 const model = (page) => J(page, async () => {
   const m = await import('/squirrel-chase/src/logic/caseModel.js');
   const one = (c) => ({ title: c.title, sign: m.signOf(c), missing: m.missingOf(c), stops: m.stopsOf(c).map((s) => ({ cityId: s.cityId, next: s.next, last: s.last, clues: s.witnesses.map((x) => x.clue) })), postcard: m.postcardOf(c).facts, route: m.routeOf(c) });
-  return { seq: m.SEQUENCE, cases: Object.fromEntries(m.CASE_LIST.map((c) => [c.id, one(c)])), cities: m.CITY_LIST.map((c) => ({ id: c.id, name: c.name })) };
+  return { seq: m.SEQUENCE, cases: Object.fromEntries(m.CASE_LIST.map((c) => [c.id, one(c)])), cities: m.CITY_LIST.map((c) => ({ id: c.id, name: c.name })), nyCities: m.citiesFor('ny').map((c) => c.id), usCities: m.citiesFor('usa').map((c) => c.id) };
 });
 const wordsDocOf = (page, id = 'pmia') => J(page, (id) => JSON.parse(localStorage.getItem(`spellJump.${id}.words`) || 'null'), id);
 const saveOf = (page, id = 'pmia') => J(page, (id) => JSON.parse(localStorage.getItem(`squirrelChase.${id}.save`) || 'null'), id);
@@ -193,6 +193,7 @@ async function playLayout(browser, layout) {
   await page.waitForSelector(visibleSel('#screen-players'));
   const M = await model(page);
   const c1 = M.cases[M.seq[0]];
+  const nyOnly = (id) => M.nyCities.includes(id);
   const active = ACTIVE_WORDS.map((w) => w.word);
   const archived = ARCHIVED_WORDS.map((w) => w.word);
 
@@ -207,10 +208,11 @@ async function playLayout(browser, layout) {
   await page.click('[data-player="pmia"]');
   await page.waitForSelector(visibleSel('#screen-home'));
   await page.waitForSelector('#lab-slot-home .lab-chipx', { timeout: 8000 }).then(() => check(true, 'the case board has the Lab chip (top-left slot)'), () => check(false, 'the case board has the Lab chip'));
-  check((await page.$$('#home-map [data-city]')).length === M.cities.length, `the map shows every city as a tappable pin (${M.cities.length})`);
+  check((await page.$$('#home-map [data-city]')).length === M.nyCities.length && M.nyCities.length < M.cities.length, `the New York map shows only the New York cities as tappable pins (${M.nyCities.length} of ${M.cities.length})`);
+  check(/New York tour: 0 \/ 2/.test(await textOf(page, '.board-title .label')), 'the board names the tour: "New York tour: 0 / 2"');
   check(await exists(page, '#btn-open-case[data-state="new"]') && (await textOf(page, '#btn-open-case')) === 'Start the chase', 'today\'s case is open: "Start the chase"');
   check(!(await exists(page, '#next-note')), 'no "Next case tomorrow" while a case is waiting');
-  check((await page.$$eval('.stamp-card.sealed', (e) => e.length)) === M.seq.length - 1 && !(await page.$eval('.home-side', (e) => e.innerText)).includes(M.cases[M.seq[1]].title), 'the next case is sealed: its title is not shown');
+  check((await page.$$eval('.stamp-card.sealed[data-case]', (e) => e.length)) === 1 && (await exists(page, '.tour-sealed[data-arc="usa"]')) && !(await page.$eval('.home-side', (e) => e.innerText)).includes(M.cases[M.seq[1]].title), 'the next case is sealed: its title is not shown');
   check(!!(await J(page, () => window.__squirrelChase.save.opened['ny-01'])) && !(await J(page, () => window.__squirrelChase.save.opened['ny-02'])), 'one case opens on the first day');
   await audit(page, layout.insets, 'case board'); await kidAudit(page, 'case board');
   await shot(page, layout, '02-home-map');
@@ -274,7 +276,8 @@ async function playLayout(browser, layout) {
     // travel: the map
     await page.waitForSelector('#travel-map [data-city]');
     check((await textOf(page, '#clue-recap')).includes(stop.clues[0]) && (await textOf(page, '#clue-recap')).includes(stop.clues[1]), 'the map shows both clues');
-    const wrong = M.cities.find((c) => c.id !== stop.next && c.id !== stop.cityId) || M.cities[0];
+    check((await page.$$('#travel-map [data-city]')).length === M.nyCities.length, `the travel map lists only the New York cities (${M.nyCities.length})`);
+    const wrong = M.cities.find((c) => nyOnly(c.id) && c.id !== stop.next && c.id !== stop.cityId) || M.cities[0];
     const before = await state(page);
     await tapCity(page, wrong.id);
     check((await textOf(page, '#case-msg')) === COLD, `a wrong city ("${wrong.name}") gets the gentle line: "${COLD}"`);
@@ -380,7 +383,7 @@ async function playLayout(browser, layout) {
   for (const d of '1234') await page.click(`.pin-key[data-digit="${d}"]`);
   await page.waitForSelector('#pz-progress');
   const prog = await textOf(page, '#pz-progress');
-  check(/1 of 2 cases closed/.test(prog) && /1 postcard/.test(prog), `Parent Zone: cases closed and postcards ("${prog}")`);
+  check(/1 of 2 cases closed on the New York tour; 0 of 2 cases closed on the USA tour/.test(prog) && /1 postcard/.test(prog), `Parent Zone: cases closed and postcards ("${prog}")`);
   check(/words on the current list practiced/.test(await textOf(page, '#pz-words')) && /Today's mission: \d+ \/ 8/.test(await textOf(page, '#pz-words')), 'Parent Zone: words practiced come from Spell Jump\'s records');
   check(await exists(page, '#pz-open-next') && (await exists(page, '#pz-cases')), 'Parent Zone: "Open the next case now" and the closed cases');
   await audit(page, layout.insets, 'Parent Zone players'); await shot(page, layout, '14-parent-zone');
@@ -412,6 +415,55 @@ async function playLayout(browser, layout) {
   check(dev.filter((t) => t && t !== 'ready').length === 0, `the device voice was never used${dev.length ? ' (' + dev.slice(0, 3).join(', ') + ')' : ''}`);
   const asked = [...pre.asked, ...(await J(page, () => window.__cloudAsked.flatMap((a) => a.texts)))];
   check(asked.length > 0 && asked.length < 140, `the natural voice was asked for only what the case needs (${asked.length} texts, not the whole game)`);
+  check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''}`);
+  await ctx.close();
+}
+
+// ---------- the USA Tour: the arc after the New York tour, on the US map, with the plane ----------
+async function usaLayout(browser, layout) {
+  console.log(`\n=== the USA Tour (${layout.name}) ===`);
+  const { ctx, page, errors } = await newPage(browser, layout, { now: Date.UTC(2026, 10, 11, 15) });
+  // a save with every New York case closed on Nov 10 (the "done" state of v0.1), a postcard for each
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('sqSavedUsa')) return;
+    sessionStorage.setItem('sqSavedUsa', '1');
+    const rec = (day, at) => ({ day, at, words: ['friend'], hideout: { correct: 1, total: 1 } });
+    localStorage.setItem('squirrelChase.pmia.save', JSON.stringify({ v: 1, opened: { 'ny-01': '2026-11-09', 'ny-02': '2026-11-10' }, closed: { 'ny-01': rec('2026-11-09', 1), 'ny-02': rec('2026-11-10', 2) }, album: ['niagara-falls', 'buffalo'], nextEarly: false, updatedAt: 5 }));
+    window.__vehicles = [];
+    new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches && n.matches('.vehicle')) window.__vehicles.push(n.getAttribute('data-vehicle')); }).observe(document, { childList: true, subtree: true });
+  });
+  await page.goto(URL0, { waitUntil: 'networkidle' });
+  await page.waitForSelector(visibleSel('#screen-players'));
+  const M = await model(page);
+  await page.click('[data-player="pmia"]'); await page.waitForSelector(visibleSel('#screen-home'));
+  check(await exists(page, '#btn-open-case[data-case="usa-01"]'), 'a save with the whole New York tour closed opens usa-01 on the next day, with no parent action');
+  check(/USA tour: 0 \/ 2/.test(await textOf(page, '.board-title .label')) && /Case 1 of 2/.test(await textOf(page, '.today-card .label')), 'the board names the USA tour and counts its own cases ("USA tour: 0 / 2", "Case 1 of 2")');
+  const pins = await page.$$eval('#home-map [data-city]', (e) => e.map((x) => x.getAttribute('data-city')).sort());
+  check(pins.join() === [...M.usCities].sort().join() && M.usCities.length === 4, `the home map lists only the US-map cities (${pins.join(', ')})`);
+  check((await page.$$('.tour-title')).length === 2 && (await page.$$('.stamp-list[data-arc="ny"] .stamp-card[data-state="closed"]')).length === 2 && (await page.$$('.stamp-list[data-arc="usa"] .stamp-card.sealed[data-case="usa-02"]')).length === 1, 'the case board shows both tours: the New York stamps, then the USA tour');
+  check(!/countdown|days? left|hours?/i.test(await page.$eval('.home-side', (e) => e.innerText)), 'no countdown on the board');
+  await audit(page, layout.insets, 'the USA board'); await kidAudit(page, 'the USA board');
+  await shot(page, layout, '20-usa-home');
+  await page.click('#btn-open-case'); await page.click('#btn-start');
+  const c = M.cases['usa-01'];
+  for (let w = 0; w < 2; w++) { await page.waitForSelector(`.note.sealed[data-w="${w}"]`); await page.click(`.note.sealed[data-w="${w}"]`); await spellNote(page); await page.waitForSelector(`.note.open[data-w="${w}"]`); }
+  await page.click('#btn-follow');
+  await page.waitForSelector('#travel-map [data-city]');
+  const tp = await page.$$eval('#travel-map [data-city]', (e) => e.map((x) => x.getAttribute('data-city')).sort());
+  check(tp.join() === [...M.usCities].sort().join(), `the travel map is the case's map and lists only its cities (${tp.join(', ')})`);
+  await audit(page, layout.insets, 'the US travel map'); await kidAudit(page, 'the US travel map');
+  await shot(page, layout, '21-usa-travel');
+  const wrongId = M.usCities.find((id) => id !== c.stops[0].next && id !== c.stops[0].cityId);
+  await tapCity(page, wrongId);
+  check((await textOf(page, '#case-msg')) === COLD, `a wrong US city gets the gentle line ("${COLD}")`);
+  await tapCity(page, c.stops[0].next);
+  await page.waitForFunction(() => window.__squirrelChase.run.stop === 1, null, { timeout: 8000 });
+  check((await J(page, () => window.__vehicles)).join() === 'plane', 'travel between US cities is the plane');
+  await page.waitForSelector('.note.sealed');
+  await page.click('#case-back'); await page.waitForSelector(visibleSel('#screen-home'));
+  await page.click('#btn-album'); await page.waitForSelector(visibleSel('#screen-album'));
+  check((await page.$$('#album-body .tour-title')).length === 1 && (await page.$$('#album-body .album-grid .postcard')).length === 2, 'the album groups postcards by tour (the New York tour first)');
+  await shot(page, layout, '22-album-by-tour');
   check(errors.length === 0, `no console errors${errors.length ? ': ' + errors.slice(0, 3).join(' | ') : ''}`);
   await ctx.close();
 }
@@ -448,7 +500,7 @@ async function offlineTest(browser, layout) {
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.waitForTimeout(2500);                                                      // (the worker fills its cache from what the page loaded)
   const names = await page.evaluate(() => caches.keys());
-  check(names.includes('squirrel-chase-v0.1.0'), `the service worker's cache is squirrel-chase-v0.1.0 (${names.filter((n) => /squirrel/.test(n)).join(', ')})`);
+  check(names.includes('squirrel-chase-v0.2.0'), `the service worker's cache is squirrel-chase-v0.2.0 (${names.filter((n) => /squirrel/.test(n)).join(', ')})`);
   const manifest = await page.evaluate(() => fetch('manifest.webmanifest').then((r) => r.json()));
   check(manifest.name === "Pip's Squirrel Chase" && manifest.icons.length >= 2, 'the manifest names the game and has icons');
   await ctx.setOffline(true);
@@ -461,6 +513,7 @@ const { chromium } = await loadPlaywright();
 const browser = await chromium.launch();
 try {
   for (const layout of LAYOUTS) await playLayout(browser, layout);
+  for (const layout of LAYOUTS) await usaLayout(browser, layout);
   await quietLayout(browser, LAYOUTS[0]);
   await offlineTest(browser, LAYOUTS[0]);
 } catch (e) { failures.push('crashed: ' + (e && e.stack || e)); console.log('  ✗ crashed: ' + (e && e.stack || e)); }

@@ -9,7 +9,7 @@ import * as WS from '../../../spell-jump/src/spelling/wordStore.js';
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { icon } from '../../../spell-jump/src/ui/icons.js';
 import { FAMILY_MUSIC_HELP, FAMILY_MUSIC_LABEL, familyMusicIsOn, setFamilyMusic } from '../../../spell-jump/src/ui/musicNote.js';
-import { CASE_BY_ID, TOUR_TOTAL, CITY_BY_ID } from '../logic/caseModel.js';
+import { ARC_LIST, CASE_BY_ID, CITY_BY_ID, tourClosed, tourTotal } from '../logic/caseModel.js';
 import { drawAvatar } from './avatar.js';
 
 const HOLD_MS = 3000;
@@ -189,7 +189,7 @@ export function createParentZone(app) {
     const save = app.saveOf(playerId);
     const out = [playerTabs()];
     const closed = Object.entries(save.closed).map(([id, r]) => ({ id, r, k: CASE_BY_ID[id] })).filter((x) => x.k).sort((a, b) => a.r.at - b.r.at);
-    out.push(h('div', { class: 'pz-sec' }, 'Progress'), h('div', { class: 'pz-help', id: 'pz-progress' }, `${closed.length} of ${TOUR_TOTAL} cases closed on the New York tour. ${save.album.length} ${save.album.length === 1 ? 'postcard' : 'postcards'} in the album.`));
+    out.push(h('div', { class: 'pz-sec' }, 'Progress'), h('div', { class: 'pz-help', id: 'pz-progress' }, `${ARC_LIST.map((a) => `${tourClosed(save, a)} of ${tourTotal(a)} cases closed on the ${a.short}`).join('; ')}. ${save.album.length} ${save.album.length === 1 ? 'postcard' : 'postcards'} in the album.`));
     out.push(h('div', { class: 'pz-sec' }, 'Words practiced'), h('div', { class: 'pz-help', id: 'pz-words' }, wordsLine(playerId)));
     const next = app.nextCaseTitleFor(playerId);
     const openBtn = h('button', { class: 'btn btn-sun', id: 'pz-open-next', 'data-sfx': '' }, 'Open the next case now');

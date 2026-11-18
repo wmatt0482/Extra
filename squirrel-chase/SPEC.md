@@ -1,7 +1,7 @@
 # Pip's Squirrel Chase: build contract (v0.1 — the New York tour)
 
 A spelling chase game for the learninglab.fun family (Spell Jump, Trail Blazer, Fraction Fright, Wagon West, Build Crew,
-Case Files, The Lab). Folder `squirrel-chase/`, served at `/squirrel-chase/`, name **Pip's Squirrel Chase**, version **0.1.0**,
+Case Files, The Lab). Folder `squirrel-chase/`, served at `/squirrel-chase/`, name **Pip's Squirrel Chase**, version **0.2.0** (v0.1: the New York tour; v0.2 adds the USA Tour, docs/V0.2-USA.md),
 family sync kind **`sq`**. Audience: Matt's 4th graders.
 
 **Story.** The Scribble Gang — led by **Scrabble the squirrel**, with a raccoon, a crow, a possum and a goat, each with a
@@ -66,7 +66,7 @@ State map (clean, recognizable outline, the Finger Lakes, the Erie Canal line, A
 ≥ 18px phones. Portrait/landscape phones + desktop, no horizontal scroll.
 
 ## 7. Platform
-PWA (sw.js cache `squirrel-chase-v0.1.0`, manifest, icons), `build.sh` copy to `dist/squirrel-chase/`, `netlify.toml` redirect + headers +
+PWA (sw.js cache `squirrel-chase-v0.2.0`, manifest, icons), `build.sh` copy to `dist/squirrel-chase/`, `netlify.toml` redirect + headers +
 ignore path, home-page card in `site/index.html`, Games menu entry (Lab `games` list / paths), sync kind `sq` in
 `car-jump/src/sync/protocol.mjs` PLAYER_KINDS (+ key regex; netlify function and every sync test still pass), Lab registration like Case
 Files (GAMES, names, glyph, events row `sq.case` flat payout, quest "Close a Squirrel Chase case", looks optional), `lab.summary('sq',

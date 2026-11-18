@@ -5,10 +5,11 @@ import assert from 'node:assert/strict';
 import * as WS from '../../spell-jump/src/spelling/wordStore.js';
 import { createSession, noteSpelled, MISSION_SIZE } from '../../spell-jump/src/spelling/scheduler.js';
 import { PLAYER_KINDS, parseKey } from '../../car-jump/src/sync/protocol.mjs';
-import { CASE_LIST, CITY_BY_ID, CITY_LIST, HIDEOUT_TEMPLATE_LIST, SEQUENCE, artCity, briefingOf, crewOf, flightOrder, gangArt, gangOf, hideoutCity, hideoutOf, missingOf, postcardOf, recoveryOf, routeOf, signOf, stopsOf, teaserOf } from '../src/logic/caseModel.js';
+import { ARC_LIST, CASE_LIST, CITY_BY_ID, CITY_LIST, activeArc, arcOf, citiesFor, mapOf, mapPos, onMap, tourClosed, tourTotal, HIDEOUT_TEMPLATE_LIST, SEQUENCE, artCity, briefingOf, crewOf, flightOrder, gangArt, gangOf, hideoutCity, hideoutOf, missingOf, postcardOf, recoveryOf, routeOf, signOf, stopsOf, teaserOf } from '../src/logic/caseModel.js';
 import { CASES as REAL_CASES, CLUE_BY_ID, GANG as REAL_GANG } from '../src/content/index.js';
 import { GANG_LOOK, gangPortrait, MAP_BOX } from '../src/art/index.js';
-import { MAP_BOUNDS, toMap } from '../src/content/geo.js';
+import * as GEO from '../src/content/geo.js';
+const { MAP_BOUNDS, toMap } = GEO;
 import { currentCase, dayKey, nextUnopened, refreshOpened, waitingState } from '../src/logic/pacing.js';
 import { activeEntries, activeWords, pickMany, pickWord, recordWord, schedulerOptions } from '../src/logic/words.js';
 import { buildHideout, fillTemplate, usedAsNoun, listWordsIn, markSentence, normSentence, scoreHideout, templateSentence, tokens } from '../src/logic/hideout.js';
@@ -240,6 +241,43 @@ test('after the last case: nothing to open, state "done"; the early flag clears'
   assert.deepEqual(refreshOpened(s, '2026-11-09', SEQ), []); assert.equal(s.nextEarly, false);
   assert.equal(waitingState(s, SEQ), 'done'); assert.equal(nextUnopened(s, SEQ), null);
 });
+const NY6 = ['ny-01', 'ny-02', 'ny-03', 'ny-04', 'ny-05', 'ny-06'], USA6 = ['usa-01', 'usa-02', 'usa-03', 'usa-04', 'usa-05', 'usa-06'], TOUR = [...NY6, ...USA6];
+const closedRec = (day) => ({ day, at: 1, words: [], hideout: { correct: 0, total: 0 } });
+test('USA Tour: a save with all six NY cases closed (the "done" state of v0.1) opens usa-01 on the next local day, with no parent action', () => {
+  const s = defaultSave();
+  for (const id of NY6) { s.opened[id] = '2026-11-01'; s.closed[id] = closedRec('2026-11-16'); }
+  assert.equal(waitingState(s, NY6), 'done', 'on the NY sequence alone it was done');
+  assert.equal(waitingState(s, TOUR), 'tomorrow');
+  assert.deepEqual(refreshOpened(s, '2026-11-16', TOUR), [], 'not on the day the last NY case closed');
+  assert.equal(s.nextEarly === true, false);
+  assert.deepEqual(refreshOpened(s, '2026-11-17', TOUR), ['usa-01']);
+  assert.equal(currentCase(s, TOUR), 'usa-01'); assert.equal(waitingState(s, TOUR), 'open');
+  assert.deepEqual(NY6.filter((id) => !s.closed[id]), [], 'closed cases never re-lock');
+  assert.deepEqual(refreshOpened(s, '2026-11-18', TOUR), [], 'one case at a time: usa-02 waits for usa-01 to close');
+  s.closed['usa-01'] = closedRec('2026-11-18');
+  assert.deepEqual(refreshOpened(s, '2026-11-18', TOUR), []); assert.deepEqual(refreshOpened(s, '2026-11-19', TOUR), ['usa-02']);
+});
+test('USA Tour: after usa-06 the board is done; nothing re-opens or re-locks', () => {
+  const s = defaultSave(); for (const id of TOUR) { s.opened[id] = '2026-11-01'; s.closed[id] = closedRec('2026-11-02'); }
+  assert.equal(waitingState(s, TOUR), 'done'); assert.deepEqual(refreshOpened(s, '2026-12-01', TOUR), []); assert.equal(Object.keys(s.closed).length, 12);
+});
+test('arcs: every case belongs to an arc with a map; the New York tour comes first and an arc with no `map` is a New York arc', () => {
+  assert.ok(ARC_LIST.length >= 1 && ARC_LIST[0].id === 'ny' && ARC_LIST[0].map === 'ny');
+  for (const k of CASE_LIST) { assert.ok(arcOf(k), k.id); assert.ok(['ny', 'usa'].includes(mapOf(k))); assert.ok(k.arcOrder >= 1 && k.arcOrder <= tourTotal(arcOf(k))); }
+  assert.equal(CASE_LIST.length, ARC_LIST.reduce((n, a) => n + tourTotal(a), 0));
+  assert.deepEqual(SEQUENCE, ARC_LIST.flatMap((a) => a.cases));
+  const s = defaultSave(); assert.equal(activeArc(s).id, 'ny'); assert.equal(tourClosed(s, ARC_LIST[0]), 0);
+  s.opened[ARC_LIST[0].cases[0]] = '2026-11-09'; s.closed[ARC_LIST[0].cases[0]] = closedRec('2026-11-09'); assert.equal(tourClosed(s, ARC_LIST[0]), 1);
+});
+test('maps: a city is on the NY map unless coords is null, on the US map only with usCoords; each map lists only its own cities', () => {
+  assert.equal(onMap({ id: 'a', coords: { x: 0.1, y: 0.2 } }, 'ny'), true); assert.equal(onMap({ id: 'a', coords: { x: 0.1, y: 0.2 } }, 'usa'), false, 'no usCoords: not on the US map');
+  assert.equal(onMap({ id: 'b', coords: null, usCoords: { x: 0.5, y: 0.5 } }, 'ny'), false); assert.equal(onMap({ id: 'b', coords: null, usCoords: { x: 0.5, y: 0.5 } }, 'usa'), true);
+  assert.equal(onMap({ id: 'c', x: 0.3, y: 0.3 }, 'ny'), true, 'an old city with only x, y is a NY city'); assert.equal(onMap({ id: 'c', x: 0.3, y: 0.3 }, 'usa'), false);
+  assert.deepEqual(mapPos({ usCoords: { x: 0.25, y: 0.75 } }, 'usa'), { x: 0.25, y: 0.75 });
+  for (const c of citiesFor('ny')) { assert.ok(c.coords && Number.isFinite(c.coords.x)); }
+  for (const c of citiesFor('usa')) { assert.ok(c.usCoords); }
+  for (const k of CASE_LIST) for (const id of routeOf(k)) assert.ok(onMap(CITY_BY_ID[id], mapOf(k)), `${k.id}: ${id} is on the ${mapOf(k)} map`);
+});
 test('dayKey is the local calendar day', () => { assert.match(dayKey(NOW), /^2026-11-\d\d$/); });
 
 // ---------------- the save ----------------
@@ -379,7 +417,10 @@ test('the art uses the content\'s gang names and accepts a content id; a city go
 });
 test('one map box: the art\'s box is the content\'s MAP_BOUNDS, and every city\'s coords are toMap(latLng)', () => {
   assert.equal(MAP_BOX.latMin, MAP_BOUNDS.south); assert.equal(MAP_BOX.latMax, MAP_BOUNDS.north); assert.equal(MAP_BOX.lonMin, MAP_BOUNDS.west); assert.equal(MAP_BOX.lonMax, MAP_BOUNDS.east);
-  for (const c of CITY_LIST) { const m = toMap(c.latLng.lat, c.latLng.lng); assert.deepEqual({ x: c.x, y: c.y }, m, c.id); }
+  for (const c of CITY_LIST) {
+    if (c.coords === null) assert.ok(c.usCoords, `${c.id}: a city off the NY map is on the US map`); else { const m = toMap(c.latLng.lat, c.latLng.lng); assert.deepEqual({ x: c.x, y: c.y }, m, c.id); }
+    if (c.usCoords && GEO.toUsMap) assert.deepEqual(c.usCoords, GEO.toUsMap(c.latLng.lat, c.latLng.lng), `${c.id} usCoords`);
+  }
   assert.ok(CITY_BY_ID['watkins-glen'] && CITY_BY_ID.binghamton);
 });
 test('usedAsNoun: after a/the and followed by an end or a small word; not "the beautiful sky"', () => {

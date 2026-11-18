@@ -1,4 +1,5 @@
-// Plays every REAL case of Pip's Squirrel Chase (the New York tour, src/content/) end to end in a browser, portrait 390x844 and landscape 844x390, from the repo root:
+// Plays every REAL case of Pip's Squirrel Chase (the New York tour ny-01..06, then the USA Tour usa-01..06, src/content/) end to end in a browser, portrait 390x844 and landscape 844x390, from the repo root:
+// NOTE: usa-01..06 can only pass once the real USA content (cases, usCoords cities) and the US map art have landed in src/; until then it plays the NY tour only.
 //   bash build.sh && (cd dist && python3 -m http.server 8821 &)      then      BASE_URL=http://localhost:8821 node squirrel-chase/tools/content-play.mjs
 //   (ONLY=portrait | landscape runs one part; CASES=ny-01,ny-02 plays only those (a prefix of the tour: a case opens only after the one before it closed); SHOTS_DIR=... keeps screenshots at deviceScaleFactor 2)
 // Unlike ui-smoke.mjs (which runs on fixture content), this runs the shipped content with a real class list (the Nov 2 list of Spell Jump's class lists) and
@@ -14,7 +15,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { CLASS_LIST_BY_ID } from '../../car-jump/src/data/classLists.js';
-import { CASES, CITY_BY_ID, GANG_BY_ID } from '../src/content/index.js';
+import { ARCS, CASES, CITIES, CITY_BY_ID, GANG_BY_ID } from '../src/content/index.js';
 import { usedAsNoun } from '../src/logic/hideout.js';
 
 const BASE = process.env.BASE_URL || 'http://localhost:8821';
@@ -183,7 +184,7 @@ async function spellNote(page, { missFirst = false, onPanel = null } = {}) {
 }
 
 // ---------- the map: pins, labels and tap targets (390 px phone and landscape) ----------
-async function mapAudit(page, label, selector) {
+async function mapAudit(page, label, selector, expectIds = CITY_IDS) {
   const r = await J(page, (sel) => {
     const box = document.querySelector(sel);
     const mb = box.getBoundingClientRect();
@@ -194,7 +195,7 @@ async function mapAudit(page, label, selector) {
     return { w: mb.width, left: mb.left, right: mb.right, top: mb.top, bottom: mb.bottom, pins };
   }, selector);
   const ids = r.pins.map((p) => p.id);
-  check(CITY_IDS.every((id) => ids.includes(id)), `${label}: every city has a pin (${ids.length}), Watkins Glen and Binghamton included`);
+  check(expectIds.every((id) => ids.includes(id)) && ids.every((id) => expectIds.includes(id)), `${label}: exactly this map's cities have a pin (${ids.length})`);
   check(r.pins.every((p) => p.text === p.name), `${label}: every pin has its label (${r.pins.filter((p) => p.text !== p.name).map((p) => p.id).join(', ') || 'all match'})`);
   const inside = r.pins.filter((p) => p.cx < r.left || p.cx > r.right || p.cy < r.top || p.cy > r.bottom || p.lab.l < r.left - 1 || p.lab.r > r.right + 1 || p.lab.t < r.top - 1 || p.lab.b > r.bottom + 1);
   check(inside.length === 0, `${label}: pins and labels are inside the map${inside.length ? ' — ' + inside.map((p) => p.id).join(', ') : ''}`);
@@ -215,7 +216,10 @@ async function mapAudit(page, label, selector) {
   check(far.length === 0, `${label}: every city with room has a tap target of 44 px or more${far.length ? ' — ' + far.join(', ') : ''}`);
   return { close, pins: r.pins };
 }
-const CITY_IDS = Object.keys(CITY_BY_ID);
+const mapOfCase = (kase) => ((ARCS || []).find((a) => (a.cases || []).includes(kase.id)) || {}).map === 'usa' ? 'usa' : 'ny';
+/** The cities a map draws: NY = coords not null; US = has usCoords. */
+const idsOnMap = (map) => CITIES.filter((c) => (map === 'usa' ? !!c.usCoords : c.coords !== null)).map((c) => c.id);
+let CITY_IDS = idsOnMap('ny');
 
 /** Tap a pin on the map at its head (a real thumb); returns whether the zoom-in list opened. */
 async function tapPin(page, sel, id) {
@@ -251,7 +255,7 @@ async function playCase(page, layout, kase, idx, env) {
     await shot(page, layout, `${kase.id}-01-home-map`);
   }
   if (idx === 0) {
-    const m = await mapAudit(page, `${layout.name} case-board map`, '#home-map');
+    const m = await mapAudit(page, `${layout.name} case-board map`, '#home-map', idsOnMap(mapOfCase(PLAY[0])));
     env.closePairs = m.close;
     await audit(page, layout.insets, 'case board'); await kidAudit(page, 'case board');
   }
@@ -319,10 +323,12 @@ async function playCase(page, layout, kase, idx, env) {
     await page.waitForSelector('#travel-map [data-city]');
     const recap = await textOf(page, '#clue-recap');
     check(stop.witnesses.every((w) => recap.includes(w.note)), `${kase.id}: the map shows both clues`);
-    if (idx === 0 && i === 0) {
-      const m = await mapAudit(page, `${layout.name} travel map`, '#travel-map');
+    if (i === 0 && env.auditedMap !== mapOfCase(kase)) {
+      env.auditedMap = mapOfCase(kase);
+      const m = await mapAudit(page, `${layout.name} travel map (${mapOfCase(kase)})`, '#travel-map', idsOnMap(mapOfCase(kase)));
       env.closePairs = m.close;
     }
+    CITY_IDS = idsOnMap(mapOfCase(kase));
     const nextId = route[i + 1];
     const wrong = CITY_IDS.find((c) => c !== nextId && c !== stop.city && !(env.closePairs || []).some((s) => s.startsWith(c + '~')));
     const before = await state(page);
@@ -420,7 +426,7 @@ async function playCase(page, layout, kase, idx, env) {
   const apology = kase.hideout.gangLines[kase.hideout.gangLines.length - 1];
   check(norm(await textOf(page, '#gang-line')) === `${GANG_BY_ID[apology.who].name}: ${apology.text}`, `${kase.id}: the closed screen has the gang's apology`);
   const isFinal = kase.id === CASES[CASES.length - 1].id;
-  check(isFinal ? !(await exists(page, '#teaser')) : (await textOf(page, '#teaser')) === kase.teaser, `${kase.id}: ${isFinal ? 'the finale ends the tour' : 'the teaser points at the next case'}`);
+  check(isFinal || !kase.teaser ? !(await exists(page, '#teaser')) : (await textOf(page, '#teaser')) === kase.teaser, `${kase.id}: ${isFinal ? 'the finale ends the tour' : 'the teaser points at the next case'}`);
   check(/Case closed/.test(await textOf(page, '#see-you')), `${kase.id}: "${await textOf(page, '#see-you')}"`);
   await page.waitForFunction(() => { const p = document.querySelector('#payout'); return p && p.dataset.coins === '40'; }, null, { timeout: 8000 }).then(() => check(true, `${kase.id}: the Lab paid the flat reward`), () => check(false, `${kase.id}: the Lab payout arrived`));
   if (shotsFor) { await audit(page, layout.insets, `${kase.id} closed`); await kidAudit(page, `${kase.id} closed`); await shot(page, layout, `${kase.id}-10-closed`, 700); }
@@ -445,7 +451,7 @@ async function playLayout(browser, layout) {
   let day = 0;
   for (let i = 0; i < PLAY.length; i++) {
     const kase = PLAY[i];
-    env.shotsFor = i === 0 || kase.id === 'ny-04' || kase.id === 'ny-06';
+    env.shotsFor = i === 0 || ['ny-04', 'ny-06', 'usa-01', 'usa-03', 'usa-06'].includes(kase.id);
     env.missHideout = kase.id === 'ny-03';
     env.missNote = i === 0;
     if (i > 0) {
@@ -474,12 +480,14 @@ async function playLayout(browser, layout) {
   // the album: every postcard
   await page.click('#btn-album');
   await page.waitForSelector(visibleSel('#screen-album'));
-  check((await page.$$('.album-grid .postcard')).length === PLAY.length, `the album has ${PLAY.length} postcards`);
+  const postcardCities = new Set(PLAY.map((c) => c.postcard.city));       // (New York City ends both tours: one postcard)
+  check((await page.$$('.album-grid .postcard')).length === postcardCities.size, `the album has ${postcardCities.size} postcards (${PLAY.length} cases)`);
+  if (PLAY.some((c) => mapOfCase(c) === 'usa') && PLAY.some((c) => mapOfCase(c) === 'ny')) check((await page.$$('#album-body .tour-title')).length === 2, 'the album is grouped by tour');
   await audit(page, layout.insets, 'the album'); await shot(page, layout, 'album', 500);
   await page.click('#screen-album [data-back="home"]');
   await page.waitForSelector(visibleSel('#screen-home'));
   await shot(page, layout, 'home-closed', 300);
-  if (PLAY.length === CASES.length) { await mapAudit(page, `${layout.name} board map after the tour`, '#home-map'); }
+  if (PLAY.length === CASES.length) { await mapAudit(page, `${layout.name} board map after the tour`, '#home-map', idsOnMap(mapOfCase(PLAY[PLAY.length - 1]))); }
 
   // the rules over the whole run
   const spoken = await played(page);

@@ -2,7 +2,7 @@
 // as postcard stamps, the sealed ones to come, and the postcard album. One case a day: a case that has not arrived yet is sealed (its title is not
 // shown) and the board says "Next case tomorrow" with no countdown. A closed case stays on the board and in the album.
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
-import { CASE_LIST, CITY_BY_ID, artCity, CITY_LIST, TOUR_TOTAL, hideoutCity, missingOf, routeOf, signOf } from '../logic/caseModel.js';
+import { ARC_BY_ID, ARC_LIST, CASE_BY_ID, CITY_BY_ID, activeArc, artCity, citiesFor, hideoutCity, missingOf, onMap, routeOf, signOf, tourClosed, tourTotal } from '../logic/caseModel.js';
 import { currentCase, waitingState } from '../logic/pacing.js';
 import { drawMap, pipPortrait, postcardSvg, signSvg } from '../art/index.js';
 import { artBox } from './fx.js';
@@ -19,7 +19,7 @@ export function createHome(app) {
     go.addEventListener('click', () => app.openCase(kase.id));
     return h('section', { class: 'today-card paper', 'aria-label': "Today's case" },
       h('div', { class: 'today-top' }, artBox(pipPortrait('happy'), 'face face-pip'),
-        h('div', { class: 'today-text' }, h('span', { class: 'label' }, `Case ${kase.order} of ${TOUR_TOTAL} · today's case`), h('h2', {}, kase.title))),
+        h('div', { class: 'today-text' }, h('span', { class: 'label' }, `Case ${kase.arcOrder} of ${tourTotal(ARC_BY_ID[kase.arc])} · today's case`), h('h2', {}, kase.title))),
       artBox(signSvg(signOf(kase), missingOf(kase)), 'sign-art', 'The sign the gang swiped letters from'),
       go);
   }
@@ -32,8 +32,8 @@ export function createHome(app) {
     return b;
   }
   function sealedCard(kase) {
-    return h('div', { class: 'stamp-card sealed', 'data-case': kase.id, 'data-state': 'sealed', 'aria-label': `Case ${kase.order}, arrives later` },
-      h('span', { class: 'case-no' }, String(kase.order)), h('div', { class: 'sc-text' }, h('div', { class: 'sc-title' }, 'Sealed case'), h('div', { class: 'sc-meta' }, 'Arrives on a later day')), h('span', { html: app.icon('lock'), class: 'lock-ico' }));
+    return h('div', { class: 'stamp-card sealed', 'data-case': kase.id, 'data-state': 'sealed', 'aria-label': `Case ${kase.arcOrder}, arrives later` },
+      h('span', { class: 'case-no' }, String(kase.arcOrder)), h('div', { class: 'sc-text' }, h('div', { class: 'sc-title' }, 'Sealed case'), h('div', { class: 'sc-meta' }, 'Arrives on a later day')), h('span', { html: app.icon('lock'), class: 'lock-ico' }));
   }
 
   function show() {
@@ -43,22 +43,31 @@ export function createHome(app) {
     if (p) drawAvatar($('#home-avatar'), p.color);
     const cur = currentCase(save);
     const wait = waitingState(save);
-    const closedN = Object.keys(save.closed).length;
     const curCase = cur && app.caseById[cur];
+    const arc = activeArc(save, cur), map = arc ? arc.map : 'ny';
     const mapEl = h('div', { class: 'map-box', id: 'home-map' });
-    const kids = [h('div', { class: 'board-title' }, h('h1', {}, "Pip's Squirrel Chase"), h('span', { class: 'label' }, `New York tour: ${closedN} / ${TOUR_TOTAL}`))];
+    const kids = [h('div', { class: 'board-title' }, h('h1', {}, "Pip's Squirrel Chase"), h('span', { class: 'label' }, arc ? `${arc.short}: ${tourClosed(save, arc)} / ${tourTotal(arc)}` : ''))];
     const left = h('div', { class: 'home-map paper' }, mapEl, h('p', { class: 'map-note' }, curCase ? "Today's chase starts at the glowing city." : 'Green stamps are cities you have been to.'));
     const right = h('div', { class: 'home-side' });
     const tc = todayCard(save, cur);
     if (tc) right.append(tc);
     if (wait === 'tomorrow') right.append(h('div', { class: 'next-note', id: 'next-note' }, h('span', { html: app.icon('calendar'), class: 'ico' }), 'Next case tomorrow.'));
     else if (wait === 'done') right.append(h('div', { class: 'next-note', id: 'next-note' }, 'Every case on the tour is closed. More are on the way.'));
-    const list = h('div', { class: 'stamp-list' });
-    for (const k of CASE_LIST) {
-      if (save.closed[k.id]) list.append(stampCard(k, save.closed[k.id]));
-      else if (!save.opened[k.id]) list.append(sealedCard(k));
-    }
-    if (list.children.length) right.append(h('div', { class: 'sec-title' }, 'Case board'), list);
+    // the case board: every tour, the New York tour first; a tour not begun yet is one sealed card (its cases stay hidden)
+    right.append(h('div', { class: 'sec-title' }, 'Case board'));
+    ARC_LIST.forEach((a, ai) => {
+      const begun = ai === 0 || a.cases.some((id) => save.opened[id] || save.closed[id]);
+      const list = h('div', { class: 'stamp-list', 'data-arc': a.id });
+      if (!begun) list.append(h('div', { class: 'stamp-card sealed tour-sealed', 'data-arc': a.id, 'data-state': 'sealed', 'aria-label': `${a.title}, comes after the ${ARC_LIST[ai - 1].short}` },
+        h('span', { html: app.icon('lock'), class: 'lock-ico' }), h('div', { class: 'sc-text' }, h('div', { class: 'sc-title' }, a.title), h('div', { class: 'sc-meta' }, `${a.cases.length} cases · comes after the ${ARC_LIST[ai - 1].short}`)), h('span')));
+      else for (const id of a.cases) {
+        const k = CASE_BY_ID[id];
+        if (save.closed[id]) list.append(stampCard(k, save.closed[id]));
+        else if (!save.opened[id]) list.append(sealedCard(k));
+      }
+      if (ARC_LIST.length > 1) right.append(h('div', { class: 'tour-title', 'data-arc': a.id }, h('span', {}, a.title), begun ? h('span', { class: 'label' }, `${tourClosed(save, a)} / ${tourTotal(a)}`) : null));
+      if (list.children.length) right.append(list);
+    });
     const album = h('button', { class: 'btn btn-paper', id: 'btn-album', type: 'button', 'data-sfx': '' }, `Postcard album (${save.album.length})`);
     album.addEventListener('click', () => app.go('album'));
     right.append(h('div', { class: 'home-actions' }, album));
@@ -66,7 +75,7 @@ export function createHome(app) {
     body.replaceChildren(...kids);
     body.scrollTop = 0;
     const first = curCase ? routeOf(curCase)[0] : null;
-    drawMap(mapEl, { cities: CITY_LIST, highlight: first, visited: save.album });
+    drawMap(mapEl, { cities: citiesFor(map), highlight: first, visited: save.album.filter((id) => onMap(CITY_BY_ID[id], map)), arc: map });
   }
 
   return { home: { show } };
