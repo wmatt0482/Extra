@@ -142,7 +142,7 @@ differently. Clues never name the city, and every clue is built on one of these 
 | The Freedom Trail is a 2.5-mile walking trail that links 16 historic sites; the red line on the ground was added in 1958 | https://americantrails.org/resources/the-freedom-trail-massachusetts |
 | In 1634 the townspeople bought William Blackstone's farm to be the Boston Common; cows were forbidden on it in 1830 | https://www.nps.gov/places/boston-common-ma.htm |
 | Swan Boats are pedal-powered and have been a Public Garden fixture since 1877 | https://www.bu.edu/articles/2024/boston-swan-boats |
-| USS Constitution, launched in Boston in 1797, is the oldest commissioned warship afloat in the world; nickname "Old Ironsides" (the facts say "oldest navy ship that still floats") | https://www.nps.gov/places/uss-constitution.htm |
+| USS Constitution, launched in Boston in 1797, is the oldest commissioned warship afloat in the world; nickname "Old Ironsides" (the facts say "oldest navy ship ... still afloat and in service") | https://www.nps.gov/places/uss-constitution.htm |
 
 ### Philadelphia
 
@@ -150,8 +150,8 @@ differently. Clues never name the city, and every clue is built on one of these 
 |---|---|
 | The Liberty Bell is recognizable for its crack; no one recorded when or why it first cracked | https://www.nps.gov/inde/learn/historyculture/stories-libertybell.htm |
 | The Declaration of Independence and the U.S. Constitution were both debated and signed in Independence Hall | https://www.nps.gov/inde/learn/historyculture/places-independencehall.htm |
-| The first U.S. Mint building was built in Philadelphia and opened in 1793; its first coins were silver half dimes and copper cents | https://kids.usmint.gov/about-the-mint/history-timeline |
-| The Philadelphia Zoo opened July 1, 1874; its slogan is "America's First Zoo" (worded as "calls itself America's first zoo" because a Central Park menagerie is older). **spot-check** (encyclopedia; the zoo's own 150th-anniversary page agrees in search excerpts) | https://en.wikipedia.org/wiki/Philadelphia_Zoo |
+| The first U.S. Mint building was built in Philadelphia and opened in 1793; the game says it made copper cents (the page also lists 1793 half dimes, but regular half dimes began in 1794 per Wikipedia, Half dime, so the game leaves them out) | https://kids.usmint.gov/about-the-mint/history-timeline |
+| The Philadelphia Zoo opened July 1, 1874; its slogan is "America's First Zoo" (the fact and clue c7 both quote it as the zoo's own slogan, because a Central Park menagerie, 1864, is older). **spot-check** (encyclopedia; the zoo's own 150th-anniversary page agrees in search excerpts) | https://en.wikipedia.org/wiki/Philadelphia_Zoo |
 
 ### Washington, D.C.
 
@@ -175,6 +175,9 @@ Kennedy Space Center is on Merritt Island, next to Cape Canaveral; the game uses
 
 ### New Orleans
 
+San Antonio was also founded in 1718, so the clue says "French settlers founded".
+
+
 | Claim | Source |
 |---|---|
 | New Orleans was founded in 1718 by the French; the French Quarter (Vieux Carre) is its oldest neighborhood. **spot-check** (encyclopedia; the National Park Service page https://www.nps.gov/jazz/learn/historyculture/history_early.htm confirms the 1718 founding) | https://en.wikipedia.org/wiki/French_Quarter |
@@ -193,9 +196,12 @@ Kennedy Space Center is on Merritt Island, next to Cape Canaveral; the game uses
 
 ### St. Louis
 
+The zoo is free, but so are Lincoln Park Zoo (Chicago) and the National Zoo (Washington, D.C.), so the clues pair "free" with the flight cage from the 1904 world's fair.
+
+
 | Claim | Source |
 |---|---|
-| The stainless-steel Gateway Arch is 630 feet tall; the National Park Service calls it the nation's tallest monument | https://www.nps.gov/jeff/planyourvisit/materials-and-techniques.htm |
+| The stainless-steel Gateway Arch is 630 feet tall; it stands beside the Mississippi River (the "tallest monument" claim was dropped: it is not on the cited page) | https://www.nps.gov/jeff/planyourvisit/materials-and-techniques.htm |
 | Gateway Arch National Park has only 91 acres, the smallest national park in the United States | https://www.nps.gov/jeff/learn/nature/nature.htm |
 | Admission to the Saint Louis Zoo is free (some attractions inside charge a fee) | https://stlzoo.org/visit |
 | The zoo's Flight Cage was built for the 1904 World's Fair; St. Louisans rallied to keep it and it led to the zoo | https://stlzoo.org/zones/historic-hill/1904-flight-cage-and-cypress-swamp |
@@ -225,7 +231,7 @@ Kennedy Space Center is on Merritt Island, next to Cape Canaveral; the game uses
 | Claim | Source |
 |---|---|
 | The Space Needle is 605 feet tall and opened shortly before the 1962 World's Fair (Century 21 Exposition) | https://www.historylink.org/file/1424 |
-| Pike Place Market opened in 1907; the city calls it the oldest continuously operating public market in the country | https://www.seattle.gov/neighborhoods/historic-preservation/historic-districts/pike-place-market-historical-district |
+| Pike Place Market opened in 1907; the city calls it the oldest continuously operating public market in the country (older markets exist, so the game says "one of the oldest") | https://www.seattle.gov/neighborhoods/historic-preservation/historic-districts/pike-place-market-historical-district |
 | (clue only) Fish sellers at the Market throw fish ("the place where they throw the fish") | https://www.historylink.org/File/22703 |
 | The Fremont Troll sits under a bridge, is made of rebar, wire and two tons of ferroconcrete, and clutches a car (the text avoids the car brand and the bridge's formal name) | https://www.historylink.org/File/7785 |
 | Floating homes on Lake Union have been lived in since the 1920s and are still a Seattle neighborhood | https://www.seattle.gov/cityarchives/exhibits-and-education/seattle-segments/floating-homes |
@@ -275,4 +281,4 @@ Kennedy Space Center is on Merritt Island, next to Cape Canaveral; the game uses
   itself says "generally considered"). Chicago's "the Bean" nickname and "Cape Canaveral" for the Kennedy Space Center
   area (the center is on Merritt Island) are common usage, not formal names.
 - **Pike Place Market's "oldest" claim**: the city says oldest continuously operating public market; the Market itself is
-  more hedged, so the text says "oldest public market in the country that is still running" (spot-check).
+  more hedged, and Lancaster Central Market (1730) and Reading Terminal Market (Philadelphia, 1893) are older, so the text says "one of the oldest public markets in the country that is still running".
