@@ -50,6 +50,20 @@ export function currentCase(save, seq = SEQUENCE) {
 /** The next unopened case id (what the parent's "Open the next case now" opens), or null. */
 export const nextUnopened = (save, seq = SEQUENCE) => seq.find((id) => !save.opened[id]) || null;
 
+/** The map an arc draws: 'erie' unless the arc says otherwise (the Erie arc may not carry `map`). */
+export const mapOf = (arc) => (arc && arc.map === 'genesee' ? 'genesee' : 'erie');
+/** The arc's short name for a folder tab or the Lab line: "Erie Canal", "Genesee Valley". */
+export const arcShortName = (arc) => String((arc && arc.title) || '').replace(/^The /, '').replace(/ Files$/, '');
+/** The arc the home's route map shows: the arc of the current case (the open, or else the next one to arrive); when every case is
+ *  closed, the last arc. Detective Training belongs to no arc: with only Training open the first arc shows. */
+export function currentArc(save, arcs = ARCS, seq = SEQUENCE, trainingId = TRAINING.id) {
+  if (!arcs.length) return null;
+  const arcOf = (id) => arcs.find((a) => a.cases.some((k) => k.id === id));
+  const inArcs = seq.filter((id) => id !== trainingId);
+  const id = inArcs.find((x) => save.opened && save.opened[x] && !(save.closed && save.closed[x])) || inArcs.find((x) => !(save.opened && save.opened[x]));
+  return id ? (arcOf(id) || arcs[0]) : arcs[arcs.length - 1];
+}
+
 export const RANKS = Object.freeze([1, 2, 3, 4, 5, 6]);
 /** The Parent Zone labels (SPEC §4, verbatim wording for the approximate level). */
 export const RANK_LABELS = Object.freeze({

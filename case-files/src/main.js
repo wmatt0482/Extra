@@ -21,7 +21,7 @@ import { labLooks } from './meta/labLooks.js';
 import { ARCS, CASE_BY_ID, TRAINING } from './content/index.js';
 import { LINES } from './logic/lines.js';
 import { allCoachLines } from './logic/coach.js';
-import { dayKey, nextUnopened, rankLabel, refreshOpened, waitingState } from './logic/pacing.js';
+import { arcShortName, currentArc, dayKey, nextUnopened, rankLabel, refreshOpened, waitingState } from './logic/pacing.js';
 import { applyClose, applyReplay, closeRecord, newRun } from './logic/run.js';
 import { closeReports } from './logic/payout.js';
 import { caseVoiceTexts } from './meta/voiceTexts.js';
@@ -35,7 +35,7 @@ import { createCoach } from './ui/coach.js';
 import { createParentZone } from './ui/parentZone.js';
 import { EXTRA_ICONS, drawAvatar, drawBackdrop } from './ui/art.js';
 
-const VERSION = '0.1.5';
+const VERSION = '0.2.0';
 const params = new URLSearchParams(location.search);
 const RESUME_KEY = 'caseFiles.resumePlayer';   // sessionStorage: the player to come back to after an update reload
 const swUsable = 'serviceWorker' in navigator && /^https?:$/.test(location.protocol) && !params.has('nosw');
@@ -185,15 +185,15 @@ async function boot() {
       else labMounts.push(kind === 'hud' ? labBridge.hud({ mount, compact }) : labBridge.results({ mount }));
     }
   }
-  /** v0.1.4 (cohesion): this game's card on the Lab home: "Detective: n cases closed", "Erie Canal: n / 5", today's case ("New case ready" / "Next case tomorrow"). */
+  /** v0.1.4 (cohesion): this game's card on the Lab home: "Detective: n cases closed", "Erie Canal: n / 5", then "Genesee Valley: n / 5" (the arc of the current case), today's case ("New case ready" / "Next case tomorrow"). */
   function labSummary() {
     if (!labPlayer) return;
     try {
       const n = Object.keys(save.closed || {}).length;
-      const erie = ARCS.find((a) => a.id === 'erie') || ARCS[0];
-      const inErie = erie ? erie.cases.filter((k) => save.closed && save.closed[k.id]).length : 0;
+      const arc = currentArc(save);                       // the arc of the current case (the last arc when everything is closed)
+      const inArc = arc ? arc.cases.filter((k) => save.closed && save.closed[k.id]).length : 0;
       const w = waitingState(save);
-      labBridge.summary({ level: `Detective: ${n} ${n === 1 ? 'case' : 'cases'} closed`, line: erie ? `Erie Canal: ${inErie} / ${erie.cases.length}` : `${n} cases closed`,
+      labBridge.summary({ level: `Detective: ${n} ${n === 1 ? 'case' : 'cases'} closed`, line: arc ? `${arcShortName(arc)}: ${inArc} / ${arc.cases.length}` : `${n} cases closed`,
         today: w === 'open' ? 'New case ready' : w === 'tomorrow' ? 'Next case tomorrow' : 'All cases closed' });
     } catch (_) { /* never in the way */ }
   }

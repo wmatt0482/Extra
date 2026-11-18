@@ -9,11 +9,11 @@ memory and writing a one-sentence case report. One new case opens each day; the 
 - Learning design (technique, evidence, where it lives): [`docs/LEARNING-DESIGN.md`](docs/LEARNING-DESIGN.md).
 - Content (written to the SPEC section 5 format by the content agent): `src/content/`, `docs/CONTENT-GUIDE.md`, `docs/SOURCES.md`.
 
-Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.1.5`, manifest, icons). Version **0.1.5**.
+Served at `/case-files/` (a PWA: `sw.js`, cache `case-files-v0.2.0`, manifest, icons). Version **0.2.0**.
 
 ## The flow
 
-Picker ("Who's on the case?") → agency home (a cork board: Detective Training, then the Erie Canal folder; closed cases carry a CASE
+Picker ("Who's on the case?") → agency home (a cork board: Detective Training, then one folder per arc (Erie Canal, Genesee Valley); closed cases carry a CASE
 CLOSED stamp and stay re-readable in the Archive) → a case:
 
 1. **Briefing**: the Chief (voiced) states the objective; 2-3 case words are pre-taught with a tap-the-word task.
@@ -71,7 +71,7 @@ node case-files/tools/make-icons.mjs                  # regenerates icons/*.png
 node case-files/tools/content-tests.mjs               # (content agent) schema, ids, banned words, readability, word counts
 ```
 
-`content-play.mjs` plays Training and Erie 1-5 on the real content (all six at 390x844, Training + Erie 1 at 844x390; `ALL_LANDSCAPE=1` for all six; `CASE_IDS=erie-03` to pick cases; `SHOTS_DIR=` keeps screenshots): wrong pin and wrong accusation, the proof clue, the report, Case Closed, no horizontal scroll, the kid-rule word audit, the device voice never used.
+`content-play.mjs` plays Training, Erie 1-5 and (v0.2) Genesee 1-5 on the real content (every case at 390x844, Training + Erie 1 at 844x390; `ALL_LANDSCAPE=1` for every case; it also checks the home's route map is the case's arc map; the Genesee cases pass only once the real Genesee content is in `src/content/`; `CASE_IDS=erie-03` to pick cases; `SHOTS_DIR=` keeps screenshots): wrong pin and wrong accusation, the proof clue, the report, Case Closed, no horizontal scroll, the kid-rule word audit, the device voice never used.
 
 `ui-smoke.mjs` serves `tools/fixtures/` in place of `src/content/` (a Playwright route), so it does not depend on the final cases.
 It mocks the voice backend (`window.__cloudVoiceBackend`, as Spell Jump's test does) and puts a spy on the device voice
@@ -96,6 +96,18 @@ picked in Spell Jump. Only the current case's lines are prepared. The device voi
 on the screen and the listen buttons stay quiet (with a gentle note). The sound setting silences everything.
 
 ## Changelog
+
+### 0.2.0
+The Genesee Valley arc (`docs/V0.2-GENESEE.md`), app side. The content agent owns the five cases and the arc `map` / case `town` fields.
+- **Arc-aware pacing**: a save that closed all six v0.1 cases opens `genesee-01` on the next local day with no parent action; closed cases never re-lock
+  (`logic-tests`: "v0.2: a save that closed all six v0.1 cases...").
+- **Arc-aware home**: the route map is the map of the current case's arc (`currentArc` in `logic/pacing.js`: the open case, else the next to arrive, else the
+  last arc; Training shows the first arc). `routemap.js` takes `map: 'erie' | 'genesee'` (`mapOf(arc)`; an arc without `map` is Erie). Erie is unchanged;
+  Genesee is a parchment map of the river running north to Lake Ontario with Letchworth, Rochester, Victor and Charlotte, case stops placed by the case's `town`
+  (a case without one falls back to its setting line), 44px buttons, no titles on sealed stops. One folder per arc.
+- **Lab line** names the current arc: "Erie Canal: n / 5", then "Genesee Valley: n / 5".
+- Tests: `tools/fixtures` gains a small Genesee arc (`genesee-01..05`, `map` and `town`); `ui-smoke` checks the map switch, the folders and the Lab line;
+  `content-play` plays the Genesee cases (needs the real content). VERSION 0.2.0, cache `case-files-v0.2.0`.
 
 ### 0.1.5
 - **Parents → Options → Background music in all games** (On / Off, behind the PIN): the family-wide switch kept in Spell Jump's family record

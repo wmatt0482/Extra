@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { TRAINING, ARCS, CASE_BY_ID } from './fixtures/index.js';
 import { becauseStep, checkTap, display, editDistance, matchSolution, norm, proofClues } from '../src/logic/answers.js';
-import { currentCase, dayKey, nextUnopened, rankLabel, readAloudDefault, refreshOpened, supportsFor, waitingState, wordsToTeach } from '../src/logic/pacing.js';
+import { arcShortName, currentArc, currentCase, dayKey, mapOf, nextUnopened, rankLabel, readAloudDefault, refreshOpened, supportsFor, waitingState, wordsToTeach } from '../src/logic/pacing.js';
 import { accuracyByStandard, allPinned, applyClose, applyReplay, attachClue, closeRecord, hashString, newRun, nextQuestion, pinTap, placeCard, requestHint, requiredDocs, submitReport, submitSolution, trayOf } from '../src/logic/run.js';
 import { DEFAULT_LEAD, cleanBecause, leadOf, reportText, splitLead, wordChips } from '../src/logic/report.js';
 import { HELP_KEYS, defaultSave, normalize } from '../src/meta/save.js';
@@ -92,7 +92,39 @@ test('the parent can open the next case now (nextEarly), once; the flag is spent
   assert.equal(nextUnopened(s, SEQ), 'erie-02');
   s.nextEarly = true; assert.deepEqual(refreshOpened(s, D(2), SEQ), ['erie-02']); assert.equal(s.nextEarly, false);
   assert.deepEqual(refreshOpened(s, D(2), SEQ), []);
-  s.nextEarly = true; assert.deepEqual(refreshOpened(s, D(2), SEQ), [], 'nothing left to open'); assert.equal(s.nextEarly, false); assert.equal(nextUnopened(s, SEQ), null);
+  const short = SEQ.slice(0, 3);                                  // Training, erie-01, erie-02: nothing left to open after erie-02
+  s.nextEarly = true; assert.deepEqual(refreshOpened(s, D(2), short), [], 'nothing left to open'); assert.equal(s.nextEarly, false); assert.equal(nextUnopened(s, short), null);
+});
+test('v0.2: a save that closed all six v0.1 cases opens genesee-01 on the next local day, with no parent action, and nothing ever re-locks', () => {
+  const V1 = ['training', 'erie-01', 'erie-02', 'erie-03', 'erie-04', 'erie-05'], SEQ2 = [...V1, 'genesee-01', 'genesee-02', 'genesee-03', 'genesee-04', 'genesee-05'];
+  const s = defaultSave(); V1.forEach((id, i) => { s.opened[id] = D(2 + i); closeIt(s, id, D(2 + i)); });   // the last (erie-05) closed on D(7)
+  const before = JSON.stringify(s.closed);
+  assert.equal(waitingState(s, V1), 'done', 'on the v0.1 content this was the done state');
+  assert.deepEqual(refreshOpened(s, D(7), SEQ2), [], 'the same day it closed: nothing new');
+  assert.equal(waitingState(s, SEQ2), 'tomorrow'); assert.equal(currentCase(s, SEQ2), null);
+  assert.deepEqual(refreshOpened(s, D(8), SEQ2), ['genesee-01'], 'the next local day: genesee-01 opens by itself');
+  assert.equal(s.opened['genesee-01'], D(8)); assert.equal(currentCase(s, SEQ2), 'genesee-01'); assert.equal(waitingState(s, SEQ2), 'open');
+  assert.deepEqual(refreshOpened(s, D(8), SEQ2), [], 'one a day');
+  assert.deepEqual(refreshOpened(s, D(30), SEQ2), [], 'genesee-01 is not closed: a gap does not open genesee-02');
+  assert.equal(JSON.stringify(s.closed), before, 'no closed case changed'); for (const id of V1) assert.ok(s.closed[id] && s.opened[id], `${id} stays closed and opened`);
+  // closing genesee-01 opens genesee-02 the day after, and the six earlier cases are untouched by all of it
+  closeIt(s, 'genesee-01', D(30)); assert.deepEqual(refreshOpened(s, D(31), SEQ2), ['genesee-02']);
+  for (const id of V1) assert.ok(s.closed[id]);
+  // the same save on another player's clock, a day later than the close, with the parent switch used: still once
+  const t = defaultSave(); V1.forEach((id) => { t.opened[id] = D(2); closeIt(t, id, D(2)); });
+  t.nextEarly = true; assert.deepEqual(refreshOpened(t, D(2), SEQ2), ['genesee-01']); assert.equal(t.nextEarly, false);
+});
+test('v0.2: the arc the home shows is the arc of the current case (the last arc when all is closed); an arc without map is the Erie map', () => {
+  const arcs = ARCS, seq = SEQ;
+  const s = defaultSave(); refreshOpened(s, D(2), seq);
+  assert.equal(currentArc(s, arcs, seq).id, 'erie', 'day 1: Training is no arc; Erie shows');
+  closeIt(s, 'training', D(2)); closeIt(s, 'erie-01', D(2)); refreshOpened(s, D(3), seq); closeIt(s, 'erie-02', D(3));
+  assert.equal(currentArc(s, arcs, seq).id, 'genesee', 'Erie done, genesee-01 not here yet: the next case to arrive is Genesee');
+  refreshOpened(s, D(4), seq); assert.equal(currentCase(s, seq), 'genesee-01'); assert.equal(currentArc(s, arcs, seq).id, 'genesee');
+  for (const id of seq) { s.opened[id] = D(5); closeIt(s, id, D(5)); }
+  assert.equal(currentArc(s, arcs, seq).id, 'genesee', 'everything closed: the last arc');
+  assert.equal(mapOf({ id: 'erie' }), 'erie'); assert.equal(mapOf({ id: 'erie', map: 'erie' }), 'erie'); assert.equal(mapOf({ id: 'genesee', map: 'genesee' }), 'genesee'); assert.equal(mapOf(null), 'erie');
+  assert.equal(arcShortName({ title: 'The Erie Canal' }), 'Erie Canal'); assert.equal(arcShortName({ title: 'The Genesee Valley' }), 'Genesee Valley'); assert.equal(arcShortName({ title: 'The Erie Canal Files' }), 'Erie Canal');
 });
 test('when every case is open and closed the home says so; closed cases stay in the save (re-reading is always allowed)', () => {
   const s = defaultSave(); for (const id of SEQ) { s.opened[id] = D(2); closeIt(s, id, D(2)); }
