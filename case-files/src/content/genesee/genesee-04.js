@@ -42,7 +42,7 @@ const d3 = doc('d3', { kind: 'placard', title: 'Welcome to Highland Park', from:
   [
     '@gift The two partners later gave twenty acres of their nursery land to the city, and it became Highland Park.',
     'Today the park holds more than 1,200 lilac bushes, and the Lilac Festival is held here each May.',
-    'The festival celebrates the gardens and nurseries of the Flower City.',
+    'The festival is held in Highland Park each May when the lilacs bloom.',
     'Please enjoy the flowers with your eyes, and leave every blossom on its bush.',
   ],
 ]);
@@ -135,7 +135,7 @@ export default {
   solution: { prompt: 'What was the older of Rochester\'s two nicknames?', answers: ['Flour City', 'the Flour City', 'Flour'], proof: [S.flour, S.second] },
   report: { lead: 'The older nickname was the ___ City', keywords: ['flour', 'flower', 'mills', 'nurseries', 'wheat', 'second'] },
   closing: { who: 'chief', text: 'Case closed! Both names are right, because Rochester was the Flour City first and the Flower City later. The banner stays up, thanks to your careful reading.' },
-  knowledge: 'Rochester was first known as the Flour City for its water-powered mills, and later as the Flower City for its nurseries and the lilacs of Highland Park.',
+  knowledge: 'Rochester was known as the Flour City for its water-powered mills, and later as the Flower City for its nurseries.',
   teaser: 'Tomorrow: a lighthouse on the shore of Lake Ontario, and a captain who sailed right past the river.',
   facts: [
     { claim: 'Rochester has been known as the "Flour City" and the "Flower City"; it was initially a boomtown because of the fertile Genesee River valley, which gave rise to flour mills, and by 1838 it was the largest flour-producing city in the United States.', source: 'https://en.wikipedia.org/wiki/Rochester,_New_York' },

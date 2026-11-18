@@ -30,7 +30,7 @@ const d2 = doc('d2', { kind: 'placard', title: 'Welcome to Letchworth State Park
   [
     '@bridge A railroad bridge crosses the gorge just above the Upper Falls, so visitors at the Upper Falls can see a train bridge high over the river.',
     '@ice Long ago, a huge sheet of ice called a glacier blocked the old river valley, and the Genesee River had to cut a new path through the rock, which made this young gorge.',
-    'In 1906, William Pryor Letchworth left his land to New York State, and it became the heart of the park.',
+    'In 1906, William Pryor Letchworth gave his land to New York State, and it became the heart of the park.',
     'Hikers will find many trails and lookouts, so please stay behind the railings and enjoy the view of the valley.',
     'The park is open all year, and each season gives the gorge a new look.',
   ],
@@ -131,6 +131,6 @@ export default {
     { claim: 'A railroad bridge (the Portage Viaduct until 2017, now an arch bridge) crosses immediately above the Upper Falls.', source: 'https://en.wikipedia.org/wiki/Letchworth_State_Park' },
     { claim: 'The Genesee River flows north through the park, which is roughly 17 miles long.', source: 'https://en.wikipedia.org/wiki/Letchworth_State_Park' },
     { claim: 'The gorge is geologically young, formed when the last continental glacier diverted the river from its old valley and forced it to cut a new one.', source: 'https://en.wikipedia.org/wiki/Letchworth_State_Park' },
-    { claim: 'William Pryor Letchworth began buying land near the Middle Falls in 1859 and left his 1,000-acre estate to New York in 1906, which became the core of the park.', source: 'https://en.wikipedia.org/wiki/Letchworth_State_Park' },
+    { claim: 'William Pryor Letchworth began buying land near the Middle Falls in 1859 and gave his 1,000-acre estate to New York in 1906, which became the core of the park.', source: 'https://en.wikipedia.org/wiki/Letchworth_State_Park' },
   ],
 };

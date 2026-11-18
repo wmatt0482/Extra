@@ -24,12 +24,12 @@ const d1 = doc('d1', { kind: 'logbook', title: 'Notebook of an Apprentice Printe
 const d2 = doc('d2', { kind: 'note', title: 'Note from the Shop Foreman', from: 'Mr. Walsh, shop foreman', stretch: false }, [
   [
     'Hattie, here is what I know about the motto of The North Star.',
-    '@three The motto has three lines, one right after the other, and the paper must print all three.',
-    '@lines The lines read: "Right is of no Sex," then "Truth is of no Color," and then "God is the Father of us all, and we are all Brethren."',
+    '@three The motto has three parts, one right after the other, and in our shop each part is set in its own row of type, so the paper must print all three.',
+    '@lines The parts read: "Right is of no Sex," then "Truth is of no Color," and then "God is the Father of us all, and we are all Brethren."',
     'The editor wants these words printed exactly, because they tell readers what his newspaper is for.',
   ],
   [
-    'Each line is set in its own row of type, so one row can slip out of the frame without the others moving.',
+    'Each part is set in its own row of type, so one row can slip out of the frame without the others moving.',
     '@pull When you pull a proof, check every row against these three lines, one by one.',
     'Once you find the missing row, set it again and lock it in the frame.',
     'Then pull one more proof, and show it to the editor when he returns.',

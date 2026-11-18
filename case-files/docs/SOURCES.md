@@ -78,7 +78,7 @@ loc.gov, britannica.com and sni.org did not return readable text, so claims lean
 | The Haudenosaunee Confederacy lived peacefully "under an imaginary longhouse" across New York State; the Seneca are the Keepers of the Western Door | https://www.ganondagan.org/bark-longhouse |
 | Corn, beans and squash (the Three Sisters) are central to Seneca life; Ganondagan has a Three Sisters garden. (The page also gives a Seneca-language name; the game deliberately uses no Seneca words.) | https://www.ganondagan.org/plants-1/things-that-sustain-us%2C-the-three-sisters |
 | Planted together in a mound: corn gives beans a structure to climb, beans replenish the soil, squash is living mulch that conserves water and controls weeds | https://www.history.com/articles/three-sisters-native-american-agriculture-beans-corn-squash |
-| The Seneca Nation is a living nation with territories in western New York. **spot-check** (sni.org did not load; the living-nation point is backed by the Ganondagan quote above) | https://sni.org/about/ |
+| The Seneca are a living nation; the Seneca Nation of Indians and the Tonawanda Band of Seneca have territories in western New York (Wikipedia, Seneca Nation of Indians). **spot-check** (sni.org did not load; the living-nation point is backed by the Ganondagan quote above) | https://sni.org/about/ |
 | "Saving seed from the best plants each spring" and picking, drying and storing corn in the fall are general gardening statements in the educator's notebook, not sourced Seneca claims. **spot-check** | (none) |
 
 Avoided on purpose: the 1687 attack and anything about war or destruction; ceremonies; Seneca-language words; the
@@ -104,7 +104,7 @@ Building vs. Buffalo Street); anything about arrests or punishment.
 | "Grand Canyon of the East"; the Genesee River roars through the gorge over three major waterfalls between cliffs as high as 600 feet | https://parks.ny.gov/parks/letchworth |
 | Upper, Middle and Lower Falls; the Middle Falls is highest; a railroad bridge (Portage Viaduct until 2017, now an arch bridge) crosses immediately above the Upper Falls; park about 17 miles long, river flows north | https://en.wikipedia.org/wiki/Letchworth_State_Park |
 | Gorge is geologically young: the last glacier diverted the river from its old valley and forced it to cut a new one | https://en.wikipedia.org/wiki/Letchworth_State_Park |
-| William Pryor Letchworth bought land near the Middle Falls from 1859 and left the estate to New York in 1906, the core of the park | https://en.wikipedia.org/wiki/Letchworth_State_Park |
+| William Pryor Letchworth bought land near the Middle Falls from 1859 and gave the estate to New York in 1906 (he lived until 1910), the core of the park | https://en.wikipedia.org/wiki/Letchworth_State_Park |
 | Falls order (Upper is upstream of Middle, Lower is downstream) follows the river flowing north and the names; Wikipedia lists the three falls in the southern Portage Canyon. **spot-check** order on a trail map | https://en.wikipedia.org/wiki/Letchworth_State_Park |
 
 Not used: waterfall heights (sources vary; Middle Falls is only called "the highest"), acreage, the Seneca name of the valley.
@@ -128,8 +128,8 @@ case asks only which of the two came first), and what the old mill buildings are
 |---|---|
 | 1822 octagonal stone lighthouse, about 40 feet tall, on Lake Ontario at the mouth of the Genesee River; ten whale-oil lamps (originally) | https://en.wikipedia.org/wiki/Charlotte%E2%80%93Genesee_Lighthouse |
 | Station finished 1822; ten lamps with reflectors; a sand bar at the river mouth troubled mariners; piers authorized 1829 | https://www.us-lighthouses.com/displaypage.php?LightID=98 |
-| Oldest surviving lighthouse on Lake Ontario; today a museum run by the Charlotte-Genesee Lighthouse Historical Society | https://geneseelighthouse.org/ |
-| The light was a steady (non-blinking) light, and ships looked for different signals at different harbors. Lamps with reflectors of that period were fixed lights, but no page found says "steady" for Charlotte in 1825. **spot-check** | https://www.lighthousefriends.com/light.asp?ID=304 |
+| Oldest surviving lighthouse on the American side of Lake Ontario (the historical society says "America's oldest"; Gibraltar Point in Toronto, begun 1808, is older); today a museum run by the Charlotte-Genesee Lighthouse Historical Society | https://geneseelighthouse.org/ |
+| The light was a steady (fixed) light: Lt. Charles T. Platt's 1838 inspection report describes the Genesee light as "10 lamps and the same number of bright reflectors, fixed" (the original 1822 lamps); most US lights of the period were fixed and a few revolved, e.g. Sodus Bay (1825) on Lake Ontario housed a revolving light. The 1838 report is 13 years after the story, so "steady in 1825" is a close inference. | https://www.us-lighthouses.com/displaypage.php?LightID=98 , https://www.lighthousefriends.com/light.asp?ID=304 |
 | Schooners carrying grain to valley mills, and a strong current at the lake shore, are story color. **spot-check** | (none) |
 
 Not used: the first keeper's real name, the pre-lighthouse "pilot tree" lantern story, and the discontinuation date (sources differ).

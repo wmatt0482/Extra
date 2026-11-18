@@ -3,11 +3,11 @@ import { doc, handles } from '../helpers.js';
 const d1 = doc('d1', { kind: 'logbook', title: 'Garden Notebook', from: 'Lena Pierce, Seneca educator', stretch: false }, [
   [
     'My name is Lena Pierce, and I am a Seneca educator at Ganondagan State Historic Site in Victor, New York.',
-    'I am a member of the Seneca Nation, and I love teaching visitors about our garden and our longhouse.',
+    'I belong to the Seneca nation, and I love teaching visitors about our garden and our longhouse.',
     'This morning a class of fourth graders is coming to see our Three Sisters garden, so I walked every row at sunrise.',
     '@sisters The Three Sisters are corn, beans and squash, and we plant all three together in one low hill of earth called a mound.',
     'In the fall we pick the corn, dry it and store it, and the harvest gives us food for the winter.',
-    'The Seneca Nation has farmed with these three crops for a very long time, and we are glad to share the garden.',
+    'The Seneca have farmed with these three crops for a very long time, and we are glad to share the garden.',
     'Each spring we also save some seed from the best plants, so the garden can start again the next year.',
   ],
   [
@@ -45,8 +45,8 @@ const d2 = doc('d2', { kind: 'placard', title: 'Welcome to the Three Sisters Gar
 const d3 = doc('d3', { kind: 'letter', title: 'Letter to the Visiting Class', from: 'Lena Pierce, Seneca educator', stretch: true }, [
   [
     'Dear students, thank you for visiting Ganondagan today, and I hope your questions follow you home.',
-    'Many people picture the Seneca only in the past, but the Seneca Nation is a nation that is alive today.',
-    'Its people keep their own culture and their own government.',
+    'Many people picture the Seneca only in the past, but the Seneca are a living nation today.',
+    'As a nation, Seneca people keep their own language, culture and government.',
     'The Seneca Art & Culture Center opened here in 2015, and it lets Haudenosaunee people tell their own story.',
   ],
   [
@@ -129,7 +129,7 @@ export default {
   },
   solution: { prompt: 'Which of the Three Sisters was never planted in mound two?', answers: ['squash', 'the squash', 'squash seeds'], proof: [S.shed, S.squash] },
   report: { lead: 'The sister left out of mound two was ___', keywords: ['squash', 'weeds', 'packet', 'sealed', 'leaves', 'mound'] },
-  closing: { who: 'chief', text: 'Case closed! Mound two never got its squash, so the weeds had the bare ground to themselves. Lena, a proud member of the Seneca Nation, says thank you, and she is planting the missing sister today. Fine reading, Detective.' },
+  closing: { who: 'chief', text: 'Case closed! Mound two never got its squash, so the weeds had the bare ground to themselves. Lena, a proud educator of the Seneca nation, says thank you, and she is planting the missing sister today. Fine reading, Detective.' },
   knowledge: 'At Ganondagan State Historic Site in Victor, the Seneca, known as the Keepers of the Western Door, are a living nation, and corn, beans and squash are still planted together in mounds.',
   teaser: 'Tomorrow: a Rochester print shop is one line short on the night before a brand-new newspaper appears.',
   facts: [
@@ -138,6 +138,6 @@ export default {
     { claim: 'The Haudenosaunee Confederacy joined nations in peace "under an imaginary longhouse"; the Seneca are the Keepers of the Western Door.', source: 'https://www.ganondagan.org/bark-longhouse' },
     { claim: 'Corn, beans and squash (the Three Sisters) are central to Seneca life; Ganondagan has a Three Sisters garden.', source: 'https://www.ganondagan.org/plants-1/things-that-sustain-us%2C-the-three-sisters' },
     { claim: 'Grown together in one mound, corn gives the beans a structure to climb, the beans replenish the soil, and squash leaves act as living mulch that conserves water and controls weeds.', source: 'https://www.history.com/articles/three-sisters-native-american-agriculture-beans-corn-squash' },
-    { claim: 'The Seneca Nation is a living nation today with territories in western New York.', source: 'https://sni.org/about/' },
+    { claim: 'The Seneca are a living nation today; the Seneca Nation of Indians and the Tonawanda Band of Seneca have territories in western New York.', source: 'https://sni.org/about/' },
   ],
 };
