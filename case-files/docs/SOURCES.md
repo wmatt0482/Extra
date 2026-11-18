@@ -62,6 +62,78 @@ real range (a flour barrel weighed about 200 pounds; canal boats carried tens of
 | The canal rises from the Hudson up to Lake Erie, so boats heading west climb and boats heading east descend | https://en.wikipedia.org/wiki/Flight_of_Five_Locks |
 | The canal crossed rivers and valleys on aqueducts and passed through many locks (83 locks in the original canal) | https://eriecanal.org/Rochester-1.html |
 
+## Genesee Valley arc (v0.2)
+
+Characters, dialogue, names of keepers, captains, printers, rangers and the Seneca educator are fictional; the Seneca educator
+(Lena Pierce) is invented so that the Seneca appear as a living nation. Pages were read through the proxy with curl where they
+loaded (ganondagan.org, parks.ny.gov, Wikipedia, us-lighthouses.com, lighthousefriends.com, geneseelighthouse.org, tclf.org).
+loc.gov, britannica.com and sni.org did not return readable text, so claims leaning on them are marked **spot-check**.
+
+### Case 1: The Case of the Weedy Mound (Victor, today)
+
+| Claim | Source |
+|---|---|
+| Ganondagan State Historic Site is in Victor, NY; it is a National Historic Landmark; the Seneca Bark Longhouse (1998) and Seneca Art & Culture Center (2015) are there; Seneca today "are not a people in the past tense. We live today." | https://ganondagan.org/about |
+| Longhouse dedicated July 25, 1998; frame of young elm trees, siding of elm bark lashed with bark-fiber rope; a longhouse was home to several families | https://www.ganondagan.org/bark-longhouse |
+| The Haudenosaunee Confederacy lived peacefully "under an imaginary longhouse" across New York State; the Seneca are the Keepers of the Western Door | https://www.ganondagan.org/bark-longhouse |
+| Corn, beans and squash (the Three Sisters) are central to Seneca life; Ganondagan has a Three Sisters garden. (The page also gives a Seneca-language name; the game deliberately uses no Seneca words.) | https://www.ganondagan.org/plants-1/things-that-sustain-us%2C-the-three-sisters |
+| Planted together in a mound: corn gives beans a structure to climb, beans replenish the soil, squash is living mulch that conserves water and controls weeds | https://www.history.com/articles/three-sisters-native-american-agriculture-beans-corn-squash |
+| The Seneca Nation is a living nation with territories in western New York. **spot-check** (sni.org did not load; the living-nation point is backed by the Ganondagan quote above) | https://sni.org/about/ |
+| "Saving seed from the best plants each spring" and picking, drying and storing corn in the fall are general gardening statements in the educator's notebook, not sourced Seneca claims. **spot-check** | (none) |
+
+Avoided on purpose: the 1687 attack and anything about war or destruction; ceremonies; Seneca-language words; the
+"People of the Longhouse" translation (not found on a page that loaded).
+
+### Case 2: The Case of the Short Motto (Rochester, December 1847)
+
+| Claim | Source |
+|---|---|
+| The North Star: anti-slavery newspaper edited by Frederick Douglass in Rochester, first issue December 3, 1847; weekly, four pages | https://en.wikipedia.org/wiki/The_North_Star_(anti-slavery_newspaper) |
+| Motto: "Right is of no Sex—Truth is of no Color—God is the Father of us all, and we are all Brethren." (punctuation and capitalization vary between sources) **spot-check** | https://en.wikipedia.org/wiki/The_North_Star_(anti-slavery_newspaper) |
+| First issue: paper's aim was to work against slavery and for African Americans; "Right is of no Sex" signalled support for women's rights | https://en.wikipedia.org/wiki/The_North_Star_(anti-slavery_newspaper) |
+| Library of Congress holds the newspapers online (page needs a browser; cited only as the collection) **spot-check** | https://www.loc.gov/collections/frederick-douglass-newspapers/about-this-collection |
+| Hand-set type, composing stick, frame and proofs: general printing practice of the 1840s, used for the apprentice's work. **spot-check** | (general knowledge) |
+
+Avoided: any words put in Douglass's mouth (he is only the named editor); the exact office address (sources differ: Talman
+Building vs. Buffalo Street); anything about arrests or punishment.
+
+### Case 3: The Case of the Mixed-Up Waterfall (Letchworth State Park, today)
+
+| Claim | Source |
+|---|---|
+| "Grand Canyon of the East"; the Genesee River roars through the gorge over three major waterfalls between cliffs as high as 600 feet | https://parks.ny.gov/parks/letchworth |
+| Upper, Middle and Lower Falls; the Middle Falls is highest; a railroad bridge (Portage Viaduct until 2017, now an arch bridge) crosses immediately above the Upper Falls; park about 17 miles long, river flows north | https://en.wikipedia.org/wiki/Letchworth_State_Park |
+| Gorge is geologically young: the last glacier diverted the river from its old valley and forced it to cut a new one | https://en.wikipedia.org/wiki/Letchworth_State_Park |
+| William Pryor Letchworth bought land near the Middle Falls from 1859 and left the estate to New York in 1906, the core of the park | https://en.wikipedia.org/wiki/Letchworth_State_Park |
+| Falls order (Upper is upstream of Middle, Lower is downstream) follows the river flowing north and the names; Wikipedia lists the three falls in the southern Portage Canyon. **spot-check** order on a trail map | https://en.wikipedia.org/wiki/Letchworth_State_Park |
+
+Not used: waterfall heights (sources vary; Middle Falls is only called "the highest"), acreage, the Seneca name of the valley.
+
+### Case 4: The Case of the Two Names (Rochester, today)
+
+| Claim | Source |
+|---|---|
+| Rochester is "the Flour City" and "the Flower City"; the Genesee valley gave rise to flour mills; by 1838 the largest flour-producing city in the US; as wheat processing moved west, an expanding nursery business gave the second nickname; nurseries ringed the city, the best known started 1840 by George Ellwanger and Patrick Barry | https://en.wikipedia.org/wiki/Rochester,_New_York |
+| Mills used the falling water of the Genesee River (High Falls); Erie Canal linked the mills to the Hudson and New York City. **spot-check** (secondary page) | https://blogs.rochester.edu/thegreendandelion/2022/09/how-hydropower-turned-rochester-into-the-flour-city/ |
+| Ellwanger and Barry gave 20 acres of their nursery to the city, which became Highland Park (1883 or 1888 depending on source; no year in the text) | https://tclf.org/highland-park-rochester-ny |
+| Highland Park has more than 1,200 lilac shrubs; hosts the Lilac Festival each May | https://en.wikipedia.org/wiki/Highland_Park_(Rochester,_New_York) |
+
+Not used: the height of High Falls (a marker says 96 feet, Wikipedia says 80), the year the Lilac Festival began, the
+date Flour City became Flower City, what "first nickname" means (Wikipedia also lists "Young Lion of the West" earlier, so the
+case asks only which of the two came first), and what the old mill buildings are used for today.
+
+### Case 5: The Case of the Light Nobody Saw (Charlotte, autumn 1825)
+
+| Claim | Source |
+|---|---|
+| 1822 octagonal stone lighthouse, about 40 feet tall, on Lake Ontario at the mouth of the Genesee River; ten whale-oil lamps (originally) | https://en.wikipedia.org/wiki/Charlotte%E2%80%93Genesee_Lighthouse |
+| Station finished 1822; ten lamps with reflectors; a sand bar at the river mouth troubled mariners; piers authorized 1829 | https://www.us-lighthouses.com/displaypage.php?LightID=98 |
+| Oldest surviving lighthouse on Lake Ontario; today a museum run by the Charlotte-Genesee Lighthouse Historical Society | https://geneseelighthouse.org/ |
+| The light was a steady (non-blinking) light, and ships looked for different signals at different harbors. Lamps with reflectors of that period were fixed lights, but no page found says "steady" for Charlotte in 1825. **spot-check** | https://www.lighthousefriends.com/light.asp?ID=304 |
+| Schooners carrying grain to valley mills, and a strong current at the lake shore, are story color. **spot-check** | (none) |
+
+Not used: the first keeper's real name, the pre-lighthouse "pilot tree" lantern story, and the discontinuation date (sources differ).
+
 ## Dropped or avoided (could not verify, so left out)
 
 - Exact number of arches in the Rochester aqueduct (sources say 9 planned and 11 built; the text does not give a count).
@@ -71,5 +143,5 @@ real range (a flour barrel weighed about 200 pounds; canal boats carried tens of
 - Cannon salutes relayed along the canal for the 1825 opening, and the "81 minutes" figure.
 - How many miles a hoggee walked a day, hoggees' hours, and team-swapping routines on packets.
 - Roving bridges and towpath changing sides; "bank watchman" as a job title in the 1820s; how many feet each Lockport lock lifts.
-- Anything about Haudenosaunee or Seneca land (no verified, respectful source gathered), so the arc does not mention it.
+- Anything about Haudenosaunee or Seneca land in the Erie arc (no verified, respectful source gathered at that time); the Genesee Valley arc covers it in case 1.
 - The real Rochester toll collector, weighmaster and lock tenders by name; all named characters are fictional.

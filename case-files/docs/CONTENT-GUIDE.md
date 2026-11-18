@@ -46,7 +46,7 @@ hand-counted ids; an unknown name throws. Case files still export plain §5 obje
 
 ## Kid rules the test enforces
 
-No "kill, die, dead, death, lost, lives, gun, blood, weapon, shoot" in any string (write "missing", "misplaced", "went away").
+No "kill, die, dead, death, lost, lives, gun, blood, weapon, shoot, arrest, jail, punish, prison" in any string (write "missing", "misplaced", "went away"; tell hard history in words a 9-year-old can meet safely).
 No pressure words in briefings or teasers (hurry, countdown). No multiple choice and no authored wrong answers. Every `facts`
 entry needs an http(s) source, and the same claim goes in `docs/SOURCES.md`. If a detail cannot be verified, leave it out.
 
@@ -55,3 +55,12 @@ entry needs an http(s) source, and the same claim goes in `docs/SOURCES.md`. If 
 Cover the key and re-read all docs for the prompt. Does exactly one sentence (or the listed set) prove it? If a second
 sentence is as good, reword the prompt (name the document: "in the notice"), or reword the other sentence so it states
 less. The test prints possible overlaps as warnings; read each one.
+
+## Arcs, towns and living peoples (v0.2)
+
+An arc object is `{ id, map, title, blurb, knowledge, targetWords, cases }`. The Genesee Valley arc (`map: 'genesee'`) gives every case a
+`town` of `'rochester'`, `'victor'`, `'letchworth'` or `'charlotte'` (the places on the route map); `content-tests` checks it. Real people
+appear only as the named editor, founder or similar and never speak invented words; a fictional educator, ranger or keeper carries the
+story. When a case is about a living people (the Seneca at Ganondagan), set it today, treat them as a living nation, use facts from their
+own site or the state historic site, and leave out war and destruction, ceremonies, costumes and any invented or borrowed language words.
+Where sources disagree (dates, heights), leave the number out and say so in SOURCES.md.

@@ -17,7 +17,7 @@ const warnings = [];
 const fail = (cid, msg) => failures.push(`[${cid}] ${msg}`);
 const warn = (cid, msg) => warnings.push(`[${cid}] ${msg}`);
 
-const BANNED = /\b(kill|kills|killed|killing|die|dies|died|dying|dead|death|deaths|lost|lives|gun|guns|blood|bloody|weapon|weapons|shoot|shoots|shooting|shot)\b/i;
+const BANNED = /\b(kill|kills|killed|killing|die|dies|died|dying|dead|death|deaths|lost|lives|gun|guns|blood|bloody|weapon|weapons|shoot|shoots|shooting|shot|arrest|arrests|arrested|jail|jails|punish|punishes|punished|punishment|prison|prisons)\b/i;
 const TYPES = new Set(['evidence', 'inference', 'word', 'main']);
 const STDS = new Set(['4R1', '4R2', '4R3', '4R4']);
 const WHO = new Set(['chief', 'partner', 'archivist']);
@@ -187,7 +187,11 @@ reports.push(checkCase(TRAINING, true));
 const seenIds = new Set([TRAINING.id]);
 for (const arc of ARCS) {
   if (!(arc.id && arc.title && arc.blurb && Array.isArray(arc.knowledge) && Array.isArray(arc.cases))) fail(arc.id || 'arc', 'arc needs id/title/blurb/knowledge/cases');
+  if (!['erie', 'genesee'].includes(arc.map)) fail(arc.id, `arc.map must be 'erie' or 'genesee', is ${arc.map}`);
   arc.cases.forEach((c, i) => {
+    // v0.2: Genesee cases name the town drawn on the route map; kid text holds no links.
+    if (arc.id === 'genesee' && !['rochester', 'victor', 'letchworth', 'charlotte'].includes(c.town)) fail(c.id, `town must be rochester, victor, letchworth or charlotte, is ${c.town}`);
+    for (const str of strings({ ...c, facts: undefined })) if (/https?:|www\./i.test(str)) fail(c.id, `link in kid text: "${str.slice(0, 50)}"`);
     if (seenIds.has(c.id)) fail(c.id, 'duplicate case id'); seenIds.add(c.id);
     if (c.arc !== arc.id) fail(c.id, `arc field ${c.arc} != ${arc.id}`);
     if (c.order !== i + 1) fail(c.id, `order ${c.order} expected ${i + 1}`);
@@ -226,4 +230,4 @@ for (const r of reports) {
 
 if (warnings.length) { console.log(`\n${warnings.length} warning(s):`); warnings.forEach((w) => console.log('  warn ' + w)); }
 if (failures.length) { console.log(`\n${failures.length} FAILURE(S):`); failures.forEach((f) => console.log('  FAIL ' + f)); process.exit(1); }
-console.log('\nContent tests passed.');
+console.log(`\nContent tests passed (${ARCS.length} arcs, ${seenIds.size} cases, ${warnings.length} warnings, 0 failures).`);
