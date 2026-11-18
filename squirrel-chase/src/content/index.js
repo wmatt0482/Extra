@@ -32,7 +32,7 @@ import { CASES as cases } from './cases.js';
 import { GANG as gang } from './gang.js';
 import { ARCS as arcs } from './arcs.js';
 import { HIDEOUT_TEMPLATES as templates } from './templates.js';
-export { MAP_BOUNDS, toMap } from './geo.js';
+export { MAP_BOUNDS, toMap, US_MAP_BOUNDS, toUsMap } from './geo.js';
 
 function deepFreeze(o) {
   if (o && typeof o === 'object' && !Object.isFrozen(o)) {

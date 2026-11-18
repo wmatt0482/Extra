@@ -1,6 +1,6 @@
 # Pip's Squirrel Chase: sources for real-place facts
 
-Every real-world claim in the New York tour is listed here with a URL. The same claims sit in each city's `facts` array
+Every real-world claim in the New York tour and the USA Tour is listed here with a URL. The same claims sit in each city's `facts` array
 (or on a clue's own `source`) in `src/content/cities.js`, and `tools/content-tests.mjs` fails if a fact's URL is missing
 from this file. The gang, the witnesses, the hideouts and every plot are fictional. Postcards reuse city facts, so they
 are covered by the city tables.
@@ -128,6 +128,117 @@ sources, or a source that was confirmed through other pages). See "Dropped or av
 | Edwin Link grew up in Binghamton (his family moved there in 1910) and built his early flight trainer in 1929 so pilots could practice on the ground. **spot-check** (two sources: the ASME landmark page for the 1929 trainer, and Binghamton University's biography, https://www.binghamton.edu/libraries/about/special-collections/research-and-collections/link/edwin-link/ , for where he grew up) | https://www.asme.org/about-asme/engineering-history/landmarks/210-Link-C-3-Flight-Trainer |
 | Binghamton is where the Chenango River flows into the Susquehanna River. **spot-check** (encyclopedia) | https://en.wikipedia.org/wiki/Binghamton,_New_York |
 
+## USA Tour
+
+The USA Tour (cases usa-01 to usa-06) adds 11 cities. New York City, the 12th, is listed above. Every source below was read
+directly (page text, through a proxy fetch) in the content session, not only from search snippets, unless a row says
+otherwise. Rows marked **spot-check** rest on one non-government source, or on a claim the page words a little
+differently. Clues never name the city, and every clue is built on one of these claims.
+
+### Boston
+
+| Claim | Source |
+|---|---|
+| The Freedom Trail is a 2.5-mile walking trail that links 16 historic sites; the red line on the ground was added in 1958 | https://americantrails.org/resources/the-freedom-trail-massachusetts |
+| In 1634 the townspeople bought William Blackstone's farm to be the Boston Common; cows were forbidden on it in 1830 | https://www.nps.gov/places/boston-common-ma.htm |
+| Swan Boats are pedal-powered and have been a Public Garden fixture since 1877 | https://www.bu.edu/articles/2024/boston-swan-boats |
+| USS Constitution, launched in Boston in 1797, is the oldest commissioned warship afloat in the world; nickname "Old Ironsides" (the facts say "oldest navy ship that still floats") | https://www.nps.gov/places/uss-constitution.htm |
+
+### Philadelphia
+
+| Claim | Source |
+|---|---|
+| The Liberty Bell is recognizable for its crack; no one recorded when or why it first cracked | https://www.nps.gov/inde/learn/historyculture/stories-libertybell.htm |
+| The Declaration of Independence and the U.S. Constitution were both debated and signed in Independence Hall | https://www.nps.gov/inde/learn/historyculture/places-independencehall.htm |
+| The first U.S. Mint building was built in Philadelphia and opened in 1793; its first coins were silver half dimes and copper cents | https://kids.usmint.gov/about-the-mint/history-timeline |
+| The Philadelphia Zoo opened July 1, 1874; its slogan is "America's First Zoo" (worded as "calls itself America's first zoo" because a Central Park menagerie is older). **spot-check** (encyclopedia; the zoo's own 150th-anniversary page agrees in search excerpts) | https://en.wikipedia.org/wiki/Philadelphia_Zoo |
+
+### Washington, D.C.
+
+| Claim | Source |
+|---|---|
+| The Washington Monument is 555 feet, 5 1/8 inches tall and was the tallest building in the world when it was finished in 1884 | https://www.nps.gov/wamo/learn/historyculture/index.htm |
+| The 1903 Wright Flyer is on display at the National Air and Space Museum in Washington, DC | https://airandspace.si.edu/collection-objects/1903-wright-flyer/nasm_A19610048000 |
+| Tokyo's mayor gave the U.S. 3,020 Japanese cherry trees in 1912 (the text says "about 3,000"); the first two were planted by the Tidal Basin | https://www.nps.gov/articles/000/cherry-trees-on-the-national-mall.htm |
+| The Lincoln Memorial has 36 Doric columns, one for each of the 36 states in the Union at the time (1865; the text avoids the reason) | https://www.nps.gov/linc/learn/historyculture/exterior-features.htm |
+
+### Cape Canaveral
+
+Kennedy Space Center is on Merritt Island, next to Cape Canaveral; the game uses "Cape Canaveral" for the whole Space Coast.
+
+| Claim | Source |
+|---|---|
+| Apollo 11 launched July 16, 1969 from Launch Pad 39A at Kennedy Space Center, carrying the crew of the first crewed lunar landing | https://www.nasa.gov/missions/apollo/apollo-11/apollo-11-mission-overview/ |
+| The Vehicle Assembly Building is 525 feet tall; rocket stages are moved, processed and stacked inside | https://www.nasa.gov/image-article/vehicle-assembly-building-kennedy-space-center/ |
+| The space shuttle fleet flew 135 missions between April 1981 and July 2011; the last one ended at Kennedy Space Center | https://www.nasa.gov/space-shuttle/ |
+| Kennedy Space Center shares a border with Merritt Island National Wildlife Refuge; alligators and more than 330 bird species live there | https://www.nasa.gov/image-article/alligators-rockets-sharing-kennedy-space-center/ |
+
+### New Orleans
+
+| Claim | Source |
+|---|---|
+| New Orleans was founded in 1718 by the French; the French Quarter (Vieux Carre) is its oldest neighborhood. **spot-check** (encyclopedia; the National Park Service page https://www.nps.gov/jazz/learn/historyculture/history_early.htm confirms the 1718 founding) | https://en.wikipedia.org/wiki/French_Quarter |
+| Jazz developed in New Orleans; the National Park Service links Congo Square's drumming and dance traditions to jazz's origins (the NPS does not say "birthplace of jazz", so the text says "Jazz music began in New Orleans"). **spot-check** | https://www.nps.gov/jazz/learn/historyculture/history_early.htm |
+| The St. Charles Avenue streetcar line began service in 1835; ASME calls it the oldest surviving urban passenger rail system in the United States (the text says "oldest streetcar line still running in the United States") | https://asme.org/About-ASME/Engineering-History/Landmarks/101-st-charles-avenue-streetcar-line |
+| In 1986 the Louisiana legislature made the beignet the state doughnut; beignets are fried dough dusted with powdered sugar | https://statesymbolsusa.org/node/1975 |
+
+### San Antonio
+
+| Claim | Source |
+|---|---|
+| The River Walk (Paseo del Rio) winds for 13 miles; downtown the river is about 20 feet below street level | https://www.tshaonline.org/handbook/entries/san-antonio-river-walk-paseo-del-rio |
+| Five Spanish colonial missions (including the Alamo) are one UNESCO World Heritage Site, inscribed in 2015, the only one in Texas | https://www.nps.gov/saan/learn/historyculture/world-heritage-site.htm |
+| The Battle of Flowers Parade was founded in 1891 by women volunteers, inspired by flower parades in Spain (the Alamo reason for the parade is left out) | https://fiestasanantonio.org/history-of-fiesta/ |
+| The Tower of the Americas is 750 feet tall and was built in 1968 for HemisFair, the world's fair for San Antonio's 250th anniversary | https://www.toweroftheamericas.com/history/ |
+
+### St. Louis
+
+| Claim | Source |
+|---|---|
+| The stainless-steel Gateway Arch is 630 feet tall; the National Park Service calls it the nation's tallest monument | https://www.nps.gov/jeff/planyourvisit/materials-and-techniques.htm |
+| Gateway Arch National Park has only 91 acres, the smallest national park in the United States | https://www.nps.gov/jeff/learn/nature/nature.htm |
+| Admission to the Saint Louis Zoo is free (some attractions inside charge a fee) | https://stlzoo.org/visit |
+| The zoo's Flight Cage was built for the 1904 World's Fair; St. Louisans rallied to keep it and it led to the zoo | https://stlzoo.org/zones/historic-hill/1904-flight-cage-and-cypress-swamp |
+| (clue only) The Gateway Arch has a tram ride to the top | https://www.nps.gov/jeff/index.htm |
+
+### Chicago
+
+| Claim | Source |
+|---|---|
+| Cloud Gate, nicknamed "the Bean," is a famous sculpture in Millennium Park. **spot-check** (tourism bureau page) | https://www.choosechicago.com/articles/tours-and-attractions/the-bean-chicago/ |
+| (clue only) Cloud Gate is a 110-ton sculpture of polished stainless steel plates | https://www.chicago.gov/city/en/depts/dca/supp_info/chicago_s_publicartcloudgateinmillenniumpark.html |
+| In 1900 the Sanitary District completed the Chicago Sanitary and Ship Canal, reversing the Chicago River away from Lake Michigan | https://mwrd.org/news/chicago-rivers-reversal-1900-was-engineering-triumph-transformed-our-city-chicago-sun-times |
+| The world's first Ferris wheel was made for the 1893 World's Columbian Exposition in Chicago | https://www.chicagohistory.org/the-first-ferris-wheel/ |
+| SUE the T. rex at the Field Museum is more than 40 feet long and about 90 percent complete (the museum's own claim: most complete T. rex discovered) | https://www.fieldmuseum.org/blog/sue-t-rex |
+
+### Denver
+
+| Claim | Source |
+|---|---|
+| A step on the Colorado State Capitol is marked one mile (5,280 feet) above sea level; the exact step has been re-measured three times (15th, 18th, 13th), so the text says "a step". **spot-check** (encyclopedia; the state's own page capitol.colorado.gov/history-capitol agrees in search excerpts) | https://en.wikipedia.org/wiki/Colorado_State_Capitol |
+| Red Rocks Amphitheatre (owned by Denver) opened in 1941 and seats 9,525, set among natural rock formations | https://www.redrocksonline.com/our-story/history/ |
+| "I See What You Mean," the Big Blue Bear, is a 40-foot-tall sculpture outside the Colorado Convention Center, peering into the lobby. **spot-check** (encyclopedia; Visit Denver agrees in search excerpts) | https://en.wikipedia.org/wiki/I_See_What_You_Mean_(Argent) |
+| Denver was founded in November 1858 at the meeting of the South Platte River and Cherry Creek after a little gold was found there | https://history.denverlibrary.org/lodo-denvers-lower-downtown-success-story |
+
+### Seattle
+
+| Claim | Source |
+|---|---|
+| The Space Needle is 605 feet tall and opened shortly before the 1962 World's Fair (Century 21 Exposition) | https://www.historylink.org/file/1424 |
+| Pike Place Market opened in 1907; the city calls it the oldest continuously operating public market in the country | https://www.seattle.gov/neighborhoods/historic-preservation/historic-districts/pike-place-market-historical-district |
+| (clue only) Fish sellers at the Market throw fish ("the place where they throw the fish") | https://www.historylink.org/File/22703 |
+| The Fremont Troll sits under a bridge, is made of rebar, wire and two tons of ferroconcrete, and clutches a car (the text avoids the car brand and the bridge's formal name) | https://www.historylink.org/File/7785 |
+| Floating homes on Lake Union have been lived in since the 1920s and are still a Seattle neighborhood | https://www.seattle.gov/cityarchives/exhibits-and-education/seattle-segments/floating-homes |
+
+### San Francisco
+
+| Claim | Source |
+|---|---|
+| The Golden Gate Bridge opened in 1937; its 4,200-foot main span was the longest in the world at the time | https://www.goldengate.org/exhibits/facts-and-figures-about-the-bridge/ |
+| The International Orange paint color was developed to fit the bridge's location | https://www.nps.gov/places/000/why-is-the-golden-gate-bridge-orange.htm |
+| Andrew Hallidie invented the cable car in San Francisco and tested the first one in 1873; cable cars still run | https://www.sfmta.com/getting-around/muni/cable-cars/cable-car-history |
+| Lombard Street's one-block section has eight hairpin turns, built in 1922 to ease a 27 percent grade (the "most crooked street" title is disputed, so the facts do not claim it). **spot-check** (encyclopedia) | https://en.wikipedia.org/wiki/Lombard_Street,_San_Francisco |
+
 ## Dropped or avoided (could not verify, contested, or not right for this game)
 
 - **Syracuse snowfall** ("snowiest big city", about 128 inches a year): the averages differ by source and period, and snow
@@ -147,3 +258,21 @@ sources, or a source that was confirmed through other pages). See "Dropped or av
   no verified, respectful source set was gathered in this session, so the tour does not mention it. A later pass should
   add it with care rather than leave it out for good.
 - Brand and company names (glassworks, snack makers, tour-boat companies) are kept out of every sign and clue.
+
+### USA Tour: dropped or avoided
+
+- **Alcatraz and any prison history** of San Francisco: the kid rules ban the word and the theme. Left out.
+- **"Birthplace of jazz"** (New Orleans) and the St. Charles streetcar as "oldest in the world": the NPS and ASME word these
+  more carefully, so the text follows them. The cable cars and the St. Charles line are both National Historic Landmarks;
+  no clue says "only moving landmark".
+- **Pier 39 sea lions** (San Francisco): confirmed only from search excerpts, not read on the page; left out.
+- **Space Needle brand details, company names and the Fremont Troll's car brand**: left out of signs and clues.
+- **Why the Lincoln Memorial has 36 columns** (the NPS wording uses a banned word): the text says "one for each of the 36
+  states in the country in 1865".
+- **The Alamo battle** (San Antonio): not used. Only the Spanish missions, the River Walk, Fiesta and the tower.
+- **Which Capitol step is the mile-high one** (15th, 18th or 13th, depending on the survey): the text says "a step".
+- **Philadelphia Zoo "first in America"** is hedged ("calls itself"); Boston Common is not called "the oldest park" (the NPS
+  itself says "generally considered"). Chicago's "the Bean" nickname and "Cape Canaveral" for the Kennedy Space Center
+  area (the center is on Merritt Island) are common usage, not formal names.
+- **Pike Place Market's "oldest" claim**: the city says oldest continuously operating public market; the Market itself is
+  more hedged, so the text says "oldest public market in the country that is still running" (spot-check).

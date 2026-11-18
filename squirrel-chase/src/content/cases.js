@@ -3,8 +3,9 @@
 // Witnesses are townsfolk (never the gang's animals). Each witness note at a travel stop is one of the NEXT city's clues;
 // at the hideout city the two notes lead to the hideout spot.
 import { sign, w, hw, postcard } from './helpers.js';
+import { USA_CASES } from './cases-usa.js';
 
-export const CASES = [
+const NY_CASES = [
   // ------------------------------------------------------------------ ny-01: Scrabble, Albany -> Saratoga Springs -> Lake Placid
   {
     id: 'ny-01',
@@ -292,3 +293,6 @@ export const CASES = [
     teaser: 'The New York tour is done! But Scrabble just bought a map of the whole United States...',
   },
 ];
+
+// The USA Tour (usa-01 ... usa-06) lives in cases-usa.js.
+export const CASES = [...NY_CASES, ...USA_CASES];

@@ -7,9 +7,9 @@ const CLUE = Object.fromEntries(CITIES.flatMap((c) => c.clues.map((k) => [k.id, 
 /**
  * The case sign: the city's own sign text, with `letters` swiped. Each letter takes the first matching, not yet swiped
  * position, left to right. `swiped` is in recovery order: one letter flies back per correct city, the rest at the hideout.
+ * `text` may be one of the city's `altSigns` (a second sign in the same city).
  */
-export function sign(cityId, letters, word = letters) {
-  const text = CITY[cityId].sign;
+export function sign(cityId, letters, word = letters, text = CITY[cityId].sign) {
   const used = new Set();
   const swiped = [...letters].map((ch) => {
     for (let i = 0; i < text.length; i++) if (text[i] === ch && !used.has(i)) { used.add(i); return i; }

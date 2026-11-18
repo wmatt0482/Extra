@@ -19,3 +19,21 @@ export function toMap(lat, lng) {
   const { west, east, north, south } = MAP_BOUNDS;
   return { x: round3((lng - west) / (east - west)), y: round3((north - lat) / (north - south)) };
 }
+
+// Map projection for the USA Tour map (docs/V0.2-USA.md). Same idea as toMap: a plain equirectangular box, x west -> east,
+// y north -> south, both 0..1. The art agent draws the 48 contiguous states into this box at aspect 1.83.
+export const US_MAP_BOUNDS = Object.freeze({
+  west: -125.0,
+  east: -66.5,
+  north: 49.6,
+  south: 24.2,
+  // 58.5 degrees wide x 25.4 degrees tall; a degree of longitude is about 0.79 of a degree of latitude at 37.5 N,
+  // so the true shape is about 1.83 : 1.
+  aspect: 1.83,
+});
+
+/** Latitude/longitude (degrees) -> { x, y } in 0..1 on the USA map box (same formula and rounding as toMap). */
+export function toUsMap(lat, lng) {
+  const { west, east, north, south } = US_MAP_BOUNDS;
+  return { x: round3((lng - west) / (east - west)), y: round3((north - lat) / (north - south)) };
+}

@@ -1,11 +1,17 @@
 // The New York tour cities. Every fact is listed with its source in docs/SOURCES.md.
 // Clues point TO the city from somewhere else (a sealed witness note), so they never name the city itself.
 // Each clue rests on one of the city's facts (`fact`: index into `facts`) or on its own sourced claim (`source`).
-import { toMap } from './geo.js';
+import { toMap, toUsMap } from './geo.js';
+import { USA_CITIES } from './cities-usa.js';
 
-const city = (c) => ({ ...c, coords: toMap(c.latLng.lat, c.latLng.lng) });
+// `usCoords` (0..1 on the USA map box) is added only to cities that a `usa` case uses: pass `true` as the second argument.
+const city = (c, onUsaMap = false) => ({
+  ...c,
+  coords: toMap(c.latLng.lat, c.latLng.lng),
+  ...(onUsaMap ? { usCoords: toUsMap(c.latLng.lat, c.latLng.lng) } : {}),
+});
 
-export const CITIES = [
+const NY_CITIES = [
   city({
     id: 'rochester',
     name: 'Rochester',
@@ -227,6 +233,7 @@ export const CITIES = [
       { text: 'Central Park covers 843 acres in the middle of Manhattan.', source: 'https://www.centralparknyc.org/celebrating-40-years-of-commitment-and-conservancy' },
     ],
     sign: 'CENTRAL PARK',
+    altSigns: ['STATUE OF LIBERTY'], // a second sign a case may use (usa-01 starts here with the Statue of Liberty sign)
     scene: 'Tall skyscrapers around a huge green park with a lake and rowboats, yellow taxis, and the Statue of Liberty out in the harbor.',
     clues: [
       { id: 'new-york-city-c1', text: 'They wanted to wave at the Statue of Liberty.', fact: 2 },
@@ -236,7 +243,7 @@ export const CITIES = [
       { id: 'new-york-city-c5', text: 'They wanted a picnic in Central Park, all 843 acres of it.', fact: 3 },
       { id: 'new-york-city-c6', text: 'They wanted to take a ferry to Ellis Island, where more than 12 million immigrants arrived.', source: 'https://www.nps.gov/parkhistory/categrs/immg.htm' },
     ],
-  }),
+  }, true),
   city({
     id: 'watkins-glen',
     name: 'Watkins Glen',
@@ -278,3 +285,6 @@ export const CITIES = [
     ],
   }),
 ];
+
+// The 11 new USA Tour cities live in cities-usa.js (they have `coords: null` and a `usCoords`).
+export const CITIES = [...NY_CITIES, ...USA_CITIES];

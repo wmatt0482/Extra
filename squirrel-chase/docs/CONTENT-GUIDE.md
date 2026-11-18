@@ -11,13 +11,13 @@ spelling words, their sentences, the letters and the hideout sentence, and those
 
 | Export | Type | What it is |
 |---|---|---|
-| `CITIES` | `City[]` | 13 cities: the 11 tour cities + Watkins Glen + Binghamton |
-| `CASES` | `Case[]` | `ny-01` … `ny-06`, in play order |
+| `CITIES` | `City[]` | 24 cities: the 11 New York tour cities + Watkins Glen + Binghamton, and the 11 new USA Tour cities (New York City is on both tours) |
+| `CASES` | `Case[]` | `ny-01` … `ny-06`, then `usa-01` … `usa-06`, in play order |
 | `GANG` | `GangMember[]` | Scrabble (leader), Sudsy, Glint, Snoozy, Bleatrice |
-| `ARCS` | `Arc[]` | `ny` (6 cases) and the `usa` placeholder (no cases) |
+| `ARCS` | `Arc[]` | `ny` (6 cases, `map: 'ny'`) and `usa` (6 cases, `map: 'usa'`) |
 | `HIDEOUT_TEMPLATES` | `HideoutTemplate[]` | 10 fallback password sentences |
 | `CITY_BY_ID`, `CASE_BY_ID`, `GANG_BY_ID`, `CLUE_BY_ID` | lookups by id | `CLUE_BY_ID[id].city` is the city the clue points to |
-| `MAP_BOUNDS`, `toMap(lat, lng)` | map projection | see "Map coordinates" |
+| `MAP_BOUNDS`, `toMap(lat, lng)`, `US_MAP_BOUNDS`, `toUsMap(lat, lng)` | map projections | see "Map coordinates" |
 
 ## Shapes
 
@@ -26,9 +26,11 @@ City = {
   id: 'cooperstown',                  // kebab-case, stable (saved in the album)
   name: 'Cooperstown',
   latLng: { lat: 42.700, lng: -74.924 },
-  coords: { x: 0.609, y: 0.511 },     // 0..1 on the New York map box, = toMap(latLng)
+  coords: { x: 0.609, y: 0.511 },     // 0..1 on the New York map box, = toMap(latLng); null for cities not on the NY map
+  usCoords: { x: 0.77, y: 0.38 },     // 0..1 on the USA map box, = toUsMap(latLng); only on cities a `usa` case uses
   facts: [ { text, source } ],        // 3-4 kid-friendly facts; source is an http(s) URL (never shown to kids)
   sign: 'HALL OF FAME',               // capital letters and spaces; the landmark sign the gang swipes from
+  altSigns: ['…'],                    // optional: a second sign in the same city (only New York City has one, for usa-01)
   scene: '…',                         // 1-2 lines for the art agent
   clues: [ { id: 'cooperstown-c1', text: '…', fact: 0 } ],   // 6+; point TO this city; `fact` or own `source`
 }
@@ -64,7 +66,7 @@ Witness = { name, role, line, clueId, note }
 // note   = the text revealed after the child spells the word
 // clueId = the clue id at a travel stop (note === that clue's text); null at the hideout city
 
-Arc = { id: 'ny', title, blurb, cases: ['ny-01', …] }
+Arc = { id: 'ny', map: 'ny' | 'usa', title, blurb, cases: ['ny-01', …] }
 HideoutTemplate = { id: 't01', text: 'Glint hid the {w} next to the {w}.', slots: ['noun', 'noun'] }
 ```
 
@@ -92,9 +94,24 @@ There are always more swiped letters than travel legs, so at least one letter co
 | ny-05 The Sleepy Sign | Snoozy | MINERAL SPRINGS (Saratoga Springs) | N A P S → NAPS | Saratoga Springs → Lake Placid → Syracuse → Buffalo |
 | ny-06 The Pecan Party (finale) | Scrabble + all | CENTRAL PARK (New York City) | P E C A N → PECAN | New York City → Cooperstown → Syracuse → Niagara Falls |
 
+The six USA Tour cases (new cities: Boston, Philadelphia, Washington D.C., Cape Canaveral, New Orleans, San Antonio, St. Louis,
+Chicago, Denver, Seattle, San Francisco; New York City is the twelfth):
+
+| Case | Lead | Sign (city) | Swiped → word | Route (hideout last) |
+|---|---|---|---|---|
+| usa-01 The Flying Squirrel | Scrabble | STATUE OF LIBERTY (New York City, `altSigns`) | F L Y → FLY | New York City → Washington → Cape Canaveral |
+| usa-02 The Golden Crow | Glint | GOLDEN GATE (San Francisco) | G O L D → GOLD | San Francisco → Denver → Philadelphia |
+| usa-03 The Bubble Bath Lake | Sudsy | RIVER WALK (San Antonio) | L A K E → LAKE | San Antonio → New Orleans → St. Louis → Chicago |
+| usa-04 The Mile-High Snooze | Snoozy | MILE HIGH STEP (Denver) | S L E E P → SLEEP | Denver → San Antonio → San Francisco → Seattle |
+| usa-05 The Mountain Goat | Bleatrice | FREEDOM TRAIL (Boston) | E E O A I (vowels only) | Boston → Washington → New Orleans → Denver |
+| usa-06 The Great Race (finale) | Scrabble + all | SPACE CENTER (Cape Canaveral) | R A C E → RACE | Cape Canaveral → Chicago → Boston → New York City |
+
 Every city appears in at least one route; every case has a different sign and a different hideout city; no clue is
-used twice across the tour. Running gag: the Chief gets the gang's name wrong in every briefing (Squiggle, Doodle,
-Scrubble, Nibble, Snoozle), Pip corrects it, and in the finale the Chief finally gets it right.
+used twice across the tour. Running gag: the Chief gets the gang's name wrong in every briefing (New York tour: Squiggle, Doodle,
+Scrubble, Nibble, Snoozle; USA tour: Squabble, Scramble, Scribbly, Dribble, Wobble), Pip corrects it, and in each finale the
+Chief gets it right. Each tour has its own five leads and its own finale, and every sign and hideout city is different
+across all twelve cases. The test checks that each tour has five different leads, Scrabble leading the finale, and the goat
+leading exactly one case.
 
 ## Map coordinates
 
@@ -108,6 +125,14 @@ For a true-shape map draw the state into a box about **1.27 times wider than tal
 agent should trace the state outline into the same box so the dots land on the right places. Close pairs to keep
 tappable: Buffalo / Niagara Falls (about 0.05 apart), Corning / Watkins Glen / Ithaca (the Finger Lakes cluster),
 Albany / Saratoga Springs.
+
+## USA map coordinates
+
+`usCoords` come from `toUsMap(lat, lng)` in `src/content/geo.js`, the same kind of equirectangular box for the 48 contiguous
+states (`US_MAP_BOUNDS`: west -125.0, east -66.5, north 49.6, south 24.2, aspect 1.83). Every city a `usa` case uses has
+`usCoords`; the 11 new cities have `coords: null` (they are not on the New York map). The tight spot is the northeast
+corridor: Boston, New York City, Philadelphia and Washington sit within about 0.05 of each other. The tour starts in New
+York City and the finale ends there. Distances are long, so witnesses may mention planes.
 
 ## Hideout password templates
 
@@ -130,7 +155,10 @@ the child types the sentence, so quotation marks never cost points.
    verified fact. It must never name the city, and it must point to exactly one tour city: add its key phrase to
    `tools/content/signatures.mjs` and make sure no other city's clue uses it. Waterfalls, lakes, halls of fame, the Erie
    Canal and "oldest" claims are shared by several cities, so always add the detail that makes it unique (96-foot,
-   19 waterfalls, toys vs baseball, western end).
+   19 waterfalls, toys vs baseball, western end). A clue is checked against the cities of its own tour (a New York clue against
+   the New York tour, a USA clue against the 12 USA cities); New York City's clues are checked against both. In the USA tour the
+   northeast corridor shares founding-era history, so a clue never leans on "first", "oldest" or "signed" alone: it carries a
+   number or a thing only its city has (555 feet, half dimes, red line, cows grazing until 1830). City names are off limits (the test checks it).
 3. **Signs.** Generic landmark words in capitals: no logos, brands or company names.
 4. **Cases.** A different lead and a different sign each time, 3-4 stops, two townsfolk witnesses per stop with a
    varied, respectful cast (the animals are never witnesses). Use the `w()` and `hw()` helpers in
