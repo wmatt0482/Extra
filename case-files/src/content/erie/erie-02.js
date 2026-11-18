@@ -3,7 +3,7 @@ import { doc, handles } from '../helpers.js';
 const d1 = doc('d1', { kind: 'logbook', title: "Lock Tender's Logbook", from: 'Lock tender Hannah Doyle', stretch: false }, [
   [
     'I am Hannah Doyle, the lock tender here, and I keep this log every day.',
-    'My lock sits a short walk east of the aqueduct, so every boat that crosses the Genesee River passes through my gates.',
+    'My lock is on this stretch of the canal, so the boats that come by here pass through my gates.',
     '@lockdef A lock is a stone room with a gate at each end, and it lifts or lowers a boat when water is let in or out through small sliding doors called paddles.',
     '@ev Evening, nine o\'clock: The channel above my lock is four feet deep, just as it should be.',
     '@checked The gates are shut and the paddles are closed, and I checked them myself because my new helper, Jonas, is still learning.',

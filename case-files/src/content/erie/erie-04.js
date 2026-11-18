@@ -59,7 +59,7 @@ const d4 = doc('d4', { kind: 'notice', title: 'Notice to Boatmen', from: 'The Co
   [
     'The merchant who ships the goods will pay his share of the toll, and so he has a good reason to care about the figures.',
     'The rate of the toll changes with the kind of goods carried, and the collector sets it for each.',
-    'The weighmaster, who must be careful and exact, is answerable to the collector for every figure that he records.',
+    'The weighmaster, who must be careful and exact, is answerable to this office for every figure that he records.',
     'Every boatman is asked to read the figures on his slip before he leaves the weigh lock.',
     'The toll collector keeps a ledger of every boat and every ton, so that no merchant is charged twice for the same cargo.',
   ],
@@ -70,7 +70,7 @@ const S = handles(d1.ids, d2.ids, d3.ids, d4.ids);
 export default {
   id: 'erie-04', arc: 'erie', order: 4,
   title: 'The Case of the Heavy Flour',
-  setting: 'Rochester, New York · the 1840s',
+  setting: 'Rochester, New York · in the canal days',
   objective: 'Find out why Mr. Ortega was charged for five tons of flour he never shipped, and whose boat weight was used by mistake.',
   words: [
     { word: 'merchant', meaning: 'a person who buys goods and sells them again', sentenceId: S.merchant },
@@ -142,8 +142,8 @@ export default {
   facts: [
     { claim: 'Canal tolls were based on cargo weight: a boat was weighed on a weigh lock scale, and its registered empty weight was subtracted from the total to find the weight of the cargo.', source: 'https://eriecanalmuseum.org/weighlock-building-home/' },
     { claim: 'The toll rate per ton differed with the kind of cargo.', source: 'https://bookwormhistory.com/2015/11/24/how-did-they-levy-tolls-on-the-erie-canal/' },
-    { claim: 'Rochester was one of the five places on the Erie Canal with a weigh lock (with Albany, West Troy, Utica and Syracuse).', source: 'https://genealogy.bio/reference/New_York/new_york054.html' },
-    { claim: 'Toll records list the boat, its master, the articles shipped, where bound and the weight; weighmasters worked for the toll collector.', source: 'https://snaccooperative.org/vocab_administrator/resources/8210835' },
+    { claim: 'Rochester was one of several places on the Erie Canal with a weigh lock (others included Albany, West Troy, Utica and Syracuse).', source: 'https://genealogy.bio/reference/New_York/new_york054.html' },
+    { claim: 'Toll records list the boat, its master, the articles shipped, where bound and the weight; weighmasters and toll collectors were both canal officials.', source: 'https://snaccooperative.org/vocab_administrator/resources/8210835' },
     { claim: 'The Erie Canal was a toll canal until 1883.', source: 'https://bookwormhistory.com/2015/11/24/how-did-they-levy-tolls-on-the-erie-canal/' },
   ],
 };

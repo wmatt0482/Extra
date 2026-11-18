@@ -46,7 +46,7 @@ const d3 = doc('d3', { kind: 'letter', title: 'Letter to the Editor', from: 'Cap
     'Sir, my young hoggee, Nora Quinn, says her mule Duke can read the signs beside our locks, and I confess that I laughed.',
     '@packet My packet, the Rosalie, is a swift boat for passengers, and she travels about four miles in an hour, a pace any thoughtful mule can keep.',
     'A hoggee on a packet must keep the mules moving at a steady pace along the towpath, for passengers dislike delay.',
-    '@whyhorn It is the custom of every boatman to blow a horn before a lock, so that the lock tender may hear it and ready the gates.',
+    '@whyhorn It is the custom of boatmen to blow a horn before a lock, so that the lock tender may hear it and ready the gates.',
   ],
   [
     '@wish I wish, therefore, to learn whether a mule may truly read, or whether there is some simpler reason for his behavior.',
@@ -135,6 +135,6 @@ export default {
     { claim: 'Mules (or horses) pulled boats from the towpath, led by a young driver called a hoggee; a towpath ran beside the canal.', source: 'https://scdemocratonline.com/stories/hoggees-on-the-towpath,57342' },
     { claim: 'Packet boats carried passengers and moved at about four miles an hour.', source: 'https://stagecoachdays.blogspot.com/2012/12/the-packet-and-stagecoach.html' },
     { claim: 'Boatmen on eastern canals used horns to alert lock tenders that a boat was approaching.', source: 'https://lewis-clark.org/boats/the-sounding-horn/' },
-    { claim: 'Girls and women also worked as hoggees on the canal.', source: 'https://www.canalmuseum.org/the-snubbing-post/in-her-words' },
+    { claim: 'On American canals, girls as well as boys sometimes drove the mules; one woman remembered driving mules for her father on the Delaware and Hudson Canal from about age seven.', source: 'https://www.canalmuseum.org/the-snubbing-post/in-her-words' },
   ],
 };
