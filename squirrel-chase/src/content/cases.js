@@ -177,7 +177,7 @@ const NY_CASES = [
       ] },
       { city: 'watkins-glen', witnesses: [
         hw('Rachel Stein', 'hiking guide', 'I heard munching up on the cliffs.', 'Look up! Something is standing on a high ledge above the stone stairs.'),
-        hw('Omar Haddad', 'lake boat captain', 'From my boat, I saw a goat with a lunchbox high up in the gorge.', 'The goat is on a ledge near the waterfall you can walk behind.'),
+        hw('Omar Haddad', 'lake boat captain', 'From my boat on the lake, I saw a goat with a lunchbox heading up toward the gorge.', 'The goat is on a ledge near the waterfall you can walk behind.'),
       ] },
     ],
     hideout: {
@@ -225,7 +225,7 @@ const NY_CASES = [
       ] },
       { city: 'buffalo', witnesses: [
         hw('Pete Kowal', 'grain elevator tour guide', 'Something up high is going "Zzz... zzz..."', 'Look on top of the old grain elevator by the river. There is a pillow fort up there.'),
-        hw('Keisha Davis', 'crossing guard', 'I saw a possum carry four letters up a ladder. It was yawning.', 'It said, "Five more minutes," and climbed to the roof of the tallest grain elevator.'),
+        hw('Keisha Davis', 'crossing guard', 'I saw a possum carry four letters up a ladder. It was yawning.', 'It said, "Five more minutes," and climbed to the roof of an old grain elevator.'),
       ] },
     ],
     hideout: {

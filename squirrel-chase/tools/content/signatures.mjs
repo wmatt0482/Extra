@@ -6,16 +6,16 @@
 // GIVEAWAYS: words a clue must never contain because they name a city outright.
 
 export const SIGNATURES = {
-  rochester: [/96-foot/i, /toys?\b/i, /North Star/i, /Frederick Douglass/i, /lilac/i, /Susan B\. Anthony/i],
+  rochester: [/Genesee River/i, /toys?\b/i, /North Star/i, /Frederick Douglass/i, /lilac/i, /Susan B\. Anthony/i],
   buffalo: [/western end of the Erie Canal/i, /shore of Lake Erie/i, /grain elevator/i, /grain out of boats/i, /chicken wings/i, /28th floor/i, /Canalside/i, /canal ended at the lake/i],
-  'niagara-falls': [/Horseshoe Falls/i, /Bridal Veil/i, /American Falls/i, /Lake Erie to Lake Ontario/i, /oldest state park/i, /Canada/i],
+  'niagara-falls': [/Horseshoe Falls/i, /Bridal Veil/i, /American Falls/i, /Lake Erie to Lake Ontario/i, /oldest state park/i, /oldest in the country/i, /Canada/i],
   syracuse: [/Salt City/i, /Onondaga/i, /Weighlock/i, /weighed/i, /state fair/i],
   albany: [/capital city/i, /capital of New York/i, /capitol/i, /mastodon/i, /tulip/i, /1836/, /lawmakers/i],
   cooperstown: [/baseball/i, /Glimmerglass/i, /Otsego/i, /William Cooper/i, /Cardiff Giant/i],
   corning: [/\bglass/i, /Crystal City/i, /telescope/i],
   'lake-placid': [/Winter Olympics/i, /Olympic/i, /Miracle on Ice/i, /ski jump/i, /Adirondack/i],
   'saratoga-springs': [/mineral springs/i, /racetrack/i, /1777/, /American Revolution/i, /battlefield/i],
-  ithaca: [/150 waterfalls/i, /is Gorges/i, /Cayuga/i, /Cornell/i, /Taughannock/i, /college town full of gorges/i],
+  ithaca: [/big university/i, /is Gorges/i, /Cayuga/i, /Cornell/i, /Taughannock/i, /college town full of gorges/i],
   'new-york-city': [/Statue of Liberty/i, /France/i, /five boroughs/i, /Central Park/i, /Ellis Island/i, /more people than any other city/i],
   'watkins-glen': [/19 waterfalls/i, /Seneca Lake/i, /deepest Finger Lake/i, /1948/, /behind a waterfall/i, /400 feet/i],
   binghamton: [/carousel/i, /Edwin Link/i, /flight trainer/i, /Chenango/i, /Susquehanna/i],

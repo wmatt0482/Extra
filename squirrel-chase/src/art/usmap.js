@@ -9,9 +9,10 @@
 //   import { US_MAP_BOUNDS } from '../content/geo.js';
 // and nothing else changes (usdata.js was projected with these exact numbers).
 import { SANS, esc, rng } from './shared.js';
+import { US_MAP_BOUNDS } from '../content/geo.js';
 import { US_W, US_H, US_LAND, US_STATES, US_LAKES } from './usdata.js';
 
-export const US_BOX = Object.freeze({ west: -125.0, east: -66.5, north: 49.6, south: 24.2, aspect: 1.83, width: US_W, height: US_H });
+export const US_BOX = Object.freeze({ ...US_MAP_BOUNDS, width: US_W, height: US_H });
 const WATER = '#9bd5ef';
 const u = (lon, lat) => [+(((lon - US_BOX.west) / (US_BOX.east - US_BOX.west)) * US_W).toFixed(1), +(((US_BOX.north - lat) / (US_BOX.north - US_BOX.south)) * US_H).toFixed(1)];
 /** Pixel position (viewBox units) of a lon/lat on the US map. */

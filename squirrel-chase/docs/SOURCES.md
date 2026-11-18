@@ -16,9 +16,9 @@ sources, or a source that was confirmed through other pages). See "Dropped or av
 
 | Claim | Source |
 |---|---|
-| High Falls is a 96-foot waterfall on the Genesee River in the middle of downtown Rochester | https://www.visitrochester.com/things-to-do/outdoors/waterfalls/high-falls/ |
+| High Falls is a tall waterfall on the Genesee River in the middle of downtown Rochester (older sources say 96 feet, but the falls were lowered in the early 1900s and sources now differ, so the text gives no number) | https://www.visitrochester.com/things-to-do/outdoors/waterfalls/high-falls/ |
 | The National Toy Hall of Fame is in Rochester (at The Strong National Museum of Play) and honors toys loved over many generations | https://www.iloveny.com/listing/the-strong-museum/3530/ |
-| Frederick Douglass published The North Star, an abolitionist newspaper, in Rochester from 1847 | https://www.nps.gov/museum/exhibits/frdo/exb/mightyWord/frdo3219_north_star_newspap.html |
+| Frederick Douglass published The North Star, an abolitionist newspaper, in Rochester from 1847 | https://www.nps.gov/frdo/learn/kidsyouth/chronology.htm |
 | The Lilac Festival is held each May in Highland Park, which has more than 500 varieties of lilacs. **spot-check** (encyclopedia; the festival's and Monroe County's own pages were not reachable) | https://en.wikipedia.org/wiki/Rochester_Lilac_Festival |
 | (clue only) Susan B. Anthony lived in a Rochester house that is now a museum. **spot-check** (encyclopedia; the museum site susanb.org agrees in excerpts) | https://en.wikipedia.org/wiki/Susan_B._Anthony_House |
 
@@ -27,7 +27,7 @@ sources, or a source that was confirmed through other pages). See "Dropped or av
 | Claim | Source |
 |---|---|
 | Buffalo is on the shore of Lake Erie; Canalside is the site of the western end (terminus) of the Erie Canal | https://esd.ny.gov/esd-media-center/press-releases/canalside-tenth-anniversary |
-| The world's first steam-powered grain elevator was built in Buffalo in 1842 (Joseph Dart and Robert Dunbar); a steam engine drove a belt of buckets that lifted grain out of boats. Most sources say 1842; a few say 1843 | https://www.wbfo.org/heritage-moments/2017-11-20/heritage-moments-dart-dunbar-and-the-colossus-in-the-harbor |
+| The world's first steam-powered grain elevator was built in Buffalo, finished in spring 1843 (work began at the end of 1842; the cited WBFO page says it "went up in 1843") (Joseph Dart and Robert Dunbar); a steam engine drove a belt of buckets that lifted grain out of boats. | https://www.wbfo.org/heritage-moments/2017-11-20/heritage-moments-dart-dunbar-and-the-colossus-in-the-harbor |
 | Buffalo City Hall was completed in 1931 and has an observation deck on the 28th floor open to visitors. **spot-check** | https://www.atlasobscura.com/places/buffalo-city-hall |
 | Buffalo chicken wings are named after the city | https://www.smithsonianmag.com/legacy_blog/a-brief-history-of-the-buffalo-chicken-wing/ |
 
@@ -55,7 +55,7 @@ sources, or a source that was confirmed through other pages). See "Dropped or av
 | Albany is the capital of New York State and has been since 1797. **spot-check** (the 1797 date was confirmed from several agreeing pages; check it on the city page) | https://www.albanyny.gov/512/City-History |
 | The New York State Capitol took 32 years to build, from 1867 to 1899. **spot-check** (encyclopedia) | https://en.wikipedia.org/wiki/New_York_State_Capitol |
 | The New York State Museum was founded in 1836 and displays the Cohoes Mastodon, found in Cohoes in 1866. **spot-check** (tourism listing; nysm.nysed.gov was not reachable) | https://www.albany.org/listing/new-york-state-museum/4868/ |
-| The Tulip Festival is held each May in Washington Park; it began with tulip bulbs given by Albany's Dutch sister city, Nijmegen | https://albanyny.gov/2306/Tulip-Festival |
+| The Tulip Festival is held each May in Washington Park; it began with a gift of tulip bulbs from Queen Wilhelmina of the Netherlands after Albany sent help to its Dutch sister city, Nijmegen, after World War II (the text says only "a gift from the Netherlands") | https://albanyny.gov/2306/Tulip-Festival |
 
 ## Cooperstown
 
@@ -88,15 +88,15 @@ sources, or a source that was confirmed through other pages). See "Dropped or av
 
 | Claim | Source |
 |---|---|
-| The city is named for its natural mineral springs; the carbonated spring water can be sampled free at public springs | https://www.discoversaratoga.org/blog/stories/post/experience-the-natural-mineral-springs-in-saratoga-ny/ |
+| The city is famous for its natural mineral springs (the name Saratoga comes from a Mohawk-derived name for the area, not from the springs); the carbonated spring water can be sampled free at public springs | https://www.discoversaratoga.org/blog/stories/post/experience-the-natural-mineral-springs-in-saratoga-ny/ |
 | Thoroughbred racing at Saratoga began in 1863; the race course is one of the oldest in the country (the text avoids the stronger "oldest sports venue" claim) | https://discoversaratoga.org/saratoga-springs-visitor-center/history |
-| The Battles of Saratoga (1777) were fought nearby and were a turning point of the American Revolution | https://www.nps.gov/parkhistory/online_books/colonials-patriots/sitea10.htm |
+| The Battles of Saratoga (1777) were fought nearby and were a turning point of the American Revolution | https://www.nps.gov/sara/learn/historyculture/index.htm |
 
 ## Ithaca
 
 | Claim | Source |
 |---|---|
-| More than 150 waterfalls lie within 10 miles of Ithaca; the motto "Ithaca is Gorges" | https://www.visitithaca.com/blog/post/48-hours-and-10-ithaca-waterfalls/ |
+| Ithaca is surrounded by waterfalls and gorges; the motto "Ithaca is Gorges" (tourism sources say more than 150 waterfalls; the game gives no count) | https://www.visitithaca.com/blog/post/48-hours-and-10-ithaca-waterfalls/ |
 | Ithaca is at the south end of Cayuga Lake, the longest Finger Lake | https://www.visitfingerlakes.com/plan-your-trip/finger-lakes-facts/cayuga-lake/ |
 | Cornell University was founded in Ithaca in 1865 (classes began in 1868) | https://www.britannica.com/topic/Cornell-University |
 | Taughannock Falls drops 215 feet, taller than Niagara Falls (NYS Parks: 33 feet taller). **spot-check** (relayed from NYS Parks by a parks association page; parks.ny.gov was not reachable) | https://www.americasstateparks.org/state-park/taughannock-falls/ |
@@ -109,7 +109,7 @@ sources, or a source that was confirmed through other pages). See "Dropped or av
 | The city has five boroughs: Manhattan, Brooklyn, Queens, the Bronx and Staten Island | https://www.census.gov/about/history/stories/monthly/2023/january-2023.html |
 | The Statue of Liberty was a gift from the people of France, dedicated in 1886 | https://www.nps.gov/articles/liberty.htm |
 | Central Park covers 843 acres in Manhattan | https://www.centralparknyc.org/celebrating-40-years-of-commitment-and-conservancy |
-| (clue only) More than 12 million immigrants entered the United States through Ellis Island (1892 to 1954) | https://www.nps.gov/parkhistory/categrs/immg.htm |
+| (clue only) More than 12 million immigrants entered the United States through Ellis Island (1892 to 1954) | https://www.nps.gov/elis/learn/historyculture/index.htm |
 
 ## Watkins Glen (extra city)
 

@@ -43,7 +43,7 @@ export function createClosed(app) {
     const sorry = h('p', { class: 'gang-line', id: 'gang-line' }, apology ? `${apology.who.name}: ${apology.text}` : `${gang.name} hands every letter back, a little embarrassed. The sign is whole again!`);
     const tease = teaserOf(kase);
     const card = h('article', { class: 'postcard paper closed-card', id: 'closed-postcard', 'data-city': pc.cityId },
-      artBox(postcardSvg(artCity(pc.city)), 'pc-art', `Postcard of ${pc.city.name}`), h('h3', {}, `A postcard from ${pc.city.name}`), h('ul', {}, ...pc.facts.map((f) => h('li', {}, f))));
+      artBox(postcardSvg(artCity(pc.city), { tour: kase.arc === 'usa' ? 'usa' : 'ny' }), 'pc-art', `Postcard of ${pc.city.name}`), h('h3', {}, `A postcard from ${pc.city.name}`), h('ul', {}, ...pc.facts.map((f) => h('li', {}, f))));
     const wait = waitingState(app.save);
     const seeYou = h('p', { class: 'see-you', id: 'see-you' }, wait === 'done' ? 'Case closed. Every case on the tour is closed!' : 'Case closed — see you tomorrow.');
     const album = h('button', { class: 'btn btn-paper', id: 'closed-album', type: 'button', 'data-sfx': '' }, 'Postcard album');
