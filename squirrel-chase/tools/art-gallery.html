@@ -52,8 +52,17 @@ const cells = (s, items, cls = '') => { const r = $(`<div class="row panel ${cls
   A.drawMap(b, { cities, highlight: 'ithaca', visited: ['corning'] });
   s.appendChild($('<p id="maplog">tap a pin</p>')); a.addEventListener('click', (e) => { const g = e.target.closest('[data-city]'); if (g) document.getElementById('maplog').textContent = 'clicked ' + g.dataset.city; });
 }
+{ const s = sec('USA map (arc: usa)');
+  const B = A.US_BOX;
+  const T = [['new-york-city','New York City',40.71,-74.01],['boston','Boston',42.36,-71.06],['philadelphia','Philadelphia',39.95,-75.17],['washington-dc','Washington, D.C.',38.91,-77.04],['cape-canaveral','Cape Canaveral',28.39,-80.6],['new-orleans','New Orleans',29.95,-90.07],['san-antonio','San Antonio',29.42,-98.49],['st-louis','St. Louis',38.63,-90.2],['chicago','Chicago',41.88,-87.63],['denver','Denver',39.74,-104.99],['seattle','Seattle',47.61,-122.33],['san-francisco','San Francisco',37.77,-122.42]];
+  const cities = T.map(([id, name, la, lo]) => ({ id, name, coords: null, usCoords: { x: (lo - B.west) / (B.east - B.west), y: (B.north - la) / (B.north - B.south) } }));
+  const a = $('<div class="map-wrap" style="max-width:900px"></div>'); s.appendChild(a);
+  A.drawMap(a, { cities, arc: 'usa', highlight: 'chicago', visited: ['new-york-city'] });
+  const b = $('<div class="map-wrap" style="max-width:358px;margin-top:12px"></div>'); s.appendChild(b);
+  A.drawMap(b, { cities, arc: 'usa', highlight: 'denver', visited: ['new-york-city', 'boston'] });
+}
 { const s = sec('Postcards');
-  const cs = [['rochester','Rochester'],['buffalo','Buffalo'],['niagara-falls','Niagara Falls'],['syracuse','Syracuse'],['albany','Albany'],['cooperstown','Cooperstown'],['corning','Corning'],['lake-placid','Lake Placid'],['saratoga','Saratoga Springs'],['ithaca','Ithaca'],['nyc','New York City'],['x','Watertown']];
+  const cs = [['boston','Boston'],['philadelphia','Philadelphia'],['washington-dc','Washington, D.C.'],['cape-canaveral','Cape Canaveral'],['new-orleans','New Orleans'],['san-antonio','San Antonio'],['st-louis','St. Louis'],['chicago','Chicago'],['denver','Denver'],['seattle','Seattle'],['san-francisco','San Francisco'],['rochester','Rochester'],['buffalo','Buffalo'],['niagara-falls','Niagara Falls'],['syracuse','Syracuse'],['albany','Albany'],['cooperstown','Cooperstown'],['corning','Corning'],['lake-placid','Lake Placid'],['saratoga','Saratoga Springs'],['ithaca','Ithaca'],['nyc','New York City'],['x','Watertown']];
   const r = $('<div class="row"></div>'); s.appendChild(r);
   cs.forEach(([id, name]) => r.appendChild($(`<div class="cell" style="width:min(440px,100%)">${A.postcardSvg({ id, name })}<span>${name}</span></div>`)));
 }

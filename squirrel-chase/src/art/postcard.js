@@ -1,11 +1,14 @@
 // postcardSvg(city): a "Greetings from ..." travel postcard (viewBox 0 0 600 400) with an illustrated scene, a perforated stamp and a postmark.
 import { INK, SLAB, SANS, esc, uid } from './shared.js';
-import { SCENES, SCENE_ACCENT, sceneKey } from './scenes.js';
+import { SCENES, SCENE_ACCENT, sceneKey, USA_KEYS } from './scenes.js';
 
-/** city: { id, name, scene? }. scene (optional) forces one of: rochester buffalo niagara syracuse albany cooperstown corning lakeplacid saratoga ithaca nyc generic. */
+/** city: { id, name, scene? }. scene (optional) forces one of: rochester buffalo niagara syracuse albany cooperstown corning lakeplacid saratoga ithaca nyc generic
+ *  boston philadelphia washington capecanaveral neworleans sanantonio stlouis chicago denver seattle sanfrancisco. opts.tour: 'usa' | 'ny' picks the stamp wording (default: by scene). */
 export function postcardSvg(city = {}, opts = {}) {
   const id = uid('sqp');
   const key = sceneKey(city);
+  // the USA Tour postcards (every key except the NY ones and nyc) say U.S.A.; opts.tour = 'usa' | 'ny' forces it (New York City closes both tours)
+  const usa = opts.tour ? opts.tour === 'usa' : USA_KEYS.has(key);
   const name = String(city.name || city.id || 'New York').toUpperCase();
   const accent = SCENE_ACCENT[key] || '#ff6f59';
   const fs = Math.max(32, Math.min(60, 330 / (name.length * 0.66))), tl = Math.round(name.length * fs * 0.66);
@@ -28,8 +31,8 @@ export function postcardSvg(city = {}, opts = {}) {
     </g>
     <g transform="translate(494 28) rotate(3 40 52)"><rect x="-3" y="-3" width="86" height="110" fill="#000" opacity=".14" transform="translate(3 4)"/>
       <g mask="url(#${id}m)"><rect x="0" y="0" width="80" height="104" fill="#fffdf4"/><rect x="8" y="8" width="64" height="88" fill="${accent}"/><path d="M8 70Q30 52 44 66T72 60V96H8Z" fill="#fff" opacity=".28"/><circle cx="52" cy="30" r="11" fill="#ffd34d"/><path d="M8 96V80L24 66L36 78L50 62L72 82V96Z" fill="#fff" opacity=".4"/></g>
-      <text x="40" y="94" text-anchor="middle" font-family="${SLAB}" font-size="9.5" fill="#fff" stroke="${INK}" stroke-width="2.6" paint-order="stroke">NEW YORK</text></g>
-    <g transform="translate(452 142)" opacity=".62" fill="none" stroke="${INK}"><circle r="40" stroke-width="3"/><circle r="31" stroke-width="1.6"/><g transform="rotate(0)"><text font-family="${SANS}" font-weight="800" font-size="9.5" letter-spacing="1.6" fill="${INK}" stroke="none" text-anchor="middle"><textPath href="#${id}p" startOffset="50%" transform="translate(0 0)">${esc(name.length > 12 ? name.slice(0, 12) : name)}</textPath></text></g><text y="4" font-family="${SANS}" font-weight="800" font-size="11" text-anchor="middle" fill="${INK}" stroke="none">NY</text><text y="17" font-family="${SANS}" font-weight="700" font-size="7.5" text-anchor="middle" fill="${INK}" stroke="none">TOUR</text>
+      <text x="40" y="94" text-anchor="middle" font-family="${SLAB}" font-size="9.5" fill="#fff" stroke="${INK}" stroke-width="2.6" paint-order="stroke">${usa ? 'U.S.A.' : 'NEW YORK'}</text></g>
+    <g transform="translate(452 142)" opacity=".62" fill="none" stroke="${INK}"><circle r="40" stroke-width="3"/><circle r="31" stroke-width="1.6"/><g transform="rotate(0)"><text font-family="${SANS}" font-weight="800" font-size="9.5" letter-spacing="1.6" fill="${INK}" stroke="none" text-anchor="middle"><textPath href="#${id}p" startOffset="50%" transform="translate(0 0)">${esc(name.length > 12 ? name.slice(0, 12) : name)}</textPath></text></g><text y="4" font-family="${SANS}" font-weight="800" font-size="11" text-anchor="middle" fill="${INK}" stroke="none">${usa ? 'USA' : 'NY'}</text><text y="17" font-family="${SANS}" font-weight="700" font-size="7.5" text-anchor="middle" fill="${INK}" stroke="none">TOUR</text>
       <g transform="translate(40 -26)">${wave(0)}${wave(12)}${wave(24)}${wave(36)}</g></g>
   </g>
   <rect x="14" y="14" width="572" height="372" rx="12" fill="none" stroke="#fffaf0" stroke-width="2"/>

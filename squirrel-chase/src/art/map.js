@@ -11,6 +11,8 @@
 // route on the inset for later US arcs).
 import { INK, SANS, esc, hash, rng } from './shared.js';
 import { MAP_BOUNDS } from '../content/geo.js';
+import { usBaseSvg, US_BOX } from './usmap.js';
+export { US_BOX };
 
 // the box is the CONTENT's (src/content/geo.js MAP_BOUNDS), so city coords from toMap() land on the right spot
 export const MAP_BOX = Object.freeze({ lonMin: MAP_BOUNDS.west, lonMax: MAP_BOUNDS.east, latMin: MAP_BOUNDS.south, latMax: MAP_BOUNDS.north, width: 720, height: 560 });
@@ -105,7 +107,7 @@ const compass = (x, y, r = 34) => `<g transform="translate(${x} ${y})"><circle r
 
 // ------------------------------------------------------------------ pins
 const FALLBACK = { x: 0.5, y: 0.5 };
-const FS = 26, LH = FS * 1.04;
+const FS0 = 26;
 const splitName = (name) => {
   if (name.length <= 10 || !name.includes(' ')) return [name];
   const w = name.split(' ');
@@ -114,29 +116,36 @@ const splitName = (name) => {
   return [w.slice(0, best).join(' '), w.slice(best).join(' ')];
 };
 // candidate label placements around a pin tip (x, y): 'r' right of the head, 'l' left, 'tr'/'tl' above, 'br'/'bl' below
-const place = (k, x, y, w, h) => ({
-  r: [x + 14, y - 14 - h / 2], l: [x - 14 - w, y - 14 - h / 2], tr: [x + 6, y - 34 - h], tl: [x - 6 - w, y - 34 - h], br: [x + 8, y + 7], bl: [x - 8 - w, y + 7], b: [x - w / 2, y + 7], t: [x - w / 2, y - 34 - h],
+const place = (k, x, y, w, h, s = 1) => ({
+  r: [x + 14 * s, y - 14 * s - h / 2], l: [x - 14 * s - w, y - 14 * s - h / 2], tr: [x + 6 * s, y - 34 * s - h], tl: [x - 6 * s - w, y - 34 * s - h], br: [x + 8 * s, y + 7 * s], bl: [x - 8 * s - w, y + 7 * s], b: [x - w / 2, y + 7 * s], t: [x - w / 2, y - 34 * s - h],
 }[k]);
 const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 
-function pinsSvg(cities, highlight, visited, avoid = []) {
-  const list = (cities || []).map((c) => {
-    const co = c.coords || FALLBACK;
-    return { id: String(c.id), name: String(c.name || c.id), x: +(co.x * W).toFixed(1), y: +(co.y * H).toFixed(1), label: c.label };
+// cfg: { w, h, key: 'coords' | 'usCoords', k: pin and label scale (1 on the NY map), hints: { cityId: label side } }
+function pinsSvg(cities, highlight, visited, avoid = [], cfg = {}) {
+  const { w: MW = W, h: MH = H, key = 'coords', k: K = 1, hints = {} } = cfg;
+  const FS = FS0 * K, LH = FS * 1.04;
+  const list = (cities || []).filter((c) => (key === 'coords' ? c.coords !== null : !!c[key])).map((c) => {
+    const co = c[key] || FALLBACK;
+    return { id: String(c.id), name: String(c.name || c.id), x: +(co.x * MW).toFixed(1), y: +(co.y * MH).toFixed(1), label: c.label || hints[c.id] };
   });
-  const pinBoxes = list.map((c) => ({ x: c.x - 12, y: c.y - 36, w: 24, h: 40 }));
+  const pinBoxes = list.map((c) => ({ x: c.x - 12 * K, y: c.y - 36 * K, w: 24 * K, h: 40 * K }));
   const placed = [];
   const order = ['r', 'l', 'tr', 'tl', 'br', 'bl', 'b', 't'];
   const spec = (c) => { const ls = splitName(c.name); return { ls, w: Math.max(...ls.map((t) => t.length)) * FS * 0.57 + 12, h: ls.length * LH + 6 }; };
   const choose = (c, ci, withPlaced) => {
     const { w, h } = spec(c);
+    if (c.label && typeof c.label === 'object') {   // an exact spot: { a: 'start' | 'end', dx, dy } = the box's left (start) or right (end) top corner relative to the pin tip
+      const bx = c.label.a === 'end' ? c.x + c.label.dx * K - w : c.x + c.label.dx * K;
+      return { score: 0, k: c.label.a === 'end' ? 'l' : 'r', b: { x: bx, y: c.y + c.label.dy * K, w, h }, exact: true };
+    }
     const want = c.label && order.includes(c.label) ? [c.label, ...order.filter((k) => k !== c.label)] : order;
     let best = null;
     for (const k of want) {
-      const [bx, by] = place(k, c.x, c.y, w, h);
+      const [bx, by] = place(k, c.x, c.y, w, h, K);
       const b = { x: bx, y: by, w, h };
       let score = 0;
-      const out = Math.max(0, 6 - b.x) + Math.max(0, b.x + w - (W - 6)) + Math.max(0, 6 - b.y) + Math.max(0, b.y + h - (H - 6));
+      const out = Math.max(0, 6 - b.x) + Math.max(0, b.x + w - (MW - 6)) + Math.max(0, 6 - b.y) + Math.max(0, b.y + h - (MH - 6));
       score += out * 400;
       pinBoxes.forEach((o, i) => { if (i !== ci) score += overlap(b, o) * 8; });
       if (withPlaced) placed.forEach((o) => { score += overlap(b, o) * 3; });
@@ -156,13 +165,13 @@ function pinsSvg(cities, highlight, visited, avoid = []) {
   return list.map((c, ci) => {
     const { ls } = spec(c);
     const best = result[ci];
-    const right = best.k.endsWith('r'), mid = best.k === 'b' || best.k === 't';
+    const right = best.k.endsWith('r'), mid = (best.k === 'b' || best.k === 't') && !best.exact;
     const tx = mid ? best.b.x + best.b.w / 2 : right ? best.b.x + 5 : best.b.x + best.b.w - 5;
     // a leader line from the pin head to the label when the label does not sit beside it
-    const hx0 = c.x, hy0 = c.y - 16;
+    const hx0 = c.x, hy0 = c.y - (best.exact ? 8 : 16) * K;
     const nx = Math.max(best.b.x, Math.min(best.b.x + best.b.w, hx0)), ny = Math.max(best.b.y, Math.min(best.b.y + best.b.h, hy0));
-    const far = Math.hypot(nx - hx0, ny - hy0) > 14;
-    const leader = far ? `<path class="sqm-leader" d="M0 -16L${(nx - c.x).toFixed(1)} ${(ny - c.y).toFixed(1)}" fill="none" stroke="#8a6a2c" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="5 4"/>` : '';
+    const far = Math.hypot(nx - hx0, ny - hy0) > 14 * K;
+    const leader = far ? `<path class="sqm-leader" d="M0 ${(best.exact ? -8 : -16) * K}L${(nx - c.x).toFixed(1)} ${(ny - c.y).toFixed(1)}" fill="none" stroke="#8a6a2c" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="5 4"/>` : '';
     const nearest = Math.min(1e9, ...list.filter((o) => o !== c).map((o) => Math.hypot(o.x - c.x, o.y - c.y)));
     const hr = Math.max(32, Math.min(56, nearest * 0.8));
     const cls = `sqm-pin${highlight === c.id ? ' is-hl' : ''}${visited && visited.includes(c.id) ? ' is-visited' : ''}`;
@@ -173,8 +182,8 @@ function pinsSvg(cities, highlight, visited, avoid = []) {
       <ellipse cx="0" cy="1" rx="8" ry="3" fill="#000" opacity=".22"/>
       ${leader}
       <text class="sqm-label" text-anchor="${mid ? 'middle' : right ? 'start' : 'end'}" font-family="${SANS}" font-weight="800" font-size="${FS}">${text}</text>
-      <g class="sqm-body"><path class="sqm-pin-shape" d="M0 0C-5 -9 -11 -14 -11 -21A11 11 0 1 1 11 -21C11 -14 5 -9 0 0Z" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/><circle class="sqm-dot" cx="0" cy="-21" r="4.4" fill="#fff"/>
-        <g class="sqm-stamp" transform="translate(13 -33) rotate(12)"><circle r="9.5" fill="#fff8e4" stroke="#1f8a7a" stroke-width="2.2"/><path d="M-4.6 .4L-1.2 4 5 -3.4" fill="none" stroke="#1f8a7a" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></g></g></g>`;
+      ${K === 1 ? '' : `<g transform="scale(${K})">`}<g class="sqm-body"><path class="sqm-pin-shape" d="M0 0C-5 -9 -11 -14 -11 -21A11 11 0 1 1 11 -21C11 -14 5 -9 0 0Z" stroke="#fff" stroke-width="2.4" stroke-linejoin="round"/><circle class="sqm-dot" cx="0" cy="-21" r="4.4" fill="#fff"/>
+        <g class="sqm-stamp" transform="translate(13 -33) rotate(12)"><circle r="9.5" fill="#fff8e4" stroke="#1f8a7a" stroke-width="2.2"/><path d="M-4.6 .4L-1.2 4 5 -3.4" fill="none" stroke="#1f8a7a" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></g></g>${K === 1 ? '' : '</g>'}</g>`;
   }).join('');
 }
 
@@ -198,8 +207,28 @@ const CSS = `
 @media (prefers-reduced-motion:reduce){.sqm-pin.is-hl .sqm-glow ellipse,.sqm-ny-ring{animation:none}.sqm-body{transition:none}.sqm-pin.is-hl .sqm-glow ellipse:first-child{opacity:.55;transform:scale(1.6)}}
 `;
 
+// ------------------------------------------------------------------ the USA map (arc 'usa'): see usmap.js for the base layer
+// label sides for the tight north-east corridor (Boston / New York City / Philadelphia / Washington) so the four labels never meet; a city's own `label` still wins
+const US_HINTS = { boston: 't', 'new-york-city': { a: 'end', dx: -8, dy: -88 }, philadelphia: { a: 'end', dx: 112, dy: 38 }, 'washington-dc': 'l', chicago: 'l', 'st-louis': 'l', 'new-orleans': 'l' };
+function usMapSvg({ cities = [], highlight = null, visited = [] } = {}) {
+  const avoid = [];
+  const base = usBaseSvg(avoid);
+  const { width: UW, height: UH } = US_BOX;
+  return `<svg class="sq-map sq-map-usa" viewBox="0 0 ${UW} ${UH}" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="Map of the United States" style="width:100%;height:auto;display:block">
+  <style>${CSS}.sq-map-usa .sqm-pin.is-hl .sqm-label{font-size:23px}</style>
+  <defs><clipPath id="sqm-clip"><rect x="0" y="0" width="${UW}" height="${UH}" rx="20"/></clipPath>
+    <radialGradient id="sqm-vig" cx="50%" cy="50%" r="75%"><stop offset="60%" stop-color="#7a5a1a" stop-opacity="0"/><stop offset="100%" stop-color="#7a5a1a" stop-opacity=".22"/></radialGradient></defs>
+  <g clip-path="url(#sqm-clip)">${base}
+    <g class="sqm-pins">${pinsSvg(cities, highlight, visited, avoid, { w: UW, h: UH, key: 'usCoords', k: 0.85, hints: US_HINTS })}</g>
+    <rect width="${UW}" height="${UH}" fill="url(#sqm-vig)" pointer-events="none"/>
+  </g>
+  <rect x="2.5" y="2.5" width="${UW - 5}" height="${UH - 5}" rx="18" fill="none" stroke="#c9a14a" stroke-width="5" pointer-events="none"/><rect x="11" y="11" width="${UW - 22}" height="${UH - 22}" rx="12" fill="none" stroke="#e0c27a" stroke-width="1.5" pointer-events="none"/>
+</svg>`;
+}
+
 /** The map as an SVG string (no handlers). See drawMap for the options. */
-export function mapSvg({ cities = [], highlight = null, visited = [], usRoute = null } = {}) {
+export function mapSvg({ cities = [], highlight = null, visited = [], usRoute = null, arc = 'ny' } = {}) {
+  if (arc === 'usa') return usMapSvg({ cities, highlight, visited });
   const water = '#9bd5ef', waterDk = '#6bb3d6';
   const line = (a, w) => `<path d="${curve(a)}" fill="none" stroke="${water}" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
   const lakeLine = (a, w) => `<path d="${curve(a)}" fill="none" stroke="${water}" stroke-width="${w}" stroke-linecap="round"/><path d="${curve(a)}" fill="none" stroke="${waterDk}" stroke-width="${Math.max(1, w - 6)}" stroke-linecap="round" opacity=".0"/>`;
@@ -251,7 +280,7 @@ export function mapSvg({ cities = [], highlight = null, visited = [], usRoute = 
  * cities: [{ id, name, coords: { x, y } }] (x,y 0..1 over MAP_BOX, see the comment at the top). highlight: a city id (glowing pin). visited: [ids] (stamped pins).
  */
 export function drawMap(el, opts = {}) {
-  el.innerHTML = mapSvg(opts);
+  el.innerHTML = mapSvg({ ...opts, arc: opts.arc === 'usa' ? 'usa' : 'ny' });
   const svg = el.querySelector('svg');
   const pins = {};
   svg.querySelectorAll('[data-city]').forEach((g) => { pins[g.getAttribute('data-city')] = g; });
