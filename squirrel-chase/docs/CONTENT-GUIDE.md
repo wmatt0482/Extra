@@ -102,7 +102,7 @@ Chicago, Denver, Seattle, San Francisco; New York City is the twelfth):
 | usa-01 The Flying Squirrel | Scrabble | STATUE OF LIBERTY (New York City, `altSigns`) | F L Y → FLY | New York City → Washington → Cape Canaveral |
 | usa-02 The Golden Crow | Glint | GOLDEN GATE (San Francisco) | G O L D → GOLD | San Francisco → Denver → Philadelphia |
 | usa-03 The Bubble Bath Lake | Sudsy | RIVER WALK (San Antonio) | L A K E → LAKE | San Antonio → New Orleans → St. Louis → Chicago |
-| usa-04 The Mile-High Snooze | Snoozy | MILE HIGH STEP (Denver) | S L E E P → SLEEP | Denver → San Antonio → San Francisco → Seattle |
+| usa-04 The Mile-High Nap | Snoozy | MILE HIGH STEP (Denver) | S L E E P → SLEEP | Denver → San Antonio → San Francisco → Seattle |
 | usa-05 The Mountain Goat | Bleatrice | FREEDOM TRAIL (Boston) | E E O A I (vowels only) | Boston → Washington → New Orleans → Denver |
 | usa-06 The Great Race (finale) | Scrabble + all | SPACE CENTER (Cape Canaveral) | R A C E → RACE | Cape Canaveral → Chicago → Boston → New York City |
 

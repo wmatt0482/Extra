@@ -147,7 +147,7 @@ export const USA_CASES = [
     id: 'usa-04',
     arc: 'usa',
     order: 4,
-    title: 'The Case of the Mile-High Snooze',
+    title: 'The Case of the Mile-High Nap',
     lead: 'snoozy',
     crew: ['snoozy'],
     sign: sign('denver', 'SLEEP'),

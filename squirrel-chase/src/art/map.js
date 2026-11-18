@@ -121,10 +121,10 @@ const place = (k, x, y, w, h, s = 1) => ({
 }[k]);
 const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
 
-// cfg: { w, h, key: 'coords' | 'usCoords', k: pin and label scale (1 on the NY map), hints: { cityId: label side } }
+// cfg: { w, h, key: 'coords' | 'usCoords', k: pin scale (1 on the NY map), lk: label scale (default k), hints: { cityId: label side } }
 function pinsSvg(cities, highlight, visited, avoid = [], cfg = {}) {
-  const { w: MW = W, h: MH = H, key = 'coords', k: K = 1, hints = {} } = cfg;
-  const FS = FS0 * K, LH = FS * 1.04;
+  const { w: MW = W, h: MH = H, key = 'coords', k: K = 1, lk: LK = K, hints = {} } = cfg;
+  const FS = FS0 * LK, LH = FS * 1.04;
   const list = (cities || []).filter((c) => (key === 'coords' ? c.coords !== null : !!c[key])).map((c) => {
     const co = c[key] || FALLBACK;
     return { id: String(c.id), name: String(c.name || c.id), x: +(co.x * MW).toFixed(1), y: +(co.y * MH).toFixed(1), label: c.label || hints[c.id] };
@@ -209,7 +209,7 @@ const CSS = `
 
 // ------------------------------------------------------------------ the USA map (arc 'usa'): see usmap.js for the base layer
 // label sides for the tight north-east corridor (Boston / New York City / Philadelphia / Washington) so the four labels never meet; a city's own `label` still wins
-const US_HINTS = { boston: 't', 'new-york-city': { a: 'end', dx: -8, dy: -88 }, philadelphia: { a: 'end', dx: 112, dy: 38 }, 'washington-dc': 'l', chicago: 'l', 'st-louis': 'l', 'new-orleans': 'l' };
+const US_HINTS = { boston: 't', 'new-york-city': { a: 'end', dx: -8, dy: -88 }, philadelphia: { a: 'start', dx: -90, dy: 79 }, 'washington-dc': { a: 'end', dx: 8, dy: -50 }, chicago: 'l', 'st-louis': 'l', 'new-orleans': 'bl', denver: 'r' };
 function usMapSvg({ cities = [], highlight = null, visited = [] } = {}) {
   const avoid = [];
   const base = usBaseSvg(avoid);
@@ -219,7 +219,7 @@ function usMapSvg({ cities = [], highlight = null, visited = [] } = {}) {
   <defs><clipPath id="sqm-clip"><rect x="0" y="0" width="${UW}" height="${UH}" rx="20"/></clipPath>
     <radialGradient id="sqm-vig" cx="50%" cy="50%" r="75%"><stop offset="60%" stop-color="#7a5a1a" stop-opacity="0"/><stop offset="100%" stop-color="#7a5a1a" stop-opacity=".22"/></radialGradient></defs>
   <g clip-path="url(#sqm-clip)">${base}
-    <g class="sqm-pins">${pinsSvg(cities, highlight, visited, avoid, { w: UW, h: UH, key: 'usCoords', k: 0.85, hints: US_HINTS })}</g>
+    <g class="sqm-pins">${pinsSvg(cities, highlight, visited, avoid, { w: UW, h: UH, key: 'usCoords', k: 0.85, lk: 1, hints: US_HINTS })}</g>
     <rect width="${UW}" height="${UH}" fill="url(#sqm-vig)" pointer-events="none"/>
   </g>
   <rect x="2.5" y="2.5" width="${UW - 5}" height="${UH - 5}" rx="18" fill="none" stroke="#c9a14a" stroke-width="5" pointer-events="none"/><rect x="11" y="11" width="${UW - 22}" height="${UH - 22}" rx="12" fill="none" stroke="#e0c27a" stroke-width="1.5" pointer-events="none"/>
