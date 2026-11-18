@@ -1,0 +1,143 @@
+import { doc, handles } from '../helpers.js';
+
+const d1 = doc('d1', { kind: 'logbook', title: 'Garden Notebook', from: 'Lena Pierce, Seneca educator', stretch: false }, [
+  [
+    'My name is Lena Pierce, and I am a Seneca educator at Ganondagan State Historic Site in Victor, New York.',
+    'I am a member of the Seneca Nation, and I love teaching visitors about our garden and our longhouse.',
+    'This morning a class of fourth graders is coming to see our Three Sisters garden, so I walked every row at sunrise.',
+    '@sisters The Three Sisters are corn, beans and squash, and we plant all three together in one low hill of earth called a mound.',
+    'In the fall we pick the corn, dry it and store it, and the harvest gives us food for the winter.',
+    'The Seneca Nation has farmed with these three crops for a very long time, and we are glad to share the garden.',
+    'Each spring we also save some seed from the best plants, so the garden can start again the next year.',
+  ],
+  [
+    '@m1 Mound one looks just right, with tall corn, bean vines wrapped around the stalks, and wide squash leaves covering the ground.',
+    'Mound three looks just as healthy as mound one.',
+    '@m2 Mound two has tall corn and climbing beans, but the ground around it is bare and full of weeds.',
+    '@away Last week I was away, and a new volunteer named Mr. Carter planted mound two by himself.',
+    '@pulled I pulled every weed from that mound on Monday, and by Friday they were back.',
+    '@water Mr. Carter signed the garden log, and he wrote that he watered mound two every single morning.',
+    'The corn is tall and strong, so it has had plenty of water and sun.',
+    '@shed In the shed I found his three seed packets: the corn packet is empty, the bean packet is empty, and the squash packet is still sealed.',
+    'I will ask Mr. Carter about the packets, but I think I already know what went wrong.',
+  ],
+]);
+
+const d2 = doc('d2', { kind: 'placard', title: 'Welcome to the Three Sisters Garden', from: 'Ganondagan State Historic Site', stretch: false }, [
+  [
+    'Welcome to Ganondagan, a New York State Historic Site where you can learn about the Seneca, one of the Six Nations of the Haudenosaunee.',
+    '@conf The Haudenosaunee Confederacy is a group of nations that agreed to live together in peace, as if under one long, imaginary longhouse stretching across New York State.',
+    '@keepers The Seneca are known as the Keepers of the Western Door, because their home lies at the western end of that great longhouse.',
+    '@living The Seneca are a living nation, and Seneca people live and work in western New York today.',
+    '@longhouse A longhouse was a long home covered in elm bark, and each one was home to several families.',
+    'Just up the hill, you can step inside the Seneca Bark Longhouse, which was dedicated here in 1998 and is built from young elm trees and strips of elm bark.',
+  ],
+  [
+    'In this garden, corn, beans and squash grow together in each mound, and each plant helps the others.',
+    '@corn The tall corn stalk gives the bean vine a structure to climb.',
+    '@beans The beans help to feed the soil.',
+    '@squash The wide squash leaves shade the ground, keep the soil moist and crowd out weeds.',
+    '@together Planted together, the three plants take care of one another, which is why they are known as the Three Sisters.',
+    'Please stay on the path, and let the plants grow!',
+  ],
+]);
+
+const d3 = doc('d3', { kind: 'letter', title: 'Letter to the Visiting Class', from: 'Lena Pierce, Seneca educator', stretch: true }, [
+  [
+    'Dear students, thank you for visiting Ganondagan today, and I hope your questions follow you home.',
+    'Many people picture the Seneca only in the past, but the Seneca Nation is a nation that is alive today.',
+    'Its people keep their own culture and their own government.',
+    'The Seneca Art & Culture Center opened here in 2015, and it lets Haudenosaunee people tell their own story.',
+  ],
+  [
+    'A longhouse reminds us that families once shared one long home and shared its work.',
+    'The garden teaches the same lesson about working together.',
+    'When the harvest comes in, remember that every mound began as a single seed.',
+    'The corn, beans and squash needed one another to grow.',
+    'Please come back to see how the garden changes from season to season.',
+  ],
+]);
+
+const S = handles(d1.ids, d2.ids, d3.ids);
+
+export default {
+  id: 'genesee-01', arc: 'genesee', order: 1, town: 'victor',
+  title: 'The Case of the Weedy Mound',
+  setting: 'Victor, New York · today',
+  objective: 'Find out why one garden mound is full of weeds, and which plant is missing from it.',
+  words: [
+    { word: 'mound', meaning: 'a low hill of earth where plants are grown', sentenceId: S.sisters },
+    { word: 'confederacy', meaning: 'a group of nations that join together', sentenceId: S.conf },
+    { word: 'longhouse', meaning: 'a long home covered in elm bark where several families lived together', sentenceId: S.longhouse },
+  ],
+  briefing: [
+    { who: 'chief', text: 'Detective, welcome to Ganondagan in Victor, New York. A Seneca educator named Lena Pierce has a puzzle in her garden.' },
+    { who: 'chief', text: 'Two of her mounds look healthy, but one is full of weeds. Find out why, and which plant is missing from it.' },
+    { who: 'partner', text: 'Let me picture the garden first. Three mounds, three sisters, and one mound that looks different.' },
+    { who: 'archivist', text: 'Today\'s words are mound, confederacy and longhouse. Tap each one, and I will give you its meaning.' },
+  ],
+  docs: [d1.doc, d2.doc, d3.doc],
+  questions: [
+    { id: 'q1', type: 'main', std: '4R2',
+      prompt: 'Which sentence in the notebook tells which three plants make up the Three Sisters?',
+      answer: [S.sisters],
+      hint: 'Sum it up: what are the three plants, and how are they planted? Look near the start of the notebook.',
+      model: 'The notebook says the Three Sisters are corn, beans and squash, planted together in one mound. That is the main idea of the garden.',
+      why: 'This sentence names all three plants and says they grow together in one mound.' },
+    { id: 'q2', type: 'evidence', std: '4R1',
+      prompt: 'Which sentence in the notebook describes the bare ground and the weeds?',
+      answer: [S.m2],
+      hint: 'Look for the sentence about the mound where the ground is bare.',
+      model: 'Mound two has tall corn and beans, but the ground around it is bare and full of weeds. That is the problem.',
+      why: 'This sentence tells what mound two looks like, and it is the only mound with weeds.' },
+    { id: 'q3', type: 'word', std: '4R4',
+      prompt: 'Which sentence on the sign helps you understand what a confederacy is?',
+      answer: [S.conf],
+      hint: 'Read the sign. Look for the new word, and then for the words that explain it.',
+      model: 'The sign says a confederacy is a group of nations that agreed to live together in peace. The words after "is" tell me what it means.',
+      why: 'The sentence says a confederacy is a group of nations that agreed to live together, which gives the meaning.' },
+    { id: 'q4', type: 'inference', std: '4R1',
+      prompt: 'Which sentence on the sign tells what squash leaves do about weeds?',
+      answer: [S.squash],
+      hint: 'Picture the wide squash leaves lying on the ground. What happens to the weeds under them?',
+      model: 'Wide leaves shade the ground and crowd out weeds. Mound two has weeds, so I wonder if it has squash leaves at all.',
+      why: 'The sign says squash leaves crowd out weeds, so a mound with weeds may be missing its squash.' },
+    { id: 'q5', type: 'inference', std: '4R1',
+      prompt: 'Which sentence in the notebook shows that the squash seeds were never used?',
+      answer: [S.shed],
+      hint: 'Mr. Carter had three seed packets. Which one did he leave alone?',
+      model: 'Corn and beans were planted, so those packets are empty. The squash packet is still sealed, so no squash seeds went into the ground.',
+      why: 'A sealed packet means the squash seeds were never planted in mound two.' },
+    { id: 'q6', type: 'evidence', std: '4R3',
+      prompt: 'Which sentence in the notebook shows that Mr. Carter did not forget to water?',
+      answer: [S.water],
+      hint: 'Check the garden log that Mr. Carter signed. What did he write about the mornings?',
+      model: 'If he forgot to water, that could be the reason. But the log says he watered every single morning, so that cannot be it.',
+      why: 'The log says he watered mound two every morning, which rules out a lack of water.' },
+  ],
+  timeline: {
+    kind: 'cause', prompt: 'What happened, and what made it happen? Put the chain in order.',
+    items: [
+      { id: 't1', text: 'A new volunteer planted mound two while Lena was away.', proof: S.away },
+      { id: 't2', text: 'He watered the mound every morning.', proof: S.water },
+      { id: 't3', text: 'No leaves grew to shade the bare ground.', proof: S.squash },
+      { id: 't4', text: 'Weeds filled the ground around the corn and beans.', proof: S.m2 },
+      { id: 't5', text: 'Lena pulled the weeds on Monday, but they were back by Friday.', proof: S.pulled },
+      { id: 't6', text: 'Lena found one seed packet still sealed in the shed.', proof: S.shed },
+    ],
+    given: [0, 5],
+  },
+  solution: { prompt: 'Which of the Three Sisters was never planted in mound two?', answers: ['squash', 'the squash', 'squash seeds'], proof: [S.shed, S.squash] },
+  report: { lead: 'The sister left out of mound two was ___', keywords: ['squash', 'weeds', 'packet', 'sealed', 'leaves', 'mound'] },
+  closing: { who: 'chief', text: 'Case closed! Mound two never got its squash, so the weeds had the bare ground to themselves. Lena, a proud member of the Seneca Nation, says thank you, and she is planting the missing sister today. Fine reading, Detective.' },
+  knowledge: 'At Ganondagan State Historic Site in Victor, the Seneca, known as the Keepers of the Western Door, are a living nation, and corn, beans and squash are still planted together in mounds.',
+  teaser: 'Tomorrow: a Rochester print shop is one line short on the night before a brand-new newspaper appears.',
+  facts: [
+    { claim: 'Ganondagan State Historic Site is in Victor, New York, a National Historic Landmark and the only New York State Historic Site dedicated to a Native American theme; its Seneca Bark Longhouse (1998) and Seneca Art & Culture Center (2015) tell the story of the Seneca and Haudenosaunee, who "are not a people in the past tense."', source: 'https://ganondagan.org/about' },
+    { claim: 'The Seneca Bark Longhouse was dedicated July 25, 1998; young elm trees form the frame and strips of elm bark are lashed on with bark-fiber rope. A longhouse was home to several families.', source: 'https://www.ganondagan.org/bark-longhouse' },
+    { claim: 'The Haudenosaunee Confederacy joined nations in peace "under an imaginary longhouse"; the Seneca are the Keepers of the Western Door.', source: 'https://www.ganondagan.org/bark-longhouse' },
+    { claim: 'Corn, beans and squash (the Three Sisters) are central to Seneca life; Ganondagan has a Three Sisters garden.', source: 'https://www.ganondagan.org/plants-1/things-that-sustain-us%2C-the-three-sisters' },
+    { claim: 'Grown together in one mound, corn gives the beans a structure to climb, the beans replenish the soil, and squash leaves act as living mulch that conserves water and controls weeds.', source: 'https://www.history.com/articles/three-sisters-native-american-agriculture-beans-corn-squash' },
+    { claim: 'The Seneca Nation is a living nation today with territories in western New York.', source: 'https://sni.org/about/' },
+  ],
+};

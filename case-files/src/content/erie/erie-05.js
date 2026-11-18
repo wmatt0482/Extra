@@ -123,7 +123,7 @@ export default {
   report: { lead: 'The keg of Lake Erie water came on the ___', keywords: ['Kingfisher', 'down', 'locks', 'west', 'east', 'Lake Erie', 'red'] },
   closing: { who: 'chief', text: 'Case closed! The keg with the red ribbon comes from Lake Erie. You solved it by reading the staircase, not by guessing, and that is real detective work.' },
   knowledge: 'The Erie Canal climbs from the Hudson River up to Lake Erie. On its opening trip in 1825, the Seneca Chief carried a keg of Lake Erie water to New York Harbor, a ceremony called the Wedding of the Waters.',
-  teaser: 'Tomorrow, a new set of files opens, with a new puzzle waiting for sharp eyes.',
+  teaser: 'Tomorrow, the files follow the Genesee River into a valley full of new puzzles.',
   facts: [
     { claim: 'The Lockport locks were a flight of five locks (five double locks) that lifted or lowered boats over the Niagara Escarpment, about 60 feet in all.', source: 'https://www.discoverniagara.org/lockport-s-flight-of-five' },
     { claim: 'The Flight of Five opened with the Erie Canal in 1825.', source: 'https://en.wikipedia.org/wiki/Flight_of_Five_Locks' },
