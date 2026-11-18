@@ -1,4 +1,4 @@
-// Scripted full playthrough of EVERY real case (Detective Training + Erie Canal cases 1-5) in Chromium, from the repo root:
+// Scripted full playthrough of EVERY real case (Detective Training + Erie Canal cases 1-5 + Genesee Valley cases 1-5, v0.2) in Chromium, from the repo root:
 //   bash build.sh && (cd dist && python3 -m http.server 8741 &)      then      BASE_URL=http://localhost:8741 node case-files/tools/content-play.mjs
 //   (ALL_LANDSCAPE=1 plays all six at 844x390 too; ONLY=portrait | landscape; SHOTS_DIR=... keeps screenshots at deviceScaleFactor 2)
 // Unlike ui-smoke.mjs (which runs on the fixtures), this runs on the REAL content in src/content/, using each case's own answer key:
@@ -9,7 +9,9 @@
 // (banned words, no timers/pressure text, no authored wrong options), and every case reaches Case Closed.
 // v0.1.2: each step's coach card shows once (the first case) and never again; a wrong pin, a misplaced card, a wrong accusation, a clue that
 // does not prove it and a short report each open the partner's popup (closed before play goes on).
-// Sizes: 390x844 plays all six; 844x390 plays Training + Erie 1 (all six with ALL_LANDSCAPE=1).
+// v0.2: the Genesee cases (genesee-01..05) play too, and the home's route map must be the map of the current case's arc. They only pass once
+// the content agent's real Genesee files are in src/content/ (until then ARCS holds Erie only and this plays the six v0.1 cases).
+// Sizes: 390x844 plays every case; 844x390 plays Training + Erie 1 (every case with ALL_LANDSCAPE=1).
 import { execSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import os from 'node:os';
@@ -147,7 +149,7 @@ const wrongSentence = (k, q) => k.docs.flatMap((d) => d.paragraphs.flat()).map((
 async function playCase(page, layout, k, i) {
   const tag = `${layout.name} ${k.id}`;
   console.log(`\n--- ${tag}: ${k.title} (${k.docs.length} docs, ${k.questions.length} questions, ${k.timeline.items.length}-card timeline) ---`);
-  const day = k.id === 'training' ? 0 : k.order - 1;                            // Training and Erie 1 on day 1, then one a day
+  const day = i === 0 ? 0 : i - 1;                                              // Training and the first case on day 1, then one a day (Genesee follows Erie)
   await J(page, (ms) => { window.__fakeNow = ms; }, day * DAY + (day ? 3600000 : 0));
   await page.click('#btn-player'); await waitScreen(page, 'players');
   await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
@@ -157,7 +159,12 @@ async function playCase(page, layout, k, i) {
   const sealedNext = CASES[i + 1] && CASES[i + 1].id !== 'erie-01' ? await J(page, (id) => document.querySelector(`.case-card[data-case="${id}"]`).dataset.state, CASES[i + 1].id) : 'sealed';
   check(sealedNext === 'sealed' || sealedNext === 'new', `${tag}: the next case is sealed or opening`);
   await stepOk(page, `${tag} home`);
-  if (k.id === 'training' || k.id === 'erie-01') await shot(page, layout, `${k.id}-00-agency-home`);
+  // v0.2: the route map is the map of the arc this case belongs to (Training: the first arc)
+  const arcOfCase = ARCS.find((a) => a.cases.some((c) => c.id === k.id)) || ARCS[0];
+  const wantMap = arcOfCase.map === 'genesee' ? 'genesee' : 'erie';
+  const gotMap = await J(page, () => { const m = document.querySelector('.routemap'); return m && m.dataset.map; });
+  check(gotMap === wantMap, `${tag}: the home's route map is the ${wantMap} map (got ${gotMap})`);
+  if (k.id === 'training' || k.id === 'erie-01' || k.id === 'genesee-01') await shot(page, layout, `${k.id}-00-agency-home`);
   await page.click(`.case-card[data-case="${k.id}"]`);
 
   // 1. briefing + word pre-teach
@@ -373,7 +380,7 @@ async function playCase(page, layout, k, i) {
   check(!!rec && rec.report.clueId === proofClue && rec.report.because.toLowerCase() === because.toLowerCase(), `${tag}: the save has the closed record and the report`);
   check(!!rec && rec.firstTap[k.questions[0].id] === false && k.questions.slice(1).every((q) => rec.firstTap[q.id] === true), `${tag}: first taps recorded (first question missed on purpose, the rest right)`);
   await page.click('#closed-home'); await waitScreen(page, 'home');
-  if (k.id === 'training' || k.id === 'erie-01') await replayCase(page, layout, k);
+  if (k.id === 'training' || k.id === 'erie-01' || k.id === 'genesee-01') await replayCase(page, layout, k);
 }
 
 // v0.1.3 "Solve it again": the whole closed case once more on the real content; no Lab payout, the record unchanged but `replays`

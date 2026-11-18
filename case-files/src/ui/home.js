@@ -3,18 +3,18 @@
 // arrived yet is sealed (its title is not shown) and the board says "Next case arrives tomorrow" with no countdown (SPEC §4).
 import { $, h } from '../../../spell-jump/src/ui/dom.js';
 import { ARCS, TRAINING } from '../content/index.js';
-import { currentCase, waitingState } from '../logic/pacing.js';
+import { currentCase, waitingState, currentArc, mapOf, arcShortName } from '../logic/pacing.js';
 import { drawAvatar, createRouteMap, portrait } from './art.js';
 
 export function createHome(app) {
   const homeBody = $('#home-body'), archiveBody = $('#archive-body');
-  let routeMap = null;                                   // the Erie route (src/ui/art/routemap.js), redrawn when the board changes width
+  let routeMap = null;                                   // the current arc's route map (src/ui/art/routemap.js), redrawn when the board changes width
   const face = (who, mood = 'happy', cls = '') => h('span', { class: `face ${cls}`, 'aria-hidden': 'true', html: portrait(who, mood) });
 
-  /** The canal-route map of an arc: Albany, Rochester, Lockport, Buffalo and one stop per case (closed = stamped, next = glowing, sealed = dim). */
+  /** The route map of an arc ('erie' canal or 'genesee' river): one stop per case (closed = stamped, next = glowing, sealed = dim). */
   function routeFor(arc, save, cur) {
-    const stops = arc.cases.map((k, i) => ({ id: k.id, no: i + 1, title: k.title, setting: k.setting, state: save.closed[k.id] ? 'closed' : !save.opened[k.id] ? 'sealed' : cur === k.id ? 'now' : 'open' }));
-    return createRouteMap({ stops, onOpen: (id) => app.openCase(id), reduced: !!app.settings.reducedMotion || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) });
+    const stops = arc.cases.map((k, i) => ({ id: k.id, no: i + 1, title: k.title, setting: k.setting, town: k.town, state: save.closed[k.id] ? 'closed' : !save.opened[k.id] ? 'sealed' : cur === k.id ? 'now' : 'open' }));
+    return createRouteMap({ map: mapOf(arc), stops, onOpen: (id) => app.openCase(id), reduced: !!app.settings.reducedMotion || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) });
   }
 
   function card(kase, no, save, now) {
@@ -47,11 +47,11 @@ export function createHome(app) {
     const kids = [h('div', { class: 'board-title' }, h('h1', {}, 'The Agency'), h('span', { class: 'label-type' }, 'Case board'),
       h('span', { class: 'team', 'aria-hidden': 'true' }, face('chief', 'happy', 'f-chief'), face('partner', 'happy', 'f-pip')))];
     if (routeMap) { routeMap.destroy(); routeMap = null; }
-    const erie = ARCS.find((a) => a.id === 'erie') || ARCS[0];
-    if (erie && erie.cases.length) { routeMap = routeFor(erie, save, cur); kids.push(routeMap); }
+    const arc = currentArc(save);
+    if (arc && arc.cases.length) { routeMap = routeFor(arc, save, cur); kids.push(routeMap); }
     const folders = h('div', { class: 'folders' });
     folders.append(folder('Training', 'Detective Training', 'Learn the moves every detective uses.', [card(TRAINING, 'T', save, cur === TRAINING.id)]));
-    for (const a of ARCS) folders.append(folder(a.title.replace(/^The /, '').replace(/ Files$/, ''), a.title, a.blurb, a.cases.map((k, i) => card(k, i + 1, save, cur === k.id))));
+    for (const a of ARCS) folders.append(folder(arcShortName(a), a.title, a.blurb, a.cases.map((k, i) => card(k, i + 1, save, cur === k.id))));
     kids.push(folders);
     if (wait === 'tomorrow') kids.push(h('div', { class: 'next-note', id: 'next-note' }, h('span', { html: app.icon('calendar'), style: { width: '22px', height: '22px', display: 'inline-flex' } }), 'Next case arrives tomorrow.'));
     else if (wait === 'done') kids.push(h('div', { class: 'next-note', id: 'next-note' }, 'Every case is closed. New files are on the way.'));

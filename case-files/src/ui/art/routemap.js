@@ -4,7 +4,10 @@
 // dim with a lock (no titles, no countdown, SPEC section 1). Red string joins the stops in order. The map redraws to the width it is
 // given, so the labels stay readable on a phone and the stops never overlap; every stop is a real button (44px tap target).
 //
-// createRouteMap({ stops: [{ id, no, state: 'closed' | 'now' | 'open' | 'sealed', title }], onOpen(id), reduced }) -> element
+// v0.2: createRouteMap takes map: 'erie' (the canal, default) or 'genesee' (the Genesee River running north to Lake Ontario: Letchworth in the
+// south, Rochester in the middle, Victor to the east, Charlotte at the lake). Genesee stops are placed by the case's `town`.
+//
+// createRouteMap({ map, stops: [{ id, no, state: 'closed' | 'now' | 'open' | 'sealed', title, town? , setting? }], onOpen(id), reduced }) -> element
 
 const INK = '#5a4220', INK2 = '#3a2a0c';
 
@@ -19,16 +22,149 @@ const ICON = {
 };
 const NAME = { albany: 'Albany', rochester: 'Rochester', lockport: 'Lockport', buffalo: 'Buffalo' };
 
+
+const GICON = {
+  rochester: `<g fill="${INK}"><rect x="-16" y="-10" width="18" height="18" rx="1"/><path d="M-16 -10l9 -6 9 6z"/><circle cx="9" cy="1" r="8" fill="none" stroke="${INK}" stroke-width="2.4"/></g><g fill="#f1e1b4"><rect x="-12" y="-6" width="4" height="4"/><rect x="-5" y="-6" width="4" height="4"/></g><g stroke="${INK}" stroke-width="1.8"><path d="M9 -7v16M1 1h16M3.3 -4.7l11.4 11.4M14.7 -4.7l-11.4 11.4"/></g>`,
+  victor: `<g fill="${INK}"><path d="M-17 9v-9a17 12 0 0 1 34 0v9z"/></g><g fill="#f1e1b4"><rect x="-3" y="1" width="6" height="8"/><path d="M-14 -3a16 10 0 0 1 28 0" fill="none" stroke="#f1e1b4" stroke-width="1.4"/></g>`,
+  letchworth: `<g fill="${INK}"><path d="M-18 -12h9v22h-9z"/><path d="M9 -12h9v22h-9z"/></g><g fill="#f4f8f2"><rect x="-4" y="-12" width="8" height="19"/></g><g fill="#4aa3c8"><rect x="-9" y="7" width="18" height="5"/><rect x="-2" y="-12" width="1.4" height="19" fill="#a9dcee"/></g>`,
+  charlotte: `<g fill="${INK}"><path d="M-4 10l2 -22h4l2 22z"/><rect x="-5" y="-17" width="10" height="5"/><path d="M-6 -17l6 -6 6 6z"/></g><g fill="#f1e1b4"><rect x="-1.5" y="-8" width="3" height="4"/></g><g fill="#ffe27a"><path d="M6 -15l11 -4v4zM-6 -15l-11 -4v4z" opacity=".9"/></g>`,
+};
+const GNAME = { rochester: 'Rochester', victor: 'Victor', letchworth: 'Letchworth', charlotte: 'Charlotte' };
+const GTOWNS = ['rochester', 'victor', 'letchworth', 'charlotte'];
+// a Genesee case without a `town` is placed by its setting line
+const gTownOf = (setting = '') => (/victor|ganondagan/i.test(setting) ? 'victor' : /letchworth/i.test(setting) ? 'letchworth' : /charlotte|lighthouse/i.test(setting) ? 'charlotte' : 'rochester');
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-export function createRouteMap({ stops = [], onOpen = () => {}, reduced = false } = {}) {
+// ---- shared by both maps: the red string, the medallions (svg) ----
+function stringPath(pos) {
+// red string through the stops in order: solid between closed ones, dashed after
+  let str = '';
+  for (let i = 1; i < pos.length; i++) {
+    const a = pos[i - 1], b = pos[i], done = a.state === 'closed' && (b.state === 'closed' || b.state === 'now' || b.state === 'open');
+    const my = Math.max(a.y, b.y) + 12;
+    str += `<path d="M${a.x.toFixed(1)} ${a.y.toFixed(1)}Q${((a.x + b.x) / 2).toFixed(1)} ${my.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}" fill="none" stroke="${done ? '#d8423b' : '#b9876f'}" stroke-width="${done ? 2.6 : 2}" stroke-linecap="round" ${done ? '' : 'stroke-dasharray="2 6"'} opacity="${done ? 0.95 : 0.55}"/>`;
+  }
+  return str;
+}
+function medallions(pos) {
+  // the medallions (drawn in svg; the hit areas are real buttons below)
+  let meds = '';
+  for (const p of pos) {
+    const r = 17;
+    const cx = p.x.toFixed(1), cy = p.y.toFixed(1);
+    if (p.state === 'closed') {
+      meds += `<g transform="translate(${cx} ${cy})"><circle r="${r + 2}" fill="rgba(60,35,8,.25)" transform="translate(0 3)"/><circle r="${r}" fill="#f2c64f" stroke="#8a6418" stroke-width="2.6"/><circle r="${r - 5}" fill="none" stroke="#8a6418" stroke-width="1.2" opacity=".6"/><text y="6.5" text-anchor="middle" font-family="Alfa Slab One, Georgia, serif" font-size="17" fill="#5a3c06">${p.no}</text>
+        <g transform="translate(11 11) rotate(-12)"><circle r="9" fill="#fbf3dc" stroke="#d8423b" stroke-width="2.2"/><circle r="6.4" fill="none" stroke="#d8423b" stroke-width="1"/><path d="M-3.4 .4l2.4 2.6 4.6-5.6" fill="none" stroke="#d8423b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g></g>`;
+    } else if (p.state === 'now') {
+      meds += `<g transform="translate(${cx} ${cy})"><circle class="rm-pulse" r="${r + 5}" fill="none" stroke="#2fd1c0" stroke-width="3"/><circle r="${r + 3}" fill="rgba(47,209,192,.28)"/><circle r="${r}" fill="#2fd1c0" stroke="#12766c" stroke-width="2.8"/><text y="6.5" text-anchor="middle" font-family="Alfa Slab One, Georgia, serif" font-size="17" fill="#032a27">${p.no}</text></g>`;
+    } else if (p.state === 'open') {
+      meds += `<g transform="translate(${cx} ${cy})"><circle r="${r}" fill="#fbf3dc" stroke="#12766c" stroke-width="2.8"/><text y="6.5" text-anchor="middle" font-family="Alfa Slab One, Georgia, serif" font-size="17" fill="#12766c">${p.no}</text></g>`;
+    } else {
+      meds += `<g transform="translate(${cx} ${cy})" opacity=".62"><circle r="${r}" fill="rgba(236,214,162,.6)" stroke="#a9935a" stroke-width="2.2" stroke-dasharray="4 4"/><g transform="translate(0 1)" fill="#8a7740"><rect x="-5" y="-1" width="10" height="8" rx="1.6"/><path d="M-3 -1v-3a3 3 0 0 1 6 0v3" fill="none" stroke="#8a7740" stroke-width="2"/></g></g>`;
+    }
+  }
+  return meds;
+}
+
+export function createRouteMap({ map = 'erie', stops = [], onOpen = () => {}, reduced = false } = {}) {
+  const genesee = map === 'genesee';
   const el = document.createElement('div');
   el.className = 'routemap';
   el.setAttribute('role', 'group');
-  el.setAttribute('aria-label', 'The Erie Canal route, Buffalo in the west to Albany in the east. Each stop is a case.');
+  el.dataset.map = genesee ? 'genesee' : 'erie';
+  el.setAttribute('aria-label', genesee ? 'The Genesee River valley, from Letchworth in the south to Lake Ontario in the north. Each stop is a case.' : 'The Erie Canal route, Buffalo in the west to Albany in the east. Each stop is a case.');
   let lastW = 0;
 
+  function addButtons(pos) {
+    // the hit areas: real buttons, 44px at least
+    for (const p of pos) {
+      const closed = p.state === 'closed', sealed = p.state === 'sealed';
+      const label = sealed ? `Case ${p.no}, arrives later` : closed ? `Case ${p.no}, ${p.title}, case closed` : p.state === 'now' ? `Case ${p.no}, ${p.title}, your next case` : `Case ${p.no}, ${p.title}`;
+      const b = document.createElement(sealed ? 'span' : 'button');
+      b.className = `rm-stop ${p.state}`;
+      b.dataset.stop = p.id; b.dataset.state = p.state;
+      b.style.left = `${(p.x - 24).toFixed(1)}px`; b.style.top = `${(p.y - 24).toFixed(1)}px`;
+      b.setAttribute('aria-label', label);
+      if (!sealed) { b.type = 'button'; b.dataset.sfx = ''; b.addEventListener('click', () => onOpen(p.id)); }
+      el.append(b);
+    }
+  }
+
+  function drawGenesee(W) {
+    const narrow = W < 560;
+    const H = narrow ? 304 : 262;
+    const top = 38, bot = H - 10;
+    const Xf = (u) => u * W, Yf = (v) => top + v * (bot - top);
+    const T = narrow
+      ? { charlotte: [0.52, 0.17], rochester: [0.4, 0.47], victor: [0.8, 0.6], letchworth: [0.22, 0.86] }
+      : { charlotte: [0.5, 0.17], rochester: [0.4, 0.47], victor: [0.8, 0.58], letchworth: [0.2, 0.84] };
+    const C = {}; for (const t of GTOWNS) C[t] = { x: Xf(T[t][0]), y: Yf(T[t][1]) };
+    // the river: from the gorge in the south, up through Rochester, to the lake
+    const pts = [[C.letchworth.x + 6, bot + 4], [C.letchworth.x + 22, C.letchworth.y - 18], [W * 0.34, Yf(0.7)], [C.rochester.x - 4, C.rochester.y + 6], [W * 0.46, Yf(0.36)], [C.charlotte.x - 6, C.charlotte.y + 4], [C.charlotte.x, top - 2]];
+    let d = `M${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) { const a = pts[i - 1], b = pts[i]; d += `Q${(a[0] + (i % 2 ? 14 : -14)).toFixed(1)} ${((a[1] + b[1]) / 2).toFixed(1)} ${b[0].toFixed(1)} ${b[1].toFixed(1)}`; }
+    // Lake Ontario along the top
+    let lake = `M2 ${top - 2}`;
+    for (let x = 2; x <= W - 2; x += 10) lake += `L${x} ${(top + 5 + 4 * Math.sin(x / 17)).toFixed(1)}`;
+    lake += `L${W - 2} ${top - 2}Z`;
+    // roads: Rochester to Victor, a dotted path
+    const road = `M${C.rochester.x.toFixed(1)} ${C.rochester.y.toFixed(1)}Q${((C.rochester.x + C.victor.x) / 2).toFixed(1)} ${(C.rochester.y + 4).toFixed(1)} ${C.victor.x.toFixed(1)} ${C.victor.y.toFixed(1)}`;
+    // place the case stops around their towns: first free slot of a ring of candidates
+    const by = {};
+    stops.forEach((s) => { const t = GTOWNS.includes(s.town) ? s.town : gTownOf(s.setting); (by[t] = by[t] || []).push(s); });
+    const labelBelow = (t) => C[t].y + 56 < H;
+    const placed = [];
+    const free = (x, y, t) => {
+      if (x < 26 || x > W - 26 || y < top + 20 || y > H - 22) return false;
+      for (const q of placed) if (Math.hypot(q.x - x, q.y - y) < 50) return false;
+      for (const o of GTOWNS) {
+        const c = C[o];
+        if (Math.hypot(c.x - x, c.y - y) < (o === t ? 44 : 50)) return false;
+        const dy = labelBelow(o) ? y - c.y : c.y - y;                 // the town's name sits below (or above) its icon: keep stops off it
+        if (Math.abs(x - c.x) < 62 && dy > 6 && dy < 66) return false;
+      }
+      return true;
+    };
+    const ANG = [-90, 180, 0, -135, -45, 135, 45, 90, -160, -20, 160, 20, -110, -70];
+    const pos = [];
+    for (const t of GTOWNS) {
+      for (const s of by[t] || []) {
+        let best = null;
+        for (const r of [46, 58, 72]) { for (const a of ANG) { const x = C[t].x + r * Math.cos(a * Math.PI / 180), y = C[t].y + r * Math.sin(a * Math.PI / 180); if (free(x, y, t)) { best = { x, y }; break; } } if (best) break; }
+        if (!best) best = { x: Math.min(W - 26, Math.max(26, C[t].x + 50)), y: Math.min(H - 22, Math.max(top + 20, C[t].y - 50)) };
+        placed.push(best); pos.push({ ...s, ...best });
+      }
+    }
+    pos.sort((a, b) => a.no - b.no);
+    const str = stringPath(pos);
+    let towns = '';
+    for (const t of GTOWNS) {
+      const { x, y } = C[t], below = labelBelow(t), nm = GNAME[t].toUpperCase(), fs = narrow ? 11 : 12.5, w = nm.length * (fs * 0.62 + 0.6) + 14;
+      const ly = below ? y + 38 : y - 30;
+      towns += `<g transform="translate(${x.toFixed(1)} ${y.toFixed(1)})"><circle r="19" fill="#f6ebc6" stroke="${INK}" stroke-width="2" opacity=".96"/><g transform="scale(.74)">${GICON[t]}</g></g>`;
+      towns += `<rect x="${(x - w / 2).toFixed(1)}" y="${(ly - fs - 1).toFixed(1)}" width="${w.toFixed(1)}" height="${fs + 7}" rx="4" fill="#f1e1b4" opacity=".92"/><text x="${x.toFixed(1)}" y="${ly}" text-anchor="middle" font-family="Special Elite, Courier New, monospace" font-size="${fs}" letter-spacing="${narrow ? 0.5 : 1}" fill="${INK2}">${nm}</text>`;
+    }
+    const meds = medallions(pos);
+    const boat = reduced ? '' : `<g><path d="M-7 0h14l-2 4h-10z" fill="${INK2}"/><path d="M0 -10v10l6 -2z" fill="#fbf3dc" stroke="${INK}" stroke-width=".8"/><animateMotion dur="44s" repeatCount="indefinite" rotate="0" path="${d}"/></g>`;
+    el.innerHTML = `<svg class="rm-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true" focusable="false">
+      <rect x="1" y="1" width="${W - 2}" height="${H - 2}" rx="10" fill="#f1e1b4" stroke="${INK}" stroke-width="2.4"/>
+      <path d="${lake}" fill="#4aa3c8" opacity=".75"/><path d="${lake}" fill="none" stroke="#2a6f93" stroke-width="1.6"/>
+      <rect x="6" y="6" width="${W - 12}" height="${H - 12}" rx="7" fill="none" stroke="#c8a964" stroke-width="1.4" stroke-dasharray="3 5"/>
+      <text x="16" y="25" font-family="Special Elite, Courier New, monospace" font-size="${narrow ? 11.5 : 12.5}" letter-spacing="1.6" fill="${INK}">THE GENESEE VALLEY</text>
+      <text x="${W - 16}" y="25" text-anchor="end" font-family="Special Elite, Courier New, monospace" font-size="${narrow ? 11 : 12}" letter-spacing="1.2" fill="#7a6330">${narrow ? '5 CASES' : 'TO LAKE ONTARIO · 5 CASES'}</text>
+      <path d="${road}" fill="none" stroke="#8a6a3a" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round" opacity=".7"/>
+      <path d="${d}" fill="none" stroke="#2a6f93" stroke-width="15" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${d}" fill="none" stroke="#4aa3c8" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${d}" fill="none" stroke="#a9dcee" stroke-width="2.2" stroke-dasharray="1 10" stroke-linecap="round" opacity=".85"/>
+      ${boat}${str}${towns}${meds}
+    </svg>`;
+    addButtons(pos);
+    el.style.height = `${H}px`;
+  }
+
   function draw(W) {
+    if (genesee) return drawGenesee(W);
     const narrow = W < 560;
     const H = narrow ? 216 : 210;
     const mid = narrow ? 100 : 98;
@@ -56,13 +192,7 @@ export function createRouteMap({ stops = [], onOpen = () => {}, reduced = false 
       });
     }
     pos.sort((a, b) => a.no - b.no);
-    // red string through the stops in order: solid between closed ones, dashed after
-    let str = '';
-    for (let i = 1; i < pos.length; i++) {
-      const a = pos[i - 1], b = pos[i], done = a.state === 'closed' && (b.state === 'closed' || b.state === 'now' || b.state === 'open');
-      const my = Math.max(a.y, b.y) + 12;
-      str += `<path d="M${a.x.toFixed(1)} ${a.y.toFixed(1)}Q${((a.x + b.x) / 2).toFixed(1)} ${my.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}" fill="none" stroke="${done ? '#d8423b' : '#b9876f'}" stroke-width="${done ? 2.6 : 2}" stroke-linecap="round" ${done ? '' : 'stroke-dasharray="2 6"'} opacity="${done ? 0.95 : 0.55}"/>`;
-    }
+    const str = stringPath(pos);
     // towns
     let towns = '';
     for (const t of ['albany', 'rochester', 'lockport', 'buffalo']) {
@@ -74,22 +204,7 @@ export function createRouteMap({ stops = [], onOpen = () => {}, reduced = false 
       towns += `<text x="${tx.toFixed(1)}" y="${ly}" text-anchor="${anchor}" font-family="Special Elite, Courier New, monospace" font-size="${narrow ? 11 : 13}" letter-spacing="${narrow ? 0.5 : 1.2}" fill="${INK2}">${NAME[t].toUpperCase()}</text>`;
       towns += `<path d="M${x.toFixed(1)} ${(y + 22).toFixed(1)}V${ly - 15}" stroke="${INK}" stroke-width="1.4" stroke-dasharray="2 4" opacity=".55"/>`;
     }
-    // the medallions (drawn in svg; the hit areas are real buttons below)
-    let meds = '';
-    for (const p of pos) {
-      const r = 17;
-      const cx = p.x.toFixed(1), cy = p.y.toFixed(1);
-      if (p.state === 'closed') {
-        meds += `<g transform="translate(${cx} ${cy})"><circle r="${r + 2}" fill="rgba(60,35,8,.25)" transform="translate(0 3)"/><circle r="${r}" fill="#f2c64f" stroke="#8a6418" stroke-width="2.6"/><circle r="${r - 5}" fill="none" stroke="#8a6418" stroke-width="1.2" opacity=".6"/><text y="6.5" text-anchor="middle" font-family="Alfa Slab One, Georgia, serif" font-size="17" fill="#5a3c06">${p.no}</text>
-          <g transform="translate(11 11) rotate(-12)"><circle r="9" fill="#fbf3dc" stroke="#d8423b" stroke-width="2.2"/><circle r="6.4" fill="none" stroke="#d8423b" stroke-width="1"/><path d="M-3.4 .4l2.4 2.6 4.6-5.6" fill="none" stroke="#d8423b" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></g></g>`;
-      } else if (p.state === 'now') {
-        meds += `<g transform="translate(${cx} ${cy})"><circle class="rm-pulse" r="${r + 5}" fill="none" stroke="#2fd1c0" stroke-width="3"/><circle r="${r + 3}" fill="rgba(47,209,192,.28)"/><circle r="${r}" fill="#2fd1c0" stroke="#12766c" stroke-width="2.8"/><text y="6.5" text-anchor="middle" font-family="Alfa Slab One, Georgia, serif" font-size="17" fill="#032a27">${p.no}</text></g>`;
-      } else if (p.state === 'open') {
-        meds += `<g transform="translate(${cx} ${cy})"><circle r="${r}" fill="#fbf3dc" stroke="#12766c" stroke-width="2.8"/><text y="6.5" text-anchor="middle" font-family="Alfa Slab One, Georgia, serif" font-size="17" fill="#12766c">${p.no}</text></g>`;
-      } else {
-        meds += `<g transform="translate(${cx} ${cy})" opacity=".62"><circle r="${r}" fill="rgba(236,214,162,.6)" stroke="#a9935a" stroke-width="2.2" stroke-dasharray="4 4"/><g transform="translate(0 1)" fill="#8a7740"><rect x="-5" y="-1" width="10" height="8" rx="1.6"/><path d="M-3 -1v-3a3 3 0 0 1 6 0v3" fill="none" stroke="#8a7740" stroke-width="2"/></g></g>`;
-      }
-    }
+    const meds = medallions(pos);
     // the little packet boat (not under calm motion)
     const boat = reduced ? '' : `<g><path d="M-14 0h28l-3 6h-22z" fill="${INK2}"/><rect x="-8" y="-6" width="16" height="6" rx="1" fill="${INK}"/><rect x="-5" y="-4.5" width="3" height="3" fill="#ffe27a"/><rect x="1" y="-4.5" width="3" height="3" fill="#ffe27a"/><animateMotion dur="38s" repeatCount="indefinite" rotate="0" path="${d.replace(/L/g, ' L')}"/></g>`;
     el.innerHTML = `<svg class="rm-svg" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true" focusable="false">
@@ -103,18 +218,7 @@ export function createRouteMap({ stops = [], onOpen = () => {}, reduced = false 
       <path d="${d}" fill="none" stroke="#8a6a3a" stroke-width="2" stroke-dasharray="7 6" transform="translate(0 13)" opacity=".7"/>
       ${boat}${str}${towns}${meds}
     </svg>`;
-    // the hit areas: real buttons, 44px at least
-    for (const p of pos) {
-      const closed = p.state === 'closed', sealed = p.state === 'sealed';
-      const label = sealed ? `Case ${p.no}, arrives later` : closed ? `Case ${p.no}, ${p.title}, case closed` : p.state === 'now' ? `Case ${p.no}, ${p.title}, your next case` : `Case ${p.no}, ${p.title}`;
-      const b = document.createElement(sealed ? 'span' : 'button');
-      b.className = `rm-stop ${p.state}`;
-      b.dataset.stop = p.id; b.dataset.state = p.state;
-      b.style.left = `${(p.x - 24).toFixed(1)}px`; b.style.top = `${(p.y - 24).toFixed(1)}px`;
-      b.setAttribute('aria-label', label);
-      if (!sealed) { b.type = 'button'; b.dataset.sfx = ''; b.addEventListener('click', () => onOpen(p.id)); }
-      el.append(b);
-    }
+    addButtons(pos);
     el.style.height = `${H}px`;
   }
 

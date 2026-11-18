@@ -808,6 +808,52 @@ async function runLayout(browser, layout) {
   const home5 = await J(page, () => Object.fromEntries([...document.querySelectorAll('.case-card')].map((c) => [c.dataset.case, c.dataset.state])));
   check(home5.training === 'closed' && home5['erie-01'] === 'closed' && home5['erie-02'] === 'new', 'reload: the progress persists');
 
+  // ---------- v0.2: the arc-aware home (the route map follows the current case's arc; three folders; the Lab line names the arc) ----------
+  {
+    const snap = await J(page, () => JSON.stringify({ o: window.__caseFiles.save.opened, c: window.__caseFiles.save.closed }));
+    const seeded = async (opened, closedIds) => {
+      await J(page, ({ opened, closedIds, snap }) => {
+        const g = window.__caseFiles, sv = g.save, base = JSON.parse(snap);
+        sv.opened = { ...opened }; sv.closed = {};
+        const any = Object.values(base.c)[0];
+        for (const id of closedIds) sv.closed[id] = base.c[id] || any;
+        g.app.go('home');
+      }, { opened, closedIds, snap });
+      await page.waitForSelector('.routemap svg');
+      await sleep(250);
+    };
+    const mapInfo = () => J(page, () => {
+      const m = document.querySelector('.routemap'); const r = m.getBoundingClientRect();
+      const stops = [...m.querySelectorAll('.rm-stop')].map((b) => { const q = b.getBoundingClientRect(); return { id: b.dataset.stop, state: b.dataset.state, w: q.width, h: q.height, x: q.left + q.width / 2, y: q.top + q.height / 2, label: b.getAttribute('aria-label') }; });
+      const texts = [...m.querySelectorAll('svg text')].map((t) => t.textContent);
+      const doc = window.__lab && window.__lab.store.doc();
+      return { map: m.dataset.map, left: r.left, right: r.right, stops, texts, folders: [...document.querySelectorAll('.folder')].map((f) => f.dataset.tab), sum: doc && doc.sum && doc.sum.cf };
+    });
+    const D0 = '2026-11-01';
+    await seeded({ training: D0, 'erie-01': D0, 'erie-02': D0, 'genesee-01': D0, 'genesee-02': D0 }, ['training', 'erie-01', 'erie-02', 'genesee-01']);
+    const g = await mapInfo();
+    check(g.map === 'genesee', 'v0.2: with a Genesee case current the home shows the Genesee River map');
+    check(g.folders.join('|') === 'Training|Erie Canal|Genesee Valley', `v0.2: three folders on the board: ${g.folders.join(', ')}`);
+    check(g.stops.length === 5 && g.stops.every((s) => s.w >= 44 && s.h >= 44) && g.stops.every((s) => s.x > g.left && s.x < g.right), 'v0.2: five Genesee stops, each a 44px target inside the map');
+    check(g.stops.map((s) => s.state).join() === 'closed,now,sealed,sealed,sealed', `v0.2: Genesee stop states (${g.stops.map((s) => s.state)})`);
+    check(g.stops.filter((s) => s.state === 'sealed').every((s) => /arrives later/.test(s.label) && !/Gorge|Lighthouse|Flour|Printing|Sisters/.test(s.label)), 'v0.2: sealed Genesee stops show no titles');
+    check(!g.stops.some((a, i) => g.stops.slice(i + 1).some((b) => Math.hypot(a.x - b.x, a.y - b.y) < 44)), 'v0.2: no two Genesee stops overlap');
+    check(['THE GENESEE VALLEY', 'ROCHESTER', 'VICTOR', 'LETCHWORTH', 'CHARLOTTE'].every((t) => g.texts.includes(t)), 'v0.2: the Genesee map names its four places');
+    check(!!g.sum && /^Genesee Valley: 1 \/ 5$/.test(g.sum.line), `v0.2: the Lab line names the current arc ("${g.sum && g.sum.line}")`);
+    await audit(page, layout.insets, 'home (Genesee map)');
+    await shot(page, layout, '09b-home-genesee', 300);
+    await seeded({ training: D0, 'erie-01': D0, 'erie-02': D0 }, ['training']);
+    const e = await mapInfo();
+    check(e.map === 'erie' && e.stops.length === 2 && !!e.sum && /^Erie Canal: 0 \/ 2$/.test(e.sum.line), `v0.2: with an Erie case current the home keeps the canal map ("${e.sum && e.sum.line}")`);
+    await shot(page, layout, '09c-home-erie', 300);
+    const every = ['training', 'erie-01', 'erie-02', 'genesee-01', 'genesee-02', 'genesee-03', 'genesee-04', 'genesee-05'];
+    await seeded(Object.fromEntries(every.map((id) => [id, D0])), every);
+    const d = await mapInfo();
+    check(d.map === 'genesee' && d.stops.every((s) => s.state === 'closed'), 'v0.2: with every case closed the home shows the last arc');
+    await J(page, (snap) => { const g = window.__caseFiles, b = JSON.parse(snap); g.save.opened = b.o; g.save.closed = b.c; g.app.persist(); g.app.go('home'); }, snap);
+    await page.waitForSelector('.routemap svg');
+  }
+
   // ---------- resume: leaving a case in the middle keeps it ----------
   await page.click('.case-card[data-case="erie-02"]');
   await doBrief(page, CASE_BY_ID['erie-02']);
@@ -888,7 +934,7 @@ async function runLayout(browser, layout) {
   check(/cubby ×1/.test(words) && /toll ×1/.test(words), `Parent Zone: words met (${words})`);
   await shot(page, layout, '10-parent-zone', 500);
   const nextOpen = await J(page, () => document.querySelector('#pz-open-next').disabled);
-  check(nextOpen === true, 'Parent Zone: "Open the next case now" is disabled when every case is open');
+  check(nextOpen === false, 'Parent Zone: "Open the next case now" is available (the Genesee cases are still to arrive)');
   await page.click('.pz-tabs [data-tab="school"]');
   const school = await page.$$eval('[data-school]', (e) => e.map((x) => x.textContent));
   check(school.length >= 3 && /Benchmark Assessment/.test(school[0]) && /instructional/.test(school[0]) && /i-Ready/.test(school[1]) && /Lexile/.test(school[1]) && /one reading/i.test(school[2]), 'Parent Zone: the "Talking with school" card');
@@ -962,9 +1008,9 @@ async function runOffline(browser) {
   await page.waitForFunction(() => navigator.serviceWorker && navigator.serviceWorker.controller, null, { timeout: 15000 });
   await page.click('[data-player="pmia"]'); await waitScreen(page, 'home');
   await closeModal(page);
-  await page.waitForFunction(async () => { const c = await caches.open('case-files-v0.1.5'); return (await c.keys()).length > 25; }, null, { timeout: 15000 });
+  await page.waitForFunction(async () => { const c = await caches.open('case-files-v0.2.0'); return (await c.keys()).length > 25; }, null, { timeout: 15000 });
   const names = await J(page, async () => (await caches.keys()).filter((k) => k.startsWith('case-files-')));
-  check(names.length === 1 && names[0] === 'case-files-v0.1.5', `the service worker cache is named case-files-v0.1.5 (${names.join(',')})`);
+  check(names.length === 1 && names[0] === 'case-files-v0.2.0', `the service worker cache is named case-files-v0.2.0 (${names.join(',')})`);
   await ctx.setOffline(true);
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector(visibleSel('#screen-players'), { timeout: 15000 });
