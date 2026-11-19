@@ -77,7 +77,7 @@ export function createTracks(app) {
       h('div', { class: 'sg-text' },
         h('div', { class: 'sg-title' }, h('span', { html: icon('lock') }), 'The Sky Gate'),
         h('div', { class: 'sg-road' }, `Sky Road ${n} / ${SKY_ROAD_STEPS}`),
-        h('p', {}, 'Finish each day\'s mission to walk the road to the gate. Earth is open all the time.')),
+        h('p', {}, 'Two ways in: finish each day\'s mission to walk the road to the gate, or beat every Earth track. Earth is open all the time.')),
       h('button', { class: 'btn btn-sm btn-green', id: 'sky-gate-back', 'data-sfx': '', onclick: () => { view = 'earth'; render(); } }, 'Back to Earth')));
   }
 

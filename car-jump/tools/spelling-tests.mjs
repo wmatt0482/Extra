@@ -2557,6 +2557,18 @@ console.log('the Sky Era (v4.0)');
     assert.equal(SK.autoUnlock(s, 5000), true); assert.deepEqual([s.sky.unlocked, s.sky.at, s.sky.ceremonySeen, s.sky.era], [true, 5000, false, 'earth']);
     assert.equal(SK.autoUnlock(s, 9999), false, 'already open'); assert.equal(s.sky.at, 5000, 'the first time stays');
   });
+  const { TRACKS } = await import('../src/data/tracks.js');
+  test('v4.2 unlock by skill: beating every Earth track opens the era at any road step; one track short does not; a pre-4.0.3 track counts when the next is open', () => {
+    const beatAll = (s) => { for (const t of TRACKS) s.best[t.id] = t.finish; s.unlocked = TRACKS.map((t) => t.id); return s; };
+    const s = beatAll(road(3)); const last = TRACKS[TRACKS.length - 1];
+    s.best[last.id] = last.finish - 1; assert.equal(SK.earthComplete(s), false, 'the last finish line not crossed'); assert.equal(SK.autoUnlock(s, 1), false);
+    s.best[last.id] = last.finish; assert.equal(SK.earthComplete(s), true);
+    assert.equal(SK.autoUnlock(s, 4000), true); assert.equal(s.sky.unlocked, true); assert.equal(s.sky.at, 4000); assert.equal(SK.ceremonyDue(s), true);
+    const old = beatAll(road(0)); old.best[TRACKS[2].id] = 10; assert.equal(SK.earthComplete(old), true, 'track 3 has a low best but track 4 is open: it was beaten');
+    old.unlocked = old.unlocked.filter((id) => id !== TRACKS[3].id); assert.equal(SK.earthComplete(old), false, 'neither its finish nor the next track: not beaten');
+    assert.equal(SK.earthComplete(defaultSave()), false); assert.equal(SK.earthComplete(null), false);
+    SD.setSkyData({}); const n = beatAll(road(0)); assert.equal(SK.autoUnlock(n, 1), false, 'no sky data: nothing opens'); SD.setSkyData({ tracks: FIX_TRACKS, rides: FIX_RIDES });
+  });
   test('unlock needs sky tracks on this device: with no sky data the road at 15 / 15 opens nothing (Era 1 only, nothing promised)', () => {
     SD.setSkyData({});
     const s = road(15); assert.equal(SK.autoUnlock(s, 1), false); assert.equal(s.sky.unlocked, false);

@@ -1,7 +1,8 @@
 // The Sky Era's state in a child's save (v4.0): save.sky = { unlocked, at, ceremonySeen, era }. Pure, no DOM; unit-tested in
 // tools/spelling-tests.mjs.
 //
-//   unlocked      the era is open: the Sky Road reached 15 / 15 (autoUnlock) or a parent tapped "Open the Sky Era now" (unlockSky 'parent')
+//   unlocked      the era is open: the Sky Road reached 15 / 15 or every Earth track is beaten (v4.2; autoUnlock), or a parent tapped
+//                 "Open the Sky Era now" (unlockSky 'parent')
 //   at            when it opened (ms; 0 while locked); merged across devices as the earliest
 //   ceremonySeen  the one-time unlock ceremony has started on some device (merged OR, so it plays once per child, not once per device)
 //   era           'earth' | 'sky': the tab the child last chose (merged from the later doc); a locked era is always 'earth'
@@ -9,6 +10,15 @@
 // Nothing here ever takes anything away: no save ever goes back to locked, and Earth is never blocked.
 import { SKY_ROAD_STEPS, milestoneFor, skyRoadSteps } from './skyRoad.js';
 import { skyAvailable } from './skyData.js';
+import { TRACKS } from '../data/tracks.js';
+
+/** v4.2: every Earth track is beaten: its finish line crossed (best >= finish), or the next track already open (a track
+ *  beaten before v4.0.3 banked the finish may have no best that far). The last track needs its finish line. */
+export function earthComplete(save) {
+  if (!save || !save.best) return false;
+  const open = Array.isArray(save.unlocked) ? save.unlocked : [];
+  return TRACKS.every((t) => (save.best[t.id] || 0) >= t.finish || TRACKS.some((x) => x.unlockedBy === t.id && open.includes(x.id)));
+}
 
 export const ERAS = ['earth', 'sky'];
 export const defaultSky = () => ({ unlocked: false, at: 0, ceremonySeen: false, era: 'earth' });
@@ -54,10 +64,10 @@ export function unlockSky(save, now = Date.now()) {
   return true;
 }
 
-/** The road is complete (15 / 15) and the era has tracks: open it. Returns true when it just opened. */
+/** The road is complete (15 / 15) or every Earth track is beaten (v4.2), and the era has tracks: open it. Returns true when it just opened. */
 export function autoUnlock(save, now = Date.now()) {
   if (!save || skyUnlocked(save) || !skyAvailable()) return false;
-  if (skyRoadSteps(save) < SKY_ROAD_STEPS) return false;
+  if (skyRoadSteps(save) < SKY_ROAD_STEPS && !earthComplete(save)) return false;
   return unlockSky(save, now);
 }
 
